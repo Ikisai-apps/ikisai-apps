@@ -161,9 +161,12 @@ La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integr
 | `POST commands` | `{requestId, expectedCursor?, operations[]}` → `core.commit` |
 | `GET history?before=&limit=` | lotes de cambios para la vista de historial |
 | `POST history/{cursor}/undo-plan` / `undo` | previsualizar y ejecutar el deshacer de §4.4 |
-| `POST uploads` | `{filename, mime, size, sha256}` → ticket y URL firmada de subida al bucket de la app |
-| `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash; marca el adjunto verificado |
-| `GET files/{id}` | URL firmada de corta duración para ver o descargar, tras comprobar visibilidad |
+| `POST uploads` | `{filename, mime, size, sha256}` → `{id, path, uploadUrl, method:'PUT', headers, expiresAt, duplicateOf}`; el cliente hace `PUT uploadUrl` directo al bucket |
+| `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash (hasta 25 MB); → `{id, sha256, size, verified, hashVerified}` |
+| `GET files/{id}` | → `{id, url, expiresAt, filename, mime, size}` con URL firmada de 10 minutos, tras comprobar pertenencia |
+| `POST trash/purge` | `{requestId, tables?}` → `{purged, cursor}`; solo `owner`; respeta `never_purge` |
+| `GET members` / `POST members` | lista de pertenencias; alta o cambio `{userId, role, scopes?, displayName?}` solo `owner` |
+| `GET me` | usuario, correo, rol y ámbitos de la sesión |
 | `POST auth/login` `refresh` `logout` `password` | proxy de Supabase Auth, idéntico al actual de Tareas |
 | `GET health` `GET version.json` | disponibilidad, etapa y release |
 
