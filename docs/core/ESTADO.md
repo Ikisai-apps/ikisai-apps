@@ -1,6 +1,6 @@
 # Core · estado
 
-Actualizado: 6 de octubre de 2026 (fase 0 en curso).
+Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y primera app publicada.**
 
 ## Hecho
 
@@ -13,20 +13,20 @@ Actualizado: 6 de octubre de 2026 (fase 0 en curso).
 - `packages/test-kit`: PGlite con stubs de Auth, Supabase simulado (PostgREST, Auth, Storage) y suite de conformidad de 13 escenarios.
 - `scripts/lint_migrations.mjs`: nombre, un schema por archivo, registro obligatorio.
 
-## En curso
+- `packages/sync-client`: cliente offline compartido, 22 pruebas.
+- `scripts/`: despliegue por app (schema, función con `_kit`, Pages, auth, storage, owner, release), backup cifrado; workflows `checks`, `release`, `backup`.
+- `apps/invoices`: esqueleto PWA (login, shell, proveedores offline, conflictos, SW coordinado) con prueba Playwright.
+- Supabase real: migraciones aplicadas (`core`, `invoices`; `ikisai.*` intacto), buckets `purchase-documents`, `kitchen-media`, `booking-documents`, Auth con los cuatro dominios, owner de Invoices dado de alta.
+- Publicado **invoices.ikisai.com** `v0.1.0-rc.1`: función `invoices-api`, proyecto Pages `ikisai-invoices`, CNAME y certificado activos; `/version.json` y `/api/v1/health` coinciden. Humo real contra la API: 16/16.
+- Secretos de Actions cargados en el repo nuevo (Supabase, Cloudflare, clave de backup nueva).
 
-- `packages/sync-client` (agente delegado).
-- `scripts/` de despliegue y workflows (agente delegado).
-- `apps/invoices` esqueleto Vite + PWA.
+## Pendiente (fase 1 y siguientes)
 
-## Pendiente de la fase 0
-
-- Aplicar migraciones al proyecto Supabase y desplegar `invoices-api`.
-- Crear buckets `purchase-documents`, `kitchen-media`, `booking-documents`.
-- Ampliar la allow-list de Auth a los cuatro dominios.
-- Publicar `invoices.ikisai.com` con login real y verificar `/version.json` y `/api/v1/health`.
-- Secretos de Actions en el repo nuevo y backup cifrado.
-- Proteger `main` (PR + CI).
+- Proteger `main` (PR + CI) al abrir el trabajo paralelo.
+- Primer run real de `checks.yml` en una PR y de `backup.yml`; restauración real del backup (hoy solo plan).
+- Equipos de app: `docs/<app>/API.md` (G2) antes de código.
+- Retirar la función QA `invoices-api-qa` cuando deje de usarse.
+- Optimizar los tres viajes por petición (caché corta de identidad).
 
 ## Decisiones técnicas tomadas en la implementación
 
