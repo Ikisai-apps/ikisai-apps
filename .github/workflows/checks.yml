@@ -1,0 +1,51 @@
+name: Checks
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  core:
+    name: Lint de migraciones, typecheck y pruebas PGlite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test
+  e2e:
+    name: Playwright (solo si existe playwright.config.ts)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Instalar Chromium
+        if: hashFiles('playwright.config.ts') != ''
+        run: npx playwright install --with-deps chromium
+      - name: Pruebas end-to-end
+        if: hashFiles('playwright.config.ts') != ''
+        run: npm run test:e2e
+      - name: Sin configuración de Playwright
+        if: hashFiles('playwright.config.ts') == ''
+        run: echo "playwright.config.ts no existe todavía; se omite la suite e2e"
+      - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('playwright.config.ts') != ''
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
