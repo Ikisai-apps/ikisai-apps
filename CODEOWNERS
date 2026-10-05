@@ -1,0 +1,18 @@
+# Core (compartido)
+*                                   @VGCif
+/supabase/migrations/*_core_*       @VGCif
+/supabase/functions/_kit/           @VGCif
+/packages/sync-client/              @VGCif
+/packages/test-kit/                 @VGCif
+/scripts/                           @VGCif
+/.github/                           @VGCif
+/docs/core/                         @VGCif
+
+# UI
+/packages/ui-kit/                   @VGCif
+
+# Apps (los equipos se añaden aquí cuando existan sus cuentas)
+/apps/tasks/                        @VGCif
+/apps/invoices/                     @VGCif
+/apps/booking/                      @VGCif
+/apps/food/                         @VGCif

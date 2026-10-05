@@ -1,0 +1,257 @@
+# Ikisai Core · Contrato del núcleo de sincronización (v0.1, borrador para aprobación)
+
+Fecha: 5 de octubre de 2026. Autor: agente Core. Alcance: las cuatro apps (`tasks`, `invoices`, `booking`, `food`).
+
+Este documento es normativo para cualquier agente que construya una app sobre el núcleo. Lo que aquí no está permitido no se hace sin una misión coordinada por Core. Las palabras **debe / no debe / puede** se usan en sentido estricto.
+
+---
+
+## 1. Objetivo
+
+Que cualquier app de Ikisai pueda: leer y editar sin red, sincronizar al reconectar sin duplicar ni pisar cambios ajenos, mostrar conflictos de forma explícita, deshacer, y hacerlo con tablas relacionales normales que admitan índices, restricciones y SQL.
+
+No es objetivo: edición simultánea en tiempo real, CRDT, ni fusión semántica automática más allá de campos disjuntos.
+
+---
+
+## 2. Convenciones de datos
+
+### 2.1 Tabla sincronizable
+
+Toda tabla que el cliente pueda leer o escribir vía el núcleo **debe** tener:
+
+```sql
+id          uuid primary key default gen_random_uuid(),
+revision    bigint not null default 1,
+created_at  timestamptz not null default now(),
+updated_at  timestamptz not null default now(),
+updated_by  uuid null references auth.users(id),
+deleted_at  timestamptz null
+```
+
+Opcionales recomendados: `code text unique` (código humano), `position numeric` (orden manual), `notes text`.
+
+Reglas:
+
+- `revision` la incrementa el trigger `core.touch_revision()` en cada `UPDATE`. Nadie la escribe a mano.
+- El borrado es lógico: `deleted_at`. No hay purga automática. El `DELETE` físico solo ocurre por la acción «Vaciar papelera» del `owner` (implementada en `core.purge_deleted(app, tables[])`) o por `core.purge_row_history` a petición de Core (§11). Las tablas marcadas `never_purge` en `core.synced_tables` (facturas y sus documentos) quedan excluidas.
+- Atributos en columnas tipadas. Se admite una columna `extra jsonb` para campos verdaderamente libres; no para evitar una migración.
+- Las FK a otras tablas del **mismo schema** son obligatorias donde haya relación. Las FK a `booking.events` desde `food.*` están permitidas (misma base, mismo repo). Entre el resto de schemas, enlaces tipados (§8).
+- Las vistas de proyección para otras apps se llaman `<schema>.<destino>_<objeto>_projection` y no exponen datos personales.
+
+### 2.2 Registro de tablas
+
+```sql
+core.synced_tables(
+  app text, schema_name text, table_name text,
+  writable_columns text[],          -- lista blanca para insert/update
+  readable_roles text[] default '{reader,editor,owner}',
+  writable_roles text[] default '{editor,owner}',
+  primary key(app, schema_name, table_name))
+```
+
+Una tabla no registrada no se puede leer ni escribir vía el núcleo. La migración que crea la tabla **debe** registrarla.
+
+### 2.3 Códigos humanos
+
+```sql
+core.code_sequences(prefix text, year int, last int, primary key(prefix, year))
+core.next_code(prefix text, year int) returns text   -- 'RSV_2026_001'
+```
+
+Transaccional, sin huecos salvo rollback, sin carreras (bloqueo de fila). Prefijos reservados: `RSV EVT HSP FVR` y los que registre cada app en su `docs/<app>/API.md`.
+
+---
+
+## 3. Tablas del núcleo
+
+```sql
+core.apps(id text primary key, name text, domain text)           -- tasks, invoices, booking, food
+
+core.profiles(user_id uuid primary key references auth.users,
+  display_name text, kind text check (kind in ('human','agent')),
+  revision bigint, created_at, updated_at)
+
+core.memberships(app text references core.apps, user_id uuid references auth.users,
+  role text check (role in ('reader','editor','owner')),
+  scopes jsonb null,                 -- opaco para core; lo interpreta la app (Tareas: áreas/proyectos)
+  revision bigint, created_at, updated_at, primary key(app, user_id))
+
+core.app_state(app text primary key, cursor bigint not null default 0)
+
+core.changes(app text, cursor bigint, seq int,                    -- seq: orden dentro del lote
+  committed_at timestamptz, actor_id uuid, request_id text,
+  schema_name text, table_name text, row_id uuid,
+  op text check (op in ('insert','update','delete','restore','call')),
+  revision bigint, before jsonb, after jsonb,
+  primary key(app, cursor, seq))
+
+core.receipts(app text, actor_id uuid, request_id text,
+  digest text, cursor bigint, result jsonb, created_at timestamptz,
+  primary key(app, actor_id, request_id))
+```
+
+Reservado para fases posteriores, con la misma forma que hoy en Tareas pero con columna `app`: `core.agent_keys`, `core.proposals`, `core.access_events`.
+
+Permisos: `revoke all` a `public`, `anon`, `authenticated` en todo `core.*`; `grant` solo a `service_role`. RLS activado en todas las tablas de todos los schemas con política de denegación por defecto.
+
+---
+
+## 4. Commit
+
+### 4.1 Firma
+
+```sql
+core.commit(
+  p_app text, p_actor uuid, p_request_id text, p_digest text,
+  p_expected_cursor bigint,          -- null = no comprobar
+  p_operations jsonb) returns jsonb  -- { cursor, results[], changes[] }
+```
+
+### 4.2 Operación
+
+```json
+{ "op": "insert|update|delete|restore",
+  "table": "invoices.invoice_lines",
+  "id": "uuid",
+  "expectedRevision": 7,
+  "fields": { "description": "Tomate", "quantity": 20 } }
+
+{ "op": "call", "procedure": "booking.confirm_reservation",
+  "args": { "reservation_id": "uuid", "expectedRevision": 3 } }
+```
+
+Reglas:
+
+- `insert` exige `id` generado por el cliente (uuid v4) para que el reintento sea idempotente. `expectedRevision` se ignora.
+- `update`, `delete`, `restore` exigen `expectedRevision`. Si la fila no existe → `NOT_FOUND`. Si `revision` difiere → `VERSION_CONFLICT` con `{table, id, expectedRevision, currentRevision, current}`. Se aborta el lote completo.
+- `fields` solo puede contener `writable_columns`. Otra cosa → `INVALID_FIELDS`.
+- `call` ejecuta un procedimiento del schema de la app incluido en `core.allowed_procedures(app, procedure)`. El procedimiento **debe** aplicar sus escrituras mediante `core.apply_row_op(...)` para que queden en `core.changes` con sus revisiones. Sirve para transacciones de dominio (confirmar reserva y crear evento, importar factura, regenerar lista de compra).
+- Máximo 500 operaciones por lote. Las operaciones se aplican en orden.
+
+### 4.3 Secuencia dentro de la transacción
+
+1. `select … from core.app_state where app = p_app for update`.
+2. Releer `core.memberships(p_app, p_actor)`. Sin fila o `reader` → `FORBIDDEN`.
+3. Buscar `core.receipts(p_app, p_actor, p_request_id)`. Si existe y `digest` coincide → devolver `result` guardado sin tocar nada. Si existe y `digest` difiere → `IDEMPOTENCY_REUSE`.
+4. Si `p_expected_cursor` no es null y difiere del cursor actual → `CURSOR_CONFLICT`.
+5. Aplicar operaciones; cada una produce una o más filas en `core.changes` con `cursor = actual + 1`.
+6. Validar invariantes declarados por la app (`core.validate_hooks(app)` → procedimientos de comprobación, por ejemplo ciclos de dependencias en Tareas).
+7. `update core.app_state set cursor = cursor + 1`.
+8. Insertar recibo con el resultado.
+9. Devolver `{cursor, results, changes}`; `changes` incluye las imágenes `after` para que el cliente actualice su espejo sin otra petición.
+
+Cualquier error deshace todo. El SQLSTATE de los conflictos se mapea a 409 sin reintento automático de PostgREST (como hace hoy la migración 0010 de Tareas).
+
+### 4.4 Historial y deshacer
+
+`core.changes` guarda `before` y `after`. Deshacer el lote `cursor = N` es un nuevo commit que, para cada cambio en orden inverso, aplica `before` con `expectedRevision` igual a la revisión actual de la fila; si alguien ha tocado la fila después, es un `VERSION_CONFLICT` normal y el usuario decide. Nunca se reescribe el historial.
+
+---
+
+## 5. API HTTP por app
+
+La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integración debajo del mismo prefijo. Prefijo `/api/v1/`, mismo origen, `Authorization: Bearer <jwt supabase>`. Errores siempre `{ "error": { "code", "message", "details" } }`.
+
+| Ruta | Función |
+|---|---|
+| `GET bootstrap` | perfil, membresía y rol, `cursor` actual, hora del servidor, `release`, tablas registradas con sus columnas |
+| `GET snapshot?tables=a,b&cursor=&page=` | filas vivas (y borradas recientes si `include_deleted`) de las tablas pedidas, paginado; devuelve el `cursor` al que corresponde |
+| `GET changes?after=<cursor>&limit=` | filas de `core.changes` desde el cursor, con `after`; `next` para paginar |
+| `POST commands` | `{requestId, expectedCursor?, operations[]}` → `core.commit` |
+| `GET history?before=&limit=` | lotes de cambios para la vista de historial |
+| `POST history/{cursor}/undo-plan` / `undo` | previsualizar y ejecutar el deshacer de §4.4 |
+| `POST uploads` | `{filename, mime, size, sha256}` → ticket y URL firmada de subida al bucket de la app |
+| `POST uploads/{id}/verify` | comprueba existencia, tamaño y hash; marca el adjunto verificado |
+| `GET files/{id}` | URL firmada de corta duración para ver o descargar, tras comprobar visibilidad |
+| `POST auth/login` `refresh` `logout` `password` | proxy de Supabase Auth, idéntico al actual de Tareas |
+| `GET health` `GET version.json` | disponibilidad, etapa y release |
+
+Códigos de error del núcleo: `UNAUTHENTICATED 401`, `FORBIDDEN 403`, `NOT_FOUND 404`, `VERSION_CONFLICT 409`, `CURSOR_CONFLICT 409`, `IDEMPOTENCY_REUSE 409`, `INVALID_FIELDS 422`, `INVALID_OPERATION 422`, `PAYLOAD_TOO_LARGE 413`, `CONFIRMATION_REQUIRED 428` (agentes, fase posterior), `BACKEND_UNAVAILABLE 503`.
+
+Visibilidad: la app **debe** proporcionar `visible(row, membership)` para cada tabla con ámbitos; `_kit` la aplica en `snapshot`, `changes`, `history` y `files`. Si una app no tiene ámbitos, la visibilidad es la membresía.
+
+---
+
+## 6. Cliente offline (`packages/sync-client`)
+
+### 6.1 Almacenamiento local
+
+IndexedDB `ikisai-<app>-v1` con un store por tabla registrada, más `meta` (cursor, hora de último pull, usuario), `outbox` (comandos pendientes en orden), `conflicts` (pendientes de decisión humana) y `blobs` (adjuntos pendientes de subida).
+
+### 6.2 Ciclo
+
+1. **Arranque:** renderizar desde el espejo local inmediatamente. Si no hay espejo, `bootstrap` + `snapshot`.
+2. **Pull:** `changes?after=cursor` al arrancar, al recuperar la red, al volver a primer plano y periódicamente. Para cada cambio recibido: si la fila no tiene edición local pendiente, se aplica (`after`). Si la tiene, se guarda como «base remota» y se decide en el push.
+3. **Edición:** la UI escribe en el espejo local y encola un comando con `requestId` (uuid) y `expectedRevision` igual a la revisión que tenía la fila cuando el usuario la abrió. La UI muestra la fila como «pendiente de sincronizar».
+4. **Push:** FIFO, un comando en vuelo. Éxito → aplicar `changes` de la respuesta y limpiar. Red caída → esperar. 401 → refrescar y reintentar. 409 `VERSION_CONFLICT` → §6.3. Reintento del mismo `requestId` tras una respuesta perdida → el recibo devuelve el mismo resultado.
+5. **Adjuntos:** las fotos se recomprimen en el cliente antes de encolarse (lado mayor 1600 px, WebP de calidad media, sin conservar el original); los PDF se encolan tal cual, con el único techo del Storage (50 MB). El blob se guarda en `blobs` y el comando referencia su `sha256`. Al reconectar: `uploads` → PUT firmado directo al bucket → `verify` → entonces se envía el comando que lo referencia. Si la subida falla, el comando no se envía y la UI lo dice.
+
+### 6.3 Conflictos
+
+Al recibir `VERSION_CONFLICT` con `current`:
+
+- Si el conjunto de campos que cambió el usuario y el conjunto que cambió el servidor (comparando `current` con la base local) son **disjuntos**, el cliente rebasa automáticamente: toma `current`, aplica encima los campos propios, actualiza `expectedRevision` y reenvía. Se informa discretamente («se incorporaron cambios de otra persona»).
+- Si **se solapan**, el comando pasa a `conflicts` y la UI muestra ambas versiones campo a campo: «mantener la mía», «tomar la del servidor», o edición combinada. La decisión genera un comando nuevo. Nada se pierde en silencio.
+- `delete` contra una fila modificada remotamente siempre pide confirmación.
+
+### 6.4 Lo que el cliente debe mostrar siempre
+
+Estado de red, número de cambios pendientes, conflictos pendientes, y «guardado» solo cuando el servidor ha confirmado. Si no hay red, se puede trabajar; no se simula éxito.
+
+---
+
+## 7. Paquetes de dominio compartidos (`packages/domain-<app>`)
+
+Contienen los tipos TypeScript de cada tabla (generados desde las migraciones), los esquemas de validación (Zod o equivalente ligero) y las reglas puras (cálculo de totales de factura, noches de una reserva, cantidades de la lista de compra). Los importan tanto la Edge como el frontend: la validación offline es idéntica a la del servidor, y la Edge la ejecuta otra vez antes de `core.commit` porque el cliente no es de confianza.
+
+---
+
+## 8. Cruces entre apps
+
+- **Proyecciones:** vistas de solo lectura en el schema del dueño. La Edge de la app lectora las consulta con la service key y las expone en sus rutas de lectura. Ejemplo normativo: `booking.food_event_projection` con `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions (jsonb sin identificar), event_revision`.
+- **Enlaces tipados:** `target_app, target_kind, target_id` + opcionalmente `target_revision`. La Edge del que enlaza valida al guardar que el destino existe y es visible para el usuario, llamando a la proyección (apps hermanas) o a la API del dueño con el token del usuario (Tareas).
+- **Obsolescencia:** se calcula comparando `source_*_revision` con la `revision` actual del origen. No se guardan flags `stale`.
+- **Escrituras cruzadas:** no existen. Si una app necesita que otra haga algo, lo pide por su API con el token del usuario, y la dueña decide.
+
+---
+
+## 9. Suite de conformidad (`packages/test-kit`)
+
+Toda `<app>-api` **debe** pasar, contra PGlite con sus migraciones aplicadas, al menos:
+
+1. insert con `id` de cliente; reintento con el mismo `requestId` devuelve el mismo resultado y no duplica.
+2. update con `expectedRevision` correcta incrementa `revision` y produce un cambio con `before`/`after`.
+3. update con `expectedRevision` antigua → 409 y la fila no cambia.
+4. `expectedCursor` desactualizado → `CURSOR_CONFLICT`.
+5. campo fuera de la lista blanca → `INVALID_FIELDS`.
+6. `reader` no puede `commands`; sin membresía → 403; sesión cerrada → 401.
+7. delete lógico desaparece de `snapshot`, aparece en `changes`, y `restore` lo devuelve.
+8. `changes?after=` devuelve exactamente lo posterior al cursor y pagina.
+9. undo de un lote restaura `before`; undo tras edición ajena → 409.
+10. dos commits concurrentes al mismo cursor: uno confirma, el otro recibe conflicto.
+11. `call` a un procedimiento no permitido → `INVALID_OPERATION`; uno permitido anota sus cambios.
+12. visibilidad: una fila fuera del ámbito del usuario no aparece ni en `snapshot`, ni en `changes`, ni en `history`.
+
+Más una batería Playwright compartida de offline: corte de red durante edición, recarga con cola pendiente, reconexión y vaciado, conflicto disjunto con rebase automático, conflicto solapado con decisión humana, subida de adjunto diferida.
+
+---
+
+## 10. Despliegue y operación
+
+- Migraciones: una secuencia, inmutables, aplicadas solo por el workflow de release de `main` con la Management API (script heredado de Tareas). Lint en CI: cada archivo toca un único schema y registra sus tablas.
+- Edge Functions: un slug por app (`tasks-api`, `invoices-api`, `booking-api`, `food-api`), `verify_jwt:false`, `_kit` empaquetado con cada una. Variante `-qa` con `app` sintético para ensayos contra Supabase real.
+- Frontend: Cloudflare Pages por app, `_worker.js` por dominio que solo reenvía al slug de su app y rechaza orígenes cruzados.
+- Backup: un trabajo cifrado que exporta `core.*` y los cuatro schemas más los tres buckets, con verificación de hashes y restauración ensayada en un proyecto vacío.
+- Observabilidad mínima: `health` por app con release y estado de la base; contador de conflictos y de lotes rechazados en `core.changes`/`receipts` consultable por Core.
+
+---
+
+## 11. Decisiones cerradas con el usuario (5 de octubre de 2026)
+
+1. **Retención del historial:** `core.changes` se conserva íntegro, siempre, sin compactación automática. Si algún día pesa, se decide entonces con datos reales.
+2. **Papelera:** nunca se purga automáticamente. La app ofrece «Vaciar papelera» solo al rol `owner`, con confirmación que muestra el recuento. Las facturas y sus documentos no entran en la papelera: se anulan y se conservan. Purgar una fila la saca de la base y de la app, pero su antes y después siguen en `core.changes`; para un borrado real por protección de datos (huéspedes) existe `core.purge_row_history(app, table, id)`, función de Core ejecutada a petición, no un botón.
+3. **Adjuntos:** PDF sin límite propio, solo el techo técnico de Supabase Storage (50 MB por archivo en el plan actual), subidos directamente al bucket con URL firmada. Las fotos se recomprimen en el cliente antes de subir a «resolución WhatsApp» (lado mayor 1600 px, calidad media, WebP; entre 100 y 300 KB) y **no se conserva el original**. Si una app necesita el original de alguna foto, se añade como opción explícita por foto, no por defecto.
+4. **Fusión automática de campos disjuntos:** activada en todas las apps desde el principio, con aviso discreto y posibilidad de deshacer.
+
+Con esto el contrato v0.1 queda **aprobado** y pasa a ser la referencia de la puerta G0.

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+private/
+reports/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.vite/
+playwright-report/
+test-results/

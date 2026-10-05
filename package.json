@@ -1,0 +1,28 @@
+{
+  "name": "ikisai-apps",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ikisai Apps: núcleo de sincronización offline y apps Tasks, Invoices, Booking y Food",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "check": "npm run check:migrations && npm run typecheck",
+    "check:migrations": "node scripts/lint_migrations.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run test:core",
+    "test:core": "tsx --test tests/core/*.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@types/node": "20.17.0",
+    "fake-indexeddb": "6.0.0",
+    "playwright": "1.62.1",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}
