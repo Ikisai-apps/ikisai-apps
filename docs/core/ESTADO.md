@@ -4,7 +4,7 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 
 ## Hecho
 
-- Repositorio `Ikisai-apps/ikisai-apps` creado (privado), `main` protegida pendiente de configurar.
+- Repositorio `Ikisai-apps/ikisai-apps` creado (privado). La protección de rama no está disponible en el plan gratuito de la organización para repos privados: la regla «solo PR con CI verde a `main`» es de convivencia (`AGENTS.md`) y la vigila Core.
 - Migración `20261006_0001_core_base.sql`: apps, profiles, memberships, app_state, synced_tables, allowed_procedures, validate_hooks, code_sequences, changes, receipts; `core.commit` fila a fila con recibos y 409; snapshot, changes_since, history, undo_plan, purge_deleted, purge_row_history, set_membership, next_code; wrappers `public.core_*` solo para `service_role`.
 - Migración `20261006_0003_core_files.sql`: registro de archivos y tickets de subida.
 - Migración `20261006_0002_invoices_suppliers.sql`: app `invoices` y tabla `invoices.suppliers` registrada.
@@ -22,7 +22,6 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 
 ## Pendiente (fase 1 y siguientes)
 
-- Proteger `main` (PR + CI) al abrir el trabajo paralelo.
 - Primer run real de `checks.yml` en una PR y de `backup.yml`; restauración real del backup (hoy solo plan).
 - Equipos de app: `docs/<app>/API.md` (G2) antes de código.
 - Retirar la función QA `invoices-api-qa` cuando deje de usarse.
