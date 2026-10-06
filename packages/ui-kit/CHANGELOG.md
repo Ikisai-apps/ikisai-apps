@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.5.0 · 6 de octubre de 2026
+
+- Página completa imprimible (`renderPrintPage`, `createPrintView`, `printElement`): cabecera con marca Ikisai, título, fechas y datos; secciones (días) con grupos (servicios) y tarjetas con imagen, nombre público, descripción y chips de dieta y alérgenos; notas y pie; marca «BORRADOR». En pantalla se ve como papel A4; al imprimir: `@page A4` con 14 mm, sin navegación ni botones, salto de página por sección, `break-inside: avoid` por servicio y plato, `print-color-adjust: exact`, y espera a que las imágenes estén decodificadas antes de `window.print()`. Pensada para la vista del organizador de Food y reutilizable para la ficha imprimible de factura de Invoices.
+- Demo con un menú de ejemplo de dos días y prueba (33 en total).
+
 ## 0.4.1 · 6 de octubre de 2026
 
 - Toast: con una hoja, un diálogo o la paleta abiertos, el aviso aparece en la parte alta de la pantalla (`.toast.top`) y deja de taparles el cuerpo o el pie en móvil.

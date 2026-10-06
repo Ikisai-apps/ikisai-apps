@@ -67,6 +67,7 @@ Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación ac
 - Calendario: `.calendar[data-view]`, `.cal-head`, `.cal-grid`, `.cal-week`, `.cal-day` (`.today`, `.outside`, `.has`), `.cal-event` (`.starts`, `.ends`, `--event-color`), `.cal-more`.
 - Cantidad: `.qtyfield`, `.qty` (`.with-unit`, `.with-select`), `.qty-input`, `.qty-unit`, `.qty-step`.
 - Imagen: `.imagepick`, `.imagepreview`.
+- Página imprimible: `.print-view`, `.print-actions`, `.print-page[data-draft]`, `.pp-head`, `.pp-title`, `.pp-section` (`.page`), `.pp-group`, `.pp-items`, `.pp-item` (`.with-image`), `.pp-notes`, `.pp-foot`, `.pp-draft`.
 - Tablas e importación: `.table` (`.num`, `tr.bad`), `.imp`, `.imp-source`, `.imp-preview`, `.imp-head`, `.imp-lines`, `.imp-taxes`, `.imp-cuadre`, `.imp-verdict` (`.ok`/`.bad`), `.imp-warnings`, `.imp-errors`.
 
 Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
@@ -92,6 +93,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `createThemeToggle()` (botón sol/luna para `tools` de la cabecera) y `createThemeSelect()` (Sistema / Claro / Oscuro).
 - `createCommandPalette({ items(query), placeholder, hotkey, limit, hiddenWhenEmpty })` → `{ open, close, toggle, isOpen, destroy }`. Ctrl K / Cmd K; `items` devuelve `{ group, text, sub, color, hint, keywords, run }`.
 - Foco: `trapFocus(event, root)`, `focusFirst(root)`, `focusables(root)`, `lockScroll()`.
+- Página imprimible: `renderPrintPage({ brand: { appName, markIcon, line }, title, subtitle, meta, draft, intro, sections: [{ title, subtitle, groups: [{ title, subtitle, items: [{ title, text, image, chips: [{ text, kind }], meta }] }], breakBefore }], notes, footer, columns })` → `<article class="print-page">`; `createPrintView(spec, { onBack, actions, printLabel })` → `{ element, page, update, print }` con la barra «Volver · Imprimir / Guardar PDF» (que no se imprime); `printElement(root)` espera a las imágenes y llama a `window.print()`. La app la monta en su `main` (ruta propia); la impresión oculta cabecera, navegación, banners y botones, usa `@page A4` con 14 mm y no parte ni servicios ni platos. Con `draft` lleva la marca «BORRADOR».
 - `openImportSheet({ title, parse(text), recalculate(document), fields(document, recalc), notices(document, recalc), onImport(document, recalc), importLabel, initialText, toleranceEur })` → `{ sheet, current(), setText() }`. `parse` devuelve `{ ok, document }` o `{ ok: false, errors: [{ path, reason }] }` (por ejemplo `parseImportDocument` del dominio); `recalculate` devuelve `calculated_*`, `totals_delta`, `within_tolerance` y `warnings` (por ejemplo `recalculate` del dominio). Piezas sueltas: `createJsonSource`, `renderImportHeader`, `renderImportLines`, `renderImportTaxes`, `renderImportReconciliation`, `renderSchemaErrors`, `formatMoney(valor, moneda)`.
 - `compressImage(file, { maxSide: 1600, thumbSide: 480, quality, thumbQuality, mime })` → `{ full, thumb, width, height, thumbWidth, thumbHeight, originalWidth, originalHeight, mime, filename }`. WebP de calidad media (JPEG si el navegador no codifica WebP), orientación EXIF respetada, nunca amplía. Lo que se sube a `client.stageBlob` es `full` (y `thumb` si la app guarda miniaturas); el original no se conserva (contrato §11.3). `isImageFile(file)`, `supportsWebp()`, `compressedFilename(nombre, mime)`.
 - `createCalendar({ events(range), view, date, onSelectDay, onSelectEvent, onRangeChange, weekStartsOn, viewSwitch, maxPerDay })` → `{ element, setView, setDate, getRange, refresh, destroy }`. Días completos (`YYYY-MM-DD`), eventos multidía con `start`/`end` incluidos, `color`, `badge` («[PRE]») y `status` (`data-status`). Teclado: flechas, Inicio (hoy), AvPág/RePág, Enter. Utilidades: `toDayKey`, `fromDayKey`, `addDays`, `startOfWeek`, `startOfMonth`, `daysBetween`, `todayKey`.
@@ -135,7 +137,7 @@ npm -w @ikisai/ui-kit run typecheck
 npm -w @ikisai/ui-kit run test:e2e   # Playwright sobre la demo, 390 px y 1440 px
 ```
 
-La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los siete estados de sincronización con sus banners, el login y el shell, la hoja y el diálogo, conflictos y rechazados, la lista con estado, el selector de tema y la paleta, la recompresión de fotos, el calendario, el campo de cantidad y la hoja de importación.
+La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los siete estados de sincronización con sus banners, el login y el shell, la hoja y el diálogo, conflictos y rechazados, la lista con estado, el selector de tema y la paleta, la recompresión de fotos, el calendario, el campo de cantidad, la hoja de importación y la página imprimible.
 
 ## Qué sigue
 
