@@ -516,10 +516,10 @@ Casi toda la lectura se resuelve en el cliente contra el espejo local (Inicio, l
 | `POST read/booking.guest_summary` | `{ event_id }` | `{ eventId, total, bySex: { H, M, X, sinDato }, minors, signed, dataStatus: {…}, sesStatus: {…} }` | reader |
 | `GET read/booking.food_event_projection?where[event_id]=…` | filtros de igualdad, `limit`, `offset` | `{ rows, total }` con las columnas de §7.1 | reader |
 
-- **Implementado en la fase B3 con adaptador falso:** la cola solo avanza con `calendar/tick`. Sin credenciales de Google el tick no reclama nada y responde `health: 'not_configured'`; los trabajos esperan en `pending`. Quedan por hacer el disparo tras cada commit (`afterCommit`), el empuje oportunista desde `calendar/status` y el cliente real de Google.
-- El planificador de Core no puede llamar hoy al tick: las acciones de la ruta `worker` son solo SQL y el tick necesita lógica en TypeScript (ver P16 en `PETICIONES.md`).
+- **Cómo avanza la cola:** (1) tras cada commit que toca una reserva o su evento, `afterCommit` procesa en segundo plano los trabajos de esas reservas; (2) el planificador de Core llama cada 5 minutos a `POST /api/v1/worker/calendar/tick` con `X-Ikisai-Worker-Key` (ruta de sistema, sin usuario); (3) un editor puede empujarla a mano con `POST calendar/tick`. Sin los secretos de Google el tick no reclama nada y responde `health: 'not_configured'`.
+- **Bloqueo por acceso.** Si Google rechaza las credenciales o el calendario no está compartido con la cuenta de servicio (o lo está solo para lectura), el trabajo vuelve a `pending` sin gastar intentos y con `last_error` `GOOGLE_AUTH_ERROR`, `CALENDAR_NOT_SHARED` o `CALENDAR_READ_ONLY`; el tick deja de llamar a Google hasta la siguiente vuelta. No es un fallo del trabajo: lo arregla una persona y, en cuanto se arregla, la cola se vacía sola.
 - En SQL, `booking.calendar_claim` y `booking.calendar_report` son acciones registradas sin roles de usuario (solo sistema); `booking.calendar_retry` es acción de editor y propietario; `booking.calendar_status` es lectura para todos los roles.
-- `health` ∈ `ok | not_configured | auth_error | calendar_not_found`.
+- `health` ∈ `ok | not_configured | auth_error | calendar_not_shared`. Se deriva de lo que la cola dejó anotado, así que la app lo enseña aunque nadie esté lanzando el tick.
 - `booking.guest_summary` da a quien no ve huéspedes los recuentos del canon §10 («24 huéspedes · 13 mujeres · 10 hombres · 2 menores»). Quien sí los ve lo calcula en local. Es una lectura registrada con `core.allow_read` (contrato §5.1), no una ruta propia.
 - La proyección de Food también está registrada para la propia app `booking`, para poder comprobar desde Booking qué está viendo cocina.
 - Errores: los del núcleo más `NOT_FOUND` si la reserva o el evento no existen.
@@ -590,7 +590,7 @@ Booking no consume enlaces de otras apps en V1. El «coste por retiro» leyendo 
 
 Supabase manda; Calendar es una proyección de una sola dirección. Una edición manual en Google no cambia la reserva y se sobrescribe en la siguiente sincronización.
 
-**Acceso. [desviación]** El handoff §10 proponía un puente Apps Script firmado con HMAC. El plan de Core lo sustituye por una cuenta de servicio de Google; el puente queda como plan B documentado en `integrations/calendar/`. La Edge firma un JWT RS256 con la clave de la cuenta, lo cambia por un token de acceso (ámbito `calendar.events`), lo guarda en memoria y llama a la API v3. Secretos de la función: `GOOGLE_SERVICE_ACCOUNT_JSON` (la clave JSON completa de la cuenta de servicio, la carga Core) y `BOOKING_CALENDAR_ID` (ver P7). El calendario «Agram Camp - Reservas» se comparte con la cuenta de servicio con permiso de modificar eventos. Sin secretos, la integración queda apagada: los trabajos esperan y la UI dice «Calendar no configurado».
+**Acceso. [desviación]** El handoff §10 proponía un puente Apps Script firmado con HMAC. El plan de Core lo sustituye por una cuenta de servicio de Google; el puente queda como plan B documentado en `integrations/calendar/`. La Edge firma un JWT RS256 con la clave de la cuenta (WebCrypto), lo cambia por un token de acceso (ámbito `https://www.googleapis.com/auth/calendar`), lo guarda en memoria hasta poco antes de caducar y llama a la API v3. Implementado en `booking-api/calendar/google.ts`; se activa solo si existen los dos secretos. Secretos de la función: `GOOGLE_SERVICE_ACCOUNT_JSON` (la clave JSON completa de la cuenta de servicio, la carga Core) y `BOOKING_CALENDAR_ID` (ver P7). El calendario «Agram Camp - Reservas» se comparte con la cuenta de servicio con permiso de modificar eventos. Sin secretos, la integración queda apagada: los trabajos esperan y la UI dice «Calendar no configurado».
 
 **Estado deseado** (regla pura en `domain-booking`):
 
@@ -620,7 +620,7 @@ Supabase manda; Calendar es una proyección de una sola dirección. Una edición
 
 Primera sincronización de una reserva (sin enlace): antes de crear se busca por `[[ID_RESERVA=<code>]]` en ±1 año y, si aparece un evento con ese marcador, se **adopta** (se guarda su id y se actualiza). Es el respaldo que pide el handoff §9.7. No se espera encontrar nada: el usuario confirma que el Apps Script y el calendario están hoy sin uso, así que no hay transición que coordinar.
 
-Si alguien borró el evento a mano en Google, se intenta reactivar; si Google no lo permite, `generation + 1` y se crea de nuevo. A verificar en la prueba real.
+Si alguien borró el evento a mano en Google, la actualización lo reactiva (`status: confirmed`); si Google no lo permite (el id queda ocupado), el worker sube `generation` y crea el evento de nuevo. El segundo camino está probado contra un Google simulado; **falta comprobarlo contra Google real**.
 
 **Cola y reintentos.**
 
