@@ -3,6 +3,7 @@
   "short_name": "Food",
   "description": "Recetario, menús, compra y preparación de la cocina de Ikisai, también sin conexión.",
   "lang": "es",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
