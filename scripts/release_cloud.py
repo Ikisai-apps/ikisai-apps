@@ -45,7 +45,7 @@ def verify(domain, version, attempts=6, wait=5):
   raise CloudError(None, 'RELEASE_VERIFICATION_FAILED', json.dumps(last))
 
 
-def release(app_name, version, apply=False, bind_domain=False, credentials=None, report_path=None):
+def release(app_name, version, apply=False, bind_domain=False, credentials=None, report_path=None, skip_schema=False):
   app = get_app(app_name)
   if not VERSION.fullmatch(version):
     raise ValueError('Expected a version such as v0.1.0-beta.1')
@@ -55,7 +55,9 @@ def release(app_name, version, apply=False, bind_domain=False, credentials=None,
   client = SupabaseManagement(credentials)
   current = 'schema'
   try:
-    report['steps']['schema'] = schema(client, apply)
+    # En la CI las migraciones se aplican una vez en un trabajo previo (`--skip-schema`): si cada app las aplicara en
+    # paralelo, dos trabajos podían aplicar la misma a la vez (42P07, release de la #141).
+    report['steps']['schema'] = {'skipped': True} if skip_schema else schema(client, apply)
     current = 'function'
     report['steps']['function'] = edge(client, app_name, apply, release=version)
     current = 'pages'
@@ -79,6 +81,7 @@ if __name__ == '__main__':
   parser.add_argument('--bind-domain', action='store_true', help='tras publicar Pages, enlaza <app>.ikisai.com y su CNAME')
   parser.add_argument('--credentials', help='ruta alternativa a private/cloud-credentials.json')
   parser.add_argument('--report', help='informe JSON (por defecto private/release-<app>.json)')
+  parser.add_argument('--skip-schema', action='store_true', help='no aplica migraciones (ya las aplicó el trabajo de migraciones de la release)')
   args = parser.parse_args()
   path = args.report or str(PRIVATE / f'release-{args.app}.json')
-  run_cli(lambda: release(args.app, args.version, args.apply, args.bind_domain, args.credentials, path), path)
+  run_cli(lambda: release(args.app, args.version, args.apply, args.bind_domain, args.credentials, path, args.skip_schema), path)

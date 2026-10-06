@@ -45,9 +45,32 @@ jobs:
         run: python scripts/release_matrix.py | tee -a "$GITHUB_OUTPUT"
   # Sin repetir las comprobaciones: cada PR ya pasó `checks.yml` antes de fusionarse (ahorro de minutos de Actions,
   # 6 oct 2026). Lo que publica cada app lo decide release_matrix comparando con el commit que tiene publicado.
+  migraciones:
+    name: Migraciones (una vez)
+    needs: [plan]
+    if: needs.plan.outputs.apps != '[]'
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: ikisai-migraciones
+      cancel-in-progress: false
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      IKISAI_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Aplicar las migraciones pendientes una sola vez
+        run: python scripts/deploy_supabase_schema.py --apply
   release:
     name: Publicar ${{ matrix.app }}
-    needs: [plan]
+    needs: [plan, migraciones]
     if: needs.plan.outputs.apps != '[]'
     strategy:
       fail-fast: false
@@ -90,7 +113,7 @@ jobs:
         run: |
           EXTRA=""
           if [ "${{ github.event_name == 'workflow_dispatch' && inputs.bind_domain }}" = "true" ]; then EXTRA="--bind-domain"; fi
-          python scripts/release_cloud.py --app "$APP" --version "$IKISAI_RELEASE" --apply $EXTRA
+          python scripts/release_cloud.py --app "$APP" --version "$IKISAI_RELEASE" --apply --skip-schema $EXTRA
       - uses: actions/upload-artifact@v4
         if: always()
         with:
