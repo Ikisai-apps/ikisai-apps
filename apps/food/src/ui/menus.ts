@@ -4,7 +4,7 @@ import {
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, el, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, icon, listRow, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
@@ -95,6 +95,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     let menuGraph: MenuGraph = { services: [], items: [], recipes: [], recipe_ingredients: [], ingredients: [] };
     let sheet: Sheet | null = null;
     let busy = false;
+    let sortables: Array<Sortable<ItemRow>> = []; // listas de platos con arrastre del constructor
     let cook = false; // vista de cocinero: cada plato con sus ingredientes escalados, maquinaria y elaboración
     let unmountTab: (() => void) | null = null;
     const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
@@ -168,7 +169,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (!menu || !e || !isMenuStale(menu, e)) { replace(banner); return; }
       const changes = eventChanges(menu.source_event_snapshot, e).map(changeText);
       const isLocked = LOCKED_MENU_STATUSES.includes(menu.status);
-      replace(banner, el('div', { class: 'banner warn', role: 'status' },
+      replace(banner, el('div', { class: 'banner warn notice', role: 'status' },
         el('div', null,
           el('strong', null, 'La información del evento ha cambiado.'), ' Revisar antes de validar.',
           changes.length ? el('ul', { class: 'plainlist' }, ...changes.map((c) => el('li', null, c))) : null),
@@ -267,7 +268,12 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (target < 0 || target >= ordered.length) return;
       const next = [...ordered];
       [next[index], next[target]] = [next[target]!, next[index]!];
-      const operations = next
+      await reorder(table, next);
+    }
+
+    /** Guarda un orden completo: `position` 1, 2, 3… y solo se envían las filas cuya posición cambia. */
+    async function reorder<R extends SyncedRow & { position: number }>(table: (typeof T)[keyof typeof T], ordered: R[]): Promise<void> {
+      const operations = ordered
         .map((row, i): RowOperation | null => (Number(row.position) === i + 1 ? null : { op: 'update', table, id: row.id, expectedRevision: row.revision, fields: { position: i + 1 } }))
         .filter((op): op is RowOperation => op !== null);
       if (operations.length) await commitSafely(operations);
@@ -304,7 +310,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const sorted = [...services].sort((a, b) => a.service_date.localeCompare(b.service_date) || Number(a.position) - Number(b.position) || (a.service_time ?? '99').localeCompare(b.service_time ?? '99'));
       const days = Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
 
-      const dishRow = (item: ItemRow, index: number, dishes: ItemRow[]): HTMLElement => {
+      for (const sortable of sortables) sortable.destroy();
+      sortables = [];
+
+      const dishRow = (item: ItemRow): HTMLElement => {
         const recipe = recipeById.get(item.recipe_id);
         const img = el('img', { alt: '', hidden: true });
         if (recipe) showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
@@ -314,16 +323,30 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
             if (value === null || value <= 0) { toast('Las raciones deben ser un número mayor que cero.'); servings.value = formatQuantity(item.servings); return; }
             if (value !== Number(item.servings)) await commitSafely([{ op: 'update', table: T.menuItems, id: item.id, expectedRevision: item.revision, fields: { servings: value } }]);
           } });
-        return el('li', { class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
+        return el('div', { class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
           el('span', { class: 'dishphoto' }, icon('chef', 20), img),
           el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
             recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null),
-          servings, el('span', { class: 'muted' }, 'rac.'),
-          isLocked ? null : el('span', { class: 'dishtools' },
-            dishes.length > 1 ? moveButtons(recipe?.name ?? 'plato', (delta) => void move(T.menuItems, dishes, index, delta), index, dishes.length) : null,
-            el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18))),
+          el('span', { class: 'dishside' }, servings, el('span', { class: 'muted' }, 'rac.'),
+            isLocked ? null : el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18))),
           cook ? cookDetails(item) : null,
         );
+      };
+
+      /** Platos de un servicio: con el constructor abierto, lista del kit con arrastre, teclado y subir/bajar; el orden se guarda en `position`. */
+      const dishList = (service: ServiceRow, dishes: ItemRow[]): HTMLElement => {
+        if (isLocked || dishes.length < 2) return el('ul', { class: 'dishes' }, ...dishes.map((dish) => el('li', null, dishRow(dish))));
+        const sortable = createSortableList<ItemRow>({
+          items: dishes,
+          key: (dish) => dish.id,
+          name: (dish) => recipeById.get(dish.recipe_id)?.name ?? 'plato',
+          label: `Platos de ${SERVICE_LABELS[service.service_type]}`,
+          rowClass: 'dishrow',
+          render: (dish) => dishRow(dish),
+          onReorder: (ordered) => reorder(T.menuItems, ordered),
+        });
+        sortables.push(sortable);
+        return sortable.element;
       };
 
       const serviceBlock = (service: ServiceRow, index: number, ofDay: ServiceRow[]): HTMLElement => {
@@ -338,7 +361,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
                 if (dishes.length && !(await confirmDialog({ title: `¿Quitar ${SERVICE_LABELS[service.service_type].toLowerCase()}?`, text: `Se quitan también sus ${dishes.length} platos.`, confirmLabel: 'Quitar', danger: true }))) return;
                 await commitSafely([...dishes.map((d) => removeOp(T.menuItems, d)), removeOp(T.menuServices, service)]);
               } }, icon('trash', 18))),
-          dishes.length ? el('ul', { class: 'dishes' }, ...dishes.map((dish, i) => dishRow(dish, i, dishes))) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
+          dishes.length ? dishList(service, dishes) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
           isLocked ? null : el('button', { class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishes.map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato'),
         );
       };
@@ -438,6 +461,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       offs.forEach((off) => off());
       offStatus();
       unmountTab?.();
+      for (const sortable of sortables) sortable.destroy();
       void closeSheet(true);
     };
   };
