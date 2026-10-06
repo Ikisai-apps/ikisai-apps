@@ -3,7 +3,7 @@ import {
   ingredientKey, validateOperations,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -263,8 +263,19 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const serviceNotes = area('r-service', recipe?.service_notes ?? null, 2);
 
     // Seguridad
-    const diets = DIET_TAGS.map((d) => ({ value: d, ...check(`r-diet-${d}`, DIET_LABELS[d], recipe?.diet_tags.includes(d) ?? false) }));
-    const allergens = ALLERGENS.map((a) => ({ value: a, ...check(`r-allergen-${a}`, ALLERGEN_LABELS[a], recipe?.allergens.includes(a) ?? false) }));
+    // Dietas y alérgenos con el selector de etiquetas del kit: dos familias, chips conmutables y resumen arriba.
+    const tags = createLabelPicker({
+      label: 'Dietas y alérgenos',
+      families: [{ id: 'diet', name: 'Dietas', color: '#5f7a4a' }, { id: 'allergen', name: 'Alérgenos que contiene', color: '#b4532a' }],
+      labels: [
+        ...DIET_TAGS.map((d) => ({ id: `diet:${d}`, name: DIET_LABELS[d], familyId: 'diet' })),
+        ...ALLERGENS.map((a) => ({ id: `allergen:${a}`, name: ALLERGEN_LABELS[a], familyId: 'allergen' })),
+      ],
+      selected: [...(recipe?.diet_tags ?? []).map((d) => `diet:${d}`), ...(recipe?.allergens ?? []).map((a) => `allergen:${a}`)],
+      search: false,
+      collapsed: false,
+      onChange: () => { guard.dirtyEditor = true; },
+    });
     const checked = check('r-allergens-checked', 'He revisado los alérgenos de esta receta', recipe?.allergens_checked ?? false);
     const status = el('select', { id: 'r-status' }, ...RECIPE_STATUSES.map((s) => el('option', { value: s, selected: (recipe?.status ?? 'en_prueba') === s }, RECIPE_STATUS_LABELS[s])));
 
@@ -310,11 +321,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       if (status.value === 'validada' && !checked.box.checked) return { operations: [], problem: { message: 'Revisa los alérgenos antes de validar la receta.', focus: checked.box } };
 
       const operations: RowOperation[] = [];
+      const picked = new Set(tags.get());
       const fields: Record<string, unknown> = {
         name: name.value.trim(), public_name: text(publicName.value), public_description: text(publicDescription.value), category: category.value,
         base_servings: base, method: text(method.value), prep_minutes: prep.value.trim() ? Number(prep.value.trim()) : null,
         conservation: text(conservation.value), freezable: freezable.box.checked, regeneration: text(regeneration.value), service_notes: text(serviceNotes.value),
-        diet_tags: diets.filter((d) => d.box.checked).map((d) => d.value), allergens: allergens.filter((a) => a.box.checked).map((a) => a.value),
+        diet_tags: DIET_TAGS.filter((d) => picked.has(`diet:${d}`)), allergens: ALLERGENS.filter((a) => picked.has(`allergen:${a}`)),
         allergens_checked: checked.box.checked, status: status.value, ...photo,
       };
 
@@ -400,10 +412,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       section('Cocina', field('Elaboración', method), field('Antelación (minutos antes del servicio)', prep), field('Conservación', conservation), freezable.node,
         field('Regeneración', regeneration), field('Notas de servicio', serviceNotes)),
       section('Seguridad',
-        el('span', { class: 'sublabel' }, 'Dietas'),
-        el('div', { class: 'checkgrid', role: 'group', 'aria-label': 'Dietas' }, ...diets.map((d) => d.node)),
-        el('span', { class: 'sublabel' }, 'Alérgenos que contiene'),
-        el('div', { class: 'checkgrid', role: 'group', 'aria-label': 'Alérgenos' }, ...allergens.map((a) => a.node)),
+        tags.element,
         checked.node, field('Estado', status, 'Para validarla hay que haber revisado los alérgenos.')),
       section('Maquinaria', machineForms.length ? el('div', { class: 'machinerows' }, ...machineForms.map((m) => m.node)) : el('p', { class: 'muted' }, 'Todavía no hay maquinaria dada de alta.')),
       error,
@@ -417,7 +426,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save],
       initialFocus: name,
       beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
-      onClose: () => { guard.dirtyEditor = false; sheet = null; },
+      onClose: () => { guard.dirtyEditor = false; sheet = null; tags.destroy(); },
     });
     if (!recipe) addLine(null);
   }

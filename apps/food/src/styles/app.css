@@ -49,12 +49,10 @@
 @media (min-width:720px){.linerow{grid-template-columns:minmax(0,1fr) 84px 96px auto}.linerow>input:first-child{grid-column:auto}}
 .formblock>.hint{display:block;margin-top:6px}
 .linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%}
-.checkgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-bottom:12px}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
 .checkline input{width:18px;height:18px;flex:none}
 .machinerows{display:flex;flex-direction:column;gap:4px}
 .machinerow{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:8px;align-items:center}
-.sublabel{display:block;margin:2px 0 4px;font-weight:700;font-size:var(--text-sm,.875rem)}
 
 /* Eventos */
 .stamp{margin-top:12px;font-size:var(--text-sm,.875rem)}
