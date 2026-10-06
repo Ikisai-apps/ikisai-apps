@@ -89,6 +89,13 @@ export const TABLES = {
   allocations: 'invoices.allocations',
   exports: 'invoices.exports',
   exportItems: 'invoices.export_items',
+  // Facturas emitidas registradas (API.md §13)
+  issuedSeries: 'invoices.issued_series',
+  issuedInvoices: 'invoices.issued_invoices',
+  issuedLines: 'invoices.issued_invoice_lines',
+  issuedTaxLines: 'invoices.issued_tax_lines',
+  issuedFiles: 'invoices.issued_invoice_files',
+  issuedAllocations: 'invoices.issued_allocations',
 } as const;
 export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
@@ -110,6 +117,20 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
   'invoices.exports': ['status', 'delivered_at', 'delivered_to', 'notes'],
   'invoices.export_items': [],
+  'invoices.issued_series': ['code', 'description', 'kind', 'yearly', 'format', 'active'],
+  'invoices.issued_invoices': [
+    'series_code', 'number', 'issue_date', 'operation_date', 'invoice_type', 'rectification_kind', 'rectified', 'rectification_reason', 'rectified_base', 'rectified_quota',
+    'recipient_name', 'recipient_tax_id', 'recipient_id_type', 'recipient_country', 'extra_recipients', 'description', 'notes', 'currency',
+    'base_total', 'quota_total', 'surcharge_total', 'withholding_total', 'total', 'source_total', 'totals_delta', 'status', 'review_reason', 'annulled_reason',
+    'origin', 'external_tool', 'external_id', 'import_sha256', 'income_category', 'payment_status', 'paid_at', 'external_qr_url', 'external_csv',
+  ],
+  'invoices.issued_invoice_lines': [
+    'issued_invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'tax', 'vat_rate', 'vat_amount',
+    'surcharge_rate', 'surcharge_amount', 'gross_amount', 'notes',
+  ],
+  'invoices.issued_tax_lines': ['issued_invoice_id', 'position', 'tax', 'regime_key', 'qualification', 'exemption', 'rate', 'taxable_base', 'quota', 'surcharge_rate', 'surcharge_quota'],
+  'invoices.issued_invoice_files': ['issued_invoice_id', 'file_id', 'original_filename', 'page_order', 'mime_type', 'size_bytes', 'sha256'],
+  'invoices.issued_allocations': ['issued_invoice_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_amount', 'notes'],
 };
 
 /** Columnas comunes del contrato §2.1. */

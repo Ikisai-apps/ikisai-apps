@@ -321,6 +321,10 @@ test('agentes: import_v1 seguro; facturas entregadas a gestoría o validadas exi
   assert.equal(edit.status, 428); assert.deepEqual(edit.data.error.details.risk.reasons, [`invoice:validada:${vr.code}`]);
   await ok([insert('invoices.allocations', uuid(), { invoice_line_id: vLine, target_app: 'general', target_kind: 'operating_expense', target_label: 'Gasto de explotación', allocated_amount: 10 })], agent);
 
+  // Emitidas (registro fiscal): cualquier cambio de un agente pide aprobación.
+  const issuedByAgent = await commit([insert('invoices.issued_series', uuid(), { code: 'B' })], agent);
+  assert.equal(issuedByAgent.status, 428); assert.deepEqual(issuedByAgent.data.error.details.risk.reasons, ['issued:insert:issued_series']);
+
   // Diez filas en un lote: umbral del usuario (10 elementos).
   const bulk = await commit(Array.from({ length: 10 }, (_, i) => insert('invoices.suppliers', uuid(), { name: `Proveedor ${i}` })), agent);
   assert.equal(bulk.status, 428); assert.equal(bulk.data.error.details.risk.bulk, true);

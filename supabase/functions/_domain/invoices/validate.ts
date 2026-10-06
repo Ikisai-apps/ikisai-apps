@@ -8,6 +8,7 @@ import {
   DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, ITEM_TYPES, PAYMENT_METHODS,
   PAYMENT_STATUSES, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
 } from './types.ts';
+import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS } from './issued.ts';
 
 /** Error de dominio: se convierte en `Fault(422, code, message, details)` en la Edge y en mensaje en el cliente. */
 export class DomainError extends Error {
@@ -275,6 +276,119 @@ export function validateExportFields(fields: Fields, op: 'insert' | 'update'): v
 }
 
 /** Valida los `fields` de una operación de fila de cualquier tabla de Invoices. */
+// ---------------------------------------------------------------------------
+// Facturas emitidas registradas (API.md §13)
+// ---------------------------------------------------------------------------
+function rate(fields: Fields, key: string): void {
+  if (has(fields, key) && fields[key] !== null && (!isFiniteNumber(fields[key]) || (fields[key] as number) < 0 || (fields[key] as number) > 100)) domainFail('INVALID_FIELDS', 'El tipo debe estar entre 0 y 100.', { field: key });
+}
+
+function required(fields: Fields, keys: string[]): void {
+  for (const key of keys) if (!has(fields, key)) domainFail('INVALID_FIELDS', `El campo ${key} es obligatorio.`, { field: key });
+}
+
+export function validateIssuedSeriesFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedSeries, fields);
+  if (op === 'insert') required(fields, ['code']);
+  text(fields, 'code', { required: op === 'insert', max: 20 });
+  text(fields, 'description', { max: 200 });
+  oneOf(fields, 'kind', SERIES_KINDS, { nullable: false });
+  bool(fields, 'yearly');
+  bool(fields, 'active');
+  text(fields, 'format', { max: 60 });
+}
+
+export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedInvoices, fields);
+  if (op === 'insert') required(fields, ['series_code', 'number', 'issue_date', 'description']);
+  text(fields, 'series_code', { required: op === 'insert', max: 20 });
+  text(fields, 'number', { required: op === 'insert', max: 40 });
+  date(fields, 'issue_date', { nullable: false });
+  date(fields, 'operation_date');
+  date(fields, 'paid_at');
+  oneOf(fields, 'invoice_type', ISSUED_TYPES, { nullable: false });
+  oneOf(fields, 'rectification_kind', RECTIFICATION_KINDS);
+  if (has(fields, 'rectified') && !Array.isArray(fields.rectified)) domainFail('INVALID_FIELDS', 'rectified debe ser una lista.', { field: 'rectified' });
+  if (has(fields, 'extra_recipients') && !Array.isArray(fields.extra_recipients)) domainFail('INVALID_FIELDS', 'extra_recipients debe ser una lista.', { field: 'extra_recipients' });
+  text(fields, 'rectification_reason', { max: 500 });
+  money(fields, 'rectified_base');
+  money(fields, 'rectified_quota');
+  text(fields, 'recipient_name', { max: 200 });
+  text(fields, 'recipient_tax_id', { max: 40 });
+  oneOf(fields, 'recipient_id_type', RECIPIENT_ID_TYPES);
+  if (has(fields, 'recipient_country') && fields.recipient_country !== null && (typeof fields.recipient_country !== 'string' || !/^[A-Z]{2}$/.test(fields.recipient_country))) domainFail('INVALID_FIELDS', 'El país va en dos letras (ES, FR…).', { field: 'recipient_country' });
+  text(fields, 'description', { required: op === 'insert', max: 500 });
+  text(fields, 'notes', { max: 2000 });
+  for (const key of ['base_total', 'quota_total', 'surcharge_total', 'withholding_total', 'total']) money(fields, key, { nullable: false });
+  money(fields, 'source_total');
+  money(fields, 'totals_delta');
+  oneOf(fields, 'status', ['registrada', 'anulada'], { nullable: false });
+  if (fields.status === 'anulada') domainFail('INVALID_TRANSITION', 'Para anular una emitida usa invoices.annul_issued.', { field: 'status' });
+  oneOf(fields, 'origin', ['manual', 'importada', 'app'], { nullable: false });
+  if (fields.origin === 'app') domainFail('UNSUPPORTED_IN_V1', 'La emisión desde la app (Verifactu) aún no está disponible: registra la factura emitida con otra herramienta.', { field: 'origin' });
+  oneOf(fields, 'income_category', INCOME_CATEGORIES);
+  oneOf(fields, 'payment_status', ['pendiente', 'cobrada'], { nullable: false });
+  for (const key of ['external_tool', 'external_id', 'external_qr_url', 'external_csv', 'review_reason', 'annulled_reason', 'currency']) text(fields, key, { max: 500 });
+  if (has(fields, 'import_sha256') && fields.import_sha256 !== null && (typeof fields.import_sha256 !== 'string' || !SHA256.test(fields.import_sha256))) domainFail('INVALID_FIELDS', 'Hash inválido.', { field: 'import_sha256' });
+}
+
+export function validateIssuedLineFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedLines, fields);
+  if (op === 'insert') required(fields, ['issued_invoice_id', 'description', 'net_amount']);
+  uuid(fields, 'issued_invoice_id');
+  integer(fields, 'position', { min: 0 });
+  text(fields, 'description', { required: op === 'insert', max: 500 });
+  money(fields, 'quantity', { decimals: 3 });
+  text(fields, 'unit', { max: 20 });
+  money(fields, 'unit_price', { decimals: 4 });
+  money(fields, 'discount_amount', { nullable: false, min: 0 });
+  money(fields, 'net_amount', { nullable: false });
+  oneOf(fields, 'tax', ISSUED_TAXES, { nullable: false });
+  rate(fields, 'vat_rate');
+  rate(fields, 'surcharge_rate');
+  for (const key of ['vat_amount', 'surcharge_amount', 'gross_amount']) money(fields, key);
+  text(fields, 'notes', { max: 2000 });
+}
+
+export function validateIssuedTaxLineFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedTaxLines, fields);
+  if (op === 'insert') required(fields, ['issued_invoice_id', 'tax', 'quota']);
+  uuid(fields, 'issued_invoice_id');
+  integer(fields, 'position', { min: 0 });
+  oneOf(fields, 'tax', ISSUED_TAX_LINE_TAXES, { nullable: false });
+  text(fields, 'regime_key', { max: 2 });
+  oneOf(fields, 'qualification', QUALIFICATIONS);
+  oneOf(fields, 'exemption', EXEMPTIONS);
+  if (fields.qualification && fields.exemption) domainFail('INVALID_FIELDS', 'Una línea del desglose es sujeta o exenta, no las dos cosas.', { field: 'exemption' });
+  rate(fields, 'rate');
+  rate(fields, 'surcharge_rate');
+  money(fields, 'taxable_base');
+  money(fields, 'quota', { nullable: false });
+  money(fields, 'surcharge_quota');
+}
+
+export function validateIssuedFileFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedFiles, fields);
+  if (op === 'insert') required(fields, ['issued_invoice_id', 'file_id', 'original_filename']);
+  uuid(fields, 'issued_invoice_id');
+  if (has(fields, 'file_id') && !isBlobMarker(fields.file_id)) uuid(fields, 'file_id');
+  text(fields, 'original_filename', { required: op === 'insert', max: 255 });
+  integer(fields, 'page_order', { min: 1 });
+}
+
+export function validateIssuedAllocationFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.issuedAllocations, fields);
+  if (op === 'insert') required(fields, ['issued_invoice_id', 'target_app', 'target_kind', 'target_label', 'allocated_amount']);
+  uuid(fields, 'issued_invoice_id');
+  oneOf(fields, 'target_app', ['booking', 'general'], { nullable: false });
+  if (has(fields, 'target_app') && has(fields, 'target_kind') && !(ISSUED_TARGET_KINDS[String(fields.target_app)] ?? []).includes(String(fields.target_kind))) {
+    domainFail('INVALID_FIELDS', 'El tipo de destino no corresponde a esa aplicación.', { field: 'target_kind' });
+  }
+  text(fields, 'target_label', { required: op === 'insert', max: 300 });
+  money(fields, 'allocated_amount', { nullable: false, min: 0.01 });
+  text(fields, 'notes', { max: 2000 });
+}
+
 export function validateRowFields(table: string, op: 'insert' | 'update', fields: Fields, options: { allowImportMeta?: boolean } = {}): void {
   switch (table) {
     case TABLES.suppliers: return validateSupplierFields(fields, op);
@@ -285,6 +399,12 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
     case TABLES.allocations: return validateAllocationFields(fields, op);
     case TABLES.exports: return validateExportFields(fields, op);
     case TABLES.exportItems: return domainFail('INVALID_OPERATION', 'Las filas de entrega las escribe el procedimiento invoices.create_export.', { table });
+    case TABLES.issuedSeries: return validateIssuedSeriesFields(fields, op);
+    case TABLES.issuedInvoices: return validateIssuedInvoiceFields(fields, op);
+    case TABLES.issuedLines: return validateIssuedLineFields(fields, op);
+    case TABLES.issuedTaxLines: return validateIssuedTaxLineFields(fields, op);
+    case TABLES.issuedFiles: return validateIssuedFileFields(fields, op);
+    case TABLES.issuedAllocations: return validateIssuedAllocationFields(fields, op);
     default: return;
   }
 }
@@ -292,6 +412,9 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
 /** Mensajes en español por código de error del dominio (cliente y Edge). */
 export const DOMAIN_MESSAGES: Record<string, string> = {
   IMPORT_INVALID: 'El JSON no cumple el formato ikisai.invoice.v1.',
+  ISSUED_NOT_DELETABLE: 'Una factura emitida no se borra: anúlala con un motivo.',
+  ISSUED_ANNULLED: 'Esta factura emitida está anulada.',
+  ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',
   SUPPLIER_TAX_ID_EXISTS: 'Ya existe un proveedor con ese NIF.',
   DUPLICATE_INVOICE: 'Ya existe una factura de este proveedor con ese número.',

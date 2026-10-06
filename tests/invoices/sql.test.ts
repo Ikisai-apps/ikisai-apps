@@ -97,9 +97,9 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('bootstrap registra las nueve tablas (extracciones incluida); proveedores con slug derivado y alias', async () => {
+test('bootstrap registra las quince tablas (extracciones y emitidas incluidas); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.suppliers', 'invoices.tax_lines']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.suppliers', 'invoices.tax_lines']);
   const id = await newSupplier('Makro España S.A.', { tax_id: 'A28647451', aliases: ['MAKRO'] });
   const s = await row('invoices.suppliers', id);
   assert.equal(s.slug, 'makro_espana_s_a'); assert.deepEqual(s.aliases, ['MAKRO']); assert.equal(s.default_is_investment, false);
@@ -444,4 +444,65 @@ test('proyección para Food: unidad normalizada (kg, l, ud) y cantidad en esa un
   assert.equal(p.rows.length, 1);
   assert.equal(p.rows[0]!.unit, 'gr'); assert.equal(Number(p.rows[0]!.allocated_quantity), 2500);
   assert.equal(p.rows[0]!.unit_normalized, 'kg'); assert.equal(Number(p.rows[0]!.quantity_normalized), 2.5);
+});
+
+test('emitidas: registro manual con totales recalculados, reglas de tipo y destinatario, número único, sin papelera, anular', async () => {
+  const issued = uuid(); const l1 = uuid(); const l2 = uuid();
+  await ok([
+    insert('invoices.issued_series', uuid(), { code: 'A', description: 'Ordinarias' }),
+    insert('invoices.issued_invoices', issued, { series_code: 'A', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'F1', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', recipient_id_type: 'NIF', description: 'Estancia retiro', source_total: 121, income_category: 'alojamiento' }),
+    insert('invoices.issued_invoice_lines', l1, { issued_invoice_id: issued, position: 0, description: 'Alojamiento', net_amount: 80, vat_rate: 10 }),
+    insert('invoices.issued_invoice_lines', l2, { issued_invoice_id: issued, position: 1, description: 'Actividad', net_amount: 20, vat_rate: 21 }),
+  ]);
+  let inv = await row('invoices.issued_invoices', issued);
+  assert.equal(inv.full_number, 'A-2026-0001'); assert.equal(inv.fiscal_quarter, 4); assert.equal(inv.status, 'registrada'); assert.equal(inv.origin, 'manual');
+  assert.equal(Number(inv.base_total), 100); assert.equal(Number(inv.quota_total), 12.2); assert.equal(Number(inv.total), 112.2);
+  assert.equal(inv.review_reason, 'REVISAR IMPORTES'); assert.equal(Number(inv.totals_delta), 8.8);
+  // Con IRPF en el desglose y el total del documento correcto, cuadra
+  await ok([
+    insert('invoices.issued_tax_lines', uuid(), { issued_invoice_id: issued, position: 0, tax: 'iva', rate: 10, taxable_base: 80, quota: 8, qualification: 'S1' }),
+    insert('invoices.issued_tax_lines', uuid(), { issued_invoice_id: issued, position: 1, tax: 'iva', rate: 21, taxable_base: 20, quota: 4.2, qualification: 'S1' }),
+    insert('invoices.issued_tax_lines', uuid(), { issued_invoice_id: issued, position: 2, tax: 'irpf', rate: 15, taxable_base: 20, quota: 3 }),
+    update('invoices.issued_invoices', issued, inv.revision, { source_total: 109.2 }),
+  ]);
+  inv = await row('invoices.issued_invoices', issued);
+  assert.equal(Number(inv.withholding_total), 3); assert.equal(Number(inv.total), 109.2); assert.equal(inv.review_reason, null);
+  // Reglas: completa sin destinatario, rectificativa sin referencia, número repetido, origen app, campos Verifactu no escribibles
+  const bad = await commit([insert('invoices.issued_invoices', uuid(), { series_code: 'A', number: '2026-0002', issue_date: '2026-10-06', invoice_type: 'F1', description: 'Sin cliente' })]);
+  assert.equal(bad.status, 422);
+  const rect = await commit([insert('invoices.issued_invoices', uuid(), { series_code: 'R', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
+  assert.equal(rect.status, 422);
+  await ok([insert('invoices.issued_invoices', uuid(), { series_code: 'R', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', rectification_kind: 'I', rectified: [{ series: 'A', number: '2026-0001', issue_date: '2026-10-06' }], rectification_reason: 'Error en el precio', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'a', number: '2026-0001', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Repetida' })], 'CONSTRAINT_VIOLATION');
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'A', number: '2026-0099', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Desde la app', origin: 'app' })], 'UNSUPPORTED_IN_V1');
+  await rejected([update('invoices.issued_invoices', issued, inv.revision, { vf_hash: 'x' })], 'INVALID_FIELDS');
+  // Sin papelera: ni la factura ni sus líneas
+  await rejected([remove('invoices.issued_invoices', issued, inv.revision)], 'ISSUED_NOT_DELETABLE');
+  await rejected([remove('invoices.issued_invoice_lines', l1, (await row('invoices.issued_invoice_lines', l1)).revision)], 'ISSUED_NOT_DELETABLE');
+  // Destino de ingreso general y proyección de ingresos para Booking (el destino de Booking se resuelve en la Edge; aquí, en SQL)
+  const alloc = uuid();
+  await ok([insert('invoices.issued_allocations', alloc, { issued_invoice_id: issued, target_app: 'general', target_kind: 'general', target_label: 'General', allocated_amount: 100 })]);
+  await rejected([insert('invoices.issued_allocations', uuid(), { issued_invoice_id: issued, target_app: 'general', target_kind: 'general', target_label: 'Otra', allocated_amount: 5 })], 'ALLOCATIONS_EXCEED_INVOICE');
+  const reservation = uuid();
+  await app.t.db.query(`update invoices.issued_allocations set target_app = 'booking', target_kind = 'reservation', target_id = $2 where id = $1`, [alloc, reservation]);
+  const proj = await app.t.db.query<Record<string, any>>('select * from invoices.booking_income_projection where target_id = $1', [reservation]);
+  assert.equal(proj.rows.length, 1); assert.equal(proj.rows[0]!.full_number, 'A-2026-0001'); assert.equal(Number(proj.rows[0]!.allocated_amount), 100);
+  assert.equal('recipient_name' in proj.rows[0]!, false);
+  // Anular: motivo obligatorio, retira asignaciones, el número sigue ocupado y la anulada no se edita
+  inv = await row('invoices.issued_invoices', issued);
+  await rejected([call('invoices.annul_issued', { issued_invoice_id: issued })], 'ANNUL_REASON_REQUIRED');
+  await ok([call('invoices.annul_issued', { issued_invoice_id: issued, expectedRevision: inv.revision, reason: 'Emitida por error' })]);
+  inv = await row('invoices.issued_invoices', issued);
+  assert.equal(inv.status, 'anulada'); assert.ok((await row('invoices.issued_allocations', alloc)).deleted_at);
+  assert.equal((await app.t.db.query('select * from invoices.booking_income_projection where target_id = $1', [reservation])).rows.length, 0);
+  await rejected([update('invoices.issued_invoices', issued, inv.revision, { notes: 'x' })], 'ISSUED_ANNULLED', 409);
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'A', number: '2026-0001', issue_date: '2026-10-08', invoice_type: 'F2', description: 'Reutiliza número' })], 'CONSTRAINT_VIOLATION');
+  // Documento: nombre canónico con cliente y número
+  const doc = await uploadFile('%PDF emitida');
+  const issued2 = uuid(); const fileRow = uuid();
+  await ok([
+    insert('invoices.issued_invoices', issued2, { series_code: 'A', number: '2026-0003', issue_date: '2026-10-09', invoice_type: 'F1', recipient_name: 'Cliente Dos', recipient_tax_id: 'B33333333', description: 'Cena' }),
+    insert('invoices.issued_invoice_files', fileRow, { issued_invoice_id: issued2, file_id: doc.file_id, original_filename: 'factura.pdf', page_order: 1 }),
+  ]);
+  assert.equal((await row('invoices.issued_invoice_files', fileRow)).normalized_filename, '2026_10_09_(cliente_dos)_A-2026-0003.pdf');
 });

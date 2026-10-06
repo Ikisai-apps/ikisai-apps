@@ -251,6 +251,18 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
         fields.target_revision = info.revision;
       }
       if (op.table === TABLES.exportItems) fail(422, 'INVALID_OPERATION', 'Las filas de entrega las escribe el procedimiento invoices.create_export.', { index });
+      // Emitidas (API.md §13): sin papelera; documentos comprobados; destino de ingreso en Booking resuelto con el token del usuario.
+      if (ISSUED_NO_DELETE.includes(op.table) && op.op === 'delete') fail(422, 'ISSUED_NOT_DELETABLE', domainMessage('ISSUED_NOT_DELETABLE'), { index, table: op.table, id: op.id });
+      if (op.table === TABLES.issuedFiles && op.op === 'insert') {
+        Object.assign(fields, await verifiedFile(supabase, ctx, fields.file_id, index));
+      }
+      if (op.table === TABLES.issuedAllocations && (op.op === 'insert' || op.op === 'update') && fields.target_app === 'booking') {
+        const info = await targets.resolve(ctx, 'booking', String(fields.target_kind), String(fields.target_id));
+        fields.target_id = info.id;
+        fields.target_label = info.path.length ? `${info.path.join(' › ')} › ${info.label}` : info.label;
+        fields.target_code = info.code;
+        fields.target_revision = info.revision;
+      }
     }
   };
 }
@@ -275,6 +287,7 @@ export function createAgentRisk(supabase: Supabase) {
     let imports = 0;
     const rows = new Set<string>();
     const extractionRequests: string[] = [];
+    const issuedChanges: string[] = [];
     for (const op of operations) {
       if (op.op === 'call') {
         if (op.procedure === 'invoices.import_v1') imports += 1;
@@ -284,6 +297,8 @@ export function createAgentRisk(supabase: Supabase) {
       if (!op.table) continue;
       if (op.id) rows.add(`${op.table}|${op.id}`);
       if (op.table === EXTRACTIONS) { extractionRequests.push(String(op.fields?.file_id ?? op.id)); continue; }
+      // Registro fiscal de emitidas: cualquier cambio de un agente pide aprobación (API.md §13.2).
+      if (op.table.startsWith('invoices.issued_')) { issuedChanges.push(`issued:${op.op}:${op.table.slice('invoices.'.length)}`); continue; }
       const allocation = op.table === TABLES.allocations;
       if (op.op !== 'insert' && (op.table === TABLES.invoices || CHILDREN.includes(op.table))) add(op.id, allocation);
       if (op.op === 'insert' && CHILDREN.includes(op.table)) {
@@ -291,7 +306,7 @@ export function createAgentRisk(supabase: Supabase) {
         add(op.fields?.invoice_line_id, allocation);
       }
     }
-    const reasons: string[] = extractionRequests.map((id) => `extract:repeat:${id}`);
+    const reasons: string[] = [...extractionRequests.map((id) => `extract:repeat:${id}`), ...new Set(issuedChanges)];
     if (refs.size) {
       const info = await read<{ rows: Array<{ ref: string; code: string | null; status: string; exported: boolean; delivered: boolean }> }>(
         supabase, ctx, 'invoices.agent_risk', { ids: [...refs.keys()] });
@@ -310,6 +325,8 @@ export function createAgentRisk(supabase: Supabase) {
 // Registro de extracciones y límite de los agentes (API.md §6, «Límite de los agentes»)
 // ---------------------------------------------------------------------------
 const EXTRACTIONS = 'invoices.extractions';
+/** Emitidas sin papelera (revisión de Core, ronda 22): se anulan con `invoices.annul_issued`. */
+const ISSUED_NO_DELETE: string[] = [TABLES.issuedInvoices, TABLES.issuedLines, TABLES.issuedTaxLines, TABLES.issuedFiles];
 
 interface ExtractionStatus { file_id: string; done: number; invoice_id: string | null; code: string | null; status: string | null }
 interface ApprovedExtraction { rows: Array<{ id: string; file_id: string; revision: number }> }
