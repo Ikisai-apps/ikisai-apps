@@ -42,6 +42,7 @@ function route(): void {
   } else {
     unmountLogin = renderLogin(root!, {
       appName: 'Booking',
+      markIcon: 'bed',
       tagline: 'Reservas, operación y huéspedes',
       describeError,
       async onLogin(email, password) {

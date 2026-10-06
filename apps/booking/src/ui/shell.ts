@@ -27,7 +27,7 @@ const PENDING = '#/pendientes';
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', PENDING] },
   { hash: '#/reservas', label: 'Reservas', icon: 'list' },
-  { hash: '#/calendario', label: 'Calendario', icon: 'calendar', soon: true },
+  { hash: '#/calendario', label: 'Calendario', icon: 'calendar' },
   { hash: '#/huespedes', label: 'Huéspedes', icon: 'people' },
 ];
 
@@ -61,6 +61,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const shell = createAppShell(root, {
     appName: 'Booking',
+    markIcon: 'bed',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
