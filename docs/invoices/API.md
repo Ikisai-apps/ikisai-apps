@@ -453,6 +453,21 @@ El cliente puede verificar los hashes del ZIP descargado con Web Crypto («entre
 
 **Registro y límite de los agentes (migración 0204, decisión del usuario).** Cada extracción deja una fila por documento en `invoices.extractions` (`file_id`, `invoice_id`, `outcome` `ok`/`invalida`, `model`, `input_tokens`, `output_tokens`, `latency_ms`; el coste va en la primera fila) con quien la pidió en `updated_by`. Solo la escribe la Edge y no se copia al móvil. Una persona extrae sin límite. Un agente extrae **una vez por documento de una factura pendiente**; si el documento ya se extrajo, o es de una factura que ya no está en `pendiente_datos`, la ruta responde `428 CONFIRMATION_REQUIRED` con motivo `extract:repeat:<código o file_id>` o `extract:not_pending:<código>`. Para repetir, el agente prepara una propuesta con una inserción `{op: 'insert', table: 'invoices.extractions', fields: {file_id}}` por documento; cuando un owner humano la aprueba, vuelve a llamar con `confirmationId`. La Edge consume la propuesta (una sola vez) y completa esas filas con el resultado.
 
+### 6.7 Extracción con la app de IA del usuario, sin API de pago (ronda 29, fase 1)
+
+El usuario no quiere pagar APIs de IA. La extracción automática por API (`imports/extract`) queda **dormida**: responde `EXTRACTION_UNAVAILABLE` sin clave y se conserva como abstracción de proveedor. En su lugar:
+
+- **«Analizar con IA»**, en el bloque «Extraer con ChatGPT», junto al documento de «Nueva factura» y de la ficha de una factura pendiente de datos.
+  - Comparte con Web Share (`canShare({files})` comprobado) **el documento** y **`ikisai_invoice_contract.txt`** (`invoiceContractText`). El contrato lleva normas (solo JSON, `null` si no se sabe, no inventar, fechas ISO, números sin símbolo) y el formato `ikisai.invoice.v1`.
+  - Antes de compartir, un aviso dice que el documento va a la app que elija el usuario.
+  - Si la plataforma no acepta el TXT como segundo archivo, el contrato va en `text` y además al portapapeles. Sin Web Share (escritorio), se copia y se descarga el TXT para adjuntarlo a mano: la función nunca desaparece.
+  - En la ficha, el documento se lee de su URL firmada, así que hace falta red.
+- **Sobre de intercambio.** El contrato pide devolver `source: {filename, sha256}` del documento. Al importar en una factura, si el sobre viene y no corresponde a ninguno de sus documentos, aparece un aviso que no bloquea. Si corresponde, se indica.
+- **Lo que vuelve es no confiable.** `parseExternalResult` extrae el JSON del texto (entero, bloque ```json o primer objeto equilibrado), separa el sobre y valida el resto con el mismo esquema estricto: claves de más, tipos o importes como texto se rechazan. Después vienen la vista previa con recálculo y la confirmación de siempre.
+- **Volver a Ikisai.** El manifiesto declara `share_target` (`POST /share-target`, multipart, `text` y archivos `.json` y `.txt`). El service worker guarda lo recibido (hasta 1 MB por archivo) en la caché `ikisai-invoices-share` y abre `#/facturas?compartido=1`. Facturas abre la importación sobre la factura pendiente de datos más reciente con documento, o una nueva si no hay ninguna.
+  - Sin service worker activo (primera visita), el worker de Cloudflare redirige a `?compartido=0` y la app pide pegar el resultado.
+  - Fallbacks que siguen: «Pegar JSON», que ahora detecta el JSON dentro de la respuesta entera, e importar archivo `.json` o `.txt`.
+
 ### 6.6 MCP (contrato §3.2)
 
 `POST /api/v1/mcp` ofrece las herramientas genéricas del núcleo (`invoices_snapshot`, `invoices_commit`, `invoices_prepare_batch`…) y tres de dominio (`invoicesMcpTools` en `invoices-api/app.ts`). Todas pasan por el mismo camino que la API: hooks, riesgo de agente (§4.4) y propuestas.
