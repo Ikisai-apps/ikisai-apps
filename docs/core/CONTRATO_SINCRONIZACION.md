@@ -108,6 +108,14 @@ Permisos: `revoke all` a `public`, `anon`, `authenticated` en todo `core.*`; `gr
 
 ---
 
+### 3.3 Catálogo de apps y lanzador
+
+`core.apps` lleva `kind` (`internal` | `portal`), `sort`, `alias_domain` (el nombre en español que redirige: cuida, acoge, papeaki, tramita…) y `description`. `GET /api/v1/apps` (cualquier app, con sesión) devuelve `{items: [{id, name, domain, aliasDomain, kind, description, role}], current}` con las apps a las que la cuenta tiene acceso, en el orden del lanzador. El lanzador del kit (icono superior izquierdo) se pinta con esa lista y abre el dominio principal de cada app; no detecta si la PWA está instalada.
+
+### 3.4 Sesión única entre apps
+
+Entrar con contraseña en cualquier app emite un **pase** del núcleo (32 bytes aleatorios; en `core.sso_passes` solo su sha256, 30 días con caducidad deslizante) en la cookie `ikisai_sso` (`HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth; Domain=.ikisai.com`, o del host fuera de ikisai.com). El `_worker.js` de cada app reenvía ese pase a la Edge **solo** en `/api/v1/auth/*`, como cabecera `X-Ikisai-Sso` (ninguna otra cookie llega a la Edge). Otra app sin sesión llama a `POST /api/v1/auth/sso` (lo hace `sync-client` 0.3 en `start()`; `sso: false` lo desactiva): si el pase vale y la cuenta tiene acceso a esa app, la Edge crea una **sesión de Supabase nueva e independiente** (enlace mágico generado y verificado en el servidor, sin correo); si no, `401 NO_SSO` (y borra la cookie) o `403 NO_MEMBERSHIP`. **No se comparte ninguna sesión de Supabase entre apps**: sus tokens de refresco son de un solo uso. `auth/logout` revoca el pase del dispositivo y borra la cookie (`{everywhere: true}` revoca todos los pases y cierra todas las sesiones); `auth/password` revoca todos los pases y emite uno nuevo para el dispositivo.
+
 ## 4. Commit
 
 ### 4.1 Firma

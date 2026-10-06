@@ -20,7 +20,7 @@ export interface AuthService {
   identity(token: string | null | undefined): Promise<Identity>;
   login(body: unknown): Promise<SessionTokens>;
   refresh(body: unknown): Promise<SessionTokens>;
-  logout(token: string): Promise<void>;
+  logout(token: string, everywhere?: boolean): Promise<void>;
   changePassword(token: string, identity: Identity, body: unknown): Promise<{ changed: true }>;
 }
 
@@ -101,9 +101,9 @@ export function createAuth(supabase: Supabase): AuthService {
     return tokens(result);
   }
 
-  async function logout(token: string): Promise<void> {
+  async function logout(token: string, everywhere = false): Promise<void> {
     if (isAgentKey(token)) fail(403, 'FORBIDDEN', 'Una clave de agente no tiene sesión que cerrar.');
-    const response = await supabase.remote('/auth/v1/logout?scope=local', { method: 'POST', bearer: token, raw: true });
+    const response = await supabase.remote(`/auth/v1/logout?scope=${everywhere ? 'global' : 'local'}`, { method: 'POST', bearer: token, raw: true });
     if (!response.ok && response.status !== 401 && response.status !== 404) fail(503, 'BACKEND_UNAVAILABLE', messageFor('BACKEND_UNAVAILABLE'));
   }
 

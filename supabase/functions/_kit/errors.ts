@@ -46,6 +46,7 @@ export const MESSAGES: Record<string, string> = {
   CURRENT_ACCOUNT: 'No puedes aplicar ese cambio a tu propia cuenta.',
   FILE_NOT_FOUND: 'Archivo no encontrado.',
   FILE_MISMATCH: 'El archivo subido no coincide con lo declarado.',
+  NO_SSO: 'No hay una sesión de Ikisai abierta en este dispositivo.',
   CONFIRMATION_REQUIRED: 'Esta operación de un agente necesita la aprobación de una persona.',
   CONFIRMATION_NOT_NEEDED: 'Este lote no necesita aprobación: envíalo directamente.',
   PROPOSAL_UNAVAILABLE: 'La propuesta ya no está disponible.',

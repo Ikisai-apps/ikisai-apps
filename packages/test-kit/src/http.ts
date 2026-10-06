@@ -24,6 +24,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
   const url = 'https://test.supabase.co';
   const tokens = new Map<string, string>(); // token -> userId
   const refreshTokens = new Map<string, string>(); // refresh -> userId
+  const magicLinks = new Map<string, string>(); // hashed_token -> userId
   const storage = new Map<string, Uint8Array>();
   let loseReply = false;
   let storageDown = false;
@@ -67,6 +68,26 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       return Response.json({ message: 'unsupported' }, { status: 400 });
     }
 
+    if (route.pathname.startsWith('/auth/v1/admin/users/') && method === 'GET') {
+      if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
+      const id = route.pathname.split('/').at(-1)!;
+      return users.has(id) ? Response.json({ id, email: users.get(id) }) : Response.json({ message: 'not found' }, { status: 404 });
+    }
+    if (route.pathname === '/auth/v1/admin/generate_link') {
+      if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
+      const userId = [...users.entries()].find(([, email]) => email === body.email)?.[0];
+      if (!userId) return Response.json({ message: 'not found' }, { status: 404 });
+      const hashed = `hash-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId);
+      return Response.json({ id: userId, email: body.email, hashed_token: hashed });
+    }
+    if (route.pathname === '/auth/v1/verify' && method === 'POST') {
+      const userId = magicLinks.get(body.token_hash);
+      if (!userId) return Response.json({ error: 'invalid' }, { status: 400 });
+      magicLinks.delete(body.token_hash);
+      await t.createUser(userId);
+      const token = mockToken(userId); const refresh = `refresh-${Math.random().toString(36).slice(2)}`; refreshTokens.set(refresh, userId);
+      return Response.json({ access_token: token, refresh_token: refresh, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
+    }
     if (route.pathname === '/auth/v1/admin/users') {
       if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
       if (method === 'POST') {
@@ -141,7 +162,7 @@ export interface TestApp {
   users: { owner: string; editor: string; reader: string };
   tokens: { owner: string; editor: string; reader: string };
   origin: string;
-  call(path: string, options?: { token?: string | null; body?: unknown; method?: string; origin?: string }): Promise<{ status: number; data: any }>;
+  call(path: string, options?: { token?: string | null; body?: unknown; method?: string; origin?: string; headers?: Record<string, string> }): Promise<{ status: number; data: any; headers: Headers }>;
   close(): Promise<void>;
 }
 
@@ -168,17 +189,17 @@ export async function createTestApp(options: TestAppOptions): Promise<TestApp> {
   return {
     t, supabase, handler, origin: options.origin,
     users: { owner, editor, reader }, tokens,
-    async call(path, { token = tokens.owner, body, method, origin = options.origin } = {}) {
+    async call(path, { token = tokens.owner, body, method, origin = options.origin, headers: extra = {} } = {}) {
       const request = new Request(`${supabase.url}/functions/v1/${options.slug}${path}`, {
         method: method ?? (body === undefined ? 'GET' : 'POST'),
-        headers: { Origin: origin, 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        headers: { Origin: origin, 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...extra },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const response = await handler(request);
       const text = await response.text();
       let data: any = null;
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-      return { status: response.status, data };
+      return { status: response.status, data, headers: response.headers };
     },
     close: () => t.close(),
   };

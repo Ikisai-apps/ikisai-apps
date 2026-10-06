@@ -134,6 +134,8 @@ export interface SyncClientOptions {
    * una lista vacía solo esas tablas (y lo que las referencia). Por defecto `false`: solo se borra la sesión.
    */
   clearOnLogout?: boolean | TableName[];
+  /** Sesión única entre apps de ikisai.com: al arrancar sin sesión, intenta entrar con el pase común. Por defecto true. */
+  sso?: boolean;
   /** Inyectable para pruebas. */
   fetch?: typeof fetch;
   indexedDB?: IDBFactory;
@@ -143,6 +145,8 @@ export interface SyncClientOptions {
 export interface SyncClient {
   /** Inicia sesión por email y contraseña (proxy de Supabase Auth). */
   login(email: string, password: string): Promise<Session>;
+  /** Entra con el pase de sesión única del dispositivo si existe (contrato §3.4); null si no hay pase o acceso. */
+  trySso(): Promise<Session | null>;
   logout(): Promise<void>;
   session(): Session | null;
 
