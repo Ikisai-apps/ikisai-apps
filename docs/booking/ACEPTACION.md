@@ -64,7 +64,7 @@ Anota junto a cada paso: ✔ si pasa, o qué ves si no.
 1. Editar → estado **Cancelada** → Guardar.
 2. En Google Calendar el evento **desaparece**. La reserva sigue en la app (filtro «Canceladas»).
 3. Abre la reserva → **Más** → **Papelera** → confirma. Desaparece de la lista y queda en «Papelera».
-4. Si quieres quitarla del todo, dímelo: vaciar la papelera aún no tiene botón en la app.
+4. Para quitarla del todo: en Reservas despliega «Papelera» y pulsa **Vaciar papelera** (solo lo ve el propietario). El aviso dice cuántas reservas y elementos asociados se borran; confirma. Si responde que alguna reserva aún tiene su evento en Google Calendar, espera un par de minutos y repite.
 
 ## Qué mirar con lupa
 

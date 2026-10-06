@@ -302,3 +302,33 @@ test('proyección para Food · event_revision solo avanza con cambios que afecta
   // la revisión de la fila del evento sí cambió con todo lo anterior: no es el mismo número
   assert.notEqual((await snapshotRows(EVENTS, app.tokens.owner)).find((e) => e.id === eventId).revision, last);
 });
+
+test('vaciar papelera · la purga de hijos a padres borra una reserva completa y solo un propietario puede', async () => {
+  const { reservationId, eventId } = await createEvent();
+  const guestId = uuid();
+  const restrictionId = uuid();
+  await ok([
+    { op: 'insert', table: GUESTS, id: guestId, fields: { event_id: eventId, ...ADULT } },
+    { op: 'insert', table: RESTRICTIONS, id: restrictionId, fields: { event_id: eventId, guest_id: guestId, restriction_type: 'vegano' } },
+    ...checklistSeedOperations(eventId, uuid, { types: ['salas'] }),
+  ]);
+  const revision = async (table: string, id: string) => (await snapshotRows(table, app.tokens.owner)).find((r) => r.id === id).revision;
+  const items = (await snapshotRows(CHECKLIST, app.tokens.owner)).filter((i) => i.event_id === eventId);
+  await ok([
+    ...items.map((i) => ({ op: 'delete', table: CHECKLIST, id: i.id, expectedRevision: i.revision })),
+    { op: 'delete', table: RESTRICTIONS, id: restrictionId, expectedRevision: 1 },
+    { op: 'delete', table: GUESTS, id: guestId, expectedRevision: 1 },
+    { op: 'delete', table: EVENTS, id: eventId, expectedRevision: await revision(EVENTS, eventId) },
+    { op: 'delete', table: RESERVATIONS, id: reservationId, expectedRevision: await revision(RESERVATIONS, reservationId) },
+  ]);
+
+  const tables = [CHECKLIST, RESTRICTIONS, GUESTS, EVENTS, TABLES.finance, RESERVATIONS];
+  const denied = await app.call('/api/v1/trash/purge', { token: app.tokens.editor, body: { requestId: `purge-${uuid()}`, tables } });
+  assert.equal(denied.status, 403);
+  const purged = await app.call('/api/v1/trash/purge', { body: { requestId: `purge-${uuid()}`, tables } });
+  assert.equal(purged.status, 200, JSON.stringify(purged.data));
+  assert.ok(purged.data.purged >= 7, `reserva, evento, huésped, restricción y cuatro tareas: ${purged.data.purged}`);
+  const left = async (table: string, id: string) => (await app.t.db.query(`select 1 from ${table} where id = $1`, [id])).rows.length;
+  assert.deepEqual([await left(RESERVATIONS, reservationId), await left(EVENTS, eventId), await left(GUESTS, guestId), await left(RESTRICTIONS, restrictionId)], [0, 0, 0, 0]);
+  assert.equal((await app.t.db.query('select 1 from booking.event_food_state where id = $1', [eventId])).rows.length, 0, 'el contador de la proyección se va con el evento');
+});

@@ -1,12 +1,12 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { el, icon, listRow, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, listRow, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  EVENT_TYPES, canHoldStatus, dayNumber, missingForConfirmation, nights, validateFields,
+  EVENT_TYPES, TABLES, canHoldStatus, dayNumber, missingForConfirmation, nights, validateFields,
   type ReservationStatus,
 } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import {
-  EVENT_TYPE_LABELS, FINANCE, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, today,
+  EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, today,
   type ReservationRow,
 } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
@@ -74,7 +74,38 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   const listHost = el('div');
   const trashList = el('ul', { class: 'list', 'aria-label': 'Reservas en la papelera' });
   const trashCount = el('span', { class: 'count', id: 'trashCount' }, '0');
-  const trash = el('details', { id: 'trash', hidden: true }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList);
+  const owner = client.bootstrap()?.membership.role === 'owner';
+  const trash = el('details', { id: 'trash', hidden: true }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList,
+    owner ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'danger small', type: 'button', id: 'emptyTrash', onclick: () => void emptyTrash() }, icon('trash', 16), 'Vaciar papelera')) : null);
+
+  /**
+   * Borrado definitivo de todo lo que hay en la papelera de Booking (contrato §11.2: solo el propietario, con recuento).
+   * El orden va de hijos a padres para respetar las claves ajenas.
+   */
+  async function emptyTrash(): Promise<void> {
+    if (!navigator.onLine) return void toast('Vaciar la papelera necesita conexión.');
+    if (client.status().pendingCommands > 0) return void toast('Hay cambios sin sincronizar. Espera a que se envíen antes de vaciar la papelera.');
+    const tables = [TABLES.checklist, TABLES.restrictions, GUESTS, EVENTS, FINANCE, RESERVATIONS];
+    const counts = await Promise.all(tables.map(async (table) => ((await client.list(table, { includeDeleted: true })).filter((row) => row.deleted_at !== null).length)));
+    const reservations = counts[counts.length - 1]!;
+    const others = counts.slice(0, -1).reduce((sum, n) => sum + n, 0);
+    const go = await confirmDialog({
+      title: 'Vaciar papelera',
+      text: `Se borran definitivamente ${plural(reservations, 'reserva', 'reservas')} y ${plural(others, 'elemento asociado', 'elementos asociados')} (eventos, huéspedes, restricciones, tareas e importes). No se puede deshacer.`,
+      confirmLabel: 'Vaciar papelera', danger: true,
+    });
+    if (!go) return;
+    try {
+      const out = await client.api<{ purged: number }>('/trash/purge', { method: 'POST', json: { requestId: `purge-${crypto.randomUUID()}`, tables } });
+      await client.sync();
+      toast(`Papelera vaciada: ${plural(out.purged, 'elemento borrado', 'elementos borrados')}.`);
+    } catch (error) {
+      const e = error as { code?: string; details?: { reason?: string } };
+      if (e.code === 'INVALID_OPERATION' && e.details?.reason === 'calendar event still alive') toast('Alguna reserva de la papelera aún tiene su evento en Google Calendar. Se retira solo en unos minutos; inténtalo después.');
+      else if (e.code === 'CONSTRAINT_VIOLATION') toast('No se puede vaciar: algún evento de la papelera tiene un menú en Food. Pide a cocina que lo retire.');
+      else toast(describeError(error));
+    }
+  }
   let deleted: ReservationRow[] = [];
 
   replace(
