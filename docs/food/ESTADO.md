@@ -1,6 +1,6 @@
 # Food · estado
 
-Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H completos.** Publicado en `food.ikisai.com` hasta Eventos y Menús; Compra, Preparación, cocinero, Organizador y Cierre están en la PR 51.
+Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H completos y publicados en `food.ikisai.com`.**
 
 ## Hecho
 
@@ -21,12 +21,12 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H comp
   - **Cierre**: notas del menú y cierre de cocina, editables también con el menú validado.
   - **Inicio**: próximos eventos con el estado de su menú, sus restricciones, su compra y su preparación.
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
-- Pruebas: 42 en PGlite (`tests/food/*.test.ts`) y tres de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) y `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red).
+- Pruebas: 42 en PGlite (`tests/food/*.test.ts`) y cuatro de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red) y `offline.spec.ts` (dos dispositivos: fusión automática en preparación, conflicto con decisión en compra y rechazo `MENU_LOCKED` sin bloquear la cola).
 
 ## Pendiente
 
 - Arrastre para reordenar, cuando el kit lo ofrezca (hoy, subir y bajar).
-- Escenarios offline restantes de `API.md` §11.2 y recorrido de aceptación en Android.
+- Recorrido de aceptación en un Android real y con una cuenta real (hasta ahora todo se ha probado con Playwright y una API falsa, y con PGlite).
 - `food.stock_entries`: en G4, con la proyección de compras de Invoices.
 
 ## Bloqueos
