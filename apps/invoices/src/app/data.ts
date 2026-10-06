@@ -2,7 +2,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { formatEur, type InvoiceStatus, INVOICE_STATUS_LABELS, type DateRange, quarterRange, monthRange, yearRange } from '@ikisai/domain-invoices';
 import {
-  ALL_TABLES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS, INVOICES, INVOICE_FILES, INVOICE_LINES, SUPPLIERS, TAX_LINES,
+  ALL_TABLES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS, INVOICES, INVOICE_FILES, INVOICE_LINES, SUPPLIERS, SUPPLIER_TEMPLATES, TAX_LINES, type LocalSupplierTemplate,
   type LocalAllocation, type LocalExport, type LocalExportItem, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from './client.ts';
 
@@ -15,6 +15,8 @@ export interface Mirror {
   allocations: LocalAllocation[];
   exports: LocalExport[];
   exportItems: LocalExportItem[];
+  /** Plantillas por proveedor vivas (fase 3). */
+  templates: LocalSupplierTemplate[];
   supplierById: Map<string, LocalSupplier>;
   linesByInvoice: Map<string, LocalInvoiceLine[]>;
   taxesByInvoice: Map<string, LocalTaxLine[]>;
@@ -47,7 +49,7 @@ export async function loadMirror(client: SyncClient): Promise<Mirror> {
 }
 
 async function readMirror(client: SyncClient): Promise<Mirror> {
-  const [suppliers, invoices, lines, taxes, files, allocations, exports, exportItems] = await Promise.all([
+  const [suppliers, invoices, lines, taxes, files, allocations, exports, exportItems, templates] = await Promise.all([
     client.list(SUPPLIERS, { includeDeleted: true }) as Promise<LocalSupplier[]>,
     client.list(INVOICES, { includeDeleted: true }) as Promise<LocalInvoice[]>,
     client.list(INVOICE_LINES, { includeDeleted: true }) as Promise<LocalInvoiceLine[]>,
@@ -56,10 +58,11 @@ async function readMirror(client: SyncClient): Promise<Mirror> {
     client.list(ALLOCATIONS, { includeDeleted: true }) as Promise<LocalAllocation[]>,
     client.list(EXPORTS, { includeDeleted: true }) as Promise<LocalExport[]>,
     client.list(EXPORT_ITEMS, { includeDeleted: true }) as Promise<LocalExportItem[]>,
+    client.list(SUPPLIER_TEMPLATES) as Promise<LocalSupplierTemplate[]>,
   ]);
   const sortPos = <T extends { position: number }>(m: Map<string, T[]>) => { for (const list of m.values()) list.sort((a, b) => a.position - b.position); return m; };
   return {
-    suppliers, invoices, lines, taxes, files, allocations, exports, exportItems,
+    suppliers, invoices, lines, taxes, files, allocations, exports, exportItems, templates: templates.filter((t) => !t.deleted_at),
     supplierById: new Map(suppliers.map((s) => [s.id, s])),
     linesByInvoice: sortPos(group(lines, (l) => l.invoice_id)),
     taxesByInvoice: sortPos(group(taxes, (t) => t.invoice_id)),

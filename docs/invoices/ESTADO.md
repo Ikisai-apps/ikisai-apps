@@ -69,9 +69,11 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Fase 3, PR 2 de 3 (`invoices/fase3-motor`): motor de plantillas en `_domain/invoices/supplier-templates.ts` (huella y Jaccard, aprender de una confirmación, aplicar con confianza según la evidencia, aciertos y fallos, variantes, retirar una regla tras 3 fallos, versión nueva con otro formato, operación para el lote de `invoices.validate`) y `extractWithTemplates` («Leer PDF» con la plantilla del proveedor y reglas genéricas para el resto).
 
+- Fase 3, PR 3 de 3 (`invoices/fase3-app`): las plantillas en la app. «Leer PDF» usa la plantilla del proveedor (`extractWithTemplates`) y guarda el texto leído en el servidor; «Validar» aprende o actualiza la plantilla en el mismo lote; la ficha del proveedor muestra sus plantillas y el owner puede retirarlas. Fase 3 completa.
+
 ## En curso
 
-- Extracción sin API de pago: fase 2 en PR; después fase 3 (plantillas por proveedor, con propuesta previa en `API.md`) y fase 4 (OCR con Google Drive, cuando Core la verifique).
+- Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente
 

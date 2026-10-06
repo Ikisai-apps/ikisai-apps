@@ -104,6 +104,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const uploads = new Map<string, FakeUpload>();
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
+  const documentTexts = new Map<string, { items: unknown[]; source: string }>();
   let extractor: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null = null;
   const requests: Array<{ method: string; path: string }> = [];
   let cursor = 0;
@@ -578,6 +579,18 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const up = uploads.get(file[1]!);
         if (!up || up.status !== 'verified') throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
         return json(res, 200, { id: up.id, url: `/api/v1/_file/${up.id}`, expiresAt: new Date(Date.now() + 600_000).toISOString(), filename: up.filename, mime: up.mime, size: up.size });
+      }
+      const docText = path.match(/^documents\/([^/]+)\/text$/);
+      if (docText && method === 'POST') {
+        if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
+        const body = await readJson(req);
+        documentTexts.set(docText[1]!, { items: Array.isArray(body.items) ? body.items : [], source: body.source ?? 'pdf_text' });
+        return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length });
+      }
+      if (path === 'read/invoices.document_text' && method === 'POST') {
+        const body = await readJson(req);
+        const found = documentTexts.get(String(body.file_id ?? ''));
+        return json(res, 200, found ? { file_id: body.file_id, ...found } : null);
       }
       if (path === 'imports/extract' && method === 'POST') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
