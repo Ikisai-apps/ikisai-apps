@@ -16,9 +16,19 @@ export {
   pendingLabel,
   pendingCount,
   conflictsLabel,
+  rejectedLabel,
+  isUserChanged,
   type StatusBar,
   type StatusBarOptions,
   type StatusBannersOptions,
 } from './status/status-bar.ts';
 export { renderLogin, type LoginOptions } from './shell/login.ts';
 export { createAppShell, type AppShell, type AppShellOptions, type NavItem } from './shell/app-shell.ts';
+export { openSheet, closeSheet, currentSheet, type Sheet, type SheetOptions } from './overlay/sheet.ts';
+export { confirmDialog, alertDialog, type DialogOptions } from './overlay/dialog.ts';
+export { trapFocus, focusFirst, focusables, lockScroll } from './overlay/focus.ts';
+export { renderConflict, renderConflicts, SYSTEM_COLUMNS, type ConflictDecision, type ConflictOptions } from './sync/conflict.ts';
+export { renderRejected, renderRejectedList, type RejectedOptions } from './sync/rejected.ts';
+export { listRow, renderList, type ListRowSpec, type ListSpec, type ListOptions } from './list.ts';
+export { createThemeToggle, createThemeSelect } from './theme-switch.ts';
+export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';

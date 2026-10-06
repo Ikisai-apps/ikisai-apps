@@ -1,17 +1,25 @@
 /* Muestra de @ikisai/ui-kit: tokens, componentes, barra de estado, login y shell. Sin red ni cliente real. */
 import '../src/styles/ui-kit.css';
 import './demo.css';
-import type { SyncStatus } from '@ikisai/sync-client';
+import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
 import {
+  alertDialog,
   applyAccent,
   applyTheme,
+  confirmDialog,
   createAppShell,
+  createCommandPalette,
   createStatusBar,
-  effectiveTheme,
+  createThemeSelect,
+  createThemeToggle,
   el,
   icon,
   itemColorStyle,
+  openSheet,
+  renderConflicts,
   renderLogin,
+  renderList,
+  renderRejectedList,
   replace,
   statusBanners,
   toast,
@@ -21,14 +29,17 @@ import {
 
 applyTheme();
 
-const base: SyncStatus = { network: 'online', cursor: 42, pendingCommands: 0, pendingBlobs: 0, conflicts: 0, lastPullAt: new Date().toISOString(), lastError: null, autoMerged: 0 };
+const base: SyncStatus = { network: 'online', cursor: 42, pendingCommands: 0, pendingBlobs: 0, conflicts: 0, lastPullAt: new Date().toISOString(), lastError: null, autoMerged: 0, rejected: 0 };
 const STATES: Array<{ name: string; status: SyncStatus }> = [
   { name: 'En línea, todo sincronizado', status: base },
   { name: 'Sincronizando', status: { ...base, network: 'syncing', pendingCommands: 2 } },
   { name: 'Sin conexión con pendientes', status: { ...base, network: 'offline', pendingCommands: 3, pendingBlobs: 1 } },
   { name: 'Conflictos', status: { ...base, conflicts: 2, pendingCommands: 1 } },
-  { name: 'Error de red', status: { ...base, network: 'error', pendingCommands: 1, lastError: { code: 'BACKEND_UNAVAILABLE', message: 'El servidor no responde.' } as SyncStatus['lastError'] } },
+  { name: 'Error de red', status: { ...base, network: 'error', pendingCommands: 1, lastError: { status: 503, code: 'BACKEND_UNAVAILABLE', message: 'El servidor no responde.', details: null } } },
+  { name: 'Rechazados', status: { ...base, rejected: 2 } },
+  { name: 'Cambio de persona', status: { ...base, lastError: { status: 0, code: 'USER_CHANGED', message: 'Otra persona ha entrado.', details: null } } },
 ];
+const BANNER_ACTIONS = { onResolveConflicts: () => toast('Ir a conflictos'), onRetry: () => toast('Reintentando…'), describeError: (e: SyncStatus['lastError']) => e?.message ?? '', onShowRejected: () => toast('Ver rechazados'), onRetryRejected: () => toast('Reintentar rechazados'), onDiscardRejected: () => toast('Descartar rechazados') };
 
 function section(id: string, title: string, intro: string, ...children: Parameters<typeof el>[2][]): HTMLElement {
   return el('section', { class: 'demo-section', id }, el('h2', null, title), el('p', { class: 'muted demo-intro' }, intro), ...children);
@@ -117,7 +128,7 @@ const liveBar = createStatusBar({ status: base, onSync: () => toast('Sincronizan
 for (const { name, status } of STATES) {
   const bar = createStatusBar({ status, describeError: (e) => e?.message ?? '' });
   statusHost.append(el('div', { class: 'demo-state' }, el('span', { class: 'small muted' }, name), bar.element));
-  stateButtons.append(el('button', { class: 'ghost small', type: 'button', dataset: { state: status.network + (status.conflicts ? '-conflicts' : '') }, onclick: () => { liveBar.update(status); replace(bannersHost, ...statusBanners(status, { onResolveConflicts: () => toast('Ir a conflictos'), onRetry: () => toast('Reintentando…'), describeError: (e) => e?.message ?? '' })); } }, name));
+  stateButtons.append(el('button', { class: 'ghost small', type: 'button', dataset: { state: status.network + (status.conflicts ? '-conflicts' : '') }, onclick: () => { liveBar.update(status); replace(bannersHost, ...statusBanners(status, BANNER_ACTIONS)); } }, name));
 }
 const status = section('status', 'Estado de sincronización', 'Contrato §6.4: red, cambios pendientes, conflictos; «guardado» solo cuando el servidor confirmó. Pastilla corta en móvil, larga en escritorio.',
   statusHost,
@@ -158,7 +169,7 @@ const shell = createAppShell(shellHost, {
   ],
   status: { status: STATES[4]!.status, onSync: () => toast('Sincronizar'), describeError: (e) => e?.message ?? '' },
   onLogout: () => toast('Cerrar sesión'),
-  tools: [el('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Cambiar tema', onclick: () => toggleTheme() }, icon(effectiveTheme() === 'dark' ? 'sun' : 'moon'))],
+  tools: [createThemeToggle()],
   navFoot: 'Ctrl K abrirá la paleta cuando exista.',
   navigate: (hash) => { shell.setRoute(hash); toast(`Ruta ${hash}`); },
 });
@@ -171,14 +182,104 @@ const shells = section('shell', 'Login y shell', 'El shell de login y la cabecer
   el('h3', { class: 'demo-sub' }, 'Shell (cabecera, estado, navegación)'), shellHost,
 );
 
+
+// --- Hoja inferior y diálogo ---------------------------------------------------
+function demoSheet(): void {
+  const name = el('input', { id: 'sheetName', type: 'text', value: 'Ferretería Sierra', maxlength: '200' });
+  const initial = name.value;
+  const save = el('button', { class: 'primary', type: 'submit', form: 'sheetForm', id: 'sheetSave' }, 'Guardar');
+  const sheet = openSheet({
+    title: 'Editar proveedor',
+    meta: 'Revisión 3 · actualizado hoy',
+    body: el('form', { id: 'sheetForm', oninput: () => sheet.setFootHidden(name.value === initial), onsubmit: (e: Event) => { e.preventDefault(); toast(`Guardado «${name.value}»`); void sheet.close(true); } },
+      el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
+      el('label', { class: 'field' }, el('span', null, 'Notas'), el('textarea', { rows: '2' })),
+    ),
+    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar'), save],
+    footHidden: true,
+    beforeClose: async () => name.value === initial || confirmDialog({ title: '¿Descartar los cambios?', text: 'El nombre ha cambiado y no se ha guardado.', confirmLabel: 'Descartar', danger: true }),
+  });
+}
+const overlays = section('overlays', 'Hoja inferior y diálogo', 'Una sola hoja abierta; foco atrapado, Escape y fondo cierran, el foco vuelve al botón. El pie aparece cuando el formulario cambia; cerrar con cambios pide confirmación en un diálogo.',
+  el('div', { class: 'demo-row' },
+    el('button', { class: 'primary', type: 'button', id: 'openSheet', onclick: demoSheet }, icon('edit', 18), 'Abrir hoja'),
+    el('button', { class: 'danger', type: 'button', id: 'openDialog', onclick: async () => { const ok = await confirmDialog({ title: 'Enviar a papelera', text: 'Se puede restaurar desde la papelera.', confirmLabel: 'Enviar a papelera', danger: true }); toast(ok ? 'Enviado a papelera' : 'Cancelado'); } }, icon('trash', 18), 'Diálogo de confirmación'),
+    el('button', { class: 'ghost', type: 'button', id: 'openAlert', onclick: () => void alertDialog('Sin conexión', 'Los cambios se enviarán cuando vuelva la red.') }, 'Aviso'),
+  ),
+);
+
+// --- Conflictos y rechazados ------------------------------------------------------
+const conflictSample: PendingConflict = {
+  requestId: 'req-1',
+  operation: { op: 'update', table: 'invoices.suppliers', id: 'sup-1', expectedRevision: 3, fields: { name: 'Ferretería Sierra S.L.', notes: 'Pedir siempre con albarán.' } },
+  base: { id: 'sup-1', revision: 3, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-05T10:00:00Z', updated_by: 'u1', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B12345678', notes: '' },
+  current: { id: 'sup-1', revision: 4, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-06T08:00:00Z', updated_by: 'u2', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B87654321', notes: 'Horario de tarde.' },
+  overlapping: ['notes'],
+  detectedAt: new Date().toISOString(),
+};
+const deleteConflict: PendingConflict = { ...conflictSample, requestId: 'req-2', operation: { op: 'delete', table: 'invoices.suppliers', id: 'sup-1', expectedRevision: 3 }, overlapping: [] };
+const rejectedSample: RejectedBatch = {
+  requestId: 'req-3',
+  operations: [{ op: 'update', table: 'invoices.suppliers', id: 'sup-2', expectedRevision: 1, fields: { tax_id: 'XXX' } }],
+  error: { status: 422, code: 'INVALID_VALUE', message: 'El NIF no tiene un formato válido.', details: null },
+  baseRows: { 'invoices.suppliers|sup-2': { id: 'sup-2', revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, name: 'Maderas del Valle' } },
+  rejectedAt: new Date().toISOString(),
+};
+const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict], {
+  fieldLabels: { name: 'Nombre', tax_id: 'NIF', notes: 'Notas', deleted_at: 'Borrado' },
+  onResolve: (conflict, decision) => { toast(`Conflicto ${conflict.requestId}: ${decision.choice}${decision.choice === 'merge' ? ' ' + JSON.stringify(decision.fields) : ''}`); conflictHost.querySelector(`[data-request-id="${conflict.requestId}"]`)?.remove(); },
+}));
+const rejectedHost = el('div', { id: 'rejectedHost' });
+const rejectedOptions = { onRetry: (b: RejectedBatch) => toast(`Reintentar ${b.requestId}`), onDiscard: (b: RejectedBatch) => { toast(`Descartado ${b.requestId}`); replace(rejectedHost, ...renderRejectedList([], rejectedOptions)); } };
+replace(rejectedHost, ...renderRejectedList([rejectedSample], rejectedOptions));
+const conflicts = section('conflicts', 'Conflictos y rechazados', 'Contrato §6.3: ambas versiones campo a campo y tres decisiones (mantener la mía, tomar la del servidor, combinar). Los lotes rechazados por el servidor se reintentan o se descartan.',
+  conflictHost,
+  el('h3', { class: 'demo-sub' }, 'Rechazado por el servidor'), rejectedHost,
+);
+
+// --- Lista con estado --------------------------------------------------------------
+const listDemo = section('list', 'Lista con estado de sincronización', 'renderList pinta filas con chip y filete cuando están pendientes, tachadas en papelera y pulsables si llevan onClick.',
+  renderList({
+    label: 'Proveedores de ejemplo', id: 'demoList',
+    rows: [
+      { id: 'a', title: 'Ferretería Sierra', meta: ['B12345678', 'Suministros'], actions: [el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Editar Ferretería Sierra' }, icon('edit'))], onClick: () => toast('Abrir Ferretería Sierra'), label: 'Abrir Ferretería Sierra' },
+      { id: 'b', title: 'Maderas del Valle', meta: ['Guardado en este dispositivo'], pending: true, chips: [el('span', { class: 'chip', style: '--chip:#b76b3d' }, el('span', null, 'Carpintería'))], onClick: () => toast('Abrir Maderas del Valle') },
+      { id: 'c', title: 'Proveedor antiguo', meta: ['Borrado hace 2 días'], deleted: true, actions: [el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Restaurar' }, icon('restore'))] },
+    ],
+    empty: { title: 'Sin proveedores', text: 'Crea el primero.' },
+  }),
+  el('h3', { class: 'demo-sub' }, 'Vacía'),
+  renderList({ label: 'Lista vacía', rows: [], empty: { title: 'Sin proveedores', text: 'Crea el primero con «Nuevo proveedor».' } }),
+);
+
+// --- Tema y paleta ---------------------------------------------------------------
+const palette = createCommandPalette({
+  placeholder: 'Buscar o saltar: secciones, proveedores, acciones…',
+  hiddenWhenEmpty: ['Proveedores'],
+  items: () => [
+    { group: 'Acciones', text: 'Nuevo proveedor', hint: 'N', run: () => toast('Nuevo proveedor') },
+    { group: 'Ir a', text: 'Inicio', run: () => toast('Inicio') },
+    { group: 'Ir a', text: 'Facturas', run: () => toast('Facturas') },
+    { group: 'Ir a', text: 'Gestoría', run: () => toast('Gestoría') },
+    { group: 'Áreas', text: 'Ikisai', color: '#3f6d8e', run: () => toast('Área Ikisai') },
+    { group: 'Áreas', text: 'Personal', color: '#d9b25a', run: () => toast('Área Personal') },
+    { group: 'Proveedores', text: 'Ferretería Sierra', sub: 'B12345678', run: () => toast('Ferretería Sierra') },
+    { group: 'Proveedores', text: 'Maderas del Valle', sub: 'Carpintería', run: () => toast('Maderas del Valle') },
+    { group: 'Tema', text: 'Tema oscuro', run: () => { toggleTheme(); toast('Tema cambiado'); } },
+  ],
+});
+const themeAndPalette = section('theme', 'Tema y paleta de comandos', 'Botón sol/luna para la cabecera, selector de tres opciones para ajustes y paleta Ctrl K con grupos, búsqueda sin acentos y teclado.',
+  el('div', { class: 'demo-row' }, createThemeToggle(), createThemeSelect(), el('button', { class: 'ghost small', type: 'button', id: 'openPalette', onclick: () => palette.open() }, icon('search', 16), 'Abrir paleta', el('kbd', { class: 'phint' }, 'Ctrl K'))),
+);
+
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.1.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.2.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette),
 );
