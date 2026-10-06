@@ -49,6 +49,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - PR #125 (tanda 11) fusionada.
 - Tanda 12 (`invoices/tanda12`), incidencias de la aceptación del usuario en Android: proveedor nuevo desde la hoja «Nueva factura» («+ Nuevo proveedor…» con nombre y NIF) y bloque «Extraer con ChatGPT» (copiar prompt, pegar JSON) junto al documento, en la hoja nueva y en la ficha pendiente de datos.
+- PR #138 (tanda 12) fusionada y publicada.
 - Tanda 13 (`invoices/emitidas-propuesta`, PR #141): facturas emitidas registradas, preparadas para Verifactu (API.md §13). Migración 0205 con series, cabecera, líneas, desglose, documentos y destino del ingreso; columnas `vf_*` reservadas y vacías; sin papelera y número único sobre todas las filas; recálculo de totales en el hook `invoices.check_issued`; `invoices.annul_issued`; proyección `invoices.booking_income_projection` para Booking. Pestaña «Recibidas · Emitidas» en Facturas con lista, ficha (cobro, anular) y alta manual.
 
 - Tanda 14 (misma rama y PR #141, CI bloqueada): IVA repercutido (`invoices.issued_summary` y `issuedSummary`, iguales en SQL y en el dominio) en Gestoría y en el MCP; emitidas en la entrega a la gestoría (migración 0206: manifest, carpeta `emitidas/`, `facturas_emitidas.csv`, filas repercutidas en `resumen_impuestos.csv`, desfase por emitidas); asignar una emitida a una reserva o un evento desde su ficha.
@@ -57,7 +58,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 ## En curso
 
-- PR de la tanda 12 (`invoices/tanda12`), en borrador mientras la CI está bloqueada.
+- PR #141 (tandas 13–15: emitidas, IVA repercutido, gestoría e importación CSV), fusionándose tras la #138.
 
 ## Pendiente
 
