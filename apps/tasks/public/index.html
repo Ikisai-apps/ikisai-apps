@@ -189,7 +189,7 @@ function taskLocation(id){for(const p of tab().projects){const t=p.tasks.find(t=
 function filteredTasks(p){return p.tasks.filter(t=>{
  if(t.deleted)return false;const st=state.filters?._state||[],done=status(p,t)==='done';if(st.length&&!((st.includes('pending')&&!done)||(st.includes('done')&&done)))return false;
  const q=state.search.trim().toLowerCase();if(q&&!(t.text+' '+(t.note||'')).toLowerCase().includes(q)&&!(t.labels||[]).some(id=>label(id)?.text.toLowerCase().includes(q)))return false;
- return Object.entries(state.filters||{}).every(([f,ids])=>['_state','_availability'].includes(f)||!ids.length||(f==='_project'?ids.includes(p.id):ids.some(id=>(t.labels||[]).includes(id))));
+ return filterGroups(state.filters).every(([f,ids])=>['_state','_availability'].includes(f)||!ids.length||(f==='_project'?ids.includes(p.id):ids.some(id=>(t.labels||[]).includes(id))));
 })}
 function treeRows(p){const found=new Set(filteredTasks(p).map(t=>t.id));const active=p.tasks.filter(t=>!t.deleted);const rows=[];
  for(const t of active.filter(t=>!t.parentId).sort((a,b)=>a.order-b.order)){const cs=children(p,t.id);if(found.has(t.id)||cs.some(c=>found.has(c.id))){rows.push(taskRow(t,p,!found.has(t.id)));for(const c of cs)if(found.has(c.id)||found.has(t.id)&&!state.search&&!Object.values(state.filters).some(v=>v.length))rows.push(taskRow(c,p))}}

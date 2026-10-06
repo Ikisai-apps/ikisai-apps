@@ -11,7 +11,7 @@ import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
-declare const state: any;
+declare let state: any;
 declare const tab: any, project: any, taskLocation: any, label: any, filteredProjects: any, navigateView: any, savedViewsSheet: any, keepImportSheet: any;
 declare const openProjectEditor: any, openTaskEditor: any, dependencyBlockers: any, closeSheet: any, syncNow: any, render: any;
 
@@ -610,5 +610,236 @@ test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
     expect((await server.rows('tasks.tasks')).filter((r) => batchIds.includes(r.id)).every((r) => r.project_id === ID.p1)).toBe(true);
     expect((await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor).toBe(cursorBefore + 2);
     expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+});
+
+declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any;
+const cursor = async () => (await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor as number;
+
+test('[63][64] duplicar proyectos, plantillas entre áreas, alias y «Mis tareas»', async () => {
+  test.setTimeout(120_000);
+  await test.step('[63] un proyecto se duplica con ids nuevos, se guarda como plantilla y siembra otra área con etiquetas por nombre', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    const sourceCount = await a.evaluate(() => ({ tasks: project().tasks.filter((t: any) => !t.deleted).length, children: project().tasks.filter((t: any) => !t.deleted && t.parentId).length, done: project().tasks.filter((t: any) => !t.deleted && t.done).length }));
+    await a.evaluate(() => openProjectEditor((window as any).ID.p1));
+    await a.locator('#projectDuplicateIcon').click();
+    await a.locator('#dupTitle').fill('Copia de prueba');
+    await a.locator('#dupApply').click();
+    await settled(a);
+    const copyInfo = await a.evaluate(() => { const p = tab().projects.find((x: any) => x.title === 'Copia de prueba'); return p && { id: p.id, tasks: p.tasks.length, children: p.tasks.filter((t: any) => t.parentId).length, done: p.tasks.filter((t: any) => t.done).length, orphans: p.tasks.filter((t: any) => t.parentId && !p.tasks.some((x: any) => x.id === t.parentId)).length, current: state.currentProject === p.id, ids: new Set(p.tasks.map((t: any) => t.id)).size }; });
+    expect(copyInfo).toBeTruthy();
+    expect([copyInfo.tasks, copyInfo.children, copyInfo.done, copyInfo.orphans, copyInfo.ids, copyInfo.current]).toEqual([sourceCount.tasks, sourceCount.children, 0, 0, sourceCount.tasks, true]);
+    expect((await server.rows('tasks.tasks')).filter((r) => r.project_id === copyInfo.id && !r.deleted_at)).toHaveLength(sourceCount.tasks);
+
+    // La plantilla debe ser autocontenida: se quitan las dependencias hacia otros proyectos (los bloqueos externos se prueban en [72]).
+    await a.evaluate(() => { const p = tab().projects.find((x: any) => x.id === (window as any).ID.p1), ids = new Set(p.tasks.filter((t: any) => !t.deleted).map((t: any) => t.id)); for (const t of p.tasks) { const keep = (t.dependsOn || []).filter((d: string) => ids.has(d)); if (keep.length !== (t.dependsOn || []).length) { t.dependsOn = keep; touch(t); } } save(); render(); });
+    await settled(a);
+    await a.evaluate(() => openProjectEditor((window as any).ID.p1));
+    await a.locator('#projectDuplicateIcon').click();
+    await a.locator('#dupTemplate').check();
+    await a.locator('#dupApply').click();
+    await settled(a);
+    expect(await a.evaluate(() => state.tabs.some((t: any) => t.name === 'Plantillas' && t.projects.some((p: any) => p.title === 'Edificio inferior')))).toBe(true);
+    const templates = (await server.rows('tasks.tabs')).find((r) => r.name === 'Plantillas');
+    expect(templates).toBeTruthy();
+    expect((await server.rows('tasks.families')).filter((r) => r.tab_id === templates.id && r.system_key).length).toBe(5);
+
+    await a.evaluate(() => { state.activeTab = (window as any).ID.personal; navigateView('projects'); });
+    await a.locator('#fromTemplate').click();
+    await a.locator('[data-template]').first().click();
+    await a.locator('#templateName').fill('Obra desde plantilla');
+    await a.locator('#templateApply').click();
+    await settled(a);
+    const fromTemplate = await a.evaluate(() => { const area = state.tabs.find((t: any) => t.id === (window as any).ID.personal), p = area.projects.find((x: any) => x.title === 'Obra desde plantilla'); return p && { tasks: p.tasks.length, labelsResolved: p.tasks.every((t: any) => t.labels.every((l: string) => area.labels.some((x: any) => x.id === l))), families: area.families.map((f: any) => f.name) }; });
+    expect(fromTemplate && fromTemplate.tasks).toBe(sourceCount.tasks);
+    expect(fromTemplate.labelsResolved).toBe(true);
+    expect(fromTemplate.families).toContain('Oficio');
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; navigateView('projects'); });
+  });
+
+  await test.step('[64] un alias elegido una vez da el atajo «Mis tareas» entre áreas, y las pestañas de área muestran pendientes', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+    await expect(a.locator('[data-area-block] [data-add-project]')).toHaveCount(0);
+    await a.evaluate(() => aliasSheet());
+    await a.locator('[data-alias="Juan"]').click();
+    await a.locator('#aliasSave').click();
+    expect(await a.evaluate(() => localStorage.getItem('ikisai-alias'))).toBe('Juan');
+    await a.locator('[data-quick-mine]').click();
+    expect(await a.evaluate(() => state.taskScope + '/' + state.view)).toBe('all/tasks');
+    expect(await a.evaluate(() => Object.values(state.filters).flat().some((l: any) => tab().labels.find((x: any) => x.id === l)?.text === 'Juan'))).toBe(true);
+    expect(await a.locator('.task[data-row]:not(.context)').count()).toBeGreaterThan(0);
+    await expect(a.locator('.viewpill.mine.active')).toHaveCount(1);
+    await expect(a.locator('#aliasBtn')).toHaveCount(1);
+    await expect(a.locator('#themeToggle')).toHaveCount(1);
+    expect(await a.evaluate(() => document.getElementById('aliasBtn')!.textContent!.trim())).toBe('Juan');
+    expect(await a.locator(`.tabpill[data-tab="${ID.ikisai}"] .tabcount`).count()).toBeGreaterThan(0);
+  });
+});
+
+test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciado y deshacer rápido', async () => {
+  await test.step('[65] coste de tarea y presupuesto de proyecto se guardan en el servidor y se ven en filas, tarjetas y página', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    await a.evaluate(() => openTaskEditor((window as any).ID.t2));
+    await a.locator('#teCost').fill('150');
+    await a.locator('#saveTaskBtn').click();
+    await settled(a);
+    expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBe(150);
+    expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBe(150);
+    expect(await a.locator(`[data-row="${ID.t2}"] .cost`).count()).toBeGreaterThan(0);
+    await a.evaluate(() => openProjectEditor((window as any).ID.p1));
+    await expect(a.locator('#pePriority')).toBeHidden();
+    await a.locator('#peBudget').fill('1000');
+    await a.locator('#saveProjectBtn').click();
+    await settled(a);
+    expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p1).budget)).toBe(1000);
+    expect((await serverRow('tasks.projects', ID.p1!)).budget).toBe(1000);
+    expect(await a.locator('.project-detail-head ~ .money, main .money').count()).toBeGreaterThan(0);
+    await a.evaluate(() => navigateView('projects'));
+    expect(await a.locator(`[data-drop-project="${ID.p1}"] .money .moneybar`).count()).toBeGreaterThan(0);
+  });
+
+  await test.step('[66] nota, color y presupuesto sobreviven al selector de etiquetas y se confirman en un único lote', async () => {
+    await a.evaluate(() => openProjectEditor((window as any).ID.p1));
+    await a.locator('#peNote').fill('Atomic visual save');
+    await a.locator('#peBudget').fill('1200');
+    await a.locator('#sheet [data-pick-color="#3f6d8e"]').click();
+    await a.locator('#editProjectLabels').click();
+    await a.locator('#labelsDone').click();
+    await expect(a.locator('#peBudget')).toHaveValue('1200');
+    await expect(a.locator('#peColor')).toHaveValue('#3f6d8e');
+    const before = await cursor();
+    await a.locator('#saveProjectBtn').click();
+    await settled(a);
+    expect(await cursor()).toBe(before + 1);
+    const row = await serverRow('tasks.projects', ID.p1!);
+    expect([row.color, row.budget, row.note]).toEqual(['#3f6d8e', 1200, 'Atomic visual save']);
+  });
+
+  await test.step('[67] el coste vaciado sobrevive al selector, y una edición concurrente del coste mantiene el borrador sin pisar el dato remoto', async () => {
+    await a.evaluate(() => openTaskEditor((window as any).ID.t2));
+    await a.locator('#teCost').fill('');
+    await a.locator('#editLabelsBtn').click();
+    await a.locator('#labelsDone').click();
+    await expect(a.locator('#teCost')).toHaveValue('');
+    await a.locator('#saveTaskBtn').click();
+    await settled(a);
+    expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBeNull();
+    expect((await serverRow('tasks.tasks', ID.t2!)).cost).toBeNull();
+    await a.evaluate(() => openTaskEditor((window as any).ID.t2));
+    await a.locator('#teCost').fill('30');
+    const row = await serverRow('tasks.tasks', ID.t2!);
+    expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t2, expectedRevision: row.revision, fields: { cost: 40 } }], server.app.tokens.editor)).status).toBe(200);
+    await a.evaluate(() => syncNow());
+    await a.waitForFunction(() => !Sync.busy && taskLocation((window as any).ID.t2).t.cost === 40);
+    await a.locator('#saveTaskBtn').click();
+    await expect(a.locator('#teCost')).toHaveValue('30');
+    expect(await a.evaluate(() => taskLocation((window as any).ID.t2).t.cost)).toBe(40);
+    expect(await a.evaluate(() => Sync.record.queue.length)).toBe(0);
+    await a.locator('#closeDialog').click();
+  });
+
+  await test.step('[68] completar ofrece Deshacer, y los atajos de teclado llegan a la búsqueda y a la fila de alta', async () => {
+    await a.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    const target = await a.evaluate(() => project().tasks.find((t: any) => !t.deleted && !t.done && !t.parentId && !project().tasks.some((c: any) => !c.deleted && c.parentId === t.id) && !dependencyBlockers(t, project()).length)?.id);
+    expect(target).toBeTruthy();
+    await a.locator(`[data-toggle-task="${target}"]`).click();
+    await a.locator('#undoToast.show #undoNow').click({ timeout: 15_000 });
+    await a.locator('#confirmUndo').click();
+    await a.waitForFunction((t) => taskLocation(t).t.done === false && Sync.mode === 'online' && !Sync.busy, target, { timeout: 20_000 });
+    expect((await serverRow('tasks.tasks', target)).done).toBe(false);
+    await a.evaluate(() => closeSheet());
+    await a.keyboard.press('/');
+    expect(await a.evaluate(() => document.activeElement?.id)).toBe('searchInput');
+    await a.keyboard.press('Escape');
+    await a.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await a.keyboard.press('n');
+    await expect(a.locator('.task.newtask input')).toHaveCount(1);
+    await a.keyboard.press('Escape');
+  });
+});
+
+test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y copias con dependencias', async () => {
+  await test.step('[69] Inicio muestra indicadores, proyectos, semana, personas, calor y actividad, y es la vista de entrada de un área', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('home'); });
+    await expect(a.locator('main.home')).toHaveCount(1);
+    await expect(a.locator('.kpi')).toHaveCount(4);
+    expect(await a.locator('.homeproject').count()).toBeGreaterThan(0);
+    expect(await a.locator('.hometask[data-home-task]').count()).toBeGreaterThan(0);
+    expect(await a.locator('.weekday').count()).toBeGreaterThanOrEqual(8);
+    expect(await a.locator('.personrow').count()).toBeGreaterThan(0);
+    expect(await a.locator('.heat').count()).toBeGreaterThan(0);
+    await a.waitForFunction(() => document.querySelector('#homeActivity .activityrow'));
+    expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await a.locator(`.homeproject[data-home-project="${ID.p1}"]`).click();
+    expect(await a.evaluate(() => state.view + '/' + state.currentProject)).toBe(`project/${ID.p1}`);
+    await a.evaluate(() => navigateView('home'));
+    await a.locator(`.tabpill[data-tab="${ID.personal}"]`).click();
+    expect(await a.evaluate(() => state.view + '/' + state.activeTab)).toBe(`home/${ID.personal}`);
+    await a.evaluate(() => { state.taskScope = 'all'; render(); });
+    await expect(a.locator('.homehead .title')).toContainText('General');
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; navigateView('projects'); });
+  });
+
+  await test.step('[70] el acento sigue al color del área y del proyecto, vuelve a neutro en General, y los chips son pastel', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; tab().color = '#3f6d8e'; tab().projects.find((x: any) => x.id === (window as any).ID.p1).color = '#6f5a8f'; save(); navigateView('projects'); });
+    await settled(a);
+    expect(await a.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#3f6d8e');
+    expect(await a.locator('.project:not(.system) .cardring svg').count()).toBeGreaterThan(0);
+    expect(await a.evaluate(() => document.querySelectorAll('.chip').length - document.querySelectorAll('.chip[data-pastel]').length)).toBe(0);
+    await a.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    expect(await a.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#6f5a8f');
+    expect(await a.locator('.task.prio-critical, .task.prio-high').count()).toBeGreaterThan(0);
+    await a.evaluate(() => { state.taskScope = 'all'; navigateView('home'); });
+    expect(await a.evaluate(() => document.documentElement.style.getPropertyValue('--accent'))).toBe('');
+    expect(await a.evaluate(async () => { await document.fonts.ready; return document.fonts.check('16px Fraunces') && document.fonts.check('16px Inter'); })).toBe(true);
+    await a.evaluate(() => { state.taskScope = 'area'; state.activeTab = (window as any).ID.ikisai; tab().color = ''; tab().projects.find((x: any) => x.id === (window as any).ID.p1).color = ''; save(); navigateView('projects'); });
+    await settled(a);
+    expect((await serverRow('tasks.tabs', ID.ikisai!)).color).toBeNull();
+  });
+
+  await test.step('[71] la paleta Ctrl K salta a proyectos y vistas; el tablero agrupa por plazo y arrastrar una tarjeta cambia su fecha', async () => {
+    await a.keyboard.press('Control+k');
+    await a.locator('#paletteInput').fill('coc');
+    await a.keyboard.press('Enter');
+    await a.waitForFunction(() => state.view === 'project' && project()?.title === 'Cocina operativa');
+    await a.keyboard.press('Control+k');
+    await a.locator('#paletteInput').fill('inicio');
+    await a.keyboard.press('Enter');
+    await a.waitForFunction(() => state.view === 'home');
+    await a.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    await a.locator('[data-board-mode="board"]').click();
+    expect(await a.locator('.boardcol').count()).toBeGreaterThanOrEqual(5);
+    expect(await a.locator('.boardcard').count()).toBe(await a.evaluate(() => leaves(project()).length));
+    await expect(a.locator('#batchToggle')).toHaveCount(0);
+    const target = await a.evaluate(() => { const t = leaves(project()).find((x: any) => !x.done); t.due = boardDay(-1); touch(t); save(); render(); return t.id; });
+    await settled(a);
+    await expect(a.locator(`.boardcol[data-board-col="overdue"] [data-board-task="${target}"]`)).toHaveCount(1);
+    const today = (await a.locator('.boardcol[data-board-col="today"]').boundingBox())!, card = (await a.locator(`[data-board-task="${target}"]`).boundingBox())!;
+    await a.mouse.move(card.x + 40, card.y + 12);
+    await a.mouse.down();
+    await a.mouse.move(card.x + 60, card.y + 30, { steps: 4 });
+    await a.mouse.move(today.x + 40, today.y + 60, { steps: 6 });
+    await a.mouse.up();
+    await a.waitForFunction((t) => taskLocation(t).t.due === boardDay(0), target);
+    await expect(a.locator(`.boardcol[data-board-col="today"] [data-board-task="${target}"]`)).toHaveCount(1);
+    await a.locator(`[data-board-task="${target}"]`).click();
+    await expect(a.locator('#teText')).toHaveCount(1);
+    await a.evaluate(() => closeSheet());
+    await a.locator('[data-board-mode="list"]').click();
+    expect(await a.locator('.task').count()).toBeGreaterThan(0);
+    await settled(a);
+    expect((await serverRow('tasks.tasks', target)).due).toBe(await a.evaluate(() => boardDay(0)));
+  });
+
+  await test.step('[72] las copias en la misma área conservan dependencias externas e importes; entre áreas, las no resueltas se rechazan sin tocar nada', async () => {
+    await a.evaluate(() => {
+      const before = structuredClone(state), area = state.tabs.find((t: any) => t.id === (window as any).ID.ikisai), dest = state.tabs.find((t: any) => t.id === (window as any).ID.personal), source = structuredClone(area.projects.find((p: any) => p.id === (window as any).ID.p1));
+      source.tasks.find((t: any) => t.id === (window as any).ID.t2).dependsOn = [(window as any).ID.t5]; source.budget = 250; source.tasks.find((t: any) => t.id === (window as any).ID.t2).cost = 25;
+      const cross = duplicateProject(source, area, dest, { title: 'Rejected', createLabels: true, keepDone: false, keepDates: false });
+      if (cross !== null || JSON.stringify(state) !== JSON.stringify(before)) throw Error('Una dependencia entre áreas sin resolver modificó el estado');
+      const same = duplicateProject(source, area, area, { title: 'Safe copy', createLabels: true, keepDone: false, keepDates: false });
+      if (same.budget !== 250 || !same.tasks.some((t: any) => t.cost === 25 && t.dependsOn.includes((window as any).ID.t5))) throw Error('La copia en la misma área perdió la dependencia o los importes');
+      state = before; render();
+    });
   });
 });

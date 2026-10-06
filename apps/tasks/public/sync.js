@@ -10,6 +10,11 @@ const cloneModel=x=>structuredClone(x);
 uid=function(prefix=''){const id=crypto.randomUUID();return REQUEST_PREFIXES.includes(prefix)?prefix+id:id};
 /* Índice plano del modelo anidado; lo usa dependencies-ui.js para validar el grafo antes de guardar. */
 function flat(tabs){const map=new Map();for(const t of tabs||[]){map.set('tab|'+t.id+'|'+t.id,{kind:'tab',id:t.id,tabId:t.id,item:t});for(const [kind,key] of [['family','families'],['label','labels'],['project','projects'],['view','views']])for(const x of t[key]||[]){map.set(kind+'|'+t.id+'|'+x.id,{kind,id:x.id,tabId:t.id,item:x});if(kind==='project')for(const task of x.tasks||[])map.set('task|'+t.id+'|'+task.id,{kind:'task',id:task.id,tabId:t.id,projectId:x.id,item:task})}}return map}
+/* Familias equivalentes entre áreas. Antes todas las áreas compartían los ids fijos de familia ('person', 'trade'…) y un
+   filtro por familia valía para todas; ahora cada área tiene las suyas, con uuid. Las de la misma clave de sistema (o,
+   si son propias, del mismo nombre) cuentan como una sola faceta: sus filtros se suman con «o» y no se exigen a la vez. */
+function familyKey(f){return f.system||('name:'+String(f.name||'').trim().toLocaleLowerCase())}
+function filterGroups(filters){const keys=new Map();for(const t of state.tabs)for(const f of t.families||[])keys.set(f.id,familyKey(f));const groups=new Map();for(const [f,ids] of Object.entries(filters||{})){const key=f.startsWith('_')?f:(keys.get(f)||f);groups.set(key,[...(groups.get(key)||[]),...(ids||[])])}return [...groups]}
 function isPersonFamily(id){if(!id)return false;if(id==='person')return true;return state.tabs.some(t=>(t.families||[]).some(f=>f.id===id&&f.system==='person'))}
 function value(item,key){const v=item?.[key];if(v===undefined)return ['attachments','labels','ownLabels','dependsOn'].includes(key)?[]:['deleted','archived'].includes(key)?false:null;if(key==='attachments')return v.map(a=>({id:a.id,name:a.name}));return v}
 function equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}
