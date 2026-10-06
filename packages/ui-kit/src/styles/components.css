@@ -692,3 +692,27 @@ a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
 /* Pie de la revisión dentro de la hoja de la app (renderProposalReview): pegado abajo mientras se desplaza. */
 .proposalreview-foot{position:sticky;bottom:0;display:flex;gap:10px;margin:14px -18px -18px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--paper)}
 .proposalreview-foot .primary{flex:1}
+
+/* ---------- Paleta de comandos (createCommandPalette) ---------- */
+.palette-back{position:fixed;inset:0;z-index:120;background:rgba(31,42,34,.32);display:flex;align-items:flex-start;justify-content:center;padding:10vh 16px 16px}
+.palette-back .palette{width:min(640px,100%);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--edge);border-radius:18px;box-shadow:var(--shadow-3);overflow:hidden;animation:pop .16s ease-out}
+.palette-input{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--edge);color:var(--muted)}
+.palette-input svg{width:19px;height:19px;flex:none}
+.palette-input input{flex:1;min-width:0;min-height:0;border:0;background:transparent;box-shadow:none;padding:0;font:inherit;font-size:16px;outline:none;color:var(--ink)}
+.palette-input input:focus{box-shadow:none}
+.palette-input kbd{font:inherit;font-size:11px;font-weight:700;padding:3px 7px;border-radius:7px;border:1px solid var(--edge);background:var(--paper-2);color:var(--muted)}
+.palette-list{overflow:auto;padding:6px;flex:1}
+.palette-group{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:10px 10px 4px}
+.palette-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;width:100%;min-height:44px;text-align:left;border:0;background:transparent;border-radius:11px;padding:9px 10px;color:var(--ink);font:inherit;cursor:pointer}
+.palette-item .pdot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 15%,transparent)}
+.palette-item .pdot.plain{background:transparent;box-shadow:none}
+.palette-item .ptext{display:flex;flex-direction:column;min-width:0}
+.palette-item .ptext span{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item .ptext small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item .phint{font-size:11px;color:var(--muted);font-weight:700;border:1px solid var(--edge);border-radius:6px;padding:2px 6px}
+.palette-item.on,.palette-item:hover{background:var(--accent-soft);color:var(--accent-deep)}
+.palette-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:13px}
+.palette-foot{padding:8px 14px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted);display:flex;gap:14px}
+:root[data-theme="dark"] .palette-back{background:rgba(0,0,0,.55)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .palette-back{background:rgba(0,0,0,.55)}}
+@keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
