@@ -8,6 +8,7 @@ import {
   closeSheet,
   compressImage,
   createCalendar,
+  createPrintView,
   createQuantityField,
   todayKey,
   applyAccent,
@@ -397,17 +398,55 @@ const importSection = section('import', 'Hoja de importación', 'Pegar o subir u
   ),
 );
 
+
+// --- Página imprimible (vista del organizador) ----------------------------------------
+function dishImage(seed: number): string {
+  const c = document.createElement('canvas'); c.width = 600; c.height = 400;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 600, 400); g.addColorStop(0, `hsl(${(seed * 47) % 360} 45% 55%)`); g.addColorStop(1, `hsl(${(seed * 47 + 60) % 360} 40% 35%)`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 600, 400);
+  ctx.fillStyle = 'rgba(255,253,248,.85)'; ctx.beginPath(); ctx.arc(300, 200, 110, 0, Math.PI * 2); ctx.fill();
+  return c.toDataURL('image/jpeg', 0.7);
+}
+const dish = (i: number, title: string, text: string, chips: Array<{ text: string; kind?: 'ok' | 'alert' | 'plain' }>, image = true) => ({ title, text, image: image ? dishImage(i) : null, chips });
+const day1 = addDays(t0, 3), day2 = addDays(t0, 4);
+const fmtDay = (d: string) => { const s = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(d + 'T12:00:00')); return s.charAt(0).toUpperCase() + s.slice(1); };
+const printSpec = {
+  brand: { appName: 'Food', markIcon: 'chef' as const, line: 'Cocina del retiro' },
+  title: 'Retiro de yoga · otoño',
+  subtitle: 'Menú para el organizador',
+  meta: [`${fmtDay(day1)} → ${fmtDay(day2)}`, '24 personas', 'Pensión completa'],
+  draft: true,
+  intro: 'Platos previstos por día y servicio. Las dietas y alérgenos indicados son los declarados en cada receta.',
+  sections: [
+    { title: fmtDay(day1), subtitle: 'Llegada a las 17:00', groups: [
+      { title: 'Cena', subtitle: '20:30', items: [dish(1, 'Crema de calabaza asada', 'Con semillas tostadas y aceite de romero.', [{ text: 'Vegano', kind: 'ok' }, { text: 'Sin gluten', kind: 'ok' }]), dish(2, 'Curry de verduras', 'Curry suave de verduras de temporada con arroz especiado.', [{ text: 'Vegano', kind: 'ok' }, { text: 'Apio', kind: 'alert' }]), dish(3, 'Fruta de temporada', 'Pera, uva y granada.', [{ text: 'Vegano', kind: 'ok' }], false)] },
+    ] },
+    { title: fmtDay(day2), groups: [
+      { title: 'Desayuno', subtitle: '8:30', items: [dish(4, 'Porridge de avena', 'Con compota de manzana y canela.', [{ text: 'Vegetariano', kind: 'ok' }, { text: 'Gluten', kind: 'alert' }, { text: 'Lácteos', kind: 'alert' }]), dish(5, 'Pan de masa madre', 'Con aceite, tomate y mermelada casera.', [{ text: 'Gluten', kind: 'alert' }], false)] },
+      { title: 'Comida', subtitle: '14:00', items: [dish(6, 'Ensalada de garbanzos', 'Garbanzos, pimiento asado, cebolla morada y comino.', [{ text: 'Vegano', kind: 'ok' }, { text: 'Sin gluten', kind: 'ok' }]), dish(7, 'Lasaña de verduras', 'Capas de berenjena y calabacín con bechamel de avena.', [{ text: 'Vegetariano', kind: 'ok' }, { text: 'Gluten', kind: 'alert' }, { text: 'Lácteos', kind: 'alert' }]), dish(8, 'Bizcocho de zanahoria', 'Con nueces y glaseado de limón.', [{ text: 'Frutos de cáscara', kind: 'alert' }, { text: 'Huevos', kind: 'alert' }])] },
+      { title: 'Cena', subtitle: '20:30', items: [], empty: 'Pendiente de confirmar con el organizador.' },
+    ] },
+  ],
+  notes: el('div', null, el('strong', null, 'Información dietética. '), 'Hay alternativa sin gluten y sin lácteos en todos los servicios. Indica en recepción cualquier alergia no declarada.'),
+  footer: 'Ikisai Food · Casa de la Sierra',
+};
+const printView = createPrintView(printSpec, { onBack: () => toast('Volver'), actions: [el('button', { class: 'ghost', type: 'button', id: 'togglePrintDraft', onclick: () => { printSpec.draft = !printSpec.draft; printView.update(printSpec); } }, 'Alternar borrador')] });
+const printSection = section('print', 'Página imprimible', 'Vista del organizador (canon §28–29): marca, título y fechas, días → servicios → platos con foto, nombre público, descripción, dietas y alérgenos; «BORRADOR» si el menú no está validado. Imprime en A4 sin navegación y sin partir platos.',
+  el('div', { id: 'printHost' }, printView.element),
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.4.1'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.5.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection),
 );
