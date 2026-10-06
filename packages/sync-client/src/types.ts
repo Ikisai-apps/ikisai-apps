@@ -150,6 +150,8 @@ export interface SyncClient {
   start(): Promise<Bootstrap | null>;
   stop(): void;
   bootstrap(): Bootstrap | null;
+  /** Vuelve a pedir el bootstrap (rol, ámbitos, tablas) sin reiniciar; útil tras un cambio de permisos. */
+  refreshBootstrap(): Promise<Bootstrap | null>;
   status(): SyncStatus;
   onStatus(listener: (status: SyncStatus) => void): () => void;
   /** Se dispara cuando cambian filas de una tabla en el espejo local, por pull o por edición. */
