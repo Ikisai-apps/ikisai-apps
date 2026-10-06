@@ -284,6 +284,9 @@ export async function learnFromConfirmation(input: {
     }
     const proposed = field.startsWith('vat:') ? applied.values.vat?.[field.slice(4)] : (applied.values as Record<string, unknown>)[field];
     if (proposed !== undefined && same(kind, proposed, value)) { rule.hits++; rule.streak_misses = 0; hits.push(field); continue; }
+    // Si lo confirmado no está en el documento (p. ej. una fecha que el usuario eligió conservar), la plantilla no podía
+    // leerlo: no cuenta como fallo (decisión de Core, ronda 35).
+    if (!occurrences(input.lines, kind, value).length) continue;
     rule.misses++; rule.streak_misses++; misses.push(field);
     // Una factura anómala no cambia la etiqueta; si el valor está junto a otra etiqueta, se guarda como variante.
     const elsewhere = learnRule(input.lines, field, kind, value);

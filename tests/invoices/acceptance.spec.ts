@@ -1023,12 +1023,18 @@ test('IA sin API de pago (fase 3): la plantilla se aprende al validar, lee lo qu
   });
 
   await test.step('segunda factura: «Leer PDF» lee el número con la plantilla; al validar pasa a activa', async () => {
-    await newInvoice('fruta dos', pepePdf('X-78', '07/10/2026', '50,00', '5,00', '55,00'), false, '2026-10-07');
+    // Fecha escrita a mano al subir (1) distinta de la del documento (7): se conserva, se avisa y se puede cambiar con un toque.
+    await newInvoice('fruta dos', pepePdf('X-78', '07/10/2026', '50,00', '5,00', '55,00'), false, '2026-10-01');
     await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
     const sheet = ficha(page);
     await expect(sheet.locator('#extractionNote')).toContainText('Plantilla del proveedor v1', { timeout: 30_000 });
     await expect(sheet.locator('#provenance [data-field="invoice.invoice_number"]')).toContainText('plantilla del proveedor');
     await expect(sheet.locator('#provenance [data-field="invoice.invoice_number"]')).toContainText('X-78');
+    await expect(sheet.locator('#dateDiscrepancy')).toContainText('El documento dice la fecha');
+    await expect(sheet.locator('#importDate')).toHaveValue('2026-10-01');
+    await sheet.locator('#useDocumentDate').click();
+    await expect(sheet.locator('#importDate')).toHaveValue('2026-10-07');
+    await expect(sheet.locator('#useDocumentDate')).toContainText('Usar la mía');
     await sheet.locator('#importCategory').selectOption('compras');
     await sheet.locator('#confirmImport').click();
     await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });

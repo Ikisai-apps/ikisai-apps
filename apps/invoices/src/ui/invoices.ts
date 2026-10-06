@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -649,6 +649,26 @@ function renderProvenance(provenance: Record<string, FieldProvenance>): HTMLElem
   }));
 }
 
+/**
+ * Discrepancia entre lo escrito al subir la factura y lo que dice el documento (fecha u objeto): se ve y se resuelve con
+ * un toque, en los dos sentidos. Nada se cambia en silencio.
+ */
+function discrepancyNote(d: { kind: 'date' | 'object'; typed: string; document: string; input: HTMLInputElement } | null): HTMLElement | null {
+  if (!d) return null;
+  const show = (v: string) => (d.kind === 'date' ? shortDate(v) : `«${v}»`);
+  const label = d.kind === 'date' ? 'fecha' : 'objeto';
+  const button = el('button', { class: 'linkbtn', type: 'button', id: d.kind === 'date' ? 'useDocumentDate' : 'useDocumentObject' });
+  const paint = () => {
+    const usingDocument = d.input.value === d.document;
+    button.textContent = usingDocument ? `Usar la mía (${show(d.typed)})` : `Usar la del documento (${show(d.document)})`;
+  };
+  button.addEventListener('click', () => { d.input.value = d.input.value === d.document ? d.typed : d.document; d.input.dispatchEvent(new Event('input', { bubbles: true })); paint(); });
+  d.input.addEventListener('input', paint);
+  paint();
+  return el('div', { class: 'banner warn', id: d.kind === 'date' ? 'dateDiscrepancy' : 'objectDiscrepancy' }, icon('warn', 18),
+    el('div', null, el('span', null, `El documento dice ${d.kind === 'date' ? 'la' : 'el'} ${label} ${show(d.document)}; al subirla escribiste ${show(d.typed)}. `), button));
+}
+
 /** «Leer PDF»: texto del PDF en el dispositivo y reglas deterministas; si no hay texto o faltan datos, se dice. */
 async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[], storedFileId?: string): Promise<void> {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { toast('«Leer PDF» solo sirve para PDF. Para fotos usa «Analizar con IA».'); return; }
@@ -774,7 +794,12 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
     });
     const first = proposeImport(doc, supplierFor());
     objectInput = el('input', { type: 'text', id: 'importObject', value: target?.object ?? first.object, maxlength: '120' });
-    dateInput = el('input', { type: 'date', id: 'importDate', value: target?.invoice_date ?? first.invoice_date });
+    // Fecha (decisión de Core, ronda 35): si la escrita al subir no coincide con la del documento, se marca y se ofrece
+    // la del documento; se preselecciona solo si la escrita era la de hoy por defecto.
+    // El día de creación en hora local (el «hoy» que vio el usuario al subirla), no en UTC.
+    const createdOn = target?.created_at ? new Date(target.created_at).toLocaleDateString('sv-SE') : null;
+    const dateChoice = importDateChoice(target?.invoice_date, createdOn, doc.invoice.invoice_date);
+    dateInput = el('input', { type: 'date', id: 'importDate', value: target ? dateChoice.value : first.invoice_date });
     categorySelect = select('importCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], target?.expense_category ?? first.expense_category);
     investmentInput = el('input', { type: 'checkbox', id: 'importInvestment', checked: target?.is_investment ?? first.is_investment });
     deductibilitySelect = select('importDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), first.deductibility);
@@ -789,7 +814,9 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       })(),
       duplicate ? el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, `Ya existe la factura ${duplicate.code ?? ''} de este proveedor con el número ${doc.invoice.invoice_number}. La importación será rechazada como duplicado.`)) : null,
       el('div', { class: 'row2' }, field('Proveedor', supplierSelect, doc.invoice.supplier_tax_id ? `NIF del documento: ${doc.invoice.supplier_tax_id}` : 'El documento no trae NIF.'), field('Fecha', dateInput)),
+      discrepancyNote(dateChoice.discrepancy && target ? { kind: 'date', typed: target.invoice_date, document: doc.invoice.invoice_date, input: dateInput } : null),
       field('Objeto', objectInput),
+      discrepancyNote(target && doc.invoice.object.trim() && doc.invoice.object.trim().toLowerCase() !== target.object.trim().toLowerCase() ? { kind: 'object', typed: target.object, document: doc.invoice.object.trim(), input: objectInput } : null),
       el('div', { class: 'row2' }, field('Categoría', categorySelect), field('Deducibilidad', deductibilitySelect)),
       el('label', { class: 'check' }, investmentInput, el('span', null, 'Es inversión')),
       el('h3', null, `Cuadre · ${doc.lines.length} artículo${doc.lines.length === 1 ? '' : 's'} · ${recalc.taxes.length} impuesto${recalc.taxes.length === 1 ? '' : 's'}${recalc.taxes_derived ? ' (derivados de las líneas)' : ''}`),

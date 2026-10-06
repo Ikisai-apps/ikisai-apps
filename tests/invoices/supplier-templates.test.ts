@@ -80,12 +80,16 @@ test('usar la plantilla: lee el número que las reglas genéricas no leen; confi
 
 test('una factura anómala no cambia la etiqueta; tres fallos seguidos retiran la regla; otro formato crea otra versión', async () => {
   let t = await asTemplate(learnFromConfirmation({ lines: linesFromItems(first), confirmed: confirmed1, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [] }), 'tpl-1');
-  // El usuario corrige el número (la plantilla leyó X-80, el bueno es X-80B que no está en el texto)
+  // Un valor que no está en el documento (p. ej. una fecha que el usuario eligió conservar) no cuenta como fallo.
+  const kept = await learnFromConfirmation({ lines: linesFromItems(pepe('X-79', '09/10/2026', '10,00', '1,00', '11,00')), confirmed: { invoice_number: 'X-79', invoice_date: '2026-10-01', base: 10, total: 11, vat: { '10': 1 } }, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [t] });
+  assert.ok(kept); assert.ok(!kept.misses.includes('invoice_date')); assert.equal(kept.template.fields.invoice_date!.misses, 0);
+  // El usuario corrige el número: el bueno (Y-90) está en otra línea del documento → fallo, y su etiqueta queda como variante
   for (let i = 0; i < 3; i++) {
-    const lines = linesFromItems(pepe('X-80', '09/10/2026', '10,00', '1,00', '11,00'));
-    const l = await learnFromConfirmation({ lines, confirmed: { invoice_number: 'X-80B', invoice_date: '2026-10-09', base: 10, total: 11, vat: { '10': 1 } }, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [t] });
+    const lines = linesFromItems([...pepe('X-80', '09/10/2026', '10,00', '1,00', '11,00'), { str: 'Pedido: Y-90', page: 1, x: 40, y: 500, w: 60, h: 10 }]);
+    const l = await learnFromConfirmation({ lines, confirmed: { invoice_number: 'Y-90', invoice_date: '2026-10-09', base: 10, total: 11, vat: { '10': 1 } }, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [t] });
     assert.ok(l); assert.ok(l.misses.includes('invoice_number'));
     assert.equal(l.template.fields.invoice_number!.anchor.text, 'doc. ref.');
+    assert.deepEqual(l.template.fields.invoice_number!.anchor.variants, ['pedido']);
     t = { ...t, ...l.template, id: t.id } as TemplateLike;
   }
   assert.equal(t.fields.invoice_number!.retired, true);
