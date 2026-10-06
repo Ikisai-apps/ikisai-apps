@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
-import { describeError } from '../app/client.ts';
+import { icon, confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
+import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
 import { mountHome } from './home.ts';
 import { mountReservations } from './reservations.ts';
@@ -73,7 +73,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   function paintBanners(status: SyncStatus): void {
     const here = location.hash === PENDING;
-    shell.setBanners(status, {
+    // Un fallo del dispositivo se avisa con un mensaje claro y el texto técnico plegado (el banner del kit no admite detalle).
+    const local = status.network === 'error' && status.lastError && isLocalError(status.lastError) ? status.lastError : null;
+    const extra = local ? [el('div', { class: 'banner warn', id: 'localErrorBanner', role: 'alert' },
+      icon('warn', 18),
+      el('div', null, el('span', null, LOCAL_ERROR_MESSAGE),
+        el('details', { class: 'techdetail' }, el('summary', null, 'Detalle técnico'), el('code', null, technicalDetail(local)))),
+      el('button', { class: 'linkbtn', type: 'button', onclick: () => void syncNow() }, 'Reintentar'))] : [];
+    shell.setBanners(local ? { ...status, lastError: null } : status, {
       hideConflicts: here,
       hideRejected: here,
       onResolveConflicts: () => navigate(PENDING),
@@ -81,7 +88,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       onRetry: syncNow,
       describeError: (error) => describeError(error),
       updateApply,
-    });
+    }, extra);
   }
 
   function paintStatus(status: SyncStatus): void {

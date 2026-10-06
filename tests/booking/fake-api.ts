@@ -263,7 +263,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     for (const [table, store] of staged) data.set(table, store);
     cursor = nextCursor;
     changes.push(...batchChanges);
-    const result = { cursor, requestId: body.requestId, results, changes: batchChanges };
+    // Como `core.commit` real: la respuesta incluye también el registro de cada procedimiento (`op: 'call'`, sin id de fila
+    // y con el resultado en `after`). El feed de `changes` no lo lleva. Es lo que el cliente no sabía guardar (incidencia V1).
+    const callRecords = (results as Array<{ op?: string; procedure?: string; result?: unknown }>).filter((r) => r.op === 'call').map((r, i) => ({
+      cursor: nextCursor, seq: batchChanges.length + i + 1, at: nowIso(), actorId, requestId: body.requestId,
+      table: r.procedure, id: null, op: 'call', revision: null, after: r.result ?? null,
+    }));
+    const result = { cursor, requestId: body.requestId, results, changes: [...batchChanges, ...callRecords] };
     receipts.set(`${actorId}:${body.requestId}`, { digest, result });
     return result;
   }

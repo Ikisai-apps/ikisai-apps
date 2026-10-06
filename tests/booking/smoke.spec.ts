@@ -124,6 +124,13 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#statusChip')).toHaveText('Confirmada', { timeout: 15_000 });
     await expect(page.locator('#blockOperation')).toContainText('EVT_TEST_001');
     await expect(page.locator('#confirmReservation')).toHaveCount(0);
+    // Incidencia del usuario en Android (V1): tras confirmar y volver a la app, el lote del `call` quedaba atascado en
+    // IndexedDB («Evaluating the object store's key path…») con «2 pendientes». Tras recargar no debe quedar nada.
+    await page.reload();
+    await expect(page.locator('#statusChip')).toHaveText('Confirmada');
+    await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado', { timeout: 15_000 });
+    await expect(page.locator('#localErrorBanner')).toHaveCount(0);
+    await expect(page.getByText('IDBObjectStore')).toHaveCount(0);
 
     await page.locator('#editOperation').click();
     const dialog = page.getByRole('dialog', { name: 'Operación' });
@@ -417,7 +424,7 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();
-  expect(await manifest.json()).toMatchObject({ name: 'Ikisai Booking', short_name: 'Booking', display: 'standalone' });
+  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Booking', short_name: 'Booking', start_url: '/', display: 'standalone' });
   const sw = await page.request.get(`${baseURL}/sw.js`);
   expect(sw.ok()).toBeTruthy();
   expect(await sw.text()).toContain('ikisai-booking-shell-');

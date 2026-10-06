@@ -70,6 +70,22 @@ export function canWrite(client: SyncClient): boolean {
   return role === 'editor' || role === 'owner';
 }
 
+export const LOCAL_ERROR_MESSAGE = 'No se pudo guardar en este dispositivo. Reintenta; si sigue, cierra y abre la app.';
+
+/** ¿Es un fallo del dispositivo y no de la API? (sin estado HTTP y sin código propio: `sync-client` lo marca `UNKNOWN`). */
+export function isLocalError(error: unknown): boolean {
+  const e = error as Partial<ApiError> | null;
+  if (!e || typeof e !== 'object') return false;
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) return true;
+  return (e.code === 'UNKNOWN' || e.code === undefined) && (e.status === 0 || e.status === undefined);
+}
+
+/** Texto técnico original de un error, para mostrarlo plegado. */
+export function technicalDetail(error: unknown): string {
+  const e = error as { name?: string; message?: string; code?: string } | null;
+  return [e?.name && e.name !== 'Error' ? e.name : null, e?.code && e.code !== 'UNKNOWN' ? e.code : null, e?.message].filter(Boolean).join(' · ') || String(error);
+}
+
 /** Mensaje legible en español para un error de la API o de red. */
 export function describeError(error: unknown): string {
   const e = error as Partial<ApiError> & { message?: string };
@@ -105,6 +121,9 @@ export function describeError(error: unknown): string {
     case 'ORPHAN_CHILD':
       return 'No se puede borrar: quedan datos vivos que dependen de esta reserva.';
     default:
+      // Un fallo del propio dispositivo (almacenamiento local, navegador) llega sin código de la API: el texto del
+      // navegador no le dice nada a quien usa la app, así que se da un mensaje claro y el detalle queda aparte.
+      if (isLocalError(error)) return LOCAL_ERROR_MESSAGE;
       return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
   }
 }
