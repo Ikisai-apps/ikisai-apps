@@ -1,0 +1,12 @@
+{
+  "name": "@ikisai/tasks",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Ikisai Tasks · frontend PWA: interfaz heredada (scripts clásicos en public/) y adaptador sobre @ikisai/sync-client",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

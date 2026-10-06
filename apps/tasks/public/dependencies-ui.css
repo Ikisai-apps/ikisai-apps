@@ -1,0 +1,9 @@
+.dependency-options{max-height:240px;overflow:auto;margin-top:12px;border:1px solid var(--line,#ddd);border-radius:8px}
+.dependency-option{display:flex!important;gap:10px;align-items:flex-start;padding:10px;border-bottom:1px solid var(--line,#ddd);font-weight:normal!important}
+.dependency-option:last-child{border-bottom:0}
+.dependency-option[hidden]{display:none!important}
+.dependency-option input{width:18px!important;min-width:18px;height:18px;margin-top:2px}
+.dependency-option span{overflow-wrap:anywhere}
+.dependency-field summary{cursor:pointer;padding:10px 0}
+.dependency-blocked{display:block;font-size:12px;line-height:1.4;color:#8c542e;margin-top:6px;overflow-wrap:anywhere}
+.task.context .check:disabled{opacity:.3;cursor:default}

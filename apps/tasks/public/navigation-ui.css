@@ -1,0 +1,54 @@
+/* Shared two-level navigation; desktop keeps the same actions in a sidebar. */
+.menuicon{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.menuheader{display:flex;align-items:center;gap:10px;padding:10px 12px 16px;font-weight:800}
+.menuheader .iconbtn{margin-left:auto}
+.navigation .iconbtn{display:grid;width:38px;min-width:38px;padding:0;text-align:center}
+.menuhint{padding:12px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:10px}
+.navigation .menugroup{border-top:1px solid var(--line)}
+.navigation summary{list-style:none;display:flex;gap:10px;align-items:center;padding:15px 12px;font-size:14px;font-weight:800;cursor:pointer;border-radius:10px}
+.navigation summary::-webkit-details-marker{display:none}
+.navigation summary:after{content:'›';margin-left:auto;font-size:20px;transform:rotate(0deg)}
+.navigation details[open]>summary:after{transform:rotate(90deg)}
+.navigation .menuitems{padding:0 0 10px 20px}
+.navigation .menuitem{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;text-align:left;padding:11px 10px;border-radius:10px;font-size:13px;line-height:1.3;min-height:42px}
+.navigation .menuitem.active{background:#e5dfd1;color:var(--olive-dark);font-weight:800}
+.navigation summary:hover,.navigation .menuitem:hover{background:#eee6d9}
+.navigation .menuitem:disabled{opacity:.45;cursor:default}
+.navigation button:focus-visible,.navigation summary:focus-visible,.label-edit:focus-visible{outline:2px solid var(--olive-dark);outline-offset:2px}
+.kebabmenu.navigation{width:min(330px,calc(100vw - 24px));max-height:calc(100dvh - 85px);overflow:auto;padding:8px}
+.menubackdrop{display:none;position:fixed;inset:0;z-index:40;background:rgba(37,38,30,.22);border:0}
+.menubackdrop.show{display:block}
+.label-entry{display:inline-flex;max-width:100%;align-items:center;gap:4px}
+.label-edit{border:0;cursor:pointer;min-height:36px;text-align:left;overflow-wrap:anywhere;line-height:1.3}
+.family-card-head{flex-wrap:wrap}
+.area-list{display:grid;gap:10px;margin:16px 0}
+.area-card{border:1px solid var(--line);padding:14px;border-radius:15px;background:var(--paper)}
+.area-card.current{border-color:var(--olive)}
+.area-card strong{overflow-wrap:anywhere}
+.area-card .actions{flex-wrap:wrap;margin-top:10px}
+.area-card .actions button{font-size:13px}
+.sheet-close{position:sticky;top:0;float:right;margin:-4px -4px 4px 10px;background:var(--paper);z-index:2}
+.sheettitle{padding-right:36px}
+@media(min-width:1024px){
+  :root{--sidebar-width:264px}
+  #app{max-width:none;margin:0 0 0 var(--sidebar-width);padding-bottom:44px}
+  .topbar{padding:16px 30px 12px}
+  .screen{width:100%;max-width:1460px;margin:0 auto;padding:28px 32px}
+  .title{font-size:30px}
+  .project-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .label-manager{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .label-manager>.screenhead,.label-manager>.notice,.label-manager>.catalog-actions{grid-column:1/-1}
+  .label-manager .family-card{margin:0}
+  .bottomnav{display:none}
+  .fab{right:32px;bottom:30px}
+  .navigation.kebabmenu{display:block;position:fixed;top:0;bottom:0;left:0;right:auto;width:var(--sidebar-width);max-height:100dvh;border:0;border-right:1px solid var(--line);border-radius:0;box-shadow:none;padding:24px 14px;background:var(--paper-2)}
+  .navigation .menuheader{font-family:Georgia,serif;font-size:22px;padding-bottom:24px}
+  #moreBtn,#closeMenu,.menubackdrop.show{display:none}
+  .sheet{top:clamp(24px,8dvh,80px);bottom:auto;width:min(800px,calc(100vw - 64px));max-height:calc(100dvh - 110px);border-radius:22px;padding:24px 28px 28px;box-shadow:0 20px 60px rgba(30,27,22,.2)}
+  .handle{display:none}
+  .toast{bottom:28px}
+  #moveRail{left:calc(50% + var(--sidebar-width)/2);width:min(1050px,calc(100vw - var(--sidebar-width)));max-width:none}
+}
+@media(min-width:1550px){.project-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+#filterBtn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
