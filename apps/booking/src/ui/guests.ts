@@ -2,7 +2,7 @@
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { compressImage, compressedFilename, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { READS, TABLES, canSeeGuests, dayNumber, missingForSes, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
-import { EVENTS, GUESTS, RESERVATIONS, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
+import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { RESTRICTION_SPECS } from './reservation.ts';
@@ -209,6 +209,41 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       });
     }
 
+    /** Hoja de solo lectura con todo lo que hay que teclear en SES.Hospedajes (API §2.3.1), cada dato con su botón «Copiar». */
+    async function openSesData(guest: Row, context: { reservation: ReservationRow; event: Row }): Promise<void> {
+      const { reservation, event } = context;
+      const finance = canRead(client, FINANCE) ? ((await client.get(FINANCE, reservation.id)) as Row | null) : null;
+      const alive = ((await client.list(GUESTS)) as Row[]).filter((g) => g.event_id === event.id).length;
+      const joined = (date: unknown, hour: unknown) => [date, typeof hour === 'string' ? hour.slice(0, 5) : hour].filter((v) => v !== null && v !== undefined && v !== '').join(' ');
+      const traveler: Array<[string, unknown]> = [
+        ['Nombre', guest.first_name], ['Apellidos', [guest.last_name_1, guest.last_name_2].filter(Boolean).join(' ')], ['Sexo', guest.sex ? label(guest.sex) : null],
+        ['Tipo de documento', guest.document_type ? label(guest.document_type) : null], ['Número de documento', guest.document_number], ['Número de soporte', guest.document_support_number],
+        ['Nacionalidad', guest.nationality], ['Fecha de nacimiento', guest.birth_date], ['Dirección', guest.residence_address], ['Código postal', guest.residence_postal_code],
+        ['Municipio', guest.residence_city], ['País', guest.residence_country], ['Teléfono', guest.phone], ['Correo', guest.email],
+        ...(guest.is_minor ? [['Parentesco', guest.kinship]] as Array<[string, unknown]> : []),
+      ];
+      const transaction: Array<[string, unknown]> = [
+        ['Referencia', reservation.code], ['Fecha del contrato', typeof event.created_at === 'string' ? event.created_at.slice(0, 10) : null],
+        ['Entrada', joined(reservation.start_date, event.arrival_time)], ['Salida', joined(reservation.end_date, event.departure_time)],
+        ['Número de personas', alive], ['Habitaciones', event.rooms_count],
+        ...(finance ? [['Tipo de pago', finance.payment_type ? label(finance.payment_type) : null]] as Array<[string, unknown]> : []),
+      ];
+      const list = (pairs: Array<[string, unknown]>) => el('dl', { class: 'kv sesdata' }, pairs.flatMap(([term, raw]) => {
+        const value = raw === null || raw === undefined || raw === '' ? '' : String(raw);
+        return [el('dt', null, term), el('dd', null, el('span', { class: 'value' }, value || '—'),
+          value ? el('button', { class: 'ghost small', type: 'button', 'aria-label': `Copiar ${term.toLowerCase()}`, onclick: () => {
+            void navigator.clipboard.writeText(value).then(() => toast('Copiado'), () => toast('No se pudo copiar.'));
+          } }, 'Copiar') : null)];
+      }));
+      void sheet?.close(true);
+      sheet = openSheet({
+        title: `Datos para SES · ${fullName(guest)}`,
+        body: el('div', { id: 'sesData' }, el('div', { class: 'sectionlabel' }, 'Viajero'), list(traveler), el('div', { class: 'sectionlabel' }, 'Transacción'), list(transaction)),
+        foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close(true) }, 'Cerrar')),
+        onClose: () => { sheet = null; },
+      });
+    }
+
     function openSent(guest: Row): void {
       const file = el('input', { type: 'file', id: 'receiptFile', accept: 'application/pdf,image/*' });
       const fileField = el('label', { class: 'field' }, el('span', null, 'Justificante (PDF o imagen)'), file,
@@ -288,10 +323,10 @@ export function mountGuests(initialEventId: string | null): ViewMount {
           el('p', { class: 'hint' }, 'El plazo es de 24 horas desde la entrada. El envío se hace en la web de SES; aquí se anota.'),
           el('ul', { class: 'list', id: 'sesQueue' }, [...queue, ...reviewed].map((g) => listRow({
             id: g.id, title: fullName(g), meta: [[g.document_type, g.document_number].filter(Boolean).join(' ') || 'menor sin documento', label(g.ses_status)], pending: g._pending === true,
-            actions: writable ? [g.ses_status === 'listo_para_envio'
+            actions: [el('button', { class: 'ghost small', type: 'button', 'aria-label': `Datos para SES de ${fullName(g)}`, onclick: () => void openSesData(g, context) }, 'Datos para SES'), ...(writable ? [g.ses_status === 'listo_para_envio'
               ? el('button', { class: 'ghost small', type: 'button', 'aria-label': `Registrar envío de ${fullName(g)}`, onclick: () => openSent(g) }, 'Registrar envío')
               : el('button', { class: 'ghost small', type: 'button', 'aria-label': `Marcar listo para envío a ${fullName(g)}`, onclick: () => void run(
-                  [{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { ses_status: 'listo_para_envio' } }], 'Listo para envío.') }, 'Listo para envío')] : [],
+                  [{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { ses_status: 'listo_para_envio' } }], 'Listo para envío.') }, 'Listo para envío')] : [])],
           })))],
         el('div', { class: 'sectionlabel' }, 'Registro', el('span', { class: 'count', id: 'guestCount' }, String(guests.length))),
         guests.length === 0

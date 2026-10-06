@@ -4,58 +4,23 @@
  * Cómo correrlo:   npx playwright test tests/booking            (desde la raíz del repo)
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
-import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { startFakeApi, type FakeApi } from './fake-api.ts';
+import { expect, test } from 'playwright/test';
+import { EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const configFile = path.resolve(here, '../../apps/booking/vite.config.ts');
-const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
-const RESERVATIONS = 'booking.reservations';
-const FINANCE = 'booking.reservation_finance';
-const EVENTS = 'booking.events';
-const GUESTS = 'booking.guests';
-const RESTRICTIONS = 'booking.dietary_restrictions';
-const CHECKLIST = 'booking.checklist_items';
-
-let api: FakeApi;
-let server: PreviewServer;
+let harness: Harness;
+let api: Harness['api'];
 let baseURL: string;
+const login = (page: Parameters<typeof loginTo>[0]) => loginTo(page, baseURL);
 
 test.beforeAll(async () => {
-  api = await startFakeApi({ users: [USER] });
-  process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
-  server = await preview({
-    configFile,
-    logLevel: 'silent',
-    preview: { port: 4800 + Math.floor(Math.random() * 500), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
-  });
-  baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
+  harness = await startHarness();
+  api = harness.api;
+  baseURL = harness.baseURL;
 });
 
 test.afterAll(async () => {
-  await new Promise<void>((resolve) => server?.httpServer.close(() => resolve()));
-  await api?.close();
+  await harness?.close();
 });
-
-async function login(page: Page): Promise<void> {
-  await page.goto(`${baseURL}/`);
-  await expect(page.getByRole('heading', { name: 'Ikisai Booking' })).toBeVisible();
-  await page.getByLabel('Correo electrónico').fill(USER.email);
-  await page.getByLabel('Contraseña').fill(USER.password);
-  await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('heading', { name: `Hola, ${USER.displayName}` })).toBeVisible();
-}
-
-/** Fecha AAAA-MM-DD a `days` días de hoy (hora local), para que la reserva caiga en «Próximas». */
-function inDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 test('login → Inicio → reservas sin red → sincronizar', async ({ page, context }) => {
   test.setTimeout(120_000);
