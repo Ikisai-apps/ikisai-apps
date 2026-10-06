@@ -109,3 +109,18 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .zone + .zone { margin-top: 18px; }
 .lodging-space + .lodging-space { margin-top: 14px; }
 .lodging-over { color: var(--danger, #b3261e); }
+
+/* Bloque «Personal» de la ficha */
+.staff-totals { margin: 0 0 6px; font-weight: 600; }
+.staff-day + .staff-day { margin-top: 12px; }
+.staff-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.staff-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.staff-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.staff-main .row-title { flex-wrap: wrap; }
+.staff-main .row-meta { overflow-wrap: anywhere; }
+.staff-item[data-status='cancelada'] .name { text-decoration: line-through; opacity: .7; }
+.staff-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
+#needList .row-title { flex-wrap: wrap; }
+#needList .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
+.noticelink { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.chip.muted { opacity: .7; }
