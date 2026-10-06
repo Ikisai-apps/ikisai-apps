@@ -496,6 +496,10 @@ Sin flags. La UI compara `target_revision` con la revisión actual del destino a
 - **Destino `tasks` / `purchase_request`:** una solicitud de compra no alimentaria de Tasks como destino de asignación de una línea. Se resuelve con la lectura `tasks.targets` (que Tasks amplía con `kind = 'purchase_request'`) y con el token del usuario, como los demás destinos de Tareas. Cambia la lista de pares (`TARGET_KINDS`) y el check de `invoices.allocations` en una migración nueva.
 - **Lectura `invoices.allocations_by_target {targetApp, targetKind, ids}`:** devuelve por id el código de factura, su estado y el importe asignado, filtrada por lo que el usuario ve en Invoices. Se registra con `core.allow_read('tasks', …)` para que Tasks muestre en cada solicitud qué se ha comprado y con qué factura.
 
+### 7.5 Horas de personal de Booking (anotado, ronda 24; no construido)
+
+Cuando Booking fusione su PR #146 existirá `booking.invoices_staff_hours_projection`, legible por Invoices con `GET /api/v1/read/booking.invoices_staff_hours_projection?where[event_id]=…`. Columnas: `assignment_id, event_id, event_code, reservation_id, reservation_code, function, staff_ref, work_date, planned_hours, actual_hours, status, revision`, sin nombres de personas. El **coste por hora por función** sería de Invoices: una tabla de tarifas por función y fecha de vigencia, y un coste de personal por evento o reserva junto al coste de compras. Se diseña y se construye cuando Core lo pida.
+
 ## 8. Archivos
 
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.
