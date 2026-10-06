@@ -133,7 +133,7 @@ payment_holder        text null              -- titular del medio de pago
 
 `writable_columns`: todas. Registro: `readable_roles '{editor,owner}'`, `writable_roles '{editor,owner}'`.
 
-Relación 1 a 1 estricta: el cliente crea la fila en el mismo lote que la reserva, con el mismo `id`, y la borra en el mismo lote. El hook lo exige (§4.2), así que nunca hay altas tardías ni duplicados.
+Relación 0..1 con el mismo `id` que la reserva, así que no puede haber dos filas para una reserva (la segunda alta recibe `ROW_EXISTS`). La app la crea en el mismo lote que la reserva; una reserva sin fila de importes es válida y se lee como «sin importes». Al borrar la reserva hay que borrar la fila en el mismo lote: el hook no admite importes vivos de una reserva en la papelera (§4.2).
 
 Derivado, no guardado: `deposit_status` (C03 §7): `deposit_required` nulo o 0 → `no_aplica`; `deposit_paid` nulo o 0 → `pendiente`; `< required` → `parcial`; `>= required` → `completado`.
 
@@ -449,7 +449,7 @@ El deshacer del núcleo salta este hook (`skipHooks`), por eso lo estructural es
 | Invariante | Error |
 |---|---|
 | Reserva viva en `confirmada`, `en_ejecucion` o `cerrada` ⇒ tiene evento vivo | `EVENT_REQUIRED 422` |
-| Reserva viva ⇔ su fila de `reservation_finance` viva | `FINANCE_REQUIRED 422` |
+| Fila de `reservation_finance` viva ⇒ su reserva está viva | `ORPHAN_FINANCE 422` |
 | Evento vivo ⇒ su reserva está viva | `ORPHAN_EVENT 422` |
 | Huésped, restricción o ítem de checklist vivo ⇒ su evento está vivo | `ORPHAN_CHILD 422` |
 | Restricción con `guest_id` ⇒ huésped vivo y del mismo evento | `GUEST_MISMATCH 422` |
