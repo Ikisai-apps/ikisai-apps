@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { allergensForSubject, eventSnapshot, menuWarnings, normalizeTerm, type FoodEvent, type MenuGraph } from '../../supabase/functions/_domain/food/mod.ts';
+import { day, seedBookingEvent, setFinalGuests } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
-const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 let app: TestApp;
 let counter = 0;
 
@@ -36,32 +36,23 @@ async function currentEvent(id: string) {
   return (await app.call(`/api/v1/events/${id}`)).data.event as FoodEvent;
 }
 
-const event1 = uuid(); const event2 = uuid();
+let event1: string; let event2: string;
+let rev: number; // revisión del evento 1 que ve cocina al empezar
 const curry = uuid(); const pesto = uuid(); const tortilla = uuid();
 const menu = uuid(); const dinner = uuid(); const breakfast = uuid();
 const curryItem = uuid(); const pestoItem = uuid(); const tortillaItem = uuid();
-const stubFields = (title: string) => ({
-  title, start_date: day(10), end_date: day(12), arrival_time: '17:00', departure_time: '12:00', guest_count: 22, guest_count_is_final: true,
-  meal_plan: 'pension_completa', menu_style: 'vegetariano', event_revision: 8, reservation_status: 'confirmada',
-  dietary_restrictions: [{ type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1 }, { type: 'vegano', servings: 2 }, { type: 'preferencia', subject: 'sin picante', servings: 3 }],
-});
+const RESTRICTIONS = [{ type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1 }, { type: 'vegano', servings: 2 }, { type: 'preferencia', subject: 'sin picante', servings: 3 }];
 
 test.before(async () => {
   app = await createTestApp({
     app: 'food', slug: 'food-api', origin: FOOD_ORIGINS[0]!,
     createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }),
   });
-  for (const [id, title] of [[event1, 'Retiro Test'], [event2, 'Retiro vacío']] as const) {
-    const reservation = uuid();
-    await app.t.db.query(
-      `insert into booking.reservations (id, title, status, start_date, end_date, expected_guests, requires_meals, meal_plan_requested)
-       values ($1, $2, 'confirmada', $3, $4, 20, true, 'pension_completa')`, [reservation, title, day(10), day(12)]);
-    await app.t.db.query(`insert into booking.events (id, reservation_id, final_guests) values ($1, $2, 22)`, [id, reservation]);
-  }
+  event1 = await seedBookingEvent(app, { title: 'Retiro Test', start: day(10), end: day(12), restrictions: RESTRICTIONS });
+  event2 = await seedBookingEvent(app, { title: 'Retiro vacío', start: day(10), end: day(12) });
+  rev = (await currentEvent(event1)).event_revision;
   const egg = uuid();
   await ok([
-    insert('food.stub_events', event1, stubFields('Retiro Test')),
-    insert('food.stub_events', event2, stubFields('Retiro vacío')),
     insert('food.ingredients', egg, { name: 'Huevo', preferred_unit: 'unidad' }),
     insert('food.recipes', curry, { name: 'Curry de verduras', category: 'principal', base_servings: 20, diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true, status: 'validada' }),
     insert('food.recipes', pesto, { name: 'Pasta al pesto', category: 'principal', base_servings: 20, diet_tags: ['vegetariano'], allergens: ['gluten', 'frutos_de_cascara', 'lacteos'], allergens_checked: true, status: 'validada' }),
@@ -133,43 +124,43 @@ test('validar · exige aceptar uno a uno los avisos de alergia, dieta y alérgen
 
 test('obsolescencia · el evento cambia: revalidar o reabrir, revisar y validar de nuevo', async () => {
   const before = await currentEvent(event1);
-  const stub = await app.t.db.query<{ revision: number }>(`select revision from food.stub_events where id = $1`, [event1]);
-  await ok([update('food.stub_events', event1, Number(stub.rows[0]!.revision), { guest_count: 25, event_revision: 9 })]);
+  await setFinalGuests(app, event1, 25);
   const after = await currentEvent(event1);
-  assert.equal(after.event_revision, 9);
+  assert.equal(after.event_revision, rev + 1);
+  assert.equal(after.guest_count, 25);
   let current = await row('food.menus', menu);
-  assert.equal(current.source_event_revision, 8); // el menú validado no se toca en silencio
+  assert.equal(current.source_event_revision, rev); // el menú validado no se toca en silencio
 
   // Con la revisión o la foto antiguas no se puede revalidar.
-  const old = await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: 8, event_snapshot: eventSnapshot(before), acknowledged: [] })], 'EVENT_CHANGED');
-  assert.equal(old.details.currentRevision, 9);
+  const old = await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: rev, event_snapshot: eventSnapshot(before), acknowledged: [] })], 'EVENT_CHANGED');
+  assert.equal(old.details.currentRevision, rev + 1);
   assert.equal(old.details.event.guest_count, 25);
-  await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(before), acknowledged: [] })], 'EVENT_CHANGED');
+  await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(before), acknowledged: [] })], 'EVENT_CHANGED');
   // En un menú validado no vale «he revisado los cambios»: hay que revalidar o reabrir.
-  await rejected([call('acknowledge_event', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(after) })], 'MENU_LOCKED');
+  await rejected([call('acknowledge_event', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(after) })], 'MENU_LOCKED');
 
   await ok([call('set_menu_status', { menu_id: menu, expectedRevision: current.revision, status: 'revisar' })]);
   const item = await row('food.menu_items', curryItem);
   await ok([update('food.menu_items', curryItem, item.revision, { servings: 23 })]);
   current = await row('food.menus', menu);
-  await ok([call('acknowledge_event', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(after) })]);
+  await ok([call('acknowledge_event', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(after) })]);
   current = await row('food.menus', menu);
-  assert.equal(current.source_event_revision, 9);
+  assert.equal(current.source_event_revision, rev + 1);
   assert.equal(current.source_event_snapshot.guest_count, 25);
 
-  const probe = await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(after), acknowledged: [] })], 'MENU_WARNINGS_UNACKNOWLEDGED');
-  await ok([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(after), acknowledged: probe.details.warnings.filter((w: any) => w.requiresAck) })]);
+  const probe = await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(after), acknowledged: [] })], 'MENU_WARNINGS_UNACKNOWLEDGED');
+  await ok([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(after), acknowledged: probe.details.warnings.filter((w: any) => w.requiresAck) })]);
   current = await row('food.menus', menu);
   await ok([call('set_menu_status', { menu_id: menu, expectedRevision: current.revision, status: 'cerrado' })]);
   current = await row('food.menus', menu);
-  await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: 9, event_snapshot: eventSnapshot(after), acknowledged: [] })], 'MENU_WARNINGS_UNACKNOWLEDGED');
+  await rejected([call('validate_menu', { menu_id: menu, expectedRevision: current.revision, event_revision: rev + 1, event_snapshot: eventSnapshot(after), acknowledged: [] })], 'MENU_WARNINGS_UNACKNOWLEDGED');
   await ok([call('set_menu_status', { menu_id: menu, expectedRevision: current.revision, status: 'validado' })]);
 });
 
 test('validar · un menú sin platos no se valida; un lote con procedimiento no se deshace', async () => {
   const empty = uuid(); const event = await currentEvent(event2);
-  await ok([insert('food.menus', empty, { event_id: event2, source_event_revision: 8, source_event_snapshot: eventSnapshot(event) })]);
-  await rejected([call('validate_menu', { menu_id: empty, expectedRevision: 1, event_revision: 8, event_snapshot: eventSnapshot(event), acknowledged: [] })], 'MENU_EMPTY');
+  await ok([insert('food.menus', empty, { event_id: event2, source_event_revision: event.event_revision, source_event_snapshot: eventSnapshot(event) })]);
+  await rejected([call('validate_menu', { menu_id: empty, expectedRevision: 1, event_revision: event.event_revision, event_snapshot: eventSnapshot(event), acknowledged: [] })], 'MENU_EMPTY');
   const done = await ok([call('set_menu_status', { menu_id: empty, expectedRevision: 1, status: 'revisar' })]);
   const plan = await app.call(`/api/v1/history/${done.cursor}/undo-plan`, { body: {} });
   assert.equal(plan.status, 409); assert.equal(plan.data.error.code, 'UNDO_UNAVAILABLE');

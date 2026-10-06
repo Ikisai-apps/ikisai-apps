@@ -7,6 +7,7 @@ Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada de forma provisional por
 - `docs/food/API.md`: modelo, procedimientos, hooks, rutas, proyecciones, archivos, pantallas, offline, aceptación F–H y reparto. Aprobado por Core con sus seis decisiones (`API.md` §14.1).
 - Base de backend y catálogo (PR 15): `supabase/functions/_domain/food/` (vocabularios, unidades, validación), migración `20261006_0100_food_catalog.sql` (recetas, ingredientes, maquinaria, reglas de fila y proyecciones para Invoices) y `food-api` sobre `_kit` con la conformidad del núcleo en verde.
 - Menú, primera parte: migración `20261006_0110_food_menus.sql` (`menus` con FK a `booking.events`, `menu_services`, `menu_items`, bloqueo de menú validado o cerrado, receta en uso), rutas `GET events` y `GET events/:id`, y en el dominio la propuesta de servicios, la foto del evento y el cálculo de qué cambió.
+- Eventos por la proyección real de Booking: `food-api` sin camino alternativo y pruebas sembradas en `booking.*` (`tests/food/helpers.ts`).
 - Menú, segunda parte: migración `20261006_0120_food_menu_procedures.sql` con `food.set_menu_status`, `food.acknowledge_event` y `food.validate_menu`, la lectura registrada `food.menu_graph`, y los avisos de restricciones (`menuWarnings`) calculados en el dominio y exigidos por la Edge al validar.
 
 ## Pendiente
@@ -21,6 +22,7 @@ Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada de forma provisional por
 
 ## Notas
 
-- **Eventos mientras Booking no publique su proyección.** `food-api` intenta leer `booking.food_event_projection` y, si Booking aún no la ha registrado para Food, usa la vista de pruebas `food.event_projection_stub` con las mismas columnas. Sus filas (`food.stub_events`, solo escribible por `owner`) describen eventos reales de Booking, porque comparten `id` con `booking.events`; así `menus.event_id` conserva su FK desde el primer día. Cuando Booking registre su vista, el cambio es automático y la tabla de pruebas se retira en otra migración.
+- **Eventos.** `food-api` lee `booking.food_event_projection`, que Booking publicó el 6 de octubre. La vista de pruebas `food.event_projection_stub` y su tabla `food.stub_events` ya no se usan; siguen en el schema, vacías y solo visibles para `owner`, hasta que Core ofrezca cómo dar de baja una tabla registrada (P11).
+- **Incidencia del 6 de octubre.** Al fusionarse la proyección de Booking, 7 de las 37 pruebas de Food quedaron en rojo en `main` porque sembraban la vista de pruebas y `food-api` ya leía la real. El código se comportó como estaba previsto; fallaban las pruebas. Corregido en la misma mañana: ahora siembran reservas, eventos y restricciones en Booking. La CI no lo vio porque no ejecuta `tests/food/` (P9).
 
 Peticiones abiertas: `docs/food/PETICIONES.md`.

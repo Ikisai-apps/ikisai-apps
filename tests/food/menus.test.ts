@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createFoodApp, FOOD_ORIGINS } from '../../supabase/functions/food-api/app.ts';
 import { eventChanges, eventSnapshot, isMenuStale, proposeServices, type FoodEvent } from '../../supabase/functions/_domain/food/mod.ts';
+import { day, seedBookingEvent } from './helpers.ts';
 
 const uuid = () => crypto.randomUUID();
-const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 let app: TestApp;
 let counter = 0;
 
@@ -34,41 +34,33 @@ async function rows(table: string) {
   return snap.data.tables[0].rows as Array<Record<string, any>>;
 }
 
-/** Crea en Booking una reserva confirmada con su evento (datos sintéticos) y devuelve el id del evento. */
-async function bookingEvent(title: string, start: string, end: string): Promise<string> {
-  const reservation = uuid(); const event = uuid();
-  await app.t.db.query(
-    `insert into booking.reservations (id, title, status, start_date, end_date, expected_guests, requires_meals, meal_plan_requested)
-     values ($1, $2, 'confirmada', $3, $4, 20, true, 'pension_completa')`, [reservation, title, start, end]);
-  await app.t.db.query(`insert into booking.events (id, reservation_id, final_guests, arrival_time, departure_time) values ($1, $2, 22, '17:00', '12:00')`, [event, reservation]);
-  return event;
-}
-
-const RESTRICTIONS = [{ type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1 }, { type: 'vegano', servings: 2 }];
+const RESTRICTIONS = [{ type: 'alergia', subject: 'Pistacho', severity: 'grave', servings: 1 }, { type: 'vegano', servings: 1 }, { type: 'vegano', servings: 1 }];
+/** Tal como las publica Booking: agregadas, con el sujeto normalizado y sin identificar a nadie. */
+const PROJECTED = [
+  { type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1, kitchen_notes: null },
+  { type: 'vegano', subject: null, severity: null, servings: 2, kitchen_notes: null },
+];
 let retreat: string; // evento próximo, viernes a domingo
 let past: string;
 let recipe: string;
+let rev: number; // revisión del evento próximo que ve cocina
+let pastRev: number;
 
 test.before(async () => {
   app = await createTestApp({
     app: 'food', slug: 'food-api', origin: FOOD_ORIGINS[0]!,
     createHandler: (config) => createFoodApp({ ...config, origins: [FOOD_ORIGINS[0]!] }),
   });
-  retreat = await bookingEvent('Retiro Test', day(10), day(12));
-  past = await bookingEvent('Retiro antiguo', day(-60), day(-58));
+  retreat = await seedBookingEvent(app, { title: 'Retiro Test', start: day(10), end: day(12), restrictions: RESTRICTIONS });
+  past = await seedBookingEvent(app, { title: 'Retiro antiguo', start: day(-60), end: day(-58) });
+  rev = (await app.call(`/api/v1/events/${retreat}`)).data.event.event_revision;
+  pastRev = (await app.call(`/api/v1/events/${past}`)).data.event.event_revision;
   recipe = uuid();
   await ok([insert('food.recipes', recipe, { name: 'Curry de verduras', category: 'principal', base_servings: 20 })]);
 });
 test.after(async () => { await app.close(); });
 
-test('eventos · la proyección de pruebas la siembra solo el owner y la leen todos los roles', async () => {
-  const stub = (id: string, title: string, start: string, end: string) => insert('food.stub_events', id, {
-    title, start_date: start, end_date: end, arrival_time: '17:00', departure_time: '12:00', guest_count: 22, guest_count_is_final: true,
-    meal_plan: 'pension_completa', menu_style: 'vegetariano', dietary_restrictions: RESTRICTIONS, event_revision: 8, reservation_status: 'confirmada',
-  });
-  assert.equal((await commit([stub(retreat, 'Retiro Test', day(10), day(12))], app.tokens.editor)).status, 403);
-  await ok([stub(retreat, 'Retiro Test', day(10), day(12)), stub(past, 'Retiro antiguo', day(-60), day(-58))]);
-
+test('eventos · Food lee la proyección de Booking con cualquier rol y sin datos de huéspedes', async () => {
   for (const token of [app.tokens.owner, app.tokens.editor, app.tokens.reader]) {
     const upcoming = await app.call('/api/v1/events', { token });
     assert.equal(upcoming.status, 200, JSON.stringify(upcoming.data));
@@ -76,8 +68,10 @@ test('eventos · la proyección de pruebas la siembra solo el owner y la leen to
   }
   const event = (await app.call(`/api/v1/events/${retreat}`)).data.event as FoodEvent;
   assert.equal(event.guest_count, 22);
-  assert.equal(event.event_revision, 8);
-  assert.deepEqual(event.dietary_restrictions, RESTRICTIONS);
+  assert.equal(event.guest_count_is_final, true);
+  assert.equal(event.reservation_status, 'confirmada');
+  assert.ok(event.event_revision >= 1);
+  assert.deepEqual(event.dietary_restrictions, PROJECTED);
   // Ninguna columna de huésped ni de contacto llega a cocina.
   assert.deepEqual(Object.keys(event).sort(), [
     'arrival_time', 'departure_time', 'dietary_restrictions', 'end_date', 'event_code', 'event_id', 'event_revision', 'event_type',
@@ -88,8 +82,6 @@ test('eventos · la proyección de pruebas la siembra solo el owner y la leen to
   assert.equal((await app.call(`/api/v1/events?scope=all&to=${day(-50)}`)).data.events.length, 1);
   assert.equal((await app.call(`/api/v1/events/${uuid()}`)).status, 404);
   assert.equal((await app.call('/api/v1/events?scope=raro')).status, 422);
-  // La tabla de pruebas no entra en el espejo de editores ni lectores.
-  assert.equal((await app.call('/api/v1/snapshot?tables=food.stub_events', { token: app.tokens.editor })).status, 403);
 });
 
 test('dominio · propuesta de servicios, foto del evento y obsolescencia', async () => {
@@ -102,11 +94,11 @@ test('dominio · propuesta de servicios, foto del evento y obsolescencia', async
   assert.equal(proposeServices({ ...event, arrival_time: '11:00', departure_time: '16:00' }).length, 7);
   const snapshot = eventSnapshot(event);
   assert.deepEqual(eventChanges(snapshot, event), []);
-  const changed = { ...event, guest_count: 25, event_revision: 9, dietary_restrictions: [...RESTRICTIONS, { type: 'sin_gluten', servings: 1 }] };
+  const changed = { ...event, guest_count: 25, event_revision: rev + 1, dietary_restrictions: [...PROJECTED, { type: 'sin_gluten', servings: 1 }] };
   assert.deepEqual(eventChanges(snapshot, changed).map((c) => c.field), ['guest_count', 'restrictions']);
   assert.deepEqual(eventChanges(snapshot, changed)[0], { field: 'guest_count', before: 22, after: 25 });
-  assert.equal(isMenuStale({ source_event_revision: 8 }, event), false);
-  assert.equal(isMenuStale({ source_event_revision: 8 }, changed), true);
+  assert.equal(isMenuStale({ source_event_revision: rev }, event), false);
+  assert.equal(isMenuStale({ source_event_revision: rev }, changed), true);
 });
 
 test('menú · se crea desde un evento con su propuesta de servicios y sus platos en un solo lote', async () => {
@@ -120,32 +112,32 @@ test('menú · se crea desde un evento con su propuesta de servicios y sus plato
   ]);
   const saved = (await rows('food.menus')).find((m) => m.id === menu)!;
   assert.equal(saved.status, 'borrador');
-  assert.equal(saved.source_event_revision, 8);
+  assert.equal(saved.source_event_revision, rev);
   assert.equal(saved.source_event_snapshot.guest_count, 22);
   assert.equal((await rows('food.menu_services')).filter((s) => s.menu_id === menu).length, 5);
   assert.equal(Number((await rows('food.menu_items')).find((i) => i.service_id === services[0]!.id)!.servings), 22);
 
   // Un segundo menú para el mismo evento se rechaza con el id del existente.
-  const dup = await rejected([insert('food.menus', uuid(), { event_id: retreat, source_event_revision: 8 })], 'MENU_EXISTS');
+  const dup = await rejected([insert('food.menus', uuid(), { event_id: retreat, source_event_revision: rev })], 'MENU_EXISTS');
   assert.equal(dup.details.menuId, menu);
   // El estado y la revisión del evento no se escriben a mano.
   assert.equal((await rejected([update('food.menus', menu, 1, { status: 'validado' })], 'INVALID_FIELDS')).details.field, 'status');
-  await rejected([update('food.menus', menu, 1, { source_event_revision: 9 })], 'IMMUTABLE_FIELD');
+  await rejected([update('food.menus', menu, 1, { source_event_revision: rev + 1 })], 'IMMUTABLE_FIELD');
   await ok([update('food.menus', menu, 1, { notes: 'Grupo madrugador' })]);
 });
 
 test('menú · no nace contra un evento desconocido ni contra una revisión futura', async () => {
   await rejected([insert('food.menus', uuid(), { event_id: uuid(), source_event_revision: 1 })], 'EVENT_NOT_FOUND');
-  const error = await rejected([insert('food.menus', uuid(), { event_id: past, source_event_revision: 9 })], 'INVALID_FIELDS');
+  const error = await rejected([insert('food.menus', uuid(), { event_id: past, source_event_revision: pastRev + 1 })], 'INVALID_FIELDS');
   assert.equal(error.details.field, 'source_event_revision');
-  assert.equal(error.details.currentRevision, 8);
+  assert.equal(error.details.currentRevision, pastRev);
   assert.equal((await rejected([insert('food.menus', uuid(), { event_id: past })], 'INVALID_FIELDS')).details.field, 'source_event_revision');
 });
 
 test('menú · servicios y platos: padres inmutables, nada bajo un padre borrado, receta en uso', async () => {
   const menu = uuid(); const dinner = uuid(); const lunch = uuid(); const item = uuid(); const gone = uuid();
   await ok([
-    insert('food.menus', menu, { event_id: past, source_event_revision: 8 }),
+    insert('food.menus', menu, { event_id: past, source_event_revision: pastRev }),
     insert('food.menu_services', dinner, { menu_id: menu, service_date: day(-60), service_type: 'cena', service_time: '20:30' }),
     insert('food.menu_services', lunch, { menu_id: menu, service_date: day(-59), service_type: 'comida' }),
     insert('food.menu_items', item, { service_id: dinner, recipe_id: recipe, servings: 18 }),
@@ -163,7 +155,7 @@ test('menú · servicios y platos: padres inmutables, nada bajo un padre borrado
   assert.equal((await rejected([insert('food.menu_items', uuid(), { service_id: dinner, recipe_id: recipe, servings: 4 })], 'PARENT_DELETED')).details.parent, 'menu_services');
   // Un menú en borrador sí se puede borrar, y el evento queda libre para otro.
   await ok([remove('food.menu_services', lunch, 1), remove('food.menus', menu, 1)]);
-  await ok([insert('food.menus', uuid(), { event_id: past, source_event_revision: 8 })]);
+  await ok([insert('food.menus', uuid(), { event_id: past, source_event_revision: pastRev })]);
 });
 
 test('menú · validado o cerrado: ni servicios ni platos ni borrado; las notas siguen editables', async () => {
