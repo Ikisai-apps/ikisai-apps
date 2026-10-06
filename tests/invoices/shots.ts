@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi } from './fake-api.ts';
+import { freePort } from './free-port.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/invoices/vite.config.ts');
@@ -31,7 +32,7 @@ async function main() {
   ] });
   process.env.VITE_API_PROXY = api.url;
   await build({ configFile, logLevel: 'silent' });
-  const server = await preview({ configFile, logLevel: 'silent', preview: { port: 4700 + Math.floor(Math.random() * 200), host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } } });
+  const server = await preview({ configFile, logLevel: 'silent', preview: { port: await freePort(), strictPort: true, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } } });
   const baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? '';
   const browser = await chromium.launch({ headless: true, executablePath: executable() });
 

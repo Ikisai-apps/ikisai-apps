@@ -41,9 +41,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #105 (tanda 8) fusionada.
 - Tanda 9 (`invoices/tanda9`): unidad normalizada en `invoices.food_stock_projection` para Food (`unit_normalized` kg/l/ud y `quantity_normalized`; migración 0203).
 
+- PR #110 (tanda 9) fusionada.
+- Tanda 10 (`invoices/tanda10`): herramientas MCP de dominio (`invoices_import_json`, `invoices_purchases`, `invoices_fiscal_summary`; `API.md` §6.6) y puerto libre pedido al sistema en los arneses de Playwright (`tests/invoices/free-port.ts`, receta de Booking).
+
 ## En curso
 
-- PR de la tanda 9 (`invoices/tanda9`).
+- PR de la tanda 10 (`invoices/tanda10`).
 
 ## Pendiente
 
