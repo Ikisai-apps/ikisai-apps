@@ -487,6 +487,88 @@ El usuario no quiere pagar APIs de IA. La extracción automática por API (`impo
 - **PDF sin texto** (escaneado o foto): se dice y se remite a «Analizar con IA». La fase 4 lo cubrirá con OCR. Un PDF que no se puede abrir (dañado o protegido) recibe el mismo trato.
 - **Duplicado blando** (`softDuplicate`): misma fecha y mismo total (y mismo proveedor si se conoce) que otra factura no anulada. Da un aviso «Posible duplicado» sin bloquear, además del duplicado por proveedor y número de siempre.
 
+### 6.9 Plantillas por proveedor aprendidas de confirmaciones (ronda 29, fase 3 · PROPUESTA para revisión de Core)
+
+**Objetivo.** Que la segunda, tercera… factura de un mismo proveedor se lea mejor que la primera, sin IA. Se aprende **solo de facturas confirmadas**: el momento de confirmar es `invoices.validate`. Nunca se aprende de una importación sin revisar ni de la propuesta de la propia plantilla.
+
+#### Tablas (migración `0207`, schema `invoices`)
+
+**`invoices.supplier_templates`**: sincronizable y copiada al dispositivo, porque «Leer PDF» funciona en el navegador y sin red. `never_purge = false`: una plantilla se retira, no se borra.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `supplier_id` | `uuid not null` → `suppliers` | Varias plantillas por proveedor. |
+| `version` | `int not null` | `unique (supplier_id, version)`. Una versión nueva cuando cambia el formato, nunca se sobrescribe. |
+| `status` | `text not null` | `aprendiendo` (menos de 2 confirmaciones), `activa` o `retirada` (la retira el owner, o se retira sola si falla de forma repetida; ver reglas). |
+| `layout_tokens` | `text[] not null` | **Huella del formato**: palabras sin cifras de las 40 primeras líneas de la página 1, normalizadas (minúsculas, sin tildes) y sin repetir. Se compara por similitud (Jaccard), no por igualdad. |
+| `layout_hash` | `text not null` | sha256 de `layout_tokens` ordenados, para detectar la misma huella rápido. |
+| `page_size` | `jsonb null` | `{w, h}` de la página 1. |
+| `fields` | `jsonb not null` | Una regla por campo (`invoice_number`, `invoice_date`, `supplier_tax_id`, `base`, `vat:<tipo>`, `withholding` y `total`): `{anchor: {text, variants[]}, relation, dx, dy, page, kind, pattern, hits, misses, last_hit_at}`. |
+| `confirmations` | `int not null default 0` | Facturas confirmadas que la respaldan. |
+| `uses` · `full_hits` | `int not null default 0` | Veces usada y veces en que todos sus campos coincidieron con lo confirmado. |
+| `last_confirmed_invoice_id` | `uuid null` | Para trazar de dónde salió la última evidencia. |
+
+Detalle de cada regla de `fields`:
+- **`relation`:** `same_line_right` (el valor a la derecha de la etiqueta, en la misma línea), `below` (debajo, en la línea siguiente) o `column` (alineado bajo una cabecera de columna).
+- **`dx` y `dy`:** desplazamiento aproximado del valor respecto a la etiqueta.
+- **`kind`:** `date`, `money`, `rate`, `tax_id` o `text`.
+- **`pattern`:** forma esperada del valor, por ejemplo `^A-\d{4}/\d{4}$` para el número, generalizada de los ejemplos confirmados (cifras por `\d`, longitudes fijas).
+
+**`invoices.document_texts`** (opcional, para revisar): el texto con posiciones ya leído de un documento (`file_id` único, `source` `pdf_text` u `ocr`, `items jsonb`, `char_count`). Ventajas:
+- Al confirmar no hay que volver a leer el PDF.
+- La fase 4 (OCR en la Edge) deja aquí su resultado y los mismos extractores lo usan.
+
+No se copia al dispositivo (como `extractions`). Se lee por `read`. Contiene el contenido de la factura, como el propio PDF. Si Core prefiere no guardarlo, el cliente vuelve a leer el PDF al confirmar.
+
+#### Cómo se usa una plantilla
+
+1. «Leer PDF» obtiene el texto y el extractor genérico (§6.8) identifica el NIF del proveedor.
+2. Busca las plantillas del proveedor que no estén retiradas y elige la de huella más parecida, con un umbral de Jaccard de 0,6 o más.
+3. Para cada regla localiza la etiqueta (`anchor` o una de sus variantes) y toma el valor en la posición indicada. Si cumple `kind` y `pattern`, se propone con procedencia `supplier_template` («plantilla v2, 5 facturas»). Si no, ese campo cae a la regla genérica.
+4. **Confianza:** con estado `aprendiendo` se limita a 0,5 y se etiqueta «aprendiendo». Con `activa` es `min(0,95; 0,6 + 0,07 · confirmaciones) × hits / (hits + misses)` de esa regla.
+5. Sin plantilla parecida (huella por debajo de 0,6), se usa solo el extractor genérico. La confirmación creará una versión nueva.
+
+#### Cómo se aprende (al confirmar)
+
+En el mismo lote que `call invoices.validate`, el cliente añade la operación sobre `supplier_templates`. La Edge **rechaza cualquier escritura en `supplier_templates` que no venga en un lote con `invoices.validate` de una factura de ese proveedor** (`TEMPLATE_REQUIRES_CONFIRMATION`). La excepción es retirar una plantilla, que hace el owner.
+
+- **Primera confirmación sin plantilla parecida.**
+  - Para cada valor confirmado (número, fecha, NIF, base, cuotas por tipo, retención y total), el cliente lo busca en el texto en sus formas posibles: `06/10/2026`, `6-10-26` o `6 de octubre de 2026`; `1.234,56` o `1234.56`.
+  - Si aparece una sola vez, registra como ancla la etiqueta más cercana a su izquierda en la misma línea, o encima, y la relación.
+  - Si aparece varias veces o ninguna, ese campo no se aprende.
+  - Resultado: versión nueva en estado `aprendiendo`, con `confirmations = 1`.
+- **Confirmación con plantilla parecida** (no retirada):
+  - Por regla: si lo propuesto coincide con lo confirmado, `hits + 1`. Si no coincide, `misses + 1` y **no se cambia el ancla** por una sola factura anómala.
+  - Si el valor está en otra posición, se añade la etiqueta nueva a `variants`.
+  - Las reglas que faltaban se aprenden como en el primer caso.
+  - `confirmations + 1` y `uses + 1`. Si todo coincidió, `full_hits + 1`. Con `confirmations ≥ 2` pasa a `activa`.
+- **Cambio de formato:** si la huella está por debajo de 0,6 respecto a todas las versiones, se crea una **versión nueva** y la anterior se conserva. Si una regla acumula 3 fallos seguidos con huella parecida, esa regla se marca `retirada` dentro de `fields` y se aprende de nuevo a partir de la siguiente confirmación.
+- **Lo que no se aprende:** importaciones sin validar, facturas validadas sin documento con texto, campos corregidos a mano que no aparecen en el texto, y lotes de agentes. Validar ya exige aprobación a un agente (§4.4), y la plantilla se escribe en ese mismo lote aprobado.
+
+#### Pantallas
+
+- **Importación:** los campos de plantilla muestran «plantilla v2 · 5 facturas» junto a la confianza. Los que caen a la regla genérica conservan «texto del PDF».
+- **Ficha del proveedor:** bloque «Plantillas» con versión, estado, confirmaciones, aciertos completos, última vez usada, botón «Retirar» (owner) y un resumen de qué campos lee.
+
+#### Pruebas previstas (sin servicios externos)
+
+- **Dominio:**
+  - Huella y similitud. Aprender de una confirmación: anclas y patrón. Uso con confianza según el estado.
+  - Una factura anómala no rompe la plantilla. Dos formatos del mismo proveedor dan dos versiones.
+  - Proveedor desconocido: solo reglas genéricas.
+- **SQL:** se rechaza una plantilla sin `validate` en el lote; unicidad de versión.
+- **Playwright** (PDF con texto generados en la prueba):
+  - Primera factura de un proveedor: genérico y validar, con lo que se crea la plantilla en `aprendiendo`.
+  - Segunda factura: validar, y la plantilla pasa a `activa`.
+  - Tercera factura con otro formato de número que el genérico no lee: la plantilla lo lee con procedencia de plantilla.
+  - Otro formato del mismo proveedor: versión nueva.
+
+#### Preguntas para Core
+
+1. ¿Guardamos `invoices.document_texts` en servidor? Es útil para la fase 4 y evita volver a leer el PDF al confirmar. ¿O el cliente vuelve a leer el PDF al confirmar?
+2. ¿Te parece bien la regla de la Edge que liga escribir plantillas a `invoices.validate` en el mismo lote?
+3. ¿Se aprenden también las plantillas de las **emitidas**, con la misma tabla y `kind` por tipo de documento? Mi propuesta: no por ahora.
+
 ### 6.6 MCP (contrato §3.2)
 
 `POST /api/v1/mcp` ofrece las herramientas genéricas del núcleo (`invoices_snapshot`, `invoices_commit`, `invoices_prepare_batch`…) y tres de dominio (`invoicesMcpTools` en `invoices-api/app.ts`). Todas pasan por el mismo camino que la API: hooks, riesgo de agente (§4.4) y propuestas.
