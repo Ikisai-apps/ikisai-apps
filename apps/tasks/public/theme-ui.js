@@ -21,5 +21,3 @@ bind=function(){bindBeforeTheme();document.querySelectorAll('#themeToggle').forE
 // Sin conexión, el primer pintado desde IndexedDB puede adelantarse a la carga de estos módulos: al terminar de cargar, se repinta una vez.
 if(document.getElementById('app')?.childElementCount&&typeof render==='function')setTimeout(()=>{try{render()}catch(e){}},0);
 // Un re-render por sincronización no debe cerrar el menú que el usuario tiene abierto.
-const renderBeforeTheme=render;
-render=function(){const open=document.getElementById('kebab')?.classList.contains('show');const result=renderBeforeTheme();if(open){document.getElementById('kebab')?.classList.add('show');document.getElementById('menuBackdrop')?.classList.add('show');document.getElementById('moreBtn')?.setAttribute('aria-expanded','true')}return result};

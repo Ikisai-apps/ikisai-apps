@@ -44,7 +44,8 @@ handleTopAction=function(action){closeNavigation();if(action==='areas')return ar
 const bindBeforeNavigation=bind;
 bind=function(){bindBeforeNavigation();
   const more=document.getElementById('moreBtn');if(more)more.onclick=()=>{const open=document.getElementById('kebab').classList.toggle('show');document.getElementById('menuBackdrop').classList.toggle('show',open);more.setAttribute('aria-expanded',String(open));if(open)document.getElementById('closeMenu')?.focus()};
-  document.getElementById('closeMenu')?.addEventListener('click',()=>{closeNavigation();more?.focus()});document.getElementById('menuBackdrop')?.addEventListener('click',closeNavigation);
+  // La cáscara se conserva entre pintados: onclick (no addEventListener) para no acumular manejadores.
+  const closeMenu=document.getElementById('closeMenu');if(closeMenu)closeMenu.onclick=()=>{closeNavigation();more?.focus()};const backdrop=document.getElementById('menuBackdrop');if(backdrop)backdrop.onclick=closeNavigation;
   document.querySelectorAll('[data-menu-group]').forEach(d=>d.ontoggle=()=>{if(!d.isConnected)return;d.open?expandedMenuGroups.add(d.dataset.menuGroup):expandedMenuGroups.delete(d.dataset.menuGroup)});
   document.querySelectorAll('[data-menu-view]').forEach(b=>b.onclick=()=>navigateView(b.dataset.menuView));
   document.querySelectorAll('[data-edit-label]').forEach(b=>{b.disabled=!canManageCatalog();b.onclick=()=>openLabelEditor(label(b.dataset.editLabel).family,b.dataset.editLabel)});

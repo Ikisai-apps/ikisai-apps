@@ -39,7 +39,7 @@ ui=function(){return {...uiBeforeScope(),taskScope:state.taskScope||'area'}};
 const bindBeforeScope=bind;
 bind=function(){bindBeforeScope();
   const selector=document.getElementById('taskScope');if(selector)selector.onchange=()=>{if(selector.value==='*')state.taskScope='all';else{state.taskScope='area';state.activeTab=selector.value}state.currentProject=null;persistUI();render()};
-  document.querySelector('[data-general-area]')?.addEventListener('click',enterGeneral);
+  const general=document.querySelector('[data-general-area]');if(general)general.onclick=enterGeneral;
   // Una acción dentro del bloque de otra área la convierte en área activa antes de ejecutarse.
   document.querySelectorAll('[data-area-block]').forEach(block=>{const id=block.dataset.areaBlock,enter=()=>{if(state.activeTab!==id)state.activeTab=id};block.addEventListener('pointerdown',enter,true);block.addEventListener('click',enter,true)});
   document.querySelectorAll('[data-tab]').forEach(b=>{const previous=b.onclick;b.onclick=e=>{state.taskScope='area';previous?.(e)}});

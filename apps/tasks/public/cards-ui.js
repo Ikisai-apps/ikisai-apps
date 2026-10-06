@@ -57,7 +57,7 @@ render=function(){const result=renderBeforeCards();mountInlineProject();mountInl
 const bindBeforeCards=bind;
 bind=function(){bindBeforeCards();
   document.querySelectorAll('[data-project-pin]').forEach(b=>{b.disabled=!canEdit();b.onclick=()=>pinProject(b.dataset.projectPin)});
-  document.querySelector('[data-areas-tool]')?.addEventListener('click',()=>areasSheet());
+  const areasTool=document.querySelector('[data-areas-tool]');if(areasTool)areasTool.onclick=()=>areasSheet();
   document.querySelectorAll('[data-add-project]').forEach(b=>b.onclick=()=>startInlineProject(b.dataset.addProject));
   const fab=document.getElementById('fab');if(fab&&state.view==='projects'&&state.taskScope!=='all'){if(tab().restricted)fab.disabled=true;else fab.onclick=()=>startInlineProject()}
   const title=document.querySelector('.project-detail-head .title');if(title&&state.view==='project'&&canEdit()&&!inlineTitle){title.classList.add('editable');title.title='Pulsa para cambiar el nombre';title.onclick=()=>{const p=project();if(!p)return;inlineTitle={id:p.id,value:p.title,baseline:p.title};render()}}
