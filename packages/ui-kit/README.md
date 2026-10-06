@@ -64,6 +64,9 @@ Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación ac
 - Hoja y diálogo: `.sheetback.show > .sheet` con `.sheet-head`, `.sheet-body`, `.sheet-foot`, `.handle`; `.dialogback > .dialog`.
 - Conflictos y rechazados: `.conflict` (`.rejected`, `.busy`), `tr.overlap`, `.choices`, `label.pick`.
 - Tema y paleta: `.segmented` (`.themeselect`), `.themetoggle`, `.palette-back > .palette` con `.palette-input`, `.palette-list`, `.palette-item`, `.palette-group`, `.palette-foot`.
+- Calendario: `.calendar[data-view]`, `.cal-head`, `.cal-grid`, `.cal-week`, `.cal-day` (`.today`, `.outside`, `.has`), `.cal-event` (`.starts`, `.ends`, `--event-color`), `.cal-more`.
+- Cantidad: `.qtyfield`, `.qty` (`.with-unit`, `.with-select`), `.qty-input`, `.qty-unit`, `.qty-step`.
+- Imagen: `.imagepick`, `.imagepreview`.
 
 Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
 
@@ -76,8 +79,8 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `el(tag, attrs, ...children)`, `append`, `clear`, `replace`, `formatDate`, `plural`: DOM sin plantillas de texto.
 - `icon(name, size)`: SVG de trazo que hereda `currentColor`; `registerIcons({...})` añade los de la app.
 - `createStatusBar({ client | status, onSync, onClick, describeError })` → `{ element, update, destroy }`. Cumple el contrato §6.4: red, cambios pendientes (`pendingCommands + pendingBlobs`), conflictos; «Todo sincronizado» solo con red y cola vacía. `statusBanners(status, { onResolveConflicts, onRetry, updateApply, hideConflicts })` devuelve los banners derivados.
-- `renderLogin(root, { appName, tagline, onLogin, describeError, footnote })` → función de limpieza. Ids estables: `#email`, `#password`, `#loginSubmit`, `#loginError`, `#loginTitle`.
-- `createAppShell(root, { appName, subtitle, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
+- `renderLogin(root, { appName, tagline, onLogin, describeError, footnote, markIcon })` → función de limpieza. Ids estables: `#email`, `#password`, `#loginSubmit`, `#loginError`, `#loginTitle`.
+- `createAppShell(root, { appName, subtitle, markIcon, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
 - `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`.
 - `applyTheme()`, `setTheme()`, `toggleTheme()`, `effectiveTheme()`, `applyAccent(color|null)`, `itemColorStyle(color)`, `inkOn(color)`.
 - `openSheet({ title, body, foot, meta, footHidden, beforeClose, onClose, initialFocus })` → `{ panel, body, foot, close(force), setFootHidden, setTitle, isOpen }`; `closeSheet()`, `currentSheet()`. Una sola hoja; foco atrapado; Escape y fondo cierran; `beforeClose` puede devolver `false` (o una promesa) para retener la hoja con cambios sin guardar. Un botón de «Guardar» en el pie se enlaza al formulario con el atributo `form`.
@@ -88,6 +91,9 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `createThemeToggle()` (botón sol/luna para `tools` de la cabecera) y `createThemeSelect()` (Sistema / Claro / Oscuro).
 - `createCommandPalette({ items(query), placeholder, hotkey, limit, hiddenWhenEmpty })` → `{ open, close, toggle, isOpen, destroy }`. Ctrl K / Cmd K; `items` devuelve `{ group, text, sub, color, hint, keywords, run }`.
 - Foco: `trapFocus(event, root)`, `focusFirst(root)`, `focusables(root)`, `lockScroll()`.
+- `compressImage(file, { maxSide: 1600, thumbSide: 480, quality, thumbQuality, mime })` → `{ full, thumb, width, height, thumbWidth, thumbHeight, originalWidth, originalHeight, mime, filename }`. WebP de calidad media (JPEG si el navegador no codifica WebP), orientación EXIF respetada, nunca amplía. Lo que se sube a `client.stageBlob` es `full` (y `thumb` si la app guarda miniaturas); el original no se conserva (contrato §11.3). `isImageFile(file)`, `supportsWebp()`, `compressedFilename(nombre, mime)`.
+- `createCalendar({ events(range), view, date, onSelectDay, onSelectEvent, onRangeChange, weekStartsOn, viewSwitch, maxPerDay })` → `{ element, setView, setDate, getRange, refresh, destroy }`. Días completos (`YYYY-MM-DD`), eventos multidía con `start`/`end` incluidos, `color`, `badge` («[PRE]») y `status` (`data-status`). Teclado: flechas, Inicio (hoy), AvPág/RePág, Enter. Utilidades: `toDayKey`, `fromDayKey`, `addDays`, `startOfWeek`, `startOfMonth`, `daysBetween`, `todayKey`.
+- `createQuantityField({ label, name, value, unit | units, decimals, fixedDecimals, min, max, step, hint, required, onChange })` → `{ element, input, select, get(), set(), setError(), parse() }`. Acepta «1.250,5», «1250.5» y «1 250,5»; con `step` hay botones y flechas; `fixedDecimals` muestra siempre los decimales (importes). `parseQuantity(texto)` y `formatQuantity(valor, decimales, locale, fijo)`.
 
 ### Barra de estado y sync-client 0.2
 
@@ -101,7 +107,7 @@ npm -w @ikisai/ui-kit run typecheck
 npm -w @ikisai/ui-kit run test:e2e   # Playwright sobre la demo, 390 px y 1440 px
 ```
 
-La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los siete estados de sincronización con sus banners, el login y el shell, la hoja y el diálogo, conflictos y rechazados, la lista con estado, el selector de tema y la paleta.
+La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los siete estados de sincronización con sus banners, el login y el shell, la hoja y el diálogo, conflictos y rechazados, la lista con estado, el selector de tema y la paleta, la recompresión de fotos, el calendario y el campo de cantidad.
 
 ## Qué sigue
 

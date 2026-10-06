@@ -3,7 +3,12 @@ import '../src/styles/ui-kit.css';
 import './demo.css';
 import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
 import {
+  addDays,
   alertDialog,
+  compressImage,
+  createCalendar,
+  createQuantityField,
+  todayKey,
   applyAccent,
   applyTheme,
   confirmDialog,
@@ -272,14 +277,84 @@ const themeAndPalette = section('theme', 'Tema y paleta de comandos', 'Botón so
   el('div', { class: 'demo-row' }, createThemeToggle(), createThemeSelect(), el('button', { class: 'ghost small', type: 'button', id: 'openPalette', onclick: () => palette.open() }, icon('search', 16), 'Abrir paleta', el('kbd', { class: 'phint' }, 'Ctrl K'))),
 );
 
+
+// --- Imágenes: recompresión en cliente --------------------------------------------
+const imagePreview = el('div', { class: 'imagepreview', id: 'imagePreview' });
+const imageInfo = el('p', { class: 'small muted', id: 'imageInfo' }, 'Elige una foto o genera una de prueba.');
+async function showCompressed(file: Blob): Promise<void> {
+  imageInfo.textContent = 'Recomprimiendo…';
+  try {
+    const out = await compressImage(file, { maxSide: 1600, thumbSide: 480 });
+    const full = el('img', { class: 'full', alt: 'Imagen recomprimida', src: URL.createObjectURL(out.full) });
+    const thumb = out.thumb ? el('img', { class: 'thumb', alt: 'Miniatura', src: URL.createObjectURL(out.thumb) }) : null;
+    replace(imagePreview,
+      el('figure', null, full, el('figcaption', null, `Principal ${out.width}×${out.height} · ${Math.round(out.full.size / 1024)} KB`)),
+      thumb ? el('figure', null, thumb, el('figcaption', null, `Miniatura ${out.thumbWidth}×${out.thumbHeight} · ${Math.round((out.thumb?.size ?? 0) / 1024)} KB`)) : null,
+    );
+    imageInfo.textContent = `Original ${out.originalWidth}×${out.originalHeight} (${Math.round(file.size / 1024)} KB) → ${out.mime}`;
+    Object.assign(imageInfo.dataset, { width: String(out.width), height: String(out.height), thumbWidth: String(out.thumbWidth), thumbHeight: String(out.thumbHeight), mime: out.mime, fullSize: String(out.full.size), thumbSize: String(out.thumb?.size ?? 0), originalSize: String(file.size) });
+  } catch (error) {
+    imageInfo.textContent = (error as Error).message;
+  }
+}
+async function sampleImage(): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 3200; canvas.height = 2400;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 3200, 2400); g.addColorStop(0, '#3f6d8e'); g.addColorStop(1, '#c4712f');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 3200, 2400);
+  for (let i = 0; i < 400; i += 1) { ctx.fillStyle = `hsl(${(i * 37) % 360} 60% 60%)`; ctx.beginPath(); ctx.arc((i * 353) % 3200, (i * 211) % 2400, 20 + (i % 90), 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#fff'; ctx.font = '160px Inter'; ctx.fillText('Ikisai', 200, 400);
+  return new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+}
+const fileInput = el('input', { type: 'file', accept: 'image/*', id: 'imageFile', 'aria-label': 'Elegir una foto', onchange: () => { const f = fileInput.files?.[0]; if (f) void showCompressed(f); } });
+const images = section('images', 'Fotos recomprimidas', 'compressImage: lado mayor 1600 px en WebP de calidad media y miniatura de 480 px, sin conservar el original (contrato §11.3). Para recetas, firmas y justificantes.',
+  el('div', { class: 'imagepick' },
+    fileInput,
+    el('div', { class: 'demo-row' }, el('button', { class: 'ghost small', type: 'button', id: 'sampleImage', onclick: async () => showCompressed(await sampleImage()) }, icon('image', 16), 'Generar imagen de prueba (3200×2400)'), imageInfo),
+    imagePreview,
+  ),
+);
+
+// --- Calendario ------------------------------------------------------------------
+const t0 = todayKey();
+const demoEvents = [
+  { id: 'r1', title: 'Familia Ortega', start: addDays(t0, -2), end: addDays(t0, 2), color: '#4f7a3a', status: 'confirmada' },
+  { id: 'r2', title: 'Retiro de yoga', start: addDays(t0, 4), end: addDays(t0, 9), color: '#3a6ea5', status: 'en_ejecucion', badge: '[PRE]' },
+  { id: 'r3', title: 'Pareja Martín', start: addDays(t0, 1), end: addDays(t0, 1), color: '#c9a227', status: 'pre_reservada' },
+  { id: 'r4', title: 'Colegio Sierra', start: addDays(t0, 12), end: addDays(t0, 14) },
+  { id: 'r5', title: 'Visita técnica', start: t0, end: t0, color: '#8a8a8a' },
+  { id: 'r6', title: 'Mantenimiento piscina', start: t0, end: t0, color: '#8a8a8a' },
+];
+const calendar = createCalendar({
+  events: () => demoEvents,
+  onSelectDay: (day, events) => toast(`${day}: ${events.length} evento(s)`),
+  onSelectEvent: (event) => toast(`Abrir ${event.title}`),
+});
+const calendars = section('calendar', 'Calendario', 'Mes y semana de días completos, sin librerías y con teclado: flechas, Inicio (hoy), AvPág/RePág (mes o semana), Enter (seleccionar día). Las barras toman el color del estado.',
+  el('div', { id: 'calendarHost' }, calendar.element),
+);
+
+// --- Cantidad con unidad --------------------------------------------------------------
+const qtyOut = el('code', { id: 'qtyOut' }, '—');
+const qtyWeight = createQuantityField({ label: 'Cantidad', name: 'amount', value: 250, unit: 'g', units: [{ value: 'g', label: 'g' }, { value: 'kg', label: 'kg' }, { value: 'ud', label: 'ud' }, { value: 'l', label: 'l' }], step: 50, min: 0, decimals: 1, hint: 'Decimales con coma; + y − suman 50.', onChange: (v) => { qtyOut.textContent = JSON.stringify(v); } });
+const qtyMoney = createQuantityField({ label: 'Importe', name: 'total', value: 1234.5, unit: '€', decimals: 2, fixedDecimals: true, min: 0, required: true, onChange: (v) => { qtyOut.textContent = JSON.stringify(v); } });
+const qtyCount = createQuantityField({ label: 'Comensales', name: 'guests', value: 12, unit: 'personas', decimals: 0, min: 1, max: 60, step: 1 });
+const quantities = section('quantity', 'Cantidad con unidad', 'Para Food (ingredientes, raciones) e Invoices (importes): número a la española, unidad fija o seleccionable, botones de paso y validación de mínimo, máximo y decimales.',
+  el('div', { class: 'demo-form' }, qtyWeight.element, qtyMoney.element, qtyCount.element, el('p', { class: 'small muted' }, 'Último cambio: ', qtyOut)),
+);
+
+// Para las pruebas automáticas.
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
+
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.2.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.3.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities),
 );

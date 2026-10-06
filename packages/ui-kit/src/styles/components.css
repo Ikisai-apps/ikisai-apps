@@ -233,6 +233,67 @@
 .sheet-body .formerror{margin-top:8px}
 .palette-item .pdot{background:var(--pcolor,transparent)}
 
+/* ---------- Calendario ---------- */
+.calendar{display:grid;gap:10px;min-width:0}
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.cal-nav{display:flex;align-items:center;gap:4px;min-width:0}
+.cal-title{font-size:19px;margin:0 6px;min-width:0;white-space:nowrap}
+.cal-tools{display:flex;align-items:center;gap:8px}
+.cal-grid{display:grid;gap:4px;background:var(--paper);border:1px solid var(--edge);border-radius:var(--radius-md);padding:8px;box-shadow:var(--shadow-1)}
+.calendar.loading .cal-grid{opacity:.6}
+.cal-weekdays,.cal-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-weekdays span{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;padding:4px 0}
+.cal-day{position:relative;min-height:64px;padding:4px;border-radius:10px;background:transparent;display:flex;flex-direction:column;gap:3px;cursor:pointer;outline-offset:-2px;min-width:0}
+.cal-day:hover{background:var(--hover)}
+.cal-day.outside{opacity:.45}
+.cal-day.today .cal-num{background:var(--accent);color:var(--accent-ink)}
+.cal-day[aria-selected="true"]{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--accent) 45%,transparent)}
+.cal-num{align-self:flex-start;min-width:22px;height:22px;padding:0 6px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.cal-events{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cal-event{--event-color:var(--accent);border:0;background:color-mix(in srgb,var(--event-color) 18%,var(--paper));color:color-mix(in srgb,var(--event-color) 70%,var(--ink));border-left:3px solid var(--event-color);font:inherit;font-size:11px;font-weight:700;text-align:left;padding:2px 5px;border-radius:4px;min-height:20px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;margin:0 -4px;border-radius:0}
+.cal-event.starts{margin-left:0;border-radius:4px 0 0 4px}
+.cal-event.ends{margin-right:0;border-radius:0 4px 4px 0}
+.cal-event.starts.ends{border-radius:4px}
+.cal-event:not(.starts){border-left-color:transparent}
+.cal-event:hover{filter:brightness(.97)}
+.cal-event-text{display:block;overflow:hidden;text-overflow:ellipsis}
+.cal-more{font-size:10.5px;font-weight:700;color:var(--muted);padding-left:4px}
+.calendar[data-view="week"] .cal-day{min-height:160px}
+.calendar[data-view="week"] .cal-event{white-space:normal;line-height:1.3;padding:4px 6px;border-radius:6px;margin:0}
+.calendar[data-view="week"] .cal-event:not(.starts){border-left-color:var(--event-color)}
+@media(max-width:639px){
+  .cal-day{min-height:52px;padding:3px 2px}
+  .cal-num{min-width:20px;height:20px;font-size:11px;padding:0 4px}
+  .calendar[data-view="month"] .cal-event{height:6px;min-height:0;padding:0;border-left:0;border-radius:3px;margin:0;background:var(--event-color)}
+  .calendar[data-view="month"] .cal-event-text{display:none}
+  .calendar[data-view="week"] .cal-week{grid-template-columns:1fr}
+  .calendar[data-view="week"] .cal-day{min-height:0;flex-direction:row;align-items:flex-start;gap:10px;padding:8px 6px;border-bottom:1px solid var(--edge);border-radius:0}
+  .calendar[data-view="week"] .cal-num{min-width:64px;justify-content:start}
+  .calendar[data-view="week"] .cal-events{flex:1}
+}
+
+/* ---------- Campo de cantidad ---------- */
+.qtyfield>label{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+.qty{display:flex;align-items:stretch;gap:6px}
+.qty-input{flex:1;min-width:0;display:flex;align-items:center;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);box-shadow:var(--shadow-1);min-height:var(--tap)}
+.qty-input:focus-within{border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.qty-input input{flex:1;min-width:0;width:100%;text-align:right;font-variant-numeric:tabular-nums;border:0!important;background:transparent!important;box-shadow:none!important;min-height:calc(var(--tap) - 2px)}
+.qty-input input:focus{outline:none;box-shadow:none}
+.qty-unit{flex:none;padding:0 12px 0 6px;font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+.qty select{width:auto;flex:0 0 auto;min-width:84px}
+.qty-step{align-self:center;flex:none;border:1px solid var(--line);background:var(--paper)}
+.qtyfield.invalid .qty-input{border-color:var(--alert)}
+
+/* ---------- Imagen recomprimida ---------- */
+.imagepick{display:grid;gap:10px}
+.imagepick input[type="file"]{width:100%;padding:10px;border:1px dashed var(--line);border-radius:var(--radius-sm);background:var(--paper-2);color:var(--muted);font-size:13px}
+.imagepick input[type="file"]::file-selector-button{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:7px 11px;font:inherit;font-size:13px;font-weight:700;color:var(--accent-deep);margin-right:10px;cursor:pointer}
+.imagepreview{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.imagepreview img{border-radius:var(--radius-sm);border:1px solid var(--edge);background:var(--paper-2);max-width:100%;height:auto}
+.imagepreview .thumb{width:120px}
+.imagepreview .full{width:min(100%,360px)}
+.imagepreview figcaption{font-size:12px;color:var(--muted);margin-top:4px}
+
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
   .shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:auto 1fr;padding-bottom:0}

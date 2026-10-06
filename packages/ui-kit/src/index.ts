@@ -31,4 +31,7 @@ export { renderConflict, renderConflicts, SYSTEM_COLUMNS, type ConflictDecision,
 export { renderRejected, renderRejectedList, type RejectedOptions } from './sync/rejected.ts';
 export { listRow, renderList, type ListRowSpec, type ListSpec, type ListOptions } from './list.ts';
 export { createThemeToggle, createThemeSelect } from './theme-switch.ts';
+export { compressImage, compressedFilename, isImageFile, supportsWebp, type CompressImageOptions, type CompressedImage } from './media/compress-image.ts';
+export { createCalendar, toDayKey, fromDayKey, addDays, todayKey, startOfWeek, startOfMonth, daysBetween, type Calendar, type CalendarEvent, type CalendarOptions, type CalendarView, type DayKey } from './calendar/calendar.ts';
+export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';
