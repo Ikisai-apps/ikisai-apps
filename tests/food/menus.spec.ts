@@ -127,15 +127,19 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
   await test.step('orden a mano de platos y servicios, persistente', async () => {
     const first = page.locator('.service').first();
     await expect(first.locator('.dish strong')).toHaveText(['Curry de verduras', 'Pasta al pesto']);
+    const position = (servings: number) => Number(api.rows('food.menu_items').find((i) => i.servings === servings)!.position);
     await first.getByRole('button', { name: 'Subir Pasta al pesto' }).click();
     await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
     await expect(first.getByRole('button', { name: 'Subir Pasta al pesto' })).toBeDisabled();
     // El asa del kit también se mueve con el teclado (y con arrastre): el curry sube y vuelve a bajar.
-    await first.getByRole('button', { name: /^Mover Curry de verduras/ }).press('ArrowUp');
+    // Con el teclado sobre el asa: la lista se conserva entre guardados, así que el segundo movimiento lleva revisiones al día.
+    const handle = first.getByRole('button', { name: /^Mover Curry de verduras/ });
+    await handle.press('ArrowUp');
     await expect(first.locator('.dish strong')).toHaveText(['Curry de verduras', 'Pasta al pesto']);
+    await expect.poll(() => position(22) < position(2)).toBe(true);
     await first.getByRole('button', { name: /^Mover Curry de verduras/ }).press('ArrowDown');
     await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
-    const position = (servings: number) => Number(api.rows('food.menu_items').find((i) => i.servings === servings)!.position);
+    await expect.poll(() => position(2) < position(22)).toBe(true);
     await expect.poll(() => position(2) < position(22)).toBe(true);
     // El sábado: la cena sube por delante de la comida.
     const saturday = page.locator('.menuday').nth(1);

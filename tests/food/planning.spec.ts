@@ -204,6 +204,21 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect.poll(() => api.rows('food.preparation_items').filter((p) => p.manual).length).toBe(2);
   });
 
+  await test.step('orden a mano de los pasos de un día: manda sobre la hora y se conserva', async () => {
+    const texts = () => page.locator('.preprow strong');
+    await expect(texts()).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']); // por hora: 08:00, 18:30, 19:00
+    await page.getByRole('button', { name: 'Bajar Sacar el pan del congelador' }).click();
+    await expect(texts()).toHaveText(['Lavar y poner el arroz', 'Sacar el pan del congelador', 'Preparar Curry de verduras']);
+    const position = (text: string) => Number(api.rows('food.preparation_items').find((p) => p.text === text)!.position);
+    await expect.poll(() => [position('Lavar y poner el arroz'), position('Sacar el pan del congelador'), position('Preparar Curry de verduras')]).toEqual([1, 2, 3]);
+    // Con el teclado sobre el asa, y otra vez seguido: la lista no se recrea entre guardados.
+    await page.getByRole('button', { name: /^Mover Preparar Curry de verduras/ }).press('Home');
+    await expect(texts()).toHaveText(['Preparar Curry de verduras', 'Lavar y poner el arroz', 'Sacar el pan del congelador']);
+    await expect.poll(() => position('Preparar Curry de verduras')).toBe(1);
+    await page.reload();
+    await expect(page.locator('.preprow strong')).toHaveText(['Preparar Curry de verduras', 'Lavar y poner el arroz', 'Sacar el pan del congelador']);
+  });
+
   await test.step('cambia la hora de la cena: la propuesta avisa y regenerar respeta lo hecho y lo propio', async () => {
     await tab(page, 'Menú');
     await page.getByLabel('Hora de Cena').fill('21:00');

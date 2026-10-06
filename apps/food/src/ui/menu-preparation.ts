@@ -1,6 +1,6 @@
-import type { RowOperation } from '@ikisai/sync-client';
+import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import { FOOD_PROCEDURES, isStale, preparationSources, validateOperations, type PreparationItem } from '@ikisai/domain-food';
-import { confirmDialog, el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, formatDate, icon, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { longDay, shortTime } from '../app/events.ts';
@@ -11,12 +11,28 @@ type PrepRow = Mirror<PreparationItem>;
 
 interface RegenerateResult { inserted: number; updated: number; deleted: number; kept: number }
 
-/** Plan de preparación: propuesta por plato (con red) y, sin red, marcar hecho, asignar responsable y pasos propios. */
+/**
+ * Plan de preparación: propuesta por plato (con red) y, sin red, marcar hecho, asignar responsable, pasos propios y orden a mano.
+ * Dentro de cada día los pasos van por hora hasta que alguien los ordena a mano; desde entonces manda ese orden (`position`).
+ */
 export function mountPreparation({ client, menuId, host, canWrite }: TabContext): () => void {
   let data: MenuData | null = null;
   let steps: PrepRow[] = [];
   let sheet: Sheet | null = null;
   let busy = false;
+  // Una lista reordenable del kit por día; se conservan entre repintados y se actualizan con `setItems`.
+  const dayLists = new Map<string, Sortable<PrepRow>>();
+  const listSigs = new Map<string, string>();
+  let shape = '';
+  const top = el('div');
+  const listsHost = el('div', { id: 'preparationDays' });
+  const rowSig = (rows: PrepRow[]) => rows.map((r) => `${r.id}:${r.revision}:${r.position}:${r._pending ? 1 : 0}`).join(',');
+  const sortSteps = (rows: PrepRow[]) => [...rows].sort((a, b) => (a.scheduled_date ?? '9999').localeCompare(b.scheduled_date ?? '9999')
+    || Number(a.position) - Number(b.position) || (a.scheduled_time ?? '99').localeCompare(b.scheduled_time ?? '99') || a.created_at.localeCompare(b.created_at));
+  const dropLists = () => {
+    for (const list of dayLists.values()) list.destroy();
+    dayLists.clear(); listSigs.clear(); shape = '';
+  };
 
   async function commitSafely(operations: RowOperation[]): Promise<boolean> {
     const issue = validateOperations(operations);
@@ -61,7 +77,9 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
       const fields = { text: label, scheduled_date: date.value || null, scheduled_time: time.value || null, responsible: responsible.value.trim() || null };
       let operations: RowOperation[];
       if (!step) {
-        operations = [{ op: 'insert', table: T.preparation, id: crypto.randomUUID(), fields: { menu_id: menuId, ...fields, manual: true } }];
+        // Si ese día ya se ordenó a mano, el paso nuevo va al final; si no, se coloca por su hora.
+        const last = Math.max(0, ...steps.filter((x) => (x.scheduled_date ?? null) === fields.scheduled_date).map((x) => Number(x.position)));
+        operations = [{ op: 'insert', table: T.preparation, id: crypto.randomUUID(), fields: { menu_id: menuId, ...fields, manual: true, ...(last > 0 ? { position: last + 1 } : {}) } }];
       } else {
         const changed: Record<string, unknown> = Object.fromEntries(Object.entries(fields).filter(([key, value]) =>
           (key === 'scheduled_time' ? shortTime(step.scheduled_time) || null : step[key] ?? null) !== value));
@@ -89,7 +107,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     const writable = canWrite();
     const done = el('input', { type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable, 'aria-label': `Hecho: ${step.text}`,
       onchange: () => void commitSafely([{ op: 'update', table: T.preparation, id: step.id, expectedRevision: step.revision, fields: { done: done.checked } }]) });
-    return el('li', { class: 'preprow', 'data-id': step.id, 'data-done': String(step.done), 'data-pending': String(step._pending === true) },
+    return el('div', { class: 'preprow', 'data-id': step.id, 'data-done': String(step.done), 'data-pending': String(step._pending === true) },
       done,
       el('span', { class: 'preptime' }, shortTime(step.scheduled_time) || '—'),
       el('button', { class: 'preptext', type: 'button', disabled: !writable, 'aria-label': `Editar: ${step.text}`, onclick: () => openStep(step) },
@@ -98,14 +116,39 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     );
   }
 
+  /** Guarda el orden de los pasos de un día: `position` 1, 2, 3…; solo se envían los que cambian. */
+  async function reorder(ordered: PrepRow[]): Promise<void> {
+    const operations = ordered
+      .map((row, i): RowOperation | null => (Number(row.position) === i + 1 ? null : { op: 'update', table: T.preparation, id: row.id, expectedRevision: (row as SyncedRow).revision, fields: { position: i + 1 } }))
+      .filter((op): op is RowOperation => op !== null);
+    if (operations.length) await commitSafely(operations);
+  }
+
+  function dayList(day: string, rows: PrepRow[]): HTMLElement {
+    if (!canWrite() || rows.length < 2) return el('ul', { class: 'preplist' }, ...rows.map((row) => el('li', null, stepRow(row))));
+    const list = createSortableList<PrepRow>({
+      items: rows,
+      key: (row) => row.id,
+      name: (row) => row.text,
+      label: day ? `Pasos del ${longDay(day)}` : 'Pasos sin día',
+      rowClass: 'preprow-sortable',
+      render: (row) => stepRow(row),
+      onReorder: (ordered) => reorder(ordered),
+    });
+    dayLists.set(day, list);
+    listSigs.set(day, rowSig(rows));
+    return list.element;
+  }
+
   function paint(): void {
-    if (!data?.menu) { replace(host); return; }
+    if (!data?.menu) { dropLists(); replace(host); return; }
     const writable = canWrite();
     const menu = data.menu;
     const generated = menu.preparation_generated_at;
     if (!generated && steps.length === 0) {
+      dropLists();
       replace(host, el('div', { class: 'empty', id: 'preparationEmpty' }, el('strong', null, 'Todavía no hay plan de preparación'),
-        'La propuesta pone un paso por plato a la hora del servicio menos la antelación de cada receta. Después se edita a mano.',
+        'La propuesta pone un paso por plato a la hora del servicio menos la antelación de cada receta. Después se edita y se ordena a mano.',
         writable ? el('p', { style: 'margin-top:10px' },
           el('button', { class: 'primary', type: 'button', id: 'generatePreparation', disabled: busy, onclick: () => void regenerate() }, 'Generar propuesta'), ' ',
           el('button', { class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, 'Añadir paso')) : null,
@@ -113,12 +156,12 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
       return;
     }
     const stale = !!generated && (data.pending || isStale(menu.preparation_source_revisions, preparationSources(data.graph)));
-    const sorted = [...steps].sort((a, b) => (a.scheduled_date ?? '9999').localeCompare(b.scheduled_date ?? '9999')
-      || (a.scheduled_time ?? '99').localeCompare(b.scheduled_time ?? '99') || Number(a.position) - Number(b.position) || a.created_at.localeCompare(b.created_at));
+    const sorted = sortSteps(steps);
     const days = Array.from(new Set(sorted.map((s) => s.scheduled_date ?? '')));
     const doneCount = sorted.filter((s) => s.done).length;
+    const ofDay = (day: string) => sorted.filter((s) => (s.scheduled_date ?? '') === day);
 
-    replace(host,
+    replace(top,
       stale ? el('div', { class: 'banner warn notice', id: 'preparationStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú ha cambiado desde que se generó la propuesta.'), ' Regenerar no toca tus pasos ni lo ya hecho.'),
         writable ? el('div', { class: 'btnrow' }, el('button', { class: 'ghost', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, 'Regenerar propuesta')) : null) : null,
@@ -128,10 +171,21 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
       writable ? el('div', { class: 'btnrow menuactions' },
         el('button', { class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
         !stale ? el('button', { class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
-      ...days.map((day) => el('section', { class: 'menuday' },
-        el('h3', null, day ? longDay(day) : 'Sin día'),
-        el('ul', { class: 'preplist' }, ...sorted.filter((s) => (s.scheduled_date ?? '') === day).map(stepRow)))),
     );
+    if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
+
+    // Estructura (días y qué pasos hay en cada uno). Si no cambia, solo se actualizan las filas de cada lista.
+    const next = JSON.stringify({ writable, days: days.map((day) => { const rows = ofDay(day); return [day, rows.length > 1 ? rows.map((r) => r.id).sort() : rowSig(rows)]; }) });
+    if (writable && next === shape) {
+      for (const [day, list] of dayLists) {
+        const rows = ofDay(day);
+        if (listSigs.get(day) !== rowSig(rows)) { listSigs.set(day, rowSig(rows)); list.setItems(rows); }
+      }
+      return;
+    }
+    dropLists();
+    shape = next;
+    replace(listsHost, ...days.map((day) => el('section', { class: 'menuday' }, el('h3', null, day ? longDay(day) : 'Sin día'), dayList(day, ofDay(day)))));
   }
 
   async function load(): Promise<void> {
@@ -144,6 +198,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
   const offs = [...MENU_TABLES, T.preparation].map((table) => client.onTable(table, () => { if (!sheet && !busy) void load(); }));
   return () => {
     offs.forEach((off) => off());
+    dropLists();
     void sheet?.close(true);
   };
 }

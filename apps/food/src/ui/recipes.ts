@@ -46,7 +46,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
 
   const select = (id: string, label: string, options: Array<[string, string]>, key: keyof typeof filter) => {
-    const node = el('select', { id, 'aria-label': label, onchange: () => { filter[key] = node.value; paint(); } },
+    const node = el('select', { id, class: 'compact', 'aria-label': label, onchange: () => { filter[key] = node.value; paint(); } },
       el('option', { value: '' }, label), ...options.map(([value, name]) => el('option', { value }, name)));
     return node;
   };
@@ -298,7 +298,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const machineForms = [...equipment].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((machine) => {
       const need = existingNeeds.find((n) => n.equipment_id === machine.id) ?? null;
       const box = el('input', { type: 'checkbox', checked: !!need, id: `r-machine-${machine.id}` });
-      const quantity = el('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric', value: String(need?.quantity_required ?? 1), 'aria-label': `Unidades de ${machine.name}`, class: 'qty' });
+      const quantity = el('input', { type: 'number', min: '1', step: '1', inputmode: 'numeric', value: String(need?.quantity_required ?? 1), 'aria-label': `Unidades de ${machine.name}`, class: 'qty compact' });
       return { machine, need, box, quantity, node: el('div', { class: 'machinerow' }, el('label', { class: 'checkline', for: box.id }, box, el('span', null, machine.name)), quantity) };
     });
 

@@ -7,7 +7,7 @@
 
 /* Filtros del recetario: cuatro desplegables en una fila que se pliega */
 .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 14px}
-.filters select{width:100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;font-size:var(--text-sm,.875rem)}
+.filters select{width:100%;min-width:0}
 @media (min-width:720px){.filters{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
 /* Recetario visual: tarjetas con foto */
@@ -48,7 +48,7 @@
 .linerow>input:first-child{grid-column:1/-1}
 @media (min-width:720px){.linerow{grid-template-columns:minmax(0,1fr) 84px 96px auto}.linerow>input:first-child{grid-column:auto}}
 .formblock>.hint{display:block;margin-top:6px}
-.linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
+.linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%}
 .checkgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-bottom:12px}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
 .checkline input{width:18px;height:18px;flex:none}
@@ -77,8 +77,8 @@
 .menuday>h3::first-letter{text-transform:uppercase}
 .service{border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:12px;margin-bottom:10px}
 .service>header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.service>header input[type=time]{width:auto}
 .service>header h4{margin:0;flex:1;font-size:1rem}
-.service input[type=time],.dish .servings{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
 .dishes{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}
 /* Plato: en móvil, foto y nombre arriba y raciones debajo; desde 720 px, todo en una línea. */
 .dish{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px 8px;align-items:center}
@@ -87,6 +87,11 @@
 .movebtns{display:inline-flex;gap:2px}
 .movebtns .iconbtn{font-size:1rem;line-height:1}
 .movebtns .iconbtn:disabled{opacity:.3}
+/* Lista reordenable de servicios de un día: sin marco propio; cada fila es la tarjeta del servicio con su asa. */
+#menuBuilder .menuday>.sortable-wrap>.sortable{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
+.sortable .sortable-row.servicerow{padding:0;border-bottom:0;margin-bottom:10px;align-items:start;gap:2px}
+.servicerow>.sortable-body>.service{margin-bottom:0}
+.servicerow>.sortable-handle,.servicerow>.sortable-moves{margin-top:8px}
 /* La lista reordenable del kit, dentro de la tarjeta del servicio, sin su marco propio. */
 .service .sortable{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible;margin-bottom:10px}
 .service .sortable .sortable-row{padding:6px 0;border-bottom:1px dashed var(--line)}
@@ -119,13 +124,14 @@
 .buyrow[data-status="comprado"],.buyrow[data-status="recibido"]{background:var(--paper-2)}
 .buyname{display:flex;flex-direction:column;gap:2px;min-width:0}
 .buyfield{display:flex;flex-direction:column;gap:2px;font-size:var(--text-xs,.75rem);color:var(--muted)}
-.buyfield .qty,.buyactions select{width:100%;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;text-align:right}
+.buyfield .qty,.buyactions select{width:100%;min-width:0;text-align:right}
 .buyactions{grid-column:2/-1;display:flex;align-items:center;gap:10px}
 .buyactions select{width:auto;text-align:left}
 @media (min-width:720px){.buyrow{grid-template-columns:24px minmax(0,1fr) 96px 110px auto}.buyactions{grid-column:auto}}
 
 /* Preparación */
-.preprow{display:grid;grid-template-columns:24px 52px minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.preprow{display:grid;grid-template-columns:24px 52px minmax(0,1fr);gap:10px;align-items:center}
+.preplist>li{padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
 .preprow[data-done="true"] .preptext strong{text-decoration:line-through;color:var(--muted)}
 .preptime{font-variant-numeric:tabular-nums;color:var(--muted)}
 .preptext{display:flex;flex-direction:column;gap:2px;text-align:left;border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;min-width:0}
