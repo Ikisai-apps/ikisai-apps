@@ -23,4 +23,18 @@ test.describe('ui-kit v0.9', () => {
     await expect(page.locator('#moneyOver .mb-compare')).toContainText('excede 500,00 € del importe final · 116 %');
     await expect(page.locator('#moneyEmpty .mb-empty')).toContainText('Invoices no ha asignado compras');
   });
+
+  test('la estrella de urgencia es ámbar en los dos niveles y el relleno dice cuál; excedido en rojo sobre color', async ({ page }) => {
+    await page.goto('/#projects');
+    const cards = page.locator('#projectHost .card.project');
+    const critical = cards.filter({ hasText: 'Edificio inferior' }).locator('.star');
+    const high = cards.filter({ hasText: 'Cocina operativa' }).locator('.star');
+    const [cColor, hColor] = await Promise.all([critical, high].map((l) => l.evaluate((n) => getComputedStyle(n).color)));
+    expect(await high.locator('.star-fill').evaluate((n) => getComputedStyle(n).clipPath)).toContain('inset');
+    expect(await critical.locator('.star-fill').evaluate((n) => getComputedStyle(n).clipPath)).toBe('none');
+    // En la tarjeta con color propio la estrella toma la tinta; en la neutra, ámbar.
+    expect(hColor).toBe('rgb(197, 139, 42)');
+    expect(cColor).not.toBe('rgb(179, 65, 42)');
+    await expect(cards.filter({ hasText: 'Edificio inferior' }).locator('.moneytext .icon')).toHaveCount(1);
+  });
 });
