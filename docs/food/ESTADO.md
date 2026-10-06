@@ -1,31 +1,35 @@
 # Food · estado
 
-Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada de forma provisional por Core. Backend del recorrido F–H construido; falta la interfaz.**
+Actualizado: 6 de octubre de 2026. **Backend del recorrido F–H en `main`. Interfaz: esqueleto con login, Recetario con foto y Maquinaria.**
 
 ## Hecho
 
 - `docs/food/API.md`: modelo, procedimientos, hooks, rutas, proyecciones, archivos, pantallas, offline, aceptación F–H y reparto. Aprobado por Core con sus seis decisiones (`API.md` §14.1).
-- Base y catálogo (PR 15): `supabase/functions/_domain/food/` (vocabularios, unidades, validación), migración `20261006_0100_food_catalog.sql` (recetas, ingredientes, maquinaria, reglas de fila y proyecciones para Invoices) y `food-api` sobre `_kit` con la conformidad del núcleo en verde.
-- Menú (PR 19): migración `20261006_0110_food_menus.sql` (`menus` con FK a `booking.events`, `menu_services`, `menu_items`, bloqueo de menú validado o cerrado, receta en uso), rutas `GET events` y `GET events/:id`, propuesta de servicios y cálculo de qué cambió en el evento.
-- Estados y avisos (PR 24): migración `20261006_0120_food_menu_procedures.sql` con `food.set_menu_status`, `food.acknowledge_event` y `food.validate_menu`, la lectura registrada `food.menu_graph` y los avisos de restricciones (`menuWarnings`), exigidos por la Edge al validar.
-- Eventos por la proyección real de Booking (PR 29): `food-api` lee `booking.food_event_projection`; las pruebas siembran reservas, eventos y restricciones en `booking.*`.
-- Compra y preparación (PR 32): migración `20261006_0130_food_planning.sql` (`shopping_lists`, `shopping_list_items`, `preparation_items`, `food.regenerate_shopping`, `food.regenerate_preparation`) y `planning.ts` en el dominio, con paridad comprobada entre el cálculo SQL y el de TypeScript y obsolescencia por conjunto de revisiones.
+- Backend (PR 15, 19, 24, 29, 32): `supabase/functions/_domain/food/`, `food-api`, migraciones `20261006_0100` a `0130` (catálogo, menús, estados y avisos, compra y preparación), eventos por `booking.food_event_projection`.
+- Retirada de la vista de pruebas de eventos: migración `20261006_0140_food_retire_event_stub.sql`.
+- `packages/domain-food`: reexporta `_domain/food` para Vite.
+- `apps/food`: PWA con login sobre `@ikisai/ui-kit` y las cinco entradas (Inicio · Eventos · Menús · Recetario · Maquinaria); service worker con activación coordinada, conflictos y lotes rechazados, como `apps/invoices`.
+  - **Recetario**: rejilla de tarjetas con foto, búsqueda y filtros (categoría, dieta, alérgeno, estado), ficha en lectura y edición por bloques (Foto, Presentación, Ingredientes, Cocina, Seguridad, Maquinaria). Un ingrediente nuevo se crea en el mismo lote que la línea que lo usa. Papelera: la receta se va y vuelve con sus líneas.
+  - **Foto**: se recomprime en el dispositivo a 1600 px y a una miniatura de 480 px (WebP, o JPEG si el navegador no codifica WebP); el original no se guarda. Viaja con el marcador `$blob`, así que puede hacerse sin red. Se guarda en Cache Storage para verla sin conexión y se borra al cerrar sesión.
+  - **Maquinaria**: lista, edición y papelera.
+- Pruebas: 42 en PGlite (`tests/food/*.test.ts`, ya en la CI) y una de extremo a extremo en Playwright (`tests/food/smoke.spec.ts`) con una API falsa propia: login, receta con ingrediente nuevo y foto, edición sin red, sincronización y papelera.
 
 ## Pendiente
 
-- `packages/domain-food` (reexporta `_domain/food`) y `apps/food` con `@ikisai/ui-kit` (Inicio · Eventos · Menús · Recetario · Maquinaria). Añadir un workspace cambia `package-lock.json`, que es de la raíz: la PR del esqueleto con login necesita el visto bueno de Core, que después publicará `food.ikisai.com`.
-- Cachés de eventos y de fotos, recompresión de fotos en cliente, vista del organizador con impresión y pruebas Playwright offline (`API.md` §10 y §11.2).
+- Eventos y Menús en la interfaz: lista de eventos con su caché local, constructor de menú, avisos de restricciones, validación y aviso de evento cambiado.
+- Compra, Preparación, vista de cocinero y vista del organizador con impresión.
+- Inicio con los eventos próximos y lo que falta por preparar (hoy enseña accesos y estado del dispositivo).
+- Escenarios offline restantes de `API.md` §11.2 y recorrido de aceptación en Android.
 - `food.stock_entries`: en G4, con la proyección de compras de Invoices.
 
 ## Bloqueos
 
-- Ninguno para seguir.
-- **Las 42 pruebas de `tests/food/` no corren en la CI (P9, urgente).** Se ejecutan en local con `npx tsx --test tests/food/*.test.ts`.
+- Ninguno.
 
 ## Notas
 
-- **Incidencia del 6 de octubre.** Al fusionarse la proyección de Booking, 7 de las entonces 37 pruebas de Food quedaron en rojo en `main`: sembraban la vista de pruebas y `food-api` ya leía la real, como estaba previsto. La CI siguió en verde porque no ejecuta `tests/food/`. Corregido en la PR 29.
-- La vista de pruebas `food.event_projection_stub` y su tabla `food.stub_events` ya no se usan; siguen en el schema, vacías y solo visibles para `owner`, hasta que Core ofrezca cómo dar de baja una tabla registrada (P11).
-- Ninguna migración de Food está aplicada todavía en Supabase: eso lo hace el release de Core.
+- Las migraciones de Food las aplica el release de Core; `food.ikisai.com` lo ata Core tras la primera release con `apps/food`.
+- Al reemplazar o quitar una foto, la app deja de referenciar el archivo y no lo borra (decisión de Core sobre P6).
+- La comprobación de tipos de `apps/food` no está en la CI (P13): `npm run typecheck -w @ikisai/food`.
 
-Peticiones abiertas: `docs/food/PETICIONES.md` (P6, P8, P9, P10, P11).
+Peticiones abiertas: `docs/food/PETICIONES.md` (P12, P13).
