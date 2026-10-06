@@ -35,6 +35,7 @@ export default {
       const headers=new Headers();
       for(const key of ['authorization','content-type','content-length','accept','if-none-match']) if(request.headers.has(key)) headers.set(key,request.headers.get(key));
       headers.set('Origin',url.origin);
+      if(url.pathname.startsWith('/api/v1/auth/')){const pass=(request.headers.get('cookie')||'').match(/(?:^|; *)ikisai_sso=([A-Za-z0-9_-]{43})/);if(pass)headers.set('X-Ikisai-Sso',pass[1]);}
       const response=await fetch(BACKEND+url.pathname+url.search,{method:request.method,headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,redirect:'manual'});
       const outgoing=new Headers(response.headers);outgoing.set('Cache-Control','no-store');outgoing.set('X-Content-Type-Options','nosniff');
       return new Response(response.body,{status:response.status,headers:outgoing});

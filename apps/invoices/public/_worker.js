@@ -20,6 +20,11 @@ export default {
     const headers = new Headers();
     for (const key of FORWARDED_HEADERS) if (request.headers.has(key)) headers.set(key, request.headers.get(key));
     headers.set('Origin', url.origin);
+    // Sesión única (contrato §3.4): solo en las rutas de sesión, el pase de la cookie común viaja a la Edge como cabecera.
+    if (url.pathname.startsWith('/api/v1/auth/')) {
+      const pass = (request.headers.get('cookie') || '').match(/(?:^|;\s*)ikisai_sso=([A-Za-z0-9_-]{43})/);
+      if (pass) headers.set('X-Ikisai-Sso', pass[1]);
+    }
     const response = await fetch(BACKEND + url.pathname + url.search, {
       method: request.method,
       headers,

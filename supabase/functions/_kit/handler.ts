@@ -6,6 +6,7 @@ import { createSync, integer, type AppHooks, type RequestContext } from './sync.
 import { createUploads, type UploadsConfig } from './uploads.ts';
 import { createAgents } from './agents.ts';
 import { createMcp, type McpCore, type McpTool } from './mcp.ts';
+import { createSso, passCookie, passFrom } from './sso.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -74,12 +75,19 @@ export interface AppHandler {
   (request: Request): Promise<Response>;
 }
 
+/** Resultado de ruta con cabeceras extra (Set-Cookie del pase de sesión única); el despachador las une a las de su petición. */
+export class WithHeaders {
+  constructor(readonly body: unknown, readonly extra: Record<string, string>, readonly status = 200) {}
+}
+const withHeaders = (body: unknown, extra: Record<string, string>, status = 200) => new WithHeaders(body, extra, status);
+
 export function createApp(config: AppConfig): AppHandler {
   const supabase = createSupabase(config);
   const auth = createAuth(supabase);
   const sync = createSync(supabase, config.app, config.hooks ?? {});
   const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
+  const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
   const mcpCore = (ctx: RequestContext): McpCore => ({
     commit: (body) => sync.commit(ctx, body),
@@ -113,8 +121,23 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => sync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
     { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => sync.read(ctx, params.name ?? '', await json()) },
     { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, params.name ?? '', await json()); } },
-    { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => { await auth.logout(bearer(request)!); return { loggedOut: true }; } },
-    { method: 'POST', pattern: 'auth/password', handler: async ({ request, ctx, json }) => auth.changePassword(bearer(request)!, ctx.user, await json()) },
+    // Cerrar sesión: esta app y el pase de sesión única del dispositivo; `{everywhere: true}` cierra todas las sesiones y pases.
+    { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => {
+      let everywhere = false;
+      try { const raw = await request.text(); everywhere = raw ? JSON.parse(raw)?.everywhere === true : false; } catch { /* sin cuerpo */ }
+      await auth.logout(bearer(request)!, everywhere);
+      await sso.revoke(passFrom(request), everywhere).catch(() => undefined);
+      return withHeaders({ loggedOut: true, everywhere }, { 'Set-Cookie': passCookie(null, request.headers.get('origin')) });
+    } },
+    // Cambiar la contraseña revoca los pases de la cuenta y emite uno nuevo para este dispositivo.
+    { method: 'POST', pattern: 'auth/password', handler: async ({ request, ctx, json }) => {
+      const out = await auth.changePassword(bearer(request)!, ctx.user, await json());
+      await sso.revokeUser(ctx.user.id);
+      const pass = await sso.issueForUser(ctx.user.id);
+      return withHeaders(out, { 'Set-Cookie': passCookie(pass, request.headers.get('origin')) });
+    } },
+    // Catálogo para el lanzador común: apps a las que tiene acceso la cuenta.
+    { method: 'GET', pattern: 'apps', handler: async ({ ctx }) => ({ items: await supabase.rpc('core_my_apps', { p_user: ctx.user.id }), current: config.app }) },
     { method: 'GET', pattern: 'me', handler: async ({ ctx }) => ({ userId: ctx.user.id, email: ctx.user.email, role: ctx.membership.role, scopes: ctx.membership.scopes, kind: ctx.user.kind, name: ctx.user.name ?? ctx.bootstrap.profile.displayName }) },
     // Agentes (contrato §3): propuestas con aprobación humana, claves y registro de accesos.
     { method: 'POST', pattern: 'proposals', handler: async ({ ctx, json }) => agents.prepare(ctx, await json()) },
@@ -149,7 +172,9 @@ export function createApp(config: AppConfig): AppHandler {
       'Access-Control-Allow-Headers': 'authorization,apikey,content-type',
     };
     if (origin && origins.has(origin)) headers['Access-Control-Allow-Origin'] = origin;
-    const json = (out: unknown, status = 200) => new Response(JSON.stringify(out), { status, headers });
+    const json = (out: unknown, status = 200) => out instanceof WithHeaders
+      ? new Response(JSON.stringify(out.body), { status: out.status, headers: { ...headers, ...out.extra } })
+      : new Response(JSON.stringify(out), { status, headers });
     try {
       if (origin && !origins.has(origin)) fail(403, 'ORIGIN_REJECTED', messageFor('ORIGIN_REJECTED'));
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
@@ -167,7 +192,20 @@ export function createApp(config: AppConfig): AppHandler {
         if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'INVALID_JSON', 'Se necesita un objeto JSON.');
         return body;
       };
-      if (path === '/api/v1/auth/login' && request.method === 'POST') return json(await auth.login(await readJson()));
+      if (path === '/api/v1/auth/login' && request.method === 'POST') {
+        const tokens = await auth.login(await readJson());
+        // El pase de sesión única no debe impedir entrar: si falla su emisión, se entra sin él.
+        const pass = await sso.issueFor(tokens).catch(() => null);
+        return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
+      }
+      if (path === '/api/v1/auth/sso' && request.method === 'POST') {
+        try {
+          return json(await sso.login(passFrom(request)));
+        } catch (error) {
+          if (error instanceof Fault && error.code === 'NO_SSO') return json(withHeaders(error.toJSON(), { 'Set-Cookie': passCookie(null, origin) }, error.status));
+          throw error;
+        }
+      }
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
       // Rutas de sistema para workers (planificador externo): clave compartida en IKISAI_WORKER_KEY, sin sesión de usuario.
       if (path.startsWith('/api/v1/worker/')) {

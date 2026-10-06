@@ -601,6 +601,25 @@ export class SyncClientImpl implements SyncClient {
     return { ...session };
   }
 
+  /**
+   * Sesión única entre apps de ikisai.com (contrato §3.4): sin sesión local, pide una sesión propia para esta app con el pase
+   * de la cookie común (`POST /auth/sso`, que el navegador envía solo). Devuelve la sesión o null si no hay pase o no hay acceso.
+   */
+  async trySso(): Promise<Session | null> {
+    await this.ensureReady();
+    if (this.sess || !this.hasNetwork()) return this.sess ? { ...this.sess } : null;
+    try {
+      const res = await this.rawFetch(this.url('/auth/sso'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' });
+      if (!res.ok) return null;
+      const data = (await this.parseBody<Record<string, unknown>>(res)) ?? {};
+      const session = normalizeSession(data, null, Math.floor(this.now() / 1000));
+      await this.setSession(session);
+      return { ...session };
+    } catch {
+      return null;
+    }
+  }
+
   async logout(): Promise<void> {
     await this.ensureReady();
     if (this.sess && this.hasNetwork()) {
@@ -742,6 +761,8 @@ export class SyncClientImpl implements SyncClient {
     await this.ensureReady();
     this.started = true;
     this.installListeners();
+    // Sin sesión en esta app pero con un pase de sesión única en el dispositivo: se entra sin pedir contraseña.
+    if (!this.sess && this.hasNetwork() && this.options.sso !== false) await this.trySso();
     if (this.sess && this.hasNetwork()) {
       try {
         const boot = await this.api<Bootstrap>('/bootstrap');
