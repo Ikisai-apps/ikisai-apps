@@ -221,6 +221,77 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#blockLodging')).toContainText('3 / 2 plazas');
   });
 
+  await test.step('espacios: alta rápida en un lote, duplicar, no reservable y supletorias en Alojamiento', async () => {
+    const sameBatch = (ids: string[]) => {
+      const entries = api.changeLog().filter((c) => ids.includes(c.id));
+      return { size: new Set(entries.map((c) => c.requestId)).size, count: entries.length, tables: entries.map((c) => c.table).sort() };
+    };
+    await page.locator('#openSpaces').click();
+    await page.locator('#newSpace').click();
+    let dialog = page.getByRole('dialog', { name: 'Nuevo espacio' });
+    await expect(dialog.locator('#f-quick_beds')).toBeVisible();
+    await dialog.locator('#f-kind').selectOption('sala');
+    await expect(dialog.locator('#f-quick_beds')).toBeHidden(); // solo en habitaciones
+    await dialog.locator('#f-kind').selectOption('habitacion');
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Habitación 2');
+    await dialog.locator('#f-quick_beds').fill('2');
+    await dialog.locator('#f-quick_extras').fill('1');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(SPACES).some((r) => r.name === 'Habitación 2')).toBe(true);
+    const room2 = api.rows(SPACES).find((r) => r.name === 'Habitación 2')!;
+    await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === room2.id).length).toBe(3);
+    const beds2 = api.rows(BEDS).filter((b) => b.space_id === room2.id).sort((a, b) => Number(a.position) - Number(b.position));
+    expect(beds2.map((b) => [b.label, b.kind, b.capacity])).toEqual([['Cama 1', 'individual', 1], ['Cama 2', 'individual', 1], ['Supletoria 1', 'supletoria', 1]]);
+    expect(room2).toMatchObject({ kind: 'habitacion', bookable: true });
+    // Las cuatro filas (espacio y tres camas) llegaron en el mismo `commit`.
+    expect(sameBatch([room2.id, ...beds2.map((b) => b.id)])).toEqual({ size: 1, count: 4, tables: [BEDS, BEDS, BEDS, SPACES] });
+    const card2 = page.locator('.space-item[data-kind="habitacion"]').filter({ has: page.getByRole('button', { name: 'Editar Habitación 2', exact: true }) });
+    await expect(card2.locator('[data-role="places"]').first()).toHaveText('2 plazas + 1 supletoria');
+    await expect(card2.locator('.bed-item', { hasText: 'Supletoria 1' }).locator('.chip').first()).toHaveText('Supletoria');
+
+    // Duplicar: «<nombre> (copia)» con las mismas camas, en otro lote.
+    await page.getByRole('button', { name: 'Duplicar Habitación 2', exact: true }).click();
+    await expect.poll(() => api.rows(SPACES).some((r) => r.name === 'Habitación 2 (copia)')).toBe(true);
+    const copy = api.rows(SPACES).find((r) => r.name === 'Habitación 2 (copia)')!;
+    await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === copy.id).length).toBe(3);
+    const copyBeds = api.rows(BEDS).filter((b) => b.space_id === copy.id);
+    expect(copyBeds.map((b) => b.label).sort()).toEqual(['Cama 1', 'Cama 2', 'Supletoria 1']);
+    const batch = sameBatch([copy.id, ...copyBeds.map((b) => b.id)]);
+    expect(batch).toEqual({ size: 1, count: 4, tables: [BEDS, BEDS, BEDS, SPACES] });
+    expect(api.changeLog().find((c) => c.id === copy.id)!.requestId).not.toBe(api.changeLog().find((c) => c.id === room2.id)!.requestId);
+    expect(Number(copy.position)).toBeGreaterThan(Number(room2.position));
+
+    // Marcar la copia como no reservable.
+    await page.getByRole('button', { name: 'Editar Habitación 2 (copia)', exact: true }).click();
+    dialog = page.getByRole('dialog', { name: 'Espacio' });
+    await expect(dialog.getByLabel('Reservable')).toBeChecked();
+    await expect(dialog.locator('#f-quick_beds')).toHaveCount(0); // el alta rápida solo está en «Nuevo espacio»
+    await dialog.getByLabel('Reservable').uncheck();
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(SPACES).find((r) => r.id === copy.id)!.bookable).toBe(false);
+    await expect(page.locator('.space-item[data-kind="habitacion"]').filter({ hasText: 'Habitación 2 (copia)' }).first().locator('.chip', { hasText: 'No reservable' })).toBeVisible();
+
+    // En Alojamiento solo se ofrece la reservable, y su cama supletoria va marcada.
+    await page.goBack();
+    await page.locator('#addAssignment').click();
+    dialog = page.getByRole('dialog', { name: 'Asignar alojamiento' });
+    await expect(dialog.locator('#f-space_id')).toContainText('Habitación 2');
+    const options = await dialog.locator('#f-space_id option').allTextContents();
+    expect(options).toContain('Habitación 2');
+    expect(options.some((o) => o.includes('(copia)'))).toBe(false);
+    await dialog.getByLabel('Espacio').selectOption({ label: 'Habitación 2' });
+    await expect(dialog.getByLabel('Cama')).toContainText('Supletoria 1 (supletoria)');
+    await dialog.getByLabel('Cama').selectOption({ label: 'Supletoria 1 (supletoria) · 1 plaza' });
+    await dialog.getByLabel('Nombre del grupo').fill('Grupo extra');
+    await dialog.getByLabel('Personas').fill('1');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#extraBeds')).toHaveText('1 supletoria activada');
+    await expect(page.locator('#blockLodging .lodging-space[data-space="Habitación 2"] [data-role="occupancy"]')).toHaveText('1 / 3 plazas');
+  });
+
   await test.step('checklist base, una restricción y el cobro', async () => {
     await page.locator('#seedChecklist').click();
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
@@ -450,7 +521,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#trashReservation')).toBeHidden();
     await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('24 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped, 1 asignación
+    await expect(page.locator('.dialog')).toContainText('25 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped, 2 asignaciones
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');
