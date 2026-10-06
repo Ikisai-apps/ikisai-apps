@@ -135,7 +135,7 @@ Relación 1 a 1 estricta: el cliente crea la fila en el mismo lote que la reserv
 
 Derivado, no guardado: `deposit_status` (C03 §7): `deposit_required` nulo o 0 → `no_aplica`; `deposit_paid` nulo o 0 → `pendiente`; `< required` → `parcial`; `>= required` → `completado`.
 
-`payment_type`, `payment_date` y `payment_holder` son los «datos del pago» del anexo I del RD 933/2021 (§2.3.1). La identificación del medio de pago (número de tarjeta o IBAN) **no** tiene columna: ver pregunta abierta en §14.
+`payment_type`, `payment_date` y `payment_holder` son los «datos del pago» del anexo I del RD 933/2021 (§2.3.1) y se refieren al pago del organizador: Agram Camp no cobra a los huéspedes. La identificación del medio de pago (número de tarjeta o IBAN) y la caducidad **no se guardan** (decisión del usuario); SES.Hospedajes los marca como opcionales. `payment_type` sí es obligatorio en el parte, así que la cola de envío avisa si falta.
 
 ### 2.2 `booking.events`
 
@@ -194,14 +194,19 @@ document_number       text null              -- normalizado: sin espacios, mayú
 document_support_number text null            -- número de soporte del documento
 nationality           text null              -- ISO 3166-1 alfa-3 (ESP, FRA…)
 birth_date            date null
-residence_address     text null              -- residencia habitual: dirección completa
-residence_city        text null
+residence_address     text null              -- residencia habitual: calle, número, piso…
+residence_postal_code text null
+residence_city        text null              -- municipio o ciudad
 residence_country     text null              -- ISO 3166-1 alfa-3
 phone                 text null
 email                 text null
 is_minor              boolean not null default false
 guardian_name         text null              -- solo si is_minor
 kinship               text null              -- relación de parentesco con quien le acompaña; solo si is_minor
+
+signed_at             timestamptz null       -- firma del parte de entrada
+signed_by_name        text null              -- quién firma: el huésped o, si es menor, su acompañante
+signature_file_id     uuid null              -- imagen de la firma en core.files; nulo si firmó en papel
 
 data_status           text not null default 'pendiente_datos'
                       check in (pendiente_datos, datos_incompletos, datos_recibidos, datos_revisados, no_aplica)
@@ -220,7 +225,22 @@ notes                 text null
 
 **[desviación]** Respecto a C04 §15 se añaden los datos que el anexo I pide y la hoja no tenía: número de soporte, residencia habitual (dirección, localidad, país), teléfono y correo por separado (antes un único `telefono_email_si_aplica`), parentesco de los menores y el tipo de documento `TIE`.
 
-Coherencias (en `beforeCommit`): `ses_status = 'enviado_SES'` exige `ses_sent_at`; `listo_para_envio` exige `data_status = 'datos_revisados'`; `datos_revisados` exige nombre, primer apellido, sexo, tipo y número de documento, nacionalidad, fecha de nacimiento, residencia y al menos un teléfono o correo, y `kinship` si es menor. Las condiciones finas de la plataforma (por ejemplo, cuándo exige número de soporte o segundo apellido) no las he podido contrastar con SES.Hospedajes: viven como reglas en `domain-booking`, no como `check`, y se ajustan en el primer envío real sin migración.
+Coherencias (en `beforeCommit`): `ses_status = 'enviado_SES'` exige `ses_sent_at`; `listo_para_envio` exige `data_status = 'datos_revisados'`; `datos_revisados` exige lo que SES.Hospedajes marca como obligatorio en el parte de viajeros. Reglas tomadas de la especificación oficial del servicio web (`MIR-HOSPE-DSI-WS` v3.1.2, apartados 3.1.1.1, 4.1 y 4.2):
+
+| Dato | Obligatorio en SES |
+|---|---|
+| Nombre, primer apellido, fecha de nacimiento | siempre |
+| Segundo apellido | si el documento es DNI |
+| Tipo y número de documento | si es mayor de edad |
+| Número de soporte | si el documento es DNI o NIE |
+| Dirección, código postal, municipio y país de residencia | siempre |
+| Teléfono o correo | al menos uno |
+| Parentesco | si es menor de edad |
+| Nacionalidad, sexo | opcionales en la plataforma; el anexo I los lista y la app los pide sin bloquear |
+
+Viven como reglas en `domain-booking`, no como `check`, para poder ajustarlas sin migración si la plataforma cambia. La firma no forma parte de estas reglas: SES no la recibe (§2.3.2).
+
+Para un futuro envío automático (fuera de V1) harían falta además el código INE del municipio cuando el país es España y los códigos de los catálogos de la plataforma (tipo de documento, parentesco, tipo de pago); son derivables de lo que se guarda.
 
 Conservación y borrado: ver §5.3.
 
@@ -234,14 +254,27 @@ El anexo I pide, además de los datos de cada viajero, los de la transacción. N
 | Número de viajeros | recuento de `guests` del evento |
 | Contrato: número de referencia | `reservations.code` |
 | Contrato: fecha | alta del evento (`events.created_at`, el momento de confirmar) |
-| Contrato: firmas | fuera de la app en V1 (el equipo las recoge como hasta ahora) |
+| Contrato: firmas | `guests.signed_at`, `signed_by_name`, `signature_file_id` (§2.3.2) |
 | Fecha y hora de entrada y de salida | `reservations.start_date` + `events.arrival_time`; `end_date` + `departure_time` |
 | Inmueble: dirección, conexión a Internet | constantes del establecimiento (configuración de la app) |
 | Inmueble: número de habitaciones | `events.rooms_count` |
 | Pago: tipo, titular, fecha | `reservation_finance.payment_type`, `payment_holder`, `payment_date` |
-| Pago: identificación del medio y caducidad de la tarjeta | sin columna (pregunta abierta, §14) |
+| Pago: identificación del medio y caducidad de la tarjeta | no se guardan (decisión del usuario; opcionales en SES) |
+
+En el parte, SES exige referencia, fecha del contrato, fecha y hora de entrada y de salida, número de personas y tipo de pago; habitaciones, Internet y el resto de datos del pago son opcionales.
 
 Plazos del decreto: comunicación inmediata y como máximo en 24 horas desde la reserva o formalización y desde el inicio del servicio (art. 6.3); conservación del registro durante tres años desde la finalización del servicio (art. 5.3).
+
+### 2.3.2 Firma del parte de entrada
+
+El anexo I lista «firmas» entre los datos del contrato. La especificación de SES.Hospedajes no tiene ningún campo de firma: no se envía, se conserva en el registro del establecimiento. Dos formas de recogerla, a elegir en cada llegada:
+
+- **En pantalla** (la normal). «Firmar» en la ficha del huésped abre a pantalla completa un resumen de sus datos, el texto informativo de protección de datos y un recuadro para firmar con el dedo. Se guarda como imagen pequeña en `booking-documents` y se anotan `signed_at`, `signed_by_name` y `signature_file_id`. Funciona sin red: la imagen espera en la cola de adjuntos.
+- **En papel.** «Imprimir parte» genera una hoja A4 con los datos y la línea de firma (CSS de impresión, sin servicio de PDF). El equipo archiva el papel y marca «Firmado en papel»: `signed_at` y `signed_by_name` con `signature_file_id` nulo. No se escanea.
+
+Quién firma es una regla de `domain-booking`. Por defecto la app pide firma a partir de los 14 años y, por debajo, la del acompañante; es el criterio que dan las guías del sector, pero **no lo he podido verificar en el texto del BOE**.
+
+La imagen de la firma es un dato personal: solo la ve quien ve huéspedes, se conserva los mismos tres años y se elimina al anonimizar (§5.3).
 
 ### 2.4 `booking.dietary_restrictions`
 
@@ -401,7 +434,7 @@ Solo `service_role`; las invoca la Edge (requiere P1):
 
 - Tipos, longitudes, enumerados, enteros e importes no negativos, `end_date >= start_date`, `minors_count <= expected_guests`, horas `HH:MM`, correo con forma de correo.
 - `booking.events`: `insert` directo rechazado (`INVALID_OPERATION`: «usa confirmar»); `delete` y `restore` solo `owner`; `reservation_id` no admitido en `update`.
-- `booking.guests`: cualquier operación exige ver huéspedes (§5.1) → si no, `FORBIDDEN`. Coherencias de §2.3. `ses_receipt_file_id`, si viene, debe existir en `core.files` de la app.
+- `booking.guests`: cualquier operación exige ver huéspedes (§5.1) → si no, `FORBIDDEN`. Coherencias de §2.3. `ses_receipt_file_id` y `signature_file_id`, si vienen, deben existir en `core.files` de la app.
 - `event_id` de huéspedes, restricciones y checklist no admitido en `update`.
 - `dietary_restrictions`: regla `guest_id` / `servings`; `subject` obligatorio según tipo; `severity` solo en alergia e intolerancia.
 
@@ -463,7 +496,7 @@ Los importes y datos de pago viven en `reservation_finance`, que el núcleo no e
 
 - **En el dispositivo.** Quien ve huéspedes los tiene en su IndexedDB. Al cerrar sesión, y cuando `bootstrap` indique que perdió el permiso, la app borra la base local `ikisai-booking-v1`. Hoy `sync-client.logout()` solo borra la sesión (ver P4); mientras tanto lo hace la app con `client.stop()` + `indexedDB.deleteDatabase`. Si hay cambios pendientes de enviar, avisa antes.
 - **En el historial.** `core.changes` guarda el antes y el después de cada huésped para siempre. Anonimizar la fila con un `update` no limpia esas imágenes.
-- **Conservación: tres años desde `reservations.end_date`.** Es el plazo del art. 5.3 del RD 933/2021 («tres años a contar desde la finalización del servicio o prestación contratada»), comprobado en el texto consolidado del BOE. Vencido el plazo, C09 pide anonimizar dejando un rastro mínimo: se vacían nombre, apellidos, número de documento y de soporte, fecha de nacimiento, residencia, teléfono, correo, tutor y parentesco, y quedan código, evento, tipo de documento, nacionalidad, sexo y estados de envío. La pantalla Huéspedes muestra al `owner` los huéspedes con plazo vencido. Para anonimizar de verdad hace falta P6 (redactar columnas en el historial); con lo que hay hoy, la única opción es el borrado total con `core.purge_row_history`, que pierde también el rastro. Salvo que se carguen estancias antiguas, ningún dato vence antes de octubre de 2029, así que P6 no bloquea V1.
+- **Conservación: tres años desde `reservations.end_date`.** Es el plazo del art. 5.3 del RD 933/2021 («tres años a contar desde la finalización del servicio o prestación contratada»), comprobado en el texto consolidado del BOE. Vencido el plazo, C09 pide anonimizar dejando un rastro mínimo: se vacían nombre, apellidos, número de documento y de soporte, fecha de nacimiento, residencia, teléfono, correo, tutor, parentesco y firmante, se elimina la imagen de la firma, y quedan código, evento, tipo de documento, nacionalidad, sexo y estados de envío. La pantalla Huéspedes muestra al `owner` los huéspedes con plazo vencido. Para anonimizar de verdad hace falta P6 (redactar columnas en el historial); con lo que hay hoy, la única opción es el borrado total con `core.purge_row_history`, que pierde también el rastro. Salvo que se carguen estancias antiguas, ningún dato vence antes de octubre de 2029, así que P6 no bloquea V1.
 - **Derecho de supresión.** A petición, por Core, con `core.purge_row_history`, dejando constancia fuera de la app.
 - **Copias de seguridad.** Van cifradas (ya resuelto por Core).
 
@@ -607,11 +640,16 @@ Como red de seguridad, la obsolescencia se ve comparando `source_reservation_rev
 
 ## 8. Archivos
 
-Bucket `booking-documents` (ya creado por Core, 15 MB). Único uso en V1: el justificante de envío a SES (`guests.ses_receipt_file_id`). PDF tal cual; imagen recomprimida en cliente según el contrato §6.2 (punto 5). Alternativa sin archivo: `ses_receipt_ref` con el número de referencia.
+Bucket `booking-documents` (ya creado por Core, 15 MB). Dos usos en V1:
 
-El justificante puede contener datos personales: lo sirve `GET files/:id` con URL firmada de 10 minutos y la app solo lo ofrece a quien ve huéspedes. `_kit` comprueba la membresía, no el ámbito; lo anoto en P5.
+- El justificante de envío a SES (`guests.ses_receipt_file_id`). PDF tal cual; imagen recomprimida en cliente según el contrato §6.2 (punto 5). Alternativa sin archivo: `ses_receipt_ref` con el número de referencia.
+- La imagen de la firma del parte (`guests.signature_file_id`, §2.3.2): WebP o PNG de pocos KB generado en el propio recuadro de firma.
 
-Nunca se suben copias ni fotos de DNI o pasaporte: la UI no lo ofrece y `uploads` de Booking solo se usa desde la pantalla de envío a SES.
+Ambos contienen datos personales: los sirve `GET files/:id` con URL firmada de 10 minutos y la app solo los ofrece a quien ve huéspedes. `_kit` comprueba la membresía, no el ámbito; lo anoto en P5.
+
+Para que el comando lleve el `file_id` de un adjunto que todavía está en cola hace falta el enlace adjunto → `file_id` en `sync-client` (P13).
+
+Nunca se suben copias ni fotos de DNI o pasaporte: la UI no lo ofrece y `uploads` de Booking solo se usa desde el recuadro de firma y la pantalla de envío a SES.
 
 ---
 
@@ -651,7 +689,8 @@ Panel plegable «Google Calendar»: estado general, reservas con sincronización
 ### 9.4 Huéspedes
 
 - Selector de evento (próximos primero) y recuentos.
-- Quien ve huéspedes: lista con estado de datos y de envío; alta y edición en formulario por bloques (identidad, documento, residencia y contacto, menor con tutor y parentesco); restricciones alimentarias de la persona en la misma ficha.
+- Quien ve huéspedes: lista con estado de datos y de envío; alta y edición en formulario por bloques (identidad, documento, residencia y contacto, menor con tutor y parentesco), que marca en cada momento qué falta para SES según el tipo de documento y la edad; restricciones alimentarias de la persona en la misma ficha.
+- Firma del parte: «Firmar» en pantalla o «Imprimir parte» y «Firmado en papel» (§2.3.2). La lista muestra quién ha firmado.
 - Cola «Pendientes de envío SES» (`datos_revisados` + `listo_para_envio`), con el plazo de 24 horas a la vista, copia campo a campo (incluidos los datos de la transacción de §2.3.1) y registro del envío (fecha, responsable, justificante).
 - Para `owner`: lista de huéspedes con el plazo de conservación vencido (§5.3).
 - Quien no los ve: solo recuentos y el texto «Acceso restringido a responsables designados».
@@ -673,7 +712,7 @@ Panel plegable «Google Calendar»: estado general, reservas con sincronización
 
 **Conflictos.** Campos distintos se fusionan solos con aviso discreto (por ejemplo, una persona cambia el teléfono y otra las fechas). El caso típico de solape es que dos personas cambien `status` o `final_guests`: va al banner de conflicto con ambas versiones. Borrar contra una fila modificada pide confirmación siempre.
 
-**Adjuntos.** El justificante SES entra en la cola de blobs; el comando que lo referencia no se envía hasta que la subida se verifica.
+**Adjuntos.** La firma en pantalla y el justificante SES entran en la cola de adjuntos; el comando que los referencia no se envía hasta que la subida se verifica (P13).
 
 **Cierre de sesión.** Borra la base local (§5.3).
 
@@ -733,7 +772,8 @@ En PC y en Android. Calendar con el servidor falso en CI y una pasada real al fi
 **Añadidos de Booking**
 
 - G1. Un `editor` sin `scopes.guests` no recibe huéspedes en `snapshot`, `changes` ni `history`, y no puede escribirlos; un `reader`, tampoco.
-- G2. Alta de huésped con todos los datos del anexo I, revisión de datos, registro del envío a SES con justificante.
+- G2. Alta de huésped con todos los datos del anexo I; la app no deja marcar `datos_revisados` a un adulto con DNI sin segundo apellido ni número de soporte, ni a un menor sin parentesco; firma en pantalla; registro del envío a SES con justificante.
+- G4. «Imprimir parte» produce una hoja A4 correcta y «Firmado en papel» deja constancia sin imagen.
 - G3. Un `reader` no recibe `reservation_finance` en `snapshot`, `changes` ni `history`, y su ficha no muestra el bloque Cobro.
 - K1. Google caído: la reserva se guarda, el indicador pasa a pendiente y luego a error, y «Reintentar» lo resuelve al volver.
 - K2. Archivar una reserva cerrada retira su evento de Calendar.
@@ -750,7 +790,7 @@ En PC y en Android. Calendar con el servidor falso en CI y una pasada real al fi
   - O3. Confirmar sin red: marca de pendiente y evento al reconectar.
   - O4. Conflicto disjunto (teléfono contra fechas): fusión automática.
   - O5. Conflicto solapado en `status`: decisión humana.
-  - O6. Justificante SES subido en diferido.
+  - O6. Firma en pantalla y justificante SES subidos en diferido.
   - O7. Cerrar sesión borra la base local.
 - **Prueba real** al final: una pasada sintética completa contra «Agram Camp - Reservas» (hoy sin uso, decisión del usuario), borrando el evento al terminar.
 - Datos siempre sintéticos. Ningún huésped real en fixtures ni capturas.
@@ -792,13 +832,14 @@ Una fila en `docs/core/PETICIONES.md` remite aquí. Tres coinciden con lo que ya
 | P3 | `sync-client`: efectos locales declarados para un `call` (filas a pintar como pendientes hasta la respuesta) | Confirmar sin red no se refleja en el espejo | Marca propia de la app (§10) |
 | P4 | `sync-client`: borrar el espejo local al cerrar sesión o al perder permiso | Huéspedes en IndexedDB | La app llama a `indexedDB.deleteDatabase` |
 | P5 | Lint: permitir `references core.files(id)`. Opcional: que `files/:id` pueda consultar un hook de visibilidad | Justificante SES; Invoices lo necesitará igual | Columna sin FK, validada en la Edge |
-| P6 | `core.redact_row_history(app, table, id, columns[])` | Anonimizar huéspedes al vencer el plazo dejando rastro mínimo (C09 protocolo 9) | Solo borrado total con `purge_row_history` |
+| P6 | `core.redact_row_history(app, table, id, columns[])` y una forma de eliminar un archivo de `core.files` y del bucket | Anonimizar huéspedes al vencer el plazo dejando rastro mínimo (C09 protocolo 9) y borrar la imagen de su firma. No hay ruta de borrado de archivos (Food lo plantea en su P6) | Solo borrado total con `purge_row_history`; las firmas quedarían en el bucket |
 | P7 | Secretos de `booking-api` en el despliegue (`GOOGLE_SA_CLIENT_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `BOOKING_CALENDAR_ID`), proyecto GCP y cuenta de servicio | Plan §7 | Calendar apagado («no configurado») |
 | P8 | Rutas de sistema en `_kit` (secreto, sin usuario) y un planificador | Reintentos de Calendar cuando nadie tiene la app abierta | Reintento oportunista en `calendar/status` y `afterCommit` |
 | P9 | `trash/purge` sin `tables`: ordenar por dependencias FK | El orden alfabético purga `events` antes que `guests` | Booking envía siempre la lista ordenada |
 | P10 | Aprobar la semántica de `event_revision` y las cuatro columnas extra de la proyección (§7.1); cerrar con Food | Contrato §8 es normativo | Columnas exactas del contrato y filtro por estado |
-| P11 | Solo si el usuario confirma que hay reservas vivas en C03 que cargar: carga inicial conservando códigos (`code` no es escribible y hay que avanzar `core.code_sequences`) | No renumerar reservas vivas | Reintroducir a mano con códigos nuevos |
+| ~~P11~~ | Retirada: el usuario confirma que se empieza de cero, sin carga inicial desde C03/C04 | — | — |
 | P12 | Confirmar que las tablas cerradas (`readable_roles '{}'`) son aceptables | Aparecen en `bootstrap` con `readable: false` | Marcador de tabla interna en el lint |
+| P13 | `sync-client`: que un comando pueda referenciar un adjunto en cola y reciba su `file_id` al subirse (es la P3 de Food y la petición 2 de Invoices) | Firma en pantalla y justificante SES sin red | Firma y justificante solo con red: subir primero y escribir después |
 
 ---
 
@@ -829,13 +870,14 @@ Una fila en `docs/core/PETICIONES.md` remite aquí. Tres coinciden con lo que ya
 | Alta de huéspedes | la hace el equipo en V1; auto-registro, si acaso, en V2 | §1 |
 | Apps Script legacy | no se usa; no hay corte que coordinar | §7.3 |
 | Prueba real de Calendar | sobre «Agram Camp - Reservas», que está sin uso | §11.2 |
+| Número de tarjeta o IBAN | no se guardan; solo se cobra a organizadores | §2.1.1 |
+| Firmas del parte | se recogen: en pantalla o en papel | §2.3.2 |
+| Carga inicial | se empieza de cero; P11 retirada | §13 |
+| Campos obligatorios en SES | tomados de la especificación oficial del servicio web v3.1.2 | §2.3 |
 
-**Preguntas que siguen abiertas:**
+**Lo único que queda sin verificar:**
 
-1. **Identificación del medio de pago.** El anexo I lista «tipo de tarjeta y número, IBAN» y «fecha de caducidad de la tarjeta». Guardar números de tarjeta en la app es un riesgo que no he querido asumir por defecto: hoy solo hay tipo, titular y fecha. ¿Se rellena ese dato en SES.Hospedajes? Si hace falta, propongo una columna de texto libre en `reservation_finance` para el IBAN o los últimos cuatro dígitos, nunca el número completo de una tarjeta.
-2. **Firmas del parte.** El anexo I las menciona entre los datos del contrato. La app no las recoge en V1.
-3. **Condiciones finas de SES.Hospedajes** (qué campos marca como obligatorios según el tipo de documento): se ajustan como reglas en el primer envío real (§2.3).
-4. **Carga inicial.** ¿Hay reservas vivas en C03 que cargar con su código, o se empieza de cero? (P11).
+1. **Quién debe firmar.** La app pide firma a partir de los 14 años por defecto. Es una regla, no una columna: se cambia sin migración si la revisión de C09 dice otra cosa.
 
 ---
 
