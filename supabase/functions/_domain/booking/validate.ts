@@ -3,7 +3,7 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  BED_KINDS, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  BED_KINDS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
   RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
@@ -194,6 +194,29 @@ FIELDS[TABLES.roomAssignments] = {
   notes: text(LONG),
 };
 
+FIELDS[TABLES.staffAssignments] = {
+  event_id: { kind: 'uuid' },
+  person_name: text(120, false),
+  member_user_id: { kind: 'uuid', nullable: true },
+  person_ref_app: choice(['encarna']),
+  person_ref_id: text(120),
+  function: choice(STAFF_FUNCTIONS, false),
+  work_date: { kind: 'date' },
+  planned_hours: { kind: 'number' },
+  actual_hours: { kind: 'number' },
+  status: choice(STAFF_STATUSES, false),
+  notes: text(LONG),
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.staffNeeds] = {
+  event_id: { kind: 'uuid' },
+  need_type: choice(NEED_TYPES, false),
+  persons: { kind: 'int', nullable: false, min: 1 },
+  priority: choice(NEED_PRIORITIES, false),
+  status: choice(NEED_STATUSES, false),
+  notes: text(LONG),
+};
+
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
 const PARENT_LINK: Record<string, string> = {
   [TABLES.events]: 'reservation_id',
@@ -202,6 +225,8 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.checklist]: 'event_id',
   [TABLES.beds]: 'space_id',
   [TABLES.roomAssignments]: 'event_id',
+  [TABLES.staffAssignments]: 'event_id',
+  [TABLES.staffNeeds]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -214,6 +239,8 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.spaces]: ['name', 'kind'],
   [TABLES.beds]: ['space_id', 'label'],
   [TABLES.roomAssignments]: ['event_id', 'space_id'],
+  [TABLES.staffAssignments]: ['event_id', 'person_name', 'function'],
+  [TABLES.staffNeeds]: ['event_id', 'need_type'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -223,6 +250,8 @@ const COUNTRY = /^[A-Z]{3}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const MAX_INT = 100_000;
 const MAX_MONEY = 9_999_999_999.99;
+/** `numeric(5,2)` de las horas del personal. */
+const MAX_HOURS = 999.99;
 
 /** Devuelve el motivo por el que `value` no cumple `spec`, o null si es válido. */
 export function checkValue(spec: Spec, value: unknown): string | null {
@@ -323,6 +352,23 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
 
   if (table === TABLES.beds && typeof fields.capacity === 'number' && fields.capacity > 2) issues.push(invalid(table, 'capacity', 'admite como máximo 2 personas'));
+
+  if (table === TABLES.staffAssignments) {
+    const day = fields.work_date !== undefined && fields.work_date !== null;
+    for (const field of ['planned_hours', 'actual_hours']) {
+      const value = fields[field];
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      if (value < 0) issues.push(invalid(table, field, 'no puede ser negativo'));
+      else if (Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) issues.push(invalid(table, field, 'admite como máximo dos decimales'));
+      else if (value > MAX_HOURS) issues.push(invalid(table, field, `admite como máximo ${MAX_HOURS} horas`));
+      else if (day && value > 24) issues.push(invalid(table, field, 'un turno de un día no pasa de 24 horas'));
+    }
+    if (mode === 'insert' || fields.person_ref_app !== undefined || fields.person_ref_id !== undefined) {
+      const app = fields.person_ref_app ?? null;
+      const ref = fields.person_ref_id ?? null;
+      if ((app === null) !== (ref === null)) issues.push(invalid(table, 'person_ref_id', 'el enlace a la ficha de personal lleva app e identificador'));
+    }
+  }
 
   if (table === TABLES.roomAssignments) {
     const has = (field: string) => fields[field] !== undefined;
