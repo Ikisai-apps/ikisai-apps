@@ -3,7 +3,7 @@ import { eventSnapshot, isMenuStale, proposeServices, validateOperations, type F
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, needsMenu, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents,
+  allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, needsMenu, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -63,8 +63,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
       return listRow({
         id: event.event_id,
         title: event.title,
-        meta: [dateRange(event), guestsLabel(event), mealPlanLabel(event.meal_plan)],
-        chips: [menuChip(event, menu), restrictions ? el('span', { class: 'chip' }, restrictions === 1 ? '1 restricción' : `${restrictions} restricciones`) : null],
+        meta: [`${dateRange(event)} (${whenLabel(event).toLowerCase()})`, guestsLabel(event), mealPlanLabel(event.meal_plan)],
+        // Con alguna alergia o intolerancia en el grupo, el aviso de restricciones va en rojo.
+        chips: [menuChip(event, menu), restrictions ? el('span', { class: allergyCount(event.dietary_restrictions) ? 'chip alert' : 'chip' }, restrictions === 1 ? '1 restricción' : `${restrictions} restricciones`) : null],
         pending: menu?._pending === true,
         label: `Abrir ${event.title}`,
         onClick: () => openEvent(event),

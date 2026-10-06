@@ -48,6 +48,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const shell = createAppShell(root, {
     appName: 'Food',
+    markIcon: 'chef',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },

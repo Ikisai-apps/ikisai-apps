@@ -46,6 +46,7 @@ function route(): void {
   } else {
     unmountLogin = renderLogin(root!, {
       appName: 'Food',
+      markIcon: 'chef',
       tagline: 'Recetario, menús, compra y preparación',
       describeError,
       async onLogin(email, password) {
