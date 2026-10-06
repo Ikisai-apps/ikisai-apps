@@ -147,6 +147,20 @@ export function exchangeRoutes(supabase: Supabase): AppRoute[] {
         return { operations: batches[0], ...result };
       },
     },
+    /**
+     * Vaciar papelera (contrato §11.2): pasa a la papelera lo que cuelga de contenedores borrados y después purga las
+     * tablas en orden canónico inverso. Las dependencias hacia una tarea purgada desaparecen con ella.
+     */
+    {
+      method: 'POST', pattern: 'trash/empty', handler: async ({ ctx, json }) => {
+        admin(ctx);
+        const body = await json();
+        if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const prepared = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.empty_trash_prepare', args: {} }] });
+        const purged = await supabase.rpc<{ purged: number; cursor: number }>('core_purge_deleted', { p_app: 'tasks', p_actor: ctx.user.id, p_request_id: `${body.requestId}:purge`, p_tables: [...TABLES].reverse() });
+        return { trashed: (prepared.results[0] as { result?: { trashed?: number } })?.result?.trashed ?? 0, purged: purged.purged, cursor: purged.cursor };
+      },
+    },
     { method: 'GET', pattern: 'portable', handler: async ({ ctx }) => zipResponse(await bundle(ctx), 'Ikisai-portable.zip') },
     { method: 'GET', pattern: 'backup', handler: async ({ ctx }) => { admin(ctx); return zipResponse(await bundle(ctx), 'Ikisai-respaldo.zip'); } },
     {
