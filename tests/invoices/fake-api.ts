@@ -5,6 +5,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { TABLES, WRITABLE, normalizedFilename, recalculate, slugify } from '../../packages/domain-invoices/src/index.ts';
 
 export interface FakeRow {
   id: string;
@@ -58,7 +59,9 @@ class Fault extends Error {
   }
 }
 
-const DEFAULT_TABLES: Record<string, string[]> = { 'invoices.suppliers': ['name', 'tax_id', 'default_category', 'notes'] };
+/** Todas las tablas de Invoices con sus columnas escribibles (las mismas que registra la migración). */
+const DEFAULT_TABLES: Record<string, string[]> = Object.fromEntries(Object.values(TABLES).map((t) => [t, [...WRITABLE[t]]]));
+let invoiceSeq = 0;
 
 export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeApi> {
   const users = options.users ?? [{ email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' }];
@@ -141,8 +144,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     };
     const results: unknown[] = [];
     const batchChanges: FakeChange[] = [];
+    const touchedInvoices = new Set<string>();
     (body.operations as FakeOperation[]).forEach((op, index) => {
-      if (op.op === 'call') throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
+      if (op.op === 'call') {
+        const result = runProcedure(op as FakeOperation & { procedure?: string; args?: Record<string, unknown> }, index, stagedTable, actorId, nextCursor, body.requestId, batchChanges, touchedInvoices);
+        results.push({ op: 'call', procedure: (op as { procedure?: string }).procedure, result });
+        return;
+      }
       if (!op.table || !tables[op.table]) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.', { index });
       if (!op.id) throw new Fault(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
       const store = stagedTable(op.table);
@@ -156,6 +164,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (op.table === 'invoices.suppliers' && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? null;
+        applyInsertDefaults(op.table, row, staged);
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
@@ -173,14 +182,115 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         row.updated_by = actorId;
       }
       results.push({ op: op.op, table: op.table, id: op.id, revision: row.revision });
-      batchChanges.push(record(op.table, op.op, row, nextCursor, index + 1, body.requestId, actorId));
+      batchChanges.push(record(op.table, op.op, row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+      const invoiceId = op.table === 'invoices.invoices' ? op.id : typeof row.invoice_id === 'string' ? row.invoice_id : null;
+      if (invoiceId) touchedInvoices.add(invoiceId);
     });
+    // Hook de invariantes simplificado: recalcula totales y estado automático (misma regla que invoices.check_invariants).
+    for (const invoiceId of touchedInvoices) {
+      const inv = stagedTable('invoices.invoices').get(invoiceId);
+      if (!inv || inv.status === 'anulada') continue;
+      const lines = Array.from(stagedTable('invoices.invoice_lines').values()).filter((l) => l.invoice_id === invoiceId && !l.deleted_at);
+      const taxes = Array.from(stagedTable('invoices.tax_lines').values()).filter((t) => t.invoice_id === invoiceId && !t.deleted_at);
+      const r = recalculate(lines as never, taxes as never, null, inv.source_total as number | null);
+      const fields: Record<string, unknown> = { calculated_base: r.calculated_base, calculated_vat: r.calculated_vat, calculated_other: r.calculated_other, calculated_withholding: r.calculated_withholding, calculated_total: r.calculated_total, totals_delta: r.totals_delta };
+      let status = inv.status as string;
+      let reason = inv.review_reason as string | null;
+      if (status === 'pendiente_datos' && (lines.length || taxes.length)) { status = 'pendiente_revision'; reason = reason ?? 'DATOS_INTRODUCIDOS'; }
+      if (status === 'pendiente_revision') {
+        if (r.within_tolerance === false) { if (!reason || ['IMPORTADA', 'DATOS_INTRODUCIDOS', 'IMPORTES_CORREGIDOS'].includes(reason)) reason = 'REVISAR IMPORTES'; }
+        else if (reason === 'REVISAR IMPORTES') reason = 'IMPORTES_CORREGIDOS';
+      }
+      fields.status = status;
+      fields.review_reason = reason;
+      const changedKeys = Object.keys(fields).filter((k) => (inv[k] ?? null) !== (fields[k] ?? null));
+      if (!changedKeys.length) continue;
+      for (const k of changedKeys) inv[k] = fields[k];
+      inv.revision += 1;
+      inv.updated_at = nowIso();
+      batchChanges.push(record('invoices.invoices', 'update', inv, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+    }
     for (const [table, store] of staged) data.set(table, store);
     cursor = nextCursor;
     changes.push(...batchChanges);
     const result = { cursor, requestId: body.requestId, results, changes: batchChanges };
     receipts.set(`${actorId}:${body.requestId}`, { digest, result });
     return result;
+  }
+
+  function applyInsertDefaults(table: string, row: FakeRow, staged: Map<string, Map<string, FakeRow>>): void {
+    const lookup = (t: string) => staged.get(t) ?? data.get(t)!;
+    if (table === 'invoices.suppliers') {
+      row.slug = (row.slug as string | null) || slugify(String(row.name ?? '')) || 'proveedor';
+      row.aliases = row.aliases ?? [];
+      row.default_is_investment = row.default_is_investment ?? false;
+    }
+    if (table === 'invoices.invoices') {
+      const date = String(row.invoice_date ?? '2026-01-01');
+      row.code = `FVR_${date.slice(0, 4)}_${String(++invoiceSeq).padStart(3, '0')}`;
+      row.currency = row.currency ?? 'EUR';
+      row.status = row.status ?? 'pendiente_datos';
+      row.deductibility = row.deductibility ?? 'pendiente_revision';
+      row.payment_status = row.payment_status ?? 'pendiente';
+      row.source = row.source ?? 'manual';
+      row.is_investment = row.is_investment ?? false;
+      for (const k of ['calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total']) row[k] = row[k] ?? 0;
+      const y = Number(date.slice(0, 4));
+      const q = Math.ceil(Number(date.slice(5, 7)) / 3);
+      row.fiscal_year = y;
+      row.fiscal_quarter = q;
+      row.fiscal_period = `${y}T${q}`;
+    }
+    if (table === 'invoices.invoice_lines') row.discount_amount = row.discount_amount ?? 0;
+    if (table === 'invoices.invoice_files') {
+      const inv = lookup('invoices.invoices').get(String(row.invoice_id));
+      const supplier = inv ? lookup('invoices.suppliers').get(String(inv.supplier_id)) : null;
+      row.kind = row.kind ?? 'original';
+      row.page_order = row.page_order ?? 1;
+      row.normalized_filename = normalizedFilename({ invoiceDate: String(inv?.invoice_date ?? '2026-01-01'), supplierSlug: String(supplier?.slug ?? 'proveedor'), object: String(inv?.object ?? ''), mime: String(row.mime_type ?? 'application/pdf') });
+    }
+    if (table === 'invoices.allocations') {
+      const line = lookup('invoices.invoice_lines').get(String(row.invoice_line_id));
+      row.invoice_id = line?.invoice_id ?? null;
+    }
+  }
+
+  /** Procedimientos mínimos (validate, annul): la lógica real vive en SQL; aquí basta para el humo del frontend. */
+  function runProcedure(op: FakeOperation & { procedure?: string; args?: Record<string, unknown> }, index: number, stagedTable: (t: string) => Map<string, FakeRow>, actorId: string, nextCursor: number, requestId: string, batchChanges: FakeChange[], touched: Set<string>): unknown {
+    const args = op.args ?? {};
+    const inv = stagedTable('invoices.invoices').get(String(args.invoice_id));
+    if (op.procedure === 'invoices.validate') {
+      if (!inv) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
+      if (inv.totals_delta !== null && Math.abs(Number(inv.totals_delta)) > 0.02) throw new Fault(422, 'INVOICE_TOTALS_MISMATCH', 'Los importes no cuadran con el total del documento.', { delta: inv.totals_delta });
+      const missing: string[] = [];
+      if (!inv.expense_category) missing.push('expense_category');
+      if (!Array.from(stagedTable('invoices.invoice_files').values()).some((f) => f.invoice_id === inv.id && !f.deleted_at && f.kind === 'original')) missing.push('original_file');
+      if (missing.length) throw new Fault(422, 'INVOICE_INCOMPLETE', 'Faltan datos para validar la factura.', { missing });
+      inv.status = 'validada';
+      inv.review_reason = null;
+      inv.revision += 1;
+      inv.updated_at = nowIso();
+      batchChanges.push(record('invoices.invoices', 'update', inv, nextCursor, batchChanges.length + 1, requestId, actorId));
+      touched.add(inv.id);
+      return { ...inv };
+    }
+    if (op.procedure === 'invoices.annul') {
+      if (!inv) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
+      if (!String(args.reason ?? '').trim()) throw new Fault(422, 'ANNUL_REASON_REQUIRED', 'Indica el motivo de la anulación.');
+      inv.status = 'anulada';
+      inv.annulled_reason = String(args.reason).trim();
+      inv.revision += 1;
+      inv.updated_at = nowIso();
+      batchChanges.push(record('invoices.invoices', 'update', inv, nextCursor, batchChanges.length + 1, requestId, actorId));
+      for (const a of stagedTable('invoices.allocations').values()) {
+        if (a.invoice_id !== inv.id || a.deleted_at) continue;
+        a.deleted_at = nowIso();
+        a.revision += 1;
+        batchChanges.push(record('invoices.allocations', 'delete', a, nextCursor, batchChanges.length + 1, requestId, actorId));
+      }
+      return { invoice: { ...inv }, exports: [] };
+    }
+    throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index, procedure: op.procedure });
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

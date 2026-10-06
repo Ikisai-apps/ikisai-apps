@@ -2,3 +2,38 @@
    Aquí solo lo específico de Invoices. Móvil primero (390 px), escritorio desde 1024 px. */
 
 /* Inicio: la tarjeta de instalación y los accesos tienen el mismo aspecto que una .card del kit; nada que añadir hoy. */
+
+/* Barra de herramientas con varios controles (periodo, año, interruptores). */
+.toolbar.wrap{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar.wrap select,.toolbar.wrap input{min-height:var(--tap,40px);padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface,transparent);color:inherit}
+
+/* Ficha de factura */
+.inv-head .kv{margin-top:10px}
+.inv-actions{margin-top:12px}
+.inv-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:12px}
+.inv-totals .tot{display:flex;flex-direction:column;gap:2px}
+.inv-totals .tot span{font-size:12px;color:var(--muted)}
+.inv-totals .tot strong{font-family:var(--serif);font-size:18px}
+.inv-totals .tot.total strong{font-size:22px}
+.inv-totals .cuadre{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.cuadre.ok{color:var(--ok)}
+.cuadre.bad{color:var(--alert);font-weight:600}
+.inv-block{border-top:1px solid var(--line);padding:6px 0}
+.inv-block>summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;cursor:pointer;font-weight:600;list-style:none}
+.inv-block>summary::-webkit-details-marker{display:none}
+.inv-block>summary .hint{font-weight:400;color:var(--muted);font-size:13px;text-align:right}
+.inv-table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0}
+.inv-table th,.inv-table td{padding:6px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.inv-table th{font-size:12px;color:var(--muted);font-weight:600}
+.inv-table .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.inv-table tr.bad td{color:var(--alert);font-weight:600}
+.inv-form{margin:10px 0;padding:12px;border:1px dashed var(--line);border-radius:12px;display:grid;gap:8px}
+.inv-editor:empty{display:none}
+.alloc-line{padding:8px 0;border-bottom:1px dashed var(--line)}
+.alloc-head{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;margin-bottom:6px}
+.bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin-bottom:8px}
+.bar span{display:block;height:100%;background:var(--accent)}
+.totals-foot{position:sticky;bottom:calc(var(--nav-height,64px) + 8px);display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;padding:10px 14px;border-radius:12px;background:var(--surface,var(--bg));border:1px solid var(--line);font-size:13.5px;box-shadow:var(--shadow-1,0 2px 8px rgba(0,0,0,.08))}
+.totals-foot .alert{color:var(--alert);font-weight:600}
+@media (min-width:1024px){.totals-foot{position:static}}
+code{font-size:12.5px;word-break:break-all}

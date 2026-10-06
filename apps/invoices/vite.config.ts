@@ -7,6 +7,7 @@ import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const syncClientEntry = path.resolve(root, '../../packages/sync-client/src/index.ts');
 const uiKitEntry = path.resolve(root, '../../packages/ui-kit/src/index.ts');
+const domainEntry = path.resolve(root, '../../packages/domain-invoices/src/index.ts');
 
 /** Archivos de `public/` que forman parte del shell (todo menos lo que es del despliegue). */
 function publicShellFiles(dir: string, prefix = '/'): string[] {
@@ -59,6 +60,7 @@ export default defineConfig(({ mode }) => {
       alias: [
         { find: '@ikisai/sync-client', replacement: syncClientEntry },
         { find: /^@ikisai\/ui-kit$/, replacement: uiKitEntry },
+        { find: '@ikisai/domain-invoices', replacement: domainEntry },
       ],
     },
     server: { port: 5174, strictPort: false, proxy },
