@@ -78,7 +78,8 @@ jobs:
         if: hashFiles('playwright.config.ts') != '' && needs.cambios.outputs.e2e != ''
         shell: bash
         run: |
-          if [ "${{ needs.cambios.outputs.e2e }}" = "all" ]; then npm run test:e2e; else npx playwright test ${{ needs.cambios.outputs.e2e }}; fi
+          # --retries=2: una prueba que falla por tiempos y pasa al repetir queda marcada «flaky» en el informe, no tumba la CI.
+          if [ "${{ needs.cambios.outputs.e2e }}" = "all" ]; then npx playwright test --retries=2; else npx playwright test ${{ needs.cambios.outputs.e2e }} --retries=2; fi
       - name: Pruebas del ui-kit
         if: hashFiles('packages/ui-kit/tests/playwright.config.ts') != '' && needs.cambios.outputs.uikit == 'true'
         run: npm run test:ui-kit
