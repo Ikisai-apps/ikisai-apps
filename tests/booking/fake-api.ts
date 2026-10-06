@@ -3,6 +3,7 @@
  * login/refresh/logout, bootstrap, snapshot, changes, commands con revisiones, recibos idempotentes y conflictos 409.
  * Solo para pruebas de extremo a extremo del frontend; no sustituye a la suite de conformidad de packages/test-kit.
  */
+import { FIELDS } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
@@ -46,6 +47,8 @@ export interface FakeApi {
   url: string;
   cursor(): number;
   rows(table: string): FakeRow[];
+  /** Adjuntos recibidos (tickets y si llegó el contenido). */
+  uploads(): Array<{ id: string; filename: string; mime: string; sha256: string; size: number | null }>;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -58,11 +61,8 @@ class Fault extends Error {
   }
 }
 
-const DEFAULT_TABLES: Record<string, string[]> = {
-  'booking.reservations': ['title', 'event_type', 'status', 'priority', 'start_date', 'end_date', 'expected_guests', 'minors_count', 'contact_name', 'contact_phone', 'contact_email', 'internal_notes', 'archived_at'],
-  'booking.reservation_finance': ['budget_amount', 'final_amount', 'deposit_required', 'deposit_paid'],
-  'booking.events': ['reservation_id', 'final_guests', 'arrival_time', 'departure_time'],
-};
+/** Columnas escribibles de cada tabla, tomadas del dominio (las mismas que valida la Edge). */
+const DEFAULT_TABLES: Record<string, string[]> = Object.fromEntries(Object.entries(FIELDS).map(([table, specs]) => [table, Object.keys(specs)]));
 
 export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeApi> {
   const users = options.users ?? [{ email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' }];
@@ -146,7 +146,32 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const results: unknown[] = [];
     const batchChanges: FakeChange[] = [];
     (body.operations as FakeOperation[]).forEach((op, index) => {
-      if (op.op === 'call') throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
+      if (op.op === 'call') {
+        // Versión mínima de booking.confirm_reservation: estado confirmado y evento operativo, una sola vez.
+        const call = op as unknown as { procedure?: string; args?: Record<string, string> };
+        if (call.procedure !== 'booking.confirm_reservation') throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
+        const reservations = stagedTable('booking.reservations');
+        const events = stagedTable('booking.events');
+        const reservation = reservations.get(call.args?.reservation_id ?? '');
+        if (!reservation) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+        if (reservation.status !== call.args?.from_status && reservation.status !== 'confirmada') throw new Fault(409, 'STATUS_CHANGED', 'El estado ha cambiado.', { currentStatus: reservation.status });
+        const stamp = nowIso();
+        let event = Array.from(events.values()).find((e) => e.reservation_id === reservation.id);
+        const created = !event;
+        if (!event) {
+          event = { id: call.args!.event_id!, revision: 1, created_at: stamp, updated_at: stamp, updated_by: actorId, deleted_at: null };
+          for (const column of tables['booking.events']!) event[column] = null;
+          Object.assign(event, { reservation_id: reservation.id, code: `EVT_TEST_${String(events.size + 1).padStart(3, '0')}`, preparation_status: 'pendiente', accommodation_status: 'pendiente', kitchen_status: 'pendiente', cleaning_status: 'pendiente', traveler_registration_status: 'pendiente' });
+          events.set(event.id, event);
+          batchChanges.push(record('booking.events', 'insert', event, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+        }
+        if (reservation.status !== 'confirmada') {
+          Object.assign(reservation, { status: 'confirmada', revision: reservation.revision + 1, updated_at: stamp, updated_by: actorId });
+          batchChanges.push(record('booking.reservations', 'update', reservation, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+        }
+        results.push({ op: 'call', procedure: call.procedure, result: { reservation_id: reservation.id, event_id: event.id, event_code: event.code, created, status: 'confirmada' } });
+        return;
+      }
       if (!op.table || !tables[op.table]) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.', { index });
       if (!op.id) throw new Fault(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
       const store = stagedTable(op.table);
@@ -177,7 +202,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         row.updated_by = actorId;
       }
       results.push({ op: op.op, table: op.table, id: op.id, revision: row.revision });
-      batchChanges.push(record(op.table, op.op, row, nextCursor, index + 1, body.requestId, actorId));
+      batchChanges.push(record(op.table, op.op, row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
     });
     for (const [table, store] of staged) data.set(table, store);
     cursor = nextCursor;
@@ -187,6 +212,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return result;
   }
 
+  const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
+
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://fake.local');
     const method = req.method ?? 'GET';
@@ -195,6 +222,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (!url.pathname.startsWith('/api/v1/')) throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
       const path = url.pathname.slice('/api/v1/'.length);
       if (path === 'health') return json(res, 200, { status: 'ok', app: 'booking', stage: 'test', release: 'test' });
+      const stored = /^_storage\/([0-9a-f-]+)$/.exec(path);
+      if (stored && method === 'PUT') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        const upload = uploads.get(stored[1]!);
+        if (!upload) throw new Fault(404, 'NOT_FOUND', 'Ticket desconocido.');
+        upload.size = Buffer.concat(chunks).byteLength;
+        return json(res, 200, { Key: stored[1] });
+      }
       if (path === 'auth/login' && method === 'POST') {
         const body = await readJson(req);
         const email = String(body.username ?? body.email ?? '').trim().toLowerCase();
@@ -238,6 +274,18 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      if (path === 'uploads' && method === 'POST') {
+        const body = await readJson(req);
+        const id = randomUUID();
+        uploads.set(id, { filename: String(body.filename), mime: String(body.mime), sha256: String(body.sha256), size: null });
+        return json(res, 200, { id, path: `booking/test/${id}`, uploadUrl: `/api/v1/_storage/${id}`, method: 'PUT', headers: {}, expiresAt: new Date(Date.now() + 600_000).toISOString(), duplicateOf: null });
+      }
+      const verify = /^uploads\/([0-9a-f-]+)\/verify$/.exec(path);
+      if (verify && method === 'POST') {
+        const upload = uploads.get(verify[1]!);
+        if (!upload || upload.size === null) throw new Fault(404, 'FILE_NOT_FOUND', 'El archivo no se ha subido.');
+        return json(res, 200, { id: verify[1], sha256: upload.sha256, size: upload.size, verified: true, hashVerified: true });
+      }
       throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
     } catch (error) {
       if (error instanceof Fault) return json(res, error.status, { error: { code: error.code, message: error.message, details: error.details } });
@@ -255,6 +303,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
+    uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
       if (!row) throw new Error(`fila ${id} no existe`);

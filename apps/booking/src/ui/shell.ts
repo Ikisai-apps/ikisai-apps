@@ -3,6 +3,8 @@ import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from 
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountReservations } from './reservations.ts';
+import { mountReservation } from './reservation.ts';
+import { mountGuests } from './guests.ts';
 import { mountPending } from './pending.ts';
 import { mountPlaceholder } from './placeholder.ts';
 
@@ -26,7 +28,7 @@ const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', PENDING] },
   { hash: '#/reservas', label: 'Reservas', icon: 'list' },
   { hash: '#/calendario', label: 'Calendario', icon: 'calendar', soon: true },
-  { hash: '#/huespedes', label: 'Huéspedes', icon: 'people', soon: true },
+  { hash: '#/huespedes', label: 'Huéspedes', icon: 'people' },
 ];
 
 const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
@@ -34,8 +36,21 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/reservas': { title: 'Reservas', mount: mountReservations },
   [PENDING]: { title: 'Por resolver', mount: mountPending },
   '#/calendario': { title: 'Calendario', mount: mountPlaceholder('Calendario', 'Ocupación por meses y estado de la sincronización con Google Calendar.') },
-  '#/huespedes': { title: 'Huéspedes', mount: mountPlaceholder('Huéspedes', 'Registro de viajeros, firma del parte y envío a SES.Hospedajes.') },
+  '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
 };
+
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/** Ruta exacta o con identificador: `#/reservas/<id>` (ficha) y `#/huespedes/<id de evento>`. `base` marca la navegación activa. */
+function resolve(hash: string): { title: string; mount: ViewMount; base: string } {
+  const exact = ROUTES[hash];
+  if (exact) return { ...exact, base: hash };
+  const reservation = new RegExp(`^#/reservas/(${UUID})$`, 'i').exec(hash);
+  if (reservation) return { title: 'Reserva', mount: mountReservation(reservation[1]!.toLowerCase()), base: '#/reservas' };
+  const guests = new RegExp(`^#/huespedes/(${UUID})$`, 'i').exec(hash);
+  if (guests) return { title: 'Huéspedes', mount: mountGuests(guests[1]!.toLowerCase()), base: '#/huespedes' };
+  return { ...ROUTES['#/']!, base: '#/' };
+}
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Booking. */
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
@@ -116,10 +131,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   function route(): void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
-    const entry = ROUTES[hash] ?? ROUTES['#/']!;
+    const entry = resolve(hash);
     unmountView?.();
     unmountView = null;
-    shell.setRoute(hash);
+    shell.setRoute(entry.base);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     document.title = `${entry.title} · Ikisai Booking`;

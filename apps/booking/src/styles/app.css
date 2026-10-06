@@ -22,3 +22,34 @@
 .chip[data-status='confirmada'] { --chip: #4f7a3a; }
 .chip[data-status='en_ejecucion'] { --chip: #3a6ea5; }
 .chip[data-status='cancelada'], .chip[data-status='perdida'] { --chip: #8a8a8a; }
+
+/* Ficha de la reserva: bloques en una columna en móvil y dos en escritorio. */
+.cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ficha-grid { margin-top: 16px; }
+.ficha .chips { margin-top: 8px; }
+.formsection { margin-top: 18px; }
+.rowform .check { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+
+/* Checklist del evento. */
+.checklist { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; }
+.checklist li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.checklist li[data-status='hecho'] span { text-decoration: line-through; opacity: .7; }
+.checklist li[data-status='no_aplica'] span { opacity: .55; }
+.checklist li[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
+
+/* Firma del parte de entrada. */
+canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 2; margin: 12px 0; background: #fffdf8; border: 1px dashed var(--line, #c9c2b3); border-radius: 12px; touch-action: none; cursor: crosshair; }
+
+/* Parte de entrada en papel: solo existe al imprimir. */
+.printarea { display: none; }
+@media print {
+  body > *, .shell > * { visibility: hidden; }
+  .printarea, .printarea * { visibility: visible; }
+  .printarea { display: block; position: absolute; inset: 0; padding: 18mm; background: #fff; color: #000; font: 12pt/1.5 var(--sans, sans-serif); }
+  .printarea h1 { font: 600 18pt var(--serif, serif); margin: 0 0 4mm; }
+  .printarea table { width: 100%; border-collapse: collapse; margin: 6mm 0; }
+  .printarea th, .printarea td { text-align: left; border-bottom: 1px solid #999; padding: 2.5mm 0; vertical-align: top; }
+  .printarea th { width: 38%; font-weight: 600; }
+  .printarea .legal { font-size: 9pt; }
+  .printarea .signline { margin-top: 28mm; border-top: 1px solid #000; padding-top: 2mm; width: 70%; }
+}
