@@ -72,7 +72,29 @@ export async function startE2EServer(): Promise<E2EServer> {
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, origins: [url] }) });
+  // El Auth simulado del test-kit no crea cuentas: aquí se añade lo que usa `members/invite` (alta por la API de
+  // administración y entrada con la contraseña temporal) para poder probar invitados de extremo a extremo.
+  const invited = new Map<string, { id: string; password: string }>();
+  const withInvitedUsers = (inner: typeof fetch): typeof fetch => async (input, init = {}) => {
+    const route = new URL(typeof input === 'string' ? input : (input as Request).url);
+    const method = (init.method ?? 'GET').toUpperCase();
+    const payload = typeof init.body === 'string' && init.body ? JSON.parse(init.body) : {};
+    if (route.pathname === '/auth/v1/admin/users') {
+      if (method !== 'POST') return Response.json({ users: [...invited].map(([email, user]) => ({ id: user.id, email })) });
+      if (invited.has(payload.email) || /^(owner|editor|reader)@example\.invalid$/.test(payload.email)) return Response.json({ code: 'email_exists', message: 'exists' }, { status: 422 });
+      const id = await app!.t.createUser();
+      invited.set(payload.email, { id, password: payload.password });
+      return Response.json({ id, email: payload.email });
+    }
+    if (route.pathname === '/auth/v1/token' && route.searchParams.get('grant_type') === 'password' && invited.has(payload.email)) {
+      const user = invited.get(payload.email)!;
+      if (payload.password !== user.password) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      await app!.t.createUser(user.id);
+      return Response.json({ access_token: app!.supabase.tokenFor(user.id), refresh_token: `refresh-invited-${user.id}`, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
+    }
+    return inner(input, init);
+  };
+  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, fetch: withInvitedUsers(config.fetch), origins: [url] }) });
   const ready = app;
   let sequence = 0;
   return {

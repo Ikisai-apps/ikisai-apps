@@ -1,0 +1,498 @@
+{
+ "tabs": [
+  {
+   "id": "ikisai",
+   "name": "Ikisai",
+   "families": [
+    {
+     "id": "person",
+     "name": "Persona",
+     "color": "#6f5a8f"
+    },
+    {
+     "id": "trade",
+     "name": "Oficio",
+     "color": "#b76b3d"
+    },
+    {
+     "id": "phase",
+     "name": "Fase",
+     "color": "#6b7b54"
+    },
+    {
+     "id": "building",
+     "name": "Edificio",
+     "color": "#4e6f72"
+    },
+    {
+     "id": "space",
+     "name": "Espacio",
+     "color": "#9c744e"
+    }
+   ],
+   "labels": [
+    {
+     "id": "vg",
+     "text": "Vera",
+     "family": "person",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "juan",
+     "text": "Juan",
+     "family": "person",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "prof",
+     "text": "Profesional",
+     "family": "person",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "font",
+     "text": "Fontanería",
+     "family": "trade",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "elec",
+     "text": "Electricidad",
+     "family": "trade",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "carp",
+     "text": "Carpintería",
+     "family": "trade",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "limp",
+     "text": "Limpieza",
+     "family": "trade",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "obra",
+     "text": "Obra",
+     "family": "trade",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "apertura",
+     "text": "Apertura",
+     "family": "phase",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "mejora",
+     "text": "Mejora",
+     "family": "phase",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "albergue",
+     "text": "Albergue",
+     "family": "building",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "centro",
+     "text": "Centro",
+     "family": "building",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "exterior",
+     "text": "Exteriores",
+     "family": "building",
+     "parent": null,
+     "archived": false
+    },
+    {
+     "id": "cocina",
+     "text": "Cocina",
+     "family": "space",
+     "parent": "albergue",
+     "archived": false
+    },
+    {
+     "id": "bano",
+     "text": "Baños",
+     "family": "space",
+     "parent": "albergue",
+     "archived": false
+    },
+    {
+     "id": "sala",
+     "text": "Sala principal",
+     "family": "space",
+     "parent": "centro",
+     "archived": false
+    },
+    {
+     "id": "piscina",
+     "text": "Piscina",
+     "family": "space",
+     "parent": "exterior",
+     "archived": false
+    }
+   ],
+   "projects": [
+    {
+     "id": "inbox",
+     "system": "inbox",
+     "title": "Entrada",
+     "note": "Captura rápida. Clasificar después.",
+     "status": "active",
+     "priority": "normal",
+     "due": "",
+     "ownLabels": [],
+     "tasks": [
+      {
+       "id": "t0",
+       "text": "Revisar cierre de la puerta exterior",
+       "note": "Sin clasificar todavía.",
+       "done": false,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "vg"
+       ],
+       "owner": "vg"
+      }
+     ]
+    },
+    {
+     "id": "p1",
+     "title": "Edificio inferior",
+     "note": "Dejar las salas listas para uso de grupos.",
+     "status": "active",
+     "priority": "high",
+     "due": "2026-10-20",
+     "ownLabels": [
+      "centro",
+      "apertura"
+     ],
+     "tasks": [
+      {
+       "id": "t1",
+       "text": "Sustituir puerta dañada",
+       "note": "Revisar marco antes de montar la nueva.",
+       "done": false,
+       "priority": "high",
+       "due": "2026-10-10",
+       "labels": [
+        "carp",
+        "juan",
+        "centro",
+        "apertura"
+       ],
+       "owner": "juan"
+      },
+      {
+       "id": "t2",
+       "text": "Activar agua fría",
+       "note": "Comprobar presión al final del recorrido.",
+       "done": false,
+       "priority": "critical",
+       "due": "2026-10-08",
+       "labels": [
+        "font",
+        "prof",
+        "centro",
+        "apertura"
+       ],
+       "owner": "prof"
+      },
+      {
+       "id": "t3",
+       "text": "Desmontar elementos colgados",
+       "note": "Guardar lo reutilizable.",
+       "done": true,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "obra",
+        "vg",
+        "centro"
+       ],
+       "owner": "vg"
+      },
+      {
+       "id": "t4",
+       "text": "Limpieza a fondo de salas",
+       "note": "Hacer después de terminar los trabajos sucios.",
+       "done": false,
+       "priority": "normal",
+       "due": "2026-10-18",
+       "labels": [
+        "limp",
+        "centro",
+        "apertura"
+       ],
+       "owner": null
+      },
+      {
+       "id": "t1a",
+       "text": "Comprobar marco y medidas",
+       "note": "Antes de pedir la puerta.",
+       "parentId": "t1",
+       "order": 1024,
+       "done": true,
+       "priority": "normal",
+       "labels": [
+        "juan",
+        "carp"
+       ],
+       "owner": "juan"
+      },
+      {
+       "id": "t1b",
+       "text": "Montar hoja y herrajes",
+       "note": "",
+       "parentId": "t1",
+       "order": 2048,
+       "done": false,
+       "priority": "normal",
+       "labels": [
+        "carp"
+       ],
+       "owner": null
+      }
+     ]
+    },
+    {
+     "id": "p2",
+     "title": "Cocina operativa",
+     "note": "Cierre de compras y pequeñas reparaciones.",
+     "status": "active",
+     "priority": "normal",
+     "due": "2026-10-15",
+     "ownLabels": [
+      "albergue",
+      "cocina",
+      "apertura"
+     ],
+     "tasks": [
+      {
+       "id": "t5",
+       "text": "Revisar enchufes de maquinaria",
+       "note": "Priorizar zona de preparación.",
+       "done": true,
+       "priority": "high",
+       "due": "",
+       "labels": [
+        "elec",
+        "prof",
+        "albergue",
+        "cocina"
+       ],
+       "owner": "prof"
+      },
+      {
+       "id": "t6",
+       "text": "Sellar pequeños agujeros de tapetas",
+       "note": "Acabado antracita.",
+       "done": false,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "carp",
+        "vg",
+        "albergue",
+        "cocina"
+       ],
+       "owner": "vg"
+      },
+      {
+       "id": "t7",
+       "text": "Comprobar desagües antes del primer retiro",
+       "note": "Prueba con varios puntos de consumo a la vez.",
+       "done": false,
+       "priority": "high",
+       "due": "2026-10-12",
+       "labels": [
+        "font",
+        "albergue",
+        "cocina",
+        "apertura"
+       ],
+       "owner": null
+      }
+     ]
+    },
+    {
+     "id": "p3",
+     "title": "Piscina y exteriores",
+     "note": "Trabajos no bloqueantes de mejora.",
+     "status": "paused",
+     "priority": "normal",
+     "due": "",
+     "ownLabels": [
+      "exterior",
+      "mejora"
+     ],
+     "tasks": [
+      {
+       "id": "t8",
+       "text": "Revisar junta perimetral",
+       "note": "Documentar con fotos.",
+       "done": false,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "obra",
+        "exterior",
+        "piscina",
+        "mejora"
+       ],
+       "owner": null
+      },
+      {
+       "id": "t9",
+       "text": "Ordenar herramientas de mango largo",
+       "note": "Solución vertical sencilla.",
+       "done": true,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "vg",
+        "exterior"
+       ],
+       "owner": "vg"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "personal",
+   "name": "Personal",
+   "families": [
+    {
+     "id": "person",
+     "name": "Persona",
+     "color": "#6f5a8f"
+    },
+    {
+     "id": "trade",
+     "name": "Oficio",
+     "color": "#b76b3d"
+    },
+    {
+     "id": "phase",
+     "name": "Fase",
+     "color": "#6b7b54"
+    },
+    {
+     "id": "building",
+     "name": "Edificio",
+     "color": "#4e6f72"
+    },
+    {
+     "id": "space",
+     "name": "Espacio",
+     "color": "#9c744e"
+    }
+   ],
+   "labels": [
+    {
+     "id": "vgp",
+     "text": "Vera",
+     "family": "person",
+     "archived": false,
+     "parent": null
+    },
+    {
+     "id": "casa",
+     "text": "Casa",
+     "family": "building",
+     "archived": false,
+     "parent": null
+    },
+    {
+     "id": "familia",
+     "text": "Familia",
+     "family": "phase",
+     "archived": false,
+     "parent": null
+    }
+   ],
+   "projects": [
+    {
+     "id": "pp1",
+     "title": "Casa",
+     "note": "Ejemplo de pestaña independiente.",
+     "status": "active",
+     "priority": "normal",
+     "due": "",
+     "ownLabels": [
+      "casa"
+     ],
+     "tasks": [
+      {
+       "id": "pt1",
+       "text": "Comprar bombillas",
+       "note": "",
+       "done": false,
+       "priority": "normal",
+       "due": "",
+       "labels": [
+        "vgp",
+        "casa"
+       ],
+       "owner": "vgp"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "detailorg",
+   "name": "Detailorg",
+   "families": [
+    {
+     "id": "person",
+     "name": "Persona",
+     "color": "#6f5a8f"
+    },
+    {
+     "id": "trade",
+     "name": "Oficio",
+     "color": "#b76b3d"
+    },
+    {
+     "id": "phase",
+     "name": "Fase",
+     "color": "#6b7b54"
+    },
+    {
+     "id": "building",
+     "name": "Edificio",
+     "color": "#4e6f72"
+    },
+    {
+     "id": "space",
+     "name": "Espacio",
+     "color": "#9c744e"
+    }
+   ],
+   "labels": [],
+   "projects": []
+  }
+ ]
+}

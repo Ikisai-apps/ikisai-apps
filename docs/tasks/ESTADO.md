@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 3). **Backend completo para el uso diario; `apps/tasks` arranca sobre el núcleo y pasa 28 de los 72 escenarios en Playwright. No está lista para el corte.**
+Actualizado: 6 de octubre de 2026 (tanda 4). **`apps/tasks` pasa 67 de los 72 escenarios en Playwright, con adjuntos e invitados de extremo a extremo. Faltan CSV, copia portable, respaldo y el filtro por REST (24, 32, 33, 44); el 29 es de la fase de agentes. Todavía no está lista para `tasks-next`.**
 
 ## Hecho
 
@@ -18,27 +18,34 @@ Actualizado: 6 de octubre de 2026 (tanda 3). **Backend completo para el uso diar
 
 ## Escenarios de no regresión (72)
 
-Portados y en verde (28): 1, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19, 22, 26, 31 (historial y deshacer; falta el antes/después por tarea), 35, 37 (limpieza local; el registro de accesos es de la fase de agentes), 43, 45, 49, 50, 58, 60, 65, 68.
+Dos archivos de Playwright contra la `tasks-api` real en PGlite: `tests/tasks/ui.spec.ts` (los escenarios originales con sus mismos gestos, sobre la semilla de demostración antigua con uuid: `tests/tasks/fixtures/demo.json`) y `tests/tasks/app.spec.ts` (sincronización, conflictos, rechazos y permisos).
 
-Pendientes (43): 2, 4, 6, 15, 20, 21, 23, 24, 25, 27, 28, 30, 32, 33, 34, 36, 38–42, 44, 46–48, 51–57, 59, 61–64, 66, 67, 69–72. Diferido (1): 29.
+**En verde (67):** 1–23, 25–28, 30, 31, 34–43, 45–72.
 
-De los pendientes, la mayoría son de interfaz pura y deberían pasar sin cambios (no se han ejecutado todavía); los que necesitan trabajo son:
+- 31: historial con autor y deshacer; el antes/después filtrado por tarea se hace en el cliente sobre los últimos 200 lotes (C8).
+- 37: limpieza local al cerrar sesión; el registro de accesos es de la fase de agentes.
+- 27, 28, 30, 34: adaptados a cuentas con ámbitos (D6). «Quitar el acceso» deja la pertenencia sin ámbitos; el núcleo aún no tiene baja ni cierre de sesiones ajenas (C7).
+- 15: la subida a Storage se intercepta en el arnés (`routeStorage`); ticket, verificación, marcador `$blob`, fila, descarga por `attachments/:id` y apertura sin red son los reales.
 
-- **15 (adjuntos):** el flujo está escrito (blob → cola → `$blob` → fila; descarga por `attachments/:id` con caché local) pero sin prueba de extremo a extremo.
-- **24, 32, 33 (respaldo, copia portable, CSV):** faltan sus rutas en `tasks-api`; las entradas del menú están ocultas.
-- **27, 28, 30, 34 (invitados con ámbitos):** falta la pantalla de cuentas sobre `members` y `members/invite`; el servidor ya lo aplica y está probado por API.
-- **36 (sesión caducada con cola):** sin probar.
-- **44 (filtros por REST):** falta `GET tabs/:tabId/tasks`.
-- `tests/updates.cjs` (6 escenarios de activación del service worker) y `tests/cloud-browser.mjs`: sin portar.
+**Pendientes (4):** 24 (respaldo), 32 (copia portable), 33 (CSV), 44 (filtros por REST: `GET tabs/:tabId/tasks`). Sus entradas de menú siguen ocultas.
+
+**Diferido (1):** 29 (aprobación de agentes).
+
+Sin portar todavía: `tests/updates.cjs` (6 escenarios de activación del service worker) y lo que queda de `tests/cloud-browser.mjs` (foto 3200→1600 px, reintento de importación portable).
+
+Cambios en la interfaz heredada hechos en esta tanda, todos por el paso de ids fijos a uuid o por defectos destapados por las pruebas:
+
+- Familias equivalentes entre áreas (`familyKey`, `filterGroups` en `sync.js`; una línea en `index.html` y dos en `filters-ui.js`): antes todas las áreas compartían los ids `person`, `trade`…; ahora las de la misma clave de sistema o el mismo nombre cuentan como una sola faceta en filtros y en «Mis tareas».
+- La descarga de adjuntos se atiende en fase de captura: en escritorio el diálogo detenía la propagación y el navegador abría el enlace sin sesión.
+- Sesión caducada: la cola se conserva y se vuelve a pedir la cuenta; con cambios pendientes solo puede entrar la misma cuenta.
+- Pantalla «Cuentas de personas» sobre `members` y `members/invite` (contraseña temporal mostrada una vez).
 
 ## Siguiente tanda
 
-1. Ejecutar y portar los escenarios de interfaz pendientes (2, 4, 6, 20, 21, 23, 25, 38–42, 46–48, 51–57, 59, 61–64, 66, 67, 69–72).
-2. Adjuntos de extremo a extremo (15) y sesión caducada (36).
-3. Pantalla de cuentas e invitados con ámbitos (27, 28, 30, 34).
-4. Rutas `tabs/:tabId/tasks`, `trash/empty`, CSV, copia portable y respaldo, y sus entradas de menú.
-5. Service worker: escenarios de actualización.
+1. Rutas `tabs/:tabId/tasks` (44), CSV (33), copia portable (32), respaldo (24) y `trash/empty` en `tasks-api`, con sus entradas de menú.
+2. Escenarios de actualización del service worker y los restantes de `cloud-browser`.
+3. Usar `restore` con `fields` (C16, ya en el núcleo) para la hija en papelera cuyo padre cambió de proyecto.
 
 ## Bloqueos
 
-- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C16, C17.
+- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19.
