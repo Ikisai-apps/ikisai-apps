@@ -761,9 +761,9 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
   function paintApp(): void {
     for (const b of Array.from(appButtons.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.app === app);
     if (app === 'general') { replace(appArea, field('Tipo', kindSelect)); return; }
-    if (app === 'booking') { replace(appArea, el('p', { class: 'hint' }, 'Los destinos de Reservas llegarán en la fase 2, cuando Booking publique su proyección.')); return; }
     const recents = recentTargets().filter((t) => t.app === app);
-    replace(appArea, field('Buscar en ' + (app === 'tasks' ? 'Tareas (Área › Proyecto › Tarea)' : 'Cocina (ingredientes y maquinaria)'), searchInput, navigator.onLine ? undefined : 'Sin red solo puedes elegir destinos usados recientemente.'), results, chosen);
+    const where = app === 'tasks' ? 'Tareas (Área › Proyecto › Tarea)' : app === 'food' ? 'Cocina (ingredientes y maquinaria)' : 'Reservas (eventos: retiros)';
+    replace(appArea, field('Buscar en ' + where, searchInput, navigator.onLine ? undefined : 'Sin red solo puedes elegir destinos usados recientemente.'), results, chosen);
     paintResults(recents, 'Usados recientemente');
     void runSearch();
   }
@@ -777,7 +777,7 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   async function runSearch(): Promise<void> {
-    if (!navigator.onLine || app === 'general' || app === 'booking') return;
+    if (!navigator.onLine || app === 'general') return;
     try {
       const items = await searchTargets(client, app as TargetChoice['app'], searchInput.value);
       paintResults(items, searchInput.value ? 'Resultados' : 'Destinos');
