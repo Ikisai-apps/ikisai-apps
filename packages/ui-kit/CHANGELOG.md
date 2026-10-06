@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.2.1 · 6 de octubre de 2026
+
+- Listas: los fragmentos de `.row-meta` se separan con un punto medio (antes dependía de que la app lo pusiera).
+
 ## 0.2.0 · 6 de octubre de 2026
 
 - `openSheet` / `closeSheet`: hoja inferior (diálogo centrado en escritorio) con una sola instancia, foco atrapado, Escape y fondo, `beforeClose` para cambios sin guardar, pie ocultable y foco devuelto al abrir.

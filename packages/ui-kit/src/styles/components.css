@@ -79,6 +79,7 @@
 .row-title{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .row-title .name{overflow-wrap:anywhere}
 .row-meta{grid-column:1;color:var(--muted);font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap}
+.row-meta>span+span::before{content:'·';margin-right:8px;opacity:.7}
 .row-actions{grid-row:1/span 2;grid-column:2;display:flex;gap:4px}
 .row.deleted .row-title .name{color:var(--muted);text-decoration:line-through}
 .row[data-pending="true"]{box-shadow:inset 3px 0 0 var(--warn)}
