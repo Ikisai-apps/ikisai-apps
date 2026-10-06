@@ -22,6 +22,14 @@ def main():
     if info["s"] == "MERGED": print("ya fusionada"); return 0
     if info["s"] != "OPEN": print("PR no abierta:", info["s"]); return 1
     c = info["c"]
+    # Varias ejecuciones del mismo check (p. ej. al pasar a «Ready for review» justo tras un push): una cancelada no cuenta
+    # como rojo si otra con el mismo nombre terminó; se queda la mejor de cada nombre.
+    best = {}
+    for x in c:
+      prev = best.get(x["name"])
+      rank = lambda y: 3 if y["status"] != "COMPLETED" else (1 if y["conclusion"] == "CANCELLED" else 2)  # en curso: esperar
+      if prev is None or rank(x) > rank(prev): best[x["name"]] = x
+    c = list(best.values())
     # PR que no dispara la CI (solo docs: paths-ignore en checks.yml): sin checks tras 90 s y mergeable → se fusiona.
     no_ci = not c and time.time() - start > 90 and info["m"] in ("CLEAN", "UNSTABLE", "HAS_HOOKS")
     if no_ci or (c and all(x["status"] == "COMPLETED" for x in c)):
