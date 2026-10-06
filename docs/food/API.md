@@ -377,7 +377,7 @@ V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoice
 
 ### 7.1 Lo que Food consume: `booking.food_event_projection`
 
-La lee la Edge de Food como lectura registrada (contrato §5.1: Booking la registra con `core.allow_read('food', 'booking.food_event_projection', 'view')`) y la sirve en `GET events`. Mientras Booking no la publique, Food usa una vista de pruebas en su propio schema con las mismas columnas, `food.event_projection_stub`, registrada igual. Columnas del contrato: `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions, event_revision`. Food necesita además lo siguiente (petición P5, a cerrar con Booking):
+La lee la Edge de Food como lectura registrada (contrato §5.1: Booking la registra con `core.allow_read('food', 'booking.food_event_projection', 'view')`) y la sirve en `GET events`. Booking la publicó el 6 de octubre de 2026 (`20261006_0006_booking_guests.sql`) con las columnas del contrato y las cuatro de su ampliación (`reservation_status`, `guest_count_is_final`, `requires_meals`, `meal_notes`); las restricciones llegan como `{type, subject, severity, servings, kitchen_notes}`. La vista de pruebas `food.event_projection_stub`, que cubrió el hueco unas horas, ya no se usa y queda pendiente de retirar (P11). Columnas del contrato: `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions, event_revision`. Food necesita además lo siguiente (petición P5, a cerrar con Booking):
 
 | Necesidad | Para qué |
 |---|---|

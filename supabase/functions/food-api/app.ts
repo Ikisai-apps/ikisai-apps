@@ -9,31 +9,17 @@ export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pag
 
 export const FOOD_UPLOADS: UploadsConfig = { bucket: 'kitchen-media', maxBytes: PHOTO_MAX_BYTES, allowedMime: [...PHOTO_MIME] };
 
-const BOOKING_PROJECTION = 'booking.food_event_projection';
-/** Vista de pruebas con las mismas columnas; se usa solo mientras Booking no registre la suya para Food. */
-const STUB_PROJECTION = 'food.event_projection_stub';
+const EVENT_PROJECTION = 'booking.food_event_projection';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Lectura de eventos como lectura registrada del núcleo (contrato §5.1). Food nunca recibe huéspedes. */
 function createEventReader(supabase: Supabase) {
-  let booking = false; // pasa a true la primera vez que la proyección de Booking responde
-
   async function read(ctx: RequestContext, where?: Record<string, string>): Promise<FoodEvent[]> {
-    for (const name of booking ? [BOOKING_PROJECTION] : [BOOKING_PROJECTION, STUB_PROJECTION]) {
-      try {
-        const out = await supabase.rpc<{ rows: FoodEvent[] }>('core_read', {
-          p_app: ctx.app, p_actor: ctx.user.id, p_name: name, p_args: { ...(where ? { where } : {}), limit: 2000 },
-        });
-        if (name === BOOKING_PROJECTION) booking = true;
-        return out.rows;
-      } catch (error) {
-        // Booking todavía no ha registrado su proyección para Food: se prueba con la de pruebas.
-        if (name === BOOKING_PROJECTION && isFault(error) && error.code === 'INVALID_OPERATION') continue;
-        throw error;
-      }
-    }
-    fail(503, 'PROJECTION_UNAVAILABLE', 'No se pueden leer los eventos de Booking.');
+    const out = await supabase.rpc<{ rows: FoodEvent[] }>('core_read', {
+      p_app: ctx.app, p_actor: ctx.user.id, p_name: EVENT_PROJECTION, p_args: { ...(where ? { where } : {}), limit: 2000 },
+    });
+    return out.rows;
   }
 
   return {
