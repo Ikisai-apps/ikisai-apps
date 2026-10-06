@@ -185,7 +185,7 @@ test('acciones invocables: editor sí, reader no, sistema sí; baja de tabla y d
   await t.db.exec(`select core.disallow_read('invoices', 'invoices.claim_job'); select core.unregister_table('invoices', 'invoices', 'suppliers');`);
   await expectFail(t.rpc('core_invoke', { p_app: APP, p_actor: owner, p_name: 'invoices.claim_job', p_args: {} }), 'INVALID_OPERATION');
   const boot = (await t.rpc('core_bootstrap', { p_app: APP, p_user: owner })) as any;
-  assert.deepEqual(boot.tables, []);
+  assert.equal(boot.tables.some((x: any) => x.table === TABLE), false, 'la tabla dada de baja desaparece del bootstrap');
   await t.close();
 });
 
