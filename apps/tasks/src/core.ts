@@ -32,6 +32,8 @@ export class TasksCore {
   private started = false;
   /** Ciclos de sincronización empezados (cada paso a `syncing`): dice si `sync()` se unió a uno que ya estaba en marcha. */
   private cycles = 0;
+  /** Guardados locales empezados: dice si alguno empezó mientras se leía el espejo. */
+  private commits = 0;
   private syncing = false;
   private hidden: Record<string, number> | undefined;
 
@@ -96,9 +98,30 @@ export class TasksCore {
 
   /** Vuelve a leer todas las tablas del espejo. */
   async reload(): Promise<void> {
+    this.data = await this.read();
+  }
+
+  private async read(): Promise<Dataset> {
     const next = emptyDataset() as unknown as Record<string, unknown[]>;
     for (const table of TABLES) next[table] = await this.client.list(table as TableName, { includeDeleted: true });
-    this.data = next as unknown as Dataset;
+    return next as unknown as Dataset;
+  }
+
+  /**
+   * Refresco tras cambios del espejo. Si durante la lectura empezó un guardado local, lo leído se descarta: el espejo aún
+   * no contiene ese guardado y, sobre todo, la interfaz no ha adoptado lo que llegó del servidor. Quedarse con esos
+   * datos haría que el siguiente `plan()` comparase un modelo de interfaz antiguo con datos remotos nuevos y devolviera
+   * a su valor anterior lo que cambió otro dispositivo (por ejemplo, el color de un área). Se reintenta al terminar.
+   */
+  private async refresh(): Promise<boolean> {
+    if (this.localPending > 0 || !this.dirty) return false;
+    this.dirty = false;
+    const started = this.commits;
+    const next = await this.read();
+    if (this.localPending > 0 || this.commits !== started) { this.dirty = true; return false; }
+    this.data = next;
+    this.emit('data');
+    return true;
   }
 
   private scheduleRefresh(): void {
@@ -107,11 +130,7 @@ export class TasksCore {
     this.refreshTimer = setTimeout(async () => {
       this.refreshTimer = null;
       // Mientras haya guardados locales en vuelo, el espejo aún no los contiene: se espera a que terminen.
-      if (this.localPending > 0 || !this.dirty) return;
-      this.dirty = false;
-      try { await this.reload(); } catch (error) { console.error(error); return; }
-      if (this.localPending > 0) { this.dirty = true; return; }
-      this.emit('data');
+      try { await this.refresh(); } catch (error) { console.error(error); }
     }, 0);
   }
 
@@ -121,11 +140,7 @@ export class TasksCore {
    */
   async settle(): Promise<void> {
     if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
-    if (!this.dirty || this.localPending > 0) return;
-    this.dirty = false;
-    await this.reload();
-    if (this.localPending > 0) { this.dirty = true; return; }
-    this.emit('data');
+    await this.refresh();
   }
 
   /** Modelo anidado que usa la interfaz, compuesto desde la copia en memoria. */
@@ -152,6 +167,7 @@ export class TasksCore {
     if (!batches.length) return [];
     for (const batch of batches) this.data = applyOperations(this.data, batch);
     this.localPending += 1;
+    this.commits += 1;
     this.emit('status');
     const ids: string[] = [];
     try {
