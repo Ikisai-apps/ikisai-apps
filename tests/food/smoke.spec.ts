@@ -76,6 +76,16 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     }
   });
 
+  await test.step('la marca de la cabecera abre el lanzador con las apps de la cuenta', async () => {
+    await page.locator('#appLauncher').click();
+    const sheet = page.getByRole('dialog', { name: 'Apps de Ikisai' });
+    await expect(sheet.locator('.launcher-app.current')).toContainText('Food');
+    await expect(sheet.locator('a.launcher-app[data-app="booking"]')).toHaveAttribute('href', 'https://booking.ikisai.com/');
+    await expect(sheet.locator('a.launcher-app[data-app="tasks"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+  });
+
   await test.step('maquinaria: alta de un horno', async () => {
     await page.goto(`${baseURL}/#/maquinaria`);
     await expect(page.getByText('Todavía no hay maquinaria')).toBeVisible();

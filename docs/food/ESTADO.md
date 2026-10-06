@@ -21,12 +21,13 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H comp
   - **Cierre**: notas del menú y cierre de cocina, editables también con el menú validado.
   - **Coste estimado** (pestaña Menú y vista de cocinero): precio de cada ingrediente = media ponderada de sus compras de los últimos 3 meses o, si no hay, la de su última compra con aviso (decisión del usuario), con las compras reales asignadas en Invoices (`invoices.food_stock_projection`, lectura registrada), coste por plato, por servicio (desglose con `renderMoneyBreakdown` del kit 0.9) y por persona; señala los ingredientes sin precio. Las compras se guardan en la caché local para verlo sin red. También en Inicio (coste y coste por persona de cada evento próximo), en Eventos (chip «≈ N €») y en la ficha de receta (precio de cada línea y coste por ración).
   - **Inicio**: próximos eventos con cuándo son, el estado de su menú, sus restricciones (alergias destacadas), su compra y su preparación; lo ya listo lleva su marca.
+- **Lanzador común** (kit 0.14, 7 de octubre de 2026): la marca de la cabecera (`#appLauncher`) abre la hoja con las apps de la cuenta (`GET /api/v1/apps`), Food marcada; sin red, la última lista guardada. Con la sesión única, abrir otra app no pide contraseña.
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
 - Pruebas: 44 en PGlite y en `domain.test.ts` el cálculo de coste (`tests/food/*.test.ts`) y cuatro de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red) y `offline.spec.ts` (dos dispositivos: fusión automática en preparación, conflicto con decisión en compra y rechazo `MENU_LOCKED` sin bloquear la cola).
 
 ## Aceptación del usuario (6 de octubre de 2026)
 
-- Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida en la rama `food/crear-menu`. La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.
+- Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida y publicada (PR #135). La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.
 
 ## Pendiente
 
