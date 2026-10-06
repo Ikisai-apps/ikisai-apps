@@ -34,4 +34,5 @@ export { createThemeToggle, createThemeSelect } from './theme-switch.ts';
 export { compressImage, compressedFilename, isImageFile, supportsWebp, type CompressImageOptions, type CompressedImage } from './media/compress-image.ts';
 export { createCalendar, toDayKey, fromDayKey, addDays, todayKey, startOfWeek, startOfMonth, daysBetween, type Calendar, type CalendarEvent, type CalendarOptions, type CalendarView, type DayKey } from './calendar/calendar.ts';
 export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
+export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';

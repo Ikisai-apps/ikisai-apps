@@ -294,6 +294,31 @@
 .imagepreview .full{width:min(100%,360px)}
 .imagepreview figcaption{font-size:12px;color:var(--muted);margin-top:4px}
 
+/* ---------- Tablas y hoja de importación ---------- */
+.table{width:100%;border-collapse:collapse;font-size:13.5px}
+.table th,.table td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--edge);vertical-align:top;overflow-wrap:anywhere}
+.table thead th{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.table th[scope="row"]{font-weight:600}
+.table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.table tr.bad td,.table tr.bad th{background:var(--alert-soft)}
+.table tr.bad .diff{color:var(--alert);font-weight:800}
+.table .chip.small{margin-left:6px;padding:2px 6px;font-size:10px}
+.imp{display:grid;gap:12px}
+.imp-source .field{margin-bottom:8px}
+.imp-source textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;min-height:110px}
+.imp-file{position:relative;overflow:hidden;cursor:pointer}
+.imp-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.imp-preview{display:grid;gap:8px}
+.imp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.imp-head .kv{margin:0;flex:1 1 240px}
+.imp-sub{font-size:16px;margin:8px 0 0}
+.imp-errors ul{margin:6px 0 0;padding-left:18px;font-weight:500}
+.imp-errors code{font-size:12px}
+.imp-verdict{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-sm);font-weight:700;font-size:13.5px;margin-top:8px}
+.imp-verdict.ok{background:var(--ok-soft);color:var(--ok)}
+.imp-verdict.bad{background:var(--alert-soft);color:var(--alert)}
+.imp-warnings{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
   .shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:auto 1fr;padding-bottom:0}
