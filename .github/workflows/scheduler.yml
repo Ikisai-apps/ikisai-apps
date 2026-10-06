@@ -1,0 +1,33 @@
+name: Planificador (workers)
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ikisai-scheduler
+  cancel-in-progress: false
+jobs:
+  tick:
+    name: Tick de colas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: booking
+            route: calendar/tick
+    steps:
+      - name: ${{ matrix.app }} · ${{ matrix.route }}
+        shell: bash
+        env:
+          IKISAI_WORKER_KEY: ${{ secrets.IKISAI_WORKER_KEY }}
+        run: |
+          url="https://ctytaorylbninfyupfsn.supabase.co/functions/v1/${{ matrix.app }}-api/api/v1/worker/${{ matrix.route }}"
+          code=$(curl -s -o /tmp/out.json -w '%{http_code}' -X POST "$url" -H "X-Ikisai-Worker-Key: $IKISAI_WORKER_KEY" -H 'Content-Type: application/json' -H 'Origin: https://${{ matrix.app }}.ikisai.com' --data '{}')
+          echo "HTTP $code"; head -c 600 /tmp/out.json; echo
+          # 404 = la app aún no expone esa ruta de worker; no es un fallo del planificador.
+          if [ "$code" = "404" ]; then echo "::notice::ruta de worker todavía no disponible"; exit 0; fi
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]

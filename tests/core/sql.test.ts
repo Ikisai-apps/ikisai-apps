@@ -90,9 +90,11 @@ test('borrado lógico, restore, snapshot y changes', async () => {
   snap = (await t.rpc('core_snapshot_table', { p_app: APP, p_role: 'reader', p_table: TABLE, p_include_deleted: true, p_limit: 100, p_offset: 0 })) as any;
   assert.equal(snap.rows.length, 2);
   await expectFail(t.rpc('core_commit', { p_app: APP, p_actor: editor, p_request_id: 'd2', p_digest: 'd2', p_expected_cursor: null, p_operations: [{ op: 'delete', table: TABLE, id: a, expectedRevision: 2 }] }), 'ROW_DELETED');
-  const res = (await t.rpc('core_commit', { p_app: APP, p_actor: editor, p_request_id: 'r', p_digest: 'r', p_expected_cursor: null, p_operations: [{ op: 'restore', table: TABLE, id: a, expectedRevision: 2 }] })) as any;
+  const res = (await t.rpc('core_commit', { p_app: APP, p_actor: editor, p_request_id: 'r', p_digest: 'r', p_expected_cursor: null, p_operations: [{ op: 'restore', table: TABLE, id: a, expectedRevision: 2, fields: { notes: 'restaurada con corrección' } }] })) as any;
   assert.equal(res.changes[0].after.deleted_at, null);
   assert.equal(res.changes[0].after.revision, 3);
+  assert.equal(res.changes[0].after.notes, 'restaurada con corrección');
+  await expectFail(t.rpc('core_commit', { p_app: APP, p_actor: editor, p_request_id: 'r2', p_digest: 'r2', p_expected_cursor: null, p_operations: [{ op: 'delete', table: TABLE, id: a, expectedRevision: 3, fields: { notes: 'no' } }] }), 'INVALID_FIELDS');
 
   const changes = (await t.rpc('core_changes_since', { p_app: APP, p_role: 'reader', p_after: 1, p_limit: 100 })) as any;
   assert.deepEqual(changes.items.map((c: any) => c.op), ['delete', 'restore']);

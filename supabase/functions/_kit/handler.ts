@@ -18,8 +18,28 @@ export interface AppConfig extends SupabaseConfig {
   /** Rutas propias de la app, evaluadas después de las del núcleo. */
   routes?: AppRoute[];
   maxBodyBytes?: number;
-  /** Clave compartida para `POST /api/v1/worker/:name` (secreto de la Edge). Sin ella, la ruta no existe. */
+  /** Clave compartida para `POST /api/v1/worker/...` (secreto de la Edge). Sin ella, las rutas de worker no existen. */
   workerKey?: string;
+  /** Rutas de sistema con lógica TypeScript (planificador externo): `/api/v1/worker/<pattern>`, autenticadas con `X-Ikisai-Worker-Key`, sin usuario. */
+  workerRoutes?: WorkerRoute[];
+}
+
+export interface WorkerRequest {
+  request: Request;
+  url: URL;
+  params: Record<string, string>;
+  json(): Promise<any>;
+  /** Ejecuta una acción registrada (`kind 'action'`) como sistema (actor null). */
+  invoke(name: string, args?: unknown): Promise<unknown>;
+  /** Acceso a Supabase con service key, para lo que la acción no cubra. */
+  supabase: ReturnType<typeof createSupabase>;
+}
+
+export interface WorkerRoute {
+  method: string;
+  /** Patrón relativo a `/api/v1/worker/`, por ejemplo `calendar/tick`. */
+  pattern: string;
+  handler: (req: WorkerRequest) => Promise<unknown | Response>;
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -87,6 +107,7 @@ export function createApp(config: AppConfig): AppHandler {
   }
   routes.push(...(config.routes ?? []));
   const compiled = routes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
+  const compiledWorkers = (config.workerRoutes ?? []).map((route) => ({ ...route, matcher: compile(route.pattern) }));
 
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');
@@ -120,11 +141,20 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/auth/login' && request.method === 'POST') return json(await auth.login(await readJson()));
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
       // Rutas de sistema para workers (planificador externo): clave compartida en IKISAI_WORKER_KEY, sin sesión de usuario.
-      const workerMatch = path.match(/^\/api\/v1\/worker\/([a-z_]+\.[a-z0-9_]+)$/);
-      if (workerMatch && request.method === 'POST') {
+      if (path.startsWith('/api/v1/worker/')) {
         const provided = request.headers.get('x-ikisai-worker-key');
         if (!config.workerKey || !provided || !timingSafeEqual(provided, config.workerKey)) fail(401, 'UNAUTHENTICATED', 'Clave de worker inválida.');
-        return json(await sync.invoke(null, workerMatch[1]!, await readJson()));
+        const relative = path.slice('/api/v1/worker/'.length);
+        for (const route of compiledWorkers) {
+          if (route.method !== request.method) continue;
+          const params = route.matcher(relative);
+          if (!params) continue;
+          const result = await route.handler({ request, url, params, json: readJson, invoke: (name, args) => sync.invoke(null, name, args ?? {}), supabase });
+          return result instanceof Response ? result : json(result);
+        }
+        // Sin ruta TypeScript: acción SQL registrada (`kind 'action'`) por su nombre `schema.fn`.
+        if (request.method === 'POST' && /^[a-z_]+\.[a-z0-9_]+$/.test(relative)) return json(await sync.invoke(null, relative, await readJson()));
+        fail(404, 'NOT_FOUND', 'Ruta de worker desconocida.');
       }
       if (!path.startsWith('/api/v1/')) fail(404, 'NOT_FOUND', 'Ruta desconocida.');
       const token = bearer(request);

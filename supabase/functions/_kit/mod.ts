@@ -8,4 +8,4 @@ export type { AppHooks, RequestContext, Operation, CommitResult, Membership, Boo
 export { createUploads } from './uploads.ts';
 export type { UploadsConfig } from './uploads.ts';
 export { createApp } from './handler.ts';
-export type { AppConfig, AppRoute, RouteRequest, AppHandler } from './handler.ts';
+export type { AppConfig, AppRoute, RouteRequest, AppHandler, WorkerRoute, WorkerRequest } from './handler.ts';
