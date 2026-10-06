@@ -21,31 +21,14 @@ import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTa
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
+import { block, commitSafely, field, select } from './common.ts';
+import { renderIssuedPanel } from './issued.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Utilidades de la vista
 // ---------------------------------------------------------------------------
-async function commitSafely(client: SyncClient, operations: RowOperation[], okMessage: string, blobs?: Blob[]): Promise<boolean> {
-  try {
-    await client.commit(operations, blobs ? { blobs } : undefined);
-    toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
-    return true;
-  } catch (error) {
-    toast(describeError(error));
-    return false;
-  }
-}
-
-function field(label: string, control: HTMLElement, hint?: string): HTMLElement {
-  return el('label', { class: 'field' }, el('span', null, label), control, hint ? el('span', { class: 'hint' }, hint) : null);
-}
-
-function select(id: string, options: Array<[string, string]>, value: string | null | undefined, extra: Record<string, unknown> = {}): HTMLSelectElement {
-  return el('select', { id, ...extra }, ...options.map(([v, label]) => el('option', { value: v, selected: (value ?? '') === v }, label)));
-}
-
 function supplierOptions(suppliers: LocalSupplier[]): Array<[string, string]> {
   return suppliers.filter((s) => !s.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es')).map((s) => [s.id, s.name] as [string, string]);
 }
@@ -85,13 +68,29 @@ export const mountInvoices: ViewMount = (ctx) => {
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
   const newButton = el('button', { class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
   const extractAll = el('button', { class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
-  replace(
-    main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Facturas'), el('p', null, 'Documento, datos importados, revisión y validación. Nada se valida en silencio.'))),
+  // Pestañas «Recibidas · Emitidas» (API.md §13.5): las emitidas registradas viven en su propio panel.
+  const received = el('div', { id: 'receivedPanel' },
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
     el('div', { class: 'toolbar', id: 'invoiceTools' }, extractAll),
     listHost,
-    newButton,
+    newButton);
+  let issuedPanel: { element: HTMLElement; destroy: () => void } | null = null;
+  const tabs = el('div', { class: 'segmented', role: 'tablist', id: 'invoiceTabs' },
+    ...([['recibidas', 'Recibidas'], ['emitidas', 'Emitidas']] as Array<[string, string]>).map(([value, label]) =>
+      el('button', { type: 'button', role: 'tab', class: value === 'recibidas' ? 'on' : '', dataset: { tab: value }, onclick: () => showTab(value) }, label)));
+  const issuedHost = el('div', { id: 'issuedHost', hidden: true });
+  function showTab(value: string): void {
+    for (const b of Array.from(tabs.querySelectorAll('button'))) { b.classList.toggle('on', b.dataset.tab === value); b.setAttribute('aria-selected', String(b.dataset.tab === value)); }
+    received.hidden = value !== 'recibidas';
+    issuedHost.hidden = value !== 'emitidas';
+    if (value === 'emitidas' && !issuedPanel) { issuedPanel = renderIssuedPanel(ctx); replace(issuedHost, issuedPanel.element); }
+  }
+  replace(
+    main,
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Facturas'), el('p', null, 'Recibidas: documento, datos importados, revisión y validación. Emitidas: registro de las que expides.'))),
+    tabs,
+    received,
+    issuedHost,
   );
 
   /** Facturas con documento y sin datos: candidatas a la extracción automática. */
@@ -185,7 +184,8 @@ export const mountInvoices: ViewMount = (ctx) => {
   const offTables = onAnyTable(client, () => void load());
   const offOpen = onOpen((id) => { opened = id; });
   void load().then(fromHash);
-  return () => { offTables(); offOpen(); void closeSheet(true); };
+  if (/[?&]vista=emitidas/.test(location.hash)) showTab('emitidas');
+  return () => { offTables(); offOpen(); issuedPanel?.destroy(); void closeSheet(true); };
 };
 
 // Quién tiene la ficha abierta (para refrescarla cuando llegan cambios).
@@ -419,10 +419,6 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 function periodOf(isoDate: string): string {
   const year = isoDate.slice(0, 4); const month = Number(isoDate.slice(5, 7)) || 1;
   return `${year}T${Math.ceil(month / 3)}`;
-}
-
-function block(title: string, summary: string, open: boolean, ...children: Array<HTMLElement | null>): HTMLElement {
-  return el('details', { class: 'inv-block', open }, el('summary', null, el('span', null, title), el('span', { class: 'hint' }, summary)), ...children);
 }
 
 function unallocated(line: LocalInvoiceLine, mirror: Mirror): number {

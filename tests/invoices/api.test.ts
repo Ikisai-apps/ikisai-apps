@@ -250,7 +250,7 @@ test('entregas: vista previa, ZIP en streaming con manifest, CSV y documentos; C
   assert.equal(zip.headers.get('content-type'), 'application/zip');
   const bytes = new Uint8Array(await zip.arrayBuffer());
   assert.deepEqual(zipEntryNames(bytes), [
-    'IKISAI_COMPRAS_2026_T4/manifest.json', 'IKISAI_COMPRAS_2026_T4/facturas_recibidas.csv', 'IKISAI_COMPRAS_2026_T4/lineas_compra.csv', 'IKISAI_COMPRAS_2026_T4/resumen_impuestos.csv',
+    'IKISAI_COMPRAS_2026_T4/manifest.json', 'IKISAI_COMPRAS_2026_T4/facturas_recibidas.csv', 'IKISAI_COMPRAS_2026_T4/lineas_compra.csv', 'IKISAI_COMPRAS_2026_T4/resumen_impuestos.csv', 'IKISAI_COMPRAS_2026_T4/facturas_emitidas.csv',
     'IKISAI_COMPRAS_2026_T4/facturas/2026_10_05_(makro)_alimentos_retiro_yoga.pdf',
   ]);
   assert.ok(new TextDecoder().decode(bytes).includes('%PDF prueba edge'), 'el documento va dentro del ZIP');
@@ -320,6 +320,10 @@ test('agentes: import_v1 seguro; facturas entregadas a gestoría o validadas exi
   const edit = await commit([update('invoices.invoices', v, vr.revision, { object: 'fruta variada' })], agent);
   assert.equal(edit.status, 428); assert.deepEqual(edit.data.error.details.risk.reasons, [`invoice:validada:${vr.code}`]);
   await ok([insert('invoices.allocations', uuid(), { invoice_line_id: vLine, target_app: 'general', target_kind: 'operating_expense', target_label: 'Gasto de explotación', allocated_amount: 10 })], agent);
+
+  // Emitidas (registro fiscal): cualquier cambio de un agente pide aprobación.
+  const issuedByAgent = await commit([insert('invoices.issued_series', uuid(), { code: 'B' })], agent);
+  assert.equal(issuedByAgent.status, 428); assert.deepEqual(issuedByAgent.data.error.details.risk.reasons, ['issued:insert:issued_series']);
 
   // Diez filas en un lote: umbral del usuario (10 elementos).
   const bulk = await commit(Array.from({ length: 10 }, (_, i) => insert('invoices.suppliers', uuid(), { name: `Proveedor ${i}` })), agent);

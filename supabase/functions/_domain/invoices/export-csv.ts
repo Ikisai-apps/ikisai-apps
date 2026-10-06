@@ -69,6 +69,47 @@ export interface ExportManifest {
   totals: ManifestTotals;
   invoices: ManifestInvoice[];
   excluded: Array<{ code: string; status: string; reason: string | null }>;
+  /** Emitidas del periodo (desde la migración 0206; las entregas anteriores no las traen). */
+  issued_count?: number;
+  issued_file_count?: number;
+  issued_totals?: { base: number; quota: number; surcharge: number; withholding: number; total: number; quota_by_rate: Array<{ tax: string; rate: number | null; base: number; quota: number; surcharge: number }> };
+  issued?: ManifestIssued[];
+}
+
+export interface ManifestIssued {
+  id: string;
+  full_number: string;
+  revision: number;
+  series: string;
+  number: string;
+  issue_date: string;
+  operation_date: string | null;
+  invoice_type: string;
+  rectification: { kind: string | null; rectified: unknown[]; reason: string | null } | null;
+  recipient: { name: string | null; tax_id: string | null; id_type: string | null; country: string | null };
+  description: string;
+  income_category: string | null;
+  origin: string;
+  external_tool: string | null;
+  base: number; quota: number; surcharge: number; withholding: number; total: number;
+  source_total: number | null; totals_delta: number | null;
+  status: string;
+  annulled_reason: string | null;
+  payment: { status: string; paid_at: string | null };
+  files: Array<{ name: string; file_id: string; sha256: string; size_bytes: number }>;
+}
+
+/** Libro de emitidas del periodo, con las anuladas para que se vea la numeración completa. */
+export function issuedCsv(manifest: ExportManifest): string {
+  return csvRows(
+    ['numero', 'serie', 'fecha_expedicion', 'fecha_operacion', 'tipo', 'destinatario', 'nif', 'concepto', 'categoria', 'base', 'cuota', 'recargo', 'retenciones', 'total', 'total_documento', 'delta', 'estado', 'motivo_anulacion', 'cobro', 'rectifica', 'origen', 'documentos'],
+    (manifest.issued ?? []).map((i) => [
+      i.full_number, i.series, i.issue_date, i.operation_date, i.invoice_type, i.recipient.name, i.recipient.tax_id, i.description, i.income_category,
+      money(i.base), money(i.quota), money(i.surcharge), money(i.withholding), money(i.total), money(i.source_total), money(i.totals_delta), i.status, i.annulled_reason,
+      i.payment.status, i.rectification ? JSON.stringify(i.rectification.rectified) : null, i.external_tool ?? i.origin,
+      i.files.map((f) => f.name.replace(/^emitidas\//, '')).join(' | '),
+    ]),
+  );
 }
 
 export function invoicesCsv(manifest: ExportManifest): string {
@@ -110,6 +151,18 @@ export function taxesCsv(manifest: ExportManifest): string {
     ['retenciones_total', null, null, money(t.withholding)],
     ['total', null, null, money(t.total)],
   ];
+  // IVA repercutido de las emitidas y diferencia con el soportado (orientativa: la deducibilidad la decide la gestoría).
+  const it = manifest.issued_totals;
+  if (it) {
+    rows.push(
+      ...it.quota_by_rate.map((g) => [`${g.tax}_repercutido`, rate(g.rate), money(g.base), money(g.quota)] as Cell[]),
+      ['base_emitidas', null, money(it.base), null],
+      ['iva_repercutido_total', null, null, money(it.quota)],
+      ['recargo_equivalencia_total', null, null, money(it.surcharge)],
+      ['retenciones_emitidas', null, null, money(it.withholding)],
+      ['diferencia_repercutido_soportado', null, null, money(Math.round((it.quota - t.vat) * 100) / 100)],
+    );
+  }
   return csvRows(['tipo', 'tasa', 'base', 'importe'], rows);
 }
 
@@ -117,5 +170,6 @@ export const EXPORT_CSV_FILES = {
   'facturas_recibidas.csv': invoicesCsv,
   'lineas_compra.csv': linesCsv,
   'resumen_impuestos.csv': taxesCsv,
+  'facturas_emitidas.csv': issuedCsv,
 } as const;
 export type ExportCsvName = keyof typeof EXPORT_CSV_FILES;

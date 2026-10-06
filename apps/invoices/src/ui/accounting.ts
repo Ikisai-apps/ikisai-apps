@@ -1,15 +1,17 @@
 /** Gestoría (API.md §6.4, §6.5, §9.4): resumen fiscal del rango, alertas y entregas (ZIP, CSV, manifest). */
 import { confirmDialog, el, icon, renderList, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
-import { fiscalSummary, type FiscalSummary } from '@ikisai/domain-invoices';
+import { INCOME_CATEGORY_LABELS, fiscalSummary, issuedSummary, type FiscalSummary } from '@ikisai/domain-invoices';
 import { categoryLabel as categoryName, describeError, type LocalExport } from '../app/client.ts';
 import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
 import { downloadWithSession } from '../app/files.ts';
 import { openInvoice } from './invoices.ts';
+import { loadIssued } from './issued.ts';
 import type { ViewMount } from './shell.ts';
 
 export const mountAccounting: ViewMount = (ctx) => {
   const { main, client } = ctx;
   let mirror: Mirror | null = null;
+  let issued: Awaited<ReturnType<typeof loadIssued>> | null = null;
   let range = currentQuarter();
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
@@ -42,6 +44,31 @@ export const mountAccounting: ViewMount = (ctx) => {
     return el('article', { class: 'card' }, el('h3', null, title), el('dl', { class: 'kv' }, ...rows.flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)])));
   }
 
+  /** Emitidas del periodo (API.md §13.4): IVA repercutido y diferencia orientativa con el soportado. */
+  function issuedCards(received: FiscalSummary): HTMLElement[] {
+    if (!issued) return [];
+    const all = [...issued.linesBy.values()].flat();
+    const taxes = [...issued.taxesBy.values()].flat();
+    const withFile = new Set([...issued.filesBy.keys()]);
+    const t = issuedSummary({ invoices: issued.invoices, lines: all, taxLines: taxes, withFile }, range);
+    if (!t.invoices.registrada && !t.invoices.anulada) return [];
+    const balance = Math.round((t.quota - received.vat) * 100) / 100;
+    return [
+      el('article', { class: 'card', id: 'issuedSummary' }, el('h3', null, 'Emitidas · IVA repercutido'), el('dl', { class: 'kv' },
+        ...([['Base', eur(t.base)], ['IVA repercutido', eur(t.quota)], ...(t.surcharge ? [['Recargo de equivalencia', eur(t.surcharge)] as [string, string]] : []),
+          ...(t.withholding ? [['Retenciones', eur(t.withholding)] as [string, string]] : []), ['Total', eur(t.total)],
+          ['Facturas registradas', String(t.invoices.registrada)], ...(t.invoices.anulada ? [['Anuladas', String(t.invoices.anulada)] as [string, string]] : []),
+          ...t.quota_by_rate.map((g) => [`${g.tax.toUpperCase()} ${g.rate ?? 0} %`, `${eur(g.base)} → ${eur(g.quota)}`] as [string, string]),
+        ] as Array<[string, string]>).flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)]))),
+      el('article', { class: 'card', id: 'vatBalance' }, el('h3', null, 'IVA del periodo'), el('dl', { class: 'kv' },
+        el('dt', null, 'Repercutido'), el('dd', null, eur(t.quota)),
+        el('dt', null, 'Soportado (validadas)'), el('dd', null, eur(received.vat)),
+        el('dt', null, balance >= 0 ? 'A ingresar (orientativo)' : 'A compensar (orientativo)'), el('dd', null, eur(Math.abs(balance)))),
+        el('p', { class: 'hint' }, 'Orientativo: la deducibilidad y el modelo 303 los decide la gestoría.')),
+      ...(t.by_category.length ? [summaryBlock('Ingresos por categoría', t.by_category.map((c) => [c.income_category ? INCOME_CATEGORY_LABELS[c.income_category] : 'Sin categoría', `${eur(c.base)} · ${c.count}`] as [string, string]))] : []),
+    ];
+  }
+
   function paint(): void {
     if (!mirror) return;
     const withFile = new Set(mirror.files.filter((f) => f.kind === 'original').map((f) => f.invoice_id));
@@ -54,6 +81,7 @@ export const mountAccounting: ViewMount = (ctx) => {
         summaryBlock('Deducibilidad (base)', Object.entries(s.deductibility).map(([k, v]) => [DEDUCTIBILITY_LABELS[k] ?? k, eur(v)] as [string, string])),
         summaryBlock('Por categoría', s.by_category.length ? s.by_category.map((g) => [`${categoryName(g.expense_category)}${g.is_investment ? ' (inv.)' : ''}`, `${eur(g.base)} · ${g.count}`] as [string, string]) : [['—', 'Nada validado']]),
         s.withholdings_by_type.length ? summaryBlock('Retenciones', s.withholdings_by_type.map((g) => [`${TAX_TYPE_LABELS[g.tax_type] ?? g.tax_type}${g.rate !== null ? ` ${g.rate} %` : ''}`, eur(g.amount)] as [string, string])) : null,
+        ...issuedCards(s),
       ),
     );
     const alerts: HTMLElement[] = [];
@@ -135,7 +163,7 @@ export const mountAccounting: ViewMount = (ctx) => {
     try { await client.commit([{ op: 'call', procedure: 'invoices.archive_period', args: { export_id: e.id } }]); toast('Periodo archivado.'); } catch (error) { toast(describeError(error)); }
   }
 
-  async function load(): Promise<void> { mirror = await loadMirror(client); paint(); }
+  async function load(): Promise<void> { [mirror, issued] = await Promise.all([loadMirror(client), loadIssued(client)]); paint(); }
   const off = onAnyTable(client, () => void load());
   void load();
   return () => off();

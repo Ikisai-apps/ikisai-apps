@@ -67,3 +67,12 @@ code{font-size:12.5px;word-break:break-all}
 .chatgpt-steps .steps{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px}
 .chatgpt-steps .steps li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .new-supplier{margin-top:-4px}
+/* Facturas emitidas (API.md §13): pestañas y líneas del alta manual. */
+#invoiceTabs{margin:0 0 12px}
+.issued-line{grid-template-columns:2fr 1fr 1fr;margin-bottom:6px}
+.inv-dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}
+.inv-dl dt{color:var(--muted)}
+.inv-dl dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.alloc-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.alloc-list li{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.csv-mapping{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 12px}

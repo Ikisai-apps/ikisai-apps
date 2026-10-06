@@ -2,7 +2,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { formatEur, type InvoiceStatus, INVOICE_STATUS_LABELS, type DateRange, quarterRange, monthRange, yearRange } from '@ikisai/domain-invoices';
 import {
-  ALLOCATIONS, EXPORTS, EXPORT_ITEMS, INVOICES, INVOICE_FILES, INVOICE_LINES, SUPPLIERS, TAX_LINES,
+  ALL_TABLES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS, INVOICES, INVOICE_FILES, INVOICE_LINES, SUPPLIERS, TAX_LINES,
   type LocalAllocation, type LocalExport, type LocalExportItem, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from './client.ts';
 
@@ -69,7 +69,8 @@ async function readMirror(client: SyncClient): Promise<Mirror> {
   };
 }
 
-export const ALL_INVOICE_TABLES = [SUPPLIERS, INVOICES, INVOICE_LINES, TAX_LINES, INVOICE_FILES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS] as const;
+/** Todas las tablas que la app copia al dispositivo (recibidas y emitidas): cualquier cambio repinta la vista. */
+export const ALL_INVOICE_TABLES = ALL_TABLES;
 
 /**
  * Vuelve a cargar cuando cambia cualquier tabla; devuelve la función de baja.

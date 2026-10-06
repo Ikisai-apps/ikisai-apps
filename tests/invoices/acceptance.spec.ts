@@ -643,3 +643,156 @@ test('Aceptación V1 (Android): proveedor nuevo desde la hoja y «Extraer con Ch
 
   await context.close();
 });
+
+test('Emitidas (API.md §13): registro manual con serie nueva, número único, cobro y anulación', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+  await nav(page, 'Facturas').click();
+  await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+  await expect(page.locator('#issuedList')).toContainText('Todavía no hay facturas emitidas');
+
+  await test.step('alta manual: serie nueva, completa con destinatario, dos líneas y total del documento', async () => {
+    await page.locator('#newIssued').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await expect(sheet.locator('#issuedSeries')).toHaveValue('__new__');
+    await sheet.locator('#issuedNewSeries').fill('A');
+    await sheet.locator('#issuedNumber').fill('2026-0001');
+    await sheet.locator('#issuedDate').fill('2026-10-06');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet.locator('.formerror')).toContainText('nombre y NIF del destinatario');
+    await sheet.locator('#issuedRecipientName').fill('Cliente Retiro SL');
+    await sheet.locator('#issuedRecipientTaxId').fill('B44444444');
+    await sheet.locator('#issuedDescription').fill('Retiro de yoga, 2 noches');
+    await sheet.locator('#issuedCategory').selectOption('alojamiento');
+    await sheet.getByLabel('Concepto de la línea 1').fill('Alojamiento');
+    await sheet.getByLabel('Base de la línea 1').fill('100');
+    await sheet.locator('#addIssuedLine').click();
+    await sheet.getByLabel('Concepto de la línea 2').fill('Actividad');
+    await sheet.getByLabel('Base de la línea 2').fill('50');
+    await sheet.getByLabel('IVA de la línea 2').selectOption('21');
+    await sheet.locator('#issuedSourceTotal').fill('170,50');
+    await expect(sheet.locator('#issuedPreviewTotals')).toContainText('TOTAL 170,50 €');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet).toBeHidden({ timeout: 20_000 });
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0001 · Cliente Retiro SL', { timeout: 20_000 });
+    await synced(page);
+    const row = api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')!;
+    expect(row).toMatchObject({ series_code: 'A', invoice_type: 'F1', origin: 'manual', status: 'registrada', total: 170.5, base_total: 150, quota_total: 20.5, review_reason: null });
+    expect(api.rows('invoices.issued_series').map((s) => s.code)).toEqual(['A']);
+    expect(api.rows('invoices.issued_tax_lines').filter((t) => t.issued_invoice_id === row.id).map((t) => `${t.rate}:${t.taxable_base}:${t.quota}`).sort()).toEqual(['10:100:10', '21:50:10.5']);
+  });
+
+  await test.step('el mismo número en la misma serie se rechaza en el formulario', async () => {
+    await page.locator('#newIssued').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await expect(sheet.locator('#issuedSeries')).toHaveValue('A');
+    await sheet.locator('#issuedNumber').fill('2026-0001');
+    await sheet.locator('#issuedType').selectOption('F2');
+    await sheet.locator('#issuedDescription').fill('Ticket');
+    await sheet.getByLabel('Base de la línea 1').fill('10');
+    await sheet.getByLabel('Concepto de la línea 1').fill('Café');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet.locator('.formerror')).toContainText('Ya está registrada la A-2026-0001');
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
+  });
+
+  await test.step('asignar el ingreso a una reserva desde la ficha; Gestoría muestra el IVA repercutido', async () => {
+    const reservation = { app: 'booking' as const, kind: 'reservation', id: '33333333-3333-4333-8333-333333333333', label: 'Reserva García', path: ['Reservas'], revision: 1 };
+    api.targets.push(reservation);
+    try {
+      await page.locator('#issuedList .row').first().click();
+      const sheet = page.locator('.sheet[role="dialog"]');
+      await sheet.locator('#assignIssued').click();
+      const assign = page.locator('.sheet[role="dialog"]');
+      await expect(assign.locator('#issuedAllocAmount')).toHaveValue('150');
+      await assign.getByRole('button', { name: 'Elegir Reserva García' }).click();
+      await expect(assign.locator('#issuedChosenTarget')).toContainText('Reservas › Reserva García');
+      await assign.locator('#issuedAllocAmount').fill('200');
+      await assign.locator('#saveIssuedAllocation').click();
+      await expect(assign.locator('.formerror')).toContainText('Solo quedan 150,00 €');
+      await assign.locator('#issuedAllocAmount').fill('150');
+      await assign.locator('#saveIssuedAllocation').click();
+      await expect(page.locator('#issuedAllocations')).toContainText('Reservas › Reserva García · 150,00 €', { timeout: 20_000 });
+      await synced(page);
+      await expect.poll(() => api.rows('invoices.issued_allocations').length, { timeout: 20_000 }).toBe(1);
+      expect(api.rows('invoices.issued_allocations')).toEqual([expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: reservation.id, allocated_amount: 150 })]);
+    } finally {
+      api.targets.splice(api.targets.findIndex((t) => t.id === reservation.id), 1);
+    }
+    await page.keyboard.press('Escape').catch(() => undefined);
+    await nav(page, 'Gestoría').click();
+    await expect(page.locator('#issuedSummary')).toContainText('IVA repercutido20,50 €');
+    await expect(page.locator('#issuedSummary')).toContainText('IVA 21 %50,00 € → 10,50 €');
+    await expect(page.locator('#vatBalance')).toContainText('Repercutido20,50 €');
+    await nav(page, 'Facturas').click();
+    await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+  });
+
+  await test.step('ficha: cobrada y anulada con motivo; el número sigue ocupado', async () => {
+    await page.locator('#issuedList .row').first().click();
+    const sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#issuedTotal')).toHaveText('170,50 €');
+    await expect(sheet).toContainText('El registro Verifactu lo hace la herramienta que la expidió');
+    await sheet.locator('#toggleCollected').click();
+    await expect(sheet).toContainText('Cobrada el', { timeout: 20_000 });
+    await sheet.locator('#annulIssued').click();
+    await page.locator('#annulIssuedReason').fill('Emitida por error');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Anular' }).click();
+    await expect(sheet).toContainText('Anulada: Emitida por error', { timeout: 20_000 });
+    await expect(sheet.locator('#annulIssued')).toHaveCount(0);
+    await synced(page);
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+    await expect(page.locator('#issuedList')).toContainText('Ninguna emitida coincide', { timeout: 20_000 });
+    await page.locator('#issuedFilter').selectOption('anulada');
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0001');
+    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
+  });
+
+  await test.step('IVA sugerido por categoría; importar CSV del Sheet (nueva, ya registrada, con error) y emitida desde ChatGPT con su PDF', async () => {
+    await page.locator('#issuedFilter').selectOption('activas');
+    // IVA sugerido: consultoría → 21 % en la línea que no se ha tocado
+    await page.locator('#newIssued').click();
+    let sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await sheet.locator('#issuedCategory').selectOption('consultoria');
+    await expect(sheet.getByLabel('IVA de la línea 1')).toHaveValue('21');
+    // «Extraer con ChatGPT» aparece con el PDF y lleva a la importación con el documento
+    await expect(sheet.locator('#chatgptIssued')).toBeHidden();
+    await sheet.locator('#issuedFiles').setInputFiles({ name: 'emitida.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(sheet.locator('#chatgptIssued')).toBeVisible();
+    await sheet.locator('#chatgptIssued [data-step="paste"]').click();
+    sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet).toContainText('Importar emitida desde ChatGPT');
+    await expect(sheet).toContainText('El PDF se adjunta a la factura importada');
+    await sheet.locator('#issuedCsvText').fill('serie;numero;fecha;fecha_operacion;tipo;cliente;nif;concepto;categoria;base;iva_tipo;iva_cuota;retencion;total;cobrada\nC;C-2026-0001;2026-10-09;;F1;Cliente PDF;B66666666;Consultoría web;consultoria;200,00;21;42,00;;242,00;no');
+    await expect(sheet.locator('#issuedCsvSummary')).toHaveText('1 nueva · 0 con errores · 0 ya registradas');
+    await sheet.locator('#confirmIssuedCsv').click();
+    await expect(page.locator('#issuedList')).toContainText('C-2026-0001 · Cliente PDF', { timeout: 20_000 });
+    await synced(page);
+    const fromPdf = api.rows('invoices.issued_invoices').find((i) => i.number === 'C-2026-0001')!;
+    expect(fromPdf).toMatchObject({ origin: 'importada', external_tool: 'chatgpt_pdf', income_category: 'consultoria', total: 242 });
+    expect(api.rows('invoices.issued_invoice_files').filter((f) => f.issued_invoice_id === fromPdf.id).map((f) => f.original_filename)).toEqual(['emitida.pdf']);
+    expect(api.rows('invoices.issued_series').map((x) => x.code).sort()).toEqual(['A', 'C']);
+    // CSV del Google Sheet: mapeo adivinado, serie por defecto, una ya registrada y una con error
+    await page.locator('#importIssuedCsv').click();
+    sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#issuedCsvSeries')).toHaveValue('A');
+    await sheet.locator('#issuedCsvText').fill([
+      'Nº Factura;Fecha;Cliente;NIF;Concepto;Categoría;Base imponible;% IVA;Total;Cobrada',
+      '2026-0001;06/10/2026;Cliente Retiro SL;B44444444;Repetida;alojamiento;150;10;165;',
+      '2026-0010;10/10/2026;Cliente CSV;B55555555;Cena de grupo;restaurante;"1.000,00";10;1.100,00;sí',
+      '2026-0011;31/02/2026;Cliente Mal;B77777777;Mal fecha;otros;10;21;12,1;',
+    ].join('\n'));
+    await expect(sheet.locator('#issuedCsvSummary')).toHaveText('1 nueva · 1 con errores · 1 ya registrada');
+    await expect(sheet.locator('#csvMap_base')).toHaveValue('6');
+    await sheet.locator('#confirmIssuedCsv').click();
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0010 · Cliente CSV', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
+  });
+
+  await context.close();
+});
