@@ -6,15 +6,17 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, ISSUED_ORIGIN_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
-  breakdownFromLines, fullNumber, isRectificative, recalculateIssued, recipientOptional,
+  INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUED_CSV_FIELDS, ISSUED_CSV_FIELD_LABELS, ISSUED_CSV_REQUIRED, ISSUED_CSV_TEMPLATE_HEADER,
+  ISSUED_EXTRACTION_PROMPT, ISSUED_ORIGIN_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
+  breakdownFromLines, fullNumber, guessMapping, isRectificative, issuedDrafts, issuedImportOperations, issuedImportPlan, normalizeHeader, parseCsv, recalculateIssued, recipientOptional,
+  type IncomeCategory, type IssuedCsvField, type IssuedCsvMapping, type IssuedImportInvoice,
 } from '@ikisai/domain-invoices';
 import {
   ISSUED_ALLOCATIONS, ISSUED_FILES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, ISSUED_TAX_LINES,
   type LocalIssuedAllocation, type LocalIssuedFile, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries, type LocalIssuedTaxLine,
 } from '../app/client.ts';
 import { eur, monthKey, monthLabel, onAnyTable, parseAmount, shortDate, todayIso } from '../app/data.ts';
-import { ACCEPT_ATTR, formatBytes, openFile, stageDocument } from '../app/files.ts';
+import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
@@ -70,9 +72,11 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     { 'aria-label': 'Filtrar emitidas', onchange: () => { filter = statusSelect.value; paint(); } });
   const list = el('div', { id: 'issuedList' });
   const newButton = el('button', { class: 'fab', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus'), 'Nueva emitida');
+  const importButton = el('button', { class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
   const element = el('div', { id: 'issuedPanel' },
     el('p', { class: 'hint' }, 'Registro de las facturas que emites con otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect), list, newButton);
+    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
+    el('div', { class: 'toolbar' }, importButton), list, newButton);
 
   function visible(i: LocalIssuedInvoice): boolean {
     if (i.deleted_at) return false;
@@ -276,6 +280,155 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
 }
 
 // ---------------------------------------------------------------------------
+// Importar emitidas desde CSV (Google Sheet) o desde la fila que devuelve ChatGPT (API.md §13.4, ronda 26)
+// ---------------------------------------------------------------------------
+const MAPPING_KEY = 'ikisai-invoices-issued-csv-mapping';
+
+/** Mapeo recordado por nombre de cabecera: si la columna sigue existiendo se usa; si no, se adivina. */
+function rememberedMapping(header: string[]): IssuedCsvMapping {
+  const guessed = guessMapping(header);
+  try {
+    const stored = JSON.parse(localStorage.getItem(MAPPING_KEY) ?? '{}') as Partial<Record<IssuedCsvField, string>>;
+    const normalized = header.map(normalizeHeader);
+    for (const [field, name] of Object.entries(stored) as Array<[IssuedCsvField, string]>) {
+      if (name === '') { delete guessed[field]; continue; }
+      const idx = normalized.indexOf(normalizeHeader(name));
+      if (idx >= 0) guessed[field] = idx;
+    }
+  } catch { /* sin almacenamiento: se usa lo adivinado */ }
+  return guessed;
+}
+
+function storeMapping(header: string[], mapping: IssuedCsvMapping): void {
+  try {
+    const out: Record<string, string> = {};
+    for (const field of ISSUED_CSV_FIELDS) out[field] = mapping[field] === undefined ? '' : header[mapping[field]!] ?? '';
+    localStorage.setItem(MAPPING_KEY, JSON.stringify(out));
+  } catch { /* sin almacenamiento */ }
+}
+
+function issuedChatgptSteps(onPaste: () => void): HTMLElement {
+  const promptText = el('textarea', { class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de emitidas' });
+  promptText.value = ISSUED_EXTRACTION_PROMPT;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(ISSUED_EXTRACTION_PROMPT); toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF de la factura.'); }
+    catch { promptText.hidden = false; promptText.focus(); promptText.select(); toast('Selecciona el texto y cópialo.'); }
+  };
+  return el('div', { class: 'chatgpt-steps', id: 'chatgptIssued' },
+    el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea PDF')),
+    el('ol', { class: 'steps' },
+      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copy() }, icon('attach', 16), '1) Copiar prompt'),
+        el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta este mismo PDF.')),
+      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'paste' }, onclick: onPaste }, icon('upload', 16), '2) Pegar CSV'),
+        el('span', { class: 'hint' }, ' Pega la respuesta (una línea por factura) para importarla con el PDF.'))),
+    promptText);
+}
+
+/** Serie por defecto: la más usada en las emitidas registradas; a igualdad, la primera por orden alfabético. */
+function defaultSeriesCode(data: IssuedData): string {
+  const counts = new Map<string, number>();
+  for (const i of data.invoices) counts.set(i.series_code, (counts.get(i.series_code) ?? 0) + 1);
+  const active = data.series.filter((s) => s.active).map((s) => s.code);
+  return [...new Set([...active, ...counts.keys()])].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b))[0] ?? '';
+}
+
+export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options: { text?: string; files?: File[]; fromChatgpt?: boolean } = {}): void {
+  const { client } = ctx;
+  const textarea = el('textarea', { id: 'issuedCsvText', rows: '6', spellcheck: 'false', placeholder: options.fromChatgpt ? 'Pega aquí el CSV que devolvió ChatGPT…' : 'Pega aquí las filas copiadas del Sheet (con la cabecera)…' });
+  const fileInput = el('input', { type: 'file', id: 'issuedCsvFile', accept: '.csv,text/csv,text/plain,.tsv' });
+  const defaultSeries = el('input', { type: 'text', id: 'issuedCsvSeries', maxlength: '20', value: defaultSeriesCode(data), placeholder: 'A' });
+  const mappingHost = el('div', { id: 'issuedCsvMapping' });
+  const previewHost = el('div', { id: 'issuedCsvPreview' });
+  const error = el('p', { class: 'formerror', role: 'alert' });
+  const confirm = el('button', { class: 'primary', type: 'button', id: 'confirmIssuedCsv', disabled: true, onclick: () => void submit() }, 'Importar');
+  let header: string[] = []; let body: string[][] = []; let mapping: IssuedCsvMapping = {}; let plan: IssuedImportInvoice[] = [];
+  const existing = new Set(data.invoices.map((i) => `${i.series_code.toUpperCase()}|${i.number.trim().toUpperCase()}`));
+  const isRegistered = (inv: IssuedImportInvoice) => existing.has(`${inv.series_code.toUpperCase()}|${inv.number.trim().toUpperCase()}`);
+
+  function load(text: string): void {
+    const rows = parseCsv(text);
+    header = rows[0] ?? []; body = rows.slice(1);
+    mapping = header.length ? rememberedMapping(header) : {};
+    paintMapping(); paintPreview();
+  }
+
+  function paintMapping(): void {
+    if (!header.length) { replace(mappingHost); return; }
+    const columns: Array<[string, string]> = [['', '— no está en el CSV —'], ...header.map((h, i) => [String(i), `${String.fromCharCode(65 + (i % 26))} · ${h || '(sin nombre)'}`] as [string, string])];
+    replace(mappingHost, el('details', { class: 'inv-block', open: ISSUED_CSV_REQUIRED.some((f) => mapping[f] === undefined) },
+      el('summary', null, el('span', null, 'Columnas'), el('span', { class: 'hint' }, `${Object.keys(mapping).length} de ${ISSUED_CSV_FIELDS.length} reconocidas`)),
+      el('div', { class: 'csv-mapping' }, ...ISSUED_CSV_FIELDS.map((f) => {
+        const s = select(`csvMap_${f}`, columns, mapping[f] === undefined ? '' : String(mapping[f]), { 'aria-label': `Columna de ${ISSUED_CSV_FIELD_LABELS[f]}`,
+          onchange: () => { if (s.value === '') delete mapping[f]; else mapping[f] = Number(s.value); storeMapping(header, mapping); paintPreview(); } });
+        return field(`${ISSUED_CSV_FIELD_LABELS[f]}${ISSUED_CSV_REQUIRED.includes(f) ? ' *' : ''}`, s);
+      }))));
+  }
+
+  function paintPreview(): void {
+    plan = header.length ? issuedImportPlan(issuedDrafts(body, mapping, defaultSeries.value)) : [];
+    const fresh = plan.filter((p) => !p.errors.length && !isRegistered(p));
+    confirm.disabled = !fresh.length;
+    confirm.textContent = fresh.length === 1 ? 'Importar 1 factura' : `Importar ${fresh.length} facturas`;
+    if (!plan.length) { replace(previewHost, header.length ? el('p', { class: 'hint' }, 'El CSV no tiene filas.') : null); return; }
+    const withErrors = plan.filter((p) => p.errors.length).length; const already = plan.filter(isRegistered).length;
+    replace(previewHost,
+      el('p', { class: 'hint', id: 'issuedCsvSummary' }, `${fresh.length} nueva${fresh.length === 1 ? '' : 's'} · ${withErrors} con errores · ${already} ya registrada${already === 1 ? '' : 's'}`),
+      renderList({ label: 'Facturas del CSV', rows: plan.slice(0, 200).map((p) => ({
+        id: p.key, title: `${p.full_number || '(sin número)'} · ${p.recipient_name ?? 'Sin destinatario'}`,
+        meta: [p.issue_date ? shortDate(p.issue_date) : 'sin fecha', `${p.invoice_type}`, eur(p.totals.total), ...p.errors, ...p.warnings],
+        chips: [isRegistered(p) ? el('span', { class: 'chip' }, 'Ya registrada') : p.errors.length ? el('span', { class: 'chip alert' }, 'Con errores') : el('span', { class: 'chip ok' }, 'Nueva'),
+          p.warnings.length ? el('span', { class: 'chip warn' }, 'Avisos') : null].filter(Boolean) as HTMLElement[],
+      })) }));
+  }
+
+  async function submit(): Promise<void> {
+    error.textContent = '';
+    const fresh = plan.filter((p) => !p.errors.length && !isRegistered(p));
+    if (!fresh.length) return;
+    confirm.disabled = true;
+    try {
+      // Documentos: solo cuando se importa una factura (el PDF que se pasó a ChatGPT).
+      const staged: StagedDocument[] = [];
+      if (fresh.length === 1) for (const f of options.files ?? []) staged.push(await stageDocument(client, f));
+      const knownSeries = new Set(data.series.map((s) => s.code.toUpperCase()));
+      const newSeries = [...new Set(fresh.map((p) => p.series_code))].filter((code) => !knownSeries.has(code.toUpperCase()));
+      let done = 0;
+      for (let i = 0; i < fresh.length; i += 80) {
+        const chunk = fresh.slice(i, i + 80);
+        const ops: RowOperation[] = [
+          ...(i === 0 ? newSeries.map((code): RowOperation => ({ op: 'insert', table: ISSUED_SERIES, id: crypto.randomUUID(), fields: { code } })) : []),
+          ...chunk.flatMap((p) => issuedImportOperations(p, { id: crypto.randomUUID(), uuid: () => crypto.randomUUID(), tool: options.fromChatgpt ? 'chatgpt_pdf' : 'google_sheet',
+            files: staged.map((s) => ({ file_id: s.marker, original_filename: s.filename, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 })) }) as RowOperation[]),
+        ];
+        if (!(await commitSafely(client, ops, `${done + chunk.length} de ${fresh.length} importadas.`))) { error.textContent = `Se importaron ${done} de ${fresh.length}. Revisa el aviso y vuelve a intentarlo: las ya importadas no se repiten.`; confirm.disabled = false; return; }
+        done += chunk.length;
+      }
+      guard.dirtyEditor = false;
+      await closeSheet(true);
+    } catch (err) { error.textContent = err instanceof Error ? err.message : String(err); confirm.disabled = false; }
+  }
+
+  textarea.addEventListener('input', () => { guard.dirtyEditor = true; load(textarea.value); });
+  fileInput.addEventListener('change', async () => { const f = fileInput.files?.[0]; if (!f) return; textarea.value = await f.text(); load(textarea.value); });
+  defaultSeries.addEventListener('input', () => paintPreview());
+  const template = el('button', { class: 'linkbtn', type: 'button', onclick: () => { textarea.value = ISSUED_CSV_TEMPLATE_HEADER.join(';') + '\n'; load(textarea.value); textarea.focus(); } }, 'Usar la plantilla');
+  openSheet({
+    title: options.fromChatgpt ? 'Importar emitida desde ChatGPT' : 'Importar emitidas (CSV)',
+    meta: 'Exporta tu Google Sheet como CSV, o copia las filas con la cabecera. Elige qué columna es cada dato: se recuerda para la próxima vez.',
+    body: el('div', null,
+      options.files?.length ? el('div', { class: 'banner info' }, icon('info', 18), el('span', null, `${options.files.length === 1 ? 'El PDF' : `Los ${options.files.length} documentos`} se adjunta${options.files.length === 1 ? '' : 'n'} a la factura importada.`)) : null,
+      field('CSV', textarea), el('div', { class: 'btnrow' }, field('…o archivo .csv', fileInput), template),
+      field('Serie por defecto', defaultSeries, 'Para las filas sin columna de serie. Si la serie no existe, se crea.'),
+      mappingHost, previewHost, error),
+    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
+    initialFocus: textarea,
+    beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
+    onClose: () => { guard.dirtyEditor = false; },
+  });
+  if (options.text) { textarea.value = options.text; load(options.text); }
+}
+
+// ---------------------------------------------------------------------------
 // Nueva emitida (registro manual)
 // ---------------------------------------------------------------------------
 interface LineInputs { row: HTMLElement; description: HTMLInputElement; net: HTMLInputElement; rate: HTMLSelectElement }
@@ -299,11 +452,27 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
   const recipientName = el('input', { type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
   const recipientTaxId = el('input', { type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
   const description = el('input', { type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
-  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, INCOME_CATEGORY_LABELS[c]] as [string, string])], null);
+  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null);
+  // IVA sugerido por categoría (ronda 26): valor de partida editable; solo cambia las líneas cuyo IVA no se ha tocado a mano.
+  category.addEventListener('change', () => {
+    const suggested = category.value ? INCOME_CATEGORY_VAT[category.value as IncomeCategory] : null;
+    if (suggested === null || suggested === undefined) return;
+    for (const l of lineInputs) if (!l.rate.dataset.touched) l.rate.value = String(suggested);
+    preview();
+  });
   const withholding = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedWithholding', placeholder: '0' });
   const sourceTotal = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedSourceTotal', placeholder: 'Opcional: el total que figura en el documento' });
   const files = el('input', { type: 'file', id: 'issuedFiles', accept: ACCEPT_ATTR, multiple: true });
   const totals = el('p', { class: 'hint', id: 'issuedPreviewTotals' });
+  // «Extraer con ChatGPT» para emitidas: el prompt pide una fila CSV de la plantilla, que se pega en la importación con este PDF.
+  const chatgpt = issuedChatgptSteps(async () => {
+    const picked = Array.from(files.files ?? []);
+    guard.dirtyEditor = false;
+    await closeSheet(true);
+    openIssuedCsvImport(ctx, data, { files: picked, fromChatgpt: true });
+  });
+  chatgpt.hidden = true;
+  files.addEventListener('change', () => { chatgpt.hidden = !(files.files && files.files.length); });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const linesHost = el('div', { id: 'issuedLineInputs' });
   const lineInputs: LineInputs[] = [];
@@ -319,7 +488,9 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     const n = lineInputs.length + 1;
     const d = el('input', { type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, dataset: { line: 'description' } });
     const net = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base de la línea ${n}`, dataset: { line: 'net' } });
-    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], '10', { 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
+    const suggested = category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
+    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], suggested, { 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
+    rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     const row = el('div', { class: 'row2 issued-line' }, d, net, rate);
     lineInputs.push({ row, description: d, net, rate });
     linesHost.append(row);
@@ -399,6 +570,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     el('div', { class: 'row2' }, field('Retención IRPF (importe)', withholding), field('Total del documento', sourceTotal)),
     totals,
     field('PDF de la factura', files, 'El documento que generó tu herramienta de facturación.'),
+    chatgpt,
     error,
   );
   addLine();

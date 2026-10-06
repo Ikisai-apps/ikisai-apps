@@ -53,6 +53,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Tanda 14 (misma rama y PR #141, CI bloqueada): IVA repercutido (`invoices.issued_summary` y `issuedSummary`, iguales en SQL y en el dominio) en Gestoría y en el MCP; emitidas en la entrega a la gestoría (migración 0206: manifest, carpeta `emitidas/`, `facturas_emitidas.csv`, filas repercutidas en `resumen_impuestos.csv`, desfase por emitidas); asignar una emitida a una reserva o un evento desde su ficha.
 
+- Tanda 15 (misma rama y PR #141): importación de emitidas desde CSV del Google Sheet con mapeo de columnas recordado, prompt de emitidas para ChatGPT con el PDF adjunto, y categorías de ingreso nuevas (tienda, artesanía, consultoría) con IVA sugerido editable. Nombre de la app: pasa a Finance (lo coordina Core; aquí no se cambia nada interno hasta su aviso).
+
 ## En curso
 
 - PR de la tanda 12 (`invoices/tanda12`), en borrador mientras la CI está bloqueada.

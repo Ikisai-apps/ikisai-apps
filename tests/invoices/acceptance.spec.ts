@@ -752,5 +752,47 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
   });
 
+  await test.step('IVA sugerido por categoría; importar CSV del Sheet (nueva, ya registrada, con error) y emitida desde ChatGPT con su PDF', async () => {
+    await page.locator('#issuedFilter').selectOption('activas');
+    // IVA sugerido: consultoría → 21 % en la línea que no se ha tocado
+    await page.locator('#newIssued').click();
+    let sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await sheet.locator('#issuedCategory').selectOption('consultoria');
+    await expect(sheet.getByLabel('IVA de la línea 1')).toHaveValue('21');
+    // «Extraer con ChatGPT» aparece con el PDF y lleva a la importación con el documento
+    await expect(sheet.locator('#chatgptIssued')).toBeHidden();
+    await sheet.locator('#issuedFiles').setInputFiles({ name: 'emitida.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(sheet.locator('#chatgptIssued')).toBeVisible();
+    await sheet.locator('#chatgptIssued [data-step="paste"]').click();
+    sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet).toContainText('Importar emitida desde ChatGPT');
+    await expect(sheet).toContainText('El PDF se adjunta a la factura importada');
+    await sheet.locator('#issuedCsvText').fill('serie;numero;fecha;fecha_operacion;tipo;cliente;nif;concepto;categoria;base;iva_tipo;iva_cuota;retencion;total;cobrada\nC;C-2026-0001;2026-10-09;;F1;Cliente PDF;B66666666;Consultoría web;consultoria;200,00;21;42,00;;242,00;no');
+    await expect(sheet.locator('#issuedCsvSummary')).toHaveText('1 nueva · 0 con errores · 0 ya registradas');
+    await sheet.locator('#confirmIssuedCsv').click();
+    await expect(page.locator('#issuedList')).toContainText('C-2026-0001 · Cliente PDF', { timeout: 20_000 });
+    await synced(page);
+    const fromPdf = api.rows('invoices.issued_invoices').find((i) => i.number === 'C-2026-0001')!;
+    expect(fromPdf).toMatchObject({ origin: 'importada', external_tool: 'chatgpt_pdf', income_category: 'consultoria', total: 242 });
+    expect(api.rows('invoices.issued_invoice_files').filter((f) => f.issued_invoice_id === fromPdf.id).map((f) => f.original_filename)).toEqual(['emitida.pdf']);
+    expect(api.rows('invoices.issued_series').map((x) => x.code).sort()).toEqual(['A', 'C']);
+    // CSV del Google Sheet: mapeo adivinado, serie por defecto, una ya registrada y una con error
+    await page.locator('#importIssuedCsv').click();
+    sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#issuedCsvSeries')).toHaveValue('A');
+    await sheet.locator('#issuedCsvText').fill([
+      'Nº Factura;Fecha;Cliente;NIF;Concepto;Categoría;Base imponible;% IVA;Total;Cobrada',
+      '2026-0001;06/10/2026;Cliente Retiro SL;B44444444;Repetida;alojamiento;150;10;165;',
+      '2026-0010;10/10/2026;Cliente CSV;B55555555;Cena de grupo;restaurante;"1.000,00";10;1.100,00;sí',
+      '2026-0011;31/02/2026;Cliente Mal;B77777777;Mal fecha;otros;10;21;12,1;',
+    ].join('\n'));
+    await expect(sheet.locator('#issuedCsvSummary')).toHaveText('1 nueva · 1 con errores · 1 ya registrada');
+    await expect(sheet.locator('#csvMap_base')).toHaveValue('6');
+    await sheet.locator('#confirmIssuedCsv').click();
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0010 · Cliente CSV', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
+  });
+
   await context.close();
 });

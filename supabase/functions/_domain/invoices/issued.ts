@@ -36,11 +36,12 @@ export const ISSUED_ORIGINS = ['manual', 'importada', 'app'] as const;
 export type IssuedOrigin = (typeof ISSUED_ORIGINS)[number];
 export const ISSUED_ORIGIN_LABELS: Record<IssuedOrigin, string> = { manual: 'Registrada a mano', importada: 'Importada de otra herramienta', app: 'Emitida desde la app' };
 
-/** Categorías de ingreso (propuestas; a confirmar con el usuario). */
-export const INCOME_CATEGORIES = ['alojamiento', 'restauracion', 'actividades', 'eventos', 'otros'] as const;
+/** Categorías de ingreso (confirmadas por el usuario en la ronda 26). */
+export const INCOME_CATEGORIES = ['alojamiento', 'restauracion', 'actividades', 'eventos', 'tienda', 'artesania', 'consultoria', 'otros'] as const;
 export type IncomeCategory = (typeof INCOME_CATEGORIES)[number];
 export const INCOME_CATEGORY_LABELS: Record<IncomeCategory, string> = {
-  alojamiento: 'Alojamiento', restauracion: 'Restauración', actividades: 'Actividades', eventos: 'Eventos', otros: 'Otros',
+  alojamiento: 'Alojamiento', restauracion: 'Restauración', actividades: 'Actividades', eventos: 'Eventos',
+  tienda: 'Tienda (productos alimentarios)', artesania: 'Artesanía', consultoria: 'Consultoría tecnológica', otros: 'Otros',
 };
 
 export const ISSUED_TAXES = ['iva', 'igic', 'ipsi', 'otros'] as const;

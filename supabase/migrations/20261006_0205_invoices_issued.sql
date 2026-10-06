@@ -70,7 +70,7 @@ create table invoices.issued_invoices (
   external_tool text,
   external_id text,
   import_sha256 text check (import_sha256 is null or import_sha256 ~ '^[0-9a-f]{64}$'),
-  income_category text check (income_category in ('alojamiento', 'restauracion', 'actividades', 'eventos', 'otros')),
+  income_category text check (income_category in ('alojamiento', 'restauracion', 'actividades', 'eventos', 'tienda', 'artesania', 'consultoria', 'otros')),
   payment_status text not null default 'pendiente' check (payment_status in ('pendiente', 'cobrada')),
   paid_at date,
   external_qr_url text,
