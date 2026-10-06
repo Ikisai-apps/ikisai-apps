@@ -72,6 +72,14 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     case 'tasks.task_dependencies':
     case 'tasks.attachments':
       return canProject(scopes, tab, String(row.project_id ?? ''));
+    // Compras (§18.4): el almacén y los planes, con el área entera; las solicitudes, como su proyecto (sin él, el área entera).
+    case 'tasks.supply_items':
+    case 'tasks.supply_movements':
+    case 'tasks.purchase_plans':
+    case 'tasks.purchase_plan_stops':
+      return fullTab(scopes, tab);
+    case 'tasks.purchase_requests':
+      return row.project_id ? canProject(scopes, tab, String(row.project_id)) : fullTab(scopes, tab);
     default:
       return false;
   }

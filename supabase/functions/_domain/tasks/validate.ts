@@ -76,6 +76,24 @@ const sha: Check = (v, field) => {
 };
 
 const name = (max: number) => text(1, max, 'REQUIRED_NAME', 'Escribe un nombre.');
+const quantity: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > 999999999.999) reject(422, 'INVALID_QUANTITY', 'La cantidad debe ser un número mayor que cero.', { field });
+};
+const minimum: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 999999999.999) reject(422, 'INVALID_QUANTITY', 'El mínimo debe ser un número de cero en adelante.', { field });
+};
+const delta: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v === 0 || Math.abs(v) > 999999999.999) reject(422, 'INVALID_QUANTITY', 'El movimiento debe ser un número distinto de cero.', { field });
+};
+const shortText = (max: number) => (v: unknown, field: string) => {
+  if (typeof v !== 'string' || v.length > max) reject(422, 'INVALID_FIELDS', `Texto de hasta ${max} caracteres.`, { field });
+};
+const supplierId: Check = (v, field) => {
+  if (typeof v !== 'string' || v.length < 1 || v.length > 100) reject(422, 'INVALID_FIELDS', 'Proveedor inválido.', { field });
+};
+const repeatDays: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 366) reject(422, 'INVALID_FIELDS', 'La repetición va de 1 a 366 días.', { field });
+};
 const priority = oneOf(PRIORITIES, 'INVALID_PRIORITY', 'Prioridad inválida.');
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
@@ -142,6 +160,41 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['tab_id', 'project_id', 'name', 'mime', 'size', 'sha256', 'file_id'],
   },
+  'tasks.supply_items': {
+    fields: {
+      tab_id: uuid(), name: name(200), category: oneOf(['cleaning', 'pool', 'maintenance', 'textile', 'other'], 'INVALID_FIELDS', 'Categoría desconocida.'),
+      unit: text(1, 20, 'INVALID_FIELDS', 'Unidad de hasta 20 caracteres.'), location: shortText(200), min_quantity: minimum, reorder_quantity: nullable(quantity),
+      supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), note, archived: flag('INVALID_FLAG'), position,
+    },
+    required: ['tab_id', 'name'],
+  },
+  'tasks.purchase_plans': {
+    fields: {
+      tab_id: uuid(), title: name(200), planned_for: nullable(date), status: oneOf(['draft', 'shopping', 'done'], 'INVALID_STATUS', 'Estado del plan desconocido.'), note,
+    },
+    required: ['tab_id', 'title'],
+  },
+  'tasks.purchase_plan_stops': {
+    fields: { tab_id: uuid(), plan_id: uuid(), supplier_id: nullable(supplierId), supplier_name: name(200), position, note: shortText(2000) },
+    required: ['tab_id', 'plan_id', 'supplier_name'],
+  },
+  'tasks.purchase_requests': {
+    fields: {
+      tab_id: uuid(), project_id: nullable(uuid()), task_id: nullable(uuid()), supply_item_id: nullable(uuid()), plan_stop_id: nullable(uuid()),
+      title: text(1, 300, 'REQUIRED_TEXT', 'Escribe qué hay que comprar.'), note, quantity: nullable(quantity), unit: nullable(shortText(20)),
+      estimated_amount: nullable(amount), priority, status: oneOf(['requested', 'approved', 'purchased', 'received', 'rejected'], 'INVALID_STATUS', 'Estado de la solicitud desconocido.'),
+      needs_invoice: flag('INVALID_FLAG'), repeat_days: nullable(repeatDays), due: nullable(date),
+      supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), position,
+    },
+    required: ['tab_id', 'title'],
+  },
+  'tasks.supply_movements': {
+    fields: {
+      tab_id: uuid(), supply_item_id: uuid(), kind: oneOf(['in', 'out', 'adjust'], 'INVALID_FIELDS', 'Tipo de movimiento desconocido.'), delta,
+      purchase_request_id: nullable(uuid()), note: shortText(2000),
+    },
+    required: ['tab_id', 'supply_item_id', 'kind', 'delta'],
+  },
 };
 
 export interface ValidationContext {
@@ -168,6 +221,10 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
   if (op.op !== 'insert' || !tab) return;
   if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views') {
     if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
+  } else if (['tasks.supply_items', 'tasks.supply_movements', 'tasks.purchase_plans', 'tasks.purchase_plan_stops'].includes(table)) {
+    if (!fullTab(scopes, tab)) forbidden('El almacén y los planes de compra son del área entera.');
+  } else if (table === 'tasks.purchase_requests' && typeof f.project_id !== 'string') {
+    if (!fullTab(scopes, tab)) forbidden('Una solicitud sin proyecto es del área entera.');
   } else if (table === 'tasks.projects') {
     if (!fullTab(scopes, tab)) forbidden('No puedes crear proyectos en esta área.');
   } else if (typeof f.project_id === 'string' && !canProject(scopes, tab, f.project_id)) {
@@ -216,6 +273,9 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
           const code = field === 'title' ? (table === 'tasks.tasks' ? 'REQUIRED_TEXT' : 'REQUIRED_NAME') : field === 'name' && table === 'tasks.tabs' ? 'REQUIRED_NAME' : 'INVALID_FIELDS';
           reject(422, code, 'Falta un campo obligatorio.', { index, table, field });
         }
+      }
+      if (table === 'tasks.supply_movements' && typeof fields.delta === 'number' && (fields.kind === 'in' && fields.delta < 0 || fields.kind === 'out' && fields.delta > 0)) {
+        reject(422, 'INVALID_QUANTITY', 'Una entrada suma y un consumo resta.', { index });
       }
       if (table === 'tasks.task_dependencies' && fields.task_id === fields.depends_on_id) {
         reject(422, 'INVALID_DEPENDENCIES', 'Una tarea no puede depender de sí misma.', { index });

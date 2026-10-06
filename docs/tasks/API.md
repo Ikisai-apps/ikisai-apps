@@ -764,9 +764,8 @@ Mismas convenciones que las diez tablas actuales: uuid, `tab_id` desnormalizado 
 | `category` | `text not null default 'other'` | `cleaning`, `pool`, `maintenance`, `textile`, `other`. |
 | `unit` | `text not null default 'ud'` | |
 | `location` | `text not null default ''` | Dónde está («Almacén piscina»). |
-| `min_quantity` | `numeric(12,3) not null default 0` | 0 o más. Con `current_quantity < min_quantity` está «bajo mínimo». |
+| `min_quantity` | `numeric(12,3) not null default 0` | 0 o más. Bajo mínimo: la suma de sus movimientos vivos es menor que `min_quantity`. |
 | `reorder_quantity` | `numeric(12,3) null` | Mayor que 0. Cuánto pedir al reponer; sin ello, lo que falta hasta el mínimo. |
-| `current_quantity` | `numeric(12,3) not null default 0` | **No escribible:** la mantiene un trigger con la suma de los movimientos vivos. |
 | `archived` | `boolean not null default false` | |
 | `position` | `double precision not null` | |
 
@@ -780,6 +779,8 @@ Mismas convenciones que las diez tablas actuales: uuid, `tab_id` desnormalizado 
 | `delta` | `numeric(12,3) not null` | Distinto de 0: positivo en `in`, negativo en `out`, cualquiera en `adjust`. |
 | `purchase_request_id` | `uuid null` | Entrada que viene de recibir una solicitud. |
 | `note` | `text not null default ''` | |
+
+**El stock no se guarda en una columna:** es la suma de los movimientos vivos y la calcula quien lee (la app, `tasks.low_stock`). Un valor mantenido por un trigger no pasaría por `core.changes` y los espejos se quedarían con el valor antiguo (cambio respecto a la primera propuesta, migración `0305`).
 
 Por qué movimientos y no un número editable: dos personas sin red que gastan a la vez dos bolsas de cloro generan dos inserciones que se suman al sincronizar. Editar `current_quantity` en ambos dispositivos sería un conflicto, y el último ganaría restando solo una. Un recuento («quedan 7») se guarda como `adjust` con la diferencia frente a lo actual, calculada en el cliente; si dos recuentos se cruzan sin red, basta con volver a contar.
 
