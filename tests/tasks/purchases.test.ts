@@ -5,7 +5,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateOperations, visibleRow } from '../../packages/domain-tasks/src/index.ts';
+import {
+  deletePlanOps, deleteSupplyItemOps, dueRecurring, lowStock, nextRecurringOps, preparePlanOps, receivePurchaseOps, reorderSupplyOps, requestPurchaseOps,
+  setPurchaseStatusOps, supplyMovementOps, supplyStock, validateOperations, visibleRow,
+} from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, rejects, remove, update, type TasksDb } from './db.ts';
 
 let db: TasksDb;
@@ -122,4 +125,99 @@ test('compras · vaciar papelera: lo que cuelga de un área o un proyecto borrad
   for (const [table, id] of [['tasks.supply_movements', mov], ['tasks.purchase_requests', req], ['tasks.purchase_plan_stops', stop], ['tasks.purchase_plans', plan], ['tasks.supply_items', supply]] as const) {
     assert.ok((data as any)[table].find((r: any) => r.id === id).deleted_at, table);
   }
+});
+
+/** Valida como la Edge y confirma; devuelve el lote. */
+async function run(ops: any[], actor?: string) {
+  validateOperations(ops, { role: 'owner', scopes: '*' });
+  if (ops.length) await db.commit(ops, actor);
+  return ops;
+}
+
+test('compras · operaciones: queda poco y pedir, aprobar, recibir con entrada de stock, gastar y recontar', async () => {
+  const { tab } = await db.area('Operaciones');
+  const cloro = newId();
+  await db.commit([item(tab, cloro, { min_quantity: 10, reorder_quantity: 25, supplier_name: 'Piscinas Sur' })]);
+  let data = await db.data();
+  assert.deepEqual(lowStock(data, tab).map((x) => [x.item.id, x.stock, x.openRequest]), [[cloro, 0, null]]);
+  const [order] = await run(reorderSupplyOps(data, cloro));
+  assert.deepEqual([order!.fields!.quantity, order!.fields!.unit, order!.fields!.supplier_name], [25, 'l', 'Piscinas Sur']);
+  data = await db.data();
+  assert.equal(lowStock(data, tab)[0]!.openRequest!.id, order!.id);
+  await run(setPurchaseStatusOps(data, order!.id!, 'approved'));
+  data = await db.data();
+  const received = await run(receivePurchaseOps(data, order!.id!));
+  assert.deepEqual(received.map((o) => o.table), ['tasks.purchase_requests', 'tasks.supply_movements']);
+  data = await db.data();
+  assert.equal(supplyStock(data, cloro), 25);
+  assert.deepEqual(receivePurchaseOps(data, order!.id!), [], 'recibir dos veces no duplica la entrada');
+  await run(supplyMovementOps(data, cloro, { kind: 'out', amount: 4 }));
+  data = await db.data();
+  await run(supplyMovementOps(data, cloro, { kind: 'count', amount: 18 }));
+  data = await db.data();
+  assert.equal(supplyStock(data, cloro), 18);
+  assert.deepEqual(supplyMovementOps(data, cloro, { kind: 'count', amount: 18 }), [], 'recontar lo mismo no crea movimiento');
+  assert.equal(lowStock(data, tab).length, 0);
+  await run(deleteSupplyItemOps(data, cloro));
+  assert.ok((await row('tasks.supply_items', cloro)).deleted_at);
+});
+
+test('compras · plan: agrupa por proveedor las aprobadas y las recurrentes que tocan; se quita si no hay compras', async () => {
+  const { tab, inbox } = await db.area('Plan por proveedor');
+  let data = await db.data();
+  const a = await run(requestPurchaseOps(data, { tab_id: tab, project_id: inbox, title: 'Tornillos', supplier_name: 'Ferretería', status: 'approved' }));
+  data = await db.data();
+  const b = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Lejía', supplier_name: 'Droguería', status: 'approved' }));
+  data = await db.data();
+  const c = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Bombillas', status: 'approved' }));
+  data = await db.data();
+  // Una recurrente recibida hace 40 días cada 30: toca en el próximo plan.
+  const recur = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Cloro mensual', supplier_name: 'Ferretería', repeat_days: 30, status: 'approved' }));
+  // Fecha de recepción en el pasado: el trigger de fechas la pondría a ahora, así que solo aquí se salta.
+  await db.t.db.exec(`set session_replication_role = replica`);
+  await db.t.db.query(`update tasks.purchase_requests set status = 'received', received_at = now() - interval '40 days' where id = $1`, [recur[0]!.id]);
+  await db.t.db.exec(`set session_replication_role = origin`);
+  data = await db.data();
+  const today = new Date().toISOString().slice(0, 10);
+  assert.deepEqual(dueRecurring(data, tab, today).map((r) => r.id), [recur[0]!.id]);
+  const plan = await run(preparePlanOps(data, { tab_id: tab, title: 'Compra del lunes', today }));
+  data = await db.data();
+  const planId = plan[0]!.id!;
+  const stops = data['tasks.purchase_plan_stops'].filter((st) => st.plan_id === planId && !st.deleted_at);
+  assert.deepEqual(stops.map((st) => st.supplier_name).sort(), ['Droguería', 'Ferretería', 'Sin proveedor']);
+  const ferreteria = stops.find((st) => st.supplier_name === 'Ferretería')!;
+  const inStop = data['tasks.purchase_requests'].filter((r) => r.plan_stop_id === ferreteria.id).map((r) => r.title).sort();
+  assert.deepEqual(inStop, ['Cloro mensual', 'Tornillos'], 'la recurrente nueva va con su proveedor, ya aprobada');
+  assert.deepEqual(dueRecurring(data, tab, today), [], 'ya hay una abierta: no vuelve a tocar');
+  void b; void c; void a;
+  // Sin compras, el plan se quita y sus solicitudes vuelven a estar sin plan.
+  await run(deletePlanOps(data, planId));
+  data = await db.data();
+  assert.ok(data['tasks.purchase_requests'].filter((r) => r.tab_id === tab && !r.deleted_at).every((r) => !r.plan_stop_id));
+  // La siguiente de una recurrente: misma compra, con la fecha desde que se recibió.
+  const next = nextRecurringOps(data, recur[0]!.id!);
+  assert.equal(next[0]!.fields!.repeat_days, 30);
+});
+
+test('compras · lecturas: tasks.targets con solicitudes de compra (por id y lista) y tasks.low_stock con ámbitos', async () => {
+  const { tab, inbox } = await db.area('Lecturas');
+  const guest = await db.member('editor', { tabs: [], projects: { [tab]: [inbox] } });
+  const own = newId(), general = newId(), soap = newId();
+  await db.commit([
+    request(tab, own, { project_id: inbox, title: 'Pintura', status: 'approved' }),
+    request(tab, general, { title: 'Papel', status: 'purchased' }),
+    request(tab, newId(), { title: 'Pendiente', status: 'requested' }),
+    item(tab, soap, { name: 'Jabón', min_quantity: 5 }),
+  ]);
+  await db.commit([update('tasks.purchase_requests', general, 1, { status: 'received' })]);
+  const list = await db.read('tasks.targets', { kind: 'purchase_request', tabId: tab });
+  assert.deepEqual(list.items.map((x: any) => x.title).sort(), ['Papel', 'Pintura'], 'aprobadas, compradas o recibidas que esperan factura');
+  const one = await db.read('tasks.targets', { kind: 'purchase_request', id: own });
+  assert.deepEqual([one.kind, one.status, one.projectId], ['purchase_request', 'approved', inbox]);
+  const guestList = await db.read('tasks.targets', { kind: 'purchase_request', tabId: tab }, guest);
+  assert.deepEqual(guestList.items.map((x: any) => x.id), [own], 'un acceso por proyecto solo ve las de su proyecto');
+  await rejects(db.read('tasks.targets', { kind: 'purchase_request', id: general }, guest), 'NOT_FOUND');
+  const low = await db.read('tasks.low_stock', { tabId: tab });
+  assert.deepEqual(low.items.map((x: any) => [x.name, Number(x.stock)]), [['Jabón', 0]]);
+  assert.deepEqual((await db.read('tasks.low_stock', { tabId: tab }, guest)).items, [], 'el almacén es del área entera');
 });
