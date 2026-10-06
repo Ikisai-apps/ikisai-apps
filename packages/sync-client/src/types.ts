@@ -100,6 +100,8 @@ export interface RejectedBatch {
   /** Filas tal y como estaban en el espejo al editar, por `schema.tabla|id` (null = no existía). */
   baseRows: Record<string, SyncedRow | null>;
   rejectedAt: string;
+  /** Posición que tenía el lote en la cola; da un orden estable aunque dos rechazos compartan milisegundo. */
+  seq?: number;
 }
 
 export type NetworkState = 'online' | 'offline' | 'syncing' | 'error';
