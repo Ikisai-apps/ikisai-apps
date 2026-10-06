@@ -59,9 +59,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #141 (tandas 13–15) fusionada y publicada.
 - Fase 1 de la extracción sin API de pago (ronda 29, `invoices/ia-compartir`): «Analizar con IA» comparte el documento y `ikisai_invoice_contract.txt` con la app de IA del usuario; vuelve por `share_target` o pegando; sobre `source` con nombre y hash del documento; JSON extraído del texto y validado como no confiable (API.md §6.7).
 
+- PR #153 (fase 1) fusionada y publicada.
+- Fase 2 de la extracción sin API de pago (`invoices/ia-pdf-texto`): «Leer PDF» con PDF.js bajo demanda; extractor determinista con NIF/CIF con control, fechas, número, IVA por tipo, retención, total e IBAN; procedencia por campo; duplicado blando; PDF escaneado remitido a «Analizar con IA» (API.md §6.8). Corregido el enlace `#/facturas?vista=emitidas`, roto por un carácter de control.
+
 ## En curso
 
-- Extracción sin API de pago: fase 1 en PR; después fase 2 (texto de PDF y reglas), fase 3 (plantillas por proveedor, con propuesta previa) y fase 4 (OCR con Google Drive, cuando Core la verifique).
+- Extracción sin API de pago: fase 2 en PR; después fase 3 (plantillas por proveedor, con propuesta previa en `API.md`) y fase 4 (OCR con Google Drive, cuando Core la verifique).
 
 ## Pendiente
 

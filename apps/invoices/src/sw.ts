@@ -116,6 +116,14 @@ sw.addEventListener('fetch', (event) => {
     event.respondWith(fetch(request).catch(() => caches.match('/').then((cached) => cached ?? Response.error())));
     return;
   }
+  // PDF.js (fase 2): bajo demanda, y guardado al primer uso para leer PDF también sin red.
+  if (/^\/assets\/pdf[.-]/i.test(url.pathname)) {
+    event.respondWith(caches.open('ikisai-invoices-ondemand').then((cache) => cache.match(request).then((cached) => cached ?? fetch(request).then((response) => {
+      if (response.ok) void cache.put(request, response.clone());
+      return response;
+    }))));
+    return;
+  }
   if (SHELL.includes(url.pathname)) {
     event.respondWith(caches.open(CACHE).then((cache) => cache.match(request).then((cached) => cached ?? fetch(request))));
     return;

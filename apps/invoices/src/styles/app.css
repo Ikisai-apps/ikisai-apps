@@ -76,3 +76,5 @@ code{font-size:12.5px;word-break:break-all}
 .alloc-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
 .alloc-list li{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .csv-mapping{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 12px}
+.provenance{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.provenance li{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px}

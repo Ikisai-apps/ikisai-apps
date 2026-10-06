@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 import { freePort } from './free-port.ts';
+import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/invoices/vite.config.ts');
@@ -903,4 +904,67 @@ test('IA sin API de pago (fase 1): compartir documento y contrato, volver por sh
     expect((await download).suggestedFilename()).toBe('ikisai_invoice_contract.txt');
     await desktop.close();
   });
+});
+
+test('IA sin API de pago (fase 2): «Leer PDF» con texto, procedencia por campo, duplicado blando y PDF escaneado', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+  await nav(page, 'Facturas').click();
+
+  const newInvoice = async (object: string, pdf: Buffer, supplier?: { name: string; taxId: string }) => {
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    if (supplier) {
+      await sheet.locator('#newSupplier').selectOption({ label: '+ Nuevo proveedor…' });
+      await sheet.locator('#newSupplierName').fill(supplier.name);
+      await sheet.locator('#newSupplierTaxId').fill(supplier.taxId);
+    } else {
+      await sheet.locator('#newSupplier').selectOption({ label: 'Frutas Pepe S.L.' });
+    }
+    await sheet.getByLabel('Fecha').fill('2026-10-06');
+    await sheet.getByLabel('Objeto').fill(object);
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: `${object}.pdf`, mimeType: 'application/pdf', buffer: pdf });
+    await sheet.locator('#saveInvoice').click();
+    await expect(ficha(page).locator('#chatgptInvoice')).toBeVisible({ timeout: 20_000 });
+    await synced(page);
+  };
+
+  await test.step('PDF con texto: se lee en el dispositivo y llega a la vista previa con la procedencia de cada dato', async () => {
+    await newInvoice('fruta octubre', invoiceTextPdf(), { name: 'Frutas Pepe S.L.', taxId: 'B12345674' });
+    await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
+    const sheet = ficha(page);
+    await expect(sheet.locator('#extractionNote')).toContainText('Leído del texto del PDF, sin IA', { timeout: 30_000 });
+    await expect(sheet.locator('#provenance [data-field="document_totals.total"]')).toContainText('Total · 85 %');
+    await expect(sheet.locator('#provenance [data-field="invoice.supplier_tax_id"]')).toContainText('CIF: B12345674');
+    await expect(sheet.locator('#importPreview')).toContainText('coincide por NIF');
+    await expect(sheet.locator('#importPreview')).toContainText('Dentro de la tolerancia');
+    await expect(sheet.locator('#importObject')).toHaveValue('fruta octubre');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await synced(page);
+    const inv = api.rows('invoices.invoices').find((i) => i.object === 'fruta octubre')!;
+    expect(inv).toMatchObject({ invoice_number: 'A-2026/0457', calculated_total: 159, totals_delta: 0 });
+    expect(api.rows('invoices.tax_lines').filter((t) => t.invoice_id === inv.id).map((t) => `${t.tax_type}:${t.rate}:${t.amount}`).sort()).toEqual(['irpf:15:6', 'iva:10:4', 'iva:21:21']);
+    await closeSheet(page);
+  });
+
+  await test.step('mismo proveedor, fecha y total con otro número: aviso de posible duplicado, sin bloquear', async () => {
+    await newInvoice('fruta repetida', invoiceTextPdf('A-2026/0999'));
+    await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
+    const sheet = ficha(page);
+    await expect(sheet.locator('#softDuplicate')).toContainText('Posible duplicado', { timeout: 30_000 });
+    await expect(sheet.locator('#confirmImport')).toBeEnabled();
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+  });
+
+  await test.step('PDF escaneado (sin texto): se dice y se remite a «Analizar con IA»', async () => {
+    await newInvoice('escaneada', textPdf([]));
+    await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'no tiene texto' }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(ficha(page).locator('#chatgptInvoice')).toBeVisible();
+  });
+  await context.close();
 });

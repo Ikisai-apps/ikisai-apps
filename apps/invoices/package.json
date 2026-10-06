@@ -9,5 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.sw.json --noEmit"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.4.299"
   }
 }

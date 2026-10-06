@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, extractFromPdfText, softDuplicate, type FieldProvenance, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -22,6 +22,7 @@ import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedText } from '../app/ai-share.ts';
+import { readPdfItems } from '../app/pdf-text.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 
@@ -198,7 +199,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   const offTables = onAnyTable(client, () => void load());
   const offOpen = onOpen((id) => { opened = id; });
   void load().then(fromHash);
-  if (/[?&]vista=emitidas/.test(location.hash)) showTab('emitidas');
+  if (/[?&]vista=emitidas\b/.test(location.hash)) showTab('emitidas');
   return () => { offTables(); offOpen(); issuedPanel?.destroy(); void closeSheet(true); };
 };
 
@@ -336,7 +337,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       if (!navigator.onLine) { toast('Para compartir el documento hace falta conexión (está en la nube).'); return null; }
       const file = await fetchStoredDocument(client, original.file_id, original.normalized_filename, original.mime_type);
       return { file, source: { filename: original.normalized_filename, sha256: original.sha256 } };
-    }) : null,
+    }, (file) => readPdfInto(ctx, mirror, invoice, file)) : null,
     canEdit && invoice.status !== 'anulada' ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', onclick: () => fileInput.click() }, icon('attach', 18), pendingState ? 'Añadir PDF o fotos' : 'Añadir adjunto'), fileInput) : null,
   );
 
@@ -557,6 +558,9 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   }, async () => {
     const file = files.files?.[0];
     return file ? { file, source: { filename: file.name, sha256: await sha256Hex(file) } } : null;
+  }, async (file) => {
+    const picked = Array.from(files.files ?? []);
+    await readPdfInto(ctx, mirror, null, file, picked);
   });
   chatgpt.hidden = true;
   files.addEventListener('change', () => { chatgpt.hidden = !(files.files && files.files.length); });
@@ -626,7 +630,42 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
 /** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
-export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null }
+export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null; provenance?: Record<string, FieldProvenance>; origin?: 'api' | 'pdf_text' }
+
+const PROVENANCE_LABELS: Record<string, string> = {
+  'invoice.supplier_name': 'Proveedor', 'invoice.supplier_tax_id': 'NIF', 'invoice.invoice_date': 'Fecha', 'invoice.invoice_number': 'Número',
+  'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total',
+};
+const METHOD_LABELS: Record<string, string> = { pdf_text: 'texto del PDF', supplier_template: 'plantilla del proveedor', external_ai: 'app de IA', manual: 'sin leer', ocr: 'OCR' };
+
+/** Procedencia por campo: valor propuesto, confianza y de dónde sale. Nada inferido se presenta como verificado. */
+function renderProvenance(provenance: Record<string, FieldProvenance>): HTMLElement {
+  return el('ul', { class: 'provenance', id: 'provenance' }, ...Object.entries(PROVENANCE_LABELS).filter(([key]) => provenance[key]).map(([key, label]) => {
+    const p = provenance[key]!;
+    const pct = Math.round(p.confidence * 100);
+    return el('li', { dataset: { field: key } },
+      el('span', { class: pct >= 80 ? 'chip ok' : pct >= 50 ? 'chip warn' : 'chip alert' }, `${label} · ${pct} %`),
+      el('span', { class: 'hint' }, ` ${METHOD_LABELS[p.method] ?? p.method}${p.page ? `, pág. ${p.page}` : ''}${p.text ? `: «${p.text.slice(0, 90)}»` : ''}`));
+  }));
+}
+
+/** «Leer PDF»: texto del PDF en el dispositivo y reglas deterministas; si no hay texto o faltan datos, se dice. */
+async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[]): Promise<void> {
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { toast('«Leer PDF» solo sirve para PDF. Para fotos usa «Analizar con IA».'); return; }
+  toast('Leyendo el PDF…');
+  let items;
+  try { items = await readPdfItems(file); } catch { toast('No se pudo abrir el PDF (dañado o protegido): usa «Analizar con IA».'); return; }
+  const supplier = target ? mirror.supplierById.get(target.supplier_id) ?? null : null;
+  const result = extractFromPdfText(items, {
+    suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ name: s.name, tax_id: s.tax_id })),
+    fallback: target ? { supplier_name: supplier?.name ?? null, supplier_tax_id: supplier?.tax_id ?? null, object: target.object } : undefined,
+  });
+  if (!result.hasText) { toast('Este PDF no tiene texto (escaneado o foto): usa «Analizar con IA».'); return; }
+  if (!result.ok || !result.document) { toast(`No he podido leer ${result.missing.join(' ni ')} del PDF: usa «Analizar con IA» o pega el JSON.`); return; }
+  guard.dirtyEditor = false;
+  await closeSheet(true);
+  openImport(ctx, mirror, target, { document: result.document, warnings: result.warnings, provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+}
 
 export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[]; text?: string } = {}): void {
   const { client } = ctx;
@@ -705,6 +744,10 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
     const row = (label: string, calc: number, declared: number) => el('tr', { class: Math.abs(toCents(calc) - toCents(declared)) > 2 ? 'bad' : '' }, el('td', null, label), el('td', { class: 'num' }, eur(calc)), el('td', { class: 'num' }, eur(declared)), el('td', { class: 'num' }, eur(fromCents(toCents(declared) - toCents(calc)))));
     supplierSelect.addEventListener('change', () => { const p = proposal(); if (categorySelect && !categorySelect.value && p.expense_category) categorySelect.value = p.expense_category; });
     replace(preview,
+      (() => {
+        const soft = duplicate ? null : softDuplicate(mirror.invoices, { supplier_id: supplierFor()?.id ?? null, invoice_date: doc.invoice.invoice_date, total: doc.document_totals.total }, target?.id ?? null);
+        return soft ? el('div', { class: 'banner warn', id: 'softDuplicate' }, icon('warn', 18), el('span', null, `Posible duplicado: ${soft.code ?? 'otra factura'} tiene la misma fecha y el mismo total${supplierFor() ? ' y es del mismo proveedor' : ''}. Compruébalo antes de importar.`)) : null;
+      })(),
       duplicate ? el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, `Ya existe la factura ${duplicate.code ?? ''} de este proveedor con el número ${doc.invoice.invoice_number}. La importación será rechazada como duplicado.`)) : null,
       el('div', { class: 'row2' }, field('Proveedor', supplierSelect, doc.invoice.supplier_tax_id ? `NIF del documento: ${doc.invoice.supplier_tax_id}` : 'El documento no trae NIF.'), field('Fecha', dateInput)),
       field('Objeto', objectInput),
@@ -757,7 +800,11 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   // Coste de la extracción, discreto pero visible (petición de Core, ronda 10): modelo, tokens y tiempo.
   const usageText = prefill ? describeUsage(prefill.usage) : null;
   const usageLine = usageText ? el('p', { class: 'hint', id: 'extractionUsage' }, 'Coste de la extracción: ', usageText) : null;
-  const extractionNote = !prefill ? null : prefill.document
+  const extractionNote = !prefill ? null : prefill.document && prefill.origin === 'pdf_text'
+    ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Leído del texto del PDF, sin IA. '),
+      'Son propuestas: revisa cada dato antes de importar. La confianza y el texto de origen de cada uno están aquí:', prefill.provenance ? renderProvenance(prefill.provenance) : null,
+      prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null))
+    : prefill.document
     ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null, usageLine))
     : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('warn', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
   openSheet({
@@ -835,7 +882,7 @@ function promptTextArea(): HTMLTextAreaElement {
  * «Extraer con ChatGPT» junto al documento (incidencia de la aceptación V1): 1) copiar el prompt y adjuntar en ChatGPT (u
  * otro asistente) esta misma foto o PDF; 2) pegar el JSON que devuelva. Siempre disponible, con o sin extracción automática.
  */
-function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promise<{ file: File; source: { filename: string; sha256: string } } | null>): HTMLElement {
+function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promise<{ file: File; source: { filename: string; sha256: string } } | null>, onRead?: (file: File) => Promise<void>): HTMLElement {
   const promptText = promptTextArea();
   // Fase 1 sin API de pago (ronda 29): compartir el documento y el contrato con la app de IA del usuario.
   const share = getDocument ? el('button', { class: 'primary small', type: 'button', dataset: { step: 'share' }, onclick: async () => {
@@ -849,6 +896,10 @@ function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promi
   return el('div', { class: 'chatgpt-steps', id },
     el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea imágenes')),
     share ? el('div', { class: 'btnrow' }, share, el('span', { class: 'hint' }, 'Comparte el documento y las instrucciones con tu app de IA.')) : null,
+    // Fase 2 (ronda 29): leer el texto del PDF en el propio dispositivo, sin IA, con reglas.
+    getDocument && onRead ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'read' }, onclick: async () => {
+      try { const doc = await getDocument(); if (doc) await onRead(doc.file); } catch (error) { toast(describeError(error)); }
+    } }, icon('eye', 16), 'Leer PDF'), el('span', { class: 'hint' }, 'Si el PDF tiene texto, la app lo lee aquí mismo, sin IA.')) : null,
     el('ol', { class: 'steps' },
       el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copyPrompt(promptText) }, icon('attach', 16), '1) Copiar prompt'),
         el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta esta misma foto o PDF.')),
