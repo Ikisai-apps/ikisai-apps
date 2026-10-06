@@ -33,7 +33,7 @@ Decisión de Core (plan §5): proveedores en tabla ligera, aunque el handoff los
 | Columna | Tipo | Notas |
 |---|---|---|
 | `aliases` | `text[] not null default '{}'` | Nombres con los que aparece en facturas («MAKRO ESPAÑA S.A.»). Máximo 20, cada uno ≤ 200. Emparejamiento de la importación. |
-| `slug` | `text not null` | Forma corta para el nombre canónico: `makro`. Se genera desde `name` si no se da (§2.12). `unique where deleted_at is null`. |
+| `slug` | `text not null` | Forma corta para el nombre canónico: `makro`. Se genera desde `name` si no se da (§2.12). No es único: dos proveedores con el mismo slug colisionan en el nombre de archivo y se resuelven con `_NN`. |
 | `default_is_investment` | `boolean not null default false` | |
 
 `writable_columns`: `name, tax_id, default_category, default_is_investment, aliases, slug, notes`. Índice `unique (upper(tax_id)) where deleted_at is null and tax_id is not null`.
@@ -53,16 +53,17 @@ Decisión de Core (plan §5): proveedores en tabla ligera, aunque el handoff los
 | `is_investment` | `boolean not null default false` | Explotación / inversión (C08 §7.2). |
 | `deductibility` | `text not null default 'pendiente_revision'` | `check in ('si','no','parcial','pendiente_revision')`. La app sugiere; no decide. |
 | `status` | `text not null default 'pendiente_datos'` | `check in ('pendiente_datos','pendiente_revision','validada','archivada','anulada')`. §2.11. |
-| `review_reason` | `text null` | Por qué está en `pendiente_revision` (`REVISAR IMPORTES`, `IMPORTADA`, `EDITADA_TRAS_VALIDAR`, texto libre). |
+| `review_reason` | `text null` | Por qué está en `pendiente_revision`: `IMPORTADA`, `DATOS_INTRODUCIDOS` (manual con contenido), `REVISAR IMPORTES` (`|totals_delta| > 0,02`), `IMPORTES_CORREGIDOS` (volvió a cuadrar), `EDITADA_TRAS_VALIDAR`. |
 | `annulled_reason` | `text null` | Obligatorio en `anulada`. |
 | `payment_status` | `text not null default 'pendiente'` | `check in ('pendiente','pagada')`. |
 | `payment_method` | `text null` | `check in ('transferencia','tarjeta','efectivo','bizum','domiciliacion','otro')`. |
 | `paid_at` | `date null` | Obligatorio con `pagada`. |
 | `source_total` | `numeric(12,2) null` | Total que imprime el documento (`document_totals.total` o lo que teclea el usuario). |
-| `calculated_base` | `numeric(12,2) not null default 0` | Σ `tax_lines.taxable_base` de tipo `iva`/`otro` (o Σ `net_amount` de líneas si no hay desglose). |
+| `calculated_base` | `numeric(12,2) not null default 0` | Σ `taxable_base` de los impuestos `iva` (si no traen base, la de `otro`; si no hay desglose, Σ `net_amount` de las líneas). |
 | `calculated_vat` | `numeric(12,2) not null default 0` | Σ `tax_lines.amount` con `tax_type = 'iva'`. |
+| `calculated_other` | `numeric(12,2) not null default 0` | Σ `amount` con `tax_type = 'otro'` (otros tributos que se suman, p. ej. recargo de equivalencia). |
 | `calculated_withholding` | `numeric(12,2) not null default 0` | Σ `amount` con `tax_type in ('irpf','otra_retencion')`. |
-| `calculated_total` | `numeric(12,2) not null default 0` | `base + vat − withholding`. |
+| `calculated_total` | `numeric(12,2) not null default 0` | `base + vat + other − withholding`. |
 | `totals_delta` | `numeric(12,2) null` | `source_total − calculated_total`; `null` si no hay `source_total`. |
 | `source` | `text not null default 'manual' check in ('manual','import_v1')` | |
 | `import_sha256` | `text null` | SHA-256 del JSON importado. |
@@ -72,7 +73,7 @@ Decisión de Core (plan §5): proveedores en tabla ligera, aunque el handoff los
 | `fiscal_period` | `text generated always as (… 'AAAA' || 'T' || trimestre) stored` | `2026T4`. |
 | `notes` | `text null` | |
 
-`writable_columns`: `supplier_id, invoice_date, object, invoice_number, currency, due_date, expense_category, is_investment, deductibility, status, review_reason, annulled_reason, payment_status, payment_method, paid_at, source_total, calculated_base, calculated_vat, calculated_withholding, calculated_total, totals_delta, source, import_sha256, import_meta, notes`. Los `calculated_*` y `totals_delta` los escribe el cliente (dominio compartido) y el servidor los **recalcula y sobrescribe** en el hook de invariantes (§4.3): si el cliente manda otra cosa, gana el servidor. `import_meta` solo lo acepta la Edge dentro de `call import_v1` (en `insert`/`update` directos lo rechaza).
+`writable_columns`: `supplier_id, invoice_date, object, invoice_number, currency, due_date, expense_category, is_investment, deductibility, status, review_reason, annulled_reason, payment_status, payment_method, paid_at, source_total, calculated_base, calculated_vat, calculated_other, calculated_withholding, calculated_total, totals_delta, source, import_sha256, import_meta, notes`. Los `calculated_*` y `totals_delta` los escribe el cliente (dominio compartido) y el servidor los **recalcula y sobrescribe** en el hook de invariantes (§4.3): si el cliente manda otra cosa, gana el servidor. `import_meta` solo lo acepta la Edge dentro de `call import_v1` (en `insert`/`update` directos lo rechaza).
 
 `never_purge = true`. Índices: `unique (supplier_id, lower(invoice_number)) where deleted_at is null and status <> 'anulada' and invoice_number is not null`; `(invoice_date desc)`; `(fiscal_year, fiscal_quarter)`; `(status)`.
 
@@ -177,7 +178,7 @@ Entregas a la gestoría. **El ZIP no modifica ni cierra registros** (handoff): l
 | `delivered_to` | `text null` | |
 | `notes` | `text null` | |
 
-`writable_columns`: `status, delivered_at, delivered_to, notes`. `never_purge = true`; sin borrado lógico (trigger).
+`writable_columns` (SQL): todas salvo `code`, para que `create_export` escriba por `apply_row_op`; la Edge solo deja al cliente `status, delivered_at, delivered_to, notes` y rechaza el `insert` directo. `never_purge = true`; sin borrado lógico (trigger).
 
 ### 2.8 `invoices.export_items`
 
@@ -189,7 +190,7 @@ Entregas a la gestoría. **El ZIP no modifica ni cierra registros** (handoff): l
 | `invoice_revision` | `bigint not null` | Para «entrega desfasada»: si la factura cambió después, se avisa. |
 | `files` | `jsonb not null` | `[{file_id, normalized_filename, sha256, size_bytes}]` incluidos. |
 
-`writable_columns`: `'{}'`. `never_purge = true`.
+`writable_columns` (SQL): todas, solo las usa `create_export`; la Edge rechaza cualquier escritura del cliente. `never_purge = true`.
 
 ### 2.9 Códigos humanos
 
@@ -214,16 +215,18 @@ Transiciones: `pendiente_datos ↔ pendiente_revision` (automático por contenid
 ### 2.12 Nombre canónico de archivo (handoff §24A «Subida y nombre»)
 
 ```text
-AAAA_MM_DD_(empresa)_objeto[_pNN][_NN].ext
+AAAA_MM_DD_(empresa)_objeto[_NN][_pNN|_aNN].ext
 2026_10_05_(makro)_alimentos_retiro_yoga.pdf
 2026_10_05_(makro)_alimentos_retiro_yoga_p01.jpg     ← varias imágenes de una factura
 2026_10_05_(makro)_alimentos_retiro_yoga_02.pdf      ← colisión con otra factura del mismo día, empresa y objeto
+2026_10_05_(makro)_alimentos_retiro_yoga_02_p01.jpg  ← segunda factura del grupo, primera página
+2026_10_05_(makro)_alimentos_retiro_yoga_a01.pdf     ← adjunto (albarán, justificante)
 ```
 
 - `empresa` = `suppliers.slug`; `objeto` = `slug(invoices.object)`. `slug`: minúsculas, sin acentos (tabla ASCII propia en SQL y TS, sin depender de `unaccent`), `[^a-z0-9]+ → _`, sin `_` en los extremos, ≤ 40 caracteres.
 - `ext` por `mime_type` (`pdf`, `jpg`, `png`, `webp`), nunca del nombre original.
 - `_pNN` cuando la factura tiene más de un archivo `original` (orden `page_order`, dos dígitos). Un único PDF no lleva sufijo.
-- `_NN` (desde `02`) si ya existe otro nombre igual vivo (otra factura con misma fecha, empresa y objeto). Nunca se sobrescribe.
+- `_NN` (desde `02`) distingue facturas del mismo grupo (misma fecha, empresa y objeto): es la posición de la factura por antigüedad dentro del grupo, estable aunque otra se anule. Va antes de `_pNN`. Los adjuntos (`kind = 'attachment'`) llevan `_aNN` en vez de `_pNN`. Nunca se sobrescribe.
 - El nombre no es clave: `invoice_files.id` lo es. El nombre original se conserva en `original_filename`.
 - Lo calcula `invoices.normalized_filename(...)` en SQL (trigger `before insert` en `invoice_files`) y, de forma idéntica, `normalizedFilename()` en `_domain/invoices` para la vista previa en el cliente; una prueba compara ambos sobre PGlite. Si cambian `invoice_date`, `object` o el proveedor **antes** de `validada`, se renombran los archivos (solo el campo; la ruta en Storage, que la decide `core.file_create`, no cambia). Después de `validada` no se renombra.
 
@@ -282,7 +285,7 @@ additionalProperties: false en todos los objetos.
    - comprobaciones cruzadas con `document_totals`: `|Σ lines.net_amount − base| > 0,02` → aviso `LINES_VS_BASE`; `|calculated_total − document_totals.total| > 0,02` → **`REVISAR IMPORTES`**.
 6. **Estado.** Dentro de tolerancia y con categoría → `pendiente_revision` con `review_reason = 'IMPORTADA'` (la validación es siempre humana: handoff «No marcar como validada sin revisión explícita»). Fuera de tolerancia → `pendiente_revision` con `review_reason = 'REVISAR IMPORTES'` y `totals_delta`. Nunca `validada`.
 7. **Inserción** vía `apply_row_op`: `invoices` (`insert` o `update` de la existente; `source = 'import_v1'`, `import_sha256`, `source_total = document_totals.total`, `calculated_*`, `totals_delta`, `import_meta`), `invoice_lines` (orden del JSON, `item_type`, `match_name`, `confidence`), `tax_lines`, `invoice_files` para cada archivo (`kind = 'original'`).
-8. **Resultado**: `{invoice_id, code, status, review_reason, supplier_id, normalized_filenames[], recalculation:{calculated_base, calculated_vat, calculated_withholding, calculated_total, source_total, delta, within_tolerance}, warnings[]}`.
+8. **Resultado**: `{invoice_id, code, status, review_reason, supplier_id, normalized_filenames[], recalculation:{calculated_base, calculated_vat, calculated_other, calculated_withholding, calculated_total, source_total, delta, within_tolerance}, warnings[]}`.
 
 ### 3.2 `invoices.validate(p jsonb)`
 
@@ -331,7 +334,7 @@ Paso explícito `pendiente_revision → validada`. `args = {invoice_id, expected
 
 Registrado con `core.add_validate_hook`. Al final de cada lote, sobre las facturas tocadas en la transacción (filas propias o hijas con `updated_at = now()`; `core.touch_revision` usa `now()`, constante en la transacción; también puede leer `core.changes` del cursor actual, permitido por el lint):
 
-1. **Recalcula y escribe** `calculated_base`, `calculated_vat`, `calculated_withholding`, `calculated_total`, `totals_delta` con `recalculate()` en SQL (misma definición que TS). Si el valor cambia respecto a lo que mandó el cliente, se sobrescribe con un `update` directo (no pasa por `apply_row_op`: es derivado, y el `after` del cambio original ya está anotado; el cliente lo recibirá en el siguiente pull). Si `|totals_delta| > 0,02` y la factura está `pendiente_revision` sin `review_reason`, pone `REVISAR IMPORTES`.
+1. **Recalcula y escribe** `calculated_base`, `calculated_vat`, `calculated_other`, `calculated_withholding`, `calculated_total`, `totals_delta` con `invoices.recalculate()` en SQL (misma definición que TS). Si algo difiere de lo que mandó el cliente, el hook lo corrige **con `core.apply_row_op`** dentro del mismo lote: el cambio queda en `core.changes` y llega al cliente en la respuesta del commit (`changes`). Lo mismo vale para los estados automáticos y el renombrado de archivos: ningún trigger escribe filas derivadas. Si `|totals_delta| > 0,02` y la factura está `pendiente_revision` sin `review_reason`, pone `REVISAR IMPORTES`.
 2. Si `status = 'validada'`: `|totals_delta| ≤ 0,02` o `source_total is null`; `expense_category` no nulo; un `original` vivo → si falla, `INVOICE_INVALID_STATE 422 {invoice_id, reason}` (solo puede pasar si alguien salta la Edge).
 3. Asignaciones: por línea viva, `Σ allocated_amount ≤ net_amount + 0,02` → `ALLOCATIONS_EXCEED_LINE 422 {line_id, allocated, net_amount}`; `Σ allocated_quantity ≤ quantity + 0,001` cuando ambas existen → `ALLOCATIONS_EXCEED_QUANTITY 422`.
 4. `tax_lines` vivas: `amount ≥ 0`; `(tax_type, rate)` sin duplicar → `TAX_LINE_DUPLICATE 422`.
@@ -360,9 +363,11 @@ Las del núcleo las da `_kit`. Las escrituras van siempre por `POST commands` (f
 | `GET targets/booking?q=` · `GET targets/food?q=` | — | Fase 2 (`read/booking.food_event_projection`, proyección de Food). V1: `TARGET_APP_NOT_AVAILABLE 422`. | reader |
 | `GET read/invoices.items?…` | `where[...]`, `from`, `to`, `supplier_id`, `expense_category`, `target_app`, `target_id`, `unassigned=1`, `limit`, `offset` | **Compras** (§6.3): líneas de facturas no anuladas con su factura, proveedor y asignaciones. | reader |
 | `GET read/invoices.fiscal_summary?year=&quarter=` (o `from`/`to`) | — | §6.4 | reader |
-| `GET exports/:id/manifest.json` · `GET exports/:id/:name.csv` | — | Archivos de la entrega, regenerados desde `manifest` (`Content-Disposition: attachment`). | reader |
+| `GET read/invoices.export_bundle` `{export_id}` | — | Para la Edge y la app: entrega sin manifest, `manifest_text` (exactamente lo que se hasheó), `files[]` con bucket y ruta en Storage, `stale` (entrega desfasada). | reader |
+| `GET read/invoices.export_preview` | `{period_kind, fiscal_year, fiscal_quarter?, from_date?, to_date?}` | Vista previa de la entrega sin crearla: carpeta, recuento, excluidas y motivo, totales. | editor |
+| `GET exports/:id/manifest.json` · `GET exports/:id/:name.csv` | — | Archivos de la entrega, regenerados desde `manifest` (`Content-Disposition: attachment`). `manifest.json` se sirve byte a byte como `manifest_text`. | reader |
 | `GET exports/:id/download` | — | **ZIP en streaming** (§6.5), nombre `IKISAI_COMPRAS_2026_T4.zip`. `EXPORT_FILE_MISSING 409 {file_id}` si un documento ya no está en Storage. | reader |
-| `POST exports/accountant` | `{period_kind, fiscal_year, fiscal_quarter?, from_date?, to_date?}` | Atajo del handoff: vista previa de la entrega **sin crearla** (`{folder_name, invoice_count, excluded[], totals}`); la creación va por `call create_export`. | editor |
+| `POST exports/accountant` | `{period_kind, fiscal_year, fiscal_quarter?, from_date?, to_date?}` | Atajo del handoff: alias de `read/invoices.export_preview`; la creación va por `call create_export`. | editor |
 
 ### 6.1 Flujo de subida e importación (handoff «Subida y nombre» + «Importación desde ChatGPT»)
 
