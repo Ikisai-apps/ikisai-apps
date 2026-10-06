@@ -13,7 +13,7 @@
 .filterchip.on .chipcount{background:rgba(38,49,41,.14);color:inherit}
 .filterchip.unavailable{opacity:.38;cursor:default;border-style:dashed}
 .filterchip.unavailable:focus-visible{outline-color:var(--muted)}
-.syncbadge{font-size:11px;padding:7px 10px;max-width:140px}
+.brandrow .syncbadge{font-size:11px;padding:7px 10px;max-width:140px}
 .helpbtn{width:34px;height:34px;margin-left:auto;border-radius:10px;color:var(--muted)}
 .helpbtn .menuicon{width:17px;height:17px}
 .due{font-weight:600}
@@ -22,8 +22,8 @@
 .due.soon{color:var(--olive-dark)}
 .activefilters #clearAllFilters{margin-left:4px}
 /* Vista General y botones «+». */
-.tabpill.general{border-style:dashed}
-.tabpill.general.active{border-style:solid}
+
+
 .areatitle{display:flex;align-items:center;gap:8px}
 .areatitle .addbtn{margin-left:auto;text-transform:none;letter-spacing:0;font-size:12px;padding:6px 10px}
 .addtask{border-top:1px dashed var(--line);margin-top:-1px;border-radius:0 0 15px 15px;background:var(--paper)}
@@ -33,12 +33,12 @@
 @media(min-width:1024px){.label-manager-area{grid-template-columns:repeat(2,minmax(0,1fr))}.label-manager-area .family-card{margin:0}}
 .areablock .project-grid{margin-bottom:6px}
 /* Conmutador de tema en la cabecera del menú. */
-.menuheader .themeswitch{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px}
-.themeswitch{display:inline-flex;flex:none;gap:2px;padding:3px;border-radius:12px;background:rgba(38,49,41,.07);border:1px solid var(--line)}
-.themeoption{border:0;background:transparent;display:inline-flex;align-items:center;gap:5px;padding:6px 8px;border-radius:9px;font-size:12px;font-weight:700;color:var(--muted);line-height:1;white-space:nowrap}
-.themeoption .menuicon{width:15px;height:15px}
-.themeoption:hover{color:var(--ink)}
-.themeoption.on{background:var(--paper);color:var(--olive-dark);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+
+
+
+
+
 /* Prioridad como estrella; los controles originales quedan fuera de la vista pero en el formulario. */
 .visually-hidden-control{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;opacity:0;overflow:hidden;pointer-events:none}
 .hidden-level{position:absolute!important;visibility:hidden;width:1px;height:1px;overflow:hidden;margin:0!important;padding:0!important}
@@ -75,28 +75,28 @@
 .projectsection .iconbtn.small .menuicon{width:16px;height:16px}
 .projectsection[style*="--item-color"] .projectlink{border-left:4px solid var(--item-color);padding-left:8px}
 /* Pestañas de área con color y botón de edición de áreas. */
-.tabpill.colored.active{background:var(--item-color);color:var(--item-ink);border-color:var(--item-color)}
-.tabpill.colored:not(.active){border-color:var(--item-color);padding-left:11px}
-.tabpill.colored:not(.active)::before{content:'';display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--item-color);margin-right:7px;vertical-align:1px}
-.tabtool{flex:none;width:38px;height:38px;border-radius:999px;border:1px solid var(--line);background:rgba(255,250,241,.74);display:grid;place-items:center;color:var(--muted);padding:0}
-.tabtool:hover{background:#efe7da;color:var(--olive-dark)}
-.tabtool .menuicon{width:18px;height:18px}
+
+
+
+
+
+
 /* Botón de tema y ojo de vistas, con tooltip. */
-.themetoggle{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);margin-left:0!important}
+.themetoggle:not(.ikisai-kit *){width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);margin-left:0!important}
 
 .project-detail-head .title .star{width:24px;height:24px;vertical-align:-3px;margin-right:6px}
 /* Botón flotante más ajustado al signo. */
 .fab{width:48px;height:48px;border-radius:15px;bottom:calc(80px + env(safe-area-inset-bottom))}
 .fab::before{width:26px;height:26px}
 @media(min-width:1024px){.fab{width:52px;height:52px;border-radius:16px;right:28px;bottom:26px}.fab::before{width:28px;height:28px}}
-.themetoggle:hover{background:#efe7da}
-.themetoggle .menuicon{width:19px;height:19px}
-.viewsave{width:34px;height:34px;min-width:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);display:grid;place-items:center}
-.viewsave:hover{background:#efe7da}
+.themetoggle:not(.ikisai-kit *):hover{background:#efe7da}
+.themetoggle:not(.ikisai-kit *) .menuicon{width:19px;height:19px}
+.viewsave:not(.ikisai-kit *){width:34px;height:34px;min-width:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);display:grid;place-items:center}
+.viewsave:not(.ikisai-kit *):hover{background:#efe7da}
 [data-tip]{position:relative}
 [data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#2f382f;color:#fff;font-size:11px;font-weight:600;padding:5px 8px;border-radius:8px;white-space:nowrap;z-index:60;pointer-events:none;font-family:Inter,ui-sans-serif,system-ui,sans-serif;letter-spacing:0;text-transform:none}
-.menuheader{padding-bottom:12px}
-.navigation [data-menu-group="organize"]{display:none}
+
+
 /* Iconos de historial y papelera en el editor de proyecto. */
 .sheettools{position:absolute;right:58px;top:12px;display:flex;gap:2px;z-index:3}
 .sheettools .iconbtn{width:38px;height:38px;color:var(--olive-dark)}
@@ -146,16 +146,16 @@ html{overflow-x:hidden}
 .checkline input{width:18px;height:18px;margin:0}
 .menulist button.on{background:#e5dfd1;color:var(--olive-dark);font-weight:800}
 /* Alias, Mis tareas, contadores de área, deshacer, coste. */
-.aliasbtn{width:auto!important;padding:0 10px 0 8px!important;gap:6px;display:inline-flex!important;align-items:center;font-size:13px;font-weight:700;color:var(--olive-dark);border:1px solid var(--line);background:var(--paper);border-radius:12px;height:40px;margin-left:8px!important}
-.aliasbtn .menuicon{width:17px;height:17px}
-.aliasbtn span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.menuheader{gap:6px}
-.viewpill.mine{display:inline-flex;align-items:center;gap:5px}
-.viewpill .menuicon{width:14px;height:14px}
+.aliasbtn:not(.ikisai-kit *){width:auto!important;padding:0 10px 0 8px!important;gap:6px;display:inline-flex!important;align-items:center;font-size:13px;font-weight:700;color:var(--olive-dark);border:1px solid var(--line);background:var(--paper);border-radius:12px;height:40px;margin-left:8px!important}
+.aliasbtn:not(.ikisai-kit *) .menuicon{width:17px;height:17px}
+.aliasbtn:not(.ikisai-kit *) span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.viewpill.mine:not(.ikisai-kit *){display:inline-flex;align-items:center;gap:5px}
+.viewpill:not(.ikisai-kit *) .menuicon{width:14px;height:14px}
 .aliaschips{margin:6px 0 10px}
 .aliaschips .filterchip{margin:0 5px 6px 0}
-.tabcount{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:999px;background:rgba(38,49,41,.1);font-size:11px;font-weight:800;line-height:1.4;vertical-align:1px}
-.tabpill.active .tabcount{background:rgba(255,255,255,.22)}
+
+
 .undotoast{position:fixed;z-index:101;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(15px);display:flex;align-items:center;gap:12px;background:#2f382f;color:#fff;padding:9px 10px 9px 14px;border-radius:14px;opacity:0;pointer-events:none;transition:.2s;box-shadow:var(--shadow);font-size:13px;white-space:nowrap}
 .undotoast.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
 .undotoast button{display:inline-flex;align-items:center;gap:5px;border:0;background:rgba(255,255,255,.14);color:#fff;font:inherit;font-weight:800;font-size:13px;padding:7px 11px;border-radius:10px}
@@ -176,8 +176,8 @@ html{overflow-x:hidden}
 .project-detail-head+.money{margin:0 0 8px}
 .taskbody .cost{display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:var(--olive-dark);background:#e4eadc;padding:2px 7px;border-radius:999px}
 /* Inicio: panel del área. */
-.bottomnav.five{grid-template-columns:repeat(5,1fr)}
-.navbtn[data-nav="home"] strong::before{--i:var(--icon-home)}
+
+
 .home{display:grid;gap:14px;grid-template-columns:1fr}
 .homehead{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;padding:18px 20px;border-radius:20px;background:var(--paper);border:1px solid var(--line)}
 .homehead[style*="--item-color"]{background:var(--item-color);color:var(--item-ink);border-color:transparent}
@@ -246,7 +246,7 @@ html{overflow-x:hidden}
 .activitywhat{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .activitywhen{color:var(--muted);font-size:11px;white-space:nowrap}
 .shortcuts{display:flex;flex-wrap:wrap;gap:6px}
-.shortcuts .viewpill{display:inline-flex;align-items:center;gap:5px}
+.shortcuts .viewpill:not(.ikisai-kit *){display:inline-flex;align-items:center;gap:5px}
 @media(min-width:640px){.homeprojectgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1024px){
   .home{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -295,7 +295,7 @@ html{overflow-x:hidden}
 .task.context .tasktext::after{content:'contexto';font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-left:8px;opacity:1}
 /* Objetivos táctiles mínimos. */
 .ghost.small,.batchtoggle,.fromtemplate,.addbtn,.projectsection .iconbtn.small{min-height:32px}
-.syncbadge{min-height:32px;display:inline-flex;align-items:center}
+.brandrow .syncbadge{min-height:32px;display:inline-flex;align-items:center}
 .inlinepicker .filterchip{padding:7px 10px;font-size:13px;margin:0 5px 6px 0}
 .inlinepicker-summary:empty{display:none}
 .pickermore{margin-top:2px;font-size:12px;padding:6px 10px}
@@ -328,12 +328,12 @@ html{overflow-x:hidden}
 .activechip{cursor:pointer;padding:5px 8px 5px 10px;font-size:12px;font-weight:700;gap:6px}
 .activechip .x{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.25);font-size:12px;line-height:1}
 .activechip:hover .x{background:rgba(255,255,255,.45)}
-.viewstrip{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding:8px 0 2px;color:var(--muted)}
-.viewstrip::-webkit-scrollbar{display:none}
-.viewstrip .menuicon{width:16px;height:16px;flex:none}
-.viewpill{flex:none;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;color:var(--olive-dark);white-space:nowrap}
-.viewpill:hover{background:#efe7da}
-.viewpill.active{background:var(--olive-dark);border-color:var(--olive-dark);color:#fff}
+
+
+
+.viewpill:not(.ikisai-kit *){flex:none;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;color:var(--olive-dark);white-space:nowrap}
+.viewpill:not(.ikisai-kit *):hover{background:#efe7da}
+.viewpill.active:not(.ikisai-kit *){background:var(--olive-dark);border-color:var(--olive-dark);color:#fff}
 @media(max-width:1023px){.facettotal .ghost.small{display:none}.facetbar{margin-top:-2px}}
 @media(min-width:1024px){.filterbtn .filterlabel{display:inline}.facets{flex-wrap:wrap;overflow:visible}}
 .themelist button{display:flex;align-items:center;gap:10px}

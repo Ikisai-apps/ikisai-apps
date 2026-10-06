@@ -37,12 +37,6 @@ function navigationGroups(){return [
     ['users','Cuentas de personas','people','action',isAdministrator()],['accesses','Accesos y permisos','key','action',isAdministrator()],['proposals','Propuestas de agentes','agent'],['sessions','Mi cuenta y sesiones','key','action',!!Sync.actor?.session]]},
   {id:'system',name:'Sistema',icon:'settings',items:[['sync','Sincronización','sync'],['history','Historial de cambios','history'],['accessLog','Registro de accesos','key','action',isAdministrator()]]}
 ]}
-topbar=function(){
-  const groups=navigationGroups().map(g=>({...g,items:g.items.filter(i=>i[4]!==false)})).filter(g=>g.items.length);
-  return `<div class="topbar"><div class="brandrow"><div class="mark">•||•</div><div class="brand">Ikisai</div><span class="versionbadge">Tareas</span><div class="spacer"></div><button class="iconbtn" id="moreBtn" aria-label="Menú principal" aria-controls="kebab" aria-expanded="false">${menuIcon('menu')}</button></div><div class="tabstrip" aria-label="Áreas de trabajo">${state.tabs.filter(t=>!t.deleted).map(t=>`<button class="tabpill ${t.id===state.activeTab?'active':''}" data-tab="${t.id}">${esc(t.name)}</button>`).join('')}</div></div>
-    <button class="menubackdrop" id="menuBackdrop" aria-label="Cerrar menú"></button>
-    <nav id="kebab" class="kebabmenu navigation" aria-label="Navegación principal"><div class="menuheader">${menuIcon('areas')} Tu espacio<button class="iconbtn" id="closeMenu" aria-label="Cerrar menú">${menuIcon('close')}</button></div>${groups.map(g=>`<details class="menugroup" data-menu-group="${g.id}" ${expandedMenuGroups.has(g.id)?'open':''}><summary>${menuIcon(g.icon)}${g.name}</summary><div class="menuitems">${g.items.map(([id,name,icon,type])=>`<button class="menuitem ${type==='view'&&(state.view===id||id==='projects'&&state.view==='project')?'active':''}" ${type==='view'?`data-menu-view="${id}"`:`data-action="${id}"`}>${menuIcon(icon)}<span>${name}</span></button>`).join('')}</div></details>`).join('')}<div class="menuhint">Área actual: <strong>${esc(tab().name)}</strong></div></nav>`;
-};
 function closeNavigation(){document.getElementById('kebab')?.classList.remove('show');document.getElementById('menuBackdrop')?.classList.remove('show');document.getElementById('moreBtn')?.setAttribute('aria-expanded','false')}
 function navigateView(view){closeNavigation();closeSheet();state.view=view;state.currentProject=null;state.search='';state.filters={};persistUI();render()}
 const actionBeforeNavigation=handleTopAction;

@@ -28,9 +28,6 @@ function facetBar(){if(!['projects','tasks','project'].includes(state.view)||!ta
 function toggleFacetValue(key,value){const ids=String(value).split(',').filter(Boolean),list=state.filters[key]||[];state.filters[key]=ids.every(id=>list.includes(id))?list.filter(x=>!ids.includes(x)):[...new Set([...list,...ids])];if(!state.filters[key].length)delete state.filters[key];persistUI();render()}
 const searchBeforeFacets=searchbar;
 searchbar=function(){const n=activeFilterCount();return searchBeforeFacets().replace(/<p class="small muted">(Proyectos|Disponibilidad): [^<]*<\/p>/g,'').replace(/<button class="softbtn( active)?" id="filterBtn">☷( \d+)?<\/button>/,`<button class="softbtn filterbtn$1" id="filterBtn" aria-label="Filtros">${menuIcon('filter')}<span class="filterlabel">Filtros</span>${n?`<span class="facetcount">${n}</span>`:''}</button>`)+facetBar()};
-function viewStrip(){if(!tab())return'';const views=(tab().views||[]).filter(v=>!v.deleted);const same=v=>state.view==='tasks'&&(state.search||'')===(v.search||'')&&JSON.stringify(state.filters||{})===JSON.stringify(v.filters||{})&&(state.groupBy||'project')===(v.groupBy||'project');return `<div class="viewstrip" aria-label="Vistas guardadas"><button type="button" class="iconbtn viewsave" id="savedViews" aria-label="Guardar o abrir vistas" data-tip="Guardar vista">${menuIcon('view')}</button>${views.map(v=>`<button class="viewpill ${same(v)?'active':''}" data-quick-view="${v.id}" title="Aplicar la vista guardada">${esc(v.name)}</button>`).join('')}</div>`}
-const topbarBeforeViews=topbar;
-topbar=function(){return topbarBeforeViews().replace(/(<div class="tabstrip"[^>]*>[\s\S]*?<\/div>)/,'$1'+viewStrip())};
 document.addEventListener('click',e=>{if(openFacet&&!e.target.closest('.facet')){openFacet=null;render()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openFacet){openFacet=null;render()}});
 const bindBeforeFacets=bind;

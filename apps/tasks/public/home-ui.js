@@ -47,8 +47,6 @@ const mainBeforeHome=main;
 main=function(){if(state.view==='home'&&tab())return homeView();return mainBeforeHome()};
 const groupsBeforeHome=navigationGroups;
 navigationGroups=function(){const groups=groupsBeforeHome(),work=groups.find(g=>g.id==='work');if(work)work.items.unshift(['home','Inicio','home','view']);return groups};
-const bottomnavBeforeHome=bottomnav;
-bottomnav=function(){return bottomnavBeforeHome().replace('<nav class="bottomnav" aria-label="Vistas">',`<nav class="bottomnav five" aria-label="Vistas"><button class="navbtn ${state.view==='home'?'active':''}" data-nav="home"><strong>⌂</strong>Inicio</button>`)};
 const renderBeforeHome=render;
 render=function(){const result=renderBeforeHome();if(state.view==='home')fillHomeActivity();return result};
 const bindBeforeHome=bind;
