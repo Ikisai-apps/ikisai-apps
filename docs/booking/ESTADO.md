@@ -20,7 +20,7 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - Limpieza de `reservations.ts` (la hoja de alta ya no arrastra la edición).
   - Pruebas: `tests/booking/*.test.ts` 57 de 57; humo de Playwright ampliado a Calendario, justificante, restricción del huésped y menú «Más».
 
-- **Tanda 6** (rama `booking/tanda-6`):
+- **Tanda 6** (PR 77):
   - Pastilla de Calendar en la cabecera de la ficha (misma caché que la pantalla Calendario).
   - Confirmar sin red: marca «Confirmación pendiente de enviar», aviso con el motivo si el servidor la rechaza, y retirada de marcas huérfanas.
   - Huéspedes: hoja «Datos para SES» con un botón Copiar por dato (viajero y transacción); aviso en Inicio de huéspedes sin comunicar a SES cuando el evento empieza en menos de 24 horas.
@@ -28,11 +28,12 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - `docs/booking/ACEPTACION.md`: recorrido paso a paso para hacerlo con la cuenta del usuario en producción.
   - Prueba real de Calendar contra Google: hecha por Core, 12 de 12 (ronda 5).
 
+- **Tanda 7** (rama `booking/tanda-7`): botón «Vaciar papelera» para el propietario en Reservas → Papelera, con recuento y confirmación; llama a `POST trash/purge` con las tablas de hijos a padres y explica los dos motivos por los que puede negarse (evento aún vivo en Google Calendar, menú de Food ligado al evento). Probado en el humo y, sobre PGlite, con una reserva completa (evento, huésped, restricción, checklist).
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
 - **Lectura de la proyección por Invoices**: la migración `20261006_0402_booking_invoices_read.sql` y su prueba están listas en la rama `booking/invoices-read`, sin fusionar: al registrarla falla `tests/invoices/api.test.ts` («Booking no disponible hasta que registre la suya»), que es de Invoices. Debe entrar junto con el ajuste de esa prueba.
-- Botón «Vaciar papelera» para el propietario (hoy no hay interfaz para la purga).
 - La reactivación de un evento borrado a mano en Google solo está probada en simulación.
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).

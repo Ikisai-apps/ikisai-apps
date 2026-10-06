@@ -297,6 +297,35 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
     await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });
+
+  await test.step('vaciar papelera: borra para siempre solo lo que está en la papelera, de hijos a padres', async () => {
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.getByRole('button', { name: 'Nueva reserva' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Nueva reserva' });
+    await dialog.getByLabel('Nombre del grupo o evento').fill('Borrador para purgar');
+    await page.getByRole('button', { name: 'Guardar' }).click();
+    await expect(dialog).toBeHidden();
+    await page.locator('.filters').getByRole('button', { name: 'Activas' }).click();
+    await page.getByRole('button', { name: 'Abrir Borrador para purgar' }).click();
+    await page.locator('details.more summary').click();
+    await page.locator('#trashReservation').click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
+    await expect(page.locator('#trashCount')).toHaveText('1');
+
+    await page.locator('#trash summary').click();
+    await page.locator('#emptyTrash').click();
+    const confirm = page.getByRole('alertdialog');
+    await expect(confirm).toContainText('1 reserva y 1 elemento asociado'); // la reserva y su fila de importes
+    await confirm.getByRole('button', { name: 'Vaciar papelera' }).click();
+    await expect(page.locator('#trash')).toBeHidden();
+    await expect.poll(() => api.rows(RESERVATIONS).map((r) => r.title)).toEqual(['Retiro Test']);
+    expect(api.rows(FINANCE)).toHaveLength(1);
+    expect(api.rows(CHECKLIST)).toHaveLength(20); // lo vivo no se toca
+    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, GUESTS, EVENTS, FINANCE, RESERVATIONS]]);
+    await page.reload();
+    await expect(page.locator('#reservationList')).toBeVisible();
+    await expect(page.locator('#trash')).toBeHidden(); // tampoco queda en el espejo local
+  });
 });
 
 test('PWA: manifest, service worker y shell en caché', async ({ page }) => {

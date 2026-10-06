@@ -85,6 +85,8 @@ export interface FakeApi {
   rows(table: string): FakeRow[];
   /** Adjuntos recibidos (tickets y si llegó el contenido). */
   uploads(): Array<{ id: string; filename: string; mime: string; sha256: string; size: number | null }>;
+  /** Listas de tablas recibidas en cada `trash/purge`, en orden. */
+  purgeRequests(): string[][];
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -251,6 +253,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
   const calendarRetries: string[] = [];
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
+  const purgeRequests: string[][] = [];
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://fake.local');
@@ -318,6 +321,25 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { ok: true });
       }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      if (path === 'trash/purge' && method === 'POST') {
+        // Borrado definitivo de lo que está en la papelera, tabla a tabla y en el orden pedido (el usuario de la API falsa es propietario).
+        const body = await readJson(req);
+        const requested: string[] = Array.isArray(body.tables) ? body.tables : Object.keys(tables);
+        purgeRequests.push(requested);
+        let purged = 0;
+        const next = cursor + 1;
+        for (const table of requested) {
+          const store = data.get(table);
+          if (!store) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.');
+          for (const row of Array.from(store.values())) {
+            if (!row.deleted_at) continue;
+            store.delete(row.id);
+            changes.push({ ...record(table, 'purge', row, next, ++purged, String(body.requestId), session.userId), after: null } as unknown as FakeChange);
+          }
+        }
+        if (purged > 0) cursor = next;
+        return json(res, 200, { purged, cursor });
+      }
       if (path === 'uploads' && method === 'POST') {
         const body = await readJson(req);
         const id = randomUUID();
@@ -350,6 +372,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),
+    purgeRequests: () => purgeRequests,
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
       if (!row) throw new Error(`fila ${id} no existe`);
