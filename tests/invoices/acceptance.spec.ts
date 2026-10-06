@@ -643,3 +643,82 @@ test('Aceptación V1 (Android): proveedor nuevo desde la hoja y «Extraer con Ch
 
   await context.close();
 });
+
+test('Emitidas (API.md §13): registro manual con serie nueva, número único, cobro y anulación', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+  await nav(page, 'Facturas').click();
+  await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+  await expect(page.locator('#issuedList')).toContainText('Todavía no hay facturas emitidas');
+
+  await test.step('alta manual: serie nueva, completa con destinatario, dos líneas y total del documento', async () => {
+    await page.locator('#newIssued').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await expect(sheet.locator('#issuedSeries')).toHaveValue('__new__');
+    await sheet.locator('#issuedNewSeries').fill('A');
+    await sheet.locator('#issuedNumber').fill('2026-0001');
+    await sheet.locator('#issuedDate').fill('2026-10-06');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet.locator('.formerror')).toContainText('nombre y NIF del destinatario');
+    await sheet.locator('#issuedRecipientName').fill('Cliente Retiro SL');
+    await sheet.locator('#issuedRecipientTaxId').fill('B44444444');
+    await sheet.locator('#issuedDescription').fill('Retiro de yoga, 2 noches');
+    await sheet.locator('#issuedCategory').selectOption('alojamiento');
+    await sheet.getByLabel('Concepto de la línea 1').fill('Alojamiento');
+    await sheet.getByLabel('Base de la línea 1').fill('100');
+    await sheet.locator('#addIssuedLine').click();
+    await sheet.getByLabel('Concepto de la línea 2').fill('Actividad');
+    await sheet.getByLabel('Base de la línea 2').fill('50');
+    await sheet.getByLabel('IVA de la línea 2').selectOption('21');
+    await sheet.locator('#issuedSourceTotal').fill('170,50');
+    await expect(sheet.locator('#issuedPreviewTotals')).toContainText('TOTAL 170,50 €');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet).toBeHidden({ timeout: 20_000 });
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0001 · Cliente Retiro SL', { timeout: 20_000 });
+    await synced(page);
+    const row = api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')!;
+    expect(row).toMatchObject({ series_code: 'A', invoice_type: 'F1', origin: 'manual', status: 'registrada', total: 170.5, base_total: 150, quota_total: 20.5, review_reason: null });
+    expect(api.rows('invoices.issued_series').map((s) => s.code)).toEqual(['A']);
+    expect(api.rows('invoices.issued_tax_lines').filter((t) => t.issued_invoice_id === row.id).map((t) => `${t.rate}:${t.taxable_base}:${t.quota}`).sort()).toEqual(['10:100:10', '21:50:10.5']);
+  });
+
+  await test.step('el mismo número en la misma serie se rechaza en el formulario', async () => {
+    await page.locator('#newIssued').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+    await expect(sheet.locator('#issuedSeries')).toHaveValue('A');
+    await sheet.locator('#issuedNumber').fill('2026-0001');
+    await sheet.locator('#issuedType').selectOption('F2');
+    await sheet.locator('#issuedDescription').fill('Ticket');
+    await sheet.getByLabel('Base de la línea 1').fill('10');
+    await sheet.getByLabel('Concepto de la línea 1').fill('Café');
+    await sheet.locator('#saveIssued').click();
+    await expect(sheet.locator('.formerror')).toContainText('Ya está registrada la A-2026-0001');
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
+  });
+
+  await test.step('ficha: cobrada y anulada con motivo; el número sigue ocupado', async () => {
+    await page.locator('#issuedList .row').first().click();
+    const sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#issuedTotal')).toHaveText('170,50 €');
+    await expect(sheet).toContainText('El registro Verifactu lo hace la herramienta que la expidió');
+    await sheet.locator('#toggleCollected').click();
+    await expect(sheet).toContainText('Cobrada el', { timeout: 20_000 });
+    await sheet.locator('#annulIssued').click();
+    await page.locator('#annulIssuedReason').fill('Emitida por error');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Anular' }).click();
+    await expect(sheet).toContainText('Anulada: Emitida por error', { timeout: 20_000 });
+    await expect(sheet.locator('#annulIssued')).toHaveCount(0);
+    await synced(page);
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+    await expect(page.locator('#issuedList')).toContainText('Ninguna emitida coincide', { timeout: 20_000 });
+    await page.locator('#issuedFilter').selectOption('anulada');
+    await expect(page.locator('#issuedList')).toContainText('A-2026-0001');
+    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
+  });
+
+  await context.close();
+});

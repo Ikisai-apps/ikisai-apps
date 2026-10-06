@@ -491,6 +491,11 @@ Sin flags. La UI compara `target_revision` con la revisión actual del destino a
 
 ---
 
+### 7.4 Pedido de Tasks (ronda 22, para cuando Tasks amplíe `tasks.targets`)
+
+- **Destino `tasks` / `purchase_request`:** una solicitud de compra no alimentaria de Tasks como destino de asignación de una línea. Se resuelve con la lectura `tasks.targets` (que Tasks amplía con `kind = 'purchase_request'`) y con el token del usuario, como los demás destinos de Tareas. Cambia la lista de pares (`TARGET_KINDS`) y el check de `invoices.allocations` en una migración nueva.
+- **Lectura `invoices.allocations_by_target {targetApp, targetKind, ids}`:** devuelve por id el código de factura, su estado y el importe asignado, filtrada por lo que el usuario ve en Invoices. Se registra con `core.allow_read('tasks', …)` para que Tasks muestre en cada solicitud qué se ha comprado y con qué factura.
+
 ## 8. Archivos
 
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.
@@ -653,7 +658,9 @@ En `docs/invoices/PETICIONES.md`. Las de la primera versión están resueltas po
 
 ---
 
-## 13. Facturas emitidas (propuesta, ronda 21 · pendiente de revisión de Core)
+## 13. Facturas emitidas (ronda 21 · aprobada por Core en la ronda 22)
+
+**Estado.** Construido el modelo y el registro manual: migración `20261006_0205_invoices_issued.sql`, dominio `_domain/invoices/issued.ts`, reglas en la Edge y pestaña «Emitidas» en la app. Pendiente: la importación desde la otra herramienta (`register_issued` y `ikisai.issued_invoice.v1`, a la espera de saber qué herramienta usa el usuario), el IVA repercutido en el resumen fiscal y la entrega a gestoría, y la asignación a reservas desde la ficha (el modelo, la Edge y la proyección para Booking ya están).
 
 **Alcance aprobado por el usuario.** Se **registran** las facturas emitidas con otra herramienta; la app **no emite** todavía. El modelo deja preparado lo común para emitir desde la app cumpliendo Verifactu, sin la parte de Verifactu: no hay huella, encadenado, firma ni envío a la AEAT. Prioridad: después de la #138 de la V1.
 
@@ -661,7 +668,7 @@ En `docs/invoices/PETICIONES.md`. Las de la primera versión están resueltas po
 
 ### 13.1 Tablas (migraciones `0205+`, schema `invoices`)
 
-Todas con las columnas de núcleo (`id, revision, created_at, updated_at, updated_by, deleted_at`) y `never_purge = true`: un registro fiscal no se purga. Anular es un cambio de estado con motivo, como en las recibidas.
+Todas con las columnas de núcleo (`id, revision, created_at, updated_at, updated_by, deleted_at`) y `never_purge = true`: un registro fiscal no se purga. **Sin papelera** (revisión de Core): la Edge rechaza `delete` en `issued_invoices`, `issued_invoice_lines`, `issued_tax_lines` e `issued_invoice_files` con `ISSUED_NOT_DELETABLE`, y un trigger hace lo mismo en SQL. Una emitida solo se anula, con `invoices.annul_issued`. Las asignaciones del ingreso sí se pueden quitar.
 
 **`invoices.issued_series`**: series de numeración.
 
@@ -678,7 +685,7 @@ Todas con las columnas de núcleo (`id, revision, created_at, updated_at, update
 
 | Grupo | Columnas | Notas |
 |---|---|---|
-| Identidad | `series_code text not null`, `number text not null`, `full_number text` generada (serie y número según formato) | `unique (series_code, number)` entre las no borradas. Al registrar, el número es el del documento; al emitir (futuro), lo asigna el procedimiento de §13.3. |
+| Identidad | `series_code text not null`, `number text not null`, `full_number text` generada (`A` + `2026-0001` → `A-2026-0001`; si el número ya empieza por la serie, el número tal cual) | `unique (upper(series_code), upper(number))` **sobre todas las filas**: ni anular ni nada libera un número. Al registrar, el número es el del documento; al emitir (futuro), lo asigna el procedimiento de §13.3. |
 | Fechas | `issue_date date not null` (expedición), `operation_date date null` (si es distinta) | El periodo fiscal sale de `issue_date`, como en las recibidas (columnas generadas `fiscal_year`, `fiscal_quarter`). |
 | Tipo | `invoice_type text not null`: `F1` completa · `F2` simplificada · `F3` sustitutiva de simplificadas · `R1`–`R5` rectificativas | Etiquetas en castellano en la app; los códigos siguen la lista de la AEAT. |
 | Rectificación | `rectification_kind text null` (`S` por sustitución, `I` por diferencias), `rectified jsonb not null default '[]'` (`[{series, number, issue_date, issued_invoice_id?}]`), `rectification_reason text null`, `rectified_base numeric(14,2) null`, `rectified_quota numeric(14,2) null` | Obligatorios si `invoice_type` empieza por `R` (check). La referencia puede ser a una emitida registrada aquí (`issued_invoice_id`) o solo textual. |
@@ -701,7 +708,7 @@ Todas con las columnas de núcleo (`id, revision, created_at, updated_at, update
 
 ### 13.2 Reglas e invariantes
 
-- `unique (series_code, number)` entre las vivas; un número no se reutiliza ni tras anular.
+- `unique (series_code, number)` sobre todas las filas; un número no se reutiliza ni tras anular. Una anulada no se edita (`ISSUED_ANNULLED`).
 - Las rectificativas exigen `rectification_kind`, al menos una referencia en `rectified` y motivo. `R5` rectifica simplificadas.
 - Importes recalculados en el hook `invoices.check_invariants`, como en las recibidas: el desglose cuadra con las líneas y el total con el desglose dentro de 0,02 €. Si no cuadra se marca `REVISAR IMPORTES`, sin bloquear el registro, porque la factura ya existe fuera.
 - `vf_*` solo por procedimiento; `origin = 'app'` solo por el procedimiento de emisión (rechazado hoy con `UNSUPPORTED_IN_V1`).
@@ -710,7 +717,7 @@ Todas con las columnas de núcleo (`id, revision, created_at, updated_at, update
 
 ### 13.3 Numeración por serie
 
-Al **registrar**, el número viene del documento y solo se comprueba que no esté repetido. Para la **emisión futura** hace falta numeración correlativa sin huecos por serie y año, asignada en la misma transacción que el alta. `core.next_code` ya usa un contador por prefijo y año que no deja huecos si se llama dentro de la transacción del alta, pero devuelve un formato fijo (`PREFIJO_AAAA_NNN`). **Petición a Core:** `core.next_number(p_prefix text, p_year int) returns int`, con el mismo contador y sin formato, para que la serie aplique su plantilla. Va en `PETICIONES.md` cuando Core apruebe esta propuesta.
+Al **registrar**, el número viene del documento y solo se comprueba que no esté repetido. Para la **emisión futura** hace falta numeración correlativa sin huecos por serie y año, asignada en la misma transacción que el alta. `core.next_code` ya usa un contador por prefijo y año que no deja huecos si se llama dentro de la transacción del alta, pero devuelve un formato fijo (`PREFIJO_AAAA_NNN`). **Petición a Core:** `core.next_number(p_prefix text, p_year int) returns int`, con el mismo contador y sin formato, para que la serie aplique su plantilla. Aprobada por Core (ronda 22); Core la añade cuando se construya la emisión desde la app, que es la única que la necesita. El registro manual no la usa.
 
 ### 13.4 Procedimientos y rutas
 

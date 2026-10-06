@@ -305,6 +305,35 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       row.fiscal_period = `${y}T${q}`;
     }
     if (table === 'invoices.invoice_lines') row.discount_amount = row.discount_amount ?? 0;
+    // Emitidas (API.md §13): lo que en SQL ponen los valores por defecto y las columnas generadas.
+    if (table === 'invoices.issued_invoices') {
+      const s = String(row.series_code ?? '').trim(); const n = String(row.number ?? '').trim();
+      row.full_number = n.toUpperCase().startsWith(s.toUpperCase()) ? n : `${s}-${n}`;
+      row.invoice_type = row.invoice_type ?? 'F1';
+      row.status = row.status ?? 'registrada';
+      row.origin = row.origin ?? 'manual';
+      row.payment_status = row.payment_status ?? 'pendiente';
+      row.currency = row.currency ?? 'EUR';
+      row.rectified = row.rectified ?? [];
+      row.extra_recipients = row.extra_recipients ?? [];
+      for (const k of ['base_total', 'quota_total', 'surcharge_total', 'withholding_total', 'total']) row[k] = row[k] ?? 0;
+      const date = String(row.issue_date ?? '2026-01-01');
+      row.fiscal_year = Number(date.slice(0, 4));
+      row.fiscal_quarter = Math.ceil(Number(date.slice(5, 7)) / 3);
+      row.vf_status = null;
+      const clash = [...lookup('invoices.issued_invoices').values()].some((o) => o.id !== row.id && String(o.series_code).toUpperCase() === s.toUpperCase() && String(o.number).trim().toUpperCase() === n.toUpperCase());
+      if (clash) throw new Fault(422, 'CONSTRAINT_VIOLATION', 'Ese número ya está registrado en la serie.');
+    }
+    if (table === 'invoices.issued_series') { row.kind = row.kind ?? 'ordinaria'; row.yearly = row.yearly ?? true; row.active = row.active ?? true; row.format = row.format ?? '{serie}-{año}-{n:4}'; }
+    if (table === 'invoices.issued_invoice_lines') { row.discount_amount = row.discount_amount ?? 0; row.tax = row.tax ?? 'iva'; row.position = row.position ?? 0; }
+    if (table === 'invoices.issued_tax_lines') { row.regime_key = row.regime_key ?? '01'; row.position = row.position ?? 0; }
+    if (table === 'invoices.issued_invoice_files') {
+      const inv = lookup('invoices.issued_invoices').get(String(row.issued_invoice_id));
+      row.page_order = row.page_order ?? 1;
+      const slug = slugify(String(inv?.recipient_name ?? '')) || 'sin_destinatario';
+      const ext = row.mime_type === 'application/pdf' ? 'pdf' : row.mime_type === 'image/webp' ? 'webp' : row.mime_type === 'image/jpeg' ? 'jpg' : 'png';
+      row.normalized_filename = inv ? `${String(inv.issue_date).replace(/-/g, '_')}_(${slug})_${String(inv.full_number).replace(/[^A-Za-z0-9-]+/g, '_')}.${ext}` : null;
+    }
     if (table === 'invoices.invoice_files') {
       const inv = lookup('invoices.invoices').get(String(row.invoice_id));
       const supplier = inv ? lookup('invoices.suppliers').get(String(inv.supplier_id)) : null;
@@ -417,6 +446,23 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         batchChanges.push(record('invoices.allocations', 'delete', a, nextCursor, batchChanges.length + 1, requestId, actorId));
       }
       return { invoice: { ...inv }, exports: [] };
+    }
+    if (op.procedure === 'invoices.annul_issued') {
+      const issued = stagedTable('invoices.issued_invoices').get(String(args.issued_invoice_id));
+      if (!issued) throw new Fault(404, 'NOT_FOUND', 'La factura emitida no existe.', { index });
+      if (issued.status === 'anulada') throw new Fault(409, 'ISSUED_ANNULLED', 'Esta factura emitida está anulada.');
+      if (!String(args.reason ?? '').trim()) throw new Fault(422, 'ANNUL_REASON_REQUIRED', 'Indica el motivo de la anulación.');
+      issued.status = 'anulada';
+      issued.annulled_reason = String(args.reason).trim();
+      issued.revision += 1;
+      issued.updated_at = nowIso();
+      batchChanges.push(record('invoices.issued_invoices', 'update', issued, nextCursor, batchChanges.length + 1, requestId, actorId));
+      for (const a of stagedTable('invoices.issued_allocations').values()) {
+        if (a.issued_invoice_id !== issued.id || a.deleted_at) continue;
+        a.deleted_at = nowIso(); a.revision += 1;
+        batchChanges.push(record('invoices.issued_allocations', 'delete', a, nextCursor, batchChanges.length + 1, requestId, actorId));
+      }
+      return { ...issued };
     }
     throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index, procedure: op.procedure });
   }
