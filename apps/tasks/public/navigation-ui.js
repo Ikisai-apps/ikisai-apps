@@ -135,3 +135,6 @@ function withParentLabels(ids){const out=[...(ids||[])];for(const id of ids||[])
 function addParentLabels(){for(const scope of state.tabs||[])withArea(scope.id,()=>{for(const p of scope.projects||[]){const own=withParentLabels(p.ownLabels);if(own.length!==(p.ownLabels||[]).length){p.ownLabels=own;touch(p)}for(const t of p.tasks||[]){const ls=withParentLabels(t.labels);if(ls.length!==(t.labels||[]).length){t.labels=ls;touch(t)}}}})}
 const saveBeforeParents=save;
 save=function(){try{addParentLabels()}catch(e){console.error(e)}return saveBeforeParents()};
+/* Color de la familia con el campo del kit (aceptación V1, 14); el campo nativo queda oculto y es el que lee el guardado. */
+const familyEditorBeforeColor=openFamilyEditor;
+openFamilyEditor=function(id){familyEditorBeforeColor(id);const input=document.getElementById('feColor');if(!input||input.type==='hidden')return;input.type='hidden';input.removeAttribute('style');input.after(kitColorField(input.value,color=>{if(color)input.value=color},{allowNone:false}))};

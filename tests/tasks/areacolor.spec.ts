@@ -38,8 +38,8 @@ test('colores de las áreas: se guardan y sobreviven a la actualización de la a
   const colors: Record<string, string> = {};
   for (const [i, id] of tabs.slice(0, 2).entries()) {
     await page.evaluate((tab) => manageTab(tab), id);
-    const swatch = page.locator('#sheet [data-pick-color]').nth(i + 1);
-    colors[id] = (await swatch.getAttribute('data-pick-color'))!;
+    const swatch = page.locator('#sheet .colorfield [data-color]').nth(i + 1);
+    colors[id] = (await swatch.getAttribute('data-color'))!;
     await swatch.click();
     await settled(page);
   }
