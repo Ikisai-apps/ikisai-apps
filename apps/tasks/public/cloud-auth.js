@@ -12,6 +12,9 @@ logoutAccount=async function(){
   if(Sync.secondary)return toast('Cierra sesión desde la pestaña activa.');
   if(Sync.record.queue.length||Sync.busy)return toast('Sincroniza o exporta los cambios pendientes antes de salir.');
   try{
+    // Mientras se cierra la sesión la app deja de estar «lista»: así el aviso de sesión perdida no abre la hoja de
+    // entrada antes de que termine la limpieza local.
+    Sync.ready=false;
     await Sync.core.logout();
     await new Promise((resolve,reject)=>{const tx=Sync.db.transaction('attachments','readwrite');tx.objectStore('attachments').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
     try{localStorage.removeItem(UI_KEY)}catch{}

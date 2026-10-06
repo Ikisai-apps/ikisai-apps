@@ -55,7 +55,7 @@ save=function(){normalize();if(!Sync.core||!Sync.actor){toast('Inicia sesión pr
  refreshStatus();return true;
 };
 async function api(path,options={}){const translated=await legacyApi(path,options);if(translated!==undefined)return translated;try{return await Sync.core.api('/'+path,{method:options.method,body:options.body,headers:{'Content-Type':'application/json',...options.headers}})}catch(e){const err=new Error(e.message||'No se pudo acceder al servidor');err.status=e.status;err.details={code:e.code,message:e.message,details:e.details};throw err}}
-async function syncNow(){if(Sync.updateLocked||Sync.secondary||!Sync.core||!Sync.core.session())return;try{await Sync.chain;await Sync.core.sync();await Sync.core.refreshBlockers()}catch(e){console.error(e)}await refreshStatus()}
+async function syncNow(){if(Sync.updateLocked||Sync.secondary||!Sync.core||!Sync.core.session())return;try{await Sync.chain;await Sync.core.sync();await Sync.core.settle();await Sync.core.refreshBlockers();await Sync.core.settle()}catch(e){console.error(e)}await refreshStatus()}
 
 /* Rutas heredadas que ahora se resuelven desde el espejo o con otra forma (API.md §13.3). */
 const KIND_OF={'tasks.tabs':'tab','tasks.projects':'project','tasks.tasks':'task','tasks.families':'family','tasks.labels':'label','tasks.saved_views':'view','tasks.task_labels':'task','tasks.task_dependencies':'task','tasks.project_labels':'project','tasks.attachments':'task'};

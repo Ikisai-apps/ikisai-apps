@@ -1023,7 +1023,7 @@ test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo q
 
   await test.step('la propietaria ve la tarea de la invitada', async () => {
     await sync(a);
-    expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p1).tasks.some((t: any) => t.text === 'Tarea de proyecto compartido'))).toBe(true);
+    await a.waitForFunction(() => state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.find((p: any) => p.id === (window as any).ID.p1).tasks.some((t: any) => t.text === 'Tarea de proyecto compartido'), null, { timeout: 20_000 });
   });
 
   await test.step('[30] la propietaria le retira el acceso y el servidor deja de servirle datos', async () => {
