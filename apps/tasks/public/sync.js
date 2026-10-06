@@ -15,6 +15,8 @@ function flat(tabs){const map=new Map();for(const t of tabs||[]){map.set('tab|'+
    si son propias, del mismo nombre) cuentan como una sola faceta: sus filtros se suman con «o» y no se exigen a la vez. */
 function familyKey(f){return f.system||('name:'+String(f.name||'').trim().toLocaleLowerCase())}
 function filterGroups(filters){const keys=new Map();for(const t of state.tabs)for(const f of t.families||[])keys.set(f.id,familyKey(f));const groups=new Map();for(const [f,ids] of Object.entries(filters||{})){const key=f.startsWith('_')?f:(keys.get(f)||f);groups.set(key,[...(groups.get(key)||[]),...(ids||[])])}return [...groups]}
+/* Nombre visible de una etiqueta: «Padre: Hija» si cuelga de otra de su familia (aceptación V1, 9). */
+function labelName(l){if(!l)return '';const p=l.parent?label(l.parent):null;return p&&p.family===l.family?`${p.text}: ${l.text}`:l.text}
 function isPersonFamily(id){if(!id)return false;if(id==='person')return true;return state.tabs.some(t=>(t.families||[]).some(f=>f.id===id&&f.system==='person'))}
 function value(item,key){const v=item?.[key];if(v===undefined)return ['attachments','labels','ownLabels','dependsOn'].includes(key)?[]:['deleted','archived'].includes(key)?false:null;if(key==='attachments')return v.map(a=>({id:a.id,name:a.name}));return v}
 function equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}

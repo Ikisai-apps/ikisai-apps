@@ -21,7 +21,7 @@ function homeView(){const areas=areasForTasks(),single=areas.length===1?areas[0]
   const people=new Map();for(const r of rows)for(const f of personFamilies(r.area))for(const id of r.t.labels||[]){const l=r.area.labels.find(l=>l.id===id&&l.family===f.id&&!l.archived);if(!l)continue;const key=l.text.trim().toLocaleLowerCase(),e=people.get(key)||{name:l.text.trim(),pend:0,done:0};r.done?e.done++:e.pend++;people.set(key,e)}
   const peopleRows=[...people.values()].sort((a,b)=>b.pend-a.pend);const peopleMax=Math.max(1,...peopleRows.map(x=>x.pend+x.done));
   // Oficios y demás familias: calor por pendientes.
-  const heat=[];for(const area of areas){for(const f of area.families.filter(f=>!f.archived&&!personFamilies(area).includes(f))){const cells=area.labels.filter(l=>l.family===f.id&&!l.archived).map(l=>({id:l.id,fid:f.id,area:area.id,text:l.text,n:pendingRows.filter(r=>r.area===area&&(r.t.labels||[]).includes(l.id)).length})).filter(c=>c.n);if(cells.length)heat.push({name:f.name+(areas.length>1?' · '+area.name:''),color:f.color,cells})}}
+  const heat=[];for(const area of areas){for(const f of area.families.filter(f=>!f.archived&&!personFamilies(area).includes(f))){const cells=area.labels.filter(l=>l.family===f.id&&!l.archived).map(l=>({id:l.id,fid:f.id,area:area.id,text:labelName(l),n:pendingRows.filter(r=>r.area===area&&(r.t.labels||[]).includes(l.id)).length})).filter(c=>c.n);if(cells.length)heat.push({name:f.name+(areas.length>1?' · '+area.name:''),color:f.color,cells})}}
   const heatMax=Math.max(1,...heat.flatMap(h=>h.cells.map(c=>c.n)));
   const blocked=pendingRows.filter(r=>r.blocked.length).slice(0,8);
   const views=single?(single.views||[]).filter(v=>!v.deleted):[],templates=typeof templateProjects==='function'?templateProjects():[];

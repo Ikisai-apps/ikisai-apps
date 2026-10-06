@@ -445,3 +445,45 @@ test('vaciar papelera: empty_trash_prepare arrastra lo que cuelga de contenedore
     assert.equal((await call()).results[0].result.trashed, 0);
   } finally { await trash.close(); }
 });
+
+test('aceptación V1 · familia de responsables: la marca se mueve quitando en el mismo lote los responsables anteriores (0304)', async () => {
+  const { tab, inbox, families } = await db.area('Responsables');
+  // Caso del usuario: renombró la familia de personas («Zona: Espacio») y creó otra para las personas («Grupo: Persona»).
+  const antigua = families.person!, grupo = newId();
+  const salas = newId(), vera = newId(), task = newId();
+  await db.commit([
+    insert('tasks.families', grupo, { tab_id: tab, name: 'Grupo: Persona', color: '#4e6f72' }),
+    insert('tasks.labels', salas, { tab_id: tab, family_id: antigua, name: 'Salas' }),
+    insert('tasks.labels', vera, { tab_id: tab, family_id: grupo, name: 'Vera' }),
+    taskOp(tab, inbox, task, { owner_label_id: salas }),
+  ]);
+  // Solo una familia de responsables por área; y el responsable tiene que ser de esa familia.
+  await rejects(db.commit([update('tasks.families', grupo, 1, { system_key: 'person' })]), 'INVALID_FAMILY');
+  await rejects(db.commit([update('tasks.families', antigua, 1, { system_key: null }), update('tasks.families', grupo, 1, { system_key: 'person' })]), 'INVALID_OWNER');
+  // Moviendo la marca y quitando en el mismo lote el responsable anterior, entra; «Grupo: Persona» da los responsables.
+  await db.commit([update('tasks.families', antigua, 1, { system_key: null }), update('tasks.families', grupo, 1, { system_key: 'person' }), update('tasks.tasks', task, 1, { owner_label_id: null })]);
+  await db.commit([update('tasks.tasks', task, 2, { owner_label_id: vera })]);
+  const data = await db.data();
+  assert.deepEqual([antigua, grupo].map((id) => data['tasks.families'].find((f) => f.id === id)!.system_key), [null, 'person']);
+  // Las demás claves de sistema siguen fijas: ni se quitan ni se convierten en la de responsables.
+  await rejects(db.commit([update('tasks.families', families.trade!, 1, { system_key: null })]), 'IMMUTABLE_FIELD');
+  await rejects(db.commit([update('tasks.families', families.space!, 1, { system_key: 'person' })]), 'IMMUTABLE_FIELD');
+  await rejects(db.commit([update('tasks.families', antigua, 2, { system_key: 'trade' })]), 'IMMUTABLE_FIELD');
+});
+
+test('aceptación V1 · etiquetas padre e hija: dos niveles como máximo y en la misma familia (0304)', async () => {
+  const { tab, families } = await db.area('Etiquetas en dos niveles');
+  const zona = families.space!, oficio = families.trade!;
+  const padre = newId(), hija = newId(), nieta = newId(), ajena = newId(), otroPadre = newId();
+  await db.commit([
+    insert('tasks.labels', padre, { tab_id: tab, family_id: zona, name: 'Zona' }),
+    insert('tasks.labels', otroPadre, { tab_id: tab, family_id: zona, name: 'Planta' }),
+    insert('tasks.labels', ajena, { tab_id: tab, family_id: oficio, name: 'Fontanería' }),
+    insert('tasks.labels', hija, { tab_id: tab, family_id: zona, parent_id: padre, name: 'Espacio' }),
+  ]);
+  await rejects(db.commit([insert('tasks.labels', nieta, { tab_id: tab, family_id: zona, parent_id: hija, name: 'Rincón' })]), 'INVALID_LABEL_PARENT');
+  await rejects(db.commit([insert('tasks.labels', nieta, { tab_id: tab, family_id: oficio, parent_id: padre, name: 'Rincón' })]), 'INVALID_LABEL_PARENT');
+  await rejects(db.commit([update('tasks.labels', padre, 1, { parent_id: otroPadre })]), 'INVALID_LABEL_PARENT');
+  await db.commit([update('tasks.labels', hija, 1, { parent_id: otroPadre })]);
+  void ajena;
+});

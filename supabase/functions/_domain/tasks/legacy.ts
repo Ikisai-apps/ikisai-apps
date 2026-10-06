@@ -192,7 +192,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     (tab.families ?? []).forEach((f, index) => {
       const row = rowOf('tasks.families', f.id);
       familyArchived.set(f.id, !!f.archived);
-      want('tasks.families', f.id, { name: f.name, color: f.color, archived: !!f.archived, ...(row ? {} : { tab_id: tab.id, position: (index + 1) * POSITION_STEP, system_key: f.system ?? null }) });
+      // La marca de familia de responsables ('person') se puede mover (migración 0304); las demás claves no cambian.
+      const personMoved = !!row && (row.system_key ?? null) !== (f.system ?? null) && ((row.system_key ?? null) === 'person' || (f.system ?? null) === 'person');
+      want('tasks.families', f.id, { name: f.name, color: f.color, archived: !!f.archived, ...(row ? (personMoved ? { system_key: f.system ?? null } : {}) : { tab_id: tab.id, position: (index + 1) * POSITION_STEP, system_key: f.system ?? null }) });
     });
     (tab.labels ?? []).forEach((l, index) => {
       const row = rowOf('tasks.labels', l.id) as (LabelRow & Row) | undefined;

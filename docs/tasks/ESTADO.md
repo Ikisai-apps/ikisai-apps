@@ -64,6 +64,15 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - **Conectadas a `/api/v1/mcp`** (`tasks-api/mcp.ts`, tanda 13): cada herramienta lee lo visible para quien llama (papelera incluida), construye el lote y lo envía como `commands`. Si necesita aprobación, devuelve `needsApproval` con la propuesta preparada, que el agente aplica después con `tasks_commit`. `requestId` opcional; los ids nuevos se derivan de él, así que reintentar antes de aplicarse construye el mismo lote, y reintentar algo ya aplicado devuelve `alreadyUsed` sin repetirlo.
 - Pendiente: `describeChange` en la Edge solo si Core lo añade (hoy el resumen de una propuesta se describe en la interfaz).
 
+## Aceptación V1 del usuario (tandas 17 a 20)
+
+- **1 y 2** (#136): arranque con el motivo real y «Reintentar»; lecturas del espejo solapadas con un guardado ya no devuelven a su valor anterior lo que cambió otro dispositivo (caso del usuario: Tasks abierta en dos sitios).
+- **3, 4, 5, 6, 8, 10, 11, 12 y 13** (#139): contraseña sin autorrelleno en el buscador; «Entrada» solo con pendientes; ✓ en los campos en línea; fila de tarea con un solo «Editar»; archivadas ocultas con «Ver archivadas»; texto de adjuntos; sin selector de área repetido; filtros de Proyectos que eligen proyectos; PWA «Tasks» con el icono de UI.
+- **7, familia de responsables** (migración `0304`): interruptor en el editor de familia; una por área; mover la marca quita los responsables de la anterior.
+- **9, etiquetas padre e hija**: «Padre: Hija» en chips, selectores y filtros; elegir una hija añade su padre (filtrar por el padre la incluye); varias hijas de padres distintos; dos niveles como máximo y en la misma familia (`0304`). Los vínculos antiguos entre familias (la app antigua colgaba un espacio de un edificio) se conservan y se ven sin «Padre:».
+- **14, color personalizado**: pendiente del campo de color del kit (#140).
+- Pruebas: `boot.spec.ts`, `areacolor.spec.ts`, `acceptance-v1.spec.ts` y las adaptadas.
+
 ## Producción
 
 - `tasks.ikisai.com` sirve la app nueva; `/version.json` y `/api/v1/health` coinciden en la versión. Comprobado sin iniciar sesión (solo lectura): carga en móvil y escritorio sin errores de JavaScript ni recursos fallidos, pide la cuenta, registra el service worker y no desborda.
