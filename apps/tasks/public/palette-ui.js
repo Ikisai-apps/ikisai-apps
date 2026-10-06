@@ -1,5 +1,4 @@
 /* Paleta de comandos (Ctrl K o Cmd K): salta a un proyecto, un área, una vista guardada o una tarea, y lanza acciones sin el ratón. */
-let paletteIndex=0,paletteRows=[];
 function foldText(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()}
 function paletteOpenProject(areaId,projectId){state.activeTab=areaId;state.taskScope='area';state.currentProject=projectId;state.view='project';state.search='';state.filters={};persistUI();render()}
 function paletteCatalog(query){
@@ -16,33 +15,10 @@ function paletteCatalog(query){
   if(query.length>=2){let n=0;for(const a of areas)for(const p of a.projects||[]){if(p.deleted||p.status==='archived')continue;for(const t of p.tasks||[]){if(t.deleted||t.done||n>=8)continue;if(!foldText(t.text).includes(query))continue;n++;items.push({group:'Tareas',text:t.text,sub:p.title+' · '+a.name,run:after(()=>{state.activeTab=a.id;state.taskScope='area';state.currentProject=p.id;openTaskEditor(t.id)})})}}}
   return items;
 }
-function paletteFilter(query){
-  const all=paletteCatalog(query);
-  if(!query)return all.filter(i=>i.group!=='Tareas'&&i.group!=='Tema'&&i.group!=='Vistas guardadas').slice(0,18);
-  const words=query.split(/\s+/).filter(Boolean);
-  return all.map(i=>{const hay=foldText(i.text+' '+(i.sub||''));if(!words.every(w=>hay.includes(w)))return null;return {...i,rank:foldText(i.text).startsWith(words[0])?0:1}}).filter(Boolean).sort((x,y)=>x.rank-y.rank).slice(0,16);
-}
-function drawPalette(){
-  const box=document.getElementById('paletteList');if(!box)return;
-  const query=foldText(document.getElementById('paletteInput').value.trim());
-  paletteRows=paletteFilter(query);paletteIndex=Math.min(paletteIndex,Math.max(0,paletteRows.length-1));
-  if(!paletteRows.length){box.innerHTML='<div class="palette-empty">Nada coincide. Prueba con el nombre de un proyecto, un área o una tarea.</div>';return}
-  let html='',group='';
-  paletteRows.forEach((i,n)=>{if(i.group!==group){group=i.group;html+=`<div class="palette-group">${esc(group)}</div>`}html+=`<button type="button" class="palette-item ${n===paletteIndex?'on':''}" data-palette-item="${n}" role="option" aria-selected="${n===paletteIndex}"><span class="pdot ${i.color?'':'plain'}" style="${i.color?`--pcolor:${esc(i.color)}`:''}"></span><span class="ptext"><span>${esc(i.text)}</span>${i.sub?`<small>${esc(i.sub)}</small>`:''}</span>${i.hint?`<span class="phint">${esc(i.hint)}</span>`:'<span></span>'}</button>`});
-  box.innerHTML=html;
-  box.querySelectorAll('[data-palette-item]').forEach(b=>{b.onclick=()=>paletteRows[+b.dataset.paletteItem]?.run();b.onmousemove=()=>{const n=+b.dataset.paletteItem;if(n!==paletteIndex){paletteIndex=n;box.querySelectorAll('.palette-item').forEach(x=>x.classList.toggle('on',+x.dataset.paletteItem===n))}}});
-  box.querySelector('.palette-item.on')?.scrollIntoView({block:'nearest'});
-}
-function openPalette(){
-  if(document.getElementById('palette'))return document.getElementById('paletteInput').focus();
-  if(typeof closeNavigation==='function')closeNavigation();
-  const back=document.createElement('div');back.id='palette';back.className='palette-back';
-  back.innerHTML=`<div class="palette" role="dialog" aria-modal="true" aria-label="Paleta de comandos"><div class="palette-input">${menuIcon('search')}<input id="paletteInput" placeholder="Buscar o saltar: proyectos, áreas, vistas, tareas…" autocomplete="off" spellcheck="false" aria-label="Buscar o saltar"><kbd>Esc</kbd></div><div class="palette-list" id="paletteList" role="listbox"></div><div class="palette-foot"><span>↑ ↓ moverse</span><span>Enter abrir</span><span>Esc cerrar</span></div></div>`;
-  document.body.append(back);paletteIndex=0;drawPalette();
-  const input=document.getElementById('paletteInput');input.focus();
-  input.oninput=()=>{paletteIndex=0;drawPalette()};
-  input.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();paletteIndex=Math.min(paletteRows.length-1,paletteIndex+1);drawPalette()}else if(e.key==='ArrowUp'){e.preventDefault();paletteIndex=Math.max(0,paletteIndex-1);drawPalette()}else if(e.key==='Enter'){e.preventDefault();paletteRows[paletteIndex]?.run()}else if(e.key==='Escape'){e.preventDefault();closePalette()}};
-  back.onclick=e=>{if(e.target===back)closePalette()};
-}
-function closePalette(){document.getElementById('palette')?.remove()}
+/* La paleta del kit común (IkisaiKit.createCommandPalette) con el mismo catálogo y la misma regla de grupos: sin consulta
+   se ocultan «Tareas», «Tema» y «Vistas guardadas», hasta 18 resultados sin consulta y 16 con ella. Se monta en la capa del kit
+   (#kitLayer) y conserva #palette, #paletteInput, Ctrl K / Cmd K y [data-open-palette] (taller-ui.js llama a openPalette). */
+const tasksPalette=IkisaiKit.createCommandPalette({items:query=>paletteCatalog(query),placeholder:'Buscar o saltar: proyectos, áreas, vistas, tareas…',limit:16,limitWhenEmpty:18,hiddenWhenEmpty:['Tareas','Tema','Vistas guardadas'],hotkey:false,container:()=>sheetKitLayer()});
+function openPalette(){if(document.getElementById('palette'))return document.getElementById('paletteInput').focus();if(typeof closeNavigation==='function')closeNavigation();tasksPalette.open()}
+function closePalette(){tasksPalette.close()}
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='k'||e.key==='K')){e.preventDefault();if(document.getElementById('palette'))closePalette();else openPalette()}});
