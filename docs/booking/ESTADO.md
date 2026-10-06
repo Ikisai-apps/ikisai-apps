@@ -6,7 +6,11 @@ Actualizado: 6 de octubre de 2026. Rama `booking/api-doc`. **Puerta G2 pendiente
 
 - `docs/booking/API.md`: modelo de datos, procedimiento `booking.confirm_reservation`, validación, visibilidad de huéspedes, rutas propias, proyección para Food, Calendar con cuenta de servicio, pantallas, offline, aceptación y reparto.
 
+- Decisiones del usuario del 6 de octubre incorporadas a `API.md` (§14): día de salida incluido en Calendar; conservación de huéspedes tres años (art. 5.3 del RD 933/2021, verificado en el BOE); importes en `booking.reservation_finance`, fuera del alcance de `reader`; `guests` ampliada a la lista del anexo I del decreto; Apps Script y calendario sin uso (sin corte que coordinar); prueba real sobre «Agram Camp - Reservas».
+
 ## Pendiente
+
+- Respuesta del usuario a las cuatro preguntas que siguen abiertas en `API.md` §14 (identificación del medio de pago, firmas del parte, condiciones finas de SES, carga inicial desde C03).
 
 - Revisión y aprobación de Core (G2).
 - Respuesta a las peticiones P1–P12 de `API.md` §13 y a las preguntas de §14.

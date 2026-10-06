@@ -10,10 +10,11 @@ Donde el handoff V3 y el plan de Core se contradicen manda el plan (repo único,
 
 ## 0. Resumen para quien revisa
 
-- Cinco tablas sincronizables (`reservations`, `events`, `guests`, `dietary_restrictions`, `checklist_items`) y tres tablas cerradas que el cliente nunca lee ni escribe (`calendar_links`, `calendar_sync_jobs`, `event_food_state`).
+- Seis tablas sincronizables (`reservations`, `reservation_finance`, `events`, `guests`, `dietary_restrictions`, `checklist_items`) y tres tablas cerradas que el cliente nunca lee ni escribe (`calendar_links`, `calendar_sync_jobs`, `event_food_state`).
 - Un único procedimiento `call`: `booking.confirm_reservation`. Todo lo demás son operaciones de fila, para que funcione sin red y se pueda deshacer.
 - Un `validate_hook` (`booking.check_invariants`) sostiene las invariantes entre tablas (reserva confirmada ⇒ evento; nada huérfano).
-- Huéspedes: tabla que `reader` no recibe nunca y que un `editor` solo ve con `scopes.guests = true`.
+- Huéspedes: tabla que `reader` no recibe nunca y que un `editor` solo ve con `scopes.guests = true`. Importes y datos de pago en tabla aparte que `reader` tampoco recibe.
+- Decisiones del usuario del 6 de octubre de 2026 ya incorporadas: ver §14.
 - Calendar: proyección de una sola dirección con cuenta de servicio. Cola en SQL alimentada por triggers, worker en la Edge, id de evento determinista, reintentos con espera creciente.
 - `booking.food_event_projection` con las columnas normativas del contrato §8. `event_revision` solo cambia cuando cambia algo que a Food le importa.
 - **Bloqueos que necesito que Core resuelva antes de escribir código** (detalle en §13): P1 (invocar funciones `booking.*` desde la Edge) y P2 (empaquetar `packages/domain-booking` en la función). El resto de peticiones tienen alternativa descrita.
@@ -50,6 +51,7 @@ Roles: `R` = `reader`, `E` = `editor`, `O` = `owner`.
 | Tabla | Lee | Escribe | Purga | En el espejo local |
 |---|---|---|---|---|
 | `reservations` | R E O | E O | sí | sí |
+| `reservation_finance` | E O | E O | sí | solo E y O |
 | `events` | R E O | E O (alta solo por `confirm_reservation`; baja solo O) | sí | sí |
 | `guests` | O, y E con `scopes.guests` | O, y E con `scopes.guests` | sí | solo si la ve |
 | `dietary_restrictions` | R E O | E O | sí | sí |
@@ -95,10 +97,6 @@ special_setup               boolean not null default false
 technical_support           boolean not null default false
 customer_notes              text null
 
-budget_amount         numeric(12,2) null     -- check >= 0 en los cuatro importes
-final_amount          numeric(12,2) null
-deposit_required      numeric(12,2) null
-deposit_paid          numeric(12,2) null
 briefing_received     boolean not null default false
 
 internal_notes        text null
@@ -114,8 +112,30 @@ Restricción de coherencia: `status in ('en_estudio','negociacion','cancelada','
 Derivados que **no** se guardan (reglas puras en `domain-booking`, C03 §7):
 
 - `nights = end_date - start_date`.
-- `deposit_status`: `deposit_required` nulo o 0 → `no_aplica`; `deposit_paid` nulo o 0 → `pendiente`; `< required` → `parcial`; `>= required` → `completado`.
 - `archivada = archived_at is not null`. **[desviación]** C03 lo calculaba (cerrada, cancelada o perdida); el handoff §9.3 lo hace explícito y lo sigo.
+
+### 2.1.1 `booking.reservation_finance`
+
+Importes y datos de pago de la reserva, separados para que `reader` no los reciba (decisión del usuario). **[desviación]** El handoff §4.1 los tenía dentro de `reservations`.
+
+```text
+id                    uuid primary key references booking.reservations(id)   -- mismo id que la reserva
+budget_amount         numeric(12,2) null     -- check >= 0 en los cuatro importes
+final_amount          numeric(12,2) null
+deposit_required      numeric(12,2) null
+deposit_paid          numeric(12,2) null
+payment_type          text null check in (efectivo, tarjeta, transferencia, plataforma_pago, otro)
+payment_date          date null
+payment_holder        text null              -- titular del medio de pago
+```
+
+`writable_columns`: todas. Registro: `readable_roles '{editor,owner}'`, `writable_roles '{editor,owner}'`.
+
+Relación 1 a 1 estricta: el cliente crea la fila en el mismo lote que la reserva, con el mismo `id`, y la borra en el mismo lote. El hook lo exige (§4.2), así que nunca hay altas tardías ni duplicados.
+
+Derivado, no guardado: `deposit_status` (C03 §7): `deposit_required` nulo o 0 → `no_aplica`; `deposit_paid` nulo o 0 → `pendiente`; `< required` → `parcial`; `>= required` → `completado`.
+
+`payment_type`, `payment_date` y `payment_holder` son los «datos del pago» del anexo I del RD 933/2021 (§2.3.1). La identificación del medio de pago (número de tarjeta o IBAN) **no** tiene columna: ver pregunta abierta en §14.
 
 ### 2.2 `booking.events`
 
@@ -134,6 +154,7 @@ meal_plan_confirmed   text null check in (no_aplica, desayuno, media_pension, pe
 menu_style_confirmed  text null check in (vegetariano, vegano, mixto, otro)
 
 room_distribution     text null              -- texto libre («2p x3 · 4p x2 · Posada 2p x1»)
+rooms_count           integer null           -- check >= 0; nº de habitaciones (dato del parte de viajeros)
 setup_style           text null check in (no_aplica, basico, circulo, formacion, escenario, personalizado)
 technical_needs       text null check in (ninguna, wifi, sonido, proyeccion, mixto, personalizado)
 reinforced_cleaning   boolean not null default false
@@ -159,7 +180,7 @@ Derivado, no guardado: la fase del evento (`pendiente_preparacion`, `preparado`,
 
 ### 2.3 `booking.guests`
 
-Una fila = una persona alojada en un evento. Datos mínimos del registro de viajeros (C04 §15, C09 protocolos 8 y 9). **No se guardan imágenes ni copias de documentos, y la tabla no tiene columna para ello.**
+Una fila = una persona alojada en un evento. Los datos son exactamente los «datos de los viajeros» del anexo I, apartado A, del RD 933/2021 (texto consolidado del BOE, consultado el 6 de octubre de 2026), ni uno más (C09 protocolos 8 y 9). **No se guardan imágenes ni copias de documentos, y la tabla no tiene columna para ello.**
 
 ```text
 code                  text unique            -- HSP_AAAA_NNN, trigger; no escribible
@@ -167,14 +188,20 @@ event_id              uuid not null references booking.events(id)   -- inmutable
 first_name            text not null          -- 1..120
 last_name_1           text null
 last_name_2           text null
-document_type         text null check in (DNI, NIE, Pasaporte, Otro)
-document_number       text null              -- normalizado: sin espacios, mayúsculas
-birth_date            date null
-nationality           text null              -- ISO 3166-1 alfa-3 (ESP, FRA…)
 sex                   text null check in (H, M, X)
+document_type         text null check in (DNI, NIE, Pasaporte, TIE, Otro)
+document_number       text null              -- normalizado: sin espacios, mayúsculas
+document_support_number text null            -- número de soporte del documento
+nationality           text null              -- ISO 3166-1 alfa-3 (ESP, FRA…)
+birth_date            date null
+residence_address     text null              -- residencia habitual: dirección completa
+residence_city        text null
+residence_country     text null              -- ISO 3166-1 alfa-3
+phone                 text null
+email                 text null
 is_minor              boolean not null default false
 guardian_name         text null              -- solo si is_minor
-contact               text null              -- teléfono o correo, si aplica
+kinship               text null              -- relación de parentesco con quien le acompaña; solo si is_minor
 
 data_status           text not null default 'pendiente_datos'
                       check in (pendiente_datos, datos_incompletos, datos_recibidos, datos_revisados, no_aplica)
@@ -191,9 +218,30 @@ notes                 text null
 
 Índice: `(event_id) where deleted_at is null`.
 
-Coherencias (en `beforeCommit` y repetidas como `check` donde se puede): `ses_status = 'enviado_SES'` exige `ses_sent_at`; `listo_para_envio` exige `data_status = 'datos_revisados'`; `datos_revisados` exige nombre, primer apellido, tipo y número de documento, fecha de nacimiento, nacionalidad y sexo.
+**[desviación]** Respecto a C04 §15 se añaden los datos que el anexo I pide y la hoja no tenía: número de soporte, residencia habitual (dirección, localidad, país), teléfono y correo por separado (antes un único `telefono_email_si_aplica`), parentesco de los menores y el tipo de documento `TIE`.
+
+Coherencias (en `beforeCommit`): `ses_status = 'enviado_SES'` exige `ses_sent_at`; `listo_para_envio` exige `data_status = 'datos_revisados'`; `datos_revisados` exige nombre, primer apellido, sexo, tipo y número de documento, nacionalidad, fecha de nacimiento, residencia y al menos un teléfono o correo, y `kinship` si es menor. Las condiciones finas de la plataforma (por ejemplo, cuándo exige número de soporte o segundo apellido) no las he podido contrastar con SES.Hospedajes: viven como reglas en `domain-booking`, no como `check`, y se ajustan en el primer envío real sin migración.
 
 Conservación y borrado: ver §5.3.
+
+### 2.3.1 Parte de viajeros: de dónde sale cada dato
+
+El anexo I pide, además de los datos de cada viajero, los de la transacción. No se duplican en `guests`:
+
+| Dato del anexo I (A.3 y A.4) | Origen en Booking |
+|---|---|
+| Datos de cada viajero | `guests` |
+| Número de viajeros | recuento de `guests` del evento |
+| Contrato: número de referencia | `reservations.code` |
+| Contrato: fecha | alta del evento (`events.created_at`, el momento de confirmar) |
+| Contrato: firmas | fuera de la app en V1 (el equipo las recoge como hasta ahora) |
+| Fecha y hora de entrada y de salida | `reservations.start_date` + `events.arrival_time`; `end_date` + `departure_time` |
+| Inmueble: dirección, conexión a Internet | constantes del establecimiento (configuración de la app) |
+| Inmueble: número de habitaciones | `events.rooms_count` |
+| Pago: tipo, titular, fecha | `reservation_finance.payment_type`, `payment_holder`, `payment_date` |
+| Pago: identificación del medio y caducidad de la tarjeta | sin columna (pregunta abierta, §14) |
+
+Plazos del decreto: comunicación inmediata y como máximo en 24 horas desde la reserva o formalización y desde el inicio del servicio (art. 6.3); conservación del registro durante tres años desde la finalización del servicio (art. 5.3).
 
 ### 2.4 `booking.dietary_restrictions`
 
@@ -277,7 +325,7 @@ Prefijos `RSV`, `EVT`, `HSP` (ya reservados en el contrato §2.3). Los asigna un
 
 - Una reserva real que cae **no se borra**: pasa a `cancelada` o `perdida`. El borrado lógico es para errores y pruebas.
 - Borrar una reserva con evento exige borrar en el mismo lote el evento y sus hijos (lo impone el hook §4.2). El lote lo construye la UI con operaciones de fila, así que se deshace desde el historial.
-- «Vaciar papelera»: la UI llama a `trash/purge` con la lista ordenada de hijos a padres (`checklist_items, dietary_restrictions, guests, events, reservations`). El orden por defecto del núcleo es alfabético y rompería las FK (ver P9).
+- «Vaciar papelera»: la UI llama a `trash/purge` con la lista ordenada de hijos a padres (`checklist_items, dietary_restrictions, guests, events, reservation_finance, reservations`). El orden por defecto del núcleo es alfabético y rompería las FK (ver P9).
 - Un trigger `before delete` en `reservations` impide la purga física mientras su `calendar_links` conserve un evento vivo en Google.
 - Food declara `food.menus.event_id` con `on delete restrict`: un evento con menú no se puede purgar físicamente. Es correcto; la UI lo explica en vez de fallar en silencio.
 
@@ -366,6 +414,7 @@ El deshacer del núcleo salta este hook (`skipHooks`), por eso lo estructural es
 | Invariante | Error |
 |---|---|
 | Reserva viva en `confirmada`, `en_ejecucion` o `cerrada` ⇒ tiene evento vivo | `EVENT_REQUIRED 422` |
+| Reserva viva ⇔ su fila de `reservation_finance` viva | `FINANCE_REQUIRED 422` |
 | Evento vivo ⇒ su reserva está viva | `ORPHAN_EVENT 422` |
 | Huésped, restricción o ítem de checklist vivo ⇒ su evento está vivo | `ORPHAN_CHILD 422` |
 | Restricción con `guest_id` ⇒ huésped vivo y del mismo evento | `GUEST_MISMATCH 422` |
@@ -400,7 +449,7 @@ function visible(table, row, ctx) {
 
 `_kit` aplica el hook en `snapshot`, `changes` e `history`. El resto de tablas se ven con la membresía.
 
-Los importes de la reserva los ve cualquier miembro, también `reader`. Si se quisiera ocultarlos a lectores habría que sacarlos a una tabla propia; lo dejo como pregunta abierta (§14).
+Los importes y datos de pago viven en `reservation_finance`, que el núcleo no entrega a `reader` (`readable_roles '{editor,owner}'`); no hace falta hook. Un lector ve la reserva sin el bloque Cobro.
 
 ### 5.2 Qué sale del dominio y qué no
 
@@ -414,7 +463,7 @@ Los importes de la reserva los ve cualquier miembro, también `reader`. Si se qu
 
 - **En el dispositivo.** Quien ve huéspedes los tiene en su IndexedDB. Al cerrar sesión, y cuando `bootstrap` indique que perdió el permiso, la app borra la base local `ikisai-booking-v1`. Hoy `sync-client.logout()` solo borra la sesión (ver P4); mientras tanto lo hace la app con `client.stop()` + `indexedDB.deleteDatabase`. Si hay cambios pendientes de enviar, avisa antes.
 - **En el historial.** `core.changes` guarda el antes y el después de cada huésped para siempre. Anonimizar la fila con un `update` no limpia esas imágenes.
-- **Conservación.** C09 pide conservar mientras dure la obligación de acreditar el cumplimiento y, vencido el plazo, anonimizar dejando un rastro mínimo (código, evento, tipo de documento, nacionalidad, sexo, estados de envío). Propongo un plazo configurable de 3 años desde el fin de la estancia, que es el que recuerdo del RD 933/2021; **hay que confirmarlo en la revisión de C09 (`LEG_2026_010`)**. Para anonimizar de verdad hace falta P6 (redactar columnas en el historial). Con lo que hay hoy, la única opción es el borrado total con `core.purge_row_history`, que pierde también el rastro.
+- **Conservación: tres años desde `reservations.end_date`.** Es el plazo del art. 5.3 del RD 933/2021 («tres años a contar desde la finalización del servicio o prestación contratada»), comprobado en el texto consolidado del BOE. Vencido el plazo, C09 pide anonimizar dejando un rastro mínimo: se vacían nombre, apellidos, número de documento y de soporte, fecha de nacimiento, residencia, teléfono, correo, tutor y parentesco, y quedan código, evento, tipo de documento, nacionalidad, sexo y estados de envío. La pantalla Huéspedes muestra al `owner` los huéspedes con plazo vencido. Para anonimizar de verdad hace falta P6 (redactar columnas en el historial); con lo que hay hoy, la única opción es el borrado total con `core.purge_row_history`, que pierde también el rastro. Salvo que se carguen estancias antiguas, ningún dato vence antes de octubre de 2029, así que P6 no bloquea V1.
 - **Derecho de supresión.** A petición, por Core, con `core.purge_row_history`, dejando constancia fuera de la app.
 - **Copias de seguridad.** Van cifradas (ya resuelto por Core).
 
@@ -522,14 +571,14 @@ Supabase manda; Calendar es una proyección de una sola dirección. Una edición
 - Fechas, con `timeZone: Europe/Madrid`:
   - Con hora de llegada **y** de salida: evento con horario, de `start_date + arrival_time` a `end_date + departure_time`. Si el fin no es posterior al inicio, se suma un día (regla legacy).
   - En cualquier otro caso, día completo. Con una sola hora no se inventa la otra.
-  - Día completo: `start.date = start_date`, `end.date = end_date` (exclusivo en Google), o `start_date + 1` si coinciden. Es el comportamiento legacy: una estancia de viernes a domingo ocupa viernes y sábado, las noches. Ver pregunta abierta en §14.
+  - Día completo: `start.date = start_date`, `end.date = end_date + 1` (el fin es exclusivo en Google). Una estancia de viernes a domingo ocupa viernes, sábado y domingo. **[desviación, decisión del usuario]** El script legacy no incluía el día de salida.
 - Descripción, texto plano en este orden: marcadores `[[IKISAI_CALENDAR_SYNC]]` y `[[ID_RESERVA=RSV_…]]`; reserva (código, estado, contacto, personas previstas y finales); operación si hay evento (código, responsable, llegada y salida, montaje, alojamiento, estados de preparación, alojamiento, cocina y limpieza); alimentación (régimen solicitado y confirmado, tipo de menú); notas (`customer_notes`, `operational_notes`).
 - Nunca: huéspedes, documentos, fechas de nacimiento, SES, restricciones alimentarias, importes, notas internas.
 - `extendedProperties.private`: `ikisaiReservationId`, `ikisaiReservationCode`.
 
 **Identidad e idempotencia.** El evento se crea con id elegido por nosotros: `iki` + uuid de la reserva sin guiones + `g` + `generation` (caracteres válidos de base32hex). Crear dos veces no puede duplicar: la segunda devuelve 409 y se convierte en actualización. `calendar_links.provider_event_id` guarda el id efectivo.
 
-Primera sincronización de una reserva (sin enlace): antes de crear se busca por `[[ID_RESERVA=<code>]]` en ±1 año. Si aparece un evento del sistema antiguo se **adopta** (se guarda su id y se actualiza). Es el respaldo que pide el handoff §9.7 y lo que permite la transición sin duplicados.
+Primera sincronización de una reserva (sin enlace): antes de crear se busca por `[[ID_RESERVA=<code>]]` en ±1 año y, si aparece un evento con ese marcador, se **adopta** (se guarda su id y se actualiza). Es el respaldo que pide el handoff §9.7. No se espera encontrar nada: el usuario confirma que el Apps Script y el calendario están hoy sin uso, así que no hay transición que coordinar.
 
 Si alguien borró el evento a mano en Google, se intenta reactivar; si Google no lo permite, `generation + 1` y se crea de nuevo. A verificar en la prueba real.
 
@@ -575,7 +624,7 @@ Cuatro entradas: **Inicio · Reservas · Calendario · Huéspedes**. Barra infer
 Responde a «¿qué viene?» y «¿qué requiere atención?». Todo se calcula en local.
 
 - **Próximas**: reservas en `pre_reservada`, `confirmada` o `en_ejecucion` por fecha. Tarjeta con fecha, título, personas, noches y estado.
-- **Avisos**, una línea cada uno y solo si hay algo: pre-reservas pendientes de confirmar; señales pendientes o parciales; eventos a menos de 30 días sin número final; reservas próximas sin briefing; Calendar con error; huéspedes listos para enviar a SES (solo quien los ve).
+- **Avisos**, una línea cada uno y solo si hay algo: pre-reservas pendientes de confirmar; señales pendientes o parciales (solo `editor` y `owner`); eventos a menos de 30 días sin número final; reservas próximas sin briefing; Calendar con error; huéspedes sin comunicar a SES de eventos que empiezan en menos de 24 horas o ya empezados (solo quien los ve).
 
 Sin gráficas ni indicadores decorativos.
 
@@ -589,7 +638,7 @@ Sin gráficas ni indicadores decorativos.
   - **Operación** (si hay evento): llegada, salida, responsable, estados, montaje, distribución, checklist por tipo, cierre.
   - **Huéspedes**: recuentos; lista completa solo para quien los ve.
   - **Comidas**: régimen solicitado y confirmado, tipo de menú, notas, restricciones («1 alergia a pistacho · 2 veganos»).
-  - **Cobro**: presupuesto, importe final, señal y su estado derivado.
+  - **Cobro** (solo `editor` y `owner`): presupuesto, importe final, señal y su estado derivado, tipo, titular y fecha del pago.
 - **Edición**, por bloques: datos principales; contacto; servicios (interruptores; «Comidas» despliega régimen, tipo y notas); alimentación; comercial; más información (plegado). «Guardar» y «Cancelar»; en móvil «Guardar» queda fijo abajo mientras hay cambios.
 - «Confirmar» es un botón propio con resumen de lo que va a pasar («se crea el evento operativo») y la lista de lo que falta si no se puede.
 
@@ -602,8 +651,9 @@ Panel plegable «Google Calendar»: estado general, reservas con sincronización
 ### 9.4 Huéspedes
 
 - Selector de evento (próximos primero) y recuentos.
-- Quien ve huéspedes: lista con estado de datos y de envío; alta y edición en formulario corto con los campos SES; menores con tutor; restricciones alimentarias de la persona en la misma ficha.
-- Cola «Pendientes de envío SES» (`datos_revisados` + `listo_para_envio`), con copia campo a campo y registro del envío (fecha, responsable, justificante).
+- Quien ve huéspedes: lista con estado de datos y de envío; alta y edición en formulario por bloques (identidad, documento, residencia y contacto, menor con tutor y parentesco); restricciones alimentarias de la persona en la misma ficha.
+- Cola «Pendientes de envío SES» (`datos_revisados` + `listo_para_envio`), con el plazo de 24 horas a la vista, copia campo a campo (incluidos los datos de la transacción de §2.3.1) y registro del envío (fecha, responsable, justificante).
+- Para `owner`: lista de huéspedes con el plazo de conservación vencido (§5.3).
 - Quien no los ve: solo recuentos y el texto «Acceso restringido a responsables designados».
 - Recordatorio fijo en el formulario: no se guardan copias de documentos.
 
@@ -611,7 +661,7 @@ Panel plegable «Google Calendar»: estado general, reservas con sincronización
 
 ## 10. Offline
 
-**Espejo local**: `reservations`, `events`, `dietary_restrictions`, `checklist_items` y, solo para quien la ve, `guests`. Las tablas cerradas no se piden (`options.tables` explícito).
+**Espejo local**: `reservations`, `events`, `dietary_restrictions`, `checklist_items`; `reservation_finance` solo para `editor` y `owner`; `guests` solo para quien la ve. Las tablas cerradas no se piden (`options.tables` explícito).
 
 **Sin red se puede**: crear y editar reservas, cambiar estados, editar la operación, marcar checklist, dar de alta y editar huéspedes y restricciones, archivar, borrar. Cada cambio queda «pendiente de sincronizar» y la barra muestra red, pendientes y conflictos (contrato §6.4).
 
@@ -650,7 +700,7 @@ En PC y en Android. Calendar con el servidor falso en CI y una pasada real al fi
 8. Cambiar a `pre_reservada`.
 9. Calendar crea un único evento.
 10. Título `[PRE] Retiro Test`, color amarillo.
-11. Evento de día completo.
+11. Evento de día completo que ocupa viernes, sábado y domingo.
 12. Guardar otra vez sin cambios: ni otro evento ni llamada a Google (mismo hash).
 
 **C. Confirmación**
@@ -683,7 +733,8 @@ En PC y en Android. Calendar con el servidor falso en CI y una pasada real al fi
 **Añadidos de Booking**
 
 - G1. Un `editor` sin `scopes.guests` no recibe huéspedes en `snapshot`, `changes` ni `history`, y no puede escribirlos; un `reader`, tampoco.
-- G2. Alta de huésped, revisión de datos, registro del envío a SES con justificante.
+- G2. Alta de huésped con todos los datos del anexo I, revisión de datos, registro del envío a SES con justificante.
+- G3. Un `reader` no recibe `reservation_finance` en `snapshot`, `changes` ni `history`, y su ficha no muestra el bloque Cobro.
 - K1. Google caído: la reserva se guarda, el indicador pasa a pendiente y luego a error, y «Reintentar» lo resuelve al volver.
 - K2. Archivar una reserva cerrada retira su evento de Calendar.
 - V1. Conflicto 409 visible con dos sesiones sobre el mismo campo.
@@ -701,7 +752,7 @@ En PC y en Android. Calendar con el servidor falso en CI y una pasada real al fi
   - O5. Conflicto solapado en `status`: decisión humana.
   - O6. Justificante SES subido en diferido.
   - O7. Cerrar sesión borra la base local.
-- **Prueba real** al final: una pasada sintética completa contra un calendario de pruebas compartido con la cuenta de servicio, borrando el evento al terminar.
+- **Prueba real** al final: una pasada sintética completa contra «Agram Camp - Reservas» (hoy sin uso, decisión del usuario), borrando el evento al terminar.
 - Datos siempre sintéticos. Ningún huésped real en fixtures ni capturas.
 
 ---
@@ -719,7 +770,7 @@ Orden y verticales (fases 2–4 del handoff §34):
 
 | Fase | Backend | Frontend |
 |---|---|---|
-| B1 · Reservas base | migración `booking_base` (app, `reservations`, `events`, códigos, `confirm_reservation`, hook), `booking-api` sobre `_kit`, conformidad | shell, login, Reservas (lista, ficha, edición), Inicio |
+| B1 · Reservas base | migración `booking_base` (app, `reservations`, `reservation_finance`, `events`, códigos, `confirm_reservation`, hook), `booking-api` sobre `_kit`, conformidad | shell, login, Reservas (lista, ficha, edición), Inicio |
 | B2 · Huéspedes y restricciones | migración `booking_guests` (`guests`, `dietary_restrictions`, `checklist_items`, `event_food_state`, proyección), `visible`, `guest-summary` | Huéspedes, restricciones, checklist, borrado local al salir |
 | B3 · Calendar | migración `booking_calendar` (enlaces, cola, triggers, funciones), cliente de Google, worker, rutas, servidor falso | Calendario, indicador y panel de sincronización |
 | B4 · Publicación | prueba real, documentación de despliegue y recuperación | recorrido en PC y Android, `booking.ikisai.com` |
@@ -746,7 +797,7 @@ Una fila en `docs/core/PETICIONES.md` remite aquí. Tres coinciden con lo que ya
 | P8 | Rutas de sistema en `_kit` (secreto, sin usuario) y un planificador | Reintentos de Calendar cuando nadie tiene la app abierta | Reintento oportunista en `calendar/status` y `afterCommit` |
 | P9 | `trash/purge` sin `tables`: ordenar por dependencias FK | El orden alfabético purga `events` antes que `guests` | Booking envía siempre la lista ordenada |
 | P10 | Aprobar la semántica de `event_revision` y las cuatro columnas extra de la proyección (§7.1); cerrar con Food | Contrato §8 es normativo | Columnas exactas del contrato y filtro por estado |
-| P11 | Carga inicial desde C03/C04 conservando códigos (`code` no es escribible y hay que avanzar `core.code_sequences`) | Transición sin renumerar reservas vivas | Reintroducir a mano con códigos nuevos |
+| P11 | Solo si el usuario confirma que hay reservas vivas en C03 que cargar: carga inicial conservando códigos (`code` no es escribible y hay que avanzar `core.code_sequences`) | No renumerar reservas vivas | Reintroducir a mano con códigos nuevos |
 | P12 | Confirmar que las tablas cerradas (`readable_roles '{}'`) son aceptables | Aparecen en `bootstrap` con `readable: false` | Marcador de tabla interna en el lint |
 
 ---
@@ -764,16 +815,27 @@ Una fila en `docs/core/PETICIONES.md` remite aquí. Tres coinciden con lo que ya
 7. Las rutas REST por recurso del handoff §25 se sustituyen por `snapshot`, `changes` y `commands`.
 8. `setup_style` y `technical_needs` con los valores cerrados de C04 en vez de texto libre.
 9. Se añaden `guests.ses_sent_by`, `ses_receipt_ref` y `ses_receipt_file_id` (C04 tenía `responsable_envio` y `justificante_envio_url`), `dietary_restrictions.servings` y `checklist_items`.
+10. Importes y datos de pago en `reservation_finance`, fuera de `reservations`.
+11. `guests` se amplía a la lista completa del anexo I del RD 933/2021; `events.rooms_count` y los datos de pago cubren los de la transacción.
+12. El evento de día completo en Calendar incluye el día de salida.
 
-**Preguntas para Core y para el usuario:**
+**Decisiones del usuario (6 de octubre de 2026), ya incorporadas:**
 
-1. **Día completo en Calendar.** ¿Se mantiene el comportamiento legacy (viernes a domingo ocupa viernes y sábado) o se incluye el día de salida? Propongo mantenerlo: no cambia lo que hoy se ve y dos grupos consecutivos no se solapan.
-2. **Campos del registro de viajeros.** La lista de C04 puede no cubrir todo lo que hoy pide SES.Hospedajes (por ejemplo dirección o parentesco de los menores). Conviene revisarla con C09 antes de la migración de `guests`; añadir columnas ahora es barato.
-3. **Plazo de conservación** de huéspedes: confirmar los 3 años.
-4. **Importes visibles para `reader`.** ¿Vale, o se separan en tabla aparte?
-5. **Alta de huéspedes.** En V1 los introduce el equipo. El formulario de Google actual seguiría como entrada externa hasta decidir un enlace de auto-registro (V2).
-6. **Transición.** Fecha de corte del Apps Script (hay que desactivar su trigger antes de encender el worker para que no compitan) y carga inicial de reservas (P11).
-7. **Calendario de pruebas.** Propongo un calendario aparte compartido con la cuenta de servicio para la prueba real, en vez de ensuciar «Agram Camp - Reservas».
+| Tema | Decisión | Dónde |
+|---|---|---|
+| Día completo en Calendar | incluye el día de salida | §7.3 |
+| Plazo de conservación de huéspedes | el del decreto: tres años desde el fin del servicio (art. 5.3, verificado en el BOE) | §5.3 |
+| Importes | en tabla aparte que `reader` no recibe | §2.1.1 |
+| Alta de huéspedes | la hace el equipo en V1; auto-registro, si acaso, en V2 | §1 |
+| Apps Script legacy | no se usa; no hay corte que coordinar | §7.3 |
+| Prueba real de Calendar | sobre «Agram Camp - Reservas», que está sin uso | §11.2 |
+
+**Preguntas que siguen abiertas:**
+
+1. **Identificación del medio de pago.** El anexo I lista «tipo de tarjeta y número, IBAN» y «fecha de caducidad de la tarjeta». Guardar números de tarjeta en la app es un riesgo que no he querido asumir por defecto: hoy solo hay tipo, titular y fecha. ¿Se rellena ese dato en SES.Hospedajes? Si hace falta, propongo una columna de texto libre en `reservation_finance` para el IBAN o los últimos cuatro dígitos, nunca el número completo de una tarjeta.
+2. **Firmas del parte.** El anexo I las menciona entre los datos del contrato. La app no las recoge en V1.
+3. **Condiciones finas de SES.Hospedajes** (qué campos marca como obligatorios según el tipo de documento): se ajustan como reglas en el primer envío real (§2.3).
+4. **Carga inicial.** ¿Hay reservas vivas en C03 que cargar con su código, o se empieza de cero? (P11).
 
 ---
 
@@ -785,7 +847,8 @@ Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en f
 |---|---|---|
 | C03 | `ID_lead`, `responsable_comercial`, `fase_comercial` | sin CRM en V1 |
 | C03 | `estado_reserva = propuesta_enviada`, `presupuesto_enviado_si_no`, `fecha_presupuesto` | sin histórico de propuestas |
-| C03 | `fecha_senal`, `fecha_briefing_final` | el handoff conserva solo importes y el indicador |
+| C03 | `fecha_briefing_final` | el handoff conserva solo el indicador |
+| C03 | `fecha_senal` | la cubre `reservation_finance.payment_date` |
 | C03 | `interes_servicio_infantil` | fuera de V1; queda `minors_count` |
 | C03 | `num_personas_final` | pasa al evento (`final_guests`) |
 | C03 | `estado_cobro_prev`, `estado_confirmacion`, `noches`, `archivado` | derivados o sustituidos por `archived_at` |
