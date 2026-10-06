@@ -38,4 +38,6 @@ export { openImportSheet, createJsonSource, renderImportHeader, renderImportLine
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
+export { createLabelPicker, labelChips, type LabelPicker, type LabelPickerOptions, type LabelFamily, type LabelItem } from './fields/labels.ts';
+export { renderProjectCard, ringSvg, type ProjectCardSpec } from './cards/project-card.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';

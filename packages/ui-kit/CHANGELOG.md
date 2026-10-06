@@ -1,5 +1,11 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.7.0 · 6 de octubre de 2026
+
+- `createLabelPicker`: selector de etiquetas por familias (Tasks; Food para dietas y alérgenos): chips conmutables coloreados por familia, resumen con quitar, familias plegables con contador, padres e hijas con sangría, búsqueda sin acentos (automática con más de 12 etiquetas), familias de una sola etiqueta (`single`), etiquetas preferidas primero, heredadas apagadas y alta en línea («Crear «x»») con `onCreate`. `labelChips` para resúmenes y filas.
+- `renderProjectCard` y `ringSvg`: tarjeta de proyecto con anillo de progreso, pin, estrella de urgencia, chips, barra de presupuesto, estado pendiente, variante del sistema y color propio que tiñe toda la tarjeta con tinta calculada (de la interfaz heredada de Tasks).
+- Demo y pruebas (40 en total).
+
 ## 0.6.1 · 6 de octubre de 2026
 
 - Página imprimible: con `draft` activo la marca «BORRADOR» ocupaba unos 6 cm al principio de la hoja (una regla general la volvía `position: relative`); vuelve a ir superpuesta y la cabecera empieza arriba (avisado por Food).

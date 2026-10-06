@@ -9,6 +9,9 @@ import {
   compressImage,
   createCalendar,
   createDateField,
+  createLabelPicker,
+  labelChips,
+  renderProjectCard,
   createPrintView,
   createQuantityField,
   createSortableList,
@@ -481,17 +484,65 @@ const dateSection = section('date', 'Campo de fecha con atajos', 'Para Tasks (fe
   el('div', { class: 'demo-form' }, due.element, el('div', { class: 'row2' }, checkIn.element, checkOut.element), el('p', { class: 'small muted' }, 'Último cambio: ', dateOut)),
 );
 
+
+// --- Selector de etiquetas por familias ---------------------------------------------------
+const FAMILIES = [
+  { id: 'person', name: 'Persona', color: '#6f5a8f' },
+  { id: 'trade', name: 'Oficio', color: '#b76b3d' },
+  { id: 'phase', name: 'Fase', color: '#6b7b54', single: true },
+  { id: 'building', name: 'Edificio', color: '#4e6f72' },
+];
+const LABELS = [
+  { id: 'vg', name: 'VG', familyId: 'person' }, { id: 'juan', name: 'Juan', familyId: 'person' }, { id: 'pro', name: 'Profesional', familyId: 'person' },
+  { id: 'carp', name: 'Carpintería', familyId: 'trade' }, { id: 'font', name: 'Fontanería', familyId: 'trade' }, { id: 'elec', name: 'Electricidad', familyId: 'trade' }, { id: 'obra', name: 'Obra', familyId: 'trade' }, { id: 'limp', name: 'Limpieza', familyId: 'trade' },
+  { id: 'apertura', name: 'Apertura', familyId: 'phase' }, { id: 'mejora', name: 'Mejora', familyId: 'phase' },
+  { id: 'centro', name: 'Centro', familyId: 'building' }, { id: 'cocina', name: 'Cocina', familyId: 'building', parentId: 'centro' }, { id: 'salas', name: 'Salas', familyId: 'building', parentId: 'centro' }, { id: 'albergue', name: 'Albergue', familyId: 'building' }, { id: 'ext', name: 'Exteriores', familyId: 'building' },
+];
+const labelOut = el('code', { id: 'labelOut' }, 'carp, centro');
+let createdCount = 0;
+const picker = createLabelPicker({
+  families: FAMILIES, labels: LABELS, selected: ['carp', 'centro'], preferred: ['juan'],
+  onChange: (sel) => { labelOut.textContent = sel.join(', ') || '—'; },
+  onCreate: (familyId, name) => ({ id: `new-${++createdCount}`, name, familyId }),
+});
+const FOOD_FAMILIES = [{ id: 'diet', name: 'Dieta', color: '#4f7a3a' }, { id: 'allergen', name: 'Alérgenos', color: '#b3412a' }];
+const FOOD_LABELS = [
+  ...['vegetariano', 'vegano', 'sin_gluten', 'sin_lactosa'].map((id) => ({ id, name: id.replace('_', ' '), familyId: 'diet' })),
+  ...['gluten', 'crustaceos', 'huevos', 'pescado', 'cacahuetes', 'soja', 'lacteos', 'frutos_de_cascara', 'apio', 'mostaza', 'sesamo', 'sulfitos', 'altramuces', 'moluscos'].map((id) => ({ id, name: id.replace(/_/g, ' '), familyId: 'allergen' })),
+];
+const foodPicker = createLabelPicker({ families: FOOD_FAMILIES, labels: FOOD_LABELS, selected: ['vegano', 'apio'], search: false, collapsed: false, label: 'Dietas y alérgenos' });
+const labelSection = section('labels', 'Selector de etiquetas por familias', 'Chips por familia con su color, resumen arriba, familias plegables, padres e hijas, búsqueda sin acentos, familias de una sola etiqueta («Fase») y alta en línea. Food lo usa con sus vocabularios fijos.',
+  el('div', { class: 'demo-form', id: 'labelHost' }, picker.element, el('p', { class: 'small muted' }, 'Selección: ', labelOut)),
+  el('h3', { class: 'demo-sub' }, 'Food: dietas y alérgenos'),
+  el('div', { class: 'demo-form', id: 'foodLabelHost' }, foodPicker.element),
+);
+
+// --- Tarjeta de proyecto ----------------------------------------------------------------------
+const cardChips = (ids: string[]) => labelChips(ids, LABELS, FAMILIES);
+let pinnedDemo = true;
+const projectHost = el('div', { class: 'cardgrid', id: 'projectHost' });
+function paintProjects(): void {
+  replace(projectHost,
+    renderProjectCard({ id: 'p1', title: 'Edificio inferior', meta: '3 pendientes · 40 %', progress: 40, color: '#6f5a8f', pinned: pinnedDemo, urgency: 'critical', chips: cardChips(['centro', 'apertura', 'carp', 'juan']), budget: { spent: 2050, total: 3000 }, onOpen: () => toast('Abrir Edificio inferior'), onPin: (p) => { pinnedDemo = p; paintProjects(); toast(p ? 'Fijado' : 'Desfijado'); } }),
+    renderProjectCard({ id: 'p2', title: 'Cocina operativa', meta: '2 pendientes · 33 %', progress: 33, urgency: 'high', chips: cardChips(['albergue', 'cocina', 'elec', 'pro']), budget: { spent: 3400, total: 3000 }, onOpen: () => toast('Abrir Cocina operativa'), onPin: () => toast('Pin') }),
+    renderProjectCard({ id: 'p3', title: 'Piscina y exteriores', meta: '1 pendiente · 50 % · pausado', progress: 50, chips: cardChips(['ext', 'mejora', 'obra']), pending: true, onOpen: () => toast('Abrir Piscina'), onPin: () => toast('Pin') }),
+    renderProjectCard({ id: 'inbox', title: 'Entrada', meta: '1 pendiente', progress: 0, system: true, chips: cardChips(['vg']), onOpen: () => toast('Abrir Entrada') }),
+  );
+}
+paintProjects();
+const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.6.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection),
 );

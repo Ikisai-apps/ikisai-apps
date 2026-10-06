@@ -416,6 +416,76 @@
 :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.85)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.85)}}
 
+/* ---------- Selector de etiquetas por familias ---------- */
+.labelpicker{display:grid;gap:10px}
+.lp-summary{min-height:28px;align-items:center}
+.lp-summary .hint{font-size:12.5px;color:var(--muted)}
+.lp-groups{display:grid;gap:4px}
+.lp-search{width:100%;height:40px;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:0 12px;box-shadow:var(--shadow-1);margin-bottom:4px}
+.lp-search:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.lp-family{border-top:1px solid var(--edge);padding:4px 0}
+.lp-family:first-of-type{border-top:0}
+.lp-head{list-style:none;display:flex;align-items:center;gap:8px;min-height:36px;cursor:pointer;font-weight:700;font-size:13.5px;border-radius:8px;padding:0 4px}
+.lp-head::-webkit-details-marker{display:none}
+.lp-head::after{content:'';width:14px;height:14px;margin-left:auto;background:currentColor;-webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>") center/contain no-repeat;mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>") center/contain no-repeat;opacity:.6;transition:transform .15s}
+.lp-family[open]>.lp-head::after{transform:rotate(180deg)}
+.lp-head:hover{background:var(--hover)}
+.lp-head .dot{width:12px;height:12px;border-radius:50%;background:var(--accent);flex:none}
+.lp-head .count{background:var(--accent-soft);color:var(--accent-deep);border-radius:999px;padding:1px 7px;font-size:11px}
+.lp-total{font-size:11px;font-weight:600}
+.lp-chips{display:flex;flex-wrap:wrap;gap:6px;padding:4px 4px 8px}
+.filterchip{border:1px solid var(--line);background:var(--paper);padding:7px 11px;border-radius:999px;font:inherit;font-size:13px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:5px;min-height:36px;cursor:pointer}
+.filterchip:hover{background:var(--paper-2)}
+.filterchip.on{box-shadow:inset 0 0 0 2px currentColor,var(--shadow-1);font-weight:800}
+.filterchip:disabled{opacity:.45;cursor:default}
+.lp-chip[style*="--chip"]{color:color-mix(in srgb,var(--chip) 70%,var(--ink));background:color-mix(in srgb,var(--chip) 10%,var(--paper));border-color:color-mix(in srgb,var(--chip) 30%,transparent)}
+.lp-chip.on[style*="--chip"]{background:color-mix(in srgb,var(--chip) 22%,var(--paper))}
+.lp-chip.child{margin-left:14px;font-size:12.5px;min-height:32px;padding:5px 10px}
+.lp-chip.child::before{content:'↳';opacity:.5;margin-right:2px}
+.lp-create{border-style:dashed;color:var(--accent-deep)}
+
+/* ---------- Tarjeta de proyecto ---------- */
+.card.project{padding:14px 14px 12px;position:relative;transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+.card.project .projecttop{position:relative;display:flex;align-items:flex-start;gap:8px;padding-right:50px;min-height:46px}
+.card.project .cardring{position:absolute;right:0;top:0;width:46px;height:46px;pointer-events:none}
+.card.project .ring .track{fill:none;stroke:rgba(31,42,34,.1);stroke-width:3.5}
+.card.project .ring .value{fill:none;stroke:var(--accent);stroke-width:3.5;stroke-linecap:round;transition:stroke-dasharray .4s}
+.card.project .ring text{font-size:9.5px;font-weight:700;fill:currentColor;font-family:var(--sans)}
+.projectopen{border:0;background:transparent;text-align:left;padding:0;flex:1;min-width:0;font:inherit;color:inherit;cursor:pointer}
+.projecttitle{font-family:var(--serif);font-weight:500;font-size:18.5px;line-height:1.2;letter-spacing:-.015em;margin:1px 0 4px;display:flex;align-items:center;gap:6px}
+.projecttitle .star{color:#c58b2a;display:inline-grid;place-items:center}
+.projecttitle .star-critical{color:var(--alert)}
+.projectmeta{font-size:13px;color:var(--muted)}
+.projecttools{display:flex;gap:2px;flex:none;margin-top:-4px}
+.pinbtn{color:var(--muted)}
+.pinbtn .icon{transform:rotate(-45deg);transition:transform .15s}
+.pinbtn.pinned{color:var(--accent-deep)}
+.pinbtn.pinned .icon{transform:rotate(0)}
+.card.project .progressline{height:4px;margin:12px 0 10px;background:rgba(31,42,34,.08);border-radius:999px;overflow:hidden}
+.card.project .progressline span{display:block;height:100%;background:var(--accent);border-radius:inherit}
+.card.project .chips{gap:5px}
+.card.project .projectpending{margin-top:8px}
+.card.project.colored{color:var(--item-ink)}
+.card.project.colored .projectmeta,.card.project.colored .pinbtn{color:inherit;opacity:.85}
+.card.project.colored .ring .track{stroke:color-mix(in srgb,var(--item-ink) 28%,transparent)}
+.card.project.colored .ring .value{stroke:var(--item-ink)}
+.card.project.colored .ring text{fill:var(--item-ink)}
+.card.project.colored .progressline{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
+.card.project.colored .progressline span{background:var(--item-ink);opacity:.9}
+.card.project.colored .chip[style*="--chip"]{background:color-mix(in srgb,var(--chip) 28%,#fffdf8);color:color-mix(in srgb,var(--chip) 72%,#1f2a22);box-shadow:none}
+.card.project.system{border-style:dashed;background:transparent;box-shadow:none}
+.card.project.pinned{border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+@media(hover:hover){.card.project:hover{transform:translateY(-2px);box-shadow:var(--shadow-3)}.dragging .card.project:hover{transform:none}}
+.money{display:flex;flex-direction:column;gap:5px;margin:8px 0 2px;font-size:12px;color:var(--muted)}
+.moneytext strong{color:var(--ink);font-size:13px}
+.moneybar{height:5px;border-radius:999px;background:rgba(31,42,34,.08);overflow:hidden}
+.moneybar span{display:block;height:100%;background:var(--accent);border-radius:inherit}
+.money.over .moneybar span{background:var(--alert)}
+.money.over .moneytext strong{color:var(--alert)}
+.card.project.colored .money,.card.project.colored .moneytext strong{color:inherit}
+.card.project.colored .moneybar{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
+.card.project.colored .moneybar span{background:var(--item-ink)}
+
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
   .shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:auto 1fr;padding-bottom:0}
