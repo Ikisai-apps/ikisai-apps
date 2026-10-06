@@ -122,11 +122,12 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     expect(uploads).toHaveLength(1);
     expect(uploads[0]).toMatchObject({ status: 'verified', mime: 'application/pdf', size: PDF.length });
     expect(api.rows('invoices.invoice_files')[0]).toMatchObject({ normalized_filename: '2026_10_05_(proveedor_ejemplo_s_l)_alimentos_retiro_ejemplo.pdf', original_filename: 'scan factura.pdf', kind: 'original' });
-    // El documento se lee con URL firmada, nunca pública
-    const [popup] = await Promise.all([page.waitForEvent('popup'), f.getByRole('button', { name: 'Ver' }).click()]);
-    await popup.waitForLoadState();
-    expect(popup.url()).toContain('/api/v1/_file/');
-    await popup.close();
+    // El documento se lee con URL firmada (GET files/:id con sesión), nunca pública. En headless la pestaña nueva puede
+    // convertirse en descarga, así que se comprueba la petición y se cierra lo que se haya abierto.
+    const before = api.requests.length;
+    await f.getByRole('button', { name: 'Ver' }).click();
+    await expect.poll(() => api.requests.slice(before).some((r) => /^\/api\/v1\/files\//.test(r.path)), { timeout: 15_000 }).toBeTruthy();
+    for (const extra of page.context().pages()) if (extra !== page) await extra.close().catch(() => undefined);
   });
 
   await test.step('A5–A6 · importar el ejemplo del handoff sobre la factura: proveedor por NIF, líneas, impuestos, cuadre exacto', async () => {
