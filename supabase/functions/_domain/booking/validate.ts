@@ -3,7 +3,7 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  CHECKLIST_STATUSES, CHECKLIST_TYPES, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  BED_KINDS, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
   RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
@@ -164,12 +164,44 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
   },
 };
 
+FIELDS[TABLES.spaces] = {
+  name: text(120, false),
+  kind: choice(SPACE_KINDS, false),
+  zone: text(120),
+  capacity: { kind: 'int', nullable: true },
+  accessible: { kind: 'bool' },
+  active: { kind: 'bool' },
+  position: { kind: 'number' },
+  notes: text(LONG),
+};
+FIELDS[TABLES.beds] = {
+  space_id: { kind: 'uuid' },
+  label: text(80, false),
+  kind: choice(BED_KINDS, false),
+  capacity: { kind: 'int', nullable: false, min: 1 },
+  active: { kind: 'bool' },
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.roomAssignments] = {
+  event_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid' },
+  bed_id: { kind: 'uuid', nullable: true },
+  guest_id: { kind: 'uuid', nullable: true },
+  group_label: text(120),
+  persons: { kind: 'int', nullable: false, min: 1 },
+  from_date: { kind: 'date' },
+  to_date: { kind: 'date' },
+  notes: text(LONG),
+};
+
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
 const PARENT_LINK: Record<string, string> = {
   [TABLES.events]: 'reservation_id',
   [TABLES.guests]: 'event_id',
   [TABLES.restrictions]: 'event_id',
   [TABLES.checklist]: 'event_id',
+  [TABLES.beds]: 'space_id',
+  [TABLES.roomAssignments]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -179,6 +211,9 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.guests]: ['event_id', 'first_name'],
   [TABLES.restrictions]: ['event_id', 'restriction_type'],
   [TABLES.checklist]: ['event_id', 'checklist_type', 'label'],
+  [TABLES.spaces]: ['name', 'kind'],
+  [TABLES.beds]: ['space_id', 'label'],
+  [TABLES.roomAssignments]: ['event_id', 'space_id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -285,6 +320,22 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
       const subject = fields.subject;
       if (RESTRICTION_TYPES_WITH_SUBJECT.includes(type) && !(typeof subject === 'string' && subject.trim())) issues.push(invalid(table, 'subject', 'es obligatorio en alergias, intolerancias y «otra»'));
     }
+  }
+
+  if (table === TABLES.beds && typeof fields.capacity === 'number' && fields.capacity > 2) issues.push(invalid(table, 'capacity', 'admite como máximo 2 personas'));
+
+  if (table === TABLES.roomAssignments) {
+    const has = (field: string) => fields[field] !== undefined;
+    if (mode === 'insert' || has('guest_id') || has('group_label')) {
+      const guest = fields.guest_id ?? null;
+      const group = typeof fields.group_label === 'string' ? fields.group_label.trim() : null;
+      if (mode === 'insert' && !guest && !group) issues.push(invalid(table, 'group_label', 'indica un huésped o el nombre de un grupo'));
+      if (guest && group) issues.push(invalid(table, 'group_label', 'no se indica cuando la asignación es de un huésped concreto'));
+      if (guest && typeof fields.persons === 'number' && fields.persons !== 1) issues.push(invalid(table, 'persons', 'es 1 cuando la asignación es de un huésped concreto'));
+    }
+    const from = dayNumber(fields.from_date as string | null | undefined);
+    const to = dayNumber(fields.to_date as string | null | undefined);
+    if (from !== null && to !== null && to <= from) issues.push(invalid(table, 'to_date', 'debe ser posterior a la fecha de entrada'));
   }
 
   if (table === TABLES.guests) {
