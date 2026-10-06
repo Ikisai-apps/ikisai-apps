@@ -36,6 +36,8 @@ export interface FoodEvent {
   dietary_restrictions: DietaryRestriction[];
   event_revision: number;
   reservation_status?: string | null;
+  /** Id de la reserva en Booking (migración 0404), para enlazar a su ficha. */
+  reservation_id?: string | null;
   guest_count_is_final?: boolean | null;
   requires_meals?: boolean | null;
   meal_notes?: string | null;

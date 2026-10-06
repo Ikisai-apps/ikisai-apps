@@ -159,6 +159,10 @@ export function mealsGap(event: FoodEvent): string | null {
 
 export const BOOKING_URL = 'https://booking.ikisai.com/#/reservas';
 
+/** Ficha de la reserva en Booking si la proyección trae su id; si no, la lista de reservas. */
+export const bookingReservationUrl = (event: Pick<FoodEvent, 'reservation_id'>) =>
+  event.reservation_id ? `${BOOKING_URL}/${encodeURIComponent(event.reservation_id)}` : BOOKING_URL;
+
 export const needsMenu = (event: FoodEvent) => !isCancelled(event) && event.requires_meals !== false && event.meal_plan !== 'no_aplica';
 
 const RESTRICTION_PLURAL: Record<string, [string, string]> = {

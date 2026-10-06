@@ -5,7 +5,7 @@ import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  BOOKING_URL, MEAL_PLAN_LABELS, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -126,7 +126,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
       canCreate && gap ? el('div', { class: 'banner warn notice', id: 'mealsGap', role: 'note' },
         el('div', null, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
           event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
-        el('div', { class: 'btnrow' }, el('a', { class: 'ghost', href: BOOKING_URL, target: '_blank', rel: 'noopener', id: 'openBooking' }, 'Abrir Booking'))) : null,
+        el('div', { class: 'btnrow' }, el('a', { class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
       canCreate ? el('fieldset', { class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
         el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
         picksHost,

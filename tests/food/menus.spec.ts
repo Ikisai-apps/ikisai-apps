@@ -18,6 +18,7 @@ const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayN
 const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const EVENT_ID = randomUUID();
 const NO_MEALS_ID = randomUUID();
+const RESERVATION_ID = randomUUID();
 
 let api: FakeApi;
 let server: PreviewServer;
@@ -39,6 +40,7 @@ test.beforeAll(async () => {
       event_id: NO_MEALS_ID, event_code: 'EVT_2026_002', reservation_code: 'RSV_2026_002', title: 'Test1', event_type: 'retiro',
       start_date: day(20), end_date: day(22), arrival_time: null, departure_time: null, guest_count: 20, guest_count_is_final: false, minors_count: 0,
       meal_plan: null, menu_style: null, reservation_status: 'confirmada', requires_meals: false, meal_notes: null, event_revision: 1, dietary_restrictions: [],
+      reservation_id: RESERVATION_ID,
     }],
   });
   api.seed('food.recipes', { name: 'Curry de verduras', public_name: 'Curry suave de temporada', public_description: 'Verduras de temporada con leche de coco y arroz especiado.', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true });
@@ -253,7 +255,8 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     const sheet = page.getByRole('dialog', { name: 'Test1' });
     await expect(sheet.locator('#mealsGap')).toContainText('En Booking esta reserva figura sin comidas.');
     await expect(sheet.locator('#mealsGap')).toContainText('RSV_2026_002');
-    await expect(sheet.locator('#openBooking')).toHaveAttribute('href', 'https://booking.ikisai.com/#/reservas');
+    await expect(sheet.locator('#openBooking')).toHaveAttribute('href', `https://booking.ikisai.com/#/reservas/${RESERVATION_ID}`);
+    await expect(sheet.locator('#openBooking')).toHaveText('Abrir la reserva en Booking');
     await expect(sheet.locator('#proposedServices')).toContainText('el menú se crea vacío');
     // La cocina elige proponer como media pensión: viernes cena, sábado desayuno y cena, domingo desayuno.
     await sheet.locator('#proposalPlan').selectOption('media_pension');
