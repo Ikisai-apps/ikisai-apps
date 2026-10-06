@@ -1,0 +1,334 @@
+/* Dirección visual «Taller». El color del área o del proyecto lo elige la persona: aquí solo se deriva el acento (--accent) de ese color,
+   nunca se sustituye. Cuando no hay color, el acento es un verde neutro. Fuentes alojadas en /fonts (OFL). */
+@font-face{font-family:Fraunces;src:url(/fonts/fraunces.woff2) format('woff2');font-weight:400 700;font-style:normal;font-display:swap}
+@font-face{font-family:Inter;src:url(/fonts/inter.woff2) format('woff2');font-weight:400 800;font-style:normal;font-display:swap}
+:root{
+  --serif:Fraunces,Georgia,"Times New Roman",serif;
+  --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --bg:#f1ebe0;--paper:#fffdf8;--paper-2:#f7f2e9;--ink:#1f2a22;--muted:#6d7a70;--line:#e2dbcd;
+  --olive:#6b7b54;--olive-dark:#46513b;--terracotta:#c4712f;
+  --accent:#56663f;--accent-ink:#ffffff;
+  --accent-deep:color-mix(in srgb,var(--accent) 72%,var(--ink));
+  --accent-soft:color-mix(in srgb,var(--accent) 13%,transparent);
+  --accent-glow:color-mix(in srgb,var(--accent) 55%,transparent);
+  --edge:rgba(31,42,34,.07);
+  --shadow-1:0 1px 2px rgba(31,42,34,.05);
+  --shadow-2:0 1px 2px rgba(31,42,34,.05),0 18px 34px -26px rgba(31,42,34,.35);
+  --shadow-3:0 2px 4px rgba(31,42,34,.06),0 28px 70px -24px rgba(31,42,34,.45);
+  --hover:rgba(31,42,34,.055);
+  --warn:#c58b2a;--alert:#b3412a;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+html,body{font-family:var(--sans)}
+body{background:var(--bg)}
+#app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(255,255,255,.75),transparent 48%)}
+/* Tipografía: serif con carácter en títulos y cifras; sans en todo lo demás. */
+.title,.brand,.sheettitle,.areatitle,.homecard-title,.kpi strong,.weekday strong,.navigation .menuheader,.titleedit,.filterarea,.projecttitle,.facettotal strong,.filtercount strong,.homeproject-title{font-family:var(--serif);font-weight:500;letter-spacing:-.015em}
+.brand{font-weight:600;font-size:23px;letter-spacing:-.01em}
+.title{font-weight:450;letter-spacing:-.02em;line-height:1.02}
+.sheettitle{font-weight:450}
+.projecttitle{font-size:18.5px;font-weight:500;line-height:1.2}
+.homeproject-title{font-weight:500;font-size:15px}
+.kpi strong{font-weight:450}
+.project.newproject .inlineedit{font-family:var(--serif);font-weight:500}
+.mark{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#1f2a22));color:var(--accent-ink);box-shadow:0 6px 14px -4px var(--accent-glow);transition:background .3s}
+/* Cabecera y pestañas: la pestaña activa sin color propio toma el acento; con color, el suyo. */
+.topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border-bottom-color:var(--edge)}
+.tabpill{background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1);font-weight:650;transition:background .15s,box-shadow .15s,transform .15s}
+.tabpill.active{background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 6px 14px -6px var(--accent-glow)}
+.tabpill.colored.active{box-shadow:0 6px 14px -6px color-mix(in srgb,var(--item-color) 80%,transparent)}
+.tabpill.general{border-style:dashed;box-shadow:none}
+.tabpill.general.active{border-style:solid}
+.tabtool,.themetoggle,.viewsave,.aliasbtn{background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1)}
+.tabtool:hover,.themetoggle:hover,.viewsave:hover,.aliasbtn:hover,.softbtn:hover,.ghost:hover,.tabpill:not(.active):hover{background:var(--paper-2)}
+.viewpill{background:var(--paper);border-color:var(--edge);color:var(--accent-deep)}
+.viewpill.active{background:var(--accent);border-color:transparent;color:var(--accent-ink)}
+.tabcount{background:rgba(31,42,34,.08)}
+/* Barra lateral: el elemento activo lleva el hilo del acento. */
+.navigation .menuitem{transition:background .12s,color .12s}
+.navigation .menuitem.active{background:var(--paper);box-shadow:var(--shadow-1);border-left:3px solid var(--accent);color:var(--accent-deep);padding-left:7px}
+.navigation summary:hover,.navigation .menuitem:hover{background:rgba(31,42,34,.05)}
+.navigation .menuhint{line-height:1.5}
+@media(min-width:1024px){
+  .navigation.kebabmenu{background:transparent;border-right-color:var(--edge)}
+  .navigation .menugroup{border-top-color:var(--edge)}
+  .topbar{background:transparent;backdrop-filter:none;border-bottom:0;padding-bottom:4px}
+}
+@media(max-width:1023px){.tabstrip{padding:8px 0 0}.viewstrip{padding:5px 0 0}.topbar{padding-bottom:8px}}
+/* Navegación inferior: indicador superior en lugar de pastilla. */
+.navbtn{position:relative;transition:color .15s}
+.navbtn.active{background:transparent;color:var(--accent-deep)}
+.navbtn.active::after{content:'';position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:28px;height:4px;border-radius:0 0 4px 4px;background:var(--accent)}
+.bottomnav{background:color-mix(in srgb,var(--paper) 94%,transparent);border-top-color:var(--edge)}
+/* Buscador y controles. */
+.searchbar input,.softbtn,.facetbtn,.field input,.field textarea,.field select,select,.prioritybtn,.filterchip,.suggestion button{border-color:var(--edge);background-color:var(--paper);box-shadow:var(--shadow-1)}
+.searchbar input{border-radius:14px}
+.searchbar input:focus{border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.field input:focus,.field textarea:focus,.field select:focus,.inlineedit{border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.softbtn.active,.facetbtn.active,.batchtoggle.on,.menulist button.on,.themelist button.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent);color:var(--accent-deep)}
+.facetcount{background:var(--accent);color:var(--accent-ink)}
+.facetpanel{border-color:var(--edge);box-shadow:var(--shadow-3);background:var(--paper)}
+.facet.open .facetbtn{border-color:var(--edge);border-bottom-color:var(--paper)}
+.filterchip.on{box-shadow:inset 0 0 0 2px currentColor,var(--shadow-1)}
+:is(button,a,summary,input,select,textarea,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.searchwrap{flex:1;display:flex;position:relative;min-width:0}
+.searchwrap input{width:100%;padding-right:74px}
+.kbdhint{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:1px solid var(--edge);background:var(--paper-2);color:var(--muted);font:inherit;font-size:11px;font-weight:700;padding:4px 7px;border-radius:8px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.kbdhint:hover{color:var(--accent-deep);background:var(--accent-soft)}
+.kbdhint .menuicon{width:13px;height:13px}
+@media(max-width:1023px){.kbdhint span{display:none}.kbdhint{padding:6px}.searchwrap input{padding-right:40px}}
+/* Superficies con tres niveles de profundidad. */
+.project,.homecard,.homehead,.detail-card,.tasklist,.area-card,.label-manager .family-card,.filtercount,.facettotal{background:var(--paper);border:1px solid var(--edge);box-shadow:var(--shadow-2);border-radius:18px}
+.tasklist{border-radius:16px}
+.kebabmenu,.facetpanel,#moveRail{box-shadow:var(--shadow-3);border-color:var(--edge)}
+.sheet{box-shadow:var(--shadow-3)}
+.sectionlabel{color:var(--muted);letter-spacing:.1em;margin:14px 2px 10px}
+.screen>.project-grid,.areablock .project-grid{margin-top:4px}
+.sectionlabel .count{background:rgba(31,42,34,.07);color:var(--ink)}
+.empty{background:transparent;border:1px dashed rgba(31,42,34,.18)}
+/* Tarjetas de proyecto: portada con anillo; el color personalizado del proyecto tiñe toda la tarjeta. */
+.project{padding:13px 14px 11px;transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+@media(min-width:1024px){.project{padding:16px 16px 14px}}
+.project .chev{display:none}
+.project .cardring{position:absolute;right:0;top:0;width:46px;height:46px;pointer-events:none}
+.project .cardring .ring .track{stroke:rgba(31,42,34,.1);stroke-width:3.5}
+.project .cardring .ring .value{stroke:var(--accent);stroke-width:3.5}
+.project .cardring .ring text{font-size:9.5px;font-weight:700}
+.projecttop{padding-right:52px;min-height:40px}
+.project .draghandle{height:36px}
+.project .progressline{height:4px;margin:10px 0 9px;background:rgba(31,42,34,.08)}
+.project .progressline span{background:var(--accent)}
+.project .chips{gap:5px}
+.project.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 88%,#fff) 0%,var(--item-color) 45%,color-mix(in srgb,var(--item-color) 84%,#000) 100%);border-color:transparent;box-shadow:0 16px 30px -18px color-mix(in srgb,var(--item-color) 90%,transparent),var(--shadow-1)}
+.project.colored .cardring .ring .track{stroke:color-mix(in srgb,var(--item-ink) 28%,transparent)}
+.project.colored .cardring .ring .value{stroke:var(--item-ink)}
+.project.colored .cardring .ring text{fill:var(--item-ink)}
+.project.colored .progressline{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
+.project.colored .progressline span{background:var(--item-ink);opacity:.9}
+.project.system{border-style:dashed;background:transparent;box-shadow:none}
+.project.newproject{background:var(--paper-2)}
+@media(hover:hover){.dragging .project:hover{transform:none}.project:hover{transform:translateY(-2px);box-shadow:var(--shadow-3);border-color:var(--edge)}.project.colored:hover{box-shadow:0 22px 40px -20px color-mix(in srgb,var(--item-color) 95%,transparent),var(--shadow-1)}}
+.projectsection[style*="--item-color"] .projectlink{border-left-width:4px}
+.projectlink{color:var(--accent-deep);font-weight:750;font-size:14.5px;min-height:34px;display:inline-flex;align-items:center;padding:4px 6px 4px 0;border-radius:8px}
+.projectlink:hover{background:var(--hover)}
+/* Página de proyecto: progreso con degradado del acento. */
+.project-detail-head+.progressline{height:6px;background:rgba(31,42,34,.08)}
+.project-detail-head+.progressline span,.moneybar span{background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,var(--olive)))}
+.money.over .moneybar span{background:var(--alert)}
+.taskbody .cost{background:var(--accent-soft);color:var(--accent-deep)}
+/* Filas: más ligeras; la prioridad se lee en un filete lateral; la casilla hecha toma el acento. */
+.task{border-bottom-color:var(--edge)}
+.task::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:transparent;pointer-events:none}
+.task.prio-high::before{background:var(--warn)}
+.task.prio-critical::before{background:var(--alert)}
+.task.child{border-left-color:var(--edge)}
+.task.child::before{left:-2px}
+.task.context{background:rgba(31,42,34,.03)}
+.task.done .taskbody{opacity:.55}
+.check:before{border-radius:7px;border-color:#9aa391;background:var(--paper)}
+.task.done .check:before{background:var(--accent);border-color:var(--accent)}
+.task.done .check{color:var(--accent-ink)!important}
+.check.mixed:before{background:var(--accent-soft);border-color:var(--accent)}
+.check.mixed{color:var(--accent-deep)!important}
+.check::after{transform:scale(.5);transition:transform .18s var(--ease),opacity .12s}
+.task.done .check::after,.check.mixed::after{transform:scale(1)}
+.tasktext{font-weight:600}
+.task.selected{background:var(--accent-soft)!important}
+.selectbox.on::before{background:var(--accent);border-color:var(--accent)}
+.quickadd,.linkbtn,.quickdetail:hover{color:var(--accent-deep)}
+.addtask{background:transparent;border-top-color:var(--edge)}
+.rootdrop,.drop-child,.drop-project{outline-color:var(--accent)}
+.drop-before{box-shadow:0 -3px 0 var(--accent)}.drop-after{box-shadow:0 3px 0 var(--accent)}
+.drop-child,.drop-child:after,.drop-project{background:var(--accent-soft)!important;color:var(--accent-deep)}
+.inlineedit{border-color:var(--accent)}
+.task.newtask{background:var(--paper-2)}
+.due.soon{color:var(--accent-deep)}
+/* Chips pastel: el color de la familia se conserva como tinte y como tinta, legible en claro y oscuro. */
+.chip[data-pastel]{background:color-mix(in srgb,var(--chip) 15%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 70%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 30%,transparent);font-weight:650}
+.chip[data-pastel].inherited{opacity:.6}
+.project.colored .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 28%,#fffdf8)!important;color:color-mix(in srgb,var(--chip) 72%,#1f2a22);box-shadow:none}
+.activechip[data-pastel] .x{background:color-mix(in srgb,currentColor 14%,transparent);color:inherit}
+.activechip[data-pastel]:hover .x{background:color-mix(in srgb,currentColor 26%,transparent)}
+.taskchips .chip{font-size:10px;padding:3px 7px}
+/* Botón flotante, barra de lote y avisos. */
+.fab{background:var(--accent);color:var(--accent-ink);box-shadow:0 12px 25px -8px var(--accent-glow);transition:transform .15s var(--ease),box-shadow .15s,background .3s}
+.fab:hover{background:color-mix(in srgb,var(--accent) 88%,#000);transform:translateY(-1px)}
+.batchbar,.toast,.undotoast,[data-tip]:hover::after{background:#1f2a22}
+.primary{background:var(--olive-dark)}
+/* Inicio: la portada toma el color del área (o el acento neutro en General). */
+.homehead{--hero:var(--accent);--hero-ink:var(--accent-ink);position:relative;overflow:hidden;color:var(--hero-ink);border:0;background:linear-gradient(120deg,color-mix(in srgb,var(--hero) 84%,#000) 0%,var(--hero) 52%,color-mix(in srgb,var(--hero) 80%,#fff) 100%);box-shadow:0 24px 50px -28px color-mix(in srgb,var(--hero) 90%,transparent),var(--shadow-1);border-radius:22px;padding:22px 24px}
+.homehead[style*="--item-color"]{--hero:var(--item-color);--hero-ink:var(--item-ink)}
+.homehead::before{content:'';position:absolute;right:-70px;top:-90px;width:330px;height:330px;border-radius:50%;border:10px solid color-mix(in srgb,var(--hero-ink) 10%,transparent);pointer-events:none}
+.homehead::after{content:'';position:absolute;right:-10px;top:-30px;width:210px;height:210px;border-radius:50%;border:6px solid color-mix(in srgb,var(--hero-ink) 8%,transparent);pointer-events:none}
+.homehead>*{position:relative;z-index:1}
+.homehead .title{font-size:38px}
+.homehead .subtitle,.homehead .kpi span,.homehead .small{color:inherit;opacity:.85}
+.homehead .kpi{background:color-mix(in srgb,var(--hero-ink) 14%,transparent);backdrop-filter:blur(4px);border-radius:16px}
+.homehead .kpi strong{color:inherit;font-size:30px}
+.homehead .kpi.alert{background:color-mix(in srgb,var(--alert) 42%,transparent)}
+.homehead .kpi.warm{background:color-mix(in srgb,var(--warn) 42%,transparent)}
+.homehead .ring .track{stroke:color-mix(in srgb,var(--hero-ink) 28%,transparent)}
+.homehead .ring .value{stroke:var(--hero-ink)}
+.homehead .ring text{font-family:var(--serif);font-weight:500;font-size:10px}
+.homecard{border-radius:18px}
+.homecard-title{font-size:20px}
+.hometask{border-bottom-color:var(--edge);border-left:3px solid transparent;padding-left:8px;border-radius:0 12px 12px 0}
+.hometask.prio-high{border-left-color:var(--warn)}
+.hometask.prio-critical{border-left-color:var(--alert)}
+.hometask.urgent{background:color-mix(in srgb,var(--warn) 9%,transparent)}
+.hometask .due.today{background:color-mix(in srgb,var(--warn) 22%,transparent);padding:2px 7px;border-radius:999px}
+.homeproject{background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1);border-radius:16px;transition:transform .15s var(--ease),box-shadow .15s}
+.homeproject:hover{background:var(--paper);transform:translateY(-1px);box-shadow:var(--shadow-2)}
+.homeproject.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 90%,#fff),color-mix(in srgb,var(--item-color) 84%,#000));box-shadow:0 14px 26px -16px color-mix(in srgb,var(--item-color) 90%,transparent)}
+.ring .value{stroke:var(--accent)}
+.ring .track{stroke:rgba(31,42,34,.1)}
+.weekday{background:transparent;border-radius:14px}
+.weekday.today{outline:2px solid var(--accent);background:var(--accent-soft)}
+.weekday.drop{background:var(--accent-soft)}
+.weekdot{background:var(--accent);box-shadow:0 0 0 0 transparent;transition:transform .15s,box-shadow .15s}
+.weekday.today .weekdot{box-shadow:0 0 0 4px var(--accent-soft)}
+.personbar{background:rgba(31,42,34,.08)}
+.personbar .pend{background:var(--accent)}
+.personbar .donepart{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+.blockrow{border-bottom-color:var(--edge)}
+.activityrow{border-bottom-color:var(--edge)}
+.shortcuts .viewpill{box-shadow:var(--shadow-1)}
+/* Estados vacíos con icono y esqueletos de carga. */
+.empty{display:grid;justify-items:center;gap:10px;padding:34px 20px;color:var(--muted);font-size:14px;line-height:1.45}
+.empty::before{content:'';width:50px;height:50px;border-radius:16px;background:var(--accent-soft);-webkit-mask:none;mask:none;position:relative;display:grid;place-items:center;background-image:var(--icon-empty);background-repeat:no-repeat;background-position:center;background-size:26px}
+.tasklist > .empty{display:none}
+.skeleton{display:grid;gap:9px;padding:4px 0}
+.skeleton span{display:block;height:11px;border-radius:6px;background:linear-gradient(90deg,rgba(31,42,34,.06) 25%,rgba(31,42,34,.12) 50%,rgba(31,42,34,.06) 75%);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+.skeleton span:nth-child(2){width:78%}.skeleton span:nth-child(3){width:62%}
+/* Movimiento medido: entradas de vista, hojas y paneles. Respeta la preferencia de menos movimiento. */
+@media(prefers-reduced-motion:no-preference){
+  #app.view-enter main.screen{animation:fade .22s ease-out}
+  .sheetback.show .sheet{animation:fade .24s ease-out}
+  .kebabmenu.show{animation:fade .16s ease-out}
+  .facetpanel,.palette{animation:pop .16s ease-out}
+  .homehead{animation:rise .32s var(--ease)}
+  .boardcard{transition:transform .15s var(--ease),box-shadow .15s}
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+/* Selector lista/tablero y tablero por horizonte de fecha. */
+.segmented{display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:rgba(31,42,34,.07);margin-left:8px;text-transform:none;letter-spacing:0}
+.segmented button{border:0;background:transparent;width:32px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);padding:0}
+.segmented button:hover{color:var(--ink)}
+.segmented button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.segmented .menuicon{width:16px;height:16px}
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,1fr);gap:10px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity;scrollbar-width:thin}
+.boardcol{display:flex;flex-direction:column;gap:8px;min-height:140px;padding:10px;border-radius:16px;background:rgba(31,42,34,.04);border:1px dashed transparent;scroll-snap-align:start;transition:background .15s,border-color .15s}
+.boardcol.drop{background:var(--accent-soft);border-color:var(--accent)}
+.boardcol.locked{opacity:.85}
+.boardcol.dragover-locked{border-color:var(--alert)}
+.boardhead{display:flex;align-items:baseline;gap:6px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:2px 4px 4px}
+.boardhead .count{margin-left:auto;background:rgba(31,42,34,.08);border-radius:999px;padding:1px 7px;font-size:11px;letter-spacing:0;color:var(--ink)}
+.boardcol.overdue .boardhead{color:var(--alert)}
+.boardcol.today .boardhead{color:var(--accent-deep)}
+.boardcard{position:relative;text-align:left;border:1px solid var(--edge);background:var(--paper);border-radius:14px;padding:10px 12px 10px 14px;box-shadow:var(--shadow-1);font:inherit;color:inherit;cursor:grab;touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}
+.boardcard::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:transparent}
+.boardcard.prio-high::before{background:var(--warn)}
+.boardcard.prio-critical::before{background:var(--alert)}
+.boardcard:hover{box-shadow:var(--shadow-2);transform:translateY(-1px)}
+.boardcard.done{opacity:.6}
+.boardcard.done .boardtext{text-decoration:line-through}
+.boardcard.lifting{opacity:.35}
+.boardtext{display:block;font-weight:600;font-size:13.5px;line-height:1.35;overflow-wrap:anywhere}
+.boardtext .star{width:15px;height:15px;vertical-align:-3px;margin-right:4px}
+.boardmeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:11px;color:var(--muted)}
+.boardcard .chips{margin-top:6px;gap:4px}
+.boardcard .chip{font-size:9.5px;padding:3px 6px}
+.boardempty{font-size:12px;color:var(--muted);padding:10px 6px;text-align:center;border:1px dashed rgba(31,42,34,.15);border-radius:12px}
+#boardGhost{position:fixed;z-index:95;pointer-events:none;width:220px;transform:rotate(-2deg);box-shadow:var(--shadow-3);opacity:.95}
+.board .boardcol:focus-within{outline:none}
+@media(max-width:639px){.board{grid-auto-columns:minmax(78vw,1fr)}}
+/* Paleta de comandos. */
+.palette-back{position:fixed;inset:0;z-index:120;background:rgba(31,42,34,.32);display:flex;align-items:flex-start;justify-content:center;padding:10vh 16px 16px;backdrop-filter:blur(3px)}
+.palette{width:min(640px,100%);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--paper);border-radius:18px;box-shadow:var(--shadow-3);overflow:hidden;border:1px solid var(--edge)}
+.palette-input{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--edge);color:var(--muted)}
+.palette-input .menuicon{width:19px;height:19px}
+.palette-input input{flex:1;border:0;background:transparent;font:inherit;font-size:16px;outline:none;min-width:0;color:var(--ink)}
+.palette-input kbd{font:inherit;font-size:11px;font-weight:700;padding:3px 7px;border-radius:7px;border:1px solid var(--edge);background:var(--paper-2);color:var(--muted)}
+.palette-list{overflow:auto;padding:6px;flex:1}
+.palette-group{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:10px 10px 4px}
+.palette-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:9px 10px;font:inherit;color:var(--ink);cursor:pointer}
+.palette-item .pdot{width:10px;height:10px;border-radius:50%;background:var(--pcolor,transparent);box-shadow:inset 0 0 0 1px rgba(31,42,34,.15)}
+.palette-item .pdot.plain{background:transparent;box-shadow:none;width:10px}
+.palette-item .ptext{display:flex;flex-direction:column;min-width:0}
+.palette-item .ptext span{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item .ptext small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-item .phint{font-size:11px;color:var(--muted);font-weight:700;border:1px solid var(--edge);border-radius:6px;padding:2px 6px}
+.palette-item.on,.palette-item:hover{background:var(--accent-soft);color:var(--accent-deep)}
+.palette-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:13px}
+.palette-foot{padding:8px 14px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted);display:flex;gap:14px}
+/* Icono de estado vacío (máscara en línea). */
+:root{--icon-empty:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356663f' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='4' width='16' height='17' rx='3'/><path d='M9 3.5h6v2.5H9z'/><path d='M8.5 12.5l2.5 2.5 4.5-5'/></svg>");--icon-board:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='5' height='16' rx='1.5'/><rect x='10' y='4' width='5' height='11' rx='1.5'/><rect x='17' y='4' width='4' height='8' rx='1.5'/></svg>")}
+.readonly .quickdetail{display:none}
+/* Modo oscuro cálido: mismos tokens con valores nocturnos; el acento se aclara para contrastar. */
+html.dark{--bg:#1a1915;--paper:#24221d;--paper-2:#2b2923;--ink:#ece5d8;--muted:#a69e90;--line:#3a372f;--edge:rgba(236,229,216,.08);--accent:#a5b28a;--accent-ink:#1a1915;--hover:rgba(236,229,216,.06);
+  --shadow-1:0 1px 2px rgba(0,0,0,.25);--shadow-2:0 1px 2px rgba(0,0,0,.25),0 18px 34px -26px rgba(0,0,0,.8);--shadow-3:0 2px 4px rgba(0,0,0,.3),0 28px 70px -24px rgba(0,0,0,.85);--warn:#e0a94a;--alert:#e07a5f;--olive:#8e9a6c;--olive-dark:#5b6848}
+html.dark #app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(236,229,216,.06),transparent 48%)}
+html.dark .topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border-bottom-color:var(--edge)}
+html.dark .tabpill{background:var(--paper);color:var(--ink)}
+html.dark .tabpill.active{background:var(--accent);color:var(--accent-ink)}
+html.dark .tabpill.colored.active{background:var(--item-color);color:var(--item-ink)}
+html.dark .project,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette{background:var(--paper);border-color:var(--edge)}
+html.dark .project.system{background:transparent}
+html.dark .project.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 88%,#fff) 0%,var(--item-color) 45%,color-mix(in srgb,var(--item-color) 80%,#000) 100%)}
+html.dark .homeproject.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 90%,#fff),color-mix(in srgb,var(--item-color) 82%,#000))}
+html.dark .project .cardring .ring .track,html.dark .ring .track{stroke:rgba(236,229,216,.14)}
+html.dark .project .progressline,html.dark .project-detail-head+.progressline{background:rgba(236,229,216,.1)}
+html.dark .sheet,html.dark .sheet-close,html.dark .actions{background:var(--paper)}
+html.dark .kebabmenu,html.dark .facetpanel,html.dark #moveRail,html.dark .navigation.kebabmenu{background:var(--paper-2);border-color:var(--edge)}
+html.dark .navigation .menuitem.active{background:var(--paper);color:var(--accent-deep)}
+html.dark .navbtn.active{background:transparent;color:var(--accent-deep)}
+html.dark .bottomnav{background:color-mix(in srgb,var(--paper) 94%,transparent)}
+html.dark .searchbar input,html.dark .softbtn,html.dark .facetbtn,html.dark .field input,html.dark .field textarea,html.dark .field select,html.dark select,html.dark .prioritybtn,html.dark .filterchip,html.dark .suggestion button,html.dark .ghost,html.dark .viewpill,html.dark .tabtool,html.dark .themetoggle,html.dark .viewsave,html.dark .aliasbtn{background-color:var(--paper);border-color:var(--edge);color:var(--ink)}
+html.dark .softbtn.active,html.dark .facetbtn.active,html.dark .batchtoggle.on,html.dark .menulist button.on,html.dark .themelist button.on{background:var(--accent-soft);color:var(--accent-deep)}
+html.dark .viewpill.active{background:var(--accent);color:var(--accent-ink)}
+html.dark .task{border-bottom-color:var(--edge)}
+html.dark .task.context{background:rgba(236,229,216,.03)}
+html.dark .task.newtask{background:var(--paper-2)}
+html.dark .check{color:var(--muted)!important}
+html.dark .check:before{border-color:#6f6a5e;background:var(--paper)}
+html.dark .task.done .check:before{background:var(--accent);border-color:var(--accent)}
+html.dark .task.done .check{color:var(--accent-ink)!important}
+html.dark .task.selected{background:var(--accent-soft)!important}
+html.dark .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 24%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 62%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 35%,transparent)}
+html.dark .project.colored .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 30%,#24221d)!important;color:color-mix(in srgb,var(--chip) 70%,#ece5d8)}
+html.dark .taskbody .cost{background:var(--accent-soft);color:var(--accent-deep)}
+html.dark .batchbar,html.dark .toast,html.dark .undotoast,html.dark [data-tip]:hover::after{background:#ece5d8;color:#1a1915}
+html.dark .fab{background:var(--accent);color:var(--accent-ink)}
+html.dark .fab:hover{background:color-mix(in srgb,var(--accent) 85%,#fff)}
+html.dark .primary{background:#6b7a54;color:#fff}
+html.dark .homehead .kpi{background:color-mix(in srgb,var(--hero-ink) 14%,transparent)}
+html.dark .weekday{background:transparent}
+html.dark .weekday.today,html.dark .weekday.drop{background:var(--accent-soft)}
+html.dark .weekday.overdue{background:color-mix(in srgb,var(--alert) 18%,transparent)}
+html.dark .personbar{background:rgba(236,229,216,.1)}
+html.dark .personbar .donepart{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+html.dark .empty{border-color:rgba(236,229,216,.16);color:var(--muted)}
+html.dark .skeleton span{background:linear-gradient(90deg,rgba(236,229,216,.06) 25%,rgba(236,229,216,.14) 50%,rgba(236,229,216,.06) 75%);background-size:200% 100%}
+html.dark .segmented{background:rgba(236,229,216,.08)}
+html.dark .segmented button.on{background:var(--paper);color:var(--accent-deep)}
+html.dark .boardcol{background:rgba(236,229,216,.04)}
+html.dark .boardcol.drop{background:var(--accent-soft)}
+html.dark .boardhead .count{background:rgba(236,229,216,.1);color:var(--ink)}
+html.dark .palette-back{background:rgba(0,0,0,.55)}
+html.dark .palette-input input{color:var(--ink)}
+html.dark .palette-input kbd,html.dark .palette-item .phint{background:var(--paper-2);border-color:var(--edge)}
+html.dark .kbdhint{background:var(--paper-2);border-color:var(--edge)}
+html.dark .sectionlabel .count,html.dark .tabcount{background:rgba(236,229,216,.1);color:var(--ink)}
+html.dark .mark{color:var(--accent-ink)}
+html.dark .inlineedit{background:var(--paper-2);color:var(--ink)}
+html.dark .projectlink:hover{background:var(--hover)}
+html.dark .hometask.urgent{background:color-mix(in srgb,var(--warn) 12%,transparent)}
+html.dark .due.overdue{color:var(--alert)}
+html.dark .due.today{color:var(--warn)}
+html.dark .star{color:#e2b45c}
+html.dark .drop-child,html.dark .drop-child:after,html.dark .drop-project{background:var(--accent-soft)!important;color:var(--accent-deep)}
+html.dark .quickadd,html.dark .linkbtn,html.dark .viewpill,html.dark .projectlink{color:var(--accent-deep)}
+html.dark .empty::before{background-color:var(--accent-soft)}

@@ -131,6 +131,8 @@ const amount = (value: unknown): number | null => (typeof value === 'number' ? v
 /**
  * Operaciones de fila que llevan las filas actuales al modelo editado. Devuelve uno o dos lotes: el segundo solo
  * existe cuando una misma fila necesita cambiar campos y además borrarse o restaurarse (una operación por fila y lote).
+ * Las operaciones del segundo lote llevan la misma `expectedRevision` que vio el espejo, como pide `sync-client`
+ * (que la ajusta al confirmar el primero); quien confirme sin él debe volver a descomponer tras el primer lote.
  * Lo ausente del modelo pasa a la papelera (áreas, proyectos, tareas, vistas); el catálogo no se borra, se archiva.
  */
 export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () => Uuid = () => crypto.randomUUID()): Operation[][] {
@@ -145,22 +147,21 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   const modelTasks = new Map<Uuid, { task: LegacyTask; project: LegacyProject; tab: LegacyTab }>();
   for (const tab of tabs) for (const project of tab.projects ?? []) for (const task of project.tasks ?? []) modelTasks.set(task.id, { task, project, tab });
 
-  // Borrado y restauración en cascada, como hacía el servidor: se ajusta el estado deseado antes de comparar.
-  const deletedWanted = new Map<Uuid, boolean>([...modelTasks].map(([id, m]) => [id, !!m.task.deleted]));
+  // La interfaz ya propaga en el modelo el borrado a las hijas y la restauración a todo el lote. Aquí solo se garantiza
+  // la regla que el servidor exige, de forma idempotente: una hija no queda viva bajo un padre en la papelera.
+  const deletedWanted = new Map<Uuid, boolean>();
   for (const [id, { task }] of modelTasks) {
-    const row = taskRows.find((r) => r.id === id);
-    if (!row) continue;
-    if (task.deleted && !row.deleted_at) {
-      for (const [childId, child] of modelTasks) if (child.task.parentId === id && !taskRows.find((r) => r.id === childId)?.deleted_at) deletedWanted.set(childId, true);
-    } else if (!task.deleted && row.deleted_at) {
-      for (const other of taskRows) {
-        if (other.project_id !== row.project_id || !other.deleted_at) continue;
-        if (other.deleted_at === row.deleted_at || other.id === row.parent_id) deletedWanted.set(other.id, false);
-      }
-    }
+    const parent = task.parentId ? modelTasks.get(task.parentId)?.task : undefined;
+    deletedWanted.set(id, !!task.deleted || !!parent?.deleted);
   }
+  // Contenedor: tiene alguna hija que está viva ahora o lo estará tras este guardado. Borrar un padre con sus hijas
+  // no lo convierte en hoja: su `done` (calculado al componer) no se escribe.
   const containers = new Set<Uuid>();
-  for (const [id, { task }] of modelTasks) if (task.parentId && !deletedWanted.get(id)) containers.add(task.parentId);
+  for (const [id, { task }] of modelTasks) {
+    if (!task.parentId) continue;
+    const row = taskRows.find((r) => r.id === id);
+    if (!deletedWanted.get(id) || !row || !row.deleted_at) containers.add(task.parentId);
+  }
 
   const bridges = (table: 'tasks.project_labels' | 'tasks.task_labels' | 'tasks.task_dependencies', ownerKey: string, ownerId: Uuid, projectId: Uuid, targetKey: string, targets: readonly Uuid[], fields: (target: Uuid, index: number) => Fields) => {
     // Una fila puente en papelera que quedó en otro proyecto no se puede corregir: no se reutiliza, se inserta otra.
@@ -187,18 +188,24 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     const tabRow = rowOf('tasks.tabs', tab.id);
     want('tasks.tabs', tab.id, { name: tab.name, color: orNull(tab.color), ...(tabRow ? {} : { position: tabPosition() }) }, !!tab.deleted);
 
-    const familyArchive = new Map<Uuid, boolean>();
+    const familyArchived = new Map<Uuid, boolean>();
     (tab.families ?? []).forEach((f, index) => {
       const row = rowOf('tasks.families', f.id);
-      if (row && !!row.archived !== !!f.archived) familyArchive.set(f.id, !!f.archived);
+      familyArchived.set(f.id, !!f.archived);
       want('tasks.families', f.id, { name: f.name, color: f.color, archived: !!f.archived, ...(row ? {} : { tab_id: tab.id, position: (index + 1) * POSITION_STEP, system_key: f.system ?? null }) });
     });
     (tab.labels ?? []).forEach((l, index) => {
       const row = rowOf('tasks.labels', l.id) as (LabelRow & Row) | undefined;
       const fields: Fields = { family_id: l.family, parent_id: orNull(l.parent), name: l.text, archived: !!l.archived };
-      const cascade = familyArchive.get(l.family);
-      if (cascade === true) { fields.archived = true; fields.archived_before_family = row ? row.archived : !!l.archived; }
-      else if (cascade === false) { fields.archived = row?.archived_before_family ?? false; fields.archived_before_family = null; }
+      // Etiquetas de una familia archivada: siempre archivadas, recordando su estado previo. Al reactivarla lo recuperan.
+      // La interfaz ya lo hace en el modelo; estas reglas dan el mismo resultado si no lo hizo, y repetidas no cambian nada.
+      if (familyArchived.get(l.family)) {
+        fields.archived = true;
+        fields.archived_before_family = l.beforeFamilyArchive ?? (row ? row.archived_before_family ?? row.archived : !!l.archived);
+      } else {
+        if (l.beforeFamilyArchive !== undefined) fields.archived = !!l.beforeFamilyArchive;
+        fields.archived_before_family = null;
+      }
       want('tasks.labels', l.id, { ...fields, ...(row ? {} : { tab_id: tab.id, position: (index + 1) * POSITION_STEP }) });
     });
     (tab.views ?? []).forEach((v, index) => {
@@ -244,7 +251,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     const row = rowOf(d.table, d.id);
     if (!row) {
       first.push({ op: 'insert', table: d.table, id: d.id, fields: d.fields });
-      if (d.deleted) second.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: 1 });
+      if (d.deleted) second.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: 0 });
       continue;
     }
     const changed: Fields = {};
@@ -253,9 +260,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     const wasDeleted = !!row.deleted_at;
     if (wasDeleted && !d.deleted) {
       first.push({ op: 'restore', table: d.table, id: d.id, expectedRevision: row.revision });
-      if (update) second.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision + 1, fields: changed });
+      if (update) second.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed });
     } else if (!wasDeleted && d.deleted) {
-      if (update) { first.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed }); second.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: row.revision + 1 }); }
+      if (update) { first.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed }); second.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: row.revision }); }
       else first.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: row.revision });
     } else if (update && !wasDeleted) {
       first.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed });

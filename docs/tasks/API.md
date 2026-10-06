@@ -4,7 +4,7 @@ Fecha: 6 de octubre de 2026. Autor: equipo Tasks. Estado: **puerta G2 aprobada p
 
 Origen estudiado: `Ikisai-apps/ikisai-tasks` `main` `d02bf44` (v0.7.0-build.4): `supabase/migrations/2026100500{01..10}`, `supabase/functions/ikisai-api/{domain,service}.mjs`, `docs/DEPENDENCIAS_TAREAS.md`, `docs/ACCESOS_Y_AGENTES.md`, `app/` (en especial `sync.js`, `cloud-auth.js` y sus usos) y `tests/integration.cjs` (72 escenarios). Destino comprobado contra el núcleo real, no solo contra el contrato: `20261006_0001_core_base.sql`, `20261006_0003_core_files.sql`, `supabase/functions/_kit`, `packages/sync-client` y `scripts/lint_migrations.mjs`.
 
-Sigue `docs/core/PLANTILLA_API_APP.md` (§1–§12) y añade §13 (adaptador que sustituye a `sync.js`/`cloud-auth.js`), §14 (peticiones a Core), §15 (decisiones que se apartan de `PORT.md`) y §16 (resolución de Core). Donde el núcleo actual no permite lo que aquí se describe, se dice y se remite a la petición `C<n>` de §14.
+Sigue `docs/core/PLANTILLA_API_APP.md` (§1–§12) y añade §13 (adaptador que sustituye a `sync.js`/`cloud-auth.js`), §14 (peticiones a Core), §15 (decisiones que se apartan de `PORT.md`), §16 (resolución de Core) y §17 (el adaptador tal y como se ha construido). Donde el núcleo actual no permite lo que aquí se describe, se dice y se remite a la petición `C<n>` de §14.
 
 ---
 
@@ -688,3 +688,23 @@ Convenciones nuevas que este documento adopta:
 Implementado en `supabase/migrations/20261006_0300_tasks_schema.sql` (tablas, triggers, registro) y `20261006_0301_tasks_rules.sql` (`tasks.scope_*`, `tasks.validate_batch`, `tasks.import_rows`, `tasks.targets`).
 
 Orden de construcción (PR pequeñas dentro del territorio de Tasks): (1) `_domain/tasks` + `packages/domain-tasks`; (2) migraciones `*_tasks_*` con `tasks.validate_batch` y `tasks.targets`, con lint y conformidad; (3) `tasks-api` con `visible` y `beforeCommit`; (4) adaptador sobre `sync-client`.
+
+---
+
+## 17. El adaptador tal y como se ha construido (tanda 3)
+
+Precisa §13 con lo que hay en `apps/tasks`. Donde difiera de §13, manda esta sección.
+
+- **Dos piezas, no un único `sync.js`.** `src/core.ts` se compila a `/sync-core.js` (IIFE, `window.IkisaiTasks`) y contiene todo lo que tiene tipos y pruebas: `sync-client`, el dominio y una copia en memoria del espejo. `public/sync.js` sigue siendo un script clásico: es el pegamento con los globales de la interfaz y conserva casi literalmente las hojas y envolturas del original. `public/cloud-auth.js` sustituye las hojas de cuenta y arranca la app.
+- **Guardar** (`save()`): `core.plan(state.tabs)` = `adoptLegacyIds` + `decompose` contra la copia en memoria + `validateOperations`; si falla, se readopta el último modelo y se avisa (el lote no entra en la cola). Si hay operaciones, `core.commit()` las aplica al instante a la copia en memoria y las encola; un `save()` son uno o dos lotes (dos solo cuando una misma fila cambia campos y además se borra o restaura).
+- **`decompose` confía en el modelo.** La interfaz ya propaga en `state.tabs` el borrado a las hijas, la restauración a todo el lote (`deleteBatch` = `deleted_at`) y el archivo de familia a sus etiquetas. `decompose` solo garantiza, de forma idempotente, lo que el servidor exige: ninguna hija viva bajo un padre borrado, ninguna etiqueta activa en una familia archivada, y el `done` de un contenedor no se escribe. Repetir un guardado con el modelo aún sin refrescar no envía nada. (Sustituye a las cascadas por transición descritas en §3.1 para el camino de la interfaz; `ops.ts` las sigue ofreciendo a otros clientes.)
+- **Revisiones encadenadas:** las operaciones del segundo lote llevan la misma `expectedRevision` que tenía el espejo; `sync-client` la ajusta al confirmar el primero.
+- **Refresco:** cada cambio de tabla del espejo recarga la copia en memoria (nunca mientras haya un guardado local en vuelo), recompone el modelo y, solo si cambió, hace `adopt()` + `render()`.
+- **Estado:** `Sync.mode` se deriva en el orden `conflict`, `error` (lote rechazado), `unauthorized`, `offline`, `syncing`, `pending`, `online`. `Sync.record.queue.length` = comandos en cola + guardados locales en vuelo. `Sync.record.conflict` y `Sync.record.failure` salen de `conflicts()` y `rejected()`.
+- **Pestaña secundaria:** no arranca la sincronización; lee el espejo y se refresca por `BroadcastChannel('ikisai-tasks')`.
+- **Primera entrada:** con la app vacía, el propietario con acceso completo ve «Primera área» (área + Entrada + familias en un lote).
+- **Almacenamiento propio:** estado de interfaz en `localStorage` (`ikisai-tasks-ui`), adjuntos descargados en IndexedDB `ikisai-tasks-ui-v1`, bloqueos privados en `localStorage`. El espejo es `ikisai-tasks-v1`, de `sync-client`, con `clearOnLogout: true`.
+- **Historial:** se piden hasta 200 lotes a `history` y el filtro por tarea o proyecto se aplica en el cliente (hasta que exista C8). `canUndo` es falso para lectores y para lotes con `call` o `purge`.
+- **Menú:** CSV, copia portable, respaldo, cuentas, accesos, propuestas y registro de accesos están ocultos hasta que existan sus rutas o su fase.
+- **Pruebas de extremo a extremo:** `tests/tasks/e2e-server.ts` sirve `apps/tasks/dist` y atiende `/api/v1` con la `tasks-api` real sobre PGlite; `tests/tasks/app.spec.ts` lleva el número del escenario original en cada paso.
+

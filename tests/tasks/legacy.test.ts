@@ -19,10 +19,10 @@ const find = (tabs: LegacyTab[], tabId: string) => tabs.find((t) => t.id === tab
 async function save(tabs: LegacyTab[]): Promise<Operation[][]> {
   adoptLegacyIds(tabs);
   const batches = decompose(await db.data(), tabs);
-  for (const batch of batches) {
-    validateOperations(batch, { role: 'owner', scopes: '*' });
-    await db.commit(batch);
-  }
+  for (const batch of batches) validateOperations(batch, { role: 'owner', scopes: '*' });
+  // Sin sync-client de por medio, cada lote se recalcula sobre las revisiones que dejó el anterior.
+  for (let round = 0, next = batches; next.length && round < 4; round += 1, next = decompose(await db.data(), tabs)) await db.commit(next[0]!);
+  assert.deepEqual(decompose(await db.data(), tabs), [], 'tras guardar no queda nada por enviar');
   return batches;
 }
 
@@ -121,7 +121,7 @@ test('legacy · tareas: crear con hijas, etiquetas y dependencias; editar; compl
   assert.deepEqual(plain(find(await model(), tab)), plain(find(tabs, tab)));
 });
 
-test('legacy · papelera: borrar un padre arrastra a sus hijas; restaurar una hija restaura el lote y al padre', async () => {
+test('legacy · papelera: borrar un padre arrastra a sus hijas; restaurar el lote; quitar del modelo es borrar', async () => {
   const { tab } = await db.area('Papelera');
   let tabs = await model();
   const parent = newTask('Padre'), a = newTask('A', { parentId: parent.id, order: 2048 }), b = newTask('B', { parentId: parent.id, order: 3072 }), suelta = newTask('Suelta', { order: 4096 });
@@ -136,7 +136,9 @@ test('legacy · papelera: borrar un padre arrastra a sus hijas; restaurar una hi
   const deleted = tasks.filter((t) => t.deleted);
   assert.equal(deleted.length, 3);
   assert.equal(new Set(deleted.map((t) => t.deleteBatch)).size, 1, 'el lote de borrado se reconoce por su fecha común');
-  tasks.find((t) => t.id === a.id)!.deleted = false;
+  // Restaurar como lo hace la interfaz: todo el lote de borrado y el padre.
+  const batchOf = tasks.find((t) => t.id === a.id)!.deleteBatch;
+  for (const t of tasks) if (t.deleteBatch === batchOf) t.deleted = false;
   batches = await save(tabs);
   assert.deepEqual(batches[0]!.map((o) => o.op), ['restore', 'restore', 'restore']);
   // Quitar una tarea del modelo equivale a enviarla a la papelera; editar y borrar a la vez sale en dos lotes.
