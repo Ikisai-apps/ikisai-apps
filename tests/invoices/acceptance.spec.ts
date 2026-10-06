@@ -24,6 +24,11 @@ let api: FakeApi;
 let server: PreviewServer;
 let baseURL: string;
 
+// Las tres pruebas comparten el servidor simulado del worker: A1 crea la factura y las asignaciones que O7–O9 comprueban.
+// En serie, un reintento de la CI (`--retries=2`) repite todo el archivo en un worker limpio, en vez de repetir solo
+// O7–O9 contra un servidor recién arrancado y sin datos (que es lo que dejaba `#purchases .row` en 0).
+test.describe.configure({ mode: 'serial' });
+
 test.beforeAll(async () => {
   api = await startFakeApi({
     users: [USER, READER],
@@ -441,7 +446,11 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
   });
 
   await test.step('O9 · cerrar sesión borra el espejo local (clearOnLogout)', async () => {
+    // Al volver la red, el cliente está sincronizando: cerrar sesión con una lectura en vuelo deja que esa lectura escriba
+    // el espejo y el `userId` del propietario después del borrado, y la siguiente persona (O8, reader) arranca con
+    // USER_CHANGED y stores borrados → «Error de sincronización» permanente. Esperamos a que termine antes de salir.
     await nav(page, 'Inicio').click();
+    await synced(page);
     await page.locator('#logoutHome').click();
     await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
     const counts = await page.evaluate(async () => {
