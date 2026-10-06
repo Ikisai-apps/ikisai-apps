@@ -70,7 +70,7 @@ function toFields(values: FormValues): Record<string, unknown> {
 }
 
 /** Vista Reservas: lista con filtros y búsqueda, alta y edición de los datos principales, y confirmación. */
-export const mountReservations: ViewMount = ({ main, client }) => {
+export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   let rows: ReservationRow[] = [];
   let eventByReservation = new Map<string, EventRow>();
   let filter: Filter = 'proximas';
@@ -83,6 +83,10 @@ export const mountReservations: ViewMount = ({ main, client }) => {
   const filterBar = el('div', { class: 'filters', role: 'group', 'aria-label': 'Filtrar reservas' });
   const count = el('span', { class: 'count', id: 'reservationCount' }, '0');
   const listHost = el('div');
+  const trashList = el('ul', { class: 'list', 'aria-label': 'Reservas en la papelera' });
+  const trashCount = el('span', { class: 'count', id: 'trashCount' }, '0');
+  const trash = el('details', { id: 'trash', hidden: true }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList);
+  let deleted: ReservationRow[] = [];
 
   replace(
     main,
@@ -91,6 +95,7 @@ export const mountReservations: ViewMount = ({ main, client }) => {
     filterBar,
     el('div', { class: 'sectionlabel' }, 'Reservas', count),
     listHost,
+    trash,
     writable ? el('button', { class: 'fab', type: 'button', id: 'newReservation', onclick: () => openForm(null) }, icon('plus'), 'Nueva reserva') : null,
   );
 
@@ -108,6 +113,10 @@ export const mountReservations: ViewMount = ({ main, client }) => {
       .filter((r) => !query || [r.title, r.contact_name, r.code].some((v) => typeof v === 'string' && v.toLowerCase().includes(query)))
       .sort((a, b) => (dayNumber(a.start_date) ?? Infinity) - (dayNumber(b.start_date) ?? Infinity) || a.title.localeCompare(b.title, 'es'));
     count.textContent = String(visible.length);
+    trash.hidden = deleted.length === 0;
+    trashCount.textContent = String(deleted.length);
+    replace(trashList, deleted.map((r) => listRow({ id: r.id, title: r.title, meta: [dateRange(r), r.code ?? 'código pendiente'], deleted: true, pending: r._pending === true,
+      onClick: () => navigate(`#/reservas/${r.id}`), label: `Abrir ${r.title} en la papelera` })));
     if (visible.length === 0) {
       replace(listHost, el('div', { class: 'empty' }, rows.length === 0
         ? [el('strong', null, 'Todavía no hay reservas'), writable ? 'Crea la primera con «Nueva reserva». Funciona también sin conexión.' : 'Cuando alguien cree una reserva aparecerá aquí.']
@@ -123,7 +132,8 @@ export const mountReservations: ViewMount = ({ main, client }) => {
           EVENT_TYPE_LABELS[r.event_type] ?? r.event_type, r.code ?? 'código pendiente'],
         chips: [el('span', { class: 'chip', dataset: { status: r.status } }, statusLabel(r.status))],
         pending: r._pending === true,
-        ...(writable ? { onClick: () => openForm(r), label: `Editar ${r.title}` } : {}),
+        onClick: () => navigate(`#/reservas/${r.id}`),
+        label: `Abrir ${r.title}`,
       });
     })));
   }
@@ -245,7 +255,9 @@ export const mountReservations: ViewMount = ({ main, client }) => {
   }
 
   async function load(): Promise<void> {
-    rows = (await client.list(RESERVATIONS)) as ReservationRow[];
+    const all = (await client.list(RESERVATIONS, { includeDeleted: true })) as ReservationRow[];
+    rows = all.filter((r) => r.deleted_at === null);
+    deleted = all.filter((r) => r.deleted_at !== null);
     eventByReservation = new Map(((await client.list(EVENTS)) as EventRow[]).map((e) => [e.reservation_id, e]));
     paint();
   }

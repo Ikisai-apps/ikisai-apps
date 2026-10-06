@@ -15,6 +15,10 @@ const configFile = path.resolve(here, '../../apps/booking/vite.config.ts');
 const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
 const RESERVATIONS = 'booking.reservations';
 const FINANCE = 'booking.reservation_finance';
+const EVENTS = 'booking.events';
+const GUESTS = 'booking.guests';
+const RESTRICTIONS = 'booking.dietary_restrictions';
+const CHECKLIST = 'booking.checklist_items';
 
 let api: FakeApi;
 let server: PreviewServer;
@@ -106,58 +110,161 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     expect(api.rows(FINANCE).map((r) => r.id)).toEqual([rows[0]!.id]);
   });
 
-  await test.step('recargar y seguir viéndola desde el espejo local; Inicio la lista como próxima', async () => {
+  await test.step('recargar: sigue en el espejo local; Inicio la lista como próxima; filtros y búsqueda', async () => {
     await page.reload();
     await expect(page.locator('#reservationList .row', { hasText: 'Retiro Test' })).toBeVisible();
     await page.locator('.nav').getByText('Inicio', { exact: true }).click();
     await expect(page.locator('#upcomingList .row', { hasText: 'Retiro Test' })).toBeVisible();
     await expect(page.locator('#notices')).toContainText('pre-reserva pendiente de confirmar');
     await page.locator('.nav').getByText('Reservas', { exact: true }).click();
-  });
-
-  await test.step('sin red: editar y ver «pendiente»', async () => {
-    await context.setOffline(true);
-    await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
-
-    await page.getByRole('button', { name: 'Editar Retiro Test' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Editar reserva' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('Revisión 1');
-    // «Guardar» solo aparece cuando hay cambios.
-    await expect(page.locator('#saveReservation')).toBeHidden();
-    await dialog.getByLabel('Personas previstas').fill('22');
-    await expect(page.locator('#saveReservation')).toBeVisible();
-    await page.locator('#saveReservation').click();
-    await expect(dialog).toBeHidden();
-
-    const row = page.locator('#reservationList .row', { hasText: 'Retiro Test' });
-    await expect(row).toContainText('22 personas');
-    await expect(row).toHaveAttribute('data-pending', 'true');
-    await expect(row).toContainText('Pendiente de sincronizar');
-    await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
-    expect(api.rows(RESERVATIONS)[0]!.expected_guests).toBe(20);
-  });
-
-  await test.step('volver a la red y ver sincronizado: solo viajó el campo cambiado', async () => {
-    await context.setOffline(false);
-    await page.waitForFunction(() => navigator.onLine);
-    await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
-
-    const row = page.locator('#reservationList .row', { hasText: 'Retiro Test' });
-    await expect(row).toHaveAttribute('data-pending', 'false', { timeout: 15_000 });
-    await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
-    expect(api.rows(RESERVATIONS)[0]).toMatchObject({ expected_guests: 22, revision: 2, status: 'pre_reservada' });
-  });
-
-  await test.step('filtros y búsqueda', async () => {
     await page.locator('.filters').getByRole('button', { name: 'Canceladas' }).click();
     await expect(page.getByText('Ninguna reserva coincide')).toBeVisible();
     await page.locator('.filters').getByRole('button', { name: 'Pre-reservas' }).click();
-    await expect(page.locator('#reservationList .row')).toHaveCount(1);
     await page.getByLabel('Buscar reservas').fill('yoga');
     await expect(page.getByText('Ninguna reserva coincide')).toBeVisible();
     await page.getByLabel('Buscar reservas').fill('retiro');
     await expect(page.locator('#reservationList .row')).toHaveCount(1);
+  });
+
+  await test.step('ficha sin red: editar y ver «pendiente»; al volver la red solo viaja el campo cambiado', async () => {
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
+    await expect(page.locator('#blockOperation')).toContainText('se crea al confirmar');
+    await context.setOffline(true);
+    await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
+
+    await page.locator('#editReservation').click();
+    const dialog = page.getByRole('dialog', { name: 'Editar reserva' });
+    await expect(dialog).toContainText('Revisión 1');
+    await expect(page.locator('#saveRow')).toBeHidden(); // «Guardar» solo aparece con cambios
+    await dialog.getByLabel('Personas previstas').fill('22');
+    await dialog.getByLabel('Teléfono').fill('600 000 000');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#blockSummary')).toContainText('22 previstas');
+    await expect(page.locator('.ficha .chip.pending')).toBeVisible();
+    await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
+    expect(api.rows(RESERVATIONS)[0]!.expected_guests).toBe(20);
+
+    await context.setOffline(false);
+    await page.waitForFunction(() => navigator.onLine);
+    await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
+    await expect(page.locator('.ficha .chip.pending')).toHaveCount(0, { timeout: 15_000 });
+    expect(api.rows(RESERVATIONS)[0]).toMatchObject({ expected_guests: 22, contact_phone: '600 000 000', revision: 2, status: 'pre_reservada', title: 'Retiro Test' });
+  });
+
+  await test.step('confirmar crea el evento operativo; editar la operación', async () => {
+    await page.locator('#confirmReservation').click();
+    await page.locator('.dialog').getByRole('button', { name: 'Confirmar', exact: true }).click();
+    await expect(page.locator('#statusChip')).toHaveText('Confirmada', { timeout: 15_000 });
+    await expect(page.locator('#blockOperation')).toContainText('EVT_TEST_001');
+    await expect(page.locator('#confirmReservation')).toHaveCount(0);
+
+    await page.locator('#editOperation').click();
+    const dialog = page.getByRole('dialog', { name: 'Operación' });
+    await dialog.getByLabel('Hora de llegada').fill('17:00');
+    await dialog.getByLabel('Hora de salida').fill('12:00');
+    await dialog.getByLabel('Personas finales').fill('23');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#blockOperation')).toContainText('17:00');
+    await expect(page.locator('#blockSummary')).toContainText('23 finales');
+    await expect.poll(() => api.rows(EVENTS)[0]).toMatchObject({ arrival_time: '17:00', departure_time: '12:00', final_guests: 23, revision: 2 });
+  });
+
+  await test.step('checklist base, una restricción y el cobro', async () => {
+    await page.locator('#seedChecklist').click();
+    await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
+    await page.locator('#blockChecklist').getByRole('checkbox', { name: 'Wifi operativo' }).check();
+    await expect.poll(() => api.rows(CHECKLIST).filter((item) => item.status === 'hecho').map((item) => item.label)).toEqual(['Wifi operativo']);
+    await page.locator('#seedChecklist').click();
+    await expect.poll(() => api.rows(CHECKLIST).length).toBe(20); // no duplica
+
+    await page.locator('#addRestriction').click();
+    let dialog = page.getByRole('dialog', { name: 'Nueva restricción' });
+    await dialog.getByLabel('Tipo').selectOption('alergia');
+    await page.locator('#saveRow').click();
+    await expect(dialog.locator('.formerror')).toContainText('«subject»'); // una alergia exige el alérgeno
+    await dialog.getByLabel('Alérgeno o producto').fill('pistacho');
+    await dialog.getByLabel('Gravedad').selectOption('grave');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho');
+    await expect.poll(() => api.rows(RESTRICTIONS)[0]).toMatchObject({ restriction_type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1, active: true });
+
+    await page.locator('#editFinance').click();
+    dialog = page.getByRole('dialog', { name: 'Cobro' });
+    await dialog.getByLabel('Señal requerida (€)').fill('300');
+    await dialog.getByLabel('Señal pagada (€)').fill('100.50');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#blockFinance')).toContainText('Parcial');
+    await expect.poll(() => api.rows(FINANCE)[0]).toMatchObject({ deposit_required: 300, deposit_paid: 100.5 });
+  });
+
+  await test.step('huéspedes: alta, qué falta para SES y firma en pantalla con adjunto', async () => {
+    await page.locator('#openGuests').click();
+    await expect(page.getByRole('heading', { name: 'Huéspedes', level: 2 })).toBeVisible();
+    await expect(page.getByText('Nadie registrado todavía')).toBeVisible();
+    await page.locator('#newGuest').click();
+    let dialog = page.getByRole('dialog', { name: 'Nuevo huésped' });
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Persona');
+    await dialog.getByLabel('Primer apellido').fill('Sintética');
+    await dialog.getByLabel('Tipo de documento').selectOption('DNI');
+    await dialog.getByLabel('Número de documento').fill('00000000t');
+    await expect(page.locator('#sesMissing')).toContainText('segundo apellido');
+    await expect(page.locator('#sesMissing')).toContainText('número de soporte');
+    await dialog.getByLabel('Estado de los datos').selectOption('datos_revisados');
+    await page.locator('#saveRow').click();
+    await expect(dialog.locator('.formerror')).toContainText('Para dar los datos por revisados falta');
+    await dialog.getByLabel('Estado de los datos').selectOption('datos_recibidos');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#guestList .row', { hasText: 'Persona Sintética' })).toContainText('faltan datos para SES');
+    await expect.poll(() => api.rows(GUESTS)[0]).toMatchObject({ first_name: 'Persona', document_number: '00000000T', data_status: 'datos_recibidos', nationality: 'ESP' });
+
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    await page.locator('#signOnScreen').click();
+    dialog = page.getByRole('dialog', { name: 'Firma del parte de entrada' });
+    await expect(dialog).toContainText('No se guarda copia de tu documento');
+    await page.locator('#saveSignature').click();
+    await expect(dialog.locator('.formerror')).toHaveText('Falta la firma en el recuadro.');
+    const box = (await page.locator('#signaturePad').boundingBox())!;
+    await page.mouse.move(box.x + 30, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 30, { steps: 6 });
+    await page.mouse.move(box.x + 220, box.y + box.height - 30, { steps: 6 });
+    await page.mouse.up();
+    await page.locator('#saveSignature').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#guestList .row', { hasText: 'Persona Sintética' })).toContainText('Firmado');
+    // el marcador {"$blob": …} se sustituyó por el id del archivo subido y verificado
+    await expect.poll(() => api.rows(GUESTS)[0]!.signature_file_id, { timeout: 15_000 }).toBe(api.uploads()[0]?.id);
+    expect(api.uploads()[0]).toMatchObject({ mime: 'image/png' });
+    expect(api.uploads()[0]!.size).toBeGreaterThan(200);
+    expect(api.rows(GUESTS)[0]).toMatchObject({ signed_by_name: 'Persona Sintética', revision: 2 });
+  });
+
+  await test.step('papelera: se va la reserva con todo lo suyo y se restaura entera', async () => {
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.locator('.filters').getByRole('button', { name: 'Confirmadas' }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await page.locator('#trashReservation').click();
+    await expect(page.locator('.dialog')).toContainText('22 elementos asociados'); // 20 tareas, 1 restricción, 1 huésped
+    await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
+    await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
+    await expect(page.locator('#trashCount')).toHaveText('1');
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at !== null))).toBe(true);
+
+    await page.locator('#trash summary').click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test en la papelera' }).click();
+    await expect(page.locator('.ficha .chip.trash')).toBeVisible();
+    await page.locator('#restoreReservation').click();
+    await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
+    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho');
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
+    await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });
 });
 

@@ -1,37 +1,36 @@
 # Booking · estado
 
-Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada por Core de forma provisional; en construcción.**
+Actualizado: 6 de octubre de 2026. **Backend completo salvo el cliente real de Google; interfaz con las cuatro pantallas menos Calendario.**
 
 ## Hecho
 
-- `docs/booking/API.md` (PR 3, fusionada): modelo de datos, `booking.confirm_reservation`, validación, visibilidad de huéspedes, rutas, proyección para Food, Calendar con cuenta de servicio, pantallas, offline, aceptación y reparto. Incluye las decisiones del usuario del 6 de octubre (§14).
-- `docs/booking/PETICIONES.md`: peticiones a Core con su estado.
-- **Fase B1 · reservas base** (PR 16, fusionada): migración `20261006_0005_booking_base.sql` (app `booking`, `reservations`, `reservation_finance` invisible para `reader`, `events`, códigos `RSV`/`EVT`, `booking.confirm_reservation`, hook `booking.check_invariants`), `_domain/booking`, `booking-api` y `tests/booking`.
-- **Fase B2 · huéspedes y proyección** (PR 20, fusionada): migración `20261006_0006_booking_guests.sql` (`guests`, `dietary_restrictions`, `checklist_items`, contador `event_food_state`, vista `booking.food_event_projection` con `core.allow_read` para `food` y `booking`, lectura `booking.guest_summary`, invariantes `ORPHAN_CHILD` y `GUEST_MISMATCH`), reglas de dominio de huéspedes y checklist, hook `visible`.
-- **Esqueleto de `apps/booking`** (rama `booking/app`, PR pendiente del visto bueno de Core porque toca `package-lock.json`):
-  - PWA con `@ikisai/ui-kit` y `sync-client` 0.2: login, shell con Inicio · Reservas · Calendario · Huéspedes, service worker y actualización coordinada.
-  - **Inicio**: próximas reservas y avisos calculados con el espejo local.
-  - **Reservas**: lista con filtros y búsqueda, alta y edición de los datos principales sin red (solo viaja el campo cambiado), «Confirmar reserva» (`call`), y pantalla «Por resolver» con conflictos y lotes rechazados.
-  - Calendario y Huéspedes: marcadas como próximas.
-  - `clearOnLogout` para huéspedes e importes, con aviso si hay cambios sin enviar.
-  - `packages/domain-booking` reexporta `_domain/booking`.
-  - `tests/booking/smoke.spec.ts` (Playwright, corre en la CI): login, reservas sin red, sincronización y PWA. 2 de 2 en verde.
+- `docs/booking/API.md` (PR 3): modelo, validación, visibilidad, rutas, proyección, Calendar, pantallas, offline y aceptación; decisiones del usuario en §14.
+- **B1 · reservas base** (PR 16): migración `20261006_0005_booking_base.sql`, `booking.confirm_reservation`, `_domain/booking`, `booking-api`.
+- **B2 · huéspedes y proyección** (PR 20): migración `20261006_0006_booking_guests.sql`, `booking.food_event_projection` con `core.allow_read` para `food` y `booking`, `booking.guest_summary`.
+- **Esqueleto de `apps/booking`** (PR 28): login, shell, Inicio y Reservas sin red, PWA.
+- **Tanda 4** (rama `booking/tanda-4`):
+  - **Ficha de la reserva** (`#/reservas/<id>`): Resumen, Operación (con cierre), Checklist (base desde la plantilla, marcar, añadir, quitar), Huéspedes (recuentos), Comidas con restricciones y Cobro (solo quien ve importes). Editar, confirmar, archivar y desarchivar.
+  - **Papelera**: borrado en cascada de la reserva con su evento, importes, huéspedes, restricciones y checklist en un solo lote; restauración de todo lo que se borró junto. Con evento operativo, solo un propietario.
+  - **Huéspedes** (`#/huespedes/<evento>`): alta y edición con los datos del anexo I, aviso de qué falta para SES según documento y edad, firma en pantalla (imagen como adjunto con marcador `$blob`) o en papel con parte imprimible, cola de envío a SES con registro del envío, y recuentos por `booking.guest_summary` para quien no ve huéspedes.
+  - `clearOnLogout` para huéspedes e importes, con aviso antes de cerrar sesión si hay cola.
+  - **B3 · cola de Calendar con adaptador falso**: migración `20261006_0400_booking_calendar.sql` (enlaces, cola, triggers que encolan en la transacción del guardado, acciones `calendar_claim`, `calendar_report`, `calendar_retry` y lectura `calendar_status`), dominio `calendarProjection` (título `[PRE]`, colores, día completo con el día de salida u horario real, descripción sin datos personales, id determinista, hash), worker y rutas `calendar/tick`, `calendar/status` y `calendar/:id/retry`.
+  - Pruebas: `tests/booking/*.test.ts` 48 de 48 (conformidad, API y SQL, dominio, huéspedes, Calendar); humo de Playwright ampliado a ficha, confirmación, checklist, restricciones, cobro, firma con adjunto y papelera.
 
 ## Pendiente
 
-- Ficha completa de la reserva (bloques Resumen, Operación, Comidas, Cobro), papelera y archivado.
-- Pantalla Huéspedes (alta con los datos del anexo I, firma en pantalla o en papel, cola de envío a SES) y restricciones y checklist en la ficha.
-- B3: Calendar. La cola se programa contra un adaptador falso; la clave JSON de la cuenta de servicio de Google se pide a Víctor al llegar a esa parte. Depende de P15.
-- Recorrido de aceptación A–E e I completo en PC y Android.
+- **Cliente real de Google Calendar** (`booking-api/calendar/google.ts` es un esqueleto): JWT de la cuenta de servicio, llamadas a la API v3, reactivar o subir `generation` si alguien borró el evento a mano. Necesita la clave del usuario (P7).
+- Disparo del worker tras cada commit y empuje oportunista desde `calendar/status`; planificador de Core (P8, depende de P16).
+- **Pantalla Calendario** (vista mensual propia y panel de sincronización con Google).
+- Justificante de envío a SES como archivo (hoy solo referencia de texto); restricciones ligadas a un huésped desde su ficha.
+- Simplificar `apps/booking/src/ui/reservations.ts`: la hoja de alta conserva una rama de edición que ya no se usa (la edición vive en la ficha).
+- Recorrido de aceptación A–E e I completo en PC y Android contra el backend real, cuando Core publique.
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
 
 ## Avisos para otros equipos
 
-- **Food:** `booking.events` existe desde la migración `20261006_0005` y `booking.food_event_projection` desde la `20261006_0006`, ya registrada para vosotros: `GET /api/v1/read/booking.food_event_projection?where[event_id]=…` desde `food-api`. Columnas en `API.md` §7.1 (las del contrato más `reservation_status`, `guest_count_is_final`, `requires_meals` y `meal_notes`).
-- **Todos:** la CI no ejecuta todavía las pruebas `*.test.ts` de `tests/booking` (P14); se lanzan en local. El humo de Playwright sí corre en la CI.
-- **Core:** al fusionar el esqueleto, `booking` pasa a ser publicable para `release.yml` (existen `booking-api/index.ts` y `apps/booking/package.json`). Falta la primera puesta en marcha: dominio `booking.ikisai.com` y alta del propietario.
-- **UI:** la marca de la cabecera del shell es el icono de documento; si el kit admite un icono por app, Booking usaría `calendar`.
+- **Food:** `GET /api/v1/read/booking.food_event_projection?where[event_id]=…`. Columnas en `API.md` §7.1.
+- **Core:** P16 (rutas `worker` con TypeScript) es lo que falta para que el planificador mueva la cola de Calendar.
 
 ## Bloqueos
 
-- Ninguno. B3 (Calendar) necesitará P15 y la clave de la cuenta de servicio.
+- Calendar real: clave JSON de la cuenta de servicio de Google (usuario) y P16 (Core). Nada más está bloqueado.

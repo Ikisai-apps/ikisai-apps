@@ -510,12 +510,15 @@ Casi toda la lectura se resuelve en el cliente contra el espejo local (Inicio, l
 
 | Método y ruta | Entrada | Salida | Rol mínimo |
 |---|---|---|---|
+| `POST calendar/tick` | `{ limit?, reservationIds? }` opcional | `{ processed, failed, pending, health }`: reclama y procesa un lote de la cola | editor |
 | `GET calendar/status` | `?reservationIds=a,b` opcional | `{ configured, calendarId, health, items: [{ reservationId, syncStatus, lastSyncedAt, lastError, htmlLink, pendingJob, attempts, nextAttemptAt }] }` | reader |
 | `POST calendar/:reservationId/retry` | — | `{ queued: true }` | editor |
 | `POST read/booking.guest_summary` | `{ event_id }` | `{ eventId, total, bySex: { H, M, X, sinDato }, minors, signed, dataStatus: {…}, sesStatus: {…} }` | reader |
 | `GET read/booking.food_event_projection?where[event_id]=…` | filtros de igualdad, `limit`, `offset` | `{ rows, total }` con las columnas de §7.1 | reader |
 
-- `calendar/status` además empuja los trabajos vencidos (hasta 3 por llamada, sin retrasar la respuesta). Así hay reintentos siempre que alguien tenga la app abierta, sin depender de un planificador (ver P8).
+- **Implementado en la fase B3 con adaptador falso:** la cola solo avanza con `calendar/tick`. Sin credenciales de Google el tick no reclama nada y responde `health: 'not_configured'`; los trabajos esperan en `pending`. Quedan por hacer el disparo tras cada commit (`afterCommit`), el empuje oportunista desde `calendar/status` y el cliente real de Google.
+- El planificador de Core no puede llamar hoy al tick: las acciones de la ruta `worker` son solo SQL y el tick necesita lógica en TypeScript (ver P16 en `PETICIONES.md`).
+- En SQL, `booking.calendar_claim` y `booking.calendar_report` son acciones registradas sin roles de usuario (solo sistema); `booking.calendar_retry` es acción de editor y propietario; `booking.calendar_status` es lectura para todos los roles.
 - `health` ∈ `ok | not_configured | auth_error | calendar_not_found`.
 - `booking.guest_summary` da a quien no ve huéspedes los recuentos del canon §10 («24 huéspedes · 13 mujeres · 10 hombres · 2 menores»). Quien sí los ve lo calcula en local. Es una lectura registrada con `core.allow_read` (contrato §5.1), no una ruta propia.
 - La proyección de Food también está registrada para la propia app `booking`, para poder comprobar desde Booking qué está viendo cocina.
@@ -587,7 +590,7 @@ Booking no consume enlaces de otras apps en V1. El «coste por retiro» leyendo 
 
 Supabase manda; Calendar es una proyección de una sola dirección. Una edición manual en Google no cambia la reserva y se sobrescribe en la siguiente sincronización.
 
-**Acceso. [desviación]** El handoff §10 proponía un puente Apps Script firmado con HMAC. El plan de Core lo sustituye por una cuenta de servicio de Google; el puente queda como plan B documentado en `integrations/calendar/`. La Edge firma un JWT RS256 con la clave de la cuenta, lo cambia por un token de acceso (ámbito `calendar.events`), lo guarda en memoria y llama a la API v3. Secretos de la función: `GOOGLE_SA_CLIENT_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `BOOKING_CALENDAR_ID` (ver P7). El calendario «Agram Camp - Reservas» se comparte con la cuenta de servicio con permiso de modificar eventos. Sin secretos, la integración queda apagada: los trabajos esperan y la UI dice «Calendar no configurado».
+**Acceso. [desviación]** El handoff §10 proponía un puente Apps Script firmado con HMAC. El plan de Core lo sustituye por una cuenta de servicio de Google; el puente queda como plan B documentado en `integrations/calendar/`. La Edge firma un JWT RS256 con la clave de la cuenta, lo cambia por un token de acceso (ámbito `calendar.events`), lo guarda en memoria y llama a la API v3. Secretos de la función: `GOOGLE_SERVICE_ACCOUNT_JSON` (la clave JSON completa de la cuenta de servicio, la carga Core) y `BOOKING_CALENDAR_ID` (ver P7). El calendario «Agram Camp - Reservas» se comparte con la cuenta de servicio con permiso de modificar eventos. Sin secretos, la integración queda apagada: los trabajos esperan y la UI dice «Calendar no configurado».
 
 **Estado deseado** (regla pura en `domain-booking`):
 
@@ -609,7 +612,7 @@ Supabase manda; Calendar es una proyección de una sola dirección. Una edición
   - Con hora de llegada **y** de salida: evento con horario, de `start_date + arrival_time` a `end_date + departure_time`. Si el fin no es posterior al inicio, se suma un día (regla legacy).
   - En cualquier otro caso, día completo. Con una sola hora no se inventa la otra.
   - Día completo: `start.date = start_date`, `end.date = end_date + 1` (el fin es exclusivo en Google). Una estancia de viernes a domingo ocupa viernes, sábado y domingo. **[desviación, decisión del usuario]** El script legacy no incluía el día de salida.
-- Descripción, texto plano en este orden: marcadores `[[IKISAI_CALENDAR_SYNC]]` y `[[ID_RESERVA=RSV_…]]`; reserva (código, estado, contacto, personas previstas y finales); operación si hay evento (código, responsable, llegada y salida, montaje, alojamiento, estados de preparación, alojamiento, cocina y limpieza); alimentación (régimen solicitado y confirmado, tipo de menú); notas (`customer_notes`, `operational_notes`).
+- Descripción, texto plano en este orden: marcadores `[[IKISAI_CALENDAR_SYNC]]` y `[[ID_RESERVA=RSV_…]]`; reserva (código, estado, contacto, personas previstas y finales); operación si hay evento (código, responsable, llegada y salida, montaje, número de habitaciones, estados de preparación, alojamiento, cocina y limpieza); alimentación (régimen solicitado y confirmado, tipo de menú); notas (`customer_notes`, `operational_notes`). La distribución de habitaciones (`room_distribution`) y las notas de alimentación quedan fuera: son texto libre y pueden llevar nombres de huéspedes.
 - Nunca: huéspedes, documentos, fechas de nacimiento, SES, restricciones alimentarias, importes, notas internas.
 - `extendedProperties.private`: `ikisaiReservationId`, `ikisaiReservationCode`.
 

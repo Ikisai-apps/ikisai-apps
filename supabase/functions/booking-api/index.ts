@@ -1,5 +1,6 @@
 // Punto de entrada Deno de la Edge Function `booking-api`.
 import { createBookingApp } from './app.ts';
+import { createGoogleCalendarAdapter } from './calendar/google.ts';
 
 declare const Deno: { serve: (handler: (request: Request) => Promise<Response>) => void; env: { get: (name: string) => string | undefined } };
 
@@ -9,4 +10,7 @@ Deno.serve(createBookingApp({
   serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   release: Deno.env.get('IKISAI_RELEASE') ?? 'development',
   stage: 'beta',
+  workerKey: Deno.env.get('IKISAI_WORKER_KEY'),
+  // Sin credenciales (o mientras el cliente real no exista) el adaptador es null: Calendar queda «no configurado».
+  calendar: { adapter: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_CALENDAR_ID') }) },
 }));
