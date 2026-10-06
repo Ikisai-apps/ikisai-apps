@@ -1,20 +1,22 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026. Equipo Invoices (agente de backend). Rama `invoices/api-doc`, worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026. Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
-- `docs/invoices/API.md` (puerta G2) redactado siguiendo la plantilla: modelo completo (`suppliers` ampliada, `invoices`, `invoice_files`, `invoice_lines`, `tax_lines`, `allocations`, `exports`, `export_items`), estados y bloqueos, periodo fiscal derivado, nombre canónico, procedimientos `import_v1`, `register`, `annul`, `create_export`, `mark_delivered`, hooks de validación, rutas propias, destinos tipados, resumen fiscal, ZIP de gestoría con manifest, pantallas, offline, aceptación (A1–A21, O1–O8) y reparto.
-- Petición de revisión registrada en `docs/core/PETICIONES.md` con las siete peticiones concretas a Core (§12 del documento).
+- `docs/invoices/API.md` (G2) revisión 2, cotejado con el handoff V3: schema `ikisai.invoice.v1` exacto, nombre canónico `AAAA_MM_DD_(empresa)_objeto[_pNN][_NN].ext`, estados `pendiente_datos / pendiente_revision / validada / archivada / anulada`, asignación por línea con destinos `area/project/task`, `reservation/event`, `ingredient/equipment`, `general`, ZIP `IKISAI_COMPRAS_AAAA_TN/` con `facturas/`, tres CSV y `manifest.json` sin cerrar registros. Aprobado de forma provisional por Core.
+- `docs/invoices/PETICIONES.md` con las peticiones resueltas y las abiertas (fase 2).
+
+## En curso
+
+- PR `invoices/api-doc` (#2) rebasada sobre `main`; se fusiona con CI verde.
+- Siguiente: `supabase/functions/_domain/invoices` (tipos, schema, recalculo, nombre canónico), migración `*_invoices_model.sql`, `import_v1`, rutas y pantallas.
 
 ## Pendiente
 
-- Revisión y aprobación de Core (G2). Hasta entonces no se crean migraciones ni rutas.
-- Cotejar con el handoff V3 (`03_IKISAI_INVOICE_IMPORT_V1.schema.json`, `04_EJEMPLO…json`, `07_CHECKLIST_ACEPTACION.md` A): **no estaba en este PC** y la forma del JSON `ikisai.invoice.v1` del documento es una propuesta.
-- Tras G2: migración `*_invoices_model.sql`, `packages/domain-invoices`, `beforeCommit` y rutas, pruebas de conformidad y dominio; frontend por verticales.
+- Lectura `tasks.targets` por parte de Tasks (puente: `snapshot` de `tasks-api` con el token del usuario).
+- Fase 2: proyecciones de Booking y Food para destinos; `imports/extract`.
 
 ## Bloqueos
 
-- Validación de destinos de Tareas desde `beforeCommit` necesita el bearer del usuario en `RequestContext` (petición a Core).
-- Los `args` de un `call` que referencian un archivo necesitan el `file_id` verificado: se pide al `sync-client` la sustitución de marcadores `{"$blob": sha256}`.
-- Ruta de resolución de destinos en la API de Tareas: a coordinar con el equipo Tasks.
+- Ninguno.
