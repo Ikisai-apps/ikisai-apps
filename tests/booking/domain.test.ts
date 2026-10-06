@@ -91,3 +91,18 @@ test('dominio · reglas de lote: el evento solo nace al confirmar y solo lo borr
   assert.equal(second.length, 1);
   assert.equal(second[0]!.details.index, 1);
 });
+
+test('dominio · agentes: cancelar, archivar, huéspedes e importes exigen aprobación; el resto no', async () => {
+  const { bookingAgentRisk } = await import('../../supabase/functions/_domain/booking/mod.ts');
+  const id = uuid();
+  const res = (fields: Record<string, unknown>) => bookingAgentRisk([{ op: 'update', table: TABLES.reservations, id, fields }]);
+  assert.deepEqual(res({ contact_phone: '600000000' }), { required: false, reasons: [] });
+  assert.deepEqual(res({ status: 'pre_reservada' }), { required: false, reasons: [] });
+  assert.deepEqual(res({ status: 'cancelada' }), { required: true, reasons: ['booking:status:cancelada'] });
+  assert.deepEqual(res({ archived_at: '2027-01-01T00:00:00Z' }).reasons, ['booking:archive']);
+  assert.deepEqual(res({ archived_at: null }).required, false, 'desarchivar no');
+  assert.deepEqual(bookingAgentRisk([{ op: 'insert', table: TABLES.guests, id, fields: { first_name: 'X' } }]).reasons, ['booking:guests:insert']);
+  assert.equal(bookingAgentRisk([{ op: 'insert', table: TABLES.finance, id, fields: {} }]).required, false, 'la fila de importes vacía nace con la reserva');
+  assert.deepEqual(bookingAgentRisk([{ op: 'update', table: TABLES.finance, id, fields: { deposit_paid: 10 } }]).reasons, ['booking:finance']);
+  assert.equal(bookingAgentRisk([{ op: 'update', table: TABLES.checklist, id, fields: { status: 'hecho' } }]).required, false);
+});

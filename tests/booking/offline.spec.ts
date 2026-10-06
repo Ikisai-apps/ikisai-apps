@@ -93,7 +93,7 @@ test('O1 crear una reserva sin red, recargar y reconectar', async ({ page, conte
   await expect(row).toHaveAttribute('data-pending', 'true');
 
   await context.setOffline(false);
-  await expect.poll(() => api().rows(RESERVATIONS).map((r) => r.title), { timeout: 45_000 }).toEqual(['Retiro Test']);
+  await expect.poll(() => api().rows(RESERVATIONS).map((r) => r.title), { timeout: 15_000 }).toEqual(['Retiro Test']);
   await expect(row).toHaveAttribute('data-pending', 'false');
   await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
 });

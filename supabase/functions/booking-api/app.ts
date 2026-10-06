@@ -1,6 +1,6 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
-import { canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
+import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
@@ -113,7 +113,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     slug: 'booking-api',
     origins: base.origins ?? BOOKING_ORIGINS,
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'] },
-    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar) },
+    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar),
     workerRoutes: bookingWorkerRoutes(calendar),
   });

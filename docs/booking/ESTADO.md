@@ -34,7 +34,12 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - **Checklist reordenable** con `createSortableList` del kit: al mover una tarea solo viaja ese ítem (`position` entre sus vecinos); se renumera la lista entera solo si no hay hueco.
   - **Bloque «Coste real»** en Cobro (solo quien ve importes): total asignado en Invoices a la reserva y a su evento, desglose por categoría y asignaciones con su código de factura, leído de `invoices.booking_cost_projection`. Última respuesta guardada en el dispositivo y borrada al cerrar sesión.
   - Retirado el parche `[hidden]` (lo trae el kit 0.8.0).
-- **Tanda 9** (rama `booking/tanda-9`): las listas reordenables del checklist se conservan entre repintados y se actualizan con `setItems`; el foco del asa se recupera tras cada guardado. El humo prueba el reorden con teclado (foco conservado) y con arrastre de ratón.
+- **Tanda 9** (PR 102): las listas reordenables del checklist se conservan entre repintados y se actualizan con `setItems`; el foco del asa se recupera tras cada guardado. El humo prueba el reorden con teclado (foco conservado) y con arrastre de ratón.
+- **Tanda 10** (rama `booking/tanda-10`):
+  - «Coste real» con `renderMoneyBreakdown` del kit 0.9.0: total frente a lo presupuestado (marca «excede»), una línea por categoría con su número de facturas y enlace a las compras de la reserva en Invoices; cada asignación enlaza a su factura (`#/facturas/<código>`).
+  - Agentes de IA: hook `agentRisk` (cancelar o dar por perdida una reserva, archivarla, tocar huéspedes o importes exigen aprobación humana) y `booking.calendar_retry` marcada segura (migración `20261006_0403_booking_agent_safe.sql`).
+  - O1 baja a 15 s de margen con `sync-client` 0.2.3.
+  - El arnés de Playwright pide un puerto libre al sistema: un puerto al azar caía a veces en los rangos que Windows reserva (`EACCES`) y era la intermitencia que se veía de vez en cuando.
 
 ## Pendiente
 
@@ -42,10 +47,8 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - La reactivación de un evento borrado a mano en Google solo está probada en simulación.
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
-- **Reconexión tras recargar sin red (P18, reabierta):** con `sync-client` 0.2.2 la cola sigue tardando unos 30 s en enviarse; el escenario O1 mantiene 45 s de margen.
-- **«Coste real» con `renderMoneyBreakdown` del kit 0.9.0** (pedido por UI y Core): hoy el bloque está pintado a mano porque el kit 0.9.0 (PR #92) aún no está en `main`; se cambia en cuanto entre, añadiendo la comparación con el presupuesto.
 - Las restricciones alimentarias no son reordenables: no tienen columna de orden y son pocas por evento.
-- Peticiones a Core abiertas, sin bloquear: P3, P5, P6, P9 y P18.
+- Peticiones a Core abiertas, sin bloquear: P3, P5, P6 y P9.
 
 ## Avisos para otros equipos
 
