@@ -9,6 +9,8 @@ export const GUESTS: TableName = TABLES.guests;
 export const SPACES: TableName = TABLES.spaces;
 export const BEDS: TableName = TABLES.beds;
 export const ASSIGNMENTS: TableName = TABLES.roomAssignments;
+export const STAFF: TableName = TABLES.staffAssignments;
+export const NEEDS: TableName = TABLES.staffNeeds;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -106,6 +108,7 @@ export function describeError(error: unknown): string {
     case 'ORPHAN_CHILD': {
       const table = (e?.details as { table?: unknown } | null | undefined)?.table;
       if (table === TABLES.roomAssignments) return 'No se puede borrar: hay asignaciones de alojamiento vivas que usan este espacio o esta cama. Quítalas primero.';
+      if (table === TABLES.staffAssignments || table === TABLES.staffNeeds) return 'No se puede borrar el evento: hay turnos o refuerzos vivos en él. Quítalos primero.';
       if (table === TABLES.beds) return 'No se puede borrar el espacio: quedan camas vivas en él.';
       return 'No se puede borrar: quedan datos vivos que dependen de esto.';
     }

@@ -1,6 +1,6 @@
 /** Formularios de fila: se describen con una lista de campos y solo viaja al servidor lo que cambia. */
 import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/sync-client';
-import { el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
@@ -20,6 +20,9 @@ export interface FieldSpec {
   /** Título de sección que se pinta antes de este campo. */
   section?: string;
   hint?: string;
+  /** Para `date`: límites (AAAA-MM-DD) del selector. */
+  dateMin?: string | null;
+  dateMax?: string | null;
 }
 
 export interface BuiltForm {
@@ -70,7 +73,8 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     } else {
       control = el('input', {
         id, type: spec.type, value: shown === null ? '' : String(shown), autocomplete: 'off', oninput: fire,
-        ...(spec.max ? { maxlength: spec.max } : {}), ...(spec.type === 'number' ? { min: 0, step: spec.decimal ? 0.01 : 1, inputmode: spec.decimal ? 'decimal' : 'numeric' } : {}),
+        ...(spec.max && spec.type !== 'date' ? { maxlength: spec.max } : {}),
+        ...(spec.type === 'date' && spec.dateMin ? { min: spec.dateMin } : {}), ...(spec.type === 'date' && spec.dateMax ? { max: spec.dateMax } : {}), ...(spec.type === 'number' ? { min: 0, step: spec.decimal ? 0.01 : 1, inputmode: spec.decimal ? 'decimal' : 'numeric' } : {}),
       });
     }
     controls.set(spec.key, control);
@@ -123,7 +127,7 @@ export interface RowSheetOptions {
   /** Operaciones adicionales del mismo lote. */
   extraOperations?: (id: string, fields: Record<string, unknown>) => RowOperation[];
   /** Botón de borrado en el pie: operaciones que mandan la fila a la papelera. */
-  remove?: { label: string; operations: () => RowOperation[]; confirm?: string };
+  remove?: { label: string; operations: () => RowOperation[]; confirm?: string; /** Confirmación con el diálogo del kit (en vez de `confirm` del navegador). */ confirmDialog?: { title: string; text: string; confirmLabel: string } };
   savedMessage?: string;
   submitLabel?: string;
   /** Sustituye el alta o edición estándar: recibe los valores del formulario y devuelve el lote a enviar. */
@@ -181,8 +185,9 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
   }
 
   const removeButton = options.remove && row
-    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', onclick: () => {
+    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', onclick: async () => {
         if (options.remove!.confirm && !confirm(options.remove!.confirm)) return;
+        if (options.remove!.confirmDialog && !(await confirmDialog({ ...options.remove!.confirmDialog, danger: true }))) return;
         void commit(options.remove!.operations(), 'Enviado a la papelera.');
       } }, options.remove.label)
     : null;

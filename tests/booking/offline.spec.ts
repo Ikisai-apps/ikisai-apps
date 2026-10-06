@@ -5,7 +5,7 @@
  * Cómo correrlo:   npx playwright test tests/booking/offline.spec.ts
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, STAFF, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
 import { startFakeApi } from './fake-api.ts';
 
 test.use({ viewport: { width: 390, height: 844 } });
@@ -300,6 +300,34 @@ test('O8 asignar alojamiento sin red: queda pendiente y llega al reconectar', as
   await expect.poll(() => api().rows(ASSIGNMENTS).map((a) => a.group_label), { timeout: 15_000 }).toEqual(['Grupo sin red']);
   expect(api().rows(ASSIGNMENTS)[0]).toMatchObject({ bed_id: api().rows(BEDS)[0]!.id, persons: 1, event_id: api().rows(EVENTS)[0]!.id });
   await expect(row).toHaveAttribute('data-pending', 'false');
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+});
+
+test('anotar un turno del personal sin red: queda pendiente y llega al reconectar', async ({ page, context }) => {
+  await login(page, harness.baseURL);
+  await createReservation(page);
+  await openFicha(page);
+  await confirmOnline(page);
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+
+  await offline(page, context);
+  await page.locator('#addShift').click();
+  const dialog = page.getByRole('dialog', { name: 'Nuevo turno' });
+  await dialog.locator('#f-person_name').fill('Persona Sintética Sin Red');
+  await dialog.getByLabel('Función').selectOption({ label: 'Acogida del grupo' });
+  await dialog.getByLabel('Horas previstas').fill('5');
+  await page.locator('#saveRow').click();
+  await expect(dialog).toBeHidden();
+  const item = page.locator('#blockStaff .staff-item', { hasText: 'Persona Sintética Sin Red' });
+  await expect(item).toHaveAttribute('data-pending', 'true');
+  await expect(page.locator('#blockOperation')).toContainText('1 turno · 5 h previstas');
+  await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
+  expect(api().rows(STAFF)).toHaveLength(0);
+
+  await context.setOffline(false);
+  await expect.poll(() => api().rows(STAFF).map((a) => a.person_name), { timeout: 15_000 }).toEqual(['Persona Sintética Sin Red']);
+  expect(api().rows(STAFF)[0]).toMatchObject({ function: 'acogida_grupo', planned_hours: 5, status: 'prevista', event_id: api().rows(EVENTS)[0]!.id });
+  await expect(item).toHaveAttribute('data-pending', 'false');
   await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
 });
 
