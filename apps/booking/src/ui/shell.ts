@@ -6,7 +6,7 @@ import { mountReservations } from './reservations.ts';
 import { mountReservation } from './reservation.ts';
 import { mountGuests } from './guests.ts';
 import { mountPending } from './pending.ts';
-import { mountPlaceholder } from './placeholder.ts';
+import { mountCalendar } from './calendar.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -27,7 +27,7 @@ const PENDING = '#/pendientes';
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', PENDING] },
   { hash: '#/reservas', label: 'Reservas', icon: 'list' },
-  { hash: '#/calendario', label: 'Calendario', icon: 'calendar', soon: true },
+  { hash: '#/calendario', label: 'Calendario', icon: 'calendar' },
   { hash: '#/huespedes', label: 'Huéspedes', icon: 'people' },
 ];
 
@@ -35,7 +35,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', mount: mountHome },
   '#/reservas': { title: 'Reservas', mount: mountReservations },
   [PENDING]: { title: 'Por resolver', mount: mountPending },
-  '#/calendario': { title: 'Calendario', mount: mountPlaceholder('Calendario', 'Ocupación por meses y estado de la sincronización con Google Calendar.') },
+  '#/calendario': { title: 'Calendario', mount: mountCalendar },
   '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
 };
 
@@ -61,6 +61,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const shell = createAppShell(root, {
     appName: 'Booking',
+    markIcon: 'bed',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },

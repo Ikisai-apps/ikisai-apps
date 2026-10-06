@@ -1,8 +1,8 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
-import { CALENDAR_RETRY, CALENDAR_STATUS, runCalendarTick, type CalendarInvoke } from './calendar/worker.ts';
+import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
 
@@ -20,6 +20,44 @@ export function visibleBookingRow(table: string, _row: Record<string, unknown>, 
 export interface BookingCalendarConfig {
   /** Adaptador de calendario. Sin él la integración está apagada (`health: 'not_configured'`) y nada se marca como sincronizado. */
   adapter?: CalendarAdapter | null;
+  /** Tras cada commit que toque reservas o eventos, procesa su cola sin esperar al planificador. */
+  syncOnCommit?: boolean;
+}
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined;
+
+const systemInvoke = (supabase: Supabase): CalendarInvoke => (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args });
+
+/** Ruta de sistema para el planificador de Core: `POST /api/v1/worker/calendar/tick` con `X-Ikisai-Worker-Key`. */
+export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}): WorkerRoute[] {
+  return [{
+    method: 'POST', pattern: 'calendar/tick',
+    handler: async ({ invoke, json }) => {
+      const body = await json().catch(() => ({}));
+      const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 50) : 10;
+      return runCalendarTick({ invoke: (name, args) => invoke(name, args), adapter: calendar.adapter ?? null, limit });
+    },
+  }];
+}
+
+/**
+ * `afterCommit`: empuja la cola de las reservas tocadas por el lote. En la Edge va en segundo plano
+ * (`EdgeRuntime.waitUntil`) para no retrasar la respuesta; el guardado nunca depende de Google.
+ */
+export function calendarAfterCommit(supabase: Supabase, calendar: BookingCalendarConfig) {
+  return async (result: CommitResult): Promise<void> => {
+    if (!calendar.adapter || !calendar.syncOnCommit) return;
+    const ids = new Set<string>();
+    for (const change of result.changes) {
+      if (change.table === TABLES.reservations && change.id) ids.add(change.id);
+      const reservationId = change.table === TABLES.events ? change.after?.reservation_id : null;
+      if (typeof reservationId === 'string') ids.add(reservationId);
+    }
+    if (ids.size === 0) return;
+    const work = runCalendarTick({ invoke: systemInvoke(supabase), adapter: calendar.adapter, limit: 10, reservationIds: [...ids] }).then(() => undefined, () => undefined);
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(work);
+    else await work;
+  };
 }
 
 function requireEditor(ctx: RequestContext): void {
@@ -33,7 +71,7 @@ function requireEditor(ctx: RequestContext): void {
  */
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}): AppRoute[] {
   const adapter = calendar.adapter ?? null;
-  const system: CalendarInvoke = (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args });
+  const system = systemInvoke(supabase);
   return [
     {
       method: 'POST', pattern: 'calendar/tick',
@@ -49,8 +87,11 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
       method: 'GET', pattern: 'calendar/status',
       handler: async ({ ctx, url }) => {
         const ids = url.searchParams.get('reservationIds')?.split(',').filter(Boolean);
-        const out = await supabase.rpc<{ items: unknown[] }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: CALENDAR_STATUS, p_args: ids?.length ? { reservationIds: ids } : {} });
-        return { configured: !!adapter, calendarId: adapter?.calendarId ?? null, health: adapter ? 'ok' : 'not_configured', items: out.items };
+        const out = await supabase.rpc<{ items: Array<{ lastError?: string | null }> }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: CALENDAR_STATUS, p_args: ids?.length ? { reservationIds: ids } : {} });
+        // La salud sale de lo que la cola dejó anotado: si algún trabajo está bloqueado por el acceso al calendario, se ve aquí.
+        let health: CalendarHealth = adapter ? 'ok' : 'not_configured';
+        if (adapter) for (const item of out.items) health = healthForCode(item.lastError) ?? health;
+        return { configured: !!adapter, calendarId: adapter?.calendarId ?? null, health, items: out.items };
       },
     },
     {
@@ -64,14 +105,16 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
 }
 
 export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig }) {
-  const { calendar, ...config } = base;
+  const { calendar = {}, ...config } = base;
+  const supabase = createSupabase(config);
   return createApp({
     ...config,
     app: 'booking',
     slug: 'booking-api',
     origins: base.origins ?? BOOKING_ORIGINS,
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'] },
-    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow },
-    routes: bookingRoutes(createSupabase(config), calendar),
+    hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar) },
+    routes: bookingRoutes(supabase, calendar),
+    workerRoutes: bookingWorkerRoutes(calendar),
   });
 }

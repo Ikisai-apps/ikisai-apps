@@ -254,14 +254,14 @@ test('fallo recuperable: espera creciente y error al octavo intento', async () =
   assert.equal(fake.events.has(calendarEventId(id)), true);
 });
 
-test('fallo definitivo: error inmediato y health distinto de ok', async () => {
+test('fallo definitivo: error inmediato en el trabajo y en el enlace', async () => {
   await drain();
   const id = await create();
-  fake.failNext(fatalError('CALENDAR_NOT_FOUND'));
+  fake.failNext(fatalError('GOOGLE_HTTP_400'));
   const out = await tick();
-  assert.deepEqual([out.failed, out.health], [1, 'calendar_not_found']);
+  assert.deepEqual([out.failed, out.health], [1, 'ok'], 'un trabajo rechazado no significa que el calendario esté mal');
   const [job] = await jobs(id);
-  assert.deepEqual([job.status, job.attempts, job.last_error], ['error', 1, 'CALENDAR_NOT_FOUND']);
+  assert.deepEqual([job.status, job.attempts, job.last_error], ['error', 1, 'GOOGLE_HTTP_400']);
   assert.equal((await link(id)).sync_status, 'error');
   // Cancelar una reserva cuyo enlace quedó en error lo deja en deleted, no en error para siempre.
   await update(RESERVATIONS, id, { status: 'cancelada' });

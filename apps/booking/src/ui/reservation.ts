@@ -80,7 +80,7 @@ const FINANCE_SPECS: FieldSpec[] = [
   { key: 'payment_holder', label: 'Titular del pago', type: 'text', max: 200 },
 ];
 
-const RESTRICTION_SPECS: FieldSpec[] = [
+export const RESTRICTION_SPECS: FieldSpec[] = [
   { key: 'restriction_type', label: 'Tipo', type: 'select', options: OPTIONS.restrictionType },
   { key: 'subject', label: 'Alérgeno o producto', type: 'text', max: 200, hint: 'Obligatorio en alergias, intolerancias y «otra».' },
   { key: 'severity', label: 'Gravedad', type: 'select', options: OPTIONS.severity, optional: true, hint: 'Solo en alergias e intolerancias.' },
@@ -127,6 +127,11 @@ export function mountReservation(id: string): ViewMount {
       }
     }
 
+    // El menú «Más» solo se pliega por debajo de 1024 px; en escritorio queda abierto y sus botones se ven en línea.
+    const wide = window.matchMedia('(min-width: 1024px)');
+    const syncMore = () => { const menu = host.querySelector<HTMLDetailsElement>('#moreActions'); if (menu) menu.open = wide.matches; };
+    wide.addEventListener('change', syncMore);
+
     async function paint(): Promise<void> {
       const reservation = (await client.get(RESERVATIONS, id)) as (ReservationRow & Row) | null;
       if (!reservation) {
@@ -139,7 +144,8 @@ export function mountReservation(id: string): ViewMount {
       const liveEvent = event && event.deleted_at === null ? event : null;
       const finance = seesFinance ? ((await client.get(FINANCE, id)) as Row | null) : null;
       const ofEvent = (rows: SyncedRow[]) => (rows as Row[]).filter((r) => liveEvent && r.event_id === liveEvent.id);
-      const restrictions = ofEvent(await client.list(RESTRICTIONS));
+      // Orden estable (por alta): el espejo local no garantiza ninguno.
+      const restrictions = ofEvent(await client.list(RESTRICTIONS)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id));
       const checklist = ofEvent(await client.list(CHECKLIST)).sort((a, b) => Number(a.position) - Number(b.position));
       const guests = seesGuests ? ofEvent(await client.list(GUESTS)) : [];
       const editable = writable && !deleted;
@@ -199,16 +205,19 @@ export function mountReservation(id: string): ViewMount {
       }
 
       const archived = reservation.archived_at !== null;
+      const archiveButton = el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', onclick: () => void run(
+        [{ op: 'update', table: RESERVATIONS, id, expectedRevision: reservation.revision, fields: { archived_at: archived ? null : new Date().toISOString() } }],
+        archived ? 'Reserva desarchivada.' : 'Reserva archivada.') }, archived ? 'Desarchivar' : 'Archivar');
+      const trashButton = el('button', { class: 'ghost', type: 'button', id: 'trashReservation', onclick: () => void trash() }, icon('trash'), 'Papelera');
       const actions = deleted
         ? [writable ? el('button', { class: 'primary', type: 'button', id: 'restoreReservation', onclick: () => void restore() }, icon('restore'), 'Restaurar') : null]
         : !writable ? [] : [
             el('button', { class: 'primary', type: 'button', id: 'editReservation', onclick: editReservation }, icon('edit'), 'Editar'),
             !liveEvent && CONFIRMABLE.includes(reservation.status)
               ? el('button', { class: 'ghost', type: 'button', id: 'confirmReservation', onclick: () => void confirmReservation() }, icon('check'), 'Confirmar') : null,
-            el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', onclick: () => void run(
-              [{ op: 'update', table: RESERVATIONS, id, expectedRevision: reservation.revision, fields: { archived_at: archived ? null : new Date().toISOString() } }],
-              archived ? 'Reserva desarchivada.' : 'Reserva archivada.') }, archived ? 'Desarchivar' : 'Archivar'),
-            el('button', { class: 'ghost', type: 'button', id: 'trashReservation', onclick: () => void trash() }, icon('trash'), 'Papelera'),
+            // En móvil «Archivar» y «Papelera» van a un menú «Más»; en escritorio se ven todas (CSS `.more`).
+            el('details', { class: 'more', id: 'moreActions' }, el('summary', { class: 'ghost' }, 'Más'),
+              el('div', { class: 'more-items' }, archiveButton, trashButton)),
           ];
 
       // --- bloques
@@ -319,11 +328,12 @@ export function mountReservation(id: string): ViewMount {
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
         el('div', { class: 'cardgrid ficha-grid' }, summary, operation, checklistBlock, guestsBlock, meals, cobro),
       );
+      syncMore();
     }
 
     void paint();
     const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
-    return () => offs.forEach((off) => off());
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); };
   };
 }

@@ -10,7 +10,14 @@ export const CALENDAR_REPORT = 'booking.calendar_report';
 export const CALENDAR_STATUS = 'booking.calendar_status';
 export const CALENDAR_RETRY = 'booking.calendar_retry';
 
-export type CalendarHealth = 'ok' | 'not_configured' | 'auth_error' | 'calendar_not_found';
+export type CalendarHealth = 'ok' | 'not_configured' | 'auth_error' | 'calendar_not_shared';
+
+/** Estado de salud que corresponde a un código de bloqueo guardado en la cola o en el enlace; null si no es de bloqueo. */
+export function healthForCode(code: string | null | undefined): CalendarHealth | null {
+  if (code === 'CALENDAR_NOT_SHARED' || code === 'CALENDAR_READ_ONLY') return 'calendar_not_shared';
+  if (code === 'GOOGLE_AUTH_ERROR') return 'auth_error';
+  return null;
+}
 /** Ejecuta una acción registrada de Booking como sistema (actor null). */
 export type CalendarInvoke = (name: string, args: Record<string, unknown>) => Promise<any>;
 
@@ -45,10 +52,6 @@ export interface CalendarTickResult {
   health: CalendarHealth;
 }
 
-function healthFor(code: string): CalendarHealth {
-  return /NOT_FOUND/.test(code) ? 'calendar_not_found' : 'auth_error';
-}
-
 export async function runCalendarTick({ invoke, adapter, limit = 10, reservationIds }: CalendarTickOptions): Promise<CalendarTickResult> {
   const scope = reservationIds?.length ? { reservationIds } : {};
   if (!adapter) {
@@ -57,8 +60,14 @@ export async function runCalendarTick({ invoke, adapter, limit = 10, reservation
   }
   const claimed = await invoke(CALENDAR_CLAIM, { limit, ...scope });
   const result: CalendarTickResult = { processed: 0, failed: 0, pending: 0, health: 'ok' };
+  let blocked: CalendarError | null = null;
   for (const job of claimed.jobs as ClaimedJob[]) {
     const base = { jobId: job.jobId, calendarId: adapter.calendarId };
+    if (blocked) {
+      // El acceso al calendario está bloqueado: el resto del lote vuelve a la cola sin llamar a Google.
+      await invoke(CALENDAR_REPORT, { ...base, outcome: 'blocked', error: blocked.code });
+      continue;
+    }
     try {
       const link = await syncJob(job, adapter);
       await invoke(CALENDAR_REPORT, { ...base, outcome: 'done', ...(link ? { link } : {}) });
@@ -66,8 +75,13 @@ export async function runCalendarTick({ invoke, adapter, limit = 10, reservation
     } catch (error) {
       // Un error que no venga del adaptador se trata como recuperable: el octavo intento lo deja en `error`.
       const known = error instanceof CalendarError ? error : new CalendarError('UNEXPECTED', true);
+      if (known.blocked) {
+        blocked = known;
+        result.health = healthForCode(known.code) ?? 'auth_error';
+        await invoke(CALENDAR_REPORT, { ...base, outcome: 'blocked', error: known.code });
+        continue;
+      }
       await invoke(CALENDAR_REPORT, { ...base, outcome: known.recoverable ? 'retry' : 'fatal', error: known.code });
-      if (!known.recoverable) result.health = healthFor(known.code);
       result.failed++;
     }
   }
@@ -101,6 +115,14 @@ async function syncJob(job: ClaimedJob, adapter: CalendarAdapter): Promise<Recor
   // Primera sincronización: si ya hay un evento con el marcador de la reserva, se adopta en vez de duplicar.
   let eventId = link?.providerEventId ?? null;
   if (!eventId && reservation.code) eventId = (await adapter.findByMarker(reservation.code))?.id ?? null;
-  const remote = await adapter.upsert(eventId ?? projection.eventId, projection.payload!);
-  return { syncStatus: 'synced', providerEventId: remote.id, generation, htmlLink: remote.htmlLink, payloadHash: projection.payloadHash, ...revisions };
+  try {
+    const remote = await adapter.upsert(eventId ?? projection.eventId, projection.payload!);
+    return { syncStatus: 'synced', providerEventId: remote.id, generation, htmlLink: remote.htmlLink, payloadHash: projection.payloadHash, ...revisions };
+  } catch (error) {
+    // El id ya no sirve en Google (evento borrado a mano que no se deja reactivar): se sube la generación y se crea de nuevo.
+    if (!(error instanceof CalendarError) || error.code !== 'EVENT_ID_TAKEN') throw error;
+    const next = await calendarProjection(reservation, event, generation + 1);
+    const remote = await adapter.upsert(next.eventId, next.payload!);
+    return { syncStatus: 'synced', providerEventId: remote.id, generation: generation + 1, htmlLink: remote.htmlLink, payloadHash: next.payloadHash, ...revisions };
+  }
 }

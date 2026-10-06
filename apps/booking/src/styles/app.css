@@ -53,3 +53,22 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
   .printarea .legal { font-size: 9pt; }
   .printarea .signline { margin-top: 28mm; border-top: 1px solid #000; padding-top: 2mm; width: 70%; }
 }
+
+/* Calendario: en estudio y negociación se atenúan; el panel de Google Calendar se pliega. */
+#calendarHost [data-status='en_estudio'], #calendarHost [data-status='negociacion'] { opacity: .55; }
+.more-panel { margin-top: 16px; }
+.more-panel > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+#calendarHost { overflow-x: auto; }
+
+
+/* Acciones de la ficha: «Más» plegado en móvil, todo visible desde 1024 px. */
+.more { position: relative; }
+.more > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line, #c9c2b3); }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::after { content: '▾'; margin-left: 6px; }
+.more-items { position: absolute; z-index: 5; right: 0; top: calc(100% + 4px); min-width: 180px; display: grid; gap: 4px; padding: 8px; border-radius: 12px; background: var(--surface, #fff); border: 1px solid var(--line, #c9c2b3); box-shadow: 0 6px 20px rgba(0, 0, 0, .15); }
+@media (min-width: 1024px) {
+  .more { display: contents; }
+  .more > summary { display: none; }
+  .more-items { display: contents; }
+}

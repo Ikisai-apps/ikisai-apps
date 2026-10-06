@@ -239,18 +239,76 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(dialog).toBeHidden();
     await expect(page.locator('#guestList .row', { hasText: 'Persona Sintética' })).toContainText('Firmado');
     // el marcador {"$blob": …} se sustituyó por el id del archivo subido y verificado
-    await expect.poll(() => api.rows(GUESTS)[0]!.signature_file_id, { timeout: 15_000 }).toBe(api.uploads()[0]?.id);
+    await expect.poll(() => { const file = api.uploads()[0]; return !!file && api.rows(GUESTS)[0]!.signature_file_id === file.id; }, { timeout: 15_000 }).toBe(true);
     expect(api.uploads()[0]).toMatchObject({ mime: 'image/png' });
     expect(api.uploads()[0]!.size).toBeGreaterThan(200);
     expect(api.rows(GUESTS)[0]).toMatchObject({ signed_by_name: 'Persona Sintética', revision: 2 });
+  });
+
+  await test.step('restricción de un huésped desde su ficha: guest_id y sin servings', async () => {
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Persona Sintética' });
+    await expect(dialog.locator('#guestRestrictions')).toContainText('Ninguna registrada.');
+    await dialog.locator('#addGuestRestriction').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva restricción' });
+    await expect(sheet.getByLabel('Número de personas')).toHaveCount(0);
+    await sheet.getByLabel('Tipo').selectOption('sin_gluten');
+    await page.locator('#saveRow').click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => api.rows(RESTRICTIONS).find((r) => r.guest_id !== null && r.guest_id !== undefined)).toMatchObject({ guest_id: api.rows(GUESTS)[0]!.id, servings: null, restriction_type: 'sin_gluten' });
+  });
+
+  await test.step('justificante de SES como archivo: el marcador se sustituye por el id', async () => {
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    await page.getByRole('dialog', { name: 'Persona Sintética' }).getByLabel('Número de soporte').fill('ABC123456');
+    await page.getByRole('dialog', { name: 'Persona Sintética' }).getByLabel('Segundo apellido').fill('Ficticia');
+    for (const [name, value] of [['Fecha de nacimiento', '1990-01-01'], ['Dirección', 'Calle Ficticia 1'], ['Código postal', '00000'], ['Municipio', 'Lugar Ficticio'], ['Teléfono', '600000000']] as const) {
+      await page.getByRole('dialog', { name: 'Persona Sintética' }).getByLabel(name, { exact: true }).fill(value);
+    }
+    await page.getByRole('dialog', { name: 'Persona Sintética' }).getByLabel('Estado de los datos').selectOption('datos_revisados');
+    await page.locator('#saveRow').click();
+    await expect.poll(() => api.rows(GUESTS)[0]!.data_status).toBe('datos_revisados');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.locator('#sesQueue')).toBeVisible();
+    await page.getByRole('button', { name: /Marcar listo para envío/ }).click();
+    await expect.poll(() => api.rows(GUESTS)[0]!.ses_status).toBe('listo_para_envio');
+    await page.getByRole('button', { name: /Registrar envío de Persona/ }).click();
+    const dialog = page.getByRole('dialog', { name: /Envío a SES/ });
+    await dialog.locator('#receiptFile').setInputFiles({ name: 'justificante.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 justificante sintético, contenido de prueba para el humo '.repeat(8)) });
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    const receipt = () => api.uploads().find((u) => u.filename === 'justificante.pdf');
+    // se compara dentro del sondeo: el id del archivo no existe hasta que termina la subida
+    await expect.poll(() => { const file = receipt(); return !!file && api.rows(GUESTS)[0]!.ses_receipt_file_id === file.id; }, { timeout: 15_000 }).toBe(true);
+    expect(receipt()).toMatchObject({ mime: 'application/pdf' });
+    expect(api.rows(GUESTS)[0]).toMatchObject({ ses_status: 'enviado_SES' });
+  });
+
+  await test.step('Calendario: la reserva aparece y el panel refleja el estado de Google Calendar', async () => {
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    api.setCalendarStatus({ configured: true, calendarId: 'prueba@group.calendar.example', health: 'calendar_not_shared',
+      items: [{ reservationId, syncStatus: 'error', lastSyncedAt: null, lastError: 'sin permiso', htmlLink: null, pendingJob: true, attempts: 2, nextAttemptAt: null }] });
+    await page.locator('.nav').getByText('Calendario', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Calendario', level: 2 })).toBeVisible();
+    await expect(page.locator('#calendarHost')).toContainText('Retiro Test');
+    await expect(page.locator('#calendarHealth')).toContainText('no está compartido con la cuenta de servicio');
+    await expect(page.locator('#calendarCounts')).toContainText('1 pendiente · 1 con error');
+    await expect(page.locator('#calendarFailing')).toContainText('Retiro Test');
+    await page.locator('#calendarFailing').getByRole('button', { name: /Reintentar/ }).click();
+    await expect.poll(() => api.calendarRetries()).toEqual([reservationId]);
+    await page.locator('#calendarHost [data-event-id]').first().click();
+    await expect(page.locator('#statusChip')).toBeVisible();
   });
 
   await test.step('papelera: se va la reserva con todo lo suyo y se restaura entera', async () => {
     await page.locator('.nav').getByText('Reservas', { exact: true }).click();
     await page.locator('.filters').getByRole('button', { name: 'Confirmadas' }).click();
     await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    // A 390 px «Papelera» está dentro del menú «Más».
+    await expect(page.locator('#trashReservation')).toBeHidden();
+    await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('22 elementos asociados'); // 20 tareas, 1 restricción, 1 huésped
+    await expect(page.locator('.dialog')).toContainText('23 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');
@@ -262,7 +320,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#restoreReservation').click();
     await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
-    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho');
+    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho · 1 sin gluten'); // la del evento y la del huésped
     await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
     await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });

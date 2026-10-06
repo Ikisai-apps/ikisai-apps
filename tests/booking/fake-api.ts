@@ -7,6 +7,21 @@ import { FIELDS } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
+/** Valores por defecto de las columnas, los mismos que ponen las migraciones `*_booking_*` al insertar. */
+const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
+  'booking.reservations': {
+    event_type: 'retiro', status: 'en_estudio', priority: 'media', minors_count: 0, uses_accommodation: true, requires_meals: false,
+    uses_interpretation_center: false, uses_outdoors: false, uses_pool: false, special_setup: false, technical_support: false, briefing_received: false,
+  },
+  'booking.events': {
+    reinforced_cleaning: false, extra_support: false, preparation_status: 'pendiente', accommodation_status: 'pendiente', kitchen_status: 'pendiente',
+    cleaning_status: 'pendiente', traveler_registration_status: 'pendiente',
+  },
+  'booking.guests': { is_minor: false, data_status: 'pendiente_datos', ses_status: 'pendiente_envio' },
+  'booking.dietary_restrictions': { active: true },
+  'booking.checklist_items': { status: 'pendiente', position: 0 },
+};
+
 export interface FakeRow {
   id: string;
   revision: number;
@@ -43,8 +58,29 @@ export interface FakeApiOptions {
   tables?: Record<string, string[]>;
 }
 
+/** Respuesta de `GET /calendar/status` (docs/booking/API.md §9.3). */
+export interface FakeCalendarStatus {
+  configured: boolean;
+  calendarId: string | null;
+  health: 'ok' | 'not_configured' | 'auth_error' | 'calendar_not_found' | 'calendar_not_shared';
+  items: Array<{
+    reservationId: string;
+    syncStatus: 'pending' | 'synced' | 'error' | 'deleted';
+    lastSyncedAt: string | null;
+    lastError: string | null;
+    htmlLink: string | null;
+    pendingJob: boolean;
+    attempts: number;
+    nextAttemptAt: string | null;
+  }>;
+}
+
 export interface FakeApi {
   url: string;
+  /** Fija lo que devolverá `GET /calendar/status`. */
+  setCalendarStatus(status: FakeCalendarStatus): void;
+  /** Identificadores de reserva para los que llegó `POST /calendar/:id/retry`. */
+  calendarRetries(): string[];
   cursor(): number;
   rows(table: string): FakeRow[];
   /** Adjuntos recibidos (tickets y si llegó el contenido). */
@@ -184,7 +220,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
         if (op.table === 'booking.reservations' && (typeof fields.title !== 'string' || !fields.title.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
-        for (const column of allowed) row[column] = fields[column] ?? null;
+        for (const column of allowed) row[column] = fields[column] ?? COLUMN_DEFAULTS[op.table]?.[column] ?? null;
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
@@ -212,6 +248,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return result;
   }
 
+  let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
+  const calendarRetries: string[] = [];
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -273,6 +311,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const last = items.length ? items[items.length - 1]!.cursor : after;
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
+      if (path === 'calendar/status' && method === 'GET') return json(res, 200, calendarStatus);
+      const retry = /^calendar\/([0-9a-f-]+)\/retry$/.exec(path);
+      if (retry && method === 'POST') {
+        calendarRetries.push(retry[1]!);
+        return json(res, 200, { ok: true });
+      }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
       if (path === 'uploads' && method === 'POST') {
         const body = await readJson(req);
@@ -302,6 +346,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   return {
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
+    setCalendarStatus: (status) => { calendarStatus = status; },
+    calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),
     serverUpdate(table, id, fields) {
