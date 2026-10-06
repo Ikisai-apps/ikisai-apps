@@ -13,9 +13,10 @@
     "resolveJsonModule": true,
     "types": ["vite/client", "node"],
     "paths": {
-      "@ikisai/sync-client": ["../../packages/sync-client/src/index.ts"]
+      "@ikisai/sync-client": ["../../packages/sync-client/src/index.ts"],
+      "@ikisai/ui-kit": ["../../packages/ui-kit/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "vite.config.ts", "../../packages/sync-client/src/**/*.ts"],
+  "include": ["src/**/*.ts", "vite.config.ts", "../../packages/sync-client/src/**/*.ts", "../../packages/ui-kit/src/**/*.ts"],
   "exclude": ["src/sw.ts", "node_modules", "dist"]
 }

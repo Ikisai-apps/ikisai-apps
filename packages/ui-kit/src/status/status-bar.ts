@@ -45,7 +45,7 @@ export function pendingCount(status: SyncStatus): number {
 
 export function pendingLabel(status: SyncStatus): string {
   const n = pendingCount(status);
-  if (n === 0) return status.network === 'online' ? 'Todo guardado' : 'Sin cambios pendientes';
+  if (n === 0) return status.network === 'online' ? 'Todo sincronizado' : 'Sin cambios pendientes';
   return n === 1 ? '1 cambio pendiente' : `${n} cambios pendientes`;
 }
 

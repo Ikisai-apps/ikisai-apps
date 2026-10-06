@@ -19,7 +19,7 @@ test.describe('Muestra del ui-kit', () => {
     const states = page.locator('#statusStates .statuschip');
     await expect(states).toHaveCount(5);
     await expect(states.nth(0)).toHaveAttribute('data-network', 'online');
-    await expect(states.nth(0)).toHaveAttribute('aria-label', 'En línea · Todo guardado');
+    await expect(states.nth(0)).toHaveAttribute('aria-label', 'En línea · Todo sincronizado');
     await expect(states.nth(2)).toHaveAttribute('data-pending', 'true');
     await expect(states.nth(2)).toHaveAttribute('aria-label', 'Sin conexión · 4 cambios pendientes');
     await expect(states.nth(3)).toHaveAttribute('data-conflicts', 'true');

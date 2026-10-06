@@ -4,11 +4,12 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.1.0 fusionada en main (PR #4). v0.1.1: texto «Todo sincronizado».
 - v0.1.0: tokens, base, componentes CSS, DOM e iconos, tema y acento, barra de estado (§6.4), login y shell, demo y pruebas Playwright (5 escenarios × 2 tamaños). Tipos en verde con el `tsconfig` raíz.
 
 ## En curso
 
-- PR `ui/invoices-adopt-kit`: `apps/invoices` consume tokens, login, shell y barra de estado del kit; `app.css` se queda solo con lo propio (proveedores, conflictos, inicio).
+- PR `ui/invoices-adopt-kit` (pendiente de revisión de Core): `apps/invoices` consume tokens, login, shell, barra de estado, DOM, iconos y toast del kit; `tokens.css` y `login.ts` propios desaparecen y `app.css` queda vacío. Humo de Invoices y pruebas del kit en verde; capturas revisadas en móvil y escritorio, claro y oscuro.
 
 ## Pendiente
 

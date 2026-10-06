@@ -74,7 +74,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 
 - `el(tag, attrs, ...children)`, `append`, `clear`, `replace`, `formatDate`, `plural`: DOM sin plantillas de texto.
 - `icon(name, size)`: SVG de trazo que hereda `currentColor`; `registerIcons({...})` añade los de la app.
-- `createStatusBar({ client | status, onSync, onClick, describeError })` → `{ element, update, destroy }`. Cumple el contrato §6.4: red, cambios pendientes (`pendingCommands + pendingBlobs`), conflictos; «Todo guardado» solo con red y cola vacía. `statusBanners(status, { onResolveConflicts, onRetry, updateApply, hideConflicts })` devuelve los banners derivados.
+- `createStatusBar({ client | status, onSync, onClick, describeError })` → `{ element, update, destroy }`. Cumple el contrato §6.4: red, cambios pendientes (`pendingCommands + pendingBlobs`), conflictos; «Todo sincronizado» solo con red y cola vacía. `statusBanners(status, { onResolveConflicts, onRetry, updateApply, hideConflicts })` devuelve los banners derivados.
 - `renderLogin(root, { appName, tagline, onLogin, describeError, footnote })` → función de limpieza. Ids estables: `#email`, `#password`, `#loginSubmit`, `#loginError`, `#loginTitle`.
 - `createAppShell(root, { appName, subtitle, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
 - `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`.

@@ -23,7 +23,7 @@ applyTheme();
 
 const base: SyncStatus = { network: 'online', cursor: 42, pendingCommands: 0, pendingBlobs: 0, conflicts: 0, lastPullAt: new Date().toISOString(), lastError: null, autoMerged: 0 };
 const STATES: Array<{ name: string; status: SyncStatus }> = [
-  { name: 'En línea, todo guardado', status: base },
+  { name: 'En línea, todo sincronizado', status: base },
   { name: 'Sincronizando', status: { ...base, network: 'syncing', pendingCommands: 2 } },
   { name: 'Sin conexión con pendientes', status: { ...base, network: 'offline', pendingCommands: 3, pendingBlobs: 1 } },
   { name: 'Conflictos', status: { ...base, conflicts: 2, pendingCommands: 1 } },
