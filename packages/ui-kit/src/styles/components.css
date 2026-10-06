@@ -686,3 +686,6 @@ a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
 .sp-projects{display:grid;padding-left:26px}
 .scopepicker.all .sp-areas{opacity:.5}
 .scopepicker input:disabled+span{color:var(--muted)}
+/* Hoja sin título visible (hideTitle): el título va en el cuerpo y el botón de cerrar flota arriba a la derecha. */
+.sheet.notitle .sheet-head{position:absolute;top:10px;right:10px;padding:0;z-index:2}
+.sheet.notitle .sheet-body{padding-top:18px}
