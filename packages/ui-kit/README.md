@@ -82,7 +82,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `createStatusBar({ client | status, onSync, onClick, describeError })` → `{ element, update, destroy }`. Cumple el contrato §6.4: red, cambios pendientes (`pendingCommands + pendingBlobs`), conflictos; «Todo sincronizado» solo con red y cola vacía. `statusBanners(status, { onResolveConflicts, onRetry, updateApply, hideConflicts })` devuelve los banners derivados.
 - `renderLogin(root, { appName, tagline, onLogin, describeError, footnote, markIcon })` → función de limpieza. Ids estables: `#email`, `#password`, `#loginSubmit`, `#loginError`, `#loginTitle`.
 - `createAppShell(root, { appName, subtitle, markIcon, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
-- `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`.
+- `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`. Con una hoja, un diálogo o la paleta abiertos, el aviso sale por arriba para no tapar su contenido.
 - `applyTheme()`, `setTheme()`, `toggleTheme()`, `effectiveTheme()`, `applyAccent(color|null)`, `itemColorStyle(color)`, `inkOn(color)`.
 - `openSheet({ title, body, foot, meta, footHidden, beforeClose, onClose, initialFocus })` → `{ panel, body, foot, close(force), setFootHidden, setTitle, isOpen }`; `closeSheet()`, `currentSheet()`. Una sola hoja; foco atrapado; Escape y fondo cierran; `beforeClose` puede devolver `false` (o una promesa) para retener la hoja con cambios sin guardar. Un botón de «Guardar» en el pie se enlaza al formulario con el atributo `form`.
 - `confirmDialog({ title, text, confirmLabel, cancelLabel, danger, noCancel })` → `Promise<boolean>`; `alertDialog(title, text)`. Con `danger` el foco inicial va a «Cancelar».
@@ -100,6 +100,32 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 ### Barra de estado y sync-client 0.2
 
 `statusSummary` añade «N rechazados» y la pastilla lleva `data-rejected`. `statusBanners` acepta `onShowRejected`, `onRetryRejected`, `onDiscardRejected` y `hideRejected`; con `lastError.code === 'USER_CHANGED'` muestra un banner informativo («ha entrado otra persona en este dispositivo») en lugar del de error.
+
+## Montar la paleta Ctrl K en una app
+
+La paleta vive en el kit; cada app aporta sus elementos. Se crea una vez al montar el shell y se destruye al desmontarlo; Ctrl K / Cmd K la abre y la cierra, y un botón de la cabecera puede abrirla en móvil.
+
+```ts
+import { createCommandPalette, icon, el, type PaletteItem } from '@ikisai/ui-kit';
+
+// Dentro de renderShell(), después de createAppShell():
+const palette = createCommandPalette({
+  placeholder: 'Buscar o saltar: recetas, secciones, acciones…',
+  hiddenWhenEmpty: ['Recetas'],            // grupos que solo aparecen al escribir
+  items: (query): PaletteItem[] => [
+    { group: 'Acciones', text: 'Nueva receta', hint: 'N', run: () => openRecipeEditor(null) },
+    ...NAV.map((item) => ({ group: 'Ir a', text: item.label, run: () => navigate(item.hash) })),
+    ...(query.length >= 2 ? recipesInMirror().map((r) => ({ group: 'Recetas', text: r.name, sub: r.category, run: () => openRecipe(r.id) })) : []),
+    { group: 'Tema', text: 'Claro / oscuro', run: () => toggleTheme() },
+  ],
+});
+// Botón en la cabecera (opcional, útil en móvil):
+shell.header.querySelector('.tools')?.prepend(el('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Buscar o saltar', onclick: () => palette.open() }, icon('search')));
+// Al desmontar el shell:
+palette.destroy();
+```
+
+`items` recibe la consulta ya normalizada (minúsculas, sin acentos) y se vuelve a llamar con cada tecla, así que puede leer el espejo local. El filtrado, el orden (primero lo que empieza por la consulta), el teclado (↑ ↓ Enter Esc) y el foco los pone el kit.
 
 ## Muestra y pruebas
 

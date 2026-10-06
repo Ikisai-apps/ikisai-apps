@@ -121,6 +121,8 @@
 .banners:empty{display:none}
 .toast{position:fixed;z-index:var(--z-toast);left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(15px);background:#1f2a22;color:#fff;padding:10px 14px;border-radius:14px;opacity:0;pointer-events:none;transition:var(--dur) var(--ease);box-shadow:var(--shadow-3);font-size:13.5px;max-width:min(92vw,520px);text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.top{bottom:auto;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%) translateY(-15px)}
+.toast.top.show{transform:translateX(-50%) translateY(0)}
 .toast.actionable{pointer-events:auto;display:flex;align-items:center;gap:12px;text-align:left}
 .toast button{border:0;background:rgba(255,255,255,.14);color:#fff;font-weight:800;padding:7px 11px;border-radius:10px;white-space:nowrap}
 :root[data-theme="dark"] .toast{background:#ece5d8;color:#1a1915}
@@ -345,6 +347,7 @@
   .sheet-foot{padding-bottom:16px;border-radius:0 0 26px 26px}
   .handle{display:none}
   .toast{bottom:40px}
+  .toast.top{top:20px;bottom:auto}
 }
 @media(min-width:1440px){
   .main{width:min(var(--content-width-xl),100%);padding:32px 48px 56px}

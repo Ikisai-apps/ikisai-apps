@@ -3,11 +3,17 @@ import { el, replace } from './dom.ts';
 let node: HTMLDivElement | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+/** Con una hoja, un diálogo o la paleta abiertos, el aviso sube a la parte alta para no tapar su contenido ni su pie. */
+function overlayOpen(): boolean {
+  return !!document.querySelector('.sheetback.show, .dialogback, .palette-back');
+}
+
 function host(): HTMLDivElement {
   if (!node) {
     node = el('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
     document.body.appendChild(node);
   }
+  node.classList.toggle('top', overlayOpen());
   return node;
 }
 
