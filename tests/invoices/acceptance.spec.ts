@@ -969,3 +969,90 @@ test('IA sin API de pago (fase 2): «Leer PDF» con texto, procedencia por campo
   });
   await context.close();
 });
+
+test('IA sin API de pago (fase 3): la plantilla se aprende al validar, lee lo que el genérico no ve y se puede retirar', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+  await nav(page, 'Facturas').click();
+  // Formato del proveedor: el número va tras «Doc. ref.», que las reglas genéricas no reconocen.
+  const pepePdf = (n: string, date: string, base: string, quota: string, total: string) => textPdf([
+    ['HUERTA PEPA S.L.', 40, 800], ['CIF: B87654323', 40, 786], ['Albarán y factura de mercancía', 40, 772], [`Doc. ref.: ${n}`, 40, 758], ['Emitido el', 40, 744], [date, 300, 744],
+    ['Fruta y verdura variada', 40, 716], [base, 300, 716], ['Base imponible', 40, 702], [base, 300, 702], ['IVA 10%', 40, 688], [quota, 300, 688], ['Importe total', 40, 674], [total, 300, 674],
+  ]);
+  const newInvoice = async (object: string, pdf: Buffer, first: boolean, date = '2026-10-06') => {
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    if (first) {
+      await sheet.locator('#newSupplier').selectOption({ label: '+ Nuevo proveedor…' });
+      await sheet.locator('#newSupplierName').fill('Huerta Pepa S.L.');
+      await sheet.locator('#newSupplierTaxId').fill('B87654323');
+    } else {
+      await sheet.locator('#newSupplier').selectOption({ label: 'Huerta Pepa S.L.' });
+    }
+    await sheet.getByLabel('Fecha').fill(date);
+    await sheet.getByLabel('Objeto').fill(object);
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: `${object}.pdf`, mimeType: 'application/pdf', buffer: pdf });
+    await sheet.locator('#saveInvoice').click();
+    await expect(ficha(page).locator('#chatgptInvoice')).toBeVisible({ timeout: 20_000 });
+    await synced(page);
+  };
+
+  await test.step('primera factura: se importa y al validar se aprende la plantilla (aprendiendo)', async () => {
+    await newInvoice('fruta uno', pepePdf('X-77', '06/10/2026', '100,00', '10,00', '110,00'), true);
+    await ficha(page).locator('#chatgptInvoice [data-step="paste"]').click();
+    const sheet = ficha(page);
+    const doc = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_date: '2026-10-06', supplier_name: 'Huerta Pepa S.L.', supplier_tax_id: 'B87654323', invoice_number: 'X-77', object: 'fruta uno' },
+      lines: [{ ...EXAMPLE.lines[0], description: 'Fruta y verdura variada', quantity: null, unit: null, unit_price: null, net_amount: 100, vat_rate: 10, vat_amount: 10, gross_amount: 110 }],
+      taxes: [{ tax_type: 'iva', rate: 10, taxable_base: 100, amount: 10, notes: null }], document_totals: { base: 100, vat: 10, withholding: 0, total: 110 } };
+    await sheet.getByLabel('JSON', { exact: true }).fill(JSON.stringify(doc));
+    await sheet.locator('#importCategory').selectOption('compras');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await synced(page);
+    await ficha(page).locator('#validateInvoice').click();
+    await expect(ficha(page)).toContainText('Validada', { timeout: 30_000 });
+    await synced(page);
+    await expect.poll(() => api.rows('invoices.supplier_templates').length, { timeout: 20_000 }).toBe(1);
+    const t = api.rows('invoices.supplier_templates')[0]!;
+    expect(t).toMatchObject({ version: 1, status: 'aprendiendo', confirmations: 1 });
+    expect((t.fields as Record<string, { anchor: { text: string } }>).invoice_number!.anchor.text).toBe('doc. ref.');
+    await closeSheet(page);
+  });
+
+  await test.step('segunda factura: «Leer PDF» lee el número con la plantilla; al validar pasa a activa', async () => {
+    await newInvoice('fruta dos', pepePdf('X-78', '07/10/2026', '50,00', '5,00', '55,00'), false, '2026-10-07');
+    await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
+    const sheet = ficha(page);
+    await expect(sheet.locator('#extractionNote')).toContainText('Plantilla del proveedor v1', { timeout: 30_000 });
+    await expect(sheet.locator('#provenance [data-field="invoice.invoice_number"]')).toContainText('plantilla del proveedor');
+    await expect(sheet.locator('#provenance [data-field="invoice.invoice_number"]')).toContainText('X-78');
+    await sheet.locator('#importCategory').selectOption('compras');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.invoices').find((i) => i.object === 'fruta dos')).toMatchObject({ invoice_number: 'X-78', calculated_total: 55 });
+    await ficha(page).locator('#validateInvoice').click();
+    await expect(ficha(page)).toContainText('Validada', { timeout: 30_000 });
+    await synced(page);
+    await expect.poll(() => api.rows('invoices.supplier_templates')[0]?.status, { timeout: 20_000 }).toBe('activa');
+    expect(api.rows('invoices.supplier_templates')[0]).toMatchObject({ confirmations: 2, full_hits: 1 });
+    await closeSheet(page);
+  });
+
+  await test.step('ficha del proveedor: la plantilla se ve y el owner la retira', async () => {
+    await nav(page, 'Inicio').click();
+    await page.getByRole('link', { name: /Proveedores/ }).click();
+    await page.getByRole('button', { name: 'Editar Huerta Pepa S.L.' }).click();
+    const sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#supplierTemplates')).toContainText('v1 · Activa');
+    await expect(sheet.locator('#supplierTemplates')).toContainText('2 facturas confirmadas');
+    await sheet.getByRole('button', { name: 'Retirar plantilla v1' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Retirar' }).click();
+    await synced(page);
+    await expect.poll(() => api.rows('invoices.supplier_templates')[0]?.status, { timeout: 20_000 }).toBe('retirada');
+  });
+  await context.close();
+});

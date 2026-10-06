@@ -1,7 +1,7 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
-import { CATEGORIES, CATEGORY_LABELS, SUPPLIERS, categoryLabel, describeError, type SupplierRow } from '../app/client.ts';
+import { CATEGORIES, CATEGORY_LABELS, SUPPLIERS, SUPPLIER_TEMPLATES, categoryLabel, describeError, type LocalSupplierTemplate, type SupplierRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface FormValues {
@@ -42,6 +42,7 @@ function toFields(values: FormValues): Record<string, unknown> {
 /** Vista Proveedores: lista en modo lectura, hoja de edición del kit, papelera y marca de pendiente por fila. */
 export const mountSuppliers: ViewMount = ({ main, client }) => {
   let rows: SupplierRow[] = [];
+  let templates: LocalSupplierTemplate[] = [];
   let query = '';
   let sheet: Sheet | null = null;
 
@@ -101,6 +102,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     rows = (await client.list(SUPPLIERS, { includeDeleted: true })) as SupplierRow[];
+    templates = ((await client.list(SUPPLIER_TEMPLATES)) as LocalSupplierTemplate[]).filter((t) => !t.deleted_at);
     paint();
   }
 
@@ -178,6 +180,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       el('label', { class: 'field' }, el('span', null, 'Alias'), aliases, el('span', { class: 'hint' }, 'Otros nombres con los que aparece en las facturas, separados por comas. Sirven para emparejar la importación.')),
       el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
       error,
+      row ? templatesBlock(row) : null,
       row ? el('div', { class: 'zone' },
         el('button', { class: 'danger', type: 'button', id: 'deleteSupplier', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
         el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Se puede restaurar desde la papelera.'),
@@ -195,6 +198,27 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
     });
     refreshDirty();
+  }
+
+  /** Plantillas aprendidas de sus facturas confirmadas (API.md §6.9): versión, estado, evidencia y qué lee. */
+  function templatesBlock(row: SupplierRow): HTMLElement | null {
+    const mine = templates.filter((t) => t.supplier_id === row.id).sort((a, b) => b.version - a.version);
+    if (!mine.length) return el('p', { class: 'hint', id: 'supplierTemplates' }, 'Sin plantillas todavía: se aprenden al validar sus facturas con PDF.');
+    const isOwner = client.bootstrap()?.membership.role === 'owner';
+    const STATUS: Record<string, string> = { aprendiendo: 'Aprendiendo', activa: 'Activa', retirada: 'Retirada' };
+    const FIELD: Record<string, string> = { invoice_number: 'número', invoice_date: 'fecha', supplier_tax_id: 'NIF', base: 'base', total: 'total', withholding: 'retención' };
+    return el('div', { class: 'field', id: 'supplierTemplates' }, el('span', null, 'Plantillas de lectura'),
+      el('ul', { class: 'list plain' }, ...mine.map((t) => {
+        const reads = Object.entries(t.fields).filter(([, r]) => !r.retired).map(([k]) => (k.startsWith('vat:') ? `IVA ${k.slice(4)} %` : FIELD[k] ?? k));
+        return el('li', { class: 'tpl-row', dataset: { version: String(t.version) } },
+          el('strong', null, `v${t.version} · ${STATUS[t.status] ?? t.status}`),
+          el('span', { class: 'hint' }, ` ${t.confirmations} factura${t.confirmations === 1 ? '' : 's'} confirmada${t.confirmations === 1 ? '' : 's'} · ${t.full_hits} sin correcciones · lee ${reads.join(', ') || 'nada todavía'}`),
+          isOwner && t.status !== 'retirada' ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Retirar plantilla v${t.version}`, onclick: async () => {
+            const ok = await confirmDialog({ title: `¿Retirar la plantilla v${t.version}?`, text: 'Deja de usarse al leer sus PDF. Se conserva y las siguientes confirmaciones pueden crear otra.', confirmLabel: 'Retirar', danger: true });
+            if (ok) await commitSafely([{ op: 'update', table: SUPPLIER_TEMPLATES, id: t.id, expectedRevision: t.revision, fields: { status: 'retirada' } }], 'Plantilla retirada.');
+          } }, 'Retirar') : null);
+      })),
+      el('span', { class: 'hint' }, 'Se aprenden solo de facturas validadas; no hace falta tocarlas.'));
   }
 
   async function deleteRow(row: SupplierRow): Promise<void> {

@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, extractFromPdfText, softDuplicate, type FieldProvenance, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -258,7 +258,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // --- Acciones ------------------------------------------------------------
   const actions: HTMLElement[] = [];
   if (editable && pendingState) {
-    actions.push(el('button', { class: 'primary', type: 'button', id: 'validateInvoice', onclick: () => void call('invoices.validate', { invoice_id: invoice.id, expectedRevision: invoice.revision }, 'Factura validada.') }, icon('check', 18), 'Validar'));
+    actions.push(el('button', { class: 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); } }, icon('check', 18), 'Validar'));
     actions.push(el('button', { class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
     if (invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original')) {
       actions.push(el('button', { class: 'softbtn', type: 'button', id: 'extractInvoice', title: 'Pide a la Edge el JSON del documento y lo lleva a la vista previa de importación', onclick: () => void extractInto(ctx, invoice) }, icon('upload', 18), 'Extraer'));
@@ -337,7 +337,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       if (!navigator.onLine) { toast('Para compartir el documento hace falta conexión (está en la nube).'); return null; }
       const file = await fetchStoredDocument(client, original.file_id, original.normalized_filename, original.mime_type);
       return { file, source: { filename: original.normalized_filename, sha256: original.sha256 } };
-    }, (file) => readPdfInto(ctx, mirror, invoice, file)) : null,
+    }, (file) => readPdfInto(ctx, mirror, invoice, file, undefined, files.filter((f) => f.kind === 'original').sort((a, b) => a.page_order - b.page_order)[0]?.file_id)) : null,
     canEdit && invoice.status !== 'anulada' ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', onclick: () => fileInput.click() }, icon('attach', 18), pendingState ? 'Añadir PDF o fotos' : 'Añadir adjunto'), fileInput) : null,
   );
 
@@ -650,21 +650,60 @@ function renderProvenance(provenance: Record<string, FieldProvenance>): HTMLElem
 }
 
 /** «Leer PDF»: texto del PDF en el dispositivo y reglas deterministas; si no hay texto o faltan datos, se dice. */
-async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[]): Promise<void> {
+async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[], storedFileId?: string): Promise<void> {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { toast('«Leer PDF» solo sirve para PDF. Para fotos usa «Analizar con IA».'); return; }
   toast('Leyendo el PDF…');
   let items;
   try { items = await readPdfItems(file); } catch { toast('No se pudo abrir el PDF (dañado o protegido): usa «Analizar con IA».'); return; }
   const supplier = target ? mirror.supplierById.get(target.supplier_id) ?? null : null;
-  const result = extractFromPdfText(items, {
-    suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ name: s.name, tax_id: s.tax_id })),
+  // Fase 3: la plantilla del proveedor (si la hay) lee primero; las reglas genéricas, lo demás.
+  const result = extractWithTemplates(items, {
+    suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })),
+    templates: mirror.templates, fallbackSupplierId: target?.supplier_id ?? null,
     fallback: target ? { supplier_name: supplier?.name ?? null, supplier_tax_id: supplier?.tax_id ?? null, object: target.object } : undefined,
   });
+  // El texto leído se guarda en el servidor (solo la Edge lo escribe) para aprender al validar sin volver a leer el PDF.
+  if (storedFileId && result.hasText && navigator.onLine) void saveDocumentText(ctx, storedFileId, items);
   if (!result.hasText) { toast('Este PDF no tiene texto (escaneado o foto): usa «Analizar con IA».'); return; }
   if (!result.ok || !result.document) { toast(`No he podido leer ${result.missing.join(' ni ')} del PDF: usa «Analizar con IA» o pega el JSON.`); return; }
   guard.dirtyEditor = false;
   await closeSheet(true);
-  openImport(ctx, mirror, target, { document: result.document, warnings: result.warnings, provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+  const templateNote = result.template ? `Plantilla del proveedor v${result.template.version} · ${result.template.confirmations} factura${result.template.confirmations === 1 ? '' : 's'}${result.template.status === 'aprendiendo' ? ' (aprendiendo)' : ''}.` : null;
+  openImport(ctx, mirror, target, { document: result.document, warnings: [...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+}
+
+async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
+  try { await ctx.client.api(`/documents/${fileId}/text`, { json: { source: 'pdf_text', items: items.slice(0, 20_000) } }); } catch { /* aprender al validar volverá a leer el PDF */ }
+}
+
+/**
+ * Validar y, en el mismo lote, aprender la plantilla del proveedor con lo confirmado (API.md §6.9). El servidor exige que
+ * vayan juntos. Si no hay texto del documento (sin red, foto o escaneado), se valida sin aprender: nunca bloquea.
+ */
+async function validateWithLearning(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice): Promise<RowOperation[]> {
+  const ops: RowOperation[] = [{ op: 'call', procedure: 'invoices.validate', args: { invoice_id: invoice.id, expectedRevision: invoice.revision } }];
+  try {
+    const original = (mirror.filesByInvoice.get(invoice.id) ?? []).filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
+    if (!original || !navigator.onLine) return ops;
+    let items: PdfTextItem[] | null = null;
+    const stored = await ctx.client.api<{ items: PdfTextItem[] } | null>('/read/invoices.document_text', { json: { file_id: original.file_id } }).catch(() => null);
+    if (stored && Array.isArray(stored.items) && stored.items.length) items = stored.items;
+    else {
+      const file = await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type);
+      items = await readPdfItems(file);
+      if (items.length) void saveDocumentText(ctx, original.file_id, items);
+    }
+    if (!items?.length) return ops;
+    const supplier = mirror.supplierById.get(invoice.supplier_id);
+    const learning = await learnFromConfirmation({
+      lines: linesFromItems(items), supplierId: invoice.supplier_id, invoiceId: invoice.id, templates: mirror.templates,
+      confirmed: confirmedFromInvoice(invoice, supplier?.tax_id ?? null, mirror.taxesByInvoice.get(invoice.id) ?? []),
+    });
+    if (!learning) return ops;
+    const current = learning.template.id ? mirror.templates.find((t) => t.id === learning.template.id) ?? null : null;
+    ops.push(templateOperation(learning, current, invoice.id, crypto.randomUUID()) as RowOperation);
+  } catch { /* aprender es un extra: la validación sigue */ }
+  return ops;
 }
 
 export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[]; text?: string } = {}): void {

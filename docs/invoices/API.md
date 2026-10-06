@@ -489,6 +489,8 @@ El usuario no quiere pagar APIs de IA. La extracción automática por API (`impo
 
 ### 6.9 Plantillas por proveedor aprendidas de confirmaciones (ronda 29, fase 3 · aprobada por Core en la ronda 33)
 
+**Estado: construida** (PR 1/3 modelo y Edge, 2/3 motor en `_domain/invoices/supplier-templates.ts`, 3/3 app). Al validar, la app busca el texto del documento en `invoices.document_text` o, si no está, vuelve a leer el PDF. Sin red, sin PDF o sin texto, valida sin aprender: aprender nunca bloquea la validación.
+
 **Objetivo.** Que la segunda, tercera… factura de un mismo proveedor se lea mejor que la primera, sin IA. Se aprende **solo de facturas confirmadas**: el momento de confirmar es `invoices.validate`. Nunca se aprende de una importación sin revisar ni de la propuesta de la propia plantilla.
 
 #### Tablas (migración `0207`, schema `invoices`)
