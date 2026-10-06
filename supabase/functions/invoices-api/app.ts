@@ -221,6 +221,7 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
         continue;
       }
       if (!op.table?.startsWith('invoices.')) continue;
+      if (op.table === DOCUMENT_TEXTS) fail(422, 'DOCUMENT_TEXT_EDGE_ONLY', domainMessage('DOCUMENT_TEXT_EDGE_ONLY'), { index });
       if (op.table === EXTRACTIONS) {
         // Solo la petición de repetir una extracción (un agente la propone; la aprueba un owner humano). El resto lo escribe la Edge.
         const keys = Object.keys(op.fields ?? {});
@@ -326,6 +327,9 @@ export function createAgentRisk(supabase: Supabase) {
 // Registro de extracciones y límite de los agentes (API.md §6, «Límite de los agentes»)
 // ---------------------------------------------------------------------------
 const EXTRACTIONS = 'invoices.extractions';
+/** Texto de los documentos (API.md §6.9): solo lo escribe la Edge, nunca el cliente. */
+const DOCUMENT_TEXTS = 'invoices.document_texts';
+const MAX_TEXT_ITEMS = 20_000;
 /** Emitidas sin papelera (revisión de Core, ronda 22): se anulan con `invoices.annul_issued`. */
 const ISSUED_NO_DELETE: string[] = [TABLES.issuedInvoices, TABLES.issuedLines, TABLES.issuedTaxLines, TABLES.issuedFiles];
 
@@ -538,6 +542,38 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         await logExtraction(supabase, ctx, status.rows, validation.ok ? 'ok' : 'invalida', out.usage ?? null, approved);
         if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [], usage: out.usage ?? null });
         return { document: validation.document, document_sha256: await importDocumentSha256(validation.document), warnings: out.warnings ?? [], usage: out.usage ?? null };
+      },
+    },
+    {
+      /**
+       * Texto con posiciones de un documento ya subido (fase 3): lo lee el dispositivo con PDF.js (o la Edge con OCR en
+       * la fase 4) y aquí se guarda una fila por documento. Solo lo usan los extractores; no se copia a otros sitios.
+       */
+      method: 'POST', pattern: 'documents/:fileId/text', handler: async ({ ctx, params, json }) => {
+        requireEditor(ctx);
+        const fileId = params.fileId ?? '';
+        if (!UUID.test(fileId)) fail(422, 'INVALID_OPERATION', 'Identificador de documento inválido.');
+        const body = await json();
+        const source = body.source ?? 'pdf_text';
+        if (source !== 'pdf_text') fail(422, 'INVALID_OPERATION', 'Origen de texto no admitido.', { field: 'source' });
+        const raw = Array.isArray(body.items) ? body.items : null;
+        if (!raw || raw.length > MAX_TEXT_ITEMS) fail(422, 'INVALID_OPERATION', `items debe ser una lista de hasta ${MAX_TEXT_ITEMS} fragmentos.`, { field: 'items' });
+        const items = (raw as unknown[]).map((it, i) => {
+          const o = it as Record<string, unknown>;
+          const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+          if (!o || typeof o.str !== 'string' || o.str.length > 500 || typeof o.page !== 'number' || num(o.x) === null || num(o.y) === null) fail(422, 'INVALID_OPERATION', 'Fragmento de texto inválido.', { index: i });
+          return { str: o.str, page: Math.trunc(o.page as number), x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h) };
+        });
+        await verifiedFile(supabase, ctx, fileId, 0, 'fileId');
+        const file = await supabase.rpc<{ sha256: string }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
+        const charCount = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
+        const existing = await read<{ id: string; revision: number } | null>(supabase, ctx, 'invoices.document_text', { file_id: fileId });
+        const fields = { source, items, char_count: charCount, sha256: file.sha256 ?? null };
+        const operations = existing
+          ? [{ op: 'update', table: DOCUMENT_TEXTS, id: existing.id, expectedRevision: existing.revision, fields }]
+          : [{ op: 'insert', table: DOCUMENT_TEXTS, id: crypto.randomUUID(), fields: { file_id: fileId, ...fields } }];
+        await edgeCommit(supabase, ctx, `doc-text-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['document:text'] } });
+        return { file_id: fileId, char_count: charCount, items: items.length };
       },
     },
     {

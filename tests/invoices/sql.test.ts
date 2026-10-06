@@ -97,9 +97,9 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('bootstrap registra las quince tablas (extracciones y emitidas incluidas); proveedores con slug derivado y alias', async () => {
+test('bootstrap registra las diecisiete tablas (extracciones, emitidas, plantillas y texto de documentos); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.suppliers', 'invoices.tax_lines']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.document_texts', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines']);
   const id = await newSupplier('Makro España S.A.', { tax_id: 'A28647451', aliases: ['MAKRO'] });
   const s = await row('invoices.suppliers', id);
   assert.equal(s.slug, 'makro_espana_s_a'); assert.deepEqual(s.aliases, ['MAKRO']); assert.equal(s.default_is_investment, false);
@@ -550,4 +550,48 @@ test('emitidas en el resumen fiscal y en la entrega: IVA repercutido igual en SQ
   // Una emitida nueva del periodo deja la entrega desfasada
   await ok([insert('invoices.issued_invoices', uuid(), { series_code: 'Q', number: '2027-0003', issue_date: '2027-03-15', invoice_type: 'F2', description: 'Otro ticket' })]);
   assert.equal((await read('invoices.export_bundle', { export_id: exportId })).data.stale, true);
+});
+
+test('plantillas: solo se escriben al validar una factura de ese proveedor; el owner puede retirarlas; versión única; texto de documentos solo por la Edge', async () => {
+  const supplierA = await newSupplier('Plantillas A SL'); const supplierB = await newSupplier('Plantillas B SL');
+  const tpl = (supplier: string, version: number) => ({ supplier_id: supplier, version, layout_tokens: ['factura', 'base'], layout_hash: 'c'.repeat(64), fields: { total: { anchor: { text: 'total', variants: [] }, relation: 'same_line_right', kind: 'money', hits: 1, misses: 0 } }, confirmations: 1 });
+  // Suelta: rechazada
+  await rejected([insert('invoices.supplier_templates', uuid(), tpl(supplierA, 1))], 'TEMPLATE_REQUIRES_CONFIRMATION');
+  // Con la validación de una factura de otro proveedor: rechazada
+  const invB = await manualInvoice({ supplier: supplierB });
+  await rejected([call('invoices.validate', { invoice_id: invB.id }), insert('invoices.supplier_templates', uuid(), tpl(supplierA, 1))], 'TEMPLATE_REQUIRES_CONFIRMATION');
+  // Con la validación de una factura del mismo proveedor: aceptada
+  const invA = await manualInvoice({ supplier: supplierA });
+  const t1 = uuid();
+  await ok([call('invoices.validate', { invoice_id: invA.id }), insert('invoices.supplier_templates', t1, { ...tpl(supplierA, 1), last_confirmed_invoice_id: invA.id })]);
+  let row1 = await row('invoices.supplier_templates', t1);
+  assert.equal(row1.status, 'aprendiendo'); assert.equal(row1.confirmations, 1);
+  // Actualizar sin validar: rechazada; misma versión otra vez: rechazada
+  await rejected([update('invoices.supplier_templates', t1, row1.revision, { confirmations: 2, status: 'activa' })], 'TEMPLATE_REQUIRES_CONFIRMATION');
+  const invA2 = await manualInvoice({ supplier: supplierA });
+  await rejected([call('invoices.validate', { invoice_id: invA2.id }), insert('invoices.supplier_templates', uuid(), tpl(supplierA, 1))], 'CONSTRAINT_VIOLATION');
+  // Retirar: el editor no, el owner sí, sin validar nada
+  row1 = await row('invoices.supplier_templates', t1);
+  await rejected([update('invoices.supplier_templates', t1, row1.revision, { status: 'retirada' })], 'FORBIDDEN', 403, app.tokens.editor);
+  await ok([update('invoices.supplier_templates', t1, row1.revision, { status: 'retirada' })]);
+  assert.equal((await row('invoices.supplier_templates', t1)).status, 'retirada');
+  // Texto de documentos: el cliente no lo escribe; la Edge sí (ruta), se lee bajo demanda y se borra con su documento
+  await rejected([insert('invoices.document_texts', uuid(), { file_id: uuid(), source: 'pdf_text', items: [] })], 'DOCUMENT_TEXT_EDGE_ONLY');
+  const doc = await uploadFile('%PDF texto');
+  const invC = await manualInvoice({ supplier: supplierA, withFile: false });
+  const fileRow = uuid();
+  await ok([insert('invoices.invoice_files', fileRow, { invoice_id: invC.id, original_filename: 'scan.pdf', ...doc })]);
+  const posted = await app.call(`/api/v1/documents/${doc.file_id}/text`, { body: { source: 'pdf_text', items: [{ str: 'TOTAL FACTURA', page: 1, x: 40, y: 620, w: 70, h: 10 }, { str: '159,00 €', page: 1, x: 450, y: 620, w: 40, h: 10 }] } });
+  assert.equal(posted.status, 200, JSON.stringify(posted.data)); assert.equal(posted.data.char_count, 19);
+  const again = await app.call(`/api/v1/documents/${doc.file_id}/text`, { body: { items: [{ str: 'Otra lectura', page: 1, x: 1, y: 1 }] } });
+  assert.equal(again.status, 200);
+  let text = await read('invoices.document_text', { file_id: doc.file_id });
+  assert.equal(text.status, 200); assert.equal(text.data.items[0].str, 'Otra lectura'); assert.equal(text.data.sha256, doc.sha256);
+  assert.equal((await read('invoices.document_text', { file_id: doc.file_id }, app.tokens.reader)).status, 403);
+  assert.equal((await app.call(`/api/v1/documents/${doc.file_id}/text`, { token: app.tokens.reader, body: { items: [] } })).status, 403);
+  assert.equal((await app.call(`/api/v1/documents/${uuid()}/text`, { body: { items: [] } })).status, 422);
+  const fr = await row('invoices.invoice_files', fileRow);
+  await ok([remove('invoices.invoice_files', fileRow, fr.revision)]);
+  text = await read('invoices.document_text', { file_id: doc.file_id });
+  assert.equal(text.data, null);
 });
