@@ -76,7 +76,7 @@ test('eventos · Food lee la proyección de Booking con cualquier rol y sin dato
   assert.deepEqual(Object.keys(event).sort(), [
     'arrival_time', 'departure_time', 'dietary_restrictions', 'end_date', 'event_code', 'event_id', 'event_revision', 'event_type',
     'guest_count', 'guest_count_is_final', 'meal_notes', 'meal_plan', 'menu_style', 'minors_count', 'requires_meals', 'reservation_code',
-    'reservation_status', 'start_date', 'title']);
+    'reservation_id', 'reservation_status', 'start_date', 'title']);
   const all = await app.call('/api/v1/events?scope=all');
   assert.deepEqual(all.data.events.map((e: FoodEvent) => e.title), ['Retiro antiguo', 'Retiro Test']);
   assert.equal((await app.call(`/api/v1/events?scope=all&to=${day(-50)}`)).data.events.length, 1);
