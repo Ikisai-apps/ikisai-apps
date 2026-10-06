@@ -5,6 +5,7 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import type { DietaryRestriction, FoodEvent } from '@ikisai/domain-food';
+import { relativeDayLabel } from '@ikisai/ui-kit';
 
 const DATABASE = 'ikisai-food-cache-v1';
 const STORE = 'kv';
@@ -157,6 +158,18 @@ export function restrictionLabel(r: DietaryRestriction): string {
   const noun = count === 1 ? one : many;
   const subject = r.subject ? (r.type === 'alergia' || r.type === 'intolerancia' ? ` a ${r.subject}` : `: ${r.subject}`) : '';
   return `${count} ${noun}${subject}${r.severity ? ` (${r.severity})` : ''}`;
+}
+
+/** Cuándo es: «en 10 días», «Mañana», «En curso» o «hace 2 semanas». */
+export function whenLabel(event: Pick<FoodEvent, 'start_date' | 'end_date'>): string {
+  const today = todayKey();
+  if (event.start_date <= today && today <= event.end_date) return 'En curso';
+  return relativeDayLabel(event.end_date < today ? event.end_date : event.start_date);
+}
+
+/** Personas con alergia o intolerancia: lo primero que cocina tiene que ver. */
+export function allergyCount(list: DietaryRestriction[] | null | undefined): number {
+  return (list ?? []).filter((r) => r.type === 'alergia' || r.type === 'intolerancia').reduce((sum, r) => sum + (r.servings && r.servings > 0 ? r.servings : 1), 0);
 }
 
 /** Las alergias e intolerancias, primero. */

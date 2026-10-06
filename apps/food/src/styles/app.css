@@ -33,6 +33,7 @@
 .ingredients td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .plainlist{margin:0;padding-left:18px}
 .warnline{color:var(--alert)}
+.doneline{color:var(--ok)}
 
 /* Edición por bloques */
 .formblock{border:0;border-top:1px solid var(--line);margin:0;padding:14px 0 6px;min-width:0}

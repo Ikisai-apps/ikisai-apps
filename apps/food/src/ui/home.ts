@@ -2,7 +2,7 @@ import type { SyncStatus } from '@ikisai/sync-client';
 import { isMenuStale, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
-import { dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, type EventsSnapshot } from '../app/events.ts';
+import { allergyCount, dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
 import { MENU_STATUS_LABELS } from './events.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -66,15 +66,22 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
             const list = menu ? lists.find((l) => l.menu_id === menu.id) : undefined;
             const toBuy = list ? buyItems.filter((i) => i.shopping_list_id === list.id && i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length : 0;
             const ofMenu = menu ? steps.filter((s) => s.menu_id === menu.id) : [];
+            const allergies = allergyCount(event.dietary_restrictions);
+            const menuReady = !!menu && !stale && (menu.status === 'validado' || menu.status === 'cerrado');
+            const buyReady = !!list && (list.status === 'cerrada' || toBuy === 0);
+            const prepDone = ofMenu.filter((s) => s.done).length;
+            // Lo que está listo lleva su marca; lo demás es lo que queda por hacer (canon §14).
+            const line = (label: string, value: string, state: 'ok' | 'warn' | 'todo') =>
+              [el('dt', null, label), el('dd', { class: state === 'warn' ? 'warnline' : state === 'ok' ? 'doneline' : '' }, state === 'ok' ? `${value} ✓` : value)];
             return el('a', { class: 'card cardlink eventcard', href: target, onclick: (e: Event) => { e.preventDefault(); navigate(target); } },
               el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
               el('h3', null, `${dateRange(event)} · ${event.title}`),
-              el('p', null, `${guestsLabel(event)} · ${mealPlanLabel(event.meal_plan)}`),
+              el('p', null, `${whenLabel(event)} · ${guestsLabel(event)} · ${mealPlanLabel(event.meal_plan)}`),
               el('dl', { class: 'kv' },
-                el('dt', null, 'Menú'), el('dd', { class: stale ? 'warnline' : '' }, !menu ? 'pendiente' : stale ? '⚠ desactualizado' : MENU_STATUS_LABELS[menu.status].toLowerCase()),
-                el('dt', null, 'Restricciones'), el('dd', null, String(restrictions)),
-                el('dt', null, 'Compra'), el('dd', null, !list ? 'pendiente' : list.status === 'cerrada' ? 'cerrada' : toBuy === 0 ? 'todo comprado' : `${toBuy} por comprar`),
-                el('dt', null, 'Preparación'), el('dd', null, ofMenu.length === 0 ? 'pendiente' : `${ofMenu.filter((s) => s.done).length} de ${ofMenu.length}`)));
+                ...line('Menú', !menu ? 'pendiente' : stale ? '⚠ desactualizado' : MENU_STATUS_LABELS[menu.status].toLowerCase(), stale ? 'warn' : menuReady ? 'ok' : 'todo'),
+                ...line('Restricciones', allergies ? `${restrictions} · ${allergies} con alergia o intolerancia` : String(restrictions), allergies ? 'warn' : 'todo'),
+                ...line('Compra', !list ? 'pendiente' : list.status === 'cerrada' ? 'cerrada' : toBuy === 0 ? 'todo comprado' : `${toBuy} por comprar`, buyReady ? 'ok' : 'todo'),
+                ...line('Preparación', ofMenu.length === 0 ? 'pendiente' : `${prepDone} de ${ofMenu.length}`, ofMenu.length > 0 && prepDone === ofMenu.length ? 'ok' : 'todo')));
           })));
   }
 
