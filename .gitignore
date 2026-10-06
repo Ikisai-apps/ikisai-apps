@@ -12,3 +12,6 @@ __pycache__/
 .vite/
 playwright-report/
 test-results/
+
+# Worktrees internos de agentes (Claude Code)
+.claude/
