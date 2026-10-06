@@ -19,8 +19,7 @@ logoutAccount=async function(){
     await new Promise((resolve,reject)=>{const tx=Sync.db.transaction('attachments','readwrite');tx.objectStore('attachments').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
     try{localStorage.removeItem(UI_KEY)}catch{}
     Sync.ready=false;Sync.actor=null;Sync.last=null;Sync.lastComposed='';Sync.members=null;Sync.record={schemaVersion:1,tabs:[],queue:[],conflict:null,failure:null,cursor:0,ui:{},actorId:null,actor:null};state.tabs=[];
-    closeSheet();document.getElementById('app').innerHTML='<div class="boot"><h1>Ikisai · Tareas</h1><p>Sesión cerrada.</p></div>';
-    loginSheet();setMode('unauthorized');
+    loginSheet('Sesión cerrada.');setMode('unauthorized');
   }catch(e){toast(e.message)}
 };
 sessionsSheet=async function(){
