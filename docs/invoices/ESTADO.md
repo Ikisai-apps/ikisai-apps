@@ -67,6 +67,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Fase 3, PR 1 de 3 (`invoices/fase3-modelo`): migración 0207 con `invoices.supplier_templates` (sincronizada) e `invoices.document_texts` (solo Edge, no se copia al dispositivo, se borra con su documento); hook `invoices.check_templates` (una plantilla solo se escribe en un lote donde una factura de ese proveedor pasa a validada; el owner puede retirarla); ruta `POST documents/:fileId/text` y lectura `invoices.document_text`.
 
+- Fase 3, PR 2 de 3 (`invoices/fase3-motor`): motor de plantillas en `_domain/invoices/supplier-templates.ts` (huella y Jaccard, aprender de una confirmación, aplicar con confianza según la evidencia, aciertos y fallos, variantes, retirar una regla tras 3 fallos, versión nueva con otro formato, operación para el lote de `invoices.validate`) y `extractWithTemplates` («Leer PDF» con la plantilla del proveedor y reglas genéricas para el resto).
+
 ## En curso
 
 - Extracción sin API de pago: fase 2 en PR; después fase 3 (plantillas por proveedor, con propuesta previa en `API.md`) y fase 4 (OCR con Google Drive, cuando Core la verifique).
