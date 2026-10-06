@@ -39,6 +39,8 @@ export interface WorkspaceBarOptions {
   rows?: Child[];
   /** Clase extra de la fila de marca (gancho de la app, p. ej. `brandrow`). */
   rowClass?: string;
+  /** La marca como botón (`#appLauncher`), para engancharle el lanzador de apps con `launcher.attach`. */
+  markButton?: boolean;
   attrs?: HookAttrs;
 }
 
@@ -46,7 +48,9 @@ export interface WorkspaceBarOptions {
 export function renderWorkspaceBar(options: WorkspaceBarOptions): HTMLElement {
   return el('header', { class: 'topbar workspace', ...(options.attrs ?? {}) },
     el('div', { class: cls('topbar-row', options.rowClass) },
-      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
+      options.markButton
+        ? el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher', 'aria-label': 'Abrir otra app de Ikisai', 'aria-haspopup': 'dialog' }, icon(options.markIcon ?? 'mark', 20))
+        : el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
       el('div', { class: 'brand-name' }, options.name),
       options.sub ? el('span', { class: 'brand-sub' }, options.sub) : null,
       el('div', { class: 'spacer' }),
