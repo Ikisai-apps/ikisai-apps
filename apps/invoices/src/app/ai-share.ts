@@ -44,7 +44,7 @@ export async function shareWithAi(document: File, source: SharedSource | null): 
     title: 'Analizar con IA',
     text: el('div', null,
       el('p', null, `Se compartirá «${document.name}» y las instrucciones de Ikisai con la app que elijas (ChatGPT, Gemini…). Esa app recibe el documento: elige una de confianza.`),
-      el('p', { class: 'hint' }, 'Cuando te devuelva el resultado, compártelo con Ikisai Invoices o cópialo y pégalo en «Pegar resultado».')),
+      el('p', { class: 'hint' }, 'Cuando te devuelva el resultado, compártelo con Ikisai Finance o cópialo y pégalo en «Pegar resultado».')),
     confirmLabel: 'Compartir',
   });
   if (!ok) return 'cancelled';

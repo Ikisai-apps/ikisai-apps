@@ -40,7 +40,7 @@ test.afterAll(async () => {
 
 async function login(page: Page): Promise<void> {
   await page.goto(`${baseURL}/`);
-  await expect(page.getByRole('heading', { name: 'Ikisai Invoices' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ikisai Finance' })).toBeVisible();
   await page.getByLabel('Correo electrónico').fill(USER.email);
   await page.getByLabel('Contraseña').fill(USER.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
@@ -210,7 +210,7 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();
-  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Invoices', short_name: 'Invoices', display: 'standalone', start_url: '/' });
+  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Finance', short_name: 'Finance', display: 'standalone', start_url: '/' });
   const sw = await page.request.get(`${baseURL}/sw.js`);
   expect(sw.ok()).toBeTruthy();
   expect(await sw.text()).toContain('ikisai-invoices-shell-');

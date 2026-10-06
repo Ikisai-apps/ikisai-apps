@@ -848,7 +848,7 @@ test('IA sin API de pago (fase 1): compartir documento y contrato, volver por sh
     const result = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, supplier_name: 'Proveedor IA SL', supplier_tax_id: null, invoice_number: 'IA-1', object: 'compra ia', invoice_date: '2026-10-06' },
       source: { filename: '2026_10_06_(proveedor_ia_sl)_compra_ia.pdf', sha256: pdfSha } };
     const reply = `Aquí tienes los datos:\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\`\nAvísame si falta algo.`;
-    // Lo que haría el sistema al elegir Ikisai Invoices en «Compartir»: un POST multipart a /share-target.
+    // Lo que haría el sistema al elegir Ikisai Finance en «Compartir»: un POST multipart a /share-target.
     await page.evaluate((text) => {
       const form = document.createElement('form');
       form.method = 'POST'; form.action = '/share-target'; form.enctype = 'multipart/form-data';

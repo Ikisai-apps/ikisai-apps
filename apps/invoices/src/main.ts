@@ -41,7 +41,7 @@ function route(): void {
     });
   } else {
     unmountLogin = renderLogin(root!, {
-      appName: 'Invoices',
+      appName: 'Finance',
       tagline: 'Facturas, compras y gestoría',
       describeError,
       async onLogin(email, password) {

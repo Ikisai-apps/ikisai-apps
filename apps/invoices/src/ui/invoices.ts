@@ -890,7 +890,7 @@ function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promi
       const doc = await getDocument();
       if (!doc) return;
       const how = await shareWithAi(doc.file, doc.source);
-      if (how === 'files' || how === 'text') toast('Cuando la app de IA responda, comparte el resultado con Ikisai Invoices o pégalo con «Pegar resultado».');
+      if (how === 'files' || how === 'text') toast('Cuando la app de IA responda, comparte el resultado con Ikisai Finance o pégalo con «Pegar resultado».');
     } catch (error) { toast(describeError(error)); }
   } }, icon('upload', 16), 'Analizar con IA') : null;
   return el('div', { class: 'chatgpt-steps', id },

@@ -1,5 +1,7 @@
 # Ikisai Invoices · API y modelo de datos (puerta G2)
 
+> **Finance.** Desde la ronda 31 la app se llama **Ikisai Finance** (`finance.ikisai.com`; `invoices.ikisai.com` y `tramita.ikisai.com` redirigen). Internamente todo sigue como `invoices`: schema, app id, función `invoices-api`, rutas y este documento.
+
 Fecha: 6 de octubre de 2026 (revisión 2, cotejada con el handoff V3). Autor: equipo Invoices (agente de backend). Estado: **aprobado de forma provisional por Core**; los comentarios de Core en la PR no bloquean. Sigue `docs/core/PLANTILLA_API_APP.md`; el contrato `docs/core/CONTRATO_SINCRONIZACION.md` es normativo y aquí no se repite.
 
 Fuentes: `02_HANDOFF_TECNICO_CORE_V3.md` §24A, §25 (Invoices API) y §31A; `03_IKISAI_INVOICE_IMPORT_V1.schema.json`; `04_EJEMPLO_IKISAI_INVOICE_IMPORT_V1.json`; `05_PROMPT_EXTRACCION_FACTURA.md`; `07_CHECKLIST_ACEPTACION.md` A; `docs/core/PLAN.md` §5; criterios fiscales de C08. Donde el handoff y el plan de Core difieren (el handoff no preveía `core` ni offline), manda el plan de Core; donde el handoff fija comportamiento funcional (nombre canónico, estados, JSON, ZIP), manda el handoff.

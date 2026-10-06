@@ -465,3 +465,16 @@ test('imports/extract con helper: documento validado y hasheado; documento invá
     await extracting.close();
   }
 });
+
+test('orígenes: finance.ikisai.com (principal) y invoices.ikisai.com (hasta la fase C) se aceptan; otro origen no', async () => {
+  assert.deepEqual(INVOICES_ORIGINS.slice(0, 2), ['https://finance.ikisai.com', 'https://invoices.ikisai.com']);
+  // Sin `origins` explícitos: la app usa INVOICES_ORIGINS.
+  const own = await createTestApp({ app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[1]!, createHandler: (config) => createInvoicesApp({ ...config, origins: undefined, tasksFetch }) });
+  try {
+    const call = (origin: string) => own.handler(new Request(`${own.supabase.url}/functions/v1/invoices-api/api/v1/bootstrap`, { headers: { Origin: origin, Authorization: 'Bearer ' + own.tokens.owner } }));
+    for (const origin of INVOICES_ORIGINS.slice(0, 2)) assert.equal((await call(origin)).status, 200, origin);
+    assert.equal((await call('https://otra.example')).status, 403);
+  } finally {
+    await own.close();
+  }
+});

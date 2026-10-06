@@ -62,6 +62,9 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #153 (fase 1) fusionada y publicada.
 - Fase 2 de la extracción sin API de pago (`invoices/ia-pdf-texto`): «Leer PDF» con PDF.js bajo demanda; extractor determinista con NIF/CIF con control, fechas, número, IVA por tipo, retención, total e IBAN; procedencia por campo; duplicado blando; PDF escaneado remitido a «Analizar con IA» (API.md §6.8). Corregido el enlace `#/facturas?vista=emitidas`, roto por un carácter de control.
 
+- PR #155 (fase 2) fusionada.
+- Invoices pasa a llamarse **Finance** (ronda 31, fase B): `https://finance.ikisai.com` en `INVOICES_ORIGINS` (el antiguo se quita tras la fase C de Core) y nombre visible «Ikisai Finance» en la app y el manifiesto. Nada interno cambia: schema `invoices`, app id, `invoices-api`, proyecto Pages.
+
 ## En curso
 
 - Extracción sin API de pago: fase 2 en PR; después fase 3 (plantillas por proveedor, con propuesta previa en `API.md`) y fase 4 (OCR con Google Drive, cuando Core la verifique).
