@@ -290,6 +290,9 @@ export class SyncClientImpl implements SyncClient {
   private refreshing: Promise<boolean> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listenersInstalled = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAttempts = 0;
+  private started = false;
   private readonly onOnline = () => {
     this.setStatus({ network: 'online' });
     void this.resumeAfterReconnect();
@@ -411,8 +414,29 @@ export class SyncClientImpl implements SyncClient {
   /** Clasifica un fallo de transporte o de API para el estado de red. */
   private handleFailure(error: unknown): void {
     this.recordError(error);
-    if (isNetworkError(error)) this.setStatus({ network: 'offline' });
-    else this.setStatus({ network: 'error' });
+    if (isNetworkError(error)) {
+      this.setStatus({ network: 'offline' });
+      this.scheduleRetry();
+    } else this.setStatus({ network: 'error' });
+  }
+
+  /**
+   * Caso P18: tras recargar con la red caída, `navigator.onLine` puede seguir en true y nunca llegará `online`;
+   * tras un fallo de red se reintenta con espera creciente (0,5 s a 5 s) mientras haya cola pendiente.
+   */
+  private scheduleRetry(): void {
+    if (this.retryTimer || !this.sess || !this.started) return;
+    const delay = Math.min(500 * 2 ** this.retryAttempts, 5000);
+    this.retryAttempts += 1;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (!this.sess || !this.started || this.state.pendingCommands + this.state.pendingBlobs === 0) {
+        this.retryAttempts = 0;
+        return;
+      }
+      void this.sync().catch(() => undefined);
+    }, delay);
+    (this.retryTimer as { unref?: () => void }).unref?.();
   }
 
   private hasNetwork(): boolean {
@@ -711,6 +735,7 @@ export class SyncClientImpl implements SyncClient {
 
   async start(): Promise<Bootstrap | null> {
     await this.ensureReady();
+    this.started = true;
     this.installListeners();
     if (this.sess && this.hasNetwork()) {
       try {
@@ -756,6 +781,7 @@ export class SyncClientImpl implements SyncClient {
   }
 
   stop(): void {
+    this.started = false;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -768,6 +794,10 @@ export class SyncClientImpl implements SyncClient {
       (doc ?? target).removeEventListener?.('visibilitychange', this.onVisibility);
     }
     this.listenersInstalled = false;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
   }
 
   private installListeners(): void {
@@ -828,6 +858,7 @@ export class SyncClientImpl implements SyncClient {
         await this.pull();
       }
       if (pushedAll && this.state.network === 'syncing') this.setStatus({ network: 'online' });
+      this.retryAttempts = 0;
     } catch (error) {
       this.handleFailure(error);
     }
