@@ -1,0 +1,27 @@
+/* Estilos solo de la página de muestra; no forman parte del kit. */
+.demo-head{position:sticky;top:0;z-index:var(--z-topbar);display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--edge)}
+.demo-nav{display:flex;gap:4px;flex-wrap:wrap;overflow-x:auto;max-width:100%}
+.demo-nav a{text-decoration:none;font-weight:700;font-size:13px;padding:7px 10px;border-radius:999px;color:var(--muted);white-space:nowrap}
+.demo-nav a:hover{background:var(--accent-soft);color:var(--accent-deep)}
+.demo-main{width:min(1040px,100%);margin:0 auto;padding:16px 16px 64px;display:grid;gap:36px}
+.demo-section>h2{font-size:28px;margin-bottom:4px}
+.demo-intro{margin-bottom:14px;max-width:70ch}
+.demo-sub{font-size:17px;margin:18px 0 8px}
+.demo-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.demo-form{max-width:520px;margin:16px 0}
+.field.inline{grid-template-columns:auto auto;align-items:center;margin:0}
+.field.inline input[type="color"]{width:46px;height:36px;padding:2px;min-height:0;cursor:pointer}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:16px}
+.swatch{display:grid;gap:4px;font-size:11px}
+.swatch-color{height:40px;border-radius:10px;border:1px solid var(--edge)}
+.type-sample{padding:16px;border-radius:var(--radius);background:var(--paper);border:1px solid var(--edge)}
+.type-sample h1{font-size:34px}
+.demo-num{font-size:30px;margin-top:8px}
+.demo-state{display:grid;gap:4px;min-width:180px}
+.demo-frame{border:1px dashed var(--line);border-radius:var(--radius);overflow:hidden;background:var(--bg)}
+.demo-frame .login{min-height:0;padding:24px 16px}
+.shell-frame{height:520px;position:relative;overflow:auto;contain:layout paint}
+.shell-frame .shell{min-height:100%}
+.shell-frame .nav{position:absolute}
+.shell-frame .topbar{position:sticky}
+@media(min-width:1024px){.demo-main{padding:28px 32px 80px}.shell-frame .nav{position:sticky}}

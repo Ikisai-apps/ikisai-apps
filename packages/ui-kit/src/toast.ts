@@ -1,0 +1,44 @@
+import { el, replace } from './dom.ts';
+
+let node: HTMLDivElement | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+function host(): HTMLDivElement {
+  if (!node) {
+    node = el('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
+    document.body.appendChild(node);
+  }
+  return node;
+}
+
+/** Aviso breve, no bloqueante, anunciado a lectores de pantalla. */
+export function toast(message: string, ms = 3200): void {
+  const box = host();
+  box.classList.remove('actionable');
+  replace(box, message);
+  box.classList.add('show');
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => box.classList.remove('show'), ms);
+}
+
+export interface ToastAction {
+  label: string;
+  onClick(): void;
+}
+
+/** Aviso con una acción (por ejemplo «Deshacer»); se oculta al pulsarla o al pasar el tiempo. */
+export function toastWithAction(message: string, action: ToastAction, ms = 6000): void {
+  const box = host();
+  box.classList.add('actionable');
+  const button = el('button', { type: 'button', onclick: () => { action.onClick(); hideToast(); } }, action.label);
+  replace(box, el('span', null, message), button);
+  box.classList.add('show');
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(hideToast, ms);
+}
+
+export function hideToast(): void {
+  node?.classList.remove('show');
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
