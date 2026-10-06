@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.8.1 (tanda 11): `attrs`/`pinAttrs` en la tarjeta de proyecto y dinero sin presupuesto; adopción de la tarjeta en `apps/tasks` (PR pendiente del visto bueno de Tasks).
 - v0.8.0 (tanda 10): lista reordenable anidable; controles sueltos con `.compact` (petición de Food).
 - v0.7.2 (tanda 9): el toast con hoja abierta va bajo la cabecera de la hoja.
 - v0.7.1 (tanda 9): ids configurables en `renderLogin`; `abbr` en el calendario móvil. Revisión visual de `apps/tasks` hecha; adopción del kit en Tasks en marcha (login y shell primero), con el visto bueno de su equipo.

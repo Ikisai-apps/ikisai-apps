@@ -50,6 +50,10 @@ export interface ProjectCardSpec {
   onPin?: (pinned: boolean) => void;
   /** Acciones extra en la esquina (menú, arrastre). */
   actions?: HTMLElement[];
+  /** Atributos extra del `article` (p. ej. `data-drop-project` en Tasks). */
+  attrs?: Record<string, string | null | undefined>;
+  /** Atributos extra del botón de fijar (p. ej. `data-project-pin`, `data-tip`, otro `aria-label`). */
+  pinAttrs?: Record<string, string | null | undefined>;
 }
 
 /** Tarjeta de proyecto con anillo de progreso, pin, estrella de urgencia, chips, presupuesto y color propio. */
@@ -67,19 +71,22 @@ export function renderProjectCard(spec: ProjectCardSpec): HTMLElement {
     spec.meta ? el('div', { class: 'projectmeta' }, spec.meta) : null,
   );
   const pin = spec.onPin && !spec.system
-    ? el('button', { class: `iconbtn small pinbtn${spec.pinned ? ' pinned' : ''}`, type: 'button', 'aria-pressed': String(!!spec.pinned), 'aria-label': spec.pinned ? 'Desfijar proyecto' : 'Fijar proyecto', onclick: (e: Event) => { e.stopPropagation(); spec.onPin?.(!spec.pinned); } }, icon('pin', 16))
+    ? el('button', { class: `iconbtn small pinbtn${spec.pinned ? ' pinned' : ''}`, type: 'button', 'aria-pressed': String(!!spec.pinned), 'aria-label': spec.pinned ? 'Desfijar proyecto' : 'Fijar proyecto', ...(spec.pinAttrs ?? {}), onclick: (e: Event) => { e.stopPropagation(); spec.onPin?.(!spec.pinned); } }, icon('pin', 16))
     : null;
-  const budget = spec.budget && spec.budget.total > 0
+  // Dinero: con presupuesto, barra de consumo (y «excedido»); sin presupuesto pero con coste, solo la cifra.
+  const budget = spec.budget && (spec.budget.total > 0 || spec.budget.spent > 0)
     ? (() => {
       const fmt = spec.budget!.format ?? ((n: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n));
-      const ratio = Math.min(1.2, spec.budget!.spent / spec.budget!.total);
-      return el('div', { class: `money${ratio > 1 ? ' over' : ''}` },
-        el('div', { class: 'moneytext' }, el('strong', null, fmt(spec.budget!.spent)), ` de ${fmt(spec.budget!.total)}`),
-        el('div', { class: 'moneybar', role: 'progressbar', 'aria-valuenow': String(Math.round(ratio * 100)), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${Math.min(100, ratio * 100)}%` })),
+      const total = spec.budget!.total > 0 ? spec.budget!.total : 0;
+      const ratio = total ? Math.min(1.2, spec.budget!.spent / total) : 0;
+      const over = total > 0 && spec.budget!.spent > total;
+      return el('div', { class: `money${over ? ' over' : ''}`, title: total ? 'Coste de las tareas frente al presupuesto' : 'Coste de las tareas' },
+        el('div', { class: 'moneytext' }, el('strong', null, fmt(spec.budget!.spent)), total ? ` de ${fmt(total)}${over ? ' · excedido' : ''}` : ''),
+        total ? el('div', { class: 'moneybar', role: 'progressbar', 'aria-valuenow': String(Math.round(ratio * 100)), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${Math.min(100, ratio * 100)}%` })) : null,
       );
     })()
     : null;
-  return el('article', { class: classes.join(' '), style: spec.color && !spec.system ? itemColorStyle(spec.color) : null, dataset: { project: spec.id, pending: String(!!spec.pending) } },
+  return el('article', { class: classes.join(' '), style: spec.color && !spec.system ? itemColorStyle(spec.color) : null, dataset: { project: spec.id, pending: String(!!spec.pending) }, ...(spec.attrs ?? {}) },
     el('div', { class: 'projecttop' },
       pct !== null ? el('span', { class: 'cardring', 'aria-hidden': 'true' }, ringSvg(pct, 46, '')) : null,
       open,

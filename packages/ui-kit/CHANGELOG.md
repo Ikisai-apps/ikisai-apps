@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.8.1 · 6 de octubre de 2026
+
+- `renderProjectCard`: `attrs` (atributos extra del `article`, p. ej. `data-drop-project`) y `pinAttrs` (del botón de fijar: `data-project-pin`, `data-tip`, `aria-label` propio), para que Tasks conserve sus ganchos. El bloque de dinero sale también sin presupuesto cuando hay coste (solo la cifra) y, con presupuesto excedido, añade «· excedido».
+
 ## 0.8.0 · 6 de octubre de 2026
 
 - `createSortableList` **anidable** (Food: platos dentro de servicios): cada lista solo mira sus filas y asas hijas directas (`:scope > …`), así el teclado, los botones y el arrastre de una lista interior no tocan la exterior ni al revés. Recordatorio: si la app repinta desde el espejo tras cada `onReorder`, use `setItems` con las filas nuevas en vez de crear otra lista, para que los movimientos seguidos lleven revisiones al día.
