@@ -12,6 +12,17 @@ const alias = [
 
 /** Clase que envuelve cada trozo de interfaz pintado con el kit mientras convive con la interfaz heredada. */
 export const KIT_SCOPE = 'ikisai-kit';
+/** Dentro de una pieza del kit, contenido heredado al que el CSS del kit no debe llegar. */
+export const LEGACY_SCOPE = 'ikisai-legacy';
+
+/** Añade `:where(:not(.ikisai-legacy *))` al último compuesto del selector, antes de un pseudoelemento si lo hay. */
+function stopAtLegacy(selector: string): string {
+  // :where() no suma especificidad: las reglas heredadas que hoy ganan dentro de piezas del kit siguen ganando.
+  // Dentro del contenido heredado, el kit vuelve a valer en piezas suyas envueltas de nuevo en `.ikisai-kit`.
+  const guard = `:where(:not(.${LEGACY_SCOPE} *),.${LEGACY_SCOPE} .${KIT_SCOPE} *)`;
+  const pseudo = selector.indexOf('::');
+  return pseudo >= 0 ? selector.slice(0, pseudo) + guard + selector.slice(pseudo) : selector + guard;
+}
 
 /** Divide una lista de selectores por las comas de primer nivel (respeta `:is(a,b)` y `[a="x,y"]`). */
 function splitSelectors(list: string): string[] {
@@ -30,7 +41,8 @@ function splitSelectors(list: string): string[] {
 }
 
 /**
- * Acota el CSS del kit a `.ikisai-kit`: la hoja del kit y la heredada comparten nombres de clase (`.topbar`, `.brand`,
+ * Acota el CSS del kit a `.ikisai-kit` y lo detiene en `.ikisai-legacy` (contenido heredado dentro de una pieza del kit,
+ * como el cuerpo de la hoja: el kit pinta el marco y no el contenido): la hoja del kit y la heredada comparten nombres de clase (`.topbar`, `.brand`,
  * `.field`, `.chip`…), así que, hasta que la interfaz heredada desaparezca, las reglas del kit solo se aplican dentro de
  * los elementos que la app marca con esa clase. Quedan globales los tokens (`:root`), las fuentes y las animaciones; las
  * reglas de `html`/`body` del kit no se aplican (las de la app mandan).
@@ -45,10 +57,10 @@ function scopeKitCss(): PostcssPlugin {
         if (/^:root\b/.test(selector)) {
           // `:root[data-theme="dark"] .toast` → sigue dependiendo del tema, pero dentro del ámbito.
           const rest = selector.replace(/^:root(\[[^\]]*\]|:not\([^)]*\))*/, '');
-          return rest.trim() ? `${selector.slice(0, selector.length - rest.length)} .${KIT_SCOPE} ${rest.trim()}` : selector;
+          return rest.trim() ? `${selector.slice(0, selector.length - rest.length)} .${KIT_SCOPE} ${stopAtLegacy(rest.trim())}` : selector;
         }
-        if (/^(\*|::selection|html\b|body\b)/.test(selector)) return `.${KIT_SCOPE} ${selector.replace(/^(html|body)\b/, 'x-never')}`;
-        return `.${KIT_SCOPE} ${selector}`;
+        if (/^(\*|::selection|html\b|body\b)/.test(selector)) return `.${KIT_SCOPE} ${stopAtLegacy(selector.replace(/^(html|body)\b/, 'x-never'))}`;
+        return `.${KIT_SCOPE} ${stopAtLegacy(selector)}`;
       });
     },
   };

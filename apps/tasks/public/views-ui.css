@@ -44,11 +44,11 @@
 .hidden-level{position:absolute!important;visibility:hidden;width:1px;height:1px;overflow:hidden;margin:0!important;padding:0!important}
 .prioritybtn{display:flex;align-items:center;gap:9px;width:100%;height:46px;border:1px solid var(--line);background:#fff;border-radius:14px;padding:0 12px;font-weight:600;text-align:left}
 .prioritybtn:hover{background:#f6f1e8}
-.star:not(.ikisai-kit *){position:relative;display:inline-block;width:20px;height:20px;vertical-align:-4px;color:#c58b2a;flex:none}
-.star:not(.ikisai-kit *)::before,.star:not(.ikisai-kit *)::after{content:'';position:absolute;inset:0;background:currentColor;-webkit-mask:var(--icon-star) center/contain no-repeat;mask:var(--icon-star) center/contain no-repeat}
-.star:not(.ikisai-kit *)::after{-webkit-mask-image:var(--icon-star-fill);mask-image:var(--icon-star-fill);opacity:0}
-.star-high:not(.ikisai-kit *)::after{opacity:1;clip-path:inset(0 50% 0 0)}
-.star-critical:not(.ikisai-kit *)::after{opacity:1}
+.star:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){position:relative;display:inline-block;width:20px;height:20px;vertical-align:-4px;color:#c58b2a;flex:none}
+.star:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::before,.star:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{content:'';position:absolute;inset:0;background:currentColor;-webkit-mask:var(--icon-star) center/contain no-repeat;mask:var(--icon-star) center/contain no-repeat}
+.star:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{-webkit-mask-image:var(--icon-star-fill);mask-image:var(--icon-star-fill);opacity:0}
+.star-high:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{opacity:1;clip-path:inset(0 50% 0 0)}
+.star-critical:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{opacity:1}
 .tasktext .star{width:16px;height:16px;vertical-align:-3px;margin-right:5px}
 /* Lo que sobra: cuadro vacío dentro de una lista y aviso de la página de proyectos. */
 .tasklist > .empty{display:none}
@@ -82,17 +82,17 @@
 
 
 /* Botón de tema y ojo de vistas, con tooltip. */
-.themetoggle:not(.ikisai-kit *){width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);margin-left:0!important}
+.themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);margin-left:0!important}
 
 .project-detail-head .title .star{width:24px;height:24px;vertical-align:-3px;margin-right:6px}
 /* Botón flotante más ajustado al signo. */
 .fab{width:48px;height:48px;border-radius:15px;bottom:calc(80px + env(safe-area-inset-bottom))}
 .fab::before{width:26px;height:26px}
 @media(min-width:1024px){.fab{width:52px;height:52px;border-radius:16px;right:28px;bottom:26px}.fab::before{width:28px;height:28px}}
-.themetoggle:not(.ikisai-kit *):hover{background:#efe7da}
-.themetoggle:not(.ikisai-kit *) .menuicon{width:19px;height:19px}
-.viewsave:not(.ikisai-kit *){width:34px;height:34px;min-width:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);display:grid;place-items:center}
-.viewsave:not(.ikisai-kit *):hover{background:#efe7da}
+.themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover{background:#efe7da}
+.themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)) .menuicon{width:19px;height:19px}
+.viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){width:34px;height:34px;min-width:34px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);display:grid;place-items:center}
+.viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover{background:#efe7da}
 [data-tip]{position:relative}
 [data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#2f382f;color:#fff;font-size:11px;font-weight:600;padding:5px 8px;border-radius:8px;white-space:nowrap;z-index:60;pointer-events:none;font-family:Inter,ui-sans-serif,system-ui,sans-serif;letter-spacing:0;text-transform:none}
 
@@ -146,12 +146,12 @@ html{overflow-x:hidden}
 .checkline input{width:18px;height:18px;margin:0}
 .menulist button.on{background:#e5dfd1;color:var(--olive-dark);font-weight:800}
 /* Alias, Mis tareas, contadores de área, deshacer, coste. */
-.aliasbtn:not(.ikisai-kit *){width:auto!important;padding:0 10px 0 8px!important;gap:6px;display:inline-flex!important;align-items:center;font-size:13px;font-weight:700;color:var(--olive-dark);border:1px solid var(--line);background:var(--paper);border-radius:12px;height:40px;margin-left:8px!important}
-.aliasbtn:not(.ikisai-kit *) .menuicon{width:17px;height:17px}
-.aliasbtn:not(.ikisai-kit *) span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){width:auto!important;padding:0 10px 0 8px!important;gap:6px;display:inline-flex!important;align-items:center;font-size:13px;font-weight:700;color:var(--olive-dark);border:1px solid var(--line);background:var(--paper);border-radius:12px;height:40px;margin-left:8px!important}
+.aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)) .menuicon{width:17px;height:17px}
+.aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)) span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.viewpill.mine:not(.ikisai-kit *){display:inline-flex;align-items:center;gap:5px}
-.viewpill:not(.ikisai-kit *) .menuicon{width:14px;height:14px}
+.viewpill.mine:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){display:inline-flex;align-items:center;gap:5px}
+.viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)) .menuicon{width:14px;height:14px}
 .aliaschips{margin:6px 0 10px}
 .aliaschips .filterchip{margin:0 5px 6px 0}
 
@@ -246,7 +246,7 @@ html{overflow-x:hidden}
 .activitywhat{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .activitywhen{color:var(--muted);font-size:11px;white-space:nowrap}
 .shortcuts{display:flex;flex-wrap:wrap;gap:6px}
-.shortcuts .viewpill:not(.ikisai-kit *){display:inline-flex;align-items:center;gap:5px}
+.shortcuts .viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){display:inline-flex;align-items:center;gap:5px}
 @media(min-width:640px){.homeprojectgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1024px){
   .home{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -331,9 +331,9 @@ html{overflow-x:hidden}
 
 
 
-.viewpill:not(.ikisai-kit *){flex:none;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;color:var(--olive-dark);white-space:nowrap}
-.viewpill:not(.ikisai-kit *):hover{background:#efe7da}
-.viewpill.active:not(.ikisai-kit *){background:var(--olive-dark);border-color:var(--olive-dark);color:#fff}
+.viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){flex:none;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;color:var(--olive-dark);white-space:nowrap}
+.viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover{background:#efe7da}
+.viewpill.active:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--olive-dark);border-color:var(--olive-dark);color:#fff}
 @media(max-width:1023px){.facettotal .ghost.small{display:none}.facetbar{margin-top:-2px}}
 @media(min-width:1024px){.filterbtn .filterlabel{display:inline}.facets{flex-wrap:wrap;overflow:visible}}
 .themelist button{display:flex;align-items:center;gap:10px}

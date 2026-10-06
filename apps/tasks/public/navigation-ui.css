@@ -27,7 +27,7 @@
 .area-card strong{overflow-wrap:anywhere}
 .area-card .actions{flex-wrap:wrap;margin-top:10px}
 .area-card .actions button{font-size:13px}
-.sheet-close{position:sticky;top:0;float:right;margin:-4px -4px 4px 10px;background:var(--paper);z-index:2}
+
 .sheettitle{padding-right:36px}
 @media(min-width:1024px){
   :root{--sidebar-width:264px}
@@ -46,8 +46,8 @@
   
   
   
-  .sheet{top:clamp(24px,8dvh,80px);bottom:auto;width:min(800px,calc(100vw - 64px));max-height:calc(100dvh - 110px);border-radius:22px;padding:24px 28px 28px;box-shadow:0 20px 60px rgba(30,27,22,.2)}
-  .handle{display:none}
+  
+  
   .toast{bottom:28px}
   #moveRail{left:calc(50% + var(--sidebar-width)/2);width:min(1050px,calc(100vw - var(--sidebar-width)));max-width:none}
 }

@@ -153,10 +153,10 @@ html.dark .drop-project{background:#3b4634!important}
 html.dark #dragGhost{background:#6d7a56}
 html.dark #moveRail{background:var(--paper)}
 html.dark #moveRail button{background:#2c312a;color:var(--ink)}
-html.dark .sheetback{background:rgba(0,0,0,.5)}
-html.dark .sheet{background:#23271f;box-shadow:0 -15px 45px rgba(0,0,0,.45)}
-html.dark .sheet-close{background:#23271f}
-html.dark .handle{background:#4a5044}
+
+
+
+
 html.dark .field label{color:#9a9488}
 html.dark .field input,html.dark .field textarea,html.dark .field select,html.dark select,html.dark .suggestion button,html.dark .filterchip,html.dark input[type="file"]::file-selector-button{background-color:#2c312a;color:var(--ink);border-color:#464c40}
 html.dark select{background-color:#2c312a}
@@ -195,7 +195,7 @@ html.dark .areablock{border-top-color:var(--line)}
 html.dark .filterarea{border-top-color:var(--line)}
 html.dark .prioritybtn{background:#2c312a;border-color:#464c40;color:var(--ink)}
 html.dark .prioritybtn:hover{background:#343a31}
-html.dark .star:not(.ikisai-kit *){color:#e2b45c}
+html.dark .star:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){color:#e2b45c}
 
 
 html.dark .addtask{background:var(--paper);border-top-color:var(--line)}
@@ -205,8 +205,8 @@ html.dark .task.newtask{background:#2a2f27}
 html.dark .newproject{background:#272b24}
 html.dark .themelist button.on{background:#363c33;color:#d9e0c3}
 
-html.dark .themetoggle:not(.ikisai-kit *):hover,html.dark .viewsave:not(.ikisai-kit *):hover{background:#333a31}
-html.dark .themetoggle:not(.ikisai-kit *),html.dark .viewsave:not(.ikisai-kit *){background:var(--paper);border-color:var(--line);color:#d9e0c3}
+html.dark .themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover,html.dark .viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover{background:#333a31}
+html.dark .themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--paper);border-color:var(--line);color:#d9e0c3}
 html.dark [data-tip]:hover::after{background:#e8e3d6;color:#1b1e19}
 html.dark .pinbtn.pinned{color:#d9e0c3}
 html.dark .task.selected{background:#3b4634!important}
@@ -216,7 +216,7 @@ html.dark .batchbar{background:#e8e3d6;color:#1b1e19}
 html.dark .batchbar .softbtn,html.dark .batchbar .iconbtn{color:#1b1e19;background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.15)}
 html.dark .batchbar .ghost.small{color:#46513b;border-color:rgba(0,0,0,.2)}
 html.dark .batchtoggle.on{background:#363c33;color:#d9e0c3}
-html.dark .aliasbtn:not(.ikisai-kit *){background:var(--paper);border-color:var(--line);color:#d9e0c3}
+html.dark .aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--paper);border-color:var(--line);color:#d9e0c3}
 
 html.dark .undotoast{background:#e8e3d6;color:#1b1e19}
 html.dark .undotoast button{background:rgba(0,0,0,.08);color:#1b1e19}
@@ -243,9 +243,9 @@ html.dark .facetpanel{border-color:#575e51;box-shadow:0 16px 40px rgba(0,0,0,.45
 html.dark .facetfoot{border-top-color:#363b33}
 html.dark .facettotal{background:var(--paper-2);border-color:var(--line)}
 html.dark .facetcount{background:#6b7a54}
-html.dark .viewpill:not(.ikisai-kit *){background:var(--paper);border-color:var(--line);color:#c5cfa9}
-html.dark .viewpill:not(.ikisai-kit *):hover{background:#333a31}
-html.dark .viewpill.active:not(.ikisai-kit *){background:#5b6848;border-color:#5b6848;color:#fff}
+html.dark .viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--paper);border-color:var(--line);color:#c5cfa9}
+html.dark .viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):hover{background:#333a31}
+html.dark .viewpill.active:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:#5b6848;border-color:#5b6848;color:#fff}
 @media(hover:hover){
   html.dark .task:hover{background:rgba(235,230,218,.04)}
   html.dark .task.context:hover{background:#2f342c}

@@ -24,4 +24,4 @@ async function photoThumbnails(){
   }catch{/* Download remains available when a thumbnail cannot be decoded. */}
  }
 }
-new MutationObserver(()=>{if(!thumbnailPending){thumbnailPending=true;queueMicrotask(photoThumbnails);}}).observe(document.getElementById('sheet'),{childList:true,subtree:true});
+new MutationObserver(()=>{if(!thumbnailPending){thumbnailPending=true;queueMicrotask(photoThumbnails);}}).observe(document.body,{childList:true,subtree:true}); // #sheet solo existe con la hoja abierta (hoja del kit)
