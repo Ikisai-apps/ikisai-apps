@@ -27,8 +27,13 @@ def main():
       if not bad:
         if info["m"] == "DIRTY": print("conflictos con main: rebasa y vuelve a empujar"); return 1
         head = gh("pr", "view", str(a.pr), "--json", "headRefName,headRepositoryOwner,headRepository", "--jq", ".headRefName").stdout.strip()
-        r = gh("pr", "merge", str(a.pr), "--squash")
-        if r.returncode != 0:
+        r = None
+        for intento in range(3):  # reintento ante cortes de red de GitHub (TLS handshake timeout, 5xx)
+          r = gh("pr", "merge", str(a.pr), "--squash")
+          if r.returncode == 0: break
+          if checks(a.pr)["s"] == "MERGED": r.returncode = 0; break
+          time.sleep(10)
+        if r is None or r.returncode != 0:
           print("no se pudo fusionar: " + (r.stderr or r.stdout).strip()[-200:]); return 1
         # Borrar la rama remota por la API: `--delete-branch` falla desde un worktree («'main' is already checked out»).
         repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").stdout.strip()
