@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.13.0 · 6 de octubre de 2026
+
+- **Campo de color** `createColorField({ label, value, suggestions, allowNone, openCustom, onChange, attrs })` → `{ element, get, set }`: sugerencias, «Sin color» y «Personalizado», que despliega en línea tres degradados (matiz, saturación y brillo) **colocados ya sobre el color actual**, con vista previa y código hexadecimal. Sustituye al `input type=color` nativo, que en Android abre con los deslizadores a cero (prueba de aceptación del usuario, imagen 8). También exportado como `createColorPicker` (el nombre que pidió Tasks). Utilidades `hexToHsv`, `hsvToHex`, `normalizeHex`. Demo `#color`, prueba `v16`.
+
 ## 0.12.0 · 6 de octubre de 2026
 
 - `renderProposalReview(options)` → `{ body, foot }`: la revisión de propuestas sin hoja, para una app que ya tiene la suya (Tasks). El pie lleva `.proposalreview-foot`, pegado abajo dentro de un contenedor que desplaza, y es `null` si la propuesta no está pendiente o no se puede decidir. `openProposalReview` acepta `sheet` con las opciones de `openSheet` (`backAttrs`, `panelAttrs`, `bodyAttrs`, `closeAttrs`, `hideTitle`, `onClose`). Petición de Tasks.
