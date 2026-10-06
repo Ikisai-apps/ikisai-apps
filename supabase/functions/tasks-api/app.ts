@@ -6,6 +6,7 @@ import {
 } from '../_domain/tasks/mod.ts';
 
 import { exchangeRoutes, exchangeWorkerRoutes } from './exchange.ts';
+import { tasksMcpTools } from './mcp.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -122,5 +123,6 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
     },
     routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase)],
     workerRoutes: exchangeWorkerRoutes(),
+    mcpTools: tasksMcpTools(),
   });
 }
