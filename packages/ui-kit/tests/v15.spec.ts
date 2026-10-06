@@ -43,3 +43,47 @@ test.describe('ui-kit v0.11.2', () => {
     expect(r.closeTop).toBeLessThan(20);
   });
 });
+
+test.describe('ui-kit v0.12', () => {
+  test('renderProposalReview devuelve cuerpo y pie para la hoja de la app; openProposalReview pasa los atributos de la hoja', async ({ page }) => {
+    await page.goto('/#agents');
+    const r = await page.evaluate(async () => {
+      const kit = (window as any).ikisaiKit;
+      const proposal = { id: 'x', agent: 'Asistente', status: 'pending', createdAt: new Date().toISOString(), affected: 2 };
+      const changes = [{ op: 'update', table: 'tarea', tablePlural: 'tareas', title: 'Uno' }, { op: 'update', table: 'tarea', tablePlural: 'tareas', title: 'Dos' }];
+      let approved = 0;
+      const parts = kit.renderProposalReview({ proposal, changes, onApprove: () => { approved++; }, approveAttrs: { id: 'approveProposal' } });
+      const host = document.createElement('div'); host.append(parts.body, parts.foot); document.body.append(host);
+      (document.getElementById('approveProposal') as HTMLButtonElement).click();
+      await new Promise((r) => setTimeout(r, 20));
+      const readOnly = kit.renderProposalReview({ proposal: { ...proposal, status: 'consumed' }, changes, onApprove: () => {} });
+      host.remove();
+      const sheet = kit.openProposalReview({ proposal, changes, onApprove: () => {}, sheet: { panelAttrs: { id: 'reviewPanel' }, closeAttrs: { id: 'reviewClose' } } });
+      const ids = [!!document.getElementById('reviewPanel'), !!document.getElementById('reviewClose'), sheet.foot?.querySelectorAll('button').length];
+      await sheet.close(true);
+      return { footClass: parts.foot.className, approved, readOnlyFoot: readOnly.foot, ids };
+    });
+    expect(r.footClass).toBe('proposalreview-foot');
+    expect(r.approved).toBe(1);
+    expect(r.readOnlyFoot).toBeNull();
+    expect(r.ids).toEqual([true, true, 1]);
+  });
+
+  test('la paleta admite otro límite sin consulta y montarse en un contenedor', async ({ page }) => {
+    await page.goto('/#agents');
+    const r = await page.evaluate(() => {
+      const kit = (window as any).ikisaiKit;
+      const host = document.createElement('div'); host.id = 'paletteHost'; document.body.append(host);
+      const items = Array.from({ length: 30 }, (_, i) => ({ group: 'Ir a', text: `Elemento ${i}`, run: () => {} }));
+      const palette = kit.createCommandPalette({ items: () => items, limit: 16, limitWhenEmpty: 18, hotkey: false, container: () => host });
+      palette.open();
+      const empty = document.querySelectorAll('#paletteHost #palette .palette-item').length;
+      const input = document.getElementById('paletteInput') as HTMLInputElement;
+      input.value = 'elemento'; input.dispatchEvent(new Event('input'));
+      const query = document.querySelectorAll('#palette .palette-item').length;
+      palette.close();
+      return { empty, query };
+    });
+    expect(r).toEqual({ empty: 18, query: 16 });
+  });
+});

@@ -689,3 +689,6 @@ a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
 /* Hoja sin título visible (hideTitle): el título va en el cuerpo y el botón de cerrar flota arriba a la derecha. */
 .sheet.notitle .sheet-head{position:absolute;top:10px;right:10px;padding:0;z-index:2}
 .sheet.notitle .sheet-body{padding-top:18px}
+/* Pie de la revisión dentro de la hoja de la app (renderProposalReview): pegado abajo mientras se desplaza. */
+.proposalreview-foot{position:sticky;bottom:0;display:flex;gap:10px;margin:14px -18px -18px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--paper)}
+.proposalreview-foot .primary{flex:1}

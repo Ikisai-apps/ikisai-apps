@@ -42,9 +42,9 @@ export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, typ
 export { createLabelPicker, labelChips, type LabelPicker, type LabelPickerOptions, type LabelFamily, type LabelItem } from './fields/labels.ts';
 export { renderProjectCard, ringSvg, type ProjectCardSpec } from './cards/project-card.ts';
 export {
-  openProposalReview, renderSecretOnce, renderRiskSummary, renderProposalRow, renderChangeList, renderAccessLog, createScopePicker,
+  openProposalReview, renderProposalReview, renderSecretOnce, renderRiskSummary, renderProposalRow, renderChangeList, renderAccessLog, createScopePicker,
   proposalStatusChip, relativeTime, maskSecret, PROPOSAL_STATUS_LABELS,
-  type ProposalStatus, type ProposalSummary, type ProposalRowOptions, type ProposalReviewOptions, type RiskReason, type RiskSummaryOptions,
+  type ProposalStatus, type ProposalSummary, type ProposalRowOptions, type ProposalReviewOptions, type ProposalReviewParts, type RiskReason, type RiskSummaryOptions,
   type ChangeItem, type ChangeField, type ChangeListOptions, type SecretOnceOptions, type AccessLogEntry, type ScopeArea, type ScopeValue, type ScopePicker,
 } from './agents/agents.ts';
 export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine } from './cards/money.ts';
