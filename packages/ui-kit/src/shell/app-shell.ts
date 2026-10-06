@@ -2,6 +2,7 @@ import type { SyncStatus } from '@ikisai/sync-client';
 import { el, replace } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
 import { createStatusBar, statusBanners, type StatusBannersOptions, type StatusBarOptions } from '../status/status-bar.ts';
+import type { AppLauncher } from './launcher.ts';
 
 export interface NavItem {
   /** Destino, normalmente un hash de ruta: `#/facturas`. */
@@ -34,6 +35,8 @@ export interface AppShellOptions {
   navFoot?: string;
   /** Navegación: por defecto cambia `location.hash`. */
   navigate?: (hash: string) => void;
+  /** Lanzador de apps (`createAppLauncher`): la marca de la cabecera pasa a ser un botón que lo abre. */
+  launcher?: AppLauncher;
 }
 
 export interface AppShell {
@@ -65,7 +68,9 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     : null;
   const header = el('header', { class: 'topbar' },
     el('div', { class: 'brand' },
-      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
+      options.launcher
+        ? (() => { const b = el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher' }, icon(options.markIcon ?? 'mark', 20)); options.launcher.attach(b); return b; })()
+        : el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
       el('h1', null, `Ikisai ${options.appName}`, subtitle),
     ),
     status.element,

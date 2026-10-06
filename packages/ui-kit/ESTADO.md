@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.14.0 (tanda 25): lanzador de apps (catálogo §3.3), enganchado a la marca de `createAppShell` y `renderWorkspaceBar`.
 - v0.13.0 (tanda 21): campo de color propio con tres degradados (aceptación del usuario).
 - v0.12.0 (tanda 20): `renderProposalReview` y atributos de hoja en `openProposalReview`; `limitWhenEmpty` y `container` en la paleta.
 - v0.11.2 (tanda 19): `bodyAttrs` y `hideTitle` en la hoja.

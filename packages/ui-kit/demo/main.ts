@@ -3,6 +3,7 @@ import '../src/styles/ui-kit.css';
 import './demo.css';
 import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
 import {
+  createAppLauncher,
   renderProposalReview,
   createColorField,
   addDays,
@@ -616,6 +617,8 @@ const agentNow = new Date();
 const agoMs = (ms: number) => new Date(agentNow.getTime() - ms).toISOString();
 const inMs = (ms: number) => new Date(agentNow.getTime() + ms).toISOString();
 const HOUR = 3_600_000;
+/** Hora fija de hoy (0) o de días anteriores (-1…): el registro por días no depende de la hora en que se abre la demo. */
+const dayAt = (offset: number, h: number, m: number) => { const d = new Date(agentNow); d.setDate(d.getDate() + offset); d.setHours(h, m, 0, 0); return d.toISOString(); };
 const TASK_TITLES = ['Revisar cierre de la puerta exterior', 'Sustituir puerta dañada', 'Activar agua fría', 'Desmontar elementos colgados', 'Limpieza a fondo de salas', 'Comprobar marco y medidas', 'Montar hoja y herrajes', 'Revisar enchufes de maquinaria', 'Sellar pequeños agujeros', 'Comprobar desagües', 'Pintar zócalo', 'Cambiar bombillas del pasillo'];
 const bulkChanges: ChangeItem[] = [
   ...TASK_TITLES.slice(0, 11).map((title, i) => ({ op: 'update', table: 'tarea', tablePlural: 'tareas', title, id: `t${i}`, fields: [{ label: 'Nota', before: i === 6 ? '' : 'Sin clasificar todavía', after: 'Revisado por el asistente' }] })),
@@ -648,10 +651,10 @@ const agentsSection = section('agents', 'Agentes de IA', 'Piezas comunes para la
   el('h3', { class: 'demo-sub' }, 'Cambios'), el('div', { id: 'changeHost' }, renderChangeList({ changes: bulkChanges.slice(0, 4).concat(bulkChanges[11]!), max: 3 })),
   el('h3', { class: 'demo-sub' }, 'Clave mostrada una vez'), secretHost, el('p', { class: 'small muted' }, 'Estado: ', secretOut),
   el('h3', { class: 'demo-sub' }, 'Registro de accesos'), el('div', { class: 'card', id: 'accessLogHost' }, renderAccessLog({ now: agentNow, entries: [
-    { at: agoMs(0.2 * HOUR), label: 'Propuesta aprobada', actor: 'Vera', actorKind: 'person', icon: 'check', tone: 'ok' },
-    { at: agoMs(1 * HOUR), label: 'Propuesta preparada', actor: 'Asistente de obra', actorKind: 'agent', target: '12 elementos', icon: 'list', tone: 'warn' },
-    { at: agoMs(1.2 * HOUR), label: 'Clave de agente creada', actor: 'Vera', actorKind: 'person', target: 'Asistente de obra', icon: 'lock' },
-    { at: agoMs(24 * HOUR), label: 'Clave revocada', actor: 'Vera', actorKind: 'person', target: 'Contable', icon: 'lock', tone: 'alert' },
+    { at: dayAt(0, 12, 40), label: 'Propuesta aprobada', actor: 'Vera', actorKind: 'person', icon: 'check', tone: 'ok' },
+    { at: dayAt(0, 11, 20), label: 'Propuesta preparada', actor: 'Asistente de obra', actorKind: 'agent', target: '12 elementos', icon: 'list', tone: 'warn' },
+    { at: dayAt(0, 11, 5), label: 'Clave de agente creada', actor: 'Vera', actorKind: 'person', target: 'Asistente de obra', icon: 'lock' },
+    { at: dayAt(-1, 17, 30), label: 'Clave revocada', actor: 'Vera', actorKind: 'person', target: 'Contable', icon: 'lock', tone: 'alert' },
   ] })),
   el('h3', { class: 'demo-sub' }, 'Ámbito'), el('div', { class: 'card', id: 'scopeHost' }, scopePicker.element), el('p', { class: 'small muted' }, 'Valor: ', scopeOut),
 );
@@ -661,6 +664,24 @@ const colorOut = el('code', { id: 'colorOut' }, '#b3c43a');
 const colorField = createColorField({ label: 'Color', value: '#b3c43a', suggestions: ['#6f5a8f', '#b76b3d', '#6b7b54', '#4e6f72', '#9c744e', '#c87847', '#8a442d', '#46513b', '#3f6d8e', '#a3537a'], allowNone: true, onChange: (v) => { colorOut.textContent = v ?? 'sin color'; }, attrs: { id: 'colorHost' } });
 const colorSection = section('color', 'Campo de color', 'Sugerencias, «Sin color» y «Personalizado» con tres degradados (matiz, saturación, brillo) ya colocados sobre el color actual, sin el diálogo nativo del sistema.',
   el('div', { class: 'card demo-form' }, colorField.element, el('p', { class: 'small muted' }, 'Valor: ', colorOut)),
+);
+
+// --- Lanzador de apps -------------------------------------------------------------------------
+const LAUNCHER_CATALOG = { current: 'tasks', items: [
+  { id: 'tasks', name: 'Tasks', domain: 'tasks.ikisai.com', aliasDomain: 'cuida.ikisai.com', kind: 'internal', description: 'Proyectos, tareas y etiquetas', role: 'owner' },
+  { id: 'booking', name: 'Booking', domain: 'booking.ikisai.com', aliasDomain: 'acoge.ikisai.com', kind: 'internal', description: 'Reservas, operación y huéspedes', role: 'owner' },
+  { id: 'food', name: 'Food', domain: 'food.ikisai.com', aliasDomain: 'papeaki.ikisai.com', kind: 'internal', description: 'Recetario, menús, compra y preparación', role: 'editor' },
+  { id: 'invoices', name: 'Finance', domain: 'finance.ikisai.com', aliasDomain: 'tramita.ikisai.com', kind: 'internal', description: 'Facturas, compras y gestoría', role: 'reader' },
+  { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com', kind: 'portal', description: 'Portal de huéspedes', role: 'owner' },
+] };
+let launcherOnline = true;
+const launcher = createAppLauncher({ storageKey: 'demo-launcher', fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
+const launcherMark = el('button', { type: 'button', class: 'mark markbtn', id: 'demoLauncher' }, icon('tasks', 20));
+launcher.attach(launcherMark);
+const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la cabecera abre la hoja con las apps de la cuenta (GET /api/v1/apps): internas arriba, portales debajo, la actual marcada; sin red, la última lista guardada.',
+  el('div', { class: 'demo-row' }, launcherMark,
+    el('label', { class: 'field check' }, el('input', { type: 'checkbox', id: 'launcherOffline', onchange: (e: Event) => { launcherOnline = !(e.target as HTMLInputElement).checked; } }), el('span', null, 'Simular sin red')),
+    el('button', { type: 'button', class: 'ghost small', id: 'launcherForget', onclick: () => { try { localStorage.removeItem('demo-launcher'); } catch { /* */ } toast('Lista guardada borrada'); } }, 'Olvidar lista guardada')),
 );
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
@@ -674,12 +695,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection),
 );

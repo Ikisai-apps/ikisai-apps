@@ -1,5 +1,11 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.14.0 · 7 de octubre de 2026
+
+- **Lanzador de apps** `createAppLauncher({ fetchApps, current, storageKey, appIcon, title })` → `{ open, attach(trigger) }` (contrato §3.3). Hoja con las apps de `GET /api/v1/apps`, en el orden del catálogo: internas arriba y portales debajo con su título. Muestra icono, nombre, descripción y el rol si no es propietaria; la actual va marcada «Aquí» y no es enlace; las demás enlazan a `https://<domain>/` en la misma pestaña. Sin red, enseña la última lista guardada en el dispositivo, con aviso. Iconos del kit por id de app (se ven sin red) o los de la app con `appIcon`.
+- `createAppShell({ launcher })` y `renderWorkspaceBar({ markButton })`: la marca de la cabecera pasa a ser un botón (`#appLauncher`) que abre el lanzador.
+- Demo: el registro de accesos usa horas fijas de hoy y ayer, para que la prueba no dependa de la hora del día.
+
 ## 0.13.0 · 6 de octubre de 2026
 
 - **Campo de color** `createColorField({ label, value, suggestions, allowNone, openCustom, onChange, attrs })` → `{ element, get, set }`: sugerencias, «Sin color» y «Personalizado», que despliega en línea tres degradados (matiz, saturación y brillo) **colocados ya sobre el color actual**, con vista previa y código hexadecimal. Sustituye al `input type=color` nativo, que en Android abre con los deslizadores a cero (prueba de aceptación del usuario, imagen 8). También exportado como `createColorPicker` (el nombre que pidió Tasks). Utilidades `hexToHsv`, `hsvToHex`, `normalizeHex`. Demo `#color`, prueba `v16`.
