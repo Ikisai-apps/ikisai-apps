@@ -5,7 +5,7 @@
  * Cómo correrlo:   npx playwright test tests/booking/offline.spec.ts
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { EVENTS, GUESTS, RESERVATIONS, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
 import { startFakeApi } from './fake-api.ts';
 
 test.use({ viewport: { width: 390, height: 844 } });
@@ -246,4 +246,104 @@ test('O7 cerrar sesión borra huéspedes e importes del dispositivo', async ({ p
   const after = await stores();
   expect(after['booking.guests'] ?? 0).toBe(0);
   expect(after['booking.reservation_finance'] ?? 0).toBe(0);
+});
+
+/** Crea una habitación con sus camas desde «Espacios y camas». */
+async function createRoom(page: Page, name: string, beds: string[]): Promise<void> {
+  await page.evaluate(() => { location.hash = '#/espacios'; });
+  await expect(page.getByRole('heading', { name: 'Espacios y camas', level: 2 })).toBeVisible();
+  await page.locator('#newSpace').click();
+  const dialog = page.getByRole('dialog', { name: 'Nuevo espacio' });
+  await dialog.getByLabel('Nombre', { exact: true }).fill(name);
+  await page.locator('#saveRow').click();
+  await expect(dialog).toBeHidden();
+  for (const bed of beds) {
+    await page.getByRole('button', { name: `Añadir cama a ${name}` }).click();
+    const sheet = page.getByRole('dialog', { name: `Nueva cama en ${name}` });
+    await sheet.getByLabel('Etiqueta').fill(bed);
+    await page.locator('#saveRow').click();
+    await expect(sheet).toBeHidden();
+  }
+}
+
+/** Abre la hoja de asignar y la rellena (sin guardar). */
+async function fillAssignment(page: Page, room: string, group: string, bed?: string) {
+  await page.locator('#addAssignment').click();
+  const dialog = page.getByRole('dialog', { name: 'Asignar alojamiento' });
+  await dialog.getByLabel('Espacio').selectOption({ label: room });
+  if (bed) await dialog.getByLabel('Cama').selectOption({ label: bed });
+  await dialog.getByLabel('Nombre del grupo').fill(group);
+  return dialog;
+}
+
+test('O8 asignar alojamiento sin red: queda pendiente y llega al reconectar', async ({ page, context }) => {
+  await login(page, harness.baseURL);
+  await createReservation(page);
+  await openFicha(page);
+  await confirmOnline(page);
+  await createRoom(page, 'Habitación 1', ['Cama 1']);
+  await expect.poll(() => api().rows(BEDS).length).toBe(1);
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+  await openFicha(page);
+
+  await offline(page, context);
+  const dialog = await fillAssignment(page, 'Habitación 1', 'Grupo sin red', 'Cama 1 · 1 plaza');
+  await page.locator('#saveRow').click();
+  await expect(dialog).toBeHidden();
+  const row = page.locator('#blockLodging li.row', { hasText: 'Grupo sin red' });
+  await expect(row).toHaveAttribute('data-pending', 'true');
+  await expect(row).toContainText('cama Cama 1');
+  await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
+  expect(api().rows(ASSIGNMENTS)).toHaveLength(0);
+
+  await context.setOffline(false);
+  await expect.poll(() => api().rows(ASSIGNMENTS).map((a) => a.group_label), { timeout: 15_000 }).toEqual(['Grupo sin red']);
+  expect(api().rows(ASSIGNMENTS)[0]).toMatchObject({ bed_id: api().rows(BEDS)[0]!.id, persons: 1, event_id: api().rows(EVENTS)[0]!.id });
+  await expect(row).toHaveAttribute('data-pending', 'false');
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+});
+
+test('cama ocupada: aviso local con otra reserva y rechazo del servidor', async ({ page }) => {
+  await login(page, harness.baseURL);
+  await createReservation(page, 'Retiro A');
+  await openFicha(page, 'Retiro A');
+  await confirmOnline(page);
+  await createRoom(page, 'Habitación 1', ['Cama 1']);
+  await openFicha(page, 'Retiro A');
+  let dialog = await fillAssignment(page, 'Habitación 1', 'Grupo A', 'Cama 1 · 1 plaza');
+  await page.locator('#saveRow').click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => api().rows(ASSIGNMENTS).map((a) => a.group_label)).toEqual(['Grupo A']);
+
+  // Otra reserva confirmada en las mismas noches: la hoja avisa con lo que hay en el espejo y no deja guardar.
+  await createReservation(page, 'Retiro B');
+  await openFicha(page, 'Retiro B');
+  await confirmOnline(page);
+  dialog = await fillAssignment(page, 'Habitación 1', 'Grupo B', 'Cama 1 · 1 plaza');
+  await expect(dialog.locator('#bedConflict')).toContainText('ya está ocupada esas noches en «Retiro A»');
+  await page.locator('#saveRow').click();
+  await expect(dialog.locator('.formerror').first()).toBeVisible();
+  await expect(dialog).toBeVisible();
+  expect(api().rows(ASSIGNMENTS)).toHaveLength(1);
+
+  // Sin cama concreta, o con otras noches, ya no choca.
+  await dialog.getByLabel('Cama').selectOption({ label: 'Sin cama concreta' });
+  await expect(dialog.locator('#bedConflict')).toBeHidden();
+  await dialog.getByLabel('Cama').selectOption({ label: 'Cama 1 · 1 plaza' });
+  await expect(dialog.locator('#bedConflict')).toBeVisible();
+  await dialog.getByLabel('Desde').fill(inDays(40));
+  await dialog.getByLabel('Hasta').fill(inDays(42));
+  await expect(dialog.locator('#bedConflict')).toBeHidden();
+
+  // El servidor lo comprueba de nuevo: si rechaza, la hoja lo dice y no queda nada en la ficha.
+  api().failNextCommit('BED_OVERBOOKED', 422);
+  await page.locator('#saveRow').click();
+  await expect(dialog).toContainText('Esa cama ya está ocupada esas noches en otra reserva.');
+  await expect(dialog).toBeVisible();
+  expect(api().rows(ASSIGNMENTS)).toHaveLength(1);
+  page.once('dialog', (confirmation) => void confirmation.accept()); // «Hay cambios sin guardar»
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#blockLodging')).toContainText('Sin asignaciones todavía.');
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
 });
