@@ -1,6 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { el, formatDate, icon, replace } from './dom.ts';
-import { toast } from './toast.ts';
+import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
 import { CATEGORIES, CATEGORY_LABELS, SUPPLIERS, categoryLabel, describeError, type SupplierRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
@@ -34,12 +33,11 @@ function toFields(values: FormValues): Record<string, unknown> {
   };
 }
 
-/** Vista Proveedores: lista en modo lectura, hoja de edición, papelera y marca de pendiente por fila. */
+/** Vista Proveedores: lista en modo lectura, hoja de edición del kit, papelera y marca de pendiente por fila. */
 export const mountSuppliers: ViewMount = ({ main, client }) => {
   let rows: SupplierRow[] = [];
   let query = '';
-  let sheet: { back: HTMLElement; close: () => void } | null = null;
-  let lastFocus: HTMLElement | null = null;
+  let sheet: Sheet | null = null;
 
   const search = el('input', { type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
@@ -49,9 +47,9 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   const trashList = el('ul', { class: 'list', 'aria-label': 'Proveedores en la papelera' });
   const trash = el('details', { id: 'trash' }, trashLabel, trashList);
   const emptyActive = el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay proveedores'), 'Crea el primero con «Nuevo proveedor». Funciona también sin conexión.');
-  const emptyFiltered = el('div', { class: 'empty' }, 'Ningún proveedor coincide con la búsqueda.');
+  const emptyFiltered = el('div', { class: 'empty plain' }, 'Ningún proveedor coincide con la búsqueda.');
   const listHost = el('div');
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newSupplier', onclick: () => openSheet(null) }, icon('plus'), 'Nuevo proveedor');
+  const newButton = el('button', { class: 'fab', type: 'button', id: 'newSupplier', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo proveedor');
 
   replace(
     main,
@@ -69,22 +67,16 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   }
 
   function rowItem(row: SupplierRow, deleted: boolean): HTMLElement {
-    const pending = row._pending === true;
-    const edit = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: (e: Event) => { lastFocus = e.currentTarget as HTMLElement; openSheet(row); } }, 'Editar');
+    const edit = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar');
     const restore = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
-    return el('li', { class: `row${deleted ? ' deleted' : ''}`, dataset: { id: row.id, pending: String(pending) } },
-      el('div', { class: 'row-title' },
-        el('span', { class: 'name' }, row.name),
-        pending ? el('span', { class: 'chip pending', title: 'Guardado en este dispositivo; se enviará al servidor cuando haya red' }, 'Pendiente de sincronizar') : null,
-        deleted ? el('span', { class: 'chip trash' }, 'En papelera') : null,
-      ),
-      el('div', { class: 'row-meta' },
-        el('span', null, row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF'),
-        el('span', null, '·'),
-        el('span', null, categoryLabel(row.default_category)),
-      ),
-      el('div', { class: 'row-actions' }, deleted ? restore : edit),
-    );
+    return listRow({
+      id: row.id,
+      title: row.name,
+      meta: [row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF', categoryLabel(row.default_category)],
+      pending: row._pending === true,
+      deleted,
+      actions: [deleted ? restore : edit],
+    });
   }
 
   function paint(): void {
@@ -122,9 +114,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     await commitSafely([{ op: 'restore', table: SUPPLIERS, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurado.`);
   }
 
-  // --- Hoja de edición ----------------------------------------------------
-  function openSheet(row: SupplierRow | null): void {
-    closeSheet(true);
+  // --- Hoja de edición (kit) ----------------------------------------------------
+  function openEditor(row: SupplierRow | null): void {
     const initial = valuesOf(row);
     const expectedRevision = row?.revision ?? null;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
@@ -138,16 +129,16 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     const notes = el('textarea', { id: 'f-notes', name: 'notes', rows: '3' });
     notes.value = initial.notes;
 
-    const save = el('button', { class: 'primary', type: 'submit', id: 'saveSupplier' }, 'Guardar');
-    const cancel = el('button', { class: 'ghost', type: 'button', onclick: () => closeSheet() }, row ? 'Cerrar' : 'Cancelar');
-    const foot = el('div', { class: 'sheet-foot', hidden: true }, cancel, save);
-
     const current = (): FormValues => ({ name: name.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, notes: notes.value });
+    const isDirty = () => !sameValues(current(), initial);
     const refreshDirty = () => {
-      const dirty = !sameValues(current(), initial);
-      foot.hidden = !dirty && row !== null;
+      const dirty = isDirty();
+      sheet?.setFootHidden(!dirty && row !== null);
       guard.dirtyEditor = dirty;
     };
+
+    const save = el('button', { class: 'primary', type: 'submit', id: 'saveSupplier', form: 'supplierForm' }, 'Guardar');
+    const cancel = el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, row ? 'Cerrar' : 'Cancelar');
 
     const form = el('form', { novalidate: true, id: 'supplierForm',
       oninput: refreshDirty,
@@ -156,11 +147,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
         event.preventDefault();
         error.textContent = '';
         const values = current();
-        if (!values.name.trim()) {
-          error.textContent = 'El nombre es obligatorio.';
-          name.focus();
-          return;
-        }
+        if (!values.name.trim()) { error.textContent = 'El nombre es obligatorio.'; name.focus(); return; }
         if (values.name.trim().length > 200) { error.textContent = 'El nombre no puede superar 200 caracteres.'; name.focus(); return; }
         if (values.tax_id.trim().length > 32) { error.textContent = 'El NIF no puede superar 32 caracteres.'; taxId.focus(); return; }
         save.disabled = true;
@@ -172,7 +159,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
         save.disabled = false;
         if (ok) {
           guard.dirtyEditor = false;
-          closeSheet();
+          await sheet?.close(true);
         }
       } },
       el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
@@ -186,59 +173,25 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       ) : null,
     );
 
-    const closeButton = el('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Cerrar', onclick: () => closeSheet() }, icon('close'));
-    const titleId = 'sheetTitle';
-    const panel = el('section', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
-      el('div', { class: 'handle', 'aria-hidden': 'true' }),
-      el('div', { class: 'sheet-head' },
-        el('h2', { id: titleId }, row ? 'Editar proveedor' : 'Nuevo proveedor'),
-        closeButton),
-      el('div', { class: 'sheet-body' },
-        row ? el('p', { class: 'meta' }, `Revisión ${row.revision} · actualizado ${formatDate(row.updated_at)}${row._pending ? ' · pendiente de sincronizar' : ''}`) : null,
-        form),
-      foot,
-    );
-    // El pie con «Guardar» va fuera del <form>: lo enlazamos por atributo.
-    form.id = 'supplierForm';
-    save.setAttribute('form', 'supplierForm');
-
-    const back = el('div', { class: 'sheetback show', onclick: (e: Event) => { if (e.target === back) closeSheet(); } }, panel);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); closeSheet(); }
-      if (e.key === 'Tab') trapFocus(e, panel);
-    };
-    document.addEventListener('keydown', onKey);
-    document.body.appendChild(back);
-    document.body.style.overflow = 'hidden';
-
-    sheet = {
-      back,
-      close: () => {
-        document.removeEventListener('keydown', onKey);
-        back.remove();
-        document.body.style.overflow = '';
-      },
-    };
+    sheet = openSheet({
+      title: row ? 'Editar proveedor' : 'Nuevo proveedor',
+      meta: row ? `Revisión ${row.revision} · actualizado ${formatDate(row.updated_at)}${row._pending ? ' · pendiente de sincronizar' : ''}` : undefined,
+      body: form,
+      foot: [cancel, save],
+      footHidden: row !== null,
+      initialFocus: name,
+      beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
+      onClose: () => { guard.dirtyEditor = false; sheet = null; },
+    });
     refreshDirty();
-    if (!row) foot.hidden = false;
-    name.focus();
-  }
-
-  function closeSheet(force = false): void {
-    if (!sheet) return;
-    if (!force && guard.dirtyEditor && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
-    guard.dirtyEditor = false;
-    sheet.close();
-    sheet = null;
-    lastFocus?.focus();
-    lastFocus = null;
   }
 
   async function deleteRow(row: SupplierRow): Promise<void> {
-    if (!confirm(`¿Enviar «${row.name}» a la papelera?`)) return;
+    const ok = await confirmDialog({ title: `¿Enviar «${row.name}» a la papelera?`, text: 'Se puede restaurar desde la papelera.', confirmLabel: 'Enviar a papelera', danger: true });
+    if (!ok) return;
     guard.dirtyEditor = false;
-    const ok = await commitSafely([{ op: 'delete', table: SUPPLIERS, id: row.id, expectedRevision: row.revision }], `«${row.name}» enviado a la papelera.`);
-    if (ok) closeSheet(true);
+    const done = await commitSafely([{ op: 'delete', table: SUPPLIERS, id: row.id, expectedRevision: row.revision }], `«${row.name}» enviado a la papelera.`);
+    if (done) await sheet?.close(true);
   }
 
   void load();
@@ -247,7 +200,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   return () => {
     offTable();
     offStatus();
-    closeSheet(true);
+    void closeSheet(true);
   };
 };
 
@@ -258,14 +211,4 @@ function changedFields(fields: Record<string, unknown>, row: SupplierRow): Recor
     if ((row[key] ?? null) !== (value ?? null)) out[key] = value;
   }
   return Object.keys(out).length ? out : fields;
-}
-
-function trapFocus(event: KeyboardEvent, container: HTMLElement): void {
-  const focusable = Array.from(container.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
-    .filter((n) => n.offsetParent !== null);
-  if (focusable.length === 0) return;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }

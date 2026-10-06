@@ -1,4 +1,4 @@
-import '../../../packages/ui-kit/src/styles/ui-kit.css';
+import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
 import { applyTheme, renderLogin } from '@ikisai/ui-kit';
 import { createClient, describeError } from './app/client.ts';
