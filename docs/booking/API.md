@@ -33,7 +33,7 @@ Donde el handoff V3 y el plan de Core se contradicen manda el plan (repo único,
 
 | Dato | Dueño | Cómo lo ven otros |
 |---|---|---|
-| Reserva, evento operativo, huéspedes, restricciones, checklist, enlace con Calendar | Booking | Food: `booking.food_event_projection` (sin huéspedes). Invoices: `booking.invoices_target_projection` (G4) |
+| Reserva, evento operativo, huéspedes, restricciones, checklist, enlace con Calendar | Booking | Food e Invoices: `booking.food_event_projection` (sin huéspedes) |
 | Recetas, menús, compra, preparación | Food | Booking no los lee en V1 |
 | Facturas y coste por retiro | Invoices | Booking no los lee en V1 |
 | Tareas permanentes | Tasks | «Crear tarea» queda para V2 |
@@ -578,11 +578,9 @@ Para Food no cambia nada: guarda `source_event_revision` y compara. El contador 
 
 Las dos primeras las pide Food en su documento (`docs/food/API.md` §7.1, su petición P5), igual que el `event_revision` monótono descrito arriba y los catálogos cerrados de `meal_plan` y `menu_style`, que son los `check` de §2.1 y §2.2. Si Core prefiere la lista exacta del contrato, las cuatro se quedan fuera y la vista filtra a `confirmada`, `en_ejecucion` y `cerrada`.
 
-### 7.2 `booking.invoices_target_projection` (G4, se deja definida)
+### 7.2 Lo que lee Invoices
 
-Para los destinos de Booking en `invoices.allocations`: `target_kind`, `target_id`, `code`, `title`, `start_date`, `end_date`, `status`, `revision`. Sin contacto ni importes.
-
-El borrador de Invoices (`docs/invoices/API.md` §7) solo usa el destino `event` y propone leer `booking.food_event_projection`. Prefiero una vista propia y mínima: Invoices no necesita las restricciones alimentarias, y así cada lectora recibe solo lo suyo. Si Core decide reutilizar la de Food, esta vista no se crea. Se cierra en G4.
+Invoices asigna líneas de compra a un evento de Booking. Decisión de Core (ronda 5): **reutiliza `booking.food_event_projection`**, registrada también para la app `invoices` (migración `20261006_0402`). No se crea una vista aparte: la proyección no lleva huéspedes ni datos personales, y sus columnas de identificación (`event_id`, `event_code`, `reservation_code`, `title`, fechas, `reservation_status`, `event_revision`) son las que Invoices necesita. Solo hay eventos en la proyección, así que una reserva sin confirmar no es asignable.
 
 Booking no consume enlaces de otras apps en V1. El «coste por retiro» leyendo `invoices.booking_cost_projection` queda para G4.
 
