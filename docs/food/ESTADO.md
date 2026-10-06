@@ -24,6 +24,10 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H comp
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
 - Pruebas: 44 en PGlite y en `domain.test.ts` el cálculo de coste (`tests/food/*.test.ts`) y cuatro de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red) y `offline.spec.ts` (dos dispositivos: fusión automática en preparación, conflicto con decisión en compra y rechazo `MENU_LOCKED` sin bloquear la cola).
 
+## Aceptación del usuario (6 de octubre de 2026)
+
+- Incidencia «no puedo crear un menú desde Eventos» (evento confirmado sin comidas ni régimen en Booking): corregida en la rama `food/crear-menu`. La ficha del evento ofrece siempre «Crear menú» (salvo reserva cancelada o cuenta de solo lectura, con la razón), explica qué falta en Booking con enlace, y deja elegir con qué régimen proponer los servicios o ninguno.
+
 ## Pendiente
 
 - Agentes de IA (núcleo, contrato §3.1): solo `food.regenerate_preparation` está marcado como seguro sin aprobación; el resto de procedimientos la exige.

@@ -57,7 +57,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
 
   function paintUpcoming(): void {
     const today = todayKey();
-    const events = snapshot.events.filter((e) => e.end_date >= today && needsMenu(e)).slice(0, 6);
+    const events = snapshot.events.filter((e) => e.end_date >= today && (needsMenu(e) || menus.some((m) => m.event_id === e.event_id && !m.deleted_at))).slice(0, 6);
     replace(upcoming,
       el('div', { class: 'sectionlabel' }, 'Próximos eventos'),
       events.length === 0

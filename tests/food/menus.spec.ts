@@ -17,6 +17,8 @@ const configFile = path.resolve(here, '../../apps/food/vite.config.ts');
 const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
 const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const EVENT_ID = randomUUID();
+const NO_MEALS_ID = randomUUID();
+const RESERVATION_ID = randomUUID();
 
 let api: FakeApi;
 let server: PreviewServer;
@@ -33,6 +35,12 @@ test.beforeAll(async () => {
         { type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1, kitchen_notes: null },
         { type: 'vegano', subject: null, severity: null, servings: 2, kitchen_notes: null },
       ],
+    }, {
+      // Como «Test1» en la prueba del usuario: confirmado en Booking pero sin comidas ni régimen.
+      event_id: NO_MEALS_ID, event_code: 'EVT_2026_002', reservation_code: 'RSV_2026_002', title: 'Test1', event_type: 'retiro',
+      start_date: day(20), end_date: day(22), arrival_time: null, departure_time: null, guest_count: 20, guest_count_is_final: false, minors_count: 0,
+      meal_plan: null, menu_style: null, reservation_status: 'confirmada', requires_meals: false, meal_notes: null, event_revision: 1, dietary_restrictions: [],
+      reservation_id: RESERVATION_ID,
     }],
   });
   api.seed('food.recipes', { name: 'Curry de verduras', public_name: 'Curry suave de temporada', public_description: 'Verduras de temporada con leche de coco y arroz especiado.', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true });
@@ -83,6 +91,10 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
 
   await test.step('Inicio y Eventos enseñan el retiro tal como lo publica Booking', async () => {
     await login(page);
+    // Sin menús todavía: el texto de Menús lleva a la ficha del evento.
+    await page.goto(`${baseURL}/#/menus`);
+    await expect(page.locator('.empty')).toContainText('Abre un evento en Eventos y pulsa «Crear menú» en su ficha.');
+    await page.goto(`${baseURL}/#/`);
     const card = page.locator('#upcoming .eventcard', { hasText: 'Retiro Test' });
     await expect(card).toContainText('22 personas · Pensión completa');
     await expect(card).toContainText('pendiente');
@@ -233,4 +245,29 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(page.locator('#eventList .row', { hasText: 'Retiro Test' })).toContainText('Menú: validado');
     await context.setOffline(false);
   });
+  await test.step('evento sin comidas en Booking: la ficha explica por qué y deja crear el menú (incidencia de la aceptación)', async () => {
+    await page.goto(`${baseURL}/#/eventos`);
+    const row = page.locator('#eventList .row', { hasText: 'Test1' });
+    await expect(row).toContainText('Sin comidas en Booking');
+    await page.locator('.segmented button', { hasText: 'Sin menú' }).click();
+    await expect(page.locator('#eventList .row', { hasText: 'Test1' })).toBeVisible();
+    await page.locator('#eventList .row', { hasText: 'Test1' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Test1' });
+    await expect(sheet.locator('#mealsGap')).toContainText('En Booking esta reserva figura sin comidas.');
+    await expect(sheet.locator('#mealsGap')).toContainText('RSV_2026_002');
+    await expect(sheet.locator('#openBooking')).toHaveAttribute('href', `https://booking.ikisai.com/#/reservas/${RESERVATION_ID}`);
+    await expect(sheet.locator('#openBooking')).toHaveText('Abrir la reserva en Booking');
+    await expect(sheet.locator('#proposedServices')).toContainText('el menú se crea vacío');
+    // La cocina elige proponer como media pensión: viernes cena, sábado desayuno y cena, domingo desayuno.
+    await sheet.locator('#proposalPlan').selectOption('media_pension');
+    await expect(sheet.locator('#proposedServices input[type=checkbox]')).toHaveCount(4);
+    await page.locator('#createMenu').click();
+    await expect(page).toHaveURL(/#\/menus\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { name: 'Test1', level: 2 })).toBeVisible();
+    await expect(page.locator('.service')).toHaveCount(4);
+    await expect.poll(() => api.rows('food.menus').some((m) => m.event_id === NO_MEALS_ID)).toBe(true);
+    await page.goto(`${baseURL}/#/eventos`);
+    await expect(page.locator('#eventList .row', { hasText: 'Test1' })).toContainText('Menú: borrador');
+  });
+
 });
