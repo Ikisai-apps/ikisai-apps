@@ -185,9 +185,7 @@ const editWith = (page: Page, fn: (s: typeof S) => void) => page.evaluate(`(() =
 const tryWith = (page: Page, fn: (s: typeof S) => void): Promise<{ saved: boolean; toast: string }> =>
   page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); const saved = save(); render(); return { saved, toast: document.getElementById('toast').textContent }; })()`);
 
-// Core, 6 de octubre de 2026: inestable en la CI de GitHub (paso [37], cerrar sesión: `Sync.actor` no vuelve a null; pasa en local).
-// Marcada fixme para no bloquear las PR de los demás equipos. El equipo Tasks la estabiliza y retira el fixme.
-test.fixme('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({ browser }) => {
+test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({ browser }) => {
   test.setTimeout(240_000);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const a = await open(context);
