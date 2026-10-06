@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, replace, toast, type Child } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, replace, toast, type Child, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
@@ -135,6 +135,13 @@ export function mountReservation(id: string): ViewMount {
     const wide = window.matchMedia('(min-width: 1024px)');
     const syncMore = () => { const menu = host.querySelector<HTMLDetailsElement>('#moreActions'); if (menu) menu.open = wide.matches; };
     wide.addEventListener('change', syncMore);
+
+    // Listas reordenables del checklist: se conservan entre repintados y se actualizan con `setItems`, de modo que
+    // cada movimiento lleva revisiones al día y el foco del asa no se pierde (receta de Food).
+    const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
+    let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
+    let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
+    const rowSig = (rows: Row[]) => rows.map((r) => `${r.id}:${r.revision}:${r.status}:${r.label}:${r._pending === true}`).join('|');
 
     async function paint(): Promise<void> {
       const reservation = (await client.get(RESERVATIONS, id)) as (ReservationRow & Row) | null;
@@ -298,15 +305,27 @@ export function mountReservation(id: string): ViewMount {
         await run(ordered.map((row, i): RowOperation => ({ op: 'update', table: CHECKLIST, id: row.id, expectedRevision: row.revision, fields: { position: positions[i]! } })), 'Orden del checklist guardado.');
       }
 
+      // El asa con el foco (teclado) se recupera al final: reutilizar la lista en la ficha nueva la saca del DOM y le quita el foco.
+      // Se lee aquí, antes de construir los bloques, porque al reutilizar la lista ya se mueve.
+      const focusedHandle = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('#blockChecklist .sortable-row')?.dataset.key ?? null;
+      renderChecklistItem = checklistItem;
+      onChecklistReorder = reorderChecklist;
       const checklistList = (type: string): HTMLElement => {
         const items = checklist.filter((item) => item.checklist_type === type);
         if (!editable) return el('ul', { class: 'checklist' }, items.map((item) => el('li', null, checklistItem(item))));
+        const kept = checklistLists.get(type);
+        if (kept) {
+          const sig = rowSig(items);
+          if (kept.sig !== sig) { kept.sig = sig; kept.sortable.setItems(items); }
+          return kept.sortable.element;
+        }
         const sortable = createSortableList<Row>({
           items, key: (item) => item.id, name: (item) => item.label, label: `Tareas de ${CHECKLIST_TYPE_LABELS[type as keyof typeof CHECKLIST_TYPE_LABELS]}`,
-          render: checklistItem, rowClass: 'checklist-row',
-          onReorder: (ordered, move) => reorderChecklist(ordered, move.item, move.to),
+          render: (item) => renderChecklistItem(item), rowClass: 'checklist-row',
+          onReorder: (ordered, move) => onChecklistReorder(ordered, move.item, move.to),
         });
         sortable.element.querySelector('ul')?.classList.add('checklist');
+        checklistLists.set(type, { sortable, sig: rowSig(items) });
         return sortable.element;
       };
 
@@ -426,6 +445,7 @@ export function mountReservation(id: string): ViewMount {
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
         el('div', { class: 'cardgrid ficha-grid' }, summary, operation, checklistBlock, guestsBlock, meals, cobro, costs),
       );
+      if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
     }
 
@@ -434,6 +454,6 @@ export function mountReservation(id: string): ViewMount {
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id)) void paint(); }));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); };
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); };
   };
 }
