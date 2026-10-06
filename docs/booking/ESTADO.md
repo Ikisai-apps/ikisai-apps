@@ -42,6 +42,7 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
 - **Reconexión tras recargar sin red (P18, reabierta):** con `sync-client` 0.2.2 la cola sigue tardando unos 30 s en enviarse; el escenario O1 mantiene 45 s de margen.
+- **«Coste real» con `renderMoneyBreakdown` del kit 0.9.0** (pedido por UI y Core): hoy el bloque está pintado a mano porque el kit 0.9.0 (PR #92) aún no está en `main`; se cambia en cuanto entre, añadiendo la comparación con el presupuesto.
 - Tras reordenar el checklist con el teclado se pierde el foco del asa (la ficha se repinta entera tras cada guardado).
 - Las restricciones alimentarias no son reordenables: no tienen columna de orden y son pocas por evento.
 - Peticiones a Core abiertas, sin bloquear: P3, P5, P6, P9 y P18.
