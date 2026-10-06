@@ -10,6 +10,8 @@ import {
   createCalendar,
   createPrintView,
   createQuantityField,
+  createSortableList,
+  positionBetween,
   todayKey,
   applyAccent,
   applyTheme,
@@ -436,17 +438,48 @@ const printSection = section('print', 'Página imprimible', 'Vista del organizad
   el('div', { id: 'printHost' }, printView.element),
 );
 
+
+// --- Lista reordenable ----------------------------------------------------------------
+interface Dish { id: string; name: string; position: number; course: string }
+let dishes: Dish[] = [
+  { id: 'd1', name: 'Crema de calabaza asada', position: 1024, course: 'Entrante' },
+  { id: 'd2', name: 'Curry de verduras', position: 2048, course: 'Principal' },
+  { id: 'd3', name: 'Ensalada de garbanzos', position: 3072, course: 'Entrante' },
+  { id: 'd4', name: 'Bizcocho de zanahoria', position: 4096, course: 'Postre' },
+];
+const sortOut = el('code', { id: 'sortOut' }, dishes.map((d) => d.name.split(' ')[0]).join(' → '));
+const sortable = createSortableList<Dish>({
+  items: dishes,
+  key: (d) => d.id,
+  name: (d) => d.name,
+  label: 'Platos de la cena',
+  id: 'dishList',
+  render: (d) => el('div', null, el('div', { class: 'row-title' }, el('span', { class: 'name' }, d.name)), el('div', { class: 'row-meta' }, el('span', null, d.course), el('span', null, `position ${d.position}`))),
+  onReorder: (items, move) => {
+    const prev = items[move.to - 1], next = items[move.to + 1];
+    move.item.position = positionBetween(prev?.position, next?.position);
+    dishes = items;
+    sortable.setItems(items);
+    sortOut.textContent = items.map((d) => d.name.split(' ')[0]).join(' → ');
+    toast(`${move.item.name}: de ${move.from + 1} a ${move.to + 1} (position ${move.item.position})`);
+  },
+});
+const sortSection = section('sortable', 'Lista reordenable', 'Arrastra por el asa (en táctil, mantén pulsado), usa los botones o el teclado sobre el asa: flechas, Inicio y Fin. La app guarda position con positionBetween.',
+  el('div', { id: 'sortHost' }, sortable.element),
+  el('p', { class: 'small muted' }, 'Orden: ', sortOut),
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.5.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.6.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection),
 );

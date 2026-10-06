@@ -1,6 +1,6 @@
 {
   "name": "@ikisai/ui-kit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Ikisai UI kit: tokens «Taller», componentes base sin framework, barra de estado de sincronización y shell de login",
   "type": "module",
