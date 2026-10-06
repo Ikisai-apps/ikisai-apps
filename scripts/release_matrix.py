@@ -2,14 +2,17 @@
 """Decide qué apps publica el workflow de release y con qué versión. Escribe `apps=<json>` y `version=<v>` en stdout.
 
 - `workflow_dispatch`: la app del input `app`; versión del input `version` o `v0.1.0-build.<run_number>`.
-- `push` a main: apps cuyos directorios cambiaron entre `github.event.before` y HEAD (`apps/<app>`,
-  `supabase/functions/<app>-api`, `packages/domain-<app>`, migraciones `*_<app>_*`). Un cambio compartido
+- `push` a main: para cada app, cambios entre el commit que tiene publicado (`https://<app>.ikisai.com/version.json`)
+  y HEAD (`apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`,
+  migraciones `*_<app>_*`). Así una release cancelada en cola por la concurrencia de GitHub no deja una app sin publicar.
+  Si no se puede leer el commit publicado, se usa `github.event.before`. Un cambio compartido
   (`_kit`, migraciones core, `sync-client`, `ui-kit`, `scripts`, workflows) marca todas las apps.
 - Solo se publican apps «publicables»: existen `supabase/functions/<app>-api/index.ts` y `apps/<app>/package.json`.
 Variables: EVENT, INPUT_APP, INPUT_VERSION, BEFORE, RUN_NUMBER (las pone el workflow). Sin red ni credenciales.
 """
 import json
 import os
+import urllib.request
 import re
 import subprocess
 import sys
@@ -35,6 +38,20 @@ def changed_files(before):
   return [line.strip().replace('\\', '/') for line in output.splitlines() if line.strip()]
 
 
+def deployed_commit(app):
+  """Commit que sirve hoy el dominio de la app, o None (sin red, sin dominio o respuesta inesperada)."""
+  if os.environ.get('IKISAI_RELEASE_OFFLINE'):
+    return None
+  try:
+    # Cloudflare rechaza el agente de usuario por defecto de urllib (403).
+    request = urllib.request.Request(f"https://{app['domain']}/version.json", headers={'User-Agent': 'ikisai-release/1.0'})
+    with urllib.request.urlopen(request, timeout=10) as response:
+      commit = json.loads(response.read()).get('commit')
+  except Exception:
+    return None
+  return commit if isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit) else None
+
+
 def affected(files):
   if files is None:
     return set(APPS), ['historial no disponible: se consideran todas las apps']
@@ -45,7 +62,7 @@ def affected(files):
       reasons.append(f'{path}: compartido, afecta a todas')
       return set(APPS), reasons
     for name, app in APPS.items():
-      if path.startswith((app['app_dir'] + '/', app['function_dir'] + '/', f'packages/domain-{name}/')) or re.match(rf'supabase/migrations/\d{{8}}_\d{{4}}_{name}_', path):
+      if path.startswith((app['app_dir'] + '/', app['function_dir'] + '/', f'packages/domain-{name}/', f'supabase/functions/_domain/{name}/')) or re.match(rf'supabase/migrations/\d{{8}}_\d{{4}}_{name}_', path):
         apps.add(name)
         reasons.append(f'{path}: {name}')
   return apps, reasons
@@ -61,7 +78,22 @@ def main():
     chosen = {get_app(os.environ.get('INPUT_APP', ''))['name']}
     reasons = ['dispatch manual']
   else:
-    chosen, reasons = affected(changed_files(os.environ.get('BEFORE', '')))
+    before = os.environ.get('BEFORE', '')
+    chosen, reasons = set(), []
+    for name, app in APPS.items():
+      base = deployed_commit(app)
+      if base:
+        files = changed_files(base)
+        if files is None:
+          reasons.append(f'{name}: commit publicado {base[:7]} no está en el historial; se compara con el push')
+          files = changed_files(before)
+      else:
+        files = changed_files(before)
+        reasons.append(f'{name}: sin version.json legible; se compara con el push')
+      apps, why = affected(files)
+      if name in apps:
+        chosen.add(name)
+        reasons.extend(r for r in why if r.endswith(name) or 'todas' in r)
   skipped = sorted(name for name in chosen if not publishable(APPS[name]))
   selected = sorted(name for name in chosen if name not in skipped)
   for line in reasons:
