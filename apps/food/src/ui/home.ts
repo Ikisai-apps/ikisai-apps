@@ -1,5 +1,5 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { isMenuStale, type Equipment, type Menu, type Recipe } from '@ikisai/domain-food';
+import { isMenuStale, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
 import { dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, type EventsSnapshot } from '../app/events.ts';
@@ -30,6 +30,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const upcoming = el('section', { id: 'upcoming' });
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
+  let lists: Mirror<ShoppingList>[] = [];
+  let buyItems: Mirror<ShoppingListItem>[] = [];
+  let steps: Mirror<PreparationItem>[] = [];
 
   function paint(status: SyncStatus): void {
     network.textContent = status.network === 'online' ? 'En línea' : status.network === 'offline' ? 'Sin conexión' : status.network === 'syncing' ? 'Sincronizando…' : 'Error';
@@ -60,13 +63,18 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
             const stale = !!menu && isMenuStale(menu, event);
             const restrictions = event.dietary_restrictions?.length ?? 0;
             const target = menu ? `#/menus/${menu.id}` : '#/eventos';
+            const list = menu ? lists.find((l) => l.menu_id === menu.id) : undefined;
+            const toBuy = list ? buyItems.filter((i) => i.shopping_list_id === list.id && i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length : 0;
+            const ofMenu = menu ? steps.filter((s) => s.menu_id === menu.id) : [];
             return el('a', { class: 'card cardlink eventcard', href: target, onclick: (e: Event) => { e.preventDefault(); navigate(target); } },
               el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
               el('h3', null, `${dateRange(event)} · ${event.title}`),
               el('p', null, `${guestsLabel(event)} · ${mealPlanLabel(event.meal_plan)}`),
               el('dl', { class: 'kv' },
                 el('dt', null, 'Menú'), el('dd', { class: stale ? 'warnline' : '' }, !menu ? 'pendiente' : stale ? '⚠ desactualizado' : MENU_STATUS_LABELS[menu.status].toLowerCase()),
-                el('dt', null, 'Restricciones'), el('dd', null, String(restrictions))));
+                el('dt', null, 'Restricciones'), el('dd', null, String(restrictions)),
+                el('dt', null, 'Compra'), el('dd', null, !list ? 'pendiente' : list.status === 'cerrada' ? 'cerrada' : toBuy === 0 ? 'todo comprado' : `${toBuy} por comprar`),
+                el('dt', null, 'Preparación'), el('dd', null, ofMenu.length === 0 ? 'pendiente' : `${ofMenu.filter((s) => s.done).length} de ${ofMenu.length}`)));
           })));
   }
 
@@ -108,10 +116,17 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   paint(client.status());
   void count();
   paintUpcoming();
-  const loadMenus = async () => { menus = (await client.list(T.menus)) as Mirror<Menu>[]; paintUpcoming(); };
+  const loadMenus = async () => {
+    [menus, lists, buyItems, steps] = await Promise.all([
+      client.list(T.menus) as Promise<Mirror<Menu>[]>, client.list(T.shoppingLists) as Promise<Mirror<ShoppingList>[]>,
+      client.list(T.shoppingItems) as Promise<Mirror<ShoppingListItem>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
+    ]);
+    paintUpcoming();
+  };
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
-  const offMenus = client.onTable(T.menus, () => void loadMenus());
+  const offPlanning = [T.menus, T.shoppingLists, T.shoppingItems, T.preparation].map((table) => client.onTable(table, () => void loadMenus()));
+  const offMenus = () => offPlanning.forEach((off) => off());
   const offStatus = client.onStatus((status) => { paint(status); void refreshEvents(client); });
   const offRecipes = client.onTable(T.recipes, () => void count());
   const offEquipment = client.onTable(T.equipment, () => void count());

@@ -5,7 +5,7 @@ import { mountHome } from './home.ts';
 import { mountRecipes } from './recipes.ts';
 import { mountEquipment } from './equipment.ts';
 import { mountEvents } from './events.ts';
-import { mountMenu, mountMenus } from './menus.ts';
+import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
 import { mountConflicts } from './conflicts.ts';
 
 export interface ShellContext {
@@ -108,9 +108,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   function route(): void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
-    // `#/menus/<id>` es la ficha de un menú; el resto son rutas fijas.
-    const menuId = hash.match(/^#\/menus\/([0-9a-f-]{36})$/i)?.[1];
-    const entry = menuId ? { title: 'Menú', mount: mountMenu(menuId) } : ROUTES[hash] ?? ROUTES['#/']!;
+    // `#/menus/<id>` es la ficha de un menú y `#/menus/<id>/compra` una de sus pestañas; el resto son rutas fijas.
+    const [, menuId, menuTab] = hash.match(/^#\/menus\/([0-9a-f-]{36})(?:\/(compra|preparacion|cierre))?$/i) ?? [];
+    const entry = menuId ? { title: 'Menú', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
     shell.setRoute(menuId ? '#/menus' : hash);

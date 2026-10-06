@@ -8,6 +8,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { computeShopping, defaultPurchase, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
 
 export interface FakeRow {
   id: string;
@@ -99,7 +100,10 @@ const DEFAULT_TABLES: Record<string, string[]> = {
     'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes'],
   'food.menu_services': ['menu_id', 'service_date', 'service_type', 'service_time', 'position', 'notes'],
   'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
-  'food.shopping_lists': [], 'food.shopping_list_items': [], 'food.preparation_items': [],
+  'food.shopping_lists': ['menu_id', 'status', 'generated_at', 'source_revisions', 'notes'],
+  'food.shopping_list_items': ['shopping_list_id', 'ingredient_id', 'required_quantity', 'unit', 'stock_quantity', 'purchase_quantity', 'supplier', 'status',
+    'manual_override', 'manual', 'notes'],
+  'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
 };
 
 /** Valores por defecto de las columnas, como los pondría PostgreSQL. */
@@ -112,6 +116,9 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.menus': { status: 'borrador' },
   'food.menu_services': { position: 0 },
   'food.menu_items': { position: 0 },
+  'food.shopping_lists': { status: 'borrador', source_revisions: {} },
+  'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false },
+  'food.preparation_items': { done: false, position: 0, manual: false },
 };
 const MENU_TRANSITIONS = ['borrador>revisar', 'revisar>borrador', 'validado>revisar', 'validado>cerrado', 'cerrado>validado'];
 const FILE_FIELDS = ['photo_file_id', 'photo_thumb_file_id'];
@@ -211,6 +218,79 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const { procedure, args = {} } = op as unknown as { procedure: string; args?: Record<string, any> };
         const menu = stagedTable('food.menus').get(args.menu_id);
         if (!menu || menu.deleted_at) throw new Fault(422, 'MENU_NOT_FOUND', 'El menú no existe.', { index });
+        if (procedure === 'food.regenerate_shopping' || procedure === 'food.regenerate_preparation') {
+          // Mismas reglas que los procedimientos SQL (probados contra PGlite), con el cálculo del dominio.
+          const all = (table: string) => Array.from(stagedTable(table).values());
+          let seq = 0;
+          const write = (table: string, kind: 'insert' | 'update' | 'delete', row: FakeRow, fields: Record<string, unknown> = {}) => {
+            const now = nowIso();
+            if (kind === 'insert') { for (const column of tables[table]!) row[column] = fields[column] ?? DEFAULTS[table]?.[column] ?? null; stagedTable(table).set(row.id, row); }
+            else { Object.assign(row, fields); if (kind === 'delete') row.deleted_at = now; row.revision += 1; row.updated_at = now; row.updated_by = actorId; }
+            batchChanges.push(record(table, kind, row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
+          };
+          const fresh = (): FakeRow => ({ id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null });
+          const graph = {
+            services: all('food.menu_services').filter((r) => r.menu_id === menu.id), items: all('food.menu_items'), recipes: all('food.recipes'),
+            recipe_ingredients: all('food.recipe_ingredients'), ingredients: all('food.ingredients'),
+          } as unknown as MenuGraph;
+          graph.items = graph.items.filter((i) => graph.services.some((sv) => sv.id === i.service_id));
+          const counts = { inserted: 0, updated: 0, deleted: 0, kept: 0 };
+
+          if (procedure === 'food.regenerate_shopping') {
+            let list = all('food.shopping_lists').find((l) => l.menu_id === menu.id && !l.deleted_at);
+            const created = !list;
+            if (list?.status === 'cerrada') throw new Fault(422, 'LIST_CLOSED', 'La lista está cerrada.', { index });
+            if (!list) { list = { ...fresh(), id: args.list_id }; write('food.shopping_lists', 'insert', list, { menu_id: menu.id, generated_at: nowIso(), source_revisions: shoppingSources(graph) }); }
+            const lines = all('food.shopping_list_items').filter((i) => i.shopping_list_id === list!.id && !i.deleted_at && !i.manual);
+            const seen = new Set<string>();
+            for (const need of computeShopping(graph)) {
+              const line = lines.find((i) => i.ingredient_id === need.ingredient_id && unitFamily(i.unit as Unit) === need.family);
+              if (!line) {
+                const supplier = graph.ingredients.find((g) => g.id === need.ingredient_id)?.preferred_supplier ?? null;
+                write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: need.ingredient_id, required_quantity: need.required_quantity, unit: need.unit, purchase_quantity: need.required_quantity, supplier });
+                counts.inserted += 1;
+                continue;
+              }
+              seen.add(line.id);
+              const fields: Record<string, unknown> = {};
+              if (line.unit !== need.unit) fields.unit = need.unit;
+              if (Number(line.required_quantity) !== need.required_quantity) fields.required_quantity = need.required_quantity;
+              const purchase = defaultPurchase(need.required_quantity, line.stock_quantity === null ? null : Number(line.stock_quantity));
+              if (!line.manual_override && Number(line.purchase_quantity) !== purchase) fields.purchase_quantity = purchase;
+              if (Object.keys(fields).length) { write('food.shopping_list_items', 'update', line, fields); counts.updated += 1; } else counts.kept += 1;
+            }
+            for (const line of lines.filter((i) => !seen.has(i.id))) {
+              if (line.status === 'pendiente' && !line.manual_override) { write('food.shopping_list_items', 'delete', line); counts.deleted += 1; }
+              else if (Number(line.required_quantity) !== 0) { write('food.shopping_list_items', 'update', line, { required_quantity: 0, ...(line.manual_override ? {} : { purchase_quantity: 0 }) }); counts.updated += 1; }
+              else counts.kept += 1;
+            }
+            const status = list.status === 'revisada' ? 'borrador' : list.status;
+            if (!created) write('food.shopping_lists', 'update', list, { generated_at: nowIso(), source_revisions: shoppingSources(graph), status });
+            results.push({ op: 'call', procedure, result: { list_id: list.id, created, ...counts, status } });
+            return;
+          }
+
+          const steps = all('food.preparation_items').filter((p) => p.menu_id === menu.id && !p.deleted_at);
+          const live = graph.items.filter((i) => !i.deleted_at && graph.services.some((sv) => sv.id === i.service_id && !sv.deleted_at));
+          for (const item of live) {
+            const service = graph.services.find((sv) => sv.id === item.service_id)!;
+            const recipe = graph.recipes.find((r) => r.id === item.recipe_id)!;
+            let date: string = service.service_date; let time: string | null = null;
+            if (service.service_time) {
+              const at = new Date(`${service.service_date}T${service.service_time.slice(0, 5)}:00Z`).getTime() - (recipe.prep_minutes ?? 120) * 60000;
+              date = new Date(at).toISOString().slice(0, 10); time = new Date(at).toISOString().slice(11, 19);
+            }
+            const text = `Preparar ${recipe.name}`;
+            const step = steps.find((p) => p.menu_item_id === item.id);
+            if (!step) { write('food.preparation_items', 'insert', fresh(), { menu_id: menu.id, menu_item_id: item.id, recipe_id: recipe.id, scheduled_date: date, scheduled_time: time, text }); counts.inserted += 1; }
+            else if (!step.manual && !step.done && (step.text !== text || step.scheduled_date !== date || step.scheduled_time !== time)) { write('food.preparation_items', 'update', step, { scheduled_date: date, scheduled_time: time, text }); counts.updated += 1; }
+            else counts.kept += 1;
+          }
+          for (const step of steps.filter((p) => !p.manual && !p.done && p.menu_item_id && !live.some((i) => i.id === p.menu_item_id))) { write('food.preparation_items', 'delete', step); counts.deleted += 1; }
+          write('food.menus', 'update', menu, { preparation_generated_at: nowIso(), preparation_source_revisions: preparationSources(graph) });
+          results.push({ op: 'call', procedure, result: counts });
+          return;
+        }
         if (args.expectedRevision !== menu.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: 'food.menus', id: menu.id, expectedRevision: args.expectedRevision, currentRevision: menu.revision, current: { ...menu } });
         }

@@ -1,22 +1,29 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, eventChanges, eventSnapshot, isMenuStale, menuWarnings, validateOperations,
-  type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type Recipe, type RecipeIngredient,
+  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, validateOperations,
+  type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
+  type RecipeIngredient,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, el, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
-import { CATEGORY_LABELS, DIET_LABELS, T, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
+import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
 } from '../app/events.ts';
-import { showPhoto, type PhotoRef } from '../app/photos.ts';
+import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
+import { showPhoto } from '../app/photos.ts';
+import { mountClosing } from './menu-closing.ts';
+import { mountPreparation } from './menu-preparation.ts';
+import { mountShopping } from './menu-shopping.ts';
 import { MENU_STATUS_LABELS, SERVICE_LABELS, menuChip } from './events.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 type MenuRow = Mirror<Menu>;
 type ServiceRow = Mirror<MenuService>;
 type ItemRow = Mirror<MenuItem>;
-type RecipeRow = Mirror<Omit<Recipe, 'photo_file_id' | 'photo_thumb_file_id'> & { photo_file_id: PhotoRef; photo_thumb_file_id: PhotoRef }>;
+
+export type MenuTab = 'menu' | 'compra' | 'preparacion' | 'cierre';
+const TABS: Array<[MenuTab, string]> = [['menu', 'Menú'], ['compra', 'Compra'], ['preparacion', 'Preparación'], ['cierre', 'Cierre']];
 
 const removeOp = (table: (typeof T)[keyof typeof T], row: SyncedRow): RowOperation => ({ op: 'delete', table, id: row.id, expectedRevision: row.revision });
 
@@ -72,8 +79,8 @@ function changeText(change: EventChange): string {
   return `${CHANGE_LABELS[change.field]}: ${show(change.before)} → ${show(change.after)}`;
 }
 
-/** Ficha de un menú: cabecera con el evento y sus restricciones siempre a la vista, avisos y constructor por días. */
-export function mountMenu(menuId: string): ViewMount {
+/** Ficha de un menú: cabecera con el evento y sus restricciones siempre a la vista, y pestañas Menú · Compra · Preparación · Cierre. */
+export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
   return ({ main, client, navigate }: ViewContext) => {
     let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
     let menu: MenuRow | null = null;
@@ -82,8 +89,13 @@ export function mountMenu(menuId: string): ViewMount {
     let recipes: RecipeRow[] = [];
     let recipeLines: Mirror<RecipeIngredient>[] = [];
     let ingredients: Mirror<Ingredient>[] = [];
+    let equipment: Mirror<Equipment>[] = [];
+    let needs: Mirror<RecipeEquipment>[] = [];
+    let menuGraph: MenuGraph = { services: [], items: [], recipes: [], recipe_ingredients: [], ingredients: [] };
     let sheet: Sheet | null = null;
     let busy = false;
+    let cook = false; // vista de cocinero: cada plato con sus ingredientes escalados, maquinaria y elaboración
+    let unmountTab: (() => void) | null = null;
     const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
     const event = () => snapshot.events.find((e) => e.event_id === menu?.event_id) ?? null;
     const locked = () => !menu || LOCKED_MENU_STATUSES.includes(menu.status) || !canWrite();
@@ -93,12 +105,16 @@ export function mountMenu(menuId: string): ViewMount {
     const restrictionsHost = el('section', { class: 'restrictions card', id: 'menuRestrictions' });
     const builder = el('div', { class: 'menubuilder', id: 'menuBuilder' });
     const actions = el('div', { class: 'btnrow menuactions', id: 'menuActions' });
-    replace(main, head, banner, restrictionsHost, actions, builder);
+    const cookToggle = el('button', { class: 'linkbtn', type: 'button', id: 'cookView', 'aria-pressed': 'false',
+      onclick: () => { cook = !cook; cookToggle.setAttribute('aria-pressed', String(cook)); cookToggle.textContent = cook ? 'Volver al constructor' : 'Vista de cocinero'; paintBuilder(); } }, 'Vista de cocinero');
+    const tabs = el('nav', { class: 'segmented menutabs', 'aria-label': 'Secciones del menú' }, ...TABS.map(([value, label]) => {
+      const hash = `#/menus/${menuId}${value === 'menu' ? '' : `/${value}`}`;
+      return el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label);
+    }));
+    const tabHost = el('div', { id: 'menuTab' });
+    replace(main, head, banner, restrictionsHost, tabs, tab === 'menu' ? el('div', null, actions, el('div', { class: 'btnrow' }, cookToggle), builder) : tabHost);
 
-    const graph = (): MenuGraph => ({
-      services: services as MenuService[], items: items as MenuItem[], recipes: recipes as unknown as Recipe[],
-      recipe_ingredients: recipeLines as RecipeIngredient[], ingredients: ingredients as Ingredient[],
-    });
+    const graph = (): MenuGraph => menuGraph;
     const warnings = (): MenuWarning[] => { const e = event(); return e ? menuWarnings(e, graph()) : []; };
 
     async function commitSafely(operations: RowOperation[]): Promise<boolean> {
@@ -244,8 +260,26 @@ export function mountMenu(menuId: string): ViewMount {
     // --- Constructor por días ---------------------------------------------------------------
     function paintBuilder(): void {
       const e = event();
-      const isLocked = locked();
+      const isLocked = locked() || cook;
       const recipeById = new Map(recipes.map((r) => [r.id, r]));
+      const ingredientNames = new Map(ingredients.map((i) => [i.id, i.name]));
+      const machines = new Map(equipment.map((m) => [m.id, m]));
+
+      /** Lo que el cocinero necesita de un plato: cantidades para sus raciones, alérgenos, maquinaria y elaboración. */
+      const cookDetails = (item: ItemRow): HTMLElement | null => {
+        const recipe = recipeById.get(item.recipe_id);
+        if (!recipe) return null;
+        const scaled = scaledIngredients(graph(), item.id);
+        const required = needs.filter((n) => n.recipe_id === recipe.id && !n.deleted_at);
+        return el('div', { class: 'cookdetails' },
+          scaled.length ? el('table', { class: 'ingredients' }, el('tbody', null, ...scaled.map((line) => el('tr', null,
+            el('td', null, ingredientNames.get(line.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(line.quantity)), el('td', null, UNIT_LABELS[line.unit])))))
+            : el('p', { class: 'muted' }, 'La receta no tiene ingredientes.'),
+          recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
+          required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
+          recipe.method ? el('p', { class: 'pre' }, recipe.method) : null,
+          recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null);
+      };
       const sorted = [...services].sort((a, b) => a.service_date.localeCompare(b.service_date) || (a.service_time ?? '99').localeCompare(b.service_time ?? '99') || Number(a.position) - Number(b.position));
       const days = Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
 
@@ -265,6 +299,7 @@ export function mountMenu(menuId: string): ViewMount {
             recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null),
           servings, el('span', { class: 'muted' }, 'rac.'),
           isLocked ? null : el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18)),
+          cook ? cookDetails(item) : null,
         );
       };
 
@@ -345,31 +380,28 @@ export function mountMenu(menuId: string): ViewMount {
     }
 
     function paintActionsAndRest(): void {
-      paintHead(); paintBanner(); paintRestrictions(); paintActions(); paintBuilder();
+      paintHead(); paintBanner(); paintRestrictions();
+      if (tab === 'menu') { paintActions(); paintBuilder(); return; }
+      if (!unmountTab) {
+        const context = { client, menuId, host: tabHost, canWrite };
+        unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : mountClosing(context);
+      }
     }
 
     async function load(): Promise<void> {
-      const [menuRow, allServices, allItems, allRecipes, lines, allIngredients] = await Promise.all([
-        client.get(T.menus, menuId) as Promise<MenuRow | null>,
-        client.list(T.menuServices) as Promise<ServiceRow[]>,
-        client.list(T.menuItems) as Promise<ItemRow[]>,
-        client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,
-        client.list(T.recipeIngredients) as Promise<Mirror<RecipeIngredient>[]>,
-        client.list(T.ingredients) as Promise<Mirror<Ingredient>[]>,
-      ]);
-      if (!menuRow || menuRow.deleted_at) {
+      const data = await loadMenuData(client, menuId);
+      if (!data.menu) {
         menu = null;
+        unmountTab?.();
+        unmountTab = null;
         replace(main, el('div', { class: 'empty' }, el('strong', null, 'Este menú no existe o está en la papelera'),
           el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/menus') }, 'Volver a Menús'))));
         return;
       }
-      menu = menuRow;
-      services = allServices.filter((s) => s.menu_id === menuId);
-      const serviceIds = new Set(services.map((s) => s.id));
-      items = allItems.filter((i) => serviceIds.has(i.service_id));
-      recipes = allRecipes;
-      recipeLines = lines;
-      ingredients = allIngredients;
+      menu = data.menu;
+      ({ services, items, recipes, ingredients, equipment, needs } = data);
+      recipeLines = data.lines;
+      menuGraph = data.graph;
       paintActionsAndRest();
     }
 
@@ -381,6 +413,7 @@ export function mountMenu(menuId: string): ViewMount {
       offEvents();
       offs.forEach((off) => off());
       offStatus();
+      unmountTab?.();
       void closeSheet(true);
     };
   };

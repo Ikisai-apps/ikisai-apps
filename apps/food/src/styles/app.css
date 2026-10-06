@@ -83,3 +83,33 @@
 .addService{margin-top:2px}
 .recipegrid.picker{grid-template-columns:repeat(2,minmax(0,1fr))}
 
+/* Pestañas del menú */
+.menutabs{display:flex;margin:14px 0 4px;overflow-x:auto}
+.menutabs a{flex:1;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 12px;border-radius:8px;color:var(--muted);font-size:var(--text-sm,.875rem);font-weight:700;text-decoration:none;white-space:nowrap}
+.menutabs a[aria-current="page"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tabhead{margin:12px 0 4px}
+.tabhead p{margin:6px 0 0;font-size:var(--text-sm,.875rem)}
+.bigcheck{width:24px;height:24px;flex:none;accent-color:var(--accent)}
+
+/* Vista de cocinero */
+.cookdetails{grid-column:1/-1;padding:8px 0 4px;border-top:1px dashed var(--line);font-size:var(--text-sm,.875rem)}
+.cookdetails p{margin:6px 0 0}
+
+/* Compra */
+.buylist,.preplist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.buyrow{display:grid;grid-template-columns:24px minmax(0,1fr) 84px 96px;gap:8px 10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.buyrow[data-status="comprado"],.buyrow[data-status="recibido"]{background:var(--paper-2)}
+.buyname{display:flex;flex-direction:column;gap:2px;min-width:0}
+.buyfield{display:flex;flex-direction:column;gap:2px;font-size:var(--text-xs,.75rem);color:var(--muted)}
+.buyfield .qty,.buyactions select{width:100%;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit;text-align:right}
+.buyactions{grid-column:2/-1;display:flex;align-items:center;gap:10px}
+.buyactions select{width:auto;text-align:left}
+@media (min-width:720px){.buyrow{grid-template-columns:24px minmax(0,1fr) 96px 110px auto}.buyactions{grid-column:auto}}
+
+/* Preparación */
+.preprow{display:grid;grid-template-columns:24px 52px minmax(0,1fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.preprow[data-done="true"] .preptext strong{text-decoration:line-through;color:var(--muted)}
+.preptime{font-variant-numeric:tabular-nums;color:var(--muted)}
+.preptext{display:flex;flex-direction:column;gap:2px;text-align:left;border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;min-width:0}
+.preptext:disabled{cursor:default}
+
