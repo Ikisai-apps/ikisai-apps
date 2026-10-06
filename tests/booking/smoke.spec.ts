@@ -208,6 +208,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
 
     await page.locator('#editFinance').click();
     dialog = page.getByRole('dialog', { name: 'Cobro' });
+    await dialog.getByLabel('Importe presupuestado (€)').fill('300');
     await dialog.getByLabel('Señal requerida (€)').fill('300');
     await dialog.getByLabel('Señal pagada (€)').fill('100.50');
     await page.locator('#saveRow').click();
@@ -229,8 +230,11 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     ]);
     await page.reload();
     await expect(page.locator('#costTotal')).toHaveText(/^2\.?550,25\s€$/);
-    await expect(page.locator('#costByCategory li')).toHaveCount(2);
-    await expect(page.locator('#costByCategory li').first()).toContainText('Alimentación');
+    await expect(page.locator('#costByCategory .mb-line')).toHaveCount(2);
+    await expect(page.locator('#costByCategory .mb-line').first()).toContainText('Alimentación');
+    await expect(page.locator('#costByCategory .mb-line').first()).toContainText('2 facturas');
+    await expect(page.locator('#costByCategory a').first()).toHaveAttribute('href', `https://invoices.ikisai.com/#/compras?destino=booking:reservation:${reservationId}`);
+    await expect(page.locator('#costByCategory .mb-compare')).toContainText('excede'); // 2.550,25 € frente a 300 € presupuestados
     await expect(page.locator('#costByCategory')).toContainText('Mantenimiento');
     await expect(page.locator('#costList li')).toHaveCount(3);
     for (const code of ['FAC_TEST_001', 'FAC_TEST_002', 'FAC_TEST_003']) {

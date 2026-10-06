@@ -18,7 +18,7 @@ export interface CostRow {
 export interface CostSummary {
   total: number;
   /** Suma por categoría, de mayor a menor; la inversión va aparte. */
-  categories: Array<{ category: string; amount: number; investment: boolean }>;
+  categories: Array<{ category: string; amount: number; investment: boolean; invoices: number }>;
   rows: Array<{ id: string; date: string | null; supplier: string; amount: number; code: string | null }>;
 }
 
@@ -60,22 +60,28 @@ export function clearCostCache(): void {
   }
 }
 
+/** Enlaces a Invoices (`docs/invoices/API.md` §9.6). */
+export const INVOICES_URL = 'https://invoices.ikisai.com';
+export const invoiceUrl = (code: string): string => `${INVOICES_URL}/#/facturas/${encodeURIComponent(code)}`;
+export const purchasesUrl = (kind: 'reservation' | 'event', id: string): string => `${INVOICES_URL}/#/compras?destino=booking:${kind}:${id}`;
+
 /** Agrega las filas de la proyección: total, suma por categoría y lista por fecha (más reciente primero). */
 export function summarizeCosts(rows: CostRow[]): CostSummary {
   const seen = new Set<string>();
   const unique = rows.filter((row) => (seen.has(row.allocation_id) ? false : (seen.add(row.allocation_id), true)));
   const amount = (row: CostRow): number => { const n = Number(row.allocated_amount); return Number.isFinite(n) ? n : 0; };
-  const byCategory = new Map<string, { amount: number; investment: boolean }>();
+  const byCategory = new Map<string, { amount: number; investment: boolean; codes: Set<string> }>();
   for (const row of unique) {
     const category = row.expense_category || 'Sin categoría';
     const key = `${row.is_investment ? 'i' : 'g'}|${category}`;
-    const entry = byCategory.get(key) ?? { amount: 0, investment: row.is_investment === true };
+    const entry = byCategory.get(key) ?? { amount: 0, investment: row.is_investment === true, codes: new Set<string>() };
     entry.amount += amount(row);
+    entry.codes.add(row.invoice_code ?? row.allocation_id);
     byCategory.set(key, entry);
   }
   return {
     total: Math.round(unique.reduce((sum, row) => sum + amount(row), 0) * 100) / 100,
-    categories: [...byCategory.entries()].map(([key, v]) => ({ category: key.slice(2), amount: Math.round(v.amount * 100) / 100, investment: v.investment })).sort((a, b) => b.amount - a.amount),
+    categories: [...byCategory.entries()].map(([key, v]) => ({ category: key.slice(2), amount: Math.round(v.amount * 100) / 100, investment: v.investment, invoices: v.codes.size })).sort((a, b) => b.amount - a.amount),
     rows: unique.map((row) => ({ id: row.allocation_id, date: row.invoice_date, supplier: row.supplier_name ?? '—', amount: amount(row), code: row.invoice_code }))
       .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')) || a.id.localeCompare(b.id)),
   };

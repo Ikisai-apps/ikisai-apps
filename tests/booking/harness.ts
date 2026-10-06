@@ -4,6 +4,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { build, preview, type PreviewServer } from 'vite';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
@@ -33,13 +34,29 @@ export async function buildApp(apiUrl: string): Promise<void> {
 }
 
 /** API falsa nueva + servidor de previsualización que le reenvía /api. Con `compile: false` reutiliza la compilación anterior. */
+/**
+ * Puerto libre elegido por el sistema. Un puerto al azar puede caer en los rangos que Windows reserva
+ * (Hyper-V, WSL): `listen` falla con EACCES y Vite no prueba otro.
+ */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
 export async function startHarness(options: { compile?: boolean } = {}): Promise<Harness> {
   const api = await startFakeApi({ users: [USER] });
   if (options.compile !== false) await buildApp(api.url);
   const server = await preview({
     configFile,
     logLevel: 'silent',
-    preview: { port: 4800 + Math.floor(Math.random() * 500), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
+    preview: { port: await freePort(), strictPort: true, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
   });
   const baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
   return {

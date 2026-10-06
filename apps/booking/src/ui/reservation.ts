@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, replace, toast, type Child, type Sortable } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
@@ -9,7 +9,7 @@ import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, de
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
-import { fetchCosts, readCostCache, type CostResult } from '../app/costs.ts';
+import { fetchCosts, invoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import type { ViewMount } from './shell.ts';
@@ -382,25 +382,39 @@ export function mountReservation(id: string): ViewMount {
           client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.' })));
 
       // Coste real: compras de Invoices asignadas a la reserva y su evento. Caché local al instante y refresco con red.
-      const costTotal = el('strong', { id: 'costTotal' }, '—');
-      const costByCategory = el('ul', { class: 'list', id: 'costByCategory' });
+      const costByCategory = el('div', { id: 'costByCategory' });
       const costList = el('ul', { class: 'list', id: 'costList' });
       const costNote = el('p', { class: 'hint', id: 'costNote', role: 'status' });
-      const costBody = el('div', { id: 'costBody' }, el('p', null, 'Total asignado: ', costTotal), costByCategory, costList, costNote);
+      const costBody = el('div', { id: 'costBody' }, costByCategory, costList, costNote);
       const costUnavailable = el('p', { class: 'hint', id: 'costUnavailable', role: 'status', hidden: true }, 'Coste real no disponible.');
       const paintCosts = (result: CostResult | null, unavailable = false): void => {
         costBody.hidden = unavailable;
         costUnavailable.hidden = !unavailable;
         if (unavailable) return;
         const summary = result?.summary;
-        costTotal.textContent = summary ? money(summary.total) : '—';
-        replace(costByCategory, ...(summary?.categories ?? []).map((c) => el('li', { class: 'row' }, el('span', { class: 'name' }, expenseCategoryLabel(c.category), c.investment ? el('span', { class: 'chip' }, 'Inversión') : null), el('span', { class: 'row-meta' }, money(c.amount)))));
+        // Desglose del kit: total frente a lo presupuestado y una línea por categoría con enlace a las compras en Invoices.
+        const budget = Number(finance && finance.deleted_at === null ? finance.budget_amount : null);
+        const breakdown = renderMoneyBreakdown({
+          totalLabel: 'Coste real',
+          total: summary?.total ?? 0,
+          compare: budget > 0 ? { label: 'presupuestados', amount: budget } : null,
+          lines: (summary?.categories ?? []).map((c) => ({
+            id: `${c.investment ? 'i' : 'g'}:${c.category}`,
+            label: `${expenseCategoryLabel(c.category)}${c.investment ? ' · inversión' : ''}`,
+            amount: c.amount,
+            meta: plural(c.invoices, 'factura', 'facturas'),
+            href: purchasesUrl('reservation', id),
+          })),
+          emptyText: 'Invoices no ha asignado compras a esta reserva.',
+        });
+        breakdown.querySelector('.mb-amount')?.setAttribute('id', 'costTotal');
+        replace(costByCategory, summary ? breakdown : null);
         replace(costList, ...(summary?.rows ?? []).map((r) => el('li', { class: 'row' },
           el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.supplier), el('span', null, money(r.amount))),
           el('div', { class: 'row-meta' }, r.date ? fullDay(r.date) : '—', ' · ',
-            r.code ? el('a', { href: 'https://invoices.ikisai.com/#/facturas', target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
+            r.code ? el('a', { href: invoiceUrl(r.code), target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
         costNote.textContent = !result ? (navigator.onLine ? 'Cargando…' : 'Se actualizará al reconectar.')
-          : summary!.rows.length === 0 ? 'Sin compras asignadas todavía.' : !navigator.onLine ? 'Se actualizará al reconectar.' : '';
+          : !navigator.onLine ? 'Se actualizará al reconectar.' : '';
       };
       const costs = !seesFinance ? null : block('blockCosts', 'Coste real', [costBody, costUnavailable]);
       if (seesFinance) {
