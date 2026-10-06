@@ -11,6 +11,7 @@ import {
   createDateField,
   createLabelPicker,
   labelChips,
+  renderMoneyBreakdown,
   renderProjectCard,
   createPrintView,
   createQuantityField,
@@ -555,6 +556,26 @@ function paintProjects(): void {
   );
 }
 paintProjects();
+// --- Desglose de importes ---------------------------------------------------------------------
+const moneyHost = el('div', { class: 'card', id: 'moneyHost' }, renderMoneyBreakdown({
+  totalLabel: 'Coste real',
+  compare: { label: 'presupuestados', amount: 1500 },
+  max: 4,
+  lines: [
+    { id: 'food', label: 'Alimentación', amount: 612.4, meta: '3 facturas', href: '#money' },
+    { id: 'clean', label: 'Limpieza', amount: 180, meta: '1 factura', href: '#money' },
+    { id: 'energy', label: 'Energía', amount: 240.55, meta: 'Prorrateo del mes', onOpen: () => toast('Abrir energía') },
+    { id: 'laundry', label: 'Lavandería', amount: 95, href: '#money' },
+    { id: 'other', label: 'Otros', amount: 42.1 },
+    { id: 'transport', label: 'Transporte', amount: 60 },
+  ],
+}));
+const moneyOver = el('div', { class: 'card', id: 'moneyOver' }, renderMoneyBreakdown({ totalLabel: 'Coste real', compare: { label: 'del importe final', amount: 500 }, lines: [{ label: 'Alimentación', amount: 420 }, { label: 'Limpieza', amount: 160 }] }));
+const moneyEmpty = el('div', { class: 'card', id: 'moneyEmpty' }, renderMoneyBreakdown({ totalLabel: 'Coste real', lines: [], emptyText: 'Invoices no ha asignado compras a esta reserva.' }));
+const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
+  el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
+);
+
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
@@ -562,12 +583,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection),
 );

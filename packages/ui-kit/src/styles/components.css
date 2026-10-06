@@ -497,6 +497,28 @@
 .card.project.colored .money,.card.project.colored .moneytext strong{color:inherit}
 .card.project.colored .moneybar{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
 .card.project.colored .moneybar span{background:var(--item-ink)}
+/* Desglose de importes (Booking «Coste real», Tasks coste por etiqueta, Food coste por servicio). */
+.moneybreak{display:grid;gap:8px}
+.mb-total{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mb-total .mb-label{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+.mb-total .mb-amount{font-family:var(--serif);font-weight:500;font-size:24px;letter-spacing:-.015em;line-height:1;font-variant-numeric:tabular-nums}
+.mb-compare{font-size:12.5px;color:var(--muted)}
+.moneybreak.over .mb-total .mb-amount,.moneybreak.over .mb-compare{color:var(--alert)}
+.moneybreak>.moneybar{height:6px}
+.mb-lines{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px}
+.mb-line{display:grid;gap:3px;padding:6px 0;border-bottom:1px solid var(--edge)}
+.mb-line:last-child{border-bottom:0}
+.mb-open{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;padding:0;font:inherit;color:inherit;text-align:left;text-decoration:none;min-height:28px;border-radius:8px}
+a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
+.mb-open .mb-name{flex:1;min-width:0;font-weight:600;font-size:14px;display:flex;flex-direction:column;gap:1px}
+.mb-open .mb-meta{font-weight:500;color:var(--muted);font-size:12px}
+.mb-open .mb-amount{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.mb-open .icon{color:var(--muted);flex:none}
+.mb-share{display:block;height:3px;border-radius:999px;background:color-mix(in srgb,var(--ink) 7%,transparent);overflow:hidden}
+.mb-share span{display:block;height:100%;background:var(--accent);border-radius:inherit}
+.mb-more{padding:6px 0 0}
+.mb-more .linkbtn{border:0;background:transparent;padding:0;color:var(--accent-deep);font-weight:700;font-size:13px;cursor:pointer}
+.mb-empty{padding:4px 0}
 
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
