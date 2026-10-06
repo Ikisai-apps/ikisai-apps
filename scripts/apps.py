@@ -13,10 +13,12 @@ ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
 ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food')
 
-# Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Invoices pasa a llamarse Finance
-# (decisión del usuario, 6 oct 2026): fase A, finance.ikisai.com sirve la app junto a invoices.ikisai.com; en la fase C
-# finance será el dominio principal y invoices/tramita redirigirán. Los alias que solo redirigen viven en Cloudflare.
-EXTRA_DOMAINS = {'invoices': [f'finance.{ZONE}']}
+# Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Los alias que solo
+# redirigen viven en Cloudflare (fase http_request_dynamic_redirect).
+EXTRA_DOMAINS = {}
+# Dominio principal distinto del identificador: Invoices se llama Finance desde la fase C (6 oct 2026);
+# invoices.ikisai.com y tramita.ikisai.com redirigen (reglas de Cloudflare).
+PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media'}
 
@@ -37,7 +39,7 @@ BUCKET_MIME_TYPES = {
 def _entry(name):
   return {
     'name': name,
-    'domain': f'{name}.{ZONE}',
+    'domain': PRIMARY_DOMAINS.get(name, f'{name}.{ZONE}'),
     'pages_project': f'ikisai-{name}',
     'function_slug': f'{name}-api',
     'function_dir': f'supabase/functions/{name}-api',
