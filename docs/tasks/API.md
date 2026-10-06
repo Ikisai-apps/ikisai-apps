@@ -29,7 +29,8 @@ Reglas comunes:
 - `tab_id` viaja desnormalizado en todas las tablas y `project_id` en todas las que cuelgan de un proyecto. Así `visible(table,row,ctx)` es una función pura de la fila (§5) y un cambio de proyecto llega al espejo de quien gana o pierde acceso como cambio de cada fila afectada. La coherencia de esas claves la comprueba el hook SQL (§4.2, `INCONSISTENT_KEYS`).
 - `position numeric` es el orden manual fraccional (`order` heredado). El cliente inserta con `máximo + 1024`.
 - Columnas inmutables tras el `insert`: trigger `tasks.guard_immutable` (`before update`) que llama a `core.fail('IMMUTABLE_FIELD', 422, {field})`.
-- Toda restricción (`check`, `unique`, FK) queda como red de seguridad y tiene **delante** una validación con código de dominio (`beforeCommit` o trigger/hook con `core.fail`). Motivo: el usuario debe recibir el código de dominio y su mensaje, no un `CONSTRAINT_VIOLATION` genérico (desde C4 un SQLSTATE no previsto llega como 422 definitivo, ya no como 503).
+- La unicidad (una Entrada por área, una familia por `system_key`, una fila puente viva por par) la comprueba el hook SQL con su código de dominio, no un índice único: todas las escrituras pasan por `core.commit`, que es serial por app, y un índice único respondería antes que el hook con un `CONSTRAINT_VIOLATION` genérico.
+- Toda restricción (`check`, FK) queda como red de seguridad y tiene **delante** una validación con código de dominio (`beforeCommit` o trigger/hook con `core.fail`). Motivo: el usuario debe recibir el código de dominio y su mensaje, no un `CONSTRAINT_VIOLATION` genérico (desde C4 un SQLSTATE no previsto llega como 422 definitivo, ya no como 503).
 
 ### 2.1 `tasks.tabs` · áreas
 
@@ -57,7 +58,7 @@ Reglas comunes:
 | `position` | `numeric not null` |
 | `system` | `text null check (system in ('inbox'))` · inmutable |
 
-`writable_columns`: `tab_id, title, note, status, priority, due, owner_label_id, color, budget, position, system`. Índices: `(tab_id, position) where deleted_at is null`; `unique (tab_id) where system = 'inbox'`.
+`writable_columns`: `tab_id, title, note, status, priority, due, owner_label_id, color, budget, position, system`. Índices: `(tab_id, position) where deleted_at is null`; `(tab_id) where system = 'inbox'`.
 
 Entrada: cada área viva tiene exactamente un proyecto con `system = 'inbox'`, título `Entrada`, vivo y no archivado. Lo crea el cliente en el mismo lote que el área (§3.1) y lo vigila el hook (`INBOX_PROTECTED`).
 
@@ -96,7 +97,7 @@ Una fila por arista «`task_id` depende de `depends_on_id`».
 | `depends_on_id` | `uuid not null references tasks.tasks(id)`, `check (task_id <> depends_on_id)` · inmutable |
 | `position` | `numeric not null default 0` |
 
-`writable_columns`: `tab_id, project_id, task_id, depends_on_id, position`. Índices: `unique (task_id, depends_on_id) where deleted_at is null`; `(depends_on_id)`; `(tab_id)`.
+`writable_columns`: `tab_id, project_id, task_id, depends_on_id, position`. Índices: `(task_id, depends_on_id) where deleted_at is null`; `(depends_on_id)`; `(tab_id)`.
 
 Quitar una dependencia es un `delete` de la fila. Borrar la tarea de la que se depende **no** borra la arista ni la cumple: la tarea sigue bloqueada y la interfaz la muestra como «condición en papelera».
 
@@ -111,7 +112,7 @@ Quitar una dependencia es un `delete` de la fila. Borrar la tarea de la que se d
 | `position` | `numeric not null default 0` |
 | `system_key` | `text null check (system_key in ('person','trade','phase','building','space'))` · inmutable |
 
-`writable_columns`: `tab_id, name, color, archived, position, system_key`. Índices: `(tab_id, position)`; `unique (tab_id, system_key) where system_key is not null`.
+`writable_columns`: `tab_id, name, color, archived, position, system_key`. Índices: `(tab_id, position)`. Una sola familia viva por `system_key` y área (`INVALID_FAMILY`).
 
 `system_key` sustituye a los `id` fijos heredados. `person` identifica la familia de la que salen los responsables. Las cinco familias por defecto (Persona `#6f5a8f`, Oficio `#b76b3d`, Fase `#6b7b54`, Edificio `#4e6f72`, Espacio `#9c744e`) las inserta el cliente al crear el área.
 
@@ -133,9 +134,9 @@ Familias y etiquetas se **archivan**, no se borran: `beforeCommit` rechaza `dele
 
 ### 2.7 `tasks.task_labels` y `tasks.project_labels`
 
-`task_labels`: `tab_id` (inmutable), `project_id` (proyecto de la tarea), `task_id` (inmutable), `label_id` (inmutable); todas `uuid not null` con FK. `writable_columns`: las cuatro. Índices: `unique (task_id, label_id) where deleted_at is null`; `(label_id)`; `(project_id)`.
+`task_labels`: `tab_id` (inmutable), `project_id` (proyecto de la tarea), `task_id` (inmutable), `label_id` (inmutable); todas `uuid not null` con FK. `writable_columns`: las cuatro. Índices: `(task_id, label_id) where deleted_at is null`; `(label_id)`; `(project_id)`.
 
-`project_labels` (etiquetas propias del proyecto, `ownLabels`): `tab_id`, `project_id`, `label_id`, todas inmutables. `writable_columns`: las tres. Índices: `unique (project_id, label_id) where deleted_at is null`; `(label_id)`.
+`project_labels` (etiquetas propias del proyecto, `ownLabels`): `tab_id`, `project_id`, `label_id`, todas inmutables. `writable_columns`: las tres. Índices: `(project_id, label_id) where deleted_at is null`; `(label_id)`.
 
 Tablas puente con `id` propio (recomendación de Core en PORT §3): dos dispositivos que añaden etiquetas distintas a la misma tarea no chocan.
 
@@ -376,7 +377,7 @@ Todas con `Authorization: Bearer`, sobre el contexto de `_kit`. Las lecturas com
 | `GET tree` | reader | → `{cursor, tabs:[…]}`: árbol anidado (área → familias, etiquetas, vistas, proyectos → tareas) con `done`, `blocked`, `blockedBy`, `hiddenBlockers` calculados. Para otras apps, pruebas y futuros agentes; la interfaz se compone desde el espejo | — |
 | `GET tabs/:tabId/tasks` | reader | `q, state=pending\|done, availability=ready\|blocked, projectId, label (repetible), family.<id>, includeDeleted, limit≤500, offset` → `{items, total}` | `NOT_FOUND`, `INVALID_FILTER` |
 | `GET blockers` | reader | → `{cursor, items:[{taskId, hidden}]}`: por cada tarea visible, cuántas condiciones no cumplidas están fuera del ámbito. Vacío con acceso completo | — |
-| `GET read/tasks.targets` | reader | lectura registrada (`core.allow_read('tasks', 'tasks.targets', 'function')`). `args` opcionales: `{kind: tab\|project\|task, id}` para validar un destino, `{tabId}` para limitar a un área → `{cursor, tabs:[{id, name, revision, deleted, projects:[{id, title, status, system, revision, deleted, tasks:[{id, parentId, title, done, revision, deleted}]}]}]}`, limitado a lo visible para el usuario | `NOT_FOUND` con `kind` + `id` si no existe o no es visible |
+| `GET read/tasks.targets` | reader | lectura registrada (`core.allow_read('tasks', 'tasks.targets', 'function')`). `args` opcionales: `{kind: tab\|project\|task, id}` para validar un destino, `{tabId}` para limitar a un área → `{tabs:[{id, name, color, revision, deleted, projects:[{id, title, status, system, color, revision, deleted, tasks:[{id, parentId, title, done, revision, deleted}]}]}]}` (por defecto sin papelera ni proyectos archivados; `includeDeleted`, `includeArchived`), o un único `{kind, id, tabId, projectId, title, revision, deleted, archived}` con `kind` + `id`. Limitado a lo visible para el usuario | `NOT_FOUND` con `kind` + `id` si no existe o no es visible |
 | `GET attachments/:id` | reader | → bytes del archivo (`Content-Disposition` con `name`), tras comprobar que la fila de `tasks.attachments` es visible | `NOT_FOUND` |
 | `GET csv?tabId=` | reader | → `text/csv` con las tareas visibles del área | `NOT_FOUND` |
 | `POST csv/preview?tabId=` | editor con área completa | cuerpo `text/csv` ≤ 2 MB → `{operations: RowOperation[], summary:{projects, tasks, labels}, warnings}`. No escribe: el cliente envía `operations` por `commands` (se puede deshacer). Un nivel de hijas | `FORBIDDEN`, `PAYLOAD_TOO_LARGE`, `INVALID_CSV`, `CSV_TOO_LARGE` (> 500 operaciones) y los de §4.1 |
@@ -683,5 +684,7 @@ Convenciones nuevas que este documento adopta:
 - **Lecturas registradas:** las funciones de lectura SQL de Tasks se registran con `core.allow_read('tasks', 'tasks.<fn>', 'function')`, reciben `{app, actor, role, args}` y se sirven en `GET/POST /api/v1/read/tasks.<fn>`. La primera es `tasks.targets` (§6, §7), que Invoices necesita. `tree`, `blockers` y `tabs/:tabId/tasks` podrán pasar a lecturas registradas si resulta más barato que componer en la Edge; se decide al implementar `tasks-api`.
 - **`RequestContext.token`** disponible; Tasks no lo necesita porque no llama a otras apps.
 - **Peticiones** en `docs/tasks/PETICIONES.md`.
+
+Implementado en `supabase/migrations/20261006_0300_tasks_schema.sql` (tablas, triggers, registro) y `20261006_0301_tasks_rules.sql` (`tasks.scope_*`, `tasks.validate_batch`, `tasks.import_rows`, `tasks.targets`).
 
 Orden de construcción (PR pequeñas dentro del territorio de Tasks): (1) `_domain/tasks` + `packages/domain-tasks`; (2) migraciones `*_tasks_*` con `tasks.validate_batch` y `tasks.targets`, con lint y conformidad; (3) `tasks-api` con `visible` y `beforeCommit`; (4) adaptador sobre `sync-client`.
