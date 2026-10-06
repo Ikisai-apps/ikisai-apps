@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.11.1 · 6 de octubre de 2026
+
+- `openSheet`: `backAttrs`, `panelAttrs` y `closeAttrs` para poner los ganchos de la app en el fondo, el panel y el botón de cerrar (Tasks: `#sheetBack`, `#sheet`, `#closeDialog`). `close(true)` sigue siendo síncrono cuando no hay `beforeClose`, así que quien envuelve `closeSheet` ve el cierre al momento. La paleta ya usaba `#palette`, `#paletteInput` y `#paletteList`: no cambia.
+
 ## 0.11.0 · 6 de octubre de 2026
 
 - **Agentes de IA** (contrato §3.1), piezas comunes para las cuatro apps; el kit no conoce el dominio: la app traduce códigos de riesgo, tablas y campos.

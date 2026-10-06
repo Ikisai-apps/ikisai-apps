@@ -21,6 +21,10 @@ export interface SheetOptions {
   /** Id del título, por si la app lo necesita estable. */
   titleId?: string;
   closeLabel?: string;
+  /** Atributos extra del fondo (`.sheetback`), del panel (`.sheet`) y del botón de cerrar: ganchos de la app (p. ej. `{ id: 'sheetBack' }`, `{ id: 'sheet' }`, `{ id: 'closeDialog' }`). */
+  backAttrs?: Record<string, string | null | undefined>;
+  panelAttrs?: Record<string, string | null | undefined>;
+  closeAttrs?: Record<string, string | null | undefined>;
 }
 
 export interface Sheet {
@@ -48,16 +52,16 @@ export function openSheet(options: SheetOptions): Sheet {
   const opener = document.activeElement as HTMLElement | null;
   const titleId = options.titleId ?? 'sheetTitle';
   const title = el('h2', { id: titleId }, options.title);
-  const closeButton = el('button', { class: 'iconbtn', type: 'button', 'aria-label': options.closeLabel ?? 'Cerrar', onclick: () => void close(false) }, icon('close'));
+  const closeButton = el('button', { class: 'iconbtn', type: 'button', 'aria-label': options.closeLabel ?? 'Cerrar', ...(options.closeAttrs ?? {}), onclick: () => void close(false) }, icon('close'));
   const body = el('div', { class: 'sheet-body' }, options.meta ? el('p', { class: 'meta' }, options.meta) : null, options.body);
   const foot = options.foot ? el('div', { class: 'sheet-foot', hidden: !!options.footHidden }, options.foot) : null;
-  const panel = el('section', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' },
+  const panel = el('section', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1', ...(options.panelAttrs ?? {}) },
     el('div', { class: 'handle', 'aria-hidden': 'true' }),
     el('div', { class: 'sheet-head' }, title, closeButton),
     body,
     foot,
   );
-  const element = el('div', { class: 'sheetback show', onclick: (e: Event) => { if (e.target === element) void close(false); } }, panel);
+  const element = el('div', { class: 'sheetback show', ...(options.backAttrs ?? {}), onclick: (e: Event) => { if (e.target === element) void close(false); } }, panel);
   const onKey = (e: KeyboardEvent) => {
     if (!open) return;
     if (e.key === 'Escape') { e.preventDefault(); void close(false); }

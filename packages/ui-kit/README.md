@@ -98,6 +98,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`. Con una hoja, un diálogo o la paleta abiertos, el aviso sale por arriba para no tapar su contenido.
 - `applyTheme()`, `setTheme()`, `toggleTheme()`, `effectiveTheme()`, `applyAccent(color|null)`, `itemColorStyle(color)`, `inkOn(color)`.
 - `openSheet({ title, body, foot, meta, footHidden, beforeClose, onClose, initialFocus })` → `{ panel, body, foot, close(force), setFootHidden, setTitle, isOpen }`; `closeSheet()`, `currentSheet()`. Una sola hoja; foco atrapado; Escape y fondo cierran; `beforeClose` puede devolver `false` (o una promesa) para retener la hoja con cambios sin guardar. Un botón de «Guardar» en el pie se enlaza al formulario con el atributo `form`.
+  Ganchos de la app con `backAttrs`, `panelAttrs` y `closeAttrs` (0.11.1).
 - `confirmDialog({ title, text, confirmLabel, cancelLabel, danger, noCancel })` → `Promise<boolean>`; `alertDialog(title, text)`. Con `danger` el foco inicial va a «Cancelar».
 - `renderConflict(conflict, { fieldLabels, show, rowName, onResolve })` y `renderConflicts(list, …)` sobre `PendingConflict`; `onResolve(conflict, decision)` recibe `{ choice: 'mine' | 'theirs' }` o `{ choice: 'merge', fields }` listo para `client.resolveConflict`. Botones con `data-choice`.
 - `renderRejected(batch, { describeError, rowName, onRetry, onDiscard })` y `renderRejectedList(list, …)` sobre `RejectedBatch`.
