@@ -17,7 +17,7 @@ function summary(batch: RejectedBatch, options: RejectedOptions): string {
   const parts = ops.slice(0, 3).map((op) => {
     if (op.op === 'call') return `${verbs.call} «${op.procedure}»`;
     const key = `${op.table}|${op.id}`;
-    const name = options.rowName ? options.rowName(batch, key) : String(batch.baseRows[key]?.name ?? batch.baseRows[key]?.title ?? ('fields' in op ? op.fields.name ?? op.fields.title : null) ?? op.id);
+    const name = options.rowName ? options.rowName(batch, key) : String(batch.baseRows[key]?.name ?? batch.baseRows[key]?.title ?? ('fields' in op && op.fields ? op.fields.name ?? op.fields.title : null) ?? op.id);
     return `${verbs[op.op]} «${name}»`;
   });
   if (ops.length > 3) parts.push(`y ${ops.length - 3} más`);

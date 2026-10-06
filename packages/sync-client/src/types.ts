@@ -21,7 +21,7 @@ export type RowOperation =
   | { op: 'insert'; table: TableName; id: RowId; fields: Record<string, unknown> }
   | { op: 'update'; table: TableName; id: RowId; expectedRevision: number; fields: Record<string, unknown> }
   | { op: 'delete'; table: TableName; id: RowId; expectedRevision: number }
-  | { op: 'restore'; table: TableName; id: RowId; expectedRevision: number }
+  | { op: 'restore'; table: TableName; id: RowId; expectedRevision: number; fields?: Record<string, unknown> }
   | { op: 'call'; procedure: string; args: Record<string, unknown> };
 
 export interface CommandBatch {
