@@ -19,7 +19,9 @@
 .recipephoto,.ficha-photo{position:relative;display:grid;place-items:center;aspect-ratio:4/3;background:var(--paper-2);color:var(--muted);overflow:hidden}
 .recipephoto img,.ficha-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .recipebody{display:flex;flex-direction:column;gap:4px;padding:10px 12px 12px;min-width:0}
-.recipebody strong{font-family:var(--font-display,inherit);font-size:1.02rem;line-height:1.2;overflow-wrap:anywhere}
+/* Nombres largos: tres líneas como mucho en la tarjeta (el nombre completo va en el título y en la ficha). */
+.recipebody strong{font-family:var(--font-display,inherit);font-size:1.02rem;line-height:1.2;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden}
+.recipebody .recipemeta{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .recipemeta{color:var(--muted);font-size:var(--text-sm,.875rem)}
 
 /* Ficha en lectura */
