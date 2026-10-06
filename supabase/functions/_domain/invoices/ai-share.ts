@@ -19,7 +19,7 @@ export function invoiceContractText(source?: SharedSource | null): string {
     : '';
   return `IKISAI · CONTRATO DE EXTRACCIÓN DE FACTURA (ikisai.invoice.v1)
 
-Te comparto una factura (PDF o foto) desde la app Ikisai Invoices. Tu tarea es leerla y devolver sus datos en JSON.
+Te comparto una factura (PDF o foto) desde la app Ikisai Finance. Tu tarea es leerla y devolver sus datos en JSON.
 
 Normas obligatorias:
 - Responde SOLO con el JSON, sin texto antes ni después (si tu app no lo permite, pon el JSON en un bloque de código).

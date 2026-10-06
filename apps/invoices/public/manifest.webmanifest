@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Ikisai Invoices",
-  "short_name": "Invoices",
+  "name": "Ikisai Finance",
+  "short_name": "Finance",
   "description": "Facturas, compras y gestoría de Ikisai, también sin conexión.",
   "lang": "es",
   "start_url": "/",

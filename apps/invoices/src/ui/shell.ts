@@ -46,7 +46,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let updateApply: (() => void) | null = null;
 
   const shell = createAppShell(root, {
-    appName: 'Invoices',
+    appName: 'Finance',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
@@ -117,7 +117,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
-    document.title = `${entry.title} · Ikisai Invoices`;
+    document.title = `${entry.title} · Ikisai Finance`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });

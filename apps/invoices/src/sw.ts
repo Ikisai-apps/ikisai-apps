@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 /**
- * Service worker de Ikisai Invoices. Vite lo compila como entrada aparte a /sw.js (ver vite.config.ts).
+ * Service worker de Ikisai Finance (antes Invoices). Vite lo compila como entrada aparte a /sw.js (ver vite.config.ts).
  * - Precachea el shell: la lista `SHELL` y el sufijo de `CACHE` los inyecta el plugin `ikisai:sw-shell` en build.
  * - Nunca toca /api/ (la sincronización la gestiona @ikisai/sync-client con su propio espejo IndexedDB).
  * - Activación coordinada: solo hace skipWaiting cuando la app lo pide (APPLY_UPDATE) y todas las pestañas

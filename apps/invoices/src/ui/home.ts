@@ -78,7 +78,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('h3', null, 'Instalar en este dispositivo'),
         el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
         deferredInstall
-          ? el('p', null, el('button', { class: 'ghost', type: 'button', style: 'margin-top:10px', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; } }, 'Instalar Ikisai Invoices'))
+          ? el('p', null, el('button', { class: 'ghost', type: 'button', style: 'margin-top:10px', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; } }, 'Instalar Ikisai Finance'))
           : el('p', { style: 'margin-top:8px' }, 'En Android: menú del navegador → «Instalar aplicación». En iPhone: Compartir → «Añadir a pantalla de inicio».'),
       ),
       el('article', { class: 'card' },
