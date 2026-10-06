@@ -334,6 +334,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (value === undefined || value === null) continue;
         if (typeof value !== 'string' || !files.get(value)?.verified) throw new Fault(422, 'INVALID_FILE', 'La foto no es un archivo verificado.', { index, field: key });
       }
+      if (op.table === 'food.menu_services' || op.table === 'food.menu_items') {
+        const current = store.get(op.id);
+        const serviceId = op.table === 'food.menu_items' ? (fields.service_id ?? current?.service_id) : null;
+        const menuId = op.table === 'food.menu_services' ? (fields.menu_id ?? current?.menu_id) : stagedTable('food.menu_services').get(serviceId as string)?.menu_id;
+        const parent = stagedTable('food.menus').get(menuId as string);
+        if (parent && (parent.status === 'validado' || parent.status === 'cerrado')) throw new Fault(422, 'MENU_LOCKED', 'El menú está validado.', { index, menu_id: parent.id, status: parent.status });
+      }
       const now = nowIso();
       let row = store.get(op.id);
       if (op.op === 'insert') {

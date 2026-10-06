@@ -1,6 +1,8 @@
-import type { PendingConflict } from '@ikisai/sync-client';
+import type { PendingConflict, SyncedRow } from '@ikisai/sync-client';
 import { confirmDialog, el, formatDate, renderConflicts, renderRejectedList, replace, toast } from '@ikisai/ui-kit';
-import { describeError } from '../app/client.ts';
+import { T, describeError, formatQuantity } from '../app/client.ts';
+import { shortDay } from '../app/events.ts';
+import { SERVICE_LABELS } from './events.ts';
 import type { ViewMount } from './shell.ts';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -9,6 +11,9 @@ const FIELD_LABELS: Record<string, string> = {
   prep_minutes: 'Antelación (min)', status: 'Estado', diet_tags: 'Dietas', allergens: 'Alérgenos', allergens_checked: 'Alérgenos revisados',
   photo_file_id: 'Foto', photo_thumb_file_id: 'Miniatura', preferred_unit: 'Unidad preferida', preferred_supplier: 'Proveedor habitual', active: 'Activo',
   quantity: 'Cantidad', unit: 'Unidad', notes: 'Notas', capacity: 'Capacidad', location: 'Ubicación', quantity_required: 'Unidades necesarias',
+  servings: 'Raciones', position: 'Orden', service_date: 'Día', service_type: 'Servicio', service_time: 'Hora', closing_notes: 'Cierre de cocina',
+  required_quantity: 'Necesario', stock_quantity: 'En casa', purchase_quantity: 'Comprar', supplier: 'Proveedor', manual_override: 'Compra fijada a mano',
+  text: 'Paso', scheduled_date: 'Día', scheduled_time: 'Hora', responsible: 'Responsable', done: 'Hecho', manual: 'A mano',
   deleted_at: 'Borrado',
 };
 
@@ -17,6 +22,7 @@ function show(field: string, value: unknown): string {
   if (field === 'deleted_at') return formatDate(String(value));
   if (field === 'photo_file_id' || field === 'photo_thumb_file_id') return 'Foto';
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+  if (typeof value === 'number') return formatQuantity(value);
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
   return String(value);
 }
@@ -25,6 +31,27 @@ function show(field: string, value: unknown): string {
 export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
   const conflictHost = el('div', { id: 'conflictList' });
   const rejectedHost = el('div', { id: 'rejectedList' });
+  // Nombres para titular cada tarjeta con algo que la cocina reconozca, no con el identificador de la fila.
+  const names = new Map<string, string>();
+  const nameOf = (id: unknown) => names.get(String(id)) ?? '';
+  function rowName(table: string, row: SyncedRow | null | undefined): string {
+    if (!row) return 'Elemento';
+    switch (table) {
+      case T.recipes: return `Receta: ${row.name}`;
+      case T.ingredients: return `Ingrediente: ${row.name}`;
+      case T.equipment: return `Máquina: ${row.name}`;
+      case T.recipeIngredients: return `Ingrediente de receta: ${nameOf(row.ingredient_id)} en ${nameOf(row.recipe_id)}`;
+      case T.recipeEquipment: return `Maquinaria de receta: ${nameOf(row.equipment_id)} en ${nameOf(row.recipe_id)}`;
+      case T.menus: return 'Menú';
+      case T.menuServices: return `Servicio: ${SERVICE_LABELS[row.service_type as keyof typeof SERVICE_LABELS] ?? ''} del ${shortDay(String(row.service_date))}`;
+      case T.menuItems: return `Plato del menú: ${nameOf(row.recipe_id)}`;
+      case T.shoppingLists: return 'Lista de compra';
+      case T.shoppingItems: return `Compra: ${nameOf(row.ingredient_id)}`;
+      case T.preparation: return `Paso de preparación: ${row.text}`;
+      default: return String(row.name ?? 'Elemento');
+    }
+  }
+
   const rejectedSection = el('section', { hidden: true }, el('div', { class: 'sectionlabel' }, 'Rechazados por el servidor'), rejectedHost);
   replace(
     main,
@@ -46,10 +73,17 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
 
   async function load(): Promise<void> {
     const [conflicts, rejected] = await Promise.all([client.conflicts(), client.rejected()]);
-    replace(conflictHost, ...renderConflicts(conflicts, { fieldLabels: FIELD_LABELS, show, onResolve: resolve }));
+    for (const table of [T.recipes, T.ingredients, T.equipment]) {
+      for (const row of await client.list(table, { includeDeleted: true })) names.set(row.id, String(row.name ?? ''));
+    }
+    replace(conflictHost, ...renderConflicts(conflicts, {
+      fieldLabels: FIELD_LABELS, show, onResolve: resolve,
+      rowName: (conflict) => rowName(conflict.operation.table, conflict.current ?? conflict.base),
+    }));
     rejectedSection.hidden = rejected.length === 0;
     replace(rejectedHost, ...renderRejectedList(rejected, {
       describeError: (error) => describeError(error),
+      rowName: (batch, key) => rowName(key.slice(0, key.indexOf('|')), batch.baseRows[key]),
       onRetry: async (batch) => {
         try {
           await client.retryRejected(batch.requestId);
