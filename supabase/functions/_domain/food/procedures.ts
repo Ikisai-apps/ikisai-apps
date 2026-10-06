@@ -5,6 +5,8 @@ export const FOOD_PROCEDURES = {
   setMenuStatus: 'food.set_menu_status',
   acknowledgeEvent: 'food.acknowledge_event',
   validateMenu: 'food.validate_menu',
+  regenerateShopping: 'food.regenerate_shopping',
+  regeneratePreparation: 'food.regenerate_preparation',
 } as const;
 
 export interface AcknowledgedWarning {
@@ -24,6 +26,11 @@ const positiveInteger = (value: unknown) => typeof value === 'number' && Number.
 export function invalidCallArgument(procedure: string, args: Record<string, unknown>): string | null {
   if (!(Object.values(FOOD_PROCEDURES) as string[]).includes(procedure)) return null; // lo decide core.allowed_procedures
   if (typeof args.menu_id !== 'string' || !UUID.test(args.menu_id)) return 'menu_id';
+  if (procedure === FOOD_PROCEDURES.regeneratePreparation) return null;
+  if (procedure === FOOD_PROCEDURES.regenerateShopping) {
+    // list_id: uuid que el cliente propone para la lista si todavía no existe.
+    return typeof args.list_id === 'string' && UUID.test(args.list_id) ? null : 'list_id';
+  }
   if (!positiveInteger(args.expectedRevision)) return 'expectedRevision';
   if (procedure === FOOD_PROCEDURES.setMenuStatus) {
     return typeof args.status === 'string' && (MENU_STATUSES as readonly string[]).includes(args.status) ? null : 'status';
