@@ -1149,3 +1149,67 @@ test('vaciar papelera: la propietaria confirma con el recuento y los demás disp
   await b.waitForFunction(() => !state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.some((p: any) => p.id === (window as any).ID.p3), null, { timeout: 20_000 });
   await a.evaluate(() => closeSheet());
 });
+
+test('foto de 3200 px: se recomprime a 1600 px en WebP sin conservar el original y se adjunta a la tarea', async () => {
+  await routeStorage(contextA, server);
+  await sync(a);
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+  // Una foto sintética de 3200 × 2000 generada en la propia página (ruido de color para que no comprima a casi nada).
+  const png: number[] = await a.evaluate(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 3200; canvas.height = 2000;
+    const context = canvas.getContext('2d')!;
+    for (let i = 0; i < 400; i++) { context.fillStyle = `hsl(${(i * 47) % 360} 70% ${30 + (i % 5) * 10}%)`; context.fillRect((i * 131) % 3200, (i * 71) % 2000, 400, 260); }
+    const blob: Blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
+  await a.evaluate(() => openTaskEditor((window as any).ID.t1));
+  await a.locator('#teFiles').setInputFiles({ name: 'obra.png', mimeType: 'image/png', buffer: Buffer.from(png) });
+  await a.waitForFunction(() => document.querySelectorAll('#sheet a[download]').length === 1, null, { timeout: 20_000 });
+  await a.locator('#saveTaskBtn').click();
+  await settled(a);
+  const attachment = await a.evaluate(() => taskLocation((window as any).ID.t1).t.attachments.at(-1));
+  expect([attachment.name, attachment.mime]).toEqual(['obra.webp', 'image/webp']);
+  expect(attachment.size).toBeLessThan(png.length);
+  expect(attachment.data).toBeUndefined();
+  const row = (await server.rows('tasks.attachments')).find((r) => r.id === attachment.id);
+  expect([row.task_id, row.mime, row.size, row.sha256]).toEqual([ID.t1, 'image/webp', attachment.size, attachment.sha256]);
+  // Lo que llegó a Storage es la versión reducida: lado mayor 1600 px.
+  const file = (await server.app.t.db.query<{ path: string; status: string }>('select path, status from core.files where id = $1', [row.file_id])).rows[0]!;
+  expect(file.status).toBe('verified');
+  const stored = server.app.supabase.storage.get(file.path)!;
+  expect(stored.byteLength).toBe(attachment.size);
+  const size = await a.evaluate(async (bytes) => { const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/webp' })); return [image.width, image.height]; }, [...stored]);
+  expect(size).toEqual([1600, 1000]);
+});
+
+test('importación portable: si se pierde la respuesta final, reintentar desde la interfaz crea una sola copia', async () => {
+  test.setTimeout(120_000);
+  await sync(a);
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+  const download = a.waitForEvent('download');
+  await a.evaluate(() => portableExport());
+  const portablePath = await (await download).path();
+  const countBefore = await a.evaluate(() => state.tabs.length);
+  const serverBefore = (await server.rows('tasks.tabs')).length;
+
+  // La primera petición de importación llega al servidor y se confirma, pero su respuesta no vuelve al navegador.
+  let calls = 0;
+  const pattern = '**/api/v1/portable/import';
+  await contextA.route(pattern, async (route) => {
+    calls += 1;
+    if (calls === 1) { await route.fetch(); await route.abort('connectionreset'); } else await route.continue();
+  });
+  await a.evaluate(() => portableImportSheet());
+  await a.locator('#portableFile').setInputFiles(portablePath);
+  await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement).disabled);
+  await a.locator('#portableApply').click();
+  await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement)?.disabled && document.getElementById('toast')!.classList.contains('show'), null, { timeout: 20_000 });
+  expect((await server.rows('tasks.tabs')).length, 'el servidor ya había importado').toBe(serverBefore * 2);
+  await a.locator('#portableApply').click();
+  await a.waitForFunction((n) => state.tabs.length === n * 2 && Sync.mode === 'online' && !Sync.busy, countBefore, { timeout: 30_000 });
+  await contextA.unroute(pattern);
+  expect(calls).toBe(2);
+  expect((await server.rows('tasks.tabs')).length, 'el reintento no duplica').toBe(serverBefore * 2);
+  expect(await a.evaluate(() => state.tabs.length)).toBe(countBefore * 2);
+  await a.evaluate(() => closeSheet());
+});

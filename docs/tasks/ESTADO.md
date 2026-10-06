@@ -34,7 +34,7 @@ Playwright contra la `tasks-api` real en PGlite (solo Supabase está simulado): 
 
 **Vaciar papelera** (`POST trash/empty`, migración `0303`, botón en la papelera para la propietaria con acceso completo, con confirmación y recuento): pasa a la papelera lo que cuelga de contenedores borrados y purga en orden canónico inverso; probado en SQL, por API y en la interfaz con dos dispositivos.
 
-Sin portar todavía: dos de `tests/cloud-browser.mjs` (foto 3200→1600 px; reintento de la importación portable desde la interfaz, que por API sí está probado).
+**`tests/cloud-browser.mjs`:** sus escenarios quedan cubiertos; los dos últimos, en `ui.spec.ts`: una foto de 3200 px llega a Storage como WebP de 1600 px sin conservar el original, y si se pierde la respuesta final de una importación portable, reintentar desde la interfaz crea una sola copia.
 
 Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por defectos destapados por las pruebas:
 
@@ -63,7 +63,6 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 
 1. Corregir lo que salga del recorrido manual.
 2. `restore` con `fields` para la hija en papelera cuyo padre cambió de proyecto, cuando el kit y `sync-client` lo acepten (C22).
-3. Los dos escenarios restantes de `cloud-browser`.
 
 ## Bloqueos
 
