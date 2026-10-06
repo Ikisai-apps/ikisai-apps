@@ -650,3 +650,92 @@ Conformidad: `tests/core/invoices-conformance.test.ts` (sigue con `suppliers`) +
 ### Peticiones
 
 En `docs/invoices/PETICIONES.md`. Las de la primera versión están resueltas por Core (`ctx.token`, marcadores `$blob`, `core.allow_read`, `npm:fflate`, lint, snapshot de Tasks como puente, handoff disponible). Abiertas: lectura `tasks.targets` (equipo Tasks), proyecciones de Booking y Food (fase 2).
+
+---
+
+## 13. Facturas emitidas (propuesta, ronda 21 · pendiente de revisión de Core)
+
+**Alcance aprobado por el usuario.** Se **registran** las facturas emitidas con otra herramienta; la app **no emite** todavía. El modelo deja preparado lo común para emitir desde la app cumpliendo Verifactu, sin la parte de Verifactu: no hay huella, encadenado, firma ni envío a la AEAT. Prioridad: después de la #138 de la V1.
+
+**Marco legal.** El sistema que **expide** una factura es el responsable de su registro Verifactu. Las facturas registradas aquí (`origin` `manual` o `importada`) ya tienen su registro en la herramienta que las emitió. Aquí son el **libro registro de facturas expedidas**: base del IVA repercutido, del modelo 303 y de la entrega a la gestoría. Los campos Verifactu de esas facturas quedan vacíos. Solo `origin = 'app'` los rellenará, cuando se construya la emisión. Los nombres y listas cerradas de abajo siguen el diseño de registro de la AEAT y hay que **confirmarlos contra la especificación técnica vigente** antes de construir la emisión.
+
+### 13.1 Tablas (migraciones `0205+`, schema `invoices`)
+
+Todas con las columnas de núcleo (`id, revision, created_at, updated_at, updated_by, deleted_at`) y `never_purge = true`: un registro fiscal no se purga. Anular es un cambio de estado con motivo, como en las recibidas.
+
+**`invoices.issued_series`**: series de numeración.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `code` | `text unique not null` | Serie tal y como aparece en la factura (`A`, `R`, `2026-A`…). |
+| `description` | `text null` | «Ordinarias», «Rectificativas», «Tickets»… |
+| `kind` | `text not null default 'ordinaria'` | `ordinaria` · `rectificativa` · `simplificada`. Por norma, las rectificativas van en serie propia. |
+| `yearly` | `boolean not null default true` | Numeración reiniciada cada año. |
+| `format` | `text not null default '{serie}-{año}-{n:4}'` | Plantilla del número **para la emisión desde la app** (reservado). |
+| `active` | `boolean not null default true` | |
+
+**`invoices.issued_invoices`**: cabecera.
+
+| Grupo | Columnas | Notas |
+|---|---|---|
+| Identidad | `series_code text not null`, `number text not null`, `full_number text` generada (serie y número según formato) | `unique (series_code, number)` entre las no borradas. Al registrar, el número es el del documento; al emitir (futuro), lo asigna el procedimiento de §13.3. |
+| Fechas | `issue_date date not null` (expedición), `operation_date date null` (si es distinta) | El periodo fiscal sale de `issue_date`, como en las recibidas (columnas generadas `fiscal_year`, `fiscal_quarter`). |
+| Tipo | `invoice_type text not null`: `F1` completa · `F2` simplificada · `F3` sustitutiva de simplificadas · `R1`–`R5` rectificativas | Etiquetas en castellano en la app; los códigos siguen la lista de la AEAT. |
+| Rectificación | `rectification_kind text null` (`S` por sustitución, `I` por diferencias), `rectified jsonb not null default '[]'` (`[{series, number, issue_date, issued_invoice_id?}]`), `rectification_reason text null`, `rectified_base numeric(14,2) null`, `rectified_quota numeric(14,2) null` | Obligatorios si `invoice_type` empieza por `R` (check). La referencia puede ser a una emitida registrada aquí (`issued_invoice_id`) o solo textual. |
+| Destinatario | `recipient_name text null`, `recipient_tax_id text null`, `recipient_id_type text null` (`NIF`, o `02` NIF-IVA · `03` pasaporte · `04` documento oficial · `05` certificado de residencia · `06` otro), `recipient_country char(2) null`, `extra_recipients jsonb not null default '[]'` | En `F2` el destinatario puede faltar; en `F1` y `R*`, nombre e identificación obligatorios (check). |
+| Contenido | `description text not null` (descripción de la operación), `notes text null` | |
+| Importes | `base_total`, `quota_total` (IVA o IGIC repercutido), `surcharge_total` (recargo de equivalencia), `withholding_total` (IRPF y otras retenciones, en positivo), `total`, todos `numeric(14,2) not null`; `source_total numeric(14,2) null` | Recalculados desde líneas y desglose con la misma regla y tolerancia que las recibidas (`recalculate`, 0,02 €). `total = base + cuotas + recargo − retenciones`. |
+| Estado | `status text not null`: `registrada` · `anulada`; `annulled_reason text null`; `review_reason text null` | Sin estados pendientes: se registra lo que ya se expidió. Si no cuadra, `review_reason = 'REVISAR IMPORTES'` y aviso, sin bloquear. |
+| Origen | `origin text not null`: `manual` · `importada` · `app` (reservado); `external_tool text null`, `external_id text null`, `import_sha256 text null` | `importada` con `unique (external_tool, external_id)` para no duplicar. |
+| Ingreso | `income_category text null`: `alojamiento` · `restauracion` · `actividades` · `eventos` · `otros` | Lista cerrada propuesta, a confirmar con el usuario. |
+| Verifactu (reservados, vacíos) | `vf_record_kind` (`alta` · `anulacion`), `vf_hash` (huella SHA-256), `vf_previous_hash`, `vf_previous_ref jsonb` (serie, número y fecha del registro anterior), `vf_first_record boolean`, `vf_generated_at timestamptz` (fecha, hora y huso de generación del registro), `vf_status` (`pendiente` · `enviado` · `aceptado` · `aceptado_con_errores` · `rechazado`), `vf_csv` (código seguro de verificación de la respuesta), `vf_errors jsonb`, `vf_qr_url text`, `vf_system jsonb` (identificación del sistema informático) | Todos `null`. **No escribibles** por el cliente: el hook de la Edge los rechaza. Solo los escribirá el procedimiento de emisión (futuro). |
+| Referencia de la otra herramienta | `external_qr_url text null`, `external_csv text null` | Opcional: QR o código de verificación que trae la factura emitida fuera, solo como referencia. |
+
+**`invoices.issued_invoice_lines`**: `issued_invoice_id`, `position` (orden manual, como en recibidas), `description`, `quantity`, `unit`, `unit_price`, `discount_amount`, `net_amount`, `tax` (`iva` · `igic` · `ipsi` · `otros`), `vat_rate`, `vat_amount`, `surcharge_rate`, `surcharge_amount`, `gross_amount`, `notes`.
+
+**`invoices.issued_tax_lines`**: el **desglose**, una fila por combinación de impuesto, régimen, calificación o exención y tipo. Campos: `tax` (`iva` · `igic` · `ipsi` · `otros`, o `irpf` · `otra_retencion` para retenciones), `regime_key` (clave de régimen, `01` general por defecto), `qualification` (`S1` sujeta no exenta · `S2` sujeta con inversión del sujeto pasivo · `N1` · `N2` no sujetas), `exemption` (`E1`–`E6` si exenta; excluye `qualification`), `rate`, `taxable_base`, `quota`, `surcharge_rate`, `surcharge_quota`. Las retenciones no forman parte del desglose de Verifactu, pero sí de la factura y del total.
+
+**`invoices.issued_invoice_files`**: como `invoice_files` (documento PDF en `core.files`, verificado). Nombre canónico `AAAA_MM_DD_(cliente)_SERIE-NUMERO.pdf`; sin destinatario, `(sin_destinatario)`.
+
+**`invoices.issued_allocations`**: vínculo con el **destino del ingreso**, normalmente una reserva o un evento de Booking. Campos: `issued_invoice_id`, `target_app` (`booking` · `general`), `target_kind` (`reservation` · `event` · `general`), `target_id`, `target_label`, `target_code`, `target_revision`, `allocated_amount`. Va **por factura**, no por línea, porque una factura de estancia suele ir entera a una reserva. Admite repartir el importe entre varias. Se resuelve con el mismo validador de destinos que las compras (`targets/booking`), con el token del usuario.
+
+### 13.2 Reglas e invariantes
+
+- `unique (series_code, number)` entre las vivas; un número no se reutiliza ni tras anular.
+- Las rectificativas exigen `rectification_kind`, al menos una referencia en `rectified` y motivo. `R5` rectifica simplificadas.
+- Importes recalculados en el hook `invoices.check_invariants`, como en las recibidas: el desglose cuadra con las líneas y el total con el desglose dentro de 0,02 €. Si no cuadra se marca `REVISAR IMPORTES`, sin bloquear el registro, porque la factura ya existe fuera.
+- `vf_*` solo por procedimiento; `origin = 'app'` solo por el procedimiento de emisión (rechazado hoy con `UNSUPPORTED_IN_V1`).
+- Editar una emitida registrada deja traza en el historial del núcleo. Anularla pide motivo y retira sus asignaciones. No se borra.
+- **Agentes:** registrar o anular emitidas **exige aprobación** (no se marca como seguro); leerlas, no.
+
+### 13.3 Numeración por serie
+
+Al **registrar**, el número viene del documento y solo se comprueba que no esté repetido. Para la **emisión futura** hace falta numeración correlativa sin huecos por serie y año, asignada en la misma transacción que el alta. `core.next_code` ya usa un contador por prefijo y año que no deja huecos si se llama dentro de la transacción del alta, pero devuelve un formato fijo (`PREFIJO_AAAA_NNN`). **Petición a Core:** `core.next_number(p_prefix text, p_year int) returns int`, con el mismo contador y sin formato, para que la serie aplique su plantilla. Va en `PETICIONES.md` cuando Core apruebe esta propuesta.
+
+### 13.4 Procedimientos y rutas
+
+- `invoices.register_issued(p)`: alta manual o importada de una factura con líneas, desglose, documentos y asignaciones en un lote, con ids del cliente para funcionar sin red. Equivale a `import_v1` para las emitidas.
+- `invoices.annul_issued(p)`: anula una emitida con motivo.
+- Formato de importación `ikisai.issued_invoice.v1`, el mismo esquema que la tabla, para traer las facturas de la otra herramienta: un JSON por factura o un lote. Si la herramienta exporta CSV, un convertidor en el cliente. **Pregunta para el usuario:** qué herramienta usa para emitir y qué exporta (CSV, JSON, API).
+- Lecturas: `invoices.issued_items` (ventas por periodo, categoría y destino) y ampliación de `invoices.fiscal_summary` con **IVA repercutido** por tipo y la diferencia con el soportado, que es la base del modelo 303. El cliente lo calcula con la misma función de dominio.
+- Gestoría: la entrega trimestral añade la carpeta `emitidas/` con los PDF y `emitidas.csv`, con el mismo manifest y hashes.
+- Proyección para Booking: `invoices.booking_income_projection` (`issued_invoice_id`, `full_number`, `issue_date`, `target_kind`, `target_id`, `allocated_amount`, `status`), registrada con `core.allow_read('booking', …, 'view')`. Así Booking muestra el **ingreso real** de cada reserva junto al coste real que ya lee.
+- MCP: `invoices_register_issued` (editor, siempre con propuesta para agentes) e `invoices_sales` (lectura).
+
+### 13.5 Pantallas (propuesta)
+
+- **Facturas** pasa a tener dos pestañas, **Recibidas · Emitidas**, con la misma lista por mes y la misma ficha. Así no añadimos una quinta entrada a la navegación del móvil.
+- **Ficha de emitida:** serie y número, tipo y rectificación, destinatario, líneas reordenables, desglose, documento, destino (reserva o evento), estado y origen. Un bloque «Verifactu» plegado dice «Registrada con otra herramienta» o, en el futuro, el estado del registro.
+- **Nueva emitida:** serie (con «+ Nueva serie…» en la propia hoja, como el proveedor), número, fechas, destinatario, líneas y documento. También «Importar» para el JSON de la otra herramienta y «Extraer con ChatGPT» con un prompt de emitidas.
+- **Gestoría:** resumen con IVA repercutido, soportado y diferencia por trimestre.
+
+### 13.6 Qué queda fuera ahora (preparado, sin desarrollar)
+
+Huella y encadenado, firma, registros de alta y de anulación de Verifactu, envío y respuesta de la AEAT, QR, declaración responsable del sistema informático y modalidad «no Verifactu». Los campos `vf_*`, `origin = 'app'`, `issued_series.format` y `core.next_number` quedan listos para que la emisión sea un procedimiento nuevo y no una migración del modelo.
+
+### 13.7 Preguntas abiertas
+
+1. **Usuario:** qué herramienta emite hoy las facturas y en qué formato exporta.
+2. **Usuario:** si la lista de categorías de ingreso (`alojamiento`, `restauracion`, `actividades`, `eventos`, `otros`) le sirve.
+3. **Core:** visto bueno a `core.next_number` (§13.3) y a la proyección de ingresos para Booking.
+4. **Core y usuario:** si las emitidas van como pestaña dentro de Facturas (propuesta) o como entrada propia en la navegación.
