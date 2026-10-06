@@ -21,6 +21,7 @@ let api: FakeApi;
 let server: PreviewServer;
 let baseURL: string;
 
+// El puerto se elige dentro de un rango sin puertos que Chromium bloquea por inseguros (5060, 5061, 6000…).
 test.beforeAll(async () => {
   api = await startFakeApi({
     users: [USER],
@@ -34,7 +35,7 @@ test.beforeAll(async () => {
       ],
     }],
   });
-  api.seed('food.recipes', { name: 'Curry de verduras', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true });
+  api.seed('food.recipes', { name: 'Curry de verduras', public_name: 'Curry suave de temporada', public_description: 'Verduras de temporada con leche de coco y arroz especiado.', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true });
   api.seed('food.recipes', { name: 'Pasta al pesto', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegetariano'], allergens: ['gluten', 'frutos_de_cascara', 'lacteos'], allergens_checked: true });
   process.env.VITE_API_PROXY = api.url;
   await build({ configFile, logLevel: 'silent' });
@@ -123,12 +124,63 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect.poll(() => api.rows('food.menu_items').find((i) => i.servings === 2)).toBeTruthy();
   });
 
+  await test.step('orden a mano de platos y servicios, persistente', async () => {
+    const first = page.locator('.service').first();
+    await expect(first.locator('.dish strong')).toHaveText(['Curry de verduras', 'Pasta al pesto']);
+    await first.getByRole('button', { name: 'Subir Pasta al pesto' }).click();
+    await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
+    await expect(first.getByRole('button', { name: 'Subir Pasta al pesto' })).toBeDisabled();
+    const position = (servings: number) => Number(api.rows('food.menu_items').find((i) => i.servings === servings)!.position);
+    await expect.poll(() => position(2) < position(22)).toBe(true);
+    // El sábado: la cena sube por delante de la comida.
+    const saturday = page.locator('.menuday').nth(1);
+    await expect(saturday.locator('.service h4')).toHaveText(['Desayuno', 'Comida', 'Cena']);
+    await saturday.getByRole('button', { name: 'Subir Cena' }).click();
+    await expect(saturday.locator('.service h4')).toHaveText(['Desayuno', 'Cena', 'Comida']);
+    await page.reload();
+    await expect(page.locator('.menuday').nth(1).locator('.service h4')).toHaveText(['Desayuno', 'Cena', 'Comida']);
+    await expect(page.locator('.service').first().locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
+    // Se deja como estaba para el resto del recorrido.
+    await page.locator('.menuday').nth(1).getByRole('button', { name: 'Bajar Cena' }).click();
+    await expect(page.locator('.menuday').nth(1).locator('.service h4')).toHaveText(['Desayuno', 'Comida', 'Cena']);
+  });
+
   await test.step('validar exige aceptar el aviso; después el menú queda bloqueado', async () => {
     await validate(page, 1);
     expect(menu()).toMatchObject({ status: 'validado', source_event_revision: 3 });
     expect(menu().validated_warnings).toHaveLength(1);
     await expect(page.locator('.dish .servings').first()).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Añadir plato' })).toHaveCount(0);
+  });
+
+  await test.step('hoja del organizador: solo lo público, en el orden fijado, y se imprime en A4', async () => {
+    await page.locator('.menutabs').getByRole('link', { name: 'Organizador', exact: true }).click();
+    const sheet = page.locator('.print-page');
+    await expect(sheet).toContainText('Retiro Test');
+    await expect(sheet).toHaveAttribute('data-draft', 'false'); // el menú está validado
+    // Nombre y descripción públicos de la receta; el pesto va primero porque así se ordenó a mano.
+    await expect(sheet).toContainText('Curry suave de temporada');
+    await expect(sheet).toContainText('Verduras de temporada con leche de coco y arroz especiado.');
+    const text = (await sheet.innerText()).replace(/\s+/g, ' ');
+    expect(text.indexOf('Pasta al pesto')).toBeLessThan(text.indexOf('Curry suave de temporada'));
+    expect(text).toContain('Vegano');
+    expect(text).toContain('Frutos de cáscara');
+    // Nada interno: ni raciones, ni nombre interno, ni restricciones del grupo, ni avisos.
+    expect(text).not.toContain('Curry de verduras');
+    expect(text).not.toMatch(/\brac\./);
+    expect(text).not.toContain('alergia a pistacho');
+    expect(text).not.toContain('personas');
+    // Como al pulsar «Imprimir»: el kit marca el documento y solo queda la hoja.
+    await page.evaluate(() => document.documentElement.classList.add('printing'));
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator('.nav')).toBeHidden();
+    await expect(page.locator('#printPage')).toBeHidden();
+    const pdf = await page.pdf({ format: 'A4', printBackground: true });
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF');
+    expect(pdf.byteLength).toBeGreaterThan(5_000);
+    await page.emulateMedia({ media: 'screen' });
+    await page.evaluate(() => document.documentElement.classList.remove('printing'));
+    await page.locator('.menutabs').getByRole('link', { name: 'Menú', exact: true }).click();
   });
 
   await test.step('Booking pasa de 22 a 25 personas: aviso con lo que cambió, sin tocar el menú validado', async () => {
