@@ -6,7 +6,7 @@
  */
 import { el, formatDate, plural, replace, type Child } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
-import { openSheet, type Sheet } from '../overlay/sheet.ts';
+import { openSheet, type Sheet, type SheetOptions } from '../overlay/sheet.ts';
 
 export type HookAttrs = Record<string, string | number | boolean | null | undefined>;
 
@@ -232,13 +232,22 @@ export interface ProposalReviewOptions {
   max?: number;
   opLabels?: Record<string, string>;
   now?: Date;
+  /** Opciones de la hoja que se pasan tal cual a `openSheet` (ganchos `backAttrs`, `panelAttrs`, `bodyAttrs`, `closeAttrs`, `hideTitle`, `onClose`…). */
+  sheet?: Partial<Omit<SheetOptions, 'title' | 'body' | 'foot'>>;
+}
+
+export interface ProposalReviewParts {
+  /** Cabecera, riesgo, nota y cambios. */
+  body: HTMLElement;
+  /** Pie con «Rechazar» y «Aprobar N cambios»; `null` si no está pendiente o no se puede decidir. Lleva `.proposalreview-foot`, pegajoso abajo dentro de un contenedor que desplaza. */
+  foot: HTMLElement | null;
 }
 
 /**
- * Hoja de revisión: cabecera con agente, estado y fechas; resumen de riesgo; cambios agrupados; y **pie fijo** con
- * «Rechazar» y «Aprobar N cambios», que no se pierde con lotes largos. Solo hay pie si está pendiente y se puede decidir.
+ * Las piezas de la revisión sin hoja: para una app que ya tiene su hoja (Tasks) y solo quiere el cuerpo y el pie.
+ * Mientras se resuelve una acción, los botones del pie quedan desactivados.
  */
-export function openProposalReview(options: ProposalReviewOptions): Sheet {
+export function renderProposalReview(options: ProposalReviewOptions): ProposalReviewParts {
   const p = options.proposal;
   const now = options.now ?? new Date();
   const count = options.changes.length;
@@ -251,17 +260,28 @@ export function openProposalReview(options: ProposalReviewOptions): Sheet {
     options.note ? el('p', { class: 'hint' }, options.note) : null,
     renderChangeList({ changes: options.changes, max: options.max, opLabels: options.opLabels }),
   );
-  let sheet: Sheet;
+  if (!pending) return { body, foot: null };
+  const foot = el('div', { class: 'proposalreview-foot' });
   const act = async (button: HTMLButtonElement, run?: () => void | Promise<void>) => {
     if (!run) return;
-    const buttons = sheet.foot ? Array.from(sheet.foot.querySelectorAll('button')) : [];
+    const buttons = Array.from((button.parentElement ?? foot).querySelectorAll('button'));
     buttons.forEach((b) => { b.disabled = true; });
     try { await run(); } finally { buttons.forEach((b) => { b.disabled = false; }); button.blur(); }
   };
-  const reject = el('button', { type: 'button', class: 'ghost danger-text', ...(options.rejectAttrs ?? {}), onclick: (e: Event) => void act(e.currentTarget as HTMLButtonElement, options.onReject) }, 'Rechazar');
-  const approve = el('button', { type: 'button', class: 'primary', ...(options.approveAttrs ?? {}), onclick: (e: Event) => void act(e.currentTarget as HTMLButtonElement, options.onApprove) }, count === 1 ? 'Aprobar el cambio' : `Aprobar ${count} cambios`);
-  sheet = openSheet({ title: options.title ?? 'Revisar propuesta', body, foot: pending ? [options.onReject ? reject : null, options.onApprove ? approve : null] : undefined });
-  return sheet;
+  const reject = options.onReject ? el('button', { type: 'button', class: 'ghost danger-text', ...(options.rejectAttrs ?? {}), onclick: (e: Event) => void act(e.currentTarget as HTMLButtonElement, options.onReject) }, 'Rechazar') : null;
+  const approve = options.onApprove ? el('button', { type: 'button', class: 'primary', ...(options.approveAttrs ?? {}), onclick: (e: Event) => void act(e.currentTarget as HTMLButtonElement, options.onApprove) }, count === 1 ? 'Aprobar el cambio' : `Aprobar ${count} cambios`) : null;
+  foot.append(...[reject, approve].filter((b): b is HTMLButtonElement => !!b));
+  return { body, foot };
+}
+
+/**
+ * Hoja de revisión: cabecera con agente, estado y fechas; resumen de riesgo; cambios agrupados; y **pie fijo** con
+ * «Rechazar» y «Aprobar N cambios», que no se pierde con lotes largos. Solo hay pie si está pendiente y se puede decidir.
+ */
+export function openProposalReview(options: ProposalReviewOptions): Sheet {
+  const { body, foot } = renderProposalReview(options);
+  if (foot) foot.classList.remove('proposalreview-foot');
+  return openSheet({ ...(options.sheet ?? {}), title: options.title ?? 'Revisar propuesta', body, foot: foot ? Array.from(foot.childNodes) : undefined });
 }
 
 // ---------------------------------------------------------------------------------------------------------------

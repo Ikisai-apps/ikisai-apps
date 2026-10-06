@@ -25,6 +25,10 @@ export interface PaletteOptions {
   limit?: number;
   /** Grupos que no aparecen sin consulta (por ejemplo «Tareas»). */
   hiddenWhenEmpty?: string[];
+  /** Máximo de resultados sin consulta; por defecto el mismo `limit`. */
+  limitWhenEmpty?: number;
+  /** Dónde montar la paleta; por defecto `document.body`. */
+  container?: HTMLElement | (() => HTMLElement);
 }
 
 export interface CommandPalette {
@@ -69,7 +73,7 @@ export function createCommandPalette(options: PaletteOptions): CommandPalette {
   function draw(): void {
     if (!input || !list) return;
     const query = foldText(input.value.trim());
-    rows = filterPaletteItems(options.items(query), query, options.limit, options.hiddenWhenEmpty);
+    rows = filterPaletteItems(options.items(query), query, query ? options.limit : (options.limitWhenEmpty ?? options.limit), options.hiddenWhenEmpty);
     index = Math.min(index, Math.max(0, rows.length - 1));
     if (!rows.length) {
       replace(list, el('div', { class: 'palette-empty' }, 'Nada coincide. Prueba con otro nombre.'));
@@ -121,7 +125,8 @@ export function createCommandPalette(options: PaletteOptions): CommandPalette {
       else if (e.key === 'Tab') { e.preventDefault(); }
     });
     unlock = lockScroll();
-    document.body.append(back);
+    const host = typeof options.container === 'function' ? options.container() : options.container;
+    (host ?? document.body).append(back);
     index = 0;
     draw();
     input.focus();
