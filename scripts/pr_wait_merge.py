@@ -26,8 +26,18 @@ def main():
       bad = [x for x in c if x["conclusion"] not in OK]
       if not bad:
         if info["m"] == "DIRTY": print("conflictos con main: rebasa y vuelve a empujar"); return 1
-        r = gh("pr", "merge", str(a.pr), "--squash", "--delete-branch")
-        print("fusionada" if r.returncode == 0 else "no se pudo fusionar: " + (r.stderr or r.stdout).strip()[-200:]); return 0 if r.returncode == 0 else 1
+        head = gh("pr", "view", str(a.pr), "--json", "headRefName,headRepositoryOwner,headRepository", "--jq", ".headRefName").stdout.strip()
+        r = gh("pr", "merge", str(a.pr), "--squash")
+        if r.returncode != 0:
+          print("no se pudo fusionar: " + (r.stderr or r.stdout).strip()[-200:]); return 1
+        # Borrar la rama remota por la API: `--delete-branch` falla desde un worktree («'main' is already checked out»).
+        repo = gh("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner").stdout.strip()
+        if head and repo:
+          d = gh("api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{head}")
+          print("fusionada; rama remota " + ("borrada" if d.returncode == 0 else "no borrada (bórrala a mano)"))
+        else:
+          print("fusionada")
+        return 0
       if reruns < a.rerun_flaky and all("Playwright" in x["name"] for x in bad):
         run = gh("pr", "view", str(a.pr), "--json", "headRefName", "--jq", ".headRefName").stdout.strip()
         rid = gh("run", "list", "--workflow", "checks.yml", "--limit", "5", "--branch", run, "--json", "databaseId", "--jq", ".[0].databaseId").stdout.strip()
