@@ -292,8 +292,31 @@ export class SyncClientImpl implements SyncClient {
   private listenersInstalled = false;
   private readonly onOnline = () => {
     this.setStatus({ network: 'online' });
-    void this.sync().catch(() => undefined);
+    void this.resumeAfterReconnect();
   };
+
+  /**
+   * Al volver la red (también tras recargar sin conexión), vacía la cola sin esperar al intervalo de pull:
+   * repite el ciclo con esperas cortas mientras queden comandos pendientes y la red responda.
+   */
+  private async resumeAfterReconnect(): Promise<void> {
+    for (const delay of [0, 1000, 3000, 8000]) {
+      if (delay) await new Promise((r) => setTimeout(r, delay));
+      if (!this.hasNetwork() || !this.sess) return;
+      try { await this.sync(); } catch { /* el estado ya refleja el error */ }
+      if (this.state.network === 'online' && this.state.pendingCommands === 0 && this.state.pendingBlobs === 0) return;
+    }
+  }
+
+  /** Vuelve a pedir el bootstrap (rol, ámbitos, tablas) sin reiniciar el cliente. */
+  async refreshBootstrap(): Promise<Bootstrap | null> {
+    if (!this.sess || !this.hasNetwork()) return this.boot;
+    const boot = await this.api<Bootstrap>('/bootstrap');
+    this.boot = boot;
+    await this.saveMeta('bootstrap', boot);
+    await this.saveMeta('userId', boot.profile.userId);
+    return boot;
+  }
   private readonly onOffline = () => this.setStatus({ network: 'offline' });
   private readonly onVisibility = () => {
     const doc = (globalThis as { document?: { visibilityState?: string } }).document;
@@ -796,6 +819,8 @@ export class SyncClientImpl implements SyncClient {
     this.setStatus({ network: 'syncing', lastError: this.keepLastErrorOnce ? this.state.lastError : null });
     this.keepLastErrorOnce = false;
     try {
+      // Arranque sin red y reconexión después: todavía no hay bootstrap en memoria.
+      if (!this.boot && this.hasNetwork()) await this.refreshBootstrap();
       await this.pull();
       const pushedAll = await this.push();
       if (this.needsPull) {
