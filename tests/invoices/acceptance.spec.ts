@@ -235,7 +235,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
 
   await test.step('A13 · Compras: por destino y artículos, solo validadas por defecto', async () => {
     await nav(page, 'Compras').click();
-    await page.getByRole('tab', { name: 'Por destino' }).click();
+    await page.getByRole('tab', { name: 'Destino' }).click();
     await expect(page.locator('#purchases')).toContainText('Cocina › Huerto');
     await expect(page.locator('#purchases')).toContainText('Ingredientes › Tomate pera');
     await expect(page.locator('#purchaseTotals')).toContainText('Base 40,00 €');

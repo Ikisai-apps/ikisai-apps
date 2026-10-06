@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -29,7 +29,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function commitSafely(client: SyncClient, operations: RowOperation[], okMessage: string, blobs?: Blob[]): Promise<boolean> {
   try {
     await client.commit(operations, blobs ? { blobs } : undefined);
-    toast(client.status().network === 'online' ? okMessage : `${okMessage} Se sincronizará cuando haya red.`);
+    toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
     return true;
   } catch (error) {
     toast(describeError(error));
@@ -245,7 +245,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     el('div', { class: 'chips' },
       el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice)),
       invoice.payment_status === 'pagada' ? el('span', { class: 'chip ok' }, `Pagada${invoice.paid_at ? ' ' + shortDate(invoice.paid_at) : ''}`) : el('span', { class: 'chip' }, 'Pendiente de pago'),
-      invoice.source === 'import_v1' ? el('span', { class: 'chip' }, 'Importada') : null,
+      invoice.source === 'import_v1' ? el('span', { class: 'chip', title: 'Datos importados del JSON de ChatGPT' }, 'Desde JSON') : null,
     ),
     el('dl', { class: 'kv' },
       el('dt', null, 'Proveedor'), el('dd', null, supplier?.name ?? '—', supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
@@ -632,12 +632,39 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
-    body: el('div', null, field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
+    body: el('div', null, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
     initialFocus: textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
   });
+}
+
+/** Prompt de extracción para ChatGPT, copiable desde la app (handoff 05_PROMPT_EXTRACCION_FACTURA.md). */
+function promptPanel(): HTMLElement {
+  const copy = el('button', { class: 'softbtn small', type: 'button', id: 'copyPrompt', onclick: async () => {
+    try {
+      await navigator.clipboard.writeText(EXTRACTION_PROMPT);
+      toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF o las fotos de la factura.');
+    } catch {
+      promptText.hidden = false;
+      promptText.focus();
+      promptText.select();
+      toast('Selecciona el texto y cópialo.');
+    }
+  } }, icon('attach', 16), 'Copiar el prompt para ChatGPT');
+  const promptText = el('textarea', { class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
+  promptText.value = EXTRACTION_PROMPT;
+  return el('details', { class: 'inv-block prompt-block' },
+    el('summary', null, el('span', null, '¿Cómo obtengo el JSON?'), el('span', { class: 'hint' }, 'ChatGPT + prompt')),
+    el('ol', { class: 'steps' },
+      el('li', null, 'Abre ChatGPT y adjunta el PDF o las fotos de la factura.'),
+      el('li', null, 'Pega el prompt (botón de abajo). ChatGPT devuelve un JSON en formato ikisai.invoice.v1.'),
+      el('li', null, 'Copia ese JSON y pégalo en el cuadro de aquí abajo. La app recalcula y compara con el total del documento.'),
+    ),
+    el('div', { class: 'btnrow' }, copy, el('button', { class: 'linkbtn', type: 'button', onclick: () => { promptText.hidden = !promptText.hidden; } }, 'Ver el texto')),
+    promptText,
+  );
 }
 
 // ---------------------------------------------------------------------------

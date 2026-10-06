@@ -33,7 +33,7 @@ export const mountPurchases: ViewMount = (ctx) => {
   const itemTypeSelect = el('select', { id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
     el('option', { value: '' }, 'Cualquier artículo'), ...Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => el('option', { value: v }, l)));
   const unassignedToggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
-  const tabs = el('div', { class: 'segmented', role: 'tablist' }, ...([['category', 'Por categoría'], ['target', 'Por destino'], ['supplier', 'Por proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
+  const tabs = el('div', { class: 'segmented', role: 'tablist' }, ...([['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
     el('button', { type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; paint(); } }, label)));
   const host = el('div', { id: 'purchases' });
   const footer = el('div', { class: 'totals-foot', id: 'purchaseTotals' });

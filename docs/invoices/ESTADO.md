@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 3). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026 (tanda 4). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
@@ -23,13 +23,16 @@ Actualizado: 6 de octubre de 2026 (tanda 3). Equipo Invoices (agente de backend)
 - PR #53 fusionada. Humo real de Core contra `invoices.ikisai.com` (importación del ejemplo y ZIP): 10 de 10.
 - Tanda 3 (`invoices/tanda3`): escenarios O7–O9 (Compras y resumen fiscal idénticos sin red tras recargar; `reader` solo lee, también sin red, sin botones de escritura; cerrar sesión vacía el espejo), filtros de Compras por destino (retiro, ingrediente, maquinaria, proyecto…), tipo de artículo y «solo sin asignar»; `[hidden]` fuerza `display:none` sobre las clases del kit.
 
+- PR #68 fusionada.
+- Tanda 4 (`invoices/tanda4`): prompt de extracción para ChatGPT copiable dentro de «Importar JSON» (`_domain/invoices/extraction-prompt.ts`, con el schema resumido y un ejemplo, porque quien lo pega no tiene el archivo del handoff); capturas a 390 px y 1440 px con `tests/invoices/shots.ts` (`npx tsx tests/invoices/shots.ts`, salida en `App/capturas-invoices-2026-10-06`) y ajustes: pestañas cortas en Compras, casillas sin estirar, hueco para el botón flotante, chip «Desde JSON», el aviso «se sincronizará cuando haya red» solo sin red.
+
 ## En curso
 
-- PR de la tanda 3 (`invoices/tanda3`).
+- PR de la tanda 4 (`invoices/tanda4`).
 
 ## Pendiente
 
-- Aceptación manual sobre la app publicada en Android (instalación PWA, foto de ticket con la cámara, descarga del ZIP en el móvil). En PC los recorridos están automatizados; falta pasarlos sobre `invoices.ikisai.com` con una cuenta de prueba (ver pregunta en el buzón: las facturas no se purgan, así que los datos sintéticos de producción habría que anularlos o limpiarlos con `core.purge_row_history`).
+- Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
 - Destinos de Reservas en cuanto Booking registre `booking.food_event_projection` para `invoices` (la Edge y el filtro «Retiro» de Compras ya están preparados).
 - Fase 2: destinos de Booking (`core.allow_read('invoices', 'booking.food_event_projection', 'view')`), `imports/extract`.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
