@@ -19,6 +19,8 @@ jobs:
         include:
           - app: booking
             route: calendar/tick
+          - app: tasks
+            route: imports/cleanup
     steps:
       - name: ${{ matrix.app }} · ${{ matrix.route }}
         shell: bash
