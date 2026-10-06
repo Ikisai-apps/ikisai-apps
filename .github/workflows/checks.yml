@@ -15,8 +15,6 @@ concurrency:
 jobs:
   cambios:
     name: Qué ha cambiado
-    # Las PR en borrador no gastan minutos: la CI corre al marcarlas «Ready for review».
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:

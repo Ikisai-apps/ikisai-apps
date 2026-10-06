@@ -34,6 +34,8 @@ def main():
     no_ci = not c and time.time() - start > 90 and info["m"] in ("CLEAN", "UNSTABLE", "HAS_HOOKS")
     if no_ci or (c and all(x["status"] == "COMPLETED" for x in c)):
       bad = [x for x in c if x["conclusion"] not in OK]
+      # Una ejecución sin detección de cambios no comprobó nada de las apps (Playwright también se salta): no vale.
+      bad += [x for x in c if x["name"] == "Qué ha cambiado" and x["conclusion"] == "SKIPPED"]
       if not bad:
         if info["m"] == "DIRTY": print("conflictos con main: rebasa y vuelve a empujar"); return 1
         head = gh("pr", "view", str(a.pr), "--json", "headRefName,headRepositoryOwner,headRepository", "--jq", ".headRefName").stdout.strip()
