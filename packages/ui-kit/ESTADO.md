@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.11.2 (tanda 19): `bodyAttrs` y `hideTitle` en la hoja.
 - v0.11.1 (tanda 18): atributos de la app en la hoja (fondo, panel, cerrar), para adoptarla en Tasks.
 - v0.11.0 (tanda 16): piezas de agentes de IA (revisión con pie fijo, clave una vez, riesgo, fila de propuesta, cambios, registro, ámbitos).
 - v0.10.0 (tanda 14): barra de espacio de trabajo (piezas sin estado) para la cáscara de Tasks.

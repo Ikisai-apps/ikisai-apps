@@ -22,3 +22,24 @@ test.describe('ui-kit v0.11.1', () => {
     await expect(page.locator('.sheetback')).toHaveCount(0);
   });
 });
+
+test.describe('ui-kit v0.11.2', () => {
+  test('hideTitle deja el título solo para lectores y bodyAttrs pone ganchos y clases en el cuerpo desplazable', async ({ page }) => {
+    await page.goto('/#overlays');
+    const r = await page.evaluate(() => {
+      const kit = (window as any).ikisaiKit;
+      const long = Array.from({ length: 60 }, (_, i) => kit.el('p', null, `Línea ${i}`));
+      const sheet = kit.openSheet({ title: 'Áreas de trabajo', hideTitle: true, body: [kit.el('h2', { class: 'sheettitle' }, 'Áreas de trabajo'), ...long], bodyAttrs: { id: 'sheet', class: 'ikisai-legacy' } });
+      const body = document.getElementById('sheet')!;
+      body.scrollTop = 200;
+      const head = sheet.panel.querySelector('.sheet-head h2') as HTMLElement;
+      return { bodyClass: body.className, scrolls: body.scrollTop > 0, titleHidden: head.classList.contains('vh'), labelled: sheet.panel.getAttribute('aria-labelledby') === head.id, notitle: sheet.panel.classList.contains('notitle'), closeTop: (sheet.panel.querySelector('.sheet-head') as HTMLElement).getBoundingClientRect().top - sheet.panel.getBoundingClientRect().top };
+    });
+    expect(r.bodyClass).toBe('sheet-body ikisai-legacy');
+    expect(r.scrolls).toBe(true);
+    expect(r.titleHidden).toBe(true);
+    expect(r.labelled).toBe(true);
+    expect(r.notitle).toBe(true);
+    expect(r.closeTop).toBeLessThan(20);
+  });
+});

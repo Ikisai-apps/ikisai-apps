@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.11.2 · 6 de octubre de 2026
+
+- `openSheet`: `bodyAttrs` (ganchos del cuerpo desplazable; `class` se suma a `sheet-body`) y `hideTitle` (título solo para lectores de pantalla: la app lo pinta en el cuerpo y el botón de cerrar flota arriba a la derecha). Las `class` de `backAttrs` y `panelAttrs` también se suman a las del kit. Para la hoja de Tasks, donde `#sheet` es el contenedor que desplaza y donde los módulos insertan contenido.
+
 ## 0.11.1 · 6 de octubre de 2026
 
 - `openSheet`: `backAttrs`, `panelAttrs` y `closeAttrs` para poner los ganchos de la app en el fondo, el panel y el botón de cerrar (Tasks: `#sheetBack`, `#sheet`, `#closeDialog`). `close(true)` sigue siendo síncrono cuando no hay `beforeClose`, así que quien envuelve `closeSheet` ve el cierre al momento. La paleta ya usaba `#palette`, `#paletteInput` y `#paletteList`: no cambia.
