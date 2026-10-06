@@ -76,3 +76,12 @@ test('un área creada en otro dispositivo aparece en la tira sin recargar', asyn
   expect(await a.evaluate(() => (window as any).__sinRecargar)).toBe(true);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('la marca de la cabecera abre el lanzador de apps con Tasks marcada como «Aquí»', async () => {
+  await a.locator('#appLauncher').click();
+  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toHaveCount(1);
+  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toContainText(/Tasks/);
+  await a.keyboard.press('Escape');
+  await expect(a.locator('.launcher-text')).toHaveCount(0);
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
