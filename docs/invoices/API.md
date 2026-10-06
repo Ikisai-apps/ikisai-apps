@@ -451,6 +451,16 @@ El cliente puede verificar los hashes del ZIP descargado con Web Crypto («entre
 
 ---
 
+### 6.6 MCP (contrato §3.2)
+
+`POST /api/v1/mcp` ofrece las herramientas genéricas del núcleo (`invoices_snapshot`, `invoices_commit`, `invoices_prepare_batch`…) y tres de dominio (`invoicesMcpTools` en `invoices-api/app.ts`). Todas pasan por el mismo camino que la API: hooks, riesgo de agente (§4.4) y propuestas.
+
+| Herramienta | Rol | Qué hace |
+|---|---|---|
+| `invoices_import_json` | editor | Importa un JSON `ikisai.invoice.v1`: valida, empareja el proveedor (NIF, alias o nombre; si no, lo crea) y llama a `invoices.import_v1`. La factura queda en `pendiente_revision`, nunca validada. Opcional: `invoice_id` (factura en `pendiente_datos`), `supplier_id`, `file_ids` ya subidos. Ids estables a partir del hash del JSON: reintentar devuelve `replayed`. Errores como resultado `isError`: `IMPORT_INVALID`, `DUPLICATE_IMPORT`, `DUPLICATE_INVOICE`. |
+| `invoices_purchases` | reader | Lectura `invoices.items` de un periodo (`year` + `quarter`/`month`, o `from`/`to`) con filtros de destino y `validated_only`. |
+| `invoices_fiscal_summary` | reader | Lectura `invoices.fiscal_summary` de un periodo. |
+
 ## 7. Proyecciones y enlaces
 
 ### 7.1 Lo que publica Invoices (fase 2)

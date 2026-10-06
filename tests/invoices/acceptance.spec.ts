@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
+import { freePort } from './free-port.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/invoices/vite.config.ts');
@@ -41,7 +42,7 @@ test.beforeAll(async () => {
   await build({ configFile, logLevel: 'silent' });
   server = await preview({
     configFile, logLevel: 'silent',
-    preview: { port: 4600 + Math.floor(Math.random() * 300), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
+    preview: { port: await freePort(), strictPort: true, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
   });
   baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
 });

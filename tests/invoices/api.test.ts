@@ -326,6 +326,45 @@ test('agentes: import_v1 seguro; facturas entregadas a gestoría o validadas exi
   assert.equal(bulk.status, 428); assert.equal(bulk.data.error.details.risk.bulk, true);
 });
 
+test('MCP: importar desde JSON (idempotente, duplicados, JSON inválido), compras y resumen fiscal; el lector no importa', async () => {
+  let seq = 0;
+  const rpc = (method: string, params: unknown, token?: string) => app.call('/api/v1/mcp', { ...(token ? { token } : {}), body: { jsonrpc: '2.0', id: ++seq, method, params } });
+  const tool = async (name: string, args: Record<string, unknown>, token?: string) => (await rpc('tools/call', { name, arguments: args }, token)).data.result;
+  const agent = (await app.call('/api/v1/agents', { body: { name: 'Bot MCP facturas', role: 'editor' } })).data.token as string;
+  const names = async (token: string) => ((await rpc('tools/list', {}, token)).data.result.tools as Array<{ name: string }>).map((t) => t.name);
+  const readerTools = await names(app.tokens.reader);
+  assert.ok(readerTools.includes('invoices_purchases') && readerTools.includes('invoices_fiscal_summary')); assert.ok(!readerTools.includes('invoices_import_json'));
+  assert.ok((await names(agent)).includes('invoices_import_json'));
+
+  const doc = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_number: 'MCP-1', supplier_tax_id: 'B12345678', supplier_name: 'Huerta MCP SL' } };
+  const first = await tool('invoices_import_json', { document: doc }, agent);
+  assert.equal(first.isError, undefined, JSON.stringify(first));
+  const out = first.structuredContent;
+  assert.equal(out.status, 'pendiente_revision'); assert.match(out.code, /^FVR_2026_\d{3}$/); assert.equal(out.supplier.mode, 'create'); assert.equal(out.recalculation.within_tolerance, true);
+  const created = await row('invoices.invoices', out.invoice_id);
+  assert.equal(created.source, 'import_v1'); assert.equal(created.review_reason, 'IMPORTADA');
+  assert.equal((await row('invoices.suppliers', out.supplier.id)).tax_id, 'B12345678');
+  // Reintento: misma factura, sin duplicar
+  const again = await tool('invoices_import_json', { document: doc }, agent);
+  assert.equal(again.structuredContent.replayed, true); assert.equal(again.structuredContent.invoice_id, out.invoice_id);
+  // Mismo proveedor y número con otro JSON → duplicado; JSON roto → IMPORT_INVALID
+  const dup = await tool('invoices_import_json', { document: { ...doc, extraction_notes: 'otra lectura' } }, agent);
+  assert.equal(dup.isError, true); assert.equal(dup.structuredContent.error.code, 'DUPLICATE_INVOICE');
+  const bad = await tool('invoices_import_json', { document: { schema_version: 'v0' } }, agent);
+  assert.equal(bad.isError, true); assert.equal(bad.structuredContent.error.code, 'IMPORT_INVALID');
+  // Proveedor existente por NIF: la segunda factura de la huerta se empareja
+  const second = await tool('invoices_import_json', { document: { ...doc, invoice: { ...doc.invoice, invoice_number: 'MCP-2' } } }, agent);
+  assert.equal(second.structuredContent.supplier.mode, 'existing'); assert.equal(second.structuredContent.supplier.id, out.supplier.id);
+
+  const purchases = await tool('invoices_purchases', { year: 2026, quarter: 4, validated_only: false }, app.tokens.reader);
+  assert.equal(purchases.isError, undefined, JSON.stringify(purchases));
+  assert.ok(purchases.structuredContent.rows.some((r: any) => r.invoice_id === out.invoice_id || r.invoice?.id === out.invoice_id || r.code === out.code || JSON.stringify(r).includes(out.invoice_id)));
+  const noPeriod = await tool('invoices_purchases', {}, app.tokens.reader);
+  assert.equal(noPeriod.isError, true);
+  const fiscal = await tool('invoices_fiscal_summary', { year: 2026, quarter: 4 }, app.tokens.reader);
+  assert.equal(fiscal.isError, undefined, JSON.stringify(fiscal));
+});
+
 test('zip: escritor en streaming produce entradas legibles y CRC correcto', async () => {
   const bytes = await collectStream(zipStream([
     { name: 'a/hola.txt', data: new TextEncoder().encode('123456789'), modified: new Date('2026-10-06T10:00:00Z') },

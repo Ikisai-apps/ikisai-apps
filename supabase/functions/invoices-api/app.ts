@@ -1,9 +1,9 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
-import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import {
-  DomainError, EXPORT_CSV_FILES, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
+  DomainError, EXPORT_CSV_FILES, buildImportArgs, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
-  type AllocationRow, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
+  type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
 
@@ -510,8 +510,121 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks: { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) },
+    mcpTools: invoicesMcpTools(supabase),
     routes: invoicesRoutes(supabase, targets, base.extractInvoice),
   });
+}
+
+// ---------------------------------------------------------------------------
+// MCP (contrato §3.2, API.md §6.6): herramientas de dominio. Pasan por el camino de siempre (`kit.commit` con hooks,
+// riesgo de agente y propuestas; `kit.read` con los permisos de lectura).
+// ---------------------------------------------------------------------------
+const MCP_PERIOD = {
+  year: { type: 'integer', minimum: 2000, maximum: 2100 },
+  quarter: { type: 'integer', minimum: 1, maximum: 4 },
+  month: { type: 'integer', minimum: 1, maximum: 12 },
+  from: { type: 'string', description: 'AAAA-MM-DD (con `to`, periodo libre)' },
+  to: { type: 'string', description: 'AAAA-MM-DD' },
+};
+
+/** Id estable derivado de un texto (forma de uuid v4) para que reintentar la misma importación sea idempotente. */
+async function stableUuid(seed: string): Promise<string> {
+  const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function periodArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of ['year', 'quarter', 'month', 'from', 'to']) if (args[key] !== undefined && args[key] !== null) out[key] = args[key];
+  if (!Object.keys(out).length) fail(422, 'INVALID_OPERATION', 'Indica el periodo: year (y quarter o month) o from/to.');
+  return out;
+}
+
+export function invoicesMcpTools(supabase: Supabase): McpTool[] {
+  return [
+    {
+      name: 'invoices_import_json',
+      description: 'Importa una factura desde un JSON ikisai.invoice.v1 (el del prompt de extracción). Empareja el proveedor por NIF, alias o nombre (o lo crea), recalcula y deja la factura en «pendiente de revisión»: nunca la valida. Opcional: documentos ya subidos (file_ids) o una factura existente en «pendiente de datos» (invoice_id). Reintentar con el mismo JSON no duplica.',
+      minRole: 'editor',
+      annotations: { title: 'Importar factura desde JSON', destructiveHint: false, idempotentHint: true },
+      inputSchema: {
+        type: 'object', additionalProperties: false, required: ['document'],
+        properties: {
+          document: { type: 'object', description: 'Documento ikisai.invoice.v1 completo.' },
+          invoice_id: { type: 'string', format: 'uuid', description: 'Factura existente en pendiente_datos donde volcar los datos.' },
+          supplier_id: { type: 'string', format: 'uuid', description: 'Forzar un proveedor existente en lugar del emparejamiento automático.' },
+          file_ids: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 8, description: 'Documentos ya subidos y verificados (POST uploads + verify), en orden de página.' },
+        },
+      },
+      handler: async (args, ctx, kit) => {
+        const validation = validateImportDocument(args.document);
+        if (!validation.ok) fail(422, 'IMPORT_INVALID', domainMessage('IMPORT_INVALID'), { errors: validation.errors });
+        const document = validation.document;
+        const sha = await importDocumentSha256(document);
+        const [suppliers, invoices] = await Promise.all([allRows<SupplierRow>(supabase, ctx, TABLES.suppliers), allRows<InvoiceRow>(supabase, ctx, TABLES.invoices)]);
+        const invoiceId = typeof args.invoice_id === 'string' && UUID.test(args.invoice_id) ? args.invoice_id.toLowerCase() : await stableUuid(`invoice:${ctx.user.id}:${sha}`);
+        const previous = findDuplicateImport(sha, invoices);
+        if (previous) {
+          if (previous.id === invoiceId) return { replayed: true, invoice_id: previous.id, code: previous.code, status: previous.status };
+          fail(409, 'DUPLICATE_IMPORT', domainMessage('DUPLICATE_IMPORT'), { invoice_id: previous.id, code: previous.code });
+        }
+        let supplier: BuildImportArgsOptions['supplier'];
+        let supplierRow: SupplierRow | null = null;
+        if (typeof args.supplier_id === 'string') {
+          supplierRow = suppliers.find((s) => s.id === args.supplier_id && !s.deleted_at) ?? null;
+          if (!supplierRow) fail(404, 'NOT_FOUND', 'Ese proveedor no existe.', { supplier_id: args.supplier_id });
+          supplier = { mode: 'existing', id: supplierRow.id };
+        } else {
+          const best = matchSupplier(document, suppliers)[0];
+          if (best && best.score >= 0.8) { supplierRow = best.supplier; supplier = { mode: 'existing', id: best.supplier.id }; }
+          else supplier = { mode: 'create', id: await stableUuid(`supplier:${invoiceId}`) };
+        }
+        const duplicate = findDuplicateInvoice(document, supplierRow?.id ?? null, invoices);
+        if (duplicate) fail(409, 'DUPLICATE_INVOICE', domainMessage('DUPLICATE_INVOICE'), { invoice_id: duplicate.id, code: duplicate.code });
+        const fileIds = Array.isArray(args.file_ids) ? args.file_ids as unknown[] : [];
+        const files: ImportFileArg[] = [];
+        for (const [index, id] of fileIds.entries()) {
+          if (typeof id !== 'string' || !UUID.test(id)) fail(422, 'INVALID_OPERATION', 'file_ids debe contener uuids.', { field: `file_ids[${index}]` });
+          const file = await supabase.rpc<{ filename: string }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
+          files.push({ file_id: id, original_filename: file.filename, page_order: index + 1 });
+        }
+        let n = 0;
+        const importArgs = buildImportArgs({ document, documentSha256: sha, invoiceId, supplier, files, uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
+        const result = await kit.commit({ requestId: `mcp-import-${invoiceId}`, operations: [{ op: 'call', procedure: 'invoices.import_v1', args: importArgs }] }) as CommitResult;
+        const after = (result.changes ?? []).find((c: any) => c.table === TABLES.invoices && c.after?.id === invoiceId)?.after as Record<string, unknown> | undefined;
+        const proposal = proposeImport(document, supplierRow, {});
+        return {
+          invoice_id: invoiceId, code: after?.code ?? null, status: after?.status ?? 'pendiente_revision', review_reason: after?.review_reason ?? proposal.review_reason,
+          supplier: { mode: supplier.mode, id: supplier.id, name: supplierRow?.name ?? document.invoice.supplier_name },
+          recalculation: proposal.recalculation, cursor: result.cursor,
+        };
+      },
+    },
+    {
+      name: 'invoices_purchases',
+      description: 'Compras (artículos de factura) de un periodo, con lo asignado y lo que falta por asignar. Filtros por destino (target_app, target_kind, target_id). Por defecto solo facturas validadas.',
+      annotations: { title: 'Compras del periodo', readOnlyHint: true, idempotentHint: true },
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: { ...MCP_PERIOD, validated_only: { type: 'boolean', default: true },
+          target_app: { type: 'string', enum: ['general', 'tasks', 'food', 'booking'] }, target_kind: { type: 'string' }, target_id: { type: 'string' },
+          limit: { type: 'integer', minimum: 1, maximum: 2000 }, offset: { type: 'integer', minimum: 0 } },
+      },
+      handler: async (args, _ctx, kit) => {
+        const extra: Record<string, unknown> = {};
+        for (const key of ['validated_only', 'target_app', 'target_kind', 'target_id', 'limit', 'offset']) if (args[key] !== undefined) extra[key] = args[key];
+        return kit.read('invoices.items', { ...periodArgs(args), ...extra });
+      },
+    },
+    {
+      name: 'invoices_fiscal_summary',
+      description: 'Resumen fiscal de un periodo (trimestre por defecto): bases, IVA soportado por tipo, retenciones, inversión y facturas pendientes que no entran.',
+      annotations: { title: 'Resumen fiscal', readOnlyHint: true, idempotentHint: true },
+      inputSchema: { type: 'object', additionalProperties: false, required: ['year'], properties: MCP_PERIOD },
+      handler: async (args, _ctx, kit) => kit.read('invoices.fiscal_summary', periodArgs(args)),
+    },
+  ];
 }
 
 /** Resumen fiscal calculado en la Edge sobre filas (misma función que el cliente); lo usan pruebas y agentes. */
