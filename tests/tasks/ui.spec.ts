@@ -516,7 +516,8 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     await expect(a.locator('#tePriority')).toHaveValue('critical');
     await a.locator('#teNote').fill('Nota conservada');
     expect(await a.locator('.inlinepicker [data-inline-label]').count()).toBeGreaterThan(0);
-    await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Las familias sin etiquetas elegidas aparecen plegadas: se abre la de Oficio, como haría la persona.
+    await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => { const family = el.closest('details'); if (family) family.open = true; el.scrollIntoView({ block: 'center' }); });
     await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).click();
     expect(await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => el.classList.contains('on'))).toBe(true);
     await expect(a.locator('#teNote')).toHaveValue('Nota conservada');
@@ -537,7 +538,7 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     expect(await a.locator(`[data-project-pin="${ID.p2}"].pinned`).count()).toBeGreaterThan(0);
     await a.evaluate(() => openProjectEditor((window as any).ID.p2));
     await expect(a.locator('#pePriority')).toBeHidden();
-    await a.locator('#sheet [data-pick-color="#3f6d8e"]').click();
+    await a.locator('#sheet .colorfield [data-color="#3f6d8e"]').click();
     await a.locator('#saveProjectBtn').click();
     await settled(a);
     expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p2).color)).toBe('#3f6d8e');
@@ -546,7 +547,7 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     await a.locator('.tabstrip [data-areas-tool]').click();
     await expect(a.locator('#sheet')).toContainText('Áreas de trabajo');
     await a.evaluate(() => manageTab((window as any).ID.personal));
-    await a.locator('#sheet [data-pick-color="#a3537a"]').click();
+    await a.locator('#sheet .colorfield [data-color="#a3537a"]').click();
     await settled(a);
     expect(await a.evaluate(() => state.tabs.find((t: any) => t.id === (window as any).ID.personal).color)).toBe('#a3537a');
     expect((await serverRow('tasks.tabs', ID.personal!)).color).toBe('#a3537a');
@@ -711,7 +712,7 @@ test('[65][66][67][68] importes en los editores, guardado atómico, coste vaciad
     await a.evaluate(() => openProjectEditor((window as any).ID.p1));
     await a.locator('#peNote').fill('Atomic visual save');
     await a.locator('#peBudget').fill('1200');
-    await a.locator('#sheet [data-pick-color="#3f6d8e"]').click();
+    await a.locator('#sheet .colorfield [data-color="#3f6d8e"]').click();
     await a.locator('#editProjectLabels').click();
     await a.locator('#labelsDone').click();
     await expect(a.locator('#peBudget')).toHaveValue('1200');
