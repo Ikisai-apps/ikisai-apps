@@ -237,6 +237,13 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#sesQueue')).toBeVisible();
     await page.getByRole('button', { name: /Marcar listo para envío/ }).click();
     await expect.poll(() => api.rows(GUESTS)[0]!.ses_status).toBe('listo_para_envio');
+    // hoja «Datos para SES»: los datos del viajero y de la transacción, cada uno con su botón de copiar
+    await page.getByRole('button', { name: /Datos para SES de Persona/ }).click();
+    const sesData = page.getByRole('dialog', { name: /Datos para SES/ });
+    for (const text of ['00000000T', 'ABC123456', 'Ficticia', 'Calle Ficticia 1', '17:00', '12:00']) await expect(sesData).toContainText(text);
+    expect(await sesData.getByRole('button', { name: /Copiar/ }).count()).toBeGreaterThan(10);
+    await page.keyboard.press('Escape');
+    await expect(sesData).toBeHidden();
     await page.getByRole('button', { name: /Registrar envío de Persona/ }).click();
     const dialog = page.getByRole('dialog', { name: /Envío a SES/ });
     await dialog.locator('#receiptFile').setInputFiles({ name: 'justificante.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 justificante sintético, contenido de prueba para el humo '.repeat(8)) });
@@ -263,6 +270,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.calendarRetries()).toEqual([reservationId]);
     await page.locator('#calendarHost [data-event-id]').first().click();
     await expect(page.locator('#statusChip')).toBeVisible();
+    await expect(page.locator('#calendarChip')).toHaveText('Calendar: error'); // el mismo estado, en la cabecera de la ficha
   });
 
   await test.step('papelera: se va la reserva con todo lo suyo y se restaura entera', async () => {

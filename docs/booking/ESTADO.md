@@ -1,6 +1,6 @@
 # Booking · estado
 
-Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas y Calendar real implementado; falta la prueba contra Google real y el recorrido de aceptación completo.**
+Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar real probado contra Google por Core y escenarios sin red automatizados; falta el recorrido de aceptación del usuario en producción.**
 
 ## Hecho
 
@@ -20,14 +20,23 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas y Calendar
   - Limpieza de `reservations.ts` (la hoja de alta ya no arrastra la edición).
   - Pruebas: `tests/booking/*.test.ts` 57 de 57; humo de Playwright ampliado a Calendario, justificante, restricción del huésped y menú «Más».
 
+- **Tanda 6** (rama `booking/tanda-6`):
+  - Invoices lee `booking.food_event_projection` (migración `20261006_0402_booking_invoices_read.sql`, decisión de Core).
+  - Pastilla de Calendar en la cabecera de la ficha (misma caché que la pantalla Calendario).
+  - Confirmar sin red: marca «Confirmación pendiente de enviar», aviso con el motivo si el servidor la rechaza, y retirada de marcas huérfanas.
+  - Huéspedes: hoja «Datos para SES» con un botón Copiar por dato (viajero y transacción); aviso en Inicio de huéspedes sin comunicar a SES cuando el evento empieza en menos de 24 horas.
+  - Escenarios sin red en Playwright (`tests/booking/offline.spec.ts`): O1 crear sin red y recargar, O3 confirmar sin red (y rechazo), O4 conflicto disjunto, O5 conflicto solapado, O6 firma diferida, O7 borrado local al cerrar sesión, más el aviso de Inicio. O2 (editar sin red) ya estaba en el humo.
+  - `docs/booking/ACEPTACION.md`: recorrido paso a paso para hacerlo con la cuenta del usuario en producción.
+  - Prueba real de Calendar contra Google: hecha por Core, 12 de 12 (ronda 5).
+
 ## Pendiente
 
-- **Prueba contra Google real**: el cliente solo se ha probado contra un Google simulado. Al publicar, crear una reserva `[PRUEBA]` en pre-reserva, comprobar el evento en «Agram Camp - Reservas», confirmarla, cancelarla y borrarla. La reactivación de un evento borrado a mano es lo menos seguro.
-- Recorrido de aceptación A–E e I completo en PC y Android contra el backend publicado.
-- Indicador de Calendar en la cabecera de la ficha (hoy el estado se ve en la pantalla Calendario).
-- En el calendario mensual en móvil los tramos no llevan título (comportamiento del kit en compacto); se identifican al pulsarlos.
+- **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
+- Botón «Vaciar papelera» para el propietario (hoy no hay interfaz para la purga).
+- La reactivación de un evento borrado a mano en Google solo está probada en simulación.
+- En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
-- Peticiones a Core aún abiertas, sin bloquear: P3 (efectos locales de `call`), P5 (visibilidad en `files/:id`), P6 (redacción de historial y borrado de archivos), P9 (orden de purga).
+- Peticiones a Core abiertas, sin bloquear: P3, P5, P6, P9, P18 (retraso de la cola tras recargar sin red) y P19 (UI).
 
 ## Avisos para otros equipos
 

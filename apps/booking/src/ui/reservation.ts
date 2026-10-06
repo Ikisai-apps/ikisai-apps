@@ -157,6 +157,8 @@ export function mountReservation(id: string): ViewMount {
       let mark = getConfirmMark(id);
       if (mark && event) { clearConfirmMark(id); mark = null; }
       const rejectedBatch = mark ? (await client.rejected()).find((batch) => batch.requestId === mark!.requestId) ?? null : null;
+      // Marca huérfana: ya no hay nada en cola ni rechazado y sigue sin haber evento. Se retira para no dejar la reserva sin botón «Confirmar».
+      if (mark && !rejectedBatch && client.status().pendingCommands === 0) { clearConfirmMark(id); mark = null; }
       const confirmPending = mark !== null && rejectedBatch === null;
 
       // --- acciones de cabecera
