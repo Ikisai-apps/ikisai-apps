@@ -21,6 +21,7 @@ let api: FakeApi;
 let server: PreviewServer;
 let baseURL: string;
 
+// El puerto se elige dentro de un rango sin puertos que Chromium bloquea por inseguros (5060, 5061, 6000…).
 test.beforeAll(async () => {
   api = await startFakeApi({
     users: [USER],

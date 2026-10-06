@@ -21,6 +21,7 @@ let api: FakeApi;
 let server: PreviewServer;
 let baseURL: string;
 
+// El puerto se elige dentro de un rango sin puertos que Chromium bloquea por inseguros (5060, 5061, 6000…).
 test.beforeAll(async () => {
   api = await startFakeApi({
     users: [USER],
@@ -49,7 +50,7 @@ test.beforeAll(async () => {
   server = await preview({
     configFile,
     logLevel: 'silent',
-    preview: { port: 5800 + Math.floor(Math.random() * 500), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
+    preview: { port: 5800 + Math.floor(Math.random() * 190), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
   });
   baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
 });
