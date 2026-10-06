@@ -106,8 +106,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   function route(): void {
-    const raw = location.hash && location.hash !== '#' ? location.hash : '#/';
-    // `#/facturas/nueva` y `#/facturas/<id>` montan Facturas y abren la hoja correspondiente.
+    const full = location.hash && location.hash !== '#' ? location.hash : '#/';
+    // Enlaces de otras apps (API.md §9.6): la consulta (`#/compras?destino=…`) la lee la vista, no el router.
+    const raw = full.split('?')[0] || '#/';
+    // `#/facturas/nueva`, `#/facturas/<id>` y `#/facturas/<código>` montan Facturas y abren la hoja correspondiente.
     const hash = raw.startsWith('#/facturas/') ? '#/facturas' : raw;
     const entry = ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();

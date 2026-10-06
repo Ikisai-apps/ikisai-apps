@@ -33,7 +33,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Tanda 6 (`invoices/tanda6`): destinos de Reservas activos en la hoja de asignación (buscador «Reservas (eventos: retiros)» contra `targets/booking`, que lee `booking.food_event_projection` registrada para `invoices` por la migración 0402 de Booking, PR #80); ajuste de `tests/invoices/api.test.ts` empujado a la rama de Booking a petición de Core.
 
 - PR #82 (tanda 6) fusionada.
-- Tanda 7 (`invoices/tanda7`): artículos de la ficha reordenables a mano con `createSortableList` del kit (guarda `position`; decisión del usuario «orden manual»); extracción automática conectada al helper `createDocumentExtractor` de `_kit/extract.ts` (PR #91 de Core) con el JSON Schema del handoff (salida estructurada) y el prompt sin prosa; coste de cada extracción (`usage`) visible en la hoja de importación; `EXTRACTION_INVALID` abre la importación manual con los motivos y avisos del modelo.
+- Tanda 7 (`invoices/tanda7`): artículos de la ficha reordenables a mano con `createSortableList` del kit (guarda `position`; decisión del usuario «orden manual»); extracción automática conectada al helper `createDocumentExtractor` de `_kit/extract.ts` (PR #91 de Core) con el JSON Schema del handoff (salida estructurada) y el prompt sin prosa; coste de cada extracción (`usage`) visible en la hoja de importación; `EXTRACTION_INVALID` abre la importación manual con los motivos y avisos del modelo. Enlaces estables para otras apps (`API.md` §9.6): `#/facturas/<código>` y `#/compras?destino=<app>:<kind>:<id>`. Prueba O7–O9 estabilizada antes (PR #96).
 
 ## En curso
 
@@ -45,6 +45,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
+- Agentes de IA del núcleo (PR #98 de Core): marcar qué procedimientos puede usar un agente sin aprobación y valorar un hook `agentRisk` (tocar una factura ya entregada a gestoría siempre pide aprobación). Próxima tanda.
 
 ## Bloqueos
 

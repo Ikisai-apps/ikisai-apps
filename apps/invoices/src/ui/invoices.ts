@@ -171,6 +171,14 @@ export const mountInvoices: ViewMount = (ctx) => {
     const tail = location.hash.replace(/^#\/facturas\/?/, '');
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
+    else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
+      // Enlace por código desde otras apps (Reservas, Cocina): `#/facturas/FVR_2026_012`.
+      const code = tail.toUpperCase();
+      const found = mirror.invoices.find((i) => !i.deleted_at && i.code === code);
+      history.replaceState(null, '', '#/facturas');
+      if (found) openInvoice(ctx, found.id);
+      else toast(`No encuentro la factura ${code} en este dispositivo.`);
+    }
   }
 
   // Las filas (también su marca «pendiente») llegan por onTable; el estado de red no cambia la lista.
@@ -682,7 +690,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   const usageLine = usageText ? el('p', { class: 'hint', id: 'extractionUsage' }, 'Coste de la extracción: ', usageText) : null;
   const extractionNote = !prefill ? null : prefill.document
     ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null, usageLine))
-    : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
+    : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('warn', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',

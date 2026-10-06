@@ -515,6 +515,16 @@ Vista §6.3. Selector de rango (trimestre por defecto, mes, año, libre); pesta�
 
 Selector de rango; **resumen fiscal** (§6.4) por bloques; **alertas** (pendientes, discrepancias, deducibilidad sin revisar, sin documento, vencidas); lista de **entregas** del año (código, carpeta, nº facturas, hash abreviado, estado, «desfasada» si procede) con «Descargar ZIP», «Ver manifest», «CSV», «Marcar entregada», «Archivar periodo» (owner, tras entregada). Botón **«Preparar entrega»** → `exports/accountant` (vista previa: qué entra, qué queda fuera y por qué) → confirmar → `create_export` → descarga. `reader` ve lo mismo sin botones de escritura.
 
+### 9.6 Enlaces desde otras apps
+
+Rutas estables de `https://invoices.ikisai.com` para enlazar desde Reservas, Cocina o Tareas (se leen al arrancar y al cambiar el hash; si no hay sesión, primero se entra y luego se abre):
+
+| Enlace | Abre |
+|---|---|
+| `#/facturas/<código>` (p. ej. `#/facturas/FVR_2026_012`) | La ficha de esa factura. Es el `invoice_code` de las proyecciones. Si no está en el dispositivo, un aviso. |
+| `#/facturas/<uuid>` | La ficha por id. |
+| `#/compras?destino=<app>:<kind>:<id>` (p. ej. `#/compras?destino=booking:reservation:<uuid>`, `booking:event:<uuid>`, `food:ingredient:<uuid>`) | Compras › Artículos filtrado a ese destino, con el periodo que cubren sus facturas y sin limitarse a validadas: suma lo mismo que `invoices.booking_cost_projection` (todas menos las anuladas). Sin `:<id>`, todos los destinos de ese tipo. |
+
 ### 9.5 Proveedores (existe)
 
 Se añaden `aliases`, `slug`, `default_is_investment`; en el detalle, total facturado del año y últimas facturas.

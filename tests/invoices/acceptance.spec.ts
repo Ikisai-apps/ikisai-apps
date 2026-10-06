@@ -141,6 +141,36 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     for (const extra of page.context().pages()) if (extra !== page) await extra.close().catch(() => undefined);
   });
 
+  await test.step('extracción automática: coste visible; sin JSON utilizable abre la importación manual con los motivos', async () => {
+    const invoiceId = api.rows('invoices.invoices')[0]!.id;
+    api.setExtractor(() => ({ document: EXAMPLE, warnings: ['El IVA de la línea 1 se ha deducido del total'], usage: { model: 'claude-opus-5-5', inputTokens: 1200, outputTokens: 640, cacheReadInputTokens: 34, cacheCreationInputTokens: 0, latencyMs: 8400 } }));
+    await ficha(page).locator('#extractInvoice').click();
+    let sheet = ficha(page);
+    await expect(sheet.locator('#extractionNote')).toContainText('Extraído automáticamente del documento');
+    await expect(sheet.locator('#extractionNote')).toContainText('El IVA de la línea 1');
+    await expect(sheet.locator('#extractionUsage')).toHaveText(/claude-opus-5-5 · 1\.?234 tokens de entrada · 640 de salida · 8,4 s/);
+    await expect(sheet.locator('#importPreview')).toContainText('Dentro de la tolerancia');
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+    await expect(ficha(page)).toBeHidden();
+    // Sin JSON utilizable (respuesta cortada): misma hoja vacía, con el motivo, los avisos y el coste.
+    api.setExtractor(() => ({ fault: { status: 422, code: 'EXTRACTION_INVALID', message: 'La respuesta del modelo se cortó antes de terminar el JSON.', details: { errors: ['TRUNCATED'], warnings: ['página 2 borrosa'], usage: { model: 'claude-opus-5-5', inputTokens: 1200, outputTokens: 640, cacheReadInputTokens: 34, cacheCreationInputTokens: 0, latencyMs: 8400 } } } }));
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    await ficha(page).locator('#extractInvoice').click();
+    sheet = ficha(page);
+    await expect(sheet.locator('#extractionNote')).toContainText('no ha dado un JSON utilizable');
+    await expect(sheet.locator('#extractionNote')).toContainText('la respuesta se cortó antes de terminar el JSON');
+    await expect(sheet.locator('#extractionNote')).toContainText('página 2 borrosa');
+    await expect(sheet.locator('#extractionUsage')).toBeVisible();
+    await expect(sheet.getByLabel('JSON', { exact: true })).toHaveValue('');
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+    await expect(ficha(page)).toBeHidden();
+    api.setExtractor(null);
+    expect(api.rows('invoices.invoices')[0]).toMatchObject({ status: 'pendiente_datos' });
+    // Volver a la ficha por su enlace (el resto del recorrido importa a mano).
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    await expect(ficha(page).locator('#importInto')).toBeVisible();
+  });
+
   await test.step('A5–A6 · importar el ejemplo del handoff sobre la factura: proveedor por NIF, líneas, impuestos, cuadre exacto', async () => {
     const f = ficha(page);
     await f.locator('#importInto').click();
@@ -235,6 +265,24 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(ficha(page)).not.toContainText('Sin asignar 10,00 €');
     await expect(ficha(page).getByRole('button', { name: 'Asignar a…' })).toHaveCount(0);
     await synced(page);
+    await closeSheet(page);
+  });
+
+  await test.step('enlaces desde otras apps: factura por código y compras de un destino (API.md §9.6)', async () => {
+    const code = api.rows('invoices.invoices')[0]!.code as string;
+    expect(code).toMatch(/^FVR_2026_\d{3}$/);
+    await page.evaluate((c) => { location.hash = `#/facturas/${c}`; }, code);
+    await expect(ficha(page)).toContainText(code);
+    await expect(ficha(page)).toContainText('Ingredientes › Tomate pera');
+    await closeSheet(page);
+    await page.evaluate((id) => { location.hash = `#/compras?destino=food:ingredient:${id}`; }, INGREDIENT);
+    await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.locator('#purchases')).toContainText('Tomate pera');
+    await expect(page.locator('#onlyValidated')).not.toBeChecked();
+    await expect(page).toHaveURL(/#\/compras$/);
+    await nav(page, 'Facturas').click();
+    await page.locator('#invoiceList .row').first().click();
+    await expect(ficha(page)).toContainText(code);
     await closeSheet(page);
   });
 

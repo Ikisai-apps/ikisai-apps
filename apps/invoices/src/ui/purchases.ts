@@ -123,6 +123,24 @@ export const mountPurchases: ViewMount = (ctx) => {
 
   async function load(): Promise<void> { mirror = await loadMirror(client); paint(); }
   const off = onAnyTable(client, () => void load());
-  void load();
+  void load().then(fromHash);
+
+  /** Enlace de otra app (API.md §9.6): `#/compras?destino=booking:reservation:<id>`. */
+  function fromHash(): void {
+    const query = new URLSearchParams(location.hash.split('?')[1] ?? '');
+    const destino = query.get('destino');
+    if (!destino || !mirror) return;
+    const [targetApp, targetKind, targetId] = destino.split(':');
+    if (!targetApp || !targetKind) return;
+    const matching = mirror.allocations.filter((a) => !a.deleted_at && a.target_app === targetApp && a.target_kind === targetKind && (!targetId || a.target_id === targetId));
+    const dates = matching.map((a) => mirror!.invoices.find((i) => i.id === a.invoice_id)?.invoice_date).filter((d): d is string => !!d).sort();
+    if (dates.length) range = { kind: 'custom', year: Number(dates[0]!.slice(0, 4)), quarter: null, month: null, from: dates[0]!, to: dates[dates.length - 1]! };
+    validatedOnly = false;
+    (validatedToggle.querySelector('input') as HTMLInputElement).checked = false;
+    tab = 'items';
+    groupFilter = { targetApp, targetKind, ...(targetId ? { targetId } : {}) };
+    history.replaceState(null, '', '#/compras');
+    paint();
+  }
   return () => off();
 };

@@ -80,7 +80,7 @@ export interface FakeApi {
   /** Siembra filas directamente en el servidor (datos sintéticos para medir rendimiento). Avanza el cursor una vez. */
   seed(table: string, rows: Array<Record<string, unknown>>): void;
   /** Extractor simulado para `POST imports/extract`; sin él la ruta responde EXTRACTION_UNAVAILABLE 503. */
-  setExtractor(fn: ((fileIds: string[]) => { document: unknown; warnings?: string[]; usage?: unknown }) | null): void;
+  setExtractor(fn: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null): void;
   close(): Promise<void>;
 }
 
@@ -104,7 +104,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const uploads = new Map<string, FakeUpload>();
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
-  let extractor: ((fileIds: string[]) => { document: unknown; warnings?: string[]; usage?: unknown }) | null = null;
+  let extractor: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null = null;
   const requests: Array<{ method: string; path: string }> = [];
   let cursor = 0;
 
@@ -525,6 +525,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         for (const id of ids) { const up = uploads.get(id); if (!up || up.status !== 'verified') throw new Fault(422, 'INVALID_FILE', 'El documento no existe o no está verificado.'); }
         if (!extractor) throw new Fault(503, 'EXTRACTION_UNAVAILABLE', 'La extracción automática no está disponible ahora mismo. Pega el JSON de ChatGPT.');
         const out = extractor(ids);
+        if (out.fault) throw new Fault(out.fault.status, out.fault.code, out.fault.message, out.fault.details ?? null);
         return json(res, 200, { document: out.document, document_sha256: createHash('sha256').update(JSON.stringify(out.document)).digest('hex'), warnings: out.warnings ?? [], usage: out.usage ?? null });
       }
       const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
