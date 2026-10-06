@@ -239,7 +239,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(dialog).toBeHidden();
     await expect(page.locator('#guestList .row', { hasText: 'Persona Sintética' })).toContainText('Firmado');
     // el marcador {"$blob": …} se sustituyó por el id del archivo subido y verificado
-    await expect.poll(() => api.rows(GUESTS)[0]!.signature_file_id, { timeout: 15_000 }).toBe(api.uploads()[0]?.id);
+    await expect.poll(() => { const file = api.uploads()[0]; return !!file && api.rows(GUESTS)[0]!.signature_file_id === file.id; }, { timeout: 15_000 }).toBe(true);
     expect(api.uploads()[0]).toMatchObject({ mime: 'image/png' });
     expect(api.uploads()[0]!.size).toBeGreaterThan(200);
     expect(api.rows(GUESTS)[0]).toMatchObject({ signed_by_name: 'Persona Sintética', revision: 2 });
@@ -278,7 +278,8 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#saveRow').click();
     await expect(dialog).toBeHidden();
     const receipt = () => api.uploads().find((u) => u.filename === 'justificante.pdf');
-    await expect.poll(() => api.rows(GUESTS)[0]!.ses_receipt_file_id, { timeout: 15_000 }).toBe(receipt()?.id);
+    // se compara dentro del sondeo: el id del archivo no existe hasta que termina la subida
+    await expect.poll(() => { const file = receipt(); return !!file && api.rows(GUESTS)[0]!.ses_receipt_file_id === file.id; }, { timeout: 15_000 }).toBe(true);
     expect(receipt()).toMatchObject({ mime: 'application/pdf' });
     expect(api.rows(GUESTS)[0]).toMatchObject({ ses_status: 'enviado_SES' });
   });
@@ -319,7 +320,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#restoreReservation').click();
     await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
-    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho');
+    await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho · 1 sin gluten'); // la del evento y la del huésped
     await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
     await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });

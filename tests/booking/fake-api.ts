@@ -7,6 +7,21 @@ import { FIELDS } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
+/** Valores por defecto de las columnas, los mismos que ponen las migraciones `*_booking_*` al insertar. */
+const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
+  'booking.reservations': {
+    event_type: 'retiro', status: 'en_estudio', priority: 'media', minors_count: 0, uses_accommodation: true, requires_meals: false,
+    uses_interpretation_center: false, uses_outdoors: false, uses_pool: false, special_setup: false, technical_support: false, briefing_received: false,
+  },
+  'booking.events': {
+    reinforced_cleaning: false, extra_support: false, preparation_status: 'pendiente', accommodation_status: 'pendiente', kitchen_status: 'pendiente',
+    cleaning_status: 'pendiente', traveler_registration_status: 'pendiente',
+  },
+  'booking.guests': { is_minor: false, data_status: 'pendiente_datos', ses_status: 'pendiente_envio' },
+  'booking.dietary_restrictions': { active: true },
+  'booking.checklist_items': { status: 'pendiente', position: 0 },
+};
+
 export interface FakeRow {
   id: string;
   revision: number;
@@ -205,7 +220,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
         if (op.table === 'booking.reservations' && (typeof fields.title !== 'string' || !fields.title.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
-        for (const column of allowed) row[column] = fields[column] ?? null;
+        for (const column of allowed) row[column] = fields[column] ?? COLUMN_DEFAULTS[op.table]?.[column] ?? null;
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });

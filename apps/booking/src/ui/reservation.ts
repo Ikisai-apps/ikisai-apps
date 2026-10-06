@@ -144,7 +144,8 @@ export function mountReservation(id: string): ViewMount {
       const liveEvent = event && event.deleted_at === null ? event : null;
       const finance = seesFinance ? ((await client.get(FINANCE, id)) as Row | null) : null;
       const ofEvent = (rows: SyncedRow[]) => (rows as Row[]).filter((r) => liveEvent && r.event_id === liveEvent.id);
-      const restrictions = ofEvent(await client.list(RESTRICTIONS));
+      // Orden estable (por alta): el espejo local no garantiza ninguno.
+      const restrictions = ofEvent(await client.list(RESTRICTIONS)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id));
       const checklist = ofEvent(await client.list(CHECKLIST)).sort((a, b) => Number(a.position) - Number(b.position));
       const guests = seesGuests ? ofEvent(await client.list(GUESTS)) : [];
       const editable = writable && !deleted;
