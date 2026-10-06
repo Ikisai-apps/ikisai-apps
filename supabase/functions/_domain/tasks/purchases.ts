@@ -167,13 +167,13 @@ export function dueRecurring(data: Dataset, tabId: Uuid, date: string): Purchase
 /**
  * «Preparar plan»: un plan con una parada por proveedor y, en ella, las solicitudes aprobadas sin plan del área, más las
  * recurrentes que tocan (se crean ya aprobadas, así que lo prepara quien aprueba). Lo que no tiene proveedor va a la
- * parada «Sin proveedor».
+ * parada «Sin proveedor». Con `recurring: false` solo agrupa lo ya aprobado (así lo prepara un agente, que no aprueba).
  */
-export function preparePlanOps(data: Dataset, input: { tab_id: Uuid; title: string; planned_for?: string | null; today: string }, newId: NewId = randomId): Operation[] {
+export function preparePlanOps(data: Dataset, input: { tab_id: Uuid; title: string; planned_for?: string | null; today: string; recurring?: boolean }, newId: NewId = randomId): Operation[] {
   const planId = newId();
   const ops: Operation[] = [insert('tasks.purchase_plans', planId, { tab_id: input.tab_id, title: input.title.trim(), planned_for: input.planned_for ?? null })];
   const approved = live(data['tasks.purchase_requests']).filter((r) => r.tab_id === input.tab_id && r.status === 'approved' && !r.plan_stop_id);
-  const recurring = dueRecurring(data, input.tab_id, input.planned_for ?? input.today);
+  const recurring = input.recurring === false ? [] : dueRecurring(data, input.tab_id, input.planned_for ?? input.today);
   const created: Array<{ id: Uuid; supplier_id: string | null; supplier_name: string | null; fresh: Operation }> = recurring.map((r) => {
     const fresh = nextRecurringOps(data, r.id, newId, 'approved')[0]!;
     return { id: fresh.id!, supplier_id: r.supplier_id, supplier_name: r.supplier_name, fresh };

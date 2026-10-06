@@ -42,7 +42,7 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('mcp de Tasks · tools/list anuncia las siete herramientas con requestId y aviso de aprobación; un lector no las ve', async () => {
+test('mcp de Tasks · tools/list anuncia las herramientas de tareas con requestId y aviso de aprobación; un lector no las ve', async () => {
   const tools = (await rpc('tools/list', {}, agent)).result.tools as any[];
   const mine = tools.filter((t) => ['tasks_create_task', 'tasks_update_task', 'tasks_complete', 'tasks_move', 'tasks_delete', 'tasks_set_labels', 'tasks_set_dependencies'].includes(t.name));
   assert.equal(mine.length, 7);
@@ -102,4 +102,53 @@ test('mcp de Tasks · borrar vuelve como propuesta preparada; aprobada, el agent
   const applied = await call('tasks_commit', { requestId: proposal.requestId, operations: proposal.operations, confirmationId: proposal.id });
   assert.equal(applied.isError, undefined, JSON.stringify(applied));
   assert.ok((await rows('tasks.tasks')).find((t) => t.id === target.id).deleted_at);
+});
+
+test('mcp de Compras · qué queda poco, pedir sin aprobación y preparar el plan con ella', async () => {
+  const CLORO = uuid();
+  const commit = (operations: Operation[]) => app.call('/api/v1/commands', { body: { requestId: `compras-${++seq}`, operations } });
+  await commit([{ op: 'insert', table: 'tasks.supply_items', id: CLORO, fields: { tab_id: TAB, name: 'Cloro', unit: 'kg', min_quantity: 5, reorder_quantity: 10, supplier_name: 'Piscinas Norte', position: 1024 } }]);
+  await commit([{ op: 'insert', table: 'tasks.supply_movements', id: uuid(), fields: { tab_id: TAB, supply_item_id: CLORO, kind: 'in', delta: 2 } }]);
+
+  const tools = (await rpc('tools/list', {}, agent)).result.tools as any[];
+  assert.equal(tools.find((t) => t.name === 'tasks_low_stock').annotations.readOnlyHint, true);
+  const low = await call('tasks_low_stock', {});
+  assert.equal(low.isError, undefined, JSON.stringify(low));
+  assert.deepEqual(low.structuredContent.items.map((i: any) => [i.name, i.stock, i.openRequest]), [['Cloro', 2, null]]);
+  // El almacén es del área entera: un agente con proyectos sueltos no lo ve ni pide para el área en general.
+  assert.deepEqual((await call('tasks_low_stock', {}, limited)).structuredContent.items, []);
+  const general = await call('tasks_request_purchase', { tab_id: TAB, title: 'Lejía' }, limited);
+  assert.equal(general.structuredContent.error.code, 'FORBIDDEN', JSON.stringify(general));
+
+  // Pedir es seguro: entra sin propuesta, «pedida», con lo que trae el suministro (y lo que el agente cambia).
+  const asked = await call('tasks_request_purchase', { supply_item_id: CLORO, quantity: 12 });
+  assert.equal(asked.isError, undefined, JSON.stringify(asked));
+  assert.equal(asked.structuredContent.needsApproval, undefined);
+  const request = (await rows('tasks.purchase_requests')).find((r) => r.supply_item_id === CLORO);
+  assert.equal(request.status, 'requested');
+  assert.equal(Number(request.quantity), 12);
+  assert.equal(request.supplier_name, 'Piscinas Norte');
+  assert.equal((await call('tasks_low_stock', {})).structuredContent.items[0].openRequest.id, request.id);
+  // Un agente no aprueba: eso es del responsable de compras (aquí, la propietaria, porque el área no tiene).
+  const self = await call('tasks_commit', { requestId: 'auto-aprobar', operations: [{ op: 'update', table: 'tasks.purchase_requests', id: request.id, expectedRevision: request.revision, fields: { status: 'approved' } }] });
+  assert.equal(self.isError, true);
+  assert.equal(self.structuredContent.error.code, 'FORBIDDEN');
+  const approved = await commit([{ op: 'update', table: 'tasks.purchase_requests', id: request.id, expectedRevision: request.revision, fields: { status: 'approved' } }]);
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+
+  // Preparar el plan siempre pide aprobación; aprobada, el agente la aplica y la solicitud queda en su parada.
+  const plan = await call('tasks_prepare_purchase_plan', { tab_id: TAB, title: 'Compra del lunes', requestId: 'plan-lunes' });
+  assert.equal(plan.isError, undefined, JSON.stringify(plan));
+  assert.equal(plan.structuredContent.needsApproval, true);
+  const proposal = plan.structuredContent.proposal;
+  assert.equal((await rows('tasks.purchase_plans')).length, 0, 'aún no hay plan');
+  assert.equal((await app.call(`/api/v1/proposals/${proposal.id}/approve`, { body: {} })).status, 200);
+  const applied = await call('tasks_commit', { requestId: proposal.requestId, operations: proposal.operations, confirmationId: proposal.id });
+  assert.equal(applied.isError, undefined, JSON.stringify(applied));
+  const stop = (await rows('tasks.purchase_plan_stops'))[0];
+  assert.equal(stop.supplier_name, 'Piscinas Norte');
+  assert.equal((await rows('tasks.purchase_requests')).find((r) => r.id === request.id).plan_stop_id, stop.id);
+  // Sin nada aprobado pendiente, no hay plan que preparar.
+  const empty = await call('tasks_prepare_purchase_plan', { tab_id: TAB });
+  assert.equal(empty.structuredContent.error.code, 'INVALID_PURCHASE');
 });

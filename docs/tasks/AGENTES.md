@@ -51,7 +51,7 @@ core.agent_keys(
 
 - **Destructivo (núcleo):** cualquier operación `delete`; cualquier `call` o acción `invoke` cuyo registro lleve `agent_confirmation = true` (columna nueva en `core.allowed_procedures` y en `core.allowed_reads` para `kind = 'action'`; por defecto `true`: un procedimiento es opaco para el núcleo).
 - **Masivo (núcleo):** el lote toca 10 o más filas (`bulkThreshold`; 10 por decisión del usuario, configurable por app en `core.apps`). El umbral es por lote; no detecta un trabajo largo troceado en lotes pequeños, igual que hoy.
-- **Dominio (hook nuevo de app):** `agentRisk(operations, ctx) → { required, reasons[], affectedEstimate }`. Tasks lo usará para archivar (`status: 'archived'`, `archived: true`) y para contar cascadas (hijas de una tarea, etiquetas de una familia).
+- **Dominio (hook nuevo de app):** `agentRisk(operations, ctx) → { required, reasons[], affectedEstimate }`. Tasks lo usa para archivar (`status: 'archived'`, `archived: true`), para contar cascadas (hijas de una tarea, etiquetas de una familia) y para **preparar un plan de compras** (§18): es la lista con la que alguien saldrá a comprar. **Pedir una compra no** exige aprobación: la solicitud nace «pedida» y solo la aprueba el responsable de compras del área, que nunca es el agente.
 
 `undo` de un agente pasa por la misma regla sobre las operaciones del plan.
 
@@ -162,6 +162,12 @@ Una ruta `POST /mcp` por app en `_kit` (JSON-RPC 2.0; versiones de protocolo `20
 | `<app>_invoke` `{name, args}` | `invoke/:name` | acciones registradas (`kind = 'action'`) |
 
 `AppConfig.mcpTools` permite a cada app añadir herramientas **de dominio**. Hacen falta: con tablas tipadas y filas puente, pedirle a un agente que construya a mano las operaciones de fila de «mover una tarea con sus hijas» es frágil. Tasks añadirá `tasks_tree`, `tasks_create_task`, `tasks_update_task`, `tasks_complete`, `tasks_move`, `tasks_delete`, `tasks_set_labels` y `tasks_set_dependencies`, que construyen el lote con `_domain/tasks/ops.ts` y lo envían por el mismo camino (riesgo, propuesta, `commit`).
+
+Compras (§18):
+
+- `tasks_low_stock`: solo lectura. Responde a «qué queda poco» con los suministros bajo mínimo de las áreas enteras visibles y, si ya se pidió, su solicitud abierta.
+- `tasks_request_purchase`: «pide X». Con `supply_item_id` hace lo mismo que «Queda poco: pedir». Sin suministro, pide para un área, un proyecto o una tarea.
+- `tasks_prepare_purchase_plan`: «prepara el plan». Pide siempre aprobación. Agrupa solo lo ya aprobado: las recurrentes vencidas nacen aprobadas, y eso solo puede hacerlo quien aprueba, desde la app.
 
 Las herramientas se anuncian según el rol (`readOnlyHint`, `destructiveHint`). La aprobación **no** se expone por MCP: es de la interfaz o de la API con cuenta de persona.
 
