@@ -582,7 +582,7 @@ Las dos primeras las pide Food en su documento (`docs/food/API.md` §7.1, su pet
 
 Invoices asigna líneas de compra a un evento de Booking. Decisión de Core (ronda 5): **reutiliza `booking.food_event_projection`**, registrada también para la app `invoices` (migración `20261006_0402`). No se crea una vista aparte: la proyección no lleva huéspedes ni datos personales, y sus columnas de identificación (`event_id`, `event_code`, `reservation_code`, `title`, fechas, `reservation_status`, `event_revision`) son las que Invoices necesita. Solo hay eventos en la proyección, así que una reserva sin confirmar no es asignable.
 
-Booking no consume enlaces de otras apps en V1. El «coste por retiro» leyendo `invoices.booking_cost_projection` queda para G4.
+**Coste real por retiro (fase 2).** Booking lee `invoices.booking_cost_projection`, que Invoices registra para la app `booking` (`GET /api/v1/read/invoices.booking_cost_projection?where[target_id]=…`). Columnas: `allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, expense_category, is_investment, allocated_amount, allocation_revision`. La ficha de la reserva la consulta para el id de la reserva y el de su evento y muestra, dentro de Cobro y solo a quien ve importes, el total asignado, el desglose por categoría y las asignaciones con su código de factura. Se guarda la última respuesta en el dispositivo (se borra al cerrar sesión) para verla sin red. Booking no escribe nada en Invoices ni guarda estos importes en sus tablas.
 
 ### 7.3 Google Calendar
 
@@ -678,10 +678,10 @@ Sin gráficas ni indicadores decorativos.
 - Búsqueda por nombre, contacto y código.
 - **Ficha**, en modo lectura: cabecera (título, fechas, personas, `RSV_…`, estado, indicador de Calendar), acción principal «Editar», acciones secundarias en `⋮` (cambiar estado, confirmar, archivar, historial, papelera). Bloques:
   - **Resumen**: fechas y noches, personas previstas y finales, tipo, contacto, servicios, régimen, estado comercial y operativo.
-  - **Operación** (si hay evento): llegada, salida, responsable, estados, montaje, distribución, checklist por tipo, cierre.
+  - **Operación** (si hay evento): llegada, salida, responsable, estados, montaje, distribución, checklist por tipo, cierre. Las tareas de cada lista del checklist se reordenan a mano (`position`).
   - **Huéspedes**: recuentos; lista completa solo para quien los ve.
   - **Comidas**: régimen solicitado y confirmado, tipo de menú, notas, restricciones («1 alergia a pistacho · 2 veganos»).
-  - **Cobro** (solo `editor` y `owner`): presupuesto, importe final, señal y su estado derivado, tipo, titular y fecha del pago.
+  - **Cobro** (solo `editor` y `owner`): presupuesto, importe final, señal y su estado derivado, tipo, titular y fecha del pago. Debajo, **Coste real**: lo que Invoices tiene asignado a la reserva y a su evento (§7.2).
 - **Edición**, por bloques: datos principales; contacto; servicios (interruptores; «Comidas» despliega régimen, tipo y notas); alimentación; comercial; más información (plegado). «Guardar» y «Cancelar»; en móvil «Guardar» queda fijo abajo mientras hay cambios.
 - «Confirmar» es un botón propio con resumen de lo que va a pasar («se crea el evento operativo») y la lista de lo que falta si no se puede.
 
