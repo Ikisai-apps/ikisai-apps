@@ -374,7 +374,7 @@ Las del núcleo las da `_kit`. Las escrituras van siempre por `POST commands` (f
 1. **Subir**: el usuario elige PDF o fotos y la app pide **fecha, proveedor y objeto**. Se crea la factura (`insert invoices` en `pendiente_datos`, `source = 'manual'`) y los `invoice_files` con marcadores `{"$blob": sha}` en un mismo lote. La vista previa del nombre canónico se calcula en el cliente. Sin red todo queda en cola.
 2. **Pasar el documento a ChatGPT** fuera de la app (prompt del handoff). Volver con el JSON.
 3. **Importar**: en la ficha, «Importar JSON» → pegar o cargar → validación local contra el schema → `imports/preview` si hay red → **vista previa**: proveedor emparejado (NIF, alias, nombre) o nuevo; fecha/objeto del JSON vs los tecleados; tabla de líneas; impuestos; **recalculo** (base, IVA, retenciones, total calculados vs documentales, delta en ámbar si ≤ 0,02 y en rojo con «REVISAR IMPORTES» si mayor); avisos de extracción; categoría e inversión propuestas.
-4. **Confirmar** → `commit([{op:'call', procedure:'invoices.import_v1', args}])`. La factura queda `pendiente_revision`.
+4. **Confirmar** → la app genera las **operaciones de fila** equivalentes (`importOperations` del dominio: proveedor nuevo o alias, factura con `source = 'import_v1'`, `import_sha256`, `source_total`, `review_reason`, totales recalculados, líneas, impuestos y documentos) y las encola con `commit`. Así la factura aparece en el espejo al momento y la importación funciona sin red; el hook `check_invariants` del servidor recalcula y fija el estado, y los duplicados los paran los índices únicos (el lote pasa a Rechazados con el mensaje). `import_meta` solo lo escribe el procedimiento `invoices.import_v1`, que queda para la API (agentes, pruebas) y para la extracción desde la Edge en V2. La factura queda `pendiente_revision`.
 5. **Revisar y validar**: en la ficha, corregir lo que haga falta y pulsar «Validar» → `call invoices.validate`. Solo entonces `validada` («✓ Importes comprobados»).
 
 También se puede importar sin haber subido antes (paso 1 y 3 juntos): el mismo `call` crea la factura y los archivos.
@@ -525,7 +525,7 @@ Se añaden `aliases`, `slug`, `default_is_investment`; en el detalle, total fact
 
 El handoff no exigía offline; el plan de Core sí (todas las apps). **Espejo local:** todas las tablas `invoices.*`.
 
-**Sin red se puede:** proveedores; subir documento con fecha/proveedor/objeto (cola de blobs; vista previa del nombre canónico); importar JSON (validación de schema, recalculo y cuadre son locales con `_domain/invoices`; duplicados contra el espejo); editar líneas, impuestos, pago, deducibilidad, notas; anular; asignar a `general` y a destinos de Tareas **recientes** (caché local de los últimos 50); ver Facturas, Compras y resumen fiscal del rango (misma función de dominio); documentos ya cacheados. **Validar** también se encola (es un `call`), pero la UI avisa de que el servidor recalculará.
+**Sin red se puede:** proveedores; subir documento con fecha/proveedor/objeto (cola de blobs; vista previa del nombre canónico); importar JSON (validación de schema, recalculo y cuadre son locales con `_domain/invoices`; duplicados contra el espejo; se envía como operaciones de fila, no como `call`, para que la factura exista en el espejo desde el primer momento); editar líneas, impuestos, pago, deducibilidad, notas; anular; asignar a `general` y a destinos de Tareas **recientes** (caché local de los últimos 50); ver Facturas, Compras y resumen fiscal del rango (misma función de dominio); documentos ya cacheados. **Validar** también se encola (es un `call`), pero la UI avisa de que el servidor recalculará.
 
 **Requiere red:** buscar destinos nuevos en Tareas, `imports/preview` del servidor (opcional), crear entrega (se encola, pero se desaconseja), descargar ZIP/CSV/manifest, documentos no cacheados.
 
@@ -581,6 +581,8 @@ Escenarios offline en Playwright (`tests/invoices/`), sobre `smoke.spec.ts` y `f
 | O7 | Compras y resumen fiscal offline coinciden con `read/invoices.items` y `read/invoices.fiscal_summary` tras sincronizar. |
 | O8 | `reader` offline: lectura completa; ZIP deshabilitado sin red con explicación. |
 | O9 | Cierre de sesión borra el espejo (`clearOnLogout`). |
+
+Estado el 6 de octubre de 2026: `tests/invoices/acceptance.spec.ts` automatiza A1–A13, A18 y O1–O6 contra la app compilada y la API falsa (`fake-api.ts`, misma superficie que `invoices-api`: subidas con verificación, destinos, procedimientos mínimos); A14–A17 y A19–A21 están cubiertos por `tests/invoices/sql.test.ts` y `api.test.ts` contra PGlite (entregas, ZIP, archivar, papelera, `reader`, deshacer). Pendientes de pasar a mano sobre la app publicada: instalación PWA en Android y descarga del ZIP en el móvil.
 
 Pruebas de dominio (`supabase/functions/_domain/invoices`, `tsx --test`): schema `ikisai.invoice.v1` (el ejemplo del handoff valida; casos inválidos), `recalculate` con tabla de redondeos y tolerancia, `normalizedFilename` (paridad con SQL en PGlite, incluidos `_pNN` y `_NN`), `fiscalSummary`, `purchaseItems`, categorías iguales a la migración.
 

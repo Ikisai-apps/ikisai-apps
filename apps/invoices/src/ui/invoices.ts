@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, buildImportArgs, importDocumentSha256, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
+  DEDUCTIBILITIES, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -17,7 +17,7 @@ import {
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
-import { KIND_LABELS, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
+import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
@@ -328,8 +328,12 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
         el('div', { class: 'alloc-head' }, el('strong', null, l.description), el('span', null, `${eur(assigned)} de ${eur(l.net_amount)}`)),
         el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${pct}%` })),
         el('div', { class: 'chips' },
-          ...allocations.map((a) => el('span', { class: 'chip', style: '--chip:#6b7f52' }, allocationLabel(a), ` · ${eur(a.allocated_amount)}`,
-            canEdit && invoice.status !== 'anulada' ? el('button', { class: 'x', type: 'button', 'aria-label': `Quitar asignación ${allocationLabel(a)}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación enviada a la papelera.') }, '×') : null)),
+          ...allocations.map((a) => {
+            const chip = el('span', { class: 'chip', style: '--chip:#6b7f52', dataset: { allocation: a.id } }, allocationLabel(a), ` · ${eur(a.allocated_amount)}`,
+              canEdit && invoice.status !== 'anulada' ? el('button', { class: 'x', type: 'button', 'aria-label': `Quitar asignación ${allocationLabel(a)}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación enviada a la papelera.') }, '×') : null);
+            void checkTargetFreshness(client, a).then((f) => { if (f === 'changed' || f === 'missing') { chip.classList.add('alert'); chip.title = FRESHNESS_LABELS[f]; chip.appendChild(el('span', { class: 'stale' }, ` · ${FRESHNESS_LABELS[f]}`)); } });
+            return chip;
+          }),
           rest > 0 ? el('span', { class: 'chip alert' }, `Sin asignar ${eur(rest)}`) : null,
           canEdit && invoice.status !== 'anulada' && rest > 0 ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void openAllocation(ctx, mirror, invoice, l) }, icon('plus', 16), 'Asignar a…') : null,
         ),
@@ -604,17 +608,19 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
     try {
       const staged = target ? [] : await pickFiles(docs, client);
       const sha = await importDocumentSha256(document);
-      const existing = supplierSelect.value !== '__new__' ? supplierSelect.value : null;
-      const args = buildImportArgs({
-        document, documentSha256: sha, invoiceId: target?.id ?? crypto.randomUUID(),
-        supplier: existing ? { mode: 'existing', id: existing } : { mode: 'create', id: crypto.randomUUID() },
+      const existingSupplier = supplierSelect.value !== '__new__' ? mirror.supplierById.get(supplierSelect.value) ?? null : null;
+      const invoiceId = target?.id ?? crypto.randomUUID();
+      // Operaciones de fila (no `call`): la factura aparece en el espejo al momento y la importación funciona sin red (API.md §10).
+      const { operations } = importOperations({
+        document, documentSha256: sha, invoiceId, existing: target ? { revision: target.revision } : null,
+        supplier: existingSupplier ? { mode: 'existing', row: existingSupplier } : { mode: 'create', id: crypto.randomUUID() },
         overrides: { object: objectInput?.value.trim() || null, invoice_date: dateInput?.value || null, expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput?.checked ?? null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null },
         files: staged.map((s, i) => ({ file_id: s.marker, original_filename: s.filename, page_order: i + 1 })),
       });
-      if (await commitSafely(client, [{ op: 'call', procedure: 'invoices.import_v1', args: args as unknown as Record<string, unknown> }], 'Factura importada en este dispositivo. Queda pendiente de revisión.')) {
+      if (await commitSafely(client, operations as RowOperation[], 'Factura importada en este dispositivo. Queda pendiente de revisión.')) {
         guard.dirtyEditor = false;
         await closeSheet(true);
-        void openInvoice(ctx, args.invoice_id);
+        void openInvoice(ctx, invoiceId);
       }
     } catch (err) { error.textContent = describeError(err); }
     confirm.disabled = false;

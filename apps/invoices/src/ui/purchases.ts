@@ -5,6 +5,7 @@ import { categoryLabel } from '../app/client.ts';
 import { currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, statusChipClass, statusText, type Mirror, type RangeKind } from '../app/data.ts';
 import { ITEM_TYPE_LABELS } from '../app/data.ts';
 import { openInvoice } from './invoices.ts';
+import { FRESHNESS_LABELS, checkTargetFreshness } from '../app/targets.ts';
 import type { ViewMount } from './shell.ts';
 
 type Tab = 'category' | 'target' | 'supplier' | 'items';
@@ -93,7 +94,11 @@ export const mountPurchases: ViewMount = (ctx) => {
       meta: [item.supplier?.name ?? '—', shortDate(item.invoice.invoice_date), item.invoice.code ?? 'código pendiente', item.line.quantity === null ? '' : `${Number(item.line.quantity)} ${item.line.unit ?? ''}`.trim(), item.line.item_type ? ITEM_TYPE_LABELS[item.line.item_type] ?? item.line.item_type : ''].filter(Boolean),
       chips: [
         el('span', { class: 'chip' }, eur(item.line.net_amount)),
-        ...item.allocations.map((a) => el('span', { class: 'chip', style: '--chip:#6b7f52' }, a.target_app === 'general' ? a.target_label : a.target_label)),
+        ...item.allocations.map((a) => {
+          const chip = el('span', { class: 'chip', style: '--chip:#6b7f52' }, a.target_label);
+          void checkTargetFreshness(client, a).then((f) => { if (f === 'changed' || f === 'missing') { chip.classList.add('alert'); chip.title = FRESHNESS_LABELS[f]; chip.append(` · ${FRESHNESS_LABELS[f]}`); } });
+          return chip;
+        }),
         item.unallocated_amount > 0 ? el('span', { class: 'chip alert' }, `Sin asignar ${eur(item.unallocated_amount)}`) : null,
         item.invoice.status !== 'validada' && item.invoice.status !== 'archivada' ? el('span', { class: statusChipClass(item.invoice.status, item.invoice.review_reason) }, statusText(item.invoice)) : null,
       ],

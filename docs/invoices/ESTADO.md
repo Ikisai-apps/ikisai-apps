@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (noche). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026 (tanda 2). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
@@ -15,15 +15,20 @@ Actualizado: 6 de octubre de 2026 (noche). Equipo Invoices (agente de backend). 
 - Pantallas sobre `@ikisai/ui-kit` (PR #37): **Inicio** (tarjetas de estado, trimestre, «Nueva factura»), **Facturas** (lista por mes con filtros; ficha en hoja con documento, artículos, impuestos, asignación por línea, pago, fiscal, importación; alta con documento y vista previa del nombre canónico; importar JSON con cuadre; validar, anular, archivar), **Compras** (por categoría, destino, proveedor o artículos; periodo; «solo validadas»; totales), **Gestoría** (resumen fiscal, alertas, entregas con ZIP/manifest/CSV, preparar entrega, marcar entregada, archivar periodo). Todo calculado en local con el dominio compartido; hoja de asignación con destinos de Tareas y Cocina (buscador con red, recientes sin red) y generales.
 - `tests/invoices/fake-api.ts` ampliada (todas las tablas, recálculo y procedimientos mínimos) y `smoke.spec.ts` con factura a mano, Compras, Gestoría e Inicio.
 
+- PR #37 fusionada y publicada en `invoices.ikisai.com` (`v0.1.0-build.47`).
+- Tanda 2 (`invoices/aceptacion`): `tests/invoices/acceptance.spec.ts` automatiza el recorrido A1–A13 y A18 (documento con nombre canónico y lectura firmada, importación del ejemplo del handoff con proveedor por NIF, cuadre y REVISAR IMPORTES, validar y editar tras validar, asignación a Tareas y Cocina con el token del usuario, sobreasignación, Compras, Gestoría, anulación) y los escenarios offline O1–O6 (cola con PDF y JSON, recarga sin red, reconexión con subida y verificación, fusión de campos disjuntos, conflicto solapado, destino desaparecido → rechazado, subida que no verifica). La API falsa de Playwright reproduce la superficie de `invoices-api` (subidas, destinos, `import_v1`, `validate`, `annul`, hook de estados).
+- La importación desde la app se envía como operaciones de fila (`importOperations` del dominio) para que funcione sin red con espejo optimista; `invoices.import_v1` queda para la API.
+- Proveedores: formulario con alias e «inversión por defecto». Compras y ficha: indicador de obsolescencia de destinos («destino cambiado / desaparecido») comparando revisiones con red.
+
 ## En curso
 
-- PR #37 (`invoices/edge`): Edge + pantallas de la tanda. Pendiente de CI y fusión.
+- PR de la tanda 2 (`invoices/aceptacion`).
 
 ## Pendiente
 
-- Aceptación A1–A21 con un PDF sintético contra la app publicada (PC y Android) y escenarios offline O1–O9 en Playwright (hoy: humo con factura a mano; falta la importación con JSON y archivos en la API falsa).
-- Proveedores: formulario con `aliases` y `default_is_investment` (hoy solo se ven desde la importación).
-- Compras: indicador de obsolescencia de destinos (§7.3) y filtros por retiro/ingrediente cuando lleguen esos destinos.
+- Aceptación manual sobre la app publicada en Android (instalación PWA, foto de ticket con la cámara, descarga del ZIP en el móvil). En PC los recorridos están automatizados; falta pasarlos sobre `invoices.ikisai.com` con una cuenta de prueba (ver pregunta en el buzón: las facturas no se purgan, así que los datos sintéticos de producción habría que anularlos o limpiarlos con `core.purge_row_history`).
+- Escenarios O7–O9 en Playwright (paridad Compras/resumen con el servidor, `reader` sin red, `clearOnLogout`).
+- Compras: filtros por retiro/ingrediente cuando lleguen esos destinos (Booking, fase 2).
 - Fase 2: destinos de Booking (`core.allow_read('invoices', 'booking.food_event_projection', 'view')`), `imports/extract`.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
 
