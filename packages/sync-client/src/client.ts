@@ -1315,6 +1315,7 @@ export class SyncClientImpl implements SyncClient {
       error: error.toJSON(),
       baseRows: entry.baseRows,
       rejectedAt: new Date(this.now()).toISOString(),
+      seq: entry.seq,
     };
     this.recordError(error);
     await this.withdraw(entry, {}, { rejected: record });
@@ -1363,7 +1364,8 @@ export class SyncClientImpl implements SyncClient {
   async rejected(): Promise<RejectedBatch[]> {
     await this.ensureReady();
     const records = await this.db.getAll<RejectedBatch>(REJECTED_STORE);
-    return records.sort((a, b) => a.rejectedAt.localeCompare(b.rejectedAt));
+    // Orden estable: el de la cola (seq); la fecha solo desempata registros antiguos sin seq.
+    return records.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0) || a.rejectedAt.localeCompare(b.rejectedAt));
   }
 
   async retryRejected(requestId: string, operations?: RowOperation[]): Promise<{ requestId: string }> {
