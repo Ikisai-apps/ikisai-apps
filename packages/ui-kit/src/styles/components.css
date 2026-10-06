@@ -359,7 +359,7 @@
 .pp-draft{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;font-family:var(--serif);font-size:90pt;font-weight:600;letter-spacing:.1em;color:rgba(179,65,42,.08);transform:rotate(-28deg);z-index:0}
 .pp-draft-chip{font-size:9pt}
 .print-page>*{position:relative;z-index:1}
-.print-page>.pp-draft{z-index:0}
+.print-page>.pp-draft{position:absolute;z-index:0}
 :root[data-theme="dark"] .print-page,:root[data-theme="dark"] .pp-item{color:#1f2a22}
 @media(max-width:639px){.print-page{padding:16px;min-height:0;font-size:14px;border-radius:var(--radius-md)}.pp-items{grid-template-columns:1fr}.pp-title h1{font-size:26px}.pp-draft{font-size:56pt}}
 @media print{

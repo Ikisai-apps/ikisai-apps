@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.6.1: la marca «BORRADOR» ya no desplaza la cabecera de la página imprimible.
 - v0.6.0 (tanda 7): lista reordenable con arrastre, botones y teclado (`createSortableList`, `positionBetween`) y campo de fecha con atajos (`createDateField`).
 - v0.5.0 (tanda 6): página completa imprimible A4 con print CSS, orientada a la vista del organizador de Food y reutilizable por Invoices.
 - v0.4.1 (tanda 5): toast sobre la hoja en móvil corregido; snippet de la paleta Ctrl K en el README.
