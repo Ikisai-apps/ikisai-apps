@@ -13,6 +13,8 @@ export interface ConformanceOptions extends TestAppOptions {
   fieldB: string;
   /** Campos obligatorios mínimos para insertar una fila válida. */
   required: Record<string, unknown>;
+  /** Archivo de muestra para la prueba de subidas; por defecto un PDF. Apps que solo admiten imágenes pasan `{ mime: 'image/webp', filename: 'foto.webp' }`. */
+  uploadSample?: { mime: string; filename: string; bytes?: Uint8Array };
 }
 
 export function runConformance(options: ConformanceOptions) {
@@ -184,22 +186,23 @@ export function runConformance(options: ConformanceOptions) {
   });
 
   test('conformidad · subidas: ticket, PUT simulado, verify con hash y URL de lectura', async () => {
-    const bytes = new TextEncoder().encode('%PDF-1.4 prueba');
+    const sample = options.uploadSample ?? { mime: 'application/pdf', filename: 'Factura (Makro).pdf' };
+    const bytes = sample.bytes ?? new TextEncoder().encode(sample.mime === 'application/pdf' ? '%PDF-1.4 prueba' : 'RIFF....WEBPVP8 prueba');
     const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
-    const ticket = await app.call('/api/v1/uploads', { body: { filename: 'Factura (Makro).pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: sha } });
+    const ticket = await app.call('/api/v1/uploads', { body: { filename: sample.filename, mime: sample.mime, size: bytes.byteLength, sha256: sha } });
     if (ticket.status === 404) return; // la app no declara subidas
     assert.equal(ticket.status, 200, JSON.stringify(ticket.data)); assert.ok(ticket.data.uploadUrl.includes('/storage/v1/object/upload/sign/'));
     const notYet = await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {} });
     assert.equal(notYet.status, 404);
     app.supabase.storage.set(ticket.data.path, bytes);
-    const bad = await app.call('/api/v1/uploads', { body: { filename: 'x.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: 'a'.repeat(64) } });
+    const bad = await app.call('/api/v1/uploads', { body: { filename: sample.filename, mime: sample.mime, size: bytes.byteLength, sha256: 'a'.repeat(64) } });
     app.supabase.storage.set(bad.data.path, bytes);
     assert.equal((await app.call(`/api/v1/uploads/${bad.data.id}/verify`, { body: {} })).data.error.code, 'FILE_MISMATCH');
     const verified = await app.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {} });
     assert.equal(verified.status, 200); assert.equal(verified.data.verified, true); assert.equal(verified.data.hashVerified, true);
     const url = await app.call(`/api/v1/files/${ticket.data.id}`);
     assert.equal(url.status, 200); assert.ok(url.data.url.includes('/storage/v1/object/sign/'));
-    assert.equal((await app.call('/api/v1/uploads', { token: app.tokens.reader, body: { filename: 'x.pdf', mime: 'application/pdf', size: 1, sha256: sha } })).status, 403);
+    assert.equal((await app.call('/api/v1/uploads', { token: app.tokens.reader, body: { filename: sample.filename, mime: sample.mime, size: 1, sha256: sha } })).status, 403);
     assert.equal((await app.call('/api/v1/uploads', { body: { filename: 'x.exe', mime: 'application/x-msdownload', size: 1, sha256: sha } })).data.error.code, 'UNSUPPORTED_MEDIA');
   });
 }

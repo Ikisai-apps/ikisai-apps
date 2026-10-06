@@ -80,6 +80,13 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     return supabase.rpc('core_read', { p_app: app, p_actor: ctx.user.id, p_name: name, p_args: args ?? {} });
   }
 
+  /** Acción registrada (kind 'action'): procedimiento volátil fuera de core.commit. `actor` null = sistema (worker). */
+  async function invoke(actor: string | null, name: string, args: unknown) {
+    if (!/^[a-z_]+\.[a-z0-9_]+$/.test(name)) fail(422, 'INVALID_OPERATION', 'Nombre de acción inválido.');
+    if (args !== undefined && args !== null && (typeof args !== 'object' || Array.isArray(args))) fail(422, 'INVALID_OPERATION', 'Los argumentos deben ser un objeto.');
+    return supabase.rpc('core_invoke', { p_app: app, p_actor: actor, p_name: name, p_args: args ?? {} });
+  }
+
   /** Alta de una cuenta por el owner: crea el usuario en Auth con contraseña temporal y le da pertenencia. */
   async function invite(ctx: RequestContext, body: any) {
     if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
@@ -236,5 +243,5 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     });
   }
 
-  return { context, snapshot, changes, commit, history, undoPlan, undo, purgeDeleted, members, setMember, validateOperations, read, invite };
+  return { context, snapshot, changes, commit, history, undoPlan, undo, purgeDeleted, members, setMember, validateOperations, read, invite, invoke };
 }

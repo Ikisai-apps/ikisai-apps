@@ -12,8 +12,9 @@
     "check": "npm run check:migrations && npm run typecheck",
     "check:migrations": "node scripts/lint_migrations.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run test:core",
-    "test:core": "tsx --test tests/core/*.test.ts",
+    "test": "node scripts/run_tests.mjs",
+    "test:core": "node scripts/run_tests.mjs core",
+    "test:app": "node scripts/run_tests.mjs",
     "test:e2e": "playwright test",
     "test:ui-kit": "npm -w @ikisai/ui-kit run test:e2e"
   },
