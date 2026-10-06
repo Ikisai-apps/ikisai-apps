@@ -1,10 +1,10 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 5). **La app nueva está en producción (`tasks.ikisai.com`; el corte lo hizo la release automática y Core lo dio por bueno). 71 de los 72 escenarios de no regresión en verde, más los 6 de actualización del service worker y «Vaciar papelera». Falta el recorrido manual de aceptación en PC y Android con una cuenta real.**
+Actualizado: 6 de octubre de 2026 (tanda 6). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, a la espera de Core.**
 
 ## Hecho
 
-- **Diseño:** `docs/tasks/API.md` (G2 aprobada; §16 resolución de Core; §17 cómo quedó el adaptador).
+- **Diseño:** `docs/tasks/API.md` (G2 aprobada; §16 resolución de Core; §17 cómo quedó el adaptador). `docs/tasks/AGENTES.md`: propuesta para llevar al núcleo las claves de agente, las propuestas con aprobación humana, el registro de accesos y el MCP de la app antigua (diseño para Core; seis decisiones abiertas en su §10).
 - **Dominio** (`supabase/functions/_domain/tasks`, reexportado por `@ikisai/domain-tasks`): tipos, ámbitos y `visible`, validación de lotes, estados y ciclos, operaciones compuestas y el puente con el modelo anidado de la interfaz (`compose`, `decompose`, `adoptLegacyIds`).
 - **Base de datos:** migraciones `0300` (diez tablas), `0301` (hook `tasks.validate_batch`, `tasks.import_rows`, lectura `tasks.targets`) y `0302` (claves solo exigidas a filas vivas).
 - **`tasks-api`:** hooks `visible` y `beforeCommit`, subidas a `ikisai-files`, `GET blockers`, `GET attachments/:id`, y las rutas de consulta e intercambio de `exchange.ts` (`tabs/:tabId/tasks`, `csv`, `csv/preview`, `portable`, `portable/preview`, `portable/import`, `backup`). Desplegada por Core (las de intercambio, en el próximo despliegue); Invoices ya usa `tasks.targets`.
@@ -30,7 +30,7 @@ Playwright contra la `tasks-api` real en PGlite (solo Supabase está simulado): 
 
 **Diferido (1):** 29 (aprobación de agentes).
 
-**Service worker** (`tests/tasks/updates.spec.ts`, los 6 de `tests/updates.cjs`): un editor abierto, un borrador en línea, otra pestaña con editor o con borrador y una cola pendiente vetan la actualización; con todas las pestañas de acuerdo se recarga en el worker nuevo conservando cuenta y tareas.
+**Service worker** (`tests/tasks/updates.spec.ts`, los 6 de `tests/updates.cjs` y uno más): un editor abierto, un borrador en línea, la paleta abierta, una selección múltiple, un campo de texto con el foco, otra pestaña con editor o con borrador y una cola pendiente vetan la actualización; con todas las pestañas de acuerdo se recarga en el worker nuevo conservando cuenta y tareas. Si llegan dos comprobaciones seguidas, el desbloqueo de 8 s cuenta desde la última.
 
 **Vaciar papelera** (`POST trash/empty`, migración `0303`, botón en la papelera para la propietaria con acceso completo, con confirmación y recuento): pasa a la papelera lo que cuelga de contenedores borrados y purga en orden canónico inverso; probado en SQL, por API y en la interfaz con dos dispositivos.
 
@@ -47,23 +47,15 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 ## Producción
 
 - `tasks.ikisai.com` sirve la app nueva; `/version.json` y `/api/v1/health` coinciden en la versión. Comprobado sin iniciar sesión (solo lectura): carga en móvil y escritorio sin errores de JavaScript ni recursos fallidos, pide la cuenta, registra el service worker y no desborda.
-- **Recorrido manual de aceptación: pendiente.** No lo he hecho con una cuenta real: supone entrar en producción con credenciales de la propietaria y crear datos y una cuenta invitada reales, y eso lo decide el usuario (ver la pregunta en `coordinacion/tasks/SALIDA.md`). Lista de lo que hay que recorrer en PC y Android:
-  1. Entrar; crear la primera área; crear un proyecto y tareas con hijas; etiquetar; responsable.
-  2. Dependencias: una tarea que depende de otra, completar en orden, intentar completar la bloqueada.
-  3. Sin red: editar, recargar, reconectar y ver «Al día».
-  4. Conflicto: editar el mismo campo en PC y móvil; resolver en «Revisar cambios».
-  5. Adjuntar una foto desde el móvil y un PDF desde el PC; abrirlos en el otro dispositivo y sin red.
-  6. Invitar a una persona a un solo proyecto; entrar con su cuenta y comprobar lo que ve; retirarle el acceso.
-  7. Deshacer desde el aviso tras completar; historial.
-  8. Papelera: borrar y restaurar; vaciar papelera.
-  9. CSV, copia portable y respaldo: exportar e importar.
-  10. Instalar la PWA en Android; con una versión nueva publicada, «Nueva versión disponible» con y sin un editor abierto.
+- **Recorrido manual de aceptación: hecho por el usuario** («Tareas ok», ronda 8 de Core). El repo antiguo está archivado y el esquema `ikisai.*` retirado.
 
 ## Siguiente tanda
 
-1. Corregir lo que salga del recorrido manual.
+1. Adopción del `ui-kit` módulo a módulo, empezando por la entrada y el shell, sin romper los escenarios.
 2. `restore` con `fields` para la hija en papelera cuyo padre cambió de proyecto, cuando el kit y `sync-client` lo acepten (C22).
+3. Cuando Core implemente los agentes en el núcleo: hooks `agentRisk` y `describeChange`, herramientas MCP de dominio, volver a mostrar accesos por clave, propuestas y registro de accesos, y portar el escenario 29.
+4. `tasks.cleanup_imports` como acción con `workerRoute` (C23).
 
 ## Bloqueos
 
-- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20, C22.
+- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20, C22, C23.
