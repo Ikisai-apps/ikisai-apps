@@ -11,10 +11,11 @@ function areaBlock(area,inner,count,tools=true){return `<section class="areabloc
 const SAVED_VIEWS_BUTTON='<button class="softbtn" id="savedViews">Vistas guardadas</button>';
 const allTasksBeforeScope=allTasksView;
 allTasksView=function(){
-  if(state.taskScope!=='all')return allTasksBeforeScope().replace(SAVED_VIEWS_BUTTON,taskScopeSelector());
+  // El área se elige en la tira de arriba (con «General» para todas): aquí no se repite el selector (aceptación V1, 11).
+  if(state.taskScope!=='all')return allTasksBeforeScope().replace(SAVED_VIEWS_BUTTON,'');
   const holder=document.createElement('template');
   const blocks=generalAreas().map(area=>withArea(area.id,()=>{holder.innerHTML=allTasksBeforeScope();const sections=[...holder.content.querySelectorAll('main > section')].map(s=>s.outerHTML).join('');return areaBlock(area,sections||'<p class="small muted areaempty">Sin coincidencias en esta área.</p>',areaMatchCount())}));
-  return `<main class="screen"><h1 class="title">Tareas</h1><p class="subtitle">General · todas las áreas</p>${searchbar()}${groupToolbar().replace(SAVED_VIEWS_BUTTON,taskScopeSelector())}${blocks.join('')}</main>`;
+  return `<main class="screen"><h1 class="title">Tareas</h1><p class="subtitle">General · todas las áreas</p>${searchbar()}${groupToolbar().replace(SAVED_VIEWS_BUTTON,'')}${blocks.join('')}</main>`;
 };
 // Botones «+» de Todas las tareas: proyecto nuevo por área y tarea nueva a continuación de la última de cada proyecto.
 const allTasksBeforeAdders=allTasksView;
@@ -29,7 +30,8 @@ function generalProjectsView(){const areas=generalAreas(),quiet=!(state.search||
   const blocks=areas.map(area=>withArea(area.id,()=>{const ps=filteredProjects().filter(p=>!(p.system&&quiet&&!p.tasks.some(t=>!t.deleted)));return areaBlock(area,`<div class="project-grid">${ps.length?ps.map(projectCard).join(''):'<div class="empty">Sin proyectos que coincidan.</div>'}</div>`,ps.length)}));
   return `<main class="screen"><div class="screenhead"><div><h1 class="title">General</h1><p class="subtitle">${areas.length} áreas · ${projects} proyectos · ${pendingTotal} tareas pendientes</p></div></div>${searchbar()}${blocks.join('')}</main>`}
 function generalLabelsView(){const blocks=generalAreas().map(area=>withArea(area.id,()=>areaBlock(area,`<div class="label-manager-area">${tab().families.map(familyCard).join('')}</div><div class="catalog-actions"><button class="primary" data-add-family="${area.id}" ${canManageCatalog()?'':'disabled'}>+ Nueva familia</button></div>`,null,false)));
-  return `<main class="screen"><div class="screenhead"><div><h1 class="title">Etiquetas</h1><p class="subtitle">General · catálogo de cada área</p></div></div><div class="notice">Cada área tiene su propio catálogo. Pulsa una etiqueta para editarla.</div>${blocks.join('')}</main>`}
+  return `<main class="screen"><div class="screenhead"><div><h1 class="title">Etiquetas</h1><p class="subtitle">General · catálogo de cada área</p></div></div><div class="notice">Cada área tiene su propio catálogo. Pulsa una etiqueta para editarla.</div>${blocks.join('')}${generalArchivedButton()}</main>`}
+function generalArchivedButton(){const n=generalAreas().reduce((sum,area)=>sum+archivedCatalogCount(area),0);return n||showArchivedCatalog?`<div class="catalog-actions"><button class="ghost" id="toggleArchivedCatalog" type="button" aria-pressed="${showArchivedCatalog}">${menuIcon('archive')}${showArchivedCatalog?'Ocultar archivadas':`Ver archivadas (${n})`}</button></div>`:''}
 const mainBeforeScope=main;
 main=function(){if(generalMode()&&state.view==='projects')return generalProjectsView();if(generalMode()&&state.view==='labels')return generalLabelsView();return mainBeforeScope()};
 function enterGeneral(){state.taskScope='all';if(state.view==='project')state.view='projects';state.currentProject=null;state.search='';state.filters={};closeSheet();persistUI();render()}

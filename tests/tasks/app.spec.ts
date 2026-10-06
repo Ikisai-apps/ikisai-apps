@@ -432,7 +432,7 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
 
   await test.step('[14] enviar a la papelera un padre con su hija y restaurarlo desde la papelera', async () => {
     await a.locator(`[data-task-menu="${G.parent}"]`).click();
-    await a.locator('#menuDelete').click();
+    await a.locator('#deleteTaskBtn').click();
     await settled(a);
     let rows = (await server.rows('tasks.tasks')).filter((r) => [G.parent, G.child].includes(r.id));
     expect(rows.every((r) => r.deleted_at) && rows[0].deleted_at === rows[1].deleted_at).toBeTruthy();
@@ -458,10 +458,15 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
     let label = (await server.rows('tasks.labels')).find((r) => r.id === G.label);
     expect([label.archived, label.archived_before_family]).toEqual([true, false]);
     expect((await server.rows('tasks.families')).find((r) => r.id === families.phase).archived).toBe(true);
+    // Archivada, deja de verse entre las vivas; se restaura desde «Ver archivadas» (aceptación V1, 8).
+    await expect(a.locator(`[data-toggle-family="${families.phase}"]`)).toHaveCount(0);
+    await a.locator('#toggleArchivedCatalog').click();
     await a.locator(`[data-toggle-family="${families.phase}"]`).click();
     await settled(a);
     label = (await server.rows('tasks.labels')).find((r) => r.id === G.label);
     expect([label.archived, label.archived_before_family]).toEqual([false, null]);
+    await expect(a.locator('#toggleArchivedCatalog')).toHaveText(/Ocultar archivadas/);
+    await a.locator('#toggleArchivedCatalog').click();
   });
 
   await test.step('[26] sin errores de JavaScript y sin desbordes horizontales en móvil', async () => {
