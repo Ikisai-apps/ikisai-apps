@@ -15,7 +15,7 @@ Peticiones del equipo Booking sobre lo compartido (`core`, `_kit`, `sync-client`
 | P9 | 2026-10-06 | `trash/purge`: orden por dependencias FK | Pendiente | Booking envía siempre la lista ordenada. |
 | P10 | 2026-10-06 | `event_revision` como contador propio y columnas extra de la proyección | Hecho | Aceptado; contrato §8 ampliado. |
 | P11 | 2026-10-06 | Carga inicial desde C03/C04 | Retirada | Se empieza de cero. |
-| P12 | 2026-10-06 | Tablas cerradas (`readable_roles '{}'`) | Pendiente | Sin objeción de Core en la ronda G2. |
+| P12 | 2026-10-06 | Tablas cerradas (`readable_roles '{}'`) | Hecho | Core confirma en la ronda 3 que es el mecanismo previsto. |
 | P13 | 2026-10-06 | `sync-client`: adjunto en cola → `file_id` | Hecho | Marcador `{"$blob": "<sha256>"}` en el campo; `sync-client` 0.2 lo sustituye al reconectar. |
 | P14 | 2026-10-06 | Que la CI ejecute las pruebas de cada app | Hecho | `npm run test` recorre `tests/<carpeta>/*.test.ts` (PR #34). |
 | P15 | 2026-10-06 | Ejecutar funciones internas que escriben fuera de `core.commit` | Hecho | Acciones `core.allow_read(…, 'action', roles)` con `POST invoke/:name` y `POST worker/:name`. Usadas por la cola de Calendar. |
