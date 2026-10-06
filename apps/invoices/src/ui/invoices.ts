@@ -3,7 +3,7 @@
  * alta con documento, importación del JSON `ikisai.invoice.v1`, validar, anular, archivar.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
   DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
@@ -313,17 +313,30 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 
   // --- Artículos -----------------------------------------------------------
   const lineForm = (line: LocalInvoiceLine | null) => renderLineForm(client, invoice, line, lines.length);
+  // Orden manual (decisión del usuario, TABLÓN): con dos o más artículos y permiso de edición, lista reordenable del kit.
+  // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
+  const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', dataset: { id: l.id } },
+    el('div', { class: 'line-main' }, el('span', { class: 'line-desc' }, l.description), l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
+    el('div', { class: 'line-nums' },
+      el('span', null, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
+      el('strong', null, eur(l.net_amount)),
+      el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`),
+      editable ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
+    ),
+  );
+  const linesView = !lines.length
+    ? el('p', { class: 'hint' }, 'Sin artículos. Importa el JSON o añádelos a mano.')
+    : editable && lines.length > 1
+      ? createSortableList<LocalInvoiceLine>({
+        items: lines, key: (l) => l.id, name: (l) => l.description, label: 'Artículos de la factura', id: 'invoiceLines', render: lineRow,
+        onReorder: async (ordered) => {
+          const ops: RowOperation[] = ordered.flatMap((l, index): RowOperation[] => l.position === index ? [] : [{ op: 'update', table: INVOICE_LINES, id: l.id, expectedRevision: l.revision, fields: { position: index } }]);
+          if (ops.length) await commitSafely(client, ops, 'Orden de los artículos guardado.');
+        },
+      }).element
+      : el('div', { class: 'list plain-lines', id: 'invoiceLines' }, ...lines.map(lineRow));
   const linesBlock = block('Artículos', String(lines.length), true,
-    lines.length ? el('table', { class: 'inv-table' },
-      el('thead', null, el('tr', null, el('th', null, 'Descripción'), el('th', { class: 'num' }, 'Cant.'), el('th', { class: 'num' }, 'Base'), el('th', { class: 'num' }, 'IVA'), editable ? el('th') : null)),
-      el('tbody', null, ...lines.map((l) => el('tr', { dataset: { id: l.id } },
-        el('td', null, l.description, l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
-        el('td', { class: 'num' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
-        el('td', { class: 'num' }, eur(l.net_amount)),
-        el('td', { class: 'num' }, l.vat_rate === null ? '—' : `${Number(l.vat_rate)} %`),
-        editable ? el('td', null, el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar')) : null,
-      ))),
-    ) : el('p', { class: 'hint' }, 'Sin artículos. Importa el JSON o añádelos a mano.'),
+    linesView,
     editable ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', id: 'addLine', onclick: () => replace(lineEditor, lineForm(null)) }, icon('plus', 18), 'Añadir artículo')) : null,
   );
   const lineEditor = el('div', { class: 'inv-editor' });

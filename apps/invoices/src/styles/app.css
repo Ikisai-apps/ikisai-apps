@@ -51,3 +51,12 @@ code{font-size:12.5px;word-break:break-all}
 /* Sitio para el botón flotante: que no tape la última tarjeta ni los totales. */
 .main{padding-bottom:calc(var(--tap,44px) + 72px)}
 @media (min-width:1024px){.main{padding-bottom:calc(var(--tap,44px) + 40px)}}
+
+/* Artículos de la ficha: fila compacta, también dentro de la lista reordenable del kit (#invoiceLines). */
+.line-row{display:flex;flex-direction:column;gap:2px;padding:6px 0;min-width:0;flex:1}
+.line-main{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:14px}
+.line-desc{font-weight:600}
+.line-nums{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.line-nums strong{color:inherit}
+.plain-lines .line-row{border-bottom:1px solid var(--line)}
+.plain-lines .line-row:last-child{border-bottom:0}

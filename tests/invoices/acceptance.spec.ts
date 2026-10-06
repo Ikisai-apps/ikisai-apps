@@ -152,7 +152,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(sheet.locator('#importObject')).toHaveValue('alimentos retiro ejemplo');
     await sheet.locator('#confirmImport').click();
     await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
-    await expect(ficha(page).locator('.inv-table').first()).toContainText('Tomate');
+    await expect(ficha(page).locator('#invoiceLines')).toContainText('Tomate');
     await expect(ficha(page).locator('.inv-totals')).toContainText('44,00 €');
     await expect(ficha(page)).toContainText('✓ Importes comprobados');
     await synced(page);
@@ -172,6 +172,29 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await f.getByLabel('Descripción').fill('Tomate pera');
     await f.locator('#saveLine').click();
     await expect(f).toContainText('Editada tras validar', { timeout: 20_000 });
+    await f.locator('#validateInvoice').click();
+    await expect(f).toContainText('Validada', { timeout: 20_000 });
+    await synced(page);
+  });
+
+  await test.step('orden manual de los artículos (decisión del usuario): segundo artículo, bajar el primero, position guardada; quitarlo y revalidar', async () => {
+    const f = ficha(page);
+    await f.locator('#addLine').click();
+    await f.getByLabel('Descripción').fill('Arroz');
+    await f.getByLabel('Base (sin IVA)').fill('10');
+    await f.locator('#lineVat').selectOption('21');
+    await f.locator('#saveLine').click();
+    await expect(f.locator('#invoiceLines .line-desc')).toHaveText(['Tomate pera', 'Arroz'], { timeout: 20_000 });
+    await f.getByRole('button', { name: 'Bajar Tomate pera' }).click();
+    await expect(f.locator('#invoiceLines .line-desc')).toHaveText(['Arroz', 'Tomate pera'], { timeout: 20_000 });
+    await synced(page);
+    const invoiceId = api.rows('invoices.invoices').find((i) => i.supplier_id)!.id;
+    const positions = api.rows('invoices.invoice_lines').filter((l) => l.invoice_id === invoiceId && !l.deleted_at).sort((a, b) => Number(a.position) - Number(b.position)).map((l) => `${l.position}:${l.description}`);
+    expect(positions).toEqual(['0:Arroz', '1:Tomate pera']);
+    // Quitamos el artículo añadido para que el resto del recorrido (asignaciones, cuadre) siga igual, y revalidamos.
+    await f.getByRole('button', { name: 'Editar Arroz' }).click();
+    await f.getByRole('button', { name: 'Quitar' }).click();
+    await expect(f.locator('#invoiceLines .line-desc')).toHaveText(['Tomate pera'], { timeout: 20_000 });
     await f.locator('#validateInvoice').click();
     await expect(f).toContainText('Validada', { timeout: 20_000 });
     await synced(page);
