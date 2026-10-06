@@ -130,11 +130,19 @@ const norm = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-
 // ---------------------------------------------------------------------------
 export interface PdfExtractOptions {
   /** Proveedores conocidos (por NIF): si uno aparece en el documento, se usa su nombre. */
-  suppliers?: Array<{ name: string; tax_id: string | null }>;
+  suppliers?: Array<{ id?: string; name: string; tax_id: string | null }>;
   /** NIF propios (del negocio) que no pueden ser el proveedor. */
   ownTaxIds?: string[];
   /** Datos de la factura pendiente, si se lee sobre ella: nombre de proveedor y objeto de partida. */
   fallback?: { supplier_name?: string | null; supplier_tax_id?: string | null; object?: string | null };
+  /**
+   * Lo que propone la plantilla del proveedor (fase 3, `applyTemplate`): sustituye a la regla genérica en esos campos y
+   * conserva su procedencia (`supplier_template`). El resto sigue con las reglas genéricas.
+   */
+  templateValues?: {
+    values: { invoice_number?: string | null; invoice_date?: string | null; base?: number | null; total?: number | null; withholding?: number | null; vat?: Record<string, number> };
+    provenance: Record<string, FieldProvenance>;
+  };
 }
 
 export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOptions = {}): PdfExtraction {
@@ -186,6 +194,10 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     const any = lines.find((l) => datesIn(l.text).length);
     if (any) { invoiceDate = datesIn(any.text)[0]!; provenance['invoice.invoice_date'] = from(any, 0.5); warnings.push('La fecha es la primera del documento: compruébala.'); }
   }
+  const tv = options.templateValues;
+  const tp = (key: string) => tv?.provenance[key];
+  const tline = (key: string): PdfLine => { const p = tp(key)!; return { text: p.text ?? '', page: p.page ?? 1, x: p.x ?? 0, y: p.y ?? 0 }; };
+  if (tv?.values.invoice_date && tp('invoice.invoice_date')) { invoiceDate = tv.values.invoice_date; provenance['invoice.invoice_date'] = tp('invoice.invoice_date')!; }
   if (!invoiceDate) missing.push('fecha');
 
   // Número de factura por etiqueta
@@ -194,6 +206,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     const m = line.text.match(/(?:n[º°o]\.?\s*(?:de\s+)?factura|n[úu]mero\s+(?:de\s+)?factura|factura\s*(?:n[º°o]\.?|n[úu]m\.?|n[úu]mero|#)|fra\.?\s*n[º°o]\.?|invoice\s*(?:no\.?|number|#))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-/.]{0,30})/i);
     if (m && /\d/.test(m[1]!)) { invoiceNumber = m[1]!.replace(/[.]+$/, ''); provenance['invoice.invoice_number'] = from(line, 0.85); break; }
   }
+  if (tv?.values.invoice_number && tp('invoice.invoice_number')) { invoiceNumber = tv.values.invoice_number; provenance['invoice.invoice_number'] = tp('invoice.invoice_number')!; }
 
   // Importes por etiqueta
   const vatByRate = new Map<number, { base: number | null; quota: number; line: PdfLine }>();
@@ -218,6 +231,14 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
       if (!total || v >= total.v) total = { v, line };
     }
   }
+  // Plantilla del proveedor: sustituye a lo genérico en los importes que haya leído.
+  if (tv?.values.base !== undefined && tv.values.base !== null && tp('document_totals.base')) base = { v: tv.values.base, line: tline('document_totals.base') };
+  if (tv?.values.total !== undefined && tv.values.total !== null && tp('document_totals.total')) total = { v: tv.values.total, line: tline('document_totals.total') };
+  if (tv?.values.withholding && tp('document_totals.withholding')) withholding = { v: tv.values.withholding, rate: withholding?.rate ?? null, line: tline('document_totals.withholding') };
+  for (const [rate, quota] of Object.entries(tv?.values.vat ?? {})) {
+    if (!tp(`document_totals.vat:${rate}`)) continue;
+    vatByRate.set(Number(rate), { base: vatByRate.get(Number(rate))?.base ?? null, quota, line: tline(`document_totals.vat:${rate}`) });
+  }
   const vatTotal = [...vatByRate.values()].reduce((a, v) => a + toCents(v.quota), 0);
   const w = withholding ? toCents(withholding.v) : 0;
   let baseCents = base ? toCents(base.v) : null;
@@ -231,6 +252,10 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   if (total) provenance['document_totals.total'] = from(total.line, 0.85);
   else if (totalCents !== null) { provenance['document_totals.total'] = { method: 'pdf_text', text: 'Calculado: base + IVA − retención', page: null, x: null, y: null, confidence: 0.4 }; warnings.push('No aparece el total: se ha calculado.'); }
   if (baseCents === null || totalCents === null) missing.push('importes');
+  // La procedencia de lo leído por la plantilla manda sobre la genérica (mismo valor, otra fuente y otra confianza).
+  for (const key of ['document_totals.base', 'document_totals.total', 'document_totals.withholding']) if (tp(key) && provenance[key]?.method === 'pdf_text') provenance[key] = tp(key)!;
+  const tplVat = Object.keys(tv?.values.vat ?? {}).map((r) => tp(`document_totals.vat:${r}`)).filter(Boolean) as FieldProvenance[];
+  if (tplVat.length) provenance['document_totals.vat'] = tplVat.reduce((a, b) => (a.confidence <= b.confidence ? a : b));
 
   let iban: string | null = null;
   for (const line of lines) { const m = line.text.match(/\bES\d{2}(?:\s?\d{4}){5}\b/i); if (m && validIban(m[0])) { iban = validIban(m[0]); break; } }
