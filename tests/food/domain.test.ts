@@ -80,7 +80,8 @@ test('coste · precio medio por familia de unidad y coste de plato con huecos se
   const p = (id: string, quantity: number, unit: string, amount: number, date = '2026-10-01') =>
     ({ allocation_id: crypto.randomUUID(), target_kind: 'ingredient', target_id: id, invoice_date: date, supplier_name: null, line_description: null, allocated_quantity: quantity, unit, allocated_amount: amount });
   // Tomate: 10 kg por 20 € y 5000 g por 12,50 € → 32,50 € / 15 000 g. Arroz: en «cajas», no se reconoce.
-  const prices = ingredientPrices([p('tomate', 10, 'kg', 20), p('tomate', 5000, 'g', 12.5, '2026-10-05'), p('arroz', 3, 'caja', 9)]);
+  const TODAY = new Date('2026-10-06T12:00:00Z');
+  const prices = ingredientPrices([p('tomate', 10, 'kg', 20), p('tomate', 5000, 'g', 12.5, '2026-10-05'), p('arroz', 3, 'caja', 9)], TODAY);
   const tomato = prices.get('tomate')![0]!;
   assert.equal(tomato.purchases, 2);
   assert.equal(tomato.lastDate, '2026-10-05');
@@ -95,10 +96,10 @@ test('coste · precio medio por familia de unidad y coste de plato con huecos se
     ingredients: [],
   };
   // 2 kg × 30 ÷ 20 = 3 kg = 3000 g × 32,50/15 000 = 6,50 €; el arroz no tiene precio.
-  assert.deepEqual(dishCost(graph, 'i1', prices), { amount: 6.5, missing: ['arroz'] });
-  assert.deepEqual(serviceCosts(graph, prices), [{ service_id: 's1', amount: 6.5, servings: 30, missing: ['arroz'] }]);
+  assert.deepEqual(dishCost(graph, 'i1', prices), { amount: 6.5, missing: ['arroz'], stale: [] });
+  assert.deepEqual(serviceCosts(graph, prices), [{ service_id: 's1', amount: 6.5, servings: 30, missing: ['arroz'], stale: [] }]);
   // Una compra por unidades no sirve para una receta en gramos.
-  assert.deepEqual(dishCost(graph, 'i1', ingredientPrices([p('tomate', 12, 'ud', 6)])).missing.sort(), ['arroz', 'tomate']);
+  assert.deepEqual(dishCost(graph, 'i1', ingredientPrices([p('tomate', 12, 'ud', 6)], TODAY)).missing.sort(), ['arroz', 'tomate']);
 });
 
 test('coste · manda la unidad normalizada de Invoices; el texto queda de respaldo', async () => {
@@ -109,8 +110,44 @@ test('coste · manda la unidad normalizada de Invoices; el texto queda de respal
   assert.deepEqual(purchaseQuantity({ ...base, allocated_quantity: 500, unit: 'gr', unit_normalized: null, quantity_normalized: null }), { unit: 'g', quantity: 500 });
   assert.deepEqual(purchaseQuantity({ ...base, allocated_quantity: 6, unit: 'pzas', unit_normalized: 'ud', quantity_normalized: '6' }), { unit: 'unidad', quantity: 6 });
   assert.equal(purchaseQuantity({ ...base, allocated_quantity: 2, unit: 'caja', unit_normalized: null }), null);
-  const price = ingredientPrices([{ ...base, allocated_quantity: 1, unit: 'botella 75cl', unit_normalized: 'l', quantity_normalized: 0.75 }]).get('aceite')![0]!;
+  const price = ingredientPrices([{ ...base, invoice_date: '2026-10-01', allocated_quantity: 1, unit: 'botella 75cl', unit_normalized: 'l', quantity_normalized: 0.75 }], new Date('2026-10-06T12:00:00Z')).get('aceite')![0]!;
   assert.equal(price.family, 'volumen');
   assert.ok(Math.abs(price.perBase - 12 / 750) < 1e-12); // 16 €/l
+});
+
+test('coste · media de los últimos 3 meses; si no hay, la última compra con aviso', async () => {
+  const { ingredientPrices, priceWindowStart, dishCost, menuTotals } = await import('../../supabase/functions/_domain/food/mod.ts');
+  const TODAY = new Date('2026-10-06T12:00:00Z');
+  assert.equal(priceWindowStart(TODAY), '2026-07-06');
+  const p = (id: string, quantity: number, amount: number, date: string | null) =>
+    ({ allocation_id: crypto.randomUUID(), target_kind: 'ingredient', target_id: id, invoice_date: date, supplier_name: null, line_description: null, allocated_quantity: quantity, unit: 'kg', allocated_amount: amount });
+  const prices = ingredientPrices([
+    // Tomate: una compra vieja (3 €/kg) y dos dentro de la ventana (2 €/kg y 2,50 €/kg) → solo cuentan las recientes: 9 € / 4 kg.
+    p('tomate', 10, 30, '2026-05-01'), p('tomate', 2, 4, '2026-07-06'), p('tomate', 2, 5, '2026-09-30'),
+    // Arroz: nada en la ventana → la última compra (1,80 €/kg en junio), no la media con la de enero.
+    p('arroz', 5, 5, '2026-01-10'), p('arroz', 10, 18, '2026-06-20'),
+    // Sal: sin fecha → antigua.
+    p('sal', 1, 0.5, null),
+  ], TODAY);
+  const tomato = prices.get('tomate')![0]!;
+  assert.equal(tomato.stale, false);
+  assert.equal(tomato.purchases, 2);
+  assert.ok(Math.abs(tomato.perBase - 9 / 4000) < 1e-12);
+  const rice = prices.get('arroz')![0]!;
+  assert.deepEqual([rice.stale, rice.lastDate, rice.purchases], [true, '2026-06-20', 1]);
+  assert.ok(Math.abs(rice.perBase - 18 / 10000) < 1e-12);
+  assert.equal(prices.get('sal')![0]!.stale, true);
+
+  const row = (id: string, extra: Record<string, unknown>) => ({ id, revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, ...extra }) as any;
+  const graph = {
+    services: [row('s1', { menu_id: 'm', service_date: '2026-10-16', service_type: 'cena', service_time: null, position: 1 })],
+    items: [row('i1', { service_id: 's1', recipe_id: 'r1', servings: 10, position: 1 })],
+    recipes: [row('r1', { name: 'Arroz con tomate', base_servings: 10 })],
+    recipe_ingredients: [row('l1', { recipe_id: 'r1', ingredient_id: 'tomate', quantity: 1, unit: 'kg' }), row('l2', { recipe_id: 'r1', ingredient_id: 'arroz', quantity: 1, unit: 'kg' })],
+    ingredients: [],
+  };
+  // 1 kg de tomate a 2,25 € + 1 kg de arroz a 1,80 € (precio antiguo) = 4,05 €.
+  assert.deepEqual(dishCost(graph, 'i1', prices), { amount: 4.05, missing: [], stale: ['arroz'] });
+  assert.deepEqual(menuTotals(new Map([['m', graph]]), prices).get('m'), { total: 4.05, missing: 0, stale: 1 });
 });
 

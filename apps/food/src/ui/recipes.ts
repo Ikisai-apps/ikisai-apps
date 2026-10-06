@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  ingredientKey, lineCost, validateOperations,
+  ingredientKey, lineCost, priceFor, validateOperations,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -174,9 +174,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const costs = lines.map((l) => lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices));
     const total = costs.reduce<number>((sum, c) => sum + (c ?? 0), 0);
     const missing = costs.filter((c) => c === null).length;
+    const stale = lines.filter((l) => priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale).length;
     return el('p', { class: 'recipecost' }, el('strong', null, 'Coste estimado: '),
       `${euros(total)} para ${formatQuantity(recipe.base_servings)} raciones (${euros(total / Number(recipe.base_servings))} por ración)`,
-      missing ? el('span', { class: 'muted' }, ` · ${missing === 1 ? '1 ingrediente' : `${missing} ingredientes`} sin precio`) : null);
+      missing ? el('span', { class: 'muted' }, ` · ${missing === 1 ? '1 ingrediente' : `${missing} ingredientes`} sin precio`) : null,
+      stale ? el('span', { class: 'warnline' }, ` · * precio de la última compra, de hace más de 3 meses (${stale === 1 ? '1 ingrediente' : `${stale} ingredientes`})`) : null);
   }
 
   // --- Ficha en lectura -----------------------------------------------------------------
@@ -205,7 +207,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
             const cost = purchases.fetchedAt ? lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices) : null;
             return el('tr', null,
               el('td', null, names.get(l.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]),
-              purchases.fetchedAt ? el('td', { class: cost === null ? 'num muted' : 'num' }, cost === null ? 'sin precio' : euros(cost)) : null);
+              purchases.fetchedAt ? el('td', { class: cost === null ? 'num muted' : priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? 'num warnline' : 'num', title: priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? `Precio de la última compra (${priceFor(l.ingredient_id, l.unit, purchases.prices)?.lastDate ?? 'sin fecha'}), de hace más de 3 meses` : null }, cost === null ? 'sin precio' : `${euros(cost)}${priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? ' *' : ''}`) : null);
           })))
         : el('p', { class: 'muted' }, 'Sin ingredientes todavía.'),
         recipeCostLine(recipe, recipeLines)),

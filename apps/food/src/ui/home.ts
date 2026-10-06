@@ -32,7 +32,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const upcoming = el('section', { id: 'upcoming' });
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
-  let totals = new Map<string, { total: number; missing: number }>();
+  let totals = new Map<string, { total: number; missing: number; stale: number }>();
   const euros = (n: number) => n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
   let lists: Mirror<ShoppingList>[] = [];
   let buyItems: Mirror<ShoppingListItem>[] = [];
@@ -86,7 +86,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
                 ...line('Restricciones', allergies ? `${restrictions} · ${allergies} con alergia o intolerancia` : String(restrictions), allergies ? 'warn' : 'todo'),
                 ...line('Compra', !list ? 'pendiente' : list.status === 'cerrada' ? 'cerrada' : toBuy === 0 ? 'todo comprado' : `${toBuy} por comprar`, buyReady ? 'ok' : 'todo'),
                 ...(menu && totals.get(menu.id) && totals.get(menu.id)!.total > 0
-                  ? line('Coste estimado', `${euros(totals.get(menu.id)!.total)}${event.guest_count ? ` · ${euros(totals.get(menu.id)!.total / event.guest_count)} por persona` : ''}${totals.get(menu.id)!.missing ? ' · faltan precios' : ''}`, 'todo')
+                  ? line('Coste estimado', `${euros(totals.get(menu.id)!.total)}${event.guest_count ? ` · ${euros(totals.get(menu.id)!.total / event.guest_count)} por persona` : ''}${totals.get(menu.id)!.missing ? ' · faltan precios' : ''}${totals.get(menu.id)!.stale ? ' · precios de más de 3 meses' : ''}`, totals.get(menu.id)!.missing || totals.get(menu.id)!.stale ? 'warn' : 'todo')
                   : []),
                 ...line('Preparación', ofMenu.length === 0 ? 'pendiente' : `${prepDone} de ${ofMenu.length}`, ofMenu.length > 0 && prepDone === ofMenu.length ? 'ok' : 'todo')));
           })));
