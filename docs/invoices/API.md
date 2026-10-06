@@ -343,6 +343,17 @@ Errores con `core.fail(code, 422, details)`; la Edge los devuelve como `{error:{
 
 ---
 
+### 4.4 Agentes de IA (contrato §3.1, migración 0202)
+
+Un agente (clave `ika_`, rol `editor`) trabaja con las mismas rutas y reglas que una persona; lo que cambia es cuándo su lote necesita la aprobación de un owner humano (propuesta de 24 h).
+
+- **Seguro sin aprobación:** solo `invoices.import_v1`. Crea o completa una factura en `pendiente_revision` y nunca la valida, así que una persona siempre revisa lo importado.
+- **Con aprobación (por defecto):** `invoices.validate`, `invoices.annul`, `invoices.create_export`, `invoices.mark_delivered`, `invoices.archive_period`, cualquier borrado y cualquier lote de **10 o más elementos** (filas distintas más importaciones; decisión del usuario).
+- **Hook `agentRisk`** (`createAgentRisk` en `invoices-api/app.ts`, lectura `invoices.agent_risk` para editor y owner):
+  - tocar una factura que ya está en una entrega a la gestoría, o sus artículos, impuestos, documentos o asignaciones → motivo `invoice:exported:<código>` (`invoice:delivered:<código>` si la entrega está marcada entregada);
+  - cambiar una factura validada o archivada, o sus artículos, impuestos o documentos → `invoice:validada:<código>` / `invoice:archivada:<código>`. Asignar destinos a una factura validada no cambia sus datos fiscales y no pide aprobación.
+- `imports/extract` no pasa por el riesgo (no escribe): un agente puede pedir extracciones y cada una cuesta tokens.
+
 ## 5. Visibilidad
 
 Sin ámbitos: `memberships.scopes = null`, sin hook `visible`. La visibilidad es la membresía.
