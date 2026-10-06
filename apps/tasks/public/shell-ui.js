@@ -54,12 +54,16 @@ function shellHint(){const K=IkisaiKit;return state.taskScope==='all'?K.el('span
 function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name,g.items.map(i=>[i[0],i[1],i[3]])]),Sync.actor?.id,Sync.actor?.role,Sync.actor?.scopes,typeof isAdministrator==='function'&&isAdministrator(),tab()?.restricted,myAlias(),isDarkTheme()])}
 
 let shellMenuStamp='';
+let tasksLauncher=null;
+function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:()=>Sync.core.api('/apps')})}
 function shellMount(){
   const K=IkisaiKit,app=document.getElementById('app');
   const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
-  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',tools:[more],rows:[shellTabs(),shellViews()]});
+  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',markButton:true,tools:[more],rows:[shellTabs(),shellViews()]});
   // La marca de Tasks es su glifo de siempre, no el icono genérico del kit.
   const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font:800 17px/1 var(--sans);letter-spacing:-2px';
+  // La marca abre el lanzador común: las apps de Ikisai a las que tiene acceso esta cuenta.
+  shellLauncher().attach(bar.querySelector('#appLauncher'));
   const menu=shellMenuParts();menu.id='kebab';shellMenuStamp=shellMenuKey();
   const v=state.view,item=(id,label,icon)=>({label,icon,active:v===id||id==='projects'&&v==='project',attrs:{'data-nav':id}});
   const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),item('labels','Etiquetas','tag'),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
