@@ -43,6 +43,8 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 
 - **Tanda 11** (rama `booking/tanda-11`): prueba de agentes de extremo a extremo (`tests/booking/agents.test.ts`): alta del agente por el owner, política con `booking.calendar_retry` segura, lo cotidiano sin aprobación, 428 con el motivo al confirmar, cancelar o tocar importes, y confirmación aplicada con propuesta aprobada.
 
+- **Ampliación V2 · bloque 1: espacios y alojamiento** (rama `booking/espacios`; diseño en `API.md` §15, que vive en la PR 142): migración `20261006_0410_booking_spaces.sql` con `booking.spaces` (código `ESP_…`), `booking.beds` y `booking.room_assignments`; hook SQL `booking.check_space_invariants` (huérfanos, cama de otro espacio, huésped de otro evento y la regla dura `BED_OVERBOOKED`: una cama, una ocupación por noche entre reservas vivas; la salida de uno puede ser la entrada del siguiente); vista `booking.tasks_space_projection` para Tasks (sin ocupación ni huéspedes). Interfaz: pantalla «Espacios y camas» (inventario por zonas, reordenable, camas por habitación) y bloque «Alojamiento» en la ficha (asignar huésped o grupo, aviso de sobreocupación que no bloquea, aviso previo de cama ocupada también sin red). Pruebas: `tests/booking/spaces.test.ts` y pasos nuevos en smoke y offline.
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
