@@ -43,11 +43,11 @@ jobs:
           BEFORE: ${{ github.event.before }}
           RUN_NUMBER: ${{ github.run_number }}
         run: python scripts/release_matrix.py | tee -a "$GITHUB_OUTPUT"
-  checks:
-    uses: ./.github/workflows/checks.yml
+  # Sin repetir las comprobaciones: cada PR ya pasó `checks.yml` antes de fusionarse (ahorro de minutos de Actions,
+  # 6 oct 2026). Lo que publica cada app lo decide release_matrix comparando con el commit que tiene publicado.
   release:
     name: Publicar ${{ matrix.app }}
-    needs: [plan, checks]
+    needs: [plan]
     if: needs.plan.outputs.apps != '[]'
     strategy:
       fail-fast: false
