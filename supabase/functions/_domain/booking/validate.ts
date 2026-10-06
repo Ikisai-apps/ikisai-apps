@@ -171,6 +171,7 @@ FIELDS[TABLES.spaces] = {
   capacity: { kind: 'int', nullable: true },
   accessible: { kind: 'bool' },
   active: { kind: 'bool' },
+  bookable: { kind: 'bool' },
   position: { kind: 'number' },
   notes: text(LONG),
 };

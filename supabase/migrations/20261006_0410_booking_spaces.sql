@@ -18,6 +18,8 @@ create table booking.spaces (
   capacity integer check (capacity is null or capacity >= 0),
   accessible boolean not null default false,
   active boolean not null default true,
+  -- existe y está activo, pero no se ofrece para asignar ni cuenta en la disponibilidad (habitación reservada de antemano)
+  bookable boolean not null default true,
   position numeric not null default 0,
   notes text
 );
@@ -25,10 +27,11 @@ create index spaces_position_idx on booking.spaces (zone, position) where delete
 create trigger spaces_assign_code before insert on booking.spaces
   for each row execute function booking.assign_code('ESP');
 
-select core.register_table('booking', 'booking', 'spaces', array['name','kind','zone','capacity','accessible','active','position','notes']);
+select core.register_table('booking', 'booking', 'spaces', array['name','kind','zone','capacity','accessible','active','bookable','position','notes']);
 
 -- ---------------------------------------------------------------------------
--- Camas de cada habitación
+-- Camas de cada habitación. Las supletorias no cuentan en la capacidad base: se activan al asignarlas en una reserva
+-- y la propuesta las cobra como extra.
 -- ---------------------------------------------------------------------------
 create table booking.beds (
   id uuid primary key default gen_random_uuid(),
