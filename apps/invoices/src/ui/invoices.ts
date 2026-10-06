@@ -81,7 +81,8 @@ export const mountInvoices: ViewMount = (ctx) => {
   const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
     { 'aria-label': 'Filtrar por estado', onchange: () => { filter = statusSelect.value; paint(); } });
   const listHost = el('div', { id: 'invoiceList' });
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newInvoice', onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
+  const canEdit = client.bootstrap()?.membership.role !== 'reader';
+  const newButton = el('button', { class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Facturas'), el('p', null, 'Documento, datos importados, revisión y validación. Nada se valida en silencio.'))),

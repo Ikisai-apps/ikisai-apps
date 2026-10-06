@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 2). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026 (tanda 3). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
@@ -20,15 +20,17 @@ Actualizado: 6 de octubre de 2026 (tanda 2). Equipo Invoices (agente de backend)
 - La importación desde la app se envía como operaciones de fila (`importOperations` del dominio) para que funcione sin red con espejo optimista; `invoices.import_v1` queda para la API.
 - Proveedores: formulario con alias e «inversión por defecto». Compras y ficha: indicador de obsolescencia de destinos («destino cambiado / desaparecido») comparando revisiones con red.
 
+- PR #53 fusionada. Humo real de Core contra `invoices.ikisai.com` (importación del ejemplo y ZIP): 10 de 10.
+- Tanda 3 (`invoices/tanda3`): escenarios O7–O9 (Compras y resumen fiscal idénticos sin red tras recargar; `reader` solo lee, también sin red, sin botones de escritura; cerrar sesión vacía el espejo), filtros de Compras por destino (retiro, ingrediente, maquinaria, proyecto…), tipo de artículo y «solo sin asignar»; `[hidden]` fuerza `display:none` sobre las clases del kit.
+
 ## En curso
 
-- PR de la tanda 2 (`invoices/aceptacion`).
+- PR de la tanda 3 (`invoices/tanda3`).
 
 ## Pendiente
 
 - Aceptación manual sobre la app publicada en Android (instalación PWA, foto de ticket con la cámara, descarga del ZIP en el móvil). En PC los recorridos están automatizados; falta pasarlos sobre `invoices.ikisai.com` con una cuenta de prueba (ver pregunta en el buzón: las facturas no se purgan, así que los datos sintéticos de producción habría que anularlos o limpiarlos con `core.purge_row_history`).
-- Escenarios O7–O9 en Playwright (paridad Compras/resumen con el servidor, `reader` sin red, `clearOnLogout`).
-- Compras: filtros por retiro/ingrediente cuando lleguen esos destinos (Booking, fase 2).
+- Destinos de Reservas en cuanto Booking registre `booking.food_event_projection` para `invoices` (la Edge y el filtro «Retiro» de Compras ya están preparados).
 - Fase 2: destinos de Booking (`core.allow_read('invoices', 'booking.food_event_projection', 'view')`), `imports/extract`.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
 

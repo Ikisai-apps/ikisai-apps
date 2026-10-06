@@ -24,6 +24,15 @@ export const mountPurchases: ViewMount = (ctx) => {
   const part = el('select', { 'aria-label': 'Periodo', onchange: () => setRange() });
   const validatedToggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: true, id: 'onlyValidated', onchange: (e: Event) => { validatedOnly = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo validadas'));
   const search = el('input', { type: 'search', placeholder: 'Artículo, proveedor, código', 'aria-label': 'Buscar compras', oninput: () => { query = search.value; paint(); } });
+  // Filtros del handoff: destino (retiro = booking/event, ingrediente = food/ingredient, …), tipo de artículo y «sin asignar».
+  let targetFilter = '';
+  let itemTypeFilter = '';
+  let unassignedFilter = false;
+  const TARGET_OPTIONS: Array<[string, string]> = [['', 'Cualquier destino'], ['booking:event', 'Retiro (evento de Reservas)'], ['booking:reservation', 'Reserva'], ['food:ingredient', 'Ingrediente'], ['food:equipment', 'Maquinaria'], ['tasks:project', 'Proyecto de Tareas'], ['tasks:task', 'Tarea'], ['tasks:area', 'Área de Tareas'], ['general:investment', 'Inversión (general)'], ['general:operating_expense', 'Gasto de explotación (general)']];
+  const targetSelect = el('select', { id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
+  const itemTypeSelect = el('select', { id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
+    el('option', { value: '' }, 'Cualquier artículo'), ...Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => el('option', { value: v }, l)));
+  const unassignedToggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
   const tabs = el('div', { class: 'segmented', role: 'tablist' }, ...([['category', 'Por categoría'], ['target', 'Por destino'], ['supplier', 'Por proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
     el('button', { type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; paint(); } }, label)));
   const host = el('div', { id: 'purchases' });
@@ -49,6 +58,7 @@ export const mountPurchases: ViewMount = (ctx) => {
     el('div', { class: 'toolbar wrap' }, rangeKind, year, part, validatedToggle),
     tabs,
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    el('div', { class: 'toolbar wrap' }, targetSelect, itemTypeSelect, unassignedToggle),
     host,
     footer,
   );
@@ -56,7 +66,9 @@ export const mountPurchases: ViewMount = (ctx) => {
   function paint(): void {
     if (!mirror) return;
     for (const b of Array.from(tabs.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.tab === tab);
-    const result = purchaseItems({ invoices: mirror.invoices, lines: mirror.lines, suppliers: mirror.suppliers, allocations: mirror.allocations }, { range, validatedOnly, query, ...groupFilter });
+    const [targetApp, targetKind] = targetFilter ? targetFilter.split(':') : [undefined, undefined];
+    const result = purchaseItems({ invoices: mirror.invoices, lines: mirror.lines, suppliers: mirror.suppliers, allocations: mirror.allocations },
+      { range, validatedOnly, query, ...(targetApp ? { targetApp, targetKind } : {}), ...(itemTypeFilter ? { itemType: itemTypeFilter } : {}), ...(unassignedFilter ? { unassignedOnly: true } : {}), ...groupFilter });
     replace(footer, el('span', null, rangeLabel(range)), el('strong', null, `Base ${eur(result.total_base)}`), el('span', null, `asignado ${eur(result.total_allocated)}`), el('span', { class: result.total_unallocated > 0 ? 'alert' : '' }, `sin asignar ${eur(result.total_unallocated)}`));
     if (Object.keys(groupFilter).length) {
       replace(host, el('div', { class: 'banner info' }, el('span', null, 'Filtro aplicado desde la agrupación.'), el('button', { class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));

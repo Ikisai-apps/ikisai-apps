@@ -15,6 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/invoices/vite.config.ts');
 const EXAMPLE = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
 const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
+const READER = { email: 'gestoria@example.invalid', password: 'lectura-123', displayName: 'Gestoría', role: 'reader' as const };
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
 const PDF = Buffer.from('%PDF-1.4\n% factura sintética de prueba\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n');
@@ -25,7 +26,7 @@ let baseURL: string;
 
 test.beforeAll(async () => {
   api = await startFakeApi({
-    users: [USER],
+    users: [USER, READER],
     targets: [
       { app: 'tasks', kind: 'project', id: PROJECT, label: 'Huerto', path: ['Cocina'], revision: 5 },
       { app: 'food', kind: 'ingredient', id: INGREDIENT, label: 'Tomate pera', path: ['Ingredientes'], revision: 2 },
@@ -45,12 +46,12 @@ test.afterAll(async () => {
   await api?.close();
 });
 
-async function login(page: Page): Promise<void> {
+async function login(page: Page, user: { email: string; password: string; displayName: string } = USER): Promise<void> {
   await page.goto(`${baseURL}/`);
-  await page.getByLabel('Correo electrónico').fill(USER.email);
-  await page.getByLabel('Contraseña').fill(USER.password);
+  await page.getByLabel('Correo electrónico').fill(user.email);
+  await page.getByLabel('Contraseña').fill(user.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await expect(page.getByRole('heading', { name: `Hola, ${USER.displayName}` })).toBeVisible();
+  await expect(page.getByRole('heading', { name: `Hola, ${user.displayName}` })).toBeVisible();
 }
 
 async function synced(page: Page): Promise<void> {
@@ -385,6 +386,91 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await ficha(page).locator('#addFiles').setInputFiles({ name: 'pagina2.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([PDF, Buffer.from('2')]) });
     await expect(page.locator('#syncStatus')).toContainText(/rechazad|pendiente|error/i, { timeout: 20_000 });
     expect(api.rows('invoices.invoice_files').some((f) => f.original_filename === 'pagina2.pdf')).toBeFalsy();
+  });
+
+  await context.close();
+});
+
+test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesión borra el espejo', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+
+  await test.step('O7 · los totales de Compras y el resumen fiscal se calculan en local y no cambian al cortar la red', async () => {
+    await login(page);
+    await synced(page);
+    await nav(page, 'Compras').click();
+    await page.locator('#onlyValidated').uncheck();
+    const totalsOnline = await page.locator('#purchaseTotals').innerText();
+    expect(totalsOnline).toContain('Base');
+    await nav(page, 'Gestoría').click();
+    await expect(page.locator('#fiscalSummary')).toContainText('Facturas validadas');
+    const summaryOnline = await page.locator('#fiscalSummary').innerText();
+    await context.setOffline(true);
+    await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
+    await page.reload().catch(() => undefined);
+    await nav(page, 'Compras').click();
+    await page.locator('#onlyValidated').uncheck();
+    const norm = (text: string) => text.replace(/\s+/g, ' ').trim();
+    await expect.poll(async () => norm(await page.locator('#purchaseTotals').innerText())).toBe(norm(totalsOnline));
+    await nav(page, 'Gestoría').click();
+    await expect.poll(async () => norm(await page.locator('#fiscalSummary').innerText())).toBe(norm(summaryOnline));
+    // Filtros del handoff: por destino (ingrediente) y «solo sin asignar»
+    await nav(page, 'Compras').click();
+    await page.locator('#onlyValidated').uncheck();
+    await page.getByRole('tab', { name: 'Artículos' }).click();
+    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await expect(page.locator('#purchases .row')).toHaveCount(1);
+    await page.locator('#purchaseTarget').selectOption('booking:event');
+    await expect(page.locator('#purchases')).toContainText('Sin artículos');
+    await page.locator('#purchaseTarget').selectOption('');
+    await page.locator('#onlyUnassigned').check();
+    await expect(page.locator('#purchases .row').first()).toContainText('Sin asignar');
+    await context.setOffline(false);
+  });
+
+  await test.step('O9 · cerrar sesión borra el espejo local (clearOnLogout)', async () => {
+    await nav(page, 'Inicio').click();
+    await page.locator('#logoutHome').click();
+    await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
+    const counts = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('ikisai-invoices-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      const out: Record<string, number> = {};
+      for (const name of Array.from(db.objectStoreNames)) {
+        out[name] = await new Promise<number>((resolve) => { const req = db.transaction(name).objectStore(name).count(); req.onsuccess = () => resolve(req.result); });
+      }
+      db.close();
+      return out;
+    });
+    expect(counts['invoices.invoices'] ?? 0).toBe(0);
+    expect(counts['invoices.suppliers'] ?? 0).toBe(0);
+    expect(counts['outbox'] ?? 0).toBe(0);
+  });
+
+  await test.step('O8 · la gestoría (reader) ve Facturas, Compras y Gestoría sin botones de escritura, también sin red', async () => {
+    await login(page, READER);
+    await synced(page);
+    await expect(page.locator('#homeNewInvoice')).toBeHidden();
+    await nav(page, 'Facturas').click();
+    await expect(page.locator('#invoiceList .row').first()).toBeVisible();
+    await expect(page.locator('#newInvoice')).toBeHidden();
+    await page.locator('#invoiceList .row').first().click();
+    await expect(ficha(page)).toBeVisible();
+    for (const id of ['#validateInvoice', '#annulInvoice', '#togglePaid', '#addLine', '#importInto']) await expect(ficha(page).locator(id)).toHaveCount(0);
+    await expect(ficha(page).getByRole('button', { name: 'Asignar a…' })).toHaveCount(0);
+    await closeSheet(page);
+    await nav(page, 'Gestoría').click();
+    await expect(page.locator('#prepareExport')).toBeHidden();
+    await expect(page.locator('#fiscalSummary')).toContainText('Base');
+    await context.setOffline(true);
+    await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
+    await nav(page, 'Compras').click();
+    await page.locator('#onlyValidated').uncheck();
+    await expect(page.locator('#purchaseTotals')).toContainText('Base');
+    await nav(page, 'Inicio').click();
+    await page.getByRole('link', { name: /Proveedores/ }).click();
+    await expect(page.locator('#newSupplier')).toBeHidden();
+    await context.setOffline(false);
   });
 
   await context.close();

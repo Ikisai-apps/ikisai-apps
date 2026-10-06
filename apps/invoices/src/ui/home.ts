@@ -87,7 +87,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'logoutHome', onclick: () => void logout() }, 'Cerrar sesión')),
       ),
     ),
-    el('button', { class: 'fab', type: 'button', id: 'homeNewInvoice', onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
+    el('button', { class: 'fab', type: 'button', id: 'homeNewInvoice', hidden: client.bootstrap()?.membership.role === 'reader', onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
   );
 
   paintStatus(client.status());
