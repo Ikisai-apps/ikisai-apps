@@ -18,7 +18,7 @@ fs.mkdirSync(out, { recursive: true });
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const INGREDIENT = '22222222-2222-4222-8222-222222222222';
 const PDF = Buffer.from('%PDF-1.4\n% factura sintética\n%%EOF\n');
-const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Víctor' };
+const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
 
 function executable(): string | undefined {
   const base = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright', 'chromium-1217', 'chrome-win64', 'chrome.exe') : null;

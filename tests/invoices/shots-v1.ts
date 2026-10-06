@@ -17,7 +17,7 @@ const EXAMPLE = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/inv
 const out = path.resolve(process.argv[2] ?? path.join(here, '../../../capturas-invoices-v1'));
 fs.mkdirSync(out, { recursive: true });
 const PDF = Buffer.from('%PDF-1.4\n% factura sintética\n%%EOF\n');
-const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Víctor' };
+const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
 
 function executable(): string | undefined {
   const base = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright', 'chromium-1217', 'chrome-win64', 'chrome.exe') : null;
