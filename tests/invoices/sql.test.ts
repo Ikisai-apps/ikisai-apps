@@ -175,9 +175,9 @@ test('nombre canónico: páginas _pNN al añadir imágenes y colisión _NN entre
   const att = await uploadFile('%PDF albaran'); const fa = uuid();
   await ok([insert('invoices.invoice_files', fa, { invoice_id: b, original_filename: 'albaran.pdf', kind: 'attachment', ...att })]);
   assert.equal((await row('invoices.invoice_files', fa)).normalized_filename, '2026_10_07_(iberdrola)_luz_octubre_02_a01.pdf');
-  // normalized_filename no se escribe desde fuera
+  // normalized_filename no se escribe desde fuera (la Edge lo rechaza antes de llegar al trigger IMMUTABLE_FIELD)
   const fr = await row('invoices.invoice_files', fa);
-  await rejected([update('invoices.invoice_files', fa, fr.revision, { normalized_filename: 'otro.pdf' })], 'IMMUTABLE_FIELD');
+  await rejected([update('invoices.invoice_files', fa, fr.revision, { normalized_filename: 'otro.pdf' })], 'INVALID_FIELDS');
 });
 
 test('import_v1: el ejemplo del handoff crea proveedor, factura, líneas, impuestos y documento; duplicados; REVISAR IMPORTES', async () => {
@@ -300,7 +300,8 @@ test('asignaciones: por línea, invoice_id derivado, sin sobreasignar por import
   await ok([update('invoices.invoice_lines', inv.line, line.revision, { quantity: 20, unit: 'kg', unit_price: 2.5 })]);
   const a1 = uuid(); const a2 = uuid();
   await ok([
-    insert('invoices.allocations', a1, { invoice_line_id: inv.line, target_app: 'tasks', target_kind: 'project', target_id: 'p-1', target_label: 'Huerto', allocated_amount: 30, allocated_quantity: 12, target_revision: 3 }),
+    // Los destinos de Tareas se prueban en api.test.ts con una API de Tareas simulada; aquí destinos generales.
+    insert('invoices.allocations', a1, { invoice_line_id: inv.line, target_app: 'general', target_kind: 'investment', target_label: 'Inversión', allocated_amount: 30, allocated_quantity: 12 }),
     insert('invoices.allocations', a2, { invoice_line_id: inv.line, target_app: 'general', target_kind: 'operating_expense', target_label: 'Gasto de explotación', allocated_amount: 20, allocated_quantity: 8 }),
   ]);
   assert.equal((await row('invoices.allocations', a1)).invoice_id, inv.id);
@@ -309,11 +310,11 @@ test('asignaciones: por línea, invoice_id derivado, sin sobreasignar por import
   await rejected([update('invoices.allocations', a2, a2row.revision, { allocated_amount: 19, allocated_quantity: 9 })], 'ALLOCATIONS_EXCEED_QUANTITY');
   // pares inválidos y destino general con id → check de la tabla
   const bad = await commit([insert('invoices.allocations', uuid(), { invoice_line_id: inv.line, target_app: 'tasks', target_kind: 'event', target_id: 'x', target_label: 'x', allocated_amount: 1 })]);
-  assert.equal(bad.data.error.code, 'CONSTRAINT_VIOLATION');
+  assert.equal(bad.data.error.code, 'INVALID_FIELDS'); // la Edge lo para antes del check de la tabla
   // Compras ve la línea con asignado 50 y sin asignar 0 (solo validadas por defecto → vacío hasta validar)
   let items = await read('invoices.items', { year: 2026, quarter: 4 });
   assert.equal(items.status, 200); assert.ok(!items.data.rows.some((r: any) => r.id === inv.line));
-  items = await read('invoices.items', { year: 2026, quarter: 4, validated_only: false, target_app: 'tasks', target_id: 'p-1' });
+  items = await read('invoices.items', { year: 2026, quarter: 4, validated_only: false, target_app: 'general', target_kind: 'investment' });
   const item = items.data.rows.find((r: any) => r.id === inv.line);
   assert.ok(item); assert.equal(Number(item.allocated_amount), 50); assert.equal(Number(item.unallocated_amount), 0); assert.equal(item.allocations.length, 2);
   // Anular retira las asignaciones
@@ -363,7 +364,7 @@ test('resumen fiscal, entrega a gestoría (manifest, hash, items), entregada, ar
   // El estado de las facturas no cambia
   assert.equal((await row('invoices.invoices', a.id)).status, 'validada');
   // Inmutable; no se borra
-  await rejected([update('invoices.exports', exportId, exp.revision, { invoice_count: 5 })], 'EXPORT_IMMUTABLE', 409);
+  await rejected([update('invoices.exports', exportId, exp.revision, { invoice_count: 5 })], 'INVALID_FIELDS'); // la Edge solo deja status/delivered_*/notes
   await rejected([remove('invoices.exports', exportId, exp.revision)], 'EXPORT_NOT_DELETABLE');
   // El cliente no puede insertar entregas a mano (lo impone la Edge en la siguiente PR; en SQL falta el manifest)
   const direct = await commit([insert('invoices.exports', uuid(), { status: 'generada' })]);
@@ -392,8 +393,8 @@ test('resumen fiscal, entrega a gestoría (manifest, hash, items), entregada, ar
   ar = await row('invoices.invoices', a.id);
   const line = await row('invoices.invoice_lines', a.line);
   await rejected([update('invoices.invoice_lines', a.line, line.revision, { description: 'x' })], 'INVOICE_LOCKED', 409);
-  // desarchivar: solo owner
-  await rejected([update('invoices.invoices', a.id, ar.revision, { status: 'validada' })], 'FORBIDDEN', 403, app.tokens.editor);
+  // desarchivar: solo owner (la Edge no deja a un editor pedir «validada»; el trigger exige owner y archivada → validada)
+  await rejected([update('invoices.invoices', a.id, ar.revision, { status: 'validada' })], 'INVALID_TRANSITION', 422, app.tokens.editor);
   await ok([update('invoices.invoices', a.id, ar.revision, { status: 'validada' })]);
   // La entrega queda desfasada al cambiar una factura incluida
   const stale = await read('invoices.export_bundle', { export_id: exportId });
