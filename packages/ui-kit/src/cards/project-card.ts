@@ -66,7 +66,8 @@ export function renderProjectCard(spec: ProjectCardSpec): HTMLElement {
   if (spec.pinned) classes.push('pinned');
   const pct = spec.progress ?? null;
   const star = spec.urgency && spec.urgency !== 'normal'
-    ? el('span', { class: `star star-${spec.urgency}`, role: 'img', 'aria-label': spec.urgency === 'critical' ? 'Urgencia crítica' : 'Urgencia alta' }, icon('star', 16))
+    // Mismo ámbar para los dos niveles: el relleno dice cuál (media estrella = alta, entera = crítica).
+    ? el('span', { class: `star star-${spec.urgency}`, role: 'img', 'aria-label': spec.urgency === 'critical' ? 'Urgencia crítica' : 'Urgencia alta' }, icon('star', 16), el('span', { class: 'star-fill', 'aria-hidden': 'true' }, icon('star', 16)))
     : null;
   const open = el('button', { class: 'projectopen', type: 'button', dataset: { openProject: spec.id }, onclick: () => spec.onOpen?.() },
     el('div', { class: 'projecttitle' }, star, spec.title),
@@ -83,7 +84,7 @@ export function renderProjectCard(spec: ProjectCardSpec): HTMLElement {
       const ratio = total ? Math.min(1.2, spec.budget!.spent / total) : 0;
       const over = total > 0 && spec.budget!.spent > total;
       return el('div', { class: `money${over ? ' over' : ''}`, title: total ? 'Coste de las tareas frente al presupuesto' : 'Coste de las tareas' },
-        el('div', { class: 'moneytext' }, el('strong', null, fmt(spec.budget!.spent)), total ? ` de ${fmt(total)}${over ? ' · excedido' : ''}` : ''),
+        el('div', { class: 'moneytext' }, icon('euro', 14), el('strong', null, fmt(spec.budget!.spent)), total ? ` de ${fmt(total)}${over ? ' · excedido' : ''}` : ''),
         total ? el('div', { class: 'moneybar', role: 'progressbar', 'aria-valuenow': String(Math.round(ratio * 100)), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${Math.min(100, ratio * 100)}%` })) : null,
       );
     })()

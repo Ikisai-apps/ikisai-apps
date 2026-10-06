@@ -460,20 +460,24 @@
 .card.project{padding:14px 14px 12px;position:relative;transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
 .card.project .projecttop{position:relative;display:flex;align-items:flex-start;gap:8px;padding-right:50px;min-height:46px}
 .card.project .cardring{position:absolute;right:0;top:0;width:46px;height:46px;pointer-events:none}
-.card.project .ring .track{fill:none;stroke:rgba(31,42,34,.1);stroke-width:3.5}
+.card.project .ring .track{fill:none;stroke:color-mix(in srgb,var(--ink) 12%,transparent);stroke-width:3.5}
 .card.project .ring .value{fill:none;stroke:var(--accent);stroke-width:3.5;stroke-linecap:round;transition:stroke-dasharray .4s}
 .card.project .ring text{font-size:9.5px;font-weight:700;fill:currentColor;font-family:var(--sans)}
 .projectopen{border:0;background:transparent;text-align:left;padding:0;flex:1;min-width:0;font:inherit;color:inherit;cursor:pointer}
 .projecttitle{font-family:var(--serif);font-weight:500;font-size:18.5px;line-height:1.2;letter-spacing:-.015em;margin:1px 0 4px;display:flex;align-items:center;gap:6px}
-.projecttitle .star{color:#c58b2a;display:inline-grid;place-items:center}
-.projecttitle .star-critical{color:var(--alert)}
+.projecttitle .star{color:#c58b2a;display:inline-grid;place-items:center;position:relative;flex:none}
+.projecttitle .star .star-fill{position:absolute;inset:0;display:grid;place-items:center}
+.projecttitle .star .star-fill path{fill:currentColor}
+.projecttitle .star-high .star-fill{clip-path:inset(0 50% 0 0)}
+:root[data-theme="dark"] .projecttitle .star{color:#e2b45c}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .projecttitle .star{color:#e2b45c}}
 .projectmeta{font-size:13px;color:var(--muted)}
 .projecttools{display:flex;gap:2px;flex:none;margin-top:-4px}
 .pinbtn{color:var(--muted)}
 .pinbtn .icon{transform:rotate(-45deg);transition:transform .15s}
 .pinbtn.pinned{color:var(--accent-deep)}
 .pinbtn.pinned .icon{transform:rotate(0)}
-.card.project .progressline{height:4px;margin:12px 0 10px;background:rgba(31,42,34,.08);border-radius:999px;overflow:hidden}
+.card.project .progressline{height:4px;margin:12px 0 10px;background:color-mix(in srgb,var(--ink) 10%,transparent);border-radius:999px;overflow:hidden}
 .card.project .progressline span{display:block;height:100%;background:var(--accent);border-radius:inherit}
 .card.project .chips{gap:5px}
 .card.project .projectpending{margin-top:8px}
@@ -485,18 +489,46 @@
 .card.project.colored .progressline{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
 .card.project.colored .progressline span{background:var(--item-ink);opacity:.9}
 .card.project.colored .chip[style*="--chip"]{background:color-mix(in srgb,var(--chip) 28%,#fffdf8);color:color-mix(in srgb,var(--chip) 72%,#1f2a22);box-shadow:none}
+:root[data-theme="dark"] .card.project.colored .chip[style*="--chip"]{background:color-mix(in srgb,var(--chip) 30%,#24221d);color:color-mix(in srgb,var(--chip) 30%,#f3eee4)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .card.project.colored .chip[style*="--chip"]{background:color-mix(in srgb,var(--chip) 30%,#24221d);color:color-mix(in srgb,var(--chip) 30%,#f3eee4)}}
 .card.project.system{border-style:dashed;background:transparent;box-shadow:none}
 .card.project.pinned{border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
 @media(hover:hover){.card.project:hover{transform:translateY(-2px);box-shadow:var(--shadow-3)}.dragging .card.project:hover{transform:none}}
 .money{display:flex;flex-direction:column;gap:5px;margin:8px 0 2px;font-size:12px;color:var(--muted)}
+.moneytext{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.moneytext .icon{width:14px;height:14px;opacity:.8}
 .moneytext strong{color:var(--ink);font-size:13px}
-.moneybar{height:5px;border-radius:999px;background:rgba(31,42,34,.08);overflow:hidden}
+.moneybar{height:5px;border-radius:999px;background:color-mix(in srgb,var(--ink) 10%,transparent);overflow:hidden}
 .moneybar span{display:block;height:100%;background:var(--accent);border-radius:inherit}
 .money.over .moneybar span{background:var(--alert)}
 .money.over .moneytext strong{color:var(--alert)}
 .card.project.colored .money,.card.project.colored .moneytext strong{color:inherit}
 .card.project.colored .moneybar{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
 .card.project.colored .moneybar span{background:var(--item-ink)}
+.card.project.colored .money.over .moneybar span{background:var(--alert)}
+.card.project.colored .money.over .moneytext strong{color:inherit;font-weight:800}
+/* Desglose de importes (Booking «Coste real», Tasks coste por etiqueta, Food coste por servicio). */
+.moneybreak{display:grid;gap:8px}
+.mb-total{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mb-total .mb-label{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+.mb-total .mb-amount{font-family:var(--serif);font-weight:500;font-size:24px;letter-spacing:-.015em;line-height:1;font-variant-numeric:tabular-nums}
+.mb-compare{font-size:12.5px;color:var(--muted)}
+.moneybreak.over .mb-total .mb-amount,.moneybreak.over .mb-compare{color:var(--alert)}
+.moneybreak>.moneybar{height:6px}
+.mb-lines{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:2px}
+.mb-line{display:grid;gap:3px;padding:6px 0;border-bottom:1px solid var(--edge)}
+.mb-line:last-child{border-bottom:0}
+.mb-open{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;padding:0;font:inherit;color:inherit;text-align:left;text-decoration:none;min-height:28px;border-radius:8px}
+a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
+.mb-open .mb-name{flex:1;min-width:0;font-weight:600;font-size:14px;display:flex;flex-direction:column;gap:1px}
+.mb-open .mb-meta{font-weight:500;color:var(--muted);font-size:12px}
+.mb-open .mb-amount{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.mb-open .icon{color:var(--muted);flex:none}
+.mb-share{display:block;height:3px;border-radius:999px;background:color-mix(in srgb,var(--ink) 7%,transparent);overflow:hidden}
+.mb-share span{display:block;height:100%;background:var(--accent);border-radius:inherit}
+.mb-more{padding:6px 0 0}
+.mb-more .linkbtn{border:0;background:transparent;padding:0;color:var(--accent-deep);font-weight:700;font-size:13px;cursor:pointer}
+.mb-empty{padding:4px 0}
 
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){

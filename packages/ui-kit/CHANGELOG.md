@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.9.0 · 6 de octubre de 2026
+
+- Tarjeta de proyecto (revisión de Tasks): la estrella de urgencia es ámbar en los dos niveles y el relleno dice cuál (media = alta, entera = crítica); pistas de progreso, del anillo y del presupuesto mezcladas con la tinta, legibles en oscuro; presupuesto excedido en rojo también en tarjetas con color; chips legibles en tarjeta con color en tema oscuro; icono `euro` delante del coste (nuevo icono).
+- **Desglose de importes** `renderMoneyBreakdown({ lines, total, totalLabel, compare, format, sort, max, emptyText })`: total arriba (con barra frente a una referencia como el presupuesto o el importe final, y en rojo si lo excede), líneas por categoría ordenadas de mayor a menor con su participación y enlace (`href`) o acción (`onOpen`) al origen, «y N más» para plegar. Pensado para el bloque «Coste real» de la reserva en Booking (proyección de Invoices); vale para el coste por etiqueta de un proyecto en Tasks o por servicio de un menú en Food.
+
 ## 0.8.1 · 6 de octubre de 2026
 
 - `renderProjectCard`: `attrs` (atributos extra del `article`, p. ej. `data-drop-project`) y `pinAttrs` (del botón de fijar: `data-project-pin`, `data-tip`, `aria-label` propio), para que Tasks conserve sus ganchos. El bloque de dinero sale también sin presupuesto cuando hay coste (solo la cifra) y, con presupuesto excedido, añade «· excedido». `ring: false` deja la línea de progreso sin anillo (tarjeta del sistema).
