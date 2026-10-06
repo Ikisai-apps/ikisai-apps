@@ -3,7 +3,7 @@
  * login/refresh/logout, bootstrap, snapshot, changes, commands con revisiones, recibos idempotentes y conflictos 409.
  * Solo para pruebas de extremo a extremo del frontend; no sustituye a la suite de conformidad de packages/test-kit.
  */
-import { FIELDS } from '../../supabase/functions/_domain/booking/mod.ts';
+import { FIELDS, proposalTotals, round2 } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
@@ -25,7 +25,16 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.room_assignments': { persons: 1 },
   'booking.staff_assignments': { status: 'prevista', position: 0 },
   'booking.staff_needs': { persons: 1, priority: 'media', status: 'detectado' },
+  'booking.rates': { active: true, position: 0 },
+  'booking.conditions': { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, prices_include_vat: true, vat_rate: 10, is_default: false, active: true },
+  'booking.cancellation_tiers': { extra_costs: false, position: 0 },
+  'booking.proposals': { status: 'borrador', nature: 'orientativa' },
+  'booking.proposal_lines': { quantity: 1, discount_pct: 0, position: 0 },
 };
+
+/** Columnas que fija el servidor en las propuestas (no son escribibles desde el cliente). */
+const PROPOSAL_SERVER_COLUMNS = ['version', 'subtotal', 'adjustments', 'vat_amount', 'total', 'deposit_amount', 'sent_at'];
+const PROPOSAL_PROCEDURES = ['booking.new_proposal_version', 'booking.send_proposal', 'booking.accept_proposal'];
 
 export interface FakeRow {
   id: string;
@@ -211,6 +220,71 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const results: unknown[] = [];
     const batchChanges: FakeChange[] = [];
     (body.operations as FakeOperation[]).forEach((op, index) => {
+      if (op.op === 'call' && PROPOSAL_PROCEDURES.includes((op as unknown as { procedure?: string }).procedure ?? '')) {
+        const call = op as unknown as { procedure: string; args: Record<string, any> };
+        const proposals = stagedTable('booking.proposals');
+        const lineStore = stagedTable('booking.proposal_lines');
+        const stamp = nowIso();
+        const touch = (table: string, row: FakeRow, fields: Record<string, unknown>, kind = 'update') => {
+          Object.assign(row, fields, { revision: row.revision + 1, updated_at: stamp, updated_by: actorId });
+          batchChanges.push(record(table, kind, row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+        };
+        const create = (table: string, id: string, fields: Record<string, unknown>, extra: string[] = []) => {
+          const row: FakeRow = { id, revision: 1, created_at: stamp, updated_at: stamp, updated_by: actorId, deleted_at: null };
+          for (const column of [...tables[table]!, ...extra]) row[column] = fields[column] ?? COLUMN_DEFAULTS[table]?.[column] ?? null;
+          stagedTable(table).set(id, row);
+          batchChanges.push(record(table, 'insert', row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
+          return row;
+        };
+        const liveProposals = () => Array.from(proposals.values()).filter((x) => x.deleted_at === null);
+        if (call.procedure === 'booking.new_proposal_version') {
+          const reservation = stagedTable('booking.reservations').get(String(call.args.reservation_id));
+          if (!reservation) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+          const from = call.args.from_proposal_id ? proposals.get(String(call.args.from_proposal_id)) : undefined;
+          const defaults = Array.from(stagedTable('booking.conditions').values()).find((c) => c.is_default === true && c.active === true && c.deleted_at === null);
+          const version = Math.max(0, ...Array.from(proposals.values()).filter((x) => x.reservation_id === reservation.id).map((x) => Number(x.version))) + 1;
+          const created = create('booking.proposals', String(call.args.proposal_id), {
+            reservation_id: reservation.id, version, nature: from?.nature ?? 'orientativa', conditions_id: from?.conditions_id ?? defaults?.id ?? null,
+            start_date: from?.start_date ?? reservation.start_date, end_date: from?.end_date ?? reservation.end_date, persons: from?.persons ?? reservation.expected_guests,
+            valid_until: from?.valid_until ?? null, includes: from?.includes ?? null, excludes: from?.excludes ?? null, notes: from?.notes ?? null,
+          }, PROPOSAL_SERVER_COLUMNS);
+          if (from) {
+            for (const line of Array.from(lineStore.values()).filter((l) => l.proposal_id === from.id && l.deleted_at === null)) {
+              create('booking.proposal_lines', randomUUID(), { ...line, proposal_id: created.id }, ['amount']);
+            }
+          }
+          results.push({ op: 'call', procedure: call.procedure, result: { proposal_id: created.id, reservation_id: reservation.id, version, from_proposal_id: from?.id ?? null } });
+          return;
+        }
+        const target = proposals.get(String(call.args.proposal_id));
+        if (!target || target.deleted_at !== null) throw new Fault(404, 'NOT_FOUND', 'La propuesta no existe.');
+        if (call.args.expectedRevision !== undefined && call.args.expectedRevision !== target.revision) {
+          throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: 'booking.proposals', id: target.id, expectedRevision: call.args.expectedRevision, currentRevision: target.revision, current: { ...target } });
+        }
+        if (call.procedure === 'booking.send_proposal') {
+          if (target.status !== 'borrador') throw new Fault(422, 'INVALID_TRANSITION', 'Transición no permitida.', { status: target.status });
+          const lines = Array.from(lineStore.values()).filter((l) => l.proposal_id === target.id && l.deleted_at === null);
+          if (!target.conditions_id) throw new Fault(422, 'PROPOSAL_INCOMPLETE', 'Faltan datos.', { missing: ['conditions_id'] });
+          if (lines.length === 0) throw new Fault(422, 'PROPOSAL_INCOMPLETE', 'Faltan datos.', { missing: ['lines'] });
+          const totals = proposalTotals(lines as any, stagedTable('booking.conditions').get(String(target.conditions_id)) as any);
+          if (totals.total < 0) throw new Fault(422, 'PROPOSAL_NEGATIVE', 'El total sería negativo.');
+          for (const other of liveProposals().filter((x) => x.reservation_id === target.reservation_id && x.id !== target.id && x.status === 'enviada')) touch('booking.proposals', other, { status: 'sustituida' });
+          touch('booking.proposals', target, { ...totals, status: 'enviada', sent_at: stamp });
+          results.push({ op: 'call', procedure: call.procedure, result: { proposal_id: target.id, status: 'enviada', ...totals } });
+          return;
+        }
+        if (target.status !== 'enviada') throw new Fault(422, 'INVALID_TRANSITION', 'Transición no permitida.', { status: target.status });
+        for (const other of liveProposals().filter((x) => x.reservation_id === target.reservation_id && x.id !== target.id && ['borrador', 'enviada', 'aceptada'].includes(String(x.status)))) touch('booking.proposals', other, { status: 'sustituida' });
+        touch('booking.proposals', target, { status: 'aceptada', decided_at: stamp });
+        // Único punto en que la propuesta toca los importes de la reserva.
+        const financeStore = stagedTable('booking.reservation_finance');
+        const finance = financeStore.get(String(target.reservation_id));
+        const amounts = { final_amount: target.total, deposit_required: target.deposit_amount };
+        if (finance) touch('booking.reservation_finance', finance, { ...amounts, ...(finance.budget_amount === null ? { budget_amount: target.total } : {}) });
+        else create('booking.reservation_finance', String(target.reservation_id), { ...amounts, budget_amount: target.total });
+        results.push({ op: 'call', procedure: call.procedure, result: { proposal_id: target.id, reservation_id: target.reservation_id, status: 'aceptada', final_amount: target.total, deposit_required: target.deposit_amount } });
+        return;
+      }
       if (op.op === 'call') {
         // Versión mínima de booking.confirm_reservation: estado confirmado y evento operativo, una sola vez.
         const call = op as unknown as { procedure?: string; args?: Record<string, string> };
@@ -245,11 +319,31 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       for (const key of Object.keys(fields)) if (!allowed.includes(key)) throw new Fault(422, 'INVALID_FIELDS', `Campo no permitido: ${key}`, { index, field: key });
       const now = nowIso();
       let row = store.get(op.id);
+      // Reglas de bloqueo de las propuestas (migración 0420): lo enviado no se toca y unas condiciones usadas tampoco.
+      const proposalsNow = () => Array.from(stagedTable('booking.proposals').values());
+      const locked = (code: string) => new Fault(422, code, 'Bloqueado por el servidor.', { table: op.table, id: op.id });
+      if (op.table === 'booking.proposal_lines') {
+        const parentId = String(op.op === 'insert' ? fields.proposal_id : row?.proposal_id);
+        if (stagedTable('booking.proposals').get(parentId)?.status !== 'borrador') throw locked('PROPOSAL_LOCKED');
+      }
+      if (op.table === 'booking.proposals' && row && op.op !== 'restore' && row.status !== 'borrador') {
+        const onlyClose = Object.keys(fields).every((key) => ['status', 'decided_at', 'notes'].includes(key)) && (fields.status === undefined || (row.status === 'enviada' && ['rechazada', 'caducada'].includes(String(fields.status))));
+        if (op.op === 'delete' || !onlyClose) throw locked('PROPOSAL_LOCKED');
+      }
+      const conditionsOf = op.table === 'booking.conditions' ? op.id : op.table === 'booking.cancellation_tiers' ? String(op.op === 'insert' ? fields.conditions_id : row?.conditions_id) : null;
+      if (conditionsOf && proposalsNow().some((x) => x.conditions_id === conditionsOf && x.status !== 'borrador')
+        && (op.table === 'booking.cancellation_tiers' || Object.keys(fields).some((key) => !['active', 'is_default'].includes(key)))) throw locked('CONDITIONS_IN_USE');
       if (op.op === 'insert') {
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
         if (op.table === 'booking.reservations' && (typeof fields.title !== 'string' || !fields.title.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? COLUMN_DEFAULTS[op.table]?.[column] ?? null;
+        if (op.table === 'booking.proposals') {
+          for (const column of PROPOSAL_SERVER_COLUMNS) row[column] = null;
+          row.version = Math.max(0, ...Array.from(store.values()).filter((x) => x.reservation_id === fields.reservation_id).map((x) => Number(x.version))) + 1;
+        }
+        if (op.table === 'booking.proposal_lines') row.amount = fields.unit === 'porcentaje' ? null : round2(Number(row.quantity) * Number(row.unit_amount) * (100 - Number(row.discount_pct ?? 0)) / 100);
+        if (op.table === 'booking.rates') row.code = `TAR_TEST_${String(store.size + 1).padStart(3, '0')}`;
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
@@ -257,6 +351,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
         if (op.op === 'update') Object.assign(row, fields);
+        if (op.op === 'update' && op.table === 'booking.proposal_lines') row.amount = row.unit === 'porcentaje' ? null : round2(Number(row.quantity) * Number(row.unit_amount) * (100 - Number(row.discount_pct ?? 0)) / 100);
         if (op.op === 'delete') row.deleted_at = now;
         if (op.op === 'restore') {
           if (!row.deleted_at) throw new Fault(409, 'ROW_NOT_DELETED', 'La fila no está borrada.');

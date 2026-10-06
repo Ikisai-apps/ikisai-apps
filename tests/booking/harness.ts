@@ -24,6 +24,11 @@ export const BEDS = 'booking.beds';
 export const ASSIGNMENTS = 'booking.room_assignments';
 export const STAFF = 'booking.staff_assignments';
 export const NEEDS = 'booking.staff_needs';
+export const RATES = 'booking.rates';
+export const CONDITIONS = 'booking.conditions';
+export const TIERS = 'booking.cancellation_tiers';
+export const PROPOSALS = 'booking.proposals';
+export const PROPOSAL_LINES = 'booking.proposal_lines';
 
 export interface Harness {
   api: FakeApi;

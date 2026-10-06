@@ -1,7 +1,7 @@
 /** Etiquetas en español de los catálogos del dominio, como pares [valor, etiqueta] para los desplegables. */
 import {
   BED_KINDS, SPACE_KINDS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES, PAYMENT_TYPES, PRIORITIES,
-  RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES, SES_STATUSES, SETUP_STYLES, SEXES, STATUS_LABELS, TASK_STATUSES_F,
+  PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES, SES_STATUSES, SETUP_STYLES, SEXES, STATUS_LABELS, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
 } from '@ikisai/domain-booking';
 
@@ -77,4 +77,23 @@ export const OPTIONS = {
   needType: pairs(NEED_TYPES),
   needPriority: pairs(NEED_PRIORITIES),
   needStatus: pairs(NEED_STATUSES),
+} as const;
+
+/** Tarifario y propuestas (aparte de `LABELS`: «cerrada» ya es un estado de reserva). */
+export const RATE_LABELS = {
+  layer: { recinto: 'Recinto', por_persona: 'Por persona', servicio: 'Servicio', ajuste: 'Ajuste', extra: 'Extras' } as Record<string, string>,
+  unit: { persona_noche: 'Persona y noche', persona_dia: 'Persona y día', dia: 'Día', noche: 'Noche', estancia: 'Estancia', unidad: 'Unidad', porcentaje: 'Porcentaje' } as Record<string, string>,
+  /** Cómo se lee tras «€ /»: «40,00 € / persona y noche». */
+  per: { persona_noche: 'persona y noche', persona_dia: 'persona y día', dia: 'día', noche: 'noche', estancia: 'estancia', unidad: 'unidad' } as Record<string, string>,
+  service: { alojamiento: 'Alojamiento', comidas: 'Comidas', centro_interpretacion: 'Centro de interpretación', exterior: 'Exteriores', piscina: 'Piscina', montaje: 'Montaje especial', tecnico: 'Soporte técnico', cama_supletoria: 'Camas supletorias' } as Record<string, string>,
+  status: { borrador: 'Borrador', enviada: 'Enviada', aceptada: 'Aceptada', rechazada: 'Rechazada', caducada: 'Caducada', sustituida: 'Sustituida' } as Record<string, string>,
+  nature: { orientativa: 'Orientativa', cerrada: 'Cerrada' } as Record<string, string>,
+};
+const rateOptions = (values: readonly string[], dict: Record<string, string>): Pairs => values.map((value) => [value, dict[value] ?? value] as const);
+export const RATE_OPTIONS = {
+  layer: rateOptions(RATE_LAYERS, RATE_LABELS.layer),
+  unit: rateOptions(RATE_UNITS, RATE_LABELS.unit),
+  service: rateOptions(RATE_SERVICES, RATE_LABELS.service),
+  status: rateOptions(PROPOSAL_STATUSES, RATE_LABELS.status),
+  nature: rateOptions(PROPOSAL_NATURES, RATE_LABELS.nature),
 } as const;

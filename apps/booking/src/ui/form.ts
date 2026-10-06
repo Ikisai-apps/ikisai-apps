@@ -4,14 +4,17 @@ import { confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ik
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
+import { settleBatch } from '../app/settle.ts';
 
 export interface FieldSpec {
   key: string;
   label: string;
-  type: 'text' | 'tel' | 'email' | 'number' | 'date' | 'time' | 'select' | 'check' | 'textarea';
+  type: 'text' | 'tel' | 'email' | 'number' | 'date' | 'time' | 'select' | 'check' | 'textarea' | 'multi';
   /** Para `number`: admite céntimos (importes). */
   decimal?: boolean;
-  /** Para `select`: valor y etiqueta. Con `optional` se añade una opción vacía que guarda null. */
+  /** Para `number`: admite valores negativos (descuentos). */
+  negative?: boolean;
+  /** Para `select` y `multi`: valor y etiqueta. Con `optional` se añade una opción vacía que guarda null. */
   options?: ReadonlyArray<readonly [string, string]>;
   optional?: boolean;
   max?: number;
@@ -44,6 +47,12 @@ export interface BuiltForm {
 function normalize(spec: FieldSpec, raw: unknown): unknown {
   if (spec.type === 'check') return raw === true;
   if (raw === null || raw === undefined) return null;
+  // Casillas múltiples: lista en el orden del catálogo; vacía = null.
+  if (spec.type === 'multi') {
+    const chosen = Array.isArray(raw) ? raw.map(String) : [];
+    const ordered = (spec.options ?? []).map(([value]) => value).filter((value) => chosen.includes(value));
+    return ordered.length ? ordered : null;
+  }
   if (spec.type === 'number') return raw === '' ? null : Number(raw);
   let text = String(raw);
   if (spec.type === 'time') text = text.slice(0, 5);
@@ -54,6 +63,7 @@ function normalize(spec: FieldSpec, raw: unknown): unknown {
 export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}): BuiltForm {
   const listeners: Array<() => void> = [];
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
+  const multis = new Map<string, HTMLInputElement[]>();
   const initial: Record<string, unknown> = {};
   const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
   const children: Child[] = [];
@@ -72,6 +82,16 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     const shown = initial[spec.key];
     const id = `f-${spec.key}`;
     let control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (spec.type === 'multi') {
+      const chosen = Array.isArray(shown) ? shown : [];
+      const boxes = (spec.options ?? []).map(([value]) => el('input', { type: 'checkbox', value, checked: chosen.includes(value), onchange: fire }));
+      multis.set(spec.key, boxes);
+      if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
+      children.push(el('fieldset', { class: 'field multi', id }, el('legend', null, spec.label),
+        (spec.options ?? []).map(([, text], i) => el('label', { class: 'check' }, boxes[i]!, el('span', null, text))),
+        spec.hint ? el('small', { class: 'hint' }, spec.hint) : null));
+      continue;
+    }
     if (spec.type === 'select') {
       control = el('select', { id, onchange: fire },
         spec.optional ? el('option', { value: '' }, '—') : null,
@@ -85,7 +105,7 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
       control = el('input', {
         id, type: spec.type, value: shown === null ? '' : String(shown), autocomplete: 'off', oninput: fire,
         ...(spec.max && spec.type !== 'date' ? { maxlength: spec.max } : {}),
-        ...(spec.type === 'date' && spec.dateMin ? { min: spec.dateMin } : {}), ...(spec.type === 'date' && spec.dateMax ? { max: spec.dateMax } : {}), ...(spec.type === 'number' ? { min: 0, step: spec.decimal ? 0.01 : 1, inputmode: spec.decimal ? 'decimal' : 'numeric' } : {}),
+        ...(spec.type === 'date' && spec.dateMin ? { min: spec.dateMin } : {}), ...(spec.type === 'date' && spec.dateMax ? { max: spec.dateMax } : {}), ...(spec.type === 'number' ? { ...(spec.negative ? {} : { min: 0 }), step: spec.decimal ? 0.01 : 1, inputmode: spec.decimal ? 'decimal' : 'numeric' } : {}),
       });
     }
     controls.set(spec.key, control);
@@ -101,13 +121,14 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
   function values(): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const spec of specs) {
+      if (spec.type === 'multi') { out[spec.key] = normalize(spec, multis.get(spec.key)!.filter((box) => box.checked).map((box) => box.value)); continue; }
       const control = controls.get(spec.key)!;
       out[spec.key] = normalize(spec, spec.type === 'check' ? (control as HTMLInputElement).checked : control.value);
     }
     return out;
   }
   function changed(): Record<string, unknown> {
-    return Object.fromEntries(Object.entries(values()).filter(([key, value]) => value !== initial[key]));
+    return Object.fromEntries(Object.entries(values()).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(initial[key])));
   }
 
   return {
@@ -143,6 +164,8 @@ export interface RowSheetOptions {
   /** Botón de borrado en el pie: operaciones que mandan la fila a la papelera. */
   remove?: { label: string; operations: () => RowOperation[]; confirm?: string; /** Confirmación con el diálogo del kit (en vez de `confirm` del navegador). */ confirmDialog?: { title: string; text: string; confirmLabel: string } };
   savedMessage?: string;
+  /** Con red, espera a que el servidor resuelva el lote y, si lo rechaza, deja la hoja abierta con el motivo (reglas que solo comprueba el servidor). */
+  settle?: boolean;
   submitLabel?: string;
   /** Sustituye el alta o edición estándar: recibe los valores del formulario y devuelve el lote a enviar. */
   buildOperations?: (values: Record<string, unknown>) => RowOperation[] | Promise<RowOperation[]>;
@@ -161,7 +184,11 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
   async function commit(operations: RowOperation[], message: string): Promise<void> {
     try {
       save.disabled = true;
-      await client.commit(operations);
+      const { requestId } = await client.commit(operations);
+      if (options.settle) {
+        const rejected = await settleBatch(client, requestId);
+        if (rejected) return form.showError(describeError(rejected.error));
+      }
       guard.dirtyEditor = false;
       await sheet.close(true);
       toast(navigator.onLine ? message : `${message} Se enviará al reconectar.`);

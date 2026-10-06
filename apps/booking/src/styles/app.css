@@ -124,3 +124,61 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 #needList .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
 .noticelink { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .chip.muted { opacity: .7; }
+
+/* Tarifas y condiciones, bloque «Propuesta» y editor de propuesta */
+.rate-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rate-item .space-main { flex: 1; min-width: 0; }
+#proposalDraft { margin-top: 10px; }
+.pdoc-facts th { width: 140px; }
+.rate-amount { font-weight: 600; }
+.rate-item .row-meta { overflow-wrap: anywhere; }
+.condition + .condition { margin-top: 14px; }
+.tiers { margin: 0; }
+.tier { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tier-text { min-width: 0; overflow-wrap: anywhere; }
+.line-item { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.line-item .space-main { flex: 1; width: 100%; }
+.line-item .row-title { display: flex; justify-content: space-between; gap: 10px; }
+.line-amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.line-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
+#proposalTotal { font-variant-numeric: tabular-nums; }
+.chip.ok { --chip: var(--ok); }
+fieldset.multi { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+fieldset.multi legend { padding: 0; margin-bottom: 4px; font-size: var(--text-sm); color: var(--muted); }
+fieldset.multi .check { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+
+/* Documento de la propuesta: hoja A4 en pantalla y al imprimir. */
+.pdoc-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.pdoc { max-width: 794px; margin: 0 auto; padding: 22px 18px; background: #fff; color: #1f2a22; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: var(--text-md); line-height: 1.5; }
+.pdoc table { width: 100%; border-collapse: collapse; }
+.pdoc th { text-align: left; font-weight: 500; color: #5b665e; padding: 4px 8px 4px 0; vertical-align: top; width: 38%; }
+.pdoc td { padding: 4px 0; vertical-align: top; }
+.pdoc td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 12px; }
+.pdoc-head { border-bottom: 2px solid #1f2a22; padding-bottom: 12px; margin-bottom: 14px; }
+.pdoc-kind { margin: 0; text-transform: uppercase; letter-spacing: .08em; font-size: var(--text-xs); color: #5b665e; }
+.pdoc h1 { font-family: var(--serif); font-size: var(--text-2xl); line-height: 1.2; margin: 4px 0; overflow-wrap: anywhere; }
+.pdoc-sub { margin: 0; color: #5b665e; font-size: var(--text-sm); }
+.pdoc-draft { margin: 8px 0 0; font-weight: 700; color: #b3412a; text-transform: uppercase; letter-spacing: .06em; font-size: var(--text-sm); }
+.pdoc-facts { margin-bottom: 6px; }
+.pdoc-section { margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
+.pdoc-section h2 { font-family: var(--serif); font-size: var(--text-lg); margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid #d8d2c4; }
+.pdoc-lines td { border-bottom: 1px solid #ece6d8; padding: 7px 0; }
+.pdoc-lines tr { break-inside: avoid; page-break-inside: avoid; }
+.pdoc-desc { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.pdoc-lines small { display: block; color: #5b665e; font-size: var(--text-sm); }
+.pdoc-totals { margin-top: 10px; margin-left: auto; max-width: 340px; }
+.pdoc-totals th { width: auto; }
+.pdoc-totals td { text-align: right; font-variant-numeric: tabular-nums; }
+.pdoc-totals tr.soft th, .pdoc-totals tr.soft td { color: #5b665e; }
+.pdoc-totals tr.grand th, .pdoc-totals tr.grand td { border-top: 2px solid #1f2a22; padding-top: 6px; font-size: var(--text-lg); color: #1f2a22; font-weight: 700; }
+.pdoc-note { margin: 10px 0 0; font-size: var(--text-sm); color: #5b665e; }
+.pdoc-text { white-space: pre-wrap; margin: 0 0 6px; overflow-wrap: anywhere; }
+.pdoc-tiers { margin: 0; padding-left: 20px; }
+.pdoc-valid { margin: 20px 0 0; font-weight: 600; }
+@media (min-width: 700px) { .pdoc { padding: 36px 44px; } }
+@media print {
+  .pdoc, .pdoc * { visibility: visible; }
+  .noprint { display: none !important; }
+  .pdoc { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; font-size: 11pt; }
+  .pdoc h1 { font-size: 20pt; }
+}

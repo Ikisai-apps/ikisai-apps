@@ -9,6 +9,9 @@ import { mountGuests } from './guests.ts';
 import { mountPending } from './pending.ts';
 import { mountCalendar } from './calendar.ts';
 import { mountSpaces } from './spaces.ts';
+import { mountRates } from './rates.ts';
+import { mountProposalEditor } from './proposalEditor.ts';
+import { mountProposalDocument } from './proposalDoc.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -40,6 +43,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/calendario': { title: 'Calendario', mount: mountCalendar },
   '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
   '#/espacios': { title: 'Espacios y camas', mount: mountSpaces },
+  '#/tarifas': { title: 'Tarifas y condiciones', mount: mountRates },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -50,6 +54,11 @@ function resolve(hash: string): { title: string; mount: ViewMount; base: string 
   if (exact) return { ...exact, base: hash };
   const reservation = new RegExp(`^#/reservas/(${UUID})$`, 'i').exec(hash);
   if (reservation) return { title: 'Reserva', mount: mountReservation(reservation[1]!.toLowerCase()), base: '#/reservas' };
+  const proposal = new RegExp(`^#/propuesta/(${UUID})(/documento)?$`, 'i').exec(hash);
+  if (proposal) {
+    const id = proposal[1]!.toLowerCase();
+    return proposal[2] ? { title: 'Propuesta', mount: mountProposalDocument(id), base: '#/reservas' } : { title: 'Propuesta', mount: mountProposalEditor(id), base: '#/reservas' };
+  }
   const guests = new RegExp(`^#/huespedes/(${UUID})$`, 'i').exec(hash);
   if (guests) return { title: 'Huéspedes', mount: mountGuests(guests[1]!.toLowerCase()), base: '#/huespedes' };
   return { ...ROUTES['#/']!, base: '#/' };

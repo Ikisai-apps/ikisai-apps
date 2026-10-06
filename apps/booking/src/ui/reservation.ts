@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
@@ -14,6 +14,7 @@ import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirm
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
+import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
 
 const RESTRICTIONS: TableName = TABLES.restrictions;
@@ -165,6 +166,8 @@ export function mountReservation(id: string): ViewMount {
       const lodging = liveEvent ? await loadLodging(client, liveEvent.id) : null;
       const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
+      const proposalData = writable ? await loadProposals(client, id) : null;
+      const proposalMarks = proposalData ? await loadMarks(client, id, proposalData.proposals) : null;
 
       // Confirmación enviada sin red: la marca vive hasta que aparece el evento (API §10).
       let mark = getConfirmMark(id);
@@ -396,6 +399,8 @@ export function mountReservation(id: string): ViewMount {
         ] : null,
       ]);
 
+      const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
+
       const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', kv(
         ['Presupuesto', money(finance?.budget_amount)], ['Importe final', money(finance?.final_amount)],
         ['Señal', `${money(finance?.deposit_paid)} de ${money(finance?.deposit_required)} · ${DEPOSIT[depositStatus(finance as any)]}`],
@@ -479,7 +484,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, checklistBlock, guestsBlock, meals, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
@@ -489,7 +494,9 @@ export function mountReservation(id: string): ViewMount {
     const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, STAFF, NEEDS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
-    offs.push(client.onStatus(() => { if (getConfirmMark(id)) void paint(); }));
+    offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));
+    // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
+    for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
     return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); };
   };
 }
