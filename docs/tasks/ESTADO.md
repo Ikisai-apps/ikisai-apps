@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 12). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. **los 72 escenarios de no regresión en verde**, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
+Actualizado: 6 de octubre de 2026 (tanda 13). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. **los 72 escenarios de no regresión en verde**, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
 
 ## Hecho
 
@@ -61,7 +61,8 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - **Interfaz** (`public/agents-ui.js`, sobre las rutas `agents`, `proposals` y `access-log` del núcleo; sustituye a las hojas de la app antigua): «Agentes de IA» (crear con permiso y áreas, la clave se muestra una sola vez; revocar), «Propuestas de agentes» (lista, resumen legible del ensayo, aprobar o rechazar; si ya no encaja, queda rechazada) y «Registro de accesos». Solo para la propietaria con acceso completo.
 - **Escenario 29** (`tests/tasks/agents.spec.ts`): el borrado de un agente devuelve 428, queda propuesto, la propietaria lo aprueba desde la interfaz y el agente lo aplica tal cual; archivar un proyecto también exige aprobación; el registro lo cuenta; revocar corta al agente al momento.
 - **Herramientas de dominio para MCP** (`_domain/tasks/tools.ts`, tanda 12): `TASK_TOOL_SPECS` (nombre, descripción, JSON Schema y pistas `destructiveHint`/`idempotentHint`) y `buildTaskTool(name, data, input)` para `tasks_create_task`, `tasks_update_task`, `tasks_complete`, `tasks_move`, `tasks_delete`, `tasks_set_labels` y `tasks_set_dependencies`. Validan la entrada no fiable (422 `INVALID_INPUT`), solo ven lo visible (404 `NOT_FOUND`) y reutilizan las operaciones compuestas de `ops.ts`; su lote pasa por el camino de siempre (validación, riesgo, propuesta, `core.commit`).
-- Pendiente: conectar esas herramientas a `AppConfig.mcpTools` cuando el kit tenga `/mcp` y `describeChange` en la Edge si Core lo añade (hoy el resumen se describe en la interfaz).
+- **Conectadas a `/api/v1/mcp`** (`tasks-api/mcp.ts`, tanda 13): cada herramienta lee lo visible para quien llama (papelera incluida), construye el lote y lo envía como `commands`. Si necesita aprobación, devuelve `needsApproval` con la propuesta preparada, que el agente aplica después con `tasks_commit`. `requestId` opcional; los ids nuevos se derivan de él, así que reintentar antes de aplicarse construye el mismo lote, y reintentar algo ya aplicado devuelve `alreadyUsed` sin repetirlo.
+- Pendiente: `describeChange` en la Edge solo si Core lo añade (hoy el resumen de una propuesta se describe en la interfaz).
 
 ## Producción
 
@@ -71,7 +72,7 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 ## Siguiente tanda
 
 1. Adopción del `ui-kit` (la hace el agente de UI; Tasks revisa y fusiona): tarjeta de proyecto, después la cáscara en dos pasos. Ver `docs/tasks/UI_KIT.md`.
-2. Conectar `TASK_TOOL_SPECS` y `buildTaskTool` a `AppConfig.mcpTools` cuando el kit tenga `/mcp`.
+2. Lo que salga de la aceptación en Android.
 
 ## Bloqueos
 
