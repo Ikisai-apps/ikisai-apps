@@ -1,6 +1,8 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { eventSnapshot, isMenuStale, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
+import { eventSnapshot, isMenuStale, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { loadAllMenuGraphs } from '../app/menu-data.ts';
+import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
   allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, needsMenu, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
@@ -26,6 +28,7 @@ export function menuChip(event: FoodEvent, menu: Mirror<Menu> | undefined): HTML
 export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
+  let totals = new Map<string, { total: number; missing: number }>();
   let filter: Filter = 'proximos';
   let sheet: Sheet | null = null;
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
@@ -65,7 +68,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
         title: event.title,
         meta: [`${dateRange(event)} (${whenLabel(event).toLowerCase()})`, guestsLabel(event), mealPlanLabel(event.meal_plan)],
         // Con alguna alergia o intolerancia en el grupo, el aviso de restricciones va en rojo.
-        chips: [menuChip(event, menu), restrictions ? el('span', { class: allergyCount(event.dietary_restrictions) ? 'chip alert' : 'chip' }, restrictions === 1 ? '1 restricción' : `${restrictions} restricciones`) : null],
+        chips: [menuChip(event, menu), menu && (totals.get(menu.id)?.total ?? 0) > 0 ? el('span', { class: 'chip', title: totals.get(menu.id)!.missing ? 'Faltan precios de algún ingrediente' : 'Coste estimado con las compras de Invoices' }, `≈ ${Math.round(totals.get(menu.id)!.total).toLocaleString('es-ES')} €${totals.get(menu.id)!.missing ? '+' : ''}`) : null, restrictions ? el('span', { class: allergyCount(event.dietary_restrictions) ? 'chip alert' : 'chip' }, restrictions === 1 ? '1 restricción' : `${restrictions} restricciones`) : null],
         pending: menu?._pending === true,
         label: `Abrir ${event.title}`,
         onClick: () => openEvent(event),
@@ -139,6 +142,8 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
 
   async function loadMenus(): Promise<void> {
     menus = (await client.list(T.menus)) as Mirror<Menu>[];
+    const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);
+    totals = purchases.fetchedAt ? menuTotals(graphs, purchases.prices) : new Map();
     paint();
   }
 

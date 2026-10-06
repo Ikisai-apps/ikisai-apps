@@ -112,3 +112,20 @@ export function serviceCosts(graph: MenuGraph, prices: Map<string, IngredientPri
     return { service_id: service.id, amount: Math.round(amount * 100) / 100, servings: Math.max(0, ...items.map((i) => Number(i.servings))), missing: [...missing] };
   });
 }
+
+/** Coste de una cantidad de un ingrediente, o `null` si no hay precio con unidad compatible. */
+export function lineCost(ingredientId: string, quantity: number, unit: Unit, prices: Map<string, IngredientPrice[]>): number | null {
+  const price = prices.get(ingredientId)?.find((p) => p.family === unitFamily(unit));
+  return price ? Math.round(toBase(quantity, unit) * price.perBase * 100) / 100 : null;
+}
+
+/** Coste total de varios menús de una vez: suma de sus servicios y si falta algún precio. */
+export function menuTotals(graphs: Map<string, MenuGraph>, prices: Map<string, IngredientPrice[]>): Map<string, { total: number; missing: number }> {
+  const out = new Map<string, { total: number; missing: number }>();
+  for (const [menuId, graph] of graphs) {
+    const costs = serviceCosts(graph, prices);
+    out.set(menuId, { total: Math.round(costs.reduce((sum, c) => sum + c.amount, 0) * 100) / 100, missing: new Set(costs.flatMap((c) => c.missing)).size });
+  }
+  return out;
+}
+

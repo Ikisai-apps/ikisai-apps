@@ -98,6 +98,21 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(cost).toContainText('Sin precio (no hay compras con unidad compatible): Arroz');
   });
 
+  await test.step('coste en Inicio, Eventos y la ficha de receta', async () => {
+    await page.goto(`${baseURL}/#/`);
+    await expect(page.locator('#upcoming .eventcard', { hasText: 'Retiro Test' })).toContainText('6,88 € · 0,31 € por persona · faltan precios');
+    await page.goto(`${baseURL}/#/eventos`);
+    await expect(page.locator('#eventList .row', { hasText: 'Retiro Test' })).toContainText('≈ 7 €+');
+    await page.goto(`${baseURL}/#/recetario`);
+    await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
+    const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
+    // 2 kg y 500 g de tomate a 2,50 €/kg para 20 raciones: 5,00 € + 1,25 € = 6,25 €.
+    await expect(ficha.locator('table.ingredients')).toContainText('5,00 €');
+    await expect(ficha.locator('table.ingredients')).toContainText('1,25 €');
+    await expect(ficha).toContainText('Coste estimado: 6,25 € para 20 raciones (0,31 € por ración)');
+    await ficha.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
+  });
+
   await test.step('vista de cocinero: ingredientes escalados a las raciones del plato', async () => {
     await page.goto(`${baseURL}/#/menus/${MENU_ID}`);
     await expect(page.locator('.dish')).toHaveCount(2);

@@ -1,9 +1,11 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { isMenuStale, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
+import { isMenuStale, menuTotals, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
 import { allergyCount, dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
 import { MENU_STATUS_LABELS } from './events.ts';
+import { loadAllMenuGraphs } from '../app/menu-data.ts';
+import { loadPurchases } from '../app/purchases.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -30,6 +32,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const upcoming = el('section', { id: 'upcoming' });
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
+  let totals = new Map<string, { total: number; missing: number }>();
+  const euros = (n: number) => n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
   let lists: Mirror<ShoppingList>[] = [];
   let buyItems: Mirror<ShoppingListItem>[] = [];
   let steps: Mirror<PreparationItem>[] = [];
@@ -81,6 +85,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
                 ...line('Menú', !menu ? 'pendiente' : stale ? '⚠ desactualizado' : MENU_STATUS_LABELS[menu.status].toLowerCase(), stale ? 'warn' : menuReady ? 'ok' : 'todo'),
                 ...line('Restricciones', allergies ? `${restrictions} · ${allergies} con alergia o intolerancia` : String(restrictions), allergies ? 'warn' : 'todo'),
                 ...line('Compra', !list ? 'pendiente' : list.status === 'cerrada' ? 'cerrada' : toBuy === 0 ? 'todo comprado' : `${toBuy} por comprar`, buyReady ? 'ok' : 'todo'),
+                ...(menu && totals.get(menu.id) && totals.get(menu.id)!.total > 0
+                  ? line('Coste estimado', `${euros(totals.get(menu.id)!.total)}${event.guest_count ? ` · ${euros(totals.get(menu.id)!.total / event.guest_count)} por persona` : ''}${totals.get(menu.id)!.missing ? ' · faltan precios' : ''}`, 'todo')
+                  : []),
                 ...line('Preparación', ofMenu.length === 0 ? 'pendiente' : `${prepDone} de ${ofMenu.length}`, ofMenu.length > 0 && prepDone === ofMenu.length ? 'ok' : 'todo')));
           })));
   }
@@ -128,6 +135,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       client.list(T.menus) as Promise<Mirror<Menu>[]>, client.list(T.shoppingLists) as Promise<Mirror<ShoppingList>[]>,
       client.list(T.shoppingItems) as Promise<Mirror<ShoppingListItem>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
     ]);
+    const [graphs, purchases] = await Promise.all([loadAllMenuGraphs(client), loadPurchases(client)]);
+    totals = purchases.fetchedAt ? menuTotals(graphs, purchases.prices) : new Map();
     paintUpcoming();
   };
   void loadMenus();
