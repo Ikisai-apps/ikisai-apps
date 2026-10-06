@@ -6,6 +6,7 @@ import {
   fullTab, isAdministrator, moveTaskOps, restoreTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps, someTab, statuses, validateOperations,
   visibleRow, type Operation,
 } from '../../packages/domain-tasks/src/index.ts';
+import { riskNeedsData, tasksAgentRisk } from '../../packages/domain-tasks/src/index.ts';
 import { OTHER_TAB, TAB, counter, dataset, dependency, family, label, project, tab, task, taskLabel, uid } from './fixtures.ts';
 
 const P1 = uid(10), P2 = uid(11);
@@ -251,4 +252,32 @@ test('operaciones: etiquetas y dependencias se reconcilian reutilizando la fila 
   assert.deepEqual(setTaskLabelsOps(data, t.id, [l1.id]), []);
   assert.deepEqual(setDependenciesOps(data, t.id, []).map((o) => `${o.op} ${o.id}`), [`delete ${uid(142)}`]);
   assert.deepEqual(setDependenciesOps(data, t.id, [dep.id]), []);
+});
+
+test('riesgo de agente: archivar exige aprobación; borrar contenedores y padres cuenta lo que cuelga', () => {
+  const tab = 'a0000000-0000-4000-8000-000000000001', p1 = 'a0000000-0000-4000-8000-000000000002', fam = 'a0000000-0000-4000-8000-000000000003';
+  const parent = 'a0000000-0000-4000-8000-000000000004';
+  const row = (id: string, extra: Record<string, unknown>) => ({ id, revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, ...extra }) as any;
+  const data = {
+    'tasks.projects': [row(p1, { tab_id: tab })],
+    'tasks.tasks': [
+      row(parent, { tab_id: tab, project_id: p1, parent_id: null }),
+      ...[1, 2, 3].map((n) => row(`b0000000-0000-4000-8000-00000000000${n}`, { tab_id: tab, project_id: p1, parent_id: parent })),
+      row('b0000000-0000-4000-8000-000000000009', { tab_id: tab, project_id: p1, parent_id: parent, deleted_at: 'ayer' }),
+    ],
+    'tasks.labels': [row('c0000000-0000-4000-8000-000000000001', { family_id: fam }), row('c0000000-0000-4000-8000-000000000002', { family_id: fam })],
+  };
+  const update = (table: string, id: string, fields: Record<string, unknown>) => ({ op: 'update' as const, table, id, expectedRevision: 1, fields });
+  assert.equal(riskNeedsData([update('tasks.tasks', parent, { title: 'x' })]), false);
+  assert.equal(riskNeedsData([update('tasks.projects', p1, { status: 'archived' })]), true);
+  assert.deepEqual(tasksAgentRisk([update('tasks.projects', p1, { status: 'archived' })], data), { required: true, reasons: [`archive:project:${p1}`], affectedEstimate: 5 });
+  assert.deepEqual(tasksAgentRisk([update('tasks.projects', p1, { status: 'paused' })], data), { required: false, reasons: [], affectedEstimate: 1 });
+  assert.deepEqual(tasksAgentRisk([update('tasks.families', fam, { archived: true })], data), { required: true, reasons: [`archive:family:${fam}`], affectedEstimate: 3 });
+  assert.equal(tasksAgentRisk([update('tasks.families', fam, { archived: false })], data).required, false, 'reactivar no exige aprobación');
+  assert.equal(tasksAgentRisk([update('tasks.labels', fam, { archived: true })]).required, true);
+  // Borrar: el núcleo ya lo trata como destructivo; aquí solo se cuenta el alcance (hijas vivas, no las de la papelera).
+  assert.deepEqual(tasksAgentRisk([{ op: 'delete', table: 'tasks.tasks', id: parent, expectedRevision: 1 }], data), { required: false, reasons: [], affectedEstimate: 4 });
+  assert.deepEqual(tasksAgentRisk([{ op: 'delete', table: 'tasks.tabs', id: tab, expectedRevision: 1 }], data), { required: false, reasons: [`delete:tab:${tab}`], affectedEstimate: 1 + 1 + 4 });
+  // Sin datos, el alcance es lo nombrado.
+  assert.equal(tasksAgentRisk([update('tasks.projects', p1, { status: 'archived' })]).affectedEstimate, 1);
 });

@@ -1,7 +1,7 @@
 /** Ikisai Tasks · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/tasks/API.md §4–§6). */
 import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import {
-  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, statuses, validateOperations, visible, visibleRow,
+  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
   type AttachmentRow, type ProjectRow, type Role, type TaskDependencyRow, type TaskRow,
 } from '../_domain/tasks/mod.ts';
 
@@ -20,6 +20,22 @@ export function validateTasksOperations(operations: Operation[], ctx: RequestCon
     if (error instanceof DomainError) fail(error.status, error.code, error.message, error.details);
     throw error;
   }
+}
+
+/**
+ * Hook `agentRisk` (docs/tasks/AGENTES.md §3.1): archivar exige aprobación y el alcance cuenta lo que cuelga de un
+ * contenedor. Solo lee filas cuando el lote archiva o borra contenedores, y solo las que el agente puede ver.
+ * Se conecta a `hooks` cuando el kit tenga `AppHooks.agentRisk` en `main` (rama `core/agentes`).
+ */
+export function tasksAgentRiskHook(supabase: Supabase) {
+  return async (operations: Operation[], ctx: RequestContext) => {
+    if (!riskNeedsData(operations)) return tasksAgentRisk(operations);
+    const role = ctx.membership.role;
+    const read = async <T extends Record<string, unknown>>(table: 'tasks.tasks' | 'tasks.labels' | 'tasks.projects') =>
+      (await allRows<T>(supabase, role, table, false)).filter((row) => visibleRow(table, row, ctx.membership.scopes));
+    const [tasks, labels, projects] = await Promise.all([read<any>('tasks.tasks'), read<any>('tasks.labels'), read<any>('tasks.projects')]);
+    return tasksAgentRisk(operations, { 'tasks.tasks': tasks, 'tasks.labels': labels, 'tasks.projects': projects });
+  };
 }
 
 /** Todas las filas de una tabla, sin filtrar por ámbitos (uso interno de las rutas; nunca se devuelven tal cual). */
