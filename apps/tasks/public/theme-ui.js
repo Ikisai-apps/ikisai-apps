@@ -16,8 +16,6 @@ function themeToggleButton(){const dark=isDarkTheme();return `<button type="butt
 themeMedia.addEventListener('change',applyTheme);applyTheme();
 const groupsBeforeTheme=navigationGroups;
 navigationGroups=function(){const groups=groupsBeforeTheme(),work=groups.find(g=>g.id==='work'),organize=groups.find(g=>g.id==='organize');if(organize)organize.items=organize.items.filter(i=>i[0]!=='areas');if(work){const at=work.items.findIndex(i=>i[0]==='tasks');work.items.splice(at+1,0,['labels','Etiquetas','tag','view']);work.items.push(['areas','Áreas de trabajo','areas'])}return groups};
-const topbarBeforeTheme=topbar;
-topbar=function(){return topbarBeforeTheme().replace(menuIcon('areas')+' Tu espacio',themeToggleButton())};
 const bindBeforeTheme=bind;
 bind=function(){bindBeforeTheme();document.querySelectorAll('#themeToggle').forEach(b=>b.onclick=toggleTheme)};
 // Sin conexión, el primer pintado desde IndexedDB puede adelantarse a la carga de estos módulos: al terminar de cargar, se repinta una vez.

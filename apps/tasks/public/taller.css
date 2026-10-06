@@ -23,8 +23,8 @@ html,body{font-family:var(--sans)}
 body{background:var(--bg)}
 #app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(255,255,255,.75),transparent 48%)}
 /* Tipografía: serif con carácter en títulos y cifras; sans en todo lo demás. */
-.title,.brand,.sheettitle,.areatitle,.homecard-title,.kpi strong,.weekday strong,.navigation .menuheader,.titleedit,.filterarea,.facettotal strong,.filtercount strong,.homeproject-title{font-family:var(--serif);font-weight:500;letter-spacing:-.015em}
-.brand{font-weight:600;font-size:23px;letter-spacing:-.01em}
+.title,.sheettitle,.areatitle,.homecard-title,.kpi strong,.weekday strong,.titleedit,.filterarea,.facettotal strong,.filtercount strong,.homeproject-title{font-family:var(--serif);font-weight:500;letter-spacing:-.015em}
+
 .title{font-weight:450;letter-spacing:-.02em;line-height:1.02}
 .sheettitle{font-weight:450}
 
@@ -33,33 +33,29 @@ body{background:var(--bg)}
 .newproject .inlineedit{font-family:var(--serif);font-weight:500}
 .mark{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#1f2a22));color:var(--accent-ink);box-shadow:0 6px 14px -4px var(--accent-glow);transition:background .3s}
 /* Cabecera y pestañas: la pestaña activa sin color propio toma el acento; con color, el suyo. */
-.topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border-bottom-color:var(--edge)}
-.tabpill{background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1);font-weight:650;transition:background .15s,box-shadow .15s,transform .15s}
-.tabpill.active{background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 6px 14px -6px var(--accent-glow)}
-.tabpill.colored.active{box-shadow:0 6px 14px -6px color-mix(in srgb,var(--item-color) 80%,transparent)}
-.tabpill.general{border-style:dashed;box-shadow:none}
-.tabpill.general.active{border-style:solid}
-.tabtool,.themetoggle,.viewsave,.aliasbtn{background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1)}
-.tabtool:hover,.themetoggle:hover,.viewsave:hover,.aliasbtn:hover,.softbtn:hover,.ghost:hover,.tabpill:not(.active):hover{background:var(--paper-2)}
-.viewpill{background:var(--paper);border-color:var(--edge);color:var(--accent-deep)}
-.viewpill.active{background:var(--accent);border-color:transparent;color:var(--accent-ink)}
-.tabcount{background:rgba(31,42,34,.08)}
+
+
+
+
+
+
+.themetoggle:not(.ikisai-kit *),.viewsave:not(.ikisai-kit *),.aliasbtn:not(.ikisai-kit *){background:var(--paper);border-color:var(--edge);box-shadow:var(--shadow-1)}
+.themetoggle:not(.ikisai-kit *):hover,.viewsave:not(.ikisai-kit *):hover,.aliasbtn:not(.ikisai-kit *):hover,.softbtn:hover,.ghost:hover{background:var(--paper-2)}
+.viewpill:not(.ikisai-kit *){background:var(--paper);border-color:var(--edge);color:var(--accent-deep)}
+.viewpill.active:not(.ikisai-kit *){background:var(--accent);border-color:transparent;color:var(--accent-ink)}
+
 /* Barra lateral: el elemento activo lleva el hilo del acento. */
-.navigation .menuitem{transition:background .12s,color .12s}
-.navigation .menuitem.active{background:var(--paper);box-shadow:var(--shadow-1);border-left:3px solid var(--accent);color:var(--accent-deep);padding-left:7px}
-.navigation summary:hover,.navigation .menuitem:hover{background:rgba(31,42,34,.05)}
-.navigation .menuhint{line-height:1.5}
-@media(min-width:1024px){
-  .navigation.kebabmenu{background:transparent;border-right-color:var(--edge)}
-  .navigation .menugroup{border-top-color:var(--edge)}
-  .topbar{background:transparent;backdrop-filter:none;border-bottom:0;padding-bottom:4px}
-}
-@media(max-width:1023px){.tabstrip{padding:8px 0 0}.viewstrip{padding:5px 0 0}.topbar{padding-bottom:8px}}
+
+
+
+
+
+
 /* Navegación inferior: indicador superior en lugar de pastilla. */
-.navbtn{position:relative;transition:color .15s}
-.navbtn.active{background:transparent;color:var(--accent-deep)}
-.navbtn.active::after{content:'';position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:28px;height:4px;border-radius:0 0 4px 4px;background:var(--accent)}
-.bottomnav{background:color-mix(in srgb,var(--paper) 94%,transparent);border-top-color:var(--edge)}
+
+
+
+
 /* Buscador y controles. */
 .searchbar input,.softbtn,.facetbtn,.field input,.field textarea,.field select,select,.prioritybtn,.filterchip,.suggestion button{border-color:var(--edge);background-color:var(--paper);box-shadow:var(--shadow-1)}
 .searchbar input{border-radius:14px}
@@ -80,7 +76,7 @@ body{background:var(--bg)}
 /* Superficies con tres niveles de profundidad. */
 .newproject,.homecard,.homehead,.detail-card,.tasklist,.area-card,.label-manager .family-card,.filtercount,.facettotal{background:var(--paper);border:1px solid var(--edge);box-shadow:var(--shadow-2);border-radius:18px}
 .tasklist{border-radius:16px}
-.kebabmenu,.facetpanel,#moveRail{box-shadow:var(--shadow-3);border-color:var(--edge)}
+.facetpanel,#moveRail{box-shadow:var(--shadow-3);border-color:var(--edge)}
 .sheet{box-shadow:var(--shadow-3)}
 .sectionlabel{color:var(--muted);letter-spacing:.1em;margin:14px 2px 10px}
 .screen>.project-grid,.areablock .project-grid{margin-top:4px}
@@ -192,7 +188,7 @@ body{background:var(--bg)}
 .personbar .donepart{background:color-mix(in srgb,var(--accent) 30%,transparent)}
 .blockrow{border-bottom-color:var(--edge)}
 .activityrow{border-bottom-color:var(--edge)}
-.shortcuts .viewpill{box-shadow:var(--shadow-1)}
+.shortcuts .viewpill:not(.ikisai-kit *){box-shadow:var(--shadow-1)}
 /* Estados vacíos con icono y esqueletos de carga. */
 .empty{display:grid;justify-items:center;gap:10px;padding:34px 20px;color:var(--muted);font-size:14px;line-height:1.45}
 .empty::before{content:'';width:50px;height:50px;border-radius:16px;background:var(--accent-soft);-webkit-mask:none;mask:none;position:relative;display:grid;place-items:center;background-image:var(--icon-empty);background-repeat:no-repeat;background-position:center;background-size:26px}
@@ -271,10 +267,10 @@ body{background:var(--bg)}
 html.dark{--bg:#1a1915;--paper:#24221d;--paper-2:#2b2923;--ink:#ece5d8;--muted:#a69e90;--line:#3a372f;--edge:rgba(236,229,216,.08);--accent:#a5b28a;--accent-ink:#1a1915;--hover:rgba(236,229,216,.06);
   --shadow-1:0 1px 2px rgba(0,0,0,.25);--shadow-2:0 1px 2px rgba(0,0,0,.25),0 18px 34px -26px rgba(0,0,0,.8);--shadow-3:0 2px 4px rgba(0,0,0,.3),0 28px 70px -24px rgba(0,0,0,.85);--warn:#e0a94a;--alert:#e07a5f;--olive:#8e9a6c;--olive-dark:#5b6848}
 html.dark #app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(236,229,216,.06),transparent 48%)}
-html.dark .topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border-bottom-color:var(--edge)}
-html.dark .tabpill{background:var(--paper);color:var(--ink)}
-html.dark .tabpill.active{background:var(--accent);color:var(--accent-ink)}
-html.dark .tabpill.colored.active{background:var(--item-color);color:var(--item-ink)}
+
+
+
+
 html.dark .newproject,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette{background:var(--paper);border-color:var(--edge)}
 
 
@@ -282,13 +278,13 @@ html.dark .homeproject.colored{background:linear-gradient(160deg,color-mix(in sr
 html.dark .ring .track{stroke:rgba(236,229,216,.14)}
 html.dark .project-detail-head+.progressline{background:rgba(236,229,216,.1)}
 html.dark .sheet,html.dark .sheet-close,html.dark .actions{background:var(--paper)}
-html.dark .kebabmenu,html.dark .facetpanel,html.dark #moveRail,html.dark .navigation.kebabmenu{background:var(--paper-2);border-color:var(--edge)}
-html.dark .navigation .menuitem.active{background:var(--paper);color:var(--accent-deep)}
-html.dark .navbtn.active{background:transparent;color:var(--accent-deep)}
-html.dark .bottomnav{background:color-mix(in srgb,var(--paper) 94%,transparent)}
-html.dark .searchbar input,html.dark .softbtn,html.dark .facetbtn,html.dark .field input,html.dark .field textarea,html.dark .field select,html.dark select,html.dark .prioritybtn,html.dark .filterchip,html.dark .suggestion button,html.dark .ghost,html.dark .viewpill,html.dark .tabtool,html.dark .themetoggle,html.dark .viewsave,html.dark .aliasbtn{background-color:var(--paper);border-color:var(--edge);color:var(--ink)}
+html.dark .facetpanel,html.dark #moveRail{background:var(--paper-2);border-color:var(--edge)}
+
+
+
+html.dark .searchbar input,html.dark .softbtn,html.dark .facetbtn,html.dark .field input,html.dark .field textarea,html.dark .field select,html.dark select,html.dark .prioritybtn,html.dark .filterchip,html.dark .suggestion button,html.dark .ghost,html.dark .viewpill:not(.ikisai-kit *),html.dark .themetoggle:not(.ikisai-kit *),html.dark .viewsave:not(.ikisai-kit *),html.dark .aliasbtn:not(.ikisai-kit *){background-color:var(--paper);border-color:var(--edge);color:var(--ink)}
 html.dark .softbtn.active,html.dark .facetbtn.active,html.dark .batchtoggle.on,html.dark .menulist button.on,html.dark .themelist button.on{background:var(--accent-soft);color:var(--accent-deep)}
-html.dark .viewpill.active{background:var(--accent);color:var(--accent-ink)}
+html.dark .viewpill.active:not(.ikisai-kit *){background:var(--accent);color:var(--accent-ink)}
 html.dark .task{border-bottom-color:var(--edge)}
 html.dark .task.context{background:rgba(236,229,216,.03)}
 html.dark .task.newtask{background:var(--paper-2)}
@@ -321,7 +317,7 @@ html.dark .palette-back{background:rgba(0,0,0,.55)}
 html.dark .palette-input input{color:var(--ink)}
 html.dark .palette-input kbd,html.dark .palette-item .phint{background:var(--paper-2);border-color:var(--edge)}
 html.dark .kbdhint{background:var(--paper-2);border-color:var(--edge)}
-html.dark .sectionlabel .count,html.dark .tabcount{background:rgba(236,229,216,.1);color:var(--ink)}
+html.dark .sectionlabel .count{background:rgba(236,229,216,.1);color:var(--ink)}
 html.dark .mark{color:var(--accent-ink)}
 html.dark .inlineedit{background:var(--paper-2);color:var(--ink)}
 html.dark .projectlink:hover{background:var(--hover)}
@@ -330,5 +326,5 @@ html.dark .due.overdue{color:var(--alert)}
 html.dark .due.today{color:var(--warn)}
 html.dark .star:not(.ikisai-kit *){color:#e2b45c}
 html.dark .drop-child,html.dark .drop-child:after,html.dark .drop-project{background:var(--accent-soft)!important;color:var(--accent-deep)}
-html.dark .quickadd,html.dark .linkbtn,html.dark .viewpill,html.dark .projectlink{color:var(--accent-deep)}
+html.dark .quickadd,html.dark .linkbtn,html.dark .viewpill:not(.ikisai-kit *),html.dark .projectlink{color:var(--accent-deep)}
 html.dark .empty::before{background-color:var(--accent-soft)}

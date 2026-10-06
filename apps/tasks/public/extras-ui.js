@@ -20,12 +20,6 @@ const actionBeforeExtras=handleTopAction;
 handleTopAction=function(action){if(action==='mine')return showMyTasks();if(action==='alias'){closeNavigation();return aliasSheet()}return actionBeforeExtras(action)};
 // ---- Cabecera del menú, tira de vistas y pestañas con pendientes ---------------------------------
 function areaPending(area){return area.projects.filter(p=>!p.deleted&&p.status!=='archived').reduce((n,p)=>n+pending(p),0)}
-const topbarBeforeExtras=topbar;
-topbar=function(){const alias=myAlias();let html=topbarBeforeExtras();
-  html=html.replace('<div class="menuheader">',`<div class="menuheader"><button type="button" class="iconbtn aliasbtn" id="aliasBtn" data-tip="${alias?'Yo: '+esc(alias):'¿Quién eres?'}" aria-label="${alias?'Alias: '+esc(alias):'Elegir quién eres'}">${menuIcon('user')}<span>${esc(alias||'Yo')}</span></button>`);
-  if(myTaskFilters())html=html.replace(/(<button[^>]*id="savedViews"[^>]*>[\s\S]*?<\/button>)/,`$1<button type="button" class="viewpill mine ${isMyTasksView()?'active':''}" data-quick-mine title="Tareas con mi etiqueta en todas las áreas">${menuIcon('user')}Mis tareas</button>`);
-  for(const area of activeAreas()){const n=areaPending(area);if(n)html=html.replace(new RegExp(`(<button[^>]*data-tab="${area.id}"[^>]*>)([^<]*)(</button>)`),`$1$2<span class="tabcount">${n}</span>$3`)}
-  return html};
 // ---- Deshacer rápido ---------------------------------------------------------------------------
 let undoTimer=null;
 function undoToast(label,cursor){let el=document.getElementById('undoToast');if(!el){el=document.createElement('div');el.id='undoToast';el.className='undotoast';document.body.appendChild(el)}el.innerHTML=`<span>${esc(label)}</span><button type="button" id="undoNow">${menuIcon('undo')}Deshacer</button>`;el.classList.add('show');document.getElementById('undoNow').onclick=()=>{el.classList.remove('show');undoSheet(cursor)};clearTimeout(undoTimer);undoTimer=setTimeout(()=>el.classList.remove('show'),7000)}

@@ -32,8 +32,6 @@ function generalLabelsView(){const blocks=generalAreas().map(area=>withArea(area
   return `<main class="screen"><div class="screenhead"><div><h1 class="title">Etiquetas</h1><p class="subtitle">General · catálogo de cada área</p></div></div><div class="notice">Cada área tiene su propio catálogo. Pulsa una etiqueta para editarla.</div>${blocks.join('')}</main>`}
 const mainBeforeScope=main;
 main=function(){if(generalMode()&&state.view==='projects')return generalProjectsView();if(generalMode()&&state.view==='labels')return generalLabelsView();return mainBeforeScope()};
-const topbarBeforeScope=topbar;
-topbar=function(){const general=state.taskScope==='all';let html=topbarBeforeScope().replace('<div class="tabstrip" aria-label="Áreas de trabajo">',`<div class="tabstrip" aria-label="Áreas de trabajo"><button class="tabpill general ${general?'active':''}" data-general-area title="Todas las áreas a la vez">General</button>`);if(general)html=html.replace(/class="tabpill active" data-tab=/g,'class="tabpill" data-tab=').replace(`Área actual: <strong>${esc(tab().name)}</strong>`,'Vista <strong>General</strong> · todas las áreas');return html};
 function enterGeneral(){state.taskScope='all';if(state.view==='project')state.view='projects';state.currentProject=null;state.search='';state.filters={};closeSheet();persistUI();render()}
 function areaChooserSheet(){openSheet(`<h2 class="sheettitle">Nuevo proyecto</h2><p class="subtitle">Elige el área donde crearlo.</p><div class="menulist">${activeAreas().map(t=>`<button data-choose-area="${t.id}">${esc(t.name)}</button>`).join('')}</div>`);document.querySelectorAll('[data-choose-area]').forEach(b=>b.onclick=()=>{state.activeTab=b.dataset.chooseArea;openProjectEditor()})}
 const uiBeforeScope=ui;

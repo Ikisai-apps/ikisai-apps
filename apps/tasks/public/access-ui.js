@@ -4,8 +4,6 @@ const proposalStatusNames={pending:'Pendiente',approved:'Aprobada',rejected:'Rec
 const accessFieldNames={text:'Texto',title:'Nombre',name:'Nombre',note:'Nota',done:'Completada',status:'Estado',priority:'Prioridad',due:'Fecha objetivo',labels:'Etiquetas',ownLabels:'Etiquetas del proyecto',owner:'Responsable',parentId:'Tarea padre',order:'Posición',attachments:'Adjuntos',deleted:'En papelera',deletedAt:'Fecha de borrado',deleteBatch:'Grupo de recuperación',archived:'Archivada',color:'Color',family:'Familia',parent:'Etiqueta superior',filters:'Filtros',search:'Búsqueda',groupBy:'Agrupación'};
 /* Administración humana de claves y revisión de propuestas de agentes. */
 function isAdministrator(){return Sync.actor?.role==='owner'&&Sync.actor.scopes==='*'&&Sync.actor.kind!=='agent'&&!Sync.secondary}
-const topbarBeforeAccess=topbar;
-topbar=function(){return topbarBeforeAccess().replace('<button data-action="backup">',`${isAdministrator()?'<button data-action="accesses">Accesos y permisos</button>':''}<button data-action="proposals">Propuestas de agentes</button><button data-action="backup">`)};
 const topActionBeforeAccess=handleTopAction;
 handleTopAction=function(action){if(action==='accesses')return accessesSheet();if(action==='proposals')return proposalsSheet();if(tab().restricted&&['newtab','managetab','views','import'].includes(action))return toast('Tu acceso permite trabajar en los proyectos compartidos.');return topActionBeforeAccess(action)};
 const renderBeforeAccess=render;

@@ -1,5 +1,3 @@
-const topbarBeforeCSV=topbar;
-topbar=function(){return topbarBeforeCSV().replace('<button data-action="backup">','<button data-action="csvExport">Exportar tareas CSV</button>'+ (canEdit()&&!tab().restricted?'<button data-action="csvImport">Importar tareas CSV</button>':'')+'<button data-action="backup">')};
 const topActionBeforeCSV=handleTopAction;
 handleTopAction=function(action){if(action==='csvExport')return csvExport();if(action==='csvImport')return csvImportSheet();return topActionBeforeCSV(action)};
 async function csvExport(){if(Sync.record.queue.length)return toast('Sincroniza primero los cambios pendientes.');try{const res=await fetch('/api/v1/csv?tabId='+encodeURIComponent(tab().id),{headers:{Authorization:'Bearer '+Sync.token}});if(!res.ok)throw Error('No se pudo exportar el CSV.');const url=URL.createObjectURL(await res.blob()),a=document.createElement('a');a.href=url;a.download='Ikisai-tareas.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}
