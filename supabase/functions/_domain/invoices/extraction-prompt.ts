@@ -62,3 +62,12 @@ Ejemplo válido:
   "extraction_notes": null,
   "overall_confidence": 0.98
 }`;
+
+/**
+ * Variante para la extracción automática con salida estructurada (`imports/extract`, helper de `_kit` con `schema`):
+ * no hay prosa fuera del JSON, así que las ambigüedades van en `extraction_notes`. El resto del prompt es el mismo.
+ */
+export const EXTRACTION_PROMPT_STRUCTURED = EXTRACTION_PROMPT.replace(
+  'Si hay alguna ambigüedad material, dila en una nota corta ANTES del JSON; dentro del JSON no pongas prosa.',
+  'Si hay alguna ambigüedad material, explícala en extraction_notes; no escribas nada fuera del JSON.',
+);

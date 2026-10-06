@@ -19,7 +19,7 @@ import {
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
-import { extractDocument, extractionQueue } from '../app/extract.ts';
+import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -566,7 +566,10 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // ---------------------------------------------------------------------------
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
-export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: { document: ImportDocument; warnings: string[] }): void {
+/** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
+export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null }
+
+export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill): void {
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
@@ -674,17 +677,22 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   textarea.addEventListener('input', () => { guard.dirtyEditor = true; parse(textarea.value); });
   jsonFile.addEventListener('change', async () => { const f = jsonFile.files?.[0]; if (!f) return; textarea.value = await f.text(); parse(textarea.value); });
   const queueNote = extractionQueue.total > 1 ? el('div', { class: 'banner info' }, el('span', null, `Extracción ${extractionQueue.total - extractionQueue.ids.length} de ${extractionQueue.total}. Al confirmar o cancelar, sigue la siguiente.`)) : null;
-  const extractionNote = prefill ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null)) : null;
+  // Coste de la extracción, discreto pero visible (petición de Core, ronda 10): modelo, tokens y tiempo.
+  const usageText = prefill ? describeUsage(prefill.usage) : null;
+  const usageLine = usageText ? el('p', { class: 'hint', id: 'extractionUsage' }, 'Coste de la extracción: ', usageText) : null;
+  const extractionNote = !prefill ? null : prefill.document
+    ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null, usageLine))
+    : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
     body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
-    initialFocus: prefill ? confirm : textarea,
+    initialFocus: prefill?.document ? confirm : textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; if (extractionQueue.ids.length) void extractNext(ctx); },
   });
-  if (prefill) {
+  if (prefill?.document) {
     textarea.value = JSON.stringify(prefill.document, null, 2);
     parse(textarea.value);
   }
@@ -701,15 +709,14 @@ export async function extractInto(ctx: ViewContext, invoice: LocalInvoice): Prom
   try {
     const result = await extractDocument(client, files.map((f) => f.file_id));
     await closeSheet(true);
-    openImport(ctx, mirror, invoice, { document: result.document, warnings: result.warnings });
+    openImport(ctx, mirror, invoice, { document: result.document, warnings: result.warnings, usage: result.usage });
   } catch (error) {
-    const code = (error as { code?: string })?.code;
-    if (code === 'EXTRACTION_UNAVAILABLE') {
-      toast(describeError(error));
+    const e = error as { code?: string; details?: { errors?: unknown[]; warnings?: string[]; usage?: ExtractionUsage | null } | null };
+    toast(describeError(error));
+    // Sin servicio o sin JSON utilizable: el mismo camino que la importación manual, mostrando por qué falló y lo que costó.
+    if (e?.code === 'EXTRACTION_UNAVAILABLE' || e?.code === 'EXTRACTION_INVALID') {
       await closeSheet(true);
-      openImport(ctx, mirror, invoice);
-    } else {
-      toast(describeError(error));
+      openImport(ctx, mirror, invoice, e.code === 'EXTRACTION_INVALID' ? { warnings: e.details?.warnings ?? [], errors: e.details?.errors ?? [], usage: e.details?.usage ?? null } : undefined);
     }
   }
 }
