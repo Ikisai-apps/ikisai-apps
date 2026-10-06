@@ -47,6 +47,11 @@ test('[29][37] agentes: clave desde la interfaz, borrado con revisión humana ap
     await a.locator('#saveAgent').click();
     token = await a.locator('#issuedAgentKey').inputValue();
     expect(token).toMatch(/^ika_[A-Za-z0-9_-]{43}$/);
+    // «Hecho» sin copiarla pide confirmar que se ha guardado; copiándola, cierra.
+    await a.locator('#agentDone').click();
+    await expect(a.locator('.so-confirm')).toBeVisible();
+    await a.locator('#copyAgentKey').click();
+    await expect(a.locator('#copyAgentKey')).toContainText('Copiada');
     await a.locator('#agentDone').click();
     await expect(a.locator('.agentrow')).toHaveCount(1);
     await expect(a.locator('.agentrow')).toContainText(`clave …${token.slice(-4)}`);
@@ -78,7 +83,10 @@ test('[29][37] agentes: clave desde la interfaz, borrado con revisión humana ap
     await expect(a.locator('[data-review-proposal]')).toContainText('Asistente de obra');
     await expect(a.locator('[data-review-proposal]')).toContainText('Pendiente');
     await a.locator('[data-review-proposal]').click();
-    await expect(a.locator('.proposalchanges')).toContainText(`Borrar · Tarea · ${target.title}`);
+    await expect(a.locator('.changelist .cl-group[data-op="delete"]')).toContainText('Borrar 1 tarea');
+    await expect(a.locator('.changelist')).toContainText(target.title);
+    await expect(a.locator('.risksummary')).toContainText('Incluye borrados');
+    await expect(a.locator('#approveProposal')).toHaveText('Aprobar el cambio');
     await a.locator('#approveProposal').click();
     await expect(a.locator('[data-review-proposal]')).toContainText('Aprobada');
     expect((await server.rows('tasks.tasks')).find((t) => t.id === target.id)!.deleted_at).toBeNull();
