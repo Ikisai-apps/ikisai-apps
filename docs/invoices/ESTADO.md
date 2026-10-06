@@ -56,9 +56,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Tanda 15 (misma rama y PR #141): importación de emitidas desde CSV del Google Sheet con mapeo de columnas recordado, prompt de emitidas para ChatGPT con el PDF adjunto, y categorías de ingreso nuevas (tienda, artesanía, consultoría) con IVA sugerido editable. Nombre de la app: pasa a Finance (lo coordina Core; aquí no se cambia nada interno hasta su aviso).
 
+- PR #141 (tandas 13–15) fusionada y publicada.
+- Fase 1 de la extracción sin API de pago (ronda 29, `invoices/ia-compartir`): «Analizar con IA» comparte el documento y `ikisai_invoice_contract.txt` con la app de IA del usuario; vuelve por `share_target` o pegando; sobre `source` con nombre y hash del documento; JSON extraído del texto y validado como no confiable (API.md §6.7).
+
 ## En curso
 
-- PR #141 (tandas 13–15: emitidas, IVA repercutido, gestoría e importación CSV), fusionándose tras la #138.
+- Extracción sin API de pago: fase 1 en PR; después fase 2 (texto de PDF y reglas), fase 3 (plantillas por proveedor, con propuesta previa) y fase 4 (OCR con Google Drive, cuando Core la verifique).
 
 ## Pendiente
 

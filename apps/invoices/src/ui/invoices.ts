@@ -5,7 +5,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -21,6 +21,7 @@ import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTa
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
+import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedText } from '../app/ai-share.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 
@@ -168,6 +169,19 @@ export const mountInvoices: ViewMount = (ctx) => {
 
   function fromHash(): void {
     const tail = location.hash.replace(/^#\/facturas\/?/, '');
+    // Resultado compartido hacia Ikisai (share_target): se abre la importación sobre la pendiente más reciente con documento.
+    const shared = tail.match(/^\?compartido=([01])/);
+    if (shared && mirror) {
+      history.replaceState(null, '', '#/facturas');
+      if (shared[1] === '0') { toast('No se pudo recibir lo compartido. Copia el resultado y usa «Pegar resultado».'); return; }
+      void takeSharedText().then((text) => {
+        if (!text) { toast('No ha llegado ningún resultado. Copia el resultado y usa «Pegar resultado».'); return; }
+        const pending = mirror!.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (mirror!.filesByInvoice.get(i.id) ?? []).some((f) => f.kind === 'original'))
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
+        openImport(ctx, mirror!, pending, undefined, { text });
+      });
+      return;
+    }
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
     else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
@@ -316,7 +330,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       id: f.id, title: f.normalized_filename, meta: [f.kind === 'attachment' ? 'Adjunto' : `Página ${f.page_order}`, formatBytes(Number(f.size_bytes)), f.original_filename], pending: f._pending === true,
       actions: [el('button', { class: 'linkbtn', type: 'button', onclick: () => openFile(client, f.file_id).catch((e) => toast(describeError(e))) }, icon('eye', 16), 'Ver')],
     })) }) : el('p', { class: 'hint' }, 'Sin documento. Una factura no se valida sin su original.'),
-    editable && invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original') ? chatgptSteps('chatgptInvoice', () => void openImport(ctx, mirror, invoice)) : null,
+    editable && invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original') ? chatgptSteps('chatgptInvoice', () => void openImport(ctx, mirror, invoice), async () => {
+      const original = files.filter((f) => f.kind === 'original').sort((a, b) => a.page_order - b.page_order)[0];
+      if (!original) return null;
+      if (!navigator.onLine) { toast('Para compartir el documento hace falta conexión (está en la nube).'); return null; }
+      const file = await fetchStoredDocument(client, original.file_id, original.normalized_filename, original.mime_type);
+      return { file, source: { filename: original.normalized_filename, sha256: original.sha256 } };
+    }) : null,
     canEdit && invoice.status !== 'anulada' ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', onclick: () => fileInput.click() }, icon('attach', 18), pendingState ? 'Añadir PDF o fotos' : 'Añadir adjunto'), fileInput) : null,
   );
 
@@ -534,6 +554,9 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     guard.dirtyEditor = false;
     await closeSheet(true);
     openImport(ctx, mirror, null, undefined, { files: picked });
+  }, async () => {
+    const file = files.files?.[0];
+    return file ? { file, source: { filename: file.name, sha256: await sha256Hex(file) } } : null;
   });
   chatgpt.hidden = true;
   files.addEventListener('change', () => { chatgpt.hidden = !(files.files && files.files.length); });
@@ -605,12 +628,13 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 /** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
 export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null }
 
-export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[] } = {}): void {
+export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[]; text?: string } = {}): void {
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
-  const textarea = el('textarea', { id: 'importJson', rows: '6', placeholder: 'Pega aquí el JSON que devolvió ChatGPT…', spellcheck: 'false' });
-  const jsonFile = el('input', { type: 'file', accept: 'application/json,.json', id: 'importFile' });
+  const textarea = el('textarea', { id: 'importJson', rows: '6', placeholder: 'Pega aquí el resultado de ChatGPT (el JSON o la respuesta entera)…', spellcheck: 'false' });
+  const jsonFile = el('input', { type: 'file', accept: 'application/json,.json,text/plain,.txt', id: 'importFile' });
+  const sourceNote = el('div', { id: 'sourceCheck' });
   const docs = el('input', { type: 'file', accept: ACCEPT_ATTR, multiple: true, id: 'importDocs' });
   if (options.files?.length) {
     const transfer = new DataTransfer();
@@ -630,7 +654,19 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   let deductibilitySelect: HTMLSelectElement | null = null;
 
   function parse(text: string): void {
-    const result = parseImportDocument(text);
+    // Lo que vuelve de la app de IA es no confiable: JSON extraído del texto, sobre aparte y validación estricta.
+    const external = parseExternalResult(text);
+    const result = external.validation;
+    replace(sourceNote);
+    if (external.source && target) {
+      const shas = (mirror.filesByInvoice.get(target.id) ?? []).map((f) => f.sha256);
+      if (!shas.includes(external.source.sha256)) {
+        replace(sourceNote, el('div', { class: 'banner warn', id: 'sourceMismatch' }, icon('warn', 18), el('span', null,
+          `El resultado dice venir de «${external.source.filename}», que no es el documento de esta factura. Revisa que sea la factura correcta antes de importar.`)));
+      } else {
+        replace(sourceNote, el('p', { class: 'hint', id: 'sourceMatch' }, '✓ El resultado corresponde al documento de esta factura.'));
+      }
+    }
     if (!result.ok) { document = null; errors = result.errors; confirm.disabled = true; replace(preview, renderErrors(errors)); return; }
     document = result.document;
     errors = [];
@@ -727,12 +763,16 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
-    body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
+    body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json o .txt', jsonFile), sourceNote, preview, error),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
     initialFocus: prefill?.document ? confirm : textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; if (extractionQueue.ids.length) void extractNext(ctx); },
   });
+  if (options.text) {
+    textarea.value = options.text;
+    parse(textarea.value);
+  }
   if (prefill?.document) {
     textarea.value = JSON.stringify(prefill.document, null, 2);
     parse(textarea.value);
@@ -795,15 +835,25 @@ function promptTextArea(): HTMLTextAreaElement {
  * «Extraer con ChatGPT» junto al documento (incidencia de la aceptación V1): 1) copiar el prompt y adjuntar en ChatGPT (u
  * otro asistente) esta misma foto o PDF; 2) pegar el JSON que devuelva. Siempre disponible, con o sin extracción automática.
  */
-function chatgptSteps(id: string, onPaste: () => void): HTMLElement {
+function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promise<{ file: File; source: { filename: string; sha256: string } } | null>): HTMLElement {
   const promptText = promptTextArea();
+  // Fase 1 sin API de pago (ronda 29): compartir el documento y el contrato con la app de IA del usuario.
+  const share = getDocument ? el('button', { class: 'primary small', type: 'button', dataset: { step: 'share' }, onclick: async () => {
+    try {
+      const doc = await getDocument();
+      if (!doc) return;
+      const how = await shareWithAi(doc.file, doc.source);
+      if (how === 'files' || how === 'text') toast('Cuando la app de IA responda, comparte el resultado con Ikisai Invoices o pégalo con «Pegar resultado».');
+    } catch (error) { toast(describeError(error)); }
+  } }, icon('upload', 16), 'Analizar con IA') : null;
   return el('div', { class: 'chatgpt-steps', id },
     el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea imágenes')),
+    share ? el('div', { class: 'btnrow' }, share, el('span', { class: 'hint' }, 'Comparte el documento y las instrucciones con tu app de IA.')) : null,
     el('ol', { class: 'steps' },
       el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copyPrompt(promptText) }, icon('attach', 16), '1) Copiar prompt'),
         el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta esta misma foto o PDF.')),
       el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'paste' }, onclick: onPaste }, icon('upload', 16), '2) Pegar JSON'),
-        el('span', { class: 'hint' }, ' Copia la respuesta de ChatGPT y pégala para importarla.')),
+        el('span', { class: 'hint' }, ' Copia la respuesta (o compártela con Ikisai) y pégala para importarla.')),
     ),
     promptText,
   );

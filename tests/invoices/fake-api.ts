@@ -483,6 +483,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, issueTokens(user.email));
       }
       const putUpload = path.match(/^_upload\/([^/]+)$/);
+      const signed = path.match(/^_file\/([^/]+)$/);
+      if (signed && method === 'GET') {
+        const up = uploads.get(signed[1]!);
+        if (!up || !up.bytes) throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
+        res.writeHead(200, { 'Content-Type': up.mime, 'Content-Length': String(up.bytes.length) });
+        res.end(up.bytes);
+        return;
+      }
       if (putUpload && method === 'PUT') {
         const up = uploads.get(putUpload[1]!);
         if (!up) throw new Fault(404, 'FILE_NOT_FOUND', 'Ticket desconocido.');

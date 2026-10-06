@@ -6,6 +6,8 @@ const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'a
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // «Compartir» hacia Ikisai sin service worker activo: lo recibido no se guarda en el servidor; la app avisa.
+    if (url.pathname === '/share-target') return Response.redirect(url.origin + '/#/facturas?compartido=0', 303);
     if (!url.pathname.startsWith('/api/v1/')) return env.ASSETS.fetch(request);
 
     const origin = request.headers.get('origin');

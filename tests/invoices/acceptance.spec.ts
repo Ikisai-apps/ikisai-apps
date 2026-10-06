@@ -7,6 +7,7 @@
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { build, preview, type PreviewServer } from 'vite';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
@@ -795,4 +796,111 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
   });
 
   await context.close();
+});
+
+test('IA sin API de pago (fase 1): compartir documento y contrato, volver por share_target, sobre que no coincide y escritorio sin Web Share', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const pdfSha = createHash('sha256').update(PDF).digest('hex');
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  // Web Share simulado: guarda lo que se comparte para comprobarlo.
+  await context.addInitScript(() => {
+    const w = window as unknown as { __shared?: unknown };
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: (data: { files?: File[] }) => Array.isArray(data.files) });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async (data: { files?: File[]; text?: string }) => {
+      const files = await Promise.all((data.files ?? []).map(async (f) => ({ name: f.name, type: f.type, text: f.type === 'text/plain' ? await f.text() : null, size: f.size })));
+      w.__shared = { files, text: data.text ?? null };
+    } });
+  });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+  let code = '';
+
+  await test.step('compartir: documento ya subido + ikisai_invoice_contract.txt con el sobre del documento', async () => {
+    await nav(page, 'Facturas').click();
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: '+ Nuevo proveedor…' });
+    await sheet.locator('#newSupplierName').fill('Proveedor IA SL');
+    await sheet.getByLabel('Fecha').fill('2026-10-06');
+    await sheet.getByLabel('Objeto').fill('compra ia');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'factura ia.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await sheet.locator('#saveInvoice').click();
+    const f = ficha(page);
+    await expect(f.locator('#chatgptInvoice')).toBeVisible({ timeout: 20_000 });
+    await synced(page);
+    code = String(api.rows('invoices.invoices').find((i) => i.object === 'compra ia')!.code);
+    await f.locator('#chatgptInvoice [data-step="share"]').click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Compartir' }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __shared?: { files: Array<{ name: string }> } }).__shared?.files.map((x) => x.name) ?? null), { timeout: 15_000 })
+      .toEqual(['2026_10_06_(proveedor_ia_sl)_compra_ia.pdf', 'ikisai_invoice_contract.txt']);
+    const contract = await page.evaluate(() => (window as unknown as { __shared: { files: Array<{ text: string | null }> } }).__shared.files[1]!.text);
+    expect(contract).toContain(`"sha256": "${pdfSha}"`);
+    expect(contract).toContain('Responde SOLO con el JSON');
+  });
+
+  await test.step('volver por share_target: el service worker recibe el texto y abre la importación de esa factura', async () => {
+    await closeSheet(page);
+    await page.waitForFunction(async () => Boolean((await navigator.serviceWorker.getRegistration())?.active), null, { timeout: 15_000 });
+    if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) await page.reload();
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)), { timeout: 15_000 }).toBe(true);
+    const result = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, supplier_name: 'Proveedor IA SL', supplier_tax_id: null, invoice_number: 'IA-1', object: 'compra ia', invoice_date: '2026-10-06' },
+      source: { filename: '2026_10_06_(proveedor_ia_sl)_compra_ia.pdf', sha256: pdfSha } };
+    const reply = `Aquí tienes los datos:\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\`\nAvísame si falta algo.`;
+    // Lo que haría el sistema al elegir Ikisai Invoices en «Compartir»: un POST multipart a /share-target.
+    await page.evaluate((text) => {
+      const form = document.createElement('form');
+      form.method = 'POST'; form.action = '/share-target'; form.enctype = 'multipart/form-data';
+      const input = document.createElement('textarea'); input.name = 'text'; input.value = text; form.append(input);
+      document.body.append(form); form.submit();
+    }, reply);
+    const sheet = ficha(page);
+    await expect(sheet).toContainText(`Importar JSON en ${code}`, { timeout: 20_000 });
+    await expect(sheet.locator('#sourceMatch')).toBeVisible();
+    await expect(sheet.locator('#importPreview')).toContainText('Dentro de la tolerancia');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.invoices').find((i) => i.code === code)).toMatchObject({ status: 'pendiente_revision', review_reason: 'IMPORTADA', invoice_number: 'IA-1' });
+    await closeSheet(page);
+  });
+
+  await test.step('pegar un resultado con el sobre de otro documento: aviso, sin bloquear', async () => {
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    let sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor IA SL' });
+    await sheet.getByLabel('Objeto').fill('otra compra');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'otra.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([PDF, Buffer.from('% otra\n')]) });
+    await sheet.locator('#saveInvoice').click();
+    await expect(ficha(page).locator('#chatgptInvoice')).toBeVisible({ timeout: 20_000 });
+    await ficha(page).locator('#chatgptInvoice [data-step="paste"]').click();
+    sheet = ficha(page);
+    const other = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_number: 'IA-2' }, source: { filename: 'factura ia.pdf', sha256: pdfSha } };
+    await sheet.getByLabel('JSON', { exact: true }).fill(`Resultado: ${JSON.stringify(other)}`);
+    await expect(sheet.locator('#sourceMismatch')).toContainText('no es el documento de esta factura');
+    await expect(sheet.locator('#confirmImport')).toBeEnabled();
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
+  });
+  await context.close();
+
+  await test.step('escritorio sin Web Share: se descarga el contrato para adjuntarlo a mano', async () => {
+    const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    await desktop.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
+    });
+    const p = await desktop.newPage();
+    await login(p);
+    await synced(p);
+    await nav(p, 'Facturas').click();
+    await p.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = p.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'escritorio.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await sheet.locator('#chatgptNew [data-step="share"]').click();
+    const download = p.waitForEvent('download');
+    await p.getByRole('alertdialog').getByRole('button', { name: 'Compartir' }).click();
+    expect((await download).suggestedFilename()).toBe('ikisai_invoice_contract.txt');
+    await desktop.close();
+  });
 });

@@ -78,9 +78,36 @@ async function activateSafely(): Promise<void> {
   activation = null;
 }
 
+/**
+ * «Compartir» hacia Ikisai (share_target del manifiesto, ronda 29): guarda el texto recibido (y el de los archivos
+ * .json/.txt, hasta 1 MB) en una caché propia y abre Facturas, que lo pasa a la importación. Lo recibido es no confiable:
+ * aquí no se interpreta nada.
+ */
+async function receiveShare(request: Request): Promise<Response> {
+  const parts: string[] = [];
+  try {
+    const form = await request.formData();
+    for (const key of ['title', 'text', 'url']) { const v = form.get(key); if (typeof v === 'string' && v.trim()) parts.push(v); }
+    for (const item of form.getAll('files')) {
+      if (typeof item === 'string') continue;
+      const name = item.name.toLowerCase();
+      if (item.size <= 1_000_000 && (item.type.startsWith('text/') || item.type === 'application/json' || name.endsWith('.json') || name.endsWith('.txt'))) parts.push(await item.text());
+    }
+    const cache = await caches.open('ikisai-invoices-share');
+    await cache.put('/__shared__', new Response(JSON.stringify({ text: parts.join('\n\n'), receivedAt: new Date().toISOString() }), { headers: { 'Content-Type': 'application/json' } }));
+    return Response.redirect('/#/facturas?compartido=1', 303);
+  } catch {
+    return Response.redirect('/#/facturas?compartido=0', 303);
+  }
+}
+
 sw.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
+  if (url.origin === sw.location.origin && request.method === 'POST' && url.pathname === '/share-target') {
+    event.respondWith(receiveShare(request));
+    return;
+  }
   if (url.origin !== sw.location.origin || request.method !== 'GET') return;
   if (url.pathname.startsWith('/api/')) return; // nunca se cachea la API
 
