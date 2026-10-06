@@ -1,0 +1,25 @@
+/* Compras no alimentarias (purchases-ui.js): filas, estados y hoja de ruta, con las variables del tema. */
+.pcard{display:block;width:100%;text-align:left;margin:8px 0;padding:12px 14px;border:1px solid var(--line);border-radius:16px;background:var(--paper);color:var(--ink);box-shadow:0 1px 0 rgba(55,44,32,.04);font:inherit}
+button.pcard{cursor:pointer}
+button.pcard:hover{border-color:var(--olive)}
+.pcard .phead{display:flex;gap:8px;align-items:center}
+.pcard .phead strong{flex:1;min-width:0}
+.pcard .pmeta{display:block;margin-top:3px;font-size:13px;color:var(--muted)}
+.pstate{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;line-height:1.3;white-space:nowrap;background:rgba(104,112,74,.14);color:var(--olive-dark)}
+.pstate.pending{background:rgba(200,120,71,.16);color:#8a4b23}
+.pstate.alert{background:#c87847;color:#fff}
+.pstate.trash{background:rgba(116,111,101,.14);color:var(--muted)}
+.pstock{font-weight:800;font-size:15px}
+.pstock.alert{color:#b0602f}
+.pactions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.pactions .pgrow{flex:1}
+.pline{display:flex;gap:10px;align-items:center;margin:8px 0;font-size:15px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+.pline input{width:22px;height:22px;accent-color:var(--olive);flex:none}
+.pline span:first-of-type{flex:1}
+.pline .pqty{font-weight:500;color:var(--muted);font-size:13px}
+.routelist{padding:0;margin:8px 0;list-style:none}
+.routelist .pcard{background:transparent}
+.purchasearea{font-size:13px;color:var(--muted);margin:2px 0 10px}
+html.dark .pstate.pending{color:#f0b58e}
+html.dark .pstock.alert{color:#f0b58e}
+.psupply{display:block;width:100%;text-align:left;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
