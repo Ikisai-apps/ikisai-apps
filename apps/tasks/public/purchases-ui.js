@@ -38,15 +38,42 @@ navigationGroups=function(){const groups=navigationBeforePurchases();const at=gr
   const purchases={id:'purchases',name:'Compras',icon:'cart',items:[['purchases','Solicitudes de compra','cart','view'],['supplies','Suministros','box','view'],['plans','Planes de compra','route','view']]};
   groups.splice(at<0?groups.length:at,0,purchases);return groups};
 
+/* --- Finance (Invoices): facturas de cada solicitud y proveedores del catálogo ------------------------------------------
+   Dos lecturas de Invoices registradas para Tasks (invoices.allocations_by_target e invoices.supplier_options). Devuelven
+   vacío a quien no es miembro de Finance, y sin red no se piden: el proveedor queda como nombre libre. */
+const FINANCE_INVOICE_URL='https://finance.ikisai.com/#/facturas/';
+const purchaseInvoices=new Map();let invoicesAsked={key:'',at:0};
+function loadPurchaseInvoices(ids){const key=[...ids].sort().join(',');if(!ids.length||!Sync.core||!navigator.onLine)return;if(key===invoicesAsked.key&&Date.now()-invoicesAsked.at<60000)return;invoicesAsked={key,at:Date.now()};
+  Sync.core.api('/read/invoices.allocations_by_target',{method:'POST',json:{targetApp:'tasks',targetKind:'purchase_request',ids}}).then(out=>{
+    for(const id of ids)purchaseInvoices.set(id,[]);for(const row of out?.rows||[])purchaseInvoices.get(row.target_id)?.push(row);
+    if(state.view==='purchases'&&!document.getElementById('sheetBack')?.classList.contains('show'))render()}).catch(()=>{invoicesAsked={key:'',at:0}})}
+function invoiceCodes(id){return [...new Set((purchaseInvoices.get(id)||[]).map(x=>x.invoice_code).filter(Boolean))]}
+function invoiceSection(r){if(!r.needs_invoice||!['approved','purchased','received'].includes(r.status)||!purchaseInvoices.has(r.id))return '';const list=purchaseInvoices.get(r.id);
+  if(!list.length)return r.status==='approved'?'':'<p class="pmeta pinvoices">Sin factura asignada todavía en Finance.</p>';
+  return `<div class="pinvoices"><span class="pmeta">Facturas en Finance</span>${list.map(x=>`<a class="pinvoice" href="${FINANCE_INVOICE_URL}${encodeURIComponent(x.invoice_code)}" target="_blank" rel="noopener">${esc(x.invoice_code)}${x.invoice_date?' · '+esc(shortDate(x.invoice_date)):''}${x.allocated_amount!=null?' · '+esc(money(Number(x.allocated_amount))):''}</a>`).join('')}</div>`}
+const supplierCache=new Map(),supplierKnown=new Map();
+function supplierInput(id,name,supplierId,disabled){return `<input id="${id}" maxlength="200" placeholder="Opcional" list="${id}List" autocomplete="off" value="${esc(name||'')}" data-supplier-id="${esc(supplierId||'')}" data-initial="${esc(name||'')}" ${disabled?'disabled':''}><datalist id="${id}List"></datalist>`}
+function bindSupplierInput(id){const input=document.getElementById(id),list=document.getElementById(id+'List');if(!input||input.disabled||!list)return;let timer=null;
+  const fill=items=>{list.innerHTML=items.map(x=>`<option value="${esc(x.name)}"></option>`).join('')};
+  const ask=()=>{const q=input.value.trim().toLowerCase();if(supplierCache.has(q))return fill(supplierCache.get(q));if(!Sync.core||!navigator.onLine)return;
+    Sync.core.api('/read/invoices.supplier_options',{method:'POST',json:{q,limit:20}}).then(out=>{const items=out?.items||[];supplierCache.set(q,items);for(const x of items)supplierKnown.set(x.name.toLowerCase(),x);if(document.getElementById(id)===input)fill(items)}).catch(()=>{})};
+  input.addEventListener('focus',ask);input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(ask,250)})}
+/* Proveedor elegido: del catálogo de Finance si el nombre coincide con uno; si no, nombre libre (sin red o sin Finance). */
+function supplierValue(id){const input=document.getElementById(id),name=input.value.trim();if(!name)return {supplier_id:null,supplier_name:null};
+  const known=supplierKnown.get(name.toLowerCase());if(known)return {supplier_id:known.id,supplier_name:known.name};
+  if(name===input.dataset.initial&&input.dataset.supplierId)return {supplier_id:input.dataset.supplierId,supplier_name:name};
+  return {supplier_id:null,supplier_name:name}}
+
 /* --- Vistas -------------------------------------------------------------------------------------------------------- */
 function purchaseAreaNote(){return generalMode()?'<div class="notice">Elige un área en la tira de arriba: las compras se llevan por área.</div>':''}
 function purchaseRow(r){const [label,tone]=PURCHASE_STATUS[r.status]||[r.status,''];const project=r.project_id?tab().projects.find(p=>p.id===r.project_id)?.title:'';
-  const meta=[qty(r.quantity,r.unit),r.supplier_name,project,r.due?'para el '+shortDate(r.due):'',r.repeat_days?`cada ${r.repeat_days} días`:''].filter(Boolean).join(' · ');
+  const meta=[qty(r.quantity,r.unit),r.supplier_name,project,r.due?'para el '+shortDate(r.due):'',r.repeat_days?`cada ${r.repeat_days} días`:'',invoiceCodes(r.id).length?'Factura '+invoiceCodes(r.id).join(', '):''].filter(Boolean).join(' · ');
   return `<button type="button" class="pcard" data-purchase="${r.id}"><span class="phead">${r.priority!=='normal'?priorityStar(r.priority):''}<strong>${esc(r.title)}</strong><span class="pstate ${tone}">${label}</span></span>${meta?`<span class="pmeta">${esc(meta)}</span>`:''}</button>`}
 let showRejectedPurchases=false;
 function purchasesView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Solicitudes de compra</h1>${purchaseAreaNote()}</main>`;
   const all=liveRows('tasks.purchase_requests').filter(r=>r.tab_id===tab().id).sort((a,b)=>(a.position||0)-(b.position||0));
   const open=all.filter(r=>['requested','approved','purchased'].includes(r.status)).length;
+  loadPurchaseInvoices(all.filter(r=>r.needs_invoice&&['approved','purchased','received'].includes(r.status)).map(r=>r.id));
   const section=(status,title,list)=>list.length?`<h2 class="sectionlabel">${title} <span class="count">${list.length}</span></h2>${list.map(purchaseRow).join('')}`:'';
   const received=all.filter(r=>r.status==='received').sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||'')).slice(0,20),rejected=all.filter(r=>r.status==='rejected');
   return `<main class="screen purchases"><div class="screenhead"><div><h1 class="title">Solicitudes de compra</h1><p class="subtitle">${esc(tab().name)} · ${open} abiertas · ${purchaseApprover(tab().id)&&purchaseApprover(tab().id)===Sync.actor?.id?'apruebas tú':'aprueba '+esc(approverName(tab().id))}</p></div>${canEdit()?'<button class="primary" id="newPurchase" type="button">+ Pedir algo</button>':''}</div>
@@ -88,11 +115,12 @@ function purchaseSheet(id=null,preset={}){
     <div class="field"><label for="prTitle">Qué hay que comprar</label><input id="prTitle" maxlength="300" value="${esc(r.title)}" ${editable?'':'disabled'}></div>
     <div class="row"><div class="field"><label for="prQuantity">Cantidad</label><input id="prQuantity" type="number" min="0" step="any" inputmode="decimal" value="${r.quantity??''}" ${editable?'':'disabled'}></div><div class="field"><label for="prUnit">Unidad</label><input id="prUnit" maxlength="20" placeholder="ud, l, kg…" value="${esc(r.unit||'')}" ${editable?'':'disabled'}></div></div>
     <div class="field"><label for="prProject">Para</label><select id="prProject" ${editable?'':'disabled'}><option value="">El área en general</option>${projects.map(p=>`<option value="${p.id}" ${p.id===r.project_id?'selected':''}>${esc(p.title)}</option>`).join('')}</select></div>
-    <div class="field"><label for="prSupplier">Proveedor</label><input id="prSupplier" maxlength="200" placeholder="Opcional" value="${esc(r.supplier_name||'')}" ${editable?'':'disabled'}></div>
+    <div class="field"><label for="prSupplier">Proveedor</label>${supplierInput('prSupplier',r.supplier_name,r.supplier_id,!editable)}</div>
     <div class="row"><div class="field"><label for="prAmount">Importe estimado (€)</label><input id="prAmount" type="number" min="0" step="0.01" inputmode="decimal" value="${r.estimated_amount??''}" ${editable?'':'disabled'}></div><div class="field"><label for="prDue">Para cuándo</label><input id="prDue" type="date" value="${esc(r.due||'')}" ${editable?'':'disabled'}></div></div>
     <div class="row"><div class="field"><label for="prPriority">Urgencia</label><select id="prPriority" ${editable?'':'disabled'}><option value="normal">Normal</option><option value="high">Alta</option><option value="critical">Crítica</option></select></div><div class="field"><label for="prRepeat">Repetir cada (días)</label><input id="prRepeat" type="number" min="1" max="366" step="1" placeholder="No se repite" value="${r.repeat_days??''}" ${editable?'':'disabled'}></div></div>
     <label class="checkline"><input type="checkbox" id="prInvoice" ${r.needs_invoice?'checked':''} ${editable?'':'disabled'}> Llegará factura</label>
     <div class="field"><label for="prNote">Nota</label><textarea id="prNote" ${editable?'':'disabled'}>${esc(r.note||'')}</textarea></div>
+    ${id?invoiceSection(r):''}
     <div class="actions" style="flex-wrap:wrap">
       ${editable?`<button class="primary" id="prSave" type="button">${id?'Guardar':'Pedir'}</button>`:''}
       ${approve&&r.status==='requested'?'<button class="primary" id="prApprove" type="button">Aprobar</button><button class="danger" id="prReject" type="button">Rechazar</button>':''}
@@ -101,8 +129,8 @@ function purchaseSheet(id=null,preset={}){
       ${id&&canEdit()&&r.status==='received'&&r.repeat_days?'<button class="softbtn" id="prNext" type="button">Pedir la siguiente</button>':''}
       ${id&&canEdit()&&!['purchased','received'].includes(r.status)?'<button class="ghost danger-text" id="prDelete" type="button">Papelera</button>':''}
     </div>`);
-  document.getElementById('prPriority').value=r.priority||'normal';
-  const P=IkisaiTasks.purchases,val=()=>{const n=id=>{const v=document.getElementById(id).value.trim();return v===''?null:Number(v)};return {title:document.getElementById('prTitle').value.trim(),quantity:n('prQuantity'),unit:document.getElementById('prUnit').value.trim()||null,project_id:document.getElementById('prProject').value||null,supplier_name:document.getElementById('prSupplier').value.trim()||null,estimated_amount:n('prAmount'),due:document.getElementById('prDue').value||null,priority:document.getElementById('prPriority').value,repeat_days:n('prRepeat'),needs_invoice:document.getElementById('prInvoice').checked,note:document.getElementById('prNote').value}};
+  document.getElementById('prPriority').value=r.priority||'normal';bindSupplierInput('prSupplier');
+  const P=IkisaiTasks.purchases,val=()=>{const n=id=>{const v=document.getElementById(id).value.trim();return v===''?null:Number(v)};return {title:document.getElementById('prTitle').value.trim(),quantity:n('prQuantity'),unit:document.getElementById('prUnit').value.trim()||null,project_id:document.getElementById('prProject').value||null,...supplierValue('prSupplier'),estimated_amount:n('prAmount'),due:document.getElementById('prDue').value||null,priority:document.getElementById('prPriority').value,repeat_days:n('prRepeat'),needs_invoice:document.getElementById('prInvoice').checked,note:document.getElementById('prNote').value}};
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn};
   on('prSave',()=>{const v=val();if(!v.title)return toast('Escribe qué hay que comprar.');
     if(!id){if(purchaseRun(d=>P.requestPurchaseOps(d,{tab_id:tab().id,supply_item_id:preset.supply_item_id||null,...v}),canApprovePurchases()?'Pedido.':'Pedido. Lo verá '+approverName(tab().id)+'.'))closeSheet();return}
@@ -126,10 +154,11 @@ function supplySheet(id=null){
     <div class="row"><div class="field"><label for="suCategory">Tipo</label><select id="suCategory">${Object.entries(SUPPLY_CATEGORY).map(([k,v])=>`<option value="${k}" ${k===s.category?'selected':''}>${v}</option>`).join('')}</select></div><div class="field"><label for="suUnit">Unidad</label><input id="suUnit" maxlength="20" value="${esc(s.unit)}"></div></div>
     <div class="field"><label for="suLocation">Dónde está</label><input id="suLocation" maxlength="200" placeholder="Almacén piscina" value="${esc(s.location||'')}"></div>
     <div class="row"><div class="field"><label for="suMin">Mínimo</label><input id="suMin" type="number" min="0" step="any" inputmode="decimal" value="${s.min_quantity??0}"></div><div class="field"><label for="suReorder">Al pedir, cuánto</label><input id="suReorder" type="number" min="0" step="any" inputmode="decimal" placeholder="Lo que falte" value="${s.reorder_quantity??''}"></div></div>
-    <div class="field"><label for="suSupplier">Proveedor habitual</label><input id="suSupplier" maxlength="200" placeholder="Opcional" value="${esc(s.supplier_name||'')}"></div>
+    <div class="field"><label for="suSupplier">Proveedor habitual</label>${supplierInput('suSupplier',s.supplier_name,s.supplier_id,false)}</div>
     <div class="actions"><button class="primary" id="suSave" type="button">Guardar</button>${id?'<button class="ghost danger-text" id="suDelete" type="button">Papelera</button>':''}</div>`);
+  bindSupplierInput('suSupplier');
   const num=(el,blank=null)=>{const v=document.getElementById(el).value.trim();return v===''?blank:Number(v)};
-  document.getElementById('suSave').onclick=()=>{const v={name:document.getElementById('suName').value.trim(),category:document.getElementById('suCategory').value,unit:document.getElementById('suUnit').value.trim()||'ud',location:document.getElementById('suLocation').value.trim(),min_quantity:num('suMin',0),reorder_quantity:num('suReorder'),supplier_name:document.getElementById('suSupplier').value.trim()||null};
+  document.getElementById('suSave').onclick=()=>{const v={name:document.getElementById('suName').value.trim(),category:document.getElementById('suCategory').value,unit:document.getElementById('suUnit').value.trim()||'ud',location:document.getElementById('suLocation').value.trim(),min_quantity:num('suMin',0),reorder_quantity:num('suReorder'),...supplierValue('suSupplier')};
     if(!v.name)return toast('Pon un nombre.');
     if(!id){const items=liveRows('tasks.supply_items').filter(x=>x.tab_id===tab().id);if(purchaseCommit([{op:'insert',table:'tasks.supply_items',id:crypto.randomUUID(),fields:{tab_id:tab().id,...v,position:Math.max(0,...items.map(x=>Number(x.position)||0))+1024}}],'Suministro añadido.'))closeSheet();return}
     const fields=Object.fromEntries(Object.entries(v).filter(([k,x])=>JSON.stringify(x??null)!==JSON.stringify(s[k]??null)));if(!Object.keys(fields).length)return closeSheet();

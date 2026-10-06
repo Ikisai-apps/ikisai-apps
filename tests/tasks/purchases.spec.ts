@@ -124,5 +124,47 @@ test('recibir suma al almacén y quita el aviso', async () => {
   await settled(owner);
   await go(owner, 'home');
   await expect(owner.locator('.lowstock')).toHaveCount(0);
+});
+
+test('Finance: factura asignada en la solicitud y proveedor del catálogo (con nombre libre de respaldo)', async () => {
+  // Las dos lecturas son de Invoices (y las prueba Invoices); aquí se simulan sus respuestas para probar la interfaz.
+  const cloro = (await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Cloro granulado');
+  await owner.route('**/read/invoices.allocations_by_target', async (route) => {
+    const args = route.request().postDataJSON();
+    expect(args).toMatchObject({ targetApp: 'tasks', targetKind: 'purchase_request' });
+    const rows = args.ids.includes(cloro.id) ? [{ target_id: cloro.id, invoice_id: 'f1', invoice_code: 'F-2026-0042', status: 'revisada', invoice_date: '2026-10-07', allocated_amount: 48.4, allocated_quantity: 10 }] : [];
+    await route.fulfill({ json: { rows } });
+  });
+  await owner.route('**/read/invoices.supplier_options', async (route) => {
+    const { q } = route.request().postDataJSON();
+    const all = [{ id: 'sup-piscinas', name: 'Piscinas Norte SL', slug: 'piscinas-norte' }, { id: 'sup-ferre', name: 'Ferretería Centro', slug: 'ferreteria-centro' }];
+    await route.fulfill({ json: { items: all.filter((x) => !q || x.name.toLowerCase().includes(q)) } });
+  });
+  await go(owner, 'purchases');
+  await expect(owner.locator('[data-purchase]', { hasText: 'Cloro granulado' })).toContainText('Factura F-2026-0042');
+  await owner.locator('[data-purchase]', { hasText: 'Cloro granulado' }).click();
+  const link = owner.locator('.pinvoice');
+  await expect(link).toContainText('F-2026-0042');
+  await expect(link).toHaveAttribute('href', 'https://finance.ikisai.com/#/facturas/F-2026-0042');
+  await owner.evaluate(() => (window as any).closeSheet());
+
+  // Proveedor habitual del suministro: se elige del catálogo y queda enlazado por su id.
+  await go(owner, 'supplies');
+  await owner.locator('[data-supply]').first().click();
+  await owner.locator('#suSupplier').fill('');
+  await owner.locator('#suSupplier').pressSequentially('pisc');
+  await expect(owner.locator('#suSupplierList option')).toHaveCount(1);
+  await expect(owner.locator('#suSupplierList option')).toHaveAttribute('value', 'Piscinas Norte SL');
+  await owner.locator('#suSupplier').fill('Piscinas Norte SL');
+  await owner.locator('#suSave').click();
+  await expect.poll(async () => (await server.rows('tasks.supply_items')).find((x) => x.name === 'Cloro granulado')?.supplier_id).toBe('sup-piscinas');
+  // Un nombre que no está en el catálogo se guarda como nombre libre, sin id.
+  await go(owner, 'purchases');
+  await owner.locator('#newPurchase').click();
+  await owner.locator('#prTitle').fill('Guantes de nitrilo');
+  await owner.locator('#prSupplier').fill('Mercado del barrio');
+  await owner.locator('#prSave').click();
+  await expect.poll(async () => (await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Guantes de nitrilo')?.supplier_name).toBe('Mercado del barrio');
+  expect((await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Guantes de nitrilo').supplier_id).toBeNull();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
