@@ -9,14 +9,15 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "npm run check:migrations && npm run typecheck",
+    "check": "npm run check:migrations && npm run typecheck && npm run typecheck:apps",
     "check:migrations": "node scripts/lint_migrations.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node scripts/run_tests.mjs",
     "test:core": "node scripts/run_tests.mjs core",
     "test:app": "node scripts/run_tests.mjs",
     "test:e2e": "playwright test",
-    "test:ui-kit": "npm -w @ikisai/ui-kit run test:e2e"
+    "test:ui-kit": "npm -w @ikisai/ui-kit run test:e2e",
+    "typecheck:apps": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
