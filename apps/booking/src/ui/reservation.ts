@@ -1,6 +1,6 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { confirmDialog, el, formatDate, icon, plural, replace, toast, type Child } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, replace, toast, type Child } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
@@ -9,6 +9,7 @@ import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, de
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
+import { fetchCosts, readCostCache, type CostResult } from '../app/costs.ts';
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import type { ViewMount } from './shell.ts';
@@ -273,17 +274,46 @@ export function mountReservation(id: string): ViewMount {
               liveEvent.closed_at ? 'Evento reabierto.' : 'Cierre operativo anotado.') }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
           ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.' })));
 
+      // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
+      const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) } },
+        el('label', { class: 'check' },
+          el('input', { type: 'checkbox', checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
+            onchange: () => void run([{ op: 'update', table: CHECKLIST, id: item.id, expectedRevision: item.revision, fields: { status: item.status === 'hecho' ? 'pendiente' : 'hecho' } }], 'Checklist actualizado.') }),
+          el('span', null, item.label, item.status === 'no_aplica' ? ' (no aplica)' : '')),
+        editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, onclick: () => openRowSheet({
+          client, title: 'Tarea del checklist', table: CHECKLIST, row: item, specs: CHECKLIST_SPECS,
+          remove: { label: 'Quitar', operations: () => [del(CHECKLIST, item)] } }) }, icon('edit', 16)) : null);
+
+      // Reordenar: un solo `update` del ítem movido con `position` entre sus vecinos; solo si no cabe, se renumera la lista entera en un lote.
+      async function reorderChecklist(ordered: Row[], moved: Row, to: number): Promise<void> {
+        const prev = ordered[to - 1], next = ordered[to + 1];
+        const a = prev ? Number(prev.position) : null, b = next ? Number(next.position) : null;
+        const position = positionBetween(a, b);
+        const fits = Number.isFinite(position) && (a === null || position > a) && (b === null || position < b);
+        if (fits) {
+          await run([{ op: 'update', table: CHECKLIST, id: moved.id, expectedRevision: moved.revision, fields: { position } }], 'Orden del checklist guardado.');
+          return;
+        }
+        const positions = renumber(ordered.length);
+        await run(ordered.map((row, i): RowOperation => ({ op: 'update', table: CHECKLIST, id: row.id, expectedRevision: row.revision, fields: { position: positions[i]! } })), 'Orden del checklist guardado.');
+      }
+
+      const checklistList = (type: string): HTMLElement => {
+        const items = checklist.filter((item) => item.checklist_type === type);
+        if (!editable) return el('ul', { class: 'checklist' }, items.map((item) => el('li', null, checklistItem(item))));
+        const sortable = createSortableList<Row>({
+          items, key: (item) => item.id, name: (item) => item.label, label: `Tareas de ${CHECKLIST_TYPE_LABELS[type as keyof typeof CHECKLIST_TYPE_LABELS]}`,
+          render: checklistItem, rowClass: 'checklist-row',
+          onReorder: (ordered, move) => reorderChecklist(ordered, move.item, move.to),
+        });
+        sortable.element.querySelector('ul')?.classList.add('checklist');
+        return sortable.element;
+      };
+
       const checklistBlock = !liveEvent ? null : block('blockChecklist', 'Checklist', [
         checklist.length === 0 ? el('p', { class: 'hint' }, 'Sin tareas todavía.') : CHECKLIST_TYPES.filter((type) => checklist.some((item) => item.checklist_type === type)).map((type) => [
           el('div', { class: 'sectionlabel' }, CHECKLIST_TYPE_LABELS[type], el('span', { class: 'count' }, `${checklist.filter((i) => i.checklist_type === type && i.status !== 'pendiente').length}/${checklist.filter((i) => i.checklist_type === type).length}`)),
-          el('ul', { class: 'checklist' }, checklist.filter((item) => item.checklist_type === type).map((item) => el('li', { dataset: { status: item.status, pending: String(item._pending === true) } },
-            el('label', { class: 'check' },
-              el('input', { type: 'checkbox', checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
-                onchange: () => void run([{ op: 'update', table: CHECKLIST, id: item.id, expectedRevision: item.revision, fields: { status: item.status === 'hecho' ? 'pendiente' : 'hecho' } }], 'Checklist actualizado.') }),
-              el('span', null, item.label, item.status === 'no_aplica' ? ' (no aplica)' : '')),
-            editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, onclick: () => openRowSheet({
-              client, title: 'Tarea del checklist', table: CHECKLIST, row: item, specs: CHECKLIST_SPECS,
-              remove: { label: 'Quitar', operations: () => [del(CHECKLIST, item)] } }) }, icon('edit', 16)) : null))),
+          checklistList(type),
         ]),
         editable ? el('div', { class: 'choices', style: 'margin-top:10px' },
           el('button', { class: 'ghost small', type: 'button', id: 'seedChecklist', onclick: () => {
@@ -332,6 +362,33 @@ export function mountReservation(id: string): ViewMount {
         editLink('editFinance', 'Editar', () => openRowSheet({
           client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.' })));
 
+      // Coste real: compras de Invoices asignadas a la reserva y su evento. Caché local al instante y refresco con red.
+      const costTotal = el('strong', { id: 'costTotal' }, '—');
+      const costByCategory = el('ul', { class: 'list', id: 'costByCategory' });
+      const costList = el('ul', { class: 'list', id: 'costList' });
+      const costNote = el('p', { class: 'hint', id: 'costNote', role: 'status' });
+      const costBody = el('div', { id: 'costBody' }, el('p', null, 'Total asignado: ', costTotal), costByCategory, costList, costNote);
+      const costUnavailable = el('p', { class: 'hint', id: 'costUnavailable', role: 'status', hidden: true }, 'Coste real no disponible.');
+      const paintCosts = (result: CostResult | null, unavailable = false): void => {
+        costBody.hidden = unavailable;
+        costUnavailable.hidden = !unavailable;
+        if (unavailable) return;
+        const summary = result?.summary;
+        costTotal.textContent = summary ? money(summary.total) : '—';
+        replace(costByCategory, ...(summary?.categories ?? []).map((c) => el('li', { class: 'row' }, el('span', { class: 'name' }, c.category, c.investment ? el('span', { class: 'chip' }, 'Inversión') : null), el('span', { class: 'row-meta' }, money(c.amount)))));
+        replace(costList, ...(summary?.rows ?? []).map((r) => el('li', { class: 'row' },
+          el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.supplier), el('span', null, money(r.amount))),
+          el('div', { class: 'row-meta' }, r.date ? formatDate(r.date) : '—', ' · ',
+            r.code ? el('a', { href: 'https://invoices.ikisai.com/#/facturas', target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
+        costNote.textContent = !result ? (navigator.onLine ? 'Cargando…' : 'Se actualizará al reconectar.')
+          : summary!.rows.length === 0 ? 'Sin compras asignadas todavía.' : !navigator.onLine ? 'Se actualizará al reconectar.' : '';
+      };
+      const costs = !seesFinance ? null : block('blockCosts', 'Coste real', [costBody, costUnavailable]);
+      if (seesFinance) {
+        paintCosts(readCostCache(id));
+        if (navigator.onLine) void fetchCosts(client, id, liveEvent?.id ?? null).then((fresh) => { if (fresh) paintCosts(fresh); }, () => paintCosts(null, true));
+      }
+
       // Pastilla de Calendar: lo último que se supo (caché) y, con red, refresco en segundo plano solo de esta reserva.
       const published = toCalendarEvent(reservation) !== null;
       const calendarChip = el('span', { class: 'chip', id: 'calendarChip', hidden: true });
@@ -367,7 +424,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, checklistBlock, guestsBlock, meals, cobro),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, checklistBlock, guestsBlock, meals, cobro, costs),
       );
       syncMore();
     }

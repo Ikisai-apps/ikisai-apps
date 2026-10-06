@@ -145,6 +145,21 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#seedChecklist').click();
     await expect.poll(() => api.rows(CHECKLIST).length).toBe(20); // no duplica
 
+    // Reordenar con el botón «Bajar» del componente: solo cambia el ítem movido (un `update`), no la lista entera.
+    const firstList = page.locator('#blockChecklist ul.checklist').first();
+    const labels: string[] = await firstList.locator('.checklist-item label span').allTextContents();
+    expect(labels.length).toBeGreaterThan(2);
+    const before = new Map(api.rows(CHECKLIST).map((item) => [item.id, { position: item.position, revision: item.revision, label: item.label as string }]));
+    await page.locator('#blockChecklist').getByRole('button', { name: `Bajar ${labels[0]}`, exact: true }).click();
+    const expectedOrder: string[] = [labels[1]!, labels[0]!, ...labels.slice(2)];
+    await expect.poll(() => api.rows(CHECKLIST).filter((item) => item.position !== before.get(item.id)!.position || item.revision !== before.get(item.id)!.revision).map((item) => item.label)).toEqual([labels[0]]);
+    const moved = api.rows(CHECKLIST).find((item) => item.label === labels[0])!;
+    expect(moved.revision).toBe(before.get(moved.id)!.revision + 1);
+    await expect(firstList.locator('.checklist-item label span')).toHaveText(expectedOrder);
+    await page.reload();
+    await expect(page.locator('#blockChecklist ul.checklist').first().locator('.checklist-item label span')).toHaveText(expectedOrder);
+    await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
+
     await page.locator('#addRestriction').click();
     let dialog = page.getByRole('dialog', { name: 'Nueva restricción' });
     await dialog.getByLabel('Tipo').selectOption('alergia');
@@ -165,6 +180,38 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(dialog).toBeHidden();
     await expect(page.locator('#blockFinance')).toContainText('Parcial');
     await expect.poll(() => api.rows(FINANCE)[0]).toMatchObject({ deposit_required: 300, deposit_paid: 100.5 });
+
+    // Coste real: dos asignaciones a la reserva y una al evento (importe como texto y como número), dos categorías.
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const eventId = api.rows(EVENTS)[0]!.id;
+    const costRow = (n: number, target: 'reservation' | 'event', targetId: string, category: string, amount: number | string, date: string) => ({
+      allocation_id: `00000000-0000-4000-8000-00000000000${n}`, target_kind: target, target_id: targetId, invoice_code: `FAC_TEST_00${n}`, invoice_date: date,
+      supplier_name: `Proveedor ${n}`, expense_category: category, is_investment: false, allocated_amount: amount, allocation_revision: 1,
+    });
+    api.setCostRows([
+      costRow(1, 'reservation', reservationId, 'Alimentación', '100.50', '2026-10-01'),
+      costRow(2, 'reservation', reservationId, 'Mantenimiento', '49.50', '2026-10-02'),
+      costRow(3, 'event', eventId, 'Alimentación', 2400.25, '2026-10-03'),
+    ]);
+    await page.reload();
+    await expect(page.locator('#costTotal')).toHaveText(/^2\.?550,25\s€$/);
+    await expect(page.locator('#costByCategory li')).toHaveCount(2);
+    await expect(page.locator('#costByCategory li').first()).toContainText('Alimentación');
+    await expect(page.locator('#costByCategory')).toContainText('Mantenimiento');
+    await expect(page.locator('#costList li')).toHaveCount(3);
+    for (const code of ['FAC_TEST_001', 'FAC_TEST_002', 'FAC_TEST_003']) {
+      await expect(page.locator('#costList').getByRole('link', { name: code })).toHaveAttribute('rel', 'noopener');
+    }
+
+    // Si la lectura falla (422 o 403), el bloque lo dice y la ficha sigue entera; sin caché tampoco se rompe.
+    api.failCosts(422);
+    await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('booking.costs.')).forEach((key) => localStorage.removeItem(key)));
+    await page.reload();
+    await expect(page.locator('#blockCosts')).toContainText('Coste real no disponible.');
+    await expect(page.locator('#costTotal')).toBeHidden();
+    await expect(page.locator('#blockFinance')).toContainText('Parcial');
+    await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
+    api.failCosts(null);
   });
 
   await test.step('huéspedes: alta, qué falta para SES y firma en pantalla con adjunto', async () => {

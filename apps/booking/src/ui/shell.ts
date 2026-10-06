@@ -1,6 +1,7 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
+import { clearCostCache } from '../app/costs.ts';
 import { mountHome } from './home.ts';
 import { mountReservations } from './reservations.ts';
 import { mountReservation } from './reservation.ts';
@@ -121,6 +122,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     try {
       await client.logout();
     } finally {
+      clearCostCache(); // los importes no se quedan en el dispositivo
       ctx.onLogout();
     }
   }
@@ -146,6 +148,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   const offStatus = client.onStatus((status) => {
     if (!client.session()) {
+      clearCostCache();
       ctx.onLogout();
       return;
     }
