@@ -160,6 +160,40 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#blockChecklist ul.checklist').first().locator('.checklist-item label span')).toHaveText(expectedOrder);
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
 
+    // Teclado: flecha abajo dos veces sobre el asa; el foco sigue en el asa del mismo ítem tras cada guardado.
+    const list = () => page.locator('#blockChecklist ul.checklist').first();
+    const order = () => list().locator('.checklist-item label span').allTextContents();
+    const top = (await order())[0]!;
+    const handleOf = (label: string) => list().getByRole('button', { name: new RegExp(`^Mover ${label}\.`) });
+    await handleOf(top).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => (await order()).indexOf(top)).toBe(1);
+    await expect(handleOf(top)).toBeFocused();
+    await expect(page.locator('.ficha .chip.pending')).toHaveCount(0);
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => (await order()).indexOf(top)).toBe(2);
+    await expect(handleOf(top)).toBeFocused();
+    await expect.poll(() => {
+      const rows = api.rows(CHECKLIST).filter((item) => item.checklist_type === 'preparacion_general').sort((a, b) => Number(a.position) - Number(b.position));
+      return rows.map((item) => item.label).indexOf(top);
+    }).toBe(2);
+
+    // Ratón: arrastrar el asa del último ítem por encima del primero.
+    const now = await order();
+    const last = now[now.length - 1]!;
+    const from = (await handleOf(last).boundingBox())!;
+    const to = (await list().locator('.sortable-row').first().boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 12, { steps: 3 });
+    await page.mouse.move(to.x + 20, to.y + 4, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(async () => (await order())[0]).toBe(last);
+    await expect.poll(() => {
+      const rows = api.rows(CHECKLIST).filter((item) => item.checklist_type === 'preparacion_general').sort((a, b) => Number(a.position) - Number(b.position));
+      return rows[0]?.label;
+    }).toBe(last);
+
     await page.locator('#addRestriction').click();
     let dialog = page.getByRole('dialog', { name: 'Nueva restricción' });
     await dialog.getByLabel('Tipo').selectOption('alergia');
