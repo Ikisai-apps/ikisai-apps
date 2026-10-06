@@ -458,7 +458,7 @@ El cliente puede verificar los hashes del ZIP descargado con Web Crypto («entre
 Registradas con `core.allow_read('booking', …)` / `core.allow_read('food', …)` por la migración de Invoices:
 
 - `invoices.booking_cost_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, expense_category, is_investment, allocated_amount, allocation_revision`): coste asignado por reserva o evento, para «coste real por retiro».
-- `invoices.food_stock_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, line_description, match_name, allocated_quantity, unit, allocated_amount, allocation_revision`): entradas de stock (ingrediente, cantidad, unidad, fecha, coste, proveedor) para Food.
+- `invoices.food_stock_projection` (`allocation_id, target_kind, target_id, invoice_code, invoice_date, supplier_name, line_description, match_name, allocated_quantity, unit, allocated_amount, allocation_revision, unit_normalized, quantity_normalized`; las dos últimas desde la migración 0203: `unit_normalized` es `kg`, `l` o `ud` según `invoices.normalize_unit(unit)` —g, ml y cl se convierten— y `quantity_normalized` la cantidad asignada en esa unidad, ambas null si la unidad del documento no se reconoce): entradas de stock (ingrediente, cantidad, unidad, fecha, coste, proveedor) para Food.
 
 Sin datos personales ni notas. Solo asignaciones vivas de facturas no anuladas.
 

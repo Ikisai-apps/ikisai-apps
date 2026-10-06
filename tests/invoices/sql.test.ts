@@ -420,3 +420,28 @@ test('papelera y permisos: facturas, documentos, líneas y entregas no se purgan
   assert.equal(forbidden.status, 403);
   assert.equal((await read('invoices.fiscal_summary', { year: 2026 }, app.tokens.reader)).status, 200);
 });
+
+test('proyección para Food: unidad normalizada (kg, l, ud) y cantidad en esa unidad; unidades desconocidas en null', async () => {
+  const cases: Array<[string | null, string | null, number | null]> = [
+    ['Kg', 'kg', 1], ['kilos', 'kg', 1], ['gr.', 'kg', 0.001], ['Gramos', 'kg', 0.001], ['litros', 'l', 1], ['ML', 'l', 0.001], ['cl', 'l', 0.01],
+    ['ud.', 'ud', 1], ['Unidades', 'ud', 1], ['caja', null, null], [null, null, null],
+  ];
+  for (const [input, unit, factor] of cases) {
+    const r = await app.t.db.query<{ unit: string | null; factor: string | null }>('select * from invoices.normalize_unit($1)', [input]);
+    assert.equal(r.rows[0]!.unit, unit, String(input));
+    assert.equal(r.rows[0]!.factor === null ? null : Number(r.rows[0]!.factor), factor, String(input));
+  }
+  // Una asignación a Cocina de 2500 gr → 2,5 kg en la proyección (las columnas anteriores siguen igual).
+  const supplier = await newSupplier('Unidades SL');
+  const inv = await manualInvoice({ supplier, net: 10 });
+  const line = await row('invoices.invoice_lines', inv.line);
+  await ok([update('invoices.invoice_lines', inv.line, line.revision, { quantity: 2500, unit: 'gr', unit_price: 0.004 })]);
+  const alloc = uuid();
+  await ok([insert('invoices.allocations', alloc, { invoice_line_id: inv.line, target_app: 'general', target_kind: 'operating_expense', target_label: 'Gasto', allocated_amount: 10, allocated_quantity: 2500 })]);
+  // Los destinos de Cocina se resuelven contra la proyección de Food en la Edge (api.test.ts); aquí se cambia el destino en SQL.
+  await app.t.db.query(`update invoices.allocations set target_app = 'food', target_kind = 'ingredient', target_id = $2, target_label = 'Harina' where id = $1`, [alloc, uuid()]);
+  const p = await app.t.db.query<Record<string, any>>('select * from invoices.food_stock_projection where allocation_id = $1', [alloc]);
+  assert.equal(p.rows.length, 1);
+  assert.equal(p.rows[0]!.unit, 'gr'); assert.equal(Number(p.rows[0]!.allocated_quantity), 2500);
+  assert.equal(p.rows[0]!.unit_normalized, 'kg'); assert.equal(Number(p.rows[0]!.quantity_normalized), 2.5);
+});
