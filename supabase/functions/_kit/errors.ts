@@ -46,6 +46,10 @@ export const MESSAGES: Record<string, string> = {
   CURRENT_ACCOUNT: 'No puedes aplicar ese cambio a tu propia cuenta.',
   FILE_NOT_FOUND: 'Archivo no encontrado.',
   FILE_MISMATCH: 'El archivo subido no coincide con lo declarado.',
+  CONFIRMATION_REQUIRED: 'Esta operación de un agente necesita la aprobación de una persona.',
+  CONFIRMATION_NOT_NEEDED: 'Este lote no necesita aprobación: envíalo directamente.',
+  PROPOSAL_UNAVAILABLE: 'La propuesta ya no está disponible.',
+  AUTH_ADMIN_FAILED: 'No se pudo completar la operación de cuentas.',
   EXTRACTION_UNAVAILABLE: 'La extracción automática no está disponible ahora mismo.',
   EXTRACTION_INVALID: 'El modelo no devolvió un documento utilizable.',
 };

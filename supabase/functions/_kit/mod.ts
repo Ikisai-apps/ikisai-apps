@@ -1,10 +1,12 @@
 export { Fault, fail, messageFor, isFault } from './errors.ts';
 export { createSupabase, sha256Hex, stable } from './supabase.ts';
 export type { Supabase, SupabaseConfig } from './supabase.ts';
-export { createAuth } from './auth.ts';
+export { createAuth, isAgentKey, generateAgentKey } from './auth.ts';
 export type { Identity, AuthService } from './auth.ts';
+export { assessRisk, createAgents } from './agents.ts';
+export type { Risk, AgentPolicy } from './agents.ts';
 export { createSync, integer } from './sync.ts';
-export type { AppHooks, RequestContext, Operation, CommitResult, Membership, Bootstrap, Role } from './sync.ts';
+export type { AppHooks, RequestContext, Operation, CommitResult, Membership, Bootstrap, Role, AgentRiskAssessment } from './sync.ts';
 export { createUploads } from './uploads.ts';
 export type { UploadsConfig } from './uploads.ts';
 export { createApp } from './handler.ts';

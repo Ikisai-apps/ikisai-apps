@@ -2,6 +2,7 @@
 import { fail, messageFor } from './errors.ts';
 import { sha256Hex, stable, type Supabase } from './supabase.ts';
 import type { Identity } from './auth.ts';
+import { assessRisk } from './agents.ts';
 
 export type Role = 'reader' | 'editor' | 'owner';
 
@@ -18,6 +19,8 @@ export interface Bootstrap {
   membership: Membership;
   profile: { userId: string; displayName: string; kind: 'human' | 'agent' };
   tables: Array<{ table: string; writableColumns: string[]; readable: boolean; writable: boolean }>;
+  /** Política de agentes de la app (contrato §3): umbral de lote masivo y procedimientos/acciones que no exigen aprobación. */
+  agentPolicy?: { bulkThreshold: number; safeProcedures: string[]; safeActions: string[] };
 }
 
 export interface RequestContext {
@@ -37,6 +40,17 @@ export interface AppHooks {
   beforeCommit?: (operations: Operation[], ctx: RequestContext) => Promise<void> | void;
   /** Tras un commit correcto (por ejemplo, encolar una sincronización externa). */
   afterCommit?: (result: CommitResult, ctx: RequestContext) => Promise<void> | void;
+  /**
+   * Riesgo de dominio de un lote enviado por un agente (contrato §3): la app añade razones (archivar, cascadas) y una
+   * estimación de filas afectadas; el núcleo ya cuenta borrados, procedimientos no seguros y el umbral de lote masivo.
+   */
+  agentRisk?: (operations: Operation[], ctx: RequestContext) => Promise<AgentRiskAssessment | void> | AgentRiskAssessment | void;
+}
+
+export interface AgentRiskAssessment {
+  required?: boolean;
+  reasons?: string[];
+  affectedEstimate?: number;
 }
 
 export interface Operation {
@@ -189,8 +203,15 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     if (expectedCursor !== null && !Number.isSafeInteger(expectedCursor)) fail(422, 'INVALID_OPERATION', 'expectedCursor inválido.');
     if (!options.skipHooks && hooks.beforeCommit) await hooks.beforeCommit(operations, ctx);
     const digest = await sha256Hex(stable(operations));
+    // Agentes (contrato §3): la Edge calcula el riesgo y core.commit exige y consume la propuesta aprobada cuando hace falta.
+    let confirmation: Record<string, unknown> | null = null;
+    if (ctx.user.kind === 'agent') {
+      if (body.confirmationId !== undefined && body.confirmationId !== null && (typeof body.confirmationId !== 'string' || !UUID.test(body.confirmationId))) fail(422, 'INVALID_OPERATION', 'confirmationId inválido.');
+      const risk = await assessRisk(operations, ctx, hooks);
+      confirmation = { required: risk.required, id: body.confirmationId ?? null, risk };
+    }
     const result = await supabase.rpc<CommitResult>('core_commit', {
-      p_app: app, p_actor: ctx.user.id, p_request_id: body.requestId, p_digest: digest, p_expected_cursor: expectedCursor, p_operations: operations,
+      p_app: app, p_actor: ctx.user.id, p_request_id: body.requestId, p_digest: digest, p_expected_cursor: expectedCursor, p_operations: operations, p_confirmation: confirmation,
     });
     if (!result.replayed && hooks.afterCommit) await hooks.afterCommit(result, ctx);
     return result;
@@ -221,7 +242,7 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     if (!body || typeof body.requestId !== 'string' || typeof body.planHash !== 'string') fail(422, 'INVALID_OPERATION', 'requestId y planHash son obligatorios.');
     const plan = await undoPlan(ctx, cursor);
     if (plan.planHash !== body.planHash) fail(409, 'UNDO_PLAN_CHANGED', messageFor('UNDO_PLAN_CHANGED'), { planHash: plan.planHash });
-    return commit(ctx, { requestId: body.requestId, operations: plan.operations }, { skipHooks: true });
+    return commit(ctx, { requestId: body.requestId, operations: plan.operations, confirmationId: body.confirmationId ?? null }, { skipHooks: true });
   }
 
   async function purgeDeleted(ctx: RequestContext, body: any) {

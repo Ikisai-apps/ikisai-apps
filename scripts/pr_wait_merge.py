@@ -22,7 +22,9 @@ def main():
     if info["s"] == "MERGED": print("ya fusionada"); return 0
     if info["s"] != "OPEN": print("PR no abierta:", info["s"]); return 1
     c = info["c"]
-    if c and all(x["status"] == "COMPLETED" for x in c):
+    # PR que no dispara la CI (solo docs: paths-ignore en checks.yml): sin checks tras 90 s y mergeable → se fusiona.
+    no_ci = not c and time.time() - start > 90 and info["m"] in ("CLEAN", "UNSTABLE", "HAS_HOOKS")
+    if no_ci or (c and all(x["status"] == "COMPLETED" for x in c)):
       bad = [x for x in c if x["conclusion"] not in OK]
       if not bad:
         if info["m"] == "DIRTY": print("conflictos con main: rebasa y vuelve a empujar"); return 1

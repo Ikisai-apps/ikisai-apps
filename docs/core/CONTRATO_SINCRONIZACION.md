@@ -91,7 +91,14 @@ core.receipts(app text, actor_id uuid, request_id text,
   primary key(app, actor_id, request_id))
 ```
 
-Reservado para fases posteriores, con la misma forma que hoy en Tareas pero con columna `app`: `core.agent_keys`, `core.proposals`, `core.access_events`.
+### 3.1 Agentes de IA (migración `0040`, diseño en `docs/tasks/AGENTES.md`)
+
+- **Identidad:** un agente es un usuario Auth sintético con `profiles.kind = 'agent'` y pertenencias normales (`reader` o `editor`, nunca `owner`). Se autentica con `Authorization: Bearer ika_…` (43 caracteres base64url); `core.agent_keys` guarda solo el sha256. La clave es del agente, no de una app: revocarla lo corta en todas. Sin sesión: `auth/logout` y `auth/password` responden 403.
+- **Riesgo:** un lote de un agente exige aprobación si tiene algún `delete`, algún `call` a un procedimiento no marcado seguro (`core.allow_procedure(app, proc, p_agent_confirmation => false)`), toca **10 o más filas** (`core.apps.bulk_threshold`, configurable por app) o lo pide el hook `agentRisk(operations, ctx) → { required?, reasons?, affectedEstimate? }` de la app. `undo` pasa por la misma regla. Las acciones `invoke` no marcadas seguras (`core.allow_read(..., 'action', roles, false)`) responden 428 a un agente.
+- **Propuestas:** `POST proposals {requestId, operations}` (agente editor) ensaya el lote con `core.commit_preview` (sin escribir) y lo deja `pending` **24 horas** con el resumen antes/después; 422 `CONFIRMATION_NOT_NEEDED` si no hace falta. Un owner **humano** aprueba o rechaza (`POST proposals/:id/approve|reject`); aprobar vuelve a ensayar y, si el lote ya no encaja, la propuesta queda rechazada y se responde 409 `PROPOSAL_UNAVAILABLE`. Aprobar no ejecuta: el agente envía exactamente ese lote con `POST commands {requestId, operations, confirmationId}` y `core.commit` comprueba requestId, digest, estado y caducidad y la consume en la misma transacción; si no, 428 `CONFIRMATION_REQUIRED {risk, proposalStatus, mismatch}`. Reintentar un lote aplicado devuelve el recibo.
+- **Claves y registro:** `GET/POST agents`, `DELETE agents/:keyId[?onlyMembership=1]` (owner humano; la clave se muestra una vez) y `GET access-log?before=&limit=` (owner). `core.access_events` registra emisión y revocación de claves, cambios de pertenencia y el ciclo de las propuestas. Revocar una clave revoca sus propuestas abiertas.
+- **`core.commit_preview(app, actor, operations)`** es pieza general: cualquier app puede usarla para previsualizar un lote (importaciones, «¿qué pasaría si…?»).
+- Pendiente: hook `describeChange` para resúmenes legibles y servidor MCP genérico (`/mcp`).
 
 Permisos: `revoke all` a `public`, `anon`, `authenticated` en todo `core.*`; `grant` solo a `service_role`. RLS activado en todas las tablas de todos los schemas con política de denegación por defecto.
 
@@ -194,7 +201,7 @@ El código TypeScript que comparten la Edge y el frontend de una app vive en `su
 | `POST auth/login` `refresh` `logout` `password` | proxy de Supabase Auth, idéntico al actual de Tareas |
 | `GET health` `GET version.json` | disponibilidad, etapa y release |
 
-Códigos de error del núcleo: `UNAUTHENTICATED 401`, `FORBIDDEN 403`, `NOT_FOUND 404`, `VERSION_CONFLICT 409`, `CURSOR_CONFLICT 409`, `IDEMPOTENCY_REUSE 409`, `INVALID_FIELDS 422`, `INVALID_OPERATION 422`, `PAYLOAD_TOO_LARGE 413`, `CONFIRMATION_REQUIRED 428` (agentes, fase posterior), `BACKEND_UNAVAILABLE 503`.
+Códigos de error del núcleo: `UNAUTHENTICATED 401`, `FORBIDDEN 403`, `NOT_FOUND 404`, `VERSION_CONFLICT 409`, `CURSOR_CONFLICT 409`, `IDEMPOTENCY_REUSE 409`, `INVALID_FIELDS 422`, `INVALID_OPERATION 422`, `PAYLOAD_TOO_LARGE 413`, `CONFIRMATION_REQUIRED 428`, `CONFIRMATION_NOT_NEEDED 422`, `PROPOSAL_UNAVAILABLE 409` (agentes, §3.1), `BACKEND_UNAVAILABLE 503`.
 
 Visibilidad: la app **debe** proporcionar `visible(row, membership)` para cada tabla con ámbitos; `_kit` la aplica en `snapshot`, `changes`, `history` y `files`. Si una app no tiene ámbitos, la visibilidad es la membresía.
 

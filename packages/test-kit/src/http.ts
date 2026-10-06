@@ -67,6 +67,17 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       return Response.json({ message: 'unsupported' }, { status: 400 });
     }
 
+    if (route.pathname === '/auth/v1/admin/users') {
+      if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
+      if (method === 'POST') {
+        const email = String(body.email ?? '').toLowerCase();
+        if ([...users.values()].includes(email)) return Response.json({ code: 'email_exists', msg: 'User already registered' }, { status: 422 });
+        const id = await t.createUser();
+        users.set(id, email);
+        return Response.json({ id, email, role: 'authenticated' });
+      }
+      return Response.json({ users: [...users.entries()].map(([id, email]) => ({ id, email })) });
+    }
     if (route.pathname === '/auth/v1/user') {
       if (method === 'PUT') return Response.json({ id: tokens.get(auth ?? '') });
       const id = tokens.get(auth ?? '');
