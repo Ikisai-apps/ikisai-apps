@@ -18,7 +18,19 @@ function filterGroups(filters){const keys=new Map();for(const t of state.tabs)fo
 function isPersonFamily(id){if(!id)return false;if(id==='person')return true;return state.tabs.some(t=>(t.families||[]).some(f=>f.id===id&&f.system==='person'))}
 function value(item,key){const v=item?.[key];if(v===undefined)return ['attachments','labels','ownLabels','dependsOn'].includes(key)?[]:['deleted','archived'].includes(key)?false:null;if(key==='attachments')return v.map(a=>({id:a.id,name:a.name}));return v}
 function equal(a,b){return JSON.stringify(a)===JSON.stringify(b)}
-function openDB(){return new Promise((res,rej)=>{const req=indexedDB.open('ikisai-tasks-ui-v1',1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('attachments'))req.result.createObjectStore('attachments')};req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error)})}
+/* Base local de la interfaz (adjuntos en caché). `onblocked` no es un error: otra ventana de la app tiene la base abierta
+   con otra versión y tiene que soltarla; se espera hasta 10 s antes de rendirse. Si el navegador cierra la conexión (la
+   app estuvo congelada), se vuelve a abrir al usarla. */
+function openDB(){return new Promise((res,rej)=>{
+ if(typeof indexedDB==='undefined'){const e=new Error('Este navegador no permite guardar datos.');e.name='STORAGE_UNAVAILABLE';return rej(e)}
+ let req;try{req=indexedDB.open('ikisai-tasks-ui-v1',1)}catch(error){return rej(error)}
+ const timer=setTimeout(()=>{const e=new Error('Otra ventana de Tasks está usando el almacenamiento.');e.name='IDB_BLOCKED';rej(e)},10000);
+ req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('attachments'))req.result.createObjectStore('attachments')};
+ req.onblocked=()=>{};
+ req.onsuccess=()=>{clearTimeout(timer);const db=req.result;db.onversionchange=()=>{db.close();if(Sync.db===db)Sync.db=null};db.onclose=()=>{if(Sync.db===db)Sync.db=null};res(db)};
+ req.onerror=()=>{clearTimeout(timer);rej(req.error)};
+})}
+async function localDB(){if(!Sync.db)Sync.db=await openDB();return Sync.db}
 function ui(){return {activeTab:state.activeTab,view:state.view,currentProject:state.currentProject,search:state.search,filters:state.filters,groupBy:state.groupBy||'project'}}
 function readUI(){try{return JSON.parse(localStorage.getItem(UI_KEY))||{}}catch{return {}}}
 function writeRecord(){try{localStorage.setItem(UI_KEY,JSON.stringify(Sync.record.ui||{}))}catch(e){return Promise.reject(e)}return Promise.resolve()}
@@ -43,7 +55,7 @@ function refreshModel(){const core=Sync.core;if(!core||!Sync.actor||Sync.leaving
 function onCoreChange(kind){if(kind==='data')refreshModel();refreshStatus()}
 
 const renderLocal=render;
-render=function(){renderLocal();setMode(Sync.mode);if((Sync.actor?.role==='reader'||Sync.secondary)){document.querySelectorAll('[data-toggle-task],[data-edit-family],[data-new-label],[data-toggle-label],[data-toggle-family],[data-edit-project],#newFamily,#quickAdd,#fab,[data-drag]').forEach(el=>el.disabled=true);document.querySelectorAll('[data-task-menu]').forEach(el=>el.onclick=()=>openTaskEditor(el.dataset.taskMenu));}}
+render=function(){if(document.getElementById('bootFailure'))return;renderLocal();setMode(Sync.mode);if((Sync.actor?.role==='reader'||Sync.secondary)){document.querySelectorAll('[data-toggle-task],[data-edit-family],[data-new-label],[data-toggle-label],[data-toggle-family],[data-edit-project],#newFamily,#quickAdd,#fab,[data-drag]').forEach(el=>el.disabled=true);document.querySelectorAll('[data-task-menu]').forEach(el=>el.onclick=()=>openTaskEditor(el.dataset.taskMenu));}}
 const bindLocal=bind;
 bind=function(){bindLocal();const search=document.getElementById('searchInput');if(search)search.oninput=e=>{state.search=e.target.value;const pos=e.target.selectionStart;persistUI();clearTimeout(rr);rr=setTimeout(()=>{render();const s=document.getElementById('searchInput');s?.focus();s?.setSelectionRange(pos,pos)},160)};document.querySelectorAll('[data-tab],[data-nav],[data-open-project]').forEach(el=>{const fn=el.onclick;el.onclick=e=>{fn?.(e);persistUI()}})};
 
@@ -104,7 +116,7 @@ function importSheet(){if((Sync.actor?.role==='reader'||Sync.secondary))return t
 
 /* Adjuntos: descarga con sesión, caché local por usuario para abrirlos sin red. El clic se atiende en fase de captura:
    en escritorio el diálogo detiene la propagación y, sin esto, el navegador abriría el enlace sin sesión. */
-function cachedAttachment(id,write=null){return new Promise((resolve,reject)=>{const tx=Sync.db.transaction('attachments',write?'readwrite':'readonly');const req=write?tx.objectStore('attachments').put(write,id):tx.objectStore('attachments').get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
+function cachedAttachment(id,write=null){return localDB().then(db=>new Promise((resolve,reject)=>{const tx=db.transaction('attachments',write?'readwrite':'readonly');const req=write?tx.objectStore('attachments').put(write,id):tx.objectStore('attachments').get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)}))}
 document.addEventListener('click',async e=>{const link=e.target.closest('a');if(!link?.getAttribute('href')?.startsWith('/api/v1/attachments/'))return;e.preventDefault();try{const id=link.getAttribute('href').split('/').at(-1);let blob;try{let cached=await cachedAttachment(id);if(cached&&cached.actorId===Sync.actor.id&&cached.local)blob=cached.blob;else{const res=await fetch(link.href,{headers:{Authorization:'Bearer '+Sync.token}});if(!res.ok){const err=Error('No tienes acceso al adjunto.');err.denied=true;throw err}blob=await res.blob();await cachedAttachment(id,{blob,actorId:Sync.actor.id})}}catch(err){if(err.denied)throw err;const cached=await cachedAttachment(id);if(!cached||cached.actorId!==Sync.actor.id)throw Error('Este adjunto no está descargado en el dispositivo.');blob=cached.blob}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=link.download||'adjunto';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}},true);
 const editLocal=openTaskEditor;
 openTaskEditor=function(...args){editLocal(...args);if((Sync.actor?.role==='reader'||Sync.secondary)){document.querySelectorAll('#sheet input,#sheet select,#sheet textarea,#sheet button:not(#closeDialog)').forEach(el=>el.disabled=true);const a=document.querySelector('#sheet .actions');if(a)a.innerHTML='<button class="primary" onclick="closeSheet()">Cerrar</button>'}};
@@ -134,17 +146,33 @@ function loginSheet(note){closeSheet();Sync.unmountLogin?.();
   footnote:'Tus cambios pendientes permanecen guardados en este dispositivo.',
   describeError:error=>error.code==='NO_MEMBERSHIP'?'Tu cuenta no tiene acceso a Tareas.':error.message||'No se pudo entrar.',
   async onLogin(email,password){await sameAccountOrNothingPending(email,password);const boot=await Sync.core.login(email,password);if(!boot)throw Error('No se pudo cargar tu cuenta. Comprueba la conexión.');Sync.unmountLogin?.();Sync.unmountLogin=null;await enterSession(boot);syncNow()}})}
-async function boot(){try{
- if(navigator.locks){await new Promise(resolve=>navigator.locks.request('ikisai-writer',{ifAvailable:true},async lock=>{Sync.secondary=!lock;resolve();if(lock)await new Promise(()=>{})}))}
- Sync.db=await openDB();Sync.record.ui=readUI();Object.assign(state,Sync.record.ui);state.tabs=[];
+/* Por qué no arrancó la app, en palabras de la persona. Solo «no se puede guardar» cuando de verdad el navegador no deja
+   (modo privado, almacenamiento desactivado); lo demás (otra ventana con la base abierta, la app congelada al minimizarla,
+   falta de espacio, un fallo puntual) se puede reintentar. */
+function bootFailure(e){const name=e?.name||'',code=e?.code||'';
+ if(name==='STORAGE_UNAVAILABLE'||name==='SecurityError'||typeof indexedDB==='undefined')return {title:'No se puede guardar en este navegador',text:'El navegador no deja guardar datos: suele pasar en una ventana privada o con el almacenamiento desactivado. Abre Tasks en una ventana normal.',retry:false};
+ if(name==='IDB_BLOCKED'||code==='IDB_BLOCKED'||name==='InvalidStateError'||name==='AbortError'||name==='TimeoutError')return {title:'Tasks está abierta en otra ventana',text:'Otra ventana de Tasks (o la misma app, que quedó a medias al minimizarla) está usando los datos de este dispositivo. Ciérrala o espera unos segundos y pulsa «Reintentar».',retry:true};
+ if(name==='QuotaExceededError')return {title:'No queda espacio en este dispositivo',text:'Libera espacio de almacenamiento y pulsa «Reintentar».',retry:true};
+ return {title:'No se pudo abrir Tasks',text:'Ha fallado el arranque'+(e?.message?': '+e.message:'.')+' Tus datos siguen guardados en este dispositivo.',retry:true}}
+function showBootFailure(e){const f=bootFailure(e);Sync.bootFailed=f.retry;
+ document.getElementById('app').innerHTML=`<div class="boot" id="bootFailure"><h1>${esc(f.title)}</h1><p>${esc(f.text)}</p>${f.retry?'<button class="primary" id="bootRetry" type="button">Reintentar</button>':''}</div>`;
+ const retry=document.getElementById('bootRetry');if(retry)retry.onclick=()=>{retry.disabled=true;retry.textContent='Reintentando…';boot()}}
+/* Arranque, también para reintentar: no repite lo que ya quedó hecho (cerrojo de pestaña activa, núcleo, oyentes). */
+async function boot(){if(Sync.booting)return;Sync.booting=true;Sync.bootFailed=false;try{
+ if(navigator.locks&&!Sync.writerLock){await new Promise(resolve=>navigator.locks.request('ikisai-writer',{ifAvailable:true},async lock=>{Sync.writerLock=!!lock;Sync.secondary=!lock;resolve();if(lock)await new Promise(()=>{})}))}
+ Sync.db=Sync.db||await openDB();Sync.record.ui=readUI();Object.assign(state,Sync.record.ui);state.tabs=[];
  document.getElementById('app').innerHTML='<div class="boot"><div class="mark">•||•</div><h1>Ikisai · Tareas</h1><p>Preparando tus proyectos…</p></div>';
- Sync.core=IkisaiTasks.create({readOnly:Sync.secondary});Sync.core.onChange(onCoreChange);
+ if(!Sync.core){Sync.core=IkisaiTasks.create({readOnly:Sync.secondary});Sync.core.onChange(onCoreChange)}
  const started=await Sync.core.start();
  if(Sync.core.session()&&(started||Sync.core.bootstrap()))await enterSession(started);else{setMode('unauthorized');loginSheet()}
- Sync.channel=new BroadcastChannel('ikisai-tasks');Sync.channel.onmessage=async()=>{if(!Sync.secondary)return;try{await Sync.core.reload();const boot=Sync.core.bootstrap();if(boot)Sync.actor=actorFrom(boot);refreshModel()}catch(e){console.error(e)}};
- addEventListener('online',()=>syncNow());addEventListener('offline',()=>refreshStatus());
- if('serviceWorker' in navigator&&isSecureContext)navigator.serviceWorker.register('/sw.js').catch(console.warn);
- }catch(e){document.getElementById('app').innerHTML='<div class="boot"><h1>No se puede guardar en este navegador</h1><p>Abre la app en una pestaña normal con almacenamiento habilitado.</p></div>';console.error(e)}}
+ if(!Sync.listening){Sync.listening=true;
+  Sync.channel=new BroadcastChannel('ikisai-tasks');Sync.channel.onmessage=async()=>{if(!Sync.secondary)return;try{await Sync.core.reload();const boot=Sync.core.bootstrap();if(boot)Sync.actor=actorFrom(boot);refreshModel()}catch(e){console.error(e)}};
+  addEventListener('online',()=>syncNow());addEventListener('offline',()=>refreshStatus());
+  // Al volver a la app (minimizada, congelada) tras un arranque fallido, se reintenta sola.
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Sync.bootFailed)boot()});
+  if('serviceWorker' in navigator&&isSecureContext)navigator.serviceWorker.register('/sw.js').catch(console.warn);
+ }
+ }catch(e){console.error(e);showBootFailure(e)}finally{Sync.booting=false}}
 
 // El borrador de un editor abierto es independiente de los modelos que se adoptan al sincronizar.
 function editorExtraFields(kind){const out={},amount=document.getElementById(kind==='task'?'teCost':'peBudget');if(amount)out[kind==='task'?'cost':'budget']=amount.value.trim()===''?null:Number(amount.value);if(kind==='project'){const color=document.getElementById('peColor');if(color)out.color=color.value}return out}

@@ -16,7 +16,7 @@ logoutAccount=async function(){
     // entrada antes de que termine la limpieza local. Tampoco se repinta: el espejo se vacía y ya no hay área activa.
     Sync.ready=false;Sync.leaving=true;
     await Sync.core.logout();
-    await new Promise((resolve,reject)=>{const tx=Sync.db.transaction('attachments','readwrite');tx.objectStore('attachments').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
+    const db=await localDB();await new Promise((resolve,reject)=>{const tx=db.transaction('attachments','readwrite');tx.objectStore('attachments').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
     try{localStorage.removeItem(UI_KEY)}catch{}
     Sync.ready=false;Sync.actor=null;Sync.last=null;Sync.lastComposed='';Sync.members=null;Sync.record={schemaVersion:1,tabs:[],queue:[],conflict:null,failure:null,cursor:0,ui:{},actorId:null,actor:null};state.tabs=[];
     loginSheet('Sesión cerrada.');setMode('unauthorized');
