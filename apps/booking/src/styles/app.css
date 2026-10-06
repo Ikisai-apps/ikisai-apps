@@ -1,6 +1,9 @@
 /* Ikisai Booking · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
    Aquí solo lo específico de Booking. Móvil primero (390 px), escritorio desde 1024 px. */
 
+/* El atributo `hidden` manda siempre: varias clases del kit fijan `display` y lo anularían (pastillas, botones). */
+[hidden] { display: none !important; }
+
 /* Filtros de la lista de reservas: una fila que se desplaza en horizontal en móvil. */
 .filters {
   display: flex;
@@ -72,3 +75,8 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
   .more > summary { display: none; }
   .more-items { display: contents; }
 }
+
+.chip[hidden] { display: none; }
+.banner.alert { flex-wrap: wrap; }
+.sesdata dd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.sesdata dd .value { min-width: 0; flex: 1; }

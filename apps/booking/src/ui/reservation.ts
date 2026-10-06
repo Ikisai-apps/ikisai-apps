@@ -8,6 +8,9 @@ import {
 import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
+import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
+import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
+import { toCalendarEvent } from './calendar.ts';
 import type { ViewMount } from './shell.ts';
 
 const RESTRICTIONS: TableName = TABLES.restrictions;
@@ -150,6 +153,14 @@ export function mountReservation(id: string): ViewMount {
       const guests = seesGuests ? ofEvent(await client.list(GUESTS)) : [];
       const editable = writable && !deleted;
 
+      // Confirmación enviada sin red: la marca vive hasta que aparece el evento (API §10).
+      let mark = getConfirmMark(id);
+      if (mark && event) { clearConfirmMark(id); mark = null; }
+      const rejectedBatch = mark ? (await client.rejected()).find((batch) => batch.requestId === mark!.requestId) ?? null : null;
+      // Marca huérfana: ya no hay nada en cola ni rechazado y sigue sin haber evento. Se retira para no dejar la reserva sin botón «Confirmar».
+      if (mark && !rejectedBatch && client.status().pendingCommands === 0) { clearConfirmMark(id); mark = null; }
+      const confirmPending = mark !== null && rejectedBatch === null;
+
       // --- acciones de cabecera
       const editReservation = () => openRowSheet({
         client, title: 'Editar reserva', table: RESERVATIONS, row: reservation,
@@ -167,8 +178,14 @@ export function mountReservation(id: string): ViewMount {
         if (missing.length) return void toast(`Para confirmar falta ${missing.map((key) => MISSING[key]).join(', ')}.`);
         const go = await confirmDialog({ title: 'Confirmar reserva', text: 'Se crea el evento operativo de esta reserva. Podrás completar llegada, salida, checklist y huéspedes.', confirmLabel: 'Confirmar' });
         if (!go) return;
-        await run([{ op: 'call', procedure: PROCEDURES.confirmReservation, args: { reservation_id: id, event_id: crypto.randomUUID(), from_status: reservation!.status } }],
-          navigator.onLine ? 'Confirmación enviada.' : 'Confirmación pendiente de enviar.');
+        try {
+          const { requestId } = await client.commit([{ op: 'call', procedure: PROCEDURES.confirmReservation, args: { reservation_id: id, event_id: crypto.randomUUID(), from_status: reservation!.status } }]);
+          setConfirmMark({ reservationId: id, requestId });
+          toast(navigator.onLine ? 'Confirmación enviada.' : 'Confirmación pendiente de enviar. Se enviará al reconectar.');
+          void paint();
+        } catch (error) {
+          toast(describeError(error));
+        }
       }
 
       async function trash(): Promise<void> {
@@ -213,7 +230,7 @@ export function mountReservation(id: string): ViewMount {
         ? [writable ? el('button', { class: 'primary', type: 'button', id: 'restoreReservation', onclick: () => void restore() }, icon('restore'), 'Restaurar') : null]
         : !writable ? [] : [
             el('button', { class: 'primary', type: 'button', id: 'editReservation', onclick: editReservation }, icon('edit'), 'Editar'),
-            !liveEvent && CONFIRMABLE.includes(reservation.status)
+            !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)
               ? el('button', { class: 'ghost', type: 'button', id: 'confirmReservation', onclick: () => void confirmReservation() }, icon('check'), 'Confirmar') : null,
             // En móvil «Archivar» y «Papelera» van a un menú «Más»; en escritorio se ven todas (CSS `.more`).
             el('details', { class: 'more', id: 'moreActions' }, el('summary', { class: 'ghost' }, 'Más'),
@@ -315,6 +332,21 @@ export function mountReservation(id: string): ViewMount {
         editLink('editFinance', 'Editar', () => openRowSheet({
           client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.' })));
 
+      // Pastilla de Calendar: lo último que se supo (caché) y, con red, refresco en segundo plano solo de esta reserva.
+      const published = toCalendarEvent(reservation) !== null;
+      const calendarChip = el('span', { class: 'chip', id: 'calendarChip', hidden: true });
+      const paintCalendar = (status: CalendarStatus | null): void => {
+        const item = status?.items.find((i) => i.reservationId === id);
+        const state = !published || !status || status.health === 'not_configured' || item?.syncStatus === 'deleted' ? null
+          : item?.syncStatus === 'error' ? 'error' : item?.syncStatus === 'synced' && !item.pendingJob ? 'sincronizado' : 'pendiente';
+        calendarChip.hidden = state === null;
+        calendarChip.textContent = state === null ? '' : `Calendar: ${state}`;
+        calendarChip.className = `chip${state === 'error' ? ' alert' : state === 'pendiente' ? ' pending' : ''}`;
+        calendarChip.title = navigator.onLine ? '' : 'Se actualizará al reconectar.';
+      };
+      paintCalendar(readCalendarCache());
+      if (published) void fetchCalendarStatus(client, id).then((fresh) => { if (fresh) paintCalendar(fresh); });
+
       replace(host,
         el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToList', onclick: () => navigate('#/reservas') }, '← Reservas')),
         el('div', { class: 'pagehead ficha' }, el('div', null,
@@ -322,9 +354,18 @@ export function mountReservation(id: string): ViewMount {
           el('p', null, `${dateRange(reservation)} · ${reservation.expected_guests === null ? 'personas sin definir' : plural(reservation.expected_guests, 'persona', 'personas')} · ${reservation.code ?? 'código pendiente'}`),
           el('div', { class: 'chips' },
             el('span', { class: 'chip', dataset: { status: reservation.status }, id: 'statusChip' }, statusLabel(reservation.status)),
+            calendarChip,
+            confirmPending ? el('span', { class: 'chip pending', id: 'confirmPendingChip' }, 'Confirmación pendiente de enviar') : null,
             archived ? el('span', { class: 'chip' }, 'Archivada') : null,
             deleted ? el('span', { class: 'chip trash' }, 'En la papelera') : null,
             reservation._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null))),
+        rejectedBatch ? el('div', { class: 'banner alert', id: 'confirmRejected', role: 'alert' },
+          el('span', null, `No se pudo confirmar la reserva: ${describeError(rejectedBatch.error)}`),
+          el('button', { class: 'ghost small', type: 'button', id: 'dismissConfirmRejected', onclick: async () => {
+            await client.discardRejected(rejectedBatch.requestId);
+            clearConfirmMark(id);
+            void paint();
+          } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
         el('div', { class: 'cardgrid ficha-grid' }, summary, operation, checklistBlock, guestsBlock, meals, cobro),
       );
@@ -334,6 +375,8 @@ export function mountReservation(id: string): ViewMount {
     void paint();
     const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
+    // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
+    offs.push(client.onStatus(() => { if (getConfirmMark(id)) void paint(); }));
     return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); };
   };
 }
