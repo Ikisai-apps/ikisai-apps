@@ -457,10 +457,10 @@ Sin datos personales ni notas. Solo asignaciones vivas de facturas no anuladas.
 |---|---|---|---|
 | `general` | `unassigned`, `operating_expense`, `investment` | Ninguna. | V1 |
 | `tasks` | `area`, `project`, `task` | API de Tareas con `ctx.token`: hasta que Tasks publique la lectura `tasks.targets`, la Edge usa `GET {TASKS_API}/api/v1/snapshot?tables=tasks.tabs,tasks.projects,tasks.tasks` con el bearer del usuario (devuelve solo lo visible para él), busca el id y construye `label`/`path`/`revision`; después, `GET read/tasks.targets`. `TASKS_API` = `https://tasks.ikisai.com` (o la función `tasks-api` directa en QA), configurable por variable de entorno. | V1 |
-| `booking` | `reservation`, `event` | `GET read/booking.food_event_projection` (contrato §8) cuando Booking la registre para `invoices`. | Fase 2 |
+| `booking` | `event` (`reservation` cuando la proyección exponga el id de la reserva) | `GET read/booking.food_event_projection` (contrato §8), registrada para `invoices` por Booking en la migración 0402 (PR #80). La Edge resuelve `event_id` y devuelve `title · start_date`, `event_code` y `event_revision`. | V1 (desde la 0402) |
 | `food` | `ingredient`, `equipment` | Proyección a pedir a Food (`food.invoices_catalog_projection`: `kind, id, name, unit, revision`). | Fase 2 |
 
-Mientras Booking y Food no existan, sus selectores aparecen deshabilitados sin bloquear Invoices (handoff §31A).
+Si una proyección no está registrada todavía, la Edge responde `TARGET_APP_NOT_AVAILABLE` y la app lo muestra en el buscador sin bloquear Invoices (handoff §31A).
 
 ### 7.3 Obsolescencia
 

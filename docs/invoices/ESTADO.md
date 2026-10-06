@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 5). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
@@ -29,14 +29,16 @@ Actualizado: 6 de octubre de 2026 (tanda 5). Equipo Invoices (agente de backend)
 - PR #72 (tanda 4) fusionada.
 - Tanda 5 (`invoices/tanda5`): contrato e implementación de `POST imports/extract` (extracción automática V2; llama al helper `extractInvoice` de `_kit` cuando Core lo publique, mientras tanto `EXTRACTION_UNAVAILABLE 503`; documento validado contra el schema; pruebas con un extractor simulado), botones «Extraer» en la factura pendiente de datos y «Extraer pendientes» en Facturas que llevan el resultado a la vista previa de importación; medida de `loadMirror` con 500 facturas sintéticas (`tests/invoices/perf.ts`) y agrupación de las recargas del espejo.
 
+- PR #79 (tanda 5) fusionada.
+- Tanda 6 (`invoices/tanda6`): destinos de Reservas activos en la hoja de asignación (buscador «Reservas (eventos: retiros)» contra `targets/booking`, que lee `booking.food_event_projection` registrada para `invoices` por la migración 0402 de Booking, PR #80); ajuste de `tests/invoices/api.test.ts` empujado a la rama de Booking a petición de Core.
+
 ## En curso
 
-- PR de la tanda 5 (`invoices/tanda5`).
+- PR de la tanda 6 (`invoices/tanda6`).
 
 ## Pendiente
 
 - Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
-- Destinos de Reservas en cuanto Booking registre `booking.food_event_projection` para `invoices` (la Edge y el filtro «Retiro» de Compras ya están preparados).
 - Extracción automática: conectar el helper `extractInvoice` de `_kit` en `index.ts` cuando Core avise (la ruta, los botones y las pruebas ya están).
 - Fase 2: destinos de Booking (`core.allow_read('invoices', 'booking.food_event_projection', 'view')`), `imports/extract`.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
