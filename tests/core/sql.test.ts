@@ -30,7 +30,7 @@ test('migraciones aplican y la app invoices queda registrada', async () => {
   const { t } = await setup();
   const boot = (await t.rpc('core_bootstrap', { p_app: APP, p_user: (await t.db.query<{ user_id: string }>('select user_id from core.memberships limit 1')).rows[0]!.user_id })) as any;
   assert.equal(boot.cursor, 0);
-  assert.deepEqual(boot.tables.map((x: any) => x.table), [TABLE]);
+  assert.ok(boot.tables.some((x: any) => x.table === TABLE)); // Invoices registra más tablas desde la migración 0200
   await t.close();
 });
 
