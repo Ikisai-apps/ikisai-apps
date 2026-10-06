@@ -1,0 +1,47 @@
+{
+  "schema_version": "ikisai.invoice.v1",
+  "invoice": {
+    "invoice_date": "2026-10-05",
+    "supplier_name": "Proveedor Ejemplo S.L.",
+    "supplier_tax_id": "B00000000",
+    "invoice_number": "F-2026-123",
+    "object": "alimentos_retiro_ejemplo",
+    "currency": "EUR",
+    "deductibility_suggestion": "pendiente_revision",
+    "notes": null
+  },
+  "lines": [
+    {
+      "description": "Tomate",
+      "quantity": 20,
+      "unit": "kg",
+      "unit_price": 2.0,
+      "discount_amount": 0,
+      "net_amount": 40.0,
+      "vat_rate": 10,
+      "vat_amount": 4.0,
+      "gross_amount": 44.0,
+      "suggested_item_type": "food_ingredient",
+      "suggested_match_name": "tomate",
+      "confidence": 0.99,
+      "notes": null
+    }
+  ],
+  "taxes": [
+    {
+      "tax_type": "iva",
+      "rate": 10,
+      "taxable_base": 40.0,
+      "amount": 4.0,
+      "notes": null
+    }
+  ],
+  "document_totals": {
+    "base": 40.0,
+    "vat": 4.0,
+    "withholding": 0.0,
+    "total": 44.0
+  },
+  "extraction_notes": null,
+  "overall_confidence": 0.98
+}
