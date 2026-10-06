@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountRecipes } from './recipes.ts';
@@ -46,6 +46,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let lastAutoMerged = client.status().autoMerged;
   let updateApply: (() => void) | null = null;
 
+  // La marca de la cabecera abre el lanzador común: las demás apps de la cuenta, sin volver a pedir contraseña.
+  const launcher = createAppLauncher({ current: 'food', fetchApps: () => client.api<LauncherCatalog>('/apps') });
   const shell = createAppShell(root, {
     appName: 'Food',
     markIcon: 'chef',
@@ -54,6 +56,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
+    launcher,
   });
   const { main } = shell;
 

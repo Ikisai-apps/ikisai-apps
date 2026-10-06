@@ -417,6 +417,17 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, issueTokens(entry[1].email));
       }
       const session = authenticate(req);
+      // Catálogo del lanzador (contrato §3.3): las apps a las que tiene acceso la cuenta.
+      if (path === 'apps' && method === 'GET') {
+        return json(res, 200, {
+          current: 'food',
+          items: [
+            { id: 'tasks', name: 'Tasks', domain: 'tasks.ikisai.com', aliasDomain: 'cuida.ikisai.com', kind: 'internal', description: 'Tareas y mantenimiento', role: 'editor' },
+            { id: 'booking', name: 'Booking', domain: 'booking.ikisai.com', aliasDomain: 'acoge.ikisai.com', kind: 'internal', description: 'Reservas y eventos', role: 'reader' },
+            { id: 'food', name: 'Food', domain: 'food.ikisai.com', aliasDomain: 'papeaki.ikisai.com', kind: 'internal', description: 'Cocina', role: 'owner' },
+          ],
+        });
+      }
       if (path === 'auth/logout' && method === 'POST') {
         sessions.delete(req.headers.authorization!.slice('Bearer '.length));
         return json(res, 200, { loggedOut: true });
