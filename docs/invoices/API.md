@@ -487,7 +487,7 @@ El usuario no quiere pagar APIs de IA. La extracción automática por API (`impo
 - **PDF sin texto** (escaneado o foto): se dice y se remite a «Analizar con IA». La fase 4 lo cubrirá con OCR. Un PDF que no se puede abrir (dañado o protegido) recibe el mismo trato.
 - **Duplicado blando** (`softDuplicate`): misma fecha y mismo total (y mismo proveedor si se conoce) que otra factura no anulada. Da un aviso «Posible duplicado» sin bloquear, además del duplicado por proveedor y número de siempre.
 
-### 6.9 Plantillas por proveedor aprendidas de confirmaciones (ronda 29, fase 3 · PROPUESTA para revisión de Core)
+### 6.9 Plantillas por proveedor aprendidas de confirmaciones (ronda 29, fase 3 · aprobada por Core en la ronda 33)
 
 **Objetivo.** Que la segunda, tercera… factura de un mismo proveedor se lea mejor que la primera, sin IA. Se aprende **solo de facturas confirmadas**: el momento de confirmar es `invoices.validate`. Nunca se aprende de una importación sin revisar ni de la propuesta de la propia plantilla.
 
@@ -514,11 +514,10 @@ Detalle de cada regla de `fields`:
 - **`kind`:** `date`, `money`, `rate`, `tax_id` o `text`.
 - **`pattern`:** forma esperada del valor, por ejemplo `^A-\d{4}/\d{4}$` para el número, generalizada de los ejemplos confirmados (cifras por `\d`, longitudes fijas).
 
-**`invoices.document_texts`** (opcional, para revisar): el texto con posiciones ya leído de un documento (`file_id` único, `source` `pdf_text` u `ocr`, `items jsonb`, `char_count`). Ventajas:
+**`invoices.document_texts`** (aprobada con condiciones): el texto con posiciones ya leído de un documento. Una fila por documento: `file_id` único, `source` (`pdf_text` u `ocr`), `items jsonb` (páginas con posiciones), `char_count` y `sha256` del documento. **No se sincroniza al dispositivo** y **solo la escribe la Edge** (ruta `POST documents/:fileId/text`; el `beforeCommit` rechaza cualquier escritura del cliente). La lee la Edge o una lectura registrada bajo demanda. Se borra cuando se borra su documento (hook) o cuando desaparece el archivo (`on delete cascade` sobre `core.files`). Es texto de facturas: no se copia a otros sitios ni a registros. Ventajas:
 - Al confirmar no hay que volver a leer el PDF.
 - La fase 4 (OCR en la Edge) deja aquí su resultado y los mismos extractores lo usan.
 
-No se copia al dispositivo (como `extractions`). Se lee por `read`. Contiene el contenido de la factura, como el propio PDF. Si Core prefiere no guardarlo, el cliente vuelve a leer el PDF al confirmar.
 
 #### Cómo se usa una plantilla
 
@@ -563,11 +562,11 @@ En el mismo lote que `call invoices.validate`, el cliente añade la operación s
   - Tercera factura con otro formato de número que el genérico no lee: la plantilla lo lee con procedencia de plantilla.
   - Otro formato del mismo proveedor: versión nueva.
 
-#### Preguntas para Core
+#### Decisiones de Core (ronda 33)
 
-1. ¿Guardamos `invoices.document_texts` en servidor? Es útil para la fase 4 y evita volver a leer el PDF al confirmar. ¿O el cliente vuelve a leer el PDF al confirmar?
-2. ¿Te parece bien la regla de la Edge que liga escribir plantillas a `invoices.validate` en el mismo lote?
-3. ¿Se aprenden también las plantillas de las **emitidas**, con la misma tabla y `kind` por tipo de documento? Mi propuesta: no por ahora.
+1. `invoices.document_texts` en servidor: sí, con las condiciones de arriba.
+2. La escritura de plantillas va ligada a `invoices.validate` en el mismo lote. Lo impone el servidor, en el hook SQL: una plantilla solo se escribe en un lote donde una factura de ese proveedor pasa a `validada`. Hay una prueba de que una escritura suelta se rechaza.
+3. Plantillas para emitidas: no por ahora.
 
 ### 6.6 MCP (contrato §3.2)
 
