@@ -721,7 +721,7 @@ Precisa §13 con lo que hay en `apps/tasks`. Donde difiera de §13, manda esta s
 
 ## 18. Compras no alimentarias (propuesta para revisión de Core, 6 de octubre de 2026)
 
-Ampliación aprobada por el usuario tras la aceptación V1 (ronda 25). **Propuesta, sin código.** Se construye cuando Core la revise y el usuario conteste las preguntas de §18.7.
+Ampliación aprobada por el usuario tras la aceptación V1 (ronda 25). Revisada por Core (ronda 26) y con las decisiones del usuario en §18.7 (ronda 27). Se construye después de cerrar la cadena de la V1.
 
 ### 18.1 Qué resuelve
 
@@ -750,7 +750,7 @@ Mismas convenciones que las diez tablas actuales: uuid, `tab_id` desnormalizado 
 | `priority` | `text not null default 'normal'` | `normal`, `high`, `critical`: la urgencia, con la misma estrella que las tareas. |
 | `status` | `text not null default 'requested'` | `requested` (pedida), `approved` (aprobada), `purchased` (comprada), `received` (recibida), `rejected` (rechazada). |
 | `needs_invoice` | `boolean not null default true` | Si se espera factura: Tasks avisa si no llega (§18.6). |
-| `repeat_days` | `int null` | Recurrente: al pasar a `received`, la app ofrece crear la siguiente (§18.7, pregunta 3). |
+| `repeat_days` | `int null` | Recurrente: al pasar a `received`, la app ofrece crear la siguiente, y las vencidas entran en el próximo plan (§18.7 y §18.8). |
 | `due` | `date null` | Para cuándo hace falta. |
 | `approved_at`, `purchased_at`, `received_at` | `timestamptz null` | Los pone un trigger al cambiar `status`, como `done_at` en tareas. No son escribibles. |
 | `position` | `double precision not null` | Orden manual (decisión del usuario sobre el orden manual). |
@@ -786,7 +786,7 @@ Por qué movimientos y no un número editable: dos personas sin red que gastan a
 ### 18.3 Reglas del hook (`tasks.validate_batch`, migración `0305`)
 
 - Mismas reglas de área y ámbitos que el resto: área coherente con el proyecto, la tarea y el suministro; la tarea, del mismo proyecto; el suministro, de la misma área.
-- Estado: se puede pasar entre los cinco estados, pero `approved` y `rejected` solo los pone quien tiene **acceso completo al área** (§18.7, pregunta 2). Quien tiene acceso a un solo proyecto pide y marca comprada o recibida.
+- Estado: se puede pasar entre los cinco estados, pero `approved` y `rejected` solo los pone el **responsable de compras del área** o, si no hay, la propietaria (§18.7, punto 2). Quien tiene acceso a un solo proyecto pide y marca comprada o recibida.
 - Movimientos: `delta` con el signo de su `kind`; una vez creados no se editan, salvo `note`.
 - Al pasar a `received` una solicitud con suministro, la app añade en el **mismo lote** una entrada `in` de su cantidad con `purchase_request_id`. El hook comprueba que no haya dos entradas vivas para la misma solicitud.
 
@@ -821,22 +821,84 @@ Invoices ya asigna líneas a destinos de Tasks (`target_app = 'tasks'`, `target_
 - **«Facturada» se ve en Tasks sin copiar datos.** Tasks lee una lectura nueva de Invoices, `invoices.allocations_by_target {targetApp: 'tasks', targetKind, ids}`, que devuelve por id el código de factura, su estado y el importe asignado, filtrado por lo que el usuario puede ver en Invoices. Tasks la consulta al abrir «Solicitudes» y la guarda en caché local para verla sin red. Ninguna app escribe en la otra. **Petición a Invoices vía Core.**
 - Si una solicitud requiere factura y no tiene asignación en Invoices pasados 15 días desde que se recibió, Tasks la marca «Falta factura». El plazo se puede ajustar.
 
-### 18.7 Preguntas para el usuario (vía Core)
+### 18.7 Decisiones (ronda 27)
 
-1. **¿La solicitud de reposición se crea sola al bajar del mínimo?**
-   - **a)** Solo aviso y botón «Pedir» (recomendado: no se duplican pedidos y alguien decide cuánto).
-   - **b)** Automática, una por suministro, si no hay ya una abierta.
-2. **¿Quién aprueba una solicitud?**
-   - **a)** Quien tiene acceso completo al área: propietaria o editor con el área entera (recomendado).
-   - **b)** Solo la propietaria.
-   - **c)** Sin aprobación: de «pedida» se pasa directamente a «comprada».
-3. **Compras recurrentes («cada mes, 10 l de cloro»):**
-   - **a)** Al marcar «recibida», la app ofrece crear la siguiente con la fecha +N días (recomendado).
-   - **b)** Un planificador las crea solas en su fecha.
+1. **Reposición: aviso y botón.** Cuando un suministro baja de su mínimo, se avisa en el propio suministro y en Inicio con palabras sencillas: «Queda poco: pedir». El botón crea la solicitud de compra precargada (suministro, cantidad de reposición o lo que falta hasta el mínimo, y su proveedor preferente). No se crea nada solo.
+2. **Aprueba solo el responsable de compras del área.**
+   - **Qué es:** una persona por área, elegida entre las **cuentas** con acceso a esa área. Si no hay ninguna elegida, aprueba la propietaria.
+   - **Modelo:** columna nueva `tasks.tabs.purchase_approver_id uuid null` (escribible solo por la propietaria, como el resto de `tabs`).
+   - **Hook:** `approved` y `rejected` solo los pone ese usuario o, si es `null`, una propietaria con acceso completo al área.
+   - **Por qué una cuenta y no la familia de responsables:** los responsables de tareas son **etiquetas** y pueden no tener cuenta (un fontanero externo). Aprobar es una acción con autoría, así que tiene que ser una cuenta.
+3. **Plan de compras por proveedor y hoja de ruta** (en lugar de un planificador):
+   - **Recurrentes:** al recibir una solicitud recurrente, la app ofrece crear la siguiente. Las que vencen entran solas en el próximo plan que se prepare.
+   - **Plan:** agrupa por proveedor las solicitudes aprobadas sin plan y las recurrentes vencidas.
+   - **Hoja de ruta:** una lista por proveedor, en el orden de visita que el usuario elige a mano, con cantidades y casillas para marcar lo comprado. Imprimible y usable en el móvil.
 
-### 18.8 Orden de construcción
+### 18.8 Proveedor y plan de compras
 
-1. Migración `0305` (tablas, triggers, hook y `tasks.targets` ampliada) con pruebas SQL.
-2. Dominio (`_domain/tasks`: tipos, validación y operaciones `requestPurchaseOps`, `receivePurchaseOps`, `supplyMovementOps`), `tasks-api` y conformidad.
-3. Interfaz (Solicitudes y Suministros) con el kit y Playwright.
-4. Integración con Invoices cuando existan `invoices.allocations_by_target` y su destino `purchase_request`.
+**Proveedor (enlazado al maestro de Invoices, sin copiarlo):**
+- `tasks.supply_items` y `tasks.purchase_requests` ganan `supplier_id text null` y `supplier_name text null`. El id es el de `invoices.suppliers`; el nombre es de cortesía, para verlo sin red, igual que Invoices guarda `target_label` de los destinos de Tasks.
+- **Petición a Invoices vía Core:** una lectura `invoices.supplier_options {q, limit}` → `[{id, name, slug}]` con los proveedores vivos. `tasks-api` la consulta con el token del usuario (`GET suppliers?q=`), igual que Invoices consulta `tasks.targets`. Sin Invoices o sin red, se puede escribir un nombre libre (`supplier_id` nulo) y enlazarlo después.
+- Así Food podría usar el mismo maestro para sus listas de compra. No se unifica ahora, pero nada lo impide.
+
+**Tablas nuevas (migración `0305`, junto a las de §18.2):**
+
+`tasks.purchase_plans`
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `tab_id` | `uuid not null` | Área. Un plan es de un área, por la visibilidad. Si hiciera falta un plan de varias áreas, se vería en «General» como varios planes. |
+| `title` | `text not null` | «Compra del 14 de octubre». |
+| `planned_for` | `date null` | Día previsto. |
+| `status` | `text not null default 'draft'` | `draft` (preparando), `shopping` (de compras), `done` (terminado). |
+| `note` | `text not null default ''` | |
+
+`tasks.purchase_plan_stops` (una parada por proveedor, en el orden de visita)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `tab_id` | `uuid not null` | Desnormalizado. |
+| `plan_id` | `uuid not null` | |
+| `supplier_id` | `text null` | El de Invoices, o nulo con un nombre libre. |
+| `supplier_name` | `text not null` | |
+| `position` | `double precision not null` | Orden de visita, ordenado a mano (lista reordenable del kit). |
+| `note` | `text not null default ''` | «Abre a las 8». |
+
+`tasks.purchase_requests` gana `plan_stop_id uuid null`: la parada del plan donde se comprará. El plan se deduce de la parada.
+
+**Flujo:**
+1. **«Preparar plan»:**
+   - Crea un plan en `draft` con una parada por proveedor y asigna las solicitudes aprobadas sin parada.
+   - Para cada recurrente vencida (recibida, con `repeat_days`, y `received_at + repeat_days` ya pasado o dentro del plan), crea la solicitud siguiente ya aprobada y la asigna.
+   - Lo que no tiene proveedor va a una parada «Sin proveedor».
+   - Todo es un lote con las operaciones de dominio de siempre.
+2. **Editar el plan:** reordenar paradas a mano, mover una solicitud de parada y quitar o añadir solicitudes.
+3. **Hoja de ruta:**
+   - En el móvil: lista por parada, en orden, con cantidad, unidad, nota y una casilla. Marcar la casilla pasa la solicitud a `purchased` (sin red también).
+   - Imprimible: la misma lista con `renderPrintPage` del kit.
+4. **Al recibir:** `received`, con su entrada de stock si es de un suministro (§18.3), y la oferta de crear la siguiente si es recurrente. Con todo comprado o recibido, el plan pasa a `done`.
+
+**Reglas del hook añadidas:**
+- Parada, plan y solicitud de la misma área.
+- Una solicitud solo entra en un plan si está aprobada.
+- No se puede borrar un plan con solicitudes compradas: se termina.
+
+**Visibilidad:** planes y paradas, con acceso completo al área (como los suministros).
+
+### 18.9 Orden de construcción
+
+1. Migración `0305`:
+   - tablas de §18.2 y §18.8;
+   - `tabs.purchase_approver_id`;
+   - triggers, hook y `tasks.targets` ampliada;
+   - pruebas SQL.
+2. Dominio y `tasks-api`:
+   - tipos, validación y operaciones (`requestPurchaseOps`, `receivePurchaseOps`, `supplyMovementOps`, `preparePlanOps`);
+   - ruta `GET suppliers` con su caída a nombre libre;
+   - conformidad.
+3. Interfaz con el kit y Playwright:
+   - Solicitudes;
+   - Suministros con «Queda poco: pedir»;
+   - Plan y hoja de ruta, con lista reordenable e imprimible;
+   - responsable de compras en el gestor de áreas.
+4. Integración con Invoices cuando existan sus tres piezas: destino `purchase_request`, `invoices.allocations_by_target` e `invoices.supplier_options`.
