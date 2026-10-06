@@ -24,6 +24,7 @@ export {
 } from './status/status-bar.ts';
 export { renderLogin, type LoginOptions } from './shell/login.ts';
 export { createAppShell, type AppShell, type AppShellOptions, type NavItem } from './shell/app-shell.ts';
+export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, renderNavMenu, renderNavBackdrop, renderTabBar, type WorkspaceBarOptions, type AreaTab, type AreaTabsOptions, type QuickView, type NavMenuItem, type NavMenuGroup, type NavMenuOptions, type TabBarItem, type HookAttrs, type IconLike } from './shell/workspace.ts';
 export { openSheet, closeSheet, currentSheet, type Sheet, type SheetOptions } from './overlay/sheet.ts';
 export { confirmDialog, alertDialog, type DialogOptions } from './overlay/dialog.ts';
 export { trapFocus, focusFirst, focusables, lockScroll } from './overlay/focus.ts';

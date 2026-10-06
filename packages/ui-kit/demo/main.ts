@@ -12,6 +12,12 @@ import {
   createLabelPicker,
   labelChips,
   renderMoneyBreakdown,
+  renderWorkspaceBar,
+  renderAreaTabs,
+  renderStripTool,
+  renderQuickViews,
+  renderNavMenu,
+  renderTabBar,
   renderProjectCard,
   createPrintView,
   createQuantityField,
@@ -572,6 +578,28 @@ const moneyHost = el('div', { class: 'card', id: 'moneyHost' }, renderMoneyBreak
 }));
 const moneyOver = el('div', { class: 'card', id: 'moneyOver' }, renderMoneyBreakdown({ totalLabel: 'Coste real', compare: { label: 'del importe final', amount: 500 }, lines: [{ label: 'Alimentación', amount: 420 }, { label: 'Limpieza', amount: 160 }] }));
 const moneyEmpty = el('div', { class: 'card', id: 'moneyEmpty' }, renderMoneyBreakdown({ totalLabel: 'Coste real', lines: [], emptyText: 'Invoices no ha asignado compras a esta reserva.' }));
+// --- Barra de espacio de trabajo (Tasks) ------------------------------------------------------
+const workspaceMenu = renderNavMenu({
+  label: 'Navegación principal', attrs: { id: 'demoNavMenu' },
+  header: [el('button', { type: 'button', class: 'softbtn small' }, icon('user', 16), 'Yo')],
+  groups: [
+    { label: 'Trabajo', icon: 'tasks', open: true, items: [{ label: 'Inicio', icon: 'home' }, { label: 'Proyectos', icon: 'grid', active: true }, { label: 'Todas las tareas', icon: 'list' }, { label: 'Etiquetas', icon: 'tag' }] },
+    { label: 'Sistema', icon: 'settings', items: [{ label: 'Sincronización', icon: 'sync' }, { label: 'Historial de cambios', icon: 'history' }, { label: 'Registro de accesos', icon: 'lock', disabled: true }] },
+  ],
+  hint: el('span', null, 'Área actual: ', el('strong', null, 'Ikisai')),
+});
+const workspaceSection = section('workspace', 'Barra de espacio de trabajo', 'Para apps con áreas, vistas guardadas y menú agrupado (Tasks). Piezas sin estado: la app las monta o las repinta en cada render. El menú es desplegable en móvil y barra lateral en escritorio; aquí se muestra en línea.',
+  el('div', { class: 'demo-workspace', id: 'workspaceHost' },
+    renderWorkspaceBar({ name: 'Ikisai', sub: 'Tareas', markIcon: 'tasks', tools: [el('span', { class: 'chip ok' }, el('span', null, 'Al día')), el('button', { type: 'button', class: 'iconbtn', 'aria-label': 'Menú principal' }, icon('menu'))],
+      rows: [
+        renderAreaTabs({ label: 'Áreas de trabajo', leading: [renderStripTool({ label: 'Áreas de trabajo', icon: 'settings' })], items: [{ label: 'General', general: true }, { label: 'Ikisai', active: true, color: '#8a5a44', count: 7 }, { label: 'Personal', count: 1 }, { label: 'Detailorg' }] }),
+        renderQuickViews({ label: 'Vistas guardadas', leading: [renderStripTool({ label: 'Guardar vista', icon: 'eye' })], items: [{ label: 'Mis tareas', icon: 'user', active: true }, { label: 'Fontanería' }, { label: 'Esta semana' }] }),
+      ] }),
+    workspaceMenu,
+    renderTabBar({ label: 'Vistas', items: [{ label: 'Inicio', icon: 'home' }, { label: 'Proyectos', icon: 'grid', active: true }, { label: 'Tareas', icon: 'tasks' }, { label: 'Etiquetas', icon: 'tag' }, { label: 'Filtros', icon: 'filter' }] }),
+  ),
+);
+
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
@@ -583,12 +611,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection),
 );
