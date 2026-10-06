@@ -7,12 +7,14 @@ export const META_STORE = 'meta';
 export const OUTBOX_STORE = 'outbox';
 export const CONFLICTS_STORE = 'conflicts';
 export const BLOBS_STORE = 'blobs';
+export const REJECTED_STORE = 'rejected';
 
 const FIXED_STORES: ReadonlyArray<{ name: string; keyPath: string }> = [
   { name: META_STORE, keyPath: 'key' },
   { name: OUTBOX_STORE, keyPath: 'requestId' },
   { name: CONFLICTS_STORE, keyPath: 'requestId' },
   { name: BLOBS_STORE, keyPath: 'sha256' },
+  { name: REJECTED_STORE, keyPath: 'requestId' },
 ];
 
 export function request<T>(req: IDBRequest<T>): Promise<T> {
@@ -66,17 +68,30 @@ export class Database {
     await this.ensureStores(tables);
   }
 
+  /** Garantiza los stores fijos (también los añadidos en versiones posteriores del paquete) y los de las tablas indicadas. */
   async ensureStores(tables: string[]): Promise<void> {
     const current = this.handle;
-    const missing = tables.filter((t) => !current.objectStoreNames.contains(t));
+    const wanted = [...FIXED_STORES.map((s) => s.name), ...tables];
+    const missing = wanted.filter((t) => !current.objectStoreNames.contains(t));
     if (missing.length === 0) return;
-    const nextVersion = current.version + 1;
-    current.close();
-    this.db = null;
-    this.db = await this.openVersion(nextVersion, tables);
+    await this.reopen(current.version + 1, tables, []);
   }
 
-  private openVersion(version: number | undefined, tables: string[]): Promise<IDBDatabase> {
+  /** Elimina stores de tabla (p. ej. tablas que dejaron de ser legibles). */
+  async dropStores(tables: string[]): Promise<void> {
+    const current = this.handle;
+    const present = tables.filter((t) => isTableStore(t) && current.objectStoreNames.contains(t));
+    if (present.length === 0) return;
+    await this.reopen(current.version + 1, [], present);
+  }
+
+  private async reopen(version: number, create: string[], drop: string[]): Promise<void> {
+    this.handle.close();
+    this.db = null;
+    this.db = await this.openVersion(version, create, drop);
+  }
+
+  private openVersion(version: number | undefined, tables: string[], drop: string[] = []): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = version === undefined ? this.factory.open(this.name) : this.factory.open(this.name, version);
       req.onupgradeneeded = () => {
@@ -86,6 +101,9 @@ export class Database {
         }
         for (const table of tables) {
           if (!db.objectStoreNames.contains(table)) db.createObjectStore(table, { keyPath: 'id' });
+        }
+        for (const table of drop) {
+          if (db.objectStoreNames.contains(table)) db.deleteObjectStore(table);
         }
       };
       req.onsuccess = () => {
@@ -136,6 +154,15 @@ export class Database {
   async clear(store: string): Promise<void> {
     const tx = this.handle.transaction(store, 'readwrite');
     tx.objectStore(store).clear();
+    await transactionDone(tx);
+  }
+
+  /** Vacía varios stores en una sola transacción. */
+  async clearMany(stores: string[]): Promise<void> {
+    const present = Array.from(new Set(stores)).filter((s) => this.handle.objectStoreNames.contains(s));
+    if (present.length === 0) return;
+    const tx = this.handle.transaction(present, 'readwrite');
+    for (const s of present) tx.objectStore(s).clear();
     await transactionDone(tx);
   }
 

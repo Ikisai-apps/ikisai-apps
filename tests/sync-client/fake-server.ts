@@ -43,6 +43,25 @@ class CommitError extends Error {
   }
 }
 
+/** Devuelve el sha del primer marcador `{ "$blob": sha }` que quede en un valor (a cualquier profundidad). */
+function findBlobMarker(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const found = findBlobMarker(v);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== 'object' || value === null) return null;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.$blob === 'string' && Object.keys(obj).length === 1) return obj.$blob;
+  for (const v of Object.values(obj)) {
+    const found = findBlobMarker(v);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -51,8 +70,10 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 export class FakeServer {
   readonly app: string;
   readonly apiBase: string;
-  readonly tables: TableName[];
-  readonly userId: string;
+  /** Mutables para simular cambios de ámbito o de persona entre arranques. */
+  tables: TableName[];
+  userId: string;
+  membershipRevision = 1;
   role: 'reader' | 'editor' | 'owner';
   loginExpiresIn: number;
 
@@ -71,6 +92,10 @@ export class FakeServer {
   unavailable = false;
   dropNextCommandResponse = false;
   failVerify = false;
+  /** Todo lote cuyo `fields` contenga este valor recibe 422 CONSTRAINT_VIOLATION. */
+  rejectValue: string | null = null;
+  /** Todo lote recibe 403 FORBIDDEN (p. ej. ámbito retirado). */
+  forbidden = false;
 
   /** Contadores para las aserciones. */
   calls: Array<{ method: string; path: string }> = [];
@@ -232,7 +257,7 @@ export class FakeServer {
       cursor: this.cursor,
       serverTime: new Date(this.clock).toISOString(),
       release: 'test',
-      membership: { role: this.role, scopes: null, revision: 1 },
+      membership: { role: this.role, scopes: null, revision: this.membershipRevision },
       profile: { userId: this.userId, displayName: 'Prueba', kind: 'human' },
       tables: this.tables.map((table) => ({ table, writableColumns: ['name', 'notes', 'tax_id', 'attachment_sha'], readable: true, writable: this.role !== 'reader' })),
     };
@@ -262,6 +287,7 @@ export class FakeServer {
   private async commands(batch: CommandBatch): Promise<Response> {
     if (this.commandsDown) throw new TypeError('Failed to fetch');
     if (this.role === 'reader') return fail(403, 'FORBIDDEN', 'El rol reader no puede escribir');
+    if (this.forbidden) return fail(403, 'FORBIDDEN', 'Sin permiso de escritura en este ámbito (simulado)');
     const digest = JSON.stringify(batch.operations);
     const receipt = this.receipts.get(batch.requestId);
     if (receipt) {
@@ -274,6 +300,15 @@ export class FakeServer {
     for (const sha of batch.blobs ?? []) {
       const found = Array.from(this.uploads.values()).find((u) => u.sha256 === sha && u.verified);
       if (!found) return fail(422, 'INVALID_OPERATION', `adjunto ${sha} no verificado`);
+    }
+    for (const op of batch.operations) {
+      const values = op.op === 'insert' || op.op === 'update' ? op.fields : op.op === 'call' ? op.args : null;
+      if (!values) continue;
+      const marker = findBlobMarker(values);
+      if (marker) return fail(422, 'INVALID_VALUE', `marcador {"$blob"} sin resolver: ${marker}`, { sha256: marker });
+      if (this.rejectValue !== null && Object.values(values).includes(this.rejectValue)) {
+        return fail(422, 'CONSTRAINT_VIOLATION', `valor duplicado '${this.rejectValue}' (simulado)`, { value: this.rejectValue });
+      }
     }
 
     const staging = new Map(this.rows);

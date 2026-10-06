@@ -5,6 +5,7 @@ import type {
   CommandBatch,
   CommandResult,
   PendingConflict,
+  RejectedBatch,
   RowId,
   RowOperation,
   Session,
@@ -15,7 +16,7 @@ import type {
   TableName,
 } from './types.ts';
 import { SyncApiError, isApiError, isNetworkError, networkError, toApiError } from './errors.ts';
-import { BLOBS_STORE, CONFLICTS_STORE, Database, META_STORE, OUTBOX_STORE, resolveIndexedDB } from './idb.ts';
+import { BLOBS_STORE, CONFLICTS_STORE, Database, META_STORE, OUTBOX_STORE, REJECTED_STORE, resolveIndexedDB } from './idb.ts';
 import { analyseConflict, operationKey, rowKey, stripLocal, type RowKey } from './conflicts.ts';
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,11 @@ const MAX_OPERATIONS = 500;
 const MAX_REBASES = 3;
 const REFRESH_MARGIN_SECONDS = 60;
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/;
+/** Clave del marcador de adjunto: `{ "$blob": "<sha256>" }` se sustituye por el `fileId` antes de enviar. */
+const BLOB_MARKER = '$blob';
+const MAX_MARKER_DEPTH = 16;
+/** Stores fijos que se vacían al cambiar de usuario o con `clearOnLogout: true`. */
+const LOCAL_STATE_STORES = [OUTBOX_STORE, CONFLICTS_STORE, BLOBS_STORE, REJECTED_STORE];
 
 type ApiInit = RequestInit & { json?: unknown };
 
@@ -103,6 +109,64 @@ type ApiInit = RequestInit & { json?: unknown };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBlobMarker(value: unknown): value is { $blob: string } {
+  return isPlainObject(value) && Object.keys(value).length === 1 && typeof value[BLOB_MARKER] === 'string';
+}
+
+/** Recorre un valor (objetos y arrays, hasta MAX_MARKER_DEPTH) sustituyendo cada marcador por `visit(sha)`. */
+function walkBlobMarkers(value: unknown, visit: (sha: string) => unknown, depth = 0): unknown {
+  if (depth > MAX_MARKER_DEPTH) return value;
+  if (isBlobMarker(value)) return visit(value[BLOB_MARKER]);
+  if (Array.isArray(value)) return value.map((v) => walkBlobMarkers(v, visit, depth + 1));
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = walkBlobMarkers(v, visit, depth + 1);
+    return out;
+  }
+  return value;
+}
+
+function markerContainer(op: RowOperation): Record<string, unknown> | null {
+  if (op.op === 'insert' || op.op === 'update') return op.fields;
+  if (op.op === 'call') return op.args;
+  return null;
+}
+
+/** Hashes referenciados por marcadores `{ $blob }` en `fields` y `args`, sin repetir. */
+export function collectBlobMarkers(operations: RowOperation[]): string[] {
+  const found = new Set<string>();
+  for (const op of operations) {
+    const container = markerContainer(op);
+    if (container) {
+      walkBlobMarkers(container, (sha) => {
+        found.add(sha);
+        return null;
+      });
+    }
+  }
+  return Array.from(found);
+}
+
+/** Copia de las operaciones con cada marcador sustituido por su `fileId`. Lanza BLOB_MISSING si falta alguno. */
+export function substituteBlobMarkers(operations: RowOperation[], fileIds: ReadonlyMap<string, string>): RowOperation[] {
+  const resolve = (sha: string): string => {
+    const fileId = fileIds.get(sha);
+    if (fileId === undefined) {
+      throw new SyncApiError(422, 'BLOB_MISSING', `El lote referencia un adjunto ${sha} que no está en local`, { sha256: sha });
+    }
+    return fileId;
+  };
+  return operations.map((op) => {
+    if (op.op === 'insert' || op.op === 'update') return { ...op, fields: walkBlobMarkers(op.fields, resolve) as Record<string, unknown> };
+    if (op.op === 'call') return { ...op, args: walkBlobMarkers(op.args, resolve) as Record<string, unknown> };
+    return op;
+  });
+}
+
+function touchesTables(operations: RowOperation[], tables: ReadonlySet<string>): boolean {
+  return operations.some((op) => op.op !== 'call' && tables.has(op.table));
 }
 
 function hasExpectedRevision(op: RowOperation): op is Extract<RowOperation, { expectedRevision: number }> {
@@ -221,6 +285,8 @@ export class SyncClientImpl implements SyncClient {
   private running: Promise<void> | null = null;
   private syncAgain = false;
   private needsPull = false;
+  /** El aviso USER_CHANGED sobrevive al ciclo que lanza start() y se limpia en el siguiente. */
+  private keepLastErrorOnce = false;
   private refreshing: Promise<boolean> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listenersInstalled = false;
@@ -255,6 +321,7 @@ export class SyncClientImpl implements SyncClient {
       lastPullAt: null,
       lastError: null,
       autoMerged: 0,
+      rejected: 0,
     };
   }
 
@@ -303,12 +370,13 @@ export class SyncClientImpl implements SyncClient {
 
   private async refreshCounts(): Promise<void> {
     if (!this.db.isOpen) return;
-    const [pendingCommands, conflicts, blobs] = await Promise.all([
+    const [pendingCommands, conflicts, blobs, rejected] = await Promise.all([
       this.db.count(OUTBOX_STORE),
       this.db.count(CONFLICTS_STORE),
       this.db.getAll<BlobRecord>(BLOBS_STORE),
+      this.db.count(REJECTED_STORE),
     ]);
-    this.setStatus({ pendingCommands, conflicts, pendingBlobs: blobs.filter((b) => b.status === 'staged').length });
+    this.setStatus({ pendingCommands, conflicts, rejected, pendingBlobs: blobs.filter((b) => b.status === 'staged').length });
   }
 
   private recordError(error: unknown): ApiError {
@@ -396,11 +464,65 @@ export class SyncClientImpl implements SyncClient {
     this.setStatus({ lastPullAt: this.lastPullAt });
   }
 
-  /** Tablas que mantiene el espejo: las configuradas, si no las legibles del bootstrap, si no las ya existentes. */
+  /** Tablas legibles según el último bootstrap (null si aún no lo hay). */
+  private readableTables(): Set<TableName> | null {
+    return this.boot ? new Set(this.boot.tables.filter((t) => t.readable).map((t) => t.table)) : null;
+  }
+
+  /**
+   * Tablas que mantiene el espejo: las configuradas (limitadas a las legibles si ya hay bootstrap),
+   * si no las legibles del bootstrap, si no las ya existentes.
+   */
   private mirrorTables(): TableName[] {
-    if (this.configuredTables) return this.configuredTables;
-    if (this.boot) return this.boot.tables.filter((t) => t.readable).map((t) => t.table);
+    const readable = this.readableTables();
+    if (this.configuredTables) return readable ? this.configuredTables.filter((t) => readable.has(t)) : this.configuredTables;
+    if (readable) return Array.from(readable);
     return this.db.isOpen ? (this.db.tableStores() as TableName[]) : [];
+  }
+
+  /** Vacía espejo, cola, conflictos, rechazados y blobs; el cursor vuelve a cero para que el próximo arranque haga snapshot. */
+  private async clearLocalData(): Promise<void> {
+    const tables = this.db.tableStores() as TableName[];
+    await this.db.clearMany([...tables, ...LOCAL_STATE_STORES]);
+    await this.resetCursor();
+    this.setStatus({ autoMerged: 0 });
+    await this.refreshCounts();
+    await this.emitTables(tables);
+  }
+
+  /** Vacía solo las tablas indicadas y lo que las referencia (comandos, conflictos y rechazados que las tocan). */
+  private async clearTables(tables: TableName[]): Promise<void> {
+    const present = tables.filter((t) => this.db.storeNames().includes(t));
+    const set = new Set<string>(tables);
+    const [outbox, conflicts, rejected] = await Promise.all([
+      this.db.getAll<OutboxEntry>(OUTBOX_STORE),
+      this.db.getAll<ConflictRecord>(CONFLICTS_STORE),
+      this.db.getAll<RejectedBatch>(REJECTED_STORE),
+    ]);
+    const writes: Array<{ store: string; key?: IDBValidKey; value: unknown | null }> = [];
+    for (const e of outbox) if (touchesTables(e.batch.operations, set)) writes.push({ store: OUTBOX_STORE, key: e.requestId, value: null });
+    for (const c of conflicts) {
+      const op = c.operation as RowOperation;
+      if ((op.op !== 'call' && set.has(op.table)) || touchesTables(c.otherOperations, set)) {
+        writes.push({ store: CONFLICTS_STORE, key: c.requestId, value: null });
+      }
+    }
+    for (const r of rejected) if (touchesTables(r.operations, set)) writes.push({ store: REJECTED_STORE, key: r.requestId, value: null });
+    await this.db.clearMany(present);
+    await this.db.writeMany(writes);
+    await this.resetCursor();
+    await this.refreshCounts();
+    await this.emitTables(present);
+  }
+
+  private async resetCursor(): Promise<void> {
+    this.cursor = null;
+    this.lastPullAt = null;
+    await this.db.writeMany([
+      { store: META_STORE, key: 'cursor', value: null },
+      { store: META_STORE, key: 'lastPullAt', value: null },
+    ]);
+    this.setStatus({ lastPullAt: null });
   }
 
   private tracksTable(table: TableName): boolean {
@@ -440,6 +562,9 @@ export class SyncClientImpl implements SyncClient {
       }
     }
     await this.setSession(null);
+    const clear = this.options.clearOnLogout ?? false;
+    if (clear === true) await this.clearLocalData();
+    else if (Array.isArray(clear) && clear.length > 0) await this.clearTables(clear);
   }
 
   async api<T = unknown>(path: string, init: ApiInit = {}): Promise<T> {
@@ -567,10 +692,35 @@ export class SyncClientImpl implements SyncClient {
     if (this.sess && this.hasNetwork()) {
       try {
         const boot = await this.api<Bootstrap>('/bootstrap');
+        const previous = this.boot;
+        const previousUserId = (await this.db.get<MetaRecord<string>>(META_STORE, 'userId'))?.value ?? previous?.profile.userId ?? null;
         this.boot = boot;
         await this.saveMeta('bootstrap', boot);
-        await this.db.ensureStores(this.mirrorTables());
+        await this.saveMeta('userId', boot.profile.userId);
         this.setStatus({ network: 'online' });
+
+        if (previousUserId !== null && previousUserId !== boot.profile.userId) {
+          // Otra persona ha entrado en este dispositivo: nada de lo local le pertenece.
+          await this.clearLocalData();
+          await this.db.dropStores(this.db.tableStores());
+          this.setStatus({
+            lastError: {
+              status: 0,
+              code: 'USER_CHANGED',
+              message: 'Ha entrado otra persona en este dispositivo: se vaciaron el espejo local y la cola',
+              details: { previousUserId, userId: boot.profile.userId },
+            },
+          });
+          this.keepLastErrorOnce = true;
+        } else {
+          // Cambio de ámbitos: filas o tablas que dejan de ser legibles desaparecen del dispositivo.
+          const readable = this.readableTables() ?? new Set<TableName>();
+          const dropped = (this.db.tableStores() as TableName[]).filter((t) => !readable.has(t));
+          const membershipChanged = previous !== null && previous.membership.revision !== boot.membership.revision;
+          if (dropped.length > 0 || membershipChanged) await this.replaceMirror(dropped);
+        }
+
+        await this.db.ensureStores(this.mirrorTables());
         if (this.cursor === null) await this.snapshot();
         void this.sync().catch(() => undefined);
       } catch (error) {
@@ -643,7 +793,8 @@ export class SyncClientImpl implements SyncClient {
       this.setStatus({ network: this.hasNetwork() ? 'online' : 'offline' });
       return;
     }
-    this.setStatus({ network: 'syncing', lastError: null });
+    this.setStatus({ network: 'syncing', lastError: this.keepLastErrorOnce ? this.state.lastError : null });
+    this.keepLastErrorOnce = false;
     try {
       await this.pull();
       const pushedAll = await this.push();
@@ -722,6 +873,24 @@ export class SyncClientImpl implements SyncClient {
     await this.setCursor(snapshotCursor ?? this.boot?.cursor ?? 0);
     await this.markPulled();
     await this.emitTables(tables);
+  }
+
+  /**
+   * Rehace el espejo completo: elimina las tablas que ya no son legibles, borra las filas sin comando pendiente
+   * y vuelve a pedir el snapshot. La outbox no se toca (sus filas provisionales siguen en el espejo).
+   */
+  private async replaceMirror(dropped: TableName[]): Promise<void> {
+    await this.db.dropStores(dropped);
+    const owners = await this.pendingOwners();
+    const writes: Array<{ store: string; key?: IDBValidKey; value: unknown | null }> = [];
+    for (const table of this.db.tableStores() as TableName[]) {
+      for (const row of await this.db.getAll<MirrorRow>(table)) {
+        if (!owners.has(rowKey(table, row.id))) writes.push({ store: table, key: row.id, value: null });
+      }
+    }
+    await this.db.writeMany(writes);
+    await this.resetCursor();
+    await this.snapshot();
   }
 
   private async pull(): Promise<void> {
@@ -884,18 +1053,31 @@ export class SyncClientImpl implements SyncClient {
       const entry = entries[0];
       if (!entry) return true;
 
+      // Adjuntos: los declarados en `blobs` y los referenciados con marcadores `{ $blob }`.
+      const shas = Array.from(new Set([...(entry.batch.blobs ?? []), ...collectBlobMarkers(entry.batch.operations)]));
+      let outgoing: CommandBatch;
       try {
-        await this.uploadBlobs(entry);
+        const fileIds = await this.uploadBlobs(entry, shas);
+        outgoing = {
+          ...entry.batch,
+          operations: substituteBlobMarkers(entry.batch.operations, fileIds),
+          ...(shas.length > 0 ? { blobs: shas } : {}),
+        };
       } catch (error) {
+        if (isApiError(error) && error.code === 'BLOB_MISSING') {
+          await this.reject(entry, error);
+          continue;
+        }
         this.handleFailure(error);
         return false;
       }
 
       let result: CommandResult;
       try {
-        result = await this.api<CommandResult>('/commands', { method: 'POST', json: entry.batch });
+        result = await this.api<CommandResult>('/commands', { method: 'POST', json: outgoing });
       } catch (error) {
-        if (!isApiError(error) || isNetworkError(error) || error.status === 503 || error.status === 401 || error.status === 403) {
+        if (!isApiError(error) || isNetworkError(error) || error.status === 401 || error.status >= 500) {
+          // Sin red, sesión caducada sin refresco posible o fallo del servidor: la cola espera tal cual.
           this.handleFailure(error);
           return false;
         }
@@ -920,12 +1102,10 @@ export class SyncClientImpl implements SyncClient {
           await this.pull();
           continue;
         }
-        if (error.code === 'IDEMPOTENCY_REUSE' || error.status === 422 || error.code === 'CURSOR_CONFLICT') {
-          // El lote no puede prosperar tal cual: se retira, el espejo vuelve a la base y se avisa.
-          this.recordError(error);
-          await this.withdraw(entry, {});
-          this.needsPull = true;
-          await this.refreshCounts();
+        if (error.status >= 400 && error.status < 500) {
+          // Error definitivo (INVALID_FIELDS, CONSTRAINT_VIOLATION, FORBIDDEN, NOT_FOUND, IDEMPOTENCY_REUSE…):
+          // el lote pasa a `rejected`, el espejo vuelve a la base y la cola sigue con el siguiente.
+          await this.reject(entry, error);
           continue;
         }
         this.handleFailure(error);
@@ -937,13 +1117,20 @@ export class SyncClientImpl implements SyncClient {
     }
   }
 
-  private async uploadBlobs(entry: OutboxEntry): Promise<void> {
-    for (const sha of entry.batch.blobs ?? []) {
+  /** Sube y verifica los adjuntos que falten; devuelve `sha256 → fileId` de todos ellos. */
+  private async uploadBlobs(entry: OutboxEntry, shas: string[]): Promise<Map<string, string>> {
+    const fileIds = new Map<string, string>();
+    for (const sha of shas) {
       const record = await this.db.get<BlobRecord>(BLOBS_STORE, sha);
       if (!record) {
-        throw new SyncApiError(0, 'BLOB_MISSING', `El lote ${entry.requestId} referencia un adjunto ${sha} que no está en local`, { sha256: sha });
+        throw new SyncApiError(422, 'BLOB_MISSING', `El lote ${entry.requestId} referencia un adjunto ${sha} que no está en local`, {
+          sha256: sha,
+        });
       }
-      if (record.status === 'uploaded') continue;
+      if (record.status === 'uploaded' && record.fileId) {
+        fileIds.set(sha, record.fileId);
+        continue;
+      }
       const ticket = await this.api<UploadTicket>('/uploads', {
         json: { filename: record.filename, mime: record.mime, size: record.size, sha256: record.sha256 },
       });
@@ -967,8 +1154,10 @@ export class SyncClientImpl implements SyncClient {
         });
       }
       await this.db.put<BlobRecord>(BLOBS_STORE, { ...record, status: 'uploaded', fileId: ticket.id });
+      fileIds.set(sha, ticket.id);
       await this.refreshCounts();
     }
+    return fileIds;
   }
 
   /** Éxito del servidor: sustituye las filas provisionales por las confirmadas y saca el comando de la cola. */
@@ -1081,8 +1270,7 @@ export class SyncClientImpl implements SyncClient {
     const table = details.table ?? first?.table;
     const id = details.id ?? first?.id;
     if (!table || !id) {
-      this.recordError(error);
-      await this.withdraw(entry, {});
+      await this.reject(entry, error);
       return;
     }
     const key = rowKey(table, id);
@@ -1115,11 +1303,31 @@ export class SyncClientImpl implements SyncClient {
       otherOperations: entry.batch.operations.filter((op) => operationKey(op) !== info.key),
       ...(entry.batch.blobs ? { blobs: entry.batch.blobs } : {}),
     };
-    await this.withdraw(entry, { [info.key]: info.current }, record);
+    await this.withdraw(entry, { [info.key]: info.current }, { conflict: record });
+  }
+
+  /** Error definitivo del servidor: el lote pasa a `rejected`, el espejo vuelve a la base y se anota en lastError. */
+  private async reject(entry: OutboxEntry, error: SyncApiError): Promise<void> {
+    const record: RejectedBatch = {
+      requestId: entry.requestId,
+      operations: entry.batch.operations,
+      ...(entry.batch.blobs ? { blobs: entry.batch.blobs } : {}),
+      error: error.toJSON(),
+      baseRows: entry.baseRows,
+      rejectedAt: new Date(this.now()).toISOString(),
+    };
+    this.recordError(error);
+    await this.withdraw(entry, {}, { rejected: record });
+    this.needsPull = true;
+    await this.refreshCounts();
   }
 
   /** Retira un comando de la outbox restaurando el espejo (fila conflictiva → `current`; resto → base remota o local). */
-  private async withdraw(entry: OutboxEntry, overrides: Record<string, SyncedRow>, conflict?: ConflictRecord): Promise<void> {
+  private async withdraw(
+    entry: OutboxEntry,
+    overrides: Record<string, SyncedRow>,
+    park: { conflict?: ConflictRecord; rejected?: RejectedBatch } = {},
+  ): Promise<void> {
     const others = (await this.db.getAll<OutboxEntry>(OUTBOX_STORE)).filter((e) => e.requestId !== entry.requestId);
     const stillPending = groupByKey(others);
     const writes: Array<{ store: string; key?: IDBValidKey; value: unknown | null }> = [];
@@ -1142,9 +1350,40 @@ export class SyncClientImpl implements SyncClient {
       touched.add(table);
     }
     writes.push({ store: OUTBOX_STORE, key: entry.requestId, value: null });
-    if (conflict) writes.push({ store: CONFLICTS_STORE, value: conflict });
+    if (park.conflict) writes.push({ store: CONFLICTS_STORE, value: park.conflict });
+    if (park.rejected) writes.push({ store: REJECTED_STORE, value: park.rejected });
     await this.db.writeMany(writes);
     await this.emitTables(touched);
+  }
+
+  // ----------------------------------------------------------------------
+  // Lotes rechazados
+  // ----------------------------------------------------------------------
+
+  async rejected(): Promise<RejectedBatch[]> {
+    await this.ensureReady();
+    const records = await this.db.getAll<RejectedBatch>(REJECTED_STORE);
+    return records.sort((a, b) => a.rejectedAt.localeCompare(b.rejectedAt));
+  }
+
+  async retryRejected(requestId: string, operations?: RowOperation[]): Promise<{ requestId: string }> {
+    await this.ensureReady();
+    const record = await this.db.get<RejectedBatch>(REJECTED_STORE, requestId);
+    if (!record) throw new SyncApiError(404, 'NOT_FOUND', `No hay lote rechazado con requestId ${requestId}`);
+    const next = operations ?? record.operations;
+    validateOperations(next);
+    await this.db.delete(REJECTED_STORE, requestId);
+    const result = await this.enqueue(next, { ...(record.blobs ? { blobs: record.blobs } : {}) });
+    await this.refreshCounts();
+    return result;
+  }
+
+  async discardRejected(requestId: string): Promise<void> {
+    await this.ensureReady();
+    const record = await this.db.get<RejectedBatch>(REJECTED_STORE, requestId);
+    if (!record) throw new SyncApiError(404, 'NOT_FOUND', `No hay lote rechazado con requestId ${requestId}`);
+    await this.db.delete(REJECTED_STORE, requestId);
+    await this.refreshCounts();
   }
 
   async conflicts(): Promise<PendingConflict[]> {
