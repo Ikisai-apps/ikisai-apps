@@ -8,7 +8,7 @@ Los tokens viven en el entorno de CI o en `private/cloud-credentials.json` (igno
 Reglas defensivas compartidas por todos los scripts: sin redirecciones, solo rutas conocidas,
 nunca se imprime el cuerpo de error del proveedor (solo un código de dominio) y los informes van a `private/`.
 """
-import json
+import json, time
 import os
 import re
 import sys
@@ -32,10 +32,11 @@ DATABASE_ERRORS = {
 
 
 class CloudError(Exception):
-  def __init__(self, status, code='CLOUD_REQUEST_FAILED', message=None):
+  def __init__(self, status, code='CLOUD_REQUEST_FAILED', message=None, path=None):
     self.status = status
     self.code = code
     self.message = message
+    self.path = path
     super().__init__(code)
 
 
@@ -87,12 +88,24 @@ class SupabaseManagement:
     payload = None if body is None else json.dumps(body, ensure_ascii=False, allow_nan=False).encode('utf-8')
     req = urllib.request.Request(url, data=payload, method=method, headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json', 'Accept': 'application/json'})
     try:
-      with self.opener.open(req, timeout=45) as response:
-        raw = response.read()
-        return json.loads(raw) if raw else None
+      try:
+        with self.opener.open(req, timeout=45) as response:
+          raw = response.read()
+          return json.loads(raw) if raw else None
+      except urllib.error.HTTPError as first:
+        # Un único reintento ante 5xx del proveedor (idempotente para GET y para la consulta de solo lectura).
+        if first.code < 500 or (method not in (None, 'GET') and not (path == '/database/query' and body and body.get('read_only'))):
+          raise
+        first.read()
+        time.sleep(3)
+        with self.opener.open(req, timeout=45) as response:
+          raw = response.read()
+          return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
       # Solo se devuelve un nombre de error conocido, nunca el cuerpo del proveedor ni el SQL.
       raw = e.read(16384).decode('utf-8', errors='replace')
+      if os.environ.get('IKISAI_DEBUG'):
+        sys.stderr.write('[cloud] %s %s -> %s %s\n' % (method or 'GET', path, e.code, raw[:300].replace(self.token, '[redacted]').replace('\n', ' ')))
       code = 'CLOUD_REQUEST_FAILED'
       for expected in DATABASE_ERRORS:
         if re.search(r'\b' + expected + r'\b', raw):
@@ -101,7 +114,7 @@ class SupabaseManagement:
       sqlstate = re.search(r'ERROR:\s*([A-Z0-9]{5}):', raw)
       if code == 'CLOUD_REQUEST_FAILED' and sqlstate:
         code = 'DATABASE_ERROR_' + sqlstate.group(1)
-      raise CloudError(e.code, code) from None
+      raise CloudError(e.code, code, path=path) from None
     except (urllib.error.URLError, TimeoutError, OSError):
       raise CloudError(None, 'CLOUD_NETWORK_FAILED') from None
 
@@ -199,6 +212,8 @@ def run_cli(action, report_path=None):
     return 0
   except CloudError as error:
     payload = {'status': 'error', 'code': error.code, 'httpStatus': error.status}
+    if getattr(error, 'path', None):
+      payload['path'] = error.path
     if error.message:
       payload['message'] = error.message
     print(json.dumps(payload))
