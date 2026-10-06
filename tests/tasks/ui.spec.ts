@@ -137,7 +137,7 @@ test('[20][21][23][25] orden de proyectos, vistas guardadas, importación de Kee
     await settled(a);
     await expect(a.locator('[data-drop-project]').first()).toHaveAttribute('data-drop-project', ID.p1!);
     await sync(b);
-    expect(await b.evaluate(() => filteredProjects()[0].id)).toBe(ID.p1);
+    await b.waitForFunction((id) => filteredProjects()[0].id === id, ID.p1, { timeout: 20_000 });
   });
 
   await test.step('[21] agrupar por familia y combinar filtros; la vista guardada se reabre en otro dispositivo', async () => {
@@ -1128,8 +1128,10 @@ test('vaciar papelera: la propietaria confirma con el recuento y los demás disp
   // Un proyecto con una tarea viva va a la papelera: la tarea no está borrada, pero cuelga de un contenedor borrado.
   await a.evaluate(() => { const p = tab().projects.find((x: any) => x.id === (window as any).ID.p3); p.deleted = true; touch(p); save(); render(); });
   await settled(a);
+  // Espera al estado, no al instante: el otro dispositivo puede adoptar lo recibido un momento después de sincronizar.
+  await expect.poll(async () => (await server.rows('tasks.projects')).find((r) => r.id === ID.p3)?.deleted_at ?? null, { timeout: 20_000 }).not.toBeNull();
   await sync(b);
-  expect(await b.evaluate(() => state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.find((p: any) => p.id === (window as any).ID.p3).deleted)).toBe(true);
+  await b.waitForFunction(() => state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.find((p: any) => p.id === (window as any).ID.p3)?.deleted === true, null, { timeout: 20_000 });
   const count = await a.evaluate(() => (window as any).trashCount());
   expect(count).toBeGreaterThan(0);
   await a.evaluate(() => showTrash());

@@ -5,7 +5,7 @@ import {
   type AttachmentRow, type ProjectRow, type Role, type TaskDependencyRow, type TaskRow,
 } from '../_domain/tasks/mod.ts';
 
-import { exchangeRoutes } from './exchange.ts';
+import { exchangeRoutes, exchangeWorkerRoutes } from './exchange.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -105,5 +105,6 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
     },
     routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase)],
+    workerRoutes: exchangeWorkerRoutes(),
   });
 }

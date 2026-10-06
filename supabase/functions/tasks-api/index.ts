@@ -9,4 +9,5 @@ Deno.serve(createTasksApp({
   serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   release: Deno.env.get('IKISAI_RELEASE') ?? 'development',
   stage: 'beta',
+  workerKey: Deno.env.get('IKISAI_WORKER_KEY'),
 }));

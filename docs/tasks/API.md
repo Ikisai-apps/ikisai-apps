@@ -386,6 +386,7 @@ Todas con `Authorization: Bearer`, sobre el contexto de `_kit`. Las lecturas com
 | `POST portable/import` | administrador | `{ticket, requestId}` → sube los archivos, los registra y ejecuta `call tasks.import_rows` → `{cursor, inserted}`. Reintento con el mismo `requestId` = mismo resultado (recibo del núcleo) | `IMPORT_UNAVAILABLE` (ticket caducado o alterado) y los de §3.2 |
 | `GET backup` | administrador | → ZIP como `portable` pero con todas las áreas y la papelera. Copia de comodidad; el respaldo cifrado sigue siendo el de Core | `FORBIDDEN` |
 | `POST trash/empty` | owner con `"*"` | `{requestId}` → borra lógicamente (un `commit`) el contenido vivo de áreas y proyectos en papelera y después llama a `core.purge_deleted` con las tablas en orden canónico inverso → `{purged, cursor}` | `FORBIDDEN` |
+| `POST worker/imports/cleanup` | planificador (`X-Ikisai-Worker-Key`, sin usuario) | Borra de Storage los paquetes de `tasks/imports/` vencidos hace más de diez minutos → `{deleted, kept}`. Hasta mil por pasada, los más antiguos primero | `UNAUTHENTICATED` |
 
 La interfaz usa `trash/empty` y no `trash/purge` del núcleo, porque purgar un proyecto borrado con tareas vivas dejaría filas huérfanas o violaría FK (C10).
 
@@ -403,7 +404,7 @@ Rutas heredadas que **no** porta Tasks: `state`/`export` (sustituidas por `snaps
 
 ## 8. Archivos
 
-- Bucket `ikisai-files` (se conserva), rutas del núcleo `tasks/<año>/<fileId>/<nombre>`; los paquetes de importación en `tasks/imports/`.
+- Bucket `ikisai-files` (se conserva), rutas del núcleo `tasks/<año>/<fileId>/<nombre>`; los paquetes de importación en `tasks/imports/` (los retira `worker/imports/cleanup` cuando vencen).
 - `uploads: { bucket: 'ikisai-files', maxBytes: 25 MB, allowedMime }` con `allowedMime` = imágenes (`image/webp`, `image/jpeg`, `image/png`), `application/pdf`, texto y CSV, ofimática (OOXML y OpenDocument) y `application/zip`. 25 MB es el techo hasta el que la Edge verifica el hash (D5).
 - Fotos: se recomprimen en el cliente antes de encolarse (lado mayor 1600 px, WebP de calidad media, sin conservar el original; contrato §11.3). `photos.js` ya lo hace a 1600 px; se ajusta para emitir siempre WebP y entregar un `Blob` en lugar de un `data:` URL.
 - Flujo: `client.stageBlob(blob)` → `sha256`; el `insert` en `tasks.attachments` viaja con `blobs` y se envía solo cuando la subida está verificada. El `file_id` lo rellena `sync-client` tras la subida (C5).
@@ -714,5 +715,6 @@ Precisa §13 con lo que hay en `apps/tasks`. Donde difiera de §13, manda esta s
   - `POST portable/preview`: verifica huellas y dependencias, guarda el paquete en `ikisai-files/tasks/imports/<caducidad>.<sha256>.zip` y devuelve ese identificador como `ticket` (sin HMAC: el paquete se direcciona por su contenido y solo un administrador puede previsualizar e importar).
   - `POST portable/import {ticket, requestId}`: remapea todos los ids de forma determinista (hash de `ticket` + id de origen), reutiliza el archivo verificado con la misma huella si ya existe, y confirma con `call tasks.import_rows`. Las áreas importadas llevan el sufijo « (copia)»; lo que estaba en la papelera sigue en la papelera.
   - `POST trash/empty {requestId}` (propietaria con acceso completo): `call tasks.empty_trash_prepare` (migración `0303`) pasa a la papelera, fila a fila, todo lo que cuelga de contenedores borrados (tareas de un proyecto borrado, contenido de un área borrada, etiquetas, dependencias y adjuntos de tareas borradas) y después `core.purge_deleted` purga las diez tablas en orden canónico inverso. Las dependencias hacia una tarea purgada desaparecen con ella. Durante ese lote el hook no aplica `TAB_DELETED`.
+  - `POST worker/imports/cleanup` (ruta de sistema del kit, C23): lista `tasks/imports/` por la API de Storage y borra los paquetes cuyo nombre (`<caducidad>.<sha256>.zip`) venció hace más de diez minutos. No hay tabla ni acción SQL: el nombre ya lleva la caducidad, y borrar por la API de Storage elimina también el binario. Solo existe si la función tiene el secreto `IKISAI_WORKER_KEY`.
 - **Actualización de la PWA**: `updates.js` se conserva tal cual; sus 6 escenarios están en `tests/tasks/updates.spec.ts` (el servidor de pruebas cambia el nombre de la caché de `sw.js` para simular una versión nueva, como hace el despliegue con el hash del frontend).
 
