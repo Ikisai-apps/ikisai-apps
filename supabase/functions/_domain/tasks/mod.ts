@@ -4,3 +4,4 @@ export * from './scopes.ts';
 export * from './validate.ts';
 export * from './graph.ts';
 export * from './ops.ts';
+export * from './legacy.ts';

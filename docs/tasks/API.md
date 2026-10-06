@@ -212,9 +212,9 @@ Las genera `domain-tasks` (`ops.ts`); el adaptador de §13 y cualquier otro clie
 | Crear tarea | `insert tasks` + `insert task_labels` por cada etiqueta elegida; si no se eligió ninguna, una por cada `project_labels` del proyecto | `PROJECT_UNAVAILABLE`, `INVALID_LABELS` |
 | Completar o reabrir un padre | `update tasks {done}` en cada hija viva; nunca en el padre | `TASK_BLOCKED` |
 | Colgar una hija de una tarea hecha | además `update` del padre con `done:false` | — |
-| Mover tarea de proyecto | `update tasks {project_id, position}` en la tarea y en sus hijas, y `update {project_id}` en sus `task_labels`, `task_dependencies` (como `task_id`) y `attachments` | `INCONSISTENT_KEYS`, `PROJECT_UNAVAILABLE`, ámbito en origen y destino |
+| Mover tarea de proyecto | `update tasks {project_id, position}` en la tarea y en sus hijas vivas, y `update {project_id}` en sus `task_labels`, `task_dependencies` (como `task_id`) y `attachments` vivos | `INCONSISTENT_KEYS`, `PROJECT_UNAVAILABLE`, ámbito en origen y destino |
 | Borrar tarea | `delete` de la tarea y de sus hijas vivas | `INVALID_PARENT` (hija viva con padre borrado) |
-| Restaurar tarea | `restore` de la tarea, de las filas de su proyecto con su mismo `deleted_at` y, si es hija, de su padre | `INVALID_PARENT` |
+| Restaurar tarea | `restore` de la tarea, de todas las filas de su proyecto con su mismo `deleted_at` (su lote de borrado) y, si es hija, de su padre | `INVALID_PARENT` |
 | Archivar familia | `update families {archived:true}` + por cada etiqueta `update {archived:true, archived_before_family:<archived previo>}` | `FAMILY_ARCHIVED` |
 | Reactivar familia | `update families {archived:false}` + por cada etiqueta `update {archived:<archived_before_family>, archived_before_family:null}` | — |
 | Cambiar etiquetas o dependencias | `insert`/`delete` de filas puente (o `restore` de la arista borrada) | `INVALID_LABELS`, `INVALID_DEPENDENCIES`, `DEPENDENCY_CYCLE` |
@@ -285,8 +285,8 @@ Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (
 | `INBOX_PROTECTED` | cada área viva tiene exactamente un proyecto `system='inbox'`, vivo, no archivado y con título `Entrada` |
 | `TAB_DELETED` | no se toca contenido de un área que ya estaba borrada antes del lote («restaura el área antes de editar su contenido») |
 | `PROJECT_UNAVAILABLE` | no se crean tareas ni se mueven a un proyecto borrado o archivado (salvo `tasks.import_mode`) |
-| `INVALID_PARENT` | el padre existe, está en el mismo proyecto, no tiene padre a su vez, y una hija viva no cuelga de un padre borrado |
-| `INCONSISTENT_KEYS` | `tab_id` de cada fila = el de su área real; `project_id` de tareas hijas, `task_labels`, `task_dependencies` y `attachments` = el de su tarea |
+| `INVALID_PARENT` | el padre no tiene padre a su vez; una hija viva está en el mismo proyecto que su padre y no cuelga de un padre borrado. Limitación (C16): una hija que estaba en la papelera cuando su padre cambió de proyecto no se puede restaurar |
+| `INCONSISTENT_KEYS` | `tab_id` de cada fila = el de su área real; `project_id` de `task_labels`, `task_dependencies` y `attachments` **vivos** = el de su tarea. Las filas en papelera conservan el proyecto que tenían (el núcleo no deja actualizarlas): no se reutilizan si quedaron en otro proyecto, se inserta una fila nueva |
 
 **c) `tasks.check_catalog`**
 

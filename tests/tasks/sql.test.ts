@@ -358,3 +358,30 @@ test('operaciones del dominio contra la base: crear tarea hereda etiquetas del p
   assert.equal(await rev('tasks.tasks', id), 1);
   assert.ok(inbox);
 });
+
+test('mover con papelera: puentes e hijas ya borrados no impiden el movimiento (migración 0302)', async () => {
+  const { tab, inbox, families } = await db.area();
+  const p2 = newId(), parent = newId(), kept = newId(), trashed = newId(), l1 = newId(), l2 = newId(), other = newId();
+  await db.commit([
+    project(tab, p2),
+    insert('tasks.labels', l1, { tab_id: tab, family_id: families.phase, name: 'Uno' }), insert('tasks.labels', l2, { tab_id: tab, family_id: families.phase, name: 'Dos' }),
+    taskOp(tab, inbox, parent), taskOp(tab, inbox, kept, { parent_id: parent }), taskOp(tab, inbox, trashed, { parent_id: parent }), taskOp(tab, inbox, other),
+  ]);
+  let data = await db.data();
+  await db.commit([...setTaskLabelsOps(data, parent, [l1]), ...setDependenciesOps(data, parent, [other])]);
+  data = await db.data();
+  // Se quita la etiqueta y la dependencia (quedan en papelera) y se borra una hija.
+  await db.commit([...setTaskLabelsOps(data, parent, [l2]), ...setDependenciesOps(data, parent, []), remove('tasks.tasks', trashed, 1)]);
+  data = await db.data();
+  const move = moveTaskOps(data, parent, { project_id: p2 });
+  assert.deepEqual(move.map((o) => o.table).sort(), ['tasks.task_labels', 'tasks.tasks', 'tasks.tasks']);
+  await db.commit(move);
+  data = await db.data();
+  assert.equal(data['tasks.tasks'].find((t) => t.id === trashed)!.project_id, inbox, 'la hija en papelera conserva su proyecto');
+  // Volver a poner la etiqueta y la dependencia antiguas inserta filas nuevas: las de la papelera quedaron en el otro proyecto.
+  const again = [...setTaskLabelsOps(data, parent, [l1, l2]), ...setDependenciesOps(data, parent, [other])];
+  assert.deepEqual(again.map((o) => o.op), ['insert', 'insert']);
+  await db.commit(again);
+  // Limitación conocida (petición C16): la hija borrada antes del movimiento no se puede restaurar tal cual.
+  await rejects(db.commit([restore('tasks.tasks', trashed, 2)]), 'INVALID_PARENT');
+});
