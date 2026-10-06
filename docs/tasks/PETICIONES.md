@@ -16,3 +16,5 @@ Peticiones del equipo Tasks sobre los directorios compartidos. El razonamiento d
 | 2026-10-06 | C9 | `client.fetch(path, init)` crudo con `Bearer` y refresco, para descargas binarias | Pendiente | |
 | 2026-10-06 | C10 | Purga por app: orden de tablas o hook `beforePurge` | Pendiente | |
 | 2026-10-06 | C11 | Deshacer lotes con `call` cuyas escrituras pasaron por `core.apply_row_op` | Pendiente | |
+| 2026-10-06 | C12 | `npm test` (raíz) solo ejecuta `tests/core/*.test.ts`: añadir `tests/tasks/*.test.ts` (o un patrón `tests/*/*.test.ts` que excluya los e2e) para que la CI corra las pruebas de dominio, SQL y API de Tasks. Hoy se lanzan a mano con `npx tsx --test tests/tasks/*.test.ts` | Pendiente | |
+| 2026-10-06 | C13 | `packages/domain-tasks` todavía no tiene `package.json`: declararlo como workspace cambia `package-lock.json` (raíz). Lo añadiré junto con `apps/tasks` en una PR que pedirá tu visto bueno solo por el lockfile | Aviso | |

@@ -1,0 +1,227 @@
+/**
+ * Tasks · validación de lotes antes de `core.commit` (docs/tasks/API.md §4.1).
+ * El mismo código corre en el cliente antes de encolar y en la Edge (`beforeCommit`). Solo ve las
+ * operaciones y los ámbitos del actor: las reglas que dependen del estado viven en el hook SQL.
+ */
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, IMMUTABLE, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
+import { allAccess, canProject, fullTab, type Scopes } from './scopes.ts';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+const PRIORITIES = ['normal', 'high', 'critical'];
+const STATUSES = ['active', 'paused', 'archived'];
+const SYSTEM_KEYS = ['person', 'trade', 'phase', 'building', 'space'];
+
+type Check = (value: unknown, field: string) => void;
+
+const isObject = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === 'object' && !Array.isArray(x);
+
+const uuid = (code = 'INVALID_ID'): Check => (v, field) => {
+  if (typeof v !== 'string' || !UUID.test(v)) reject(422, code, 'Identificador inválido.', { field });
+};
+const nullable = (check: Check): Check => (v, field) => { if (v !== null) check(v, field); };
+const text = (min: number, max: number, code: string, message: string): Check => (v, field) => {
+  if (typeof v !== 'string' || v.trim().length < min || v.length > max) reject(422, code, message, { field, max });
+};
+const note: Check = (v, field) => {
+  if (typeof v !== 'string' || v.length > 20000) reject(422, 'INVALID_NOTE', 'La nota debe ser texto.', { field });
+};
+const color: Check = (v, field) => {
+  if (typeof v !== 'string' || !HEX.test(v)) reject(422, 'INVALID_COLOR', 'El color debe tener seis cifras hexadecimales.', { field });
+};
+const amount: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 999999999999.99) reject(422, 'INVALID_AMOUNT', 'El importe debe ser un número finito no negativo.', { field });
+};
+const date: Check = (v, field) => {
+  const ok = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v;
+  if (!ok) reject(422, 'INVALID_DATE', 'Fecha objetivo inválida.', { field });
+};
+const position: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isFinite(v)) reject(422, 'INVALID_ORDER', 'Orden fraccional inválido.', { field });
+};
+const flag = (code: string): Check => (v, field) => {
+  if (typeof v !== 'boolean') reject(422, code, 'El valor debe ser verdadero o falso.', { field });
+};
+const oneOf = (values: readonly string[], code: string, message: string): Check => (v, field) => {
+  if (typeof v !== 'string' || !values.includes(v)) reject(422, code, message, { field, allowed: values });
+};
+/** `file_id` llega como uuid o como marcador `{"$blob": "<sha256>"}` que `sync-client` sustituye al subir. */
+const fileRef: Check = (v, field) => {
+  if (typeof v === 'string' && UUID.test(v)) return;
+  if (isObject(v) && Object.keys(v).length === 1 && typeof v.$blob === 'string' && SHA256.test(v.$blob)) return;
+  reject(422, 'INVALID_ATTACHMENT', 'Sube el archivo antes de asociarlo.', { field });
+};
+const filters: Check = (v, field) => {
+  if (!isObject(v)) reject(422, 'INVALID_VIEW', 'Filtros de vista inválidos.', { field });
+  for (const [key, ids] of Object.entries(v)) {
+    const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : null;
+    if (!allowed && key !== '_project' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
+    if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !UUID.test(id)))) {
+      reject(422, 'INVALID_VIEW', 'Un filtro contiene valores inválidos.', { field, key });
+    }
+  }
+};
+const groupBy: Check = (v, field) => {
+  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
+};
+const mime: Check = (v, field) => {
+  if (typeof v !== 'string' || !ATTACHMENT_MIME.includes(v.toLowerCase())) reject(422, 'INVALID_ATTACHMENT', 'Tipo de archivo no admitido.', { field, allowed: ATTACHMENT_MIME });
+};
+const size: Check = (v, field) => {
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0 || v > ATTACHMENT_MAX_BYTES) reject(422, 'INVALID_ATTACHMENT', 'El archivo supera el tamaño máximo.', { field, maxBytes: ATTACHMENT_MAX_BYTES });
+};
+const sha: Check = (v, field) => {
+  if (typeof v !== 'string' || !SHA256.test(v)) reject(422, 'INVALID_ATTACHMENT', 'Huella de archivo inválida.', { field });
+};
+
+const name = (max: number) => text(1, max, 'REQUIRED_NAME', 'Escribe un nombre.');
+const priority = oneOf(PRIORITIES, 'INVALID_PRIORITY', 'Prioridad inválida.');
+
+interface TableRules { fields: Record<string, Check>; required: string[] }
+
+const RULES: Record<TableName, TableRules> = {
+  'tasks.tabs': {
+    fields: { name: name(200), color: nullable(color), position },
+    required: ['name', 'position'],
+  },
+  'tasks.families': {
+    fields: {
+      tab_id: uuid(), name: text(1, 100, 'INVALID_FAMILY', 'La familia necesita un nombre.'),
+      color: (v, f) => { if (typeof v !== 'string' || !HEX.test(v)) reject(422, 'INVALID_FAMILY', 'La familia necesita un color de seis cifras hexadecimales.', { field: f }); },
+      archived: flag('INVALID_FLAG'), position, system_key: nullable(oneOf(SYSTEM_KEYS, 'INVALID_FIELDS', 'Familia de sistema desconocida.')),
+    },
+    required: ['tab_id', 'name', 'color'],
+  },
+  'tasks.labels': {
+    fields: {
+      tab_id: uuid(), family_id: uuid('INVALID_LABEL'), parent_id: nullable(uuid('INVALID_LABEL_PARENT')),
+      name: text(1, 200, 'INVALID_LABEL', 'La etiqueta necesita texto.'), archived: flag('INVALID_FLAG'), archived_before_family: nullable(flag('INVALID_FLAG')), position,
+    },
+    required: ['tab_id', 'family_id', 'name'],
+  },
+  'tasks.projects': {
+    fields: {
+      tab_id: uuid(), title: name(300), note, status: oneOf(STATUSES, 'INVALID_STATUS', 'Estado de proyecto inválido.'), priority, due: nullable(date),
+      owner_label_id: nullable(uuid('INVALID_OWNER')), color: nullable(color), budget: nullable(amount), position,
+      system: nullable(oneOf(['inbox'], 'INVALID_FIELDS', 'Proyecto de sistema desconocido.')),
+    },
+    required: ['tab_id', 'title', 'position'],
+  },
+  'tasks.tasks': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), parent_id: nullable(uuid('INVALID_PARENT')), title: text(1, 1000, 'REQUIRED_TEXT', 'La tarea necesita texto.'), note,
+      done: flag('INVALID_DONE'), priority, due: nullable(date), owner_label_id: nullable(uuid('INVALID_OWNER')), cost: nullable(amount), position,
+    },
+    required: ['tab_id', 'project_id', 'title', 'position'],
+  },
+  'tasks.project_labels': {
+    fields: { tab_id: uuid(), project_id: uuid(), label_id: uuid('INVALID_LABELS') },
+    required: ['tab_id', 'project_id', 'label_id'],
+  },
+  'tasks.task_labels': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), label_id: uuid('INVALID_LABELS') },
+    required: ['tab_id', 'project_id', 'task_id', 'label_id'],
+  },
+  'tasks.task_dependencies': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid('INVALID_DEPENDENCIES'), depends_on_id: uuid('INVALID_DEPENDENCIES'), position },
+    required: ['tab_id', 'project_id', 'task_id', 'depends_on_id'],
+  },
+  'tasks.saved_views': {
+    fields: {
+      tab_id: uuid(), name: text(1, 100, 'INVALID_VIEW', 'La vista necesita un nombre de hasta 100 caracteres.'),
+      search: (v, f) => { if (typeof v !== 'string' || v.length > 1000) reject(422, 'INVALID_VIEW', 'Búsqueda de vista inválida.', { field: f }); },
+      filters, group_by: groupBy, position,
+    },
+    required: ['tab_id', 'name'],
+  },
+  'tasks.attachments': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), task_id: nullable(uuid()), name: text(1, 255, 'INVALID_ATTACHMENT', 'El adjunto necesita un nombre.'),
+      mime, size, sha256: sha, file_id: fileRef, position,
+    },
+    required: ['tab_id', 'project_id', 'name', 'mime', 'size', 'sha256', 'file_id'],
+  },
+};
+
+export interface ValidationContext {
+  role: Role;
+  scopes: Scopes;
+  /** Solo las rutas internas de `tasks-api` (importación) pueden enviar `call`. */
+  allowCalls?: boolean;
+}
+
+function forbidden(message: string, details: unknown = null): never {
+  reject(403, 'FORBIDDEN', message, details);
+}
+
+/** Descartes de ámbito que no necesitan leer la base. La autoridad es `tasks.check_scope` en el hook SQL. */
+function precheckScope(op: Operation, table: TableName, ctx: ValidationContext): void {
+  const { scopes } = ctx;
+  if (allAccess(scopes)) return;
+  const f = op.fields ?? {};
+  const tab = typeof f.tab_id === 'string' ? f.tab_id : null;
+  if (table === 'tasks.tabs') {
+    if (op.op === 'insert' || !fullTab(scopes, op.id!)) forbidden('No puedes administrar esta área.');
+    return;
+  }
+  if (op.op !== 'insert' || !tab) return;
+  if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views') {
+    if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
+  } else if (table === 'tasks.projects') {
+    if (!fullTab(scopes, tab)) forbidden('No puedes crear proyectos en esta área.');
+  } else if (typeof f.project_id === 'string' && !canProject(scopes, tab, f.project_id)) {
+    forbidden('No tienes acceso a este proyecto.');
+  }
+}
+
+/** Valida un lote completo. Lanza `DomainError` con el primer problema. */
+export function validateOperations(operations: readonly Operation[], ctx: ValidationContext): void {
+  if (ctx.role === 'reader') forbidden('Tu acceso es de solo lectura.');
+  const seen = new Set<string>();
+  operations.forEach((op, index) => {
+    if (op.op === 'call') {
+      if (!ctx.allowCalls) reject(422, 'INVALID_OPERATION', 'Los procedimientos de Tasks solo se ejecutan desde sus rutas de importación.', { index, procedure: op.procedure });
+      return;
+    }
+    if (!isTable(op.table)) reject(422, 'INVALID_OPERATION', 'Tabla desconocida.', { index, table: op.table });
+    const table = op.table;
+    if (typeof op.id !== 'string' || !UUID.test(op.id)) reject(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
+    const key = `${table}|${op.id.toLowerCase()}`;
+    if (seen.has(key)) reject(422, 'DUPLICATE_OPERATION', 'Usa una operación por elemento en cada lote.', { index, table, id: op.id });
+    seen.add(key);
+
+    if ((op.op === 'delete' || op.op === 'restore') && (table === 'tasks.families' || table === 'tasks.labels')) {
+      reject(422, 'ARCHIVE_REQUIRED', 'Archiva familias y etiquetas, no las borres.', { index, table });
+    }
+    const rules = RULES[table];
+    const fields = op.fields ?? {};
+    if (op.op === 'insert' || op.op === 'update') {
+      if (!isObject(fields)) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index });
+      for (const [field, value] of Object.entries(fields)) {
+        if (!WRITABLE[table].includes(field)) reject(422, 'INVALID_FIELDS', 'Campos desconocidos o de solo lectura.', { index, table, field });
+        if (op.op === 'update' && IMMUTABLE[table].includes(field)) reject(422, 'IMMUTABLE_FIELD', 'Este campo no se puede cambiar una vez creado el elemento.', { index, table, field });
+        if (value === undefined) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index, table, field });
+        rules.fields[field]!(value, field);
+      }
+    }
+    if (op.op === 'insert') {
+      for (const field of rules.required) {
+        if (!(field in fields) || fields[field] === null) {
+          const code = field === 'title' ? (table === 'tasks.tasks' ? 'REQUIRED_TEXT' : 'REQUIRED_NAME') : field === 'name' && table === 'tasks.tabs' ? 'REQUIRED_NAME' : 'INVALID_FIELDS';
+          reject(422, code, 'Falta un campo obligatorio.', { index, table, field });
+        }
+      }
+      if (table === 'tasks.task_dependencies' && fields.task_id === fields.depends_on_id) {
+        reject(422, 'INVALID_DEPENDENCIES', 'Una tarea no puede depender de sí misma.', { index });
+      }
+      if ((table === 'tasks.tasks' || table === 'tasks.labels') && fields.parent_id === op.id) {
+        reject(422, table === 'tasks.tasks' ? 'INVALID_PARENT' : 'INVALID_LABEL_PARENT', 'Un elemento no puede colgar de sí mismo.', { index });
+      }
+      if (table === 'tasks.projects' && fields.system === 'inbox' && fields.title !== 'Entrada') {
+        reject(422, 'INBOX_PROTECTED', 'Entrada no se puede renombrar.', { index });
+      }
+    }
+    precheckScope(op, table, ctx);
+  });
+}
