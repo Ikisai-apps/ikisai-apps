@@ -16,6 +16,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       frontend: ${{ steps.detect.outputs.frontend }}
+      e2e: ${{ steps.detect.outputs.e2e }}
+      uikit: ${{ steps.detect.outputs.uikit }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,12 +30,21 @@ jobs:
           else
             files="__todo__"
           fi
-          if [ "$files" = "__todo__" ] || echo "$files" | grep -Eq '^(apps/|packages/|tests/(invoices|booking|food|tasks)/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/)'; then
-            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          frontend=false; e2e=""; uikit=false
+          if [ "$files" = "__todo__" ] || echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then
+            # Algo compartido (o push a main): Playwright de todas las apps y del kit.
+            frontend=true; e2e="all"; uikit=true
           else
-            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            for app in invoices booking food tasks; do
+              if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then
+                frontend=true; e2e="$e2e tests/$app"
+              fi
+            done
           fi
-          echo "Archivos: $(echo "$files" | wc -l)  frontend=$(tail -1 "$GITHUB_OUTPUT")"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "e2e=${e2e# }" >> "$GITHUB_OUTPUT"
+          echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
+          echo "Archivos: $(echo "$files" | wc -l)  frontend=$frontend  e2e='${e2e# }'  uikit=$uikit"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
     runs-on: ubuntu-24.04
@@ -63,11 +74,13 @@ jobs:
       - name: Instalar Chromium
         if: hashFiles('playwright.config.ts') != ''
         run: npx playwright install --with-deps chromium
-      - name: Pruebas end-to-end
-        if: hashFiles('playwright.config.ts') != ''
-        run: npm run test:e2e
+      - name: Pruebas end-to-end (solo las apps afectadas; todas si cambia algo compartido)
+        if: hashFiles('playwright.config.ts') != '' && needs.cambios.outputs.e2e != ''
+        shell: bash
+        run: |
+          if [ "${{ needs.cambios.outputs.e2e }}" = "all" ]; then npm run test:e2e; else npx playwright test ${{ needs.cambios.outputs.e2e }}; fi
       - name: Pruebas del ui-kit
-        if: hashFiles('packages/ui-kit/tests/playwright.config.ts') != ''
+        if: hashFiles('packages/ui-kit/tests/playwright.config.ts') != '' && needs.cambios.outputs.uikit == 'true'
         run: npm run test:ui-kit
       - name: Sin configuración de Playwright
         if: hashFiles('playwright.config.ts') == ''
