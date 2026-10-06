@@ -2,7 +2,11 @@
  * Lista reordenable: arrastre con el asa (ratón o pulsación mantenida en táctil), botones «Subir»/«Bajar» y teclado
  * (flechas, Inicio y Fin sobre el asa), con anuncio para lectores de pantalla. Pensada para platos, servicios y pasos de
  * preparación de Food, y para tareas y proyectos de Tasks. El componente solo reordena en pantalla y avisa; la app
- * guarda `position` (contrato §2.1, `numeric`) con `positionBetween`.
+ * guarda `position` (contrato §2.1, `numeric`) con `positionBetween`. Se puede anidar (platos dentro de servicios):
+ * cada lista solo mira sus filas y asas hijas directas (`:scope > …`).
+ *
+ * Si la app repinta la lista desde su espejo tras cada `onReorder`, conviene pasar las filas nuevas con `setItems`
+ * en vez de crear otra lista: así los movimientos seguidos (teclado, botones) usan siempre filas al día (revisiones).
  */
 import { el, replace } from './dom.ts';
 import { icon } from './icons.ts';
@@ -79,7 +83,7 @@ export function createSortableList<T>(options: SortableOptions<T>): Sortable<T> 
   }
 
   function focusHandle(index: number): void {
-    const handle = list.querySelectorAll<HTMLElement>('.sortable-handle')[index];
+    const handle = list.querySelectorAll<HTMLElement>(':scope > .sortable-row > .sortable-handle')[index];
     handle?.focus({ preventScroll: true });
   }
 
@@ -103,7 +107,7 @@ export function createSortableList<T>(options: SortableOptions<T>): Sortable<T> 
   function paint(): void {
     // Si el foco estaba en un asa (teclado), se conserva en la misma posición tras repintar.
     const active = document.activeElement as HTMLElement | null;
-    const focused = active?.classList.contains('sortable-handle') && list.contains(active) ? Number(active.closest<HTMLElement>('.sortable-row')?.dataset.index ?? -1) : -1;
+    const focused = active?.classList.contains('sortable-handle') && active.parentElement?.parentElement === list ? Number(active.closest<HTMLElement>('.sortable-row')?.dataset.index ?? -1) : -1;
     replace(list, ...items.map(row));
     if (focused >= 0) focusHandle(Math.min(focused, items.length - 1));
   }
@@ -148,7 +152,7 @@ export function createSortableList<T>(options: SortableOptions<T>): Sortable<T> 
       }
       ev.preventDefault();
       if (d.ghost) d.ghost.style.top = `${ev.clientY - 20}px`;
-      const rows = Array.from(list.querySelectorAll<HTMLElement>('.sortable-row'));
+      const rows = Array.from(list.querySelectorAll<HTMLElement>(':scope > .sortable-row'));
       let target = index, after = false;
       for (let i = 0; i < rows.length; i += 1) {
         const r = rows[i]!.getBoundingClientRect();
@@ -169,7 +173,7 @@ export function createSortableList<T>(options: SortableOptions<T>): Sortable<T> 
       rowEl.classList.remove('lifting');
       d.ghost?.remove();
       document.body.classList.remove('dragging');
-      list.querySelectorAll('.sortable-row').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
+      list.querySelectorAll(':scope > .sortable-row').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
     };
     const end = () => {
       const started = d.started;

@@ -1,7 +1,7 @@
 import { expect, test } from 'playwright/test';
 
 test.describe('ui-kit v0.4.1', () => {
-  test('el aviso sube por encima de la hoja abierta y vuelve abajo al cerrarla', async ({ page }) => {
+  test('el aviso se coloca bajo la cabecera de la hoja abierta y vuelve abajo al cerrarla', async ({ page }) => {
     await page.goto('/#overlays');
     await page.locator('#openSheet').click();
     const sheet = page.locator('.sheetback.show .sheet');
@@ -9,8 +9,10 @@ test.describe('ui-kit v0.4.1', () => {
     await page.locator('#sheetToast').click();
     const toast = page.locator('.toast.show');
     await expect(toast).toHaveClass(/top/);
-    const [toastBox, sheetBox] = await Promise.all([toast.boundingBox(), sheet.boundingBox()]);
-    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(sheetBox!.y + 1);
+    // Desde 0.7.2 va justo bajo la cabecera de la hoja (dentro de ella), sin tapar el título ni el cierre.
+    const [toastBox, sheetBox, headBox] = await Promise.all([toast.boundingBox(), sheet.boundingBox(), page.locator('.sheetback.show .sheet-head').boundingBox()]);
+    expect(toastBox!.y).toBeGreaterThanOrEqual(headBox!.y + headBox!.height);
+    expect(toastBox!.y).toBeLessThan(sheetBox!.y + sheetBox!.height);
     await page.keyboard.press('Escape');
     await expect(page.locator('.sheetback')).toHaveCount(0);
     await page.locator('#openAlert').click();

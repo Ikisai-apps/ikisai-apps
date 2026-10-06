@@ -14,6 +14,9 @@ function host(): HTMLDivElement {
     document.body.appendChild(node);
   }
   node.classList.toggle('top', overlayOpen());
+  // Con una hoja abierta, el aviso se coloca justo bajo su cabecera para no taparle el título ni el botón de cerrar.
+  const head = document.querySelector<HTMLElement>('.sheetback.show .sheet-head');
+  node.style.top = head ? `${Math.round(head.getBoundingClientRect().bottom) + 6}px` : '';
   return node;
 }
 

@@ -1,5 +1,16 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.8.0 · 6 de octubre de 2026
+
+- `createSortableList` **anidable** (Food: platos dentro de servicios): cada lista solo mira sus filas y asas hijas directas (`:scope > …`), así el teclado, los botones y el arrastre de una lista interior no tocan la exterior ni al revés. Recordatorio: si la app repinta desde el espejo tras cada `onReorder`, use `setItems` con las filas nuevas en vez de crear otra lista, para que los movimientos seguidos lleven revisiones al día.
+- **Controles sueltos**: `select`, `textarea` e `input` de texto, búsqueda, número, fecha, hora… fuera de `.field` llevan la misma piel que los campos (borde, papel, 46 px, foco con anillo, chevrón en `select`); `.compact` los deja en 36 px para filtros y filas. Reglas con `:where()` (especificidad cero): cualquier regla propia de la app o de un componente gana. Food puede retirar sus estilos de `.filters select`, `.linerow input/select`, `.service input[type=time]` y `.buyactions select`.
+- `[hidden]{display:none!important}` en el CSS base: el atributo `hidden` gana a cualquier clase que fije `display` (`.fab`, `.chip`, `.row`…); Booking e Invoices pueden retirar sus parches (P19).
+- Toast: la transición era `all` y animaba también `top`, así que al abrirse bajo la cabecera de la hoja llegaba tarde; ahora solo transicionan opacidad y transform.
+
+## 0.7.2 · 6 de octubre de 2026
+
+- Toast: con una hoja abierta se coloca justo bajo la cabecera de la hoja (título y cierre siguen visibles) en vez de en lo alto de la pantalla (aviso de Invoices en 390 px).
+
 ## 0.7.1 · 6 de octubre de 2026
 
 - `renderLogin`: `ids` configurables (`email`, `password`, `submit`, `form`, `error`) y `title`, para que una app con pruebas sobre sus ids actuales (Tasks: `loginUsername`, `loginPassword`, `accountLogin`) adopte el login del kit sin tocarlas. La función de desmontaje restaura el `document.title` anterior.
