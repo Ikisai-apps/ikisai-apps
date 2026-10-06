@@ -23,3 +23,7 @@ button.pcard:hover{border-color:var(--olive)}
 html.dark .pstate.pending{color:#f0b58e}
 html.dark .pstock.alert{color:#f0b58e}
 .psupply{display:block;width:100%;text-align:left;padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.pinvoices{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.pinvoice{display:block;padding:9px 12px;border:1px solid var(--line);border-radius:12px;color:var(--olive-dark);font-weight:700;text-decoration:none;background:var(--paper)}
+.pinvoice:hover{border-color:var(--olive)}
+html.dark .pinvoice{color:#d9e0c3}
