@@ -7,6 +7,9 @@ test.describe('ui-kit v0.5', () => {
     await expect(pp).toHaveAttribute('data-draft', 'true');
     await expect(pp.locator('.pp-draft')).toHaveText('BORRADOR');
     await expect(pp.locator('.pp-title h1')).toHaveText('Retiro de yoga · otoño');
+    // La marca de borrador va superpuesta: la cabecera empieza en el margen de la hoja, no 6 cm más abajo.
+    const [pageBox, headBox] = await Promise.all([pp.boundingBox(), pp.locator('.pp-head').boundingBox()]);
+    expect(headBox!.y - pageBox!.y).toBeLessThan(80);
     await expect(pp.locator('.pp-section')).toHaveCount(2);
     await expect(pp.locator('.pp-group')).toHaveCount(4);
     await expect(pp.locator('.pp-item')).toHaveCount(8);
