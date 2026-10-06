@@ -50,7 +50,7 @@ export function mountOrganizer({ client, menuId, host }: TabContext): () => void
     }
     const validated = data.menu?.status === 'validado' || data.menu?.status === 'cerrado';
     return {
-      brand: { appName: 'Food', line: 'Menú del retiro' },
+      brand: { appName: 'Food', markIcon: 'chef', line: 'Menú del retiro' },
       title: event?.title ?? 'Menú',
       subtitle: event ? dateRange(event) : undefined,
       draft: !validated,
