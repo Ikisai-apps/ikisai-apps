@@ -463,14 +463,16 @@ export class SyncClientImpl implements SyncClient {
   // Apertura y metadatos
   // ----------------------------------------------------------------------
 
-  private ensureReady(): Promise<void> {
+  private async ensureReady(): Promise<void> {
     if (!this.ready) {
       this.ready = this.openAndLoad().catch((error) => {
         this.ready = null;
         throw error;
       });
     }
-    return this.ready;
+    await this.ready;
+    // La conexión pudo cerrarse después (otra ventana subió de versión, o el navegador la cerró en segundo plano).
+    if (!this.db.isOpen) await this.db.open([...(this.configuredTables ?? []), ...this.mirrorTables()]);
   }
 
   private async openAndLoad(): Promise<void> {
@@ -980,6 +982,8 @@ export class SyncClientImpl implements SyncClient {
    * su `after` queda como base remota del comando para el rebase.
    */
   private async applyRemoteChanges(changes: ChangeRecord[], exclude?: string): Promise<Set<TableName>> {
+    // Los registros de procedimiento (`op: 'call'`, sin id) no son filas: nunca van al espejo (fallo de Booking al confirmar).
+    changes = changes.filter(isRowChange);
     const tables = Array.from(new Set(changes.map((c) => c.table).filter((t) => this.tracksTable(t))));
     await this.db.ensureStores(tables);
     const owners = await this.pendingOwners();
@@ -1221,9 +1225,11 @@ export class SyncClientImpl implements SyncClient {
 
   /** Éxito del servidor: sustituye las filas provisionales por las confirmadas y saca el comando de la cola. */
   private async applyCommandResult(entry: OutboxEntry, result: CommandResult): Promise<void> {
-    const changes = result.changes ?? [];
+    let changes = result.changes ?? [];
     const others = (await this.db.getAll<OutboxEntry>(OUTBOX_STORE)).filter((e) => e.requestId !== entry.requestId).sort((a, b) => a.seq - b.seq);
     const owners = groupByKey(others);
+    // Los registros de procedimiento (`op: 'call'`, sin id) no son filas: nunca van al espejo (fallo de Booking al confirmar).
+    changes = changes.filter(isRowChange);
     const tables = Array.from(new Set(changes.map((c) => c.table).filter((t) => this.tracksTable(t))));
     await this.db.ensureStores(tables);
 
@@ -1536,4 +1542,9 @@ export function applyLocally(row: MirrorRow | null, op: RowOperation, nowIso: st
     case 'call':
       return null;
   }
+}
+
+/** Cambio de una fila (no el registro de un procedimiento `call`, que no tiene id ni pertenece a ninguna tabla). */
+function isRowChange(change: ChangeRecord): boolean {
+  return change.op !== ('call' as ChangeRecord['op']) && typeof change.id === 'string' && change.id.length > 0;
 }
