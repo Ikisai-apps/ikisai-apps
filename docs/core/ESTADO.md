@@ -20,6 +20,10 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 - Publicado **invoices.ikisai.com** `v0.1.0-rc.1`: función `invoices-api`, proyecto Pages `ikisai-invoices`, CNAME y certificado activos; `/version.json` y `/api/v1/health` coinciden. Humo real contra la API: 16/16.
 - Secretos de Actions cargados en el repo nuevo (Supabase, Cloudflare, clave de backup nueva).
 
+## Equipos
+
+- UI: `packages/ui-kit/ESTADO.md` (0.1.0 publicado; Invoices lo adopta desde la PR #5).
+
 ## Pendiente (fase 1 y siguientes)
 
 - Primer run real de `checks.yml` en una PR y de `backup.yml`; restauración real del backup (hoy solo plan).
