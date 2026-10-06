@@ -32,9 +32,9 @@ test.describe('ui-kit v0.9', () => {
     const [cColor, hColor] = await Promise.all([critical, high].map((l) => l.evaluate((n) => getComputedStyle(n).color)));
     expect(await high.locator('.star-fill').evaluate((n) => getComputedStyle(n).clipPath)).toContain('inset');
     expect(await critical.locator('.star-fill').evaluate((n) => getComputedStyle(n).clipPath)).toBe('none');
-    // En la tarjeta con color propio la estrella toma la tinta; en la neutra, ámbar.
+    // Ámbar en los dos niveles, también sobre la tarjeta con color propio.
     expect(hColor).toBe('rgb(197, 139, 42)');
-    expect(cColor).not.toBe('rgb(179, 65, 42)');
+    expect(cColor).toBe('rgb(197, 139, 42)');
     await expect(cards.filter({ hasText: 'Edificio inferior' }).locator('.moneytext .icon')).toHaveCount(1);
   });
 });

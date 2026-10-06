@@ -471,7 +471,6 @@
 .projecttitle .star-high .star-fill{clip-path:inset(0 50% 0 0)}
 :root[data-theme="dark"] .projecttitle .star{color:#e2b45c}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .projecttitle .star{color:#e2b45c}}
-.card.project.colored .projecttitle .star{color:inherit}
 .projectmeta{font-size:13px;color:var(--muted)}
 .projecttools{display:flex;gap:2px;flex:none;margin-top:-4px}
 .pinbtn{color:var(--muted)}
