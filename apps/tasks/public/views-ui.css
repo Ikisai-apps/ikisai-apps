@@ -260,7 +260,7 @@ html{overflow-x:hidden}
 .areadot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:7px;vertical-align:-1px}
 .row.singlefield>.field{flex:1}
 @media(min-width:1024px){.sheettools{right:72px;top:24px}}
-.palette{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+.palette:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
 .colorswatch{width:40px;height:40px;border-radius:12px;border:2px solid transparent;cursor:pointer}
 .colorswatch.on{outline:3px solid var(--ink);outline-offset:2px}
 .colorswatch.none{width:auto;padding:0 12px;background:var(--paper);border-color:var(--line);font:inherit;font-size:13px;font-weight:700;color:var(--muted)}

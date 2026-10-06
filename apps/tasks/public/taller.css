@@ -242,24 +242,24 @@ body{background:var(--bg)}
 .board .boardcol:focus-within{outline:none}
 @media(max-width:639px){.board{grid-auto-columns:minmax(78vw,1fr)}}
 /* Paleta de comandos. */
-.palette-back{position:fixed;inset:0;z-index:120;background:rgba(31,42,34,.32);display:flex;align-items:flex-start;justify-content:center;padding:10vh 16px 16px;backdrop-filter:blur(3px)}
-.palette{width:min(640px,100%);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--paper);border-radius:18px;box-shadow:var(--shadow-3);overflow:hidden;border:1px solid var(--edge)}
-.palette-input{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--edge);color:var(--muted)}
-.palette-input .menuicon{width:19px;height:19px}
-.palette-input input{flex:1;border:0;background:transparent;font:inherit;font-size:16px;outline:none;min-width:0;color:var(--ink)}
-.palette-input kbd{font:inherit;font-size:11px;font-weight:700;padding:3px 7px;border-radius:7px;border:1px solid var(--edge);background:var(--paper-2);color:var(--muted)}
-.palette-list{overflow:auto;padding:6px;flex:1}
-.palette-group{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:10px 10px 4px}
-.palette-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:9px 10px;font:inherit;color:var(--ink);cursor:pointer}
-.palette-item .pdot{width:10px;height:10px;border-radius:50%;background:var(--pcolor,transparent);box-shadow:inset 0 0 0 1px rgba(31,42,34,.15)}
-.palette-item .pdot.plain{background:transparent;box-shadow:none;width:10px}
-.palette-item .ptext{display:flex;flex-direction:column;min-width:0}
-.palette-item .ptext span{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.palette-item .ptext small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.palette-item .phint{font-size:11px;color:var(--muted);font-weight:700;border:1px solid var(--edge);border-radius:6px;padding:2px 6px}
-.palette-item.on,.palette-item:hover{background:var(--accent-soft);color:var(--accent-deep)}
-.palette-empty{padding:28px 12px;text-align:center;color:var(--muted);font-size:13px}
-.palette-foot{padding:8px 14px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted);display:flex;gap:14px}
+
+.palette:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){width:min(640px,100%);max-height:min(560px,80dvh);display:flex;flex-direction:column;background:var(--paper);border-radius:18px;box-shadow:var(--shadow-3);overflow:hidden;border:1px solid var(--edge)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Icono de estado vacío (máscara en línea). */
 :root{--icon-empty:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2356663f' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='4' width='16' height='17' rx='3'/><path d='M9 3.5h6v2.5H9z'/><path d='M8.5 12.5l2.5 2.5 4.5-5'/></svg>");--icon-board:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='5' height='16' rx='1.5'/><rect x='10' y='4' width='5' height='11' rx='1.5'/><rect x='17' y='4' width='4' height='8' rx='1.5'/></svg>")}
 .readonly .quickdetail{display:none}
@@ -271,7 +271,7 @@ html.dark #app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(236,2
 
 
 
-html.dark .newproject,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette{background:var(--paper);border-color:var(--edge)}
+html.dark .newproject,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--paper);border-color:var(--edge)}
 
 
 html.dark .homeproject.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 90%,#fff),color-mix(in srgb,var(--item-color) 82%,#000))}
@@ -313,9 +313,9 @@ html.dark .segmented button.on{background:var(--paper);color:var(--accent-deep)}
 html.dark .boardcol{background:rgba(236,229,216,.04)}
 html.dark .boardcol.drop{background:var(--accent-soft)}
 html.dark .boardhead .count{background:rgba(236,229,216,.1);color:var(--ink)}
-html.dark .palette-back{background:rgba(0,0,0,.55)}
-html.dark .palette-input input{color:var(--ink)}
-html.dark .palette-input kbd,html.dark .palette-item .phint{background:var(--paper-2);border-color:var(--edge)}
+
+
+
 html.dark .kbdhint{background:var(--paper-2);border-color:var(--edge)}
 html.dark .sectionlabel .count{background:rgba(236,229,216,.1);color:var(--ink)}
 html.dark .mark{color:var(--accent-ink)}
