@@ -17,7 +17,7 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 - `scripts/`: despliegue por app (schema, función con `_kit`, Pages, auth, storage, owner, release), backup cifrado; workflows `checks`, `release`, `backup`.
 - `apps/invoices`: esqueleto PWA (login, shell, proveedores offline, conflictos, SW coordinado) con prueba Playwright.
 - Supabase real: migraciones aplicadas (`core`, `invoices`; `ikisai.*` intacto), buckets `purchase-documents`, `kitchen-media`, `booking-documents`, Auth con los cuatro dominios, owner de Invoices dado de alta.
-- Publicado **invoices.ikisai.com** `v0.1.0-rc.1`: función `invoices-api`, proyecto Pages `ikisai-invoices`, CNAME y certificado activos; `/version.json` y `/api/v1/health` coinciden. Humo real contra la API: 16/16.
+- Publicado **invoices.ikisai.com** `v0.1.0-rc.2` (6 de octubre, con el ui-kit; antes `v0.1.0-rc.1`): función `invoices-api`, proyecto Pages `ikisai-invoices`, CNAME y certificado activos; `/version.json` y `/api/v1/health` coinciden. Humo real contra la API: 16/16.
 - Secretos de Actions cargados en el repo nuevo (Supabase, Cloudflare, clave de backup nueva).
 
 ## Equipos
@@ -26,7 +26,8 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 
 ## Pendiente (fase 1 y siguientes)
 
-- Primer run real de `checks.yml` en una PR y de `backup.yml`; restauración real del backup (hoy solo plan).
+- `checks.yml` ya corre en PR (#6, #7, #8 en verde). Pendiente el primer run de `backup.yml` y la restauración real del backup (hoy solo plan).
+- **Releases automáticas desde GitHub Actions fallan desde el 6 de octubre**: la Management API de Supabase devuelve 500 «FGA Authentication Error» a los runners (EE. UU. Este) en `/database/migrations` y `/database/query`, mientras el mismo token funciona desde España. Se añadieron reintentos con espera creciente (#7, #8) sin efecto. Mientras dure, Core publica desde su PC con `release_cloud.py --apply`. Revisar en unos días; si persiste, abrir incidencia a Supabase o mover la release a un runner propio.
 - Equipos de app: `docs/<app>/API.md` (G2) antes de código.
 - Retirar la función QA `invoices-api-qa` cuando deje de usarse.
 - Optimizar los tres viajes por petición (caché corta de identidad).
