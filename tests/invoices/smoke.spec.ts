@@ -137,7 +137,7 @@ test('login → bootstrap → proveedores offline → sincronizar', async ({ pag
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
     await expect(sheet).toBeVisible();
-    await sheet.getByLabel('Proveedor').selectOption({ label: 'Frutas Pepe e Hijos' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Frutas Pepe e Hijos' });
     await sheet.getByLabel('Fecha').fill('2026-10-05');
     await sheet.getByLabel('Objeto').fill('Alimentos retiro yoga');
     await sheet.getByLabel('Total del documento').fill('44');
