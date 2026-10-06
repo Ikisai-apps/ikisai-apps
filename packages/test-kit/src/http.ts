@@ -77,6 +77,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       if (grant === 'password') {
         const userId = [...users.entries()].find(([, email]) => email === body.email)?.[0];
         if (!userId || body.password !== PASSWORD) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+        await t.createUser(userId); // vuelve a abrir la sesión si un logout anterior la cerró (C18)
         const token = mockToken(userId); const refresh = `refresh-${Math.random().toString(36).slice(2)}`; refreshTokens.set(refresh, userId);
         return Response.json({ access_token: token, refresh_token: refresh, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
       }
