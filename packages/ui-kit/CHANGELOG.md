@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.4.1 · 6 de octubre de 2026
+
+- Toast: con una hoja, un diálogo o la paleta abiertos, el aviso aparece en la parte alta de la pantalla (`.toast.top`) y deja de taparles el cuerpo o el pie en móvil.
+- README: cómo montar la paleta Ctrl K en una app.
+
 ## 0.4.0 · 6 de octubre de 2026
 
 - Hoja de importación (`openImportSheet`): origen del JSON (pegar, archivo, portapapeles), errores de formato, cabecera con confianza, artículos con líneas dudosas y con aviso, impuestos, cuadre calculado frente a documento con tolerancia de 0,02 € y veredicto («REVISAR IMPORTES» no bloquea), campos y avisos propios de la app por inyección. Piezas sueltas: `createJsonSource`, `renderImportHeader`, `renderImportLines`, `renderImportTaxes`, `renderImportReconciliation`, `renderSchemaErrors`, `formatMoney`. El kit no depende del dominio: recibe `parse` y `recalculate` de la app (tipos estructurales compatibles con `ImportDocument` y `Recalculation` de `_domain/invoices`).

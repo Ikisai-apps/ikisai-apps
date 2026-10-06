@@ -201,6 +201,7 @@ function demoSheet(): void {
     body: el('form', { id: 'sheetForm', oninput: () => sheet.setFootHidden(name.value === initial), onsubmit: (e: Event) => { e.preventDefault(); toast(`Guardado «${name.value}»`); void sheet.close(true); } },
       el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
       el('label', { class: 'field' }, el('span', null, 'Notas'), el('textarea', { rows: '2' })),
+      el('button', { class: 'ghost small', type: 'button', id: 'sheetToast', onclick: () => toast('Aviso mientras la hoja está abierta') }, 'Probar aviso'),
     ),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar'), save],
     footHidden: true,
@@ -405,7 +406,7 @@ const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestr
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.4.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.4.1'))),
     nav,
   ),
   el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection),
