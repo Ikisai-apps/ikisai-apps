@@ -13,3 +13,5 @@ Food anota aquí lo que necesita de los directorios compartidos o de otra app. C
 | P6 | 2026-10-06 | Core | Política para archivos sin referencia tras reemplazar una foto. | Pendiente | |
 | P7 | 2026-10-06 | Core + Booking | `booking.events` en una migración anterior a `food_menus`. | Pendiente | |
 | P8 | 2026-10-06 | Core | Menor: caché de lecturas no sincronizadas como función de `sync-client`. | Pendiente | |
+| P9 | 2026-10-06 | Core | Que la CI ejecute las pruebas de Food: hoy `npm run test` solo lanza `tests/core/*.test.ts`. Añadir `tests/food/*.test.ts` al script `test` de la raíz (o un patrón `tests/*/*.test.ts`). Son 26 pruebas en PGlite, unos 5 s. | Pendiente | |
+| P10 | 2026-10-06 | Core | Menor: la prueba de subidas de `packages/test-kit` usa siempre un PDF. Food solo admite imágenes, así que su conformidad monta la app con `allowedMime` de PDF. Un parámetro con el tipo de muestra lo evitaría. | Pendiente | |
