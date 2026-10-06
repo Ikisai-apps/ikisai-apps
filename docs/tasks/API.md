@@ -285,7 +285,7 @@ Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (
 | `INBOX_PROTECTED` | cada área viva tiene exactamente un proyecto `system='inbox'`, vivo, no archivado y con título `Entrada` |
 | `TAB_DELETED` | no se toca contenido de un área que ya estaba borrada antes del lote («restaura el área antes de editar su contenido») |
 | `PROJECT_UNAVAILABLE` | no se crean tareas ni se mueven a un proyecto borrado o archivado (salvo `tasks.import_mode`) |
-| `INVALID_PARENT` | el padre no tiene padre a su vez; una hija viva está en el mismo proyecto que su padre y no cuelga de un padre borrado. Limitación (C16): una hija que estaba en la papelera cuando su padre cambió de proyecto no se puede restaurar |
+| `INVALID_PARENT` | el padre no tiene padre a su vez; una hija viva está en el mismo proyecto que su padre y no cuelga de un padre borrado. Una hija que estaba en la papelera cuando su padre cambió de proyecto no se puede restaurar tal cual: se restaura con `fields` (contrato §4.2), bien con el `project_id` de su padre (`restoreTaskOps`), bien suelta con `parent_id: null` (lo que hace la interfaz heredada) |
 | `INCONSISTENT_KEYS` | `tab_id` de cada fila = el de su área real; `project_id` de `task_labels`, `task_dependencies` y `attachments` **vivos** = el de su tarea. Las filas en papelera conservan el proyecto que tenían (el núcleo no deja actualizarlas): no se reutilizan si quedaron en otro proyecto, se inserta una fila nueva |
 
 **c) `tasks.check_catalog`**

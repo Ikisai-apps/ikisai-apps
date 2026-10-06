@@ -39,7 +39,7 @@ async function refreshStatus(){const core=Sync.core;if(!core)return;const run=++
  /* Sesión caducada o cerrada desde otro sitio: la cola se conserva y se vuelve a pedir la cuenta. */
  if(status.lastError?.status===401||(Sync.ready&&!core.session())){setMode('unauthorized');if(!document.getElementById('accountLoginForm')){toast('La sesión ha caducado. Vuelve a entrar.');loginSheet()}return}
  setMode(deriveMode())}
-function refreshModel(){const core=Sync.core;if(!core||!Sync.actor)return;const tabs=core.model(),composed=JSON.stringify(tabs);if(composed===Sync.lastComposed)return;Sync.lastComposed=composed;Sync.record.tabs=tabs;adopt(tabs);render();if(!Sync.secondary)Sync.channel?.postMessage({type:'changed'})}
+function refreshModel(){const core=Sync.core;if(!core||!Sync.actor||Sync.leaving)return;const tabs=core.model(),composed=JSON.stringify(tabs);if(composed===Sync.lastComposed)return;Sync.lastComposed=composed;Sync.record.tabs=tabs;adopt(tabs);render();if(!Sync.secondary)Sync.channel?.postMessage({type:'changed'})}
 function onCoreChange(kind){if(kind==='data')refreshModel();refreshStatus()}
 
 const renderLocal=render;

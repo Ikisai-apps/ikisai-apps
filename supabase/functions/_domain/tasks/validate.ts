@@ -196,11 +196,13 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
     }
     const rules = RULES[table];
     const fields = op.fields ?? {};
-    if (op.op === 'insert' || op.op === 'update') {
+    // `restore` puede llevar campos (contrato §4.2): se corrige la fila al sacarla de la papelera, con las reglas de un `update`.
+    const corrects = op.op === 'restore' && op.fields !== undefined && op.fields !== null;
+    if (op.op === 'insert' || op.op === 'update' || corrects) {
       if (!isObject(fields)) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index });
       for (const [field, value] of Object.entries(fields)) {
         if (!WRITABLE[table].includes(field)) reject(422, 'INVALID_FIELDS', 'Campos desconocidos o de solo lectura.', { index, table, field });
-        if (op.op === 'update' && IMMUTABLE[table].includes(field)) reject(422, 'IMMUTABLE_FIELD', 'Este campo no se puede cambiar una vez creado el elemento.', { index, table, field });
+        if (op.op !== 'insert' && IMMUTABLE[table].includes(field)) reject(422, 'IMMUTABLE_FIELD', 'Este campo no se puede cambiar una vez creado el elemento.', { index, table, field });
         if (value === undefined) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index, table, field });
         rules.fields[field]!(value, field);
       }

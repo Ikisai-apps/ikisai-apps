@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TABLES, WRITABLE, archiveFamilyOps, createTaskOps, deleteTaskOps, moveTaskOps, restoreTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps,
+  TABLES, WRITABLE, archiveFamilyOps, createTaskOps, deleteTaskOps, moveTaskOps, restoreTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps, validateOperations,
 } from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, rejects, remove, restore, update, type TasksDb } from './db.ts';
 
@@ -382,8 +382,20 @@ test('mover con papelera: puentes e hijas ya borrados no impiden el movimiento (
   const again = [...setTaskLabelsOps(data, parent, [l1, l2]), ...setDependenciesOps(data, parent, [other])];
   assert.deepEqual(again.map((o) => o.op), ['insert', 'insert']);
   await db.commit(again);
-  // Limitación conocida (petición C16): la hija borrada antes del movimiento no se puede restaurar tal cual.
+  // La hija borrada antes del movimiento no se puede restaurar tal cual: quedó en el proyecto anterior…
   await rejects(db.commit([restore('tasks.tasks', trashed, 2)]), 'INVALID_PARENT');
+  // …pero `restore` admite campos (C16/C22): vuelve con su padre, en el proyecto donde está ahora.
+  data = await db.data();
+  const back = restoreTaskOps(data, trashed);
+  assert.deepEqual(back, [{ op: 'restore', table: 'tasks.tasks', id: trashed, expectedRevision: 2, fields: { project_id: p2 } }]);
+  validateOperations(back, { role: 'owner', scopes: '*' });
+  await db.commit(back);
+  data = await db.data();
+  const restored = data['tasks.tasks'].find((t) => t.id === trashed)!;
+  assert.deepEqual([restored.deleted_at, restored.project_id, restored.parent_id], [null, p2, parent]);
+  // Los campos de un `restore` pasan las mismas reglas que un `update`.
+  assert.throws(() => validateOperations([{ op: 'restore', table: 'tasks.tasks', id: trashed, expectedRevision: 3, fields: { tab_id: tab } }], { role: 'owner', scopes: '*' }), /no se puede cambiar/);
+  assert.throws(() => validateOperations([{ op: 'restore', table: 'tasks.tasks', id: trashed, expectedRevision: 3, fields: { revision: 9 } }], { role: 'owner', scopes: '*' }), /solo lectura/);
 });
 
 test('vaciar papelera: empty_trash_prepare arrastra lo que cuelga de contenedores borrados y la purga no deja huérfanos', async () => {

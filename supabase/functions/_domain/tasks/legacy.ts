@@ -259,8 +259,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     const update = Object.keys(changed).length > 0;
     const wasDeleted = !!row.deleted_at;
     if (wasDeleted && !d.deleted) {
-      first.push({ op: 'restore', table: d.table, id: d.id, expectedRevision: row.revision });
-      if (update) second.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed });
+      // Restaurar y corregir en una sola operación: la fila puede no ser válida tal y como quedó en la papelera
+      // (por ejemplo, una hija cuyo padre cambió de proyecto mientras tanto).
+      first.push({ op: 'restore', table: d.table, id: d.id, expectedRevision: row.revision, ...(update ? { fields: changed } : {}) });
     } else if (!wasDeleted && d.deleted) {
       if (update) { first.push({ op: 'update', table: d.table, id: d.id, expectedRevision: row.revision, fields: changed }); second.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: row.revision }); }
       else first.push({ op: 'delete', table: d.table, id: d.id, expectedRevision: row.revision });

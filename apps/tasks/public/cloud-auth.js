@@ -13,14 +13,14 @@ logoutAccount=async function(){
   if(Sync.record.queue.length||Sync.busy)return toast('Sincroniza o exporta los cambios pendientes antes de salir.');
   try{
     // Mientras se cierra la sesión la app deja de estar «lista»: así el aviso de sesión perdida no abre la hoja de
-    // entrada antes de que termine la limpieza local.
-    Sync.ready=false;
+    // entrada antes de que termine la limpieza local. Tampoco se repinta: el espejo se vacía y ya no hay área activa.
+    Sync.ready=false;Sync.leaving=true;
     await Sync.core.logout();
     await new Promise((resolve,reject)=>{const tx=Sync.db.transaction('attachments','readwrite');tx.objectStore('attachments').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
     try{localStorage.removeItem(UI_KEY)}catch{}
     Sync.ready=false;Sync.actor=null;Sync.last=null;Sync.lastComposed='';Sync.members=null;Sync.record={schemaVersion:1,tabs:[],queue:[],conflict:null,failure:null,cursor:0,ui:{},actorId:null,actor:null};state.tabs=[];
     loginSheet('Sesión cerrada.');setMode('unauthorized');
-  }catch(e){toast(e.message)}
+  }catch(e){toast(e.message)}finally{Sync.leaving=false}
 };
 sessionsSheet=async function(){
   let email='';try{email=(await Sync.core.api('/me')).email||''}catch{}

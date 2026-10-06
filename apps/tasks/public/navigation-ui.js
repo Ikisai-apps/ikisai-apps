@@ -24,7 +24,7 @@ const menuPaths={
 };
 function menuIcon(name){return `<svg class="menuicon" viewBox="0 0 24 24" aria-hidden="true"><path d="${menuPaths[name]||menuPaths.file}"/></svg>`}
 const expandedMenuGroups=new Set(['work']);
-function canManageCatalog(){return canEdit()&&!tab().restricted}
+function canManageCatalog(){const area=tab();return canEdit()&&!!area&&!area.restricted}
 function canManageArea(scope=tab()){return Sync.actor?.role==='owner'&&!Sync.secondary&&!scope.restricted}
 function navigationGroups(){return [
   {id:'work',name:'Trabajo',icon:'tasks',items:[
