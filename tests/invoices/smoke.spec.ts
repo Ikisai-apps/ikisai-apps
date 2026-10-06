@@ -226,3 +226,14 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   expect(cached).toEqual(expect.arrayContaining(['/', '/manifest.webmanifest', '/fonts/inter.woff2']));
   expect(cached.some((p) => p.startsWith('/api/'))).toBeFalsy();
 });
+
+test('lanzador común: la marca de la cabecera abre las apps de la cuenta con Finance marcada', async ({ page }) => {
+  await login(page);
+  await page.locator('#appLauncher').click();
+  const sheet = page.locator('.sheet[role="dialog"]');
+  await expect(sheet).toContainText('Apps de Ikisai');
+  await expect(sheet).toContainText('Tasks');
+  await expect(sheet).toContainText('Guests');
+  await expect(sheet.getByText('Finance', { exact: false }).first()).toBeVisible();
+  await expect(sheet).toContainText('Aquí');
+});

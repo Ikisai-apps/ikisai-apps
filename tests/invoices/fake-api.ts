@@ -483,6 +483,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, issueTokens(user.email));
       }
       const putUpload = path.match(/^_upload\/([^/]+)$/);
+      if (path === 'apps' && method === 'GET') {
+        // Catálogo del lanzador (contrato §3.3), como lo devuelve el núcleo.
+        return json(res, 200, { current: 'invoices', items: [
+          { id: 'tasks', name: 'Tasks', domain: 'tasks.ikisai.com', aliasDomain: 'cuida.ikisai.com', kind: 'internal', description: 'Tareas', role: 'owner' },
+          { id: 'invoices', name: 'Finance', domain: 'finance.ikisai.com', aliasDomain: 'tramita.ikisai.com', kind: 'internal', description: 'Facturas y gestoría', role: 'owner' },
+          { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com', aliasDomain: 'ven.ikisai.com', kind: 'portal', description: 'Portal de huéspedes', role: null },
+        ] });
+      }
       const signed = path.match(/^_file\/([^/]+)$/);
       if (signed && method === 'GET') {
         const up = uploads.get(signed[1]!);

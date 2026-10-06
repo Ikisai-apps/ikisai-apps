@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -45,8 +45,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let lastAutoMerged = client.status().autoMerged;
   let updateApply: (() => void) | null = null;
 
+  // Lanzador común (kit 0.14.0): la marca de la cabecera abre las apps de la cuenta; con la sesión única no pide contraseña.
+  const launcher = createAppLauncher({ current: 'invoices', fetchApps: () => client.api<LauncherCatalog>('/apps') });
   const shell = createAppShell(root, {
     appName: 'Finance',
+    launcher,
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: NAV,
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
