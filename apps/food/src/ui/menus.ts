@@ -56,7 +56,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       onClick: () => navigate(`#/menus/${menu.id}`),
     })));
     replace(host, rows.length ? list : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay menús'),
-      'Elige un evento y pulsa «Crear menú».', el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/eventos') }, 'Ir a Eventos'))));
+      'Abre un evento en Eventos y pulsa «Crear menú» en su ficha.', el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/eventos') }, 'Ir a Eventos'))));
   }
 
   async function load(): Promise<void> {

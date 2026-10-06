@@ -5,7 +5,7 @@ import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, needsMenu, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  BOOKING_URL, MEAL_PLAN_LABELS, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -18,10 +18,12 @@ type Filter = 'proximos' | 'sin_menu' | 'pasados';
 /** Chip con el estado del menú de un evento, o «sin menú». */
 export function menuChip(event: FoodEvent, menu: Mirror<Menu> | undefined): HTMLElement | null {
   if (isCancelled(event)) return el('span', { class: 'chip trash' }, 'Cancelado');
-  if (!needsMenu(event)) return el('span', { class: 'chip trash' }, 'Sin comidas');
-  if (!menu) return el('span', { class: 'chip' }, 'Sin menú');
-  if (isMenuStale(menu, event)) return el('span', { class: 'chip alert' }, 'Menú desactualizado');
-  return el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip' }, `Menú: ${MENU_STATUS_LABELS[menu.status].toLowerCase()}`);
+  if (menu) {
+    if (isMenuStale(menu, event)) return el('span', { class: 'chip alert' }, 'Menú desactualizado');
+    return el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip' }, `Menú: ${MENU_STATUS_LABELS[menu.status].toLowerCase()}`);
+  }
+  if (noMealsInBooking(event)) return el('span', { class: 'chip trash' }, 'Sin comidas en Booking');
+  return el('span', { class: 'chip' }, 'Sin menú');
 }
 
 /** Eventos: los retiros confirmados en Booking tal como los ve cocina, con caché local para verlos sin red. */
@@ -54,7 +56,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const today = todayKey();
     const upcoming = snapshot.events.filter((e) => e.end_date >= today);
     if (filter === 'proximos') return upcoming;
-    if (filter === 'sin_menu') return upcoming.filter((e) => needsMenu(e) && !menuOf(e));
+    if (filter === 'sin_menu') return upcoming.filter((e) => !isCancelled(e) && !menuOf(e));
     return snapshot.events.filter((e) => e.end_date < today).reverse();
   }
 
@@ -85,15 +87,27 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   function openEvent(event: FoodEvent): void {
     const menu = menuOf(event);
     const restrictions = sortedRestrictions(event.dietary_restrictions);
-    const proposal = proposeServices(event);
-    const picks = proposal.map((service, index) => {
-      const box = el('input', { type: 'checkbox', checked: true, id: `propose-${index}` });
-      return { service, box, node: el('label', { class: 'checkline', for: box.id }, box, el('span', null, `${longDay(service.service_date)} · ${SERVICE_LABELS[service.service_type]} · ${shortTime(service.service_time)}`)) };
-    });
+    // Régimen con el que proponer servicios: el de Booking si lo hay; si no, lo elige la cocina (o ninguno).
+    const gap = mealsGap(event);
+    const plan = el('select', { id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
+      el('option', { value: '' }, 'Ninguno: añadiré los servicios a mano'),
+      ...['pension_completa', 'media_pension', 'desayuno'].map((value) => el('option', { value, selected: event.meal_plan === value }, MEAL_PLAN_LABELS[value]!)));
+    if (!gap && event.meal_plan && !['pension_completa', 'media_pension', 'desayuno'].includes(event.meal_plan)) plan.value = '';
+    let picks: Array<{ service: ProposedService; box: HTMLInputElement }> = [];
+    const picksHost = el('div', { id: 'proposedServices' });
+    function paintPicks(): void {
+      const proposal = plan.value ? proposeServices({ ...event, meal_plan: plan.value }) : [];
+      picks = proposal.map((service, index) => ({ service, box: el('input', { type: 'checkbox', checked: true, id: `propose-${index}` }) }));
+      replace(picksHost, ...(picks.length
+        ? picks.map((p) => el('label', { class: 'checkline', for: p.box.id }, p.box, el('span', null, `${longDay(p.service.service_date)} · ${SERVICE_LABELS[p.service.service_type]} · ${shortTime(p.service.service_time)}`)))
+        : [el('p', { class: 'muted' }, 'Sin servicios propuestos: el menú se crea vacío y los servicios se añaden después.')]));
+    }
+    paintPicks();
     const create = el('button', { class: 'primary', type: 'button', id: 'createMenu', onclick: () => void createMenu(event, picks.filter((p) => p.box.checked).map((p) => p.service)) }, 'Crear menú');
     const open = el('button', { class: 'primary', type: 'button', id: 'openMenu', onclick: () => { void sheet?.close(true); navigate(`#/menus/${menu!.id}`); } }, 'Abrir menú');
     const close = el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar');
-    const canCreate = !menu && needsMenu(event) && canWrite();
+    const cancelled = isCancelled(event);
+    const canCreate = !menu && !cancelled && canWrite();
 
     const body = el('div', { class: 'ficha' },
       el('dl', { class: 'kv' },
@@ -107,10 +121,16 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
       event.meal_notes ? el('p', null, el('strong', null, 'Notas de alimentación: '), event.meal_notes) : null,
       el('section', { class: 'restrictions' }, el('h4', null, 'Restricciones'),
         restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
-      isCancelled(event) ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada: no hace falta menú.')) : null,
+      cancelled ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada en Booking: no hace falta menú.')) : null,
+      !menu && !cancelled && !canWrite() ? el('p', { class: 'muted' }, 'Tu cuenta es de solo lectura: el menú lo crea alguien de cocina.') : null,
+      canCreate && gap ? el('div', { class: 'banner warn notice', id: 'mealsGap', role: 'note' },
+        el('div', null, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
+          event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
+        el('div', { class: 'btnrow' }, el('a', { class: 'ghost', href: BOOKING_URL, target: '_blank', rel: 'noopener', id: 'openBooking' }, 'Abrir Booking'))) : null,
       canCreate ? el('fieldset', { class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
-        proposal.length ? el('div', null, ...picks.map((p) => p.node)) : el('p', { class: 'muted' }, 'Sin propuesta para este régimen: los servicios se añaden después a mano.'),
-        el('span', { class: 'hint' }, 'Es solo una propuesta según el régimen. Después se pueden añadir, quitar y cambiar de hora.')) : null,
+        el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
+        picksHost,
+        el('span', { class: 'hint' }, 'Es solo una propuesta. Después se pueden añadir, quitar, ordenar y cambiar de hora.')) : null,
     );
 
     sheet = openSheet({

@@ -144,6 +144,21 @@ export function guestsLabel(event: Pick<FoodEvent, 'guest_count' | 'guest_count_
 const CANCELLED = ['cancelada', 'perdida'];
 /** Un evento cancelado o sin comidas no pide menú. */
 export const isCancelled = (event: Pick<FoodEvent, 'reservation_status'>) => CANCELLED.includes(event.reservation_status ?? '');
+/** Booking dice expresamente que la reserva no lleva comidas. */
+export const noMealsInBooking = (event: FoodEvent) => event.requires_meals === false || event.meal_plan === 'no_aplica';
+
+/**
+ * Por qué Booking no deja claro qué comidas hay, o `null` si está claro. La cocina puede crear el menú igualmente;
+ * esto solo explica por qué no hay propuesta de servicios y qué cambiar en Booking.
+ */
+export function mealsGap(event: FoodEvent): string | null {
+  if (noMealsInBooking(event)) return 'En Booking esta reserva figura sin comidas.';
+  if (!event.meal_plan) return 'En Booking no está definido el régimen de comidas.';
+  return null;
+}
+
+export const BOOKING_URL = 'https://booking.ikisai.com/#/reservas';
+
 export const needsMenu = (event: FoodEvent) => !isCancelled(event) && event.requires_meals !== false && event.meal_plan !== 'no_aplica';
 
 const RESTRICTION_PLURAL: Record<string, [string, string]> = {
