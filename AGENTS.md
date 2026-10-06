@@ -25,7 +25,14 @@ Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: an
 5. **Permisos:** RLS activado y todo revocado a `anon`/`authenticated`; solo las Edge con service key. Pertenencia releída en cada petición. `reader` no escribe.
 6. **Sin secretos ni datos personales** en Git, fixtures o capturas. Usa `private/` (ignorado).
 7. **Conformidad:** toda `<app>-api` pasa `packages/test-kit` antes de añadir rutas propias.
-8. **Ramas y PR:** una rama por agente y tema (`<app>/<tema>`), PR pequeñas a `main`, CI verde, sin force-push. Rebase diario sobre `main`. **Quién fusiona:** si la PR solo toca directorios de tu equipo, la fusionas tú con la CI en verde (squash). Si toca algo compartido o de otro equipo, espera el visto bueno de Core o del equipo afectado en la PR. Core no es cuello de botella: lo que está dentro de tu territorio no necesita su aprobación.
+8. **Ramas, commits y PR (punto medio: pocos intercambios, cero conflictos).**
+   - **Una rama por agente y tanda** (`<app>/<tanda-o-tema>`). Commits locales tan frecuentes como quieras; no cuentan en el histórico de `main` porque se fusiona con squash.
+   - **Push por hito, no por archivo:** empuja y abre (o actualiza) la PR cuando tengas un incremento coherente que pasa las pruebas en local (una migración con su conformidad, una ruta con sus pruebas, una pantalla). Una PR por tanda es lo normal; añade commits a la misma PR hasta cerrarla. Como mínimo, empuja la rama al terminar cada tanda aunque la PR no esté lista (copia de seguridad; sin PR no cuesta nada).
+   - **Antes de empujar, en local:** `npm run check && npm run test` y las pruebas de tu app. La CI de GitHub confirma, no descubre.
+   - **Rebase sobre `origin/main` al empezar cada tanda y justo antes de fusionar.** Con la propiedad por territorio, los conflictos son raros; si aparece uno fuera de tu territorio, no lo resuelvas tú: pídelo a Core.
+   - **Documentación con el código:** `ESTADO.md`, `API.md` y `PETICIONES.md` van en la misma PR que el trabajo de la tanda. Nada de PR solo de documentación salvo que no haya código.
+   - **Supabase no se toca desde los equipos:** las migraciones se prueban con PGlite y las publica Core desde `main`. Si necesitas probar una Edge contra Supabase real, pide a Core un despliegue al slug `<app>-api-qa`.
+   - **Quién fusiona:** si la PR solo toca directorios de tu equipo, la fusionas tú con la CI en verde (squash, borrando la rama). Si toca algo compartido o de otro equipo, espera el visto bueno de Core o del equipo afectado. Sin force-push y sin push directo a `main`.
 9. **Estado:** cada equipo mantiene `docs/<app>/ESTADO.md` (hecho, pendiente, bloqueos).
 10. **Definición de hecho:** recorrido de aceptación en PC y Android, escenarios offline en Playwright, documentación de despliegue y recuperación.
 

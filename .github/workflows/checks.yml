@@ -2,6 +2,7 @@ name: Checks
 on:
   pull_request:
     branches: [main]
+    paths-ignore: ['docs/**', '**.md', 'CODEOWNERS']
   workflow_call:
 permissions:
   contents: read
@@ -9,6 +10,32 @@ concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  cambios:
+    name: Qué ha cambiado
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.detect.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          else
+            files="__todo__"
+          fi
+          if [ "$files" = "__todo__" ] || printf '%s
+' "$files" | grep -Eq '^(apps/|packages/|tests/(invoices|booking|food|tasks)/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/)'; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Archivos: $(printf '%s
+' "$files" | wc -l)  frontend=$(tail -1 "$GITHUB_OUTPUT")"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
     runs-on: ubuntu-24.04
@@ -24,6 +51,8 @@ jobs:
       - run: npm run test
   e2e:
     name: Playwright (solo si existe playwright.config.ts)
+    needs: cambios
+    if: needs.cambios.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
