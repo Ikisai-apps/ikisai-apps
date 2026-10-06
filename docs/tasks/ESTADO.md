@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 10). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
+Actualizado: 6 de octubre de 2026 (tanda 11). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. **los 72 escenarios de no regresión en verde**, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
 
 ## Hecho
 
@@ -20,15 +20,14 @@ Actualizado: 6 de octubre de 2026 (tanda 10). **La app nueva está en producció
 
 Playwright contra la `tasks-api` real en PGlite (solo Supabase está simulado): `tests/tasks/ui.spec.ts` (los escenarios originales con sus mismos gestos, sobre la semilla de demostración antigua con uuid: `tests/tasks/fixtures/demo.json`) y `tests/tasks/app.spec.ts` (sincronización, conflictos, rechazos y permisos). Las rutas de intercambio tienen además pruebas por API en `tests/tasks/exchange.test.ts`.
 
-**En verde (71):** 1–28 y 30–72.
+**En verde (72):** 1–72. El 29 y la mitad del 37 (registro de accesos), en `tests/tasks/agents.spec.ts`.
 
 - 24, 32, 33, 44: rutas nuevas de `tasks-api` (`backup`, `portable`, `portable/preview`, `portable/import`, `csv`, `csv/preview`, `tabs/:tabId/tasks`). La copia portable es un ZIP sin compresión con el modelo anidado (`data.json`) y los adjuntos por huella; importarla crea áreas nuevas con ids independientes mediante `tasks.import_rows`, y reintentar con el mismo `requestId` no duplica.
 - 27, 28, 30, 34: adaptados a cuentas con ámbitos (D6). «Quitar el acceso» deja la pertenencia sin ámbitos; el núcleo aún no tiene baja ni cierre de sesiones ajenas (C7).
 - 31: historial con autor y deshacer; el filtro por tarea se hace en el cliente sobre los últimos 200 lotes (C8).
-- 37: limpieza local al cerrar sesión; el registro de accesos es de la fase de agentes.
+- 37: limpieza local al cerrar sesión (`app.spec.ts`) y registro de accesos (`agents.spec.ts`).
 - 15: la subida a Storage se intercepta en el arnés (`routeStorage`); ticket, verificación, marcador `$blob`, fila, descarga por `attachments/:id` y apertura sin red son los reales.
 
-**Diferido (1):** 29 (aprobación de agentes).
 
 **Service worker** (`tests/tasks/updates.spec.ts`, los 6 de `tests/updates.cjs` y uno más): un editor abierto, un borrador en línea, la paleta abierta, una selección múltiple, un campo de texto con el foco, otra pestaña con editor o con borrador y una cola pendiente vetan la actualización; con todas las pestañas de acuerdo se recarga en el worker nuevo conservando cuenta y tareas. Si llegan dos comprobaciones seguidas, el desbloqueo de 8 s cuenta desde la última.
 
@@ -56,10 +55,12 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - **Cierre de sesión:** la app ya no se repinta mientras se vacía el espejo (dejaba un `TypeError` en la consola).
 - **`syncNow()`** garantiza un ciclo empezado después de la llamada, también si se unió al final de uno en curso.
 
-## Agentes (tanda 10)
+## Agentes (tandas 10 y 11)
 
-- **Riesgo de dominio** (`_domain/tasks/risk.ts`, `tasksAgentRisk`): archivar un proyecto, una familia o una etiqueta exige aprobación aunque sea una sola fila; `affectedEstimate` cuenta lo que cuelga (tareas de un proyecto, etiquetas de una familia, todo un área, hijas vivas de una tarea borrada) para que el umbral de 10 del núcleo se aplique sobre el alcance real. Solo cuenta lo que el agente puede ver.
-- **`tasksAgentRiskHook`** en `tasks-api/app.ts`: lee filas solo si el lote archiva o borra contenedores. **Falta conectarlo a `hooks`** cuando `AppHooks.agentRisk` esté en `main` (rama `core/agentes`).
+- **Riesgo de dominio** (`_domain/tasks/risk.ts`, `tasksAgentRisk`, conectado como `hooks.agentRisk` en `tasks-api`): archivar un proyecto, una familia o una etiqueta exige aprobación aunque sea una sola fila; `affectedEstimate` cuenta lo que cuelga (tareas de un proyecto, etiquetas de una familia, todo un área, hijas vivas de una tarea borrada), solo lo visible para el agente, para que el umbral de 10 se aplique sobre el alcance real.
+- **Interfaz** (`public/agents-ui.js`, sobre las rutas `agents`, `proposals` y `access-log` del núcleo; sustituye a las hojas de la app antigua): «Agentes de IA» (crear con permiso y áreas, la clave se muestra una sola vez; revocar), «Propuestas de agentes» (lista, resumen legible del ensayo, aprobar o rechazar; si ya no encaja, queda rechazada) y «Registro de accesos». Solo para la propietaria con acceso completo.
+- **Escenario 29** (`tests/tasks/agents.spec.ts`): el borrado de un agente devuelve 428, queda propuesto, la propietaria lo aprueba desde la interfaz y el agente lo aplica tal cual; archivar un proyecto también exige aprobación; el registro lo cuenta; revocar corta al agente al momento.
+- Pendiente: herramientas MCP de dominio (cuando el kit tenga `/mcp`) y `describeChange` en la Edge si Core lo añade (hoy el resumen se describe en la interfaz).
 
 ## Producción
 
@@ -69,7 +70,7 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 ## Siguiente tanda
 
 1. Adopción del `ui-kit` (la hace el agente de UI; Tasks revisa y fusiona): tarjeta de proyecto, después la cáscara en dos pasos. Ver `docs/tasks/UI_KIT.md`.
-2. Cuando Core implemente los agentes en el núcleo: hooks `agentRisk` y `describeChange`, herramientas MCP de dominio, volver a mostrar accesos por clave, propuestas y registro de accesos, y portar el escenario 29.
+2. Herramientas MCP de dominio cuando el kit tenga `/mcp`.
 
 ## Bloqueos
 
