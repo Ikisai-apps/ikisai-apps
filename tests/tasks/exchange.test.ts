@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CSV_COLUMNS, DomainError, crc32, parseCSV, unzipStore, zipStore } from '../../packages/domain-tasks/src/index.ts';
-import { startE2EServer, type E2EServer } from './e2e-server.ts';
+import { E2E_WORKER_KEY, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { seedDemo, type Aliases } from './e2e-helpers.ts';
 
 let server: E2EServer;
@@ -173,4 +173,25 @@ test('POST trash/empty: solo la propietaria con acceso completo; purga la papele
   // Los demás dispositivos reciben la purga como cambios con `after` nulo.
   const changes = await json('/api/v1/changes?after=0&limit=2000');
   assert.ok(changes.data.items.some((c: any) => c.op === 'purge' && c.id === task && c.after === null));
+});
+
+test('worker imports/cleanup: borra de Storage solo los paquetes de importación vencidos y exige la clave de worker', async () => {
+  const worker = (key?: string) => server.app.handler(new Request('http://localhost/api/v1/worker/imports/cleanup', { method: 'POST', headers: key ? { 'X-Ikisai-Worker-Key': key } : {} }));
+  const storage = server.app.supabase.storage;
+  for (const key of [...storage.keys()]) if (key.startsWith('tasks/imports/')) storage.delete(key);
+  const now = Math.floor(Date.now() / 1000), sha = 'a'.repeat(64);
+  const fresh = `tasks/imports/${now + 3600}.${sha}.zip`, recent = `tasks/imports/${now - 60}.${sha}.zip`, old = `tasks/imports/${now - 7200}.${sha}.zip`, older = `tasks/imports/${now - 86400}.${sha}.zip`;
+  const foreign = 'tasks/imports/notas.txt', attachment = 'tasks/files/plano.pdf';
+  for (const key of [fresh, recent, old, older, foreign, attachment]) storage.set(key, new Uint8Array([1]));
+
+  assert.equal((await worker()).status, 401);
+  assert.equal((await worker('otra-clave')).status, 401);
+  assert.equal((await raw('/api/v1/worker/imports/cleanup', { method: 'POST' })).status, 401, 'la sesión de la propietaria no sirve de clave');
+
+  const first = await worker(E2E_WORKER_KEY);
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { deleted: 2, kept: 3 });
+  assert.deepEqual([old, older].map((key) => storage.has(key)), [false, false]);
+  assert.deepEqual([fresh, recent, foreign, attachment].map((key) => storage.has(key)), [true, true, true, true], 'vigentes, recién vencidos, nombres ajenos y adjuntos se conservan');
+  assert.deepEqual(await (await worker(E2E_WORKER_KEY)).json(), { deleted: 0, kept: 3 });
 });

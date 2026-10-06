@@ -7,7 +7,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). **La app nueva está en producción
 - **Diseño:** `docs/tasks/API.md` (G2 aprobada; §16 resolución de Core; §17 cómo quedó el adaptador). `docs/tasks/AGENTES.md`: propuesta para llevar al núcleo las claves de agente, las propuestas con aprobación humana, el registro de accesos y el MCP de la app antigua (diseño para Core; seis decisiones abiertas en su §10).
 - **Dominio** (`supabase/functions/_domain/tasks`, reexportado por `@ikisai/domain-tasks`): tipos, ámbitos y `visible`, validación de lotes, estados y ciclos, operaciones compuestas y el puente con el modelo anidado de la interfaz (`compose`, `decompose`, `adoptLegacyIds`).
 - **Base de datos:** migraciones `0300` (diez tablas), `0301` (hook `tasks.validate_batch`, `tasks.import_rows`, lectura `tasks.targets`) y `0302` (claves solo exigidas a filas vivas).
-- **`tasks-api`:** hooks `visible` y `beforeCommit`, subidas a `ikisai-files`, `GET blockers`, `GET attachments/:id`, y las rutas de consulta e intercambio de `exchange.ts` (`tabs/:tabId/tasks`, `csv`, `csv/preview`, `portable`, `portable/preview`, `portable/import`, `backup`). Desplegada por Core (las de intercambio, en el próximo despliegue); Invoices ya usa `tasks.targets`.
+- **`tasks-api`:** hooks `visible` y `beforeCommit`, subidas a `ikisai-files`, `GET blockers`, `GET attachments/:id`, y las rutas de consulta e intercambio de `exchange.ts` (`tabs/:tabId/tasks`, `csv`, `csv/preview`, `portable`, `portable/preview`, `portable/import`, `backup`), y la ruta de sistema `worker/imports/cleanup`, que retira de Storage los paquetes de importación vencidos (C23; a falta de que Core le ponga la clave de worker y la añada al planificador). Desplegada por Core (las de intercambio, en el próximo despliegue); Invoices ya usa `tasks.targets`.
 - **`apps/tasks`** (tanda 3):
   - `public/`: la interfaz antigua copiada de `ikisai-tasks` `d02bf44` (scripts clásicos), con tres cambios mínimos (familia Persona por `system`, carga de `/sync-core.js`, caché `ikisai-shell-v12`).
   - `src/core.ts` → `/sync-core.js`: núcleo del adaptador sobre `@ikisai/sync-client` (espejo en memoria, `model()`, `plan()`, `commit()`, conflictos, rechazados, blobs, bloqueos privados).
@@ -54,7 +54,6 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 1. Adopción del `ui-kit` módulo a módulo, empezando por la entrada y el shell, sin romper los escenarios.
 2. `restore` con `fields` para la hija en papelera cuyo padre cambió de proyecto, cuando el kit y `sync-client` lo acepten (C22).
 3. Cuando Core implemente los agentes en el núcleo: hooks `agentRisk` y `describeChange`, herramientas MCP de dominio, volver a mostrar accesos por clave, propuestas y registro de accesos, y portar el escenario 29.
-4. `tasks.cleanup_imports` como acción con `workerRoute` (C23).
 
 ## Bloqueos
 

@@ -15,6 +15,7 @@ import type { Operation } from '../../packages/domain-tasks/src/index.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DIST = path.resolve(here, '../../apps/tasks/dist');
 export const VITE_CONFIG = path.resolve(here, '../../apps/tasks/vite.config.ts');
+export const E2E_WORKER_KEY = 'clave-de-worker-de-prueba';
 export const OWNER = { email: 'owner@example.invalid', password: TEST_PASSWORD };
 export const EDITOR = { email: 'editor@example.invalid', password: TEST_PASSWORD };
 export const READER = { email: 'reader@example.invalid', password: TEST_PASSWORD };
@@ -96,6 +97,16 @@ export async function startE2EServer(): Promise<E2EServer> {
       await app!.t.createUser(user.id);
       return Response.json({ access_token: app!.supabase.tokenFor(user.id), refresh_token: `refresh-invited-${user.id}`, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
     }
+    // Listado y borrado de objetos (limpieza de paquetes de importación).
+    if (route.pathname.startsWith('/storage/v1/object/list/') && method === 'POST') {
+      const prefix = String(payload.prefix ?? '').replace(/\/$/, '') + '/';
+      const names = [...app!.supabase.storage.keys()].filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/')).map((key) => key.slice(prefix.length)).sort();
+      return Response.json(names.slice(payload.offset ?? 0, (payload.offset ?? 0) + (payload.limit ?? 100)).map((name) => ({ name })));
+    }
+    if (/^\/storage\/v1\/object\/[^/]+$/.test(route.pathname) && method === 'DELETE') {
+      const removed = (payload.prefixes as string[] ?? []).filter((key) => app!.supabase.storage.delete(key));
+      return Response.json(removed.map((name) => ({ name })));
+    }
     // Subida de objetos desde la Edge (paquetes de importación y adjuntos de una copia portable).
     if (route.pathname.startsWith('/storage/v1/object/') && !route.pathname.includes('/sign/') && method === 'POST') {
       const objectPath = decodeURIComponent(route.pathname.slice('/storage/v1/object/'.length)).split('/').slice(1).join('/');
@@ -105,7 +116,7 @@ export async function startE2EServer(): Promise<E2EServer> {
     }
     return inner(input, init);
   };
-  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, fetch: withInvitedUsers(config.fetch), origins: [url] }) });
+  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, fetch: withInvitedUsers(config.fetch), origins: [url], workerKey: E2E_WORKER_KEY }) });
   const ready = app;
   let sequence = 0;
   handle = {

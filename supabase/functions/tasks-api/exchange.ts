@@ -2,7 +2,7 @@
  * Ikisai Tasks · rutas de consulta e intercambio (docs/tasks/API.md §6): tareas filtradas por REST, CSV, copia
  * portable y respaldo. Todas trabajan sobre el modelo anidado compuesto con lo que el usuario puede ver.
  */
-import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import {
   ATTACHMENT_MIME, DomainError, PORTABLE_FORMAT, TABLES, checkPortableTabs, chunkOperations, collectIds, compose, decompose, emptyDataset, exportCSV, importCSV,
   importRows, isAdministrator, portableSummary, remapTabs, unzipStore, validateOperations, visibleRow, zipStore,
@@ -10,6 +10,11 @@ import {
 } from '../_domain/tasks/mod.ts';
 
 const BUCKET = 'ikisai-files';
+/** Carpeta de los paquetes de importación ya revisados; el nombre de cada uno es `<caducidad en segundos>.<sha256>.zip`. */
+const IMPORTS = 'tasks/imports';
+const IMPORT_NAME = /^(\d{9,11})\.([0-9a-f]{64})\.zip$/;
+/** Margen tras la caducidad antes de borrar, por si una importación empezó justo antes de vencer. */
+const IMPORT_GRACE_SECONDS = 600;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
 
@@ -171,7 +176,7 @@ export function exchangeRoutes(supabase: Supabase): AppRoute[] {
         if (bytes.length > 32 * 1024 * 1024) fail(413, 'BUNDLE_TOO_LARGE', 'Máximo 32 MB.');
         const { tabs } = await openBundle(bytes);
         const expires = Math.floor(Date.now() / 1000) + 3600, ticket = `${expires}.${await sha256Hex(bytes)}`;
-        await writeObject(`tasks/imports/${ticket}.zip`, bytes, 'application/zip');
+        await writeObject(`${IMPORTS}/${ticket}.zip`, bytes, 'application/zip');
         return { ticket, expiresAt: new Date(expires * 1000).toISOString(), summary: portableSummary(tabs) };
       },
     },
@@ -182,7 +187,7 @@ export function exchangeRoutes(supabase: Supabase): AppRoute[] {
         const match = typeof body.ticket === 'string' ? body.ticket.match(/^(\d{9,11})\.([0-9a-f]{64})$/) : null;
         if (!match || typeof body.requestId !== 'string') fail(422, 'INVALID_OPERATION', 'ticket y requestId son obligatorios.');
         if (Number(match[1]) < Date.now() / 1000) fail(409, 'IMPORT_UNAVAILABLE', 'La revisión ha caducado. Vuelve a elegir la copia.');
-        const stored: Response = await supabase.remote(`/storage/v1/object/${BUCKET}/${storagePath(`tasks/imports/${body.ticket}.zip`)}`, { service: true, raw: true });
+        const stored: Response = await supabase.remote(`/storage/v1/object/${BUCKET}/${storagePath(`${IMPORTS}/${body.ticket}.zip`)}`, { service: true, raw: true });
         if (!stored.ok) fail(409, 'IMPORT_UNAVAILABLE', 'La copia revisada ya no está disponible.');
         const bytes = new Uint8Array(await stored.arrayBuffer());
         if ((await sha256Hex(bytes)) !== match[2]) fail(409, 'IMPORT_UNAVAILABLE', 'La copia revisada no coincide con su huella.');
@@ -212,4 +217,24 @@ export function exchangeRoutes(supabase: Supabase): AppRoute[] {
       },
     },
   ];
+}
+
+/**
+ * Rutas de sistema (planificador de Core, `X-Ikisai-Worker-Key`). `POST worker/imports/cleanup` borra de Storage los
+ * paquetes de importación vencidos: caducan en una hora y nada más los retira. Su nombre lleva la caducidad, así que
+ * basta con listarlos; se borran por la API de Storage, que es la que elimina también el binario.
+ */
+export function exchangeWorkerRoutes(): WorkerRoute[] {
+  return [{
+    method: 'POST', pattern: 'imports/cleanup',
+    handler: async ({ supabase }) => {
+      const before = Math.floor(Date.now() / 1000) - IMPORT_GRACE_SECONDS;
+      // Por nombre ascendente salen primero los más antiguos: si hubiera más de mil, la siguiente pasada sigue.
+      const listed = await supabase.remote(`/storage/v1/object/list/${BUCKET}`, { service: true, method: 'POST', body: { prefix: IMPORTS, limit: 1000, offset: 0, sortBy: { column: 'name', order: 'asc' } } });
+      const names: string[] = (Array.isArray(listed) ? listed : []).map((object) => String(object?.name ?? ''));
+      const expired = names.filter((name) => { const match = name.match(IMPORT_NAME); return !!match && Number(match[1]) < before; });
+      if (expired.length) await supabase.remote(`/storage/v1/object/${BUCKET}`, { service: true, method: 'DELETE', body: { prefixes: expired.map((name) => `${IMPORTS}/${name}`) } });
+      return { deleted: expired.length, kept: names.length - expired.length };
+    },
+  }];
 }
