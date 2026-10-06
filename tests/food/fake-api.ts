@@ -46,6 +46,8 @@ export interface FakeApiOptions {
   tables?: Record<string, string[]>;
   /** Filas de `booking.food_event_projection` que sirve `GET events`. */
   events?: FakeEvent[];
+  /** Filas de `invoices.food_stock_projection` que sirve `GET read/invoices.food_stock_projection`. */
+  purchases?: Array<Record<string, unknown>>;
 }
 
 export interface FakeEvent {
@@ -421,6 +423,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       if (path === 'me') return json(res, 200, { userId: session.userId, email: session.email, role: 'owner', scopes: null });
+      if (path === 'read/invoices.food_stock_projection' && method === 'GET') {
+        const kind = url.searchParams.get('where[target_kind]');
+        const rows = (options.purchases ?? []).filter((r) => !kind || r.target_kind === kind);
+        return json(res, 200, { name: 'invoices.food_stock_projection', rows, total: rows.length, limit: 2000, offset: 0 });
+      }
       if (path === 'events' && method === 'GET') {
         return json(res, 200, { events: [...events].sort((a, b) => a.start_date.localeCompare(b.start_date)), serverTime: nowIso() });
       }

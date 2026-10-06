@@ -1,10 +1,10 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, validateOperations,
+  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, createSortableList, el, icon, listRow, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, formatDate, icon, listRow, openSheet, renderMoneyBreakdown, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../app/events.ts';
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
+import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { mountClosing } from './menu-closing.ts';
 import { mountOrganizer } from './menu-organizer.ts';
 import { mountPreparation } from './menu-preparation.ts';
@@ -111,6 +112,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const banner = el('div', { id: 'menuStale' });
     const restrictionsHost = el('section', { class: 'restrictions card', id: 'menuRestrictions' });
     const builder = el('div', { class: 'menubuilder', id: 'menuBuilder' });
+    const costHost = el('section', { class: 'card menucost', id: 'menuCost', hidden: true });
+    let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
     const actions = el('div', { class: 'btnrow menuactions', id: 'menuActions' });
     const cookToggle = el('button', { class: 'linkbtn', type: 'button', id: 'cookView', 'aria-pressed': 'false',
       onclick: () => { cook = !cook; cookToggle.setAttribute('aria-pressed', String(cook)); cookToggle.textContent = cook ? 'Volver al constructor' : 'Vista de cocinero'; paintBuilder(); } }, 'Vista de cocinero');
@@ -119,7 +122,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       return el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label);
     }));
     const tabHost = el('div', { id: 'menuTab' });
-    replace(main, head, banner, restrictionsHost, tabs, tab === 'menu' ? el('div', null, actions, el('div', { class: 'btnrow' }, cookToggle), builder) : tabHost);
+    replace(main, head, banner, restrictionsHost, tabs, tab === 'menu' ? el('div', null, actions, el('div', { class: 'btnrow' }, cookToggle), costHost, builder) : tabHost);
 
     const graph = (): MenuGraph => menuGraph;
     const warnings = (): MenuWarning[] => { const e = event(); return e ? menuWarnings(e, graph()) : []; };
@@ -298,7 +301,45 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
         required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
         recipe.method ? el('p', { class: 'pre' }, recipe.method) : null,
-        recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null);
+        recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null,
+        purchases.fetchedAt ? costLine(item) : null);
+    }
+
+    const euros = (n: number) => n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+
+    /** Coste estimado del plato en la vista de cocinero, con aviso si a algún ingrediente le falta precio. */
+    function costLine(item: ItemRow): HTMLElement {
+      const cost = dishCost(graph(), item.id, purchases.prices);
+      const per = Number(item.servings) > 0 ? cost.amount / Number(item.servings) : 0;
+      return el('p', { class: 'dishcost' }, el('strong', null, 'Coste estimado: '), `${euros(cost.amount)} (${euros(per)} por ración)`,
+        cost.missing.length ? el('span', { class: 'muted' }, ` · sin precio: ${cost.missing.map((id) => ingredients.find((i) => i.id === id)?.name ?? '—').join(', ')}`) : null);
+    }
+
+    /** Coste estimado del menú con las compras reales de Invoices: total, por persona y por servicio. */
+    function paintCost(): void {
+      if (!purchases.fetchedAt || items.length === 0) { costHost.hidden = true; return; }
+      const costs = serviceCosts(graph(), purchases.prices);
+      const total = costs.reduce((sum, c) => sum + c.amount, 0);
+      const missing = new Set(costs.flatMap((c) => c.missing));
+      const people = event()?.guest_count ?? 0;
+      const byId = new Map(services.map((s) => [s.id, s]));
+      costHost.hidden = false;
+      replace(costHost,
+        el('h3', null, 'Coste estimado'),
+        el('p', { class: 'muted' }, people > 0 ? `${euros(total / people)} por persona · ` : '', `con las compras registradas en Invoices (datos de ${formatDate(purchases.fetchedAt)}).`),
+        renderMoneyBreakdown({
+          totalLabel: 'Total del menú',
+          format: euros,
+          sort: false,
+          emptyText: 'Ningún plato tiene todavía ingredientes con precio.',
+          lines: costs.filter((c) => byId.has(c.service_id)).map((c) => {
+            const s = byId.get(c.service_id)!;
+            return { id: c.service_id, label: `${SERVICE_LABELS[s.service_type]} · ${longDay(s.service_date)}`, amount: c.amount,
+              meta: c.servings > 0 ? `${euros(c.amount / c.servings)} por ración` : undefined };
+          }),
+        }),
+        missing.size ? el('p', { class: 'warnline costmissing' }, `Sin precio (no hay compras con unidad compatible): ${[...missing].map((id) => ingredients.find((i) => i.id === id)?.name ?? '—').join(', ')}. El coste real será mayor.`) : null,
+      );
     }
 
     function dishRow(item: ItemRow): HTMLElement {
@@ -477,7 +518,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     function paintActionsAndRest(): void {
       paintHead(); paintBanner(); paintRestrictions();
-      if (tab === 'menu') { paintActions(); paintBuilder(); return; }
+      if (tab === 'menu') { paintActions(); paintBuilder(); paintCost(); return; }
       if (!unmountTab) {
         const context = { client, menuId, host: tabHost, canWrite };
         unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
@@ -498,6 +539,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       ({ services, items, recipes, ingredients, equipment, needs } = data);
       recipeLines = data.lines;
       menuGraph = data.graph;
+      if (tab === 'menu') void loadPurchases(client).then((next) => { const changed = next.fetchedAt !== purchases.fetchedAt; purchases = next; if (changed) { builderShape = ''; paintActionsAndRest(); } });
       paintActionsAndRest();
     }
 
