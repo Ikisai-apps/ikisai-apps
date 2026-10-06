@@ -12,9 +12,9 @@ Un único repositorio para las cuatro apps de Ikisai (Tasks, Invoices, Booking, 
 |---|---|
 | `supabase/migrations/*_core_*`, `supabase/functions/_kit`, `packages/sync-client`, `packages/test-kit`, `scripts`, `.github`, raíz, `docs/core` | Core |
 | `packages/ui-kit` (incluido su `ESTADO.md`) | agente UI |
-| `apps/<app>`, `supabase/functions/<app>-api`, `packages/domain-<app>`, `supabase/migrations/*_<app>_*`, `tests/<app>`, `docs/<app>` | equipo de `<app>` |
+| `apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`, `supabase/migrations/*_<app>_*`, `tests/<app>`, `docs/<app>` | equipo de `<app>` |
 
-Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: anota lo que necesitas en `docs/core/PETICIONES.md`.
+Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: anota lo que necesitas en **`docs/<app>/PETICIONES.md`** (tu propio archivo, para que las PR de distintos equipos no colisionen); Core responde ahí y resume en `docs/core/RESPUESTAS.md`. El código de dominio compartido entre Edge y frontend vive en `supabase/functions/_domain/<app>/` y `packages/domain-<app>` solo lo reexporta.
 
 ## Reglas fuertes
 

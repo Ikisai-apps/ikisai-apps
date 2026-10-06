@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = path.join(ROOT, 'supabase/migrations');
 const SCHEMAS = ['core', 'tasks', 'invoices', 'booking', 'food'];
-const CORE_HELPERS = ['core.ensure_app', 'core.register_table', 'core.allow_procedure', 'core.add_validate_hook', 'core.apply_row_op', 'core.next_code', 'core.fail', 'core.next_seq'];
+// Helpers y objetos de core que una migración de app puede usar. Lectura: memberships, changes, files. Escritura solo vía apply_row_op.
+const CORE_HELPERS = ['core.ensure_app', 'core.register_table', 'core.allow_procedure', 'core.add_validate_hook', 'core.allow_read', 'core.apply_row_op', 'core.next_code', 'core.fail', 'core.next_seq', 'core.memberships', 'core.changes', 'core.files', 'core.synced_tables'];
 const NAME = /^(\d{8})_(\d{4})_(core|tasks|invoices|booking|food)_[a-z0-9_]+\.sql$/;
 
 const problems = [];

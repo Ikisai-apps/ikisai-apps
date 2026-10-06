@@ -166,7 +166,25 @@ La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integr
 | `GET files/{id}` | → `{id, url, expiresAt, filename, mime, size}` con URL firmada de 10 minutos, tras comprobar pertenencia |
 | `POST trash/purge` | `{requestId, tables?}` → `{purged, cursor}`; solo `owner`; respeta `never_purge` |
 | `GET members` / `POST members` | lista de pertenencias; alta o cambio `{userId, role, scopes?, displayName?}` solo `owner` |
+| `POST members/invite` | `{email, role, scopes?, displayName?}` → crea la cuenta en Auth con contraseña temporal (se devuelve una sola vez) y la pertenencia; solo `owner` |
+| `GET read/:name?where[col]=v&limit=&offset=` / `POST read/:name` | lectura registrada en `core.allowed_reads` (§5.1): función `schema.fn(p_ctx jsonb)` de la propia app o vista de proyección publicada por otra app |
 | `GET me` | usuario, correo, rol y ámbitos de la sesión |
+
+### 5.1 Lecturas registradas
+
+Una Edge solo ejecuta las RPC `public.core_*`. Para leer su propio schema o la proyección de otra app, la app dueña registra el objeto en una migración: `select core.allow_read('<app lectora>', '<schema>.<objeto>', 'function'|'view', roles)`. Las funciones reciben `{app, actor, role, args}` y devuelven `jsonb`; las vistas admiten filtros de igualdad, `limit` y `offset`. Ejemplo normativo: Booking crea `booking.food_event_projection` y registra `core.allow_read('food', 'booking.food_event_projection', 'view')`.
+
+### 5.2 Errores SQL
+
+Una violación de restricción (`23xxx`) llega como 422 `CONSTRAINT_VIOLATION`; un valor inválido (`22xxx`) como 422 `INVALID_VALUE`; un `raise exception` sin código `PT` como 422 `DOMAIN_ERROR` con el mensaje; cualquier otro error SQL como 422 `SQL_ERROR`. Todos llevan `details.sqlstate`. Solo los fallos de transporte y los 5xx sin SQLSTATE son 503 `BACKEND_UNAVAILABLE` y, por tanto, reintentables.
+
+### 5.3 Contexto de petición
+
+`RequestContext` incluye `token`, el bearer del usuario, para que un hook llame a la API de otra app (por ejemplo la de Tareas) en su nombre.
+
+### 5.4 Código de dominio compartido
+
+El código TypeScript que comparten la Edge y el frontend de una app vive en `supabase/functions/_domain/<app>/` (el despliegue lo empaqueta con la función). `packages/domain-<app>` solo lo reexporta para Vite.
 | `POST auth/login` `refresh` `logout` `password` | proxy de Supabase Auth, idéntico al actual de Tareas |
 | `GET health` `GET version.json` | disponibilidad, etapa y release |
 
@@ -214,7 +232,8 @@ Contienen los tipos TypeScript de cada tabla (generados desde las migraciones), 
 
 - **Proyecciones:** vistas de solo lectura en el schema del dueño. La Edge de la app lectora las consulta con la service key y las expone en sus rutas de lectura. Ejemplo normativo: `booking.food_event_projection` con `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions (jsonb sin identificar), event_revision`.
 - **Enlaces tipados:** `target_app, target_kind, target_id` + opcionalmente `target_revision`. La Edge del que enlaza valida al guardar que el destino existe y es visible para el usuario, llamando a la proyección (apps hermanas) o a la API del dueño con el token del usuario (Tareas).
-- **Obsolescencia:** se calcula comparando `source_*_revision` con la `revision` actual del origen. No se guardan flags `stale`.
+- **Obsolescencia:** se calcula comparando `source_*_revision` con la revisión actual del origen. No se guardan flags `stale`. La revisión que expone una proyección **puede ser un contador propio del dueño** que solo avanza cuando cambia algo relevante para el lector (Booking: fechas, personas, régimen, restricciones), en vez de la `revision` de la fila, que también cambia por ediciones irrelevantes. El lector puede guardar un conjunto de revisiones de origen (`source_revisions jsonb`) cuando depende de varias filas.
+- **Adjuntos en comandos:** un campo que referencia un archivo lleva el marcador `{"$blob": "<sha256>"}`; `sync-client` lo sustituye por el `file_id` cuando el blob se ha subido y verificado, antes de enviar el lote. Así una foto o una firma hecha sin red se enlaza sola a su fila al reconectar.
 - **Escrituras cruzadas:** no existen. Si una app necesita que otra haga algo, lo pide por su API con el token del usuario, y la dueña decide.
 
 ---
