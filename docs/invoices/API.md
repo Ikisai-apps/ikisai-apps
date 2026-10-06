@@ -505,7 +505,7 @@ ASIGNACIÓN por línea con barra asignado / sin asignar
 
 Bloques plegables: Documento (visor, páginas, añadir), Artículos (edición en sitio), Impuestos, Asignación, Pago, Fiscal (categoría, inversión, deducibilidad, periodo derivado), Importación (confianza, notas de extracción, recalculo), Historial. Acciones: Validar, Anular (motivo), Marcar pagada, Archivar/Desarchivar (owner). Todo lo bloqueado se muestra con candado y el motivo.
 
-**Importar**: una hoja de tres pasos: (1) JSON (pegar o archivo) y documentos si aún no hay; (2) **vista previa y recalculo** (proveedor, fecha/objeto, líneas, impuestos, cuadre con deltas, avisos, categoría/inversión/deducibilidad); (3) confirmar.
+**Importar**: la hoja empieza con «¿Cómo obtengo el JSON?» (tres pasos y el prompt de extracción del handoff copiable al portapapeles, con el schema resumido y un ejemplo) y sigue con tres pasos: (1) JSON (pegar o archivo) y documentos si aún no hay; (2) **vista previa y recalculo** (proveedor, fecha/objeto, líneas, impuestos, cuadre con deltas, avisos, categoría/inversión/deducibilidad); (3) confirmar.
 
 ### 9.3 Compras
 

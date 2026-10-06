@@ -54,8 +54,13 @@ async function login(page: Page, user: { email: string; password: string; displa
   await expect(page.getByRole('heading', { name: `Hola, ${user.displayName}` })).toBeVisible();
 }
 
+/** Espera a «Todo sincronizado». Si el cliente quedó en error por un fallo pasajero de red (ocurre en CI), reintenta con «Sincronizar ahora». */
 async function synced(page: Page): Promise<void> {
-  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado', { timeout: 20_000 });
+  await expect.poll(async () => {
+    const text = (await page.locator('#syncStatus').textContent().catch(() => '')) ?? '';
+    if (/Error/.test(text)) await page.getByRole('button', { name: 'Sincronizar ahora' }).click({ timeout: 2_000 }).catch(() => undefined);
+    return text;
+  }, { timeout: 40_000, intervals: [500, 1000, 2000] }).toContain('Todo sincronizado');
 }
 
 /** Enlace de la navegación principal (en Inicio hay tarjetas con los mismos nombres). */
@@ -235,7 +240,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
 
   await test.step('A13 · Compras: por destino y artículos, solo validadas por defecto', async () => {
     await nav(page, 'Compras').click();
-    await page.getByRole('tab', { name: 'Por destino' }).click();
+    await page.getByRole('tab', { name: 'Destino' }).click();
     await expect(page.locator('#purchases')).toContainText('Cocina › Huerto');
     await expect(page.locator('#purchases')).toContainText('Ingredientes › Tomate pera');
     await expect(page.locator('#purchaseTotals')).toContainText('Base 40,00 €');

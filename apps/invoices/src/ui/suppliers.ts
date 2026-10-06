@@ -108,7 +108,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     try {
       await client.commit(operations);
       const status = client.status();
-      toast(status.network === 'online' ? okMessage : `${okMessage} Se sincronizará cuando haya red.`);
+      toast(status.network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
       await load();
       return true;
     } catch (error) {

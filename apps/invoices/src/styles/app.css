@@ -5,7 +5,8 @@
 
 /* Barra de herramientas con varios controles (periodo, año, interruptores). */
 .toolbar.wrap{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.toolbar.wrap select,.toolbar.wrap input{min-height:var(--tap,40px);padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface,transparent);color:inherit}
+.toolbar.wrap select,.toolbar.wrap input:not([type=checkbox]){min-height:var(--tap,40px);padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface,transparent);color:inherit}
+.toolbar.wrap .check{display:inline-flex;align-items:center;gap:8px;min-height:var(--tap,40px)}
 
 /* Ficha de factura */
 .inv-head .kv{margin-top:10px}
@@ -40,3 +41,13 @@ code{font-size:12.5px;word-break:break-all}
 
 /* El atributo hidden gana a la clase (los .fab y .primary del kit fijan display). */
 [hidden]{display:none !important}
+
+/* Bloque de ayuda para obtener el JSON */
+.prompt-block{border-top:0;padding:0 0 8px}
+.prompt-block .steps{margin:4px 0 10px;padding-left:20px;font-size:13.5px;color:var(--muted)}
+.prompt-block .steps li{margin:4px 0}
+.prompt-text{width:100%;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--surface,transparent);color:inherit}
+
+/* Sitio para el botón flotante: que no tape la última tarjeta ni los totales. */
+.main{padding-bottom:calc(var(--tap,44px) + 72px)}
+@media (min-width:1024px){.main{padding-bottom:calc(var(--tap,44px) + 40px)}}
