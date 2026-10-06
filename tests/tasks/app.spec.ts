@@ -356,7 +356,7 @@ test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({
     await a.evaluate(() => (window as any).sessionsSheet());
     await a.locator('#logoutAccount').click();
     await expect(a.locator('#accountLoginForm')).toBeVisible();
-    expect(await a.evaluate(() => [state.tabs.length, Sync.token, Sync.actor])).toEqual([0, '', null]);
+    await a.waitForFunction(() => Sync.mode === 'unauthorized' && Sync.actor === null && state.tabs.length === 0 && Sync.token === '');
     expect(await a.evaluate(async () => {
       const db: IDBDatabase = await new Promise((resolve, reject) => { const r = indexedDB.open('ikisai-tasks-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
       const count: number = await new Promise((resolve) => { const r = db.transaction('tasks.tasks').objectStore('tasks.tasks').count(); r.onsuccess = () => resolve(r.result); });

@@ -107,6 +107,19 @@ export class TasksCore {
     }, 0);
   }
 
+  /**
+   * Aplica ya el refresco pendiente, si lo hay: relee el espejo y avisa. Quien acaba de sincronizar la llama para
+   * que, al volver, el modelo que ve la interfaz incluya lo recibido (el refresco normal va en un temporizador).
+   */
+  async settle(): Promise<void> {
+    if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
+    if (!this.dirty || this.localPending > 0) return;
+    this.dirty = false;
+    await this.reload();
+    if (this.localPending > 0) { this.dirty = true; return; }
+    this.emit('data');
+  }
+
   /** Modelo anidado que usa la interfaz, compuesto desde la copia en memoria. */
   model(): LegacyTab[] {
     const scopes = this.client.bootstrap()?.membership.scopes;
@@ -146,7 +159,15 @@ export class TasksCore {
     return ids;
   }
 
-  sync(): Promise<void> { return this.client.sync(); }
+  /**
+   * Sincroniza ahora. Si ya había un ciclo en marcha, `client.sync()` se limita a esperarlo y ese ciclo pudo leer los
+   * cambios antes de lo que el llamante quiere ver: en ese caso se lanza otro al terminar.
+   */
+  async sync(): Promise<void> {
+    const joined = this.client.status().network === 'syncing';
+    await this.client.sync();
+    if (joined) await this.client.sync();
+  }
   conflicts(): Promise<PendingConflict[]> { return this.client.conflicts(); }
   resolveConflict(requestId: string, choice: 'mine' | 'theirs'): Promise<void> { return this.client.resolveConflict(requestId, { choice }); }
   rejected(): Promise<RejectedBatch[]> { return this.client.rejected(); }
