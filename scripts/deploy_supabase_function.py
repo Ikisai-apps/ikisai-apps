@@ -5,7 +5,8 @@ Una sola función con slug `<app>-api` (o `<app>-api-qa` con --qa). Cada archivo
 `supabase/functions/` como nombre (`invoices-api/index.ts`, `_kit/auth.ts`) para que los imports `../_kit/x.ts`
 funcionen, y `entrypoint_path` es `<app>-api/index.ts`. Si IKISAI_RELEASE está definido se sustituye en index.ts
 el literal `Deno.env.get('IKISAI_RELEASE') ?? 'development'` por la versión. `verify_jwt` es false: cada ruta
-privada verifica el JWT en _kit y relee la pertenencia.
+privada verifica el JWT en _kit y relee la pertenencia. `supabase/functions/import_map.json` se sube con cada función y se
+declara como `import_map_path` para que Deno resuelva los paquetes npm del kit.
 """
 import argparse
 import hashlib
@@ -21,6 +22,8 @@ from cloud_management import PRIVATE, ROOT, CloudError, SupabaseManagement, run_
 
 FUNCTIONS = ROOT / 'supabase/functions'
 KIT = FUNCTIONS / '_kit'
+# Mapa de importación de Deno: resuelve los especificadores npm que usa el kit (SDK de Anthropic en `_kit/extract.ts`).
+IMPORT_MAP = FUNCTIONS / 'import_map.json'
 EXTENSIONS = {'.ts': 'application/typescript', '.js': 'application/javascript', '.mjs': 'application/javascript', '.txt': 'text/plain', '.json': 'application/json'}
 EXCLUDED_DIRS = {'node_modules', 'tests', 'test', '__tests__', 'fixtures'}
 TEST_FILE = re.compile(r'.*[._](test|spec)\.(ts|js|mjs)$')
@@ -50,6 +53,8 @@ def deploy(client, app_name, apply=False, qa=False, release=None):
   # Código de dominio compartido con el frontend: supabase/functions/_domain/<app>/ (el paquete packages/domain-<app> lo reexporta).
   domain = FUNCTIONS / '_domain' / app_name
   files.update(collect(domain) if domain.is_dir() else {})
+  if IMPORT_MAP.is_file():
+    files[IMPORT_MAP.name] = IMPORT_MAP.read_bytes()
   if entrypoint not in files:
     raise CloudError(None, 'FUNCTION_SOURCE_MISSING', f'falta {app["function_dir"]}/index.ts')
   release = release or os.environ.get('IKISAI_RELEASE')
@@ -67,6 +72,8 @@ def deploy(client, app_name, apply=False, qa=False, release=None):
     return report
   boundary = 'ikisai-' + uuid.uuid4().hex
   metadata = {'name': slug, 'entrypoint_path': entrypoint, 'verify_jwt': False}
+  if IMPORT_MAP.name in files:
+    metadata['import_map_path'] = IMPORT_MAP.name
   body = f'--{boundary}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n'.encode() + json.dumps(metadata).encode() + b'\r\n'
   for name, raw in files.items():
     mime = EXTENSIONS[os.path.splitext(name)[1]]

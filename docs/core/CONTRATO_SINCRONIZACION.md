@@ -187,6 +187,10 @@ Una violación de restricción (`23xxx`) llega como 422 `CONSTRAINT_VIOLATION`; 
 ### 5.4 Código de dominio compartido
 
 El código TypeScript que comparten la Edge y el frontend de una app vive en `supabase/functions/_domain/<app>/` (el despliegue lo empaqueta con la función). `packages/domain-<app>` solo lo reexporta para Vite.
+
+### 5.5 Extracción de documentos con un modelo de visión
+
+`supabase/functions/_kit/extract.ts` ofrece `createDocumentExtractor(supabase, { apiKey, model?, effort?, … })`, que devuelve `extract({ files, prompt, ctx, schema? }) → { document, warnings, usage }`. La app pasa archivos **ya verificados** de su bucket (PDF o imágenes `jpeg/png/gif/webp`; 5 MB por imagen y 20 MB por llamada) y su prompt de extracción; el helper los descarga con la service key, los adjunta en base64 y llama a Claude (`claude-opus-5-5` por defecto, SDK oficial de Anthropic, prompt en `system` con caché, reintento en servidor sobre otro modelo si el clasificador de seguridad rechaza la petición). Con `schema` la salida se fuerza a esa forma (salida estructurada); sin él, la prosa que el modelo escriba fuera del JSON pasa a `warnings`. El helper **no valida el documento** contra el esquema de la app: lo hace la ruta que lo llama. Errores: `EXTRACTION_UNAVAILABLE 503` (sin `ANTHROPIC_API_KEY`, clave rechazada, cuota, proveedor caído, red: la app ofrece la vía manual), `EXTRACTION_INVALID 422 {errors, warnings, usage}` (truncado, rechazo, sin JSON), `INVALID_FILE 422` (tipo, tamaño o rechazo del proveedor), `FILE_NOT_FOUND 404`. La clave vive en el secreto Edge `ANTHROPIC_API_KEY` (común al proyecto; se carga con `scripts/set_edge_secrets.py`, nunca en Git). El módulo no se reexporta desde `mod.ts`: cada función que extrae lo importa desde `../_kit/extract.ts`, y Deno resuelve `@anthropic-ai/sdk` con `supabase/functions/import_map.json`, que el despliegue sube con cada función.
 | `POST auth/login` `refresh` `logout` `password` | proxy de Supabase Auth, idéntico al actual de Tareas |
 | `GET health` `GET version.json` | disponibilidad, etapa y release |
 
