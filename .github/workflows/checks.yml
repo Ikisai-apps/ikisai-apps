@@ -28,14 +28,12 @@ jobs:
           else
             files="__todo__"
           fi
-          if [ "$files" = "__todo__" ] || printf '%s
-' "$files" | grep -Eq '^(apps/|packages/|tests/(invoices|booking|food|tasks)/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/)'; then
+          if [ "$files" = "__todo__" ] || echo "$files" | grep -Eq '^(apps/|packages/|tests/(invoices|booking|food|tasks)/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/)'; then
             echo "frontend=true" >> "$GITHUB_OUTPUT"
           else
             echo "frontend=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Archivos: $(printf '%s
-' "$files" | wc -l)  frontend=$(tail -1 "$GITHUB_OUTPUT")"
+          echo "Archivos: $(echo "$files" | wc -l)  frontend=$(tail -1 "$GITHUB_OUTPUT")"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
     runs-on: ubuntu-24.04
