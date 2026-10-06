@@ -42,9 +42,15 @@ export interface IngredientPrice {
   family: UnitFamily;
   /** Euros por unidad base (por gramo, por mililitro o por unidad). */
   perBase: number;
+  /** Compras que entran en el precio. */
   purchases: number;
   lastDate: string | null;
+  /** Sin compras en los últimos 3 meses: es el precio de la última compra (`lastDate`) y hay que avisarlo. */
+  stale: boolean;
 }
+
+/** Ventana del precio medio (decisión del usuario del 6 de octubre de 2026). */
+export const PRICE_WINDOW_MONTHS = 3;
 
 const UNIT_WORDS: Record<string, Unit> = {
   g: 'g', gr: 'g', grs: 'g', gramo: 'g', gramos: 'g',
@@ -62,31 +68,56 @@ export function purchaseUnit(text: string | null | undefined): Unit | null {
   return UNIT_WORDS[key] ?? null;
 }
 
-/** Precio medio ponderado por ingrediente y familia de unidad. */
-export function ingredientPrices(purchases: FoodPurchase[]): Map<string, IngredientPrice[]> {
-  const totals = new Map<string, { ingredient_id: string; family: UnitFamily; amount: number; base: number; purchases: number; lastDate: string | null }>();
+/** Fecha (AAAA-MM-DD) desde la que cuenta el precio medio: hoy menos tres meses. */
+export function priceWindowStart(today: Date = new Date()): string {
+  const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - PRICE_WINDOW_MONTHS, today.getUTCDate()));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Precio por ingrediente y familia de unidad (decisión del usuario): media ponderada de las compras de los últimos
+ * tres meses; si no hay compras en ese periodo, el precio de la última compra, marcado `stale` para avisarlo.
+ * Una compra sin fecha cuenta como antigua.
+ */
+export function ingredientPrices(purchases: FoodPurchase[], today: Date = new Date()): Map<string, IngredientPrice[]> {
+  const since = priceWindowStart(today);
+  const groups = new Map<string, Array<{ ingredient_id: string; family: UnitFamily; amount: number; base: number; date: string | null }>>();
   for (const p of purchases) {
     if (p.target_kind !== 'ingredient') continue;
     const read = purchaseQuantity(p);
     const amount = Number(p.allocated_amount);
     if (!read || !(amount >= 0)) continue;
-    const { unit, quantity } = read;
-    const family = unitFamily(unit);
+    const family = unitFamily(read.unit);
     const key = `${p.target_id}|${family}`;
-    const entry = totals.get(key) ?? { ingredient_id: p.target_id, family, amount: 0, base: 0, purchases: 0, lastDate: null };
-    entry.amount += amount;
-    entry.base += toBase(quantity, unit);
-    entry.purchases += 1;
-    if (p.invoice_date && (!entry.lastDate || p.invoice_date > entry.lastDate)) entry.lastDate = p.invoice_date;
-    totals.set(key, entry);
+    const list = groups.get(key) ?? [];
+    list.push({ ingredient_id: p.target_id, family, amount, base: toBase(read.quantity, read.unit), date: p.invoice_date });
+    groups.set(key, list);
   }
   const out = new Map<string, IngredientPrice[]>();
-  for (const t of totals.values()) {
-    const list = out.get(t.ingredient_id) ?? [];
-    list.push({ ingredient_id: t.ingredient_id, family: t.family, perBase: t.amount / t.base, purchases: t.purchases, lastDate: t.lastDate });
-    out.set(t.ingredient_id, list);
+  for (const list of groups.values()) {
+    const first = list[0]!;
+    const recent = list.filter((x) => x.date !== null && x.date >= since);
+    const lastDate = list.reduce<string | null>((max, x) => (x.date && (!max || x.date > max) ? x.date : max), null);
+    let price: IngredientPrice;
+    if (recent.length) {
+      const amount = recent.reduce((sum, x) => sum + x.amount, 0);
+      const base = recent.reduce((sum, x) => sum + x.base, 0);
+      price = { ingredient_id: first.ingredient_id, family: first.family, perBase: amount / base, purchases: recent.length, lastDate, stale: false };
+    } else {
+      // La más reciente; entre compras sin fecha, la última de la lista.
+      const last = list.reduce((best, x) => ((x.date ?? '') >= (best.date ?? '') ? x : best), first);
+      price = { ingredient_id: first.ingredient_id, family: first.family, perBase: last.amount / last.base, purchases: 1, lastDate: last.date, stale: true };
+    }
+    const prices = out.get(first.ingredient_id) ?? [];
+    prices.push(price);
+    out.set(first.ingredient_id, prices);
   }
   return out;
+}
+
+/** Precio que se aplica a un ingrediente en una unidad, si hay alguno compatible. */
+export function priceFor(ingredientId: string, unit: Unit, prices: Map<string, IngredientPrice[]>): IngredientPrice | undefined {
+  return prices.get(ingredientId)?.find((p) => p.family === unitFamily(unit));
 }
 
 export interface DishCost {
@@ -94,18 +125,22 @@ export interface DishCost {
   amount: number;
   /** Ingredientes sin compra con unidad compatible: el coste real es mayor. */
   missing: string[];
+  /** Ingredientes con el precio de su última compra, de hace más de tres meses: hay que avisarlo. */
+  stale: string[];
 }
 
-/** Coste de un plato a sus raciones: cantidades escaladas × precio medio de cada ingrediente. */
+/** Coste de un plato a sus raciones: cantidades escaladas × precio de cada ingrediente. */
 export function dishCost(graph: MenuGraph, itemId: string, prices: Map<string, IngredientPrice[]>): DishCost {
   let amount = 0;
   const missing = new Set<string>();
+  const stale = new Set<string>();
   for (const line of scaledIngredients(graph, itemId)) {
-    const price = prices.get(line.ingredient_id)?.find((p) => p.family === unitFamily(line.unit));
+    const price = priceFor(line.ingredient_id, line.unit, prices);
     if (!price) { missing.add(line.ingredient_id); continue; }
+    if (price.stale) stale.add(line.ingredient_id);
     amount += toBase(line.quantity, line.unit) * price.perBase;
   }
-  return { amount: Math.round(amount * 100) / 100, missing: [...missing] };
+  return { amount: Math.round(amount * 100) / 100, missing: [...missing], stale: [...stale] };
 }
 
 export interface ServiceCost {
@@ -113,6 +148,7 @@ export interface ServiceCost {
   amount: number;
   servings: number;
   missing: string[];
+  stale: string[];
 }
 
 /** Coste por servicio: suma de sus platos vivos; `servings` es la mayor ración de un plato (las personas que comen). */
@@ -120,29 +156,34 @@ export function serviceCosts(graph: MenuGraph, prices: Map<string, IngredientPri
   return graph.services.filter((s) => !s.deleted_at).map((service) => {
     const items = graph.items.filter((i) => !i.deleted_at && i.service_id === service.id);
     const missing = new Set<string>();
+    const stale = new Set<string>();
     let amount = 0;
     for (const item of items) {
       const cost = dishCost(graph, item.id, prices);
       amount += cost.amount;
       cost.missing.forEach((id) => missing.add(id));
+      cost.stale.forEach((id) => stale.add(id));
     }
-    return { service_id: service.id, amount: Math.round(amount * 100) / 100, servings: Math.max(0, ...items.map((i) => Number(i.servings))), missing: [...missing] };
+    return { service_id: service.id, amount: Math.round(amount * 100) / 100, servings: Math.max(0, ...items.map((i) => Number(i.servings))), missing: [...missing], stale: [...stale] };
   });
 }
 
 /** Coste de una cantidad de un ingrediente, o `null` si no hay precio con unidad compatible. */
 export function lineCost(ingredientId: string, quantity: number, unit: Unit, prices: Map<string, IngredientPrice[]>): number | null {
-  const price = prices.get(ingredientId)?.find((p) => p.family === unitFamily(unit));
+  const price = priceFor(ingredientId, unit, prices);
   return price ? Math.round(toBase(quantity, unit) * price.perBase * 100) / 100 : null;
 }
 
-/** Coste total de varios menús de una vez: suma de sus servicios y si falta algún precio. */
-export function menuTotals(graphs: Map<string, MenuGraph>, prices: Map<string, IngredientPrice[]>): Map<string, { total: number; missing: number }> {
-  const out = new Map<string, { total: number; missing: number }>();
+/** Coste total de varios menús de una vez, con cuántos ingredientes no tienen precio y cuántos lo tienen antiguo. */
+export function menuTotals(graphs: Map<string, MenuGraph>, prices: Map<string, IngredientPrice[]>): Map<string, { total: number; missing: number; stale: number }> {
+  const out = new Map<string, { total: number; missing: number; stale: number }>();
   for (const [menuId, graph] of graphs) {
     const costs = serviceCosts(graph, prices);
-    out.set(menuId, { total: Math.round(costs.reduce((sum, c) => sum + c.amount, 0) * 100) / 100, missing: new Set(costs.flatMap((c) => c.missing)).size });
+    out.set(menuId, {
+      total: Math.round(costs.reduce((sum, c) => sum + c.amount, 0) * 100) / 100,
+      missing: new Set(costs.flatMap((c) => c.missing)).size,
+      stale: new Set(costs.flatMap((c) => c.stale)).size,
+    });
   }
   return out;
 }
-

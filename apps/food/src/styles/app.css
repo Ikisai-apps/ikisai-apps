@@ -144,3 +144,4 @@
 .costmissing{margin-top:8px!important}
 .dishcost{margin-top:6px}
 .recipecost{margin-top:8px}
+.menucost>p.warnline{color:var(--alert)}

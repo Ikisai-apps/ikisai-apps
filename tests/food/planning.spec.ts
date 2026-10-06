@@ -21,7 +21,8 @@ const MENU_ID = randomUUID();
 let api: FakeApi;
 const TOMATO_ID = randomUUID();
 // Compras de Invoices: 10 kg de tomate por 25 € (2,50 €/kg). El arroz no tiene compras: el coste lo dice.
-const PURCHASES = [{ allocation_id: randomUUID(), target_kind: 'ingredient', target_id: TOMATO_ID, invoice_date: '2026-10-01', supplier_name: 'Frutería', line_description: 'Tomate pera', allocated_quantity: 10, unit: 'Kg', allocated_amount: 25 }];
+const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+const PURCHASES = [{ allocation_id: randomUUID(), target_kind: 'ingredient', target_id: TOMATO_ID, invoice_date: ago(5), supplier_name: 'Frutería', line_description: 'Tomate pera', allocated_quantity: 10, unit: 'Kg', allocated_amount: 25 }];
 let server: PreviewServer;
 let baseURL: string;
 

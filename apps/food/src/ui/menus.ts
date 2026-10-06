@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
@@ -312,7 +312,15 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const cost = dishCost(graph(), item.id, purchases.prices);
       const per = Number(item.servings) > 0 ? cost.amount / Number(item.servings) : 0;
       return el('p', { class: 'dishcost' }, el('strong', null, 'Coste estimado: '), `${euros(cost.amount)} (${euros(per)} por ración)`,
-        cost.missing.length ? el('span', { class: 'muted' }, ` · sin precio: ${cost.missing.map((id) => ingredients.find((i) => i.id === id)?.name ?? '—').join(', ')}`) : null);
+        cost.missing.length ? el('span', { class: 'muted' }, ` · sin precio: ${cost.missing.map((id) => ingredients.find((i) => i.id === id)?.name ?? '—').join(', ')}`) : null,
+        cost.stale.length ? el('span', { class: 'muted' }, ` · ${staleText(cost.stale, item)}`) : null);
+    }
+
+    /** «precio de la última compra: Arroz (20 jun)»: ingredientes sin compras en los últimos tres meses. */
+    function staleText(ids: string[], item?: ItemRow): string {
+      const unitOf = (id: string) => (item ? recipeLines.find((l) => l.recipe_id === item.recipe_id && l.ingredient_id === id)?.unit : undefined) ?? recipeLines.find((l) => l.ingredient_id === id)?.unit ?? 'kg';
+      const date = (id: string) => { const d = priceFor(id, unitOf(id), purchases.prices)?.lastDate; return d ? ` (${formatDate(d).replace(/,.*$/, '')})` : ''; };
+      return `precio de la última compra, de hace más de 3 meses: ${ids.map((id) => `${ingredients.find((i) => i.id === id)?.name ?? '—'}${date(id)}`).join(', ')}`;
     }
 
     /** Coste estimado del menú con las compras reales de Invoices: total, por persona y por servicio. */
@@ -321,12 +329,13 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const costs = serviceCosts(graph(), purchases.prices);
       const total = costs.reduce((sum, c) => sum + c.amount, 0);
       const missing = new Set(costs.flatMap((c) => c.missing));
+      const stale = new Set(costs.flatMap((c) => c.stale));
       const people = event()?.guest_count ?? 0;
       const byId = new Map(services.map((s) => [s.id, s]));
       costHost.hidden = false;
       replace(costHost,
         el('h3', null, 'Coste estimado'),
-        el('p', { class: 'muted' }, people > 0 ? `${euros(total / people)} por persona · ` : '', `con las compras registradas en Invoices (datos de ${formatDate(purchases.fetchedAt)}).`),
+        el('p', { class: 'muted' }, people > 0 ? `${euros(total / people)} por persona · ` : '', `media de las compras de los últimos 3 meses registradas en Invoices (datos de ${formatDate(purchases.fetchedAt)}).`),
         renderMoneyBreakdown({
           totalLabel: 'Total del menú',
           format: euros,
@@ -338,6 +347,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
               meta: c.servings > 0 ? `${euros(c.amount / c.servings)} por ración` : undefined };
           }),
         }),
+        stale.size ? el('p', { class: 'warnline costmissing' }, `${staleText([...stale]).replace(/^p/, 'P')}.`) : null,
         missing.size ? el('p', { class: 'warnline costmissing' }, `Sin precio (no hay compras con unidad compatible): ${[...missing].map((id) => ingredients.find((i) => i.id === id)?.name ?? '—').join(', ')}. El coste real será mayor.`) : null,
       );
     }
