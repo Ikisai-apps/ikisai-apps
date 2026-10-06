@@ -38,7 +38,33 @@ Fecha: 6 de octubre de 2026. Para el agente de UI, que hace las PR de adopción 
 ## 5. Orden
 
 1. Entrada: **hecha** (PR #75).
-2. Tarjeta de proyecto (`renderProjectCard`): la menos invasiva. Conserva `data-open-project`, el pin y el arrastre entre proyectos.
-3. Cáscara en dos pasos: primero la barra y el menú del kit manteniendo `#kebab`, `.tabstrip` y `#moreBtn` como alias (y `.brandrow`, `#syncBadge` y `#appUpdate`, que usan `sync.js` y `updates.js`); después se retira el CSS heredado.
+2. Tarjeta de proyecto (`renderProjectCard`, PR #90): en revisión. Conserva `data-open-project`, `data-drop-project`, `data-project-pin`, `data-project-drag` y `data-project-order`. Al sustituir una cadena de funciones (aquí `projectCard`), la PR retira también los envoltorios que quedan sin uso y el CSS heredado que ya no se aplica.
+3. Cáscara en dos pasos (§6): primero la barra y el menú con el aspecto del kit, manteniendo los ganchos; después se retira el CSS heredado.
 4. Hoja, diálogo y avisos (`openSheet`, `confirmDialog`, `toast`), paleta y selector de etiquetas.
 5. Fecha y lista reordenable, si encajan con los gestos actuales (arrastre entre proyectos y niveles).
+
+## 6. Cáscara, paso 1: qué se conserva
+
+`render()` repinta todo en cada cambio: `#app.innerHTML = topbar() + main() + bottomnav() + fab()`, y después `bind()`. En el paso 1 eso no cambia: la cáscara se sigue pintando como HTML en cada `render()`, con el marcado y las clases del kit dentro de `.ikisai-kit`. Montar una cáscara con estado (`createAppShell`) exige cambiar `render()`, que `sync.js` y `updates.js` envuelven; eso es un paso posterior y se acuerda antes con Tasks.
+
+`topbar` es una cadena de envoltorios que sustituyen texto del HTML anterior, igual que lo era `projectCard`. El módulo nuevo se carga el último, pinta la barra completa y **reproduce lo que añadían los envoltorios**, que se retiran en la misma PR:
+
+| Envoltorio | Qué añade | Estado |
+|---|---|---|
+| `scope-ui.js` | pastilla «General» al principio de `.tabstrip` | vivo |
+| `filters-ui.js` | tira de vistas guardadas (`viewStrip()`) justo después de `.tabstrip` | vivo |
+| `cards-ui.js` | color de cada área en su `.tabpill` (busca `<button class="tabpill…" data-tab="id"`) | vivo |
+| `theme-ui.js` | botón de tema (`#themeToggle`) en lugar de «Tu espacio» en `.menuheader` | vivo |
+| `extras-ui.js` | alias de la persona («Yo») en la cabecera del menú | vivo |
+| `access-ui.js`, `accounts-ui.js`, `csv-ui.js`, `features.js`, `history-ui.js` | botones que se insertaban junto a `<button data-action="backup">` o `import` | inertes desde `navigation-ui.js` (el menú sale de `navigationGroups()`); se pueden retirar |
+
+Ganchos que deben seguir existiendo, con el mismo id, clase o atributo (entre paréntesis, quién los usa además de `navigation-ui.js`):
+
+- **Barra:** `.brandrow` y, dentro, `.spacer` (`sync.js` inserta `#syncBadge` antes de `.spacer`; `updates.js` añade `#appUpdate` al final de `.brandrow`). `#moreBtn` con `aria-controls="kebab"` y `aria-expanded` (pruebas, `theme-ui.js`).
+- **Estado:** `#syncBadge` lo crea `setMode()` con `data-mode` y los textos «Al día», «N pendientes», «Sincronizando», «Sin conexión», «Revisar cambios», «Revisar guardado», «Sin acceso» y «Otra pestaña activa»; al pulsarlo abre `showSync()`. Las pruebas leen el id y esos textos. Si pasa a ser la pastilla del kit, conserva id, `data-mode`, textos y acción, o cambia interfaz y pruebas en la misma PR.
+- **Áreas:** `.tabstrip` con `button.tabpill[data-tab]` y `.active` (pruebas, `scope-ui.js`, `palette-ui.js`, `home-ui.js`, `sync.js`).
+- **Menú:** `nav#kebab` con la clase `show` al abrirse, `#menuBackdrop`, `#closeMenu`, `details[data-menu-group]` (su estado abierto vive en `expandedMenuGroups`), `button[data-menu-view]` y `button[data-action]` (los atiende `handleTopAction`, que también envuelven varios módulos), `.menuheader`.
+- **Navegación inferior:** `nav.bottomnav` con `button[data-nav]` (pruebas, `home-ui.js` añade «Inicio» y la clase `five`, `sync.js`). `#fab`.
+- **Escritorio:** `--sidebar-width` lo usan `#moveRail`, `#batchBar` y `.undotoast` para centrarse; `#app` deja ese margen salvo en la entrada.
+
+El menú sale de `navigationGroups()` (grupos, elementos y permisos): es la fuente para pintarlo con el kit y no cambia.
