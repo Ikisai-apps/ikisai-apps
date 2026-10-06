@@ -1,9 +1,9 @@
 /* Ikisai Tasks · cuenta, sesión y adjuntos sobre el núcleo común. Se carga después de los módulos que definen
    las hojas originales (accounts-ui, navigation-ui, photos) y las sustituye; al final arranca la app. */
-const PENDING_FEATURES=new Set(['csvImport','csvExport','portableImport','portableExport','backup','accesses','proposals','accessLog']);
+const PENDING_FEATURES=new Set(['accesses','proposals','accessLog']);
 const originalNavigationGroups=navigationGroups;
 navigationGroups=function(){
-  // Lo que todavía no tiene ruta en tasks-api (CSV, copia portable, respaldo, cuentas) o es de la fase de agentes no se ofrece.
+  // Claves de acceso, propuestas de agentes y registro de accesos son de la fase de agentes: no se ofrecen todavía.
   return originalNavigationGroups().map(group=>({...group,
     items:group.items.filter(item=>!PENDING_FEATURES.has(item[0])).map(item=>item[0]==='sessions'?['sessions','Mi cuenta','key','action',!!Sync.actor]:item)
   }));
