@@ -47,3 +47,26 @@ export async function loadMenuData(client: SyncClient, menuId: string): Promise<
 }
 
 export const MENU_TABLES = [T.menus, T.menuServices, T.menuItems, T.recipes, T.recipeIngredients, T.ingredients] as const;
+
+/** Grafo de cada menú vivo, leído del espejo una sola vez (para Inicio y Eventos). */
+export async function loadAllMenuGraphs(client: SyncClient): Promise<Map<string, MenuGraph>> {
+  const [menus, services, items, recipes, lines, ingredients] = await Promise.all([
+    client.list(T.menus) as Promise<Mirror<Menu>[]>,
+    client.list(T.menuServices) as Promise<Mirror<MenuService>[]>,
+    client.list(T.menuItems) as Promise<Mirror<MenuItem>[]>,
+    client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,
+    client.list(T.recipeIngredients) as Promise<Mirror<RecipeIngredient>[]>,
+    client.list(T.ingredients, { includeDeleted: true }) as Promise<Mirror<Ingredient>[]>,
+  ]);
+  const out = new Map<string, MenuGraph>();
+  for (const menu of menus) {
+    const own = services.filter((s) => s.menu_id === menu.id);
+    const ids = new Set(own.map((s) => s.id));
+    out.set(menu.id, {
+      services: own as MenuService[], items: items.filter((i) => ids.has(i.service_id)) as MenuItem[], recipes: recipes as unknown as Recipe[],
+      recipe_ingredients: lines as RecipeIngredient[], ingredients: ingredients as Ingredient[],
+    });
+  }
+  return out;
+}
+

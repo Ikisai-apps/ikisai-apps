@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  ingredientKey, validateOperations,
+  ingredientKey, lineCost, validateOperations,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -9,6 +9,7 @@ import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
   T, UNITS, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror,
 } from '../app/client.ts';
+import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { isBlobMarker, preparePhoto, showPhoto, stagePhoto, type PhotoRef, type PreparedPhoto } from '../app/photos.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -42,6 +43,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   let equipment: EquipmentRow[] = [];
   let needs: NeedRow[] = [];
   let sheet: Sheet | null = null;
+  let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
   const filter = { query: '', category: '', diet: '', allergen: '', status: '' };
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
 
@@ -164,6 +166,19 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       `«${recipe.name}» restaurada.`);
   }
 
+  const euros = (n: number) => n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+
+  /** Coste de la receta a sus raciones base con las compras de Invoices; avisa si a algún ingrediente le falta precio. */
+  function recipeCostLine(recipe: RecipeRow, lines: LineRow[]): HTMLElement | null {
+    if (!purchases.fetchedAt || lines.length === 0) return null;
+    const costs = lines.map((l) => lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices));
+    const total = costs.reduce<number>((sum, c) => sum + (c ?? 0), 0);
+    const missing = costs.filter((c) => c === null).length;
+    return el('p', { class: 'recipecost' }, el('strong', null, 'Coste estimado: '),
+      `${euros(total)} para ${formatQuantity(recipe.base_servings)} raciones (${euros(total / Number(recipe.base_servings))} por ración)`,
+      missing ? el('span', { class: 'muted' }, ` · ${missing === 1 ? '1 ingrediente' : `${missing} ingredientes`} sin precio`) : null);
+  }
+
   // --- Ficha en lectura -----------------------------------------------------------------
   function openCard(recipe: RecipeRow): void {
     const img = el('img', { alt: `Foto de ${recipe.name}`, hidden: true });
@@ -186,9 +201,14 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         el('span', { class: recipe.status === 'validada' ? 'chip ok' : 'chip' }, RECIPE_STATUS_LABELS[recipe.status]),
         recipe._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null),
       block('Ingredientes', recipeLines.length
-        ? el('table', { class: 'ingredients' }, el('tbody', null, ...recipeLines.map((l) => el('tr', null,
-            el('td', null, names.get(l.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit])))))
-        : el('p', { class: 'muted' }, 'Sin ingredientes todavía.')),
+        ? el('table', { class: 'ingredients' }, el('tbody', null, ...recipeLines.map((l) => {
+            const cost = purchases.fetchedAt ? lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices) : null;
+            return el('tr', null,
+              el('td', null, names.get(l.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]),
+              purchases.fetchedAt ? el('td', { class: cost === null ? 'num muted' : 'num' }, cost === null ? 'sin precio' : euros(cost)) : null);
+          })))
+        : el('p', { class: 'muted' }, 'Sin ingredientes todavía.'),
+        recipeCostLine(recipe, recipeLines)),
       block('Elaboración', recipe.method ? el('p', { class: 'pre' }, recipe.method) : null, para('Antelación', recipe.prep_minutes != null ? `${recipe.prep_minutes} minutos antes del servicio` : null)),
       block('Seguridad',
         el('p', null, el('strong', null, 'Alérgenos: '), recipe.allergens.length ? recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ') : 'ninguno declarado'),
@@ -433,6 +453,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   }
 
   void load();
+  void loadPurchases(client).then((next) => { purchases = next; });
   const offs = [T.recipes, T.ingredients, T.recipeIngredients, T.equipment, T.recipeEquipment].map((table) => client.onTable(table, () => void load()));
   const offStatus = client.onStatus(() => { if (!sheet) void load(); });
   return () => {
