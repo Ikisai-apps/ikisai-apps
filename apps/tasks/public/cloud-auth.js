@@ -1,6 +1,6 @@
 /* Ikisai Tasks · cuenta, sesión y adjuntos sobre el núcleo común. Se carga después de los módulos que definen
    las hojas originales (accounts-ui, navigation-ui, photos) y las sustituye; al final arranca la app. */
-const PENDING_FEATURES=new Set(['csvImport','csvExport','portableImport','portableExport','backup','users','accesses','proposals','accessLog']);
+const PENDING_FEATURES=new Set(['csvImport','csvExport','portableImport','portableExport','backup','accesses','proposals','accessLog']);
 const originalNavigationGroups=navigationGroups;
 navigationGroups=function(){
   // Lo que todavía no tiene ruta en tasks-api (CSV, copia portable, respaldo, cuentas) o es de la fase de agentes no se ofrece.
@@ -33,6 +33,41 @@ passwordSheet=function(){
     const button=document.getElementById('savePassword');button.disabled=true;
     try{await api('auth/password',{method:'POST',body:JSON.stringify({currentPassword:document.getElementById('oldPassword').value,password:next})});closeSheet();toast('Contraseña cambiada.')}catch(error){button.disabled=false;toast(error.message)}
   };
+};
+
+/* Cuentas de personas (API.md §16, decisión D6): una persona invitada es una cuenta con rol y ámbitos sobre
+   `members` y `members/invite` del núcleo. La contraseña temporal se muestra una sola vez. Quitar el acceso deja la
+   pertenencia sin ámbitos (el núcleo aún no tiene baja ni cierre de sesiones ajenas, petición C7). */
+const NO_ACCESS={tabs:[],projects:{}};
+function memberHasAccess(m){const s=m.scopes;return s==null||s==='*'||(Array.isArray(s)?s.length>0:(s.tabs||[]).length>0||Object.values(s.projects||{}).some(list=>list.length))}
+usersSheet=async function(){
+  try{const items=await Sync.core.api('/members');Sync.members=items;
+    openSheet(`<h2 class="sheettitle">Cuentas de personas</h2><button class="primary" id="newUser">Invitar a una persona</button>${items.map(u=>`<section style="padding:12px 0"><strong>${esc(u.displayName||'Sin nombre')}</strong>${u.userId===Sync.actor?.id?' · tú':''}<p class="small">${esc({reader:'Solo lectura',editor:'Editar',owner:'Propietario'}[u.role]||u.role)} · ${memberHasAccess(u)?esc(accessScopeText(u.scopes==null?'*':u.scopes)):'Sin acceso'}</p><button class="softbtn" data-edit-user="${u.userId}">Permisos</button></section>`).join('')}`);
+    document.getElementById('newUser').onclick=()=>userEditor();
+    document.querySelectorAll('[data-edit-user]').forEach(b=>b.onclick=()=>userEditor(items.find(u=>u.userId===b.dataset.editUser)));
+  }catch(e){toast(e.message)}
+};
+userEditor=function(user=null){
+  const scopesNow=user?(user.scopes==null?'*':user.scopes):null,self=user&&user.userId===Sync.actor?.id;
+  openSheet(`<h2 class="sheettitle">${user?'Permisos de '+esc(user.displayName||'la cuenta'):'Invitar a una persona'}</h2>${user?'':'<div class="field"><label for="userUsername">Correo electrónico</label><input id="userUsername" type="email" autocomplete="off" required></div>'}<div class="field"><label for="userName">Nombre</label><input id="userName" value="${esc(user?.displayName||'')}" maxlength="100"></div><div class="field"><label for="userRole">Permiso</label><select id="userRole"><option value="reader">Solo lectura</option><option value="editor">Editar</option><option value="owner">Propietario</option></select></div><label><input type="checkbox" id="userAll"> Todas las áreas, también las futuras</label>${state.tabs.filter(t=>!t.deleted).map(t=>`<section class="filterfamily"><label><input type="checkbox" data-user-tab="${t.id}"> Todo ${esc(t.name)}</label>${t.projects.filter(p=>!p.deleted&&!p.system).map(p=>`<label style="display:block;padding:6px 12px"><input type="checkbox" data-user-project="${t.id}|${p.id}"> ${esc(p.title)}</label>`).join('')}</section>`).join('')}${user&&!self?'<button class="danger" id="revokeUser">Quitar el acceso</button>':''}<button class="primary" id="saveUser">${user?'Guardar permisos':'Crear cuenta'}</button>`);
+  document.getElementById('userRole').value=user?.role||'editor';document.getElementById('userAll').checked=scopesNow==='*';
+  if(user&&scopesNow!=='*'){document.querySelectorAll('[data-user-tab]').forEach(b=>b.checked=Array.isArray(scopesNow)?scopesNow.includes(b.dataset.userTab):!!scopesNow.tabs?.includes(b.dataset.userTab));document.querySelectorAll('[data-user-project]').forEach(b=>{const [t,p]=b.dataset.userProject.split('|');b.checked=!!scopesNow.projects?.[t]?.includes(p)})}
+  const chosenScopes=()=>{if(document.getElementById('userAll').checked)return '*';const tabs=[...document.querySelectorAll('[data-user-tab]:checked')].map(b=>b.dataset.userTab),projects={};document.querySelectorAll('[data-user-project]:checked').forEach(b=>{const [t,p]=b.dataset.userProject.split('|');if(!tabs.includes(t))(projects[t]||=[]).push(p)});return {tabs,projects}};
+  document.getElementById('saveUser').onclick=async()=>{
+    const scopes=chosenScopes(),role=document.getElementById('userRole').value,displayName=document.getElementById('userName').value.trim(),button=document.getElementById('saveUser');
+    if(scopes!=='*'&&!memberHasAccess({scopes}))return toast('Elige al menos un área o un proyecto.');
+    button.disabled=true;
+    try{
+      if(user){await Sync.core.api('/members',{method:'POST',json:{userId:user.userId,role,scopes,displayName}});await usersSheet();toast('Permisos guardados.');return}
+      const email=document.getElementById('userUsername').value.trim().toLowerCase();
+      const result=await Sync.core.api('/members/invite',{method:'POST',json:{email,role,scopes,displayName}});
+      if(!result.temporaryPassword){await usersSheet();toast('Esa cuenta ya existía: se le ha dado acceso.');return}
+      openSheet(`<h2 class="sheettitle">Cuenta creada</h2><p>Entrega a ${esc(displayName||email)} su correo y esta contraseña temporal. Solo se muestra ahora; podrá cambiarla en «Mi cuenta».</p><div class="field"><label for="issuedPassword">Contraseña temporal</label><input id="issuedPassword" readonly value="${esc(result.temporaryPassword)}"></div><button class="primary" id="userDone">Hecho</button>`);
+      document.getElementById('userDone').onclick=usersSheet;
+    }catch(e){button.disabled=false;toast(e.message)}
+  };
+  const revoke=document.getElementById('revokeUser');
+  if(revoke)revoke.onclick=async()=>{revoke.disabled=true;try{await Sync.core.api('/members',{method:'POST',json:{userId:user.userId,role:'reader',scopes:NO_ACCESS,displayName:user.displayName}});await usersSheet();toast('Acceso retirado.')}catch(e){revoke.disabled=false;toast(e.message)}};
 };
 
 /* Adjuntos (API.md §8): las fotos se recomprimen a 1600 px en WebP sin conservar el original; el blob espera en la cola

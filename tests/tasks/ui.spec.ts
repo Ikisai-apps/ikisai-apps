@@ -954,3 +954,94 @@ test('[36] sesión caducada con cola pendiente: se conserva, otra cuenta no pued
     expect((await serverRow('tasks.tasks', ID.t4!)).note).toBe('Cambio con sesión caducada');
   });
 });
+
+declare const usersSheet: any, handleTopAction: any;
+
+test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo que puede y retirarle el acceso', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const GUEST = { email: 'invitada@example.invalid', password: '' };
+  let guestId = '';
+
+  await test.step('[27][34] la propietaria crea desde el móvil una cuenta de editora limitada a un proyecto', async () => {
+    await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+    await a.evaluate(() => handleTopAction('users'));
+    await a.locator('#newUser').click();
+    await a.locator('#userUsername').fill(GUEST.email);
+    await a.locator('#userName').fill('Invitada navegador');
+    await a.locator('#userRole').selectOption('editor');
+    await a.locator(`[data-user-project="${ID.ikisai}|${ID.p1}"]`).check();
+    await a.locator('#saveUser').click();
+    GUEST.password = await a.locator('#issuedPassword').inputValue();
+    expect(GUEST.password.length).toBeGreaterThan(10);
+    await a.locator('#userDone').click();
+    await expect(a.locator('#newUser')).toBeVisible();
+    await expect(a.locator('#sheet')).toContainText('Invitada navegador');
+    const membership = (await server.app.t.db.query<{ user_id: string; role: string; scopes: any }>(`select user_id, role, scopes from core.memberships where app = 'tasks' and role = 'editor' and scopes::text like '%projects%'`)).rows[0]!;
+    expect(membership.scopes).toEqual({ tabs: [], projects: { [ID.ikisai!]: [ID.p1] } });
+    guestId = membership.user_id;
+    await a.evaluate(() => closeSheet());
+  });
+
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guestErrors: string[] = [];
+  const guest = await openApp(guestContext, server, { user: GUEST, aliases: ID, errors: guestErrors });
+
+  await test.step('[28] la invitada solo ve su proyecto, crea tareas en él y no toca lo privado ni el catálogo', async () => {
+    await expect(guest.locator('[data-drop-project]')).toHaveCount(1);
+    await expect(guest.locator(`[data-open-project="${ID.inbox}"]`)).toHaveCount(0);
+    expect(await guest.evaluate(() => [Sync.actor.role, state.tabs.length, state.tabs[0].restricted, state.tabs[0].projects.length])).toEqual(['editor', 1, true, 1]);
+    await expect(guest.locator('#fab')).toBeDisabled();
+    expect(await guest.evaluate(() => Sync.record.queue.length)).toBe(0);
+    // Catálogo completo del área en solo lectura (decisión D1), sin vistas guardadas.
+    expect(await guest.evaluate(() => [state.tabs[0].families.length, state.tabs[0].views.length])).toEqual([5, 0]);
+    expect(await guest.evaluate(() => state.tabs[0].labels.length)).toBe((await server.rows('tasks.labels')).filter((r) => r.tab_id === ID.ikisai && !r.deleted_at).length);
+    await guest.locator(`[data-open-project="${ID.p1}"]`).click();
+    await guest.locator('#quickAdd').click();
+    await guest.locator('#teText').fill('Tarea de proyecto compartido');
+    await guest.locator('#saveTaskBtn').click();
+    await settled(guest);
+    const created = (await server.rows('tasks.tasks')).find((r) => r.title === 'Tarea de proyecto compartido');
+    expect([created.project_id, created.updated_by]).toEqual([ID.p1, guestId]);
+    // Lo privado no existe para ella: ni en su espejo ni por la API.
+    expect(await guest.evaluate(() => JSON.stringify(state.tabs).includes('Cocina operativa'))).toBe(false);
+    const hidden = await guest.evaluate(async () => { try { await Sync.core.api('/read/tasks.targets', { method: 'POST', json: { kind: 'task', id: (window as any).ID.t5 } }); return 0; } catch (e: any) { return e.status; } });
+    expect(hidden).toBe(404);
+    const forbidden = await server.commit([{ op: 'update', table: 'tasks.tasks', id: ID.t5, expectedRevision: (await serverRow('tasks.tasks', ID.t5!)).revision, fields: { note: 'intrusa' } }], server.app.supabase.tokenFor(guestId));
+    expect(forbidden.status).toBe(403);
+    await guest.locator('[data-nav="labels"]').click();
+    await expect(guest.locator('#newFamily')).toBeDisabled();
+    await expect(guest.locator('[data-edit-label]').first()).toBeDisabled();
+    await guest.locator('#moreBtn').click();
+    await guest.locator('[data-action="areas"]').click();
+    await expect(guest.locator('#newArea')).toHaveCount(0);
+    await expect(guest.locator('[data-edit-area]')).toHaveCount(0);
+    await guest.locator('#closeDialog').click();
+    await guest.evaluate(() => closeNavigation());
+    expect(await guest.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    expect(guestErrors).toEqual([]);
+  });
+
+  await test.step('la propietaria ve la tarea de la invitada', async () => {
+    await sync(a);
+    expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p1).tasks.some((t: any) => t.text === 'Tarea de proyecto compartido'))).toBe(true);
+  });
+
+  await test.step('[30] la propietaria le retira el acceso y el servidor deja de servirle datos', async () => {
+    await a.evaluate(() => usersSheet());
+    await a.locator(`[data-edit-user="${guestId}"]`).click();
+    await a.locator('#revokeUser').click();
+    await expect(a.locator('#newUser')).toBeVisible();
+    await expect(a.locator('#sheet')).toContainText('Sin acceso');
+    await a.evaluate(() => closeSheet());
+    const token = server.app.supabase.tokenFor(guestId);
+    const snapshot = await server.app.call('/api/v1/snapshot', { token });
+    expect(snapshot.data.tables.every((t: any) => t.rows.length === 0)).toBe(true);
+    const write = await server.commit([{ op: 'insert', table: 'tasks.tasks', id: crypto.randomUUID(), fields: { tab_id: ID.ikisai, project_id: ID.p1, title: 'Ya no', position: 1 } }], token);
+    expect(write.status).toBe(403);
+    // Al volver a abrir la app, su espejo local se vacía.
+    await guest.reload();
+    await guest.waitForFunction(() => typeof Sync !== 'undefined' && Sync.ready && state.tabs.length === 0, null, { timeout: 20_000 });
+    await expect(guest.locator('#app')).toContainText('ningún área compartida');
+  });
+  await guestContext.close();
+});
