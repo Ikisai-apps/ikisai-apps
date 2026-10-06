@@ -29,11 +29,11 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - Prueba real de Calendar contra Google: hecha por Core, 12 de 12 (ronda 5).
 
 - **Tanda 7** (rama `booking/tanda-7`): botón «Vaciar papelera» para el propietario en Reservas → Papelera, con recuento y confirmación; llama a `POST trash/purge` con las tablas de hijos a padres y explica los dos motivos por los que puede negarse (evento aún vivo en Google Calendar, menú de Food ligado al evento). Probado en el humo y, sobre PGlite, con una reserva completa (evento, huésped, restricción, checklist).
+- **Invoices lee `booking.food_event_projection`** (PR 80): migración `20261006_0402_booking_invoices_read.sql`, fusionada junto con el ajuste de la prueba de Invoices.
 
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
-- **Lectura de la proyección por Invoices**: la migración `20261006_0402_booking_invoices_read.sql` y su prueba están listas en la rama `booking/invoices-read`, sin fusionar: al registrarla falla `tests/invoices/api.test.ts` («Booking no disponible hasta que registre la suya»), que es de Invoices. Debe entrar junto con el ajuste de esa prueba.
 - La reactivación de un evento borrado a mano en Google solo está probada en simulación.
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
