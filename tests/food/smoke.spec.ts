@@ -8,6 +8,7 @@ import { expect, test, type Page } from 'playwright/test';
 import { build, preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freePort } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,6 @@ let api: FakeApi;
 let server: PreviewServer;
 let baseURL: string;
 
-// El puerto se elige dentro de un rango sin puertos que Chromium bloquea por inseguros (5060, 5061, 6000…).
 test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
   process.env.VITE_API_PROXY = api.url;
@@ -27,7 +27,7 @@ test.beforeAll(async () => {
   server = await preview({
     configFile,
     logLevel: 'silent',
-    preview: { port: 4800 + Math.floor(Math.random() * 250), strictPort: false, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
+    preview: { port: await freePort(), strictPort: true, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },
   });
   baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
 });

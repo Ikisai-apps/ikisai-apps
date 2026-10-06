@@ -1,4 +1,5 @@
 /** Food · apoyo de pruebas: eventos sintéticos sembrados en Booking, que Food lee por `booking.food_event_projection`. */
+import { createServer } from 'node:net';
 import type { TestApp } from '../../packages/test-kit/src/http.ts';
 
 export const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
@@ -33,3 +34,20 @@ export async function seedBookingEvent(app: TestApp, options: { title: string; s
 export async function setFinalGuests(app: TestApp, event: string, guests: number): Promise<void> {
   await app.t.db.query(`update booking.events set final_guests = $2 where id = $1`, [event, guests]);
 }
+
+/**
+ * Puerto libre pedido al sistema para `vite preview` (receta de Booking). Un puerto al azar puede caer en un rango
+ * reservado de Windows (`listen EACCES`) o en uno que Chromium bloquea (`ERR_UNSAFE_PORT`); los efímeros del sistema no.
+ */
+export function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+

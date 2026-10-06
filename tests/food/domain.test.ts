@@ -100,3 +100,17 @@ test('coste · precio medio por familia de unidad y coste de plato con huecos se
   // Una compra por unidades no sirve para una receta en gramos.
   assert.deepEqual(dishCost(graph, 'i1', ingredientPrices([p('tomate', 12, 'ud', 6)])).missing.sort(), ['arroz', 'tomate']);
 });
+
+test('coste · manda la unidad normalizada de Invoices; el texto queda de respaldo', async () => {
+  const { ingredientPrices, purchaseQuantity } = await import('../../supabase/functions/_domain/food/mod.ts');
+  const base = { allocation_id: 'a', target_kind: 'ingredient', target_id: 'aceite', invoice_date: null, supplier_name: null, line_description: null, allocated_amount: 12 };
+  // «Botella 75 cl» no se entiende como texto, pero Invoices la normaliza a 0,75 l.
+  assert.deepEqual(purchaseQuantity({ ...base, allocated_quantity: 1, unit: 'botella 75cl', unit_normalized: 'l', quantity_normalized: 0.75 }), { unit: 'l', quantity: 0.75 });
+  assert.deepEqual(purchaseQuantity({ ...base, allocated_quantity: 500, unit: 'gr', unit_normalized: null, quantity_normalized: null }), { unit: 'g', quantity: 500 });
+  assert.deepEqual(purchaseQuantity({ ...base, allocated_quantity: 6, unit: 'pzas', unit_normalized: 'ud', quantity_normalized: '6' }), { unit: 'unidad', quantity: 6 });
+  assert.equal(purchaseQuantity({ ...base, allocated_quantity: 2, unit: 'caja', unit_normalized: null }), null);
+  const price = ingredientPrices([{ ...base, allocated_quantity: 1, unit: 'botella 75cl', unit_normalized: 'l', quantity_normalized: 0.75 }]).get('aceite')![0]!;
+  assert.equal(price.family, 'volumen');
+  assert.ok(Math.abs(price.perBase - 12 / 750) < 1e-12); // 16 €/l
+});
+
