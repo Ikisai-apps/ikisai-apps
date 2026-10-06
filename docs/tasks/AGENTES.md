@@ -1,6 +1,6 @@
 # Agentes en el núcleo · propuesta de Tasks para Core
 
-Fecha: 6 de octubre de 2026. Autor: equipo Tasks. Estado: **propuesta de diseño para que Core la implemente en `core`, `_kit` y `sync-client`.** No hay código de Tasks en esta propuesta; lo que Tasks hará después está en §9.
+Fecha: 6 de octubre de 2026. Autor: equipo Tasks. Estado: **propuesta aceptada por Core como base del núcleo (ronda 9); decisiones cerradas en §10.** La implementa Core en `core`, `_kit` y `sync-client`. No hay código de Tasks en esta propuesta; lo que Tasks hará después está en §9.
 
 Origen: la app antigua (`ikisai-tasks` `d02bf44`) tenía tres piezas propias que ahora deben ser comunes a las cuatro apps: **claves de agente** (`ikisai.agent_keys`, `agents.mjs`), **propuestas con aprobación humana** (`ikisai.proposals`, `CONFIRMATION_REQUIRED`) y un **servidor MCP** (`mcp.mjs`), más un **registro de accesos** (`ikisai.access_events`). El contrato ya las reserva en §3 («`core.agent_keys`, `core.proposals`, `core.access_events`… con columna `app`») y reserva el error `CONFIRMATION_REQUIRED 428`.
 
@@ -50,7 +50,7 @@ core.agent_keys(
 `required = destructivo || masivo || lo que diga la app`.
 
 - **Destructivo (núcleo):** cualquier operación `delete`; cualquier `call` o acción `invoke` cuyo registro lleve `agent_confirmation = true` (columna nueva en `core.allowed_procedures` y en `core.allowed_reads` para `kind = 'action'`; por defecto `true`: un procedimiento es opaco para el núcleo).
-- **Masivo (núcleo):** el lote toca 10 o más filas (`bulkThreshold`, configurable por app en `core.apps`). El umbral es por lote; no detecta un trabajo largo troceado en lotes pequeños, igual que hoy.
+- **Masivo (núcleo):** el lote toca 10 o más filas (`bulkThreshold`; 10 por decisión del usuario, configurable por app en `core.apps`). El umbral es por lote; no detecta un trabajo largo troceado en lotes pequeños, igual que hoy.
 - **Dominio (hook nuevo de app):** `agentRisk(operations, ctx) → { required, reasons[], affectedEstimate }`. Tasks lo usará para archivar (`status: 'archived'`, `archived: true`) y para contar cascadas (hijas de una tarea, etiquetas de una familia).
 
 `undo` de un agente pasa por la misma regla sobre las operaciones del plan.
@@ -69,7 +69,7 @@ core.proposals(
   risk        jsonb not null,                                -- { required, destructive, affectedEstimate, bulkThreshold, reasons }
   summary     jsonb not null,                                -- antes/después por fila, del ensayo (§3.3)
   status      text not null check (status in ('pending','approved','rejected','consumed','revoked')),
-  expires_at  timestamptz not null,                          -- una hora
+  expires_at  timestamptz not null,                          -- 24 horas (decisión del usuario, §10)
   decided_by  uuid references auth.users(id),
   decided_at  timestamptz,
   consumed_cursor bigint,
@@ -92,7 +92,7 @@ agente:  POST proposals {requestId, operations}
            → beforeCommit + commit_preview; si no requiere aprobación → 422 CONFIRMATION_NOT_NEEDED
            → { id, status:'pending', expiresAt, risk, summary }
 persona: GET proposals · GET proposals/:id · POST proposals/:id/approve | reject     (owner de esa app)
-           → approve vuelve a ensayar el lote; si ya no es válido → 409 PROPOSAL_UNAVAILABLE
+           → approve vuelve a ensayar el lote; si ya no es válido → 409 PROPOSAL_UNAVAILABLE y la propuesta pasa a `rejected`
 agente:  GET proposals/:id   (consulta el estado)
          POST commands {requestId, operations, confirmationId}
            → core.commit comprueba y consume la aprobación en la misma transacción
@@ -193,13 +193,22 @@ Las herramientas se anuncian según el rol (`readOnlyHint`, `destructiveHint`). 
 
 ---
 
-## 10. Decisiones abiertas
+## 10. Decisiones
 
-| # | Decisión | Propuesta de Tasks | Quién decide |
+Cerradas el 6 de octubre de 2026 (Core, rondas 9 y 10; A2 y A3, el usuario).
+
+| # | Decisión | Resultado | Quién decidió |
 |---|---|---|---|
-| A1 | Clave por agente (multiapp) o una por app | Por agente, con pertenencias por app | Core |
-| A2 | Umbral de lote masivo | 10 filas, como hoy; configurable por app | Usuario |
-| A3 | Caducidad de una propuesta | Una hora, como hoy | Usuario |
-| A4 | ¿Los procedimientos y acciones exigen aprobación a un agente por defecto? | Sí, salvo que la app los marque como seguros | Core |
-| A5 | ¿Dónde se aprueban las propuestas de un agente multiapp? | En la interfaz de cada app (cada propuesta es de una app) | Core |
-| A6 | Ensayo (`commit_preview`) como pieza general del contrato | Sí; lo usarían también las previsualizaciones de importación | Core |
+| A1 | Clave por agente (multiapp) o una por app | **Por agente**, con pertenencias por app | Core |
+| A2 | Umbral de lote masivo | **10 elementos**; configurable por app | Usuario |
+| A3 | Caducidad de una propuesta | **24 horas** (la app antigua daba una) | Usuario |
+| A4 | ¿Los procedimientos y acciones exigen aprobación a un agente por defecto? | **Sí**, salvo que la app los marque como seguros | Core |
+| A5 | ¿Dónde se aprueban las propuestas de un agente multiapp? | **En la interfaz de la app** a la que pertenece cada propuesta | Core |
+| A6 | Ensayo (`commit_preview`) como pieza general del contrato | **Sí**, entra en el contrato | Core |
+
+Consecuencia de A3: con 24 horas es normal que los datos cambien entre que el agente prepara el lote y la persona lo aprueba. Por eso hay dos comprobaciones y ninguna intenta adaptar el lote:
+
+- **Al aprobar** se vuelve a ensayar. Si ya no encaja (una fila cambió de revisión, se borró, o el hook lo rechaza), la aprobación falla con `PROPOSAL_UNAVAILABLE`, la propuesta queda `rejected` y el agente tiene que prepararla de nuevo sobre el estado actual.
+- **Al ejecutar**, `core.commit` aplica sus reglas de siempre (`expectedRevision` por fila). Si algo cambió después de aprobar, el lote entra en conflicto como cualquier otro y la aprobación no se consume; el agente prepara otra propuesta.
+
+El resumen que ve quien aprueba es el del ensayo hecho al preparar; la interfaz debe mostrar cuándo se preparó.

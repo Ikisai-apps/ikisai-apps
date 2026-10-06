@@ -32,6 +32,8 @@
 @media(min-width:1024px){
   :root{--sidebar-width:264px}
   #app{max-width:none;margin:0 0 0 var(--sidebar-width);padding-bottom:44px}
+  /* La pantalla de entrada no tiene menú lateral: ocupa todo el ancho y queda centrada en la ventana. */
+  #app:has(>.ikisai-kit>.login){margin-left:0;padding-bottom:0}
   .topbar{padding:16px 30px 12px}
   .screen{width:100%;max-width:1460px;margin:0 auto;padding:28px 32px}
   .title{font-size:30px}

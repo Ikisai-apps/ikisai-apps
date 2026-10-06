@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 7). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base. Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
+Actualizado: 6 de octubre de 2026 (tanda 8). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
 
 ## Hecho
 
@@ -47,6 +47,7 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 ## Adopción del `ui-kit`
 
 - **Entrada** (PR #75, agente de UI): `loginSheet()` pinta `IkisaiKit.renderLogin` a pantalla completa con los ids de siempre y el error en línea (`#loginError`). El kit llega como `/kit.js` y `/kit.css` (`src/kit.ts`, segunda pasada de `vite build`), con su CSS acotado a `.ikisai-kit` mientras conviva con el heredado.
+- En escritorio la entrada ocupa todo el ancho (sin el hueco del menú lateral) y queda centrada en la ventana.
 - Reglas y orden en `docs/tasks/UI_KIT.md`.
 
 ## Papelera y sincronización (tanda 7)
