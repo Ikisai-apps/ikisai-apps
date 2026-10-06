@@ -1,6 +1,6 @@
 # Invoices · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 4). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
+Actualizado: 6 de octubre de 2026 (tanda 5). Equipo Invoices (agente de backend). Worktree `ikisai-apps-invoices`.
 
 ## Hecho
 
@@ -26,14 +26,18 @@ Actualizado: 6 de octubre de 2026 (tanda 4). Equipo Invoices (agente de backend)
 - PR #68 fusionada.
 - Tanda 4 (`invoices/tanda4`): prompt de extracción para ChatGPT copiable dentro de «Importar JSON» (`_domain/invoices/extraction-prompt.ts`, con el schema resumido y un ejemplo, porque quien lo pega no tiene el archivo del handoff); capturas a 390 px y 1440 px con `tests/invoices/shots.ts` (`npx tsx tests/invoices/shots.ts`, salida en `App/capturas-invoices-2026-10-06`) y ajustes: pestañas cortas en Compras, casillas sin estirar, hueco para el botón flotante, chip «Desde JSON», el aviso «se sincronizará cuando haya red» solo sin red.
 
+- PR #72 (tanda 4) fusionada.
+- Tanda 5 (`invoices/tanda5`): contrato e implementación de `POST imports/extract` (extracción automática V2; llama al helper `extractInvoice` de `_kit` cuando Core lo publique, mientras tanto `EXTRACTION_UNAVAILABLE 503`; documento validado contra el schema; pruebas con un extractor simulado), botones «Extraer» en la factura pendiente de datos y «Extraer pendientes» en Facturas que llevan el resultado a la vista previa de importación; medida de `loadMirror` con 500 facturas sintéticas (`tests/invoices/perf.ts`) y agrupación de las recargas del espejo.
+
 ## En curso
 
-- PR de la tanda 4 (`invoices/tanda4`).
+- PR de la tanda 5 (`invoices/tanda5`).
 
 ## Pendiente
 
 - Aceptación manual en Android: la hace el usuario con facturas reales del negocio; sus incidencias llegan por el buzón de Core.
 - Destinos de Reservas en cuanto Booking registre `booking.food_event_projection` para `invoices` (la Edge y el filtro «Retiro» de Compras ya están preparados).
+- Extracción automática: conectar el helper `extractInvoice` de `_kit` en `index.ts` cuando Core avise (la ruta, los botones y las pruebas ya están).
 - Fase 2: destinos de Booking (`core.allow_read('invoices', 'booking.food_event_projection', 'view')`), `imports/extract`.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
 

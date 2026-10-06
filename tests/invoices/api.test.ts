@@ -203,7 +203,11 @@ test('rutas: imports/preview valida, empareja proveedor, detecta duplicados y re
   const dup = await app.call('/api/v1/imports/preview', { body: { document: { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, supplier_tax_id: 'A28647451', invoice_number: 'a-1' } } } });
   assert.equal(dup.data.duplicate.invoice_id, invoice.id); assert.equal(dup.data.duplicate.kind, 'invoice');
   assert.equal((await app.call('/api/v1/imports/preview', { token: app.tokens.reader, body: { document: EXAMPLE } })).status, 403);
-  assert.equal((await app.call('/api/v1/imports/extract', { body: { file_id: uuid() } })).status, 501);
+  // imports/extract sin helper → 503 EXTRACTION_UNAVAILABLE (el cliente ofrece pegar el JSON); con ids inválidos → 422
+  const noHelper = await app.call('/api/v1/imports/extract', { body: { file_ids: [uuid()] } });
+  assert.equal(noHelper.status, 503); assert.equal(noHelper.data.error.code, 'EXTRACTION_UNAVAILABLE');
+  assert.equal((await app.call('/api/v1/imports/extract', { body: { file_ids: [] } })).status, 422);
+  assert.equal((await app.call('/api/v1/imports/extract', { token: app.tokens.reader, body: { file_ids: [uuid()] } })).status, 403);
   // call import_v1 con documento inválido o archivo sin verificar → antes de SQL
   const e = await rejected([call('invoices.import_v1', { document: { ...EXAMPLE, lines: [] }, document_sha256: 'a'.repeat(64), invoice_id: uuid(), ids: {}, supplier: { mode: 'existing', id: supplier } })], 'IMPORT_INVALID');
   assert.ok(e.details.errors.some((x: any) => x.path === '$.lines'));
@@ -269,4 +273,37 @@ test('zip: escritor en streaming produce entradas legibles y CRC correcto', asyn
   assert.equal(view.getUint32(descriptor, true), 0x08074b50);
   assert.equal(view.getUint32(descriptor + 4, true), 0xcbf43926);
   assert.equal(view.getUint32(descriptor + 8, true), 9);
+});
+
+test('imports/extract con helper: documento validado y hasheado; documento inválido → EXTRACTION_INVALID; archivo sin verificar → INVALID_FILE', async () => {
+  let received: any = null;
+  const extracting = await createTestApp({
+    app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], tasksFetch, extractInvoice: async (args) => {
+      received = { files: args.files.map((f) => ({ mime: f.mime, filename: f.filename })), promptStart: args.prompt.slice(0, 30), actor: args.ctx.user.id };
+      if (args.files[0]!.filename === 'malo.pdf') return { document: { schema_version: 'v2' }, warnings: ['texto borroso'] };
+      return { document: EXAMPLE, warnings: ['IVA deducido de la línea 1'], usage: { tokens: 1234 } };
+    } }),
+  });
+  try {
+    const bytes = new TextEncoder().encode('%PDF extraer');
+    const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const ticket = await extracting.call('/api/v1/uploads', { body: { filename: 'factura.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: sha } });
+    extracting.supabase.storage.set(ticket.data.path, bytes);
+    const pending = await extracting.call('/api/v1/imports/extract', { body: { file_ids: [ticket.data.id] } });
+    assert.equal(pending.status, 422); assert.equal(pending.data.error.code, 'INVALID_FILE');
+    await extracting.call(`/api/v1/uploads/${ticket.data.id}/verify`, { body: {} });
+    const ok = await extracting.call('/api/v1/imports/extract', { body: { file_ids: [ticket.data.id] } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.data));
+    assert.equal(ok.data.document.schema_version, 'ikisai.invoice.v1'); assert.match(ok.data.document_sha256, /^[0-9a-f]{64}$/);
+    assert.deepEqual(ok.data.warnings, ['IVA deducido de la línea 1']); assert.deepEqual(ok.data.usage, { tokens: 1234 });
+    assert.deepEqual(received.files, [{ mime: 'application/pdf', filename: 'factura.pdf' }]); assert.ok(received.promptStart.startsWith('Lee la factura')); assert.equal(received.actor, extracting.users.owner);
+    const bad = await extracting.call('/api/v1/uploads', { body: { filename: 'malo.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256: sha } });
+    extracting.supabase.storage.set(bad.data.path, bytes);
+    await extracting.call(`/api/v1/uploads/${bad.data.id}/verify`, { body: {} });
+    const invalid = await extracting.call('/api/v1/imports/extract', { body: { file_ids: [bad.data.id] } });
+    assert.equal(invalid.status, 422); assert.equal(invalid.data.error.code, 'EXTRACTION_INVALID'); assert.ok(invalid.data.error.details.errors.length);
+  } finally {
+    await extracting.close();
+  }
 });
