@@ -1,30 +1,8 @@
 /** Calendario (API §9.3): ocupación mensual de días completos y estado de la sincronización con Google Calendar. */
 import { createCalendar, el, replace, toast, type CalendarEvent } from '@ikisai/ui-kit';
 import { RESERVATIONS, canWrite, describeError, type ReservationRow } from '../app/client.ts';
+import { fetchCalendarStatus, readCalendarCache, type CalendarHealth as Health, type CalendarStatus } from '../app/calendarStatus.ts';
 import type { ViewMount } from './shell.ts';
-
-type Health = 'ok' | 'not_configured' | 'auth_error' | 'calendar_not_found' | 'calendar_not_shared';
-type SyncStatus = 'pending' | 'synced' | 'error' | 'deleted';
-
-interface CalendarItem {
-  reservationId: string;
-  syncStatus: SyncStatus;
-  lastSyncedAt: string | null;
-  lastError: string | null;
-  htmlLink: string | null;
-  pendingJob: boolean;
-  attempts: number;
-  nextAttemptAt: string | null;
-}
-
-interface CalendarStatus {
-  configured: boolean;
-  calendarId: string | null;
-  health: Health;
-  items: CalendarItem[];
-}
-
-const CACHE_KEY = 'booking.calendarStatus';
 
 /** Colores como en Google Calendar; en estudio y negociación se pintan atenuadas por CSS (`data-status`). */
 const COLORS: Record<string, string> = {
@@ -51,23 +29,6 @@ export function toCalendarEvent(row: ReservationRow): CalendarEvent | null {
   if (!color) return null;
   const pre = row.status === 'pre_reservada';
   return { id: row.id, title: pre ? `[PRE] ${row.title}` : row.title, start: row.start_date, end: row.end_date, color, status: row.status };
-}
-
-function readCache(): CalendarStatus | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    return raw ? (JSON.parse(raw) as CalendarStatus) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCache(status: CalendarStatus): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(status));
-  } catch {
-    /* sin almacenamiento: el panel funciona igual */
-  }
 }
 
 export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
@@ -126,16 +87,9 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
 
   async function loadStatus(): Promise<void> {
     titles = new Map(((await client.list(RESERVATIONS)) as ReservationRow[]).map((row) => [row.id, row.title]));
-    if (navigator.onLine) {
-      try {
-        const status = await client.api<CalendarStatus>('/calendar/status');
-        writeCache(status);
-        return paintStatus(status, false);
-      } catch {
-        /* sin respuesta: se enseña lo último que se supo */
-      }
-    }
-    const cached = readCache();
+    const fresh = await fetchCalendarStatus(client);
+    if (fresh) return paintStatus(fresh, false);
+    const cached = readCalendarCache();
     if (cached) paintStatus(cached, true);
     else replace(panelBody, el('p', { class: 'hint', id: 'calendarStale' }, 'El estado de Google Calendar se mostrará cuando haya conexión.'));
   }
