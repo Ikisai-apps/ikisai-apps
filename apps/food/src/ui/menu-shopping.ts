@@ -65,7 +65,7 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: item.revision, fields }]);
 
   function quantityInput(item: ItemRow, value: number | null, label: string, onValue: (value: number | null) => void, disabled: boolean): HTMLInputElement {
-    const input = el('input', { type: 'text', inputmode: 'decimal', class: 'qty', value: formatQuantity(value), 'aria-label': label, disabled,
+    const input = el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(value), 'aria-label': label, disabled,
       onchange: () => {
         const raw = input.value.trim();
         const parsed = raw === '' ? null : parseQuantity(raw);
@@ -89,7 +89,7 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     }, disabled);
     const bought = el('input', { type: 'checkbox', class: 'bigcheck', checked: item.status !== 'pendiente', disabled, 'aria-label': `${name} comprado`,
       onchange: () => void update(item, { status: bought.checked ? 'comprado' : 'pendiente' }) });
-    const status = el('select', { 'aria-label': `Estado de ${name}`, disabled, onchange: () => void update(item, { status: status.value }) },
+    const status = el('select', { class: 'compact', 'aria-label': `Estado de ${name}`, disabled, onchange: () => void update(item, { status: status.value }) },
       ...SHOPPING_ITEM_STATUSES.map((s) => el('option', { value: s, selected: item.status === s }, ITEM_STATUS_LABELS[s])));
     const chips = [
       item.manual ? el('span', { class: 'chip' }, 'A mano') : null,
