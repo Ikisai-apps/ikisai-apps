@@ -210,7 +210,7 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();
-  expect(await manifest.json()).toMatchObject({ name: 'Ikisai Invoices', short_name: 'Invoices', display: 'standalone' });
+  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Invoices', short_name: 'Invoices', display: 'standalone', start_url: '/' });
   const sw = await page.request.get(`${baseURL}/sw.js`);
   expect(sw.ok()).toBeTruthy();
   expect(await sw.text()).toContain('ikisai-invoices-shell-');
