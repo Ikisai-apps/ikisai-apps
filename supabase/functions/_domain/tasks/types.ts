@@ -17,7 +17,7 @@ export type Priority = 'normal' | 'high' | 'critical';
 export type ProjectStatus = 'active' | 'paused' | 'archived';
 export type FamilySystemKey = 'person' | 'trade' | 'phase' | 'building' | 'space';
 
-export interface TabRow extends BaseRow { name: string; color: string | null; position: number }
+export interface TabRow extends BaseRow { name: string; color: string | null; position: number; purchase_approver_id?: Uuid | null }
 export interface ProjectRow extends BaseRow {
   tab_id: Uuid; title: string; note: string; status: ProjectStatus; priority: Priority; due: string | null;
   owner_label_id: Uuid | null; color: string | null; budget: number | null; position: number; system: 'inbox' | null;
@@ -38,10 +38,32 @@ export interface AttachmentRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; task_id: Uuid | null; name: string; mime: string; size: number; sha256: string; file_id: Uuid; position: number;
 }
 
+// Compras no alimentarias (docs/tasks/API.md §18, migración 0305).
+export type SupplyCategory = 'cleaning' | 'pool' | 'maintenance' | 'textile' | 'other';
+export type PurchaseStatus = 'requested' | 'approved' | 'purchased' | 'received' | 'rejected';
+export type PlanStatus = 'draft' | 'shopping' | 'done';
+export type MovementKind = 'in' | 'out' | 'adjust';
+export interface SupplyItemRow extends BaseRow {
+  tab_id: Uuid; name: string; category: SupplyCategory; unit: string; location: string; min_quantity: number; reorder_quantity: number | null;
+  supplier_id: string | null; supplier_name: string | null; note: string; archived: boolean; position: number;
+}
+export interface PurchasePlanRow extends BaseRow { tab_id: Uuid; title: string; planned_for: string | null; status: PlanStatus; note: string }
+export interface PurchasePlanStopRow extends BaseRow { tab_id: Uuid; plan_id: Uuid; supplier_id: string | null; supplier_name: string; position: number; note: string }
+export interface PurchaseRequestRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid | null; task_id: Uuid | null; supply_item_id: Uuid | null; plan_stop_id: Uuid | null;
+  title: string; note: string; quantity: number | null; unit: string | null; estimated_amount: number | null; priority: Priority;
+  status: PurchaseStatus; needs_invoice: boolean; repeat_days: number | null; due: string | null;
+  supplier_id: string | null; supplier_name: string | null; approved_at: string | null; purchased_at: string | null; received_at: string | null; position: number;
+}
+export interface SupplyMovementRow extends BaseRow {
+  tab_id: Uuid; supply_item_id: Uuid; kind: MovementKind; delta: number; purchase_request_id: Uuid | null; note: string;
+}
+
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
+  'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 
@@ -49,6 +71,8 @@ export interface RowTypes {
   'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.tasks': TaskRow;
   'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow; 'tasks.task_dependencies': TaskDependencyRow;
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow;
+  'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
+  'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
 }
 
 /** Filas de todas las tablas, tal y como salen de `snapshot` o del espejo local (incluidas las borradas). */
@@ -60,7 +84,7 @@ export function emptyDataset(): Dataset {
 
 /** `writable_columns` de cada tabla; deben coincidir con `core.register_table` de la migración. */
 export const WRITABLE: Record<TableName, readonly string[]> = {
-  'tasks.tabs': ['name', 'color', 'position'],
+  'tasks.tabs': ['name', 'color', 'position', 'purchase_approver_id'],
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system'],
@@ -70,6 +94,11 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
+  'tasks.supply_items': ['tab_id', 'name', 'category', 'unit', 'location', 'min_quantity', 'reorder_quantity', 'supplier_id', 'supplier_name', 'note', 'archived', 'position'],
+  'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
+  'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
+  'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'supply_item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
+  'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -85,6 +114,12 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
+  'tasks.supply_items': ['tab_id'],
+  'tasks.purchase_plans': ['tab_id'],
+  'tasks.purchase_plan_stops': ['tab_id', 'plan_id'],
+  'tasks.purchase_requests': ['tab_id'],
+  // Un movimiento no se edita salvo su nota: corregir es otro movimiento o enviarlo a la papelera.
+  'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */
