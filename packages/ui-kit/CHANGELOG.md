@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.7.1 · 6 de octubre de 2026
+
+- `renderLogin`: `ids` configurables (`email`, `password`, `submit`, `form`, `error`) y `title`, para que una app con pruebas sobre sus ids actuales (Tasks: `loginUsername`, `loginPassword`, `accountLogin`) adopte el login del kit sin tocarlas. La función de desmontaje restaura el `document.title` anterior.
+- Calendario: `abbr` en `CalendarEvent` muestra un título abreviado dentro de los tramos del mes en móvil (petición de Booking); sin `abbr`, el tramo sigue siendo una barra.
+
 ## 0.7.0 · 6 de octubre de 2026
 
 - `createLabelPicker`: selector de etiquetas por familias (Tasks; Food para dietas y alérgenos): chips conmutables coloreados por familia, resumen con quitar, familias plegables con contador, padres e hijas con sangría, búsqueda sin acentos (automática con más de 12 etiquetas), familias de una sola etiqueta (`single`), etiquetas preferidas primero, heredadas apagadas y alta en línea («Crear «x»») con `onCreate`. `labelChips` para resúmenes y filas.
