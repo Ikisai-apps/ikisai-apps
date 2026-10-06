@@ -250,3 +250,11 @@ test('compras: líneas con asignado y sin asignar, filtros y agrupaciones', () =
   const search = purchaseItems({ invoices: [inv1], lines: [l1, l2], suppliers: [makro], allocations: [] }, { query: 'artículo 2' });
   assert.equal(search.items.length, 1); assert.equal(search.items[0]!.line.id, l2.id);
 });
+
+test('fecha al importar sobre una factura ya creada: discrepancia y preselección solo si la escrita era la de hoy por defecto', async () => {
+  const { importDateChoice } = await import('../../packages/domain-invoices/src/index.ts');
+  assert.deepEqual(importDateChoice('2026-10-07', '2026-10-07T09:00:00Z', '2026-10-07'), { value: '2026-10-07', discrepancy: false, typedWasDefault: false });
+  assert.deepEqual(importDateChoice('2026-10-07', '2026-10-07T09:00:00Z', '2026-10-03'), { value: '2026-10-03', discrepancy: true, typedWasDefault: true });
+  assert.deepEqual(importDateChoice('2026-10-01', '2026-10-07T09:00:00Z', '2026-10-03'), { value: '2026-10-01', discrepancy: true, typedWasDefault: false });
+  assert.deepEqual(importDateChoice(null, null, '2026-10-03'), { value: '2026-10-03', discrepancy: false, typedWasDefault: false });
+});

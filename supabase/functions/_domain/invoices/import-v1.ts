@@ -152,3 +152,16 @@ export function buildImportArgs(options: BuildImportArgsOptions): ImportArgs {
     files: options.files ?? [],
   };
 }
+
+/**
+ * Fecha propuesta al importar sobre una factura ya creada (decisión de Core, ronda 35). Si la escrita al subirla no
+ * coincide con la del documento, hay discrepancia. Se preselecciona la del documento solo si la escrita era la de hoy por
+ * defecto (el día en que se creó la factura: el usuario no la tocó); si la cambió a mano, manda la suya.
+ */
+export function importDateChoice(typedDate: string | null | undefined, /** Día de creación `AAAA-MM-DD` en hora local (o ISO completo). */ createdAt: string | null | undefined, documentDate: string): { value: string; discrepancy: boolean; typedWasDefault: boolean } {
+  if (!typedDate) return { value: documentDate, discrepancy: false, typedWasDefault: false };
+  if (typedDate === documentDate) return { value: typedDate, discrepancy: false, typedWasDefault: false };
+  const created = createdAt ? createdAt.slice(0, 10) : null;
+  const typedWasDefault = created !== null && typedDate === created;
+  return { value: typedWasDefault ? documentDate : typedDate, discrepancy: true, typedWasDefault };
+}
