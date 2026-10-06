@@ -4,7 +4,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DomainError, TASK_TOOL_SPECS, buildTaskTool, validateOperations, type Dataset, type TaskToolName } from '../../packages/domain-tasks/src/index.ts';
+import { DomainError, TASK_TOOL_SPECS, buildTaskTool, emptyDataset as emptyData, validateOperations, type Dataset, type TaskToolName } from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, type TasksDb } from './db.ts';
 
 let db: TasksDb;
@@ -43,7 +43,7 @@ const task = async (id: string) => (await db.data())['tasks.tasks'].find((t) => 
 const created = (ops: { op: string; table?: string; id?: string }[]) => ops.find((o) => o.op === 'insert' && o.table === 'tasks.tasks')!.id!;
 
 test('herramientas: especificaciones completas y únicas, con esquema de objeto y pistas MCP', () => {
-  assert.deepEqual(TASK_TOOL_SPECS.map((s) => s.name).sort(), ['tasks_complete', 'tasks_create_task', 'tasks_delete', 'tasks_move', 'tasks_set_dependencies', 'tasks_set_labels', 'tasks_update_task']);
+  assert.deepEqual(TASK_TOOL_SPECS.map((s) => s.name).sort(), ['tasks_complete', 'tasks_create_task', 'tasks_delete', 'tasks_move', 'tasks_prepare_purchase_plan', 'tasks_request_purchase', 'tasks_set_dependencies', 'tasks_set_labels', 'tasks_update_task']);
   for (const spec of TASK_TOOL_SPECS) {
     assert.equal((spec.inputSchema as any).type, 'object');
     assert.equal((spec.inputSchema as any).additionalProperties, false);
@@ -112,6 +112,19 @@ test('herramientas: entradas inválidas o fuera de alcance se rechazan antes de 
   await fails('tasks_set_dependencies', { task_id: t, depends_on_ids: [t] }, 'INVALID_INPUT');
   await fails('tasks_set_labels', { task_id: t }, 'INVALID_INPUT');
   await fails('nada' as TaskToolName, {}, 'NOT_FOUND');
+  // Compras: sin área ni suministro, con campos que no son, o pidiendo para el área entera con un acceso por proyectos.
+  await fails('tasks_request_purchase', { title: 'Lejía' }, 'INVALID_INPUT');
+  await fails('tasks_request_purchase', { tab_id: tab }, 'INVALID_INPUT');
+  await fails('tasks_request_purchase', { tab_id: tab, title: 'Lejía', quantity: 0 }, 'INVALID_INPUT');
+  await fails('tasks_request_purchase', { tab_id: tab, title: 'Lejía', status: 'approved' }, 'INVALID_INPUT');
+  await fails('tasks_request_purchase', { supply_item_id: newId() }, 'NOT_FOUND');
+  await fails('tasks_request_purchase', { project_id: other, tab_id: otherTab, title: 'x' }, 'INVALID_INPUT');
+  await fails('tasks_prepare_purchase_plan', { tab_id: tab, planned_for: 'lunes' }, 'INVALID_INPUT');
+  const guest = { tabs: [], projects: { [tab]: [inbox] } };
+  assert.throws(() => buildTaskTool('tasks_request_purchase', { ...emptyData(), 'tasks.tabs': [{ id: tab, deleted_at: null }] } as unknown as Dataset, { tab_id: tab, title: 'x' }, undefined, { scopes: guest }), /área entera/);
+  const forProject = await run('tasks_request_purchase', { project_id: inbox, title: 'Cinta de carrocero', quantity: 3, unit: 'ud' });
+  assert.equal(forProject[0]!.fields!.status, undefined, 'nace pedida');
+  assert.equal(forProject[0]!.fields!.tab_id, tab);
   // Lo que no está en el conjunto visible no existe; tampoco lo que está en la papelera.
   const hidden = await db.data();
   hidden['tasks.tasks'] = hidden['tasks.tasks'].filter((x) => x.id !== t);

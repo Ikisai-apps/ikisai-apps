@@ -5,7 +5,7 @@
  * propuesta con ese lote exacto y se la devuelve al agente.
  */
 import { fail, type McpTool, type McpToolKit, type RequestContext } from '../_kit/mod.ts';
-import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, emptyDataset, type Dataset } from '../_domain/tasks/mod.ts';
+import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, emptyDataset, fullTab, lowStock, type Dataset } from '../_domain/tasks/mod.ts';
 
 const PAGE = 2000;
 const REQUEST_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
@@ -43,8 +43,29 @@ async function idsFor(requestId: string, count = 256): Promise<() => string> {
 const APPROVAL = ' Si el cambio necesita aprobación (borrar, archivar o 10 elementos o más), la respuesta trae `needsApproval: true` y la propuesta ya preparada: cuando una persona la apruebe, envíala con `tasks_commit` usando `requestId`, `operations` y `confirmationId: proposal.id` de esa propuesta.';
 const REQUEST_ID_SCHEMA = { type: 'string', pattern: REQUEST_ID.source, description: 'Opcional. Repetir la llamada con el mismo requestId no duplica el cambio.' };
 
+/** «Qué queda poco»: suministros bajo mínimo de las áreas enteras visibles, con su solicitud abierta si ya se pidió. */
+const LOW_STOCK_TOOL: McpTool = {
+  name: 'tasks_low_stock',
+  description: 'Suministros por debajo de su mínimo (stock = suma de entradas, gastos y recuentos), con la solicitud de compra abierta si ya se pidió. Para pedir uno, usa tasks_request_purchase con su supply_item_id.',
+  inputSchema: { type: 'object', additionalProperties: false, properties: { tab_id: { type: 'string', format: 'uuid' } } },
+  annotations: { readOnlyHint: true },
+  async handler(args: Record<string, unknown>, ctx: RequestContext, kit: McpToolKit) {
+    const tabId = args?.tab_id;
+    if (tabId !== undefined && (typeof tabId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tabId))) fail(422, 'INVALID_INPUT', 'tab_id debe ser un uuid.', { field: 'tab_id' });
+    const data = await visibleDataset(kit);
+    const items = lowStock(data, (tabId as string | undefined)?.toLowerCase()).filter(({ item }) => fullTab(ctx.membership.scopes, item.tab_id));
+    return {
+      items: items.map(({ item, stock, openRequest }) => ({
+        supplyItemId: item.id, tabId: item.tab_id, name: item.name, category: item.category, unit: item.unit, location: item.location,
+        stock, minQuantity: Number(item.min_quantity), reorderQuantity: item.reorder_quantity == null ? null : Number(item.reorder_quantity),
+        supplierName: item.supplier_name, openRequest: openRequest ? { id: openRequest.id, status: openRequest.status, quantity: openRequest.quantity } : null,
+      })),
+    };
+  },
+};
+
 export function tasksMcpTools(): McpTool[] {
-  return TASK_TOOL_SPECS.map((spec) => ({
+  return [LOW_STOCK_TOOL, ...TASK_TOOL_SPECS.map((spec): McpTool => ({
     name: spec.name,
     description: spec.description + APPROVAL,
     inputSchema: { ...spec.inputSchema, properties: { ...(spec.inputSchema.properties as Record<string, unknown>), requestId: REQUEST_ID_SCHEMA } },
@@ -56,7 +77,7 @@ export function tasksMcpTools(): McpTool[] {
       const requestId = (given as string | undefined) ?? `mcp-${spec.name}-${crypto.randomUUID()}`;
       let operations;
       try {
-        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId));
+        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId), { scopes: ctx.membership.scopes });
       } catch (error) {
         if (error instanceof DomainError) fail(error.status, error.code, error.message, error.details);
         throw error;
@@ -77,5 +98,5 @@ export function tasksMcpTools(): McpTool[] {
         throw error;
       }
     },
-  }));
+  }))];
 }

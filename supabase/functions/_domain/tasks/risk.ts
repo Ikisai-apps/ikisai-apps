@@ -4,6 +4,8 @@
  *
  * - **Archivar** un proyecto, una familia o una etiqueta exige aprobación aunque sea una sola fila: saca de la vista
  *   todo lo que cuelga de ella.
+ * - **Preparar un plan de compras** exige aprobación: es la lista con la que alguien saldrá a comprar. Pedir una compra,
+ *   no: la solicitud nace «pedida» y la aprueba el responsable de compras del área.
  * - **Alcance real**: un lote corto puede afectar a mucho más de lo que nombra (archivar un proyecto con 40 tareas,
  *   borrar un área entera). `affectedEstimate` cuenta las filas vivas que quedan afectadas, para que el umbral del
  *   núcleo se aplique sobre el alcance y no sobre el número de operaciones.
@@ -54,6 +56,9 @@ export function tasksAgentRisk(operations: readonly Operation[], data?: Rows): T
       required = true;
       reasons.push(`archive:family:${op.id}`);
       for (const label of labels) if (label.family_id === op.id) affected.add(`tasks.labels|${label.id}`);
+    } else if (op.op === 'insert' && op.table === 'tasks.purchase_plans') {
+      required = true;
+      reasons.push(`prepare:purchase_plan:${op.id}`);
     } else if (op.op === 'update' && op.table === 'tasks.labels' && isTrue(op.fields?.archived)) {
       required = true;
       reasons.push(`archive:label:${op.id}`);
