@@ -609,6 +609,9 @@ export class SyncClientImpl implements SyncClient {
       }
     }
     await this.setSession(null);
+    // Un ciclo en vuelo (pull o bootstrap) podría escribir el espejo después del borrado: se espera a que termine.
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.running) await this.running.catch(() => undefined);
     const clear = this.options.clearOnLogout ?? false;
     if (clear === true) await this.clearLocalData();
     else if (Array.isArray(clear) && clear.length > 0) await this.clearTables(clear);
