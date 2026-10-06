@@ -7,6 +7,9 @@ export const TABLES = {
   guests: 'booking.guests',
   restrictions: 'booking.dietary_restrictions',
   checklist: 'booking.checklist_items',
+  spaces: 'booking.spaces',
+  beds: 'booking.beds',
+  roomAssignments: 'booking.room_assignments',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
@@ -49,6 +52,11 @@ export const RESTRICTION_TYPES_WITH_SUBJECT: readonly string[] = ['alergia', 'in
 
 export const CHECKLIST_TYPES = ['preparacion_general', 'alojamiento', 'cocina_comedor', 'salas', 'salida_rotacion'] as const;
 export const CHECKLIST_STATUSES = ['pendiente', 'hecho', 'no_aplica'] as const;
+
+export const SPACE_KINDS = ['habitacion', 'sala', 'zona_exterior', 'otro'] as const;
+export const BED_KINDS = ['individual', 'doble', 'litera', 'sofa_cama', 'supletoria'] as const;
+export type SpaceKind = (typeof SPACE_KINDS)[number];
+export type BedKind = (typeof BED_KINDS)[number];
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type RestrictionType = (typeof RESTRICTION_TYPES)[number];
