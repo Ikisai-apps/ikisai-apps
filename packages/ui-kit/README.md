@@ -76,6 +76,14 @@ Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación ac
 
 Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
 
+## Atributo `hidden`
+
+El CSS base incluye `[hidden]{display:none!important}`: cualquier elemento con `hidden` desaparece aunque su clase fije `display`.
+
+## Controles sueltos
+
+`select`, `textarea` e `input` de texto, búsqueda, número, fecha u hora llevan la piel de los campos también fuera de `.field` (filtros, filas); `.compact` los deja en 36 px. Reglas con `:where()`, así cualquier regla de la app gana.
+
 ## API
 
 ```ts
@@ -101,6 +109,7 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `createLabelPicker({ families, labels, selected, onChange, preferred, search, collapsed, onCreate, inherited, disabled })` → `{ element, get(), set(), setCatalog(), destroy() }`. Familias `{ id, name, color, archived, single }` y etiquetas `{ id, name, familyId, parentId, archived }`; chips coloreados por familia, resumen con quitar, búsqueda sin acentos, familias plegables, alta en línea con `onCreate(familyId, name)`. `labelChips(ids, labels, families, { onRemove, inherited })` para filas y resúmenes. Food puede pasar sus vocabularios fijos como dos familias («Dieta», «Alérgenos»).
 - `renderProjectCard({ id, title, meta, progress, color, pinned, urgency, chips, budget, system, pending, onOpen, onPin, actions })` → `article.card.project` con anillo (`ringSvg(pct, size)`), pin, estrella, chips, presupuesto y color propio (`--item-color`, tinta calculada).
 - `createSortableList({ items, key, render, name, onReorder, label, buttons, disabled })` → `{ element, setItems, getItems, setDisabled, destroy }`. Arrastre por el asa (en táctil, pulsación mantenida), botones «Subir»/«Bajar» y teclado (flechas, Inicio, Fin sobre el asa); `onReorder(items, { item, from, to })` recibe el orden nuevo y la app guarda `position`: `positionBetween(prev?.position, next?.position)` da un valor entre vecinos y `renumber(n)` renumera toda la lista cuando los intermedios se agotan.
+  Se puede anidar (una lista dentro de la fila de otra): cada una solo mueve sus filas directas. Si la app repinta desde el espejo tras `onReorder`, pase las filas nuevas con `setItems` en vez de crear otra lista.
 - Página imprimible: `renderPrintPage({ brand: { appName, markIcon, line }, title, subtitle, meta, draft, intro, sections: [{ title, subtitle, groups: [{ title, subtitle, items: [{ title, text, image, chips: [{ text, kind }], meta }] }], breakBefore }], notes, footer, columns })` → `<article class="print-page">`; `createPrintView(spec, { onBack, actions, printLabel })` → `{ element, page, update, print }` con la barra «Volver · Imprimir / Guardar PDF» (que no se imprime); `printElement(root)` espera a las imágenes y llama a `window.print()`. La app la monta en su `main` (ruta propia); la impresión oculta cabecera, navegación, banners y botones, usa `@page A4` con 14 mm y no parte ni servicios ni platos. Con `draft` lleva la marca «BORRADOR».
 - `openImportSheet({ title, parse(text), recalculate(document), fields(document, recalc), notices(document, recalc), onImport(document, recalc), importLabel, initialText, toleranceEur })` → `{ sheet, current(), setText() }`. `parse` devuelve `{ ok, document }` o `{ ok: false, errors: [{ path, reason }] }` (por ejemplo `parseImportDocument` del dominio); `recalculate` devuelve `calculated_*`, `totals_delta`, `within_tolerance` y `warnings` (por ejemplo `recalculate` del dominio). Piezas sueltas: `createJsonSource`, `renderImportHeader`, `renderImportLines`, `renderImportTaxes`, `renderImportReconciliation`, `renderSchemaErrors`, `formatMoney(valor, moneda)`.
 - `compressImage(file, { maxSide: 1600, thumbSide: 480, quality, thumbQuality, mime })` → `{ full, thumb, width, height, thumbWidth, thumbHeight, originalWidth, originalHeight, mime, filename }`. WebP de calidad media (JPEG si el navegador no codifica WebP), orientación EXIF respetada, nunca amplía. Lo que se sube a `client.stageBlob` es `full` (y `thumb` si la app guarda miniaturas); el original no se conserva (contrato §11.3). `isImageFile(file)`, `supportsWebp()`, `compressedFilename(nombre, mime)`.

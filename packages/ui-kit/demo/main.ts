@@ -80,7 +80,14 @@ const tokens = section('tokens', 'Tokens', 'Superficies, tinta, acento derivado 
 );
 
 // --- Botones, campos, chips ---------------------------------------------------
-const controls = section('controls', 'Botones, campos y chips', 'Objetivo táctil de 46 px; variantes pequeñas de 36 px.',
+const controls = section('controls', 'Botones, campos y chips', 'Objetivo táctil de 46 px; variantes pequeñas de 36 px. Los select e input sueltos (fuera de .field) llevan la misma piel; .compact los deja en 36 px para filtros y filas.',
+  el('div', { class: 'demo-row', id: 'looseControls' },
+    el('select', { id: 'looseSelect', 'aria-label': 'Estado' }, el('option', null, 'Todos los estados'), el('option', null, 'Borrador'), el('option', null, 'Validado')),
+    el('input', { type: 'search', placeholder: 'Buscar…', 'aria-label': 'Buscar' }),
+    el('select', { class: 'compact', 'aria-label': 'Servicio' }, el('option', null, 'Comida'), el('option', null, 'Cena')),
+    el('input', { type: 'time', class: 'compact', id: 'looseTime', value: '13:30', 'aria-label': 'Hora' }),
+    el('input', { type: 'number', class: 'compact', value: '2', min: '0', 'aria-label': 'Raciones' }),
+  ),
   el('div', { class: 'demo-row' },
     el('button', { class: 'primary', type: 'button' }, 'Primario'),
     el('button', { class: 'ghost', type: 'button' }, 'Secundario'),
@@ -468,9 +475,27 @@ const sortable = createSortableList<Dish>({
     toast(`${move.item.name}: de ${move.from + 1} a ${move.to + 1} (position ${move.item.position})`);
   },
 });
-const sortSection = section('sortable', 'Lista reordenable', 'Arrastra por el asa (en táctil, mantén pulsado), usa los botones o el teclado sobre el asa: flechas, Inicio y Fin. La app guarda position con positionBetween.',
+// Anidada: servicios con sus platos dentro (Food). Cada lista solo mueve sus filas directas.
+interface Service { id: string; name: string; dishes: Dish[] }
+const services: Service[] = [
+  { id: 's1', name: 'Comida', dishes: [dishes[0]!, dishes[1]!] },
+  { id: 's2', name: 'Cena', dishes: [dishes[2]!, dishes[3]!] },
+];
+const nestOut = el('code', { id: 'nestOut' });
+const paintNest = () => { nestOut.textContent = services.map((s) => `${s.name}: ${s.dishes.map((d) => d.name.split(' ')[0]).join(', ')}`).join(' | '); };
+paintNest();
+const serviceList = createSortableList<Service>({
+  items: services, key: (s) => s.id, name: (s) => s.name, label: 'Servicios del sábado', id: 'serviceList', buttons: false,
+  render: (s) => el('div', null,
+    el('div', { class: 'row-title' }, el('span', { class: 'name' }, s.name)),
+    createSortableList<Dish>({ items: s.dishes, key: (d) => d.id, name: (d) => d.name, label: `Platos de ${s.name}`, id: `inner-${s.id}`, buttons: false, render: (d) => el('span', { class: 'name' }, d.name), onReorder: (items) => { s.dishes = items; paintNest(); } }).element),
+  onReorder: (items) => { services.splice(0, services.length, ...items); paintNest(); },
+});
+const sortSection = section('sortable', 'Lista reordenable', 'Arrastra por el asa (en táctil, mantén pulsado), usa los botones o el teclado sobre el asa: flechas, Inicio y Fin. La app guarda position con positionBetween. Se puede anidar: cada lista solo mueve sus filas directas.',
   el('div', { id: 'sortHost' }, sortable.element),
   el('p', { class: 'small muted' }, 'Orden: ', sortOut),
+  el('div', { id: 'nestHost' }, serviceList.element),
+  el('p', { class: 'small muted' }, 'Servicios: ', nestOut),
 );
 
 
