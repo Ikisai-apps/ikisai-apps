@@ -353,10 +353,16 @@ test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({
   });
 
   await test.step('[37] cerrar sesión borra los datos locales y vuelve a pedir la cuenta', async () => {
+    // Mientras se vacía el espejo no se repinta la app (sin área activa fallaba y lo dejaba en la consola).
+    const logged: string[] = [];
+    const onConsole = (message: { type(): string; text(): string }) => { if (message.type() === 'error') logged.push(message.text()); };
+    a.on('console', onConsole);
     await a.evaluate(() => (window as any).sessionsSheet());
     await a.locator('#logoutAccount').click();
     await expect(a.locator('#accountLoginForm')).toBeVisible();
     await a.waitForFunction(() => Sync.mode === 'unauthorized' && Sync.actor === null && state.tabs.length === 0 && Sync.token === '');
+    a.off('console', onConsole);
+    expect(logged.filter((text) => /TypeError|Cannot read/.test(text)), 'errores en la consola al cerrar sesión').toEqual([]);
     expect(await a.evaluate(async () => {
       const db: IDBDatabase = await new Promise((resolve, reject) => { const r = indexedDB.open('ikisai-tasks-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
       const count: number = await new Promise((resolve) => { const r = db.transaction('tasks.tasks').objectStore('tasks.tasks').count(); r.onsuccess = () => resolve(r.result); });

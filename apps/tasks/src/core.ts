@@ -30,6 +30,9 @@ export class TasksCore {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
   private started = false;
+  /** Ciclos de sincronización empezados (cada paso a `syncing`): dice si `sync()` se unió a uno que ya estaba en marcha. */
+  private cycles = 0;
+  private syncing = false;
   private hidden: Record<string, number> | undefined;
 
   constructor(private readonly options: CoreOptions = {}) {
@@ -60,7 +63,12 @@ export class TasksCore {
     if (!this.started) {
       this.started = true;
       for (const table of TABLES) this.client.onTable(table as TableName, () => this.scheduleRefresh());
-      this.client.onStatus(() => this.emit('status'));
+      this.client.onStatus((status) => {
+        const syncing = status.network === 'syncing';
+        if (syncing && !this.syncing) this.cycles += 1;
+        this.syncing = syncing;
+        this.emit('status');
+      });
     }
     const boot = this.options.readOnly ? this.client.bootstrap() : await this.client.start();
     await this.reload();
@@ -161,12 +169,14 @@ export class TasksCore {
 
   /**
    * Sincroniza ahora. Si ya había un ciclo en marcha, `client.sync()` se limita a esperarlo y ese ciclo pudo leer los
-   * cambios antes de lo que el llamante quiere ver: en ese caso se lanza otro al terminar.
+   * cambios antes de lo que el llamante quiere ver: en ese caso se lanza otro al terminar. «En marcha» incluye el final
+   * de un ciclo que ya anunció `online` pero aún no ha devuelto: por eso se cuenta si empezó alguno tras la llamada.
    */
   async sync(): Promise<void> {
-    const joined = this.client.status().network === 'syncing';
+    const joined = this.syncing || this.client.status().network === 'syncing';
+    const before = this.cycles;
     await this.client.sync();
-    if (joined) await this.client.sync();
+    if (joined || this.cycles === before) await this.client.sync();
   }
   conflicts(): Promise<PendingConflict[]> { return this.client.conflicts(); }
   resolveConflict(requestId: string, choice: 'mine' | 'theirs'): Promise<void> { return this.client.resolveConflict(requestId, { choice }); }

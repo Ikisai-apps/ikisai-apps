@@ -11,7 +11,8 @@ const live = <T extends { deleted_at: string | null }>(rows: readonly T[]): T[] 
 const insert = (table: string, id: Uuid, fields: Record<string, unknown>): Operation => ({ op: 'insert', table, id, fields });
 const update = (table: string, row: { id: Uuid; revision: number }, fields: Record<string, unknown>): Operation => ({ op: 'update', table, id: row.id, expectedRevision: row.revision, fields });
 const remove = (table: string, row: { id: Uuid; revision: number }): Operation => ({ op: 'delete', table, id: row.id, expectedRevision: row.revision });
-const restore = (table: string, row: { id: Uuid; revision: number }): Operation => ({ op: 'restore', table, id: row.id, expectedRevision: row.revision });
+const restore = (table: string, row: { id: Uuid; revision: number }, fields?: Record<string, unknown>): Operation =>
+  ({ op: 'restore', table, id: row.id, expectedRevision: row.revision, ...(fields && Object.keys(fields).length ? { fields } : {}) });
 
 function must<T>(value: T | undefined, what: string): T {
   if (value === undefined) throw new Error(`No existe ${what}`);
@@ -114,7 +115,11 @@ export function deleteTaskOps(data: Dataset, taskId: Uuid): Operation[] {
   return [task, ...liveChildren(data, taskId)].map((t) => remove('tasks.tasks', t));
 }
 
-/** Restaurar una tarea: todo su lote de borrado (mismo `deleted_at` en su proyecto) y, si es hija, su padre. */
+/**
+ * Restaurar una tarea: todo su lote de borrado (mismo `deleted_at` en su proyecto) y, si es hija, su padre.
+ * Si el padre cambió de proyecto mientras la hija estaba en la papelera, la hija vuelve con él: el `restore` lleva el
+ * `project_id` nuevo y se actualizan sus filas vivas con el proyecto desnormalizado.
+ */
 export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
   const tasks = data['tasks.tasks'];
   const task = must(tasks.find((t) => t.id === taskId), 'la tarea');
@@ -123,7 +128,16 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
   for (const t of tasks) if (t.project_id === task.project_id && t.deleted_at === task.deleted_at) batch.set(t.id, t);
   const parent = task.parent_id ? tasks.find((t) => t.id === task.parent_id) : undefined;
   if (parent?.deleted_at) batch.set(parent.id, parent);
-  return [...batch.values()].map((t) => restore('tasks.tasks', t));
+  const ops: Operation[] = [];
+  for (const t of batch.values()) {
+    const above = t.parent_id ? tasks.find((x) => x.id === t.parent_id) : undefined;
+    if (!above || above.project_id === t.project_id) { ops.push(restore('tasks.tasks', t)); continue; }
+    ops.push(restore('tasks.tasks', t, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_labels'])) if (row.task_id === t.id) ops.push(update('tasks.task_labels', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_dependencies'])) if (row.task_id === t.id) ops.push(update('tasks.task_dependencies', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
+  }
+  return ops;
 }
 
 /** Archivar o reactivar una familia arrastra a sus etiquetas, recordando su estado previo. */
@@ -199,7 +213,8 @@ export function applyOperations(data: Dataset, operations: readonly Operation[],
     } else if (at >= 0) {
       const row = rows[at]!;
       rows[at] = op.op === 'update' ? { ...row, ...op.fields, updated_at: now }
-        : { ...row, deleted_at: op.op === 'delete' ? now : null, updated_at: now };
+        : op.op === 'delete' ? { ...row, deleted_at: now, updated_at: now }
+        : { ...row, ...(op.fields ?? {}), deleted_at: null, updated_at: now };
     }
   }
   return next;

@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 6). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, a la espera de Core.**
+Actualizado: 6 de octubre de 2026 (tanda 7). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base. Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
 
 ## Hecho
 
@@ -44,6 +44,17 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - Pantalla «Cuentas de personas» sobre `members` y `members/invite`.
 - En el menú solo quedan ocultos accesos por clave, propuestas de agentes y registro de accesos (fase de agentes).
 
+## Adopción del `ui-kit`
+
+- **Entrada** (PR #75, agente de UI): `loginSheet()` pinta `IkisaiKit.renderLogin` a pantalla completa con los ids de siempre y el error en línea (`#loginError`). El kit llega como `/kit.js` y `/kit.css` (`src/kit.ts`, segunda pasada de `vite build`), con su CSS acotado a `.ikisai-kit` mientras conviva con el heredado.
+- Reglas y orden en `docs/tasks/UI_KIT.md`.
+
+## Papelera y sincronización (tanda 7)
+
+- **`restore` con `fields`** (C22): restaurar y corregir van en una sola operación. `restoreTaskOps` devuelve a la hija con su padre si este cambió de proyecto; la interfaz heredada, que la muestra en su proyecto antiguo, la restaura como tarea suelta. Antes daba `INVALID_PARENT`.
+- **Cierre de sesión:** la app ya no se repinta mientras se vacía el espejo (dejaba un `TypeError` en la consola).
+- **`syncNow()`** garantiza un ciclo empezado después de la llamada, también si se unió al final de uno en curso.
+
 ## Producción
 
 - `tasks.ikisai.com` sirve la app nueva; `/version.json` y `/api/v1/health` coinciden en la versión. Comprobado sin iniciar sesión (solo lectura): carga en móvil y escritorio sin errores de JavaScript ni recursos fallidos, pide la cuenta, registra el service worker y no desborda.
@@ -51,10 +62,9 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 
 ## Siguiente tanda
 
-1. Adopción del `ui-kit` módulo a módulo, empezando por la entrada y el shell, sin romper los escenarios.
-2. `restore` con `fields` para la hija en papelera cuyo padre cambió de proyecto, cuando el kit y `sync-client` lo acepten (C22).
-3. Cuando Core implemente los agentes en el núcleo: hooks `agentRisk` y `describeChange`, herramientas MCP de dominio, volver a mostrar accesos por clave, propuestas y registro de accesos, y portar el escenario 29.
+1. Adopción del `ui-kit` (la hace el agente de UI; Tasks revisa y fusiona): tarjeta de proyecto, después la cáscara en dos pasos. Ver `docs/tasks/UI_KIT.md`.
+2. Cuando Core implemente los agentes en el núcleo: hooks `agentRisk` y `describeChange`, herramientas MCP de dominio, volver a mostrar accesos por clave, propuestas y registro de accesos, y portar el escenario 29.
 
 ## Bloqueos
 
-- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20, C22, C23.
+- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20.

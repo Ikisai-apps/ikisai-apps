@@ -8,19 +8,17 @@ Fecha: 6 de octubre de 2026. Para el agente de UI, que hace las PR de adopción 
 - Lo único compilado es `src/core.ts` → `dist/sync-core.js` (IIFE, `window.IkisaiTasks`), el adaptador sobre `@ikisai/sync-client`.
 - La dirección visual «Taller» ya está aplicada con `taller.css` y `taller-ui.js`, y las fuentes están en `public/fonts/`. Adoptar el kit es **sustituir implementaciones propias por las del kit**, no cambiar el aspecto.
 
-## 2. Puente recomendado
+## 2. Puente (como quedó en la PR #75)
 
-Vite en modo biblioteca IIFE solo admite una entrada, así que el kit entra por el mismo paquete:
-
-- `src/core.ts` reexporta lo que se adopte (`export * as ui from '@ikisai/ui-kit'`, o solo las funciones usadas para no engordar `sync-core.js`): los scripts clásicos lo llaman como `IkisaiTasks.ui.renderLogin(…)`. Alias en `vite.config.ts` y `tsconfig.json` como indica el README del kit.
-- Los estilos del kit, como archivo estático enlazado desde `index.html` **antes** de `taller.css`, para que lo propio de Tasks siga ganando mientras dure la convivencia. `base.css` da estilo a elementos sin clase: comprobar que no cambia nada fuera del módulo adoptado antes de incluirlo entero; si lo hace, empezar por `tokens.css` y las reglas del componente.
-- **Todo archivo estático nuevo va también a la lista `SHELL` de `public/sw.js`**; si falta, la app no abre sin red. El nombre de la caché lo renombra el despliegue con el hash; no hace falta tocarlo.
+- `src/kit.ts` → `dist/kit.js` + `dist/kit.css` (`window.IkisaiKit`), en una segunda pasada del mismo `vite.config.ts` (un IIFE solo admite una entrada). `index.html` los carga después de `/sync-core.js`.
+- **Regla de la convivencia:** el CSS del kit va acotado a `.ikisai-kit` (plugin PostCSS del build), porque comparte nombres de clase con el heredado (`.topbar`, `.field`, `.chip`, `.card`, `.toast`…). Cada trozo pintado con el kit se envuelve en un elemento con esa clase; los tokens y las fuentes son globales y los del CSS heredado ganan por orden. Cuando un módulo entero esté en el kit se retira su CSS heredado; cuando no quede ninguno, se retira el acotado.
+- **Todo archivo estático nuevo va también a la lista `SHELL` de `public/sw.js`**; si falta, la app no abre sin red. El nombre de la caché lo renombra el despliegue con el hash.
 
 ## 3. Lo que no puede cambiar sin tocar a la vez su otra mitad
 
 | Pieza | Depende de |
 |---|---|
-| Entrada | `loginSheet()` en `sync.js`. Ids que usan las pruebas y el propio adaptador: `accountLoginForm` (su presencia evita reabrir la hoja cuando caduca la sesión), `loginUsername`, `loginPassword`, `accountLogin`. El envío debe seguir siendo: `sameAccountOrNothingPending(email, password)` → `Sync.core.login` → `enterSession(boot)` → `syncNow()`; con `NO_MEMBERSHIP`, «Tu cuenta no tiene acceso a Tareas». |
+| Entrada (hecha) | `loginSheet(note)` en `sync.js`. Ids que usan las pruebas y el propio adaptador: `accountLoginForm` (su presencia evita reabrir la hoja cuando caduca la sesión), `loginUsername`, `loginPassword`, `accountLogin`. El envío debe seguir siendo: `sameAccountOrNothingPending(email, password)` → `Sync.core.login` → `enterSession(boot)` → `syncNow()`; con `NO_MEMBERSHIP`, «Tu cuenta no tiene acceso a Tareas». |
 | Sesión caducada | La entrada se pide **sin perder la cola ni el modelo en memoria** (escenario en `app.spec.ts` y `ui.spec.ts`): si `renderLogin` sustituye `#app`, al volver a entrar hay que repintar con `enterSession`, y la cola de `Sync.record.queue` debe seguir intacta. |
 | Hoja y diálogo | `openSheet`/`closeSheet` son globales reasignables y los usan todos los módulos; `#sheetBack.show` y `#sheet` aparecen en `updates.js` (veto de actualización), `batch-ui.js` y las pruebas. |
 | Paleta | `#palette`, `#paletteInput`; `updates.js` la considera un borrador abierto. |
@@ -37,9 +35,10 @@ Vite en modo biblioteca IIFE solo admite una entrada, así que el kit entra por 
 5. Cada fusión en `apps/tasks` llega a `tasks.ikisai.com` con la siguiente release: nada a medias.
 6. El visto bueno de Tasks se pide anotando la PR en `coordinacion/ui/SALIDA.md`; Tasks la revisa en su siguiente tanda y responde en `coordinacion/tasks/SALIDA.md`.
 
-## 5. Orden propuesto
+## 5. Orden
 
-1. Entrada (`renderLogin` con sus `ids` configurables) y cabecera con la barra de estado.
-2. Hoja, diálogo y avisos (`openSheet`, `confirmDialog`, `toast`), que es donde más código propio se retira.
-3. Paleta, selector de etiquetas (`createLabelPicker`) y tarjeta de proyecto (`renderProjectCard`).
-4. Fecha y lista reordenable, si encajan con los gestos actuales (arrastre entre proyectos y niveles).
+1. Entrada: **hecha** (PR #75).
+2. Tarjeta de proyecto (`renderProjectCard`): la menos invasiva. Conserva `data-open-project`, el pin y el arrastre entre proyectos.
+3. Cáscara en dos pasos: primero la barra y el menú del kit manteniendo `#kebab`, `.tabstrip` y `#moreBtn` como alias (y `.brandrow`, `#syncBadge` y `#appUpdate`, que usan `sync.js` y `updates.js`); después se retira el CSS heredado.
+4. Hoja, diálogo y avisos (`openSheet`, `confirmDialog`, `toast`), paleta y selector de etiquetas.
+5. Fecha y lista reordenable, si encajan con los gestos actuales (arrastre entre proyectos y niveles).

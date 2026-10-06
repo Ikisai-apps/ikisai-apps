@@ -227,3 +227,33 @@ test('legacy · acceso por proyecto: área restringida y bloqueos privados', asy
   assert.deepEqual([told.blocked, told.hiddenBlockers], [false, 0], 'el servidor dice que la condición oculta ya está cumplida');
   assert.equal(find(compose(all, { scopes: '*' }), tab).restricted, undefined);
 });
+
+test('legacy · papelera: restaurar una hija cuyo padre cambió de proyecto sale en un solo `restore` con campos', async () => {
+  const { tab } = await db.area('Papelera y movimiento');
+  let tabs = await model();
+  let area = find(tabs, tab);
+  const destino = { ...structuredClone(area.projects[0]!), id: newId(), system: null, title: 'Fase 2', order: 2048, tasks: [] };
+  area.projects.push(destino);
+  const padre = newTask('Padre'), queda = newTask('Se queda', { parentId: padre.id, order: 2048 }), borrada = newTask('A la papelera', { parentId: padre.id, order: 3072 });
+  area.projects[0]!.tasks.push(padre, queda, borrada);
+  await save(tabs);
+  // La hija va a la papelera y después el padre se muda con la hija viva.
+  tabs = await model(); area = find(tabs, tab);
+  area.projects[0]!.tasks.find((t) => t.id === borrada.id)!.deleted = true;
+  await save(tabs);
+  tabs = await model(); area = find(tabs, tab);
+  const moving = area.projects[0]!.tasks.filter((t) => t.id === padre.id || t.id === queda.id);
+  area.projects[0]!.tasks = area.projects[0]!.tasks.filter((t) => !moving.includes(t));
+  area.projects.find((p) => p.id === destino.id)!.tasks.push(...moving);
+  await save(tabs);
+  // La interfaz la restaura donde quedó: su padre ya no está en ese proyecto, así que vuelve como tarea suelta.
+  tabs = await model(); area = find(tabs, tab);
+  const back = area.projects[0]!.tasks.find((t) => t.id === borrada.id)!;
+  assert.equal(back.deleted, true);
+  back.deleted = false; back.parentId = null;
+  const batches = await save(tabs);
+  assert.equal(batches.length, 1);
+  assert.deepEqual(batches[0]!.map((o) => [o.op, o.id, o.fields]), [['restore', borrada.id, { parent_id: null }]]);
+  const row = (await db.data())['tasks.tasks'].find((t) => t.id === borrada.id)!;
+  assert.deepEqual([row.deleted_at, row.parent_id, row.project_id], [null, null, area.projects[0]!.id]);
+});
