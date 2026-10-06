@@ -92,6 +92,13 @@ export async function startE2EServer(): Promise<E2EServer> {
       await app!.t.createUser(user.id);
       return Response.json({ access_token: app!.supabase.tokenFor(user.id), refresh_token: `refresh-invited-${user.id}`, expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600 });
     }
+    // Subida de objetos desde la Edge (paquetes de importación y adjuntos de una copia portable).
+    if (route.pathname.startsWith('/storage/v1/object/') && !route.pathname.includes('/sign/') && method === 'POST') {
+      const objectPath = decodeURIComponent(route.pathname.slice('/storage/v1/object/'.length)).split('/').slice(1).join('/');
+      const content = init.body instanceof Uint8Array ? init.body : new Uint8Array(await new Response(init.body as BodyInit).arrayBuffer());
+      app!.supabase.storage.set(objectPath, content);
+      return Response.json({ Key: objectPath });
+    }
     return inner(input, init);
   };
   app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, fetch: withInvitedUsers(config.fetch), origins: [url] }) });

@@ -65,6 +65,8 @@ function legacyEvent(item){const names=new Map((Sync.members||[]).map(m=>[m.user
  const blocked=item.changes.some(c=>c.op==='call'||c.op==='purge');return {cursor:item.cursor,at:item.at,actor:item.actorId,actorName:names.get(item.actorId)||(item.actorId===Sync.actor?.id?Sync.actor.name:'Otra persona'),delta,operations:item.changes.map(c=>({kind:KIND_OF[c.table]||c.table,id:c.id,action:c.op})),undoOf:String(item.requestId||'').startsWith('undo-')?item.cursor:null,canUndo:Sync.actor?.role!=='reader'&&!blocked,undoReason:blocked?'UNDO_UNAVAILABLE':'',legacy:false}}
 async function legacyApi(path,options){const method=(options.method||'GET').toUpperCase(),body=()=>{try{return JSON.parse(options.body||'{}')}catch{return {}}};
  if(path==='state'){return {actor:Sync.actor,tabs:Sync.core.model(),cursor:Sync.core.status().cursor}}
+ /* La previsualización de CSV devuelve operaciones de fila; se confirman por la cola, como cualquier guardado. */
+ if(path==='commands'&&method==='POST'){const b=body();await Sync.chain;await Sync.core.commit([b.operations],()=>b.requestId);return {queued:true}}
  if(path==='history'||path.startsWith('history?')){const query=new URLSearchParams(path.split('?')[1]||''),kind=query.get('kind'),id=query.get('id'),next=new URLSearchParams();if(query.get('before'))next.set('before',query.get('before'));next.set('limit','200');
   const data=await Sync.core.api('/history?'+next);let events=data.items.map(legacyEvent);
   if(kind)events=events.map(e=>({...e,delta:e.delta.filter(p=>kind==='project'?(p.kind==='project'&&p.id===id)||(p.kind==='task'&&[p.before,p.after].some(r=>r?.projectId===id)):p.kind===kind&&p.id===id)}));

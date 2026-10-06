@@ -707,4 +707,10 @@ Precisa §13 con lo que hay en `apps/tasks`. Donde difiera de §13, manda esta s
 - **Historial:** se piden hasta 200 lotes a `history` y el filtro por tarea o proyecto se aplica en el cliente (hasta que exista C8). `canUndo` es falso para lectores y para lotes con `call` o `purge`.
 - **Menú:** CSV, copia portable, respaldo, cuentas, accesos, propuestas y registro de accesos están ocultos hasta que existan sus rutas o su fase.
 - **Pruebas de extremo a extremo:** `tests/tasks/e2e-server.ts` sirve `apps/tasks/dist` y atiende `/api/v1` con la `tasks-api` real sobre PGlite; `tests/tasks/app.spec.ts` lleva el número del escenario original en cada paso.
+- **Consulta e intercambio** (`supabase/functions/tasks-api/exchange.ts`, tanda 4). Todas las rutas componen el modelo anidado con lo que el usuario puede ver:
+  - `GET tabs/:tabId/tasks` con `q`, `state`, `availability`, `projectId`, `label`, `includeDeleted`, `limit`, `offset`.
+  - `GET csv?tabId=` y `POST csv/preview?tabId=`: mismo formato de columnas que la app anterior; la familia de una etiqueta se escribe por su clave de sistema o, si es propia, por su nombre. La previsualización aplica el CSV al modelo, pasa por `decompose` y devuelve un único lote de operaciones de fila que el cliente confirma por la cola (se puede deshacer).
+  - `GET portable` y `GET backup` (este, solo administrador): ZIP sin compresión con `manifest.json` (formato `ikisai.tasks.portable.v2`, huellas), `data.json` (`{tabs}` en el modelo anidado) y `files/<sha256>`.
+  - `POST portable/preview`: verifica huellas y dependencias, guarda el paquete en `ikisai-files/tasks/imports/<caducidad>.<sha256>.zip` y devuelve ese identificador como `ticket` (sin HMAC: el paquete se direcciona por su contenido y solo un administrador puede previsualizar e importar).
+  - `POST portable/import {ticket, requestId}`: remapea todos los ids de forma determinista (hash de `ticket` + id de origen), reutiliza el archivo verificado con la misma huella si ya existe, y confirma con `call tasks.import_rows`. Las áreas importadas llevan el sufijo « (copia)»; lo que estaba en la papelera sigue en la papelera.
 

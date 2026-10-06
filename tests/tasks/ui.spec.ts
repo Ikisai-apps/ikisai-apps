@@ -1045,3 +1045,77 @@ test('[27][28][30][34] invitar a una persona a un solo proyecto: lo que ve, lo q
   });
   await guestContext.close();
 });
+
+declare const csvImportSheet: any, csvExport: any, downloadServerBackup: any, portableExport: any, portableImportSheet: any, openFilters: any, persistUI: any, api: any;
+
+test('[24][32][33][44] respaldo, copia portable, CSV y filtros de disponibilidad por REST', async () => {
+  test.setTimeout(120_000);
+  await sync(a);
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; navigateView('projects'); });
+
+  await test.step('[33] CSV: previsualizar en el servidor, importar un nivel de hijas y exportar', async () => {
+    const projectCount = await a.evaluate(() => tab().projects.length);
+    await a.evaluate(() => csvImportSheet());
+    await a.locator('#csvFile').setInputFiles({ name: 'tareas.csv', mimeType: 'text/csv', buffer: Buffer.from('project,task_id,parent_id,text,note,done\nCSV navegador,1,,Padre CSV,Nota,0\nCSV navegador,2,1,Hija CSV,,1\n') });
+    await a.waitForFunction(() => !(document.getElementById('csvApply') as HTMLButtonElement).disabled);
+    await expect(a.locator('#csvPreview')).toContainText('1 proyectos · 2 tareas · 1 hijas');
+    await a.locator('#csvApply').click();
+    await a.waitForFunction((n) => tab().projects.length === n + 1 && !Sync.busy, projectCount);
+    await settled(a);
+    const csvProject = await a.evaluate(() => tab().projects.find((p: any) => p.title === 'CSV navegador (CSV)'));
+    const parent = csvProject.tasks.find((t: any) => t.text === 'Padre CSV'), child = csvProject.tasks.find((t: any) => t.text === 'Hija CSV');
+    expect(child.parentId).toBe(parent.id);
+    expect(parent.done).toBe(true);
+    expect((await server.rows('tasks.tasks')).filter((r) => r.project_id === csvProject.id)).toHaveLength(2);
+    const download = a.waitForEvent('download');
+    await a.evaluate(() => csvExport());
+    expect((await download).suggestedFilename()).toBe('Ikisai-tareas.csv');
+  });
+
+  await test.step('[24] la propietaria descarga el respaldo completo en ZIP', async () => {
+    const download = a.waitForEvent('download');
+    await a.evaluate(() => downloadServerBackup());
+    const backup = await download;
+    expect(backup.suggestedFilename()).toBe('Ikisai-respaldo.zip');
+    const fs = await import('node:fs');
+    expect(fs.readFileSync(await backup.path()).subarray(0, 2).equals(Buffer.from('PK'))).toBe(true);
+  });
+
+  await test.step('[32] la copia portable se descarga, se verifica en la previsualización y se importa como áreas independientes', async () => {
+    const download = a.waitForEvent('download');
+    await a.evaluate(() => portableExport());
+    const portablePath = await (await download).path();
+    const countBefore = await a.evaluate(() => state.tabs.length);
+    await a.evaluate(() => portableImportSheet());
+    await a.locator('#portableFile').setInputFiles(portablePath);
+    await a.locator('#portableApply').waitFor({ state: 'visible' });
+    await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement).disabled);
+    await expect(a.locator('#portablePreview')).toContainText('adjuntos verificados');
+    await a.locator('#portableApply').click();
+    await a.waitForFunction((n) => state.tabs.length === n * 2 && Sync.mode === 'online' && !Sync.busy, countBefore, { timeout: 30_000 });
+    expect(await a.evaluate(() => state.tabs.length)).toBe(countBefore * 2);
+    expect(await a.evaluate(() => state.tabs.filter((t: any) => t.name === 'Ikisai (copia)').length)).toBe(1);
+    expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await a.evaluate(() => closeSheet());
+  });
+
+  await test.step('[44] los filtros de disponibilidad funcionan en la interfaz y por REST sin proponer la tarea bloqueada', async () => {
+    await b.setViewportSize({ width: 1440, height: 1000 });
+    await sync(b);
+    // La dependencia de Pintar se retiró al preparar la plantilla en [63]: se vuelve a declarar.
+    await b.evaluate(({ paint, plaster }) => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; const t = taskLocation(paint).t; t.dependsOn = [plaster]; touch(t); save(); state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); }, { paint: shared.paint!, plaster: shared.plaster! });
+    await settled(b);
+    await b.evaluate(() => openFilters());
+    await b.locator('[data-availability="ready"]').click();
+    await b.evaluate(() => { closeSheet(); persistUI(); render(); });
+    await expect(b.locator(`[data-row="${shared.paint}"]`)).toHaveCount(0);
+    expect((await b.evaluate(() => api(`tabs/${(window as any).ID.ikisai}/tasks?availability=blocked`))).items.some((t: any) => t.id === shared.paint)).toBe(true);
+    expect((await b.evaluate(() => api(`tabs/${(window as any).ID.ikisai}/tasks?availability=ready&limit=500`))).items.some((t: any) => t.id === shared.paint)).toBe(false);
+    await b.evaluate(() => openFilters());
+    await b.locator('[data-availability="ready"]').click();
+    await b.locator('[data-availability="blocked"]').click();
+    await b.evaluate(() => { closeSheet(); persistUI(); render(); });
+    await expect(b.locator(`[data-row="${shared.paint}"] .dependency-blocked`)).toHaveCount(1);
+    await b.evaluate(() => { state.filters = {}; persistUI(); render(); });
+  });
+});
