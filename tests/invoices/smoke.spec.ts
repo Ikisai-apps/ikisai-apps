@@ -131,8 +131,8 @@ test('login → bootstrap → proveedores offline → sincronizar', async ({ pag
 
   await test.step('papelera: borrar y restaurar', async () => {
     await page.getByRole('button', { name: 'Editar Frutas Pepe e Hijos' }).click();
-    page.once('dialog', (d) => void d.accept());
     await page.getByRole('button', { name: 'Enviar a papelera' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Enviar a papelera' }).click();
     await expect(page.locator('#supplierList .row', { hasText: 'Frutas Pepe e Hijos' })).toHaveCount(0);
     const trash = page.locator('#trash');
     await trash.locator('summary').click();

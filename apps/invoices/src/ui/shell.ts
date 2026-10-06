@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -56,7 +56,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   function paintBanners(status: SyncStatus): void {
     shell.setBanners(status, {
       hideConflicts: location.hash === '#/conflictos',
+      hideRejected: location.hash === '#/conflictos',
       onResolveConflicts: () => navigate('#/conflictos'),
+      onShowRejected: () => navigate('#/conflictos'),
       onRetry: syncNow,
       describeError: (error) => describeError(error),
       updateApply,
@@ -88,7 +90,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   async function logout(): Promise<void> {
     const status = client.status();
-    if (status.pendingCommands > 0 && !confirm(`Tienes ${status.pendingCommands} cambios sin sincronizar. Si cierras sesión ahora seguirán en este dispositivo hasta que vuelvas a entrar. ¿Cerrar sesión?`)) return;
+    if (status.pendingCommands > 0 && !(await confirmDialog({ title: '¿Cerrar sesión?', text: `Tienes ${status.pendingCommands} cambios sin sincronizar. Seguirán en este dispositivo hasta que vuelvas a entrar.`, confirmLabel: 'Cerrar sesión' }))) return;
     try {
       await client.logout();
     } finally {
