@@ -30,6 +30,17 @@ export function label(value: unknown): string {
   return LABELS[String(value)] ?? String(value);
 }
 
+/** Categorías de gasto de Invoices (catálogo cerrado suyo), para el bloque «Coste real». */
+const EXPENSE_CATEGORIES: Record<string, string> = {
+  compras: 'Compras', suministros: 'Suministros', mantenimiento: 'Mantenimiento', inversiones: 'Inversiones', canon_concesion: 'Canon de concesión',
+  seguros: 'Seguros', personal: 'Personal', fiscalidad: 'Fiscalidad', otros: 'Otros',
+};
+
+export function expenseCategoryLabel(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Sin categoría';
+  return EXPENSE_CATEGORIES[String(value)] ?? String(value);
+}
+
 const pairs = (values: readonly string[]): Pairs => values.map((value) => [value, LABELS[value] ?? value] as const);
 
 export const OPTIONS = {

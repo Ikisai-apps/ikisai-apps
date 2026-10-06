@@ -5,8 +5,8 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow } from '../app/client.ts';
-import { OPTIONS, label } from '../app/labels.ts';
+import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
 import { fetchCosts, readCostCache, type CostResult } from '../app/costs.ts';
@@ -375,10 +375,10 @@ export function mountReservation(id: string): ViewMount {
         if (unavailable) return;
         const summary = result?.summary;
         costTotal.textContent = summary ? money(summary.total) : '—';
-        replace(costByCategory, ...(summary?.categories ?? []).map((c) => el('li', { class: 'row' }, el('span', { class: 'name' }, c.category, c.investment ? el('span', { class: 'chip' }, 'Inversión') : null), el('span', { class: 'row-meta' }, money(c.amount)))));
+        replace(costByCategory, ...(summary?.categories ?? []).map((c) => el('li', { class: 'row' }, el('span', { class: 'name' }, expenseCategoryLabel(c.category), c.investment ? el('span', { class: 'chip' }, 'Inversión') : null), el('span', { class: 'row-meta' }, money(c.amount)))));
         replace(costList, ...(summary?.rows ?? []).map((r) => el('li', { class: 'row' },
           el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.supplier), el('span', null, money(r.amount))),
-          el('div', { class: 'row-meta' }, r.date ? formatDate(r.date) : '—', ' · ',
+          el('div', { class: 'row-meta' }, r.date ? fullDay(r.date) : '—', ' · ',
             r.code ? el('a', { href: 'https://invoices.ikisai.com/#/facturas', target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
         costNote.textContent = !result ? (navigator.onLine ? 'Cargando…' : 'Se actualizará al reconectar.')
           : summary!.rows.length === 0 ? 'Sin compras asignadas todavía.' : !navigator.onLine ? 'Se actualizará al reconectar.' : '';
