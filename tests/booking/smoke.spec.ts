@@ -5,7 +5,7 @@
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
 import { expect, test } from 'playwright/test';
-import { EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, SPACES, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
 let harness: Harness;
 let api: Harness['api'];
@@ -142,6 +142,154 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#blockOperation')).toContainText('17:00');
     await expect(page.locator('#blockSummary')).toContainText('23 finales');
     await expect.poll(() => api.rows(EVENTS)[0]).toMatchObject({ arrival_time: '17:00', departure_time: '12:00', final_guests: 23, revision: 2 });
+  });
+
+  await test.step('espacios y camas: habitación con dos camas, reordenar y asignar un grupo con aviso de sobreocupación', async () => {
+    await page.locator('#openSpaces').click();
+    await expect(page.getByRole('heading', { name: 'Espacios y camas', level: 2 })).toBeVisible();
+    await expect(page.getByText('Todavía no hay espacios')).toBeVisible();
+
+    await page.locator('#newSpace').click();
+    let dialog = page.getByRole('dialog', { name: 'Nuevo espacio' });
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Habitación 1');
+    await dialog.locator('#f-zone').fill('Planta baja');
+    await dialog.locator('#f-capacity').fill('4');
+    await page.locator('#saveRow').click();
+    await expect(dialog.locator('.formerror')).toContainText('solo se indica en salas y zonas'); // en una habitación se suman las camas
+    await dialog.locator('#f-capacity').fill('');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+
+    await page.locator('#newSpace').click();
+    dialog = page.getByRole('dialog', { name: 'Nuevo espacio' });
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Sala común');
+    await dialog.locator('#f-kind').selectOption('sala');
+    await dialog.locator('#f-zone').fill('Planta baja');
+    await dialog.locator('#f-capacity').fill('30');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(SPACES).map((r) => r.name).sort()).toEqual(['Habitación 1', 'Sala común']);
+    expect(api.rows(SPACES).find((r) => r.name === 'Habitación 1')).toMatchObject({ kind: 'habitacion', zone: 'Planta baja', active: true, capacity: null });
+    expect(api.rows(SPACES).find((r) => r.name === 'Sala común')).toMatchObject({ kind: 'sala', capacity: 30 });
+
+    for (const bed of ['Cama 1', 'Cama 2']) {
+      await page.getByRole('button', { name: 'Añadir cama a Habitación 1' }).click();
+      dialog = page.getByRole('dialog', { name: 'Nueva cama en Habitación 1' });
+      await dialog.getByLabel('Etiqueta').fill(bed);
+      await page.locator('#saveRow').click();
+      await expect(dialog).toBeHidden();
+    }
+    await expect.poll(() => api.rows(BEDS).map((r) => r.label).sort()).toEqual(['Cama 1', 'Cama 2']);
+    await expect(page.locator('.space-item[data-kind="habitacion"] > .space-main [data-role="places"]')).toContainText('2 plazas');
+    await expect(page.locator('.space-item[data-kind="sala"] [data-role="places"]')).toContainText('30 plazas');
+
+    // Reordenar con «Bajar»: solo cambia el espacio movido (un `update`).
+    const before = new Map(api.rows(SPACES).map((r) => [r.id, { position: r.position, revision: r.revision, name: r.name as string }]));
+    await page.getByRole('button', { name: 'Bajar Habitación 1', exact: true }).click();
+    await expect.poll(() => api.rows(SPACES).filter((r) => r.position !== before.get(r.id)!.position || r.revision !== before.get(r.id)!.revision).map((r) => r.name)).toEqual(['Habitación 1']);
+    const moved = api.rows(SPACES).find((r) => r.name === 'Habitación 1')!;
+    expect(moved.revision).toBe(before.get(moved.id)!.revision + 1);
+    expect(Number(moved.position)).toBeGreaterThan(Number(api.rows(SPACES).find((r) => r.name === 'Sala común')!.position));
+    await expect(page.locator('.zone[data-zone="Planta baja"] > .sortable-wrap > ul > .sortable-row .name').first()).toHaveText('Sala común');
+
+    // De vuelta en la ficha: asignar un grupo de 3 personas a la habitación (2 plazas) sin cama.
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
+    await expect(page.locator('#blockLodging')).toContainText('Sin asignaciones todavía.');
+    await page.locator('#addAssignment').click();
+    dialog = page.getByRole('dialog', { name: 'Asignar alojamiento' });
+    await dialog.getByLabel('Espacio').selectOption({ label: 'Habitación 1 · Planta baja' });
+    await expect(dialog.getByLabel('Cama')).toContainText('Cama 2');
+    await dialog.getByLabel('Nombre del grupo').fill('Grupo de prueba');
+    await dialog.getByLabel('Personas').fill('3');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#blockLodging [data-role="occupancy"]')).toHaveText('3 / 2 plazas');
+    await expect(page.locator('#blockLodging .lodging-space[data-over="true"]')).toContainText('Sobreocupada');
+    await expect(page.locator('#blockLodging')).toContainText('Grupo de prueba');
+    await expect(page.locator('#blockOperation')).toContainText('3 personas en 1 espacio');
+    await expect.poll(() => api.rows(ASSIGNMENTS)[0]).toMatchObject({ event_id: api.rows(EVENTS)[0]!.id, space_id: moved.id, bed_id: null, guest_id: null, group_label: 'Grupo de prueba', persons: 3 });
+    expect(api.rows(ASSIGNMENTS)).toHaveLength(1);
+
+    // No se puede quitar un espacio con asignaciones vivas.
+    await page.locator('#openSpaces').click();
+    await page.getByRole('button', { name: 'Editar Habitación 1', exact: true }).click();
+    await expect(page.locator('#removeBlocked')).toContainText('1 asignación viva');
+    await expect(page.locator('#removeRow')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.goBack();
+    await expect(page.locator('#blockLodging')).toContainText('3 / 2 plazas');
+  });
+
+  await test.step('espacios: alta rápida en un lote, duplicar, no reservable y supletorias en Alojamiento', async () => {
+    const sameBatch = (ids: string[]) => {
+      const entries = api.changeLog().filter((c) => ids.includes(c.id));
+      return { size: new Set(entries.map((c) => c.requestId)).size, count: entries.length, tables: entries.map((c) => c.table).sort() };
+    };
+    await page.locator('#openSpaces').click();
+    await page.locator('#newSpace').click();
+    let dialog = page.getByRole('dialog', { name: 'Nuevo espacio' });
+    await expect(dialog.locator('#f-quick_beds')).toBeVisible();
+    await dialog.locator('#f-kind').selectOption('sala');
+    await expect(dialog.locator('#f-quick_beds')).toBeHidden(); // solo en habitaciones
+    await dialog.locator('#f-kind').selectOption('habitacion');
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Habitación 2');
+    await dialog.locator('#f-quick_beds').fill('2');
+    await dialog.locator('#f-quick_extras').fill('1');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(SPACES).some((r) => r.name === 'Habitación 2')).toBe(true);
+    const room2 = api.rows(SPACES).find((r) => r.name === 'Habitación 2')!;
+    await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === room2.id).length).toBe(3);
+    const beds2 = api.rows(BEDS).filter((b) => b.space_id === room2.id).sort((a, b) => Number(a.position) - Number(b.position));
+    expect(beds2.map((b) => [b.label, b.kind, b.capacity])).toEqual([['Cama 1', 'individual', 1], ['Cama 2', 'individual', 1], ['Supletoria 1', 'supletoria', 1]]);
+    expect(room2).toMatchObject({ kind: 'habitacion', bookable: true });
+    // Las cuatro filas (espacio y tres camas) llegaron en el mismo `commit`.
+    expect(sameBatch([room2.id, ...beds2.map((b) => b.id)])).toEqual({ size: 1, count: 4, tables: [BEDS, BEDS, BEDS, SPACES] });
+    const card2 = page.locator('.space-item[data-kind="habitacion"]').filter({ has: page.getByRole('button', { name: 'Editar Habitación 2', exact: true }) });
+    await expect(card2.locator('[data-role="places"]').first()).toHaveText('2 plazas + 1 supletoria');
+    await expect(card2.locator('.bed-item', { hasText: 'Supletoria 1' }).locator('.chip').first()).toHaveText('Supletoria');
+
+    // Duplicar: «<nombre> (copia)» con las mismas camas, en otro lote.
+    await page.getByRole('button', { name: 'Duplicar Habitación 2', exact: true }).click();
+    await expect.poll(() => api.rows(SPACES).some((r) => r.name === 'Habitación 2 (copia)')).toBe(true);
+    const copy = api.rows(SPACES).find((r) => r.name === 'Habitación 2 (copia)')!;
+    await expect.poll(() => api.rows(BEDS).filter((b) => b.space_id === copy.id).length).toBe(3);
+    const copyBeds = api.rows(BEDS).filter((b) => b.space_id === copy.id);
+    expect(copyBeds.map((b) => b.label).sort()).toEqual(['Cama 1', 'Cama 2', 'Supletoria 1']);
+    const batch = sameBatch([copy.id, ...copyBeds.map((b) => b.id)]);
+    expect(batch).toEqual({ size: 1, count: 4, tables: [BEDS, BEDS, BEDS, SPACES] });
+    expect(api.changeLog().find((c) => c.id === copy.id)!.requestId).not.toBe(api.changeLog().find((c) => c.id === room2.id)!.requestId);
+    expect(Number(copy.position)).toBeGreaterThan(Number(room2.position));
+
+    // Marcar la copia como no reservable.
+    await page.getByRole('button', { name: 'Editar Habitación 2 (copia)', exact: true }).click();
+    dialog = page.getByRole('dialog', { name: 'Espacio' });
+    await expect(dialog.getByLabel('Reservable')).toBeChecked();
+    await expect(dialog.locator('#f-quick_beds')).toHaveCount(0); // el alta rápida solo está en «Nuevo espacio»
+    await dialog.getByLabel('Reservable').uncheck();
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(SPACES).find((r) => r.id === copy.id)!.bookable).toBe(false);
+    await expect(page.locator('.space-item[data-kind="habitacion"]').filter({ hasText: 'Habitación 2 (copia)' }).first().locator('.chip', { hasText: 'No reservable' })).toBeVisible();
+
+    // En Alojamiento solo se ofrece la reservable, y su cama supletoria va marcada.
+    await page.goBack();
+    await page.locator('#addAssignment').click();
+    dialog = page.getByRole('dialog', { name: 'Asignar alojamiento' });
+    await expect(dialog.locator('#f-space_id')).toContainText('Habitación 2');
+    const options = await dialog.locator('#f-space_id option').allTextContents();
+    expect(options).toContain('Habitación 2');
+    expect(options.some((o) => o.includes('(copia)'))).toBe(false);
+    await dialog.getByLabel('Espacio').selectOption({ label: 'Habitación 2' });
+    await expect(dialog.getByLabel('Cama')).toContainText('Supletoria 1 (supletoria)');
+    await dialog.getByLabel('Cama').selectOption({ label: 'Supletoria 1 (supletoria) · 1 plaza' });
+    await dialog.getByLabel('Nombre del grupo').fill('Grupo extra');
+    await dialog.getByLabel('Personas').fill('1');
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#extraBeds')).toHaveText('1 supletoria activada');
+    await expect(page.locator('#blockLodging .lodging-space[data-space="Habitación 2"] [data-role="occupancy"]')).toHaveText('1 / 3 plazas');
   });
 
   await test.step('checklist base, una restricción y el cobro', async () => {
@@ -373,11 +521,11 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#trashReservation')).toBeHidden();
     await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('23 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped
+    await expect(page.locator('.dialog')).toContainText('25 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped, 2 asignaciones
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');
-    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at !== null))).toBe(true);
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS].every((table) => api.rows(table).every((row) => row.deleted_at !== null))).toBe(true);
 
     await page.locator('#trash summary').click();
     await page.getByRole('button', { name: 'Abrir Retiro Test en la papelera' }).click();
@@ -386,7 +534,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
     await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho · 1 sin gluten'); // la del evento y la del huésped
-    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
     await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });
 
@@ -413,7 +561,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.rows(RESERVATIONS).map((r) => r.title)).toEqual(['Retiro Test']);
     expect(api.rows(FINANCE)).toHaveLength(1);
     expect(api.rows(CHECKLIST)).toHaveLength(20); // lo vivo no se toca
-    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, GUESTS, EVENTS, FINANCE, RESERVATIONS]]);
+    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, ASSIGNMENTS, GUESTS, EVENTS, FINANCE, RESERVATIONS, BEDS, SPACES]]);
     await page.reload();
     await expect(page.locator('#reservationList')).toBeVisible();
     await expect(page.locator('#trash')).toBeHidden(); // tampoco queda en el espejo local
