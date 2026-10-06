@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run test:core",
     "test:core": "tsx --test tests/core/*.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:ui-kit": "npm -w @ikisai/ui-kit run test:e2e"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
