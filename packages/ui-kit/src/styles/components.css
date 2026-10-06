@@ -403,6 +403,19 @@
 .sortable-ghost{position:fixed;z-index:95;pointer-events:none;list-style:none;background:var(--paper);box-shadow:var(--shadow-3);border-radius:12px;opacity:.95;transform:rotate(-1deg);display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:8px 10px 8px 4px}
 .dragging{user-select:none;-webkit-user-select:none}
 
+/* ---------- Campo de fecha con atajos ---------- */
+.datefield>label{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+.datefield input[type="date"]{width:100%;border:1px solid var(--line);background:var(--paper);min-height:var(--tap);border-radius:var(--radius-sm);padding:10px 12px;box-shadow:var(--shadow-1);cursor:pointer}
+.datefield input[type="date"]:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.datefield.invalid input{border-color:var(--alert)}
+.date-shortcuts{display:flex;flex-wrap:wrap;gap:6px}
+.date-shortcuts .ghost.small{height:32px;padding:0 10px;border-radius:999px}
+.date-shortcuts .ghost.active{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent-deep)}
+.date-shortcuts .date-clear{color:var(--muted)}
+.date-desc[hidden]{display:none}
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.85)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.85)}}
+
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
   .shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:auto 1fr;padding-bottom:0}

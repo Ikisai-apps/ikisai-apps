@@ -8,6 +8,7 @@ import {
   closeSheet,
   compressImage,
   createCalendar,
+  createDateField,
   createPrintView,
   createQuantityField,
   createSortableList,
@@ -469,17 +470,28 @@ const sortSection = section('sortable', 'Lista reordenable', 'Arrastra por el as
   el('p', { class: 'small muted' }, 'Orden: ', sortOut),
 );
 
+
+// --- Campo de fecha con atajos ----------------------------------------------------------
+const dateOut = el('code', { id: 'dateOut' }, '—');
+const due = createDateField({ label: 'Fecha objetivo', name: 'due', hint: 'Atajos rápidos; el selector del sistema sigue disponible.', onChange: (v) => { dateOut.textContent = String(v); } });
+const checkIn = createDateField({ label: 'Entrada', name: 'start', value: addDays(t0, 10), shortcuts: [{ label: 'Hoy', days: 0 }, { label: 'Este viernes', date: addDays(startOfWeekLocal(t0), 4) }], required: true, onChange: (v) => { checkOut.setMin(v); checkOut.validate(); } });
+const checkOut = createDateField({ label: 'Salida', name: 'end', value: addDays(t0, 12), min: addDays(t0, 10), shortcuts: [{ label: '+2 noches', days: 12 }, { label: '+7 noches', days: 17 }], required: true });
+function startOfWeekLocal(k: string): string { const d = new Date(k + 'T12:00:00'); const diff = (d.getDay() + 6) % 7; d.setDate(d.getDate() - diff); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+const dateSection = section('date', 'Campo de fecha con atajos', 'Para Tasks (fecha objetivo) y Booking (entrada y salida): nativo con selector del sistema en móvil, atajos, fecha en palabras y distancia a hoy, y validación de límites entre dos campos.',
+  el('div', { class: 'demo-form' }, due.element, el('div', { class: 'row2' }, checkIn.element, checkOut.element), el('p', { class: 'small muted' }, 'Último cambio: ', dateOut)),
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.6.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection),
 );

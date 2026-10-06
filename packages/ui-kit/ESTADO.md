@@ -4,7 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
-- v0.6.0 (tanda 7): lista reordenable con arrastre, botones y teclado (`createSortableList`, `positionBetween`).
+- v0.6.0 (tanda 7): lista reordenable con arrastre, botones y teclado (`createSortableList`, `positionBetween`) y campo de fecha con atajos (`createDateField`).
 - v0.5.0 (tanda 6): página completa imprimible A4 con print CSS, orientada a la vista del organizador de Food y reutilizable por Invoices.
 - v0.4.1 (tanda 5): toast sobre la hoja en móvil corregido; snippet de la paleta Ctrl K en el README.
 - v0.4.0 (tanda 4): hoja de importación con previsualización de JSON y cuadre de totales (para Invoices, sin tocar `apps/invoices`); revisión visual de `apps/food` y de la ficha de reserva de Booking.
@@ -21,7 +21,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 ## Pendiente
 
 - Revisión visual de `apps/tasks` cuando su `ESTADO.md` diga que los escenarios portados están en verde (indicación de Core); componentes que pidan los equipos.
-- Siguiente: campo de fecha con atajos (hoy, mañana, +7) para Tasks y Booking. Candidatos: selector de etiquetas con familias, tarjeta de proyecto con anillo de progreso (de Tareas), calendario con horas (si Booking lo necesita).
+- Candidatos: selector de etiquetas con familias, tarjeta de proyecto con anillo de progreso (de Tareas), calendario con horas (si Booking lo necesita).
 
 ## Bloqueos y peticiones
 
