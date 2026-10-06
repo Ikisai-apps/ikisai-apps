@@ -156,7 +156,7 @@ test('beforeCommit: destinos de Tareas con el token del usuario (etiqueta, revis
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'general', target_kind: 'unassigned', target_label: 'Sin asignar', allocated_amount: 25 })], 'ALLOCATIONS_EXCEED_LINE');
 });
 
-test('beforeCommit: destinos de Food por proyección registrada; Booking no disponible hasta que registre la suya', async () => {
+test('beforeCommit: destinos de Food y Booking por proyección registrada (ids desconocidos → TARGET_NOT_FOUND)', async () => {
   const ingredient = uuid(); const equipment = uuid();
   await app.t.db.query(`insert into food.ingredients (id, name, preferred_unit) values ($1, 'Tomate pera', 'kg')`, [ingredient]);
   await app.t.db.query(`insert into food.equipment (id, name, quantity) values ($1, 'Horno 1', 1)`, [equipment]);
@@ -167,12 +167,14 @@ test('beforeCommit: destinos de Food por proyección registrada; Booking no disp
   const res2 = await ok([insert('invoices.allocations', e, { invoice_line_id: invoice.line, target_app: 'food', target_kind: 'equipment', target_id: equipment, target_label: 'x', allocated_amount: 1 })]);
   assert.equal(res2.changes.find((c: any) => c.id === e).after.target_label, 'Maquinaria › Horno 1');
   await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'food', target_kind: 'ingredient', target_id: uuid(), target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
-  await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'booking', target_kind: 'event', target_id: uuid(), target_label: 'x', allocated_amount: 1 })], 'TARGET_APP_NOT_AVAILABLE');
+  // Booking publica booking.food_event_projection para invoices (migración 0402): la proyección existe y el id no.
+  await rejected([insert('invoices.allocations', uuid(), { invoice_line_id: invoice.line, target_app: 'booking', target_kind: 'event', target_id: uuid(), target_label: 'x', allocated_amount: 1 })], 'TARGET_NOT_FOUND');
   const list = await app.call('/api/v1/targets/food?q=tom');
   assert.equal(list.status, 200); assert.equal(list.data.items.length, 1); assert.equal(list.data.items[0].kind, 'ingredient');
   const one = await app.call(`/api/v1/targets/food/equipment/${equipment}`);
   assert.equal(one.data.label, 'Horno 1');
-  assert.equal((await app.call('/api/v1/targets/booking?q=')).data.error.code, 'TARGET_APP_NOT_AVAILABLE');
+  const bookingTargets = await app.call('/api/v1/targets/booking?q=');
+  assert.equal(bookingTargets.status, 200, JSON.stringify(bookingTargets.data)); assert.deepEqual(bookingTargets.data.items, []);
 });
 
 test('rutas: targets/tasks busca Área → Proyecto → Tarea; reader no busca; dashboard', async () => {
