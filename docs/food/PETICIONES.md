@@ -11,7 +11,7 @@ Food anota aquí lo que necesita de los directorios compartidos o de otra app. C
 | P5 | 2026-10-06 | Core + Booking | `event_revision` debe cambiar con cualquier dato proyectado. | Hecho | Contador propio de Booking (contrato §8). |
 | P5b | 2026-10-06 | Booking | Columnas adicionales de la proyección (`API.md` §7.1): estado de la reserva o `active`, `guest_count_is_final`, `meal_notes`, forma fija de `dietary_restrictions` y catálogos cerrados de `meal_plan` y `menu_style`. | Pendiente | |
 | P6 | 2026-10-06 | Core | Política para archivos sin referencia tras reemplazar una foto. | Pendiente | |
-| P7 | 2026-10-06 | Core + Booking | `booking.events` en una migración anterior a `food_menus`. | Pendiente | |
+| P7 | 2026-10-06 | Core + Booking | `booking.events` en una migración anterior a `food_menus`. | Hecho | Booking fusionó `20261006_0005_booking_base.sql` (PR 16); `food_menus` es `20261006_0110`. |
 | P8 | 2026-10-06 | Core | Menor: caché de lecturas no sincronizadas como función de `sync-client`. | Pendiente | |
 | P9 | 2026-10-06 | Core | Que la CI ejecute las pruebas de Food: hoy `npm run test` solo lanza `tests/core/*.test.ts`. Añadir `tests/food/*.test.ts` al script `test` de la raíz (o un patrón `tests/*/*.test.ts`). Son 26 pruebas en PGlite, unos 5 s. | Pendiente | |
 | P10 | 2026-10-06 | Core | Menor: la prueba de subidas de `packages/test-kit` usa siempre un PDF. Food solo admite imágenes, así que su conformidad monta la app con `allowedMime` de PDF. Un parámetro con el tipo de muestra lo evitaría. | Pendiente | |
