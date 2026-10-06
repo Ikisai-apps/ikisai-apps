@@ -38,9 +38,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #103 (tanda 7) fusionada.
 - Tanda 8 (`invoices/tanda8`): agentes de IA. `invoices.import_v1` seguro para agentes; hook `agentRisk` que exige aprobación al tocar facturas ya entregadas a la gestoría o validadas (salvo asignar destinos); cada importación cuenta para el umbral de 10 (migración 0202, `API.md` §4.4).
 
+- PR #105 (tanda 8) fusionada.
+- Tanda 9 (`invoices/tanda9`): unidad normalizada en `invoices.food_stock_projection` para Food (`unit_normalized` kg/l/ud y `quantity_normalized`; migración 0203).
+
 ## En curso
 
-- PR de la tanda 8 (`invoices/tanda8`).
+- PR de la tanda 9 (`invoices/tanda9`).
 
 ## Pendiente
 
