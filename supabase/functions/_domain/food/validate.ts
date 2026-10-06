@@ -4,6 +4,7 @@
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
+import { MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { UNITS } from './units.ts';
 
 export interface DomainOperation {
@@ -27,7 +28,10 @@ type FieldSpec =
   | { kind: 'number'; min: number; max: number; exclusiveMin?: boolean; integer?: boolean; nullable?: boolean }
   | { kind: 'boolean' }
   | { kind: 'tags'; values: readonly string[] }
-  | { kind: 'uuid'; nullable?: boolean };
+  | { kind: 'uuid'; nullable?: boolean }
+  | { kind: 'date' }
+  | { kind: 'time'; nullable?: boolean }
+  | { kind: 'json'; nullable?: boolean };
 
 interface TableSpec {
   fields: Record<string, FieldSpec>;
@@ -35,9 +39,13 @@ interface TableSpec {
   required: string[];
   /** Campos que solo se fijan al insertar. */
   insertOnly?: string[];
+  /** Campos que solo escriben los procedimientos (docs/food/API.md §2). */
+  reserved?: string[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 const LONG_TEXT = 20000;
 const QUANTITY_MAX = 999999999.999; // numeric(12,3)
 const SERVINGS_MAX = 999999.99; // numeric(8,2)
@@ -110,6 +118,47 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       notes: freeText,
     },
   },
+  'food.menus': {
+    required: ['event_id', 'source_event_revision'],
+    insertOnly: ['event_id', 'source_event_revision', 'source_event_snapshot'],
+    reserved: ['status', 'validated_at', 'validated_by', 'validated_warnings', 'preparation_generated_at', 'preparation_source_revisions'],
+    fields: {
+      event_id: { kind: 'uuid' },
+      source_event_revision: { kind: 'number', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true },
+      source_event_snapshot: { kind: 'json', nullable: true },
+      status: { kind: 'enum', values: MENU_STATUSES },
+      validated_at: { kind: 'text', max: 40, nullable: true },
+      validated_by: { kind: 'uuid', nullable: true },
+      validated_warnings: { kind: 'json', nullable: true },
+      preparation_generated_at: { kind: 'text', max: 40, nullable: true },
+      preparation_source_revisions: { kind: 'json', nullable: true },
+      notes: freeText,
+      closing_notes: freeText,
+    },
+  },
+  'food.menu_services': {
+    required: ['menu_id', 'service_date', 'service_type'],
+    insertOnly: ['menu_id'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      service_date: { kind: 'date' },
+      service_type: { kind: 'enum', values: SERVICE_TYPES },
+      service_time: { kind: 'time', nullable: true },
+      position: { kind: 'number', min: -1e9, max: 1e9 },
+      notes: freeText,
+    },
+  },
+  'food.menu_items': {
+    required: ['service_id', 'recipe_id', 'servings'],
+    insertOnly: ['service_id'],
+    fields: {
+      service_id: { kind: 'uuid' },
+      recipe_id: { kind: 'uuid' },
+      servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX },
+      position: { kind: 'number', min: -1e9, max: 1e9 },
+      notes: freeText,
+    },
+  },
 };
 
 function issue(code: string, message: string, details: Record<string, unknown>): Issue {
@@ -143,6 +192,12 @@ function checkField(field: string, value: unknown, spec: FieldSpec): string | nu
       return null;
     case 'uuid':
       return typeof value === 'string' && UUID.test(value) ? null : 'debe ser un identificador';
+    case 'date':
+      return typeof value === 'string' && DATE.test(value) ? null : 'debe ser una fecha (AAAA-MM-DD)';
+    case 'time':
+      return typeof value === 'string' && TIME.test(value) ? null : 'debe ser una hora (HH:MM)';
+    case 'json':
+      return typeof value === 'object' ? null : 'debe ser un objeto o una lista';
   }
 }
 
@@ -154,7 +209,7 @@ export function validateOperation(op: DomainOperation): Issue | null {
   const fields = op.fields ?? {};
   for (const [field, value] of Object.entries(fields)) {
     const fieldSpec = spec.fields[field];
-    if (!fieldSpec) return issue('INVALID_FIELDS', `El campo ${field} no existe o es de solo lectura.`, { table: op.table, field });
+    if (!fieldSpec || spec.reserved?.includes(field)) return issue('INVALID_FIELDS', `El campo ${field} no existe o es de solo lectura.`, { table: op.table, field });
     const problem = checkField(field, value, fieldSpec);
     if (problem) {
       const allowed = fieldSpec.kind === 'enum' || fieldSpec.kind === 'tags' ? { allowed: fieldSpec.values } : {};
