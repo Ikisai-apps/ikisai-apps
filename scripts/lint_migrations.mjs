@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIR = path.join(ROOT, 'supabase/migrations');
-const SCHEMAS = ['core', 'tasks', 'invoices', 'booking', 'food'];
+const SCHEMAS = ['core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers'];
 // Helpers y objetos de core que una migración de app puede usar. Lectura: memberships, changes, files. Escritura solo vía apply_row_op.
 const CORE_HELPERS = ['core.ensure_app', 'core.register_table', 'core.unregister_table', 'core.allow_procedure', 'core.add_validate_hook', 'core.allow_read', 'core.disallow_read', 'core.apply_row_op', 'core.next_code', 'core.fail', 'core.next_seq', 'core.memberships', 'core.changes', 'core.files', 'core.synced_tables'];
-const NAME = /^(\d{8})_(\d{4})_(core|tasks|invoices|booking|food)_[a-z0-9_]+\.sql$/;
+const NAME = /^(\d{8})_(\d{4})_(core|tasks|invoices|booking|food|central|guests|organizers)_[a-z0-9_]+\.sql$/;
 
 const problems = [];
 const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort();
@@ -28,6 +28,7 @@ for (const file of files) {
   for (const other of SCHEMAS.filter((s) => s !== schema)) {
     const refs = [...sql.matchAll(new RegExp(`\\b${other}\\.([a-z_][a-z0-9_]*)`, 'g'))].map((m) => `${other}.${m[1]}`);
     for (const ref of new Set(refs)) {
+      if (ref.endsWith('.ikisai')) continue; // dominio (central.ikisai.com…), no un objeto de schema
       if (other === 'core' && CORE_HELPERS.includes(ref)) continue;
       if (schema === 'food' && other === 'booking' && /booking\.events\b/.test(ref) && /references\s+booking\.events/.test(sql)) continue; // FK permitida por contrato
       problems.push(`${file}: referencia a ${ref} fuera de su schema`);

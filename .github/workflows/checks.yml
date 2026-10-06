@@ -38,7 +38,7 @@ jobs:
             # Algo compartido (o push a main): Playwright de todas las apps y del kit.
             frontend=true; e2e="all"; uikit=true
           else
-            for app in invoices booking food tasks; do
+            for app in invoices booking food tasks central; do
               if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then
                 frontend=true; e2e="$e2e tests/$app"
               fi

@@ -19,7 +19,7 @@ from cloud_management import ROOT, PRIVATE, CloudError, SupabaseManagement, run_
 
 MIGRATIONS = ROOT / 'supabase/migrations'
 LEGACY_PREFIX = '202610050'  # migraciones del antiguo ikisai-tasks (schema ikisai.*)
-NAME_PATTERN = re.compile(r'^\d{8}_\d{4}_(core|tasks|invoices|booking|food)_[a-z0-9_]+$')
+NAME_PATTERN = re.compile(r'^\d{8}_\d{4}_(core|tasks|invoices|booking|food|central|guests|organizers)_[a-z0-9_]+$')
 
 
 def lint():
