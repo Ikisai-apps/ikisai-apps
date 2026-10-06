@@ -1,7 +1,7 @@
 /** Bloque «Alojamiento» de la ficha (docs/booking/API.md §15.1): asignaciones del evento a habitaciones, camas, salas y zonas. */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
-import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, validateFields } from '@ikisai/domain-booking';
+import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsInUse, isBookable, isExtraBed, validateFields } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, RESERVATIONS, SPACES, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
 import { settleBatch } from '../app/settle.ts';
@@ -65,7 +65,7 @@ async function loadOthers(client: SyncClient): Promise<Array<{ assignment: Row; 
 export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet> {
   const { client, reservation, event, data, guests, seesGuests, assignment } = options;
   const others = await loadOthers(client);
-  const spaceOptions = data.spaces.filter((s) => s.active || s.id === assignment?.space_id);
+  const spaceOptions = data.spaces.filter((s) => isBookable(s as any) || s.id === assignment?.space_id);
   const input = (attrs: Record<string, string | number | boolean>) => el('input', { autocomplete: 'off', ...attrs });
 
   const spaceSelect = el('select', { id: 'f-space_id' },
@@ -84,7 +84,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
   function fillBeds(keep: string | null): void {
     const spaceId = spaceSelect.value;
     const beds = data.beds.filter((b) => b.space_id === spaceId && (b.active || b.id === assignment?.bed_id));
-    replace(bedSelect, el('option', { value: '' }, 'Sin cama concreta'), beds.map((b) => el('option', { value: b.id }, `${b.label} · ${plural(Number(b.capacity), 'plaza', 'plazas')}`)));
+    replace(bedSelect, el('option', { value: '' }, 'Sin cama concreta'), beds.map((b) => el('option', { value: b.id }, `${b.label}${isExtraBed(b as any) ? ' (supletoria)' : ''} · ${plural(Number(b.capacity), 'plaza', 'plazas')}`)));
     bedSelect.value = keep && beds.some((b) => b.id === keep) ? keep : '';
     bedSelect.disabled = beds.length === 0;
   }
@@ -240,6 +240,7 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
   const who = (a: Row): string => (a.guest_id ? (o.seesGuests ? guestName(guestById.get(a.guest_id) ?? {} as Row) || 'Huésped asignado' : 'Huésped asignado') : String(a.group_label ?? 'Grupo'));
   const dates = (a: Row): string | null => (a.from_date || a.to_date ? `${shortDay(a.from_date ?? o.reservation.start_date)} → ${shortDay(a.to_date ?? o.reservation.end_date)}` : null);
 
+  const extras = extraBedsInUse(o.event.id, data.beds as any, data.assignments as any).length;
   const sections = occupancy.sort((a, b) => Number(spaceById.get(a.spaceId)?.position) - Number(spaceById.get(b.spaceId)?.position)).map((occ) => {
     const space = spaceById.get(occ.spaceId)!;
     const own = data.assignments.filter((a) => a.space_id === space.id);
@@ -261,5 +262,6 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
     el('div', { class: 'cardhead' }, el('h3', null, 'Alojamiento'),
       el('button', { class: 'linkbtn', type: 'button', id: 'openSpaces', onclick: () => o.navigate('#/espacios') }, 'Espacios y camas')),
     sections.length === 0 ? el('p', { class: 'hint' }, 'Sin asignaciones todavía.') : sections,
+    extras > 0 ? el('p', { class: 'hint', id: 'extraBeds' }, plural(extras, 'supletoria activada', 'supletorias activadas')) : null,
     o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addAssignment', onclick: () => void openAssignmentSheet(sheetOptions(null)) }, 'Asignar')) : null);
 }

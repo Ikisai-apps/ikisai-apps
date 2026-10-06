@@ -23,6 +23,10 @@ export interface FieldSpec {
   /** Para `date`: límites (AAAA-MM-DD) del selector. */
   dateMin?: string | null;
   dateMax?: string | null;
+  /** No es una columna: pide un dato para `buildOperations` y no viaja como campo. */
+  local?: boolean;
+  /** Solo se muestra cuando otro campo del formulario tiene ese valor (p. ej. camas solo en habitaciones). */
+  showWhen?: { key: string; value: unknown };
 }
 
 export interface BuiltForm {
@@ -52,8 +56,15 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
   const initial: Record<string, unknown> = {};
   const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
-  const fire = () => { error.hidden = true; listeners.forEach((listener) => listener()); };
   const children: Child[] = [];
+  const conditional: Array<{ wrap: HTMLElement; spec: FieldSpec }> = [];
+  const syncVisibility = () => {
+    for (const { wrap, spec } of conditional) {
+      const control = controls.get(spec.showWhen!.key);
+      wrap.hidden = !!control && control.value !== String(spec.showWhen!.value);
+    }
+  };
+  const fire = () => { error.hidden = true; syncVisibility(); listeners.forEach((listener) => listener()); };
 
   for (const spec of specs) {
     const start = row && row[spec.key] !== undefined ? row[spec.key] : defaults[spec.key];
@@ -79,10 +90,13 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     }
     controls.set(spec.key, control);
     if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
-    children.push(spec.type === 'check'
+    const wrap = spec.type === 'check'
       ? el('label', { class: 'check' }, control, el('span', null, spec.label))
-      : el('label', { class: 'field' }, el('span', null, spec.label), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null));
+      : el('label', { class: 'field' }, el('span', null, spec.label), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
+    if (spec.showWhen) conditional.push({ wrap, spec });
+    children.push(wrap);
   }
+  syncVisibility();
 
   function values(): Record<string, unknown> {
     const out: Record<string, unknown> = {};
@@ -160,9 +174,13 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
 
   async function submit(): Promise<void> {
     if (options.buildOperations) {
+      const problem = options.check?.(merged());
+      if (problem) return form.showError(problem);
       const issue = validateFields(table, form.values(), 'update')[0];
       if (issue) return form.showError(issue.message);
-      return commit(await options.buildOperations(form.values()), options.savedMessage ?? 'Guardado.');
+      let operations: RowOperation[];
+      try { operations = await options.buildOperations(form.values()); } catch (error) { return form.showError(error instanceof Error ? error.message : describeError(error)); }
+      return commit(operations, options.savedMessage ?? 'Guardado.');
     }
     const id = row?.id ?? options.insertId ?? crypto.randomUUID();
     let fields: Record<string, unknown>;

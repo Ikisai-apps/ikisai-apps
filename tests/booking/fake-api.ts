@@ -20,7 +20,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.guests': { is_minor: false, data_status: 'pendiente_datos', ses_status: 'pendiente_envio' },
   'booking.dietary_restrictions': { active: true },
   'booking.checklist_items': { status: 'pendiente', position: 0 },
-  'booking.spaces': { accessible: false, active: true, position: 0 },
+  'booking.spaces': { accessible: false, active: true, bookable: true, position: 0 },
   'booking.beds': { capacity: 1, active: true, position: 0 },
   'booking.room_assignments': { persons: 1 },
   'booking.staff_assignments': { status: 'prevista', position: 0 },
@@ -110,6 +110,8 @@ export interface FakeApi {
   uploads(): Array<{ id: string; filename: string; mime: string; sha256: string; size: number | null }>;
   /** Listas de tablas recibidas en cada `trash/purge`, en orden. */
   purgeRequests(): string[][];
+  /** Cambios aplicados con su lote (`requestId`): sirve para comprobar qué filas llegaron en el mismo `commit`. */
+  changeLog(): Array<{ requestId: string | null; table: string; id: string; op: string }>;
   /** Hace que el siguiente `POST /commands` falle con ese código y estado (la API falsa no aplica los invariantes del servidor). */
   failNextCommit(code: string, status: number): void;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
@@ -417,6 +419,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),
     purgeRequests: () => purgeRequests,
+    changeLog: () => changes.map((c) => ({ requestId: c.requestId, table: c.table, id: c.id, op: c.op })),
     failNextCommit(code, status) { nextCommitFailure = { code, status }; },
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
