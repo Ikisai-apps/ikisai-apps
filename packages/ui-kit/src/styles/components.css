@@ -715,4 +715,3 @@ a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
 .palette-foot{padding:8px 14px;border-top:1px solid var(--edge);font-size:11px;color:var(--muted);display:flex;gap:14px}
 :root[data-theme="dark"] .palette-back{background:rgba(0,0,0,.55)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .palette-back{background:rgba(0,0,0,.55)}}
-@keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
