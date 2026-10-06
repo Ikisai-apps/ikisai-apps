@@ -424,7 +424,7 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();
-  expect(await manifest.json()).toMatchObject({ name: 'Ikisai Booking', short_name: 'Booking', display: 'standalone' });
+  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Booking', short_name: 'Booking', start_url: '/', display: 'standalone' });
   const sw = await page.request.get(`${baseURL}/sw.js`);
   expect(sw.ok()).toBeTruthy();
   expect(await sw.text()).toContain('ikisai-booking-shell-');
