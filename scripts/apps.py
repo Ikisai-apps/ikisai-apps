@@ -13,6 +13,11 @@ ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
 ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food')
 
+# Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Invoices pasa a llamarse Finance
+# (decisión del usuario, 6 oct 2026): fase A, finance.ikisai.com sirve la app junto a invoices.ikisai.com; en la fase C
+# finance será el dominio principal y invoices/tramita redirigirán. Los alias que solo redirigen viven en Cloudflare.
+EXTRA_DOMAINS = {'invoices': [f'finance.{ZONE}']}
+
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
@@ -40,6 +45,7 @@ def _entry(name):
     'dist_dir': f'apps/{name}/dist',
     'schema': name,
     'bucket': _BUCKETS[name],
+    'extra_domains': list(EXTRA_DOMAINS.get(name, [])),
   }
 
 

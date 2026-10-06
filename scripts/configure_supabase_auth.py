@@ -7,7 +7,7 @@ from cloud_management import PRIVATE, CloudError, SupabaseManagement, run_cli
 
 FIELDS = {
   'site_url': 'https://' + APPS['tasks']['domain'],
-  'uri_allow_list': ','.join(f"https://{app['domain']}/**" for app in APPS.values()),
+  'uri_allow_list': ','.join(f"https://{host}/**" for app in APPS.values() for host in [app['domain'], *app.get('extra_domains', [])]),
   'disable_signup': True,
 }
 

@@ -145,7 +145,22 @@ def deploy(app_name, apply=False, domain=False, credentials=None):
   result = client.request(route + '/deployments', b''.join(parts), method='POST', content_type='multipart/form-data; boundary=' + boundary)
   report.update({'deploymentId': result['id'], 'url': result.get('url'), 'stage': (result.get('latest_stage') or {}).get('status'), 'newAssetsUploaded': len(missing)})
   if domain:
-    hostname = app['domain']
+    report.update(bind_domains(client, app))
+  return report
+
+
+def bind_domains(client, app):
+  """Enlaza al proyecto Pages el dominio de la app y sus dominios adicionales (CNAME proxied a <proyecto>.pages.dev)."""
+  project = app['pages_project']
+  route = f'/accounts/{client.account}/pages/projects/{project}'
+  out = {'domains': {}}
+  for hostname in [app['domain'], *app.get('extra_domains', [])]:
+    out['domains'][hostname] = bind_hostname(client, route, project, hostname)
+  return out
+
+
+def bind_hostname(client, route, project, hostname):
+    report = {}
     cname = project + '.pages.dev'
     domains = client.request(route + '/domains') or []
     if not any(d.get('name') == hostname for d in domains):
@@ -159,15 +174,19 @@ def deploy(app_name, apply=False, domain=False, credentials=None):
       client.request(f'/zones/{client.zone}/dns_records', {'type': 'CNAME', 'name': hostname, 'content': cname, 'proxied': True, 'ttl': 1})
       report['dnsRecord'] = 'created'
     report['domainStatus'] = (client.request(route + '/domains/' + hostname) or {}).get('status')
-  return report
+    return report
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   add_app_argument(parser)
   parser.add_argument('--apply', action='store_true', help='publica en Pages (por defecto solo plan y build local)')
-  parser.add_argument('--domain', action='store_true', help='con --apply, enlaza <app>.ikisai.com y su CNAME')
+  parser.add_argument('--domain', action='store_true', help='con --apply, enlaza <app>.ikisai.com, sus dominios adicionales y sus CNAME')
+  parser.add_argument('--bind-only', action='store_true', help='solo enlaza los dominios (sin construir ni publicar); con --apply')
   parser.add_argument('--credentials', help='ruta alternativa a private/cloud-credentials.json')
   parser.add_argument('--report', help='informe JSON (por defecto private/pages-deployment-<app>.json)')
   args = parser.parse_args()
-  run_cli(lambda: deploy(args.app, args.apply, args.domain, args.credentials), args.report or str(PRIVATE / f'pages-deployment-{args.app}.json'))
+  if args.bind_only:
+    run_cli(lambda: bind_domains(Cloudflare(args.credentials), get_app(args.app)) if args.apply else {'plan': [get_app(args.app)['domain'], *get_app(args.app)['extra_domains']]})
+  else:
+    run_cli(lambda: deploy(args.app, args.apply, args.domain, args.credentials), args.report or str(PRIVATE / f'pages-deployment-{args.app}.json'))
