@@ -1111,12 +1111,17 @@ booking.invoices_staff_hours_projection   (core.allow_read('invoices', …, 'vie
 
 Una PR por bloque.
 
-### 15.6 Preguntas de producto para el usuario
+### 15.6 Decisiones del usuario (rondas 16–18)
 
-1. **Alojamiento: ¿por cama o por habitación?** (a) Siempre por cama: más preciso, más trabajo al montar cada evento. (b) Por habitación con número de personas, y cama solo si se quiere: más rápido. Propuesta: **(b)**.
-2. **Precios del tarifario: ¿con IVA incluido o sin IVA?** Propuesta: **con IVA incluido** y una nota del tipo aplicado, porque el organizador compara precios finales. Si se trabaja en base imponible, al revés.
-3. **¿La app elige la tarifa o se elige a mano?** (a) Sugiere la que encaja por tipo, personas y temporada, cambiable línea a línea. (b) Siempre a mano de una lista. Propuesta: **(a)**.
-4. **Horas reales del personal: ¿quién las apunta?** (a) El responsable del evento al cerrarlo. (b) Cada persona las suyas (necesita cuenta). Propuesta: **(a)** ahora; (b) cuando exista Encarna.
+1. **Alojamiento por habitación** con número de personas y cama opcional (cubre también el «por cama»).
+2. **Habitaciones reales** (las mete el usuario en la app, no van en Git): una doble de 2 plazas reservada de antemano y **no reservable**; tres de 12 plazas con 4 supletorias; dos de 2 plazas con 2 supletorias; una séptima que no se ofrece nunca. De ahí:
+   - `booking.spaces.bookable`: un espacio activo pero no reservable existe, pero no se ofrece para asignar ni cuenta en la disponibilidad.
+   - Camas `kind = 'supletoria'`: no cuentan en la capacidad base; se activan al asignarlas en una reserva y la propuesta las cobra como extra (`extraBedsInUse`).
+   - Alta fácil en «Espacios y camas»: habitación con N camas y M supletorias de una vez, duplicar una habitación y «Crear distribución inicial» (con confirmación) cuando no hay ninguna.
+3. **Precios con IVA incluido** (10 % en alojamiento; `prices_include_vat` y `vat_rate` en las condiciones, cambiables sin migración). El IVA por categoría en facturas es de Invoices.
+4. **La app sugiere la tarifa** y el equipo aplica un **descuento en %** por línea (`proposal_lines.discount_pct`) o cambia el importe a mano.
+5. **Extras** con precio (equipo de sonido, camas supletorias, cambios de camas, movimientos de mobiliario…): capa `extra` del tarifario, por evento (`estancia`), por noche, por persona o por unidad. Se añaden a mano a la propuesta; solo el de servicio `cama_supletoria` se sugiere, por cama activada.
+6. **Horas reales del personal:** las apunta el responsable al cerrar el evento.
 
 ## Anexo · Campos de C03 y C04 que no se portan
 
