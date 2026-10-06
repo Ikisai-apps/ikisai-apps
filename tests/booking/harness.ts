@@ -19,6 +19,9 @@ export const EVENTS = 'booking.events';
 export const GUESTS = 'booking.guests';
 export const RESTRICTIONS = 'booking.dietary_restrictions';
 export const CHECKLIST = 'booking.checklist_items';
+export const SPACES = 'booking.spaces';
+export const BEDS = 'booking.beds';
+export const ASSIGNMENTS = 'booking.room_assignments';
 
 export interface Harness {
   api: FakeApi;

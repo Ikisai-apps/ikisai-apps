@@ -90,3 +90,15 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .techdetail { margin-top: 4px; font-size: 12px; }
 .techdetail summary { cursor: pointer; color: var(--muted); }
 .techdetail code { display: block; white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+
+/* Espacios y camas, y bloque «Alojamiento» de la ficha */
+.space-item { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.space-main { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.space-main .row-title { flex-wrap: wrap; }
+.bed-block { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.bed-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bed-item .space-main { flex: 1; }
+.space-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
+.zone + .zone { margin-top: 18px; }
+.lodging-space + .lodging-space { margin-top: 14px; }
+.lodging-over { color: var(--danger, #b3261e); }
