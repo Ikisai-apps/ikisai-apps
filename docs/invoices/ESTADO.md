@@ -35,9 +35,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #82 (tanda 6) fusionada.
 - Tanda 7 (`invoices/tanda7`): artículos de la ficha reordenables a mano con `createSortableList` del kit (guarda `position`; decisión del usuario «orden manual»); extracción automática conectada al helper `createDocumentExtractor` de `_kit/extract.ts` (PR #91 de Core) con el JSON Schema del handoff (salida estructurada) y el prompt sin prosa; coste de cada extracción (`usage`) visible en la hoja de importación; `EXTRACTION_INVALID` abre la importación manual con los motivos y avisos del modelo. Enlaces estables para otras apps (`API.md` §9.6): `#/facturas/<código>` y `#/compras?destino=<app>:<kind>:<id>`. Prueba O7–O9 estabilizada antes (PR #96).
 
+- PR #103 (tanda 7) fusionada.
+- Tanda 8 (`invoices/tanda8`): agentes de IA. `invoices.import_v1` seguro para agentes; hook `agentRisk` que exige aprobación al tocar facturas ya entregadas a la gestoría o validadas (salvo asignar destinos); cada importación cuenta para el umbral de 10 (migración 0202, `API.md` §4.4).
+
 ## En curso
 
-- PR de la tanda 7 (`invoices/tanda7`).
+- PR de la tanda 8 (`invoices/tanda8`).
 
 ## Pendiente
 
@@ -45,7 +48,6 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
-- Agentes de IA del núcleo (PR #98 de Core): marcar qué procedimientos puede usar un agente sin aprobación y valorar un hook `agentRisk` (tocar una factura ya entregada a gestoría siempre pide aprobación). Próxima tanda.
 
 ## Bloqueos
 

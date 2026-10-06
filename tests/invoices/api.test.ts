@@ -262,6 +262,70 @@ test('entregas: vista previa, ZIP en streaming con manifest, CSV y documentos; C
   assert.equal(missing.status, 409); assert.equal((await missing.json()).error.code, 'EXPORT_FILE_MISSING');
 });
 
+test('agentes: import_v1 seguro; facturas entregadas a gestoría o validadas exigen aprobación; asignar a una validada no', async () => {
+  // Depende de «entregas»: `invoice` está validada y en la entrega GST del T4.
+  const issued = await app.call('/api/v1/agents', { body: { name: 'Bot de facturas', role: 'editor' } });
+  assert.equal(issued.status, 200, JSON.stringify(issued.data));
+  const agent = issued.data.token as string;
+  const boot = await app.call('/api/v1/bootstrap', { token: agent });
+  assert.equal(boot.status, 200);
+  assert.deepEqual(boot.data.agentPolicy.safeProcedures, ['invoices.import_v1']);
+
+  // Factura pendiente: el agente la edita sin aprobación.
+  const pending = uuid(); const pendingLine = uuid();
+  await ok([
+    insert('invoices.invoices', pending, { supplier_id: supplier, invoice_date: '2026-10-06', object: 'material limpieza', expense_category: 'compras' }),
+    insert('invoices.invoice_lines', pendingLine, { invoice_id: pending, position: 0, description: 'Lejía', net_amount: 5, vat_rate: 21, vat_amount: 1.05 }),
+  ]);
+  const p = await row('invoices.invoices', pending);
+  await ok([update('invoices.invoices', pending, p.revision, { notes: 'Pedido por correo' })], agent);
+
+  // Validar sigue pidiendo aprobación (procedimiento no seguro).
+  const p2 = await row('invoices.invoices', pending);
+  const validate = await commit([call('invoices.validate', { invoice_id: pending, expectedRevision: p2.revision })], agent);
+  assert.equal(validate.status, 428, JSON.stringify(validate.data)); assert.ok(validate.data.error.details.risk.reasons.includes('call:invoices.validate'));
+
+  // Factura validada y entregada: tocarla (o una de sus filas) exige aprobación, con el código en el motivo.
+  const inv = await row('invoices.invoices', invoice.id);
+  const touched = await commit([update('invoices.invoices', invoice.id, inv.revision, { notes: 'Cambio de agente' })], agent);
+  assert.equal(touched.status, 428, JSON.stringify(touched.data));
+  assert.deepEqual(touched.data.error.details.risk.reasons, [`invoice:exported:${inv.code}`]);
+  const line = await row('invoices.invoice_lines', invoice.line);
+  const lineTouched = await commit([update('invoices.invoice_lines', invoice.line, line.revision, { description: 'Tomate rama' })], agent);
+  assert.equal(lineTouched.status, 428); assert.deepEqual(lineTouched.data.error.details.risk.reasons, [`invoice:exported:${inv.code}`]);
+  assert.equal((await row('invoices.invoices', invoice.id)).notes ?? null, inv.notes ?? null);
+
+  // Con propuesta aprobada por un owner humano, el mismo lote pasa.
+  const ops = [update('invoices.invoices', invoice.id, inv.revision, { notes: 'Cambio de agente' })];
+  const proposal = await app.call('/api/v1/proposals', { token: agent, body: { requestId: 'inv-agent-1', operations: ops } });
+  assert.equal(proposal.status, 200, JSON.stringify(proposal.data));
+  const approved = await app.call(`/api/v1/proposals/${proposal.data.id}/approve`, { body: {} });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const applied = await app.call('/api/v1/commands', { token: agent, body: { requestId: 'inv-agent-1', operations: ops, confirmationId: proposal.data.id } });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  assert.equal((await row('invoices.invoices', invoice.id)).notes, 'Cambio de agente');
+
+  // Validada sin entregar: cambiar datos exige aprobación; asignar un destino no.
+  const v = uuid(); const vLine = uuid();
+  const doc = await uploadFile('%PDF agente');
+  await ok([
+    insert('invoices.invoices', v, { supplier_id: supplier, invoice_date: '2026-11-02', object: 'fruta', expense_category: 'compras', source_total: 11 }),
+    insert('invoices.invoice_lines', vLine, { invoice_id: v, position: 0, description: 'Manzana', net_amount: 10, vat_rate: 10, vat_amount: 1 }),
+    insert('invoices.tax_lines', uuid(), { invoice_id: v, position: 0, tax_type: 'iva', rate: 10, taxable_base: 10, amount: 1 }),
+    insert('invoices.invoice_files', uuid(), { invoice_id: v, file_id: doc.id, original_filename: 'fruta.pdf', page_order: 1, kind: 'original' }),
+  ]);
+  await ok([call('invoices.validate', { invoice_id: v, expectedRevision: (await row('invoices.invoices', v)).revision })]);
+  const vr = await row('invoices.invoices', v);
+  assert.equal(vr.status, 'validada');
+  const edit = await commit([update('invoices.invoices', v, vr.revision, { object: 'fruta variada' })], agent);
+  assert.equal(edit.status, 428); assert.deepEqual(edit.data.error.details.risk.reasons, [`invoice:validada:${vr.code}`]);
+  await ok([insert('invoices.allocations', uuid(), { invoice_line_id: vLine, target_app: 'general', target_kind: 'operating_expense', target_label: 'Gasto de explotación', allocated_amount: 10 })], agent);
+
+  // Diez filas en un lote: umbral del usuario (10 elementos).
+  const bulk = await commit(Array.from({ length: 10 }, (_, i) => insert('invoices.suppliers', uuid(), { name: `Proveedor ${i}` })), agent);
+  assert.equal(bulk.status, 428); assert.equal(bulk.data.error.details.risk.bulk, true);
+});
+
 test('zip: escritor en streaming produce entradas legibles y CRC correcto', async () => {
   const bytes = await collectStream(zipStream([
     { name: 'a/hola.txt', data: new TextEncoder().encode('123456789'), modified: new Date('2026-10-06T10:00:00Z') },

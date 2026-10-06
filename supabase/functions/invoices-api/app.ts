@@ -1,5 +1,5 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
-import { createApp, createSupabase, fail, isFault, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import {
   DomainError, EXPORT_CSV_FILES, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
@@ -246,6 +246,55 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
   };
 }
 
+/**
+ * Riesgo de dominio de un lote de un agente de IA (contrato §3.1, API.md §4.4). El núcleo ya exige aprobación para borrados,
+ * procedimientos no seguros (todos salvo `invoices.import_v1`) y lotes de 10 o más elementos. Aquí se añade:
+ * - tocar una factura que ya está en una entrega a la gestoría (o sus artículos, impuestos, documentos o asignaciones);
+ * - cambiar una factura validada o archivada, o sus artículos, impuestos o documentos (la devolvería a revisión).
+ *   Asignar destinos a una factura validada no cambia sus datos fiscales y no exige aprobación.
+ * Cada importación cuenta como un elemento para el umbral, aunque sea una sola operación `call`.
+ */
+export function createAgentRisk(supabase: Supabase) {
+  const CHILDREN: string[] = [TABLES.invoiceLines, TABLES.taxLines, TABLES.allocations, TABLES.invoiceFiles];
+  return async function agentRisk(operations: Operation[], ctx: RequestContext): Promise<AgentRiskAssessment> {
+    const refs = new Map<string, { allocation: boolean }>();
+    const add = (id: unknown, allocation: boolean) => {
+      if (typeof id !== 'string' || !UUID.test(id)) return;
+      const prev = refs.get(id.toLowerCase());
+      refs.set(id.toLowerCase(), { allocation: (prev?.allocation ?? true) && allocation });
+    };
+    let imports = 0;
+    const rows = new Set<string>();
+    for (const op of operations) {
+      if (op.op === 'call') {
+        if (op.procedure === 'invoices.import_v1') imports += 1;
+        add((op.args as Record<string, unknown> | undefined)?.invoice_id, false);
+        continue;
+      }
+      if (!op.table) continue;
+      if (op.id) rows.add(`${op.table}|${op.id}`);
+      const allocation = op.table === TABLES.allocations;
+      if (op.op !== 'insert' && (op.table === TABLES.invoices || CHILDREN.includes(op.table))) add(op.id, allocation);
+      if (op.op === 'insert' && CHILDREN.includes(op.table)) {
+        add(op.fields?.invoice_id, allocation);
+        add(op.fields?.invoice_line_id, allocation);
+      }
+    }
+    const reasons: string[] = [];
+    if (refs.size) {
+      const info = await read<{ rows: Array<{ ref: string; code: string | null; status: string; exported: boolean; delivered: boolean }> }>(
+        supabase, ctx, 'invoices.agent_risk', { ids: [...refs.keys()] });
+      for (const row of info.rows) {
+        const label = row.code ?? 'sin código';
+        const reason = row.exported ? `invoice:${row.delivered ? 'delivered' : 'exported'}:${label}`
+          : (row.status === 'validada' || row.status === 'archivada') && !refs.get(row.ref.toLowerCase())?.allocation ? `invoice:${row.status}:${label}` : null;
+        if (reason && !reasons.includes(reason)) reasons.push(reason);
+      }
+    }
+    return { required: reasons.length > 0, reasons, affectedEstimate: rows.size + imports };
+  };
+}
+
 async function checkImport(supabase: Supabase, ctx: RequestContext, args: Record<string, unknown>, index: number): Promise<void> {
   const validation = validateImportDocument(args.document);
   if (!validation.ok) fail(422, 'IMPORT_INVALID', domainMessage('IMPORT_INVALID'), { index, errors: validation.errors });
@@ -460,7 +509,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     slug: 'invoices-api',
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
-    hooks: { beforeCommit: createInvoicesHooks(supabase, targets) },
+    hooks: { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) },
     routes: invoicesRoutes(supabase, targets, base.extractInvoice),
   });
 }
