@@ -1,5 +1,6 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
 import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { sha256Hex, stable } from '../_kit/supabase.ts';
 import {
   DomainError, EXPORT_CSV_FILES, buildImportArgs, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
@@ -219,6 +220,14 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
         continue;
       }
       if (!op.table?.startsWith('invoices.')) continue;
+      if (op.table === EXTRACTIONS) {
+        // Solo la petición de repetir una extracción (un agente la propone; la aprueba un owner humano). El resto lo escribe la Edge.
+        const keys = Object.keys(op.fields ?? {});
+        if (op.op !== 'insert' || keys.some((k) => k !== 'file_id' && k !== 'invoice_id') || typeof op.fields?.file_id !== 'string' || !UUID.test(op.fields.file_id)) {
+          fail(422, 'INVALID_OPERATION', 'El registro de extracciones lo escribe la Edge; solo se puede pedir repetir una extracción con {file_id}.', { index });
+        }
+        continue;
+      }
       const fields = op.fields ?? {};
       if (op.op === 'insert' || op.op === 'update') {
         try { validateRowFields(op.table, op.op, fields); } catch (error) { throwDomain(error, index); }
@@ -265,6 +274,7 @@ export function createAgentRisk(supabase: Supabase) {
     };
     let imports = 0;
     const rows = new Set<string>();
+    const extractionRequests: string[] = [];
     for (const op of operations) {
       if (op.op === 'call') {
         if (op.procedure === 'invoices.import_v1') imports += 1;
@@ -273,6 +283,7 @@ export function createAgentRisk(supabase: Supabase) {
       }
       if (!op.table) continue;
       if (op.id) rows.add(`${op.table}|${op.id}`);
+      if (op.table === EXTRACTIONS) { extractionRequests.push(String(op.fields?.file_id ?? op.id)); continue; }
       const allocation = op.table === TABLES.allocations;
       if (op.op !== 'insert' && (op.table === TABLES.invoices || CHILDREN.includes(op.table))) add(op.id, allocation);
       if (op.op === 'insert' && CHILDREN.includes(op.table)) {
@@ -280,7 +291,7 @@ export function createAgentRisk(supabase: Supabase) {
         add(op.fields?.invoice_line_id, allocation);
       }
     }
-    const reasons: string[] = [];
+    const reasons: string[] = extractionRequests.map((id) => `extract:repeat:${id}`);
     if (refs.size) {
       const info = await read<{ rows: Array<{ ref: string; code: string | null; status: string; exported: boolean; delivered: boolean }> }>(
         supabase, ctx, 'invoices.agent_risk', { ids: [...refs.keys()] });
@@ -293,6 +304,76 @@ export function createAgentRisk(supabase: Supabase) {
     }
     return { required: reasons.length > 0, reasons, affectedEstimate: rows.size + imports };
   };
+}
+
+// ---------------------------------------------------------------------------
+// Registro de extracciones y límite de los agentes (API.md §6, «Límite de los agentes»)
+// ---------------------------------------------------------------------------
+const EXTRACTIONS = 'invoices.extractions';
+
+interface ExtractionStatus { file_id: string; done: number; invoice_id: string | null; code: string | null; status: string | null }
+interface ApprovedExtraction { rows: Array<{ id: string; file_id: string; revision: number }> }
+
+/** Commit de la Edge con el actor de la petición (lo que hace `POST commands`, sin hooks: las filas las construye la Edge). */
+async function edgeCommit(supabase: Supabase, ctx: RequestContext, requestId: string, operations: unknown[], confirmation: Record<string, unknown> | null, digest?: string): Promise<CommitResult> {
+  return supabase.rpc<CommitResult>('core_commit', {
+    p_app: ctx.app, p_actor: ctx.user.id, p_request_id: requestId, p_digest: digest ?? await sha256Hex(stable(operations)),
+    p_expected_cursor: null, p_operations: operations, p_confirmation: ctx.user.kind === 'agent' ? confirmation : null,
+  });
+}
+
+/**
+ * Agente que pide una extracción: sin repetición y con la factura pendiente, sigue. Si no, necesita `confirmationId` de una
+ * propuesta aprobada cuyas operaciones sean exactamente inserciones en `invoices.extractions` de estos documentos; se
+ * consume aquí (core.commit comprueba requestId, digest, estado y caducidad) y sus filas reciben el resultado.
+ */
+async function approvedExtraction(supabase: Supabase, ctx: RequestContext, body: Record<string, unknown>, fileIds: string[], status: ExtractionStatus[]): Promise<ApprovedExtraction | null> {
+  const reasons: string[] = [];
+  for (const row of status) {
+    const label = row.code ?? row.file_id;
+    if (row.done > 0) reasons.push(`extract:repeat:${label}`);
+    else if (row.status && row.status !== 'pendiente_datos') reasons.push(`extract:not_pending:${label}`);
+  }
+  if (!reasons.length) return null;
+  const risk = { required: true, destructive: false, bulk: false, affected: fileIds.length, bulkThreshold: 10, reasons: [...new Set(reasons)] };
+  const confirmationId = body.confirmationId;
+  if (typeof confirmationId !== 'string' || !UUID.test(confirmationId)) {
+    fail(428, 'CONFIRMATION_REQUIRED', 'Repetir la extracción necesita la aprobación de una persona: prepara una propuesta con una inserción en invoices.extractions {file_id} por documento y vuelve con confirmationId.', { risk });
+  }
+  const proposal = await supabase.rpc<{ id: string; requestId: string; digest: string; operations: Array<{ op: string; table?: string; id?: string; fields?: Record<string, unknown> }>; status: string }>(
+    'core_proposal_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: confirmationId });
+  // Reintentar un lote ya aplicado devuelve su recibo en core.commit: aquí cada aprobación vale para una sola extracción.
+  if (proposal.status !== 'approved') fail(428, 'CONFIRMATION_REQUIRED', 'La propuesta no está aprobada o ya se usó.', { risk, proposalId: proposal.id, proposalStatus: proposal.status });
+  const requested = proposal.operations.filter((o) => o.op === 'insert' && o.table === EXTRACTIONS).map((o) => String(o.fields?.file_id ?? '').toLowerCase());
+  if (requested.length !== proposal.operations.length || requested.length !== fileIds.length || fileIds.some((id) => !requested.includes(id.toLowerCase()))) {
+    fail(428, 'CONFIRMATION_REQUIRED', 'La propuesta aprobada no corresponde a estos documentos.', { risk, proposalId: proposal.id, mismatch: { files: true } });
+  }
+  const result = await edgeCommit(supabase, ctx, proposal.requestId, proposal.operations, { required: true, id: proposal.id, risk }, proposal.digest);
+  const rows = (result.changes ?? []).filter((c: any) => c.table === EXTRACTIONS && c.after).map((c: any) => ({ id: c.after.id as string, file_id: c.after.file_id as string, revision: Number(c.after.revision) }));
+  return { rows };
+}
+
+/** Una fila por documento con el resultado; el coste (`usage`) va en la primera. Nunca tumba la extracción si falla. */
+async function logExtraction(supabase: Supabase, ctx: RequestContext, status: ExtractionStatus[], outcome: 'ok' | 'invalida', usage: unknown, approved: ApprovedExtraction | null): Promise<void> {
+  const u = (usage ?? {}) as { model?: string; inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number; latencyMs?: number };
+  const cost = {
+    model: typeof u.model === 'string' ? u.model : null,
+    input_tokens: typeof u.inputTokens === 'number' ? u.inputTokens + (u.cacheReadInputTokens ?? 0) + (u.cacheCreationInputTokens ?? 0) : null,
+    output_tokens: typeof u.outputTokens === 'number' ? u.outputTokens : null,
+    latency_ms: typeof u.latencyMs === 'number' ? Math.round(u.latencyMs) : null,
+  };
+  const operations = status.map((row, index) => {
+    const fields = { outcome, ...(index === 0 ? cost : {}), ...(row.invoice_id ? { invoice_id: row.invoice_id } : {}) };
+    const mine = approved?.rows.find((r) => r.file_id.toLowerCase() === row.file_id.toLowerCase());
+    return mine
+      ? { op: 'update', table: EXTRACTIONS, id: mine.id, expectedRevision: mine.revision, fields }
+      : { op: 'insert', table: EXTRACTIONS, id: crypto.randomUUID(), fields: { file_id: row.file_id, ...fields } };
+  });
+  try {
+    await edgeCommit(supabase, ctx, `extract-log-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['extract:log'] } });
+  } catch (error) {
+    console.warn('[invoices] no se pudo registrar la extracción', error);
+  }
 }
 
 async function checkImport(supabase: Supabase, ctx: RequestContext, args: Record<string, unknown>, index: number): Promise<void> {
@@ -420,14 +501,23 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
           const file = await supabase.rpc<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
           files.push({ id: file.id, bucket: file.bucket, path: file.path, mime: file.mime, filename: file.filename, size: Number(file.size) });
         }
+        // Límite de los agentes (decisión del usuario): una extracción por documento de una factura pendiente; repetirla,
+        // o extraer el documento de una factura que ya no está en `pendiente_datos`, exige una propuesta aprobada.
+        const status = await read<{ rows: ExtractionStatus[] }>(supabase, ctx, 'invoices.extraction_status', { file_ids: files.map((f) => f.id) });
+        const approved = ctx.user.kind === 'agent' ? await approvedExtraction(supabase, ctx, body, files.map((f) => f.id), status.rows) : null;
         let out: { document: unknown; warnings?: string[]; usage?: unknown };
         try {
           out = await extractor({ files, prompt: EXTRACTION_PROMPT_STRUCTURED, schema: IMPORT_JSON_SCHEMA, ctx });
         } catch (error) {
-          if (isFault(error)) throw error;
+          if (isFault(error)) {
+            const usage = (error.details as { usage?: unknown } | null)?.usage;
+            if (error.code === 'EXTRACTION_INVALID' && usage) await logExtraction(supabase, ctx, status.rows, 'invalida', usage, approved);
+            throw error;
+          }
           fail(503, 'EXTRACTION_UNAVAILABLE', domainMessage('EXTRACTION_UNAVAILABLE'), { reason: (error as Error)?.message ?? null });
         }
         const validation = validateImportDocument(out.document);
+        await logExtraction(supabase, ctx, status.rows, validation.ok ? 'ok' : 'invalida', out.usage ?? null, approved);
         if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [], usage: out.usage ?? null });
         return { document: validation.document, document_sha256: await importDocumentSha256(validation.document), warnings: out.warnings ?? [], usage: out.usage ?? null };
       },

@@ -408,6 +408,55 @@ test('imports/extract con helper: documento validado y hasheado; documento invá
     await extracting.call(`/api/v1/uploads/${bad.data.id}/verify`, { body: {} });
     const invalid = await extracting.call('/api/v1/imports/extract', { body: { file_ids: [bad.data.id] } });
     assert.equal(invalid.status, 422); assert.equal(invalid.data.error.code, 'EXTRACTION_INVALID'); assert.ok(invalid.data.error.details.errors.length); assert.equal(invalid.data.error.details.usage, null);
+
+    // Registro: cada extracción deja su fila con el coste en la primera.
+    const logged = await extracting.t.db.query<{ outcome: string; input_tokens: number | null }>(`select outcome, input_tokens from invoices.extractions where file_id = $1`, [ticket.data.id]);
+    assert.deepEqual(logged.rows.map((r) => r.outcome), ['ok']);
+
+    // Límite de los agentes: una extracción por documento; repetir exige propuesta aprobada. Las personas no tienen límite.
+    const agent = (await extracting.call('/api/v1/agents', { body: { name: 'Bot extractor', role: 'editor' } })).data.token as string;
+    const upload = async (name: string) => {
+      const t = await extracting.call('/api/v1/uploads', { body: { filename: name, mime: 'application/pdf', size: bytes.byteLength, sha256: sha } });
+      extracting.supabase.storage.set(t.data.path, bytes);
+      await extracting.call(`/api/v1/uploads/${t.data.id}/verify`, { body: {} });
+      return t.data.id as string;
+    };
+    const fresh = await upload('agente.pdf');
+    assert.equal((await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [fresh] } })).status, 200);
+    const repeat = await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [fresh] } });
+    assert.equal(repeat.status, 428, JSON.stringify(repeat.data)); assert.equal(repeat.data.error.code, 'CONFIRMATION_REQUIRED');
+    assert.deepEqual(repeat.data.error.details.risk.reasons, [`extract:repeat:${fresh}`]);
+    // Un agente no escribe el registro directamente
+    const direct = await extracting.call('/api/v1/commands', { token: agent, body: { requestId: 'x-direct', operations: [{ op: 'insert', table: 'invoices.extractions', id: uuid(), fields: { file_id: fresh, outcome: 'ok' } }] } });
+    assert.equal(direct.status, 422);
+    const ops = [{ op: 'insert', table: 'invoices.extractions', id: uuid(), fields: { file_id: fresh } }];
+    const proposal = await extracting.call('/api/v1/proposals', { token: agent, body: { requestId: 'x-repeat', operations: ops } });
+    assert.equal(proposal.status, 200, JSON.stringify(proposal.data)); assert.deepEqual(proposal.data.risk.reasons, [`extract:repeat:${fresh}`]);
+    const early = await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [fresh], confirmationId: proposal.data.id } });
+    assert.equal(early.status, 428, 'sin aprobar todavía');
+    assert.equal((await extracting.call(`/api/v1/proposals/${proposal.data.id}/approve`, { body: {} })).status, 200);
+    const allowed = await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [fresh], confirmationId: proposal.data.id } });
+    assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
+    const reused = await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [fresh], confirmationId: proposal.data.id } });
+    assert.equal(reused.status, 428, 'una propuesta se consume una vez');
+    const rowsFresh = await extracting.t.db.query<{ outcome: string }>(`select outcome from invoices.extractions where file_id = $1 order by created_at`, [fresh]);
+    assert.deepEqual(rowsFresh.rows.map((r) => r.outcome), ['ok', 'ok']);
+    assert.equal((await extracting.call('/api/v1/imports/extract', { body: { file_ids: [fresh] } })).status, 200, 'una persona repite sin límite');
+
+    // Documento de una factura que ya no está pendiente de datos → aprobación
+    const other = await upload('revisada.pdf');
+    const sup = uuid(); const inv = uuid();
+    const made = await extracting.call('/api/v1/commands', { body: { requestId: 'x-inv', operations: [
+      { op: 'insert', table: 'invoices.suppliers', id: sup, fields: { name: 'Revisada SL' } },
+      { op: 'insert', table: 'invoices.invoices', id: inv, fields: { supplier_id: sup, invoice_date: '2026-10-06', object: 'revisada', expense_category: 'compras' } },
+      { op: 'insert', table: 'invoices.invoice_files', id: uuid(), fields: { invoice_id: inv, file_id: other, original_filename: 'revisada.pdf', page_order: 1, kind: 'original' } },
+      { op: 'insert', table: 'invoices.invoice_lines', id: uuid(), fields: { invoice_id: inv, position: 0, description: 'Algo', net_amount: 1 } },
+    ] } });
+    assert.equal(made.status, 200, JSON.stringify(made.data));
+    const code = (await extracting.t.db.query<{ code: string; status: string }>(`select code, status from invoices.invoices where id = $1`, [inv])).rows[0]!;
+    assert.equal(code.status, 'pendiente_revision');
+    const notPending = await extracting.call('/api/v1/imports/extract', { token: agent, body: { file_ids: [other] } });
+    assert.equal(notPending.status, 428); assert.deepEqual(notPending.data.error.details.risk.reasons, [`extract:not_pending:${code.code}`]);
   } finally {
     await extracting.close();
   }

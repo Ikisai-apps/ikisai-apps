@@ -97,9 +97,9 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('bootstrap registra las ocho tablas; proveedores con slug derivado y alias', async () => {
+test('bootstrap registra las nueve tablas (extracciones incluida); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.export_items', 'invoices.exports', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.suppliers', 'invoices.tax_lines']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.suppliers', 'invoices.tax_lines']);
   const id = await newSupplier('Makro España S.A.', { tax_id: 'A28647451', aliases: ['MAKRO'] });
   const s = await row('invoices.suppliers', id);
   assert.equal(s.slug, 'makro_espana_s_a'); assert.deepEqual(s.aliases, ['MAKRO']); assert.equal(s.default_is_investment, false);

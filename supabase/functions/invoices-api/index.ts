@@ -1,6 +1,6 @@
 // Punto de entrada Deno de la Edge Function `invoices-api`.
 import { createInvoicesApp, DEFAULT_TASKS_API_BASE } from './app.ts';
-import { createDocumentExtractor } from '../_kit/extract.ts';
+import { createDocumentExtractorFromEnv } from '../_kit/extract.ts';
 
 declare const Deno: { serve: (handler: (request: Request) => Promise<Response>) => void; env: { get: (name: string) => string | undefined } };
 
@@ -15,5 +15,6 @@ const config = {
   tasksApiBase: Deno.env.get('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE,
 };
 
-// Extracción automática (API.md §6): sin `ANTHROPIC_API_KEY` el helper responde EXTRACTION_UNAVAILABLE 503 y la app ofrece pegar el JSON.
-Deno.serve(createInvoicesApp({ ...config, extractInvoice: createDocumentExtractor(config, { apiKey: Deno.env.get('ANTHROPIC_API_KEY') }) }));
+// Extracción automática (API.md §6): OpenAI si existe `OPENAI_API_KEY` (decisión del usuario), Anthropic si no.
+// Sin ninguna clave responde EXTRACTION_UNAVAILABLE 503 y la app ofrece pegar el JSON.
+Deno.serve(createInvoicesApp({ ...config, extractInvoice: createDocumentExtractorFromEnv(config, (name) => Deno.env.get(name)) }));
