@@ -90,3 +90,14 @@ bind=function(){bindBeforeInline();
   const fab=document.getElementById('fab');if(fab&&state.view==='project'&&project())fab.onclick=()=>startInlineNew(project().id);
   document.querySelectorAll('[data-add-task]').forEach(b=>b.onclick=()=>{if(!canEdit())return;const pid=b.dataset.addTask,rows=b.previousElementSibling?.querySelectorAll('[data-row]')||[],last=rows[rows.length-1],parentId=last?taskLocation(last.dataset.row)?.t.parentId||null:null;startInlineNew(pid,parentId)});
 };
+/* ✓ de guardar junto a cada campo en línea (aceptación V1, 5): en el móvil Enter no siempre se ve. Hace lo mismo que
+   Enter, y no quita el foco al campo al pulsarlo (así no salta antes el guardado o la cancelación por pérdida de foco). */
+function addInlineSave(input){if(input.dataset.saveButton)return;input.dataset.saveButton='1';
+  const button=document.createElement('button');button.type='button';button.className='inlinesave';button.setAttribute('aria-label','Guardar');button.title='Guardar';button.textContent='✓';
+  button.addEventListener('pointerdown',e=>e.preventDefault());button.addEventListener('mousedown',e=>e.preventDefault());
+  button.addEventListener('click',()=>{input.focus();input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))});
+  const parent=input.offsetParent||input.parentElement;if(parent&&getComputedStyle(parent).position==='static')parent.style.position='relative';
+  input.insertAdjacentElement('afterend',button);
+  const place=()=>{if(!button.isConnected)return;const size=Math.min(36,Math.max(28,input.offsetHeight-8));Object.assign(button.style,{width:size+'px',height:size+'px',top:(input.offsetTop+(input.offsetHeight-size)/2)+'px',left:(input.offsetLeft+input.offsetWidth-size-4)+'px'})};
+  place();requestAnimationFrame(place)}
+new MutationObserver(()=>document.querySelectorAll('input.inlineedit').forEach(addInlineSave)).observe(document.body,{childList:true,subtree:true});

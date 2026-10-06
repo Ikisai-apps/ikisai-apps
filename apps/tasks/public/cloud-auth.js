@@ -28,8 +28,11 @@ sessionsSheet=async function(){
   document.getElementById('changePassword').onclick=passwordSheet;document.getElementById('logoutAccount').onclick=logoutAccount;
 };
 passwordSheet=function(){
-  openSheet('<h2 class="sheettitle">Cambiar contraseña</h2><div class="field"><label for="oldPassword">Contraseña actual</label><input id="oldPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">Nueva contraseña (mínimo 12 caracteres)</label><input id="newPassword" type="password" autocomplete="new-password" minlength="12"></div><p>Se cerrarán tus otras sesiones. Los cambios locales se conservan.</p><button class="primary" id="savePassword">Cambiar contraseña</button>');
-  document.getElementById('savePassword').onclick=async()=>{
+  // Formulario completo para el gestor de contraseñas: su campo de usuario (oculto) está aquí, así que Chrome rellena
+  // aquí el correo y no en el primer campo de texto que encuentre en la página (el buscador).
+  openSheet('<h2 class="sheettitle">Cambiar contraseña</h2><form id="passwordForm" autocomplete="on"><input id="passwordUser" name="username" type="email" autocomplete="username" hidden><div class="field"><label for="oldPassword">Contraseña actual</label><input id="oldPassword" name="current-password" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">Nueva contraseña (mínimo 12 caracteres)</label><input id="newPassword" name="new-password" type="password" autocomplete="new-password" minlength="12"></div><p>Se cerrarán tus otras sesiones. Los cambios locales se conservan.</p><button class="primary" id="savePassword" type="submit">Cambiar contraseña</button></form>');
+  document.getElementById('passwordForm').onsubmit=event=>{event.preventDefault();document.getElementById('savePassword').onclick()};
+  document.getElementById('savePassword').onclick=async event=>{event?.preventDefault?.();
     if(Sync.record.queue.length||Sync.busy)return toast('Sincroniza los cambios pendientes antes de cambiar la contraseña.');
     const next=document.getElementById('newPassword').value;if(next.length<12)return toast('Usa una contraseña de al menos 12 caracteres.');
     const button=document.getElementById('savePassword');button.disabled=true;

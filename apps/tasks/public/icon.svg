@@ -1,1 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="44" fill="#46513b"/><g fill="#fffaf1"><circle cx="45" cy="96" r="12"/><circle cx="147" cy="96" r="12"/><rect x="77" y="50" width="10" height="92" rx="5"/><rect x="105" y="50" width="10" height="92" rx="5"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#56663f"/>
+      <stop offset="1" stop-color="#2f3a2b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <!-- Lista de tareas en papel crema: dos hechas (tilde terracota) y una pendiente; misma familia que Booking, Food e Invoices.
+       Reducida al 90 % para caber en la zona segura de los iconos maskable (círculo del 80 % central). -->
+  <g transform="translate(25.6 25.6) scale(.9)">
+  <rect x="124" y="112" width="264" height="296" rx="28" fill="#fffdf8"/>
+  <rect x="216" y="96" width="80" height="36" rx="18" fill="#e2dbcd"/>
+  <rect x="160" y="168" width="44" height="44" rx="12" fill="#c4712f"/>
+  <path d="M171 190l10 10 17-19" fill="none" stroke="#fffdf8" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="224" y="182" width="128" height="18" rx="9" fill="#56663f" opacity=".75"/>
+  <rect x="160" y="240" width="44" height="44" rx="12" fill="#c4712f"/>
+  <path d="M171 262l10 10 17-19" fill="none" stroke="#fffdf8" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="224" y="254" width="104" height="18" rx="9" fill="#56663f" opacity=".75"/>
+  <rect x="164" y="316" width="36" height="36" rx="10" fill="none" stroke="#56663f" stroke-width="8" opacity=".55"/>
+  <rect x="224" y="326" width="120" height="18" rx="9" fill="#56663f" opacity=".35"/>
+  </g>
+</svg>

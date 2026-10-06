@@ -60,3 +60,12 @@ const rowsBeforeMoney=taskRow;
 taskRow=function(t,p=project(),context=false){const html=rowsBeforeMoney(t,p,context);return t.cost?html.replace('</button><button class="taskmenu"',`<span class="cost">${money(t.cost)}</span></button><button class="taskmenu"`):html};
 const bindBeforeExtras=bind;
 bind=function(){bindBeforeExtras();document.querySelectorAll('#aliasBtn').forEach(b=>b.onclick=()=>{closeNavigation();aliasSheet()});const mine=document.querySelector('[data-quick-mine]');if(mine)mine.onclick=showMyTasks};
+/* Fila de tarea con un solo botón, «Editar» (aceptación V1, 6): abre el editor, y dentro están mover, historial y la
+   papelera, que antes estaban en un menú aparte. */
+const editorBeforeActions=openTaskEditor;
+openTaskEditor=function(id,...rest){editorBeforeActions(id,...rest);if(!id||!canEdit())return;const actions=document.querySelector('#sheet .actions');if(!actions||document.getElementById('taskMoreActions'))return;
+  actions.insertAdjacentHTML('afterend',`<div class="menulist" id="taskMoreActions" style="margin-top:12px"><button id="menuMove" type="button">Mover / cambiar nivel</button><button id="menuHistory" type="button">Historial de esta tarea</button></div>`);
+  document.getElementById('menuMove').onclick=()=>openMoveSheet(id);
+  document.getElementById('menuHistory').onclick=()=>historySheet({kind:'task',id,tabId:tab().id})};
+const bindBeforeTaskEdit=bind;
+bind=function(){bindBeforeTaskEdit();document.querySelectorAll('[data-task-menu]').forEach(b=>{const name=b.getAttribute('aria-label')?.replace(/^Opciones de /,'')||'';b.setAttribute('aria-label','Editar '+name);b.title='Editar';b.classList.add('editbtn');b.onclick=()=>openTaskEditor(b.dataset.taskMenu)})};

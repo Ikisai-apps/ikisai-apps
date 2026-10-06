@@ -103,11 +103,15 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
     await a.locator('#archiveLabel').click();
     await settled(a);
     expect(await a.evaluate((lab) => label(lab).archived, shared.label!)).toBe(true);
+    // Archivada, se oculta del catálogo; se ve y se restaura desde «Ver archivadas» (aceptación V1, 8).
+    await expect(a.locator(`[data-edit-label="${shared.label}"]`)).toHaveCount(0);
+    await a.locator('#toggleArchivedCatalog').click();
     await a.locator(`[data-edit-label="${shared.label}"]`).click();
     await a.locator('#archiveLabel').click();
     await settled(a);
     expect(await a.evaluate((lab) => label(lab).archived, shared.label!)).toBe(false);
     expect((await serverRow('tasks.labels', shared.label!)).archived).toBe(false);
+    await a.locator('#toggleArchivedCatalog').click();
   });
 
   await test.step('[6] el menú móvil tiene cinco grupos e icono en cada acción', async () => {
@@ -409,10 +413,11 @@ test('[54][55] filtros con recuento en vivo y «Todas las tareas» entre áreas'
     await expect(b.locator('.task:not(.context)')).toHaveCount(juanCount);
   });
   await test.step('[55] «Todas las tareas» abarca todas las áreas, filtra por etiquetas de otra área y abre su proyecto', async () => {
-    await b.locator('#taskScope').selectOption('*');
+    await expect(b.locator('#taskScope'), 'el área se elige arriba, no en la página').toHaveCount(0);
+    await b.locator('[data-general-area]').first().click();
     expect(await b.evaluate(() => state.taskScope)).toBe('all');
     expect(await b.locator('[data-area-block]').count()).toBe(await b.evaluate(() => state.tabs.filter((t: any) => !t.deleted).length));
-    await b.locator('.activefilters .activechip').first().click();
+    expect(await b.evaluate(() => Object.keys(state.filters || {}).length), 'entrar en General empieza sin filtros').toBe(0);
     await b.locator('#filterBtn').click();
     await expect(b.locator('#filterCount')).toContainText('todas las áreas');
     await b.locator(`[data-filter="${ID['personal:building']}|${ID.casa}"]`).click();
@@ -488,8 +493,11 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     expect(await a.locator('.taskmeta .due').count()).toBeGreaterThan(0);
     await expect(a.locator(`[data-project-pin="${ID.inbox}"]`)).toHaveCount(0);
     await expect(a.locator(`[data-project-drag="${ID.inbox}"]`)).toHaveCount(0);
+    // El botón de la fila abre directamente el editor, con mover e historial dentro (aceptación V1, 6).
     await a.locator(`[data-task-menu="${ID.t1}"]`).click();
-    expect(await a.evaluate(() => getComputedStyle(document.getElementById('menuChild')!).opacity)).toBe('0');
+    await expect(a.locator('#teText')).toBeVisible();
+    await expect(a.locator('#taskMoreActions #menuMove')).toBeVisible();
+    await expect(a.locator('#taskMoreActions #menuHistory')).toBeVisible();
     await a.evaluate(() => closeSheet());
     const row = await serverRow('tasks.tasks', added.id);
     expect([row.priority, row.parent_id ?? '']).toEqual(['high', expectedParent]);
