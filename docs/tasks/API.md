@@ -718,3 +718,125 @@ Precisa §13 con lo que hay en `apps/tasks`. Donde difiera de §13, manda esta s
   - `POST worker/imports/cleanup` (ruta de sistema del kit, C23): lista `tasks/imports/` por la API de Storage y borra los paquetes cuyo nombre (`<caducidad>.<sha256>.zip`) venció hace más de diez minutos. No hay tabla ni acción SQL: el nombre ya lleva la caducidad, y borrar por la API de Storage elimina también el binario. Solo existe si la función tiene el secreto `IKISAI_WORKER_KEY`.
 - **Actualización de la PWA**: `updates.js` se conserva tal cual; sus 6 escenarios están en `tests/tasks/updates.spec.ts` (el servidor de pruebas cambia el nombre de la caché de `sw.js` para simular una versión nueva, como hace el despliegue con el hash del frontend).
 
+
+## 18. Compras no alimentarias (propuesta para revisión de Core, 6 de octubre de 2026)
+
+Ampliación aprobada por el usuario tras la aceptación V1 (ronda 25). **Propuesta, sin código.** Se construye cuando Core la revise y el usuario conteste las preguntas de §18.7.
+
+### 18.1 Qué resuelve
+
+- **Solicitudes de compra** previas a la factura: alguien pide algo (qué, cuánto, para qué área, proyecto o tarea, con qué urgencia), se aprueba, se compra y se recibe. Después, Invoices asigna la línea de la factura a la solicitud como destino, igual que hoy a un área, proyecto o tarea.
+- **Stock ligero de suministros** no alimentarios (limpieza, piscina, mantenimiento, textil): qué hay, dónde, el mínimo y cuánto reponer, con aviso cuando baja del mínimo y un botón para pedir lo que falta.
+
+Fuera de alcance: alimentos (Food), precios de proveedor y pedidos a proveedores.
+
+### 18.2 Tablas nuevas (`tasks.*`, migración `0305`)
+
+Mismas convenciones que las diez tablas actuales: uuid, `tab_id` desnormalizado (y `project_id` donde aplica) para que la visibilidad se decida por fila, papelera normal y `writable_columns` explícitas.
+
+**`tasks.purchase_requests`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `tab_id` | `uuid not null` | Área. Inmutable. |
+| `project_id` | `uuid null` | Proyecto destino. `null` = del área en general. |
+| `task_id` | `uuid null` | Tarea que lo necesita (mismo proyecto). |
+| `supply_item_id` | `uuid null` | Si es reposición de un suministro. |
+| `title` | `text not null` | Qué se pide (1–300). |
+| `note` | `text not null default ''` | Para qué, modelo, enlace. |
+| `quantity` | `numeric(12,3) null` | Mayor que 0. |
+| `unit` | `text null` | «ud», «l», «kg», «m»… |
+| `estimated_amount` | `numeric(12,2) null` | Importe estimado, 0 o más. |
+| `priority` | `text not null default 'normal'` | `normal`, `high`, `critical`: la urgencia, con la misma estrella que las tareas. |
+| `status` | `text not null default 'requested'` | `requested` (pedida), `approved` (aprobada), `purchased` (comprada), `received` (recibida), `rejected` (rechazada). |
+| `needs_invoice` | `boolean not null default true` | Si se espera factura: Tasks avisa si no llega (§18.6). |
+| `repeat_days` | `int null` | Recurrente: al pasar a `received`, la app ofrece crear la siguiente (§18.7, pregunta 3). |
+| `due` | `date null` | Para cuándo hace falta. |
+| `approved_at`, `purchased_at`, `received_at` | `timestamptz null` | Los pone un trigger al cambiar `status`, como `done_at` en tareas. No son escribibles. |
+| `position` | `double precision not null` | Orden manual (decisión del usuario sobre el orden manual). |
+
+**`tasks.supply_items`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `tab_id` | `uuid not null` | Área. Inmutable. |
+| `name` | `text not null` | 1–200. Único entre los vivos del área (hook). |
+| `category` | `text not null default 'other'` | `cleaning`, `pool`, `maintenance`, `textile`, `other`. |
+| `unit` | `text not null default 'ud'` | |
+| `location` | `text not null default ''` | Dónde está («Almacén piscina»). |
+| `min_quantity` | `numeric(12,3) not null default 0` | 0 o más. Con `current_quantity < min_quantity` está «bajo mínimo». |
+| `reorder_quantity` | `numeric(12,3) null` | Mayor que 0. Cuánto pedir al reponer; sin ello, lo que falta hasta el mínimo. |
+| `current_quantity` | `numeric(12,3) not null default 0` | **No escribible:** la mantiene un trigger con la suma de los movimientos vivos. |
+| `archived` | `boolean not null default false` | |
+| `position` | `double precision not null` | |
+
+**`tasks.supply_movements`** (solo se insertan; corregir es crear otro movimiento o enviarlo a la papelera)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `tab_id` | `uuid not null` | Desnormalizado. |
+| `supply_item_id` | `uuid not null` | |
+| `kind` | `text not null` | `in` (entrada), `out` (consumo), `adjust` (ajuste de recuento). |
+| `delta` | `numeric(12,3) not null` | Distinto de 0: positivo en `in`, negativo en `out`, cualquiera en `adjust`. |
+| `purchase_request_id` | `uuid null` | Entrada que viene de recibir una solicitud. |
+| `note` | `text not null default ''` | |
+
+Por qué movimientos y no un número editable: dos personas sin red que gastan a la vez dos bolsas de cloro generan dos inserciones que se suman al sincronizar. Editar `current_quantity` en ambos dispositivos sería un conflicto, y el último ganaría restando solo una. Un recuento («quedan 7») se guarda como `adjust` con la diferencia frente a lo actual, calculada en el cliente; si dos recuentos se cruzan sin red, basta con volver a contar.
+
+### 18.3 Reglas del hook (`tasks.validate_batch`, migración `0305`)
+
+- Mismas reglas de área y ámbitos que el resto: área coherente con el proyecto, la tarea y el suministro; la tarea, del mismo proyecto; el suministro, de la misma área.
+- Estado: se puede pasar entre los cinco estados, pero `approved` y `rejected` solo los pone quien tiene **acceso completo al área** (§18.7, pregunta 2). Quien tiene acceso a un solo proyecto pide y marca comprada o recibida.
+- Movimientos: `delta` con el signo de su `kind`; una vez creados no se editan, salvo `note`.
+- Al pasar a `received` una solicitud con suministro, la app añade en el **mismo lote** una entrada `in` de su cantidad con `purchase_request_id`. El hook comprueba que no haya dos entradas vivas para la misma solicitud.
+
+### 18.4 Visibilidad
+
+- Solicitudes con proyecto: como las tareas (`scope_project`). Sin proyecto: solo con acceso completo al área.
+- Suministros y movimientos: con acceso completo al área. Quien tiene un solo proyecto no ve el almacén.
+
+### 18.5 Interfaz y rutas
+
+- **Interfaz:**
+  - Grupo nuevo «Compras» en el menú, con «Solicitudes» (lista por estado, con filtros de área, proyecto y urgencia, y orden manual) y «Suministros» (stock, mínimo y ubicación; lo que está bajo mínimo, resaltado).
+  - Desde una tarea: «Pedir material».
+  - Desde un suministro: «Pedir» (crea la solicitud con la cantidad de reposición o lo que falta hasta el mínimo), «Gastar» y «Recontar».
+  - Aviso en Inicio: «N suministros bajo mínimo».
+- **Lectura registrada** (`core.allow_read`):
+  - `tasks.low_stock`: suministros vivos bajo mínimo, con su solicitud abierta si la hay. La usan Inicio y los agentes.
+- **Herramientas MCP** (con `buildTaskTool`):
+  - `tasks_request_purchase`.
+  - `tasks_record_supply` (entrada, consumo o recuento).
+  - Rechazar una solicitud o borrar un suministro pasan por la aprobación de siempre.
+
+### 18.6 Proyección para Invoices
+
+Invoices ya asigna líneas a destinos de Tasks (`target_app = 'tasks'`, `target_kind` `area|project|task`), validando con `tasks.targets` y el token del usuario. Propuesta:
+
+- **`tasks.targets` admite `kind = 'purchase_request'`**:
+  - Búsqueda por id: devuelve `{kind, id, tabId, projectId, taskId, title, status, quantity, unit, estimatedAmount, needsInvoice, revision, deleted}`.
+  - Modo lista: con ese `kind` y sin id, devuelve las solicitudes visibles aprobadas, compradas o recibidas que requieren factura, para el buscador «Asignar a…» de Invoices. Admite `q`, `tabId` y `limit`.
+  - Lo que ya devuelve para los otros tipos no cambia.
+- **Invoices** añade el par `tasks` / `purchase_request` a sus destinos. Es un cambio suyo, que pido vía Core.
+- **«Facturada» se ve en Tasks sin copiar datos.** Tasks lee una lectura nueva de Invoices, `invoices.allocations_by_target {targetApp: 'tasks', targetKind, ids}`, que devuelve por id el código de factura, su estado y el importe asignado, filtrado por lo que el usuario puede ver en Invoices. Tasks la consulta al abrir «Solicitudes» y la guarda en caché local para verla sin red. Ninguna app escribe en la otra. **Petición a Invoices vía Core.**
+- Si una solicitud requiere factura y no tiene asignación en Invoices pasados 15 días desde que se recibió, Tasks la marca «Falta factura». El plazo se puede ajustar.
+
+### 18.7 Preguntas para el usuario (vía Core)
+
+1. **¿La solicitud de reposición se crea sola al bajar del mínimo?**
+   - **a)** Solo aviso y botón «Pedir» (recomendado: no se duplican pedidos y alguien decide cuánto).
+   - **b)** Automática, una por suministro, si no hay ya una abierta.
+2. **¿Quién aprueba una solicitud?**
+   - **a)** Quien tiene acceso completo al área: propietaria o editor con el área entera (recomendado).
+   - **b)** Solo la propietaria.
+   - **c)** Sin aprobación: de «pedida» se pasa directamente a «comprada».
+3. **Compras recurrentes («cada mes, 10 l de cloro»):**
+   - **a)** Al marcar «recibida», la app ofrece crear la siguiente con la fecha +N días (recomendado).
+   - **b)** Un planificador las crea solas en su fecha.
+
+### 18.8 Orden de construcción
+
+1. Migración `0305` (tablas, triggers, hook y `tasks.targets` ampliada) con pruebas SQL.
+2. Dominio (`_domain/tasks`: tipos, validación y operaciones `requestPurchaseOps`, `receivePurchaseOps`, `supplyMovementOps`), `tasks-api` y conformidad.
+3. Interfaz (Solicitudes y Suministros) con el kit y Playwright.
+4. Integración con Invoices cuando existan `invoices.allocations_by_target` y su destino `purchase_request`.
