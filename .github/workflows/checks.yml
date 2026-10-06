@@ -39,6 +39,9 @@ jobs:
       - name: Pruebas end-to-end
         if: hashFiles('playwright.config.ts') != ''
         run: npm run test:e2e
+      - name: Pruebas del ui-kit
+        if: hashFiles('packages/ui-kit/tests/playwright.config.ts') != ''
+        run: npm run test:ui-kit
       - name: Sin configuración de Playwright
         if: hashFiles('playwright.config.ts') == ''
         run: echo "playwright.config.ts no existe todavía; se omite la suite e2e"

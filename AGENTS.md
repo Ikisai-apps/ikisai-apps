@@ -11,10 +11,10 @@ Un único repositorio para las cuatro apps de Ikisai (Tasks, Invoices, Booking, 
 | Directorio | Dueño |
 |---|---|
 | `supabase/migrations/*_core_*`, `supabase/functions/_kit`, `packages/sync-client`, `packages/test-kit`, `scripts`, `.github`, raíz, `docs/core` | Core |
-| `packages/ui-kit` | agente UI |
-| `apps/<app>`, `supabase/functions/<app>-api`, `packages/domain-<app>`, `supabase/migrations/*_<app>_*`, `tests/<app>`, `docs/<app>` | equipo de `<app>` |
+| `packages/ui-kit` (incluido su `ESTADO.md`) | agente UI |
+| `apps/<app>`, `supabase/functions/<app>-api`, `supabase/functions/_domain/<app>`, `packages/domain-<app>`, `supabase/migrations/*_<app>_*`, `tests/<app>`, `docs/<app>` | equipo de `<app>` |
 
-Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: anota lo que necesitas en `docs/core/PETICIONES.md`.
+Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: anota lo que necesitas en **`docs/<app>/PETICIONES.md`** (tu propio archivo, para que las PR de distintos equipos no colisionen); Core responde ahí y resume en `docs/core/RESPUESTAS.md`. El código de dominio compartido entre Edge y frontend vive en `supabase/functions/_domain/<app>/` y `packages/domain-<app>` solo lo reexporta.
 
 ## Reglas fuertes
 
@@ -25,7 +25,7 @@ Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: an
 5. **Permisos:** RLS activado y todo revocado a `anon`/`authenticated`; solo las Edge con service key. Pertenencia releída en cada petición. `reader` no escribe.
 6. **Sin secretos ni datos personales** en Git, fixtures o capturas. Usa `private/` (ignorado).
 7. **Conformidad:** toda `<app>-api` pasa `packages/test-kit` antes de añadir rutas propias.
-8. **Ramas y PR:** una rama por agente y tema (`<app>/<tema>`), PR pequeñas a `main`, CI verde, sin force-push. Rebase diario sobre `main`.
+8. **Ramas y PR:** una rama por agente y tema (`<app>/<tema>`), PR pequeñas a `main`, CI verde, sin force-push. Rebase diario sobre `main`. **Quién fusiona:** si la PR solo toca directorios de tu equipo, la fusionas tú con la CI en verde (squash). Si toca algo compartido o de otro equipo, espera el visto bueno de Core o del equipo afectado en la PR. Core no es cuello de botella: lo que está dentro de tu territorio no necesita su aprobación.
 9. **Estado:** cada equipo mantiene `docs/<app>/ESTADO.md` (hecho, pendiente, bloqueos).
 10. **Definición de hecho:** recorrido de aceptación en PC y Android, escenarios offline en Playwright, documentación de despliegue y recuperación.
 

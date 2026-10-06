@@ -1,0 +1,4 @@
+/* @ikisai/ui-kit · hoja completa: tokens + base + componentes. Importar una sola vez por app. */
+@import './tokens.css';
+@import './base.css';
+@import './components.css';

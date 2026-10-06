@@ -1,6 +1,8 @@
 # Ikisai Booking · API y modelo de datos (puerta G2)
 
-Fecha: 6 de octubre de 2026. Autor: agente Booking (backend). Estado: **borrador para revisión de Core**. Mientras no esté aprobado no se crean migraciones, rutas ni código fuera de `docs/booking/`.
+Fecha: 6 de octubre de 2026. Autor: agente Booking (backend). Estado: **puerta G2 aprobada por Core de forma provisional** (`docs/core/RESPUESTAS.md`, ronda G2). Las respuestas a las peticiones de §13 están en `docs/booking/PETICIONES.md`.
+
+Dos cambios de ubicación tras esa ronda, que valen para todo el documento: donde dice `packages/domain-booking`, el código vive en `supabase/functions/_domain/booking/` y el paquete solo lo reexporta; y las funciones de lectura de `booking.*` se exponen registrándolas con `core.allow_read` (ruta `/api/v1/read/:name`).
 
 Fuentes: `AGENTS.md`, `docs/core/PLAN.md`, `docs/core/CONTRATO_SINCRONIZACION.md` (v0.1), `docs/core/PLANTILLA_API_APP.md`; handoff V3 (`02_HANDOFF_TECNICO_CORE_V3.md` §3–§11, §25, §26, §32), canon funcional (`08_CANON_FUNCIONAL_BOOKING_FOOD.md` §2–§12), `C03.md`, `C04.md`, protocolos 8 y 9 de C09 y el script `C03_C04_CalendarSync_LEGACY.gs`. Contrastado con la implementación real del núcleo en `main` (`20261006_0001_core_base.sql`, `_kit`, `sync-client`, `scripts/lint_migrations.mjs`).
 
@@ -17,7 +19,7 @@ Donde el handoff V3 y el plan de Core se contradicen manda el plan (repo único,
 - Decisiones del usuario del 6 de octubre de 2026 ya incorporadas: ver §14.
 - Calendar: proyección de una sola dirección con cuenta de servicio. Cola en SQL alimentada por triggers, worker en la Edge, id de evento determinista, reintentos con espera creciente.
 - `booking.food_event_projection` con las columnas normativas del contrato §8. `event_revision` solo cambia cuando cambia algo que a Food le importa.
-- **Bloqueos que necesito que Core resuelva antes de escribir código** (detalle en §13): P1 (invocar funciones `booking.*` desde la Edge) y P2 (empaquetar `packages/domain-booking` en la función). El resto de peticiones tienen alternativa descrita.
+- Los dos bloqueos iniciales (P1 y P2 de §13) quedaron resueltos por Core en la ronda G2. El resto de peticiones tienen alternativa descrita.
 
 ---
 
@@ -823,7 +825,7 @@ La migración de B1 va la primera y cuanto antes: Food necesita que `booking.eve
 
 ## 13. Peticiones a Core
 
-Una fila en `docs/core/PETICIONES.md` remite aquí. Tres coinciden con lo que ya piden otros equipos: P1 con la P1 de Food y la petición 3 de Invoices; P5 con la P4 de Food; P10 con la P5 de Food. Me sumo además a la P2 de Food (traducir los SQLSTATE de clase 23 a 422): sin ella, una violación de `unique` o de FK que se escape de `beforeCommit` bloquea la cola del dispositivo.
+El estado de cada una y la respuesta de Core se llevan en `docs/booking/PETICIONES.md`; esta tabla conserva el planteamiento original. Tres coinciden con lo que ya piden otros equipos: P1 con la P1 de Food y la petición 3 de Invoices; P5 con la P4 de Food; P10 con la P5 de Food. Me sumo además a la P2 de Food (traducir los SQLSTATE de clase 23 a 422): sin ella, una violación de `unique` o de FK que se escape de `beforeCommit` bloquea la cola del dispositivo.
 
 | Nº | Petición | Por qué | Si no se hace |
 |---|---|---|---|

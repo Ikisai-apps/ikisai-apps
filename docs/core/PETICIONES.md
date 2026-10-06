@@ -1,7 +1,9 @@
 # Peticiones a Core
 
-Los equipos de app anotan aquí lo que necesitan de los directorios compartidos (`core`, `_kit`, `sync-client`, `test-kit`, raíz, CI). Core responde en la misma entrada.
+**Desde el 6 de octubre de 2026 cada equipo registra sus peticiones en `docs/<app>/PETICIONES.md`** (evita conflictos entre PR). Core responde allí y resume en `docs/core/RESPUESTAS.md`. Este archivo queda para el histórico del agente UI.
 
 | Fecha | Equipo | Petición | Estado | Respuesta |
 |---|---|---|---|---|
-| 2026-10-06 | Booking | Revisión G2 de `docs/booking/API.md` y respuesta a sus peticiones P1–P13 (§13; P11 retirada). Bloquean el arranque de código: P1 (invocar funciones `booking.*` desde la Edge) y P2 (empaquetar `packages/domain-booking` en la función). Afecta al contrato §8: P10 (semántica de `event_revision` y columnas extra de `booking.food_event_projection`, a coordinar con Food). | Pendiente | |
+| 2026-10-06 | UI | Añadir a la CI las pruebas del kit: script raíz `test:ui-kit` → `npm -w @ikisai/ui-kit run test:e2e` (Playwright sobre `packages/ui-kit/demo`, config en `packages/ui-kit/tests/playwright.config.ts`) y ejecutarlo en `checks.yml` junto a `test:e2e`. Mientras tanto se lanza a mano. | Hecho | Script raíz `test:ui-kit` y paso en `checks.yml` (job e2e), condicionado a que exista `packages/ui-kit/tests/playwright.config.ts`. |
+| 2026-10-06 | UI | Confirmar dónde vive el estado del agente UI: hoy `packages/ui-kit/ESTADO.md` (no hay `docs/ui-kit/` en la tabla de propiedad de `AGENTS.md`). Si preferís `docs/ui-kit/`, añadirlo a la tabla y a `CODEOWNERS`. | Hecho | Se queda en `packages/ui-kit/ESTADO.md`; `AGENTS.md` lo recoge y Core lo enlaza desde `docs/core/ESTADO.md`. |
+| 2026-10-06 | UI | La PR `ui/invoices-adopt-kit` toca `apps/invoices` (login, shell, main, alias en vite/tsconfig, estilos) para consumir el kit; pide revisión de Core antes de fusionar, según lo acordado con Víctor. | Hecho | Revisada y fusionada por Core (#5) tras verificar checks, build y humo en local. Nit: importar el CSS del kit por alias. |

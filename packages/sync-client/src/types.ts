@@ -89,6 +89,19 @@ export interface PendingConflict {
   detectedAt: string;
 }
 
+/** Lote que el servidor rechazó con un error definitivo (4xx); espera corrección (`retryRejected`) o descarte (`discardRejected`). */
+export interface RejectedBatch {
+  requestId: string;
+  operations: RowOperation[];
+  /** Hashes SHA-256 de los blobs que el lote referenciaba. */
+  blobs?: string[];
+  /** Error completo devuelto por el servidor (o `BLOB_MISSING` si el lote referenciaba un adjunto inexistente). */
+  error: ApiError;
+  /** Filas tal y como estaban en el espejo al editar, por `schema.tabla|id` (null = no existía). */
+  baseRows: Record<string, SyncedRow | null>;
+  rejectedAt: string;
+}
+
 export type NetworkState = 'online' | 'offline' | 'syncing' | 'error';
 
 export interface SyncStatus {
@@ -100,6 +113,8 @@ export interface SyncStatus {
   lastPullAt: string | null;
   lastError: ApiError | null;
   autoMerged: number; // fusiones automáticas desde el arranque, para el aviso discreto
+  /** Lotes rechazados por el servidor que esperan corrección o descarte. */
+  rejected: number;
 }
 
 export interface SyncClientOptions {
@@ -112,6 +127,11 @@ export interface SyncClientOptions {
   databaseName?: string;
   /** Intervalo de pull en ms cuando hay red; 0 desactiva. */
   pullIntervalMs?: number;
+  /**
+   * Qué borrar al hacer `logout()`: `true` vacía espejo, outbox, conflictos, rechazados y blobs;
+   * una lista vacía solo esas tablas (y lo que las referencia). Por defecto `false`: solo se borra la sesión.
+   */
+  clearOnLogout?: boolean | TableName[];
   /** Inyectable para pruebas. */
   fetch?: typeof fetch;
   indexedDB?: IDBFactory;
@@ -149,6 +169,13 @@ export interface SyncClient {
   conflicts(): Promise<PendingConflict[]>;
   /** Resuelve un conflicto: 'mine' reaplica mis campos sobre la fila actual, 'theirs' descarta mi comando, 'merge' envía los campos indicados. */
   resolveConflict(requestId: string, decision: { choice: 'mine' } | { choice: 'theirs' } | { choice: 'merge'; fields: Record<string, unknown> }): Promise<void>;
+
+  /** Lotes rechazados por el servidor con un error definitivo, en orden de rechazo. */
+  rejected(): Promise<RejectedBatch[]>;
+  /** Reencola un lote rechazado con un `requestId` nuevo, opcionalmente con las operaciones corregidas. */
+  retryRejected(requestId: string, operations?: RowOperation[]): Promise<{ requestId: string }>;
+  /** Olvida un lote rechazado. */
+  discardRejected(requestId: string): Promise<void>;
 
   /** Guarda un blob (ya recomprimido por la app) para subirlo cuando haya red; devuelve su sha256. */
   stageBlob(blob: Blob, meta: { filename: string; mime: string }): Promise<string>;

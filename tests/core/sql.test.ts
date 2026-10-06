@@ -142,6 +142,29 @@ test('códigos humanos y purga de papelera', async () => {
   await t.close();
 });
 
+test('lecturas registradas: función propia y vista de proyección con filtros; no registrada → 422', async () => {
+  const { t, owner, reader } = await setup();
+  await t.db.exec(`
+    create view invoices.suppliers_projection as select id, name, default_category, revision from invoices.suppliers where deleted_at is null;
+    create function invoices.count_suppliers(p_ctx jsonb) returns jsonb language sql stable as $$ select jsonb_build_object('count', count(*), 'actor', p_ctx->>'actor') from invoices.suppliers $$;
+    select core.allow_read('invoices', 'invoices.suppliers_projection', 'view');
+    select core.allow_read('invoices', 'invoices.count_suppliers', 'function', '{editor,owner}');
+  `);
+  const a = crypto.randomUUID(), b = crypto.randomUUID();
+  await t.rpc('core_commit', { p_app: APP, p_actor: owner, p_request_id: 'r', p_digest: 'r', p_expected_cursor: null, p_operations: [
+    { op: 'insert', table: TABLE, id: a, fields: { name: 'A', default_category: 'compras' } }, { op: 'insert', table: TABLE, id: b, fields: { name: 'B', default_category: 'seguros' } }] });
+  const all = (await t.rpc('core_read', { p_app: APP, p_actor: reader, p_name: 'invoices.suppliers_projection', p_args: {} })) as any;
+  assert.equal(all.total, 2); assert.deepEqual(Object.keys(all.rows[0]).sort(), ['default_category', 'id', 'name', 'revision']);
+  const filtered = (await t.rpc('core_read', { p_app: APP, p_actor: reader, p_name: 'invoices.suppliers_projection', p_args: { where: { default_category: 'seguros' }, limit: 10 } })) as any;
+  assert.deepEqual(filtered.rows.map((r: any) => r.name), ['B']);
+  await expectFail(t.rpc('core_read', { p_app: APP, p_actor: reader, p_name: 'invoices.suppliers_projection', p_args: { where: { tax_id: 'x' } } }), 'INVALID_OPERATION');
+  const fn = (await t.rpc('core_read', { p_app: APP, p_actor: owner, p_name: 'invoices.count_suppliers', p_args: {} })) as any;
+  assert.equal(fn.count, 2); assert.equal(fn.actor, owner);
+  await expectFail(t.rpc('core_read', { p_app: APP, p_actor: reader, p_name: 'invoices.count_suppliers', p_args: {} }), 'FORBIDDEN');
+  await expectFail(t.rpc('core_read', { p_app: APP, p_actor: owner, p_name: 'invoices.suppliers', p_args: {} }), 'INVALID_OPERATION');
+  await t.close();
+});
+
 test('membresías: solo owner administra; sesión revocada deja de estar activa', async () => {
   const { t, owner, editor } = await setup();
   const newcomer = await t.createUser();

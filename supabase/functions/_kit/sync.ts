@@ -23,6 +23,8 @@ export interface Bootstrap {
 export interface RequestContext {
   app: string;
   user: Identity;
+  /** Bearer de la sesión del usuario, para llamar a la API de otra app (por ejemplo Tareas) en su nombre. */
+  token: string;
   membership: Membership;
   bootstrap: Bootstrap;
 }
@@ -66,9 +68,46 @@ export function integer(value: string | null, fallback: number, name = 'cursor')
 }
 
 export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}) {
-  async function context(user: Identity): Promise<RequestContext> {
+  async function context(user: Identity, token: string): Promise<RequestContext> {
     const bootstrap = await supabase.rpc<Bootstrap>('core_bootstrap', { p_app: app, p_user: user.id });
-    return { app, user, membership: bootstrap.membership, bootstrap };
+    return { app, user, token, membership: bootstrap.membership, bootstrap };
+  }
+
+  /** Lectura registrada en core.allowed_reads: función de la propia app o proyección publicada por otra. */
+  async function read(ctx: RequestContext, name: string, args: unknown) {
+    if (!/^[a-z_]+\.[a-z0-9_]+$/.test(name)) fail(422, 'INVALID_OPERATION', 'Nombre de lectura inválido.');
+    if (args !== undefined && args !== null && (typeof args !== 'object' || Array.isArray(args))) fail(422, 'INVALID_OPERATION', 'Los argumentos deben ser un objeto.');
+    return supabase.rpc('core_read', { p_app: app, p_actor: ctx.user.id, p_name: name, p_args: args ?? {} });
+  }
+
+  /** Alta de una cuenta por el owner: crea el usuario en Auth con contraseña temporal y le da pertenencia. */
+  async function invite(ctx: RequestContext, body: any) {
+    if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
+    if (!['reader', 'editor', 'owner'].includes(body.role)) fail(422, 'INVALID_ROLE', messageFor('INVALID_ROLE'));
+    const bytes = new Uint8Array(18); crypto.getRandomValues(bytes);
+    const temporaryPassword = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, (c) => ({ '+': 'a', '/': 'b', '=': '' })[c] ?? '');
+    let userId: string;
+    try {
+      const created = await supabase.remote('/auth/v1/admin/users', { service: true, method: 'POST', body: { email, password: temporaryPassword, email_confirm: true } });
+      userId = created.id;
+    } catch (error: any) {
+      if (error?.code !== 'USER_EXISTS') throw error;
+      const found = await lookupUser(email);
+      if (!found) fail(409, 'USER_EXISTS', 'Ya existe una cuenta con ese correo; añádela por su identificador.');
+      userId = found;
+    }
+    const membership = await supabase.rpc('core_set_membership', {
+      p_app: app, p_actor: ctx.user.id, p_user: userId, p_role: body.role, p_scopes: body.scopes ?? null, p_display_name: typeof body.displayName === 'string' ? body.displayName : null,
+    });
+    return { userId, email, membership, temporaryPassword: typeof (membership as any)?.user_id === 'string' && (membership as any).revision === 1 ? temporaryPassword : null };
+  }
+
+  async function lookupUser(email: string): Promise<string | null> {
+    const page = await supabase.remote('/auth/v1/admin/users?page=1&per_page=1000', { service: true });
+    const users: any[] = Array.isArray(page?.users) ? page.users : [];
+    return users.find((u) => typeof u?.email === 'string' && u.email.toLowerCase() === email)?.id ?? null;
   }
 
   function visibleRows<T extends Record<string, unknown>>(table: string, rows: T[], ctx: RequestContext): T[] {
@@ -197,5 +236,5 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
     });
   }
 
-  return { context, snapshot, changes, commit, history, undoPlan, undo, purgeDeleted, members, setMember, validateOperations };
+  return { context, snapshot, changes, commit, history, undoPlan, undo, purgeDeleted, members, setMember, validateOperations, read, invite };
 }

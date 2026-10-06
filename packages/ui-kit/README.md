@@ -1,0 +1,95 @@
+# @ikisai/ui-kit
+
+Tokens de la dirección visual «Taller», componentes base en TypeScript sin framework, barra de estado de sincronización y shell de login comunes a las cuatro apps de Ikisai. Se consume como fuente (igual que `@ikisai/sync-client`): sin paso de build propio.
+
+## Instalar en una app
+
+1. **Alias** en `vite.config.ts` y `tsconfig.json` de la app (igual que `@ikisai/sync-client`):
+
+   ```ts
+   // vite.config.ts
+   resolve: { alias: { '@ikisai/ui-kit': path.resolve(root, '../../packages/ui-kit/src/index.ts') } }
+   ```
+
+   ```json
+   // tsconfig.json
+   "paths": { "@ikisai/ui-kit": ["../../packages/ui-kit/src/index.ts"] },
+   "include": ["src/**/*.ts", "../../packages/ui-kit/src/**/*.ts"]
+   ```
+
+2. **Estilos**: una vez, al principio de `main.ts`:
+
+   ```ts
+   import '../../packages/ui-kit/src/styles/ui-kit.css'; // tokens + base + componentes
+   import './styles/app.css';                             // solo lo propio de la app
+   ```
+
+   `ui-kit.css` no pinta nada fuera de las clases documentadas abajo; `app.css` añade o ajusta.
+
+3. **Fuentes**: copia `packages/ui-kit/fonts/*.woff2` a `public/fonts/` de la app. Los tokens las cargan desde `/fonts/fraunces.woff2` e `/fonts/inter.woff2` (OFL). Precárgalas en `index.html`:
+
+   ```html
+   <link rel="preload" href="/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin />
+   <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+   ```
+
+4. **Tema**: llama a `applyTheme()` al arrancar. El modo sigue al sistema; `setTheme('dark'|'light'|'system')` lo fija y lo guarda (`localStorage` `ikisai-theme`). Pon `<meta name="color-scheme" content="light dark">`.
+
+## Tokens
+
+Variables CSS en `:root` (claro) y bajo `prefers-color-scheme: dark` / `[data-theme="dark"]` (oscuro). Las que una app puede querer tocar:
+
+| Variable | Qué es |
+|---|---|
+| `--accent`, `--accent-ink` | Acento y su tinta. **Lo puede fijar la persona** (color de un área o proyecto) con `applyAccent(color)`; `--accent-deep`, `--accent-soft` y `--accent-glow` se derivan solos. Con `applyAccent(null)` vuelve al neutro. |
+| `--item-color`, `--item-ink` | Color propio de un elemento (tarjeta, pastilla): `itemColorStyle(color)` devuelve el `style` listo. El kit nunca lo pisa. |
+| `--chip` | Color de familia de un chip: `style="--chip:#b76b3d"` lo vuelve pastel legible. |
+| `--content-width*`, `--sidebar-width` | Anchos del shell. |
+| `--serif`, `--sans` | Fraunces (títulos, cifras) e Inter (resto). |
+
+Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación activa, foco); **nunca sustituye** un color elegido por la persona.
+
+## Clases (contrato con las apps)
+
+- Botones: `.primary`, `.ghost`, `.danger`, `.softbtn` (`.active`), `.linkbtn`, `.iconbtn`; modificador `.small`.
+- Campos: `label.field > span + input|select|textarea`, `.hint`, `.fielderror`, `.invalid`, `.check`; `.formerror`; `.row2`.
+- Chips: `.chip` (`.pending`, `.trash`, `.ok`, `.alert`, con `--chip`), `.chips`, `.chip .x`.
+- Tarjetas: `.card` (`.raised`, `.colored` con `--item-color`), `.cardgrid`, `.cardlink`, `.kv`.
+- Listas: `ul.list > li.row` con `.row-title .name`, `.row-meta`, `.row-actions`; estados `.deleted`, `[data-pending="true"]`, `.selected`.
+- Secciones: `.pagehead`, `.toolbar .search`, `.sectionlabel .count`, `.empty` (`.plain`), `.skeleton`, `.fab` (`.round`).
+- Avisos: `.banner` (`.warn`, `.alert`, `.info`, `.ok`), `.banners`, `.toast`.
+- Estado: `.statusbar`, `.statuschip[data-network|data-pending|data-conflicts]`, `.syncbtn`.
+- Shell: `.shell` (`.nonav`), `.topbar`, `.brand`, `.mark`, `.nav`, `.navbtn` (`.soon`, `.badge`), `.navfoot`, `.banners`, `.main`.
+- Login: `.login`, `.login-card`, `.login-brand`, `.offline-ready`, `.footnote`.
+- Hoja y diálogo (solo CSS en v0.1): `.sheetback.show > .sheet` con `.sheet-head`, `.sheet-body`, `.sheet-foot`, `.handle`; `.dialogback > .dialog`.
+- Conflictos (solo CSS en v0.1): `.conflict`, `tr.overlap`, `.choices`, `label.pick`.
+
+Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
+
+## API
+
+```ts
+import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createAppShell, applyTheme, applyAccent } from '@ikisai/ui-kit';
+```
+
+- `el(tag, attrs, ...children)`, `append`, `clear`, `replace`, `formatDate`, `plural`: DOM sin plantillas de texto.
+- `icon(name, size)`: SVG de trazo que hereda `currentColor`; `registerIcons({...})` añade los de la app.
+- `createStatusBar({ client | status, onSync, onClick, describeError })` → `{ element, update, destroy }`. Cumple el contrato §6.4: red, cambios pendientes (`pendingCommands + pendingBlobs`), conflictos; «Todo sincronizado» solo con red y cola vacía. `statusBanners(status, { onResolveConflicts, onRetry, updateApply, hideConflicts })` devuelve los banners derivados.
+- `renderLogin(root, { appName, tagline, onLogin, describeError, footnote })` → función de limpieza. Ids estables: `#email`, `#password`, `#loginSubmit`, `#loginError`, `#loginTitle`.
+- `createAppShell(root, { appName, subtitle, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
+- `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`.
+- `applyTheme()`, `setTheme()`, `toggleTheme()`, `effectiveTheme()`, `applyAccent(color|null)`, `itemColorStyle(color)`, `inkOn(color)`.
+
+## Muestra y pruebas
+
+```text
+npm -w @ikisai/ui-kit run dev        # demo en http://localhost:5178
+npm -w @ikisai/ui-kit run typecheck
+npm -w @ikisai/ui-kit run test:e2e   # Playwright sobre la demo, 390 px y 1440 px
+```
+
+La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los cinco estados de sincronización con sus banners, el login y el shell.
+
+## Pendiente (v0.2)
+
+Hoja inferior y diálogo con foco atrapado, componente de conflicto (tabla campo a campo), lista con «pendiente de sincronizar» como componente, selector de tema listo para la cabecera, paleta de comandos. Ver `CHANGELOG.md` y `ESTADO.md`.

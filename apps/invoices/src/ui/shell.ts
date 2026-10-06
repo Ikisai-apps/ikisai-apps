@@ -1,6 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { el, icon, replace } from './dom.ts';
-import { toast } from './toast.ts';
+import { createAppShell, el, replace, toast, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -21,12 +20,12 @@ export interface ViewContext extends ShellContext {
 
 export type ViewMount = (ctx: ViewContext) => () => void;
 
-const NAV = [
-  { hash: '#/', label: 'Inicio', icon: 'home', ready: true, matches: ['#/', '#/proveedores', '#/conflictos'] },
-  { hash: '#/facturas', label: 'Facturas', icon: 'invoice', ready: false, matches: ['#/facturas'] },
-  { hash: '#/compras', label: 'Compras', icon: 'cart', ready: false, matches: ['#/compras'] },
-  { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase', ready: false, matches: ['#/gestoria'] },
-] as const;
+const NAV: readonly NavItem[] = [
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos'] },
+  { hash: '#/facturas', label: 'Facturas', icon: 'invoice', soon: true },
+  { hash: '#/compras', label: 'Compras', icon: 'cart', soon: true },
+  { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase', soon: true },
+];
 
 const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', mount: mountHome },
@@ -37,103 +36,40 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/gestoria': { title: 'Gestoría', mount: mountPlaceholder('Gestoría', 'Entregas periódicas y comunicación con la gestoría.') },
 };
 
-function networkLabel(status: SyncStatus): string {
-  switch (status.network) {
-    case 'syncing':
-      return 'Sincronizando…';
-    case 'offline':
-      return 'Sin conexión';
-    case 'error':
-      return 'Error de sincronización';
-    default:
-      return 'En línea';
-  }
-}
-
-function pendingLabel(status: SyncStatus): string {
-  const n = status.pendingCommands + status.pendingBlobs;
-  if (n === 0) return status.network === 'online' ? 'Todo sincronizado' : 'Sin cambios pendientes';
-  return n === 1 ? '1 cambio pendiente' : `${n} cambios pendientes`;
-}
-
+/** Cabecera, estado y navegación del kit; rutas y acciones propias de Invoices. */
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { client } = ctx;
   let unmountView: (() => void) | null = null;
   let lastAutoMerged = client.status().autoMerged;
   let updateApply: (() => void) | null = null;
 
-  // --- Cabecera -----------------------------------------------------------
-  const statusChip = el('span', { class: 'statuschip', id: 'syncStatus', role: 'status', 'aria-live': 'polite' });
-  const syncButton = el('button', { class: 'iconbtn syncbtn', type: 'button', 'aria-label': 'Sincronizar ahora', title: 'Sincronizar ahora', onclick: () => void syncNow() }, icon('sync'));
-  const logoutButton = el('button', { class: 'iconbtn desktop-only', type: 'button', 'aria-label': 'Cerrar sesión', title: 'Cerrar sesión', onclick: () => void logout() }, icon('logout'));
-  const topbar = el(
-    'header',
-    { class: 'topbar' },
-    el('div', { class: 'brand' },
-      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)),
-      el('h1', null, 'Ikisai Invoices', el('small', { id: 'profileName' })),
-    ),
-    statusChip,
-    syncButton,
-    logoutButton,
-  );
+  const shell = createAppShell(root, {
+    appName: 'Invoices',
+    subtitle: client.bootstrap()?.profile.displayName ?? '',
+    nav: NAV,
+    status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
+    onLogout: logout,
+    navigate,
+  });
+  const { main } = shell;
 
-  // --- Navegación ---------------------------------------------------------
-  const navLinks = NAV.map((item) =>
-    el('a', { class: 'navbtn', href: item.hash, dataset: { hash: item.hash } },
-      icon(item.icon),
-      el('span', null, item.label),
-      !item.ready ? el('span', { class: 'soon', 'aria-label': 'pendiente de la fase 1' }, 'fase 1') : null,
-    ),
-  );
-  const nav = el('nav', { class: 'nav', 'aria-label': 'Secciones' }, ...navLinks);
+  function paintBanners(status: SyncStatus): void {
+    shell.setBanners(status, {
+      hideConflicts: location.hash === '#/conflictos',
+      onResolveConflicts: () => navigate('#/conflictos'),
+      onRetry: syncNow,
+      describeError: (error) => describeError(error),
+      updateApply,
+    });
+  }
 
-  // --- Contenido ----------------------------------------------------------
-  const banners = el('div', { class: 'banners' });
-  const main = el('main', { class: 'main', id: 'main', tabindex: '-1' });
-  const content = el('div', null, banners, main);
-  const shell = el('div', { class: 'shell' }, topbar, nav, content);
-  replace(root, shell);
-
-  // --- Estado -------------------------------------------------------------
   function paintStatus(status: SyncStatus): void {
-    statusChip.dataset.network = status.network;
-    statusChip.dataset.pending = String(status.pendingCommands + status.pendingBlobs > 0);
-    const pendingCount = status.pendingCommands + status.pendingBlobs;
-    replace(statusChip,
-      el('span', { class: 'long' }, `${networkLabel(status)} · ${pendingLabel(status)}`),
-      el('span', { class: 'short' }, pendingCount > 0 ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : networkLabel(status)),
-    );
-    syncButton.classList.toggle('spinning', status.network === 'syncing');
-    syncButton.disabled = status.network === 'syncing';
-    const name = client.bootstrap()?.profile.displayName;
-    const profile = topbar.querySelector('#profileName');
-    if (profile) profile.textContent = name ? name : '';
+    shell.setSubtitle(client.bootstrap()?.profile.displayName ?? '');
     paintBanners(status);
     if (status.autoMerged > lastAutoMerged) {
       toast('Se incorporaron cambios de otra persona en una fila que editaste.');
     }
     lastAutoMerged = status.autoMerged;
-  }
-
-  function paintBanners(status: SyncStatus): void {
-    const items: HTMLElement[] = [];
-    if (status.conflicts > 0 && location.hash !== '#/conflictos') {
-      items.push(el('div', { class: 'banner alert', role: 'alert' },
-        icon('warn', 18),
-        el('span', null, status.conflicts === 1 ? 'Hay 1 conflicto que necesita tu decisión.' : `Hay ${status.conflicts} conflictos que necesitan tu decisión.`),
-        el('button', { class: 'linkbtn', type: 'button', onclick: () => navigate('#/conflictos') }, 'Resolver'),
-      ));
-    }
-    if (status.lastError && status.network === 'error') {
-      items.push(el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, describeError(status.lastError)),
-        el('button', { class: 'linkbtn', type: 'button', onclick: () => void syncNow() }, 'Reintentar')));
-    }
-    if (updateApply) {
-      items.push(el('div', { class: 'banner info' }, el('span', null, 'Hay una nueva versión de la app.'),
-        el('button', { class: 'linkbtn', type: 'button', id: 'appUpdate', onclick: () => updateApply?.() }, 'Actualizar')));
-    }
-    replace(banners, ...items);
   }
 
   async function syncNow(): Promise<void> {
@@ -160,7 +96,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     }
   }
 
-  // --- Rutas --------------------------------------------------------------
   function navigate(hash: string): void {
     if (location.hash === hash) route();
     else location.hash = hash;
@@ -171,12 +106,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const entry = ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    for (const link of navLinks) {
-      const item = NAV.find((n) => n.hash === link.dataset.hash);
-      const active = item ? (item.matches as readonly string[]).includes(hash) : false;
-      if (active) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
-    }
+    shell.setRoute(hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     document.title = `${entry.title} · Ikisai Invoices`;
@@ -206,5 +136,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     window.removeEventListener('hashchange', route);
     window.removeEventListener('ikisai:update-available', onUpdate);
+    shell.destroy();
+    replace(root, el('div'));
   };
 }

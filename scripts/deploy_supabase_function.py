@@ -47,6 +47,9 @@ def deploy(client, app_name, apply=False, qa=False, release=None):
   entrypoint = f"{app['function_slug']}/index.ts"
   files = collect(source) if source.is_dir() else {}
   files.update(collect(KIT) if KIT.is_dir() else {})
+  # Código de dominio compartido con el frontend: supabase/functions/_domain/<app>/ (el paquete packages/domain-<app> lo reexporta).
+  domain = FUNCTIONS / '_domain' / app_name
+  files.update(collect(domain) if domain.is_dir() else {})
   if entrypoint not in files:
     raise CloudError(None, 'FUNCTION_SOURCE_MISSING', f'falta {app["function_dir"]}/index.ts')
   release = release or os.environ.get('IKISAI_RELEASE')

@@ -68,6 +68,15 @@ export function createSupabase(config: SupabaseConfig): Supabase {
       fail(http, code, messageFor(code), details);
     }
     if (['40001', '40P01'].includes(out?.code)) fail(409, 'CURSOR_CONFLICT', messageFor('CURSOR_CONFLICT'));
+    // Errores SQL definitivos: nunca 503 (el cliente los reintentaría sin fin). Se devuelven como 422 con el SQLSTATE.
+    if (typeof out?.code === 'string' && path.startsWith('/rest/v1/rpc/')) {
+      const sqlstate: string = out.code;
+      const info = { sqlstate, message: typeof out.message === 'string' ? out.message : null, details: out.details ?? null, hint: out.hint ?? null };
+      if (/^23[0-9A-Z]{3}$/.test(sqlstate)) fail(422, 'CONSTRAINT_VIOLATION', 'Los datos no cumplen una restricción de la base de datos.', info);
+      if (/^22[0-9A-Z]{3}$/.test(sqlstate)) fail(422, 'INVALID_VALUE', 'Algún valor tiene un formato o tipo inválido.', info);
+      if (sqlstate === 'P0001') fail(422, 'DOMAIN_ERROR', info.message ?? 'La operación no cumple una regla de la aplicación.', info);
+      if (/^(42|2[0-9A-F]|0[0-9A-Z]|P0)[0-9A-Z]{3}$/.test(sqlstate)) fail(422, 'SQL_ERROR', 'La operación no se pudo ejecutar en la base de datos.', info);
+    }
     if (path.startsWith('/auth/v1/admin/')) {
       if (['email_exists', 'user_already_exists'].includes(out?.code ?? out?.error_code)) fail(409, 'USER_EXISTS', 'Ya existe una cuenta con ese correo.');
       fail(502, 'AUTH_ADMIN_FAILED', 'No se pudo completar la operación de cuentas.');

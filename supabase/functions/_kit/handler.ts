@@ -61,6 +61,9 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'trash/purge', handler: async ({ ctx, json }) => sync.purgeDeleted(ctx, await json()) },
     { method: 'GET', pattern: 'members', handler: ({ ctx }) => sync.members(ctx) },
     { method: 'POST', pattern: 'members', handler: async ({ ctx, json }) => sync.setMember(ctx, await json()) },
+    { method: 'POST', pattern: 'members/invite', handler: async ({ ctx, json }) => sync.invite(ctx, await json()) },
+    { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => sync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
+    { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => sync.read(ctx, params.name ?? '', await json()) },
     { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => { await auth.logout(bearer(request)!); return { loggedOut: true }; } },
     { method: 'POST', pattern: 'auth/password', handler: async ({ request, ctx, json }) => auth.changePassword(bearer(request)!, ctx.user, await json()) },
     { method: 'GET', pattern: 'me', handler: async ({ ctx }) => ({ userId: ctx.user.id, email: ctx.user.email, role: ctx.membership.role, scopes: ctx.membership.scopes }) },
@@ -107,8 +110,9 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/auth/login' && request.method === 'POST') return json(await auth.login(await readJson()));
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
       if (!path.startsWith('/api/v1/')) fail(404, 'NOT_FOUND', 'Ruta desconocida.');
-      const user = await auth.identity(bearer(request));
-      const ctx = await sync.context(user);
+      const token = bearer(request);
+      const user = await auth.identity(token);
+      const ctx = await sync.context(user, token!);
       const relative = path.slice('/api/v1/'.length);
       for (const route of compiled) {
         if (route.method !== request.method) continue;
@@ -124,6 +128,19 @@ export function createApp(config: AppConfig): AppHandler {
       return json({ error: { code: 'INTERNAL_ERROR', message: 'Error interno.', details: null } }, 500);
     }
   };
+}
+
+/** `?where[col]=valor&limit=&offset=` → `{ where: {col: valor}, limit, offset }` */
+function readArgs(params: URLSearchParams): Record<string, unknown> {
+  const where: Record<string, string> = {};
+  const args: Record<string, unknown> = {};
+  for (const [key, value] of params) {
+    const m = key.match(/^where\[([a-z0-9_]+)\]$/);
+    if (m) where[m[1]!] = value;
+    else if (key === 'limit' || key === 'offset') args[key] = integer(value, 0, key);
+  }
+  if (Object.keys(where).length) args.where = where;
+  return args;
 }
 
 function bearer(request: Request): string | null {
