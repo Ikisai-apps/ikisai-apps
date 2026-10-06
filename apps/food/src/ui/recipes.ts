@@ -95,7 +95,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     return el('li', null,
       el('button', { class: 'recipecard', type: 'button', 'data-id': recipe.id, 'data-pending': String(recipe._pending === true), 'aria-label': `Abrir ${recipe.name}`, onclick: () => openCard(recipe) },
         el('span', { class: 'recipephoto' }, icon('chef', 30), img),
-        el('span', { class: 'recipebody' }, el('strong', null, recipe.name), el('span', { class: 'recipemeta' }, tagLine(recipe)), el('span', { class: 'chips' }, ...chips)),
+        el('span', { class: 'recipebody' }, el('strong', { title: recipe.name }, recipe.name), el('span', { class: 'recipemeta' }, tagLine(recipe)), el('span', { class: 'chips' }, ...chips)),
       ));
   }
 
@@ -177,8 +177,9 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
     const body = el('div', { class: 'ficha' },
       recipe.photo_file_id ? el('div', { class: 'ficha-photo' }, img) : null,
-      recipe.public_name || recipe.public_description
-        ? el('div', { class: 'ficha-public' }, recipe.public_name ? el('strong', null, recipe.public_name) : null, recipe.public_description ? el('p', null, recipe.public_description) : null)
+      // El nombre público solo se repite si es distinto del interno.
+      (recipe.public_name && recipe.public_name.trim() !== recipe.name.trim()) || recipe.public_description
+        ? el('div', { class: 'ficha-public' }, recipe.public_name && recipe.public_name.trim() !== recipe.name.trim() ? el('strong', null, recipe.public_name) : null, recipe.public_description ? el('p', null, recipe.public_description) : null)
         : null,
       el('p', { class: 'recipemeta' }, `${tagLine(recipe)} · ${formatQuantity(recipe.base_servings)} raciones base`),
       el('div', { class: 'chips' },
