@@ -12,6 +12,15 @@ import {
   createLabelPicker,
   labelChips,
   renderMoneyBreakdown,
+  openProposalReview,
+  renderSecretOnce,
+  renderRiskSummary,
+  renderProposalRow,
+  renderChangeList,
+  renderAccessLog,
+  createScopePicker,
+  type ChangeItem,
+  type ProposalSummary,
   renderWorkspaceBar,
   renderAreaTabs,
   renderStripTool,
@@ -600,6 +609,51 @@ const workspaceSection = section('workspace', 'Barra de espacio de trabajo', 'Pa
   ),
 );
 
+// --- Agentes de IA ----------------------------------------------------------------------------
+const agentNow = new Date();
+const agoMs = (ms: number) => new Date(agentNow.getTime() - ms).toISOString();
+const inMs = (ms: number) => new Date(agentNow.getTime() + ms).toISOString();
+const HOUR = 3_600_000;
+const TASK_TITLES = ['Revisar cierre de la puerta exterior', 'Sustituir puerta dañada', 'Activar agua fría', 'Desmontar elementos colgados', 'Limpieza a fondo de salas', 'Comprobar marco y medidas', 'Montar hoja y herrajes', 'Revisar enchufes de maquinaria', 'Sellar pequeños agujeros', 'Comprobar desagües', 'Pintar zócalo', 'Cambiar bombillas del pasillo'];
+const bulkChanges: ChangeItem[] = [
+  ...TASK_TITLES.slice(0, 11).map((title, i) => ({ op: 'update', table: 'tarea', tablePlural: 'tareas', title, id: `t${i}`, fields: [{ label: 'Nota', before: i === 6 ? '' : 'Sin clasificar todavía', after: 'Revisado por el asistente' }] })),
+  { op: 'delete', table: 'tarea', tablePlural: 'tareas', title: TASK_TITLES[11]!, id: 't11' },
+];
+const proposals: (ProposalSummary & { changes: ChangeItem[] })[] = [
+  { id: 'pr1', agent: 'Asistente de obra', status: 'pending', createdAt: agoMs(HOUR), expiresAt: inMs(23 * HOUR), affected: 12, reasons: [{ label: 'Incluye borrados', tone: 'alert' }], changes: bulkChanges },
+  { id: 'pr2', agent: 'Asistente de obra', status: 'consumed', createdAt: agoMs(5 * HOUR), expiresAt: inMs(19 * HOUR), affected: 1, reasons: [{ label: 'Incluye borrados', tone: 'alert' }], changes: [{ op: 'delete', table: 'tarea', title: 'Revisar cierre de la puerta exterior' }] },
+  { id: 'pr3', agent: 'Contable', status: 'expired', createdAt: agoMs(30 * HOUR), expiresAt: agoMs(6 * HOUR), affected: 1, reasons: [{ label: 'Archiva un proyecto', tone: 'warn' }], changes: [{ op: 'update', table: 'proyecto', title: 'Piscina y exteriores', fields: [{ label: 'Estado', before: 'Activo', after: 'Archivado' }] }] },
+];
+const proposalHost = el('div', { id: 'proposalHost' });
+const paintProposals = () => replace(proposalHost, ...proposals.map((p) => renderProposalRow({ ...p, now: agentNow, onOpen: () => openProposalReview({
+  proposal: p, changes: p.changes, threshold: 10, now: agentNow, max: 6,
+  note: 'El resumen es el de cuando se preparó; si algo ha cambiado, aprobar lo comprueba de nuevo.',
+  approveAttrs: { id: 'demoApprove' }, rejectAttrs: { id: 'demoReject' },
+  onApprove: () => { p.status = 'approved'; paintProposals(); closeSheet(); toast('Propuesta aprobada'); },
+  onReject: () => { p.status = 'rejected'; paintProposals(); closeSheet(); toast('Propuesta rechazada'); },
+}) })));
+paintProposals();
+const secretOut = el('code', { id: 'secretOut' }, '');
+const secretHost = el('div', { class: 'card', id: 'secretHost' }, renderSecretOnce({ value: 'ika_sO9OITyp5v2kCm_rhdKX3SdCj88E4BBXqLmZ0pT7wYuAzvE', valueAttrs: { id: 'demoSecret' }, doneAttrs: { id: 'demoSecretDone' }, copyAttrs: { id: 'demoSecretCopy' }, onDone: () => { secretOut.textContent = 'hecho'; } }));
+const scopeOut = el('code', { id: 'scopeOut' }, '{"tabs":[],"projects":{}}');
+const scopePicker = createScopePicker({ areas: [
+  { id: 'ikisai', name: 'Ikisai', projects: [{ id: 'p1', name: 'Edificio inferior' }, { id: 'p2', name: 'Cocina operativa' }, { id: 'p3', name: 'Piscina y exteriores' }] },
+  { id: 'personal', name: 'Personal', projects: [{ id: 'p4', name: 'Casa' }] },
+], onChange: (v) => { scopeOut.textContent = JSON.stringify(v); } });
+const agentsSection = section('agents', 'Agentes de IA', 'Piezas comunes para las pantallas de agentes (contrato §3.1): propuestas con estado y caducidad, revisión con pie fijo, riesgo, cambios agrupados con antes y después, clave mostrada una vez, registro por días y selector de ámbitos. La app traduce códigos, tablas y campos.',
+  el('h3', { class: 'demo-sub' }, 'Propuestas'), proposalHost,
+  el('h3', { class: 'demo-sub' }, 'Riesgo'), el('div', { id: 'riskHost' }, renderRiskSummary({ affected: 12, threshold: 10, reasons: [{ label: 'Incluye borrados', tone: 'alert' }, { label: 'Archiva un proyecto', tone: 'warn' }] })),
+  el('h3', { class: 'demo-sub' }, 'Cambios'), el('div', { id: 'changeHost' }, renderChangeList({ changes: bulkChanges.slice(0, 4).concat(bulkChanges[11]!), max: 3 })),
+  el('h3', { class: 'demo-sub' }, 'Clave mostrada una vez'), secretHost, el('p', { class: 'small muted' }, 'Estado: ', secretOut),
+  el('h3', { class: 'demo-sub' }, 'Registro de accesos'), el('div', { class: 'card', id: 'accessLogHost' }, renderAccessLog({ now: agentNow, entries: [
+    { at: agoMs(0.2 * HOUR), label: 'Propuesta aprobada', actor: 'Vera', actorKind: 'person', icon: 'check', tone: 'ok' },
+    { at: agoMs(1 * HOUR), label: 'Propuesta preparada', actor: 'Asistente de obra', actorKind: 'agent', target: '12 elementos', icon: 'list', tone: 'warn' },
+    { at: agoMs(1.2 * HOUR), label: 'Clave de agente creada', actor: 'Vera', actorKind: 'person', target: 'Asistente de obra', icon: 'lock' },
+    { at: agoMs(24 * HOUR), label: 'Clave revocada', actor: 'Vera', actorKind: 'person', target: 'Contable', icon: 'lock', tone: 'alert' },
+  ] })),
+  el('h3', { class: 'demo-sub' }, 'Ámbito'), el('div', { class: 'card', id: 'scopeHost' }, scopePicker.element), el('p', { class: 'small muted' }, 'Valor: ', scopeOut),
+);
+
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
@@ -611,12 +665,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection),
 );

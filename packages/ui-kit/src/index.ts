@@ -41,5 +41,11 @@ export { createSortableList, positionBetween, renumber, type Sortable, type Sort
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { createLabelPicker, labelChips, type LabelPicker, type LabelPickerOptions, type LabelFamily, type LabelItem } from './fields/labels.ts';
 export { renderProjectCard, ringSvg, type ProjectCardSpec } from './cards/project-card.ts';
+export {
+  openProposalReview, renderSecretOnce, renderRiskSummary, renderProposalRow, renderChangeList, renderAccessLog, createScopePicker,
+  proposalStatusChip, relativeTime, maskSecret, PROPOSAL_STATUS_LABELS,
+  type ProposalStatus, type ProposalSummary, type ProposalRowOptions, type ProposalReviewOptions, type RiskReason, type RiskSummaryOptions,
+  type ChangeItem, type ChangeField, type ChangeListOptions, type SecretOnceOptions, type AccessLogEntry, type ScopeArea, type ScopeValue, type ScopePicker,
+} from './agents/agents.ts';
 export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine } from './cards/money.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';

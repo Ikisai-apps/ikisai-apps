@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.11.0 (tanda 16): piezas de agentes de IA (revisión con pie fijo, clave una vez, riesgo, fila de propuesta, cambios, registro, ámbitos).
 - v0.10.0 (tanda 14): barra de espacio de trabajo (piezas sin estado) para la cáscara de Tasks.
 - v0.9.0 (tanda 12): desglose de importes `renderMoneyBreakdown` (Booking «Coste real»).
 - v0.8.1 (tanda 11): `attrs`/`pinAttrs` en la tarjeta de proyecto y dinero sin presupuesto; adopción de la tarjeta en `apps/tasks` (PR pendiente del visto bueno de Tasks).
