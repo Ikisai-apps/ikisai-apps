@@ -100,6 +100,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), role),
       ),
       el('article', { class: 'card' },
+        el('h3', null, 'Espacios y camas'),
+        el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores, para asignar el alojamiento de cada reserva.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSpacesHome', onclick: () => navigate('#/espacios') }, 'Espacios y camas')),
+      ),
+      el('article', { class: 'card' },
         el('h3', null, 'Instalar en este dispositivo'),
         el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
         deferredInstall

@@ -20,6 +20,9 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.guests': { is_minor: false, data_status: 'pendiente_datos', ses_status: 'pendiente_envio' },
   'booking.dietary_restrictions': { active: true },
   'booking.checklist_items': { status: 'pendiente', position: 0 },
+  'booking.spaces': { accessible: false, active: true, position: 0 },
+  'booking.beds': { capacity: 1, active: true, position: 0 },
+  'booking.room_assignments': { persons: 1 },
 };
 
 export interface FakeRow {
@@ -105,6 +108,8 @@ export interface FakeApi {
   uploads(): Array<{ id: string; filename: string; mime: string; sha256: string; size: number | null }>;
   /** Listas de tablas recibidas en cada `trash/purge`, en orden. */
   purgeRequests(): string[][];
+  /** Hace que el siguiente `POST /commands` falle con ese código y estado (la API falsa no aplica los invariantes del servidor). */
+  failNextCommit(code: string, status: number): void;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -274,6 +279,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
+  let nextCommitFailure: { code: string; status: number } | null = null;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://fake.local');
@@ -346,7 +352,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         calendarRetries.push(retry[1]!);
         return json(res, 200, { ok: true });
       }
-      if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      if (path === 'commands' && method === 'POST') {
+        const body = await readJson(req);
+        if (nextCommitFailure) {
+          const { code, status } = nextCommitFailure;
+          nextCommitFailure = null;
+          throw new Fault(status, code, 'Rechazado por la API falsa.', {});
+        }
+        return json(res, 200, commit(body, session.userId));
+      }
       if (path === 'trash/purge' && method === 'POST') {
         // Borrado definitivo de lo que está en la papelera, tabla a tabla y en el orden pedido (el usuario de la API falsa es propietario).
         const body = await readJson(req);
@@ -401,6 +415,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),
     purgeRequests: () => purgeRequests,
+    failNextCommit(code, status) { nextCommitFailure = { code, status }; },
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
       if (!row) throw new Error(`fila ${id} no existe`);

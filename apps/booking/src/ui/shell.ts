@@ -8,6 +8,7 @@ import { mountReservation } from './reservation.ts';
 import { mountGuests } from './guests.ts';
 import { mountPending } from './pending.ts';
 import { mountCalendar } from './calendar.ts';
+import { mountSpaces } from './spaces.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -38,6 +39,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   [PENDING]: { title: 'Por resolver', mount: mountPending },
   '#/calendario': { title: 'Calendario', mount: mountCalendar },
   '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
+  '#/espacios': { title: 'Espacios y camas', mount: mountSpaces },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';

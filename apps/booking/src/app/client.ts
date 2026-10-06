@@ -6,6 +6,9 @@ export const RESERVATIONS: TableName = TABLES.reservations;
 export const FINANCE: TableName = TABLES.finance;
 export const EVENTS: TableName = TABLES.events;
 export const GUESTS: TableName = TABLES.guests;
+export const SPACES: TableName = TABLES.spaces;
+export const BEDS: TableName = TABLES.beds;
+export const ASSIGNMENTS: TableName = TABLES.roomAssignments;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -100,10 +103,21 @@ export function describeError(error: unknown): string {
       return 'Una reserva cancelada, perdida o archivada hay que reabrirla antes de confirmar.';
     case 'CONSTRAINT_VIOLATION':
       return 'Los datos no cumplen una regla de la reserva (por ejemplo, fechas obligatorias desde la pre-reserva).';
+    case 'ORPHAN_CHILD': {
+      const table = (e?.details as { table?: unknown } | null | undefined)?.table;
+      if (table === TABLES.roomAssignments) return 'No se puede borrar: hay asignaciones de alojamiento vivas que usan este espacio o esta cama. Quítalas primero.';
+      if (table === TABLES.beds) return 'No se puede borrar el espacio: quedan camas vivas en él.';
+      return 'No se puede borrar: quedan datos vivos que dependen de esto.';
+    }
     case 'ORPHAN_EVENT':
     case 'ORPHAN_FINANCE':
-    case 'ORPHAN_CHILD':
       return 'No se puede borrar: quedan datos vivos que dependen de esta reserva.';
+    case 'BED_OVERBOOKED':
+      return 'Esa cama ya está ocupada esas noches en otra reserva.';
+    case 'BED_SPACE_MISMATCH':
+      return 'La cama no es de esa habitación.';
+    case 'GUEST_MISMATCH':
+      return 'El huésped no es de este evento o ya no existe.';
     default:
       return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
   }
