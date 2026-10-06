@@ -19,6 +19,7 @@ import {
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
+import { extractDocument, extractionQueue } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -83,13 +84,30 @@ export const mountInvoices: ViewMount = (ctx) => {
   const listHost = el('div', { id: 'invoiceList' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
   const newButton = el('button', { class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
+  const extractAll = el('button', { class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Facturas'), el('p', null, 'Documento, datos importados, revisión y validación. Nada se valida en silencio.'))),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
+    el('div', { class: 'toolbar', id: 'invoiceTools' }, extractAll),
     listHost,
     newButton,
   );
+
+  /** Facturas con documento y sin datos: candidatas a la extracción automática. */
+  function extractable(): LocalInvoice[] {
+    if (!mirror) return [];
+    return mirror.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (mirror!.filesByInvoice.get(i.id) ?? []).some((f) => f.kind === 'original'))
+      .sort((a, b) => a.invoice_date.localeCompare(b.invoice_date));
+  }
+
+  async function extractPending(): Promise<void> {
+    const list = extractable();
+    if (!list.length) return;
+    extractionQueue.ids = list.map((i) => i.id);
+    extractionQueue.total = list.length;
+    await extractNext(ctx);
+  }
 
   function matches(invoice: LocalInvoice): boolean {
     if (!mirror) return false;
@@ -125,6 +143,10 @@ export const mountInvoices: ViewMount = (ctx) => {
 
   function paint(): void {
     if (!mirror) return;
+    const pendingDocs = extractable().length;
+    extractAll.hidden = !canEdit || pendingDocs === 0;
+    extractAll.textContent = '';
+    extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
     const visible = mirror.invoices.filter((i) => !i.deleted_at && matches(i)).sort((a, b) => b.invoice_date.localeCompare(a.invoice_date) || (b.code ?? '').localeCompare(a.code ?? ''));
     if (!visible.length) {
       replace(listHost, el('div', { class: 'empty' }, el('strong', null, mirror.invoices.length ? 'Ninguna factura coincide' : 'Todavía no hay facturas'),
@@ -151,11 +173,11 @@ export const mountInvoices: ViewMount = (ctx) => {
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
   }
 
+  // Las filas (también su marca «pendiente») llegan por onTable; el estado de red no cambia la lista.
   const offTables = onAnyTable(client, () => void load());
-  const offStatus = client.onStatus(() => void load());
   const offOpen = onOpen((id) => { opened = id; });
   void load().then(fromHash);
-  return () => { offTables(); offStatus(); offOpen(); void closeSheet(true); };
+  return () => { offTables(); offOpen(); void closeSheet(true); };
 };
 
 // Quién tiene la ficha abierta (para refrescarla cuando llegan cambios).
@@ -215,6 +237,9 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   if (editable && pendingState) {
     actions.push(el('button', { class: 'primary', type: 'button', id: 'validateInvoice', onclick: () => void call('invoices.validate', { invoice_id: invoice.id, expectedRevision: invoice.revision }, 'Factura validada.') }, icon('check', 18), 'Validar'));
     actions.push(el('button', { class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
+    if (invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original')) {
+      actions.push(el('button', { class: 'softbtn', type: 'button', id: 'extractInvoice', title: 'Pide a la Edge el JSON del documento y lo lleva a la vista previa de importación', onclick: () => void extractInto(ctx, invoice) }, icon('upload', 18), 'Extraer'));
+    }
   }
   if (canEdit && invoice.status !== 'anulada') {
     actions.push(el('button', { class: 'softbtn', type: 'button', id: 'togglePaid', onclick: () => void togglePaid() }, invoice.payment_status === 'pagada' ? 'Marcar pendiente de pago' : 'Marcar pagada'));
@@ -249,7 +274,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     ),
     el('dl', { class: 'kv' },
       el('dt', null, 'Proveedor'), el('dd', null, supplier?.name ?? '—', supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
-      el('dt', null, 'Fecha'), el('dd', null, shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? ''}`),
+      el('dt', null, 'Fecha'), el('dd', null, shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
     ),
@@ -366,6 +391,12 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   ) : null;
 
   return el('div', { class: 'inv' }, header, totals, documentBlock, linesBlock, taxBlock, allocBlock, fiscalBlock, importBlock);
+}
+
+/** Periodo fiscal derivado en el cliente para filas optimistas (el servidor lo genera al confirmar). */
+function periodOf(isoDate: string): string {
+  const year = isoDate.slice(0, 4); const month = Number(isoDate.slice(5, 7)) || 1;
+  return `${year}T${Math.ceil(month / 3)}`;
 }
 
 function block(title: string, summary: string, open: boolean, ...children: Array<HTMLElement | null>): HTMLElement {
@@ -522,7 +553,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // ---------------------------------------------------------------------------
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
-export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null): void {
+export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: { document: ImportDocument; warnings: string[] }): void {
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
@@ -616,7 +647,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
         document, documentSha256: sha, invoiceId, existing: target ? { revision: target.revision } : null,
         supplier: existingSupplier ? { mode: 'existing', row: existingSupplier } : { mode: 'create', id: crypto.randomUUID() },
         overrides: { object: objectInput?.value.trim() || null, invoice_date: dateInput?.value || null, expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput?.checked ?? null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null },
-        files: staged.map((s, i) => ({ file_id: s.marker, original_filename: s.filename, page_order: i + 1 })),
+        files: staged.map((s, i) => ({ file_id: s.marker, original_filename: s.filename, page_order: i + 1, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 })),
       });
       if (await commitSafely(client, operations as RowOperation[], 'Factura importada en este dispositivo. Queda pendiente de revisión.')) {
         guard.dirtyEditor = false;
@@ -629,15 +660,55 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
 
   textarea.addEventListener('input', () => { guard.dirtyEditor = true; parse(textarea.value); });
   jsonFile.addEventListener('change', async () => { const f = jsonFile.files?.[0]; if (!f) return; textarea.value = await f.text(); parse(textarea.value); });
+  const queueNote = extractionQueue.total > 1 ? el('div', { class: 'banner info' }, el('span', null, `Extracción ${extractionQueue.total - extractionQueue.ids.length} de ${extractionQueue.total}. Al confirmar o cancelar, sigue la siguiente.`)) : null;
+  const extractionNote = prefill ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null)) : null;
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
-    body: el('div', null, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
+    body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
-    initialFocus: textarea,
+    initialFocus: prefill ? confirm : textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
-    onClose: () => { guard.dirtyEditor = false; },
+    onClose: () => { guard.dirtyEditor = false; if (extractionQueue.ids.length) void extractNext(ctx); },
   });
+  if (prefill) {
+    textarea.value = JSON.stringify(prefill.document, null, 2);
+    parse(textarea.value);
+  }
+}
+
+/** «Extraer» en una factura pendiente de datos: la Edge devuelve el JSON y se abre la vista previa con él. */
+export async function extractInto(ctx: ViewContext, invoice: LocalInvoice): Promise<void> {
+  const { client } = ctx;
+  if (!navigator.onLine) { toast('La extracción automática necesita conexión. Sin red, pega el JSON de ChatGPT.'); return; }
+  const mirror = await loadMirror(client);
+  const files = (mirror.filesByInvoice.get(invoice.id) ?? []).filter((f) => f.kind === 'original').sort((a, b) => a.page_order - b.page_order);
+  if (!files.length) { toast('Esta factura no tiene documento que extraer.'); return; }
+  toast('Extrayendo los datos del documento…');
+  try {
+    const result = await extractDocument(client, files.map((f) => f.file_id));
+    await closeSheet(true);
+    openImport(ctx, mirror, invoice, { document: result.document, warnings: result.warnings });
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code === 'EXTRACTION_UNAVAILABLE') {
+      toast(describeError(error));
+      await closeSheet(true);
+      openImport(ctx, mirror, invoice);
+    } else {
+      toast(describeError(error));
+    }
+  }
+}
+
+/** Siguiente factura de la cola de «Extraer pendientes». */
+export async function extractNext(ctx: ViewContext): Promise<void> {
+  const id = extractionQueue.ids.shift();
+  if (!id) { extractionQueue.total = 0; return; }
+  const mirror = await loadMirror(ctx.client);
+  const invoice = mirror.invoices.find((i) => i.id === id);
+  if (!invoice || invoice.status !== 'pendiente_datos') { await extractNext(ctx); return; }
+  await extractInto(ctx, invoice);
 }
 
 /** Prompt de extracción para ChatGPT, copiable desde la app (handoff 05_PROMPT_EXTRACCION_FACTURA.md). */

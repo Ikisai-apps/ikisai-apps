@@ -77,6 +77,10 @@ export interface FakeApi {
   failNextVerify(): void;
   /** Destinos conocidos; se puede quitar uno para simular que desapareció (escenario O5). */
   targets: FakeTarget[];
+  /** Siembra filas directamente en el servidor (datos sintéticos para medir rendimiento). Avanza el cursor una vez. */
+  seed(table: string, rows: Array<Record<string, unknown>>): void;
+  /** Extractor simulado para `POST imports/extract`; sin él la ruta responde EXTRACTION_UNAVAILABLE 503. */
+  setExtractor(fn: ((fileIds: string[]) => { document: unknown; warnings?: string[] }) | null): void;
   close(): Promise<void>;
 }
 
@@ -100,6 +104,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const uploads = new Map<string, FakeUpload>();
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
+  let extractor: ((fileIds: string[]) => { document: unknown; warnings?: string[] }) | null = null;
   const requests: Array<{ method: string; path: string }> = [];
   let cursor = 0;
 
@@ -512,6 +517,16 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (!up || up.status !== 'verified') throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
         return json(res, 200, { id: up.id, url: `/api/v1/_file/${up.id}`, expiresAt: new Date(Date.now() + 600_000).toISOString(), filename: up.filename, mime: up.mime, size: up.size });
       }
+      if (path === 'imports/extract' && method === 'POST') {
+        if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
+        const body = await readJson(req);
+        const ids: string[] = Array.isArray(body.file_ids) ? body.file_ids : [];
+        if (!ids.length) throw new Fault(422, 'INVALID_OPERATION', 'Indica entre 1 y 8 identificadores de documento.');
+        for (const id of ids) { const up = uploads.get(id); if (!up || up.status !== 'verified') throw new Fault(422, 'INVALID_FILE', 'El documento no existe o no está verificado.'); }
+        if (!extractor) throw new Fault(503, 'EXTRACTION_UNAVAILABLE', 'La extracción automática no está disponible ahora mismo. Pega el JSON de ChatGPT.');
+        const out = extractor(ids);
+        return json(res, 200, { document: out.document, document_sha256: createHash('sha256').update(JSON.stringify(out.document)).digest('hex'), warnings: out.warnings ?? [], usage: null });
+      }
       const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
       if (targetsList && method === 'GET') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
@@ -554,6 +569,23 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     requests,
     uploads: () => Array.from(uploads.values()),
+    seed(table, rows) {
+      const store = data.get(table);
+      if (!store) throw new Error(`tabla ${table} no registrada`);
+      cursor += 1;
+      const staged = new Map<string, Map<string, FakeRow>>(Array.from(data.entries()));
+      rows.forEach((fields, i) => {
+        const now = nowIso();
+        const id = String(fields.id ?? randomUUID());
+        const row: FakeRow = { id, revision: 1, created_at: now, updated_at: now, updated_by: 'seed', deleted_at: null };
+        for (const column of tables[table]!) row[column] = fields[column] ?? null;
+        applyInsertDefaults(table, row, staged);
+        for (const [k, v] of Object.entries(fields)) if (!(k in row) || row[k] === null) row[k] = v;
+        store.set(id, row);
+        changes.push(record(table, 'insert', row, cursor, i + 1, `seed-${cursor}`, 'seed'));
+      });
+    },
+    setExtractor(fn) { extractor = fn; },
     failNextVerify: () => { failVerify = true; },
     targets,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),

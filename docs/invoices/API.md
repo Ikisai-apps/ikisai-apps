@@ -14,7 +14,7 @@ Fuentes: `02_HANDOFF_TECNICO_CORE_V3.md` §24A, §25 (Invoices API) y §31A; `03
 PDF / foto → archivo normalizado → JSON importado → factura → líneas → IVA / retenciones / total → asignación → entrada útil para inventario → ZIP gestoría
 ```
 
-**Qué no hace (handoff §24A «Fuera de V1»).** OCR/IA embebida (la ruta `imports/extract` queda reservada), cuentas PGC, facturas emitidas, conciliación o conexión bancaria, modelos tributarios, inventario completo, amortizaciones, CRM de proveedores, aprobación multinivel. No sustituye la contabilidad oficial ni a la gestoría: es un resumen documental.
+**Qué no hace (handoff §24A «Fuera de V1»).** OCR/IA embebida en V1 (en V2 la ruta `imports/extract` llama al helper de visión de `_kit`; la app ya tiene el botón «Extraer» y responde con claridad cuando no está disponible), cuentas PGC, facturas emitidas, conciliación o conexión bancaria, modelos tributarios, inventario completo, amortizaciones, CRM de proveedores, aprobación multinivel. No sustituye la contabilidad oficial ni a la gestoría: es un resumen documental.
 
 **Datos de otras apps.** Los destinos son enlaces tipados (§7). No se copia nada de Tasks, Booking ni Food como fuente de verdad: `target_id`, `target_code`, un `target_label` de cortesía y `target_revision` para la obsolescencia por comparación.
 
@@ -357,7 +357,7 @@ Las del núcleo las da `_kit`. Las escrituras van siempre por `POST commands` (f
 |---|---|---|---|
 | `GET dashboard` | — | `{cursor, counts:{pendiente_datos, pendiente_revision, sin_asignar, sin_pagar, sin_documento}, current_period:{year, quarter, totals}, last_export}` | reader |
 | `POST imports/preview` | `{document, invoice_id?, supplier?, invoice?}` | Sin escribir: `{document_sha256, valid, errors[], supplier_matches:[{id,name,tax_id,slug,score,by:'tax_id'|'alias'|'name'}], duplicate:{invoice_id,code}|null, recalculation, proposed:{object, invoice_date, expense_category, is_investment, deductibility, status, review_reason}, normalized_filename_preview, warnings[]}` | editor |
-| `POST imports/extract` | `{file_id}` | Reservada V2 → `NOT_IMPLEMENTED 501`. | editor |
+| `POST imports/extract` | `{file_ids: [uuid, …]}` (1–8 documentos verificados de la misma factura) | **Extracción automática (V2).** La Edge pasa los documentos ya subidos y el prompt de extracción al helper `extractInvoice` de `_kit` (modelo de visión; clave en la Edge, la gestiona Core) y devuelve `{document, document_sha256, warnings[], usage}` con el documento **validado contra el schema** `ikisai.invoice.v1`. No escribe nada: el cliente lleva el resultado a la misma vista previa de importación y el usuario confirma. Errores: `EXTRACTION_UNAVAILABLE 503` (sin helper, sin clave o el proveedor no responde: la app ofrece pegar el JSON de ChatGPT), `EXTRACTION_INVALID 422 {errors, warnings}` (el modelo devolvió algo que no cumple el formato), `INVALID_FILE 422` (documento no verificado o de otra app), `INVALID_OPERATION 422` (ids). | editor |
 | `GET targets/tasks?q=&kind=` | búsqueda | Proxy a Tareas con `ctx.token` (§7.2): `{items:[{kind:'area'|'project'|'task', id, code?, label, path:['Área','Proyecto'], revision, archived}]}` | editor |
 | `GET targets/tasks/:kind/:id` | — | `{kind, id, code?, label, path, revision, archived}` o `TARGET_NOT_FOUND 404` | reader |
 | `GET targets/booking?q=` · `GET targets/food?q=` | — | Fase 2 (`read/booking.food_event_projection`, proyección de Food). V1: `TARGET_APP_NOT_AVAILABLE 422`. | reader |
@@ -530,6 +530,8 @@ El handoff no exigía offline; el plan de Core sí (todas las apps). **Espejo lo
 **Requiere red:** buscar destinos nuevos en Tareas, `imports/preview` del servidor (opcional), crear entrega (se encola, pero se desaconseja), descargar ZIP/CSV/manifest, documentos no cacheados.
 
 **Pendientes, conflictos y rechazados:** chip «pendiente de sincronizar»; `code` «pendiente» hasta el recibo; `VERSION_CONFLICT` con la regla general (rebase disjunto / decisión humana, componente de conflicto del ui-kit v0.2); errores definitivos 422 de un lote encolado (`IMPORT_TOTALS…`, `TARGET_NOT_FOUND`, `ALLOCATIONS_EXCEED_LINE`, `DOMAIN_ERROR` con `sqlstate`) → **Rechazados** (`rejected()`), con el mensaje de dominio y «editar y reintentar» (`retryRejected`) o «descartar». Un adjunto que no sube (`BLOB_MISSING`, `FILE_MISMATCH`) deja la factura con «documento pendiente: reintentar / quitar».
+
+**Rendimiento del espejo** (medido el 6 de octubre de 2026 con `tests/invoices/perf.ts`: 500 facturas, 1.500 líneas, CPU ×4 en móvil emulado): recargar las ocho tablas tarda 120–150 ms (mediana), por debajo del objetivo de 200 ms; los avisos de las distintas tablas de un mismo lote se agrupan en una sola recarga (`onAnyTable`). Si el volumen real lo supera, el siguiente paso es recargar solo la tabla afectada.
 
 **Cierre de sesión:** `clearOnLogout: true` (las facturas son datos del negocio; un dispositivo compartido no debe conservarlas sin sesión).
 

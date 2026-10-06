@@ -37,6 +37,16 @@ function group<T extends { deleted_at: string | null }>(rows: T[], key: (row: T)
 
 /** Carga todas las tablas del espejo (con borradas) y las indexa. */
 export async function loadMirror(client: SyncClient): Promise<Mirror> {
+  const started = performance.now();
+  try {
+    return await readMirror(client);
+  } finally {
+    // Medida de rendimiento (tests/invoices/perf.ts): cuánto tarda recargar el espejo completo.
+    try { performance.measure('invoices:loadMirror', { start: started, end: performance.now() }); } catch { /* navegadores sin measure con opciones */ }
+  }
+}
+
+async function readMirror(client: SyncClient): Promise<Mirror> {
   const [suppliers, invoices, lines, taxes, files, allocations, exports, exportItems] = await Promise.all([
     client.list(SUPPLIERS, { includeDeleted: true }) as Promise<LocalSupplier[]>,
     client.list(INVOICES, { includeDeleted: true }) as Promise<LocalInvoice[]>,
@@ -61,9 +71,19 @@ export async function loadMirror(client: SyncClient): Promise<Mirror> {
 
 export const ALL_INVOICE_TABLES = [SUPPLIERS, INVOICES, INVOICE_LINES, TAX_LINES, INVOICE_FILES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS] as const;
 
-/** Vuelve a cargar cuando cambia cualquier tabla; devuelve la función de baja. */
+/**
+ * Vuelve a cargar cuando cambia cualquier tabla; devuelve la función de baja.
+ * Un lote toca varias tablas (factura, líneas, impuestos…) y cada una avisa por separado: se agrupan los avisos en una
+ * sola recarga por vuelta (medido con 500 facturas: de 9 recargas por cambio a 1–2; cada una ~120–150 ms con CPU ×4).
+ */
 export function onAnyTable(client: SyncClient, listener: () => void): () => void {
-  const offs = ALL_INVOICE_TABLES.map((table) => client.onTable(table, listener));
+  let scheduled = false;
+  const coalesced = () => {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(() => { scheduled = false; listener(); }, 40);
+  };
+  const offs = ALL_INVOICE_TABLES.map((table) => client.onTable(table, coalesced));
   return () => offs.forEach((off) => off());
 }
 

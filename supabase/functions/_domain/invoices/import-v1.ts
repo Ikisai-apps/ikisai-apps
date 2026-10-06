@@ -105,6 +105,10 @@ export interface ImportFileArg {
   file_id: string | { $blob: string };
   original_filename: string;
   page_order: number;
+  /** Datos del blob para la fila optimista; el servidor los sobrescribe con los verificados en `core.files`. */
+  mime_type?: string;
+  size_bytes?: number;
+  sha256?: string;
 }
 
 export interface ImportArgs {

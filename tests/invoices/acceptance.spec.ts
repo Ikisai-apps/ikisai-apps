@@ -299,7 +299,7 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await sheet.locator('#confirmImport').click();
     const f = ficha(page);
     await expect(f).toContainText('Importada, pendiente de revisar');
-    await expect(f).toContainText('código pendiente');
+    await expect(f).toContainText('Pendiente de sincronizar');
     await expect(page.locator('#syncStatus')).toContainText(/pendiente/);
     expect(api.rows('invoices.invoices').some((i) => i.invoice_number === 'F-OFF-1')).toBeFalsy();
     await closeSheet(page);
@@ -406,6 +406,12 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await synced(page);
     await nav(page, 'Compras').click();
     await page.locator('#onlyValidated').uncheck();
+    // Esperar a que el espejo tenga también las asignaciones (el snapshot va por tablas) antes de cortar la red.
+    await page.getByRole('tab', { name: 'Artículos' }).click();
+    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
+    await page.locator('#purchaseTarget').selectOption('');
+    await page.getByRole('tab', { name: 'Categoría' }).click();
     const totalsOnline = await page.locator('#purchaseTotals').innerText();
     expect(totalsOnline).toContain('Base');
     await nav(page, 'Gestoría').click();

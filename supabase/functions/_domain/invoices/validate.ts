@@ -320,6 +320,8 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   EXPORT_IMMUTABLE: 'Una entrega generada no se modifica.',
   EXPORT_FILE_MISSING: 'Falta un documento en el almacenamiento; no se puede generar el ZIP.',
   UNSUPPORTED_IN_V1: 'Esta opción no está disponible en la versión actual.',
+  EXTRACTION_UNAVAILABLE: 'La extracción automática no está disponible ahora mismo. Pega el JSON de ChatGPT.',
+  EXTRACTION_INVALID: 'El modelo devolvió un documento que no cumple el formato; revisa o pega el JSON a mano.',
 };
 
 export function domainMessage(code: string, fallback = 'La operación no se pudo completar.'): string {

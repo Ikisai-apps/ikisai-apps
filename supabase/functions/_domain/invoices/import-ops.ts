@@ -87,6 +87,7 @@ export function importOperations(input: ImportOperationsInput): { operations: Im
   } }));
   (input.files ?? []).forEach((f, i) => ops.push({ op: 'insert', table: 'invoices.invoice_files', id: uuid(), fields: {
     invoice_id: input.invoiceId, file_id: f.file_id, original_filename: f.original_filename, page_order: f.page_order ?? i + 1, kind: 'original',
+    ...(f.mime_type ? { mime_type: f.mime_type } : {}), ...(f.size_bytes !== undefined ? { size_bytes: f.size_bytes } : {}), ...(f.sha256 ? { sha256: f.sha256 } : {}),
   } }));
   return { operations: ops, proposal, supplierId };
 }

@@ -1,7 +1,7 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
 import { createApp, createSupabase, fail, isFault, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import {
-  DomainError, EXPORT_CSV_FILES, FILE_MIMES, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
+  DomainError, EXPORT_CSV_FILES, EXTRACTION_PROMPT, FILE_MIMES, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
   type AllocationRow, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
@@ -19,7 +19,19 @@ export interface InvoicesAppOptions {
   tasksApiBase?: string;
   /** Transporte hacia la API de Tareas (inyectable en pruebas). */
   tasksFetch?: typeof fetch;
+  /**
+   * Extracción automática (V2): helper de `_kit` que llama al modelo de visión con los documentos ya subidos.
+   * Sin helper (o sin clave en la Edge) la ruta `imports/extract` responde `EXTRACTION_UNAVAILABLE 503`.
+   */
+  extractInvoice?: ExtractInvoice;
 }
+
+/** Firma acordada con Core para el helper de `_kit` (API.md §6, ruta `imports/extract`). */
+export type ExtractInvoice = (args: {
+  files: Array<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }>;
+  prompt: string;
+  ctx: RequestContext;
+}) => Promise<{ document: unknown; warnings?: string[]; usage?: unknown }>;
 
 // ---------------------------------------------------------------------------
 // Destinos tipados (API.md §7.2)
@@ -280,7 +292,7 @@ interface Bundle {
   stale: boolean;
 }
 
-export function invoicesRoutes(supabase: Supabase, targets: Targets): AppRoute[] {
+export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?: ExtractInvoice): AppRoute[] {
   async function bundle(ctx: RequestContext, id: string): Promise<Bundle> {
     if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Entrega no encontrada.');
     return read<Bundle>(supabase, ctx, 'invoices.export_bundle', { export_id: id.toLowerCase() });
@@ -339,7 +351,36 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets): AppRoute[]
         };
       },
     },
-    { method: 'POST', pattern: 'imports/extract', handler: async ({ ctx }) => { requireEditor(ctx); fail(501, 'NOT_IMPLEMENTED', 'La extracción desde la app llegará en V2. Usa el JSON de ChatGPT.'); } },
+    {
+      /**
+       * Extracción automática del documento ya subido (API.md §6). `{file_ids: [uuid]}` → `{document, document_sha256, warnings, usage}`.
+       * El documento devuelto se valida contra el schema igual que el JSON pegado; nunca se escribe nada aquí: el cliente lo lleva
+       * a la misma vista previa de importación y decide.
+       */
+      method: 'POST', pattern: 'imports/extract', handler: async ({ ctx, json }) => {
+        requireEditor(ctx);
+        const body = await json();
+        const ids: unknown[] = Array.isArray(body.file_ids) ? body.file_ids : typeof body.file_id === 'string' ? [body.file_id] : [];
+        if (!ids.length || ids.length > 8 || ids.some((id) => typeof id !== 'string' || !UUID.test(id))) fail(422, 'INVALID_OPERATION', 'Indica entre 1 y 8 identificadores de documento.', { field: 'file_ids' });
+        if (!extractor) fail(503, 'EXTRACTION_UNAVAILABLE', domainMessage('EXTRACTION_UNAVAILABLE'));
+        const files: Array<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }> = [];
+        for (const [index, id] of (ids as string[]).entries()) {
+          await verifiedFile(supabase, ctx, id, index, `file_ids[${index}]`);
+          const file = await supabase.rpc<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: id });
+          files.push({ id: file.id, bucket: file.bucket, path: file.path, mime: file.mime, filename: file.filename, size: Number(file.size) });
+        }
+        let out: { document: unknown; warnings?: string[]; usage?: unknown };
+        try {
+          out = await extractor({ files, prompt: EXTRACTION_PROMPT, ctx });
+        } catch (error) {
+          if (isFault(error)) throw error;
+          fail(503, 'EXTRACTION_UNAVAILABLE', domainMessage('EXTRACTION_UNAVAILABLE'), { reason: (error as Error)?.message ?? null });
+        }
+        const validation = validateImportDocument(out.document);
+        if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [] });
+        return { document: validation.document, document_sha256: await importDocumentSha256(validation.document), warnings: out.warnings ?? [], usage: out.usage ?? null };
+      },
+    },
     {
       method: 'GET', pattern: 'targets/tasks', handler: async ({ ctx, url }) => {
         requireEditor(ctx);
@@ -418,7 +459,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks: { beforeCommit: createInvoicesHooks(supabase, targets) },
-    routes: invoicesRoutes(supabase, targets),
+    routes: invoicesRoutes(supabase, targets, base.extractInvoice),
   });
 }
 
