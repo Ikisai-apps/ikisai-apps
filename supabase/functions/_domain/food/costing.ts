@@ -1,7 +1,9 @@
 /**
  * Ikisai Food · coste estimado a partir de las compras reales de Invoices (`invoices.food_stock_projection`).
  * Precio medio por ingrediente = importe asignado ÷ cantidad asignada en la unidad base de su familia (g, ml o la propia
- * unidad). Solo cuentan las compras cuya unidad se reconoce; nunca se convierte entre familias (kg no es unidad).
+ * unidad). Manda la unidad normalizada por Invoices (`unit_normalized`: kg, l o ud, con `quantity_normalized`); si viene
+ * vacía, se interpreta el texto de la factura. Solo cuentan las compras con unidad reconocida; nunca se convierte entre
+ * familias (kg no es unidad).
  */
 import type { MenuGraph } from './warnings.ts';
 import { scaledIngredients } from './planning.ts';
@@ -18,6 +20,21 @@ export interface FoodPurchase {
   allocated_quantity: number | string | null;
   unit: string | null;
   allocated_amount: number | string | null;
+  /** Unidad canónica de Invoices (migración 0203): `kg`, `l` o `ud`; null si no la reconoce. */
+  unit_normalized?: string | null;
+  /** Cantidad asignada en `unit_normalized`. */
+  quantity_normalized?: number | string | null;
+}
+
+const NORMALIZED: Record<string, Unit> = { kg: 'kg', l: 'l', ud: 'unidad' };
+
+/** Unidad y cantidad de una compra: la normalizada de Invoices si existe; si no, la del texto de la factura. */
+export function purchaseQuantity(p: FoodPurchase): { unit: Unit; quantity: number } | null {
+  const normalized = p.unit_normalized ? NORMALIZED[p.unit_normalized] : undefined;
+  if (normalized && Number(p.quantity_normalized) > 0) return { unit: normalized, quantity: Number(p.quantity_normalized) };
+  const unit = purchaseUnit(p.unit);
+  const quantity = Number(p.allocated_quantity);
+  return unit && quantity > 0 ? { unit, quantity } : null;
 }
 
 export interface IngredientPrice {
@@ -50,10 +67,10 @@ export function ingredientPrices(purchases: FoodPurchase[]): Map<string, Ingredi
   const totals = new Map<string, { ingredient_id: string; family: UnitFamily; amount: number; base: number; purchases: number; lastDate: string | null }>();
   for (const p of purchases) {
     if (p.target_kind !== 'ingredient') continue;
-    const unit = purchaseUnit(p.unit);
-    const quantity = Number(p.allocated_quantity);
+    const read = purchaseQuantity(p);
     const amount = Number(p.allocated_amount);
-    if (!unit || !(quantity > 0) || !(amount >= 0)) continue;
+    if (!read || !(amount >= 0)) continue;
+    const { unit, quantity } = read;
     const family = unitFamily(unit);
     const key = `${p.target_id}|${family}`;
     const entry = totals.get(key) ?? { ingredient_id: p.target_id, family, amount: 0, base: 0, purchases: 0, lastDate: null };
