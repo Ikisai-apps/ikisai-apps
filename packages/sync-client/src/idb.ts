@@ -106,16 +106,34 @@ export class Database {
           if (db.objectStoreNames.contains(table)) db.deleteObjectStore(table);
         }
       };
+      let blockedTimer: ReturnType<typeof setTimeout> | null = null;
       req.onsuccess = () => {
+        if (blockedTimer) clearTimeout(blockedTimer);
         const db = req.result;
         db.onversionchange = () => {
           db.close();
           if (this.db === db) this.db = null;
         };
+        // El navegador puede cerrar la conexión con la app en segundo plano (Android); se reabre en la siguiente operación.
+        db.onclose = () => {
+          if (this.db === db) this.db = null;
+        };
         resolve(db);
       };
-      req.onerror = () => reject(req.error ?? new Error('IndexedDB: no se pudo abrir la base'));
-      req.onblocked = () => reject(new Error('IndexedDB: apertura bloqueada por otra pestaña'));
+      req.onerror = () => {
+        if (blockedTimer) clearTimeout(blockedTimer);
+        reject(req.error ?? new Error('IndexedDB: no se pudo abrir la base'));
+      };
+      // «blocked» no es un fallo: otra ventana de la app (p. ej. una instancia de la PWA congelada en segundo plano) tiene
+      // la base abierta y debe cerrarla. Se espera a `success`; solo si no llega en 15 s se rinde con un mensaje claro.
+      req.onblocked = () => {
+        if (blockedTimer) return;
+        blockedTimer = setTimeout(() => {
+          const error = new Error('Otra ventana de esta app tiene los datos abiertos. Ciérrala (o cierra la app del todo) y vuelve a abrirla.');
+          error.name = 'IDB_BLOCKED';
+          reject(error);
+        }, 15_000);
+      };
     });
   }
 
