@@ -75,8 +75,26 @@ export interface FakeCalendarStatus {
   }>;
 }
 
+/** Fila de `invoices.booking_cost_projection` (docs de Invoices). */
+export interface FakeCostRow {
+  allocation_id: string;
+  target_kind: 'reservation' | 'event';
+  target_id: string;
+  invoice_code: string;
+  invoice_date: string;
+  supplier_name: string;
+  expense_category: string;
+  is_investment: boolean;
+  allocated_amount: number | string;
+  allocation_revision: number;
+}
+
 export interface FakeApi {
   url: string;
+  /** Fija las filas de `GET /read/invoices.booking_cost_projection` (se filtran por `where[target_id]`). */
+  setCostRows(rows: FakeCostRow[]): void;
+  /** Hace que esa lectura responda con el estado HTTP indicado (`null` la restablece). */
+  failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
   setCalendarStatus(status: FakeCalendarStatus): void;
   /** Identificadores de reserva para los que llegó `POST /calendar/:id/retry`. */
@@ -252,6 +270,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
 
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
   const calendarRetries: string[] = [];
+  let costRows: FakeCostRow[] = [];
+  let costFailure: number | null = null;
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
 
@@ -314,6 +334,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const last = items.length ? items[items.length - 1]!.cursor : after;
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
+      if (path === 'read/invoices.booking_cost_projection' && method === 'GET') {
+        if (costFailure !== null) throw new Fault(costFailure, costFailure === 403 ? 'FORBIDDEN' : 'VALIDATION', 'Lectura no permitida.', {});
+        const target = url.searchParams.get('where[target_id]');
+        const rows = costRows.filter((row) => target === null || row.target_id === target);
+        return json(res, 200, { rows, total: rows.length });
+      }
       if (path === 'calendar/status' && method === 'GET') return json(res, 200, calendarStatus);
       const retry = /^calendar\/([0-9a-f-]+)\/retry$/.exec(path);
       if (retry && method === 'POST') {
@@ -369,6 +395,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
     setCalendarStatus: (status) => { calendarStatus = status; },
+    setCostRows: (rows) => { costRows = rows; },
+    failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     uploads: () => Array.from(uploads.entries()).map(([id, upload]) => ({ id, ...upload })),

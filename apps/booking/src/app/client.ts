@@ -124,6 +124,15 @@ export function shortDay(date: string | null | undefined): string {
   return Number.isNaN(ms) ? '—' : DAY.format(ms).replace('.', '');
 }
 
+const FULL_DAY = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+/** «2 oct 2026» a partir de AAAA-MM-DD (fecha civil, sin hora); «—» si no hay fecha. */
+export function fullDay(date: string | null | undefined): string {
+  if (!date) return '—';
+  const ms = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(ms) ? '—' : FULL_DAY.format(ms);
+}
+
 export function dateRange(row: Pick<ReservationRow, 'start_date' | 'end_date'>): string {
   if (!row.start_date && !row.end_date) return 'Sin fechas';
   return `${shortDay(row.start_date)} → ${shortDay(row.end_date)}`;

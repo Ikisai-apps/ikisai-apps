@@ -1,8 +1,6 @@
 /* Ikisai Booking · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
    Aquí solo lo específico de Booking. Móvil primero (390 px), escritorio desde 1024 px. */
 
-/* El atributo `hidden` manda siempre: varias clases del kit fijan `display` y lo anularían (pastillas, botones). */
-[hidden] { display: none !important; }
 
 /* Filtros de la lista de reservas: una fila que se desplaza en horizontal en móvil. */
 .filters {
@@ -36,6 +34,13 @@
 /* Checklist del evento. */
 .checklist { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; }
 .checklist li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.checklist-item { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Casilla arriba a la izquierda y el texto a su lado aunque ocupe dos líneas. */
+.checklist-item .check { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; text-align: left; }
+.checklist-item .check input { flex: 0 0 auto; margin-top: 3px; }
+.checklist-item[data-status='hecho'] span { text-decoration: line-through; opacity: .7; }
+.checklist-item[data-status='no_aplica'] span { opacity: .55; }
+.checklist-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
 .checklist li[data-status='hecho'] span { text-decoration: line-through; opacity: .7; }
 .checklist li[data-status='no_aplica'] span { opacity: .55; }
 .checklist li[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }

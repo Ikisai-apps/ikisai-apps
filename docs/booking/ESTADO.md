@@ -28,8 +28,12 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - `docs/booking/ACEPTACION.md`: recorrido paso a paso para hacerlo con la cuenta del usuario en producción.
   - Prueba real de Calendar contra Google: hecha por Core, 12 de 12 (ronda 5).
 
-- **Tanda 7** (rama `booking/tanda-7`): botón «Vaciar papelera» para el propietario en Reservas → Papelera, con recuento y confirmación; llama a `POST trash/purge` con las tablas de hijos a padres y explica los dos motivos por los que puede negarse (evento aún vivo en Google Calendar, menú de Food ligado al evento). Probado en el humo y, sobre PGlite, con una reserva completa (evento, huésped, restricción, checklist).
+- **Tanda 7** (PR 84): botón «Vaciar papelera» para el propietario en Reservas → Papelera, con recuento y confirmación; llama a `POST trash/purge` con las tablas de hijos a padres y explica los dos motivos por los que puede negarse (evento aún vivo en Google Calendar, menú de Food ligado al evento). Probado en el humo y, sobre PGlite, con una reserva completa (evento, huésped, restricción, checklist).
 - **Invoices lee `booking.food_event_projection`** (PR 80): migración `20261006_0402_booking_invoices_read.sql`, fusionada junto con el ajuste de la prueba de Invoices.
+- **Tanda 8** (rama `booking/tanda-8`):
+  - **Checklist reordenable** con `createSortableList` del kit: al mover una tarea solo viaja ese ítem (`position` entre sus vecinos); se renumera la lista entera solo si no hay hueco.
+  - **Bloque «Coste real»** en Cobro (solo quien ve importes): total asignado en Invoices a la reserva y a su evento, desglose por categoría y asignaciones con su código de factura, leído de `invoices.booking_cost_projection`. Última respuesta guardada en el dispositivo y borrada al cerrar sesión.
+  - Retirado el parche `[hidden]` (lo trae el kit 0.8.0).
 
 ## Pendiente
 
@@ -37,7 +41,11 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - La reactivación de un evento borrado a mano en Google solo está probada en simulación.
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
-- Peticiones a Core abiertas, sin bloquear: P3, P5, P6, P9, P18 (retraso de la cola tras recargar sin red) y P19 (UI).
+- **Reconexión tras recargar sin red (P18, reabierta):** con `sync-client` 0.2.2 la cola sigue tardando unos 30 s en enviarse; el escenario O1 mantiene 45 s de margen.
+- **«Coste real» con `renderMoneyBreakdown` del kit 0.9.0** (pedido por UI y Core): hoy el bloque está pintado a mano porque el kit 0.9.0 (PR #92) aún no está en `main`; se cambia en cuanto entre, añadiendo la comparación con el presupuesto.
+- Tras reordenar el checklist con el teclado se pierde el foco del asa (la ficha se repinta entera tras cada guardado).
+- Las restricciones alimentarias no son reordenables: no tienen columna de orden y son pocas por evento.
+- Peticiones a Core abiertas, sin bloquear: P3, P5, P6, P9 y P18.
 
 ## Avisos para otros equipos
 
