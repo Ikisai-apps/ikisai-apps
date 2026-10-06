@@ -1,7 +1,7 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
 import { createApp, createSupabase, fail, isFault, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import {
-  DomainError, EXPORT_CSV_FILES, EXTRACTION_PROMPT, FILE_MIMES, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
+  DomainError, EXPORT_CSV_FILES, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
   type AllocationRow, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
@@ -31,6 +31,8 @@ export type ExtractInvoice = (args: {
   files: Array<{ id: string; bucket: string; path: string; mime: string; filename: string; size: number }>;
   prompt: string;
   ctx: RequestContext;
+  /** JSON Schema para forzar la forma de la salida en el proveedor (salida estructurada); el helper de `_kit` lo admite. */
+  schema?: Record<string, unknown>;
 }) => Promise<{ document: unknown; warnings?: string[]; usage?: unknown }>;
 
 // ---------------------------------------------------------------------------
@@ -371,13 +373,13 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         }
         let out: { document: unknown; warnings?: string[]; usage?: unknown };
         try {
-          out = await extractor({ files, prompt: EXTRACTION_PROMPT, ctx });
+          out = await extractor({ files, prompt: EXTRACTION_PROMPT_STRUCTURED, schema: IMPORT_JSON_SCHEMA, ctx });
         } catch (error) {
           if (isFault(error)) throw error;
           fail(503, 'EXTRACTION_UNAVAILABLE', domainMessage('EXTRACTION_UNAVAILABLE'), { reason: (error as Error)?.message ?? null });
         }
         const validation = validateImportDocument(out.document);
-        if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [] });
+        if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [], usage: out.usage ?? null });
         return { document: validation.document, document_sha256: await importDocumentSha256(validation.document), warnings: out.warnings ?? [], usage: out.usage ?? null };
       },
     },

@@ -3,7 +3,7 @@
  * alta con documento, importación del JSON `ikisai.invoice.v1`, validar, anular, archivar.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
   DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseImportDocument, proposeImport, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
@@ -19,7 +19,7 @@ import {
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
-import { extractDocument, extractionQueue } from '../app/extract.ts';
+import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -171,6 +171,14 @@ export const mountInvoices: ViewMount = (ctx) => {
     const tail = location.hash.replace(/^#\/facturas\/?/, '');
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
+    else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
+      // Enlace por código desde otras apps (Reservas, Cocina): `#/facturas/FVR_2026_012`.
+      const code = tail.toUpperCase();
+      const found = mirror.invoices.find((i) => !i.deleted_at && i.code === code);
+      history.replaceState(null, '', '#/facturas');
+      if (found) openInvoice(ctx, found.id);
+      else toast(`No encuentro la factura ${code} en este dispositivo.`);
+    }
   }
 
   // Las filas (también su marca «pendiente») llegan por onTable; el estado de red no cambia la lista.
@@ -313,17 +321,30 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 
   // --- Artículos -----------------------------------------------------------
   const lineForm = (line: LocalInvoiceLine | null) => renderLineForm(client, invoice, line, lines.length);
+  // Orden manual (decisión del usuario, TABLÓN): con dos o más artículos y permiso de edición, lista reordenable del kit.
+  // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
+  const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', dataset: { id: l.id } },
+    el('div', { class: 'line-main' }, el('span', { class: 'line-desc' }, l.description), l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
+    el('div', { class: 'line-nums' },
+      el('span', null, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
+      el('strong', null, eur(l.net_amount)),
+      el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`),
+      editable ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
+    ),
+  );
+  const linesView = !lines.length
+    ? el('p', { class: 'hint' }, 'Sin artículos. Importa el JSON o añádelos a mano.')
+    : editable && lines.length > 1
+      ? createSortableList<LocalInvoiceLine>({
+        items: lines, key: (l) => l.id, name: (l) => l.description, label: 'Artículos de la factura', id: 'invoiceLines', render: lineRow,
+        onReorder: async (ordered) => {
+          const ops: RowOperation[] = ordered.flatMap((l, index): RowOperation[] => l.position === index ? [] : [{ op: 'update', table: INVOICE_LINES, id: l.id, expectedRevision: l.revision, fields: { position: index } }]);
+          if (ops.length) await commitSafely(client, ops, 'Orden de los artículos guardado.');
+        },
+      }).element
+      : el('div', { class: 'list plain-lines', id: 'invoiceLines' }, ...lines.map(lineRow));
   const linesBlock = block('Artículos', String(lines.length), true,
-    lines.length ? el('table', { class: 'inv-table' },
-      el('thead', null, el('tr', null, el('th', null, 'Descripción'), el('th', { class: 'num' }, 'Cant.'), el('th', { class: 'num' }, 'Base'), el('th', { class: 'num' }, 'IVA'), editable ? el('th') : null)),
-      el('tbody', null, ...lines.map((l) => el('tr', { dataset: { id: l.id } },
-        el('td', null, l.description, l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
-        el('td', { class: 'num' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
-        el('td', { class: 'num' }, eur(l.net_amount)),
-        el('td', { class: 'num' }, l.vat_rate === null ? '—' : `${Number(l.vat_rate)} %`),
-        editable ? el('td', null, el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar')) : null,
-      ))),
-    ) : el('p', { class: 'hint' }, 'Sin artículos. Importa el JSON o añádelos a mano.'),
+    linesView,
     editable ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', id: 'addLine', onclick: () => replace(lineEditor, lineForm(null)) }, icon('plus', 18), 'Añadir artículo')) : null,
   );
   const lineEditor = el('div', { class: 'inv-editor' });
@@ -553,7 +574,10 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // ---------------------------------------------------------------------------
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
-export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: { document: ImportDocument; warnings: string[] }): void {
+/** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
+export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null }
+
+export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill): void {
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
@@ -661,17 +685,22 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   textarea.addEventListener('input', () => { guard.dirtyEditor = true; parse(textarea.value); });
   jsonFile.addEventListener('change', async () => { const f = jsonFile.files?.[0]; if (!f) return; textarea.value = await f.text(); parse(textarea.value); });
   const queueNote = extractionQueue.total > 1 ? el('div', { class: 'banner info' }, el('span', null, `Extracción ${extractionQueue.total - extractionQueue.ids.length} de ${extractionQueue.total}. Al confirmar o cancelar, sigue la siguiente.`)) : null;
-  const extractionNote = prefill ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null)) : null;
+  // Coste de la extracción, discreto pero visible (petición de Core, ronda 10): modelo, tokens y tiempo.
+  const usageText = prefill ? describeUsage(prefill.usage) : null;
+  const usageLine = usageText ? el('p', { class: 'hint', id: 'extractionUsage' }, 'Coste de la extracción: ', usageText) : null;
+  const extractionNote = !prefill ? null : prefill.document
+    ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null, usageLine))
+    : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('warn', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
   openSheet({
     title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
     meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
     body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json', jsonFile), preview, error),
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
-    initialFocus: prefill ? confirm : textarea,
+    initialFocus: prefill?.document ? confirm : textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; if (extractionQueue.ids.length) void extractNext(ctx); },
   });
-  if (prefill) {
+  if (prefill?.document) {
     textarea.value = JSON.stringify(prefill.document, null, 2);
     parse(textarea.value);
   }
@@ -688,15 +717,14 @@ export async function extractInto(ctx: ViewContext, invoice: LocalInvoice): Prom
   try {
     const result = await extractDocument(client, files.map((f) => f.file_id));
     await closeSheet(true);
-    openImport(ctx, mirror, invoice, { document: result.document, warnings: result.warnings });
+    openImport(ctx, mirror, invoice, { document: result.document, warnings: result.warnings, usage: result.usage });
   } catch (error) {
-    const code = (error as { code?: string })?.code;
-    if (code === 'EXTRACTION_UNAVAILABLE') {
-      toast(describeError(error));
+    const e = error as { code?: string; details?: { errors?: unknown[]; warnings?: string[]; usage?: ExtractionUsage | null } | null };
+    toast(describeError(error));
+    // Sin servicio o sin JSON utilizable: el mismo camino que la importación manual, mostrando por qué falló y lo que costó.
+    if (e?.code === 'EXTRACTION_UNAVAILABLE' || e?.code === 'EXTRACTION_INVALID') {
       await closeSheet(true);
-      openImport(ctx, mirror, invoice);
-    } else {
-      toast(describeError(error));
+      openImport(ctx, mirror, invoice, e.code === 'EXTRACTION_INVALID' ? { warnings: e.details?.warnings ?? [], errors: e.details?.errors ?? [], usage: e.details?.usage ?? null } : undefined);
     }
   }
 }

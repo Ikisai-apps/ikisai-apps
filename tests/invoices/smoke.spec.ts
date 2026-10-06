@@ -156,7 +156,7 @@ test('login → bootstrap → proveedores offline → sincronizar', async ({ pag
     await expect(ficha.locator('#lineNet')).toHaveValue('40');
     await ficha.locator('#lineVat').selectOption('10');
     await ficha.locator('#saveLine').click();
-    await expect(ficha.locator('.inv-table')).toContainText('Tomate');
+    await expect(ficha.locator('#invoiceLines')).toContainText('Tomate');
     await expect(ficha).toContainText('Pendiente de revisar');
     await expect(ficha).toContainText('✓ Importes comprobados');
     await expect(ficha.locator('.inv-totals')).toContainText('44,00 €');
