@@ -1,10 +1,10 @@
 # Ikisai Food · API y modelo de datos (puerta G2)
 
-Fecha: 6 de octubre de 2026. Autor: equipo Food. Estado: **borrador para revisión de Core**. Mientras no esté aprobado no se crean migraciones ni rutas.
+Fecha: 6 de octubre de 2026. Autor: equipo Food. Estado: **aprobado provisionalmente por Core el 6 de octubre de 2026 (puerta G2)**; las respuestas a las peticiones están en §14.1.
 
 Fuentes: `AGENTS.md`, `docs/core/PLAN.md`, `docs/core/CONTRATO_SINCRONIZACION.md` (v0.1, normativo), `docs/core/PLANTILLA_API_APP.md`; handoff V3 (`02_HANDOFF_TECNICO_CORE_V3.md` §12–§26 y §32, `08_CANON_FUNCIONAL_BOOKING_FOOD.md` §13–§33) y `sources/Gestion_cocina_profesional_retiro.txt` como referencia de campos. Además se ha leído el núcleo ya implementado (`20261006_0001_core_base.sql`, `_kit`, `sync-client`, `scripts/lint_migrations.mjs`), porque varias decisiones de este documento dependen de cómo se comporta hoy.
 
-Donde el handoff y el contrato se contradicen manda el contrato. Las diferencias están reunidas en §13. Lo que Food necesita de Core y de Booking está en §14: **P1, P2 y P5 condicionan el diseño**; el resto son mejoras.
+Donde el handoff y el contrato se contradicen manda el contrato. Las diferencias están reunidas en §13. Lo que Food pidió a Core y a Booking, y cómo quedó resuelto, está en §14.
 
 ---
 
@@ -278,7 +278,7 @@ borrador ⇄ revisar ──validate_menu──▶ validado ⇄ cerrado
 
 Se puede generar con el menú en cualquier estado; si no está validado la interfaz marca la lista como provisional.
 
-`domain-food` implementa el mismo cálculo como función pura (`computeShopping`) para la vista de cocinero (ingredientes escalados por plato) y para la vista previa. Los casos de `packages/domain-food/fixtures/shopping/*.json` se ejecutan contra la función TypeScript y contra el procedimiento en PGlite y deben dar el mismo resultado.
+`domain-food` implementa el mismo cálculo como función pura (`computeShopping`) para la vista de cocinero (ingredientes escalados por plato) y para la vista previa. Los casos de `tests/food/fixtures/shopping/*.json` se ejecutan contra la función TypeScript y contra el procedimiento en PGlite y deben dar el mismo resultado.
 
 ### 3.3 `food.regenerate_preparation`
 
@@ -331,7 +331,7 @@ Food no registra `validate_hooks`: sus invariantes dependen de la fila que se es
 | `guard_item_recipe` | `menu_items` | la receta del plato no está borrada | `PARENT_DELETED` |
 | `guard_shopping` | `shopping_lists`, `shopping_list_items` | lista `cerrada` no admite cambios en sus líneas; un cambio de `status` sí | `LIST_CLOSED` |
 
-Los `check`, los índices únicos y las FK quedan como última línea. Hoy una violación de restricción llega a la Edge como error crudo de PostgREST y `_kit` la convierte en 503 (petición P2); por eso los dos casos alcanzables por un usuario normal, nombre de ingrediente repetido y segundo menú para un evento, tienen además trigger con un 422 explicativo.
+Los `check`, los índices únicos y las FK quedan como última línea. Una violación de restricción llega como 422 `CONSTRAINT_VIOLATION` con `details.sqlstate` (contrato §5.2), que el cliente aparta de la cola pero no sabe explicar; por eso los dos casos alcanzables por un usuario normal, nombre de ingrediente repetido y segundo menú para un evento, tienen además trigger con un código propio y el `id` de la fila existente.
 
 ### 4.3 Avisos del menú (`menuWarnings`)
 
@@ -377,7 +377,7 @@ V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoice
 
 ### 7.1 Lo que Food consume: `booking.food_event_projection`
 
-La lee la Edge de Food con la service key (contrato §8) y la sirve en `GET events`. Columnas del contrato: `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions, event_revision`. Food necesita además lo siguiente (petición P5, a cerrar con Booking):
+La lee la Edge de Food como lectura registrada (contrato §5.1: Booking la registra con `core.allow_read('food', 'booking.food_event_projection', 'view')`) y la sirve en `GET events`. Mientras Booking no la publique, Food usa una vista de pruebas en su propio schema con las mismas columnas, `food.event_projection_stub`, registrada igual. Columnas del contrato: `event_id, event_code, reservation_code, title, event_type, start_date, end_date, arrival_time, departure_time, guest_count, minors_count, meal_plan, menu_style, dietary_restrictions, event_revision`. Food necesita además lo siguiente (petición P5, a cerrar con Booking):
 
 | Necesidad | Para qué |
 |---|---|
@@ -417,11 +417,11 @@ No hay escrituras cruzadas: Invoices no inserta en `food.stock_entries`. Propues
 - Solo la foto principal de la receta: subir, ver, reemplazar y quitar. Sin galería.
 - **Tratamiento en cliente** (contrato §11.3): la imagen elegida o tomada con la cámara se decodifica, se corrige la orientación y se generan dos archivos: 1600 px de lado mayor, WebP de calidad media (100–300 KB), y miniatura de 480 px (unos 25 KB). Si el navegador no codifica WebP se usa JPEG. **No se conserva el original.**
 - La miniatura alimenta las tarjetas del recetario y el selector de platos; la de 1600 px, la ficha y la vista del organizador. Sin miniatura, una rejilla de treinta recetas descargaría varios megas en la wifi de la cocina.
-- `recipes.photo_file_id` y `photo_thumb_file_id` referencian `core.files`. Reemplazar es subir, verificar y solo entonces actualizar la receta: nunca apunta a un archivo inexistente. Quitar es poner ambas a `null`.
+- `recipes.photo_file_id` y `photo_thumb_file_id` son FK a `core.files(id)`. El comando lleva el marcador `{"$blob": "<sha256>"}` en cada campo y `sync-client` lo sustituye por el `file_id` cuando el blob está subido y verificado, también si la foto se hizo sin red (contrato §8). La receta nunca apunta a un archivo inexistente. Quitar es poner ambas a `null`.
 - La Edge comprueba en `beforeCommit` que el archivo referenciado existe, es de la app `food`, está verificado y es una imagen.
 - Lectura con `GET files/{id}` (URL firmada de 10 minutos). Para offline, §10.2.
 
-Dependencias: P3 (enlazar un blob en cola con su `file_id`), P4 (FK a `core.files`) y P6 (archivos huérfanos tras reemplazar).
+Pendiente: política para los archivos que dejan de estar referenciados tras reemplazar una foto (P6).
 
 ---
 
@@ -482,7 +482,7 @@ Las acciones «solo con red» son los `call`. Dependen de la verdad del servidor
 - Filas con cambios sin confirmar: marca «pendiente de sincronizar». «Guardado» solo con confirmación del servidor.
 - Campos disjuntos se fusionan solos con aviso discreto. Ejemplo normal: la tableta marca una línea como comprada mientras la oficina regenera la lista, que cambia `required_quantity`.
 - Campos solapados van al banner de conflictos campo a campo. Ejemplo: la tableta fija «Comprar» a mano y la regeneración recalcula esa misma cantidad.
-- Rechazos de dominio (422): `sync-client` retira el lote, el espejo vuelve a la base y la interfaz explica el motivo con el código: `MENU_LOCKED` («el menú se validó mientras editabas sin red»), `DUPLICATE_NAME` («ya existe Tomate: usar el existente»), `MENU_EXISTS`, `LIST_CLOSED`, `PARENT_DELETED`. Para que un rechazo no deje huérfanos en la cola, `domain-food` agrupa en un solo lote lo que solo tiene sentido junto: ingrediente nuevo con su línea de receta, servicio con sus platos propuestos, borrados en cascada.
+- Rechazos de dominio (422): `sync-client` aparta el lote sin bloquear la cola y lo deja visible (`rejected()`, con reintento o descarte); el espejo vuelve a la base y la interfaz explica el motivo con el código: `MENU_LOCKED` («el menú se validó mientras editabas sin red»), `DUPLICATE_NAME` («ya existe Tomate: usar el existente»), `MENU_EXISTS`, `LIST_CLOSED`, `PARENT_DELETED`. Para que un rechazo no deje huérfanos en la cola, `domain-food` agrupa en un solo lote lo que solo tiene sentido junto: ingrediente nuevo con su línea de receta, servicio con sus platos propuestos, borrados en cascada.
 - Foto: el comando que la referencia no se envía hasta que la subida está verificada. Si la subida falla, la receta conserva la foto anterior y la interfaz lo dice.
 
 ---
@@ -558,15 +558,14 @@ Primero la base, en serie y corta; después tres verticales en paralelo.
 
 Archivos:
 
-- Backend: `supabase/migrations/*_food_*.sql`, `supabase/functions/food-api/`, `packages/domain-food/`, `tests/food/` (SQL y API).
+- Backend: `supabase/migrations/*_food_*.sql`, `supabase/functions/food-api/`, `supabase/functions/_domain/food/`, `tests/food/` (SQL y API).
 - Frontend: `apps/food/`, `tests/food/*.spec.ts`. Consume `packages/domain-food` y propone cambios por PR al backend.
-- `packages/domain-food` es la frontera: el backend es su dueño y el frontend lo importa. Sus tipos y funciones públicas (`computeShopping`, `menuWarnings`, `proposeServices`, constructores de lotes) se acuerdan al cerrar la base.
+- El código de dominio vive en `supabase/functions/_domain/food/` (se empaqueta con la función) y `packages/domain-food` solo lo reexporta para Vite. Es la frontera: el backend es su dueño y el frontend lo importa. Sus tipos y funciones públicas (`computeShopping`, `menuWarnings`, `proposeServices`, constructores de lotes) se acuerdan al cerrar la base.
 
 Dependencias externas:
 
 - El vertical 1 no depende de Booking y puede publicarse solo.
-- `food_menus` necesita que `booking.events` exista en una migración anterior de la secuencia (petición P7). Hasta entonces el vertical 2 avanza en `domain-food` y en la interfaz contra la API falsa.
-- La lectura de la proyección necesita P1.
+- `food_menus` necesita que `booking.events` exista en una migración anterior de la secuencia (P7). Hasta entonces el vertical 2 avanza en el dominio y en la interfaz contra la vista de pruebas.
 
 ---
 
@@ -591,6 +590,8 @@ Añadidos, con su justificación en el texto: `public_name`, `prep_minutes`, `al
 
 ## 14. Peticiones y decisiones para Core
 
+Tal como se entregaron. La resolución está en §14.1; las peticiones nuevas van a `docs/food/PETICIONES.md`.
+
 | # | A quién | Petición | Sin ella |
 |---|---|---|---|
 | P1 | Core | Una forma de leer desde la Edge de app `booking.food_event_projection` y, por `id`, las tablas propias. Hoy `_kit` solo ofrece `rpc` sobre wrappers `public.core_*` y el lint impide a las apps definir wrappers `public.*`. Opciones: un `public.core_read_projection(app, proyección, filtro)` con lista blanca, o exponer los schemas de app a PostgREST solo para `service_role` con un helper `select` en `_kit`. | No hay `GET events` ni validación contra la revisión del evento. Para las tablas propias hay apaño con `core_snapshot_table`, que trae la tabla entera. |
@@ -610,3 +611,17 @@ Decisiones que se piden a Core al revisar:
 4. Los `call` como acciones solo con red, enviadas con `api('/commands')` tras vaciar la cola (§10.3).
 5. `food.stock_entries` definida ahora y migrada en G4 (§2.3), y el modelo de proyección de Invoices más materialización en Food (§7.3).
 6. Nombres de las proyecciones `food.invoices_ingredient_projection` y `food.invoices_equipment_projection` (§7.2).
+
+### 14.1 Resolución de Core (6 de octubre de 2026)
+
+Las seis decisiones quedan **aprobadas** como se proponían. Peticiones:
+
+| # | Resolución |
+|---|---|
+| P1 | Lecturas registradas (contrato §5.1): `GET /api/v1/read/booking.food_event_projection?where[event_id]=…`; las funciones de lectura propias se registran con `core.allow_read('food', 'food.<fn>', 'function')`. |
+| P2 | Los errores SQL llegan como 422 definitivos con `details.sqlstate` (contrato §5.2) y `sync-client` 0.2 deja visibles los lotes rechazados sin bloquear la cola. |
+| P3 | Marcador `{"$blob": "<sha256>"}` en `sync-client` 0.2. |
+| P4 | El lint permite FK y lecturas a `core.files`, `core.memberships`, `core.changes` y `core.synced_tables`. |
+| P5 | `event_revision` es un contador propio de Booking que avanza con fechas, personas, régimen y restricciones (contrato §8). Las columnas adicionales de §7.1 se cierran con Booking. |
+| P6, P7, P8 | Sin respuesta explícita; no bloquean el arranque. Siguen abiertas en `docs/food/PETICIONES.md`. |
+
