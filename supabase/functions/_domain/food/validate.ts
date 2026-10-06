@@ -5,6 +5,7 @@
  */
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
 import { MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
+import { invalidCallArgument } from './procedures.ts';
 import { UNITS } from './units.ts';
 
 export interface DomainOperation {
@@ -203,6 +204,10 @@ function checkField(field: string, value: unknown, spec: FieldSpec): string | nu
 
 /** Valida una operación de fila sobre una tabla de Food. Devuelve el primer problema o `null`. */
 export function validateOperation(op: DomainOperation): Issue | null {
+  if (op.op === 'call') {
+    const argument = invalidCallArgument(op.procedure ?? '', op.args ?? {});
+    return argument ? issue('INVALID_OPERATION', `El argumento ${argument} falta o es inválido.`, { procedure: op.procedure, argument }) : null;
+  }
   if (op.op !== 'insert' && op.op !== 'update') return null;
   const spec = op.table ? TABLE_SPECS[op.table] : undefined;
   if (!spec) return null; // tabla ajena a este módulo: decide el núcleo

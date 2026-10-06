@@ -1,6 +1,9 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createSupabase, fail, isFault, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
-import { PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, validateOperations, type FoodEvent } from '../_domain/food/mod.ts';
+import { createApp, createSupabase, fail, isFault, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import {
+  eventSnapshot, FOOD_PROCEDURES, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
+  type AcknowledgedWarning, type FoodEvent, type Menu, type MenuGraph,
+} from '../_domain/food/mod.ts';
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
 
@@ -75,6 +78,34 @@ async function checkNewMenus(events: EventReader, operations: Operation[], ctx: 
   }
 }
 
+/**
+ * Revisar un cambio del evento o validar el menú: la revisión y la foto del evento que envía el cliente deben ser
+ * las actuales de la proyección y, al validar, los avisos aceptados deben cubrir todos los que lo exigen.
+ * Las migraciones de Food no pueden leer la proyección de Booking; por eso se comprueba aquí y no en el procedimiento.
+ */
+async function checkMenuCalls(supabase: Supabase, events: EventReader, operations: Operation[], ctx: RequestContext): Promise<void> {
+  for (const [index, op] of operations.entries()) {
+    if (op.op !== 'call' || (op.procedure !== FOOD_PROCEDURES.acknowledgeEvent && op.procedure !== FOOD_PROCEDURES.validateMenu)) continue;
+    const args = op.args ?? {};
+    const graph = await supabase.rpc<MenuGraph & { menu: Menu | null }>('core_read', {
+      p_app: ctx.app, p_actor: ctx.user.id, p_name: 'food.menu_graph', p_args: { menu_id: args.menu_id },
+    });
+    if (!graph.menu) fail(422, 'MENU_NOT_FOUND', 'El menú no existe o está en la papelera.', { index, menu_id: args.menu_id });
+    const event = await events.get(ctx, graph.menu.event_id);
+    if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: graph.menu.event_id });
+    if (args.event_revision !== event.event_revision || stable(args.event_snapshot) !== stable(eventSnapshot(event))) {
+      fail(422, 'EVENT_CHANGED', 'La información del evento ha cambiado. Revísala antes de continuar.', { index, currentRevision: event.event_revision, event });
+    }
+    if (op.procedure !== FOOD_PROCEDURES.validateMenu) continue;
+    const warnings = menuWarnings(event, graph);
+    const accepted = new Set((args.acknowledged as AcknowledgedWarning[]).map((w) => w.key));
+    const missing = requiredAcknowledgements(warnings).filter((key) => !accepted.has(key));
+    if (missing.length) {
+      fail(422, 'MENU_WARNINGS_UNACKNOWLEDGED', 'Hay avisos de restricciones sin aceptar.', { index, missing, warnings });
+    }
+  }
+}
+
 function dateParam(url: URL, name: string): string | null {
   const value = url.searchParams.get(name);
   if (value === null || value === '') return null;
@@ -123,6 +154,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
         if (issue) fail(422, issue.code, issue.message, issue.details);
         await checkRecipePhotos(supabase, operations, ctx);
         await checkNewMenus(events, operations, ctx);
+        await checkMenuCalls(supabase, events, operations, ctx);
       },
     },
     routes: eventRoutes(events),

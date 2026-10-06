@@ -7,17 +7,17 @@ Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada de forma provisional por
 - `docs/food/API.md`: modelo, procedimientos, hooks, rutas, proyecciones, archivos, pantallas, offline, aceptación F–H y reparto. Aprobado por Core con sus seis decisiones (`API.md` §14.1).
 - Base de backend y catálogo (PR 15): `supabase/functions/_domain/food/` (vocabularios, unidades, validación), migración `20261006_0100_food_catalog.sql` (recetas, ingredientes, maquinaria, reglas de fila y proyecciones para Invoices) y `food-api` sobre `_kit` con la conformidad del núcleo en verde.
 - Menú, primera parte: migración `20261006_0110_food_menus.sql` (`menus` con FK a `booking.events`, `menu_services`, `menu_items`, bloqueo de menú validado o cerrado, receta en uso), rutas `GET events` y `GET events/:id`, y en el dominio la propuesta de servicios, la foto del evento y el cálculo de qué cambió.
+- Menú, segunda parte: migración `20261006_0120_food_menu_procedures.sql` con `food.set_menu_status`, `food.acknowledge_event` y `food.validate_menu`, la lectura registrada `food.menu_graph`, y los avisos de restricciones (`menuWarnings`) calculados en el dominio y exigidos por la Edge al validar.
 
 ## Pendiente
 
-- Menú, segunda parte: procedimientos `food.validate_menu`, `food.set_menu_status` y `food.acknowledge_event`, y los avisos de restricciones (`menuWarnings`). Hasta entonces un menú no puede salir de `borrador`.
 - Compra y preparación: migración `food_planning`, `food.regenerate_shopping`, `food.regenerate_preparation`, `source_revisions` y casos de paridad SQL–TypeScript.
 - `packages/domain-food` (reexporta `_domain/food`) y `apps/food` con `@ikisai/ui-kit`: añadir un workspace cambia `package-lock.json`, que es de la raíz; irán en una PR con visto bueno de Core. Core publicará `food.ikisai.com` cuando exista el esqueleto con login.
 
 ## Bloqueos
 
 - Ninguno para el backend.
-- Las pruebas de `tests/food/` (32) todavía no corren en la CI (P9); se ejecutan en local con `npx tsx --test tests/food/*.test.ts`.
+- Las pruebas de `tests/food/` (37) todavía no corren en la CI (P9); se ejecutan en local con `npx tsx --test tests/food/*.test.ts`.
 
 ## Notas
 
