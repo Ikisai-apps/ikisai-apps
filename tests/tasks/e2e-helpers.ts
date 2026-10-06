@@ -75,3 +75,19 @@ export async function openApp(context: BrowserContext, server: E2EServer, option
   await settled(page);
   return page;
 }
+
+/**
+ * Storage simulado: `sync-client` sube cada blob con un PUT a la URL firmada de Supabase Storage. Aquí se intercepta
+ * esa petición del navegador y el contenido se guarda en el almacén del arnés, donde `uploads/:id/verify` lo encuentra.
+ */
+export async function routeStorage(context: BrowserContext, server: E2EServer): Promise<void> {
+  const prefix = '/storage/v1/object/upload/sign/';
+  await context.route((url) => url.origin === server.app.supabase.url && url.pathname.startsWith(prefix), async (route) => {
+    const request = route.request();
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'PUT, OPTIONS', 'access-control-allow-headers': '*' };
+    if (request.method() === 'OPTIONS') { await route.fulfill({ status: 204, headers: cors }); return; }
+    const objectPath = decodeURIComponent(new URL(request.url()).pathname.slice(prefix.length)).split('/').slice(1).join('/');
+    server.app.supabase.storage.set(objectPath, new Uint8Array(request.postDataBuffer() ?? Buffer.alloc(0)));
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ Key: objectPath }) });
+  });
+}

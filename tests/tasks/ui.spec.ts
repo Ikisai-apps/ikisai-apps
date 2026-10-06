@@ -6,8 +6,8 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { build } from 'vite';
-import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { OWNER, READER, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { openApp, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -613,6 +613,7 @@ test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
   });
 });
 
+declare const cachedAttachment: any;
 declare const aliasSheet: any, touch: any, save: any, leaves: any, boardDay: any, duplicateProject: any;
 const cursor = async () => (await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor as number;
 
@@ -841,5 +842,115 @@ test('[69][70][71][72] Inicio, acento «Taller», paleta, tablero por fechas y c
       if (same.budget !== 250 || !same.tasks.some((t: any) => t.cost === 25 && t.dependsOn.includes((window as any).ID.t5))) throw Error('La copia en la misma área perdió la dependencia o los importes');
       state = before; render();
     });
+  });
+});
+
+test('[15] responsable y adjuntos del proyecto: subida diferida, descarga y apertura sin red', async () => {
+  await routeStorage(contextA, server);
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+
+  await test.step('el adjunto y el responsable sobreviven al selector de etiquetas y se guardan; el archivo llega a Storage', async () => {
+    await a.locator(`[data-edit-project="${ID.p1}"]`).click();
+    await a.locator('#peOwner').selectOption(ID.juan!);
+    await a.locator('#peFiles').setInputFiles({ name: 'nota-proyecto.txt', mimeType: 'text/plain', buffer: Buffer.from('Adjunto de prueba') });
+    await expect(a.locator('#projectFilesList a')).toHaveCount(1);
+    await a.locator('#editProjectLabels').click();
+    await a.locator('#labelsDone').click();
+    await expect(a.locator('#peOwner')).toHaveValue(ID.juan!);
+    await expect(a.locator('#projectFilesList a')).toHaveCount(1);
+    await a.locator('#saveProjectBtn').click();
+    await settled(a);
+    expect(await a.evaluate(() => project().owner)).toBe(ID.juan);
+    const attachment = await a.evaluate(() => project().attachments[0]);
+    expect(attachment.data).toBeUndefined();
+    expect([attachment.name, attachment.mime, attachment.size]).toEqual(['nota-proyecto.txt', 'text/plain', 17]);
+    const row = (await server.rows('tasks.attachments')).find((r) => r.id === attachment.id);
+    expect([row.project_id, row.task_id, row.sha256]).toEqual([ID.p1, null, attachment.sha256]);
+    const file = (await server.app.t.db.query<{ status: string; path: string }>('select status, path from core.files where id = $1', [row.file_id])).rows[0]!;
+    expect(file.status).toBe('verified');
+    expect(new TextDecoder().decode(server.app.supabase.storage.get(file.path))).toBe('Adjunto de prueba');
+    shared.attachment = attachment.id;
+  });
+
+  await test.step('se descarga desde el editor, también sin red en el dispositivo que lo adjuntó', async () => {
+    await a.locator(`[data-edit-project="${ID.p1}"]`).click();
+    let download = a.waitForEvent('download');
+    await a.locator('#projectFilesList a').click();
+    expect((await download).suggestedFilename()).toBe('nota-proyecto.txt');
+    await a.evaluate(() => closeSheet());
+    await contextA.setOffline(true);
+    await a.locator(`[data-edit-project="${ID.p1}"]`).click();
+    download = a.waitForEvent('download');
+    await a.locator('#projectFilesList a').click();
+    await download;
+    await a.evaluate(() => closeSheet());
+    await contextA.setOffline(false);
+    await sync(a);
+  });
+
+  await test.step('otro dispositivo lo descarga del servidor y después lo abre sin red', async () => {
+    await b.setViewportSize({ width: 1280, height: 900 });
+    await sync(b);
+    await b.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    await b.evaluate(() => openProjectEditor((window as any).ID.p1));
+    await expect(b.locator('#projectFilesList a')).toHaveCount(1);
+    const before = server.requests.filter((r) => r.path === `/api/v1/attachments/${shared.attachment}`).length;
+    let download = b.waitForEvent('download');
+    await b.locator('#projectFilesList a').click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('nota-proyecto.txt');
+    // El contenido que llegó al navegador es el que guardó en su caché local para abrirlo sin red.
+    expect(await b.evaluate(async (attachmentId) => (await (await cachedAttachment(attachmentId)).blob.text()), shared.attachment!)).toBe('Adjunto de prueba');
+    expect(server.requests.filter((r) => r.path === `/api/v1/attachments/${shared.attachment}`).length).toBe(before + 1);
+    await contextB.setOffline(true);
+    download = b.waitForEvent('download');
+    await b.locator('#projectFilesList a').click();
+    await download;
+    await contextB.setOffline(false);
+    await b.evaluate(() => closeSheet());
+    await sync(b);
+  });
+
+  await test.step('quitar el adjunto lo manda a la papelera en el servidor', async () => {
+    await a.locator(`[data-edit-project="${ID.p1}"]`).click();
+    await a.locator('[data-remove-project-file="0"]').click();
+    await a.locator('#saveProjectBtn').click();
+    await settled(a);
+    expect((await server.rows('tasks.attachments')).find((r) => r.id === shared.attachment).deleted_at).toBeTruthy();
+  });
+});
+
+test('[36] sesión caducada con cola pendiente: se conserva, otra cuenta no puede entrar y la misma la envía', async () => {
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+  await contextA.setOffline(true);
+  await a.evaluate(() => { const t = taskLocation((window as any).ID.t4).t; t.note = 'Cambio con sesión caducada'; touch(t); save(); render(); });
+  await a.waitForFunction(() => Sync.record.queue.length === 1);
+  await server.app.t.revokeSessions(server.app.users.owner);
+  await contextA.setOffline(false);
+  await a.evaluate(() => syncNow());
+  await a.waitForFunction(() => Sync.mode === 'unauthorized' && !Sync.busy);
+  expect(await a.evaluate(() => Sync.record.queue.length)).toBe(1);
+  await expect(a.locator('#accountLoginForm')).toBeVisible();
+  expect((await serverRow('tasks.tasks', ID.t4!)).note).not.toBe('Cambio con sesión caducada');
+
+  await test.step('otra cuenta no puede entrar mientras haya cambios pendientes', async () => {
+    await a.locator('#loginUsername').fill(READER.email);
+    await a.locator('#loginPassword').fill(READER.password);
+    await a.locator('#accountLogin').click();
+    await expect(a.locator('#toast')).toContainText('cambios pendientes de otra cuenta');
+    expect(await a.evaluate(() => Sync.record.queue.length)).toBe(1);
+    expect(await a.evaluate(() => taskLocation((window as any).ID.t4).t.note)).toBe('Cambio con sesión caducada');
+    await server.app.t.createUser(server.app.users.reader);
+  });
+
+  await test.step('la misma cuenta vuelve a entrar y la cola se envía', async () => {
+    await server.app.t.createUser(server.app.users.owner);
+    await a.locator('#loginUsername').fill(OWNER.email);
+    await a.locator('#loginPassword').fill(OWNER.password);
+    await expect(a.locator('#accountLogin')).toBeEnabled();
+    await a.locator('#accountLogin').click();
+    await settled(a);
+    expect(await a.evaluate(() => taskLocation((window as any).ID.t4).t.note)).toBe('Cambio con sesión caducada');
+    expect((await serverRow('tasks.tasks', ID.t4!)).note).toBe('Cambio con sesión caducada');
   });
 });
