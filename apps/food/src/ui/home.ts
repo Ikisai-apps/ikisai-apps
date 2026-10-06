@@ -1,7 +1,9 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import type { Equipment, Recipe } from '@ikisai/domain-food';
+import { isMenuStale, type Equipment, type Menu, type Recipe } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
+import { dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, type EventsSnapshot } from '../app/events.ts';
+import { MENU_STATUS_LABELS } from './events.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -15,7 +17,7 @@ window.addEventListener('beforeinstallprompt', (event) => {
   deferredInstall = event as InstallPromptEvent;
 });
 
-/** Inicio: de momento, accesos al recetario y a la maquinaria y el estado del dispositivo. Los eventos próximos llegan con los menús. */
+/** Inicio: qué retiros vienen y qué les falta (canon §14), y debajo los accesos y el estado del dispositivo. */
 export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const recipeCount = el('dd', null, '…');
   const recipeTrial = el('dd', null, '…');
@@ -25,6 +27,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const pending = el('dd');
   const lastPull = el('dd');
   const role = el('dd');
+  const upcoming = el('section', { id: 'upcoming' });
+  let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
+  let menus: Mirror<Menu>[] = [];
 
   function paint(status: SyncStatus): void {
     network.textContent = status.network === 'online' ? 'En línea' : status.network === 'offline' ? 'Sin conexión' : status.network === 'syncing' ? 'Sincronizando…' : 'Error';
@@ -43,6 +48,28 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     equipmentDown.textContent = String(equipment.filter((e) => e.status === 'averiado' || e.status === 'fuera_de_servicio').length);
   }
 
+  function paintUpcoming(): void {
+    const today = todayKey();
+    const events = snapshot.events.filter((e) => e.end_date >= today && needsMenu(e)).slice(0, 6);
+    replace(upcoming,
+      el('div', { class: 'sectionlabel' }, 'Próximos eventos'),
+      events.length === 0
+        ? el('div', { class: 'empty plain' }, snapshot.fetchedAt ? 'No hay eventos próximos con comidas.' : 'Los eventos aparecerán aquí en cuanto haya conexión.')
+        : el('div', { class: 'cardgrid' }, ...events.map((event) => {
+            const menu = menus.find((m) => m.event_id === event.event_id && !m.deleted_at);
+            const stale = !!menu && isMenuStale(menu, event);
+            const restrictions = event.dietary_restrictions?.length ?? 0;
+            const target = menu ? `#/menus/${menu.id}` : '#/eventos';
+            return el('a', { class: 'card cardlink eventcard', href: target, onclick: (e: Event) => { e.preventDefault(); navigate(target); } },
+              el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
+              el('h3', null, `${dateRange(event)} · ${event.title}`),
+              el('p', null, `${guestsLabel(event)} · ${mealPlanLabel(event.meal_plan)}`),
+              el('dl', { class: 'kv' },
+                el('dt', null, 'Menú'), el('dd', { class: stale ? 'warnline' : '' }, !menu ? 'pendiente' : stale ? '⚠ desactualizado' : MENU_STATUS_LABELS[menu.status].toLowerCase()),
+                el('dt', null, 'Restricciones'), el('dd', null, String(restrictions))));
+          })));
+  }
+
   const link = (hash: string, title: string, text: string, ...kv: HTMLElement[]) =>
     el('a', { class: 'card cardlink', href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } },
       el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'), el('h3', null, title), el('p', null, text), el('dl', { class: 'kv' }, ...kv));
@@ -50,7 +77,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const name = client.bootstrap()?.profile.displayName;
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Recetario y maquinaria, también sin conexión. Eventos y menús llegan en la siguiente entrega.'))),
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Qué retiros vienen y qué falta preparar.'))),
+    upcoming,
+    el('div', { class: 'sectionlabel' }, 'Cocina'),
     el('div', { class: 'cardgrid' },
       link('#/recetario', 'Recetario', 'Recetas con foto, ingredientes, alérgenos y maquinaria.',
         el('dt', null, 'Recetas'), recipeCount, el('dt', null, 'En prueba'), recipeTrial),
@@ -78,12 +107,19 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
 
   paint(client.status());
   void count();
-  const offStatus = client.onStatus(paint);
+  paintUpcoming();
+  const loadMenus = async () => { menus = (await client.list(T.menus)) as Mirror<Menu>[]; paintUpcoming(); };
+  void loadMenus();
+  const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
+  const offMenus = client.onTable(T.menus, () => void loadMenus());
+  const offStatus = client.onStatus((status) => { paint(status); void refreshEvents(client); });
   const offRecipes = client.onTable(T.recipes, () => void count());
   const offEquipment = client.onTable(T.equipment, () => void count());
   return () => {
     offStatus();
     offRecipes();
     offEquipment();
+    offEvents();
+    offMenus();
   };
 };

@@ -55,6 +55,12 @@ export function allergensForSubject(subject: string): Allergen[] {
     ALLERGEN_TERMS[allergen].some((word) => term.includes(word)) || normalizeTerm(allergen.replace(/_/g, ' ')) === term);
 }
 
+/** Nombre de cada alérgeno para los textos de los avisos. */
+const ALLERGEN_NAMES: Record<Allergen, string> = {
+  gluten: 'gluten', crustaceos: 'crustáceos', huevos: 'huevos', pescado: 'pescado', cacahuetes: 'cacahuetes', soja: 'soja', lacteos: 'lácteos',
+  frutos_de_cascara: 'frutos de cáscara', apio: 'apio', mostaza: 'mostaza', sesamo: 'sésamo', sulfitos: 'sulfitos', altramuces: 'altramuces', moluscos: 'moluscos',
+};
+
 const DIET_LABEL: Record<string, string> = { vegano: 'vegana', vegetariano: 'vegetariana', sin_gluten: 'sin gluten', sin_lactosa: 'sin lactosa' };
 
 function compatibleWithDiet(recipe: Recipe, type: string): boolean {
@@ -112,7 +118,7 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
         const byIngredient = term !== '' && (recipeIngredientNames.get(recipe.id) ?? []).some((name) => name.includes(term));
         if (byAllergen || byIngredient) {
           warnings.push({ key: `alergia|${rKey}|${item.id}`, kind: 'alergia', requiresAck: true,
-            text: `«${recipe.name}» ${byAllergen ? `declara ${byAllergen.replace(/_/g, ' ')}` : `lleva ${subject}`}: ${count} ${restriction.type} a ${subject}.` });
+            text: `«${recipe.name}» ${byAllergen ? `declara ${ALLERGEN_NAMES[byAllergen]}` : `lleva ${subject}`}: ${count} ${restriction.type} a ${subject}.` });
         }
       }
     } else if (restriction.type in DIET_LABEL) {

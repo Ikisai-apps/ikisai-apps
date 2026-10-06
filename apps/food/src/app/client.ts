@@ -1,4 +1,5 @@
 import { createSyncClient, type ApiError, type SyncClient, type TableName } from '@ikisai/sync-client';
+import { formatQuantity as kitFormatQuantity, parseQuantity as kitParseQuantity } from '@ikisai/ui-kit';
 import {
   ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES, UNITS,
   type Allergen, type DietTag, type EquipmentStatus, type RecipeCategory, type RecipeStatus, type Unit,
@@ -39,17 +40,16 @@ export const EQUIPMENT_STATUS_LABELS: Record<EquipmentStatus, string> = {
 };
 export { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES, UNITS };
 
-/** Número en español sin ceros de más: 2,5 · 800 · 0,125. */
+/** Número en español sin ceros de más, con hasta tres decimales como las cantidades de Food: 2,5 · 800 · 0,125. */
 export function formatQuantity(value: unknown): string {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toLocaleString('es-ES', { maximumFractionDigits: 3 }) : '';
+  return value === null || value === undefined || !Number.isFinite(n) ? '' : kitFormatQuantity(n, 3);
 }
 
-/** Lee un número escrito con coma o con punto; `null` si no lo es. */
+/** Lee un número escrito a la española o a la inglesa (kit); `null` si está vacío o no es un número. */
 export function parseQuantity(text: string): number | null {
-  const clean = text.trim().replace(/\s/g, '').replace(',', '.');
-  if (!clean || !/^\d+(\.\d+)?$/.test(clean)) return null;
-  return Number(clean);
+  const n = kitParseQuantity(text);
+  return n === null || Number.isNaN(n) ? null : n;
 }
 
 export function createClient(): SyncClient {
@@ -83,6 +83,15 @@ export function describeError(error: unknown): string {
     case 'INVALID_FILE': return 'La foto no se pudo enlazar. Vuelve a elegirla.';
     case 'BLOB_MISSING': return 'La foto ya no está en este dispositivo. Vuelve a elegirla.';
     case 'MENU_LOCKED': return 'El menú está validado: reábrelo para cambiarlo.';
+    case 'MENU_EXISTS': return 'Este evento ya tiene un menú.';
+    case 'MENU_EMPTY': return 'Añade al menos un plato antes de validar.';
+    case 'MENU_NOT_FOUND': return 'El menú ya no existe.';
+    case 'EVENT_NOT_FOUND': return 'El evento ya no está disponible para cocina.';
+    case 'EVENT_CHANGED': return 'La información del evento ha cambiado. Revísala antes de continuar.';
+    case 'MENU_WARNINGS_UNACKNOWLEDGED': return 'Han aparecido avisos nuevos. Revísalos antes de validar.';
+    case 'INVALID_TRANSITION': return 'El menú ya no está en el estado esperado.';
+    case 'OFFLINE': return 'Esta acción necesita conexión.';
+    case 'PENDING_CHANGES': return 'Hay cambios sin sincronizar o conflictos por resolver. Sincroniza primero.';
     default: return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
   }
 }
