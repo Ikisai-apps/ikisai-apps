@@ -580,7 +580,7 @@ Las dos primeras las pide Food en su documento (`docs/food/API.md` §7.1, su pet
 
 ### 7.2 Lo que lee Invoices
 
-Invoices asigna líneas de compra a un evento de Booking. Decisión de Core (ronda 5): **reutiliza `booking.food_event_projection`**, registrada también para la app `invoices` (migración `20261006_0402`). No se crea una vista aparte: la proyección no lleva huéspedes ni datos personales, y sus columnas de identificación (`event_id`, `event_code`, `reservation_code`, `title`, fechas, `reservation_status`, `event_revision`) son las que Invoices necesita. Solo hay eventos en la proyección, así que una reserva sin confirmar no es asignable.
+Invoices asigna líneas de compra a un evento de Booking. Decisión de Core (ronda 5): **reutiliza `booking.food_event_projection`**, que se registrará también para la app `invoices` (migración `20261006_0402`, preparada en la rama `booking/invoices-read`; entra junto con el ajuste de la prueba de Invoices que hoy da por hecho que Booking no la ha registrado). No se crea una vista aparte: la proyección no lleva huéspedes ni datos personales, y sus columnas de identificación (`event_id`, `event_code`, `reservation_code`, `title`, fechas, `reservation_status`, `event_revision`) son las que Invoices necesita. Solo hay eventos en la proyección, así que una reserva sin confirmar no es asignable.
 
 Booking no consume enlaces de otras apps en V1. El «coste por retiro» leyendo `invoices.booking_cost_projection` queda para G4.
 

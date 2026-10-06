@@ -21,7 +21,6 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - Pruebas: `tests/booking/*.test.ts` 57 de 57; humo de Playwright ampliado a Calendario, justificante, restricción del huésped y menú «Más».
 
 - **Tanda 6** (rama `booking/tanda-6`):
-  - Invoices lee `booking.food_event_projection` (migración `20261006_0402_booking_invoices_read.sql`, decisión de Core).
   - Pastilla de Calendar en la cabecera de la ficha (misma caché que la pantalla Calendario).
   - Confirmar sin red: marca «Confirmación pendiente de enviar», aviso con el motivo si el servidor la rechaza, y retirada de marcas huérfanas.
   - Huéspedes: hoja «Datos para SES» con un botón Copiar por dato (viajero y transacción); aviso en Inicio de huéspedes sin comunicar a SES cuando el evento empieza en menos de 24 horas.
@@ -32,6 +31,7 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
+- **Lectura de la proyección por Invoices**: la migración `20261006_0402_booking_invoices_read.sql` y su prueba están listas en la rama `booking/invoices-read`, sin fusionar: al registrarla falla `tests/invoices/api.test.ts` («Booking no disponible hasta que registre la suya»), que es de Invoices. Debe entrar junto con el ajuste de esa prueba.
 - Botón «Vaciar papelera» para el propietario (hoy no hay interfaz para la purga).
 - La reactivación de un evento borrado a mano en Google solo está probada en simulación.
 - En el calendario mensual en móvil los tramos no llevan título (mejora menor pedida a UI por Core).
