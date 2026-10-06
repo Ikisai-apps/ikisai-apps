@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.10.0 · 6 de octubre de 2026
+
+- **Barra de espacio de trabajo** para apps con áreas, vistas guardadas y menú agrupado (Tasks, paso 1 de su cáscara): `renderWorkspaceBar` (cabecera apilada: fila de marca con `.spacer` y herramientas, más filas), `renderAreaTabs` (`.tabstrip` con `.tabpill`, `.general`, color propio y `.tabcount`), `renderStripTool` (`.tabtool`), `renderQuickViews` (`.viewstrip` con `.viewpill`), `renderNavMenu` (menú de grupos `details.navgroup` con `.navitem`: desplegable en móvil con `show`, barra lateral fija de `--sidebar-width` en escritorio), `renderNavBackdrop` y `renderTabBar` (navegación inferior en móvil). Son piezas sin estado: la app las monta o las serializa y repinta en cada `render()`; los ganchos de la app van en `attrs`. Demo en `#workspace`, prueba `v13`.
+
 ## 0.9.0 · 6 de octubre de 2026
 
 - Tarjeta de proyecto (revisión de Tasks): la estrella de urgencia es ámbar en los dos niveles y el relleno dice cuál (media = alta, entera = crítica); pistas de progreso, del anillo y del presupuesto mezcladas con la tinta, legibles en oscuro; presupuesto excedido en rojo también en tarjetas con color; chips legibles en tarjeta con color en tema oscuro; icono `euro` delante del coste (nuevo icono).

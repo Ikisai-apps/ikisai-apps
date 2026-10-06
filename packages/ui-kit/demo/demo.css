@@ -25,3 +25,10 @@
 .shell-frame .nav{position:absolute}
 .shell-frame .topbar{position:sticky}
 @media(min-width:1024px){.demo-main{padding:28px 32px 80px}.shell-frame .nav{position:sticky}}
+
+/* Barra de espacio de trabajo en línea dentro de la muestra. */
+.demo-workspace{display:grid;gap:14px;border:1px dashed var(--line);border-radius:16px;padding:12px;background:var(--bg)}
+.demo-workspace .topbar{position:static}
+.demo-workspace .navmenu{display:block;position:static;width:min(330px,100%);max-height:none;background:var(--paper);border:1px solid var(--edge);border-radius:16px;box-shadow:var(--shadow-1)}
+.demo-workspace .tabbar{display:grid;position:static;transform:none;width:100%;border:1px solid var(--edge);border-radius:16px}
+@media(min-width:1024px){.demo-workspace .tabbar .navbtn{grid-template-columns:none;justify-items:center;padding:0;font-size:11px;min-height:0;background:transparent;box-shadow:none}.demo-workspace .tabbar .navbtn[aria-current="page"]::after{top:-7px;left:50%;transform:translateX(-50%);width:28px;height:4px;border-radius:0 0 4px 4px}}
