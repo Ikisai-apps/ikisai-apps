@@ -85,3 +85,8 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .banner.alert { flex-wrap: wrap; }
 .sesdata dd { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 .sesdata dd .value { min-width: 0; flex: 1; }
+
+/* Detalle técnico plegado en el aviso de fallo del dispositivo. */
+.techdetail { margin-top: 4px; font-size: 12px; }
+.techdetail summary { cursor: pointer; color: var(--muted); }
+.techdetail code { display: block; white-space: pre-wrap; word-break: break-word; margin-top: 4px; }

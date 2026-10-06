@@ -41,7 +41,9 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - O1 baja a 15 s de margen con `sync-client` 0.2.3.
   - El arnés de Playwright pide un puerto libre al sistema: un puerto al azar caía a veces en los rangos que Windows reserva (`EACCES`) y era la intermitencia que se veía de vez en cuando.
 
-- **Tanda 11** (rama `booking/tanda-11`): prueba de agentes de extremo a extremo (`tests/booking/agents.test.ts`): alta del agente por el owner, política con `booking.calendar_retry` segura, lo cotidiano sin aprobación, 428 con el motivo al confirmar, cancelar o tocar importes, y confirmación aplicada con propuesta aprobada.
+- **Tanda 11** (PR 116): prueba de agentes de extremo a extremo (`tests/booking/agents.test.ts`): alta del agente por el owner, política con `booking.calendar_retry` segura, lo cotidiano sin aprobación, 428 con el motivo al confirmar, cancelar o tocar importes, y confirmación aplicada con propuesta aprobada.
+
+- **Tanda 12** (rama `booking/tanda-12`, incidencia del usuario en Android, V1): al confirmar, el registro del procedimiento (`call`, sin id) que devuelve el servidor no se podía guardar en IndexedDB y el lote se atascaba con «2 pendientes». La causa está en `sync-client` y la corrige Core (0.2.5, PR #133). Por parte de Booking: los fallos del dispositivo se avisan con «No se pudo guardar en este dispositivo. Reintenta; si sigue, cierra y abre la app» y el texto técnico plegado; la API falsa de las pruebas devuelve ese registro como el servidor real (por eso el humo no lo había visto), y el humo confirma y recarga. Con el `sync-client` de `main` el humo falla igual que el móvil; con la PR #133 pasa.
 
 ## Pendiente
 
