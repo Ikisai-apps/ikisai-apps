@@ -83,11 +83,14 @@ export function setTaskDoneOps(data: Dataset, taskId: Uuid, done: boolean): Oper
   return (children.length ? children : [task]).filter((t) => t.done !== done).map((t) => update('tasks.tasks', t, { done }));
 }
 
-/** Mover a otro proyecto de la misma área: la tarea, sus hijas y las filas que llevan `project_id` desnormalizado. */
+/**
+ * Mover a otro proyecto de la misma área: la tarea, sus hijas vivas y las filas vivas que llevan `project_id` desnormalizado.
+ * Lo que está en la papelera no se puede actualizar (el núcleo lo impide) y conserva el proyecto anterior.
+ */
 export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: Uuid; position?: number; parent_id?: Uuid | null }): Operation[] {
   const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
   const project = must(data['tasks.projects'].find((p) => p.id === target.project_id), 'el proyecto de destino');
-  const children = data['tasks.tasks'].filter((t) => t.parent_id === taskId);
+  const children = liveChildren(data, taskId);
   const fields: Record<string, unknown> = {};
   const changesProject = task.project_id !== project.id;
   if (changesProject) fields.project_id = project.id;
@@ -98,9 +101,9 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   if (!changesProject) return ops;
   const moved = new Set([task.id, ...children.map((c) => c.id)]);
   for (const child of children) ops.push(update('tasks.tasks', child, { project_id: project.id }));
-  for (const row of data['tasks.task_labels']) if (moved.has(row.task_id)) ops.push(update('tasks.task_labels', row, { project_id: project.id }));
-  for (const row of data['tasks.task_dependencies']) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
-  for (const row of data['tasks.attachments']) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_labels'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_labels', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_dependencies'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
+  for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
   return ops;
 }
 
@@ -111,13 +114,13 @@ export function deleteTaskOps(data: Dataset, taskId: Uuid): Operation[] {
   return [task, ...liveChildren(data, taskId)].map((t) => remove('tasks.tasks', t));
 }
 
-/** Restaurar una tarea: su lote de borrado (mismo `deleted_at` en su proyecto) y, si es hija, su padre. */
+/** Restaurar una tarea: todo su lote de borrado (mismo `deleted_at` en su proyecto) y, si es hija, su padre. */
 export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
   const tasks = data['tasks.tasks'];
   const task = must(tasks.find((t) => t.id === taskId), 'la tarea');
   if (!task.deleted_at) return [];
   const batch = new Map<Uuid, TaskRow>([[task.id, task]]);
-  for (const t of tasks) if (t.project_id === task.project_id && t.deleted_at === task.deleted_at && (t.parent_id === task.id || t.id === task.parent_id)) batch.set(t.id, t);
+  for (const t of tasks) if (t.project_id === task.project_id && t.deleted_at === task.deleted_at) batch.set(t.id, t);
   const parent = task.parent_id ? tasks.find((t) => t.id === task.parent_id) : undefined;
   if (parent?.deleted_at) batch.set(parent.id, parent);
   return [...batch.values()].map((t) => restore('tasks.tasks', t));
@@ -137,12 +140,16 @@ export function archiveFamilyOps(data: Dataset, familyId: Uuid, archived: boolea
 
 interface BridgeRow { id: Uuid; revision: number; deleted_at: string | null }
 
-/** Lleva un conjunto de filas puente al conjunto deseado: restaura la fila borrada si existe, inserta si no, borra lo que sobra. */
-function reconcile<R extends BridgeRow>(table: string, rows: readonly R[], keyOf: (row: R) => Uuid, wanted: readonly Uuid[], fieldsFor: (key: Uuid, index: number) => Record<string, unknown>, newId: NewId): Operation[] {
+/**
+ * Lleva un conjunto de filas puente al conjunto deseado: restaura la fila borrada si existe y sigue siendo válida
+ * (`reusable`), inserta si no, borra lo que sobra.
+ */
+function reconcile<R extends BridgeRow>(table: string, rows: readonly R[], keyOf: (row: R) => Uuid, wanted: readonly Uuid[], fieldsFor: (key: Uuid, index: number) => Record<string, unknown>, newId: NewId, reusable: (row: R) => boolean = () => true): Operation[] {
   const ops: Operation[] = [];
   const want = [...new Set(wanted)];
   const byKey = new Map<Uuid, R>();
   for (const row of rows) {
+    if (row.deleted_at && !reusable(row)) continue;
     const current = byKey.get(keyOf(row));
     if (!current || (current.deleted_at && !row.deleted_at)) byKey.set(keyOf(row), row);
   }
@@ -158,7 +165,7 @@ function reconcile<R extends BridgeRow>(table: string, rows: readonly R[], keyOf
 export function setTaskLabelsOps(data: Dataset, taskId: Uuid, labelIds: readonly Uuid[], newId: NewId = randomId): Operation[] {
   const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
   return reconcile('tasks.task_labels', data['tasks.task_labels'].filter((r) => r.task_id === taskId), (r) => r.label_id, labelIds,
-    (label) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, label_id: label }), newId);
+    (label) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, label_id: label }), newId, (row) => row.project_id === task.project_id);
 }
 
 export function setProjectLabelsOps(data: Dataset, projectId: Uuid, labelIds: readonly Uuid[], newId: NewId = randomId): Operation[] {
@@ -170,7 +177,7 @@ export function setProjectLabelsOps(data: Dataset, projectId: Uuid, labelIds: re
 export function setDependenciesOps(data: Dataset, taskId: Uuid, dependsOnIds: readonly Uuid[], newId: NewId = randomId): Operation[] {
   const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
   return reconcile('tasks.task_dependencies', data['tasks.task_dependencies'].filter((r) => r.task_id === taskId), (r) => r.depends_on_id, dependsOnIds,
-    (dep, index) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, depends_on_id: dep, position: (index + 1) * POSITION_STEP }), newId);
+    (dep, index) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, depends_on_id: dep, position: (index + 1) * POSITION_STEP }), newId, (row) => row.project_id === task.project_id);
 }
 
 /** Trocea un lote grande en lotes de hasta `size` operaciones conservando el orden (padres antes que hijas, puentes al final). */
