@@ -1,6 +1,6 @@
 # Booking · estado
 
-Actualizado: 6 de octubre de 2026. **Backend completo salvo el cliente real de Google; interfaz con las cuatro pantallas menos Calendario.**
+Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas y Calendar real implementado; falta la prueba contra Google real y el recorrido de aceptación completo.**
 
 ## Hecho
 
@@ -8,29 +8,31 @@ Actualizado: 6 de octubre de 2026. **Backend completo salvo el cliente real de G
 - **B1 · reservas base** (PR 16): migración `20261006_0005_booking_base.sql`, `booking.confirm_reservation`, `_domain/booking`, `booking-api`.
 - **B2 · huéspedes y proyección** (PR 20): migración `20261006_0006_booking_guests.sql`, `booking.food_event_projection` con `core.allow_read` para `food` y `booking`, `booking.guest_summary`.
 - **Esqueleto de `apps/booking`** (PR 28): login, shell, Inicio y Reservas sin red, PWA.
-- **Tanda 4** (rama `booking/tanda-4`):
-  - **Ficha de la reserva** (`#/reservas/<id>`): Resumen, Operación (con cierre), Checklist (base desde la plantilla, marcar, añadir, quitar), Huéspedes (recuentos), Comidas con restricciones y Cobro (solo quien ve importes). Editar, confirmar, archivar y desarchivar.
-  - **Papelera**: borrado en cascada de la reserva con su evento, importes, huéspedes, restricciones y checklist en un solo lote; restauración de todo lo que se borró junto. Con evento operativo, solo un propietario.
-  - **Huéspedes** (`#/huespedes/<evento>`): alta y edición con los datos del anexo I, aviso de qué falta para SES según documento y edad, firma en pantalla (imagen como adjunto con marcador `$blob`) o en papel con parte imprimible, cola de envío a SES con registro del envío, y recuentos por `booking.guest_summary` para quien no ve huéspedes.
-  - `clearOnLogout` para huéspedes e importes, con aviso antes de cerrar sesión si hay cola.
-  - **B3 · cola de Calendar con adaptador falso**: migración `20261006_0400_booking_calendar.sql` (enlaces, cola, triggers que encolan en la transacción del guardado, acciones `calendar_claim`, `calendar_report`, `calendar_retry` y lectura `calendar_status`), dominio `calendarProjection` (título `[PRE]`, colores, día completo con el día de salida u horario real, descripción sin datos personales, id determinista, hash), worker y rutas `calendar/tick`, `calendar/status` y `calendar/:id/retry`.
-  - Pruebas: `tests/booking/*.test.ts` 48 de 48 (conformidad, API y SQL, dominio, huéspedes, Calendar); humo de Playwright ampliado a ficha, confirmación, checklist, restricciones, cobro, firma con adjunto y papelera.
+- **Tanda 4** (PR 40): ficha de la reserva, papelera en cascada con restauración, Huéspedes (datos del anexo I, firma en pantalla o en papel, cola de SES), checklist, y cola de Calendar con adaptador falso (migración `20261006_0400_booking_calendar.sql`).
+- **Tanda 5** (PR 52):
+  - **Calendar real**: `booking-api/calendar/google.ts` con cuenta de servicio (JWT RS256 con WebCrypto, token en memoria, API v3). Se activa solo con los secretos `GOOGLE_SERVICE_ACCOUNT_JSON` y `BOOKING_CALENDAR_ID`.
+  - **Bloqueo por acceso** (migración `20261006_0401_booking_calendar_blocked.sql`): con credenciales rechazadas o el calendario sin compartir, el trabajo sigue `pending` sin gastar intentos, con código legible, y el tick hace un solo intento por vuelta. `calendar/status` lo expone como `health`.
+  - **Cómo avanza la cola**: `afterCommit` tras cada guardado, el planificador de Core cada 5 minutos en `POST /api/v1/worker/calendar/tick`, y `POST calendar/tick` a mano.
+  - Si Google ya no acepta el id de un evento (borrado a mano), el worker sube la generación y lo crea de nuevo.
+  - **Pantalla Calendario**: vista mensual con `createCalendar` del kit, sin franjas horarias, tramos de día completo que incluyen el día de salida y colores por estado; panel «Google Calendar» con el estado, pendientes, errores y «Reintentar».
+  - **Ficha**: en móvil quedan visibles «Editar» y «Confirmar» y el resto pasa a un menú «Más»; icono de la app `bed`.
+  - **Huéspedes**: justificante de envío a SES como archivo (PDF o imagen recomprimida) con marcador `$blob`; restricciones alimentarias desde la ficha del huésped.
+  - Limpieza de `reservations.ts` (la hoja de alta ya no arrastra la edición).
+  - Pruebas: `tests/booking/*.test.ts` 57 de 57; humo de Playwright ampliado a Calendario, justificante, restricción del huésped y menú «Más».
 
 ## Pendiente
 
-- **Cliente real de Google Calendar** (`booking-api/calendar/google.ts` es un esqueleto): JWT de la cuenta de servicio, llamadas a la API v3, reactivar o subir `generation` si alguien borró el evento a mano. Necesita la clave del usuario (P7).
-- Disparo del worker tras cada commit y empuje oportunista desde `calendar/status`; planificador de Core (P8, depende de P16).
-- **Pantalla Calendario** (vista mensual propia y panel de sincronización con Google).
-- Justificante de envío a SES como archivo (hoy solo referencia de texto); restricciones ligadas a un huésped desde su ficha.
-- Simplificar `apps/booking/src/ui/reservations.ts`: la hoja de alta conserva una rama de edición que ya no se usa (la edición vive en la ficha).
-- Recorrido de aceptación A–E e I completo en PC y Android contra el backend real, cuando Core publique.
+- **Prueba contra Google real**: el cliente solo se ha probado contra un Google simulado. Al publicar, crear una reserva `[PRUEBA]` en pre-reserva, comprobar el evento en «Agram Camp - Reservas», confirmarla, cancelarla y borrarla. La reactivación de un evento borrado a mano es lo menos seguro.
+- Recorrido de aceptación A–E e I completo en PC y Android contra el backend publicado.
+- Indicador de Calendar en la cabecera de la ficha (hoy el estado se ve en la pantalla Calendario).
+- En el calendario mensual en móvil los tramos no llevan título (comportamiento del kit en compacto); se identifican al pulsarlos.
 - Sin verificar: a partir de qué edad firma el huésped (regla por defecto: 14 años).
+- Peticiones a Core aún abiertas, sin bloquear: P3 (efectos locales de `call`), P5 (visibilidad en `files/:id`), P6 (redacción de historial y borrado de archivos), P9 (orden de purga).
 
 ## Avisos para otros equipos
 
 - **Food:** `GET /api/v1/read/booking.food_event_projection?where[event_id]=…`. Columnas en `API.md` §7.1.
-- **Core:** P16 (rutas `worker` con TypeScript) es lo que falta para que el planificador mueva la cola de Calendar.
 
 ## Bloqueos
 
-- Calendar real: clave JSON de la cuenta de servicio de Google (usuario) y P16 (Core). Nada más está bloqueado.
+- Ninguno.
