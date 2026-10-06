@@ -213,6 +213,25 @@
 .conflict .choices{display:flex;gap:8px;flex-wrap:wrap}
 .conflict label.pick{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;margin-right:10px}
 
+/* ---------- Selector de tema, rechazados y detalles de v0.2 ---------- */
+.segmented{display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:rgba(31,42,34,.07)}
+.segmented button{border:0;background:transparent;min-width:32px;height:30px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--muted);font:inherit;font-size:var(--text-sm);font-weight:700}
+.segmented button:hover{color:var(--ink)}
+.segmented button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.segmented .icon{width:16px;height:16px}
+:root[data-theme="dark"] .segmented{background:rgba(236,229,216,.08)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .segmented{background:rgba(236,229,216,.08)}}
+.statuschip[data-rejected="true"]{color:var(--alert);border-color:color-mix(in srgb,var(--alert) 50%,transparent);background:var(--alert-soft)}
+.conflict .meta{color:var(--muted);font-size:13px;margin-bottom:4px}
+.conflict th[scope="row"]{font-size:13.5px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600}
+.conflict.busy{opacity:.6;pointer-events:none}
+.conflict.rejected{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.conflict.rejected .banner{margin:10px 0}
+.conflict .banner code{margin-left:auto;font-size:11px;opacity:.8}
+.row.selectable:focus-visible{outline-offset:-2px}
+.sheet-body .formerror{margin-top:8px}
+.palette-item .pdot{background:var(--pcolor,transparent)}
+
 /* ---------- Escritorio ---------- */
 @media(min-width:1024px){
   .shell{grid-template-columns:var(--sidebar-width) minmax(0,1fr);grid-template-rows:auto 1fr;padding-bottom:0}

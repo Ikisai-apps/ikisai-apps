@@ -1,7 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { el, replace } from '../dom.ts';
+import { el, plural, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
-import { plural } from '../dom.ts';
 
 /**
  * Barra de estado de sincronización (contrato §6.4): red, cambios pendientes, conflictos y «guardado» solo cuando el
@@ -53,16 +52,27 @@ export function conflictsLabel(status: SyncStatus): string {
   return status.conflicts === 1 ? '1 conflicto' : `${status.conflicts} conflictos`;
 }
 
+export function rejectedLabel(status: SyncStatus): string {
+  return status.rejected === 1 ? '1 rechazado' : `${status.rejected} rechazados`;
+}
+
+/** Otra persona ha entrado en este dispositivo: el cliente vació lo local y lo avisa en `lastError` durante un ciclo. */
+export function isUserChanged(status: SyncStatus): boolean {
+  return status.lastError?.code === 'USER_CHANGED';
+}
+
 /** Texto largo para escritorio y lectores de pantalla. */
 export function statusSummary(status: SyncStatus): string {
   const parts = [networkLabel(status), pendingLabel(status)];
   if (status.conflicts > 0) parts.push(conflictsLabel(status));
+  if (status.rejected > 0) parts.push(rejectedLabel(status));
   return parts.join(' · ');
 }
 
 /** Texto corto para móvil: lo más urgente primero. */
 export function statusShort(status: SyncStatus): string {
   if (status.conflicts > 0) return conflictsLabel(status);
+  if (status.rejected > 0) return rejectedLabel(status);
   const n = pendingCount(status);
   if (n > 0) return plural(n, 'pendiente', 'pendientes');
   return networkLabel(status);
@@ -87,10 +97,11 @@ export function createStatusBar(options: StatusBarOptions = {}): StatusBar {
     chip.dataset.network = status.network;
     chip.dataset.pending = String(pendingCount(status) > 0);
     chip.dataset.conflicts = String(status.conflicts > 0);
+    chip.dataset.rejected = String(status.rejected > 0);
     const long = statusSummary(status);
     replace(chip, el('span', { class: 'long' }, long), el('span', { class: 'short' }, statusShort(status)));
     chip.setAttribute('aria-label', long);
-    const error = status.lastError && status.network === 'error' && options.describeError ? options.describeError(status.lastError) : '';
+    const error = status.lastError && status.network === 'error' && !isUserChanged(status) && options.describeError ? options.describeError(status.lastError) : '';
     if (error) chip.title = error;
     else chip.removeAttribute('title');
     if (syncButton) {
@@ -129,6 +140,14 @@ export interface StatusBannersOptions {
   updateApply?: (() => void) | null;
   /** No mostrar el banner de conflictos cuando ya estás en esa pantalla. */
   hideConflicts?: boolean;
+  /** Lotes rechazados (sync-client 0.2): abrir la pantalla donde se revisan, reintentar todos o descartar todos. */
+  onShowRejected?: () => void;
+  onRetryRejected?: () => void | Promise<void>;
+  onDiscardRejected?: () => void | Promise<void>;
+  /** No mostrar el banner de rechazados cuando ya estás en esa pantalla. */
+  hideRejected?: boolean;
+  /** Texto del aviso de cambio de persona; por defecto explica que se retiraron los datos anteriores. */
+  userChangedText?: string;
 }
 
 export function statusBanners(status: SyncStatus, options: StatusBannersOptions = {}): HTMLElement[] {
@@ -140,8 +159,23 @@ export function statusBanners(status: SyncStatus, options: StatusBannersOptions 
       options.onResolveConflicts ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onResolveConflicts?.() }, 'Resolver') : null,
     ));
   }
-  if (status.lastError && status.network === 'error') {
-    items.push(el('div', { class: 'banner warn' },
+  if (status.rejected > 0 && !options.hideRejected) {
+    items.push(el('div', { class: 'banner alert', role: 'alert', dataset: { banner: 'rejected' } },
+      icon('warn', 18),
+      el('span', null, status.rejected === 1 ? 'El servidor rechazó 1 cambio; revísalo, corrígelo o descártalo.' : `El servidor rechazó ${status.rejected} cambios; revísalos, corrígelos o descártalos.`),
+      options.onShowRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onShowRejected?.() }, 'Ver') : null,
+      options.onRetryRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetryRejected?.() }, 'Reintentar') : null,
+      options.onDiscardRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onDiscardRejected?.() }, 'Descartar') : null,
+    ));
+  }
+  if (isUserChanged(status)) {
+    items.push(el('div', { class: 'banner info', role: 'status', dataset: { banner: 'user-changed' } },
+      icon('user', 18),
+      el('span', null, options.userChangedText ?? 'Ha entrado otra persona en este dispositivo: se cargaron sus datos y se retiraron los anteriores.'),
+    ));
+  }
+  if (status.lastError && status.network === 'error' && !isUserChanged(status)) {
+    items.push(el('div', { class: 'banner warn', dataset: { banner: 'error' } },
       icon('warn', 18),
       el('span', null, options.describeError ? options.describeError(status.lastError) : 'No se pudo sincronizar.'),
       options.onRetry ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetry?.() }, 'Reintentar') : null,

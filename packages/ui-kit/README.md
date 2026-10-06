@@ -61,8 +61,9 @@ Regla: **el acento tiñe lo neutro** (botones primarios, anillos, navegación ac
 - Estado: `.statusbar`, `.statuschip[data-network|data-pending|data-conflicts]`, `.syncbtn`.
 - Shell: `.shell` (`.nonav`), `.topbar`, `.brand`, `.mark`, `.nav`, `.navbtn` (`.soon`, `.badge`), `.navfoot`, `.banners`, `.main`.
 - Login: `.login`, `.login-card`, `.login-brand`, `.offline-ready`, `.footnote`.
-- Hoja y diálogo (solo CSS en v0.1): `.sheetback.show > .sheet` con `.sheet-head`, `.sheet-body`, `.sheet-foot`, `.handle`; `.dialogback > .dialog`.
-- Conflictos (solo CSS en v0.1): `.conflict`, `tr.overlap`, `.choices`, `label.pick`.
+- Hoja y diálogo: `.sheetback.show > .sheet` con `.sheet-head`, `.sheet-body`, `.sheet-foot`, `.handle`; `.dialogback > .dialog`.
+- Conflictos y rechazados: `.conflict` (`.rejected`, `.busy`), `tr.overlap`, `.choices`, `label.pick`.
+- Tema y paleta: `.segmented` (`.themeselect`), `.themetoggle`, `.palette-back > .palette` con `.palette-input`, `.palette-list`, `.palette-item`, `.palette-group`, `.palette-foot`.
 
 Móvil primero a 390 px; escritorio desde 1024 px (navegación lateral, pastilla de estado larga, `.desktop-only`). Movimiento desactivado con `prefers-reduced-motion`.
 
@@ -79,6 +80,18 @@ import { el, icon, toast, createStatusBar, statusBanners, renderLogin, createApp
 - `createAppShell(root, { appName, subtitle, nav, status, onLogout, tools, navFoot, navigate })` → `{ header, nav, banners, main, setRoute, setSubtitle, setStatus, setBanners, setBadge, destroy }`. La app monta sus vistas en `main` y llama a `setRoute(hash)` en cada cambio de ruta.
 - `toast(msg)`, `toastWithAction(msg, { label, onClick })`, `hideToast()`.
 - `applyTheme()`, `setTheme()`, `toggleTheme()`, `effectiveTheme()`, `applyAccent(color|null)`, `itemColorStyle(color)`, `inkOn(color)`.
+- `openSheet({ title, body, foot, meta, footHidden, beforeClose, onClose, initialFocus })` → `{ panel, body, foot, close(force), setFootHidden, setTitle, isOpen }`; `closeSheet()`, `currentSheet()`. Una sola hoja; foco atrapado; Escape y fondo cierran; `beforeClose` puede devolver `false` (o una promesa) para retener la hoja con cambios sin guardar. Un botón de «Guardar» en el pie se enlaza al formulario con el atributo `form`.
+- `confirmDialog({ title, text, confirmLabel, cancelLabel, danger, noCancel })` → `Promise<boolean>`; `alertDialog(title, text)`. Con `danger` el foco inicial va a «Cancelar».
+- `renderConflict(conflict, { fieldLabels, show, rowName, onResolve })` y `renderConflicts(list, …)` sobre `PendingConflict`; `onResolve(conflict, decision)` recibe `{ choice: 'mine' | 'theirs' }` o `{ choice: 'merge', fields }` listo para `client.resolveConflict`. Botones con `data-choice`.
+- `renderRejected(batch, { describeError, rowName, onRetry, onDiscard })` y `renderRejectedList(list, …)` sobre `RejectedBatch`.
+- `listRow({ id, title, meta, chips, actions, pending, deleted, selected, onClick, label })` y `renderList({ rows, label, empty })`.
+- `createThemeToggle()` (botón sol/luna para `tools` de la cabecera) y `createThemeSelect()` (Sistema / Claro / Oscuro).
+- `createCommandPalette({ items(query), placeholder, hotkey, limit, hiddenWhenEmpty })` → `{ open, close, toggle, isOpen, destroy }`. Ctrl K / Cmd K; `items` devuelve `{ group, text, sub, color, hint, keywords, run }`.
+- Foco: `trapFocus(event, root)`, `focusFirst(root)`, `focusables(root)`, `lockScroll()`.
+
+### Barra de estado y sync-client 0.2
+
+`statusSummary` añade «N rechazados» y la pastilla lleva `data-rejected`. `statusBanners` acepta `onShowRejected`, `onRetryRejected`, `onDiscardRejected` y `hideRejected`; con `lastError.code === 'USER_CHANGED'` muestra un banner informativo («ha entrado otra persona en este dispositivo») en lugar del de error.
 
 ## Muestra y pruebas
 
@@ -88,8 +101,8 @@ npm -w @ikisai/ui-kit run typecheck
 npm -w @ikisai/ui-kit run test:e2e   # Playwright sobre la demo, 390 px y 1440 px
 ```
 
-La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los cinco estados de sincronización con sus banners, el login y el shell.
+La demo (`demo/index.html`) es la referencia visual: tokens, controles, tarjetas y listas, los siete estados de sincronización con sus banners, el login y el shell, la hoja y el diálogo, conflictos y rechazados, la lista con estado, el selector de tema y la paleta.
 
-## Pendiente (v0.2)
+## Qué sigue
 
-Hoja inferior y diálogo con foco atrapado, componente de conflicto (tabla campo a campo), lista con «pendiente de sincronizar» como componente, selector de tema listo para la cabecera, paleta de comandos. Ver `CHANGELOG.md` y `ESTADO.md`.
+Ver `ESTADO.md` (pendientes y peticiones) y `CHANGELOG.md`.

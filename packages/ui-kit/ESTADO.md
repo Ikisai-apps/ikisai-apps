@@ -4,17 +4,18 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
-- v0.1.0 fusionada en main (PR #4). v0.1.1: texto «Todo sincronizado».
+- v0.2.0 (rama `ui/kit`): hoja inferior y diálogo con foco atrapado, conflicto campo a campo sobre `PendingConflict`, rechazados sobre `RejectedBatch`, barra y banners con `rejected` y `USER_CHANGED` (sync-client 0.2), lista «pendiente» como componente, selector de tema y paleta Ctrl K. 22 pruebas Playwright.
+- v0.1.0 fusionada en main (PR #4). v0.1.1 fusionada con la adopción de Invoices (PR #5).
 - v0.1.0: tokens, base, componentes CSS, DOM e iconos, tema y acento, barra de estado (§6.4), login y shell, demo y pruebas Playwright (5 escenarios × 2 tamaños). Tipos en verde con el `tsconfig` raíz.
 
 ## En curso
 
-- PR `ui/invoices-adopt-kit` (pendiente de revisión de Core): `apps/invoices` consume tokens, login, shell, barra de estado, DOM, iconos y toast del kit; `tokens.css` y `login.ts` propios desaparecen y `app.css` queda vacío. Humo de Invoices y pruebas del kit en verde; capturas revisadas en móvil y escritorio, claro y oscuro.
+- Invoices: segunda adopción (hoja de proveedores con `openSheet`, pantalla de conflictos con `renderConflicts`, rechazados, `confirmDialog` en cerrar sesión y papelera, importación del CSS por alias). PR a `apps/invoices` con visto bueno de Core.
 
 ## Pendiente
 
-- v0.2: hoja inferior y diálogo con foco atrapado y cierre con Escape; componente de conflicto campo a campo; lista «pendiente de sincronizar» como componente; selector de tema para la cabecera; paleta de comandos (Ctrl K).
-- Revisión visual de Tasks, Booking y Food cuando existan sus shells.
+- Revisión visual de Tasks, Booking y Food cuando existan sus shells; componentes que pidan (calendario, cantidades, fotos recomprimidas).
+- v0.3 candidatos: campo de fecha con atajos (hoy, mañana), selector de etiquetas con familias, tarjeta de proyecto con anillo de progreso (de Tareas), esqueleto de página completa.
 
 ## Bloqueos y peticiones
 

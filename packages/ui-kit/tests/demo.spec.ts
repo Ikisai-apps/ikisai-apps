@@ -17,7 +17,7 @@ test.describe('Muestra del ui-kit', () => {
   test('la barra de estado refleja red, pendientes y conflictos', async ({ page }) => {
     await page.goto('/');
     const states = page.locator('#statusStates .statuschip');
-    await expect(states).toHaveCount(5);
+    await expect(states).toHaveCount(7);
     await expect(states.nth(0)).toHaveAttribute('data-network', 'online');
     await expect(states.nth(0)).toHaveAttribute('aria-label', 'En línea · Todo sincronizado');
     await expect(states.nth(2)).toHaveAttribute('data-pending', 'true');
