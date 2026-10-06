@@ -176,7 +176,7 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     const pendingBuy = sorted.filter((i) => i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length;
 
     replace(host,
-      stale ? el('div', { class: 'banner warn', id: 'shoppingStale', role: 'status' },
+      stale ? el('div', { class: 'banner warn notice', id: 'shoppingStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú o sus recetas han cambiado desde que se generó la lista.'),
           ` ${diff.added.length + diff.removed.length + diff.changed.length || 'Hay'} cambios${data.pending ? ' (algunos aún sin sincronizar)' : ''}. Regenerar conserva lo que hayas tocado a mano.`),
         writable && !closed ? el('div', { class: 'btnrow' }, el('button', { class: 'ghost', type: 'button', id: 'regenerateShopping', disabled: busy, onclick: () => void regenerate() }, 'Regenerar lista')) : null) : null,

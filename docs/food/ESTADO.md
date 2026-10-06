@@ -13,7 +13,7 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H comp
   - **Foto**: se recomprime en el dispositivo a 1600 px y a una miniatura de 480 px (WebP, o JPEG si el navegador no codifica WebP); el original no se guarda. Viaja con el marcador `$blob`, así que puede hacerse sin red. Se guarda en Cache Storage para verla sin conexión y se borra al cerrar sesión.
   - **Maquinaria**: lista, edición y papelera.
   - **Eventos**: lista de la proyección de Booking (próximos, sin menú, pasados) con caché local en `ikisai-food-cache-v1` y la fecha de los datos; ficha del evento con sus restricciones y alta del menú con la propuesta de servicios del régimen. Funciona sin red con lo último leído.
-  - **Menús**: lista y ficha del menú con el evento y las restricciones siempre a la vista, avisos calculados en el dispositivo, constructor por días (servicios, hora, platos desde el recetario visual, raciones, orden a mano de servicios y platos con subir y bajar, guardado en `position`), estados, validación aceptando los avisos uno a uno y aviso de evento cambiado con lo que cambió («Personas: 22 → 25»). Las acciones de servidor piden conexión y vacían antes la cola.
+  - **Menús**: lista y ficha del menú con el evento y las restricciones siempre a la vista, avisos calculados en el dispositivo, constructor por días (servicios, hora, platos desde el recetario visual, raciones, orden a mano guardado en `position`: los platos con la lista reordenable del kit —arrastre, teclado y subir/bajar— y los servicios con subir y bajar), estados, validación aceptando los avisos uno a uno y aviso de evento cambiado con lo que cambió («Personas: 22 → 25»). Las acciones de servidor piden conexión y vacían antes la cola.
   - **Compra** (pestaña del menú): generar y regenerar con red; sin red, «en casa» (recalcula «comprar»), «comprar» fijado a mano con vuelta a lo calculado, comprado y recibido, y líneas a mano. Aviso cuando el menú o sus recetas cambian; lista revisada y cerrada.
   - **Preparación** (pestaña del menú): propuesta por plato con red; sin red, marcar hecho, responsable, reescribir un paso (pasa a propio) y pasos propios. Aviso cuando el menú cambia.
   - **Vista de cocinero**: cada plato con sus ingredientes escalados a las raciones, alérgenos, maquinaria y elaboración.
@@ -25,7 +25,7 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H comp
 
 ## Pendiente
 
-- Arrastre para reordenar, cuando el kit lo ofrezca (hoy, subir y bajar).
+- Arrastre también para los servicios: la lista reordenable del kit no admite listas anidadas (los platos van dentro de cada servicio), pedido a UI.
 - Recorrido de aceptación en un Android real y con una cuenta real (hasta ahora todo se ha probado con Playwright y una API falsa, y con PGlite).
 - `food.stock_entries`: en G4, con la proyección de compras de Invoices.
 

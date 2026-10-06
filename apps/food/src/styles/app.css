@@ -40,8 +40,13 @@
 .formblock legend{padding:0;margin-bottom:8px;font-size:var(--text-xs,.75rem);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .photoedit{display:flex;flex-direction:column;gap:8px}
 .filebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
-.linerows{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
-.linerow{display:grid;grid-template-columns:minmax(0,1fr) 84px 96px auto;gap:6px;align-items:center}
+.linerows{display:flex;flex-direction:column;gap:14px;margin-bottom:12px}
+@media (min-width:720px){.linerows{gap:8px}}
+/* En móvil el nombre del ingrediente ocupa toda la línea y debajo van cantidad, unidad y quitar. */
+.linerow{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:6px;align-items:center}
+.linerow>input:first-child{grid-column:1/-1}
+@media (min-width:720px){.linerow{grid-template-columns:minmax(0,1fr) 84px 96px auto}.linerow>input:first-child{grid-column:auto}}
+.formblock>.hint{display:block;margin-top:6px}
 .linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
 .checkgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-bottom:12px}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
@@ -58,8 +63,9 @@
 .warninglist{margin:8px 0 0;padding:8px 0 0 18px;border-top:1px solid var(--line);font-size:var(--text-sm,.875rem)}
 .crumb{margin:0 0 4px;font-size:var(--text-sm,.875rem)}
 .crumb a{color:var(--muted);text-decoration:none}
-.banner.warn{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:12px;background:var(--warn-soft);color:var(--warn-ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
-.banner.warn .plainlist{margin-top:6px}
+.banner.notice{flex-direction:column;align-items:stretch;gap:10px;font-weight:400}
+.banner.notice .btnrow{flex-wrap:wrap}
+.banner.notice .plainlist{margin-top:6px}
 .menuactions{flex-wrap:wrap;align-items:center;margin:12px 0}
 .menuactions .hint{flex-basis:100%;color:var(--muted);font-size:var(--text-xs,.75rem)}
 .ackline{align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
@@ -73,24 +79,30 @@
 .service>header h4{margin:0;flex:1;font-size:1rem}
 .service input[type=time],.dish .servings{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
 .dishes{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}
-.dish{display:grid;grid-template-columns:44px minmax(0,1fr) 64px auto;gap:8px;align-items:center}
-.dishtools{grid-column:1/-1;display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:-4px}
+/* Plato: en móvil, foto y nombre arriba y raciones debajo; desde 720 px, todo en una línea. */
+.dish{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px 8px;align-items:center}
+.dishside{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:8px}
+@media (min-width:720px){.dish{grid-template-columns:44px minmax(0,1fr) auto}.dishside{grid-column:auto}}
 .movebtns{display:inline-flex;gap:2px}
 .movebtns .iconbtn{font-size:1rem;line-height:1}
 .movebtns .iconbtn:disabled{opacity:.3}
-@media (min-width:720px){.dish{grid-template-columns:44px minmax(0,1fr) 64px auto auto}.dishtools{grid-column:auto;margin-top:0}}
+/* La lista reordenable del kit, dentro de la tarjeta del servicio, sin su marco propio. */
+.service .sortable{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible;margin-bottom:10px}
+.service .sortable .sortable-row{padding:6px 0;border-bottom:1px dashed var(--line)}
+.service .sortable .sortable-row:last-child{border-bottom:0}
 .dishphoto{position:relative;display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:var(--paper-2);color:var(--muted);overflow:hidden}
 .dishphoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .dishname{display:flex;flex-direction:column;min-width:0}
 .dishname strong{overflow-wrap:anywhere}
-.dish .servings{width:100%;text-align:right}
+.dish .servings{width:72px;text-align:right}
 .dish[data-pending="true"] .dishname strong::after{content:' ·';color:var(--warn)}
 .addService{margin-top:2px}
 .recipegrid.picker{grid-template-columns:repeat(2,minmax(0,1fr))}
 
 /* Pestañas del menú */
 .menutabs{display:flex;margin:14px 0 4px;overflow-x:auto}
-.menutabs a{flex:1;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 12px;border-radius:8px;color:var(--muted);font-size:var(--text-sm,.875rem);font-weight:700;text-decoration:none;white-space:nowrap}
+.menutabs a{flex:1 1 auto;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 7px;border-radius:8px;color:var(--muted);font-size:.78rem;font-weight:700;text-decoration:none;white-space:nowrap}
+@media (min-width:720px){.menutabs a{padding:0 12px;font-size:var(--text-sm,.875rem)}}
 .menutabs a[aria-current="page"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .tabhead{margin:12px 0 4px}
 .tabhead p{margin:6px 0 0;font-size:var(--text-sm,.875rem)}

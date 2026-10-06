@@ -130,6 +130,11 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await first.getByRole('button', { name: 'Subir Pasta al pesto' }).click();
     await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
     await expect(first.getByRole('button', { name: 'Subir Pasta al pesto' })).toBeDisabled();
+    // El asa del kit también se mueve con el teclado (y con arrastre): el curry sube y vuelve a bajar.
+    await first.getByRole('button', { name: /^Mover Curry de verduras/ }).press('ArrowUp');
+    await expect(first.locator('.dish strong')).toHaveText(['Curry de verduras', 'Pasta al pesto']);
+    await first.getByRole('button', { name: /^Mover Curry de verduras/ }).press('ArrowDown');
+    await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
     const position = (servings: number) => Number(api.rows('food.menu_items').find((i) => i.servings === servings)!.position);
     await expect.poll(() => position(2) < position(22)).toBe(true);
     // El sábado: la cena sube por delante de la comida.

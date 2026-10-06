@@ -119,7 +119,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     const doneCount = sorted.filter((s) => s.done).length;
 
     replace(host,
-      stale ? el('div', { class: 'banner warn', id: 'preparationStale', role: 'status' },
+      stale ? el('div', { class: 'banner warn notice', id: 'preparationStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú ha cambiado desde que se generó la propuesta.'), ' Regenerar no toca tus pasos ni lo ya hecho.'),
         writable ? el('div', { class: 'btnrow' }, el('button', { class: 'ghost', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, 'Regenerar propuesta')) : null) : null,
       el('div', { class: 'tabhead' },
