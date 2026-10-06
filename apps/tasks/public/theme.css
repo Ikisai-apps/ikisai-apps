@@ -20,8 +20,8 @@
   --icon-star-fill:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black' stroke='black' stroke-width='1.8' stroke-linejoin='round'><path d='M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.2 6.1L12 17l-5.5 2.9 1.2-6.1-4.5-4.2 6.1-.8z'/></svg>");
 }
 /* Un icono en máscara toma el color del texto del botón. */
-.navbtn strong,.check,.draghandle,.taskmenu,.back,.chev,.iconbtn[data-project-order],.iconbtn[data-edit-project],.fab,.navigation summary:after{font-size:0!important;line-height:0}
-.navbtn strong::before,.check::after,.draghandle::before,.taskmenu::before,.back::before,.chev::before,.iconbtn[data-project-order]::before,.iconbtn[data-edit-project]::before,.fab::before,.navigation summary:after{content:'';display:block;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+.navbtn strong,.check,.draghandle,.taskmenu,.back,.iconbtn[data-project-order],.iconbtn[data-edit-project],.fab,.navigation summary:after{font-size:0!important;line-height:0}
+.navbtn strong::before,.check::after,.draghandle::before,.taskmenu::before,.back::before,.iconbtn[data-project-order]::before,.iconbtn[data-edit-project]::before,.fab::before,.navigation summary:after{content:'';display:block;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
 .navbtn strong{display:block;height:24px;margin-bottom:3px}
 .navbtn strong::before{--i:var(--icon-tag);width:22px;height:22px;margin:1px auto 0}
 .navbtn[data-nav="projects"] strong::before{--i:var(--icon-grid)}
@@ -39,8 +39,8 @@
 .back{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;margin-right:2px}
 .back::before{--i:var(--icon-left);width:22px;height:22px}
 .back:hover{background:var(--hover)}
-.chev{display:grid;place-items:center;width:24px;height:24px}
-.chev::before{--i:var(--icon-right);width:18px;height:18px}
+
+
 .iconbtn[data-project-order]::before{--i:var(--icon-updown);width:19px;height:19px}
 .iconbtn[data-edit-project]::before{--i:var(--icon-pencil);width:19px;height:19px}
 .fab{display:grid;place-items:center}
@@ -124,10 +124,10 @@ html.dark .softbtn.active{background:#3a4036;border-color:#575e51}
 html.dark .softbtn:hover,html.dark .tabpill:not(.active):hover{background:#333a31}
 html.dark .sectionlabel{color:#9a9488}
 html.dark .sectionlabel .count{background:#3a4036;color:var(--ink)}
-html.dark .project{background:rgba(37,41,35,.94);border-color:#3c4237;box-shadow:0 3px 10px rgba(0,0,0,.2)}
-html.dark .project.system{background:#272b24}
-html.dark .projectmeta{color:var(--muted)}
-html.dark .chev{color:#8c877b}
+html.dark .newproject{background:rgba(37,41,35,.94);border-color:#3c4237;box-shadow:0 3px 10px rgba(0,0,0,.2)}
+
+
+
 html.dark .progressline{background:#363b33}
 html.dark .empty{background:rgba(37,41,35,.6);color:var(--muted)}
 html.dark .bottomnav{background:rgba(31,35,29,.96);border-top-color:var(--line)}
@@ -195,14 +195,14 @@ html.dark .areablock{border-top-color:var(--line)}
 html.dark .filterarea{border-top-color:var(--line)}
 html.dark .prioritybtn{background:#2c312a;border-color:#464c40;color:var(--ink)}
 html.dark .prioritybtn:hover{background:#343a31}
-html.dark .star{color:#e2b45c}
+html.dark .star:not(.ikisai-kit *){color:#e2b45c}
 html.dark .themeswitch{background:rgba(235,230,218,.06);border-color:var(--line)}
 html.dark .themeoption.on{background:#3a4036;color:#d9e0c3;box-shadow:none}
 html.dark .addtask{background:var(--paper);border-top-color:var(--line)}
 html.dark .tabpill.general{border-color:#575e51}
 html.dark .inlineedit{background:#2c312a;color:var(--ink);border-color:var(--olive);box-shadow:0 0 0 3px rgba(142,154,108,.2)}
 html.dark .task.newtask{background:#2a2f27}
-html.dark .project.newproject{background:#272b24}
+html.dark .newproject{background:#272b24}
 html.dark .themelist button.on{background:#363c33;color:#d9e0c3}
 html.dark .tabtool{background:rgba(37,41,35,.8);border-color:var(--line);color:var(--muted)}
 html.dark .tabtool:hover,html.dark .themetoggle:hover,html.dark .viewsave:hover{background:#333a31}
@@ -249,5 +249,5 @@ html.dark .viewpill.active{background:#5b6848;border-color:#5b6848;color:#fff}
 @media(hover:hover){
   html.dark .task:hover{background:rgba(235,230,218,.04)}
   html.dark .task.context:hover{background:#2f342c}
-  html.dark .project:hover{box-shadow:0 8px 22px rgba(0,0,0,.35);border-color:#4a5044}
+  
 }

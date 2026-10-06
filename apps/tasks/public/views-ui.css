@@ -44,11 +44,11 @@
 .hidden-level{position:absolute!important;visibility:hidden;width:1px;height:1px;overflow:hidden;margin:0!important;padding:0!important}
 .prioritybtn{display:flex;align-items:center;gap:9px;width:100%;height:46px;border:1px solid var(--line);background:#fff;border-radius:14px;padding:0 12px;font-weight:600;text-align:left}
 .prioritybtn:hover{background:#f6f1e8}
-.star{position:relative;display:inline-block;width:20px;height:20px;vertical-align:-4px;color:#c58b2a;flex:none}
-.star::before,.star::after{content:'';position:absolute;inset:0;background:currentColor;-webkit-mask:var(--icon-star) center/contain no-repeat;mask:var(--icon-star) center/contain no-repeat}
-.star::after{-webkit-mask-image:var(--icon-star-fill);mask-image:var(--icon-star-fill);opacity:0}
-.star-high::after{opacity:1;clip-path:inset(0 50% 0 0)}
-.star-critical::after{opacity:1}
+.star:not(.ikisai-kit *){position:relative;display:inline-block;width:20px;height:20px;vertical-align:-4px;color:#c58b2a;flex:none}
+.star:not(.ikisai-kit *)::before,.star:not(.ikisai-kit *)::after{content:'';position:absolute;inset:0;background:currentColor;-webkit-mask:var(--icon-star) center/contain no-repeat;mask:var(--icon-star) center/contain no-repeat}
+.star:not(.ikisai-kit *)::after{-webkit-mask-image:var(--icon-star-fill);mask-image:var(--icon-star-fill);opacity:0}
+.star-high:not(.ikisai-kit *)::after{opacity:1;clip-path:inset(0 50% 0 0)}
+.star-critical:not(.ikisai-kit *)::after{opacity:1}
 .tasktext .star{width:16px;height:16px;vertical-align:-3px;margin-right:5px}
 /* Lo que sobra: cuadro vacío dentro de una lista y aviso de la página de proyectos. */
 .tasklist > .empty{display:none}
@@ -58,14 +58,14 @@
 .chip.inherited{opacity:.55;box-shadow:inset 0 0 0 1px rgba(255,255,255,.5)}
 /* Tarjetas: fijar y color. */
 .ghostcontrol{position:absolute;width:1px;height:1px;padding:0;border:0;margin:0;opacity:0;overflow:hidden;font-size:1px;line-height:1px;background:transparent;color:transparent}
-.projecttop{position:relative}
+
 /* Tarjeta teñida entera con su color; el texto se adapta (--item-ink). */
-.project.colored{background:var(--item-color);color:var(--item-ink);border-color:transparent}
-.project.colored .projectmeta,.project.colored .chev,.project.colored .draghandle,.project.colored .iconbtn{color:inherit;opacity:.85}
-.project.colored .progressline{background:rgba(255,255,255,.35)}
-.project.colored .progressline span{background:var(--item-ink);opacity:.75}
-.project.colored .iconbtn:hover{background:rgba(255,255,255,.18)}
-.project.colored .chip{box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+
+
+
+
+
+
 .pinbtn .menuicon{transform:rotate(-45deg);transition:transform .15s;opacity:.75}
 .pinbtn.pinned .menuicon{transform:rotate(0);opacity:1}
 .pinbtn.pinned{color:var(--olive-dark)}
@@ -83,7 +83,7 @@
 .tabtool .menuicon{width:18px;height:18px}
 /* Botón de tema y ojo de vistas, con tooltip. */
 .themetoggle{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--olive-dark);margin-left:0!important}
-.projecttitle .star{width:17px;height:17px;vertical-align:-3px;margin-right:5px}
+
 .project-detail-head .title .star{width:24px;height:24px;vertical-align:-3px;margin-right:6px}
 /* Botón flotante más ajustado al signo. */
 .fab{width:48px;height:48px;border-radius:15px;bottom:calc(80px + env(safe-area-inset-bottom))}
@@ -169,10 +169,10 @@ html{overflow-x:hidden}
 .moneybar span{display:block;height:100%;background:var(--olive);border-radius:inherit}
 .money.over .moneybar span{background:#b3412a}
 .money.over .moneytext strong{color:#b3412a}
-.project.colored .money{color:inherit;opacity:.9}
-.project.colored .moneytext strong{color:inherit}
-.project.colored .moneybar{background:rgba(255,255,255,.35)}
-.project.colored .moneybar span{background:var(--item-ink)}
+
+
+
+
 .project-detail-head+.money{margin:0 0 8px}
 .taskbody .cost{display:inline-block;margin-top:4px;font-size:11px;font-weight:700;color:var(--olive-dark);background:#e4eadc;padding:2px 7px;border-radius:999px}
 /* Inicio: panel del área. */
@@ -276,8 +276,8 @@ html{overflow-x:hidden}
 .addrow .addtask{flex:1;border-top:0;margin-top:0;border-radius:0}
 .quickdetail{width:auto;font-size:12px;color:var(--muted);white-space:nowrap}
 .quickdetail:hover{color:var(--olive-dark)}
-.project.newproject{display:flex;flex-direction:column;gap:8px;border-style:dashed;background:#f7f0e5}
-.project.newproject .inlineedit{font-size:17px;font-weight:800}
+.newproject{display:flex;flex-direction:column;gap:8px;border-style:dashed;background:#f7f0e5}
+.newproject .inlineedit{font-size:17px;font-weight:800}
 .title.editable{cursor:text;border-radius:8px}
 .title.editable:hover{background:var(--hover)}
 .titleedit{font-family:Georgia,serif;font-size:26px;font-weight:400;padding:4px 10px}

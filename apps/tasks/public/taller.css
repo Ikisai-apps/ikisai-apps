@@ -23,14 +23,14 @@ html,body{font-family:var(--sans)}
 body{background:var(--bg)}
 #app{background:var(--bg) radial-gradient(circle at 18% -6%,rgba(255,255,255,.75),transparent 48%)}
 /* Tipografía: serif con carácter en títulos y cifras; sans en todo lo demás. */
-.title,.brand,.sheettitle,.areatitle,.homecard-title,.kpi strong,.weekday strong,.navigation .menuheader,.titleedit,.filterarea,.projecttitle,.facettotal strong,.filtercount strong,.homeproject-title{font-family:var(--serif);font-weight:500;letter-spacing:-.015em}
+.title,.brand,.sheettitle,.areatitle,.homecard-title,.kpi strong,.weekday strong,.navigation .menuheader,.titleedit,.filterarea,.facettotal strong,.filtercount strong,.homeproject-title{font-family:var(--serif);font-weight:500;letter-spacing:-.015em}
 .brand{font-weight:600;font-size:23px;letter-spacing:-.01em}
 .title{font-weight:450;letter-spacing:-.02em;line-height:1.02}
 .sheettitle{font-weight:450}
-.projecttitle{font-size:18.5px;font-weight:500;line-height:1.2}
+
 .homeproject-title{font-weight:500;font-size:15px}
 .kpi strong{font-weight:450}
-.project.newproject .inlineedit{font-family:var(--serif);font-weight:500}
+.newproject .inlineedit{font-family:var(--serif);font-weight:500}
 .mark{background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#1f2a22));color:var(--accent-ink);box-shadow:0 6px 14px -4px var(--accent-glow);transition:background .3s}
 /* Cabecera y pestañas: la pestaña activa sin color propio toma el acento; con color, el suyo. */
 .topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border-bottom-color:var(--edge)}
@@ -78,7 +78,7 @@ body{background:var(--bg)}
 .kbdhint .menuicon{width:13px;height:13px}
 @media(max-width:1023px){.kbdhint span{display:none}.kbdhint{padding:6px}.searchwrap input{padding-right:40px}}
 /* Superficies con tres niveles de profundidad. */
-.project,.homecard,.homehead,.detail-card,.tasklist,.area-card,.label-manager .family-card,.filtercount,.facettotal{background:var(--paper);border:1px solid var(--edge);box-shadow:var(--shadow-2);border-radius:18px}
+.newproject,.homecard,.homehead,.detail-card,.tasklist,.area-card,.label-manager .family-card,.filtercount,.facettotal{background:var(--paper);border:1px solid var(--edge);box-shadow:var(--shadow-2);border-radius:18px}
 .tasklist{border-radius:16px}
 .kebabmenu,.facetpanel,#moveRail{box-shadow:var(--shadow-3);border-color:var(--edge)}
 .sheet{box-shadow:var(--shadow-3)}
@@ -87,27 +87,27 @@ body{background:var(--bg)}
 .sectionlabel .count{background:rgba(31,42,34,.07);color:var(--ink)}
 .empty{background:transparent;border:1px dashed rgba(31,42,34,.18)}
 /* Tarjetas de proyecto: portada con anillo; el color personalizado del proyecto tiñe toda la tarjeta. */
-.project{padding:13px 14px 11px;transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
-@media(min-width:1024px){.project{padding:16px 16px 14px}}
-.project .chev{display:none}
-.project .cardring{position:absolute;right:0;top:0;width:46px;height:46px;pointer-events:none}
-.project .cardring .ring .track{stroke:rgba(31,42,34,.1);stroke-width:3.5}
-.project .cardring .ring .value{stroke:var(--accent);stroke-width:3.5}
-.project .cardring .ring text{font-size:9.5px;font-weight:700}
-.projecttop{padding-right:52px;min-height:40px}
-.project .draghandle{height:36px}
-.project .progressline{height:4px;margin:10px 0 9px;background:rgba(31,42,34,.08)}
-.project .progressline span{background:var(--accent)}
-.project .chips{gap:5px}
-.project.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 88%,#fff) 0%,var(--item-color) 45%,color-mix(in srgb,var(--item-color) 84%,#000) 100%);border-color:transparent;box-shadow:0 16px 30px -18px color-mix(in srgb,var(--item-color) 90%,transparent),var(--shadow-1)}
-.project.colored .cardring .ring .track{stroke:color-mix(in srgb,var(--item-ink) 28%,transparent)}
-.project.colored .cardring .ring .value{stroke:var(--item-ink)}
-.project.colored .cardring .ring text{fill:var(--item-ink)}
-.project.colored .progressline{background:color-mix(in srgb,var(--item-ink) 25%,transparent)}
-.project.colored .progressline span{background:var(--item-ink);opacity:.9}
-.project.system{border-style:dashed;background:transparent;box-shadow:none}
-.project.newproject{background:var(--paper-2)}
-@media(hover:hover){.dragging .project:hover{transform:none}.project:hover{transform:translateY(-2px);box-shadow:var(--shadow-3);border-color:var(--edge)}.project.colored:hover{box-shadow:0 22px 40px -20px color-mix(in srgb,var(--item-color) 95%,transparent),var(--shadow-1)}}
+.newproject{padding:13px 14px 11px;transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+@media(min-width:1024px){.newproject{padding:16px 16px 14px}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.newproject{background:var(--paper-2)}
+
 .projectsection[style*="--item-color"] .projectlink{border-left-width:4px}
 .projectlink{color:var(--accent-deep);font-weight:750;font-size:14.5px;min-height:34px;display:inline-flex;align-items:center;padding:4px 6px 4px 0;border-radius:8px}
 .projectlink:hover{background:var(--hover)}
@@ -144,9 +144,9 @@ body{background:var(--bg)}
 .task.newtask{background:var(--paper-2)}
 .due.soon{color:var(--accent-deep)}
 /* Chips pastel: el color de la familia se conserva como tinte y como tinta, legible en claro y oscuro. */
-.chip[data-pastel]{background:color-mix(in srgb,var(--chip) 15%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 70%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 30%,transparent);font-weight:650}
-.chip[data-pastel].inherited{opacity:.6}
-.project.colored .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 28%,#fffdf8)!important;color:color-mix(in srgb,var(--chip) 72%,#1f2a22);box-shadow:none}
+.chip[data-pastel]:not(.ikisai-kit *){background:color-mix(in srgb,var(--chip) 15%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 70%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 30%,transparent);font-weight:650}
+.chip[data-pastel].inherited:not(.ikisai-kit *){opacity:.6}
+
 .activechip[data-pastel] .x{background:color-mix(in srgb,currentColor 14%,transparent);color:inherit}
 .activechip[data-pastel]:hover .x{background:color-mix(in srgb,currentColor 26%,transparent)}
 .taskchips .chip{font-size:10px;padding:3px 7px}
@@ -275,12 +275,12 @@ html.dark .topbar{background:color-mix(in srgb,var(--bg) 86%,transparent);border
 html.dark .tabpill{background:var(--paper);color:var(--ink)}
 html.dark .tabpill.active{background:var(--accent);color:var(--accent-ink)}
 html.dark .tabpill.colored.active{background:var(--item-color);color:var(--item-ink)}
-html.dark .project,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette{background:var(--paper);border-color:var(--edge)}
-html.dark .project.system{background:transparent}
-html.dark .project.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 88%,#fff) 0%,var(--item-color) 45%,color-mix(in srgb,var(--item-color) 80%,#000) 100%)}
+html.dark .newproject,html.dark .homecard,html.dark .detail-card,html.dark .tasklist,html.dark .area-card,html.dark .label-manager .family-card,html.dark .filtercount,html.dark .facettotal,html.dark .homeproject,html.dark .boardcard,html.dark .palette{background:var(--paper);border-color:var(--edge)}
+
+
 html.dark .homeproject.colored{background:linear-gradient(160deg,color-mix(in srgb,var(--item-color) 90%,#fff),color-mix(in srgb,var(--item-color) 82%,#000))}
-html.dark .project .cardring .ring .track,html.dark .ring .track{stroke:rgba(236,229,216,.14)}
-html.dark .project .progressline,html.dark .project-detail-head+.progressline{background:rgba(236,229,216,.1)}
+html.dark .ring .track{stroke:rgba(236,229,216,.14)}
+html.dark .project-detail-head+.progressline{background:rgba(236,229,216,.1)}
 html.dark .sheet,html.dark .sheet-close,html.dark .actions{background:var(--paper)}
 html.dark .kebabmenu,html.dark .facetpanel,html.dark #moveRail,html.dark .navigation.kebabmenu{background:var(--paper-2);border-color:var(--edge)}
 html.dark .navigation .menuitem.active{background:var(--paper);color:var(--accent-deep)}
@@ -297,8 +297,8 @@ html.dark .check:before{border-color:#6f6a5e;background:var(--paper)}
 html.dark .task.done .check:before{background:var(--accent);border-color:var(--accent)}
 html.dark .task.done .check{color:var(--accent-ink)!important}
 html.dark .task.selected{background:var(--accent-soft)!important}
-html.dark .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 24%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 62%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 35%,transparent)}
-html.dark .project.colored .chip[data-pastel]{background:color-mix(in srgb,var(--chip) 30%,#24221d)!important;color:color-mix(in srgb,var(--chip) 70%,#ece5d8)}
+html.dark .chip[data-pastel]:not(.ikisai-kit *){background:color-mix(in srgb,var(--chip) 24%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 62%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 35%,transparent)}
+
 html.dark .taskbody .cost{background:var(--accent-soft);color:var(--accent-deep)}
 html.dark .batchbar,html.dark .toast,html.dark .undotoast,html.dark [data-tip]:hover::after{background:#ece5d8;color:#1a1915}
 html.dark .fab{background:var(--accent);color:var(--accent-ink)}
@@ -328,7 +328,7 @@ html.dark .projectlink:hover{background:var(--hover)}
 html.dark .hometask.urgent{background:color-mix(in srgb,var(--warn) 12%,transparent)}
 html.dark .due.overdue{color:var(--alert)}
 html.dark .due.today{color:var(--warn)}
-html.dark .star{color:#e2b45c}
+html.dark .star:not(.ikisai-kit *){color:#e2b45c}
 html.dark .drop-child,html.dark .drop-child:after,html.dark .drop-project{background:var(--accent-soft)!important;color:var(--accent-deep)}
 html.dark .quickadd,html.dark .linkbtn,html.dark .viewpill,html.dark .projectlink{color:var(--accent-deep)}
 html.dark .empty::before{background-color:var(--accent-soft)}

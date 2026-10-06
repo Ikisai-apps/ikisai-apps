@@ -60,8 +60,6 @@ openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEd
   const previous=saveBtn.onclick;saveBtn.onclick=()=>{const raw=input.value.trim(),budget=Number(raw);if(raw!==''&&(!Number.isFinite(budget)||budget<0))return toast('El presupuesto debe ser un número finito no negativo.');previous?.()}};
 const closeSheetBeforeExtras=closeSheet;
 closeSheet=function(e){closeSheetBeforeExtras(e);if(!document.getElementById('sheetBack').classList.contains('show')){editorCost=null;editorBudget=null}};
-const cardBeforeMoney=projectCard;
-projectCard=function(p){const block=moneyBlock(p);return block?cardBeforeMoney(p).replace('<div class="chips">',block+'<div class="chips">'):cardBeforeMoney(p)};
 const projectViewBeforeMoney=projectView;
 projectView=function(){const html=projectViewBeforeMoney(),p=project(),block=p?moneyBlock(p):'';return block?html.replace('<div class="progressline">',block+'<div class="progressline">'):html};
 const rowsBeforeMoney=taskRow;
