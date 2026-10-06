@@ -87,3 +87,20 @@ test.describe('ui-kit v0.12', () => {
     expect(r).toEqual({ empty: 18, query: 16 });
   });
 });
+
+test('la paleta resalta una sola fila: la seleccionada, que sigue al ratón', async ({ page }) => {
+  await page.goto('/#agents');
+  await page.evaluate(() => {
+    const kit = (window as any).ikisaiKit;
+    const items = Array.from({ length: 6 }, (_, i) => ({ group: 'Ir a', text: `Elemento ${i}`, run: () => {} }));
+    kit.createCommandPalette({ items: () => items, hotkey: false }).open();
+  });
+  const rows = page.locator('#palette .palette-item');
+  await rows.nth(3).hover();
+  await expect(page.locator('#palette .palette-item.on')).toHaveCount(1);
+  await expect(rows.nth(3)).toHaveClass(/on/);
+  await page.keyboard.press('ArrowDown');
+  const highlighted = await rows.evaluateAll((nodes) => nodes.filter((n) => getComputedStyle(n).backgroundColor !== 'rgba(0, 0, 0, 0)').length);
+  expect(highlighted).toBe(1);
+  await expect(rows.nth(4)).toHaveClass(/on/);
+});

@@ -3,6 +3,7 @@
 ## 0.12.0 · 6 de octubre de 2026
 
 - `renderProposalReview(options)` → `{ body, foot }`: la revisión de propuestas sin hoja, para una app que ya tiene la suya (Tasks). El pie lleva `.proposalreview-foot`, pegado abajo dentro de un contenedor que desplaza, y es `null` si la propuesta no está pendiente o no se puede decidir. `openProposalReview` acepta `sheet` con las opciones de `openSheet` (`backAttrs`, `panelAttrs`, `bodyAttrs`, `closeAttrs`, `hideTitle`, `onClose`). Petición de Tasks.
+- Paleta: un solo resaltado (la fila seleccionada, que sigue al ratón y al teclado; sin `:hover`), como la paleta de Tasks.
 - Paleta: el kit trae por fin su CSS completo (fondo, panel, campo, grupos, elementos, pie y tema oscuro); hasta ahora dependía de las reglas de Tasks.
 - Paleta: `limitWhenEmpty` (otro máximo sin consulta; Tasks: 18 sin consulta y 16 con ella) y `container` (dónde montarla; por defecto `document.body`).
 
