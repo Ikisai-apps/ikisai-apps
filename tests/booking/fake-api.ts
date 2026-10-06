@@ -423,6 +423,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { loggedOut: true });
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
+      // catálogo del lanzador (contrato §3.3): apps con acceso de la cuenta, internas y portales
+      if (path === 'apps') return json(res, 200, {
+        current: 'booking',
+        items: [
+          { id: 'tasks', name: 'Tasks', domain: 'tasks.example.test', kind: 'internal', description: 'Tareas', role: 'editor' },
+          { id: 'booking', name: 'Booking', domain: 'booking.example.test', kind: 'internal', description: 'Reservas y eventos', role: 'owner' },
+          { id: 'organizers', name: 'Organizadores', domain: 'organizers.example.test', kind: 'portal', description: 'Portal de organizadores', role: 'reader' },
+        ],
+      });
       if (path === 'me') return json(res, 200, { userId: session.userId, email: session.email, role: 'owner', scopes: null });
       if (path === 'dashboard') return json(res, 200, { app: 'booking', cursor, pending: [], message: 'Panel pendiente de la fase 1.' });
       if (path === 'snapshot') {
