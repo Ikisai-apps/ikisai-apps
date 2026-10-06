@@ -937,7 +937,7 @@ test('[36] sesión caducada con cola pendiente: se conserva, otra cuenta no pued
     await a.locator('#loginUsername').fill(READER.email);
     await a.locator('#loginPassword').fill(READER.password);
     await a.locator('#accountLogin').click();
-    await expect(a.locator('#toast')).toContainText('cambios pendientes de otra cuenta');
+    await expect(a.locator('#loginError')).toContainText('cambios pendientes de otra cuenta');
     expect(await a.evaluate(() => Sync.record.queue.length)).toBe(1);
     expect(await a.evaluate(() => taskLocation((window as any).ID.t4).t.note)).toBe('Cambio con sesión caducada');
     await server.app.t.createUser(server.app.users.reader);

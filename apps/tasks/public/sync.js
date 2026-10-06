@@ -122,8 +122,18 @@ async function sameAccountOrNothingPending(email,password){const pending=Sync.co
  const me=await fetch('/api/v1/me',{headers:{Authorization:'Bearer '+out.token}}).then(r=>r.ok?r.json():null).catch(()=>null);if(me?.userId===previous)return;
  fetch('/api/v1/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+out.token,'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
  throw Error('Hay cambios pendientes de otra cuenta en este dispositivo. Entra con esa cuenta, o exporta la copia y descártalos antes de cambiar de usuario.')}
-function loginSheet(){openSheet('<h2 class="sheettitle">Entrar en Ikisai</h2><form id="accountLoginForm"><div class="field"><label for="loginUsername">Correo electrónico</label><input id="loginUsername" type="email" autocomplete="username" required></div><div class="field"><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="primary" id="accountLogin">Entrar</button></form><p class="small muted">Tus cambios pendientes permanecen guardados en este dispositivo.</p>');
- document.getElementById('accountLoginForm').onsubmit=async event=>{event.preventDefault();const button=document.getElementById('accountLogin');button.disabled=true;try{const email=document.getElementById('loginUsername').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;await sameAccountOrNothingPending(email,password);const boot=await Sync.core.login(email,password);if(!boot)throw Error('No se pudo cargar tu cuenta. Comprueba la conexión.');closeSheet();await enterSession(boot);syncNow()}catch(error){button.disabled=false;toast(error.code==='NO_MEMBERSHIP'?'Tu cuenta no tiene acceso a Tareas.':error.message||'No se pudo entrar.')}}}
+/* Pantalla de entrada del kit común (`IkisaiKit.renderLogin`, /kit.js): ocupa #app en lugar de abrir una hoja sobre la
+   pantalla de arranque. Conserva los ids accountLoginForm, loginUsername, loginPassword y accountLogin; el error se
+   muestra en línea (#loginError). `note` es la línea bajo el nombre («Sesión cerrada.»). El kit se pinta dentro de un
+   envoltorio `.ikisai-kit` (su CSS está acotado a esa clase mientras conviva con la interfaz heredada); cualquier
+   `innerHTML` posterior sobre #app lo retira solo. */
+function loginSheet(note){closeSheet();Sync.unmountLogin?.();
+ const app=document.getElementById('app'),host=document.createElement('div');host.className='ikisai-kit';app.replaceChildren(host);
+ Sync.unmountLogin=IkisaiKit.renderLogin(host,{appName:'Tareas',title:'Ikisai · Tareas',tagline:note||'Proyectos, tareas y etiquetas',
+  ids:{form:'accountLoginForm',email:'loginUsername',password:'loginPassword',submit:'accountLogin'},
+  footnote:'Tus cambios pendientes permanecen guardados en este dispositivo.',
+  describeError:error=>error.code==='NO_MEMBERSHIP'?'Tu cuenta no tiene acceso a Tareas.':error.message||'No se pudo entrar.',
+  async onLogin(email,password){await sameAccountOrNothingPending(email,password);const boot=await Sync.core.login(email,password);if(!boot)throw Error('No se pudo cargar tu cuenta. Comprueba la conexión.');Sync.unmountLogin?.();Sync.unmountLogin=null;await enterSession(boot);syncNow()}})}
 async function boot(){try{
  if(navigator.locks){await new Promise(resolve=>navigator.locks.request('ikisai-writer',{ifAvailable:true},async lock=>{Sync.secondary=!lock;resolve();if(lock)await new Promise(()=>{})}))}
  Sync.db=await openDB();Sync.record.ui=readUI();Object.assign(state,Sync.record.ui);state.tabs=[];

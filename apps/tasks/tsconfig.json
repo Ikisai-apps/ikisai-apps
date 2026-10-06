@@ -14,9 +14,10 @@
     "types": ["vite/client", "node"],
     "paths": {
       "@ikisai/sync-client": ["../../packages/sync-client/src/index.ts"],
-      "@ikisai/domain-tasks": ["../../packages/domain-tasks/src/index.ts"]
+      "@ikisai/domain-tasks": ["../../packages/domain-tasks/src/index.ts"],
+      "@ikisai/ui-kit": ["../../packages/ui-kit/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "vite.config.ts", "../../packages/sync-client/src/**/*.ts", "../../packages/domain-tasks/src/**/*.ts", "../../supabase/functions/_domain/tasks/**/*.ts"],
+  "include": ["src/**/*.ts", "vite.config.ts", "../../packages/sync-client/src/**/*.ts", "../../packages/domain-tasks/src/**/*.ts", "../../packages/ui-kit/src/**/*.ts", "../../supabase/functions/_domain/tasks/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
