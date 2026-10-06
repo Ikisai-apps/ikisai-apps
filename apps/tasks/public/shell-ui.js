@@ -34,7 +34,7 @@ function topbar(){
   const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
   const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',tools:[more],rows:[tabs,views]});
   // La marca de Tasks es su glifo de siempre, no el icono genérico del kit.
-  const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font-weight:800;letter-spacing:-2px;font-size:14px';
+  const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font:800 17px/1 var(--sans);letter-spacing:-2px';
   const aliasBtn=K.el('button',{type:'button',class:'softbtn small aliasbtn',id:'aliasBtn','data-tip':alias?'Yo: '+alias:'¿Quién eres?','aria-label':alias?'Alias: '+alias:'Elegir quién eres'},shellIcon('user'),K.el('span',null,alias||'Yo'));
   const theme=shellNode(themeToggleButton());theme.className=`tabtool themetoggle${isDarkTheme()?' dark':''}`;
   const groups=navigationGroups().map(g=>({...g,items:g.items.filter(i=>i[4]!==false)})).filter(g=>g.items.length);
