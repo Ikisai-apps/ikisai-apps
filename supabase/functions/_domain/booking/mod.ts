@@ -2,3 +2,5 @@
 export * from './catalog.ts';
 export * from './rules.ts';
 export * from './validate.ts';
+export * from './guests.ts';
+export * from './checklist.ts';
