@@ -1,25 +1,24 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026. **Puerta G2: `docs/tasks/API.md` escrito, pendiente de revisión de Core.**
+Actualizado: 6 de octubre de 2026. **Puerta G2 aprobada por Core de forma provisional; en construcción.**
 
 ## Hecho
 
-- Estudio de `Ikisai-apps/ikisai-tasks` `main` `d02bf44` (migraciones, `domain.mjs`, `service.mjs`, `sync.js`, `cloud-auth.js`, usos en los módulos de UI, 72 escenarios de `tests/integration.cjs`) y del núcleo real (`core_base`, `core_files`, `_kit`, `sync-client`, lint de migraciones).
-- `docs/tasks/API.md`: modelo `tasks.*` (diez tablas), operaciones compuestas y único procedimiento, hooks `beforeCommit` y SQL, ámbitos y `visible`, rutas propias, archivos, offline, aceptación con los 72 escenarios clasificados, reparto backend/frontend y adaptador de `sync.js`/`cloud-auth.js` a `sync-client`.
-- Revisión pedida a Core en `docs/core/PETICIONES.md` (peticiones C1–C11).
+- `docs/tasks/API.md`: modelo `tasks.*` (diez tablas), operaciones compuestas y único procedimiento, hooks `beforeCommit` y SQL, ámbitos y `visible`, rutas propias, archivos, offline, aceptación con los 72 escenarios clasificados, reparto y adaptador de `sync.js`/`cloud-auth.js` a `sync-client`. Su §16 recoge la resolución de Core.
+- Decisiones D1 (catálogo del área en solo lectura para accesos por proyecto), D5 (adjuntos hasta 25 MB, tipos cerrados) y D6 (invitados como cuentas con ámbitos) aprobadas.
+- Peticiones C1, C3, C4, C5 y C6 resueltas por Core; C2 y C7 en parte (`docs/tasks/PETICIONES.md`).
 
-## Pendiente
+## En curso (una PR por punto)
 
-- Aprobación de Core (G2). Hasta entonces no se crean migraciones, rutas ni código fuera de `docs/tasks/`.
-- Confirmación del usuario de las decisiones D1 (catálogo visible para accesos por proyecto), D5 (adjuntos de 25 MB y tipos) y D6 (invitados por cuenta, sin claves).
-- Primer paso tras la aprobación: `packages/domain-tasks` (tipos, `scopes`, `validate`, `legacy`).
+1. `supabase/functions/_domain/tasks` + `packages/domain-tasks`: tipos de fila, ámbitos, validación, grafo y estados, operaciones compuestas, composición con el modelo anidado.
+2. Migraciones `*_tasks_*`: tablas, `tasks.validate_batch`, `tasks.import_rows`, lectura `tasks.targets` para Invoices; lint y conformidad.
+3. `supabase/functions/tasks-api`: hooks `visible` y `beforeCommit`, rutas de lectura y adjuntos.
+4. `apps/tasks`: copia de la interfaz y adaptador sobre `sync-client`.
+
+## Pendiente después
+
+- CSV, copia portable y respaldo; cuentas e invitados con `members/invite`; migración de los 72 escenarios a Playwright; publicación en `tasks.ikisai.com`.
 
 ## Bloqueos
 
-- C1 (payload y helper para hooks SQL): migraciones con `TASK_BLOCKED` y ámbitos de escritura.
-- C2, C3 y C7: accesos por proyecto y cuentas (escenarios 27, 28, 30, 34, 36, 37).
-- C5: adjuntos (escenario 15).
-- C6: lote rechazado conservado (escenario 50).
-- C4 afecta a la fiabilidad de la cola en las cuatro apps.
-
-Nada de lo anterior impide empezar por `domain-tasks`, las tablas, `tasks-api` de lectura y el adaptador para un propietario con acceso completo.
+- Ninguno para empezar. Abiertos sin bloquear: resto de C2 (fila que sale del ámbito por un movimiento; `undo-plan` sin `visible`), resto de C7 (sesiones, restablecer contraseña) y C8–C11.

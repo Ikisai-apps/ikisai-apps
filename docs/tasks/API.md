@@ -1,10 +1,10 @@
 # Tasks · API y modelo de datos (puerta G2)
 
-Fecha: 6 de octubre de 2026. Autor: equipo Tasks. Estado: **borrador completo, pendiente de revisión de Core.**
+Fecha: 6 de octubre de 2026. Autor: equipo Tasks. Estado: **puerta G2 aprobada por Core de forma provisional el 6 de octubre de 2026** (`docs/core/RESPUESTAS.md`). D1, D5 y D6 aprobadas. La resolución de las peticiones y lo que cambia respecto al texto original está en §16; donde §16 contradiga a §14, manda §16.
 
 Origen estudiado: `Ikisai-apps/ikisai-tasks` `main` `d02bf44` (v0.7.0-build.4): `supabase/migrations/2026100500{01..10}`, `supabase/functions/ikisai-api/{domain,service}.mjs`, `docs/DEPENDENCIAS_TAREAS.md`, `docs/ACCESOS_Y_AGENTES.md`, `app/` (en especial `sync.js`, `cloud-auth.js` y sus usos) y `tests/integration.cjs` (72 escenarios). Destino comprobado contra el núcleo real, no solo contra el contrato: `20261006_0001_core_base.sql`, `20261006_0003_core_files.sql`, `supabase/functions/_kit`, `packages/sync-client` y `scripts/lint_migrations.mjs`.
 
-Sigue `docs/core/PLANTILLA_API_APP.md` (§1–§12) y añade §13 (adaptador que sustituye a `sync.js`/`cloud-auth.js`), §14 (peticiones a Core) y §15 (decisiones que se apartan de `PORT.md`). Donde el núcleo actual no permite lo que aquí se describe, se dice y se remite a la petición `C<n>` de §14.
+Sigue `docs/core/PLANTILLA_API_APP.md` (§1–§12) y añade §13 (adaptador que sustituye a `sync.js`/`cloud-auth.js`), §14 (peticiones a Core), §15 (decisiones que se apartan de `PORT.md`) y §16 (resolución de Core). Donde el núcleo actual no permite lo que aquí se describe, se dice y se remite a la petición `C<n>` de §14.
 
 ---
 
@@ -29,7 +29,7 @@ Reglas comunes:
 - `tab_id` viaja desnormalizado en todas las tablas y `project_id` en todas las que cuelgan de un proyecto. Así `visible(table,row,ctx)` es una función pura de la fila (§5) y un cambio de proyecto llega al espejo de quien gana o pierde acceso como cambio de cada fila afectada. La coherencia de esas claves la comprueba el hook SQL (§4.2, `INCONSISTENT_KEYS`).
 - `position numeric` es el orden manual fraccional (`order` heredado). El cliente inserta con `máximo + 1024`.
 - Columnas inmutables tras el `insert`: trigger `tasks.guard_immutable` (`before update`) que llama a `core.fail('IMMUTABLE_FIELD', 422, {field})`.
-- Toda restricción (`check`, `unique`, FK) queda como red de seguridad y tiene **delante** una validación con código de dominio (`beforeCommit` o trigger/hook con `core.fail`). Motivo: hoy `_kit` traduce cualquier SQLSTATE que no sea `PTxxx` a 503 y `sync-client` reintenta los 503 sin fin (C4).
+- Toda restricción (`check`, `unique`, FK) queda como red de seguridad y tiene **delante** una validación con código de dominio (`beforeCommit` o trigger/hook con `core.fail`). Motivo: el usuario debe recibir el código de dominio y su mensaje, no un `CONSTRAINT_VIOLATION` genérico (desde C4 un SQLSTATE no previsto llega como 422 definitivo, ya no como 503).
 
 ### 2.1 `tasks.tabs` · áreas
 
@@ -165,7 +165,7 @@ Tablas puente con `id` propio (recomendación de Core en PORT §3): dos disposit
 | `mime` | `text not null` · inmutable |
 | `size` | `bigint not null check (size >= 0)` · inmutable |
 | `sha256` | `text not null check (sha256 ~ '^[0-9a-f]{64}$')` · inmutable |
-| `file_id` | `uuid not null` → `core.files(id)` · inmutable (ver C5) |
+| `file_id` | `uuid not null references core.files(id)` · inmutable. El cliente envía `{"$blob": "<sha256>"}` y `sync-client` lo sustituye por el `file_id` al verificar la subida |
 | `position` | `numeric not null default 0` |
 
 `writable_columns`: `tab_id, project_id, task_id, name, mime, size, sha256, file_id, position`. Índices: `(project_id) where deleted_at is null`; `(task_id) where task_id is not null`; `(file_id)`.
@@ -261,7 +261,7 @@ El mismo código corre en el cliente antes de encolar (el error aparece al insta
 
 ### 4.2 `validate_hooks` SQL
 
-Un único hook registrado, `tasks.validate_batch(jsonb)`, porque `core.commit` recorre `core.validate_hooks` sin orden definido. Llama en este orden a las comprobaciones siguientes. Trabaja sobre **las filas tocadas por el lote** (antes y después) y el estado final; necesita `core.batch_changes` y los `scopes` del actor (C1; alternativa propia: triggers `after insert or update` de `tasks.*` que acumulan `old`/`new` en una tabla temporal `on commit drop`).
+Un único hook registrado, `tasks.validate_batch(jsonb)`, porque `core.commit` recorre `core.validate_hooks` sin orden definido. Llama en este orden a las comprobaciones siguientes. Trabaja sobre **las filas tocadas por el lote** (antes y después) y el estado final: lee `core.changes` del cursor del lote y los `scopes` del actor en `core.memberships` (lecturas que el lint admite desde C1).
 
 Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (sin carrera entre comprobar y escribir) y también cuando el lote viene de un deshacer o de `tasks.import_rows`, casos en los que `beforeCommit` no corre.
 
@@ -308,7 +308,7 @@ Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (
 
 **e) `tasks.check_completion`** → `TASK_BLOCKED` (422), detalles `{taskId, blockedBy}` con solo los bloqueos de proyectos accesibles para el actor. Para cada tarea hoja viva, de proyecto vivo, que el lote deja con `done = true` y antes no lo estaba: todas sus dependencias efectivas deben existir, estar vivas, en proyecto vivo y hechas (hecha = `done`, o todas sus hijas vivas hechas si es padre). Se evalúa el estado final, así que completar un padre y sus condiciones en un mismo lote funciona. No se aplica con `tasks.import_mode`. Reabrir una condición no reabre lo ya terminado.
 
-**f) `tasks.check_attachments`** → `FILE_NOT_UPLOADED` (422): `file_id` corresponde a un archivo verificado de la app `tasks` cuyo `sha256` y `size` coinciden (C5).
+**f) `tasks.check_attachments`** → `FILE_NOT_UPLOADED` (422): `file_id` corresponde a un archivo verificado de la app `tasks` en `core.files` cuyo `sha256` y `size` coinciden.
 
 ### 4.3 Errores de dominio
 
@@ -376,7 +376,7 @@ Todas con `Authorization: Bearer`, sobre el contexto de `_kit`. Las lecturas com
 | `GET tree` | reader | → `{cursor, tabs:[…]}`: árbol anidado (área → familias, etiquetas, vistas, proyectos → tareas) con `done`, `blocked`, `blockedBy`, `hiddenBlockers` calculados. Para otras apps, pruebas y futuros agentes; la interfaz se compone desde el espejo | — |
 | `GET tabs/:tabId/tasks` | reader | `q, state=pending\|done, availability=ready\|blocked, projectId, label (repetible), family.<id>, includeDeleted, limit≤500, offset` → `{items, total}` | `NOT_FOUND`, `INVALID_FILTER` |
 | `GET blockers` | reader | → `{cursor, items:[{taskId, hidden}]}`: por cada tarea visible, cuántas condiciones no cumplidas están fuera del ámbito. Vacío con acceso completo | — |
-| `GET targets/:kind/:id` | reader | `kind = tab\|project\|task` → `{kind, id, tabId, projectId, title, revision, deleted, archived}` | `NOT_FOUND` (también si no es visible) |
+| `GET read/tasks.targets` | reader | lectura registrada (`core.allow_read('tasks', 'tasks.targets', 'function')`). `args` opcionales: `{kind: tab\|project\|task, id}` para validar un destino, `{tabId}` para limitar a un área → `{cursor, tabs:[{id, name, revision, deleted, projects:[{id, title, status, system, revision, deleted, tasks:[{id, parentId, title, done, revision, deleted}]}]}]}`, limitado a lo visible para el usuario | `NOT_FOUND` con `kind` + `id` si no existe o no es visible |
 | `GET attachments/:id` | reader | → bytes del archivo (`Content-Disposition` con `name`), tras comprobar que la fila de `tasks.attachments` es visible | `NOT_FOUND` |
 | `GET csv?tabId=` | reader | → `text/csv` con las tareas visibles del área | `NOT_FOUND` |
 | `POST csv/preview?tabId=` | editor con área completa | cuerpo `text/csv` ≤ 2 MB → `{operations: RowOperation[], summary:{projects, tasks, labels}, warnings}`. No escribe: el cliente envía `operations` por `commands` (se puede deshacer). Un nivel de hijas | `FORBIDDEN`, `PAYLOAD_TOO_LARGE`, `INVALID_CSV`, `CSV_TOO_LARGE` (> 500 operaciones) y los de §4.1 |
@@ -395,7 +395,7 @@ Rutas heredadas que **no** porta Tasks: `state`/`export` (sustituidas por `snaps
 ## 7. Proyecciones y enlaces
 
 - **Proyecciones:** ninguna en V1. Según el contrato §8, Invoices valida y lista destinos de Tasks llamando a su API con el token del usuario, de modo que los ámbitos se respetan solos.
-- **Destinos tipados que Tasks acepta:** `target_app = 'tasks'`, `target_kind ∈ {'tab','project','task'}`, `target_id` uuid, `target_revision` = `revision` devuelta por `GET targets/:kind/:id`. Para elegir destino, Invoices usa `GET tree` o `GET tabs/:tabId/tasks`. Un destino borrado o archivado sigue resolviéndose (`deleted`, `archived`) para que el enlace no se rompa.
+- **Destinos tipados que Tasks acepta:** `target_app = 'tasks'`, `target_kind ∈ {'tab','project','task'}`, `target_id` uuid, `target_revision` = `revision` devuelta por `GET read/tasks.targets`, que sirve tanto para elegir destino (árbol área → proyecto → tarea) como para validar uno (`args.kind` + `args.id`). Un destino borrado o archivado sigue resolviéndose (`deleted`, `archived`) para que el enlace no se rompa.
 - **Enlaces que Tasks consume:** ninguno. «Crear tarea desde Booking/Food» es V2 y será una petición de esas apps a `commands` de Tasks con el token del usuario.
 
 ---
@@ -529,10 +529,10 @@ Recorrido manual en PC y Android sobre `tasks.ikisai.com`: entrar, crear área, 
 
 | Agente | Directorios | Entrega |
 |---|---|---|
-| **Backend Tasks** | `supabase/migrations/*_tasks_*`, `supabase/functions/tasks-api`, `packages/domain-tasks`, `tests/tasks/api` | Migraciones y hook SQL; `domain-tasks` (tipos de fila, `validate.ts`, `scopes.ts`, `graph.ts` con ciclos y estados, `ops.ts` con las operaciones compuestas de §3.1, `legacy.ts` con la composición fila ↔ modelo anidado); `tasks-api` con hooks y rutas de §6; pruebas de §11.2 |
+| **Backend Tasks** | `supabase/migrations/*_tasks_*`, `supabase/functions/tasks-api`, `supabase/functions/_domain/tasks` (código de dominio; `packages/domain-tasks` solo lo reexporta), `tests/tasks` | Migraciones y hook SQL; `domain-tasks` (tipos de fila, `validate.ts`, `scopes.ts`, `graph.ts` con ciclos y estados, `ops.ts` con las operaciones compuestas de §3.1, `legacy.ts` con la composición fila ↔ modelo anidado); `tasks-api` con hooks y rutas de §6; pruebas de §11.2 |
 | **Frontend Tasks** | `apps/tasks`, `tests/tasks/e2e` | Copia de `app/` a Vite/PWA con `_worker.js`; adaptador de §13; ajustes mínimos de los módulos (uuid, familia Persona, adjuntos como `Blob`); migración de los 72 escenarios, `cloud-browser` y `updates` |
 
-Frontera: `packages/domain-tasks` es del backend y es el único código que comparten; el frontend pide cambios por PR. El contrato entre ambos son §2–§6 de este documento y la firma de `ops.ts`/`legacy.ts`. El marcado de la interfaz se coordina con el agente de UI.
+Frontera: `supabase/functions/_domain/tasks` es del backend y es el único código que comparten; el frontend pide cambios por PR. El contrato entre ambos son §2–§6 de este documento y la firma de `ops.ts`/`legacy.ts`. El marcado de la interfaz se coordina con el agente de UI.
 
 Orden: (1) `domain-tasks` con tipos, `scopes`, `validate` y `legacy`, que desbloquea a ambos; (2) en paralelo, backend: migraciones, hook y conformidad; frontend: adaptador contra el servidor simulado de `tests/sync-client/fake-server.ts`; (3) `tasks-api` con rutas de lectura y adjuntos, y frontend contra la API en PGlite; (4) CSV, portable y respaldo; (5) escenarios completos y publicación. Después, por verticales: cuentas y ámbitos, intercambio, agentes.
 
@@ -659,3 +659,29 @@ Lo que no depende de ninguna petición y puede empezar al aprobarse este documen
 | D6 | Las claves de acceso para personas desaparecen: un invitado es una cuenta con ámbitos. Las claves quedan para agentes, en su fase | Un solo sistema de identidad (Supabase Auth + `core.memberships`) | Usuario |
 | D7 | `scopes = null` equivale a `"*"` | Coherencia con `core.set_membership` y las demás apps | Core |
 | D8 | El `done` almacenado de una tarea con hijas vivas se ignora en lugar de eliminarse | Una columna no puede estar «ausente»; evita un hook que rechazaría ediciones concurrentes legítimas | Core |
+
+---
+
+## 16. Resolución de Core (6 de octubre de 2026)
+
+Fuente: `docs/core/RESPUESTAS.md`, PR #10 (núcleo G2) y #12 (`sync-client` 0.2). El seguimiento de las peticiones está en `docs/tasks/PETICIONES.md`.
+
+| # | Resolución | Qué cambia en este documento |
+|---|---|---|
+| C1 | **Resuelta de otra forma.** El lint permite a `*_tasks_*` leer `core.memberships`, `core.changes`, `core.files` y `core.synced_tables` y llamar a `core.allow_read`. El payload del hook sigue siendo `{app, actor, cursor}` | `tasks.validate_batch` lee el lote en `core.changes` (`app = 'tasks'`, `cursor` del payload) y los ámbitos en `core.memberships`. No hacen falta `core.batch_changes` ni triggers de captura. Sigue siendo un único hook, por el orden |
+| C2 | **Parcial.** `sync-client` 0.2 rehace el snapshot si cambia `membership.revision` o una tabla deja de ser legible | Queda abierto: una fila que sale del ámbito por un movimiento (tarea a un proyecto privado) no se retira del espejo hasta el siguiente snapshot, y `undo-plan` no aplica `visible`. Mitigación propia: el adaptador de un acceso por proyecto descarta al componer las filas cuyo proyecto ya no está en sus ámbitos |
+| C3 | **Resuelta.** `clearOnLogout` y vaciado del espejo si entra otra persona (`USER_CHANGED`) | Tasks usa `clearOnLogout: true`. La regla «no cerrar sesión ni cambiar de cuenta con cola pendiente» la sigue aplicando el adaptador antes de llamar a `logout()` |
+| C4 | **Resuelta.** Errores SQL como 422 definitivos (`CONSTRAINT_VIOLATION`, `INVALID_VALUE`, `DOMAIN_ERROR`, `SQL_ERROR`, con `details.sqlstate`) | Los hooks siguen usando `core.fail('<CÓDIGO>', 422)` para conservar el código de dominio (`TASK_BLOCKED`, `DEPENDENCY_CYCLE`…); un `raise exception` simple llegaría como `DOMAIN_ERROR` |
+| C5 | **Resuelta.** Marcador `{"$blob": "<sha256>"}` en cualquier campo; referencia a `core.files` admitida | `tasks.attachments.file_id` se escribe con el marcador (§2.9). El hook de visibilidad en `files/{id}` sigue sin existir: Tasks sirve por `attachments/:id` |
+| C6 | **Resuelta.** `rejected()`, `retryRejected()`, `discardRejected()`; `SyncStatus.rejected`; un 403 ya no detiene la cola | `Sync.record.failure` y `showFailure` (§13.4) salen de `rejected()`. No existe `pending()`: el adaptador mantiene su lista sombra |
+| C7 | **Parcial.** `POST members/invite {email, role, scopes?, displayName?}` crea la cuenta con contraseña temporal (devuelta una sola vez) y la pertenencia | «Cuentas de personas» usa `GET members`, `POST members` y `POST members/invite`. La lista y el cierre de sesiones, restablecer contraseña y la desactivación quedan para más adelante: «Mi cuenta» ofrece cambio de contraseña y cierre de sesión |
+| C8–C11 | Sin respuesta todavía (mejoras) | Sin cambio; no bloquean |
+
+Convenciones nuevas que este documento adopta:
+
+- **Código de dominio** en `supabase/functions/_domain/tasks/` (`mod.ts` y módulos); `packages/domain-tasks` solo lo reexporta. Donde el texto dice `domain-tasks` o `packages/domain-tasks`, léase ese código.
+- **Lecturas registradas:** las funciones de lectura SQL de Tasks se registran con `core.allow_read('tasks', 'tasks.<fn>', 'function')`, reciben `{app, actor, role, args}` y se sirven en `GET/POST /api/v1/read/tasks.<fn>`. La primera es `tasks.targets` (§6, §7), que Invoices necesita. `tree`, `blockers` y `tabs/:tabId/tasks` podrán pasar a lecturas registradas si resulta más barato que componer en la Edge; se decide al implementar `tasks-api`.
+- **`RequestContext.token`** disponible; Tasks no lo necesita porque no llama a otras apps.
+- **Peticiones** en `docs/tasks/PETICIONES.md`.
+
+Orden de construcción (PR pequeñas dentro del territorio de Tasks): (1) `_domain/tasks` + `packages/domain-tasks`; (2) migraciones `*_tasks_*` con `tasks.validate_batch` y `tasks.targets`, con lint y conformidad; (3) `tasks-api` con `visible` y `beforeCommit`; (4) adaptador sobre `sync-client`.
