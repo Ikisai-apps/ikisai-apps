@@ -31,8 +31,10 @@ export interface ProjectCardSpec {
   title: string;
   /** «3 pendientes · 40 %», «pausado». */
   meta?: Child;
-  /** Progreso 0–100 para el anillo; sin valor no hay anillo. */
+  /** Progreso 0–100 para el anillo y la línea; sin valor no hay ninguno. */
   progress?: number | null;
+  /** Anillo en la esquina; `false` deja solo la línea de progreso (p. ej. tarjeta del sistema). */
+  ring?: boolean;
   /** Color elegido por la persona: tiñe toda la tarjeta (`--item-color`), con tinta calculada. */
   color?: string | null;
   pinned?: boolean;
@@ -88,7 +90,7 @@ export function renderProjectCard(spec: ProjectCardSpec): HTMLElement {
     : null;
   return el('article', { class: classes.join(' '), style: spec.color && !spec.system ? itemColorStyle(spec.color) : null, dataset: { project: spec.id, pending: String(!!spec.pending) }, ...(spec.attrs ?? {}) },
     el('div', { class: 'projecttop' },
-      pct !== null ? el('span', { class: 'cardring', 'aria-hidden': 'true' }, ringSvg(pct, 46, '')) : null,
+      pct !== null && spec.ring !== false ? el('span', { class: 'cardring', 'aria-hidden': 'true' }, ringSvg(pct, 46, '')) : null,
       open,
       el('div', { class: 'projecttools' }, pin, ...(spec.actions ?? [])),
     ),

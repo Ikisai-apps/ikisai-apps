@@ -2,7 +2,7 @@
 
 ## 0.8.1 · 6 de octubre de 2026
 
-- `renderProjectCard`: `attrs` (atributos extra del `article`, p. ej. `data-drop-project`) y `pinAttrs` (del botón de fijar: `data-project-pin`, `data-tip`, `aria-label` propio), para que Tasks conserve sus ganchos. El bloque de dinero sale también sin presupuesto cuando hay coste (solo la cifra) y, con presupuesto excedido, añade «· excedido».
+- `renderProjectCard`: `attrs` (atributos extra del `article`, p. ej. `data-drop-project`) y `pinAttrs` (del botón de fijar: `data-project-pin`, `data-tip`, `aria-label` propio), para que Tasks conserve sus ganchos. El bloque de dinero sale también sin presupuesto cuando hay coste (solo la cifra) y, con presupuesto excedido, añade «· excedido». `ring: false` deja la línea de progreso sin anillo (tarjeta del sistema).
 
 ## 0.8.0 · 6 de octubre de 2026
 
