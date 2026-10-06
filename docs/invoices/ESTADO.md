@@ -47,9 +47,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #118 (tanda 10) fusionada.
 - Tanda 11 (`invoices/tanda11`): extracción con `createDocumentExtractorFromEnv` (OpenAI si hay `OPENAI_API_KEY`, si no Anthropic); registro de extracciones con su coste en `invoices.extractions` y límite de una extracción por documento de factura pendiente para los agentes, con propuesta aprobada para repetir (migración 0204, `API.md` §6).
 
+- PR #125 (tanda 11) fusionada.
+- Tanda 12 (`invoices/tanda12`), incidencias de la aceptación del usuario en Android: proveedor nuevo desde la hoja «Nueva factura» («+ Nuevo proveedor…» con nombre y NIF) y bloque «Extraer con ChatGPT» (copiar prompt, pegar JSON) junto al documento, en la hoja nueva y en la ficha pendiente de datos.
+
 ## En curso
 
-- PR de la tanda 11 (`invoices/tanda11`).
+- PR de la tanda 12 (`invoices/tanda12`), en borrador mientras la CI está bloqueada.
 
 ## Pendiente
 

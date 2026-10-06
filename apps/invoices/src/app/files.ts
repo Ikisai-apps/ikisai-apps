@@ -35,6 +35,19 @@ function loadImage(blob: Blob): Promise<HTMLImageElement> {
 }
 
 /** Recomprime una foto: lado mayor 1600 px, WebP calidad media. Si el navegador no sabe producir WebP, JPEG. */
+/**
+ * Tipo con el que se guardará el archivo, para la vista previa del nombre antes de subirlo: un PDF sigue siendo PDF y una
+ * foto se reduce y se guarda en WebP (o JPEG si el navegador no codifica WebP), igual que hace `compressPhoto`.
+ */
+let webpSupport: boolean | null = null;
+export function storedMime(file: File | null | undefined): string {
+  if (!file || !file.type.startsWith('image/')) return 'application/pdf';
+  if (webpSupport === null) {
+    try { webpSupport = document.createElement('canvas').toDataURL('image/webp').startsWith('data:image/webp'); } catch { webpSupport = false; }
+  }
+  return webpSupport ? 'image/webp' : 'image/jpeg';
+}
+
 export async function compressPhoto(file: Blob): Promise<{ blob: Blob; mime: string }> {
   const img = await loadImage(file);
   const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));

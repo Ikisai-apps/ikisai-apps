@@ -137,7 +137,7 @@ test('login → bootstrap → proveedores offline → sincronizar', async ({ pag
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
     await expect(sheet).toBeVisible();
-    await sheet.getByLabel('Proveedor').selectOption({ label: 'Frutas Pepe e Hijos' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Frutas Pepe e Hijos' });
     await sheet.getByLabel('Fecha').fill('2026-10-05');
     await sheet.getByLabel('Objeto').fill('Alimentos retiro yoga');
     await sheet.getByLabel('Total del documento').fill('44');
@@ -210,7 +210,7 @@ test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();
-  expect(await manifest.json()).toMatchObject({ name: 'Ikisai Invoices', short_name: 'Invoices', display: 'standalone' });
+  expect(await manifest.json()).toMatchObject({ id: '/', name: 'Ikisai Invoices', short_name: 'Invoices', display: 'standalone', start_url: '/' });
   const sw = await page.request.get(`${baseURL}/sw.js`);
   expect(sw.ok()).toBeTruthy();
   expect(await sw.text()).toContain('ikisai-invoices-shell-');

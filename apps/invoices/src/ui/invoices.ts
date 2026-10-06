@@ -16,7 +16,7 @@ import {
   DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
-import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
+import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
@@ -316,6 +316,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       id: f.id, title: f.normalized_filename, meta: [f.kind === 'attachment' ? 'Adjunto' : `Página ${f.page_order}`, formatBytes(Number(f.size_bytes)), f.original_filename], pending: f._pending === true,
       actions: [el('button', { class: 'linkbtn', type: 'button', onclick: () => openFile(client, f.file_id).catch((e) => toast(describeError(e))) }, icon('eye', 16), 'Ver')],
     })) }) : el('p', { class: 'hint' }, 'Sin documento. Una factura no se valida sin su original.'),
+    editable && invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original') ? chatgptSteps('chatgptInvoice', () => void openImport(ctx, mirror, invoice)) : null,
     canEdit && invoice.status !== 'anulada' ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', onclick: () => fileInput.click() }, icon('attach', 18), pendingState ? 'Añadir PDF o fotos' : 'Añadir adjunto'), fileInput) : null,
   );
 
@@ -506,13 +507,23 @@ function renderTaxForm(client: SyncClient, invoice: LocalInvoice, tax: LocalTaxL
   return host;
 }
 
+/** Valor del desplegable de proveedor para crear uno nuevo desde la propia hoja. */
+const NEW_SUPPLIER = '__new__';
+
 // ---------------------------------------------------------------------------
 // Nueva factura (subir documento) · API.md §6.1 paso 1
 // ---------------------------------------------------------------------------
 export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const { client } = ctx;
   const suppliers = supplierOptions(mirror.suppliers);
-  const supplier = select('newSupplier', [['', 'Elige proveedor'], ...suppliers], null);
+  // Incidencia de la aceptación (V1): el proveedor se crea aquí mismo, sin ir a Inicio › Proveedores.
+  const supplier = select('newSupplier', [['', 'Elige proveedor'], ...suppliers, [NEW_SUPPLIER, '+ Nuevo proveedor…']], suppliers.length ? null : NEW_SUPPLIER);
+  const supplierName = el('input', { type: 'text', id: 'newSupplierName', maxlength: '160', placeholder: 'Nombre del proveedor', autocomplete: 'organization' });
+  const supplierTaxId = el('input', { type: 'text', id: 'newSupplierTaxId', maxlength: '32', placeholder: 'Opcional', autocapitalize: 'characters' });
+  const supplierFields = el('div', { class: 'row2 new-supplier', id: 'newSupplierFields' }, field('Nombre del proveedor', supplierName), field('NIF', supplierTaxId));
+  const syncSupplierFields = () => { supplierFields.hidden = supplier.value !== NEW_SUPPLIER; };
+  supplier.addEventListener('change', () => { syncSupplierFields(); if (supplier.value === NEW_SUPPLIER) supplierName.focus(); });
+  syncSupplierFields();
   const date = el('input', { type: 'date', id: 'newDate', value: todayIso(), required: true });
   const object = el('input', { type: 'text', id: 'newObject', required: true, maxlength: '120', placeholder: 'alimentos retiro yoga' });
   const number = el('input', { type: 'text', id: 'newNumber', maxlength: '64', placeholder: 'Opcional' });
@@ -520,10 +531,21 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const files = el('input', { type: 'file', id: 'newFiles', accept: ACCEPT_ATTR, multiple: true });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const save = el('button', { class: 'primary', type: 'submit', id: 'saveInvoice', form: 'newInvoiceForm' }, 'Crear factura');
+  // Incidencia de la aceptación (V1): en cuanto hay documento, el camino manual con ChatGPT a la vista, siempre
+  // (con o sin extracción automática). «Pegar JSON» abre la importación con estos mismos documentos.
+  const chatgpt = chatgptSteps('chatgptNew', async () => {
+    const picked = Array.from(files.files ?? []);
+    guard.dirtyEditor = false;
+    await closeSheet(true);
+    openImport(ctx, mirror, null, undefined, { files: picked });
+  });
+  chatgpt.hidden = true;
+  files.addEventListener('change', () => { chatgpt.hidden = !(files.files && files.files.length); });
   const form = el('form', { id: 'newInvoiceForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
-    if (!supplier.value) { error.textContent = 'Elige el proveedor (o créalo antes en Proveedores).'; supplier.focus(); return; }
+    if (!supplier.value) { error.textContent = 'Elige el proveedor o «+ Nuevo proveedor…».'; supplier.focus(); return; }
+    if (supplier.value === NEW_SUPPLIER && !supplierName.value.trim()) { error.textContent = 'Escribe el nombre del proveedor nuevo.'; supplierName.focus(); return; }
     if (!date.value) { error.textContent = 'Indica la fecha de la factura.'; date.focus(); return; }
     if (!object.value.trim()) { error.textContent = 'Indica el objeto (qué se compró).'; object.focus(); return; }
     const sourceTotal = total.value.trim() ? parseAmount(total.value) : null;
@@ -532,11 +554,17 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     try {
       const staged = await pickFiles(files, client);
       const invoiceId = crypto.randomUUID();
-      const chosen = mirror.supplierById.get(supplier.value);
+      // Proveedor nuevo: si el NIF ya existe se usa ese proveedor; si no, se crea en el mismo lote que la factura.
+      const taxId = supplierTaxId.value.trim() || null;
+      const sameTaxId = supplier.value === NEW_SUPPLIER && taxId ? mirror.suppliers.find((s) => !s.deleted_at && (s.tax_id ?? '').replace(/[\s.-]/g, '').toUpperCase() === taxId.replace(/[\s.-]/g, '').toUpperCase()) : undefined;
+      const supplierId = supplier.value !== NEW_SUPPLIER ? supplier.value : sameTaxId?.id ?? crypto.randomUUID();
+      const chosen = mirror.supplierById.get(supplierId);
       const ops: RowOperation[] = [
-        { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplier.value, invoice_date: date.value, object: object.value.trim(), invoice_number: number.value.trim() || null, source_total: sourceTotal, expense_category: chosen?.default_category ?? null, is_investment: chosen?.default_is_investment ?? false } },
+        ...(supplier.value === NEW_SUPPLIER && !sameTaxId ? [{ op: 'insert', table: SUPPLIERS, id: supplierId, fields: { name: supplierName.value.trim(), tax_id: taxId } } as RowOperation] : []),
+        { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: date.value, object: object.value.trim(), invoice_number: number.value.trim() || null, source_total: sourceTotal, expense_category: chosen?.default_category ?? null, is_investment: chosen?.default_is_investment ?? false } },
         ...staged.map((s, i): RowOperation => ({ op: 'insert', table: INVOICE_FILES, id: crypto.randomUUID(), fields: { invoice_id: invoiceId, file_id: s.marker, original_filename: s.filename, page_order: i + 1, kind: 'original', mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 } })),
       ];
+      if (sameTaxId) toast(`Ya tenías el proveedor ${sameTaxId.name} con ese NIF: la factura queda a su nombre.`);
       if (await commitSafely(client, ops, 'Factura creada en este dispositivo.')) {
         guard.dirtyEditor = false;
         await closeSheet(true);
@@ -545,18 +573,22 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     } catch (err) { error.textContent = describeError(err); }
     save.disabled = false;
   } },
-    field('Proveedor', supplier, suppliers.length ? undefined : 'Primero da de alta el proveedor en Inicio › Proveedores.'),
+    field('Proveedor', supplier, 'Si no está en la lista, elige «+ Nuevo proveedor…» y créalo aquí. Con el JSON de ChatGPT se crea solo.'),
+    supplierFields,
     el('div', { class: 'row2' }, field('Fecha', date), field('Número de factura', number)),
     field('Objeto', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
     field('Total del documento', total),
-    field('PDF o fotos', files, 'Las fotos se reducen en el móvil antes de subirse. Puedes añadir más páginas después.'),
+    field('PDF o fotos', files, 'Las fotos se reducen en el móvil y se guardan como imagen WebP (los PDF, como PDF). Puedes añadir más páginas después.'),
+    chatgpt,
     el('p', { class: 'hint' }, 'Vista previa del nombre: ', el('code', { id: 'namePreview' }, '…')),
     error,
   );
   const preview = () => {
     const chosen = mirror.supplierById.get(supplier.value);
-    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || todayIso(), supplierSlug: chosen?.slug ?? slugify(chosen?.name ?? ''), object: object.value, mime: 'application/pdf' });
+    const name = supplier.value === NEW_SUPPLIER ? supplierName.value : chosen?.name ?? '';
+    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || todayIso(), supplierSlug: chosen?.slug ?? slugify(name), object: object.value, mime: storedMime(files.files?.[0]) });
   };
+  files.addEventListener('change', preview);
   form.addEventListener('input', preview);
   preview();
   openSheet({
@@ -577,13 +609,18 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 /** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
 export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null }
 
-export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill): void {
+export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, prefill?: ExtractionPrefill, options: { files?: File[] } = {}): void {
   const { client } = ctx;
   let document: ImportDocument | null = null;
   let errors: SchemaError[] = [];
   const textarea = el('textarea', { id: 'importJson', rows: '6', placeholder: 'Pega aquí el JSON que devolvió ChatGPT…', spellcheck: 'false' });
   const jsonFile = el('input', { type: 'file', accept: 'application/json,.json', id: 'importFile' });
   const docs = el('input', { type: 'file', accept: ACCEPT_ATTR, multiple: true, id: 'importDocs' });
+  if (options.files?.length) {
+    const transfer = new DataTransfer();
+    for (const file of options.files) transfer.items.add(file);
+    docs.files = transfer.files;
+  }
   const preview = el('div', { id: 'importPreview' });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const confirm = el('button', { class: 'primary', type: 'button', id: 'confirmImport', disabled: true, onclick: () => void submit() }, 'Importar');
@@ -653,7 +690,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       el('p', { class: recalc.within_tolerance === false ? 'cuadre bad' : 'cuadre ok' }, recalc.within_tolerance === false ? `⚠ REVISAR IMPORTES: la factura quedará pendiente de revisión con una diferencia de ${eur(recalc.totals_delta)}.` : '✓ Dentro de la tolerancia de 0,02 €. Quedará pendiente de revisión hasta que la valides.'),
       recalc.warnings.length ? el('ul', { class: 'hint' }, ...recalc.warnings.filter((w) => w.code !== 'TOTALS_MISMATCH').map((w) => el('li', null, w.message))) : null,
       doc.extraction_notes ? el('p', { class: 'hint' }, 'Notas de la extracción: ', doc.extraction_notes) : null,
-      target ? null : field('PDF o fotos del documento', docs, 'Opcional: puedes adjuntarlos ahora o después.'),
+      target ? null : field('PDF o fotos del documento', docs, docs.files && docs.files.length ? (docs.files.length === 1 ? 'El documento que subiste se adjunta a la factura.' : `Los ${docs.files.length} documentos que subiste se adjuntan a la factura.`) : 'Opcional: puedes adjuntarlos ahora o después.'),
     );
   }
 
@@ -739,21 +776,47 @@ export async function extractNext(ctx: ViewContext): Promise<void> {
   await extractInto(ctx, invoice);
 }
 
-/** Prompt de extracción para ChatGPT, copiable desde la app (handoff 05_PROMPT_EXTRACCION_FACTURA.md). */
-function promptPanel(): HTMLElement {
-  const copy = el('button', { class: 'softbtn small', type: 'button', id: 'copyPrompt', onclick: async () => {
-    try {
-      await navigator.clipboard.writeText(EXTRACTION_PROMPT);
-      toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF o las fotos de la factura.');
-    } catch {
-      promptText.hidden = false;
-      promptText.focus();
-      promptText.select();
-      toast('Selecciona el texto y cópialo.');
-    }
-  } }, icon('attach', 16), 'Copiar el prompt para ChatGPT');
+/** Copia el prompt; si el portapapeles no está disponible, muestra el texto seleccionado para copiarlo a mano. */
+async function copyPrompt(promptText: HTMLTextAreaElement): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(EXTRACTION_PROMPT);
+    toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF o las fotos de la factura.');
+  } catch {
+    promptText.hidden = false;
+    promptText.focus();
+    promptText.select();
+    toast('Selecciona el texto y cópialo.');
+  }
+}
+
+function promptTextArea(): HTMLTextAreaElement {
   const promptText = el('textarea', { class: 'prompt-text', readonly: true, rows: '8', hidden: true, 'aria-label': 'Prompt de extracción' });
   promptText.value = EXTRACTION_PROMPT;
+  return promptText;
+}
+
+/**
+ * «Extraer con ChatGPT» junto al documento (incidencia de la aceptación V1): 1) copiar el prompt y adjuntar en ChatGPT (u
+ * otro asistente) esta misma foto o PDF; 2) pegar el JSON que devuelva. Siempre disponible, con o sin extracción automática.
+ */
+function chatgptSteps(id: string, onPaste: () => void): HTMLElement {
+  const promptText = promptTextArea();
+  return el('div', { class: 'chatgpt-steps', id },
+    el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea imágenes')),
+    el('ol', { class: 'steps' },
+      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copyPrompt(promptText) }, icon('attach', 16), '1) Copiar prompt'),
+        el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta esta misma foto o PDF.')),
+      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'paste' }, onclick: onPaste }, icon('upload', 16), '2) Pegar JSON'),
+        el('span', { class: 'hint' }, ' Copia la respuesta de ChatGPT y pégala para importarla.')),
+    ),
+    promptText,
+  );
+}
+
+/** Prompt de extracción para ChatGPT, copiable desde la app (handoff 05_PROMPT_EXTRACCION_FACTURA.md). */
+function promptPanel(): HTMLElement {
+  const promptText = promptTextArea();
+  const copy = el('button', { class: 'softbtn small', type: 'button', id: 'copyPrompt', onclick: () => void copyPrompt(promptText) }, icon('attach', 16), 'Copiar el prompt para ChatGPT');
   return el('details', { class: 'inv-block prompt-block' },
     el('summary', null, el('span', null, '¿Cómo obtengo el JSON?'), el('span', { class: 'hint' }, 'ChatGPT + prompt')),
     el('ol', { class: 'steps' },

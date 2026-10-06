@@ -118,7 +118,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await nav(page, 'Facturas').click();
     await page.getByRole('button', { name: 'Nueva factura' }).click();
     const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
-    await sheet.getByLabel('Proveedor').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
     await sheet.getByLabel('Fecha').fill('2026-10-05');
     await sheet.getByLabel('Objeto').fill('alimentos retiro ejemplo');
     await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'scan factura.pdf', mimeType: 'application/pdf', buffer: PDF });
@@ -563,6 +563,82 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await page.getByRole('link', { name: /Proveedores/ }).click();
     await expect(page.locator('#newSupplier')).toBeHidden();
     await context.setOffline(false);
+  });
+
+  await context.close();
+});
+
+test('Aceptación V1 (Android): proveedor nuevo desde la hoja y «Extraer con ChatGPT» junto al documento', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await login(page);
+  await synced(page);
+
+  await test.step('incidencia 1 · «+ Nuevo proveedor…» en Nueva factura: se crea con la factura, sin ir a Proveedores', async () => {
+    await nav(page, 'Facturas').click();
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await expect(sheet).toContainText('Si no está en la lista, elige «+ Nuevo proveedor…»');
+    await sheet.locator('#newSupplier').selectOption({ label: '+ Nuevo proveedor…' });
+    await expect(sheet.locator('#newSupplierFields')).toBeVisible();
+    await sheet.locator('#saveInvoice').click();
+    await expect(sheet.locator('.formerror')).toContainText('nombre del proveedor nuevo');
+    await sheet.locator('#newSupplierName').fill('Frutas Nuevas SL');
+    await sheet.locator('#newSupplierTaxId').fill('B11111111');
+    await sheet.getByLabel('Fecha').fill('2026-10-06');
+    await sheet.getByLabel('Objeto').fill('fruta');
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.pdf');
+    // Incidencia 2 · en cuanto hay documento aparece el camino manual con ChatGPT
+    await expect(sheet.locator('#chatgptNew')).toBeHidden();
+    // Con una foto, la vista previa lleva la extensión con la que se guardará (WebP), no .pdf
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) });
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.webp');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.pdf');
+    await expect(sheet.locator('#chatgptNew')).toBeVisible();
+    await expect(sheet.locator('#chatgptNew')).toContainText('adjunta esta misma foto o PDF');
+    await sheet.locator('#saveInvoice').click();
+    await expect(ficha(page)).toContainText('Frutas Nuevas SL', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.suppliers').find((s) => s.name === 'Frutas Nuevas SL')).toMatchObject({ tax_id: 'B11111111' });
+  });
+
+  await test.step('incidencia 2 · en la ficha pendiente de datos: copiar prompt y pegar JSON en esa misma factura', async () => {
+    const f = ficha(page);
+    const steps = f.locator('#chatgptInvoice');
+    await expect(steps).toBeVisible();
+    await steps.locator('[data-step="copy"]').click();
+    // Con o sin permiso de portapapeles: o se copia (aviso) o se muestra el texto seleccionado para copiarlo a mano.
+    await expect.poll(async () => (await steps.locator('.prompt-text').isVisible()) || (await page.locator('.toast, [role="status"]').filter({ hasText: 'Prompt copiado' }).count()) > 0).toBeTruthy();
+    await steps.locator('[data-step="paste"]').click();
+    const sheet = ficha(page);
+    await expect(sheet).toContainText('Importar JSON en');
+    const doc = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_date: '2026-10-06', supplier_name: 'Frutas Nuevas SL', supplier_tax_id: 'B11111111', invoice_number: 'V1-1', object: 'fruta' } };
+    await sheet.getByLabel('JSON', { exact: true }).fill(JSON.stringify(doc));
+    await expect(sheet.locator('#importPreview')).toContainText('coincide por NIF');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await expect(ficha(page).locator('#chatgptInvoice')).toHaveCount(0);
+    await synced(page);
+    await closeSheet(page);
+  });
+
+  await test.step('incidencia 2 · en Nueva factura: «Pegar JSON» importa con los documentos ya subidos', async () => {
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'ticket.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await sheet.locator('#chatgptNew [data-step="paste"]').click();
+    const importSheet = ficha(page);
+    await expect(importSheet).toContainText('Importar JSON de ChatGPT');
+    const doc = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_date: '2026-10-06', supplier_name: 'Frutas Nuevas SL', supplier_tax_id: 'B11111111', invoice_number: 'V1-2', object: 'fruta segunda' } };
+    await importSheet.getByLabel('JSON', { exact: true }).fill(JSON.stringify(doc));
+    await expect(importSheet.locator('#importPreview')).toContainText('El documento que subiste se adjunta a la factura');
+    await importSheet.locator('#confirmImport').click();
+    await expect(ficha(page)).toContainText('Importada, pendiente de revisar', { timeout: 20_000 });
+    await synced(page);
+    const created = api.rows('invoices.invoices').find((i) => i.invoice_number === 'V1-2')!;
+    expect(api.rows('invoices.invoice_files').filter((f) => f.invoice_id === created.id).map((f) => f.original_filename)).toEqual(['ticket.pdf']);
   });
 
   await context.close();
