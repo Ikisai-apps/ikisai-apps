@@ -222,8 +222,9 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(f.locator('#invoiceLines .line-desc')).toHaveText(['Arroz', 'Tomate pera'], { timeout: 20_000 });
     await synced(page);
     const invoiceId = api.rows('invoices.invoices').find((i) => i.supplier_id)!.id;
-    const positions = api.rows('invoices.invoice_lines').filter((l) => l.invoice_id === invoiceId && !l.deleted_at).sort((a, b) => Number(a.position) - Number(b.position)).map((l) => `${l.position}:${l.description}`);
-    expect(positions).toEqual(['0:Arroz', '1:Tomate pera']);
+    // El orden se ve al momento en el dispositivo; en el servidor llega con el siguiente envío: se espera a que esté.
+    const positions = () => api.rows('invoices.invoice_lines').filter((l) => l.invoice_id === invoiceId && !l.deleted_at).sort((a, b) => Number(a.position) - Number(b.position)).map((l) => `${l.position}:${l.description}`);
+    await expect.poll(positions, { timeout: 20_000 }).toEqual(['0:Arroz', '1:Tomate pera']);
     // Quitamos el artículo añadido para que el resto del recorrido (asignaciones, cuadre) siga igual, y revalidamos.
     await f.getByRole('button', { name: 'Editar Arroz' }).click();
     await f.getByRole('button', { name: 'Quitar' }).click();
