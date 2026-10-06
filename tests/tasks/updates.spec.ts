@@ -11,7 +11,7 @@ import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
 declare let state: any;
-declare const closeSheet: any, openTaskEditor: any, navigateView: any, startInlineProject: any, startInlineNew: any, setMode: any, render: any, save: any, syncNow: any;
+declare const closeSheet: any, openTaskEditor: any, navigateView: any, startInlineProject: any, startInlineNew: any, setMode: any, render: any, save: any, syncNow: any, openPalette: any, closePalette: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -73,6 +73,27 @@ test('actualización del service worker: borradores y colas vetan la activación
     expect(await waiting(first)).toBe(true);
     await first.locator('.inlineedit').press('Escape');
     await expect(first.locator('.inlineedit')).toHaveCount(0);
+  });
+
+  await test.step('[2b] la paleta abierta y una selección múltiple también bloquean la actualización', async () => {
+    await first.evaluate(() => openPalette());
+    await first.locator('#paletteInput').fill('pint');
+    await clickUpdate(first);
+    await first.waitForTimeout(300); // comprobar que NO ocurre nada
+    await expect(first.locator('#paletteInput')).toHaveValue('pint');
+    expect(await waiting(first)).toBe(true);
+    await first.evaluate(() => closePalette());
+
+    await first.evaluate(() => { state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
+    await first.locator('#batchToggle').click();
+    await first.locator('.selectbox').first().click();
+    await expect(first.locator('.task.selected')).toHaveCount(1);
+    await clickUpdate(first);
+    await first.waitForTimeout(300); // comprobar que NO ocurre nada
+    await expect(first.locator('.task.selected')).toHaveCount(1);
+    expect(await waiting(first)).toBe(true);
+    await first.locator('#batchToggle').click();
+    await expect(first.locator('.task.selected')).toHaveCount(0);
   });
 
   await test.step('[3] otra pestaña con un editor abierto veta la activación coordinada', async () => {

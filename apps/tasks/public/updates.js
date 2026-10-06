@@ -2,7 +2,10 @@
 if ('serviceWorker' in navigator && isSecureContext) {
   let registration, updateLocked=false, unlockTimer;
   function unlock(){updateLocked=false;Sync.updateLocked=false;clearTimeout(unlockTimer);}
-  function safeToUpdate(){return !!Sync.record&&!Sync.busy&&!Sync.record.queue.length&&!Sync.record.conflict&&!Sync.record.failure&&!document.querySelector('.inlineedit')&&!document.getElementById('sheetBack')?.classList.contains('show');}
+  /* Algo a medias en esta pestaña: un campo en línea, una hoja abierta, la paleta, una selección múltiple o un campo de texto
+     con el foco (la búsqueda no cuenta: no es un borrador). */
+  function draftInProgress(){const active=document.activeElement,typing=!!active&&active.id!=='searchInput'&&(active.tagName==='TEXTAREA'||active.isContentEditable||active.tagName==='INPUT'&&!['checkbox','radio','button','submit','file','range','color'].includes(active.type));return typing||!!document.querySelector('.inlineedit,#paletteInput,.task.selected')||!!document.getElementById('sheetBack')?.classList.contains('show');}
+  function safeToUpdate(){return !!Sync.record&&!Sync.busy&&!Sync.record.queue.length&&!Sync.record.conflict&&!Sync.record.failure&&!draftInProgress();}
   const originalSyncMode=setMode;
   setMode=function(mode){originalSyncMode(mode);showUpdate();};
   function showUpdate(){
@@ -22,7 +25,8 @@ if ('serviceWorker' in navigator && isSecureContext) {
     updateLocked=true;Sync.updateLocked=true;
     await Sync.chain;
     const ready=safeToUpdate();
-    if(!ready)unlock();else unlockTimer=setTimeout(unlock,8000);
+    // Un solo temporizador de desbloqueo a la vez: si llega otra comprobación, el anterior no debe soltar el bloqueo antes de tiempo.
+    clearTimeout(unlockTimer);if(!ready)unlock();else unlockTimer=setTimeout(unlock,8000);
     event.source?.postMessage({type:'UPDATE_READY',requestId:event.data.requestId,ready});
   });
   // Prevent new user edits during the short, coordinated activation handshake.
