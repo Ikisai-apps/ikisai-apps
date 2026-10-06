@@ -4,8 +4,8 @@
  * Solo para pruebas de extremo a extremo del frontend; no sustituye a la suite de conformidad de packages/test-kit.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
-import { TABLES, WRITABLE, normalizedFilename, recalculate, slugify } from '../../packages/domain-invoices/src/index.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import { TABLES, WRITABLE, normalizedFilename, proposeImport, recalculate, slugify, validateImportDocument, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 export interface FakeRow {
   id: string;
@@ -38,9 +38,30 @@ interface FakeOperation {
   fields?: Record<string, unknown>;
 }
 
+export interface FakeTarget {
+  app: 'tasks' | 'food' | 'booking';
+  kind: string;
+  id: string;
+  label: string;
+  path?: string[];
+  revision: number;
+}
+
+export interface FakeUpload {
+  id: string;
+  filename: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  bytes: Buffer | null;
+  status: 'pending' | 'verified' | 'missing';
+}
+
 export interface FakeApiOptions {
-  users?: Array<{ email: string; password: string; displayName?: string }>;
+  users?: Array<{ email: string; password: string; displayName?: string; role?: 'owner' | 'editor' | 'reader' }>;
   tables?: Record<string, string[]>;
+  /** Destinos conocidos de Tareas y Cocina (la Edge real los resuelve con el token del usuario). */
+  targets?: FakeTarget[];
 }
 
 export interface FakeApi {
@@ -50,6 +71,12 @@ export interface FakeApi {
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
+  /** Archivos subidos (tickets, bytes y verificación). */
+  uploads(): FakeUpload[];
+  /** La próxima verificación de subida falla con FILE_MISMATCH (escenario O6). */
+  failNextVerify(): void;
+  /** Destinos conocidos; se puede quitar uno para simular que desapareció (escenario O5). */
+  targets: FakeTarget[];
   close(): Promise<void>;
 }
 
@@ -69,7 +96,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const data = new Map<string, Map<string, FakeRow>>(Object.keys(tables).map((t) => [t, new Map()]));
   const changes: FakeChange[] = [];
   const receipts = new Map<string, { digest: string; result: unknown }>();
-  const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string }>();
+  const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string; role: 'owner' | 'editor' | 'reader' }>();
+  const uploads = new Map<string, FakeUpload>();
+  const targets: FakeTarget[] = [...(options.targets ?? [])];
+  let failVerify = false;
   const requests: Array<{ method: string; path: string }> = [];
   let cursor = 0;
 
@@ -97,7 +127,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const token = `tok-${randomUUID()}`;
     const refreshToken = `ref-${randomUUID()}`;
     const user = users.find((u) => u.email === email)!;
-    sessions.set(token, { userId: userIds.get(email)!, email, displayName: user.displayName ?? email, refreshToken });
+    sessions.set(token, { userId: userIds.get(email)!, email, displayName: user.displayName ?? email, refreshToken, role: user.role ?? 'owner' });
     return { token, refreshToken, expiresAt: Math.floor(Date.now() / 1000) + 3600, expiresIn: 3600 };
   }
 
@@ -108,13 +138,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return session;
   }
 
-  function bootstrap(session: { userId: string; displayName: string }) {
+  function bootstrap(session: { userId: string; displayName: string; role: string }) {
     return {
       app: 'invoices',
       cursor,
       serverTime: nowIso(),
       release: 'test',
-      membership: { role: 'owner', scopes: null, revision: 1 },
+      membership: { role: session.role, scopes: null, revision: 1 },
       profile: { userId: session.userId, displayName: session.displayName, kind: 'human' },
       tables: Object.entries(tables).map(([table, writableColumns]) => ({ table, writableColumns, readable: true, writable: true })),
     };
@@ -124,7 +154,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return { cursor: nextCursor, seq, at: nowIso(), actorId, requestId, table, id: row.id, op, revision: row.revision, after: { ...row } };
   }
 
-  function commit(body: any, actorId: string) {
+  function commit(body: any, actorId: string, role: string = 'owner') {
+    if (role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
     if (typeof body?.requestId !== 'string') throw new Fault(422, 'INVALID_OPERATION', 'requestId inválido.');
     if (!Array.isArray(body.operations)) throw new Fault(422, 'INVALID_OPERATION', 'operations debe ser una lista.');
     const digest = JSON.stringify(body.operations);
@@ -145,9 +176,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const results: unknown[] = [];
     const batchChanges: FakeChange[] = [];
     const touchedInvoices = new Set<string>();
+    const childTouched = new Set<string>();
+    const sensitiveChanged = new Set<string>();
+    const validatedNow = new Set<string>();
+    const SENSITIVE = ['invoice_date', 'object', 'supplier_id', 'invoice_number', 'source_total', 'expense_category', 'is_investment'];
     (body.operations as FakeOperation[]).forEach((op, index) => {
       if (op.op === 'call') {
-        const result = runProcedure(op as FakeOperation & { procedure?: string; args?: Record<string, unknown> }, index, stagedTable, actorId, nextCursor, body.requestId, batchChanges, touchedInvoices);
+        const result = runProcedure(op as FakeOperation & { procedure?: string; args?: Record<string, unknown> }, index, stagedTable, actorId, nextCursor, body.requestId, batchChanges, validatedNow);
+        for (const id of validatedNow) touchedInvoices.add(id);
         results.push({ op: 'call', procedure: (op as { procedure?: string }).procedure, result });
         return;
       }
@@ -159,6 +195,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       for (const key of Object.keys(fields)) if (!allowed.includes(key)) throw new Fault(422, 'INVALID_FIELDS', `Campo no permitido: ${key}`, { index, field: key });
       const now = nowIso();
       let row = store.get(op.id);
+      if (op.op === 'insert' || op.op === 'update') checkDomain(op.table, fields, index);
       if (op.op === 'insert') {
         if (row) throw new Fault(422, 'INVALID_OPERATION', 'La fila ya existe.', { index });
         if (op.table === 'invoices.suppliers' && (typeof fields.name !== 'string' || !fields.name.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
@@ -185,6 +222,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       batchChanges.push(record(op.table, op.op, row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
       const invoiceId = op.table === 'invoices.invoices' ? op.id : typeof row.invoice_id === 'string' ? row.invoice_id : null;
       if (invoiceId) touchedInvoices.add(invoiceId);
+      if (invoiceId && ['invoices.invoice_lines', 'invoices.tax_lines'].includes(op.table)) childTouched.add(invoiceId);
+      if (invoiceId && op.table === 'invoices.invoice_files' && row.kind === 'original') childTouched.add(invoiceId);
+      if (op.table === 'invoices.invoices' && op.op === 'update' && Object.keys(fields).some((k) => SENSITIVE.includes(k))) sensitiveChanged.add(op.id);
     });
     // Hook de invariantes simplificado: recalcula totales y estado automático (misma regla que invoices.check_invariants).
     for (const invoiceId of touchedInvoices) {
@@ -197,6 +237,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       let status = inv.status as string;
       let reason = inv.review_reason as string | null;
       if (status === 'pendiente_datos' && (lines.length || taxes.length)) { status = 'pendiente_revision'; reason = reason ?? 'DATOS_INTRODUCIDOS'; }
+      if (status === 'validada' && !validatedNow.has(invoiceId) && (childTouched.has(invoiceId) || sensitiveChanged.has(invoiceId))) { status = 'pendiente_revision'; reason = 'EDITADA_TRAS_VALIDAR'; }
       if (status === 'pendiente_revision') {
         if (r.within_tolerance === false) { if (!reason || ['IMPORTADA', 'DATOS_INTRODUCIDOS', 'IMPORTES_CORREGIDOS'].includes(reason)) reason = 'REVISAR IMPORTES'; }
         else if (reason === 'REVISAR IMPORTES') reason = 'IMPORTES_CORREGIDOS';
@@ -216,6 +257,23 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const result = { cursor, requestId: body.requestId, results, changes: batchChanges };
     receipts.set(`${actorId}:${body.requestId}`, { digest, result });
     return result;
+  }
+
+  /** Lo que hace la Edge en beforeCommit: documentos verificados (fija mime/tamaño/hash) y destinos resueltos (fija etiqueta y revisión). */
+  function checkDomain(table: string, fields: Record<string, unknown>, index: number): void {
+    if (table === 'invoices.invoice_files' && 'file_id' in fields) {
+      const up = typeof fields.file_id === 'string' ? uploads.get(fields.file_id) : undefined;
+      if (!up) throw new Fault(422, 'INVALID_FILE', 'El documento no existe o no pertenece a Invoices.', { index, field: 'file_id' });
+      if (up.status !== 'verified') throw new Fault(422, 'INVALID_FILE', 'El documento todavía no se ha subido por completo.', { index, field: 'file_id' });
+      fields.mime_type = up.mime; fields.size_bytes = up.size; fields.sha256 = up.sha256;
+    }
+    if (table === 'invoices.allocations' && 'target_app' in fields && fields.target_app !== 'general') {
+      if (fields.target_app === 'booking') throw new Fault(422, 'TARGET_APP_NOT_AVAILABLE', 'Ese tipo de destino llegará en la fase 2.', { index });
+      const t = targets.find((x) => x.app === fields.target_app && x.kind === fields.target_kind && x.id === fields.target_id);
+      if (!t) throw new Fault(422, 'TARGET_NOT_FOUND', 'El destino ya no existe en Tareas.', { index, app: fields.target_app, kind: fields.target_kind, id: fields.target_id });
+      fields.target_label = t.path?.length ? `${t.path.join(' › ')} › ${t.label}` : t.label;
+      fields.target_revision = t.revision;
+    }
   }
 
   function applyInsertDefaults(table: string, row: FakeRow, staged: Map<string, Map<string, FakeRow>>): void {
@@ -258,6 +316,71 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   /** Procedimientos mínimos (validate, annul): la lógica real vive en SQL; aquí basta para el humo del frontend. */
   function runProcedure(op: FakeOperation & { procedure?: string; args?: Record<string, unknown> }, index: number, stagedTable: (t: string) => Map<string, FakeRow>, actorId: string, nextCursor: number, requestId: string, batchChanges: FakeChange[], touched: Set<string>): unknown {
     const args = op.args ?? {};
+    const insertRow = (table: string, id: string, fields: Record<string, unknown>): FakeRow => {
+      const now = nowIso();
+      const allowed = tables[table]!;
+      checkDomain(table, fields, index);
+      const row: FakeRow = { id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
+      for (const column of allowed) row[column] = fields[column] ?? null;
+      applyInsertDefaults(table, row, new Map(Object.keys(tables).map((t) => [t, stagedTable(t)])));
+      stagedTable(table).set(id, row);
+      batchChanges.push(record(table, 'insert', row, nextCursor, batchChanges.length + 1, requestId, actorId));
+      return row;
+    };
+    if (op.procedure === 'invoices.import_v1') {
+      const validation = validateImportDocument(args.document);
+      if (!validation.ok) throw new Fault(422, 'IMPORT_INVALID', 'El JSON no cumple el formato ikisai.invoice.v1.', { index, errors: validation.errors });
+      const doc: ImportDocument = validation.document;
+      const supplierArg = (args.supplier ?? {}) as { mode?: string; id?: string; slug?: string | null };
+      const suppliers = stagedTable('invoices.suppliers');
+      let supplier: FakeRow | undefined;
+      if (supplierArg.mode === 'create') {
+        const tax = doc.invoice.supplier_tax_id ? doc.invoice.supplier_tax_id.toUpperCase().replace(/[\s.-]/g, '') : null;
+        const clash = tax ? Array.from(suppliers.values()).find((s) => !s.deleted_at && String(s.tax_id ?? '').toUpperCase().replace(/[\s.-]/g, '') === tax) : undefined;
+        if (clash) throw new Fault(409, 'SUPPLIER_TAX_ID_EXISTS', 'Ya existe un proveedor con ese NIF.', { supplier_id: clash.id });
+        supplier = insertRow('invoices.suppliers', String((args.ids as { supplier?: string })?.supplier ?? randomUUID()), { name: doc.invoice.supplier_name, tax_id: doc.invoice.supplier_tax_id ?? null, slug: supplierArg.slug ?? slugify(doc.invoice.supplier_name), aliases: [] });
+      } else {
+        supplier = suppliers.get(String(supplierArg.id));
+        if (!supplier || supplier.deleted_at) throw new Fault(404, 'NOT_FOUND', 'El proveedor no existe.', { index });
+      }
+      const invoices = stagedTable('invoices.invoices');
+      const invoiceId = String(args.invoice_id);
+      const existing = invoices.get(invoiceId);
+      if (existing && existing.status !== 'pendiente_datos') throw new Fault(409, 'INVOICE_NOT_IMPORTABLE', 'Esta factura ya tiene datos; importa sobre una factura vacía.', { invoice_id: invoiceId });
+      const number = doc.invoice.invoice_number?.trim() || null;
+      if (number) {
+        const dup = Array.from(invoices.values()).find((i) => !i.deleted_at && i.status !== 'anulada' && i.supplier_id === supplier!.id && i.id !== invoiceId && String(i.invoice_number ?? '').toLowerCase() === number.toLowerCase());
+        if (dup) throw new Fault(409, 'DUPLICATE_INVOICE', 'Ya existe una factura de este proveedor con ese número.', { invoice_id: dup.id, code: dup.code });
+      }
+      const sha = String(args.document_sha256 ?? '');
+      const dupImport = Array.from(invoices.values()).find((i) => !i.deleted_at && i.status !== 'anulada' && i.id !== invoiceId && i.import_sha256 === sha);
+      if (dupImport) throw new Fault(409, 'DUPLICATE_IMPORT', 'Este JSON ya se importó.', { invoice_id: dupImport.id, code: dupImport.code });
+      const overrides = (args.invoice ?? {}) as Record<string, unknown>;
+      const proposal = proposeImport(doc, supplier as never, overrides as never);
+      const invoiceFields: Record<string, unknown> = {
+        supplier_id: supplier.id, invoice_date: proposal.invoice_date, object: proposal.object, invoice_number: number, currency: 'EUR',
+        expense_category: proposal.expense_category, is_investment: proposal.is_investment, deductibility: proposal.deductibility, status: 'pendiente_revision', review_reason: proposal.review_reason,
+        source_total: doc.document_totals.total, source: 'import_v1', import_sha256: sha, notes: proposal.notes,
+        import_meta: { overall_confidence: doc.overall_confidence ?? null, extraction_notes: doc.extraction_notes ?? null, document_totals: doc.document_totals, warnings: proposal.recalculation.warnings.map((w) => w.code) },
+      };
+      let inv: FakeRow;
+      if (existing) {
+        Object.assign(existing, invoiceFields); existing.revision += 1; existing.updated_at = nowIso();
+        batchChanges.push(record('invoices.invoices', 'update', existing, nextCursor, batchChanges.length + 1, requestId, actorId));
+        inv = existing;
+      } else {
+        inv = insertRow('invoices.invoices', invoiceId, invoiceFields);
+      }
+      const ids = (args.ids ?? {}) as { lines?: string[]; tax_lines?: string[]; files?: string[] };
+      doc.lines.forEach((l, i) => insertRow('invoices.invoice_lines', ids.lines?.[i] ?? randomUUID(), {
+        invoice_id: inv.id, position: i, description: l.description, quantity: l.quantity ?? null, unit: l.unit ?? null, unit_price: l.unit_price ?? null, discount_amount: l.discount_amount ?? 0,
+        net_amount: l.net_amount, vat_rate: l.vat_rate ?? null, vat_amount: l.vat_amount ?? null, gross_amount: l.gross_amount ?? null, item_type: l.suggested_item_type ?? null, match_name: l.suggested_match_name ?? null, confidence: l.confidence ?? null, notes: l.notes ?? null,
+      }));
+      proposal.recalculation.taxes.forEach((t, i) => insertRow('invoices.tax_lines', ids.tax_lines?.[i] ?? randomUUID(), { invoice_id: inv.id, position: i, tax_type: t.tax_type, rate: t.rate ?? null, taxable_base: t.taxable_base ?? null, amount: t.amount }));
+      ((args.files ?? []) as Array<{ file_id: string; original_filename: string; page_order: number }>).forEach((f, i) => insertRow('invoices.invoice_files', ids.files?.[i] ?? randomUUID(), { invoice_id: inv.id, file_id: f.file_id, original_filename: f.original_filename, page_order: f.page_order ?? i + 1, kind: 'original' }));
+      touched.add(inv.id);
+      return { invoice_id: inv.id, code: inv.code, status: inv.status, review_reason: inv.review_reason, supplier_id: supplier.id, warnings: proposal.recalculation.warnings.map((w) => w.code), recalculation: proposal.recalculation };
+    }
     const inv = stagedTable('invoices.invoices').get(String(args.invoice_id));
     if (op.procedure === 'invoices.validate') {
       if (!inv) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
@@ -308,6 +431,25 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (!user) throw new Fault(401, 'LOGIN_FAILED', 'Correo o contraseña incorrectos.');
         return json(res, 200, issueTokens(user.email));
       }
+      const putUpload = path.match(/^_upload\/([^/]+)$/);
+      if (putUpload && method === 'PUT') {
+        const up = uploads.get(putUpload[1]!);
+        if (!up) throw new Fault(404, 'FILE_NOT_FOUND', 'Ticket desconocido.');
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(chunk as Buffer);
+        up.bytes = Buffer.concat(chunks);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+        return;
+      }
+      const getFile = path.match(/^_file\/([^/]+)$/);
+      if (getFile && method === 'GET') {
+        const up = uploads.get(getFile[1]!);
+        if (!up?.bytes) throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
+        res.writeHead(200, { 'Content-Type': up.mime, 'Content-Length': String(up.bytes.length) });
+        res.end(up.bytes);
+        return;
+      }
       if (path === 'auth/refresh' && method === 'POST') {
         const body = await readJson(req);
         const entry = Array.from(sessions.entries()).find(([, s]) => s.refreshToken === body.refreshToken);
@@ -343,7 +485,46 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const last = items.length ? items[items.length - 1]!.cursor : after;
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
-      if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId, session.role));
+      if (path === 'uploads' && method === 'POST') {
+        const body = await readJson(req);
+        const id = randomUUID();
+        uploads.set(id, { id, filename: String(body.filename), mime: String(body.mime), size: Number(body.size), sha256: String(body.sha256), bytes: null, status: 'pending' });
+        return json(res, 200, { id, path: `invoices/2026/${id}/${body.filename}`, uploadUrl: `/api/v1/_upload/${id}`, method: 'PUT', headers: { 'Content-Type': String(body.mime) }, expiresAt: new Date(Date.now() + 3600_000).toISOString(), duplicateOf: null });
+      }
+      const verify = path.match(/^uploads\/([^/]+)\/verify$/);
+      if (verify && method === 'POST') {
+        const up = uploads.get(verify[1]!);
+        if (!up) throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
+        if (!up.bytes) throw new Fault(404, 'FILE_NOT_FOUND', 'El archivo no se ha subido todavía.');
+        const digest = createHash('sha256').update(up.bytes).digest('hex');
+        if (failVerify || digest !== up.sha256) {
+          failVerify = false;
+          up.status = 'missing';
+          throw new Fault(422, 'FILE_MISMATCH', 'El archivo subido no coincide con lo declarado.', { expected: up.sha256, actual: digest });
+        }
+        up.status = 'verified';
+        return json(res, 200, { id: up.id, sha256: up.sha256, size: up.size, verified: true, hashVerified: true });
+      }
+      const file = path.match(/^files\/([^/]+)$/);
+      if (file && method === 'GET') {
+        const up = uploads.get(file[1]!);
+        if (!up || up.status !== 'verified') throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
+        return json(res, 200, { id: up.id, url: `/api/v1/_file/${up.id}`, expiresAt: new Date(Date.now() + 600_000).toISOString(), filename: up.filename, mime: up.mime, size: up.size });
+      }
+      const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
+      if (targetsList && method === 'GET') {
+        if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
+        if (targetsList[1] === 'booking') throw new Fault(422, 'TARGET_APP_NOT_AVAILABLE', 'Ese tipo de destino llegará en la fase 2.');
+        const q = (url.searchParams.get('q') ?? '').toLowerCase();
+        return json(res, 200, { items: targets.filter((t) => t.app === targetsList[1] && (!q || t.label.toLowerCase().includes(q))).map((t) => ({ ...t, code: null, archived: false, path: t.path ?? [] })) });
+      }
+      const targetOne = path.match(/^targets\/(tasks|food|booking)\/([^/]+)\/([^/]+)$/);
+      if (targetOne && method === 'GET') {
+        const t = targets.find((x) => x.app === targetOne[1] && x.kind === targetOne[2] && x.id === targetOne[3]);
+        if (!t) throw new Fault(404, 'TARGET_NOT_FOUND', 'El destino ya no existe en Tareas.');
+        return json(res, 200, { ...t, code: null, archived: false, path: t.path ?? [] });
+      }
       throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
     } catch (error) {
       if (error instanceof Fault) return json(res, error.status, { error: { code: error.code, message: error.message, details: error.details } });
@@ -372,6 +553,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       return row;
     },
     requests,
+    uploads: () => Array.from(uploads.values()),
+    failNextVerify: () => { failVerify = true; },
+    targets,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }

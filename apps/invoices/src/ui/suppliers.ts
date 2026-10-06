@@ -8,6 +8,8 @@ interface FormValues {
   name: string;
   tax_id: string;
   default_category: string;
+  default_is_investment: boolean;
+  aliases: string;
   notes: string;
 }
 
@@ -16,12 +18,14 @@ function valuesOf(row: SupplierRow | null): FormValues {
     name: row?.name ?? '',
     tax_id: row?.tax_id ?? '',
     default_category: row?.default_category ?? '',
+    default_is_investment: row?.default_is_investment ?? false,
+    aliases: (row?.aliases ?? []).join(', '),
     notes: row?.notes ?? '',
   };
 }
 
 function sameValues(a: FormValues, b: FormValues): boolean {
-  return a.name === b.name && a.tax_id === b.tax_id && a.default_category === b.default_category && a.notes === b.notes;
+  return a.name === b.name && a.tax_id === b.tax_id && a.default_category === b.default_category && a.default_is_investment === b.default_is_investment && a.aliases === b.aliases && a.notes === b.notes;
 }
 
 function toFields(values: FormValues): Record<string, unknown> {
@@ -29,6 +33,8 @@ function toFields(values: FormValues): Record<string, unknown> {
     name: values.name.trim(),
     tax_id: values.tax_id.trim() || null,
     default_category: values.default_category || null,
+    default_is_investment: values.default_is_investment,
+    aliases: values.aliases.split(',').map((a) => a.trim()).filter(Boolean).slice(0, 20),
     notes: values.notes.trim() || null,
   };
 }
@@ -128,8 +134,10 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     );
     const notes = el('textarea', { id: 'f-notes', name: 'notes', rows: '3' });
     notes.value = initial.notes;
+    const aliases = el('input', { id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
+    const investment = el('input', { id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
 
-    const current = (): FormValues => ({ name: name.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, notes: notes.value });
+    const current = (): FormValues => ({ name: name.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, default_is_investment: investment.checked, aliases: aliases.value, notes: notes.value });
     const isDirty = () => !sameValues(current(), initial);
     const refreshDirty = () => {
       const dirty = isDirty();
@@ -165,6 +173,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
       el('label', { class: 'field' }, el('span', null, 'NIF'), taxId, el('span', { class: 'hint' }, 'Opcional. Hasta 32 caracteres.')),
       el('label', { class: 'field' }, el('span', null, 'Categoría por defecto'), category),
+      el('label', { class: 'check' }, investment, el('span', null, 'Sus facturas suelen ser inversión')),
+      el('label', { class: 'field' }, el('span', null, 'Alias'), aliases, el('span', { class: 'hint' }, 'Otros nombres con los que aparece en las facturas, separados por comas. Sirven para emparejar la importación.')),
       el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
       error,
       row ? el('div', { class: 'zone' },
@@ -208,7 +218,9 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
 function changedFields(fields: Record<string, unknown>, row: SupplierRow): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
-    if ((row[key] ?? null) !== (value ?? null)) out[key] = value;
+    const before = row[key] ?? null;
+    const same = Array.isArray(value) ? JSON.stringify(before ?? []) === JSON.stringify(value) : before === (value ?? null);
+    if (!same) out[key] = value;
   }
   return Object.keys(out).length ? out : fields;
 }

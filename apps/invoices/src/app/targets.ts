@@ -71,3 +71,31 @@ export const KIND_LABELS: Record<string, string> = {
 export function targetLabel(t: { path?: string[]; label: string }): string {
   return t.path?.length ? `${t.path.join(' › ')} › ${t.label}` : t.label;
 }
+
+export type TargetFreshness = 'ok' | 'changed' | 'missing' | 'unknown';
+
+const freshnessCache = new Map<string, { at: number; value: TargetFreshness }>();
+const FRESHNESS_TTL = 5 * 60_000;
+
+/**
+ * Obsolescencia por comparación (API.md §7.3): compara la revisión guardada con la actual del destino.
+ * Solo con red; los resultados se guardan unos minutos para no consultar en cada repintado.
+ */
+export async function checkTargetFreshness(client: SyncClient, allocation: { target_app: string; target_kind: string; target_id: string | null; target_revision: number | null }): Promise<TargetFreshness> {
+  if (allocation.target_app === 'general' || !allocation.target_id || !navigator.onLine) return 'unknown';
+  const key = `${allocation.target_app}:${allocation.target_kind}:${allocation.target_id}`;
+  const cached = freshnessCache.get(key);
+  if (cached && Date.now() - cached.at < FRESHNESS_TTL) return cached.value;
+  let value: TargetFreshness = 'unknown';
+  try {
+    const current = await resolveTarget(client, allocation.target_app as TargetChoice['app'], allocation.target_kind, allocation.target_id);
+    value = current.archived ? 'missing' : allocation.target_revision !== null && current.revision !== null && current.revision !== allocation.target_revision ? 'changed' : 'ok';
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code === 'TARGET_NOT_FOUND' || code === 'NOT_FOUND') value = 'missing';
+  }
+  freshnessCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+export const FRESHNESS_LABELS: Record<TargetFreshness, string> = { ok: '', changed: 'destino cambiado', missing: 'destino desaparecido', unknown: '' };
