@@ -59,4 +59,4 @@ projectView=function(){const html=projectViewBeforeMoney(),p=project(),block=p?m
 const rowsBeforeMoney=taskRow;
 taskRow=function(t,p=project(),context=false){const html=rowsBeforeMoney(t,p,context);return t.cost?html.replace('</button><button class="taskmenu"',`<span class="cost">${money(t.cost)}</span></button><button class="taskmenu"`):html};
 const bindBeforeExtras=bind;
-bind=function(){bindBeforeExtras();document.querySelectorAll('#aliasBtn').forEach(b=>b.onclick=()=>{closeNavigation();aliasSheet()});document.querySelector('[data-quick-mine]')?.addEventListener('click',showMyTasks)};
+bind=function(){bindBeforeExtras();document.querySelectorAll('#aliasBtn').forEach(b=>b.onclick=()=>{closeNavigation();aliasSheet()});const mine=document.querySelector('[data-quick-mine]');if(mine)mine.onclick=showMyTasks};

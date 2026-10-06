@@ -1,52 +1,96 @@
-/* Cáscara con el kit común, paso 1 (docs/tasks/UI_KIT.md §6): barra, áreas, vistas guardadas, menú agrupado y navegación
-   inferior se siguen pintando como HTML en cada render(), ahora con las piezas sin estado del kit (IkisaiKit.renderWorkspaceBar,
-   renderAreaTabs, renderQuickViews, renderNavMenu, renderTabBar) dentro de un envoltorio `.ikisai-kit` con `display:contents`
-   (no crea caja: la barra sigue siendo pegajosa respecto a #app). Sustituye a la cadena de envoltorios de `topbar` y
-   `bottomnav` (index.html, navigation-ui.js, scope-ui.js, filters-ui.js, cards-ui.js, extras-ui.js, theme-ui.js, home-ui.js y
-   los inertes de access-ui.js, accounts-ui.js, csv-ui.js, features.js, history-ui.js), que se retiran.
-   Ganchos conservados: .brandrow con .spacer (setMode inserta #syncBadge antes; updates.js añade #appUpdate al final),
-   #moreBtn (aria-controls="kebab", aria-expanded), .tabstrip con button.tabpill[data-tab] (.active, .colored), [data-general-area],
-   [data-areas-tool], .tabcount, .viewstrip con #savedViews, [data-quick-view], [data-quick-mine] (.viewpill.mine), nav#kebab
-   (.show), #menuBackdrop (.show), #closeMenu, .menuheader con #aliasBtn y #themeToggle, details.menugroup[data-menu-group],
-   button.menuitem[data-menu-view|data-action] con .menuicon, nav.bottomnav(.five) con button.navbtn[data-nav] y #filterNav.
-   El grupo «Organización» se pinta oculto (`hidden`): sus etiquetas ya están en Trabajo (theme-ui.js) y las pruebas lo esperan.
-   Los manejadores siguen en bind() de cada módulo. */
+/* Cáscara con el kit común, con estado (docs/tasks/UI_KIT.md §6 y ciclo de pintado acordado en la ronda 19).
+   La cáscara (barra con áreas y vistas guardadas, menú agrupado y navegación inferior) se monta UNA vez dentro de #app y
+   render() solo repinta #view (main() + fab()). shellUpdate(), llamada al principio de cada render():
+   - monta la cáscara si no existe (#app lo sustituyen el arranque de boot(), «Primera área», la de «sin áreas compartidas» de
+     enterSession y la entrada al cerrar sesión);
+   - reconcilia la tira de áreas (crear, renombrar, recolorear, borrar o restaurar llega por refreshModel() → render()) y la de
+     vistas guardadas, conservando su desplazamiento horizontal;
+   - reconstruye los grupos del menú solo si cambian navigationGroups(), el actor o sus permisos (cambio de rol en caliente,
+     también los elementos de agentes que dependen de isAdministrator()); si no, solo marca el elemento activo y la nota.
+     El menú abierto, los grupos plegados (expandedMenuGroups), #syncBadge y #appUpdate en .brandrow se conservan;
+   - marca la vista activa en la navegación inferior.
+   navigateView() sigue cerrando el menú al navegar (closeNavigation); en escritorio el menú lateral siempre está visible.
+   Ganchos conservados del paso 1: .brandrow con .spacer, #moreBtn (aria-controls="kebab", aria-expanded), .tabstrip con
+   button.tabpill[data-tab] (.active, .colored), [data-general-area], [data-areas-tool], .tabcount, .viewstrip con #savedViews,
+   [data-quick-view], [data-quick-mine] (.viewpill.mine), nav#kebab (.show), #menuBackdrop (.show), #closeMenu, .menuheader con
+   #aliasBtn y #themeToggle, details.menugroup[data-menu-group], button.menuitem[data-menu-view|data-action] con .menuicon,
+   nav.bottomnav(.five) con button.navbtn[data-nav] y #filterNav. «Organización» se pinta oculto (hidden), como antes.
+   Los manejadores siguen en bind() de cada módulo: los de la cáscara se asignan con onclick, así que repetir bind() no los
+   acumula sobre los elementos que se conservan. */
 function shellIcon(name){const t=document.createElement('template');t.innerHTML=menuIcon(name).trim();return t.content.firstElementChild}
 function shellNode(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild}
-function shellWrap(...children){return IkisaiKit.el('div',{class:'ikisai-kit shellkit',style:'display:contents'},...children).outerHTML}
 function shellViewMatches(v){return state.view==='tasks'&&(state.search||'')===(v.search||'')&&JSON.stringify(state.filters||{})===JSON.stringify(v.filters||{})&&(state.groupBy||'project')===(v.groupBy||'project')}
+function shellGroups(){return navigationGroups().map(g=>({...g,items:g.items.filter(i=>i[4]!==false)})).filter(g=>g.items.length)}
+function shellItemActive(id,type){return type==='view'&&(state.view===id||id==='projects'&&state.view==='project')}
 
-function topbar(){
-  const K=IkisaiKit,general=state.taskScope==='all',alias=myAlias();
-  const tabs=K.renderAreaTabs({label:'Áreas de trabajo',
+function shellTabs(){
+  const K=IkisaiKit,general=state.taskScope==='all';
+  return K.renderAreaTabs({label:'Áreas de trabajo',
     leading:[K.renderStripTool({label:'Áreas de trabajo',icon:shellIcon('areasEdit'),attrs:{'data-areas-tool':'','data-tip':'Áreas de trabajo',title:null}})],
     items:[
       {label:'General',general:true,active:general,attrs:{'data-general-area':'',title:'Todas las áreas a la vez'}},
       ...activeAreas().map(t=>({label:t.name,active:!general&&t.id===state.activeTab,color:t.color||null,count:areaPending(t),attrs:{'data-tab':t.id}})),
     ]});
-  let views=null;
-  if(tab()){
-    const mine=myTaskFilters()?[{label:'Mis tareas',icon:shellIcon('user'),className:'mine',active:isMyTasksView(),attrs:{'data-quick-mine':'',title:'Tareas con mi etiqueta en todas las áreas'}}]:[];
-    views=K.renderQuickViews({label:'Vistas guardadas',
-      leading:[K.renderStripTool({label:'Guardar o abrir vistas',icon:shellIcon('view'),className:'viewsave',attrs:{id:'savedViews','data-tip':'Guardar vista',title:null}})],
-      items:[...mine,...(tab().views||[]).filter(v=>!v.deleted).map(v=>({label:v.name,active:shellViewMatches(v),attrs:{'data-quick-view':v.id,title:'Aplicar la vista guardada'}}))]});
-  }
-  const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
-  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',tools:[more],rows:[tabs,views]});
-  // La marca de Tasks es su glifo de siempre, no el icono genérico del kit.
-  const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font:800 17px/1 var(--sans);letter-spacing:-2px';
+}
+function shellViews(){
+  if(!tab())return null;
+  const K=IkisaiKit,mine=myTaskFilters()?[{label:'Mis tareas',icon:shellIcon('user'),className:'mine',active:isMyTasksView(),attrs:{'data-quick-mine':'',title:'Tareas con mi etiqueta en todas las áreas'}}]:[];
+  return K.renderQuickViews({label:'Vistas guardadas',
+    leading:[K.renderStripTool({label:'Guardar o abrir vistas',icon:shellIcon('view'),className:'viewsave',attrs:{id:'savedViews','data-tip':'Guardar vista',title:null}})],
+    items:[...mine,...(tab().views||[]).filter(v=>!v.deleted).map(v=>({label:v.name,active:shellViewMatches(v),attrs:{'data-quick-view':v.id,title:'Aplicar la vista guardada'}}))]});
+}
+function shellMenuParts(){
+  const K=IkisaiKit,alias=myAlias();
   const aliasBtn=K.el('button',{type:'button',class:'softbtn small aliasbtn',id:'aliasBtn','data-tip':alias?'Yo: '+alias:'¿Quién eres?','aria-label':alias?'Alias: '+alias:'Elegir quién eres'},shellIcon('user'),K.el('span',null,alias||'Yo'));
   const theme=shellNode(themeToggleButton());theme.className=`tabtool themetoggle${isDarkTheme()?' dark':''}`;
-  const groups=navigationGroups().map(g=>({...g,items:g.items.filter(i=>i[4]!==false)})).filter(g=>g.items.length);
-  const menu=K.renderNavMenu({label:'Navegación principal',attrs:{id:'kebab'},headerClass:'menuheader',groupClass:'menugroup',itemClass:'menuitem',closeAttrs:{id:'closeMenu'},
+  return K.renderNavMenu({label:'Navegación principal',headerClass:'menuheader',groupClass:'menugroup',itemClass:'menuitem',closeAttrs:{id:'closeMenu'},
     header:[aliasBtn,theme],
-    groups:groups.map(g=>({label:g.name,icon:shellIcon(g.icon),open:expandedMenuGroups.has(g.id),attrs:{'data-menu-group':g.id,hidden:g.id==='organize'},
-      items:g.items.map(([id,name,icon,type])=>({label:name,icon:shellIcon(icon),active:type==='view'&&(state.view===id||id==='projects'&&state.view==='project'),attrs:type==='view'?{'data-menu-view':id}:{'data-action':id}}))})),
-    hint:general?K.el('span',null,'Vista ',K.el('strong',null,'General'),' · todas las áreas'):K.el('span',null,'Área actual: ',K.el('strong',null,tab().name))});
-  return shellWrap(bar,K.renderNavBackdrop({id:'menuBackdrop'}),menu);
+    groups:shellGroups().map(g=>({label:g.name,icon:shellIcon(g.icon),open:expandedMenuGroups.has(g.id),attrs:{'data-menu-group':g.id,hidden:g.id==='organize'},
+      items:g.items.map(([id,name,icon,type])=>({label:name,icon:shellIcon(icon),active:shellItemActive(id,type),attrs:type==='view'?{'data-menu-view':id}:{'data-action':id}}))})),
+    hint:shellHint()});
 }
+function shellHint(){const K=IkisaiKit;return state.taskScope==='all'?K.el('span',null,'Vista ',K.el('strong',null,'General'),' · todas las áreas'):K.el('span',null,'Área actual: ',K.el('strong',null,tab()?.name||''))}
+/* Lo que obliga a reconstruir el menú: sus grupos y elementos, quién es el actor y con qué permisos, el alias y el tema. */
+function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name,g.items.map(i=>[i[0],i[1],i[3]])]),Sync.actor?.id,Sync.actor?.role,Sync.actor?.scopes,typeof isAdministrator==='function'&&isAdministrator(),tab()?.restricted,myAlias(),isDarkTheme()])}
 
-function bottomnav(){
+let shellMenuStamp='';
+function shellMount(){
+  const K=IkisaiKit,app=document.getElementById('app');
+  const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
+  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',tools:[more],rows:[shellTabs(),shellViews()]});
+  // La marca de Tasks es su glifo de siempre, no el icono genérico del kit.
+  const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font:800 17px/1 var(--sans);letter-spacing:-2px';
+  const menu=shellMenuParts();menu.id='kebab';shellMenuStamp=shellMenuKey();
   const v=state.view,item=(id,label,icon)=>({label,icon,active:v===id||id==='projects'&&v==='project',attrs:{'data-nav':id}});
-  return shellWrap(IkisaiKit.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),item('labels','Etiquetas','tag'),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]}));
+  const nav=K.renderTabBar({label:'Vistas',className:'bottomnav five',items:[item('home','Inicio','home'),item('projects','Proyectos','grid'),item('tasks','Tareas','tasks'),item('labels','Etiquetas','tag'),{label:'Filtros',icon:'filter',attrs:{id:'filterNav'}}]});
+  app.replaceChildren(
+    K.el('div',{class:'ikisai-kit shellkit',id:'shellTop',style:'display:contents'},bar,K.renderNavBackdrop({id:'menuBackdrop'}),menu),
+    K.el('div',{id:'view',style:'display:contents'}),
+    K.el('div',{class:'ikisai-kit shellkit',id:'shellBottom',style:'display:contents'},nav));
 }
+function shellSwap(selector,next){
+  const old=document.querySelector(`#shellTop ${selector}`);
+  if(!next){old?.remove();return}
+  if(old){next.scrollLeft=old.scrollLeft;old.replaceWith(next);next.scrollLeft=old.scrollLeft}
+  else document.querySelector('#shellTop .topbar.workspace')?.append(next);
+}
+function shellUpdate(){
+  if(!document.getElementById('shellTop')||!document.getElementById('view')){shellMount();return}
+  shellSwap('.tabstrip',shellTabs());
+  shellSwap('.viewstrip',shellViews());
+  const menu=document.getElementById('kebab'),key=shellMenuKey();
+  if(menu&&key!==shellMenuStamp){
+    // Mismo nav#kebab (conserva .show y el desplazamiento): solo cambia su contenido.
+    const scroll=menu.scrollTop;menu.replaceChildren(...shellMenuParts().childNodes);menu.scrollTop=scroll;shellMenuStamp=key;
+  }else if(menu){
+    menu.querySelectorAll('.menuitem').forEach(b=>{const id=b.dataset.menuView;const on=!!id&&shellItemActive(id,'view');b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+    menu.querySelector('.navmenu-hint')?.replaceChildren(shellHint());
+  }
+  const v=state.view;
+  document.querySelectorAll('#shellBottom .navbtn[data-nav]').forEach(b=>{const id=b.dataset.nav,on=v===id||id==='projects'&&v==='project';b.classList.toggle('active',on);if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+}
+/* Sin sesión o sin ningún área no hay cáscara que pintar: render() no hace nada y deja intactas la entrada y las pantallas que
+   sustituyen #app (arranque, «Primera área», «sin áreas compartidas»). Antes ocurría lo mismo de rebote (topbar() fallaba sin
+   áreas y abortaba el render()); ahora es explícito. */
+const renderBeforeShell=render;
+render=function(){if(!Sync.actor||!state.tabs?.some(t=>!t.deleted))return;return renderBeforeShell()};
