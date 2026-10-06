@@ -25,7 +25,6 @@ export function validateTasksOperations(operations: Operation[], ctx: RequestCon
 /**
  * Hook `agentRisk` (docs/tasks/AGENTES.md §3.1): archivar exige aprobación y el alcance cuenta lo que cuelga de un
  * contenedor. Solo lee filas cuando el lote archiva o borra contenedores, y solo las que el agente puede ver.
- * Se conecta a `hooks` cuando el kit tenga `AppHooks.agentRisk` en `main` (rama `core/agentes`).
  */
 export function tasksAgentRiskHook(supabase: Supabase) {
   return async (operations: Operation[], ctx: RequestContext) => {
@@ -119,6 +118,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
     hooks: {
       visible,
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
+      agentRisk: tasksAgentRiskHook(supabase),
     },
     routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase)],
     workerRoutes: exchangeWorkerRoutes(),

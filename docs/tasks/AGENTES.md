@@ -189,7 +189,7 @@ Las herramientas se anuncian según el rol (`readOnlyHint`, `destructiveHint`). 
 
 **Core** (propuesta de orden): (1) `core.agent_keys`, `core_agent_identity`, rutas `agents` y autenticación por clave; (2) `core.commit_preview`; (3) `core.proposals`, parámetro `p_confirmation` y rutas `proposals`; (4) `core.access_events` y `access-log`; (5) `/mcp` genérico con `mcpTools`. Suite de conformidad: clave válida, revocada y caducada; agente sin `owner`; lote destructivo sin aprobación → 428; aprobado con otro `digest` → 428; aprobado y consumido una sola vez; propuesta caducada; reintento idempotente tras consumir; resumen filtrado por ámbitos.
 
-**Tasks**, cuando exista lo anterior: hook `agentRisk` (archivo y cascadas) y `describeChange`; herramientas MCP de dominio (§6); volver a mostrar en la interfaz «Accesos y permisos» (claves de agente), «Propuestas de agentes» y «Registro de accesos», que siguen en `access-ui.js` y `accounts-ui.js`, ocultas en el menú; portar el escenario 29 (operación destructiva de un agente que espera revisión humana y se aplica después tal cual) y la mitad pendiente del 37.
+**Tasks:** hecho el hook `agentRisk` (archivo y alcance; tandas 10 y 11), las pantallas de agentes, propuestas y registro de accesos (`public/agents-ui.js`) y el escenario 29 (`tests/tasks/agents.spec.ts`). Pendiente: herramientas MCP de dominio cuando exista `/mcp`; `describeChange` en la Edge solo si Core lo añade (hoy la interfaz describe el resumen con su propio código).
 
 ---
 
