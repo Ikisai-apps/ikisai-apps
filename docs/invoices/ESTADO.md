@@ -65,6 +65,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #155 (fase 2) fusionada.
 - Invoices pasa a llamarse **Finance** (ronda 31, fase B): `https://finance.ikisai.com` en `INVOICES_ORIGINS` (el antiguo se quita tras la fase C de Core) y nombre visible «Ikisai Finance» en la app y el manifiesto. Nada interno cambia: schema `invoices`, app id, `invoices-api`, proyecto Pages.
 
+- Fase 3, PR 1 de 3 (`invoices/fase3-modelo`): migración 0207 con `invoices.supplier_templates` (sincronizada) e `invoices.document_texts` (solo Edge, no se copia al dispositivo, se borra con su documento); hook `invoices.check_templates` (una plantilla solo se escribe en un lote donde una factura de ese proveedor pasa a validada; el owner puede retirarla); ruta `POST documents/:fileId/text` y lectura `invoices.document_text`.
+
 ## En curso
 
 - Extracción sin API de pago: fase 2 en PR; después fase 3 (plantillas por proveedor, con propuesta previa en `API.md`) y fase 4 (OCR con Google Drive, cuando Core la verifique).

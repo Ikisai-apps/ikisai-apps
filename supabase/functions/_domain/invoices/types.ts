@@ -96,6 +96,8 @@ export const TABLES = {
   issuedTaxLines: 'invoices.issued_tax_lines',
   issuedFiles: 'invoices.issued_invoice_files',
   issuedAllocations: 'invoices.issued_allocations',
+  // Plantillas por proveedor (API.md §6.9)
+  supplierTemplates: 'invoices.supplier_templates',
 } as const;
 export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
@@ -131,6 +133,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.issued_tax_lines': ['issued_invoice_id', 'position', 'tax', 'regime_key', 'qualification', 'exemption', 'rate', 'taxable_base', 'quota', 'surcharge_rate', 'surcharge_quota'],
   'invoices.issued_invoice_files': ['issued_invoice_id', 'file_id', 'original_filename', 'page_order', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.issued_allocations': ['issued_invoice_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_amount', 'notes'],
+  'invoices.supplier_templates': ['supplier_id', 'version', 'status', 'layout_tokens', 'layout_hash', 'page_size', 'fields', 'confirmations', 'uses', 'full_hits', 'last_confirmed_invoice_id'],
 };
 
 /** Columnas comunes del contrato §2.1. */

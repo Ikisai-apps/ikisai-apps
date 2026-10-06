@@ -389,6 +389,24 @@ export function validateIssuedAllocationFields(fields: Fields, op: 'insert' | 'u
   text(fields, 'notes', { max: 2000 });
 }
 
+/** Plantillas por proveedor (API.md §6.9): forma; que solo se aprendan de lo confirmado lo impone el hook SQL. */
+export function validateSupplierTemplateFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.supplierTemplates, fields);
+  if (op === 'insert') required(fields, ['supplier_id', 'version', 'layout_hash', 'fields']);
+  uuid(fields, 'supplier_id');
+  integer(fields, 'version', { min: 1 });
+  oneOf(fields, 'status', ['aprendiendo', 'activa', 'retirada'], { nullable: false });
+  if (has(fields, 'layout_tokens') && (!Array.isArray(fields.layout_tokens) || fields.layout_tokens.length > 400 || fields.layout_tokens.some((t) => typeof t !== 'string' || t.length > 60))) {
+    domainFail('INVALID_FIELDS', 'layout_tokens debe ser una lista de palabras (400 como máximo).', { field: 'layout_tokens' });
+  }
+  if (has(fields, 'layout_hash') && (typeof fields.layout_hash !== 'string' || !SHA256.test(fields.layout_hash))) domainFail('INVALID_FIELDS', 'Huella inválida.', { field: 'layout_hash' });
+  if (has(fields, 'fields') && (typeof fields.fields !== 'object' || fields.fields === null || Array.isArray(fields.fields) || JSON.stringify(fields.fields).length > 40_000)) {
+    domainFail('INVALID_FIELDS', 'fields debe ser un objeto de reglas (40 KB como máximo).', { field: 'fields' });
+  }
+  for (const key of ['confirmations', 'uses', 'full_hits']) integer(fields, key, { min: 0 });
+  if (has(fields, 'last_confirmed_invoice_id') && fields.last_confirmed_invoice_id !== null) uuid(fields, 'last_confirmed_invoice_id');
+}
+
 export function validateRowFields(table: string, op: 'insert' | 'update', fields: Fields, options: { allowImportMeta?: boolean } = {}): void {
   switch (table) {
     case TABLES.suppliers: return validateSupplierFields(fields, op);
@@ -405,6 +423,7 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
     case TABLES.issuedTaxLines: return validateIssuedTaxLineFields(fields, op);
     case TABLES.issuedFiles: return validateIssuedFileFields(fields, op);
     case TABLES.issuedAllocations: return validateIssuedAllocationFields(fields, op);
+    case TABLES.supplierTemplates: return validateSupplierTemplateFields(fields, op);
     default: return;
   }
 }
@@ -413,6 +432,8 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
 export const DOMAIN_MESSAGES: Record<string, string> = {
   IMPORT_INVALID: 'El JSON no cumple el formato ikisai.invoice.v1.',
   ISSUED_NOT_DELETABLE: 'Una factura emitida no se borra: anúlala con un motivo.',
+  TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
+  DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',
   ISSUED_ANNULLED: 'Esta factura emitida está anulada.',
   ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',
