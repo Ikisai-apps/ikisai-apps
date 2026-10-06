@@ -18,6 +18,22 @@ test.describe('ui-kit v0.7.1', () => {
     expect(plainBox!.height).toBeLessThanOrEqual(8);
   });
 
+  test('con una hoja abierta, el toast se coloca bajo la cabecera de la hoja', async ({ page }) => {
+    await page.goto('/#overlays');
+    await page.locator('#openSheet').click();
+    await expect(page.locator('.sheetback.show .sheet-head')).toBeVisible();
+    await page.evaluate(() => (window as any).ikisaiKit.toast('Aviso con hoja abierta'));
+    const toast = page.locator('.toast.show');
+    await expect(toast).toHaveClass(/top/);
+    const head = await page.locator('.sheetback.show .sheet-head').boundingBox();
+    const box = await toast.boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(head!.y + head!.height);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sheetback.show')).toHaveCount(0);
+    await page.evaluate(() => (window as any).ikisaiKit.toast('Aviso sin hoja'));
+    expect(await page.locator('.toast').evaluate((n) => n.style.top)).toBe('');
+  });
+
   test('renderLogin acepta ids propios y restaura el título al desmontar', async ({ page }) => {
     await page.goto('/#shell');
     const result = await page.evaluate(async () => {

@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.7.2 · 6 de octubre de 2026
+
+- Toast: con una hoja abierta se coloca justo bajo la cabecera de la hoja (título y cierre siguen visibles) en vez de en lo alto de la pantalla (aviso de Invoices en 390 px).
+
 ## 0.7.1 · 6 de octubre de 2026
 
 - `renderLogin`: `ids` configurables (`email`, `password`, `submit`, `form`, `error`) y `title`, para que una app con pruebas sobre sus ids actuales (Tasks: `loginUsername`, `loginPassword`, `accountLogin`) adopte el login del kit sin tocarlas. La función de desmontaje restaura el `document.title` anterior.

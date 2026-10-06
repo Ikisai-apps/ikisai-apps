@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.7.2 (tanda 9): el toast con hoja abierta va bajo la cabecera de la hoja.
 - v0.7.1 (tanda 9): ids configurables en `renderLogin`; `abbr` en el calendario móvil. Revisión visual de `apps/tasks` hecha; adopción del kit en Tasks en marcha (login y shell primero), con el visto bueno de su equipo.
 - v0.7.0 (tanda 8): selector de etiquetas con familias (`createLabelPicker`, `labelChips`) y tarjeta de proyecto con anillo (`renderProjectCard`, `ringSvg`).
 - v0.6.1: la marca «BORRADOR» ya no desplaza la cabecera de la página imprimible.
