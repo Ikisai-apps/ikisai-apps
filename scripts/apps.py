@@ -11,7 +11,8 @@ import sys
 
 ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
-ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food')
+# Esquemas propios de cada app (y reservados para los portales que vendrán: guests, organizers).
+ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers')
 
 # Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Los alias que solo
 # redirigen viven en Cloudflare (fase http_request_dynamic_redirect).
@@ -20,10 +21,10 @@ EXTRA_DOMAINS = {}
 # invoices.ikisai.com y tramita.ikisai.com redirigen (reglas de Cloudflare).
 PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 
-_BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media'}
+_BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
   'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
@@ -33,6 +34,8 @@ BUCKET_MIME_TYPES = {
     'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.spreadsheet', 'application/vnd.oasis.opendocument.presentation'],
   'kitchen-media': ['image/webp', 'image/jpeg', 'image/png'],
   'purchase-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
+  # Central: documentación de personas y cumplimiento (contratos, certificados, seguros): PDF e imágenes.
+  'central-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
 }
 
 
@@ -51,7 +54,7 @@ def _entry(name):
   }
 
 
-APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food')}
+APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central')}
 APP_NAMES = tuple(APPS)
 BUCKETS = tuple(dict.fromkeys(app['bucket'] for app in APPS.values()))
 
