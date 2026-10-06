@@ -11,16 +11,21 @@ export interface CalendarRemoteEvent {
 
 /**
  * Error tipado del adaptador. `recoverable` decide entre reintento con espera (red, 5xx, 429, tiempo agotado)
- * y error definitivo (403, calendario inexistente, credenciales inválidas). `code` es un código corto sin datos personales.
+ * y error definitivo (petición rechazada). `code` es un código corto sin datos personales.
  */
 export class CalendarError extends Error {
-  constructor(public readonly code: string, public readonly recoverable: boolean) {
+  /**
+   * `blocked`: el fallo no es del trabajo sino del acceso (credenciales rechazadas, calendario sin compartir).
+   * El trabajo sigue pendiente sin gastar intentos y el tick deja de llamar al calendario hasta la siguiente vuelta.
+   */
+  constructor(public readonly code: string, public readonly recoverable: boolean, public readonly blocked = false) {
     super(code);
     this.name = 'CalendarError';
   }
 }
 export const recoverableError = (code: string) => new CalendarError(code, true);
 export const fatalError = (code: string) => new CalendarError(code, false);
+export const blockedError = (code: string) => new CalendarError(code, true, true);
 
 export interface CalendarAdapter {
   /** Identificador del calendario de destino (se guarda en `calendar_links.calendar_id`). */

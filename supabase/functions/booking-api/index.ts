@@ -11,6 +11,9 @@ Deno.serve(createBookingApp({
   release: Deno.env.get('IKISAI_RELEASE') ?? 'development',
   stage: 'beta',
   workerKey: Deno.env.get('IKISAI_WORKER_KEY'),
-  // Sin credenciales (o mientras el cliente real no exista) el adaptador es null: Calendar queda «no configurado».
-  calendar: { adapter: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_CALENDAR_ID') }) },
+  // Sin los dos secretos el adaptador es null y Calendar queda «no configurado».
+  calendar: {
+    adapter: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_CALENDAR_ID') }),
+    syncOnCommit: true,
+  },
 }));
