@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
-import { bedConflicts, eventOccupancy, spaceCapacity, TABLES, validateFields } from '../../supabase/functions/_domain/booking/mod.ts';
+import { bedConflicts, eventOccupancy, extraBedsInUse, extraCapacity, isBookable, spaceCapacity, TABLES, validateFields } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const { reservations: RESERVATIONS, spaces: SPACES, beds: BEDS, roomAssignments: ASSIGN, guests: GUESTS } = TABLES;
 const CONFIRM = 'booking.confirm_reservation';
@@ -57,6 +57,15 @@ test('espacios · dominio: plazas, ocupación con aviso y conflictos de cama por
   assert.equal(spaceCapacity({ id: 's', kind: 'sala', capacity: 40, active: true }, []), 40);
   const a = (id: string, persons: number, bed: string | null, from: string | null = null, to: string | null = null) => ({ id, event_id: 'e', space_id: 'r', bed_id: bed, persons, from_date: from, to_date: to });
   assert.deepEqual(eventOccupancy('e', [room], beds, [a('1', 1, 'b1'), a('2', 3, null)]), [{ spaceId: 'r', persons: 4, capacity: 3, over: true }]);
+
+  // supletorias: fuera de la capacidad base; asignadas en un evento, suman a su capacidad y se cobran como extra
+  const withExtra = [...beds, { id: 'x1', space_id: 'r', kind: 'supletoria', capacity: 1, active: true }, { id: 'x2', space_id: 'r', kind: 'supletoria', capacity: 1, active: true }];
+  assert.equal(spaceCapacity(room, withExtra), 3);
+  assert.equal(extraCapacity(room, withExtra), 2);
+  assert.deepEqual(extraBedsInUse('e', withExtra, [a('1', 1, 'x1')]).map((b) => b.id), ['x1']);
+  assert.deepEqual(eventOccupancy('e', [room], withExtra, [a('1', 1, 'x1'), a('2', 3, null)]), [{ spaceId: 'r', persons: 4, capacity: 4, over: false }]);
+  assert.equal(isBookable({ ...room, bookable: false }), false);
+  assert.equal(isBookable(room), true);
 
   const res = { start_date: '2027-03-05', end_date: '2027-03-07' };
   const nights: [number, number] = [Date.UTC(2027, 2, 7) / 86_400_000, Date.UTC(2027, 2, 9) / 86_400_000];
