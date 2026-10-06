@@ -115,14 +115,44 @@ export function renderPrintPage(spec: PrintPageSpec): HTMLElement {
   );
 }
 
-/** Espera a que las imágenes del nodo estén decodificadas (así el PDF no sale con huecos) y abre el diálogo de impresión. */
+/**
+ * Espera a que las imágenes del nodo estén decodificadas (así el PDF no sale con huecos) y abre el diálogo de impresión.
+ * Mientras dura, `<html class="printing">` hace que solo se imprima la página (`.print-page`), aunque el documento tenga
+ * cabecera, navegación u otras vistas.
+ */
 export async function printElement(root: HTMLElement, timeoutMs = 4000): Promise<void> {
   const images = Array.from(root.querySelectorAll('img'));
   await Promise.race([
     Promise.all(images.map((img) => (img.complete && img.naturalWidth ? Promise.resolve() : img.decode().catch(() => undefined)))),
     new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
   ]);
-  root.ownerDocument.defaultView?.print();
+  const doc = root.ownerDocument;
+  const win = doc.defaultView;
+  // Todo lo que no es la página ni uno de sus antecesores se retira del flujo de impresión (sin páginas en blanco).
+  const hidden: Element[] = [];
+  for (let node: Element | null = root; node && node !== doc.body; node = node.parentElement) {
+    for (const sibling of Array.from(node.parentElement?.children ?? [])) {
+      if (sibling !== node && !sibling.hasAttribute('data-print-hidden') && sibling.tagName !== 'SCRIPT' && sibling.tagName !== 'STYLE' && sibling.tagName !== 'LINK') {
+        sibling.setAttribute('data-print-hidden', '');
+        hidden.push(sibling);
+      }
+    }
+  }
+  doc.documentElement.classList.add('printing');
+  let cleaned = false;
+  const done = () => {
+    if (cleaned) return;
+    cleaned = true;
+    doc.documentElement.classList.remove('printing');
+    for (const node of hidden) node.removeAttribute('data-print-hidden');
+  };
+  win?.addEventListener('afterprint', done, { once: true });
+  try {
+    win?.print();
+  } finally {
+    // Navegadores sin `afterprint` fiable: se limpia al volver el hilo principal.
+    setTimeout(done, 0);
+  }
 }
 
 export interface PrintViewOptions {

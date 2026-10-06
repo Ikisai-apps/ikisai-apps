@@ -338,8 +338,8 @@
 .pp-section{margin-top:6mm}
 .pp-section-title{font-family:var(--serif);font-weight:500;font-size:17pt;margin:0 0 3mm;padding-bottom:1.5mm;border-bottom:2px solid var(--accent)}
 .pp-section-title small,.pp-group-title small{display:block;font-family:var(--sans);font-weight:500;font-size:9.5pt;color:#6d7a70;margin-top:1mm}
-.pp-group{margin:4mm 0 5mm;break-inside:avoid}
-.pp-group-title{font-size:12pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#46513b;margin:0 0 2.5mm}
+.pp-group{margin:4mm 0 5mm}
+.pp-group-title{font-size:12pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#46513b;margin:0 0 2.5mm;break-after:avoid;page-break-after:avoid}
 .pp-items{display:grid;grid-template-columns:repeat(var(--pp-cols,2),minmax(0,1fr));gap:4mm}
 .pp-item{display:grid;gap:2.5mm;break-inside:avoid;page-break-inside:avoid;border:1px solid rgba(31,42,34,.1);border-radius:3mm;overflow:hidden;background:#fff}
 .pp-figure{margin:0;aspect-ratio:3/2;background:#f1ebe0}
@@ -372,7 +372,12 @@
   .print-view{display:block}
   .print-page{width:auto;min-height:0;padding:0;box-shadow:none;border-radius:0;overflow:visible;background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}
   .pp-section.page{break-before:page;page-break-before:always}
-  .pp-item,.pp-group,.pp-head,.pp-title{break-inside:avoid;page-break-inside:avoid}
+  .pp-item,.pp-head,.pp-title{break-inside:avoid;page-break-inside:avoid}
+  .pp-section-title{break-after:avoid;page-break-after:avoid}
+  /* Impresión lanzada por printElement: solo la página, aunque haya shell, demo u otras vistas en el documento. */
+  [data-print-hidden]{display:none!important}
+  html.printing .print-view{display:block;padding:0;margin:0}
+  html.printing .print-page{width:auto;margin:0}
   .pp-figure{aspect-ratio:auto;max-height:60mm}
   .pp-figure img{max-height:60mm}
   .pp-draft{position:fixed;inset:0;color:rgba(179,65,42,.1)}
