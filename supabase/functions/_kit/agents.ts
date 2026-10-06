@@ -117,6 +117,8 @@ export function createAgents(supabase: Supabase, app: string, hooks: AppHooks, v
    */
   async function issue(ctx: RequestContext, body: any) {
     requireHumanOwner(ctx);
+    // Ningún agente en Central (contrato §3.5); se corta antes de crear la cuenta de Auth para no dejarla huérfana.
+    if (app === 'central') fail(422, 'INVALID_OPERATION', 'Los agentes no tienen acceso a Central.', { reason: 'agents have no access to central' });
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     if (!name || name.length > 100) fail(422, 'INVALID_OPERATION', 'Nombre del agente inválido.');
     if (!['reader', 'editor'].includes(body?.role)) fail(422, 'INVALID_ROLE', 'Un agente es lector o editor.');
