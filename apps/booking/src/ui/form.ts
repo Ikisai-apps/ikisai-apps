@@ -127,7 +127,7 @@ export interface RowSheetOptions {
   savedMessage?: string;
   submitLabel?: string;
   /** Sustituye el alta o edición estándar: recibe los valores del formulario y devuelve el lote a enviar. */
-  buildOperations?: (values: Record<string, unknown>) => RowOperation[];
+  buildOperations?: (values: Record<string, unknown>) => RowOperation[] | Promise<RowOperation[]>;
 }
 
 /** Hoja de alta o edición de una fila. Devuelve la hoja; el pie con `Guardar` solo aparece con cambios en una edición. */
@@ -158,7 +158,7 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
     if (options.buildOperations) {
       const issue = validateFields(table, form.values(), 'update')[0];
       if (issue) return form.showError(issue.message);
-      return commit(options.buildOperations(form.values()), options.savedMessage ?? 'Guardado.');
+      return commit(await options.buildOperations(form.values()), options.savedMessage ?? 'Guardado.');
     }
     const id = row?.id ?? options.insertId ?? crypto.randomUUID();
     let fields: Record<string, unknown>;

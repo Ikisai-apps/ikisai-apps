@@ -1,14 +1,17 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { el, formatDate, icon, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { compressImage, compressedFilename, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { READS, TABLES, canSeeGuests, dayNumber, missingForSes, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
+import { RESTRICTION_SPECS } from './reservation.ts';
 import type { ViewMount } from './shell.ts';
 
 type Row = SyncedRow & Record<string, any>;
 const RESTRICTIONS: TableName = TABLES.restrictions;
+/** Restricciones de un huésped concreto: la regla del dominio es `guest_id` o `servings`, nunca los dos. */
+const GUEST_RESTRICTION_SPECS: FieldSpec[] = RESTRICTION_SPECS.filter((spec) => spec.key !== 'servings');
 
 const GUEST_SPECS: FieldSpec[] = [
   { key: 'first_name', label: 'Nombre', type: 'text', max: 120, section: 'Identidad' },
@@ -140,6 +143,38 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       window.print();
     }
 
+    async function openRestriction(guest: Row, restriction: Row | null, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): Promise<void> {
+      if (!(await sheet?.close())) return;
+      sheet = openRowSheet({
+        client, title: restriction ? 'Restricción de ' + fullName(guest) : 'Nueva restricción', table: RESTRICTIONS, row: restriction, specs: GUEST_RESTRICTION_SPECS,
+        defaults: { restriction_type: 'vegetariano', active: true }, insertFields: { event_id: context.event.id, guest_id: guest.id },
+        ...(restriction ? { remove: { label: 'Quitar', operations: () => [{ op: 'delete', table: RESTRICTIONS, id: restriction.id, expectedRevision: restriction.revision } as RowOperation] } } : {}),
+        savedMessage: 'Restricción guardada.',
+      });
+    }
+
+    function restrictionsBlock(guest: Row, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): Child {
+      const own = context.restrictions.filter((r) => r.guest_id === guest.id);
+      return el('div', { id: 'guestRestrictions', class: 'formsection' },
+        el('div', { class: 'sectionlabel' }, 'Restricciones alimentarias', el('span', { class: 'count' }, String(own.length))),
+        own.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : el('ul', { class: 'list' }, own.map((r) => el('li', { class: 'row' },
+          el('div', { class: 'row-title' }, el('span', { class: 'name' }, `${label(r.restriction_type)}${r.subject ? ` · ${r.subject}` : ''}`),
+            r.severity ? el('span', { class: `chip${r.severity === 'grave' ? ' alert' : ''}` }, label(r.severity)) : null, r.active ? null : el('span', { class: 'chip' }, 'Inactiva')),
+          el('div', { class: 'row-actions' },
+            el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar restricción ${label(r.restriction_type)}`, onclick: () => void openRestriction(guest, r, context) }, icon('edit', 16)))))),
+        el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'addGuestRestriction', onclick: () => void openRestriction(guest, null, context) }, 'Añadir restricción')));
+    }
+
+    /** «Ver justificante»: el archivo está en el almacén remoto; la URL firmada solo se pide con red. */
+    function receiptLink(guest: Row): Child {
+      const fileId = guest.ses_receipt_file_id;
+      if (typeof fileId !== 'string' || !fileId) return null;
+      return el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'viewReceipt', onclick: async () => {
+        if (!navigator.onLine) return void toast('Ver el justificante necesita conexión.');
+        try { window.open(await client.fileUrl(fileId), '_blank', 'noopener'); } catch (error) { toast(describeError(error)); }
+      } }, 'Ver justificante'));
+    }
+
     function openGuest(guest: Row | null, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): void {
       const onDate = context.reservation.start_date ?? today();
       sheet = openRowSheet({
@@ -150,6 +185,8 @@ export function mountGuests(initialEventId: string | null): ViewMount {
           const missing = missingText(merged);
           return [
             el('p', { class: missing ? 'banner warn' : 'banner ok', id: 'sesMissing' }, missing ? `Falta para SES: ${missing}.` : 'Datos completos para SES.Hospedajes.'),
+            guest ? restrictionsBlock(guest, context) : null,
+            guest ? receiptLink(guest) : null,
             guest ? el('div', { class: 'choices', style: 'margin-top:10px' },
               guest.signed_at ? el('span', { class: 'chip ok', id: 'signedChip' }, `Firmado ${formatDate(guest.signed_at)}${guest.signature_file_id ? '' : ' (en papel)'}`) : null,
               el('button', { class: 'ghost small', type: 'button', id: 'signOnScreen', onclick: async () => { if (await sheet?.close()) openSign(guest, onDate); } }, guest.signed_at ? 'Volver a firmar' : 'Firmar en pantalla'),
@@ -173,10 +210,29 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     }
 
     function openSent(guest: Row): void {
+      const file = el('input', { type: 'file', id: 'receiptFile', accept: 'application/pdf,image/*' });
+      const fileField = el('label', { class: 'field' }, el('span', null, 'Justificante (PDF o imagen)'), file,
+        el('span', { class: 'hint' }, 'Opcional. Las imágenes se reducen antes de guardarse.'));
       sheet = openRowSheet({
         client, title: `Envío a SES · ${fullName(guest)}`, table: GUESTS, row: null, specs: SENT_SPECS,
         defaults: { ses_sent_by: boot?.profile.displayName ?? '' }, submitLabel: 'Registrar envío', savedMessage: 'Envío a SES registrado.',
-        buildOperations: (values) => [{ op: 'update', table: GUESTS, id: guest.id, expectedRevision: guest.revision, fields: { ...values, ses_status: 'enviado_SES', ses_sent_at: new Date().toISOString() } }],
+        extra: () => fileField,
+        buildOperations: async (values) => {
+          const fields: Record<string, unknown> = { ...values, ses_status: 'enviado_SES', ses_sent_at: new Date().toISOString() };
+          const chosen = file.files?.[0];
+          if (chosen) {
+            // El archivo espera en la cola de adjuntos; el marcador se cambia por el id al subirlo.
+            let blob: Blob = chosen;
+            let filename = chosen.name;
+            let mime = chosen.type || 'application/octet-stream';
+            if (isImageFile(chosen)) {
+              const image = await compressImage(chosen, { thumbSide: 0 });
+              blob = image.full; mime = image.mime; filename = compressedFilename(chosen.name, image.mime);
+            }
+            fields.ses_receipt_file_id = { $blob: await client.stageBlob(blob, { filename, mime }) };
+          }
+          return [{ op: 'update', table: GUESTS, id: guest.id, expectedRevision: guest.revision, fields }];
+        },
       });
     }
 

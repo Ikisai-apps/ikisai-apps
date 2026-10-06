@@ -6,7 +6,7 @@ import { mountReservations } from './reservations.ts';
 import { mountReservation } from './reservation.ts';
 import { mountGuests } from './guests.ts';
 import { mountPending } from './pending.ts';
-import { mountPlaceholder } from './placeholder.ts';
+import { mountCalendar } from './calendar.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -35,7 +35,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', mount: mountHome },
   '#/reservas': { title: 'Reservas', mount: mountReservations },
   [PENDING]: { title: 'Por resolver', mount: mountPending },
-  '#/calendario': { title: 'Calendario', mount: mountPlaceholder('Calendario', 'Ocupación por meses y estado de la sincronización con Google Calendar.') },
+  '#/calendario': { title: 'Calendario', mount: mountCalendar },
   '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
 };
 
