@@ -349,3 +349,266 @@ test('[43][46][47][48][51] dependencias en los editores: bloqueo, herencia, disp
     await b.locator('#closeDialog').click();
   });
 });
+
+declare const importSheet: any, filterCount: any, setTheme: any, closeNavigation: any, manageTab: any, batchMode: any;
+
+test('[52][53] copia JSON: remapea dependencias y etiquetas, y rechaza dependencias externas sin resolver', async () => {
+  await a.evaluate(async () => { closeSheet(); await syncNow(); });
+  await settled(a);
+  const count = await a.evaluate(() => state.tabs.length);
+  const fixture = { tabs: [{ id: 'json-source', name: 'JSON dependencias MVP', families: [{ id: 'trade', name: 'Oficio', color: '#b76b3d' }], labels: [{ id: 'same-id', text: 'Etiqueta con ID repetido', family: 'trade' }], projects: [
+    { id: 'source-inbox', system: 'inbox', title: 'Entrada', status: 'active', ownLabels: [], tasks: [] },
+    { id: 'source-project', title: 'Proyecto JSON', status: 'active', ownLabels: ['same-id'], tasks: [
+      { id: 'same-id', text: 'Enfoscar JSON', labels: ['same-id'], parentId: null, order: 1024, done: false },
+      { id: 'copy-paint', text: 'Pintar JSON', labels: [], parentId: null, order: 2048, done: false, dependsOn: ['same-id'] as string[] }] }] }] };
+  await test.step('[52] la copia se importa como área independiente con ids nuevos y relaciones intactas', async () => {
+    await a.evaluate(() => importSheet());
+    await a.locator('#importFile').setInputFiles({ name: 'copia.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+    await a.waitForFunction(() => !(document.getElementById('confirmImport') as HTMLButtonElement).disabled);
+    await a.locator('#confirmImport').click();
+    await a.waitForFunction((n) => state.tabs.length === n + 1, count);
+    await settled(a);
+    const copy = await a.evaluate(() => state.tabs.find((t: any) => t.name === 'JSON dependencias MVP (importado)'));
+    const tasks = copy.projects.flatMap((p: any) => p.tasks);
+    const plaster = tasks.find((t: any) => t.text === 'Enfoscar JSON'), paint = tasks.find((t: any) => t.text === 'Pintar JSON');
+    expect(paint.dependsOn).toEqual([plaster.id]);
+    expect(plaster.id).not.toBe(copy.labels[0].id);
+    expect(plaster.labels[0]).toBe(copy.labels[0].id);
+    expect(copy.families[0].system).toBe('trade');
+    const dependency = (await server.rows('tasks.task_dependencies')).find((r) => r.task_id === paint.id);
+    expect(dependency.depends_on_id).toBe(plaster.id);
+    expect((await server.rows('tasks.projects')).filter((r) => r.tab_id === copy.id && r.system === 'inbox')).toHaveLength(1);
+  });
+  await test.step('[53] una copia con dependencias externas se rechaza antes de tocar los datos locales', async () => {
+    await a.evaluate(() => importSheet());
+    fixture.tabs[0]!.projects[1]!.tasks[1]!.dependsOn = ['missing'];
+    await a.locator('#importFile').setInputFiles({ name: 'incompleta.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+    await a.waitForFunction(() => !(document.getElementById('confirmImport') as HTMLButtonElement).disabled);
+    await a.locator('#confirmImport').click();
+    expect(await a.evaluate(() => state.tabs.length)).toBe(count + 1);
+    expect(await a.evaluate(() => Sync.record.queue.length)).toBe(0);
+    await a.locator('#closeDialog').click();
+  });
+});
+
+test('[54][55] filtros con recuento en vivo y «Todas las tareas» entre áreas', async () => {
+  await test.step('[54] la hoja de filtros cuenta en vivo y bloquea las etiquetas que dejarían cero tareas', async () => {
+    await b.setViewportSize({ width: 1440, height: 1000 });
+    await b.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; navigateView('tasks'); });
+    await b.locator('#filterBtn').click();
+    await expect(b.locator('#filterCount')).toContainText('tareas en Ikisai');
+    await b.locator(`[data-filter="${ID.person}|${ID.juan}"]`).click();
+    const juanCount = await b.evaluate(() => filterCount(state.filters));
+    expect(juanCount).toBeGreaterThan(0);
+    expect((await b.locator('#filterCount').innerText()).startsWith(String(juanCount))).toBe(true);
+    expect(await b.locator('.filterchip.unavailable').count()).toBeGreaterThan(0);
+    await expect(b.locator('.filterchip.unavailable:not(:disabled)')).toHaveCount(0);
+    await expect(b.locator('.filterchip:not(.unavailable):not(.on):disabled')).toHaveCount(0);
+    expect(await b.locator(`[data-filter="${ID.person}|${ID.juan}"]`).evaluate((el: HTMLButtonElement) => el.classList.contains('on') && !el.disabled)).toBe(true);
+    await b.locator('#applyFilterSheet').click();
+    await expect(b.locator('.task:not(.context)')).toHaveCount(juanCount);
+  });
+  await test.step('[55] «Todas las tareas» abarca todas las áreas, filtra por etiquetas de otra área y abre su proyecto', async () => {
+    await b.locator('#taskScope').selectOption('*');
+    expect(await b.evaluate(() => state.taskScope)).toBe('all');
+    expect(await b.locator('[data-area-block]').count()).toBe(await b.evaluate(() => state.tabs.filter((t: any) => !t.deleted).length));
+    await b.locator('.activefilters .activechip').first().click();
+    await b.locator('#filterBtn').click();
+    await expect(b.locator('#filterCount')).toContainText('todas las áreas');
+    await b.locator(`[data-filter="${ID['personal:building']}|${ID.casa}"]`).click();
+    await b.locator('#applyFilterSheet').click();
+    await expect(b.locator(`[data-area-block="${ID.personal}"] .task`)).toHaveCount(1);
+    await expect(b.locator(`[data-area-block="${ID.ikisai}"] .task`)).toHaveCount(0);
+    await b.locator(`[data-area-block="${ID.personal}"] [data-open-project="${ID.pp1}"]`).click();
+    expect(await b.evaluate(() => [state.activeTab, state.view, state.currentProject].join('/'))).toBe(`${ID.personal}/project/${ID.pp1}`);
+    await b.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+    expect(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+});
+
+test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el sitio, fijar y colores', async () => {
+  await test.step('[56] un botón alterna el tema; Etiquetas vive en Trabajo y Organización desaparece', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; navigateView('projects'); });
+    await a.locator('#moreBtn').click();
+    await a.evaluate(() => setTheme('system'));
+    const wasDark = await a.evaluate(() => document.documentElement.classList.contains('dark'));
+    await a.locator('#themeToggle').click();
+    expect(await a.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(!wasDark);
+    expect(await a.evaluate(() => localStorage.getItem('ikisai-theme'))).toBe(wasDark ? 'light' : 'dark');
+    await a.locator('#themeToggle').click();
+    expect(await a.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(wasDark);
+    await a.evaluate(() => setTheme('system'));
+    expect(await a.evaluate(() => localStorage.getItem('ikisai-theme'))).toBeNull();
+    await expect(a.locator('[data-menu-group="organize"]')).toBeHidden();
+    await expect(a.locator('[data-menu-group="work"] [data-menu-view="labels"]')).toHaveCount(1);
+    await a.evaluate(() => closeNavigation());
+    expect(await a.locator('#kebab').innerText()).not.toContain('Tu espacio');
+    await expect(a.locator('.screen > .notice:visible')).toHaveCount(0);
+  });
+
+  await test.step('[57] el área General lista todas las áreas y crea un proyecto en línea dentro de la elegida', async () => {
+    await a.locator('[data-general-area]').click();
+    expect(await a.evaluate(() => state.taskScope + '/' + state.view)).toBe('all/projects');
+    expect(await a.locator('[data-area-block] .project').count()).toBe(await a.evaluate(() => state.tabs.filter((t: any) => !t.deleted && t.name !== 'Plantillas').flatMap((t: any) => t.projects).filter((p: any) => !p.deleted && p.status !== 'archived' && !(p.system && !p.tasks.some((t: any) => !t.deleted))).length));
+    await a.locator(`[data-area-block="${ID.personal}"] [data-add-project="${ID.personal}"]`).click();
+    await a.locator('.newproject input').fill('Proyecto desde General');
+    await a.locator('.newproject input').press('Enter');
+    await settled(a);
+    expect(await a.evaluate(() => state.tabs.find((t: any) => t.id === (window as any).ID.personal).projects.some((p: any) => p.title === 'Proyecto desde General'))).toBe(true);
+    expect((await server.rows('tasks.projects')).some((r) => r.tab_id === ID.personal && r.title === 'Proyecto desde General')).toBe(true);
+    expect(await a.evaluate(() => state.taskScope)).toBe('all');
+  });
+
+  await test.step('[58] la fila de alta escribe en el sitio y sigue en el último nivel; las hechas bajan; las fechas son plazos', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.groupBy = 'project'; navigateView('tasks'); });
+    expect(await a.locator(`[data-project-drag="${ID.p1}"]`).count()).toBeGreaterThan(0);
+    expect(await a.locator(`.sectionlabel[data-drop-project="${ID.p1}"]`).count()).toBeGreaterThan(0);
+    await expect(a.locator('.tasklist > .empty:visible')).toHaveCount(0);
+    const lastRow = await a.locator(`[data-open-project="${ID.p1}"]`).locator('xpath=ancestor::*[contains(@class,"sectionlabel")][1]/following-sibling::*[contains(@class,"tasklist")][1]').locator('[data-row]').last().getAttribute('data-row');
+    const expectedParent = await a.evaluate((row) => taskLocation(row).t.parentId || '', lastRow);
+    await a.locator(`[data-add-task="${ID.p1}"]`).click();
+    await a.locator('.task.newtask .newstar').click();
+    await a.locator('.task.newtask input').fill('Tarea añadida a continuación');
+    await a.locator('.task.newtask input').press('Enter');
+    await settled(a);
+    const added = await a.evaluate(() => { const t = tab().projects.find((p: any) => p.id === (window as any).ID.p1).tasks.find((x: any) => x.text === 'Tarea añadida a continuación'); return t && { id: t.id, parent: t.parentId || '', priority: t.priority }; });
+    expect([added.parent, added.priority]).toEqual([expectedParent, 'high']);
+    shared.added = added.id;
+    expect(await a.locator(`[data-row="${added.id}"] .tasktext .star-high`).count()).toBeGreaterThan(0);
+    await expect(a.locator('.task.newtask input')).toHaveCount(1);
+    await a.locator('.task.newtask input').press('Escape');
+    await expect(a.locator('.task.newtask')).toHaveCount(0);
+    const orderOk = await a.evaluate(() => {
+      const section = document.querySelector(`[data-open-project="${(window as any).ID.p1}"]`)!.closest('.sectionlabel')!.nextElementSibling!;
+      const done = [...section.querySelectorAll('.task:not(.child)')].map((r) => r.classList.contains('done') && !r.classList.contains('context'));
+      const firstDone = done.indexOf(true), lastPending = done.lastIndexOf(false);
+      return firstDone === -1 || lastPending === -1 || firstDone > lastPending;
+    });
+    expect(orderOk).toBe(true);
+    expect(await a.locator('.taskmeta .due').count()).toBeGreaterThan(0);
+    await expect(a.locator(`[data-project-pin="${ID.inbox}"]`)).toHaveCount(0);
+    await expect(a.locator(`[data-project-drag="${ID.inbox}"]`)).toHaveCount(0);
+    await a.locator(`[data-task-menu="${ID.t1}"]`).click();
+    expect(await a.evaluate(() => getComputedStyle(document.getElementById('menuChild')!).opacity)).toBe('0');
+    await a.evaluate(() => closeSheet());
+    const row = await serverRow('tasks.tasks', added.id);
+    expect([row.priority, row.parent_id ?? '']).toEqual(['high', expectedParent]);
+  });
+
+  await test.step('[59] el texto se edita en el sitio y el editor conserva el borrador al elegir etiquetas en línea', async () => {
+    const added = shared.added!;
+    await a.locator(`[data-row="${added}"] .tasktext`).click();
+    await a.locator(`[data-row="${added}"] .inlineedit`).fill('Tarea editada en línea');
+    await a.locator(`[data-row="${added}"] .inlineedit`).press('Enter');
+    await settled(a);
+    expect(await a.evaluate((t) => taskLocation(t).t.text, added)).toBe('Tarea editada en línea');
+    await a.evaluate((t) => openTaskEditor(t), added);
+    await expect(a.locator('#teParent')).toBeHidden();
+    await a.locator('#priorityStar').click();
+    await expect(a.locator('#tePriority')).toHaveValue('critical');
+    await a.locator('#teNote').fill('Nota conservada');
+    expect(await a.locator('.inlinepicker [data-inline-label]').count()).toBeGreaterThan(0);
+    await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).click();
+    expect(await a.locator(`.inlinepicker [data-inline-label="${ID.elec}"]`).evaluate((el) => el.classList.contains('on'))).toBe(true);
+    await expect(a.locator('#teNote')).toHaveValue('Nota conservada');
+    await expect(a.locator('#tePriority')).toHaveValue('critical');
+    await a.locator('#saveTaskBtn').click();
+    await settled(a);
+    expect(await a.evaluate((t) => { const x = taskLocation(t).t; return [x.note, x.priority, x.labels.includes((window as any).ID.elec)]; }, added)).toEqual(['Nota conservada', 'critical', true]);
+    const row = await serverRow('tasks.tasks', added);
+    expect([row.title, row.note, row.priority]).toEqual(['Tarea editada en línea', 'Nota conservada', 'critical']);
+  });
+
+  await test.step('[60] fijar un proyecto en primera posición y elegir colores de proyecto y de área, guardados en el servidor', async () => {
+    await a.evaluate(() => navigateView('projects'));
+    await a.locator(`[data-project-pin="${ID.p2}"]`).click();
+    await settled(a);
+    expect(await a.evaluate(() => filteredProjects()[0].id)).toBe(ID.p2);
+    await expect(a.locator('[data-project-color]')).toHaveCount(0);
+    expect(await a.locator(`[data-project-pin="${ID.p2}"].pinned`).count()).toBeGreaterThan(0);
+    await a.evaluate(() => openProjectEditor((window as any).ID.p2));
+    await expect(a.locator('#pePriority')).toBeHidden();
+    await a.locator('#sheet [data-pick-color="#3f6d8e"]').click();
+    await a.locator('#saveProjectBtn').click();
+    await settled(a);
+    expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p2).color)).toBe('#3f6d8e');
+    expect(await a.locator('.project.colored[style*="--item-ink"]').count()).toBeGreaterThan(0);
+    expect(await a.locator(`[data-drop-project="${ID.p1}"] .projecttitle .star`).count()).toBeGreaterThan(0);
+    await a.locator('.tabstrip [data-areas-tool]').click();
+    await expect(a.locator('#sheet')).toContainText('Áreas de trabajo');
+    await a.evaluate(() => manageTab((window as any).ID.personal));
+    await a.locator('#sheet [data-pick-color="#a3537a"]').click();
+    await settled(a);
+    expect(await a.evaluate(() => state.tabs.find((t: any) => t.id === (window as any).ID.personal).color)).toBe('#a3537a');
+    expect((await serverRow('tasks.tabs', ID.personal!)).color).toBe('#a3537a');
+    await a.evaluate(() => closeSheet());
+    expect(await a.locator(`.tabpill.colored[data-tab="${ID.personal}"]`).count()).toBeGreaterThan(0);
+    await expect(a.locator('#savedViews')).toHaveCount(1);
+    expect((await serverRow('tasks.projects', ID.p2!)).color).toBe('#3f6d8e');
+    expect(await a.locator('.project.colored').count()).toBeGreaterThan(0);
+    expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+});
+
+test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
+  await test.step('[61] las facetas filtran en el sitio, los chips activos se quitan solos y las vistas guardadas se aplican desde la tira', async () => {
+    await b.setViewportSize({ width: 1440, height: 1000 });
+    await sync(b);
+    await b.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.groupBy = 'project'; state.filters = {}; navigateView('tasks'); });
+    expect(await b.locator('.facetbar [data-facet]').count()).toBeGreaterThanOrEqual(4);
+    expect(await b.locator('[data-quick-view]').count()).toBeGreaterThan(0);
+    await b.locator(`[data-facet="${ID.person}"]`).click();
+    await expect(b.locator('.facet.open .facetpanel')).toHaveCount(1);
+    await b.locator(`.facetpanel [data-facet-toggle="${ID.person}"][data-facet-value="${ID.juan}"]`).click();
+    expect(await b.evaluate(() => state.filters[(window as any).ID.person])).toEqual([ID.juan]);
+    await expect(b.locator('.facet.open .facetpanel')).toHaveCount(1);
+    await expect(b.locator('.activefilters .activechip')).toHaveCount(1);
+    await expect(b.locator('.facettotal')).toContainText('de');
+    await b.locator('.activefilters .activechip').first().click();
+    expect(await b.evaluate(() => Object.values(state.filters).flat().length)).toBe(0);
+    await b.locator('[data-facet="_state"]').click();
+    await b.locator('.facetpanel [data-facet-value="pending"]').click();
+    await b.keyboard.press('Escape');
+    await expect(b.locator('.facetpanel')).toHaveCount(0);
+    expect(await b.evaluate(() => state.filters._state)).toEqual(['pending']);
+    await b.locator('#clearAllFilters').click();
+    expect(await b.evaluate(() => Object.values(state.filters).flat().length)).toBe(0);
+    await b.locator('[data-quick-view]').first().click();
+    expect(await b.evaluate(() => state.view)).toBe('tasks');
+    expect(await b.locator('.viewpill.active').count()).toBeGreaterThan(0);
+    expect(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await b.setViewportSize({ width: 390, height: 844 });
+    await expect(b.locator('.facetbar')).toHaveCount(1);
+    await b.locator('[data-facet="_state"]').first().click();
+    expect(await b.locator('#filterCount').count()).toBeGreaterThan(0);
+    await b.evaluate(() => closeSheet());
+  });
+
+  await test.step('[62] la selección múltiple cambia la prioridad y mueve varias tareas en un solo lote', async () => {
+    await a.evaluate(() => { state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.view = 'project'; state.currentProject = (window as any).ID.p2; state.filters = {}; state.search = ''; render(); });
+    const batchIds: string[] = await a.evaluate(() => project().tasks.filter((t: any) => !t.deleted && !t.parentId && !t.done).slice(0, 2).map((t: any) => t.id));
+    expect(batchIds).toHaveLength(2);
+    await a.locator('#batchToggle').click();
+    await expect(a.locator('#batchBar')).toHaveCount(1);
+    for (const taskId of batchIds) await a.locator(`[data-select="${taskId}"]`).click();
+    await expect(a.locator('.task.selected')).toHaveCount(2);
+    expect((await a.locator('.batchcount').innerText()).startsWith('2')).toBe(true);
+    const cursorBefore = (await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor;
+    await a.locator('#batchPriority').click();
+    await a.locator('[data-batch-priority="critical"]').click();
+    await settled(a);
+    expect(await a.evaluate((ids) => ids.map((t: string) => taskLocation(t).t.priority), batchIds)).toEqual(['critical', 'critical']);
+    expect((await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor).toBe(cursorBefore + 1);
+    expect(await a.evaluate(() => typeof batchMode !== 'undefined' && batchMode)).toBe(false);
+    await a.locator('#batchToggle').click();
+    for (const taskId of batchIds) await a.locator(`[data-select="${taskId}"]`).click();
+    await a.locator('#batchMove').click();
+    await a.locator(`[data-batch-move="${ID.p1}"]`).click();
+    await settled(a);
+    expect(await a.evaluate((ids) => ids.map((t: string) => taskLocation(t).p.id), batchIds)).toEqual([ID.p1, ID.p1]);
+    expect((await server.rows('tasks.tasks')).filter((r) => batchIds.includes(r.id)).every((r) => r.project_id === ID.p1)).toBe(true);
+    expect((await server.app.call('/api/v1/bootstrap', { token: server.app.tokens.editor })).data.cursor).toBe(cursorBefore + 2);
+    expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
+});
