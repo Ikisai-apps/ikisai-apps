@@ -18,6 +18,15 @@ export interface AppConfig extends SupabaseConfig {
   /** Rutas propias de la app, evaluadas después de las del núcleo. */
   routes?: AppRoute[];
   maxBodyBytes?: number;
+  /** Clave compartida para `POST /api/v1/worker/:name` (secreto de la Edge). Sin ella, la ruta no existe. */
+  workerKey?: string;
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export interface RouteRequest {
@@ -64,6 +73,7 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'members/invite', handler: async ({ ctx, json }) => sync.invite(ctx, await json()) },
     { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => sync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
     { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => sync.read(ctx, params.name ?? '', await json()) },
+    { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, params.name ?? '', await json()); } },
     { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => { await auth.logout(bearer(request)!); return { loggedOut: true }; } },
     { method: 'POST', pattern: 'auth/password', handler: async ({ request, ctx, json }) => auth.changePassword(bearer(request)!, ctx.user, await json()) },
     { method: 'GET', pattern: 'me', handler: async ({ ctx }) => ({ userId: ctx.user.id, email: ctx.user.email, role: ctx.membership.role, scopes: ctx.membership.scopes }) },
@@ -109,6 +119,13 @@ export function createApp(config: AppConfig): AppHandler {
       };
       if (path === '/api/v1/auth/login' && request.method === 'POST') return json(await auth.login(await readJson()));
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
+      // Rutas de sistema para workers (planificador externo): clave compartida en IKISAI_WORKER_KEY, sin sesión de usuario.
+      const workerMatch = path.match(/^\/api\/v1\/worker\/([a-z_]+\.[a-z0-9_]+)$/);
+      if (workerMatch && request.method === 'POST') {
+        const provided = request.headers.get('x-ikisai-worker-key');
+        if (!config.workerKey || !provided || !timingSafeEqual(provided, config.workerKey)) fail(401, 'UNAUTHENTICATED', 'Clave de worker inválida.');
+        return json(await sync.invoke(null, workerMatch[1]!, await readJson()));
+      }
       if (!path.startsWith('/api/v1/')) fail(404, 'NOT_FOUND', 'Ruta desconocida.');
       const token = bearer(request);
       const user = await auth.identity(token);

@@ -16,9 +16,14 @@ ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food')
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
+  'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.spreadsheet', 'application/vnd.oasis.opendocument.presentation'],
   'kitchen-media': ['image/webp', 'image/jpeg', 'image/png'],
   'purchase-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
 }

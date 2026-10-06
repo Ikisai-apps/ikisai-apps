@@ -165,6 +165,30 @@ test('lecturas registradas: función propia y vista de proyección con filtros; 
   await t.close();
 });
 
+test('acciones invocables: editor sí, reader no, sistema sí; baja de tabla y de lectura', async () => {
+  const { t, owner, editor, reader } = await setup();
+  await t.db.exec(`
+    create table invoices.jobs (id serial primary key, note text, claimed_by uuid, claimed_at timestamptz);
+    insert into invoices.jobs (note) values ('uno'), ('dos');
+    create function invoices.claim_job(p_ctx jsonb) returns jsonb language plpgsql as $$
+      declare v_id int; begin
+        update invoices.jobs set claimed_by = nullif(p_ctx->>'actor','')::uuid, claimed_at = now() where id = (select id from invoices.jobs where claimed_at is null order by id limit 1) returning id into v_id;
+        return jsonb_build_object('job', v_id, 'role', p_ctx->>'role'); end $$;
+    select core.allow_read('invoices', 'invoices.claim_job', 'action', '{editor,owner}');
+  `);
+  const a = (await t.rpc('core_invoke', { p_app: APP, p_actor: editor, p_name: 'invoices.claim_job', p_args: {} })) as any;
+  assert.equal(a.job, 1); assert.equal(a.role, 'editor');
+  await expectFail(t.rpc('core_invoke', { p_app: APP, p_actor: reader, p_name: 'invoices.claim_job', p_args: {} }), 'FORBIDDEN');
+  const sys = (await t.rpc('core_invoke', { p_app: APP, p_actor: null, p_name: 'invoices.claim_job', p_args: {} })) as any;
+  assert.equal(sys.job, 2); assert.equal(sys.role, 'system');
+  await expectFail(t.rpc('core_read', { p_app: APP, p_actor: owner, p_name: 'invoices.claim_job', p_args: {} }), 'INVALID_OPERATION');
+  await t.db.exec(`select core.disallow_read('invoices', 'invoices.claim_job'); select core.unregister_table('invoices', 'invoices', 'suppliers');`);
+  await expectFail(t.rpc('core_invoke', { p_app: APP, p_actor: owner, p_name: 'invoices.claim_job', p_args: {} }), 'INVALID_OPERATION');
+  const boot = (await t.rpc('core_bootstrap', { p_app: APP, p_user: owner })) as any;
+  assert.deepEqual(boot.tables, []);
+  await t.close();
+});
+
 test('membresías: solo owner administra; sesión revocada deja de estar activa', async () => {
   const { t, owner, editor } = await setup();
   const newcomer = await t.createUser();

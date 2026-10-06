@@ -168,11 +168,13 @@ La implementa `_kit`; cada app monta sus rutas de lectura, exportación e integr
 | `GET members` / `POST members` | lista de pertenencias; alta o cambio `{userId, role, scopes?, displayName?}` solo `owner` |
 | `POST members/invite` | `{email, role, scopes?, displayName?}` → crea la cuenta en Auth con contraseña temporal (se devuelve una sola vez) y la pertenencia; solo `owner` |
 | `GET read/:name?where[col]=v&limit=&offset=` / `POST read/:name` | lectura registrada en `core.allowed_reads` (§5.1): función `schema.fn(p_ctx jsonb)` de la propia app o vista de proyección publicada por otra app |
+| `POST invoke/:name` | acción registrada (`kind = 'action'`): procedimiento volátil fuera de `core.commit`, para colas y trabajos internos de la app; `editor`/`owner` |
+| `POST worker/:name` | la misma acción ejecutada por un planificador externo sin sesión de usuario (`actor` null, rol `system`), autenticado con la cabecera `X-Ikisai-Worker-Key` igual al secreto `IKISAI_WORKER_KEY` de la Edge |
 | `GET me` | usuario, correo, rol y ámbitos de la sesión |
 
 ### 5.1 Lecturas registradas
 
-Una Edge solo ejecuta las RPC `public.core_*`. Para leer su propio schema o la proyección de otra app, la app dueña registra el objeto en una migración: `select core.allow_read('<app lectora>', '<schema>.<objeto>', 'function'|'view', roles)`. Las funciones reciben `{app, actor, role, args}` y devuelven `jsonb`; las vistas admiten filtros de igualdad, `limit` y `offset`. Ejemplo normativo: Booking crea `booking.food_event_projection` y registra `core.allow_read('food', 'booking.food_event_projection', 'view')`.
+Una Edge solo ejecuta las RPC `public.core_*`. Para leer su propio schema o la proyección de otra app, la app dueña registra el objeto en una migración: `select core.allow_read('<app lectora>', '<schema>.<objeto>', 'function'|'view'|'action', roles)`. `action` registra un procedimiento volátil `schema.fn(p_ctx jsonb) returns jsonb` que se ejecuta con `invoke`/`worker`; sus escrituras sobre tablas sincronizables deben pasar por `core.apply_row_op` (las tablas internas cerradas, como colas, pueden escribirse directamente). Para dar de baja: `core.unregister_table(app, schema, tabla)` y `core.disallow_read(app, nombre)`; borrar el objeto sigue siendo cosa de la app. Las funciones reciben `{app, actor, role, args}` y devuelven `jsonb`; las vistas admiten filtros de igualdad, `limit` y `offset`. Ejemplo normativo: Booking crea `booking.food_event_projection` y registra `core.allow_read('food', 'booking.food_event_projection', 'view')`.
 
 ### 5.2 Errores SQL
 
