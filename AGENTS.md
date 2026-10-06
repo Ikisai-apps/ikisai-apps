@@ -39,6 +39,7 @@ Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: an
 10. **Coordinación por buzones** (fuera del repo, en `C:\Users\34606\Documents\Ikisai\App\coordinacion\`): al empezar una tanda lee `TABLON.md` y `<app>/RESPUESTAS.md`; al terminar escribe una entrada con fecha al final de `<app>/SALIDA.md` (Hecho · PR · Preguntas numeradas · Peticiones a Core · Bloqueos) y párate. Core responde en `RESPUESTAS.md` con tu numeración y publica en `TABLON.md` lo que afecta a todos.
 9. **Estado:** cada equipo mantiene `docs/<app>/ESTADO.md` (hecho, pendiente, bloqueos).
 10. **Definición de hecho:** recorrido de aceptación en PC y Android, escenarios offline en Playwright, documentación de despliegue y recuperación.
+11. **Subagentes para lo mecánico.** Delega en subagentes con `model: sonnet` (o `haiku`) el trabajo acotado y verificable por pruebas: portar escenarios siguiendo un patrón aprobado, fixtures, pantallas repetidas, documentación, ejecutar suites. Tú especificas y verificas; la CI confirma. Nunca delegues migraciones, contrato, API, modelo de datos ni decisiones de producto.
 
 ## Comandos
 
