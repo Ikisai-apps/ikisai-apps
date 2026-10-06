@@ -575,6 +575,7 @@ Para Food no cambia nada: guarda `source_event_revision` y compara. El contador 
 | `guest_count_is_final` | `events.final_guests is not null` | distinguir personas finales de previstas |
 | `requires_meals` | `reservations.requires_meals` | no proponer menú a un grupo sin comidas |
 | `meal_notes` | `reservations.meal_notes` | notas de alimentación del cliente |
+| `reservation_id` | `reservations.id` | abrir la ficha de la reserva desde Food (migración 0404) |
 
 Las dos primeras las pide Food en su documento (`docs/food/API.md` §7.1, su petición P5), igual que el `event_revision` monótono descrito arriba y los catálogos cerrados de `meal_plan` y `menu_style`, que son los `check` de §2.1 y §2.2. Si Core prefiere la lista exacta del contrato, las cuatro se quedan fuera y la vista filtra a `confirmada`, `en_ejecucion` y `cerrada`.
 

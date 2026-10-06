@@ -233,12 +233,12 @@ test('proyección para Food · columnas del contrato, restricciones agregadas y 
   assert.deepEqual(Object.keys(row).sort(), [
     'event_id', 'event_code', 'reservation_code', 'title', 'event_type', 'start_date', 'end_date', 'arrival_time', 'departure_time',
     'guest_count', 'minors_count', 'meal_plan', 'menu_style', 'dietary_restrictions', 'event_revision',
-    'reservation_status', 'guest_count_is_final', 'requires_meals', 'meal_notes',
+    'reservation_status', 'guest_count_is_final', 'requires_meals', 'meal_notes', 'reservation_id',
   ].sort());
   assert.match(row.event_code, /^EVT_/); assert.match(row.reservation_code, /^RSV_/);
   assert.equal(row.guest_count, 20); assert.equal(row.guest_count_is_final, false); assert.equal(row.minors_count, 2);
   assert.equal(row.meal_plan, 'pension_completa'); assert.equal(row.menu_style, 'vegetariano');
-  assert.equal(row.reservation_status, 'confirmada'); assert.equal(row.requires_meals, true); assert.equal(row.meal_notes, 'Sin picante');
+  assert.equal(row.reservation_status, 'confirmada'); assert.equal(row.reservation_id, reservationId); assert.equal(row.requires_meals, true); assert.equal(row.meal_notes, 'Sin picante');
   assert.deepEqual(row.dietary_restrictions, [
     { type: 'alergia', subject: 'pistacho', severity: 'grave', servings: 1, kitchen_notes: null },
     { type: 'vegano', subject: null, severity: null, servings: 2, kitchen_notes: null },
