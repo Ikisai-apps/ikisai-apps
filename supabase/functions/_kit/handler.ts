@@ -4,6 +4,7 @@ import { createSupabase, type SupabaseConfig } from './supabase.ts';
 import { createAuth } from './auth.ts';
 import { createSync, integer, type AppHooks, type RequestContext } from './sync.ts';
 import { createUploads, type UploadsConfig } from './uploads.ts';
+import { createAgents } from './agents.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -75,6 +76,7 @@ export function createApp(config: AppConfig): AppHandler {
   const auth = createAuth(supabase);
   const sync = createSync(supabase, config.app, config.hooks ?? {});
   const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads) : null;
+  const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
   const origins = new Set(config.origins);
   const maxBody = config.maxBodyBytes ?? 8 * 1024 * 1024;
   const prefix = new RegExp(`^(?:/functions/v1)?/${config.slug.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:-qa)?(?=/|$)`);
@@ -96,7 +98,17 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, params.name ?? '', await json()); } },
     { method: 'POST', pattern: 'auth/logout', handler: async ({ request }) => { await auth.logout(bearer(request)!); return { loggedOut: true }; } },
     { method: 'POST', pattern: 'auth/password', handler: async ({ request, ctx, json }) => auth.changePassword(bearer(request)!, ctx.user, await json()) },
-    { method: 'GET', pattern: 'me', handler: async ({ ctx }) => ({ userId: ctx.user.id, email: ctx.user.email, role: ctx.membership.role, scopes: ctx.membership.scopes }) },
+    { method: 'GET', pattern: 'me', handler: async ({ ctx }) => ({ userId: ctx.user.id, email: ctx.user.email, role: ctx.membership.role, scopes: ctx.membership.scopes, kind: ctx.user.kind, name: ctx.user.name ?? ctx.bootstrap.profile.displayName }) },
+    // Agentes (contrato §3): propuestas con aprobación humana, claves y registro de accesos.
+    { method: 'POST', pattern: 'proposals', handler: async ({ ctx, json }) => agents.prepare(ctx, await json()) },
+    { method: 'GET', pattern: 'proposals', handler: ({ ctx, url }) => agents.list(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'proposals/:id', handler: ({ ctx, params }) => agents.get(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'proposals/:id/approve', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'approve') },
+    { method: 'POST', pattern: 'proposals/:id/reject', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'reject') },
+    { method: 'GET', pattern: 'agents', handler: ({ ctx }) => agents.listKeys(ctx) },
+    { method: 'POST', pattern: 'agents', handler: async ({ ctx, json }) => agents.issue(ctx, await json()) },
+    { method: 'DELETE', pattern: 'agents/:keyId', handler: ({ ctx, params, url }) => agents.revoke(ctx, params.keyId ?? '', ['1', 'true'].includes(url.searchParams.get('onlyMembership') ?? '')) },
+    { method: 'GET', pattern: 'access-log', handler: ({ ctx, url }) => agents.accessLog(ctx, url.searchParams) },
   ];
   if (uploads) {
     routes.push(

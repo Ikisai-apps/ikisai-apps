@@ -1,11 +1,19 @@
-/** Identidad: sesión Supabase validada contra Auth y contra auth.sessions (logout inmediato). */
+/**
+ * Identidad: sesión Supabase validada contra Auth y contra auth.sessions (logout inmediato), o clave de agente `ika_…`
+ * (contrato §3: sha256 de la clave contra core.agent_keys; sin sesión ni refresco, revocación inmediata).
+ */
 import { fail, messageFor } from './errors.ts';
-import type { Supabase } from './supabase.ts';
+import { sha256Hex, type Supabase } from './supabase.ts';
 
 export interface Identity {
   id: string;
   email: string | null;
+  /** Sesión de Auth para personas; `agent:<keyId>` para agentes. */
   sessionId: string;
+  kind: 'human' | 'agent';
+  /** Solo agentes: clave con la que se autenticó y nombre del agente. */
+  keyId?: string;
+  name?: string;
 }
 
 export interface AuthService {
@@ -24,6 +32,19 @@ export interface SessionTokens {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Clave de agente: `ika_` + 32 bytes aleatorios en base64url (43 caracteres). */
+export const AGENT_KEY = /^ika_[A-Za-z0-9_-]{43}$/;
+
+export function isAgentKey(token: string | null | undefined): boolean {
+  return typeof token === 'string' && AGENT_KEY.test(token);
+}
+
+/** Genera una clave de agente nueva; se muestra una sola vez y solo se guarda su sha256. */
+export function generateAgentKey(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return 'ika_' + btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 export function createAuth(supabase: Supabase): AuthService {
   function claimsOf(token: string): Record<string, unknown> {
@@ -37,6 +58,10 @@ export function createAuth(supabase: Supabase): AuthService {
 
   async function identity(token: string | null | undefined): Promise<Identity> {
     if (typeof token !== 'string' || !token || token.length > 8192) fail(401, 'UNAUTHENTICATED', messageFor('UNAUTHENTICATED'));
+    if (isAgentKey(token)) {
+      const agent = await supabase.rpc<{ id: string; keyId: string; name: string }>('core_agent_identity', { p_digest: await sha256Hex(token) });
+      return { id: agent.id, email: null, sessionId: 'agent:' + agent.keyId, kind: 'agent', keyId: agent.keyId, name: agent.name };
+    }
     const user = await supabase.remote('/auth/v1/user', { bearer: token });
     if (!user?.id || user.role !== 'authenticated') fail(401, 'UNAUTHORIZED', messageFor('UNAUTHORIZED'));
     const claims = claimsOf(token);
@@ -44,7 +69,7 @@ export function createAuth(supabase: Supabase): AuthService {
     if (claims.sub !== user.id || typeof sessionId !== 'string' || !UUID.test(sessionId)) fail(401, 'UNAUTHORIZED', messageFor('UNAUTHORIZED'));
     const active = await supabase.rpc<boolean>('core_session_active', { p_user: user.id, p_session: sessionId });
     if (!active) fail(401, 'UNAUTHORIZED', 'La sesión ha caducado o se ha cerrado.');
-    return { id: user.id, email: user.email ?? null, sessionId };
+    return { id: user.id, email: user.email ?? null, sessionId, kind: 'human' };
   }
 
   function tokens(result: any): SessionTokens {
@@ -77,11 +102,13 @@ export function createAuth(supabase: Supabase): AuthService {
   }
 
   async function logout(token: string): Promise<void> {
+    if (isAgentKey(token)) fail(403, 'FORBIDDEN', 'Una clave de agente no tiene sesión que cerrar.');
     const response = await supabase.remote('/auth/v1/logout?scope=local', { method: 'POST', bearer: token, raw: true });
     if (!response.ok && response.status !== 401 && response.status !== 404) fail(503, 'BACKEND_UNAVAILABLE', messageFor('BACKEND_UNAVAILABLE'));
   }
 
   async function changePassword(token: string, who: Identity, body: any): Promise<{ changed: true }> {
+    if (who.kind === 'agent') fail(403, 'FORBIDDEN', 'Un agente no tiene contraseña.');
     if (typeof body?.currentPassword !== 'string' || typeof body?.newPassword !== 'string' || body.newPassword.length < 10 || body.newPassword.length > 256) {
       fail(422, 'INVALID_PASSWORD', 'La nueva contraseña debe tener al menos 10 caracteres.');
     }
