@@ -23,6 +23,8 @@ test.describe('ui-kit v0.6', () => {
     await expect(page.locator('#sortHost [aria-live]')).toContainText('Curry de verduras, posición 3 de 4');
     // Arrastre con el ratón (en el proyecto móvil el puntero es táctil y requiere pulsación mantenida; se prueba en escritorio).
     if (testInfo.project.name === 'escritorio') {
+      await page.evaluate(() => document.querySelector('#dishList')!.scrollIntoView({ block: 'center' }));
+      await page.waitForTimeout(150);
       const from = await list.locator('.sortable-row', { hasText: 'Bizcocho' }).locator('.sortable-handle').boundingBox();
       const target = await list.locator('.sortable-row', { hasText: 'Crema' }).boundingBox();
       await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
