@@ -8,8 +8,8 @@ import {
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
 
-// Finance (antes Invoices, ronda 31): finance.ikisai.com es el dominio principal; invoices.ikisai.com se quita en la fase C.
-export const INVOICES_ORIGINS = ['https://finance.ikisai.com', 'https://invoices.ikisai.com', 'https://ikisai-invoices.pages.dev'];
+// Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
+export const INVOICES_ORIGINS = ['https://finance.ikisai.com', 'https://ikisai-invoices.pages.dev'];
 export const INVOICES_BUCKET = 'purchase-documents';
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
 
