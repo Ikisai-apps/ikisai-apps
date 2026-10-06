@@ -5,6 +5,7 @@ import { createAuth } from './auth.ts';
 import { createSync, integer, type AppHooks, type RequestContext } from './sync.ts';
 import { createUploads, type UploadsConfig } from './uploads.ts';
 import { createAgents } from './agents.ts';
+import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -23,6 +24,8 @@ export interface AppConfig extends SupabaseConfig {
   workerKey?: string;
   /** Rutas de sistema con lógica TypeScript (planificador externo): `/api/v1/worker/<pattern>`, autenticadas con `X-Ikisai-Worker-Key`, sin usuario. */
   workerRoutes?: WorkerRoute[];
+  /** Herramientas MCP de dominio (contrato §3.2), además de las genéricas `<app>_snapshot`, `<app>_commit`… */
+  mcpTools?: McpTool[];
 }
 
 export interface WorkerRequest {
@@ -77,6 +80,20 @@ export function createApp(config: AppConfig): AppHandler {
   const sync = createSync(supabase, config.app, config.hooks ?? {});
   const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
+  const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
+  const mcpCore = (ctx: RequestContext): McpCore => ({
+    commit: (body) => sync.commit(ctx, body),
+    prepare: (body) => agents.prepare(ctx, body),
+    read: (name, args) => sync.read(ctx, name, args ?? {}),
+    snapshot: (tables, o = {}) => sync.snapshot(ctx, new URLSearchParams({ tables: tables.join(','), ...(o.includeDeleted ? { includeDeleted: '1' } : {}), ...(o.limit ? { limit: String(o.limit) } : {}), ...(o.offset ? { offset: String(o.offset) } : {}) })),
+    changes: (after, limit) => sync.changes(ctx, new URLSearchParams({ after: String(after), ...(limit ? { limit: String(limit) } : {}) })),
+    history: (before, limit) => sync.history(ctx, new URLSearchParams({ ...(before !== null ? { before: String(before) } : {}), ...(limit ? { limit: String(limit) } : {}) })),
+    proposals: (status) => agents.list(ctx, new URLSearchParams(status ? { status } : {})),
+    proposal: (id) => agents.get(ctx, id),
+    undoPlan: (cursor) => sync.undoPlan(ctx, cursor),
+    undo: (cursor, body) => sync.undo(ctx, cursor, body),
+    invoke: (name, args) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return sync.invoke(ctx.user.id, name, args ?? {}); },
+  });
   const origins = new Set(config.origins);
   const maxBody = config.maxBodyBytes ?? 8 * 1024 * 1024;
   const prefix = new RegExp(`^(?:/functions/v1)?/${config.slug.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:-qa)?(?=/|$)`);
@@ -173,6 +190,16 @@ export function createApp(config: AppConfig): AppHandler {
       const user = await auth.identity(token);
       const ctx = await sync.context(user, token!);
       const relative = path.slice('/api/v1/'.length);
+      // MCP (JSON-RPC 2.0 sobre HTTP): admite lotes, así que no pasa por readJson; las notificaciones responden 202 sin cuerpo.
+      if (relative === 'mcp') {
+        if (request.method !== 'POST') return new Response(null, { status: 405, headers: { ...headers, Allow: 'POST' } });
+        const raw = await request.text();
+        if (new TextEncoder().encode(raw).length > maxBody) fail(413, 'PAYLOAD_TOO_LARGE', messageFor('PAYLOAD_TOO_LARGE'));
+        let message: unknown;
+        try { message = JSON.parse(raw); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
+        const out = await mcp.handle(message, ctx, mcpCore(ctx));
+        return out === null ? new Response(null, { status: 202, headers }) : json(out);
+      }
       for (const route of compiled) {
         if (route.method !== request.method) continue;
         const params = route.matcher(relative);
