@@ -105,6 +105,9 @@ test('compras · ámbitos y visibilidad: el almacén y los planes son del área 
   // La validación compartida dice lo mismo antes de enviar.
   assert.throws(() => validateOperations([item(tab, newId(), { name: 'Lejía' })], { role: 'editor', scopes }), /área entera/);
   assert.throws(() => validateOperations([movement(tab, newId(), newId(), 'in', -1)], { role: 'owner', scopes: '*' }), /suma/);
+  // El responsable de compras se elige desde el editor de área: la validación del cliente lo admite (y un id que no es uuid, no).
+  validateOperations([update('tasks.tabs', tab, 1, { purchase_approver_id: newId() })], { role: 'owner', scopes: '*' });
+  assert.throws(() => validateOperations([update('tasks.tabs', tab, 1, { purchase_approver_id: 'nadie' })], { role: 'owner', scopes: '*' }));
 });
 
 test('compras · vaciar papelera: lo que cuelga de un área o un proyecto borrados se lleva a la papelera y se purga', async () => {

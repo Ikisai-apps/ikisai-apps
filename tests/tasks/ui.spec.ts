@@ -114,9 +114,9 @@ test('[1][2][3][4][5][6] arranque, filtros, alta por formulario, etiqueta desde 
     await a.locator('#toggleArchivedCatalog').click();
   });
 
-  await test.step('[6] el menú móvil tiene cinco grupos e icono en cada acción', async () => {
+  await test.step('[6] el menú móvil tiene seis grupos (con Compras) e icono en cada acción', async () => {
     await a.locator('#moreBtn').click();
-    await expect(a.locator('.menugroup')).toHaveCount(5);
+    await expect(a.locator('.menugroup')).toHaveCount(6);
     expect(await a.locator('.menuitem').count()).toBe(await a.locator('.menuitem .menuicon').count());
     await a.locator('#closeMenu').click();
     await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');

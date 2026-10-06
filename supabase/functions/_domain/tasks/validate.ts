@@ -100,7 +100,7 @@ interface TableRules { fields: Record<string, Check>; required: string[] }
 
 const RULES: Record<TableName, TableRules> = {
   'tasks.tabs': {
-    fields: { name: name(200), color: nullable(color), position },
+    fields: { name: name(200), color: nullable(color), position, purchase_approver_id: nullable(uuid()) },
     required: ['name', 'position'],
   },
   'tasks.families': {

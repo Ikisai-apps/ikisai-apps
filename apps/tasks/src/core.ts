@@ -8,6 +8,8 @@
 import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBatch, type RowOperation, type Session, type SyncClient, type SyncStatus, type TableName } from '@ikisai/sync-client';
 import {
   DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, emptyDataset, validateOperations,
+  supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
+  receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
 
@@ -218,6 +220,11 @@ export class TasksCore {
 const api = {
   create: (options?: CoreOptions) => new TasksCore(options),
   DomainError,
+  /** Compras no alimentarias (§18): operaciones puras del dominio para la interfaz (`public/purchases-ui.js`). */
+  purchases: {
+    supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
+    receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations,
+  },
 };
 
 declare global {
