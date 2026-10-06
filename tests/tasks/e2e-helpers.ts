@@ -1,0 +1,77 @@
+/**
+ * Ayudas de las pruebas de extremo a extremo de Tasks: semilla de demostración (la del repo antiguo, con uuid
+ * deterministas y un mapa alias → uuid para conservar los nombres de los escenarios originales) y apertura de la app.
+ */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { BrowserContext, Page } from 'playwright/test';
+import { decompose, emptyDataset, chunkOperations, type LegacyTab } from '../../packages/domain-tasks/src/index.ts';
+import { OWNER, type E2EServer } from './e2e-server.ts';
+
+// Globales de la interfaz heredada, visibles dentro de page.evaluate.
+declare const Sync: any;
+declare const state: any;
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const SYSTEM_FAMILIES = ['person', 'trade', 'phase', 'building', 'space'];
+
+/** Alias de la demo antigua (`p1`, `t2`, `juan`, `trade`…) → uuid. Las familias sin prefijo son las del área `ikisai`. */
+export type Aliases = Record<string, string>;
+
+export async function seedDemo(server: E2EServer): Promise<Aliases> {
+  const source = JSON.parse(readFileSync(path.join(here, 'fixtures/demo.json'), 'utf8')) as { tabs: any[] };
+  const ID: Aliases = {};
+  let counter = 0x1000;
+  const mk = (alias: string): string => (ID[alias] ??= `00000000-0000-4000-8000-${(counter++).toString(16).padStart(12, '0')}`);
+  const tabs: LegacyTab[] = source.tabs.map((tab) => {
+    const family = (key: string) => mk(`${tab.id}:${key}`);
+    const projects = [...tab.projects];
+    if (!projects.some((p) => p.system === 'inbox')) projects.unshift({ id: `${tab.id}:inbox`, system: 'inbox', title: 'Entrada', note: '', status: 'active', priority: 'normal', due: '', ownLabels: [], tasks: [] });
+    return {
+      id: mk(tab.id), name: tab.name, color: null, deleted: false, version: 1, updatedAt: '', views: [],
+      families: tab.families.map((f: any) => ({ id: family(f.id), name: f.name, color: f.color, archived: false, system: SYSTEM_FAMILIES.includes(f.id) ? f.id : null, version: 1 })),
+      labels: tab.labels.map((l: any) => ({ id: mk(l.id), text: l.text, family: family(l.family), parent: l.parent ? mk(l.parent) : null, archived: !!l.archived, version: 1 })),
+      projects: projects.map((p: any, projectIndex: number) => ({
+        id: mk(p.id), title: p.title, note: p.note ?? '', status: p.status ?? 'active', priority: p.priority ?? 'normal', due: p.due ?? '', owner: p.owner ? mk(p.owner) : null,
+        ownLabels: (p.ownLabels ?? []).map(mk), attachments: [], deleted: false, deletedAt: null, order: (projectIndex + 1) * 1024, color: null, budget: null,
+        system: p.system ?? null, version: 1, updatedAt: '',
+        tasks: p.tasks.map((t: any, taskIndex: number) => ({
+          id: mk(t.id), text: t.text, note: t.note ?? '', done: !!t.done, priority: t.priority ?? 'normal', due: t.due ?? '', labels: (t.labels ?? []).map(mk), owner: t.owner ? mk(t.owner) : null,
+          parentId: t.parentId ? mk(t.parentId) : null, order: (taskIndex + 1) * 1024, attachments: [], deleted: false, deletedAt: null, deleteBatch: null,
+          dependsOn: (t.dependsOn ?? []).map(mk), cost: null, version: 1, updatedAt: '',
+        })),
+      })),
+    };
+  });
+  for (const key of SYSTEM_FAMILIES) ID[key] = ID[`${source.tabs[0].id}:${key}`]!;
+  for (const batch of decompose(emptyDataset(), tabs).flatMap((b) => chunkOperations(b))) {
+    const result = await server.commit(batch, server.app.tokens.owner);
+    if (result.status !== 200) throw new Error('Semilla de demostración rechazada: ' + JSON.stringify(result.data));
+  }
+  return ID;
+}
+
+/** Espera a que la interfaz quede al día con el servidor; si no llega, explica en qué estado se quedó. */
+export async function settled(page: Page): Promise<void> {
+  try {
+    await page.waitForFunction(() => typeof Sync !== 'undefined' && Sync.ready && Sync.mode === 'online' && !Sync.busy && Sync.record.queue.length === 0, null, { timeout: 20_000 });
+  } catch {
+    const snapshot = await page.evaluate(() => JSON.stringify({ ready: Sync.ready, tabs: state.tabs.length, mode: Sync.mode, busy: Sync.busy, queue: Sync.record.queue.length, conflict: Sync.record.conflict, failure: Sync.record.failure, status: Sync.core?.status() })).catch(() => 'sin página');
+    throw new Error(`La interfaz no quedó al día: ${snapshot}`);
+  }
+}
+
+/** Abre la app, entra con la cuenta indicada y espera al primer modelo. `ID` queda disponible en la página. */
+export async function openApp(context: BrowserContext, server: E2EServer, options: { user?: { email: string; password: string }; aliases?: Aliases; errors?: string[] } = {}): Promise<Page> {
+  const page = await context.newPage();
+  page.on('pageerror', (error) => { (options.errors ?? []).push(error.message); if (!options.errors) throw new Error('Error de JavaScript en la página: ' + error.message); });
+  if (options.aliases) await page.addInitScript(`window.ID = ${JSON.stringify(options.aliases)};`);
+  const user = options.user ?? OWNER;
+  await page.goto(server.url + '/');
+  await page.locator('#loginUsername').fill(user.email);
+  await page.locator('#loginPassword').fill(user.password);
+  await page.locator('#accountLogin').click();
+  await settled(page);
+  return page;
+}
