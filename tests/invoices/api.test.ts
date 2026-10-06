@@ -250,7 +250,7 @@ test('entregas: vista previa, ZIP en streaming con manifest, CSV y documentos; C
   assert.equal(zip.headers.get('content-type'), 'application/zip');
   const bytes = new Uint8Array(await zip.arrayBuffer());
   assert.deepEqual(zipEntryNames(bytes), [
-    'IKISAI_COMPRAS_2026_T4/manifest.json', 'IKISAI_COMPRAS_2026_T4/facturas_recibidas.csv', 'IKISAI_COMPRAS_2026_T4/lineas_compra.csv', 'IKISAI_COMPRAS_2026_T4/resumen_impuestos.csv',
+    'IKISAI_COMPRAS_2026_T4/manifest.json', 'IKISAI_COMPRAS_2026_T4/facturas_recibidas.csv', 'IKISAI_COMPRAS_2026_T4/lineas_compra.csv', 'IKISAI_COMPRAS_2026_T4/resumen_impuestos.csv', 'IKISAI_COMPRAS_2026_T4/facturas_emitidas.csv',
     'IKISAI_COMPRAS_2026_T4/facturas/2026_10_05_(makro)_alimentos_retiro_yoga.pdf',
   ]);
   assert.ok(new TextDecoder().decode(bytes).includes('%PDF prueba edge'), 'el documento va dentro del ZIP');

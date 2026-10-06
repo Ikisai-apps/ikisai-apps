@@ -211,3 +211,73 @@ export function fullNumber(seriesCode: string, number: string): string {
   const s = seriesCode.trim(); const n = number.trim();
   return n.toUpperCase().startsWith(s.toUpperCase()) ? n : `${s}-${n}`;
 }
+
+/** Resumen de emitidas de un periodo: IVA repercutido (misma forma que `invoices.issued_summary_for` en SQL). */
+export interface IssuedSummary {
+  invoices: { registrada: number; anulada: number };
+  base: number;
+  quota: number;
+  surcharge: number;
+  withholding: number;
+  total: number;
+  quota_by_rate: Array<{ tax: string; rate: number | null; base: number; quota: number; surcharge: number }>;
+  by_category: Array<{ income_category: IncomeCategory | null; base: number; total: number; count: number }>;
+  alerts: { unpaid: number; discrepancies: Array<{ id: string; full_number: string; totals_delta: number | null }>; missing_file: number };
+}
+
+export interface IssuedSummaryInput {
+  invoices: IssuedInvoiceRow[];
+  lines: IssuedLineRow[];
+  taxLines: IssuedTaxLineRow[];
+  /** Ids de emitidas con al menos un documento vivo (alerta `missing_file`). */
+  withFile?: Set<string>;
+}
+
+export function issuedSummary(input: IssuedSummaryInput, range: { from: string; to: string }): IssuedSummary {
+  const live = input.invoices.filter((i) => !i.deleted_at && i.issue_date >= range.from && i.issue_date <= range.to);
+  const summed = live.filter((i) => i.status === 'registrada');
+  const ids = new Set(summed.map((i) => i.id));
+  const sum = (values: Array<number | null | undefined>) => fromCents(values.reduce<number>((acc, v) => acc + toCents(Number(v ?? 0)), 0));
+  const breakdown = input.taxLines.filter((t) => !t.deleted_at && ids.has(t.issued_invoice_id) && !(WITHHOLDING_TAXES as readonly string[]).includes(t.tax));
+  const withBreakdown = new Set(breakdown.map((t) => t.issued_invoice_id));
+  const groups = new Map<string, { tax: string; rate: number | null; base: number; quota: number; surcharge: number }>();
+  const add = (tax: string, rate: number | null, base: number, quota: number, surcharge: number) => {
+    const key = `${tax}|${rate ?? ''}`;
+    const g = groups.get(key) ?? { tax, rate, base: 0, quota: 0, surcharge: 0 };
+    g.base += toCents(base); g.quota += toCents(quota); g.surcharge += toCents(surcharge);
+    groups.set(key, g);
+  };
+  for (const t of breakdown) add(t.tax, t.rate === null ? null : Number(t.rate), Number(t.taxable_base ?? 0), Number(t.quota), Number(t.surcharge_quota ?? 0));
+  for (const l of input.lines) {
+    if (l.deleted_at || !ids.has(l.issued_invoice_id) || withBreakdown.has(l.issued_invoice_id)) continue;
+    const quota = l.vat_amount ?? Math.round(Number(l.net_amount) * Number(l.vat_rate ?? 0)) / 100;
+    add(l.tax, l.vat_rate === null ? null : Number(l.vat_rate), Number(l.net_amount), Number(quota), Number(l.surcharge_amount ?? 0));
+  }
+  const quota_by_rate = [...groups.values()]
+    .sort((a, b) => a.tax.localeCompare(b.tax) || (a.rate ?? -1) - (b.rate ?? -1))
+    .map((g) => ({ tax: g.tax, rate: g.rate, base: fromCents(g.base), quota: fromCents(g.quota), surcharge: fromCents(g.surcharge) }));
+  const cats = new Map<string, { income_category: IncomeCategory | null; base: number[]; total: number[]; count: number }>();
+  for (const i of summed) {
+    const key = i.income_category ?? '';
+    const c = cats.get(key) ?? { income_category: i.income_category ?? null, base: [], total: [], count: 0 };
+    c.base.push(Number(i.base_total)); c.total.push(Number(i.total)); c.count += 1;
+    cats.set(key, c);
+  }
+  return {
+    invoices: { registrada: summed.length, anulada: live.filter((i) => i.status === 'anulada').length },
+    base: sum(summed.map((i) => i.base_total)),
+    quota: sum(summed.map((i) => i.quota_total)),
+    surcharge: sum(summed.map((i) => i.surcharge_total)),
+    withholding: sum(summed.map((i) => i.withholding_total)),
+    total: sum(summed.map((i) => i.total)),
+    quota_by_rate,
+    by_category: [...cats.values()].sort((a, b) => (a.income_category ?? '￿').localeCompare(b.income_category ?? '￿'))
+      .map((c) => ({ income_category: c.income_category, base: sum(c.base), total: sum(c.total), count: c.count })),
+    alerts: {
+      unpaid: summed.filter((i) => i.payment_status !== 'cobrada').length,
+      discrepancies: summed.filter((i) => i.review_reason === 'REVISAR IMPORTES').sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.full_number.localeCompare(b.full_number))
+        .map((i) => ({ id: i.id, full_number: i.full_number, totals_delta: i.totals_delta === null ? null : Number(i.totals_delta) })),
+      missing_file: input.withFile ? summed.filter((i) => !input.withFile!.has(i.id)).length : 0,
+    },
+  };
+}

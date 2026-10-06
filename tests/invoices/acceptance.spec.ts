@@ -700,6 +700,38 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
   });
 
+  await test.step('asignar el ingreso a una reserva desde la ficha; Gestoría muestra el IVA repercutido', async () => {
+    const reservation = { app: 'booking' as const, kind: 'reservation', id: '33333333-3333-4333-8333-333333333333', label: 'Reserva García', path: ['Reservas'], revision: 1 };
+    api.targets.push(reservation);
+    try {
+      await page.locator('#issuedList .row').first().click();
+      const sheet = page.locator('.sheet[role="dialog"]');
+      await sheet.locator('#assignIssued').click();
+      const assign = page.locator('.sheet[role="dialog"]');
+      await expect(assign.locator('#issuedAllocAmount')).toHaveValue('150');
+      await assign.getByRole('button', { name: 'Elegir Reserva García' }).click();
+      await expect(assign.locator('#issuedChosenTarget')).toContainText('Reservas › Reserva García');
+      await assign.locator('#issuedAllocAmount').fill('200');
+      await assign.locator('#saveIssuedAllocation').click();
+      await expect(assign.locator('.formerror')).toContainText('Solo quedan 150,00 €');
+      await assign.locator('#issuedAllocAmount').fill('150');
+      await assign.locator('#saveIssuedAllocation').click();
+      await expect(page.locator('#issuedAllocations')).toContainText('Reservas › Reserva García · 150,00 €', { timeout: 20_000 });
+      await synced(page);
+      await expect.poll(() => api.rows('invoices.issued_allocations').length, { timeout: 20_000 }).toBe(1);
+      expect(api.rows('invoices.issued_allocations')).toEqual([expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: reservation.id, allocated_amount: 150 })]);
+    } finally {
+      api.targets.splice(api.targets.findIndex((t) => t.id === reservation.id), 1);
+    }
+    await page.keyboard.press('Escape').catch(() => undefined);
+    await nav(page, 'Gestoría').click();
+    await expect(page.locator('#issuedSummary')).toContainText('IVA repercutido20,50 €');
+    await expect(page.locator('#issuedSummary')).toContainText('IVA 21 %50,00 € → 10,50 €');
+    await expect(page.locator('#vatBalance')).toContainText('Repercutido20,50 €');
+    await nav(page, 'Facturas').click();
+    await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+  });
+
   await test.step('ficha: cobrada y anulada con motivo; el número sigue ocupado', async () => {
     await page.locator('#issuedList .row').first().click();
     const sheet = page.locator('.sheet[role="dialog"]');

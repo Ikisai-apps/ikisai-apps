@@ -16,6 +16,7 @@ import {
 import { eur, monthKey, monthLabel, onAnyTable, parseAmount, shortDate, todayIso } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument } from '../app/files.ts';
 import { guard } from '../app/guard.ts';
+import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
@@ -115,7 +116,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     const sheet = openSheet({
       title: `${numberOf(invoice)} · ${recipientOf(invoice)}`,
       meta: `${ISSUED_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type} · revisión ${invoice.revision}${invoice._pending ? ' · pendiente de sincronizar' : ''}`,
-      body: el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data)),
+      body: el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))),
       foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
       onClose: () => { if (opened?.id === id) opened = null; },
     });
@@ -127,7 +128,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     paint();
     if (opened) {
       const invoice = data.invoices.find((i) => i.id === opened!.id);
-      if (invoice) replace(opened.sheet.body, el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data)));
+      if (invoice) replace(opened.sheet.body, el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))));
     }
   }
   const off = onAnyTable(client, () => void load());
@@ -138,7 +139,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
 // ---------------------------------------------------------------------------
 // Ficha
 // ---------------------------------------------------------------------------
-function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData): HTMLElement {
+function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData, reopen: (id: string) => void): HTMLElement {
   const { client } = ctx;
   const canEdit = client.bootstrap()?.membership.role !== 'reader' && invoice.status !== 'anulada';
   const lines = data.linesBy.get(invoice.id) ?? [];
@@ -200,14 +201,78 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
       ? renderList({ label: 'Documentos', rows: files.map((f) => ({ id: f.id, title: f.normalized_filename ?? f.original_filename, meta: [formatBytes(Number(f.size_bytes)), f.original_filename], pending: f._pending === true,
         actions: [el('button', { class: 'linkbtn', type: 'button', onclick: () => openFile(client, f.file_id).catch(() => toast('No se pudo abrir el documento.')) }, icon('eye', 16), 'Ver')] })) })
       : el('p', { class: 'hint' }, 'Sin documento.')),
-    block('Destino del ingreso', allocations.length ? String(allocations.length) : 'sin asignar', false, allocations.length
-      ? el('ul', null, ...allocations.map((a) => el('li', null, `${a.target_label} · ${eur(a.allocated_amount)}`)))
-      : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.')),
+    block('Destino del ingreso', allocations.length ? String(allocations.length) : 'sin asignar', allocations.length > 0 || canEdit,
+      allocations.length
+        ? el('ul', { class: 'alloc-list', id: 'issuedAllocations' }, ...allocations.map((a) => el('li', null, el('span', null, `${a.target_label} · ${eur(a.allocated_amount)}`),
+          canEdit ? el('button', { class: 'x', type: 'button', 'aria-label': `Quitar ${a.target_label}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ISSUED_ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación quitada.') }, '×') : null)))
+        : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.'),
+      canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento')) : null),
     block('Verifactu', invoice.origin === 'app' ? (invoice.vf_status ?? 'pendiente') : 'otra herramienta', false,
       el('p', { class: 'hint' }, invoice.origin === 'app'
         ? 'Emitida desde la app: registro Verifactu.'
         : `${ISSUED_ORIGIN_LABELS[invoice.origin] ?? invoice.origin}. El registro Verifactu lo hace la herramienta que la expidió; aquí queda en el libro registro de expedidas.`)),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Destino del ingreso: reserva o evento de Booking (o general), resuelto en la Edge con el token del usuario
+// ---------------------------------------------------------------------------
+function remaining(invoice: LocalIssuedInvoice, allocations: LocalIssuedAllocation[]): number {
+  const used = allocations.reduce((acc, a) => acc + Math.round(Number(a.allocated_amount) * 100), 0);
+  return Math.max(0, Math.round(Number(invoice.base_total) * 100) - used) / 100;
+}
+
+function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, allocations: LocalIssuedAllocation[], done: () => void): void {
+  const { client } = ctx;
+  const rest = remaining(invoice, allocations);
+  let kind: 'reservation' | 'event' | 'general' = 'reservation';
+  let choice: TargetChoice | null = null;
+  const kinds = el('div', { class: 'segmented', role: 'tablist' }, ...([['reservation', 'Reserva'], ['event', 'Evento'], ['general', 'General']] as Array<[typeof kind, string]>).map(([value, label]) =>
+    el('button', { type: 'button', role: 'tab', class: value === kind ? 'on' : '', dataset: { kind: value }, onclick: () => { kind = value; choice = null; paintKind(); } }, label)));
+  const query = el('input', { type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
+  const results = el('div', { id: 'issuedTargetResults' });
+  const chosen = el('p', { class: 'hint', id: 'issuedChosenTarget' });
+  const amount = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
+  const error = el('p', { class: 'formerror', role: 'alert' });
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function paintKind(): void {
+    for (const b of Array.from(kinds.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.kind === kind);
+    query.hidden = kind === 'general';
+    chosen.textContent = kind === 'general' ? 'Ingreso general, sin reserva.' : '';
+    replace(results);
+    if (kind !== 'general') void search();
+  }
+  async function search(): Promise<void> {
+    if (!navigator.onLine) { replace(results, el('p', { class: 'hint' }, 'Buscar reservas necesita conexión.')); return; }
+    try {
+      const items = await searchTargets(client, 'booking', query.value.trim(), kind);
+      replace(results, items.length ? renderList({ label: 'Destinos', rows: items.map((t) => ({ id: t.id, title: targetLabel(t), meta: [t.code ?? ''], label: `Elegir ${t.label}`,
+        onClick: () => { choice = t; chosen.textContent = `Elegido: ${targetLabel(t)}`; } })) }) : el('p', { class: 'hint' }, 'Sin resultados.'));
+    } catch (e) {
+      replace(results, el('p', { class: 'hint' }, (e as { message?: string })?.message ?? 'No se pudo buscar en Reservas.'));
+    }
+  }
+  query.addEventListener('input', () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void search(), 250); });
+  const save = el('button', { class: 'primary', type: 'button', id: 'saveIssuedAllocation', onclick: async () => {
+    error.textContent = '';
+    const value = parseAmount(amount.value);
+    if (value === null || value <= 0) { error.textContent = 'Indica un importe mayor que cero.'; return; }
+    if (value > rest + 0.02) { error.textContent = `Solo quedan ${eur(rest)} de base por asignar.`; return; }
+    if (kind !== 'general' && !choice) { error.textContent = 'Elige la reserva o el evento.'; return; }
+    const fields = kind === 'general'
+      ? { issued_invoice_id: invoice.id, target_app: 'general', target_kind: 'general', target_label: 'Ingreso general', allocated_amount: value }
+      : { issued_invoice_id: invoice.id, target_app: 'booking', target_kind: kind, target_id: choice!.id, target_label: targetLabel(choice!), target_code: choice!.code, allocated_amount: value };
+    if (await commitSafely(client, [{ op: 'insert', table: ISSUED_ALLOCATIONS, id: crypto.randomUUID(), fields }], 'Ingreso asignado.')) { await closeSheet(true); done(); }
+  } }, 'Asignar');
+  openSheet({
+    title: `Asignar ${numberOf(invoice)}`,
+    meta: `Base ${eur(invoice.base_total)} · quedan ${eur(rest)}`,
+    body: el('div', null, kinds, field('Buscar', query), results, chosen, field('Importe (base)', amount), error),
+    foot: [el('button', { class: 'ghost', type: 'button', onclick: async () => { await closeSheet(true); done(); } }, 'Cancelar'), save],
+    initialFocus: query,
+  });
+  paintKind();
 }
 
 // ---------------------------------------------------------------------------

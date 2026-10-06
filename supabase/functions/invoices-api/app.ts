@@ -437,7 +437,7 @@ interface Bundle {
   export: { id: string; code: string; folder_name: string; manifest_sha256: string; status: string };
   manifest_text: string;
   manifest: ExportManifest;
-  files: Array<{ invoice_code: string; file_id: string; normalized_filename: string; sha256: string; size_bytes: number; bucket: string | null; path: string | null; status: string | null }>;
+  files: Array<{ folder?: 'facturas' | 'emitidas'; invoice_code: string; file_id: string; normalized_filename: string; sha256: string; size_bytes: number; bucket: string | null; path: string | null; status: string | null }>;
   stale: boolean;
 }
 
@@ -600,10 +600,10 @@ async function* exportEntries(supabase: Supabase, b: Bundle): AsyncGenerator<Zip
     const path = (file.path ?? '').split('/').map(encodeURIComponent).join('/');
     const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${path}`, { service: true, raw: true });
     if (!response.ok || !response.body) {
-      yield { name: `${folder}/facturas/FALTA_${file.normalized_filename}.txt`, data: encoder.encode(`El documento ${file.normalized_filename} (${file.invoice_code}, sha256 ${file.sha256}) no estaba disponible al generar el ZIP.\n`), modified };
+      yield { name: `${folder}/${file.folder ?? 'facturas'}/FALTA_${file.normalized_filename}.txt`, data: encoder.encode(`El documento ${file.normalized_filename} (${file.invoice_code}, sha256 ${file.sha256}) no estaba disponible al generar el ZIP.\n`), modified };
       continue;
     }
-    yield { name: `${folder}/facturas/${file.normalized_filename}`, data: response.body, modified };
+    yield { name: `${folder}/${file.folder ?? 'facturas'}/${file.normalized_filename}`, data: response.body, modified };
   }
 }
 
@@ -726,10 +726,14 @@ export function invoicesMcpTools(supabase: Supabase): McpTool[] {
     },
     {
       name: 'invoices_fiscal_summary',
-      description: 'Resumen fiscal de un periodo (trimestre por defecto): bases, IVA soportado por tipo, retenciones, inversión y facturas pendientes que no entran.',
+      description: 'Resumen fiscal de un periodo (trimestre por defecto): bases, IVA soportado por tipo, retenciones, inversión y facturas pendientes que no entran; en `issued`, el IVA repercutido de las emitidas.',
       annotations: { title: 'Resumen fiscal', readOnlyHint: true, idempotentHint: true },
       inputSchema: { type: 'object', additionalProperties: false, required: ['year'], properties: MCP_PERIOD },
-      handler: async (args, _ctx, kit) => kit.read('invoices.fiscal_summary', periodArgs(args)),
+      handler: async (args, _ctx, kit) => {
+        const period = periodArgs(args);
+        const [received, issued] = await Promise.all([kit.read('invoices.fiscal_summary', period), kit.read('invoices.issued_summary', period)]);
+        return { ...(received as Record<string, unknown>), issued };
+      },
     },
   ];
 }

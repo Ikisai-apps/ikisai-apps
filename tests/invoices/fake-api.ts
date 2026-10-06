@@ -577,9 +577,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
       if (targetsList && method === 'GET') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
-        if (targetsList[1] === 'booking') throw new Fault(422, 'TARGET_APP_NOT_AVAILABLE', 'Ese tipo de destino llegará en la fase 2.');
+        // Reservas: sin destinos de Booking configurados, como antes de la proyección de Booking (fase 2).
+        if (targetsList[1] === 'booking' && !targets.some((t) => t.app === 'booking')) throw new Fault(422, 'TARGET_APP_NOT_AVAILABLE', 'Ese tipo de destino llegará en la fase 2.');
         const q = (url.searchParams.get('q') ?? '').toLowerCase();
-        return json(res, 200, { items: targets.filter((t) => t.app === targetsList[1] && (!q || t.label.toLowerCase().includes(q))).map((t) => ({ ...t, code: null, archived: false, path: t.path ?? [] })) });
+        const kind = url.searchParams.get('kind');
+        return json(res, 200, { items: targets.filter((t) => t.app === targetsList[1] && (!kind || t.kind === kind) && (!q || t.label.toLowerCase().includes(q))).map((t) => ({ ...t, code: null, archived: false, path: t.path ?? [] })) });
       }
       const targetOne = path.match(/^targets\/(tasks|food|booking)\/([^/]+)\/([^/]+)$/);
       if (targetOne && method === 'GET') {
