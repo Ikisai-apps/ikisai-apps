@@ -282,7 +282,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             }
             const text = `Preparar ${recipe.name}`;
             const step = steps.find((p) => p.menu_item_id === item.id);
-            if (!step) { write('food.preparation_items', 'insert', fresh(), { menu_id: menu.id, menu_item_id: item.id, recipe_id: recipe.id, scheduled_date: date, scheduled_time: time, text }); counts.inserted += 1; }
+            if (!step) {
+              const last = Math.max(0, ...all('food.preparation_items').filter((p) => p.menu_id === menu.id && !p.deleted_at && p.scheduled_date === date).map((p) => Number(p.position)));
+              write('food.preparation_items', 'insert', fresh(), { menu_id: menu.id, menu_item_id: item.id, recipe_id: recipe.id, scheduled_date: date, scheduled_time: time, text, position: last > 0 ? last + 1 : 0 });
+              counts.inserted += 1;
+            }
             else if (!step.manual && !step.done && (step.text !== text || step.scheduled_date !== date || step.scheduled_time !== time)) { write('food.preparation_items', 'update', step, { scheduled_date: date, scheduled_time: time, text }); counts.updated += 1; }
             else counts.kept += 1;
           }

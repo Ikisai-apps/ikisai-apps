@@ -249,3 +249,25 @@ test('preparación · propuesta por plato; regenerar respeta lo manual y lo hech
   assert.equal(isStale(g.menu.preparation_source_revisions, preparationSources(g)), false);
   assert.equal((await commit([call('regenerate_preparation', { menu_id: menu })], app.tokens.reader)).status, 403);
 });
+
+test('preparación · en un día ordenado a mano los pasos nuevos van al final; en uno sin ordenar, por su hora', async () => {
+  const steps = async () => (await rows('food.preparation_items')).filter((p) => p.menu_id === menu);
+  // El cocinero ordena a mano los pasos del primer día: 1, 2, 3.
+  const first = (await steps()).filter((p) => p.scheduled_date === day(10)).sort((a, b) => String(a.text).localeCompare(String(b.text)));
+  assert.equal(first.length, 3);
+  await ok(first.map((p, index) => update('food.preparation_items', p.id, p.revision, { position: index + 1 })));
+  // Entra un plato en la cena (día ordenado) y otro en la comida del día siguiente (sin pasos ni orden).
+  const dinnerSalad = uuid(); const lunchRice = uuid();
+  await ok([
+    insert('food.menu_items', dinnerSalad, { service_id: dinner, recipe_id: salad, servings: 10 }),
+    insert('food.menu_items', lunchRice, { service_id: lunch, recipe_id: rice, servings: 10 }),
+  ]);
+  const done = await ok([call('regenerate_preparation', { menu_id: menu })]);
+  assert.equal(done.results[0].result.inserted, 2);
+  const after = await steps();
+  assert.equal(Number(after.find((p) => p.menu_item_id === dinnerSalad)!.position), 4);
+  assert.equal(Number(after.find((p) => p.menu_item_id === lunchRice)!.position), 0);
+  // Lo ordenado a mano no se ha movido.
+  assert.deepEqual(first.map((p) => Number(after.find((x) => x.id === p.id)!.position)), [1, 2, 3]);
+});
+

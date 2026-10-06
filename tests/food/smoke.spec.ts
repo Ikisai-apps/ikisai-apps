@@ -103,8 +103,10 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await line.getByLabel('Ingrediente', { exact: true }).fill('Tomate');
     await line.getByLabel('Cantidad', { exact: true }).fill('2,5');
     await line.getByLabel('Unidad', { exact: true }).selectOption('kg');
-    await dialog.getByRole('checkbox', { name: 'Vegano', exact: true }).check();
-    await dialog.getByRole('checkbox', { name: 'Apio', exact: true }).check();
+    // Dietas y alérgenos: chips del selector de etiquetas del kit.
+    await dialog.locator('button[data-label="diet:vegano"]').click();
+    await dialog.locator('button[data-label="allergen:apio"]').click();
+    await expect(dialog.locator('button[data-label="allergen:apio"]')).toHaveAttribute('aria-pressed', 'true');
     await dialog.getByRole('checkbox', { name: 'Horno 1' }).check();
     await dialog.locator('#r-photo').setInputFiles({ name: 'IMG_0001.jpg', mimeType: 'image/jpeg', buffer: photo });
     await expect(dialog.locator('#photoNote')).toContainText('Foto lista');
