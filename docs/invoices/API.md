@@ -468,6 +468,23 @@ El usuario no quiere pagar APIs de IA. La extracción automática por API (`impo
   - Sin service worker activo (primera visita), el worker de Cloudflare redirige a `?compartido=0` y la app pide pegar el resultado.
   - Fallbacks que siguen: «Pegar JSON», que ahora detecta el JSON dentro de la respuesta entera, e importar archivo `.json` o `.txt`.
 
+### 6.8 Texto de los PDF y reglas deterministas (ronda 29, fase 2)
+
+- **«Leer PDF»**, en el mismo bloque que «Analizar con IA», en «Nueva factura» y en la ficha pendiente de datos.
+  - Lee el texto con posiciones en el propio dispositivo, con **PDF.js** (`pdfjs-dist` 6.4.299). Se carga solo al pulsar el botón (import dinámico) y queda **fuera del precacheo del shell**.
+  - El service worker guarda PDF.js la primera vez que se usa (caché `ikisai-invoices-ondemand`), para leer PDF también sin red después.
+  - Lee hasta 10 páginas.
+- **Extractor determinista** compartido (`_domain/invoices/pdf-extract.ts`, sin IA):
+  - Agrupa el texto en líneas por página y altura.
+  - Reconoce NIF, NIE y CIF con **dígito de control** (también con prefijo ES de NIF-IVA). Usa el proveedor conocido por NIF; si no, el primer NIF que no sea propio, y avisa si hay varios.
+  - Lee la fecha de la línea «fecha» (no la de vencimiento ni la de pedido), también en formato «6 de octubre de 2026», y el número de factura por etiquetas.
+  - Lee la base, el IVA por tipo con su base y cuota, la retención y el total por etiquetas en español. Detecta el IBAN con módulo 97 y lo deja en `extraction_notes`.
+  - Si falta el total, se calcula y se avisa. Si falta la fecha o los importes, **no hay resultado** y se dice qué falta: nada se inventa.
+  - Las líneas de la factura son una por tipo de IVA con su base, porque el detalle de artículos no se infiere del texto.
+- **Procedencia por campo** (`FieldProvenance`): método (`pdf_text`, `supplier_template`, `external_ai`, `manual` u `ocr`), texto original, página, posición y confianza de 0 a 1. La importación muestra cada dato con su confianza y la línea de la que sale. El nombre de proveedor adivinado o el objeto por defecto aparecen con confianza baja o nula: nada inferido se presenta como verificado.
+- **PDF sin texto** (escaneado o foto): se dice y se remite a «Analizar con IA». La fase 4 lo cubrirá con OCR. Un PDF que no se puede abrir (dañado o protegido) recibe el mismo trato.
+- **Duplicado blando** (`softDuplicate`): misma fecha y mismo total (y mismo proveedor si se conoce) que otra factura no anulada. Da un aviso «Posible duplicado» sin bloquear, además del duplicado por proveedor y número de siempre.
+
 ### 6.6 MCP (contrato §3.2)
 
 `POST /api/v1/mcp` ofrece las herramientas genéricas del núcleo (`invoices_snapshot`, `invoices_commit`, `invoices_prepare_batch`…) y tres de dominio (`invoicesMcpTools` en `invoices-api/app.ts`). Todas pasan por el mismo camino que la API: hooks, riesgo de agente (§4.4) y propuestas.

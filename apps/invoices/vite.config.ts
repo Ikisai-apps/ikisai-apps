@@ -32,7 +32,8 @@ function serviceWorkerShell(): Plugin {
     generateBundle(_options, bundle) {
       const sw = Object.values(bundle).find((item) => item.type === 'chunk' && item.fileName === 'sw.js');
       if (!sw || sw.type !== 'chunk') return;
-      const emitted = Object.keys(bundle).filter((file) => file !== 'sw.js' && !file.endsWith('.map'));
+      // PDF.js (fase 2) se carga bajo demanda: fuera del shell; el SW lo guarda al usarlo.
+      const emitted = Object.keys(bundle).filter((file) => file !== 'sw.js' && !file.endsWith('.map') && !/(^|\/)pdf[.-]/i.test(file));
       const shell = ['/', ...emitted.map((file) => `/${file}`), ...publicShellFiles(path.join(root, 'public'))];
       const unique = Array.from(new Set(shell)).sort();
       const digest = createHash('sha256').update(unique.join('\n')).digest('hex').slice(0, 12);
