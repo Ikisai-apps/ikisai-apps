@@ -75,7 +75,8 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
 export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.tabs': [],
-  'tasks.families': ['tab_id', 'system_key'],
+  // `system_key` solo puede pasar a o desde 'person' (familia de responsables, migración 0304): lo valida `validate.ts`.
+  'tasks.families': ['tab_id'],
   'tasks.labels': ['tab_id'],
   'tasks.projects': ['tab_id', 'system'],
   'tasks.tasks': ['tab_id'],

@@ -206,6 +206,9 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
         if (value === undefined) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index, table, field });
         rules.fields[field]!(value, field);
       }
+      if (table === 'tasks.families' && op.op !== 'insert' && 'system_key' in fields && fields.system_key !== null && fields.system_key !== 'person') {
+        reject(422, 'IMMUTABLE_FIELD', 'Solo la marca de familia de responsables se puede mover de una familia a otra.', { index, table, field: 'system_key' });
+      }
     }
     if (op.op === 'insert') {
       for (const field of rules.required) {

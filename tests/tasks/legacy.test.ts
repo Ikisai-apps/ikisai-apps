@@ -75,7 +75,8 @@ test('legacy · tareas: crear con hijas, etiquetas y dependencias; editar; compl
   const fase = area.families.find((f) => f.system === 'phase')!.id;
   const label = { id: newId(), text: 'Estructura', family: fase, parent: null, archived: false, version: 1 };
   const sub = { id: newId(), text: 'Cimentación', family: fase, parent: label.id, archived: false, version: 1 };
-  const deep = { id: newId(), text: 'Zapatas', family: fase, parent: sub.id, archived: false, version: 1 };
+  // Dos niveles como máximo (aceptación V1, 9): las hijas se insertan antes que su padre para probar el orden del lote.
+  const deep = { id: newId(), text: 'Zapatas', family: fase, parent: label.id, archived: false, version: 1 };
   area.labels.push(deep, sub, label);
   const destino = { ...structuredClone(area.projects[0]!), id: newId(), system: null, title: 'Fase 2', order: 2048, tasks: [] };
   area.projects.push(destino);

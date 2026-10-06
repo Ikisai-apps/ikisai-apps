@@ -6,7 +6,7 @@
    `.money .moneybar` y `.chip[data-pastel]`. Los manejadores siguen en `bind()`: aquí solo se pinta HTML. */
 projectCard=function(p){
   const K=IkisaiKit,pr=progress(p),count=pending(p),urgency=projectPriority(p),pinned=!p.system&&activeProjects()[0]?.id===p.id;
-  const chips=aggregatedLabels(p).map(id=>{const l=label(id);if(!l||l.archived)return null;return K.el('span',{class:'chip',style:`--chip:${familyColorByLabel(id)}`,dataset:{label:id,pastel:'1'}},K.el('span',null,l.text))}).filter(Boolean);
+  const chips=aggregatedLabels(p).map(id=>{const l=label(id);if(!l||l.archived)return null;return K.el('span',{class:'chip',style:`--chip:${familyColorByLabel(id)}`,dataset:{label:id,pastel:'1'}},K.el('span',null,labelName(l)))}).filter(Boolean);
   const cost=projectCost(p),budget=Number(p.budget)||0;
   // Mismo orden que antes: asa, fijar y el control invisible de ordenar por menú.
   const actions=[];

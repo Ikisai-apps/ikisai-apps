@@ -293,11 +293,11 @@ Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (
 | Código | Invariante |
 |---|---|
 | `INVALID_LABEL` | la familia de una etiqueta es de su misma área |
-| `INVALID_LABEL_PARENT` | la etiqueta superior es de la misma área y la cadena de superiores no forma ciclo |
+| `INVALID_LABEL_PARENT` | la etiqueta superior es de la misma área y la cadena de superiores no forma ciclo. Desde la migración 0304, al crear una etiqueta con padre o cambiarle el padre: el padre es de la **misma familia** y no tiene padre (dos niveles como máximo), y una etiqueta con hijas no puede tener padre |
 | `FAMILY_ARCHIVED` | ninguna etiqueta activa en una familia archivada |
 | `INVALID_LABELS` | `task_labels`/`project_labels` vivas apuntan a etiquetas de la misma área |
 | `LABEL_IN_USE` | ninguna fila viva (`task_labels`, `project_labels`, `owner_label_id`, `parent_id`) referencia una etiqueta o familia con `deleted_at` |
-| `INVALID_OWNER` | `owner_label_id` es una etiqueta de la familia `system_key='person'` de la misma área |
+| `INVALID_OWNER` | `owner_label_id` es una etiqueta de la familia `system_key='person'` de la misma área. Esa marca («familia de responsables») se puede mover a otra familia sin clave de sistema (migración 0304); quien la mueve quita en el mismo lote los responsables de la familia anterior |
 | `INVALID_VIEW` | `filters` y `group_by` solo referencian proyectos, familias y etiquetas de su área |
 
 **d) `tasks.check_dependencies`** (solo si el lote tocó `task_dependencies`, `parent_id` o creó/restauró tareas)

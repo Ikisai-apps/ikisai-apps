@@ -126,28 +126,28 @@
      "id": "cocina",
      "text": "Cocina",
      "family": "space",
-     "parent": "albergue",
+     "parent": null,
      "archived": false
     },
     {
      "id": "bano",
      "text": "Baños",
      "family": "space",
-     "parent": "albergue",
+     "parent": null,
      "archived": false
     },
     {
      "id": "sala",
      "text": "Sala principal",
      "family": "space",
-     "parent": "centro",
+     "parent": null,
      "archived": false
     },
     {
      "id": "piscina",
      "text": "Piscina",
      "family": "space",
-     "parent": "exterior",
+     "parent": null,
      "archived": false
     }
    ],
