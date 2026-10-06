@@ -57,9 +57,11 @@ export interface ExtractResult {
 export type DocumentExtractor = (args: ExtractArgs) => Promise<ExtractResult>;
 
 export interface ExtractorOptions {
-  /** Clave de la API de Anthropic (secreto Edge `ANTHROPIC_API_KEY`). Sin ella cada llamada responde `EXTRACTION_UNAVAILABLE`. */
+  /** Proveedor del modelo de visión: `anthropic` (por defecto) u `openai` (Chat Completions con `fetch`). */
+  provider?: 'anthropic' | 'openai';
+  /** Clave del proveedor (secreto Edge `OPENAI_API_KEY` o `ANTHROPIC_API_KEY`). Sin ella cada llamada responde `EXTRACTION_UNAVAILABLE`. */
   apiKey?: string | null;
-  /** Modelo de visión; por defecto `claude-opus-5-5`. */
+  /** Modelo de visión; por defecto `claude-opus-5-5` (Anthropic) o `gpt-4.1` (OpenAI). Se cambia con `OPENAI_MODEL` / `ANTHROPIC_MODEL`. */
   model?: string;
   /** Profundidad de razonamiento; `medium` basta para leer una factura. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -81,8 +83,21 @@ const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp
 const PDF_MIME = 'application/pdf';
 const DEFAULT_MODEL = 'claude-opus-5-5';
 
+/**
+ * Elige proveedor y clave a partir de los secretos de la Edge: `EXTRACTION_PROVIDER` si está; si no, OpenAI cuando hay
+ * `OPENAI_API_KEY` y, en otro caso, Anthropic. `OPENAI_MODEL` / `ANTHROPIC_MODEL` cambian el modelo sin desplegar código.
+ */
+export function createDocumentExtractorFromEnv(supabaseOrConfig: Supabase | SupabaseConfig, env: (name: string) => string | undefined, options: Omit<ExtractorOptions, 'provider' | 'apiKey'> = {}): DocumentExtractor {
+  const explicit = env('EXTRACTION_PROVIDER');
+  const provider = explicit === 'openai' || explicit === 'anthropic' ? explicit : env('OPENAI_API_KEY') ? 'openai' : 'anthropic';
+  const apiKey = provider === 'openai' ? env('OPENAI_API_KEY') : env('ANTHROPIC_API_KEY');
+  const model = (provider === 'openai' ? env('OPENAI_MODEL') : env('ANTHROPIC_MODEL')) || options.model;
+  return createDocumentExtractor(supabaseOrConfig, { ...options, provider, apiKey: apiKey ?? null, ...(model ? { model } : {}) });
+}
+
 export function createDocumentExtractor(supabaseOrConfig: Supabase | SupabaseConfig, options: ExtractorOptions = {}): DocumentExtractor {
   const supabase: Supabase = 'rpc' in supabaseOrConfig ? supabaseOrConfig : createSupabase(supabaseOrConfig);
+  if (options.provider === 'openai') return createOpenAIExtractor(supabase, options);
   const apiKey = options.apiKey?.trim() || null;
   const model = options.model ?? DEFAULT_MODEL;
   const effort = options.effort ?? 'medium';
@@ -205,4 +220,94 @@ function translate(error: unknown): unknown {
   } catch (fault) {
     return fault;
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// OpenAI (Chat Completions con PDF en `file_data` e imágenes en `image_url`; salida estructurada con `json_schema`)
+// ---------------------------------------------------------------------------------------------------------------
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+function createOpenAIExtractor(supabase: Supabase, options: ExtractorOptions): DocumentExtractor {
+  const apiKey = options.apiKey?.trim() || null;
+  const model = options.model ?? 'gpt-4.1';
+  const maxOutputTokens = options.maxOutputTokens ?? 16000;
+  const maxTotalBytes = options.maxTotalBytes ?? 20 * 1024 * 1024;
+  const maxImageBytes = options.maxImageBytes ?? 20 * 1024 * 1024;
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const retries = options.maxRetries ?? 1;
+  const transport = options.fetch ?? fetch;
+
+  return async function extract({ files, prompt, schema }: ExtractArgs): Promise<ExtractResult> {
+    if (!apiKey) fail(503, 'EXTRACTION_UNAVAILABLE', messageFor('EXTRACTION_UNAVAILABLE'), { reason: 'NO_API_KEY' });
+    if (!files.length) fail(422, 'INVALID_OPERATION', 'No hay documentos que extraer.');
+    if (typeof prompt !== 'string' || !prompt.trim()) fail(422, 'INVALID_OPERATION', 'Falta el prompt de extracción.');
+
+    const parts: unknown[] = [];
+    let total = 0;
+    for (const [index, file] of files.entries()) {
+      const mime = file.mime.toLowerCase();
+      const isPdf = mime === PDF_MIME;
+      if (!isPdf && !OPENAI_IMAGE_MIMES.has(mime)) fail(422, 'INVALID_FILE', 'Tipo de documento no admitido para la extracción.', { index, id: file.id, mime });
+      const bytes = await download(supabase, file);
+      total += bytes.byteLength;
+      if (!isPdf && bytes.byteLength > maxImageBytes) fail(422, 'INVALID_FILE', 'La imagen supera el tamaño admitido por el modelo.', { index, id: file.id, bytes: bytes.byteLength, maxImageBytes });
+      if (total > maxTotalBytes) fail(422, 'INVALID_FILE', 'Los documentos superan el tamaño admitido en una sola extracción.', { bytes: total, maxTotalBytes });
+      const dataUrl = `data:${mime};base64,${base64(bytes)}`;
+      parts.push(isPdf ? { type: 'file', file: { filename: file.filename, file_data: dataUrl } } : { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } });
+    }
+    parts.push({ type: 'text', text: files.length === 1 ? 'Documento adjunto: ' + files[0]!.filename : 'Documentos adjuntos, en orden: ' + files.map((f) => f.filename).join(', ') + '. Forman una sola unidad.' });
+
+    const body = {
+      model,
+      max_completion_tokens: maxOutputTokens,
+      messages: [{ role: 'system', content: prompt }, { role: 'user', content: parts }],
+      response_format: schema ? { type: 'json_schema', json_schema: { name: 'documento', schema, strict: false } } : { type: 'json_object' },
+    };
+
+    const started = Date.now();
+    let response: Response | null = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        response = await transport(OPENAI_URL, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (attempt < retries) continue;
+        const name = (error as Error)?.name;
+        fail(503, 'EXTRACTION_UNAVAILABLE', messageFor('EXTRACTION_UNAVAILABLE'), { reason: name === 'TimeoutError' || name === 'AbortError' ? 'TIMEOUT' : 'NETWORK' });
+      }
+      if (response && (response.status === 429 || response.status >= 500) && attempt < retries) { await response.body?.cancel(); continue; }
+      break;
+    }
+    const res = response as Response;
+    const out: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const status = res.status;
+      const providerMessage = typeof out?.error?.message === 'string' ? out.error.message : '';
+      if (status === 401 || status === 403) fail(503, 'EXTRACTION_UNAVAILABLE', messageFor('EXTRACTION_UNAVAILABLE'), { reason: 'API_KEY_REJECTED', status });
+      if (status === 429) fail(503, 'EXTRACTION_UNAVAILABLE', messageFor('EXTRACTION_UNAVAILABLE'), { reason: out?.error?.code === 'insufficient_quota' ? 'QUOTA_EXHAUSTED' : 'RATE_LIMITED', status });
+      if (status === 400 || status === 404 || status === 413 || status === 422) fail(422, 'INVALID_FILE', 'El proveedor rechazó los documentos: ' + providerMessage, { reason: 'PROVIDER_REJECTED', status });
+      fail(503, 'EXTRACTION_UNAVAILABLE', messageFor('EXTRACTION_UNAVAILABLE'), { reason: 'PROVIDER_ERROR', status });
+    }
+
+    const choice = out?.choices?.[0];
+    const usage: ExtractUsage = {
+      model: typeof out?.model === 'string' ? out.model : model,
+      inputTokens: Number(out?.usage?.prompt_tokens ?? 0),
+      outputTokens: Number(out?.usage?.completion_tokens ?? 0),
+      cacheReadInputTokens: Number(out?.usage?.prompt_tokens_details?.cached_tokens ?? 0),
+      cacheCreationInputTokens: 0,
+      latencyMs: Date.now() - started,
+    };
+    if (choice?.message?.refusal) fail(422, 'EXTRACTION_INVALID', 'El modelo no ha podido procesar este documento.', { errors: ['REFUSAL'], warnings: [String(choice.message.refusal)], usage });
+    if (choice?.finish_reason === 'length') fail(422, 'EXTRACTION_INVALID', 'La respuesta del modelo se cortó antes de terminar el JSON.', { errors: ['TRUNCATED'], warnings: [], usage });
+    const text = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    const parsed = parseDocument(text);
+    if (!parsed.ok) fail(422, 'EXTRACTION_INVALID', 'El modelo no devolvió un JSON utilizable.', { errors: [parsed.error], warnings: parsed.warnings, usage });
+    return { document: parsed.document, warnings: parsed.warnings, usage };
+  };
 }
