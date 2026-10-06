@@ -25,7 +25,7 @@ Nadie edita fuera de su directorio. Lo compartido lo cambia Core a petición: an
 5. **Permisos:** RLS activado y todo revocado a `anon`/`authenticated`; solo las Edge con service key. Pertenencia releída en cada petición. `reader` no escribe.
 6. **Sin secretos ni datos personales** en Git, fixtures o capturas. Usa `private/` (ignorado).
 7. **Conformidad:** toda `<app>-api` pasa `packages/test-kit` antes de añadir rutas propias.
-8. **Ramas y PR:** una rama por agente y tema (`<app>/<tema>`), PR pequeñas a `main`, CI verde, sin force-push. Rebase diario sobre `main`.
+8. **Ramas y PR:** una rama por agente y tema (`<app>/<tema>`), PR pequeñas a `main`, CI verde, sin force-push. Rebase diario sobre `main`. **Quién fusiona:** si la PR solo toca directorios de tu equipo, la fusionas tú con la CI en verde (squash). Si toca algo compartido o de otro equipo, espera el visto bueno de Core o del equipo afectado en la PR. Core no es cuello de botella: lo que está dentro de tu territorio no necesita su aprobación.
 9. **Estado:** cada equipo mantiene `docs/<app>/ESTADO.md` (hecho, pendiente, bloqueos).
 10. **Definición de hecho:** recorrido de aceptación en PC y Android, escenarios offline en Playwright, documentación de despliegue y recuperación.
 
