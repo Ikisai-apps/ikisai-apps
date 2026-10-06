@@ -1,6 +1,6 @@
 # Peticiones a Core
 
-Los equipos de app anotan aquí lo que necesitan de los directorios compartidos (`core`, `_kit`, `sync-client`, `test-kit`, raíz, CI). Core responde en la misma entrada.
+**Desde el 6 de octubre de 2026 cada equipo registra sus peticiones en `docs/<app>/PETICIONES.md`** (evita conflictos entre PR). Core responde allí y resume en `docs/core/RESPUESTAS.md`. Este archivo queda para el histórico del agente UI.
 
 | Fecha | Equipo | Petición | Estado | Respuesta |
 |---|---|---|---|---|
