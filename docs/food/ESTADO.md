@@ -1,6 +1,6 @@
 # Food · estado
 
-Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H en `main` y publicados en `food.ikisai.com`, salvo la vista del organizador.**
+Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H completos.** Publicado en `food.ikisai.com` hasta Eventos y Menús; Compra, Preparación, cocinero, Organizador y Cierre están en la PR 51.
 
 ## Hecho
 
@@ -17,14 +17,15 @@ Actualizado: 6 de octubre de 2026. **Backend e interfaz del recorrido F–H en `
   - **Compra** (pestaña del menú): generar y regenerar con red; sin red, «en casa» (recalcula «comprar»), «comprar» fijado a mano con vuelta a lo calculado, comprado y recibido, y líneas a mano. Aviso cuando el menú o sus recetas cambian; lista revisada y cerrada.
   - **Preparación** (pestaña del menú): propuesta por plato con red; sin red, marcar hecho, responsable, reescribir un paso (pasa a propio) y pasos propios. Aviso cuando el menú cambia.
   - **Vista de cocinero**: cada plato con sus ingredientes escalados a las raciones, alérgenos, maquinaria y elaboración.
+  - **Organizador** (pestaña del menú): hoja en A4 sobre la página imprimible del kit 0.5, con «Imprimir / Guardar PDF». Solo lo público: retiro, fechas, servicios por día en el orden fijado a mano, foto, nombre y descripción públicos, dietas y alérgenos. Marca «BORRADOR» si el menú no está validado.
   - **Cierre**: notas del menú y cierre de cocina, editables también con el menú validado.
   - **Inicio**: próximos eventos con el estado de su menú, sus restricciones, su compra y su preparación.
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
-- Pruebas: 42 en PGlite (`tests/food/*.test.ts`) y tres de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, avisos, validar, cambio del evento, reabrir y validar de nuevo) y `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red).
+- Pruebas: 42 en PGlite (`tests/food/*.test.ts`) y tres de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) y `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red).
 
 ## Pendiente
 
-- Vista del organizador con impresión en A4: se adoptará la página imprimible que el agente de UI está añadiendo al kit.
+- Arrastre para reordenar, cuando el kit lo ofrezca (hoy, subir y bajar).
 - Escenarios offline restantes de `API.md` §11.2 y recorrido de aceptación en Android.
 - `food.stock_entries`: en G4, con la proyección de compras de Invoices.
 

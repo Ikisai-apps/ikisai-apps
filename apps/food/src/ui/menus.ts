@@ -13,6 +13,7 @@ import {
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
 import { mountClosing } from './menu-closing.ts';
+import { mountOrganizer } from './menu-organizer.ts';
 import { mountPreparation } from './menu-preparation.ts';
 import { mountShopping } from './menu-shopping.ts';
 import { MENU_STATUS_LABELS, SERVICE_LABELS, menuChip } from './events.ts';
@@ -22,8 +23,8 @@ type MenuRow = Mirror<Menu>;
 type ServiceRow = Mirror<MenuService>;
 type ItemRow = Mirror<MenuItem>;
 
-export type MenuTab = 'menu' | 'compra' | 'preparacion' | 'cierre';
-const TABS: Array<[MenuTab, string]> = [['menu', 'Menú'], ['compra', 'Compra'], ['preparacion', 'Preparación'], ['cierre', 'Cierre']];
+export type MenuTab = 'menu' | 'compra' | 'preparacion' | 'organizador' | 'cierre';
+const TABS: Array<[MenuTab, string]> = [['menu', 'Menú'], ['compra', 'Compra'], ['preparacion', 'Preparación'], ['organizador', 'Organizador'], ['cierre', 'Cierre']];
 
 const removeOp = (table: (typeof T)[keyof typeof T], row: SyncedRow): RowOperation => ({ op: 'delete', table, id: row.id, expectedRevision: row.revision });
 
@@ -79,7 +80,7 @@ function changeText(change: EventChange): string {
   return `${CHANGE_LABELS[change.field]}: ${show(change.before)} → ${show(change.after)}`;
 }
 
-/** Ficha de un menú: cabecera con el evento y sus restricciones siempre a la vista, y pestañas Menú · Compra · Preparación · Cierre. */
+/** Ficha de un menú: cabecera con el evento y sus restricciones siempre a la vista, y pestañas Menú · Compra · Preparación · Organizador · Cierre. */
 export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
   return ({ main, client, navigate }: ViewContext) => {
     let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
@@ -407,7 +408,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (tab === 'menu') { paintActions(); paintBuilder(); return; }
       if (!unmountTab) {
         const context = { client, menuId, host: tabHost, canWrite };
-        unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : mountClosing(context);
+        unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
       }
     }
 
