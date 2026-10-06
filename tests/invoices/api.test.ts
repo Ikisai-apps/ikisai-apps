@@ -16,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLE: ImportDocument = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
 
 const uuid = () => crypto.randomUUID();
-const TAB = uuid(); const PROJECT = uuid(); const TASK = uuid(); const ARCHIVED_PROJECT = uuid(); const DELETED_TASK = uuid(); const FORBIDDEN_PROJECT = uuid();
+const PURCHASE = uuid(); const TAB = uuid(); const PROJECT = uuid(); const TASK = uuid(); const ARCHIVED_PROJECT = uuid(); const DELETED_TASK = uuid(); const FORBIDDEN_PROJECT = uuid();
 let app: TestApp;
 let counter = 0;
 let tasksDown = false;
@@ -42,6 +42,8 @@ const tasksFetch: typeof fetch = async (input, init) => {
     if (body.kind === 'tab' && body.id === TAB) return Response.json({ kind: 'tab', id: TAB, tabId: TAB, projectId: null, title: 'Cocina', revision: 2, deleted: false, archived: false });
     if (body.kind === 'project' && body.id === PROJECT) return Response.json({ kind: 'project', id: PROJECT, tabId: TAB, projectId: PROJECT, title: 'Huerto', revision: 5, deleted: false, archived: false });
     if (body.kind === 'task' && body.id === TASK) return Response.json({ kind: 'task', id: TASK, tabId: TAB, projectId: PROJECT, title: 'Comprar semillas', revision: 1, deleted: false, archived: false, done: false });
+    if (body.kind === 'purchase_request' && !body.id) return Response.json({ items: [{ kind: 'purchase_request', id: PURCHASE, title: 'Lejía 20 l', status: 'approved', revision: 4, estimatedAmount: 30, needsInvoice: true, deleted: false }].filter((r) => !body.q || r.title.toLowerCase().includes(String(body.q).toLowerCase())) });
+    if (body.kind === 'purchase_request' && body.id === PURCHASE) return Response.json({ kind: 'purchase_request', id: PURCHASE, tabId: TAB, title: 'Lejía 20 l', status: 'approved', revision: 4, deleted: false, archived: false });
     if (body.kind === 'task' && body.id === DELETED_TASK) return Response.json({ kind: 'task', id: DELETED_TASK, tabId: TAB, projectId: PROJECT, title: 'Borrada', revision: 3, deleted: true, archived: false });
     return Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 });
   }
@@ -478,4 +480,35 @@ test('orígenes: finance.ikisai.com se acepta; invoices.ikisai.com (redirigido d
   } finally {
     await own.close();
   }
+});
+
+test('compras de Tasks: destino purchase_request (lista y asignación con el token del usuario) y lecturas allocations_by_target y supplier_options', async () => {
+  const list = await app.call('/api/v1/targets/tasks?kind=purchase_request&q=lej');
+  assert.equal(list.status, 200, JSON.stringify(list.data));
+  assert.deepEqual(list.data.items.map((t: any) => `${t.kind}:${t.label}:${t.path.join('/')}`), ['purchase_request:Lejía 20 l:Compras']);
+  // Una factura con una línea asignada a la solicitud
+  const s = uuid(); const inv = uuid(); const line = uuid();
+  await ok([
+    insert('invoices.suppliers', s, { name: 'Droguería Sol', tax_id: 'B87654323', aliases: ['DROGUERIA'] }),
+    insert('invoices.invoices', inv, { supplier_id: s, invoice_date: '2026-10-07', object: 'limpieza', expense_category: 'compras' }),
+    insert('invoices.invoice_lines', line, { invoice_id: inv, position: 0, description: 'Lejía', net_amount: 25, vat_rate: 21, vat_amount: 5.25 }),
+  ]);
+  const alloc = uuid();
+  await ok([insert('invoices.allocations', alloc, { invoice_line_id: line, target_app: 'tasks', target_kind: 'purchase_request', target_id: PURCHASE, target_label: 'Lejía', allocated_amount: 25 })]);
+  assert.equal((await row('invoices.allocations', alloc)).target_label, 'Compras › Lejía 20 l');
+  const byTarget = await app.call('/api/v1/read/invoices.allocations_by_target', { body: { targetApp: 'tasks', targetKind: 'purchase_request', ids: [PURCHASE, uuid()] } });
+  assert.equal(byTarget.status, 200, JSON.stringify(byTarget.data));
+  assert.equal(byTarget.data.rows.length, 1);
+  assert.equal(byTarget.data.rows[0].target_id, PURCHASE); assert.equal(Number(byTarget.data.rows[0].allocated_amount), 25); assert.match(byTarget.data.rows[0].invoice_code, /^FVR_2026_\d{3}$/);
+  const options = await app.call('/api/v1/read/invoices.supplier_options', { body: { q: 'droguer' } });
+  assert.deepEqual(options.data.items.map((x: any) => x.name), ['Droguería Sol']);
+  assert.deepEqual(Object.keys(options.data.items[0]).sort(), ['id', 'name', 'slug']);
+  // Quien no es de Invoices no ve nada (la llamada de Tasks pasa su pertenencia a Tasks; aquí se comprueba la de Invoices)
+  const outsider = await app.t.db.query<{ r: any }>(`select invoices.allocations_by_target(jsonb_build_object('actor', $1::text, 'args', jsonb_build_object('targetKind', 'purchase_request', 'ids', jsonb_build_array($2::text)))) r`, [uuid(), PURCHASE]);
+  assert.deepEqual(outsider.rows[0]!.r.rows, []);
+  const outsider2 = await app.t.db.query<{ r: any }>(`select invoices.supplier_options(jsonb_build_object('actor', $1::text, 'args', '{}'::jsonb)) r`, [uuid()]);
+  assert.deepEqual(outsider2.rows[0]!.r.items, []);
+  // Registradas para Tasks
+  const reads = await app.t.db.query<{ name: string }>(`select name from core.allowed_reads where app = 'tasks' and name like 'invoices.%' order by name`);
+  assert.deepEqual(reads.rows.map((r) => r.name), ['invoices.allocations_by_target', 'invoices.supplier_options']);
 });

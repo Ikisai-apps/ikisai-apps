@@ -608,7 +608,11 @@ Sin flags. La UI compara `target_revision` con la revisión actual del destino a
 
 ---
 
-### 7.4 Pedido de Tasks (ronda 22, para cuando Tasks amplíe `tasks.targets`)
+### 7.4 Compras de Tasks (hecho en la ronda 34, migración 0208)
+
+Construido: el par `tasks` / `purchase_request` (lista y resolución por `tasks.targets` con el token del usuario; etiqueta «Compras › título») y las lecturas `invoices.allocations_by_target {targetApp, targetKind, ids}` → `{rows: [{target_id, invoice_id, invoice_code, status, invoice_date, allocated_amount, allocated_quantity}]}` (sin anuladas ni borradas) e `invoices.supplier_options {q, limit ≤ 50}` → `{items: [{id, name, slug}]}`, registradas para `tasks` (y para `invoices`). Las dos devuelven vacío a quien no es miembro de Invoices. Lo que sigue es el texto original del pedido.
+
+#### Pedido de Tasks (ronda 22, para cuando Tasks amplíe `tasks.targets`)
 
 - **Destino `tasks` / `purchase_request`:** una solicitud de compra no alimentaria de Tasks como destino de asignación de una línea. Se resuelve con la lectura `tasks.targets` (que Tasks amplía con `kind = 'purchase_request'`) y con el token del usuario, como los demás destinos de Tareas. Cambia la lista de pares (`TARGET_KINDS`) y el check de `invoices.allocations` en una migración nueva.
 - **Lectura `invoices.allocations_by_target {targetApp, targetKind, ids}`:** devuelve por id el código de factura, su estado y el importe asignado, filtrada por lo que el usuario ve en Invoices. Se registra con `core.allow_read('tasks', …)` para que Tasks muestre en cada solicitud qué se ha comprado y con qué factura.
