@@ -149,3 +149,28 @@ test('[24][32] copia portable y respaldo: exportar con adjuntos, previsualizar, 
   const expired = await json('/api/v1/portable/import', { body: JSON.stringify({ ticket: `1000000000.${'a'.repeat(64)}`, requestId: 'import-prueba-2' }), type: 'application/json' });
   assert.equal(`${expired.status} ${expired.data.error.code}`, '409 IMPORT_UNAVAILABLE');
 });
+
+test('POST trash/empty: solo la propietaria con acceso completo; purga la papelera y lo que cuelga de ella', async () => {
+  const project = crypto.randomUUID(), task = crypto.randomUUID(), kept = crypto.randomUUID();
+  const created = await server.commit([
+    { op: 'insert', table: 'tasks.projects', id: project, fields: { tab_id: ID.personal, title: 'Para la papelera', position: 9000 } },
+    { op: 'insert', table: 'tasks.tasks', id: task, fields: { tab_id: ID.personal, project_id: project, title: 'Tarea de un proyecto borrado', position: 1024 } },
+    { op: 'insert', table: 'tasks.tasks', id: kept, fields: { tab_id: ID.personal, project_id: ID.pp1, title: 'Se queda', position: 5000 } },
+  ]);
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  assert.equal((await server.commit([{ op: 'delete', table: 'tasks.projects', id: project, expectedRevision: 1 }])).status, 200);
+  const body = JSON.stringify({ requestId: 'vaciar-1' });
+  assert.equal((await json('/api/v1/trash/empty', { body, type: 'application/json', token: server.app.tokens.editor })).status, 403);
+  const emptied = await json('/api/v1/trash/empty', { body, type: 'application/json' });
+  assert.equal(emptied.status, 200, JSON.stringify(emptied.data));
+  assert.ok(emptied.data.trashed >= 1 && emptied.data.purged >= 2, JSON.stringify(emptied.data));
+  for (const table of ['tasks.tabs', 'tasks.projects', 'tasks.tasks', 'tasks.task_labels', 'tasks.task_dependencies', 'tasks.attachments', 'tasks.saved_views']) {
+    assert.equal((await server.rows(table)).filter((r) => r.deleted_at).length, 0, `${table} sin papelera`);
+  }
+  assert.equal((await server.rows('tasks.projects')).some((r) => r.id === project), false);
+  assert.equal((await server.rows('tasks.tasks')).some((r) => r.id === task), false);
+  assert.equal((await server.rows('tasks.tasks')).some((r) => r.id === kept), true);
+  // Los demás dispositivos reciben la purga como cambios con `after` nulo.
+  const changes = await json('/api/v1/changes?after=0&limit=2000');
+  assert.ok(changes.data.items.some((c: any) => c.op === 'purge' && c.id === task && c.after === null));
+});

@@ -385,3 +385,51 @@ test('mover con papelera: puentes e hijas ya borrados no impiden el movimiento (
   // Limitación conocida (petición C16): la hija borrada antes del movimiento no se puede restaurar tal cual.
   await rejects(db.commit([restore('tasks.tasks', trashed, 2)]), 'INVALID_PARENT');
 });
+
+test('vaciar papelera: empty_trash_prepare arrastra lo que cuelga de contenedores borrados y la purga no deja huérfanos', async () => {
+  const trash = await createTasksDb();
+  try {
+    const keep = await trash.area('Se queda');
+    const gone = await trash.area('Se va');
+    const pGone = newId(), pKeep = newId(), tInGone = newId(), child = newId(), tKeep = newId(), tTrashed = newId(), dependent = newId(), lab = newId(), goneTask = newId();
+    await trash.commit([
+      project(keep.tab, pGone, { title: 'Proyecto borrado' }), project(keep.tab, pKeep, { title: 'Proyecto vivo' }),
+      insert('tasks.labels', lab, { tab_id: keep.tab, family_id: keep.families.phase, name: 'Fase' }),
+      taskOp(keep.tab, pGone, tInGone), taskOp(keep.tab, pGone, child, { parent_id: tInGone }),
+      taskOp(keep.tab, pKeep, tKeep), taskOp(keep.tab, pKeep, tTrashed, { title: 'Tarea en papelera' }), taskOp(keep.tab, pKeep, dependent, { title: 'Dependía de la borrada' }),
+      insert('tasks.task_labels', newId(), { tab_id: keep.tab, project_id: pGone, task_id: tInGone, label_id: lab }),
+      insert('tasks.task_labels', newId(), { tab_id: keep.tab, project_id: pKeep, task_id: tTrashed, label_id: lab }),
+      dep(keep.tab, pKeep, dependent, tTrashed),
+      insert('tasks.saved_views', newId(), { tab_id: gone.tab, name: 'Vista del área borrada' }),
+      taskOp(gone.tab, gone.inbox, goneTask),
+    ]);
+    // A la papelera: un proyecto con tareas vivas, una tarea con una dependencia entrante, y un área entera.
+    await trash.commit([remove('tasks.projects', pGone, 1), remove('tasks.tasks', tTrashed, 1), remove('tasks.tabs', gone.tab, 1)]);
+
+    const editor = await trash.member('editor');
+    const call = (actor?: string) => trash.commit([{ op: 'call', procedure: 'tasks.empty_trash_prepare', args: {} }], actor);
+    await rejects(call(editor), 'FORBIDDEN');
+    await rejects(call(await trash.member('owner', [keep.tab])), 'FORBIDDEN');
+    const prepared = await call();
+    assert.ok(prepared.results[0].result.trashed >= 12, JSON.stringify(prepared.results[0].result));
+    let data = await trash.data();
+    assert.ok(data['tasks.tasks'].filter((t) => [tInGone, child, goneTask].includes(t.id)).every((t) => t.deleted_at), 'tareas de contenedores borrados');
+    assert.ok(data['tasks.task_dependencies'].every((d) => d.deleted_at), 'la dependencia hacia la tarea borrada');
+    assert.ok(data['tasks.projects'].find((p) => p.id === gone.inbox)!.deleted_at, 'la Entrada del área borrada');
+    assert.ok(data['tasks.families'].filter((f) => f.tab_id === gone.tab).every((f) => f.deleted_at));
+    assert.equal(data['tasks.tasks'].find((t) => t.id === tKeep)!.deleted_at, null);
+
+    const tables = ['tasks.attachments', 'tasks.saved_views', 'tasks.task_dependencies', 'tasks.task_labels', 'tasks.project_labels', 'tasks.tasks', 'tasks.projects', 'tasks.labels', 'tasks.families', 'tasks.tabs'];
+    const purged = (await trash.t.rpc('core_purge_deleted', { p_app: 'tasks', p_actor: trash.owner, p_request_id: 'purge-1', p_tables: tables })) as { purged: number };
+    assert.ok(purged.purged >= 15, JSON.stringify(purged));
+    data = await trash.data();
+    for (const table of Object.keys(data) as Array<keyof typeof data>) assert.equal(data[table].filter((r) => r.deleted_at).length, 0, `${table} sin papelera`);
+    assert.deepEqual(data['tasks.tabs'].map((t) => t.id), [keep.tab]);
+    assert.deepEqual(data['tasks.projects'].map((p) => p.title).sort(), ['Entrada', 'Proyecto vivo']);
+    assert.deepEqual(data['tasks.tasks'].map((t) => t.id).sort(), [tKeep, dependent].sort());
+    // La tarea que dependía de la purgada queda desbloqueada y el área sigue siendo válida.
+    await trash.commit([update('tasks.tasks', dependent, 1, { done: true }), taskOp(keep.tab, pKeep, newId())]);
+    // Sin nada en la papelera, repetir no hace nada.
+    assert.equal((await call()).results[0].result.trashed, 0);
+  } finally { await trash.close(); }
+});

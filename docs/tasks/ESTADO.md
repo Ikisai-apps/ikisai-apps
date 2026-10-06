@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 4, cierre). **`apps/tasks` pasa 71 de los 72 escenarios de no regresión en Playwright (el 29 es de la fase de agentes), con adjuntos, invitados, CSV, copia portable y respaldo de extremo a extremo. Lista para que Core la publique en `tasks-next` y se compare con la app antigua; antes del corte faltan los escenarios de actualización del service worker.**
+Actualizado: 6 de octubre de 2026 (tanda 5). **La app nueva está en producción (`tasks.ikisai.com`; el corte lo hizo la release automática y Core lo dio por bueno). 71 de los 72 escenarios de no regresión en verde, más los 6 de actualización del service worker y «Vaciar papelera». Falta el recorrido manual de aceptación en PC y Android con una cuenta real.**
 
 ## Hecho
 
@@ -30,7 +30,11 @@ Playwright contra la `tasks-api` real en PGlite (solo Supabase está simulado): 
 
 **Diferido (1):** 29 (aprobación de agentes).
 
-Sin portar todavía: `tests/updates.cjs` (6 escenarios de activación coordinada del service worker) y dos de `tests/cloud-browser.mjs` (foto 3200→1600 px; reintento de la importación portable desde la interfaz, que por API sí está probado).
+**Service worker** (`tests/tasks/updates.spec.ts`, los 6 de `tests/updates.cjs`): un editor abierto, un borrador en línea, otra pestaña con editor o con borrador y una cola pendiente vetan la actualización; con todas las pestañas de acuerdo se recarga en el worker nuevo conservando cuenta y tareas.
+
+**Vaciar papelera** (`POST trash/empty`, migración `0303`, botón en la papelera para la propietaria con acceso completo, con confirmación y recuento): pasa a la papelera lo que cuelga de contenedores borrados y purga en orden canónico inverso; probado en SQL, por API y en la interfaz con dos dispositivos.
+
+Sin portar todavía: dos de `tests/cloud-browser.mjs` (foto 3200→1600 px; reintento de la importación portable desde la interfaz, que por API sí está probado).
 
 Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por defectos destapados por las pruebas:
 
@@ -40,13 +44,27 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - Pantalla «Cuentas de personas» sobre `members` y `members/invite`.
 - En el menú solo quedan ocultos accesos por clave, propuestas de agentes y registro de accesos (fase de agentes).
 
+## Producción
+
+- `tasks.ikisai.com` sirve la app nueva; `/version.json` y `/api/v1/health` coinciden en la versión. Comprobado sin iniciar sesión (solo lectura): carga en móvil y escritorio sin errores de JavaScript ni recursos fallidos, pide la cuenta, registra el service worker y no desborda.
+- **Recorrido manual de aceptación: pendiente.** No lo he hecho con una cuenta real: supone entrar en producción con credenciales de la propietaria y crear datos y una cuenta invitada reales, y eso lo decide el usuario (ver la pregunta en `coordinacion/tasks/SALIDA.md`). Lista de lo que hay que recorrer en PC y Android:
+  1. Entrar; crear la primera área; crear un proyecto y tareas con hijas; etiquetar; responsable.
+  2. Dependencias: una tarea que depende de otra, completar en orden, intentar completar la bloqueada.
+  3. Sin red: editar, recargar, reconectar y ver «Al día».
+  4. Conflicto: editar el mismo campo en PC y móvil; resolver en «Revisar cambios».
+  5. Adjuntar una foto desde el móvil y un PDF desde el PC; abrirlos en el otro dispositivo y sin red.
+  6. Invitar a una persona a un solo proyecto; entrar con su cuenta y comprobar lo que ve; retirarle el acceso.
+  7. Deshacer desde el aviso tras completar; historial.
+  8. Papelera: borrar y restaurar; vaciar papelera.
+  9. CSV, copia portable y respaldo: exportar e importar.
+  10. Instalar la PWA en Android; con una versión nueva publicada, «Nueva versión disponible» con y sin un editor abierto.
+
 ## Siguiente tanda
 
-1. Escenarios de actualización del service worker (`tests/updates.cjs`) y los dos restantes de `cloud-browser`.
-2. `POST trash/empty` (vaciar papelera con el orden de tablas de Tasks) y su entrada en la interfaz.
-3. Usar `restore` con `fields` (C16, ya en el núcleo) para la hija en papelera cuyo padre cambió de proyecto.
-4. Recorrido manual en PC y Android sobre `tasks-next` cuando Core la publique.
+1. Corregir lo que salga del recorrido manual.
+2. `restore` con `fields` para la hija en papelera cuyo padre cambió de proyecto, cuando el kit y `sync-client` lo acepten (C22).
+3. Los dos escenarios restantes de `cloud-browser`.
 
 ## Bloqueos
 
-- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19.
+- Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20, C22.

@@ -33,6 +33,8 @@ export interface E2EServer {
   rows(table: string): Promise<any[]>;
   /** Peticiones recibidas por la API (método y ruta). */
   requests: Array<{ method: string; path: string }>;
+  /** Generación del service worker que se sirve en `/sw.js`; cambiarla simula una versión nueva. */
+  swGeneration: number;
   close(): Promise<void>;
 }
 
@@ -44,6 +46,7 @@ async function body(request: IncomingMessage): Promise<Buffer> {
 
 export async function startE2EServer(): Promise<E2EServer> {
   let app: TestApp | null = null;
+  let handle: E2EServer | null = null;
   const requests: Array<{ method: string; path: string }> = [];
   const server: Server = createServer(async (request, response) => {
     try {
@@ -61,8 +64,9 @@ export async function startE2EServer(): Promise<E2EServer> {
       const file = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
       const target = path.join(DIST, file);
       if (!target.startsWith(DIST)) { response.writeHead(403).end(); return; }
-      const content = await readFile(target).catch(() => null);
+      let content = await readFile(target).catch(() => null);
       if (!content) { response.writeHead(404).end('not found'); return; }
+      if (url.pathname === '/sw.js') content = Buffer.from(content.toString().replace(/ikisai-shell-[A-Za-z0-9_-]+/, 'ikisai-shell-qa-' + (handle?.swGeneration ?? 1)));
       response.writeHead(200, { 'Content-Type': MIME[path.extname(target)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' });
       response.end(content);
     } catch (error) {
@@ -104,8 +108,8 @@ export async function startE2EServer(): Promise<E2EServer> {
   app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin: url, createHandler: (config) => createTasksApp({ ...config, fetch: withInvitedUsers(config.fetch), origins: [url] }) });
   const ready = app;
   let sequence = 0;
-  return {
-    url, app: ready, requests,
+  handle = {
+    url, app: ready, requests, swGeneration: 1,
     commit: (operations, token) => ready.call('/api/v1/commands', { body: { requestId: `server-${++sequence}`, operations }, ...(token ? { token } : {}) }),
     async rows(table) {
       // Directo a la base: no depende de que la sesión de ningún usuario siga abierta.
@@ -117,4 +121,5 @@ export async function startE2EServer(): Promise<E2EServer> {
       await ready.close();
     },
   };
+  return handle;
 }

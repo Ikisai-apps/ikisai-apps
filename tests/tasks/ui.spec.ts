@@ -1119,3 +1119,33 @@ test('[24][32][33][44] respaldo, copia portable, CSV y filtros de disponibilidad
     await b.evaluate(() => { state.filters = {}; persistUI(); render(); });
   });
 });
+
+declare const showTrash: any;
+
+test('vaciar papelera: la propietaria confirma con el recuento y los demás dispositivos dejan de ver lo purgado', async () => {
+  await sync(a);
+  await a.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; navigateView('projects'); });
+  // Un proyecto con una tarea viva va a la papelera: la tarea no está borrada, pero cuelga de un contenedor borrado.
+  await a.evaluate(() => { const p = tab().projects.find((x: any) => x.id === (window as any).ID.p3); p.deleted = true; touch(p); save(); render(); });
+  await settled(a);
+  await sync(b);
+  expect(await b.evaluate(() => state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.find((p: any) => p.id === (window as any).ID.p3).deleted)).toBe(true);
+  const count = await a.evaluate(() => (window as any).trashCount());
+  expect(count).toBeGreaterThan(0);
+  await a.evaluate(() => showTrash());
+  await expect(a.locator('#emptyTrash')).toHaveText(`Vaciar papelera (${count})`);
+  await a.locator('#emptyTrash').click();
+  await expect(a.locator('#sheet')).toContainText(`Se eliminarán definitivamente ${count} elementos`);
+  await a.locator('#emptyTrashConfirm').click();
+  await a.waitForFunction(() => (window as any).trashCount() === 0, null, { timeout: 20_000 });
+  await settled(a);
+  for (const table of ['tasks.tabs', 'tasks.projects', 'tasks.tasks', 'tasks.saved_views', 'tasks.task_labels', 'tasks.task_dependencies', 'tasks.attachments']) {
+    expect((await server.rows(table)).filter((r) => r.deleted_at), table).toHaveLength(0);
+  }
+  expect((await server.rows('tasks.projects')).some((r) => r.id === ID.p3)).toBe(false);
+  expect((await server.rows('tasks.tasks')).some((r) => r.id === ID.t8)).toBe(false);
+  // El otro dispositivo recibe la purga y deja de tener el proyecto y sus tareas.
+  await sync(b);
+  await b.waitForFunction(() => !state.tabs.find((t: any) => t.id === (window as any).ID.ikisai).projects.some((p: any) => p.id === (window as any).ID.p3), null, { timeout: 20_000 });
+  await a.evaluate(() => closeSheet());
+});
