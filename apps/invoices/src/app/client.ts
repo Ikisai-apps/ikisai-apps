@@ -1,49 +1,56 @@
 import { createSyncClient, type ApiError, type SyncClient, type SyncedRow, type TableName } from '@ikisai/sync-client';
+import {
+  EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS, TABLES, domainMessage,
+  type AllocationRow, type ExpenseCategory, type ExportItemRow, type ExportRow, type InvoiceFileRow, type InvoiceLineRow, type InvoiceRow, type SupplierRow as DomainSupplierRow, type TaxLineRow,
+} from '@ikisai/domain-invoices';
 
 export const APP = 'invoices';
-export const SUPPLIERS: TableName = 'invoices.suppliers';
+export const SUPPLIERS: TableName = TABLES.suppliers;
+export const INVOICES: TableName = TABLES.invoices;
+export const INVOICE_FILES: TableName = TABLES.invoiceFiles;
+export const INVOICE_LINES: TableName = TABLES.invoiceLines;
+export const TAX_LINES: TableName = TABLES.taxLines;
+export const ALLOCATIONS: TableName = TABLES.allocations;
+export const EXPORTS: TableName = TABLES.exports;
+export const EXPORT_ITEMS: TableName = TABLES.exportItems;
+export const ALL_TABLES: TableName[] = [SUPPLIERS, INVOICES, INVOICE_FILES, INVOICE_LINES, TAX_LINES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS];
 
-/** Categorías por defecto de un proveedor (misma lista que supabase/functions/invoices-api/app.ts). */
-export const CATEGORIES = ['compras', 'suministros', 'mantenimiento', 'inversiones', 'canon_concesion', 'seguros', 'personal', 'fiscalidad', 'otros'] as const;
-export type Category = (typeof CATEGORIES)[number];
-
-export const CATEGORY_LABELS: Record<Category, string> = {
-  compras: 'Compras',
-  suministros: 'Suministros',
-  mantenimiento: 'Mantenimiento',
-  inversiones: 'Inversiones',
-  canon_concesion: 'Canon de concesión',
-  seguros: 'Seguros',
-  personal: 'Personal',
-  fiscalidad: 'Fiscalidad',
-  otros: 'Otros',
-};
+/** Categorías de gasto (lista cerrada del dominio) y sus etiquetas. */
+export const CATEGORIES = EXPENSE_CATEGORIES;
+export type Category = ExpenseCategory;
+export const CATEGORY_LABELS = EXPENSE_CATEGORY_LABELS;
 
 export function categoryLabel(value: unknown): string {
   return typeof value === 'string' && value in CATEGORY_LABELS ? CATEGORY_LABELS[value as Category] : 'Sin categoría';
 }
 
-/** Fila de proveedor tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
-export interface SupplierRow extends SyncedRow {
-  name: string;
-  tax_id: string | null;
-  default_category: Category | null;
-  notes: string | null;
-  _pending?: boolean;
-}
+/** Fila del espejo local: la del dominio más `_pending`, que pone el cliente offline. */
+type Local<T> = T & SyncedRow & { _pending?: boolean };
+export type LocalSupplier = Local<DomainSupplierRow>;
+export type LocalInvoice = Local<InvoiceRow>;
+export type LocalInvoiceFile = Local<InvoiceFileRow>;
+export type LocalInvoiceLine = Local<InvoiceLineRow>;
+export type LocalTaxLine = Local<TaxLineRow>;
+export type LocalAllocation = Local<AllocationRow>;
+export type LocalExport = Local<ExportRow>;
+export type LocalExportItem = Local<ExportItemRow>;
+/** Compatibilidad con las vistas de la fase 0. */
+export type SupplierRow = LocalSupplier;
 
 export function createClient(): SyncClient {
   return createSyncClient({
     app: APP,
     apiBase: '/api/v1',
-    tables: [SUPPLIERS],
+    tables: ALL_TABLES,
     pullIntervalMs: 30_000,
+    // Las facturas son datos del negocio: al cerrar sesión no se quedan en un dispositivo compartido (API.md §10).
+    clearOnLogout: true,
   });
 }
 
-/** Mensaje legible en español para un error de la API o de red. */
+/** Mensaje legible en español para un error de la API, del dominio o de red. */
 export function describeError(error: unknown): string {
-  const e = error as Partial<ApiError> & { message?: string };
+  const e = error as Partial<ApiError> & { message?: string; details?: unknown };
   const code = typeof e?.code === 'string' ? e.code : '';
   switch (code) {
     case 'LOGIN_FAILED':
@@ -55,12 +62,23 @@ export function describeError(error: unknown): string {
       return 'La sesión ha caducado. Vuelve a iniciar sesión.';
     case 'FORBIDDEN':
     case 'NO_MEMBERSHIP':
-      return 'Tu cuenta no tiene acceso a Invoices.';
+      return 'Tu cuenta no tiene permiso para esto en Invoices.';
     case 'VERSION_CONFLICT':
       return 'Otra persona ha modificado esta fila.';
     case 'BACKEND_UNAVAILABLE':
       return 'El servidor no está disponible ahora mismo.';
-    default:
+    case 'INVALID_FIELDS': {
+      const field = (e.details as { field?: string } | undefined)?.field;
+      return typeof e.message === 'string' && e.message ? e.message : field ? `El campo ${field} no es válido.` : 'Hay campos inválidos.';
+    }
+    case 'CONSTRAINT_VIOLATION':
+    case 'INVALID_VALUE':
+    case 'DOMAIN_ERROR':
+      return typeof e.message === 'string' && e.message ? e.message : 'Los datos no cumplen una regla de la aplicación.';
+    default: {
+      const known = domainMessage(code, '');
+      if (known) return known;
       return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
+    }
   }
 }

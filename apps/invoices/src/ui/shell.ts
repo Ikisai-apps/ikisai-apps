@@ -4,7 +4,9 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
-import { mountPlaceholder } from './placeholder.ts';
+import { mountInvoices } from './invoices.ts';
+import { mountPurchases } from './purchases.ts';
+import { mountAccounting } from './accounting.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -22,18 +24,18 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/proveedores', '#/conflictos'] },
-  { hash: '#/facturas', label: 'Facturas', icon: 'invoice', soon: true },
-  { hash: '#/compras', label: 'Compras', icon: 'cart', soon: true },
-  { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase', soon: true },
+  { hash: '#/facturas', label: 'Facturas', icon: 'invoice', matches: ['#/facturas'] },
+  { hash: '#/compras', label: 'Compras', icon: 'cart' },
+  { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
 ];
 
 const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', mount: mountHome },
   '#/proveedores': { title: 'Proveedores', mount: mountSuppliers },
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
-  '#/facturas': { title: 'Facturas', mount: mountPlaceholder('Facturas', 'Registro y seguimiento de facturas emitidas y recibidas.') },
-  '#/compras': { title: 'Compras', mount: mountPlaceholder('Compras', 'Tickets y documentos de compra con adjuntos.') },
-  '#/gestoria': { title: 'Gestoría', mount: mountPlaceholder('Gestoría', 'Entregas periódicas y comunicación con la gestoría.') },
+  '#/facturas': { title: 'Facturas', mount: mountInvoices },
+  '#/compras': { title: 'Compras', mount: mountPurchases },
+  '#/gestoria': { title: 'Gestoría', mount: mountAccounting },
 };
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Invoices. */
@@ -104,7 +106,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   function route(): void {
-    const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
+    const raw = location.hash && location.hash !== '#' ? location.hash : '#/';
+    // `#/facturas/nueva` y `#/facturas/<id>` montan Facturas y abren la hoja correspondiente.
+    const hash = raw.startsWith('#/facturas/') ? '#/facturas' : raw;
     const entry = ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;

@@ -129,7 +129,67 @@ test('login → bootstrap → proveedores offline → sincronizar', async ({ pag
     expect(rows[0]).toMatchObject({ name: 'Frutas Pepe e Hijos', revision: 2 });
   });
 
+  await test.step('factura a mano: crear, añadir artículo, ver estado y validar (sin documento → incompleta)', async () => {
+    await page.getByRole('link', { name: /Facturas/ }).click();
+    await expect(page.getByRole('heading', { name: 'Facturas', level: 2 })).toBeVisible();
+    await expect(page.getByText('Todavía no hay facturas')).toBeVisible();
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await expect(sheet).toBeVisible();
+    await sheet.getByLabel('Proveedor').selectOption({ label: 'Frutas Pepe e Hijos' });
+    await sheet.getByLabel('Fecha').fill('2026-10-05');
+    await sheet.getByLabel('Objeto').fill('Alimentos retiro yoga');
+    await sheet.getByLabel('Total del documento').fill('44');
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_05_(frutas_pepe)_alimentos_retiro_yoga.pdf');
+    await page.locator('#saveInvoice').click();
+    await expect(sheet).toBeHidden();
+
+    const ficha = page.getByRole('dialog', { name: /Frutas Pepe e Hijos · Alimentos retiro yoga/ });
+    await expect(ficha).toBeVisible();
+    await expect(ficha).toContainText('Pendiente de datos');
+    await ficha.locator('#addLine').click();
+    await ficha.getByLabel('Descripción').fill('Tomate');
+    await ficha.getByLabel('Cantidad').fill('20');
+    await ficha.getByLabel('Unidad').fill('kg');
+    await ficha.getByLabel('Precio unitario').fill('2');
+    // La base se rellena sola a partir de cantidad × precio.
+    await expect(ficha.locator('#lineNet')).toHaveValue('40');
+    await ficha.locator('#lineVat').selectOption('10');
+    await ficha.locator('#saveLine').click();
+    await expect(ficha.locator('.inv-table')).toContainText('Tomate');
+    await expect(ficha).toContainText('Pendiente de revisar');
+    await expect(ficha).toContainText('✓ Importes comprobados');
+    await expect(ficha.locator('.inv-totals')).toContainText('44,00 €');
+
+    // Sin documento original la validación es rechazada por el servidor y el lote queda como rechazado.
+    await ficha.locator('#validateInvoice').click();
+    await expect(page.locator('#syncStatus')).toContainText(/rechazad|Todo sincronizado|pendiente/i);
+    const invoices = api.rows('invoices.invoices');
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0]).toMatchObject({ object: 'Alimentos retiro yoga', status: 'pendiente_revision', calculated_total: 44 });
+    expect(api.rows('invoices.invoice_lines')).toHaveLength(1);
+    await ficha.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+    await expect(ficha).toBeHidden();
+    await expect(page.locator('#invoiceList .row', { hasText: 'Alimentos retiro yoga' })).toBeVisible();
+  });
+
+  await test.step('Compras y Gestoría se calculan en local', async () => {
+    await page.getByRole('link', { name: /Compras/ }).click();
+    await expect(page.getByRole('heading', { name: 'Compras', level: 2 })).toBeVisible();
+    await page.locator('#onlyValidated').uncheck();
+    await page.getByRole('tab', { name: 'Artículos' }).click();
+    await expect(page.locator('#purchases')).toContainText('Tomate');
+    await expect(page.locator('#purchaseTotals')).toContainText('Base 40,00 €');
+    await page.getByRole('link', { name: /Gestoría/ }).click();
+    await expect(page.getByRole('heading', { name: 'Gestoría', level: 2 })).toBeVisible();
+    await expect(page.locator('#fiscalAlerts')).toContainText('pendiente de revisión');
+    await page.getByRole('link', { name: /Inicio/ }).click();
+    await expect(page.locator('#statPendingReview')).toHaveText('1');
+  });
+
   await test.step('papelera: borrar y restaurar', async () => {
+    await page.getByRole('link', { name: /Proveedores/ }).click();
+    await expect(page.getByRole('heading', { name: 'Proveedores', level: 2 })).toBeVisible();
     await page.getByRole('button', { name: 'Editar Frutas Pepe e Hijos' }).click();
     await page.getByRole('button', { name: 'Enviar a papelera' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Enviar a papelera' }).click();
