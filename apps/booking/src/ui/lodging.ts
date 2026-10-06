@@ -37,7 +37,7 @@ export function lodgingSummary(data: LodgingData | null): string | null {
   if (!data || data.assignments.length === 0) return null;
   const persons = data.assignments.reduce((sum, a) => sum + Number(a.persons), 0);
   const spaces = new Set(data.assignments.map((a) => a.space_id)).size;
-  return `Alojamiento: ${plural(persons, 'persona', 'personas')} en ${plural(spaces, 'espacio', 'espacios')}`;
+  return `${plural(persons, 'persona', 'personas')} en ${plural(spaces, 'espacio', 'espacios')}`;
 }
 
 interface SheetOptions {

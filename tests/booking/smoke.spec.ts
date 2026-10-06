@@ -207,7 +207,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#blockLodging [data-role="occupancy"]')).toHaveText('3 / 2 plazas');
     await expect(page.locator('#blockLodging .lodging-space[data-over="true"]')).toContainText('Sobreocupada');
     await expect(page.locator('#blockLodging')).toContainText('Grupo de prueba');
-    await expect(page.locator('#blockOperation')).toContainText('Alojamiento: 3 personas en 1 espacio');
+    await expect(page.locator('#blockOperation')).toContainText('3 personas en 1 espacio');
     await expect.poll(() => api.rows(ASSIGNMENTS)[0]).toMatchObject({ event_id: api.rows(EVENTS)[0]!.id, space_id: moved.id, bed_id: null, guest_id: null, group_label: 'Grupo de prueba', persons: 3 });
     expect(api.rows(ASSIGNMENTS)).toHaveLength(1);
 
