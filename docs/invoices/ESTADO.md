@@ -44,9 +44,12 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - PR #110 (tanda 9) fusionada.
 - Tanda 10 (`invoices/tanda10`): herramientas MCP de dominio (`invoices_import_json`, `invoices_purchases`, `invoices_fiscal_summary`; `API.md` §6.6) y puerto libre pedido al sistema en los arneses de Playwright (`tests/invoices/free-port.ts`, receta de Booking).
 
+- PR #118 (tanda 10) fusionada.
+- Tanda 11 (`invoices/tanda11`): extracción con `createDocumentExtractorFromEnv` (OpenAI si hay `OPENAI_API_KEY`, si no Anthropic); registro de extracciones con su coste en `invoices.extractions` y límite de una extracción por documento de factura pendiente para los agentes, con propuesta aprobada para repetir (migración 0204, `API.md` §6).
+
 ## En curso
 
-- PR de la tanda 10 (`invoices/tanda10`).
+- PR de la tanda 11 (`invoices/tanda11`).
 
 ## Pendiente
 
