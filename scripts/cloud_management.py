@@ -93,14 +93,24 @@ class SupabaseManagement:
           raw = response.read()
           return json.loads(raw) if raw else None
       except urllib.error.HTTPError as first:
-        # Un único reintento ante 5xx del proveedor (idempotente para GET y para la consulta de solo lectura).
+        # Reintentos con espera creciente ante 5xx del proveedor, solo en llamadas idempotentes
+        # (GET y la consulta de solo lectura). Observado: "FGA Authentication Error" intermitente desde runners de GitHub.
         if first.code < 500 or (method not in (None, 'GET') and not (path == '/database/query' and body and body.get('read_only'))):
           raise
         first.read()
-        time.sleep(3)
-        with self.opener.open(req, timeout=45) as response:
-          raw = response.read()
-          return json.loads(raw) if raw else None
+        last = first
+        for delay in (5, 20, 60):
+          time.sleep(delay)
+          try:
+            with self.opener.open(req, timeout=45) as response:
+              raw = response.read()
+              return json.loads(raw) if raw else None
+          except urllib.error.HTTPError as again:
+            if again.code < 500:
+              raise
+            again.read()
+            last = again
+        raise last
     except urllib.error.HTTPError as e:
       # Solo se devuelve un nombre de error conocido, nunca el cuerpo del proveedor ni el SQL.
       raw = e.read(16384).decode('utf-8', errors='replace')
