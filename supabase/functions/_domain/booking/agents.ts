@@ -24,6 +24,9 @@ export function bookingAgentRisk(operations: readonly OperationLike[]): AgentRis
     }
     // Datos personales del registro de viajeros: siempre con una persona delante.
     if (op.table === TABLES.guests) reasons.push(`booking:guests:${op.op}`);
+    // Propuestas al organizador: cualquier escritura la revisa una persona (API.md §15.2).
+    if (op.table === TABLES.proposals || op.table === TABLES.proposalLines) reasons.push('booking:proposal');
+    if (op.op === 'call' && typeof op.procedure === 'string' && op.procedure.startsWith('booking.') && op.procedure.includes('proposal')) reasons.push('booking:proposal');
     // Importes y datos de pago.
     if (op.table === TABLES.finance && op.op !== 'insert') reasons.push('booking:finance');
   }

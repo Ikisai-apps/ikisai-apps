@@ -12,6 +12,11 @@ export const TABLES = {
   roomAssignments: 'booking.room_assignments',
   staffAssignments: 'booking.staff_assignments',
   staffNeeds: 'booking.staff_needs',
+  rates: 'booking.rates',
+  conditions: 'booking.conditions',
+  cancellationTiers: 'booking.cancellation_tiers',
+  proposals: 'booking.proposals',
+  proposalLines: 'booking.proposal_lines',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
@@ -24,6 +29,9 @@ export const READS = {
 
 export const PROCEDURES = {
   confirmReservation: 'booking.confirm_reservation',
+  newProposalVersion: 'booking.new_proposal_version',
+  sendProposal: 'booking.send_proposal',
+  acceptProposal: 'booking.accept_proposal',
 } as const;
 
 export const EVENT_TYPES = ['retiro', 'convivencia', 'formacion', 'encuentro', 'actividad_divulgativa', 'alquiler_grupo', 'otro'] as const;
@@ -70,6 +78,15 @@ export const NEED_TYPES = ['cocina', 'limpieza', 'mantenimiento', 'tecnico', 'ac
 export const NEED_PRIORITIES = ['baja', 'media', 'alta', 'urgente'] as const;
 export const NEED_STATUSES = ['detectado', 'buscando', 'cubierto'] as const;
 export type StaffFunction = (typeof STAFF_FUNCTIONS)[number];
+
+/** Las cuatro capas del tarifario (C03 §8.5) y el catálogo de extras (sonido, supletorias, movimientos…), que se añaden a mano. */
+export const RATE_LAYERS = ['recinto', 'por_persona', 'servicio', 'ajuste', 'extra'] as const;
+export const RATE_UNITS = ['persona_noche', 'persona_dia', 'dia', 'noche', 'estancia', 'unidad', 'porcentaje'] as const;
+/** Servicio marcado en la reserva del que depende sugerir una tarifa. */
+export const RATE_SERVICES = ['alojamiento', 'comidas', 'centro_interpretacion', 'exterior', 'piscina', 'montaje', 'tecnico', 'cama_supletoria'] as const;
+export const PROPOSAL_STATUSES = ['borrador', 'enviada', 'aceptada', 'rechazada', 'caducada', 'sustituida'] as const;
+export const PROPOSAL_NATURES = ['orientativa', 'cerrada'] as const;
+export type RateUnit = (typeof RATE_UNITS)[number];
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type RestrictionType = (typeof RESTRICTION_TYPES)[number];

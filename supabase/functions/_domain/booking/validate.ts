@@ -3,7 +3,7 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  BED_KINDS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
   RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
@@ -33,6 +33,7 @@ export interface OperationLike {
 type Spec =
   | { kind: 'text'; max: number; nullable: boolean }
   | { kind: 'enum'; values: readonly string[]; nullable: boolean }
+  | { kind: 'enumList'; values: readonly string[] }
   | { kind: 'bool' }
   | { kind: 'int'; nullable: boolean; min?: number }
   | { kind: 'number' }
@@ -218,6 +219,67 @@ FIELDS[TABLES.staffNeeds] = {
   notes: text(LONG),
 };
 
+FIELDS[TABLES.rates] = {
+  name: text(120, false),
+  layer: choice(RATE_LAYERS, false),
+  unit: choice(RATE_UNITS, false),
+  amount: { kind: 'number' },
+  service: choice(RATE_SERVICES),
+  min_persons: { kind: 'int', nullable: true },
+  max_persons: { kind: 'int', nullable: true },
+  event_types: { kind: 'enumList', values: EVENT_TYPES },
+  valid_from: { kind: 'date' },
+  valid_to: { kind: 'date' },
+  includes: text(LONG),
+  excludes: text(LONG),
+  active: { kind: 'bool' },
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.conditions] = {
+  name: text(120, false),
+  deposit_percent: { kind: 'number' },
+  deposit_minimum: { kind: 'money' },
+  deposit_days: { kind: 'int', nullable: false },
+  deposit_days_short: { kind: 'int', nullable: false },
+  short_notice_days: { kind: 'int', nullable: false },
+  prices_include_vat: { kind: 'bool' },
+  vat_rate: { kind: 'number' },
+  text: text(LONG),
+  is_default: { kind: 'bool' },
+  active: { kind: 'bool' },
+};
+FIELDS[TABLES.cancellationTiers] = {
+  conditions_id: { kind: 'uuid' },
+  min_days_before: { kind: 'int', nullable: false },
+  deposit_refund_pct: { kind: 'number' },
+  extra_costs: { kind: 'bool' },
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.proposals] = {
+  reservation_id: { kind: 'uuid' },
+  status: choice(PROPOSAL_STATUSES, false),
+  nature: choice(PROPOSAL_NATURES, false),
+  conditions_id: { kind: 'uuid', nullable: true },
+  start_date: { kind: 'date' },
+  end_date: { kind: 'date' },
+  persons: { kind: 'int', nullable: true },
+  valid_until: { kind: 'date' },
+  includes: text(LONG),
+  excludes: text(LONG),
+  notes: text(LONG),
+  decided_at: { kind: 'timestamp' },
+};
+FIELDS[TABLES.proposalLines] = {
+  proposal_id: { kind: 'uuid' },
+  rate_id: { kind: 'uuid', nullable: true },
+  description: text(300, false),
+  unit: choice(RATE_UNITS, false),
+  quantity: { kind: 'number' },
+  unit_amount: { kind: 'number' },
+  discount_pct: { kind: 'number' },
+  position: { kind: 'number' },
+};
+
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
 const PARENT_LINK: Record<string, string> = {
   [TABLES.events]: 'reservation_id',
@@ -228,6 +290,9 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.roomAssignments]: 'event_id',
   [TABLES.staffAssignments]: 'event_id',
   [TABLES.staffNeeds]: 'event_id',
+  [TABLES.cancellationTiers]: 'conditions_id',
+  [TABLES.proposals]: 'reservation_id',
+  [TABLES.proposalLines]: 'proposal_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -242,6 +307,11 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.roomAssignments]: ['event_id', 'space_id'],
   [TABLES.staffAssignments]: ['event_id', 'person_name', 'function'],
   [TABLES.staffNeeds]: ['event_id', 'need_type'],
+  [TABLES.rates]: ['name', 'layer', 'unit', 'amount'],
+  [TABLES.conditions]: ['name'],
+  [TABLES.cancellationTiers]: ['conditions_id', 'min_days_before', 'deposit_refund_pct'],
+  [TABLES.proposals]: ['reservation_id'],
+  [TABLES.proposalLines]: ['proposal_id', 'description', 'unit', 'unit_amount'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -268,6 +338,9 @@ export function checkValue(spec: Spec, value: unknown): string | null {
       return null;
     case 'enum':
       return typeof value === 'string' && spec.values.includes(value) ? null : 'no es un valor admitido';
+    case 'enumList':
+      return Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === 'string' && spec.values.includes(v)) && new Set(value).size === value.length
+        ? null : 'debe ser una lista de valores admitidos';
     case 'bool':
       return typeof value === 'boolean' ? null : 'debe ser sí o no';
     case 'int':
@@ -353,6 +426,36 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
 
   if (table === TABLES.beds && typeof fields.capacity === 'number' && fields.capacity > 2) issues.push(invalid(table, 'capacity', 'admite como máximo 2 personas'));
+
+  if (table === TABLES.rates || table === TABLES.proposalLines) {
+    const amountField = table === TABLES.rates ? 'amount' : 'unit_amount';
+    const value = fields[amountField];
+    const percent = fields.unit === 'porcentaje';
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      if (Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) issues.push(invalid(table, amountField, 'admite como máximo dos decimales'));
+      else if (percent && Math.abs(value) > 100) issues.push(invalid(table, amountField, 'un porcentaje va de -100 a 100'));
+      else if (!percent && table === TABLES.rates && value < 0) issues.push(invalid(table, amountField, 'no puede ser negativo (los descuentos van en porcentaje)'));
+      else if (Math.abs(value) > MAX_MONEY) issues.push(invalid(table, amountField, 'es demasiado grande'));
+    }
+    if (table === TABLES.proposalLines && typeof fields.quantity === 'number' && (fields.quantity < 0 || fields.quantity > 99_999_999)) issues.push(invalid(table, 'quantity', 'no puede ser negativa'));
+    if (table === TABLES.rates && typeof fields.min_persons === 'number' && typeof fields.max_persons === 'number' && fields.max_persons < fields.min_persons) {
+      issues.push(invalid(table, 'max_persons', 'debe ser mayor o igual que el mínimo'));
+    }
+    if (table === TABLES.rates) {
+      const from = dayNumber(fields.valid_from as string | null | undefined);
+      const to = dayNumber(fields.valid_to as string | null | undefined);
+      if (from !== null && to !== null && to < from) issues.push(invalid(table, 'valid_to', 'debe ser igual o posterior al inicio'));
+    }
+  }
+  if (table === TABLES.conditions || table === TABLES.cancellationTiers || table === TABLES.proposalLines) {
+    for (const field of ['deposit_percent', 'vat_rate', 'deposit_refund_pct', 'discount_pct']) {
+      const value = fields[field];
+      if (typeof value === 'number' && (value < 0 || value > 100)) issues.push(invalid(table, field, 'es un porcentaje de 0 a 100'));
+    }
+  }
+  if (table === TABLES.proposals && typeof fields.status === 'string' && !['borrador', 'rechazada', 'caducada'].includes(fields.status)) {
+    issues.push(invalid(table, 'status', 'enviar y aceptar una propuesta va por su botón, no editando el estado'));
+  }
 
   if (table === TABLES.staffAssignments) {
     const day = fields.work_date !== undefined && fields.work_date !== null;

@@ -11,6 +11,11 @@ export const BEDS: TableName = TABLES.beds;
 export const ASSIGNMENTS: TableName = TABLES.roomAssignments;
 export const STAFF: TableName = TABLES.staffAssignments;
 export const NEEDS: TableName = TABLES.staffNeeds;
+export const RATES: TableName = TABLES.rates;
+export const CONDITIONS: TableName = TABLES.conditions;
+export const TIERS: TableName = TABLES.cancellationTiers;
+export const PROPOSALS: TableName = TABLES.proposals;
+export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -61,7 +66,7 @@ export function createClient(): SyncClient {
     // Sin `tables`: el espejo guarda las tablas legibles para el rol (un lector no recibe importes ni huéspedes).
     pullIntervalMs: 30_000,
     // Datos personales e importes no se quedan en el dispositivo al cerrar sesión (docs/booking/API.md §5.3).
-    clearOnLogout: [GUESTS, FINANCE],
+    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES],
   });
 }
 
@@ -119,6 +124,18 @@ export function describeError(error: unknown): string {
       return 'Faltan las fechas o el número de personas para poder confirmar.';
     case 'INVALID_TRANSITION':
       return 'Una reserva cancelada, perdida o archivada hay que reabrirla antes de confirmar.';
+    case 'PROPOSAL_LOCKED':
+      return 'Esta propuesta ya está enviada y no se puede modificar: crea una nueva versión.';
+    case 'PROPOSAL_INCOMPLETE': {
+      const missing = (e?.details as { missing?: unknown } | null | undefined)?.missing;
+      const list = Array.isArray(missing) ? missing : [];
+      return list.includes('conditions_id') && list.includes('lines') ? 'Para enviar la propuesta elige unas condiciones y añade al menos una línea.'
+        : list.includes('conditions_id') ? 'Para enviar la propuesta elige unas condiciones.' : 'Para enviar la propuesta añade al menos una línea.';
+    }
+    case 'PROPOSAL_NEGATIVE':
+      return 'El total de la propuesta sería negativo: revisa los descuentos.';
+    case 'CONDITIONS_IN_USE':
+      return 'Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.';
     case 'CONSTRAINT_VIOLATION':
       return 'Los datos no cumplen una regla de la reserva (por ejemplo, fechas obligatorias desde la pre-reserva).';
     case 'ORPHAN_CHILD': {

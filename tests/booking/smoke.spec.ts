@@ -5,6 +5,7 @@
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
 import { expect, test } from 'playwright/test';
+import { proposalTotals } from '../../supabase/functions/_domain/booking/mod.ts';
 import { ASSIGNMENTS, BEDS, NEEDS, SPACES, STAFF, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
 let harness: Harness;
@@ -659,6 +660,165 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await warning.getByRole('button', { name: 'Anotar cierre' }).click();
     await expect.poll(() => api.rows(EVENTS)[0]!.closed_at).not.toBeNull();
     await expect(page.locator('#blockOperation')).toContainText('Reabrir evento');
+  });
+
+  await test.step('tarifas y propuesta: tarifario, condiciones, borrador con sugerencia y extra, enviar, bloqueo, nueva versión, aceptar y documento', async () => {
+    const euros = (n: number) => `${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`.replace(/\./g, '');
+    const plain = (text: string | null) => (text ?? '').replace(/\./g, '').replace(/ /g, ' ');
+    const shows = (locator: ReturnType<typeof page.locator>, amount: number) => expect.poll(async () => plain(await locator.textContent())).toContain(euros(amount));
+    const goto = (hash: string) => page.evaluate((h) => { location.hash = h; }, hash);
+
+    // Tarifario: dos tarifas con importes legibles, y un extra del catálogo.
+    await page.locator('.nav').getByText('Inicio', { exact: true }).click();
+    await page.locator('#openRatesHome').click();
+    await expect(page.getByRole('heading', { name: 'Tarifas y condiciones', level: 2 })).toBeVisible();
+    await expect(page.getByText('Todavía no hay tarifas')).toBeVisible();
+    const newRate = async (name: string, layer: string, unit: string, amount: string, extra?: (dialog: ReturnType<typeof page.getByRole>) => Promise<void>) => {
+      await page.locator('#newRate').click();
+      const dialog = page.getByRole('dialog', { name: 'Nueva tarifa' });
+      await dialog.locator('#f-name').fill(name);
+      await dialog.locator('#f-layer').selectOption(layer);
+      await dialog.locator('#f-unit').selectOption(unit);
+      await dialog.locator('#f-amount').fill(amount);
+      await extra?.(dialog);
+      await page.locator('#saveRow').click();
+      await expect(dialog).toBeHidden();
+    };
+    await newRate('Alojamiento en grupo', 'por_persona', 'persona_noche', '40', async (dialog) => {
+      await dialog.locator('#f-service').selectOption('alojamiento');
+      await dialog.getByLabel('Retiro', { exact: true }).check();
+    });
+    await newRate('Sala grande', 'recinto', 'dia', '500');
+    await newRate('Equipo de sonido', 'extra', 'unidad', '60');
+    await expect.poll(() => api.rows('booking.rates').length).toBe(3);
+    expect(api.rows('booking.rates').find((r) => r.name === 'Alojamiento en grupo')).toMatchObject({ amount: 40, service: 'alojamiento', event_types: ['retiro'], layer: 'por_persona' });
+    await expect(page.locator('section.zone[data-layer="por_persona"] [data-role="amount"]')).toHaveText('40,00 € / persona y noche');
+    await expect(page.locator('section.zone[data-layer="extra"] .sectionlabel')).toContainText('Extras');
+    await expect(page.locator('section.zone .sectionlabel').first()).toContainText('Recinto');
+
+    // Condiciones por defecto con un tramo de cancelación.
+    await page.locator('#newConditions').click();
+    const conditionsDialog = page.getByRole('dialog', { name: 'Nuevas condiciones' });
+    await conditionsDialog.locator('#f-name').fill('Condiciones estándar');
+    await conditionsDialog.locator('#f-deposit_minimum').fill('300');
+    await conditionsDialog.locator('#f-text').fill('La señal confirma la reserva.');
+    await page.locator('#saveRow').click();
+    await expect(conditionsDialog).toBeHidden();
+    await expect.poll(() => api.rows('booking.conditions')[0]).toMatchObject({ name: 'Condiciones estándar', is_default: true, deposit_percent: 30, deposit_minimum: 300, prices_include_vat: true, vat_rate: 10 });
+    const conditionsId = api.rows('booking.conditions')[0]!.id;
+    await page.locator('[data-conditions="Condiciones estándar"] [data-action="addTier"]').click();
+    const tierDialog = page.getByRole('dialog', { name: 'Nuevo tramo de cancelación' });
+    await tierDialog.locator('#f-min_days_before').fill('60');
+    await tierDialog.locator('#f-deposit_refund_pct').fill('100');
+    await page.locator('#saveRow').click();
+    await expect(tierDialog).toBeHidden();
+    await expect(page.locator('[data-conditions="Condiciones estándar"] .tier-text')).toHaveText('Con 60 días o más de antelación: se devuelve toda la señal.');
+    await expect(page.locator('[data-conditions="Condiciones estándar"] [data-role="default"]')).toBeVisible();
+
+    // Ficha: crear la propuesta (usa las condiciones por defecto), sugerir líneas, añadir un extra y ver el total en vivo.
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await expect(page.locator('#blockProposal')).toContainText('Todavía no hay propuesta');
+    await page.locator('#createProposal').click();
+    await expect.poll(() => api.rows('booking.proposals').length).toBe(1);
+    expect(api.rows('booking.proposals')[0]).toMatchObject({ version: 1, status: 'borrador', conditions_id: conditionsId, nature: 'orientativa' });
+    const v1 = api.rows('booking.proposals')[0]!.id;
+    await expect(page.locator('#proposalStatus')).toHaveText('v1 · Borrador');
+    await page.locator('#editProposal').click();
+    await expect(page.getByRole('heading', { name: 'Propuesta v1', level: 2 })).toBeVisible();
+    await page.locator('#suggestLines').click();
+    await expect.poll(() => api.rows('booking.proposal_lines').length).toBe(2);
+    expect(api.rows('booking.proposal_lines').map((l) => l.description).sort()).toEqual(['Alojamiento en grupo', 'Sala grande']);
+    await page.locator('#addExtra').click();
+    await page.locator('#extraChoices [data-extra="Equipo de sonido"]').click();
+    await expect(page.locator('#lineAmountPreview')).toContainText('60,00 €');
+    await page.locator('#saveRow').click();
+    await expect.poll(() => api.rows('booking.proposal_lines').length).toBe(3);
+
+    const totalOf = (proposalId: string) => {
+      const lines = api.rows('booking.proposal_lines').filter((l) => l.proposal_id === proposalId && l.deleted_at === null);
+      const conditions = api.rows('booking.conditions')[0]!;
+      return proposalTotals(lines as any, conditions as any);
+    };
+    const t1 = totalOf(v1);
+    expect(t1.total).toBeGreaterThan(5000);
+    await shows(page.locator('#proposalTotal'), t1.total);
+    await shows(page.locator('#proposalDeposit'), t1.deposit_amount);
+    await expect(page.locator('#totalVat')).toContainText('Incluido (10 %)');
+
+    // Marcar enviada: ya no se edita.
+    await page.locator('#backToReservation').click();
+    await page.locator('#sendProposal').click();
+    await expect.poll(() => api.rows('booking.proposals')[0]!.status).toBe('enviada');
+    expect(Number(api.rows('booking.proposals')[0]!.total)).toBe(t1.total);
+    await expect(page.locator('#proposalStatus')).toHaveText('v1 · Enviada');
+    await expect(page.locator('#editProposal')).toHaveCount(0);
+    await goto(`#/propuesta/${v1}`);
+    await expect(page.locator('#proposalReadonly')).toBeVisible();
+    await expect(page.locator('#addLine')).toHaveCount(0);
+    await expect(page.locator('#suggestLines')).toHaveCount(0);
+
+    // Condiciones ya usadas: el servidor las rechaza y la hoja lo explica.
+    await goto('#/tarifas');
+    await page.getByRole('button', { name: 'Editar condiciones Condiciones estándar' }).click();
+    const inUse = page.getByRole('dialog', { name: 'Condiciones' });
+    await expect(inUse.locator('#conditionsInUse')).toBeVisible();
+    await inUse.locator('#f-deposit_percent').fill('40');
+    await page.locator('#saveRow').click();
+    await expect(inUse).toContainText('Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.');
+    page.once('dialog', (confirmation) => void confirmation.accept()); // «Hay cambios sin guardar»
+    await inUse.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(inUse).toBeHidden();
+    expect(api.rows('booking.conditions')[0]!.deposit_percent).toBe(30);
+
+    // Nueva versión (copia las líneas), un descuento en una línea y envío: la anterior queda sustituida.
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await page.locator('#newVersion').click();
+    await expect.poll(() => api.rows('booking.proposals').length).toBe(2);
+    const v2 = api.rows('booking.proposals').find((p) => p.version === 2)!.id;
+    expect(api.rows('booking.proposal_lines').filter((l) => l.proposal_id === v2)).toHaveLength(3);
+    await expect(page.locator('#proposalDraft')).toContainText('La versión 2 está en borrador');
+    await expect(page.locator('#proposalStatus')).toHaveText('v1 · Enviada');
+    await page.locator('#editProposal').click();
+    await page.getByRole('button', { name: 'Editar Sala grande' }).click();
+    await page.locator('#f-discount_pct').fill('10');
+    await expect(page.locator('#lineAmountPreview')).toContainText('4500');
+    await page.locator('#saveRow').click();
+    await expect.poll(() => api.rows('booking.proposal_lines').filter((l) => l.proposal_id === v2 && l.discount_pct === 10).length).toBe(1);
+    const t2 = totalOf(v2);
+    expect(t2.total).toBeLessThan(t1.total);
+    await shows(page.locator('#proposalTotal'), t2.total);
+    await page.locator('#backToReservation').click();
+    await page.locator('#sendProposal').click();
+    await expect.poll(() => api.rows('booking.proposals').find((p) => p.id === v1)!.status).toBe('sustituida');
+    await expect(page.locator('#proposalStatus')).toHaveText('v2 · Enviada');
+
+    // Aceptar fija el importe final y la señal en el bloque de cobro.
+    await page.locator('#acceptProposal').click();
+    const accept = page.getByRole('alertdialog', { name: 'Aceptar propuesta' });
+    await expect(accept).toContainText('importe final');
+    await accept.getByRole('button', { name: 'Aceptar propuesta' }).click();
+    await expect.poll(() => api.rows('booking.proposals').find((p) => p.id === v2)!.status).toBe('aceptada');
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    expect(api.rows(FINANCE).find((f) => f.id === reservationId)).toMatchObject({ final_amount: t2.total, deposit_required: t2.deposit_amount });
+    await shows(page.locator('#blockFinance'), t2.total);
+    await expect(page.locator('#proposalStatus')).toHaveText('v2 · Aceptada');
+    await page.locator('#proposalHistory summary').click();
+    await expect(page.locator('#proposalHistory [data-version="1"]')).toContainText('Sustituida');
+
+    // Documento para el organizador: sin datos de huéspedes.
+    await page.locator('#viewDocument').click();
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 1 })).toBeVisible();
+    await expect(page.locator('#documentNature')).toHaveText('Propuesta orientativa');
+    await shows(page.locator('#documentTotal'), t2.total);
+    await expect(page.locator('#proposalDocument')).toContainText('IVA incluido (10 %)');
+    await expect(page.locator('#proposalDocument')).toContainText('Con 60 días o más de antelación: se devuelve toda la señal.');
+    await expect(page.locator('#proposalDocument')).toContainText('La señal confirma la reserva.');
+    await expect(page.locator('#documentDeposit')).toContainText('señal');
+    await expect(page.locator('#proposalDocument')).toContainText('descuento −10 %');
+    await expect(page.locator('#proposalDocument')).not.toContainText('Persona Sintética');
+    await expect(page.locator('#printDocument')).toBeVisible();
   });
 });
 

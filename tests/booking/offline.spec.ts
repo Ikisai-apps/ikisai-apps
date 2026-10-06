@@ -5,7 +5,7 @@
  * Cómo correrlo:   npx playwright test tests/booking/offline.spec.ts
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, RESERVATIONS, STAFF, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, PROPOSALS, PROPOSAL_LINES, RESERVATIONS, STAFF, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
 import { startFakeApi } from './fake-api.ts';
 
 test.use({ viewport: { width: 390, height: 844 } });
@@ -374,4 +374,67 @@ test('cama ocupada: aviso local con otra reserva y rechazo del servidor', async 
   await expect(dialog).toBeHidden();
   await expect(page.locator('#blockLodging')).toContainText('Sin asignaciones todavía.');
   await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+});
+
+test('propuesta: líneas de un borrador editadas sin red llegan al reconectar; al cerrar sesión no queda nada de tarifas ni propuestas', async ({ page, context }) => {
+  await login(page, harness.baseURL);
+  await createReservation(page);
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+  await openFicha(page);
+  await page.locator('#createProposal').click();
+  await expect.poll(() => api().rows(PROPOSALS).length).toBe(1);
+  await page.locator('#editProposal').click();
+  await expect(page.getByRole('heading', { name: 'Propuesta v1', level: 2 })).toBeVisible();
+
+  const fillLine = async (title: string, values: Record<string, string>, unit?: string) => {
+    const dialog = page.getByRole('dialog', { name: title });
+    if (unit) await dialog.locator('#f-unit').selectOption(unit);
+    for (const [key, value] of Object.entries(values)) await dialog.locator(`#f-${key}`).fill(value);
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+  };
+  await page.locator('#addLine').click();
+  await fillLine('Nueva línea', { description: 'Sala grande', quantity: '3', unit_amount: '100' }, 'dia');
+  await expect.poll(() => api().rows(PROPOSAL_LINES).length).toBe(1);
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+
+  await offline(page, context);
+  await page.getByRole('button', { name: 'Editar Sala grande' }).click();
+  await fillLine('Línea de la propuesta', { quantity: '4' });
+  await page.locator('#addLine').click();
+  await fillLine('Nueva línea', { description: 'Equipo de sonido', quantity: '1', unit_amount: '50.5' }, 'unidad');
+  await expect(page.locator('#proposalLines .line-item[data-pending="true"]')).toHaveCount(2);
+  await expect(page.locator('#proposalTotal')).toContainText('450,50');
+  expect(api().rows(PROPOSAL_LINES)).toHaveLength(1);
+  expect(api().rows(PROPOSAL_LINES)[0]).toMatchObject({ quantity: 3 });
+
+  await context.setOffline(false);
+  await expect.poll(() => api().rows(PROPOSAL_LINES).map((l) => [l.description, l.quantity]).sort(), { timeout: 15_000 }).toEqual([['Equipo de sonido', 1], ['Sala grande', 4]]);
+  await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
+  await expect(page.locator('#proposalLines .line-item[data-pending="true"]')).toHaveCount(0);
+  await expect(page.locator('#proposalTotal')).toContainText('450,50');
+
+  // Al cerrar sesión, tarifario, condiciones y propuestas se retiran del dispositivo como los importes.
+  const tables = ['booking.rates', 'booking.conditions', 'booking.cancellation_tiers', 'booking.proposals', 'booking.proposal_lines'];
+  const counts = () => page.evaluate((names) => new Promise<number[]>((resolve, reject) => {
+    const open = indexedDB.open('ikisai-booking-v1');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const present = names.filter((n) => db.objectStoreNames.contains(n));
+      if (present.length === 0) { db.close(); return resolve(names.map(() => 0)); }
+      const tx = db.transaction(present, 'readonly');
+      const out = new Map<string, number>();
+      for (const n of present) {
+        const count = tx.objectStore(n).count();
+        count.onsuccess = () => { out.set(n, count.result); if (out.size === present.length) { db.close(); resolve(names.map((x) => out.get(x) ?? 0)); } };
+      }
+    };
+  }), tables);
+  expect((await counts())[3]).toBeGreaterThan(0);
+  expect((await counts())[4]).toBeGreaterThan(0);
+  await nav(page, 'Inicio');
+  await page.locator('#logoutHome').click();
+  await expect(page.getByLabel('Correo electrónico')).toBeVisible();
+  expect(await counts()).toEqual([0, 0, 0, 0, 0]);
 });

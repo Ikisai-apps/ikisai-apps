@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
 import { canSeeGuests, dayNumber, depositStatus, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, NEEDS, RESERVATIONS, canRead, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -115,6 +115,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores, para asignar el alojamiento de cada reserva.'),
         el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSpacesHome', onclick: () => navigate('#/espacios') }, 'Espacios y camas')),
       ),
+      canWrite(client) && canRead(client, RATES) ? el('article', { class: 'card' },
+        el('h3', null, 'Tarifas y condiciones'),
+        el('p', null, 'Tarifario, condiciones comerciales y tramos de cancelación para preparar las propuestas.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openRatesHome', onclick: () => navigate('#/tarifas') }, 'Tarifas y condiciones')),
+      ) : null,
       el('article', { class: 'card' },
         el('h3', null, 'Instalar en este dispositivo'),
         el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
