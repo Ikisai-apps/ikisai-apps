@@ -123,6 +123,27 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect.poll(() => api.rows('food.menu_items').find((i) => i.servings === 2)).toBeTruthy();
   });
 
+  await test.step('orden a mano de platos y servicios, persistente', async () => {
+    const first = page.locator('.service').first();
+    await expect(first.locator('.dish strong')).toHaveText(['Curry de verduras', 'Pasta al pesto']);
+    await first.getByRole('button', { name: 'Subir Pasta al pesto' }).click();
+    await expect(first.locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
+    await expect(first.getByRole('button', { name: 'Subir Pasta al pesto' })).toBeDisabled();
+    const position = (servings: number) => Number(api.rows('food.menu_items').find((i) => i.servings === servings)!.position);
+    await expect.poll(() => position(2) < position(22)).toBe(true);
+    // El sábado: la cena sube por delante de la comida.
+    const saturday = page.locator('.menuday').nth(1);
+    await expect(saturday.locator('.service h4')).toHaveText(['Desayuno', 'Comida', 'Cena']);
+    await saturday.getByRole('button', { name: 'Subir Cena' }).click();
+    await expect(saturday.locator('.service h4')).toHaveText(['Desayuno', 'Cena', 'Comida']);
+    await page.reload();
+    await expect(page.locator('.menuday').nth(1).locator('.service h4')).toHaveText(['Desayuno', 'Cena', 'Comida']);
+    await expect(page.locator('.service').first().locator('.dish strong')).toHaveText(['Pasta al pesto', 'Curry de verduras']);
+    // Se deja como estaba para el resto del recorrido.
+    await page.locator('.menuday').nth(1).getByRole('button', { name: 'Bajar Cena' }).click();
+    await expect(page.locator('.menuday').nth(1).locator('.service h4')).toHaveText(['Desayuno', 'Comida', 'Cena']);
+  });
+
   await test.step('validar exige aceptar el aviso; después el menú queda bloqueado', async () => {
     await validate(page, 1);
     expect(menu()).toMatchObject({ status: 'validado', source_event_revision: 3 });

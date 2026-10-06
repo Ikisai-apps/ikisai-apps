@@ -257,6 +257,26 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (ok) navigate('#/menus');
     }
 
+    /**
+     * Mueve una fila un puesto arriba o abajo dentro de su grupo y guarda el orden en `position` (1, 2, 3…).
+     * Solo se envían las filas cuya posición cambia; el orden es el mismo en el constructor, en la vista de cocinero y en la propuesta de preparación.
+     */
+    async function move<R extends SyncedRow & { position: number }>(table: (typeof T)[keyof typeof T], ordered: R[], index: number, delta: -1 | 1): Promise<void> {
+      const target = index + delta;
+      if (target < 0 || target >= ordered.length) return;
+      const next = [...ordered];
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      const operations = next
+        .map((row, i): RowOperation | null => (Number(row.position) === i + 1 ? null : { op: 'update', table, id: row.id, expectedRevision: row.revision, fields: { position: i + 1 } }))
+        .filter((op): op is RowOperation => op !== null);
+      if (operations.length) await commitSafely(operations);
+    }
+
+    const moveButtons = (label: string, onMove: (delta: -1 | 1) => void, index: number, count: number): HTMLElement =>
+      el('span', { class: 'movebtns' },
+        el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Subir ${label}`, disabled: index === 0, onclick: () => onMove(-1) }, '↑'),
+        el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Bajar ${label}`, disabled: index === count - 1, onclick: () => onMove(1) }, '↓'));
+
     // --- Constructor por días ---------------------------------------------------------------
     function paintBuilder(): void {
       const e = event();
@@ -280,10 +300,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           recipe.method ? el('p', { class: 'pre' }, recipe.method) : null,
           recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null);
       };
-      const sorted = [...services].sort((a, b) => a.service_date.localeCompare(b.service_date) || (a.service_time ?? '99').localeCompare(b.service_time ?? '99') || Number(a.position) - Number(b.position));
+      const sorted = [...services].sort((a, b) => a.service_date.localeCompare(b.service_date) || Number(a.position) - Number(b.position) || (a.service_time ?? '99').localeCompare(b.service_time ?? '99'));
       const days = Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
 
-      const dishRow = (item: ItemRow): HTMLElement => {
+      const dishRow = (item: ItemRow, index: number, dishes: ItemRow[]): HTMLElement => {
         const recipe = recipeById.get(item.recipe_id);
         const img = el('img', { alt: '', hidden: true });
         if (recipe) showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
@@ -298,24 +318,27 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
             recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null),
           servings, el('span', { class: 'muted' }, 'rac.'),
-          isLocked ? null : el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18)),
+          isLocked ? null : el('span', { class: 'dishtools' },
+            dishes.length > 1 ? moveButtons(recipe?.name ?? 'plato', (delta) => void move(T.menuItems, dishes, index, delta), index, dishes.length) : null,
+            el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18))),
           cook ? cookDetails(item) : null,
         );
       };
 
-      const serviceBlock = (service: ServiceRow): HTMLElement => {
+      const serviceBlock = (service: ServiceRow, index: number, ofDay: ServiceRow[]): HTMLElement => {
         const dishes = items.filter((i) => i.service_id === service.id).sort((a, b) => Number(a.position) - Number(b.position) || a.created_at.localeCompare(b.created_at));
         const time = el('input', { type: 'time', value: shortTime(service.service_time), 'aria-label': `Hora de ${SERVICE_LABELS[service.service_type]}`, disabled: isLocked,
           onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
         return el('section', { class: 'service', 'data-id': service.id, 'data-type': service.service_type },
           el('header', null, el('h4', null, SERVICE_LABELS[service.service_type]), time,
+            isLocked || ofDay.length < 2 ? null : moveButtons(SERVICE_LABELS[service.service_type], (delta) => void move(T.menuServices, ofDay, index, delta), index, ofDay.length),
             isLocked ? null : el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${SERVICE_LABELS[service.service_type]}`,
               onclick: async () => {
                 if (dishes.length && !(await confirmDialog({ title: `¿Quitar ${SERVICE_LABELS[service.service_type].toLowerCase()}?`, text: `Se quitan también sus ${dishes.length} platos.`, confirmLabel: 'Quitar', danger: true }))) return;
                 await commitSafely([...dishes.map((d) => removeOp(T.menuItems, d)), removeOp(T.menuServices, service)]);
               } }, icon('trash', 18))),
-          dishes.length ? el('ul', { class: 'dishes' }, ...dishes.map(dishRow)) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
-          isLocked ? null : el('button', { class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, dishes.length) }, icon('plus', 18), 'Añadir plato'),
+          dishes.length ? el('ul', { class: 'dishes' }, ...dishes.map((dish, i) => dishRow(dish, i, dishes))) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
+          isLocked ? null : el('button', { class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishes.map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato'),
         );
       };
 
@@ -323,9 +346,9 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         const ofDay = sorted.filter((s) => s.service_date === day);
         return el('section', { class: 'menuday', 'data-day': day },
           el('h3', null, longDay(day)),
-          ...ofDay.map(serviceBlock),
+          ...ofDay.map((service, i) => serviceBlock(service, i, ofDay)),
           ofDay.length === 0 ? el('p', { class: 'muted' }, 'Sin servicios este día.') : null,
-          isLocked ? null : el('button', { class: 'linkbtn addService', type: 'button', onclick: () => addService(day, ofDay.length) }, icon('plus', 18), 'Añadir servicio'),
+          isLocked ? null : el('button', { class: 'linkbtn addService', type: 'button', onclick: () => addService(day, Math.max(0, ...ofDay.map((s) => Number(s.position)))) }, icon('plus', 18), 'Añadir servicio'),
         );
       }));
     }
