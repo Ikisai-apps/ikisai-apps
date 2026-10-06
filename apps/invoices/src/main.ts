@@ -1,16 +1,18 @@
-import './styles/tokens.css';
+import '../../../packages/ui-kit/src/styles/ui-kit.css';
 import './styles/app.css';
-import { createClient } from './app/client.ts';
+import { applyTheme, renderLogin } from '@ikisai/ui-kit';
+import { createClient, describeError } from './app/client.ts';
 import { safeToUpdate } from './app/guard.ts';
-import { renderLogin } from './ui/login.ts';
 import { renderShell } from './ui/shell.ts';
 import { initUpdates } from './updates.ts';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Falta el contenedor #app');
 
+applyTheme();
 const client = createClient();
 let unmountShell: (() => void) | null = null;
+let unmountLogin: (() => void) | null = null;
 
 initUpdates({ isSafe: () => safeToUpdate(client) });
 
@@ -27,6 +29,8 @@ async function boot(): Promise<void> {
 function route(): void {
   unmountShell?.();
   unmountShell = null;
+  unmountLogin?.();
+  unmountLogin = null;
   if (client.session()) {
     unmountShell = renderShell(root!, {
       client,
@@ -36,7 +40,10 @@ function route(): void {
       },
     });
   } else {
-    renderLogin(root!, {
+    unmountLogin = renderLogin(root!, {
+      appName: 'Invoices',
+      tagline: 'Facturas, compras y gestoría',
+      describeError,
       async onLogin(email, password) {
         await client.login(email, password);
         await client.start();

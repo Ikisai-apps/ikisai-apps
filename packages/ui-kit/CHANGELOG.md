@@ -1,5 +1,10 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.1.1 · 6 de octubre de 2026
+
+- Barra de estado: «Todo sincronizado» (en vez de «Todo guardado») cuando hay red y la cola está vacía, como ya mostraba Invoices.
+- `apps/invoices` consume el kit: tokens, login, shell, barra de estado, DOM, iconos y toast.
+
 ## 0.1.0 · 6 de octubre de 2026
 
 Primera entrega: tokens + barra de estado + shell de login.
