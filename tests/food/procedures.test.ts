@@ -165,3 +165,10 @@ test('validar · un menú sin platos no se valida; un lote con procedimiento no 
   const plan = await app.call(`/api/v1/history/${done.cursor}/undo-plan`, { body: {} });
   assert.equal(plan.status, 409); assert.equal(plan.data.error.code, 'UNDO_UNAVAILABLE');
 });
+
+test('agentes · solo regenerar la preparación es seguro sin aprobación', async () => {
+  const rows = (await app.t.db.query<{ procedure: string; agent_confirmation: boolean }>(
+    `select procedure, agent_confirmation from core.allowed_procedures where app = 'food' order by procedure`)).rows;
+  assert.deepEqual(rows.filter((r) => !r.agent_confirmation).map((r) => r.procedure), ['food.regenerate_preparation']);
+  assert.ok(rows.filter((r) => r.agent_confirmation).map((r) => r.procedure).includes('food.validate_menu'));
+});
