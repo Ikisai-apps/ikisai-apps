@@ -15,6 +15,8 @@ export interface CalendarEvent {
   color?: string | null;
   /** Texto corto que acompaña al título (p. ej. «[PRE]»). */
   badge?: string;
+  /** Título abreviado para los tramos del mes en móvil («Ortega», «Yoga»); sin él, en móvil el tramo es solo una barra. */
+  abbr?: string;
   /** Clase extra para el estado (`data-status`). */
   status?: string;
 }
@@ -199,12 +201,12 @@ export function createCalendar(options: CalendarOptions): Calendar {
             type: 'button',
             class: `cal-event${event.start === day ? ' starts' : ''}${(event.end ?? event.start) === day ? ' ends' : ''}`,
             style: event.color ? `--event-color:${event.color}` : null,
-            dataset: { eventId: event.id, status: event.status ?? '' },
+            dataset: { eventId: event.id, status: event.status ?? '', abbr: event.abbr ?? '' },
             tabindex: '-1',
             title: event.title,
             'aria-label': `${event.title}${event.badge ? ` ${event.badge}` : ''}`,
             onclick: (e: Event) => { e.stopPropagation(); options.onSelectEvent?.(event, day); },
-          }, first || view === 'week' ? el('span', { class: 'cal-event-text' }, event.badge ? `${event.badge} ` : '', event.title) : el('span', { class: 'cal-event-text', 'aria-hidden': 'true' }, last ? '' : ''));
+          }, first || view === 'week' ? el('span', { class: 'cal-event-text', dataset: { abbr: event.abbr ?? '' } }, event.badge ? `${event.badge} ` : '', event.title) : el('span', { class: 'cal-event-text', 'aria-hidden': 'true', dataset: { abbr: event.abbr ?? '' } }, last ? '' : ''));
         }),
         more > 0 ? el('span', { class: 'cal-more' }, `+${more}`) : null,
       ),

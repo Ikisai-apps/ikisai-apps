@@ -329,8 +329,8 @@ const images = section('images', 'Fotos recomprimidas', 'compressImage: lado may
 // --- Calendario ------------------------------------------------------------------
 const t0 = todayKey();
 const demoEvents = [
-  { id: 'r1', title: 'Familia Ortega', start: addDays(t0, -2), end: addDays(t0, 2), color: '#4f7a3a', status: 'confirmada' },
-  { id: 'r2', title: 'Retiro de yoga', start: addDays(t0, 4), end: addDays(t0, 9), color: '#3a6ea5', status: 'en_ejecucion', badge: '[PRE]' },
+  { id: 'r1', title: 'Familia Ortega', abbr: 'Ortega', start: addDays(t0, -2), end: addDays(t0, 2), color: '#4f7a3a', status: 'confirmada' },
+  { id: 'r2', title: 'Retiro de yoga', abbr: 'Yoga', start: addDays(t0, 4), end: addDays(t0, 9), color: '#3a6ea5', status: 'en_ejecucion', badge: '[PRE]' },
   { id: 'r3', title: 'Pareja Martín', start: addDays(t0, 1), end: addDays(t0, 1), color: '#c9a227', status: 'pre_reservada' },
   { id: 'r4', title: 'Colegio Sierra', start: addDays(t0, 12), end: addDays(t0, 14) },
   { id: 'r5', title: 'Visita técnica', start: t0, end: t0, color: '#8a8a8a' },
@@ -533,7 +533,7 @@ paintProjects();
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage, renderLogin };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

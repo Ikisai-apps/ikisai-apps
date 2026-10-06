@@ -14,20 +14,26 @@ export interface LoginOptions {
   footnote?: string;
   /** Icono de la marca de la app; por defecto el genérico. */
   markIcon?: IconName;
+  /** Ids de los controles, por si la app ya tiene pruebas que los usan; por defecto `email`, `password`, `loginSubmit`, `loginForm`, `loginError`. */
+  ids?: { email?: string; password?: string; submit?: string; form?: string; error?: string };
+  /** Título; por defecto «Ikisai <appName>». */
+  title?: string;
 }
 
 /** Shell de login común: tarjeta centrada, formulario accesible, ayuda sin red y marca Ikisai. */
 export function renderLogin(root: HTMLElement, options: LoginOptions): () => void {
-  const title = `Ikisai ${options.appName}`;
-  const error = el('p', { class: 'formerror', id: 'loginError', role: 'alert', 'aria-live': 'assertive' });
-  const email = el('input', { id: 'email', name: 'email', type: 'email', autocomplete: 'username', required: true, inputmode: 'email', spellcheck: 'false', 'aria-describedby': 'loginError' });
-  const password = el('input', { id: 'password', name: 'password', type: 'password', autocomplete: 'current-password', required: true, minlength: '1' });
-  const submit = el('button', { class: 'primary', type: 'submit', id: 'loginSubmit' }, 'Entrar');
+  const title = options.title ?? `Ikisai ${options.appName}`;
+  const ids = { email: 'email', password: 'password', submit: 'loginSubmit', form: 'loginForm', error: 'loginError', ...(options.ids ?? {}) };
+  const error = el('p', { class: 'formerror', id: ids.error, role: 'alert', 'aria-live': 'assertive' });
+  const email = el('input', { id: ids.email, name: 'email', type: 'email', autocomplete: 'username', required: true, inputmode: 'email', spellcheck: 'false', 'aria-describedby': ids.error });
+  const password = el('input', { id: ids.password, name: 'password', type: 'password', autocomplete: 'current-password', required: true, minlength: '1' });
+  const submit = el('button', { class: 'primary', type: 'submit', id: ids.submit }, 'Entrar');
 
   const form = el(
     'form',
     {
       class: 'login-form',
+      id: ids.form,
       novalidate: true,
       onsubmit: async (event: Event) => {
         event.preventDefault();
@@ -54,8 +60,8 @@ export function renderLogin(root: HTMLElement, options: LoginOptions): () => voi
         }
       },
     },
-    el('label', { class: 'field' }, el('span', null, 'Correo electrónico'), email),
-    el('label', { class: 'field' }, el('span', null, 'Contraseña'), password),
+    el('label', { class: 'field', for: ids.email }, el('span', null, 'Correo electrónico'), email),
+    el('label', { class: 'field', for: ids.password }, el('span', null, 'Contraseña'), password),
     error,
     submit,
   );
@@ -88,11 +94,13 @@ export function renderLogin(root: HTMLElement, options: LoginOptions): () => voi
   );
 
   replace(root, el('main', { class: 'login' }, card));
+  const previousTitle = document.title;
   document.title = `Entrar · ${title}`;
   email.focus();
 
   return () => {
     window.removeEventListener('online', onNetwork);
     window.removeEventListener('offline', onNetwork);
+    if (document.title === `Entrar · ${title}`) document.title = previousTitle;
   };
 }
