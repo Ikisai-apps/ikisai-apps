@@ -170,10 +170,12 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
       if (typeof op.id !== 'string' || !UUID.test(op.id)) fail(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
       if (op.op !== 'insert' && !Number.isSafeInteger(op.expectedRevision)) fail(422, 'INVALID_OPERATION', 'expectedRevision es obligatorio.', { index });
       if (op.fields !== undefined && (typeof op.fields !== 'object' || op.fields === null || Array.isArray(op.fields))) fail(422, 'INVALID_FIELDS', 'fields debe ser un objeto.', { index });
-      if ((op.op === 'delete' || op.op === 'restore') && op.fields && Object.keys(op.fields).length) fail(422, 'INVALID_FIELDS', 'delete/restore no admiten fields.', { index });
+      if (op.op === 'delete' && op.fields && Object.keys(op.fields).length) fail(422, 'INVALID_FIELDS', 'delete no admite fields.', { index });
       const clean: Operation = { op: op.op, table: op.table, id: op.id.toLowerCase() };
       if (op.op !== 'insert') clean.expectedRevision = op.expectedRevision;
       if (op.op === 'insert' || op.op === 'update') clean.fields = op.fields ?? {};
+      // restore admite fields (contrato §4.2, migración 0021): corregir la fila al sacarla de la papelera.
+      if (op.op === 'restore' && op.fields && Object.keys(op.fields).length) clean.fields = op.fields;
       return clean;
     });
   }

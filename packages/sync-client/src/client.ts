@@ -1473,7 +1473,7 @@ export function applyLocally(row: MirrorRow | null, op: RowOperation, nowIso: st
     case 'delete':
       return row ? { ...row, deleted_at: nowIso, updated_at: nowIso, _pending: true } : null;
     case 'restore':
-      return row ? { ...row, deleted_at: null, updated_at: nowIso, _pending: true } : null;
+      return row ? { ...row, ...(op.fields ?? {}), id: row.id, deleted_at: null, updated_at: nowIso, _pending: true } : null;
     case 'call':
       return null;
   }
