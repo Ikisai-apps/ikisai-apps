@@ -1,6 +1,6 @@
 # Tasks · estado
 
-Actualizado: 6 de octubre de 2026 (tanda 8). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
+Actualizado: 6 de octubre de 2026 (tanda 10). **La app nueva está en producción (`tasks.ikisai.com`) y aceptada por el usuario. 71 de los 72 escenarios de no regresión en verde, más los de actualización del service worker y «Vaciar papelera». Propuesta de agentes para el núcleo en `docs/tasks/AGENTES.md`, aceptada por Core como base y con sus decisiones cerradas (umbral de 10 elementos y caducidad de 24 horas, del usuario). Adopción del `ui-kit` empezada: la entrada ya es la del kit.**
 
 ## Hecho
 
@@ -55,6 +55,11 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - **`restore` con `fields`** (C22): restaurar y corregir van en una sola operación. `restoreTaskOps` devuelve a la hija con su padre si este cambió de proyecto; la interfaz heredada, que la muestra en su proyecto antiguo, la restaura como tarea suelta. Antes daba `INVALID_PARENT`.
 - **Cierre de sesión:** la app ya no se repinta mientras se vacía el espejo (dejaba un `TypeError` en la consola).
 - **`syncNow()`** garantiza un ciclo empezado después de la llamada, también si se unió al final de uno en curso.
+
+## Agentes (tanda 10)
+
+- **Riesgo de dominio** (`_domain/tasks/risk.ts`, `tasksAgentRisk`): archivar un proyecto, una familia o una etiqueta exige aprobación aunque sea una sola fila; `affectedEstimate` cuenta lo que cuelga (tareas de un proyecto, etiquetas de una familia, todo un área, hijas vivas de una tarea borrada) para que el umbral de 10 del núcleo se aplique sobre el alcance real. Solo cuenta lo que el agente puede ver.
+- **`tasksAgentRiskHook`** en `tasks-api/app.ts`: lee filas solo si el lote archiva o borra contenedores. **Falta conectarlo a `hooks`** cuando `AppHooks.agentRisk` esté en `main` (rama `core/agentes`).
 
 ## Producción
 

@@ -4,6 +4,7 @@ export * from './scopes.ts';
 export * from './validate.ts';
 export * from './graph.ts';
 export * from './ops.ts';
+export * from './risk.ts';
 export * from './legacy.ts';
 export * from './csv.ts';
 export * from './portable.ts';

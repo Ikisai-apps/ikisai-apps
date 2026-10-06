@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
-import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
+import { createTasksApp, tasksAgentRiskHook, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
+import { createSupabase, type RequestContext } from '../../supabase/functions/_kit/mod.ts';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
@@ -154,4 +155,26 @@ test('tasks-api · adjuntos: subida por ticket, fila con file_id y descarga con 
   assert.equal((await request(uuid(), app.tokens.owner)).status, 404);
   assert.equal((await request('no-es-uuid', app.tokens.owner)).status, 404);
   assert.ok(seedCursor > 0);
+});
+
+test('tasks-api · agentRisk: archivar exige aprobación y el alcance cuenta lo que cuelga, solo lo visible', async () => {
+  const supabase = createSupabase({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch });
+  const hook = tasksAgentRiskHook(supabase);
+  const ctx = (role: string, scopes: unknown) => ({ membership: { role, scopes } }) as unknown as RequestContext;
+  const extra = Array.from({ length: 12 }, () => uuid());
+  await ok(extra.map((id, i) => insert('tasks.tasks', id, { tab_id: TAB, project_id: SECRET, title: `Tarea ${i}`, position: 2048 + i })));
+
+  // Una sola fila que archiva un proyecto con 13 tareas: exige aprobación y su alcance supera el umbral del núcleo.
+  const archive: Operation[] = [{ op: 'update', table: 'tasks.projects', id: SECRET, expectedRevision: 1, fields: { status: 'archived' } }];
+  const owner = await hook(archive, ctx('owner', '*'));
+  assert.equal(owner.required, true);
+  assert.deepEqual(owner.reasons, [`archive:project:${SECRET}`]);
+  assert.equal(owner.affectedEstimate, 1 + 13);
+  // Lo que el agente no ve no cuenta (ni se revela por el recuento).
+  const limited = await hook(archive, ctx('editor', { tabs: [], projects: { [TAB]: [MINE] } }));
+  assert.equal(limited.affectedEstimate, 1);
+
+  // Editar o completar no añade nada: lo decide el núcleo por número de filas.
+  const plain = await hook([{ op: 'update', table: 'tasks.tasks', id: T_MINE, expectedRevision: 1, fields: { done: true } }], ctx('owner', '*'));
+  assert.deepEqual(plain, { required: false, reasons: [], affectedEstimate: 1 });
 });
