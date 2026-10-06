@@ -4,6 +4,7 @@ import './demo.css';
 import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
 import {
   renderProposalReview,
+  createColorField,
   addDays,
   alertDialog,
   closeSheet,
@@ -655,6 +656,13 @@ const agentsSection = section('agents', 'Agentes de IA', 'Piezas comunes para la
   el('h3', { class: 'demo-sub' }, 'Ámbito'), el('div', { class: 'card', id: 'scopeHost' }, scopePicker.element), el('p', { class: 'small muted' }, 'Valor: ', scopeOut),
 );
 
+// --- Campo de color ---------------------------------------------------------------------------
+const colorOut = el('code', { id: 'colorOut' }, '#b3c43a');
+const colorField = createColorField({ label: 'Color', value: '#b3c43a', suggestions: ['#6f5a8f', '#b76b3d', '#6b7b54', '#4e6f72', '#9c744e', '#c87847', '#8a442d', '#46513b', '#3f6d8e', '#a3537a'], allowNone: true, onChange: (v) => { colorOut.textContent = v ?? 'sin color'; }, attrs: { id: 'colorHost' } });
+const colorSection = section('color', 'Campo de color', 'Sugerencias, «Sin color» y «Personalizado» con tres degradados (matiz, saturación, brillo) ya colocados sobre el color actual, sin el diálogo nativo del sistema.',
+  el('div', { class: 'card demo-form' }, colorField.element, el('p', { class: 'small muted' }, 'Valor: ', colorOut)),
+);
+
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
@@ -666,12 +674,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection),
 );

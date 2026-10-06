@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.13.0 (tanda 21): campo de color propio con tres degradados (aceptación del usuario).
 - v0.12.0 (tanda 20): `renderProposalReview` y atributos de hoja en `openProposalReview`; `limitWhenEmpty` y `container` en la paleta.
 - v0.11.2 (tanda 19): `bodyAttrs` y `hideTitle` en la hoja.
 - v0.11.1 (tanda 18): atributos de la app en la hoja (fondo, panel, cerrar), para adoptarla en Tasks.
