@@ -1,7 +1,8 @@
 /**
  * API falsa de Food en memoria con el contrato que espera @ikisai/sync-client (docs/core/CONTRATO_SINCRONIZACION.md §4-§5):
  * login/refresh/logout, bootstrap, snapshot, changes, commands con revisiones, recibos idempotentes y conflictos 409,
- * más subidas (ticket, PUT, verify) y lectura de archivos para las fotos de receta.
+ * más subidas (ticket, PUT, verify) y lectura de archivos para las fotos de receta, los eventos de la proyección de
+ * Booking y una versión mínima de los procedimientos de estado del menú.
  * Adaptada de tests/invoices/fake-api.ts. Solo para pruebas de extremo a extremo del frontend; las reglas reales de
  * Food se prueban contra PGlite en los *.test.ts de esta carpeta.
  */
@@ -42,6 +43,17 @@ interface FakeOperation {
 export interface FakeApiOptions {
   users?: Array<{ email: string; password: string; displayName?: string }>;
   tables?: Record<string, string[]>;
+  /** Filas de `booking.food_event_projection` que sirve `GET events`. */
+  events?: FakeEvent[];
+}
+
+export interface FakeEvent {
+  event_id: string;
+  title: string;
+  start_date: string;
+  end_date: string;
+  event_revision: number;
+  [column: string]: unknown;
 }
 
 export interface FakeFile {
@@ -58,6 +70,10 @@ export interface FakeApi {
   url: string;
   /** Archivos subidos por el cliente (fotos de receta). */
   files(): FakeFile[];
+  /** Inserta una fila directamente en el servidor, como si ya existiera antes de la prueba. */
+  seed(table: string, fields: Record<string, unknown>): FakeRow;
+  /** Booking cambia un evento: se aplican los campos y avanza `event_revision`. */
+  updateEvent(eventId: string, fields: Record<string, unknown>): FakeEvent;
   cursor(): number;
   rows(table: string): FakeRow[];
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
@@ -79,7 +95,11 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
   'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes'],
   'food.recipe_equipment': ['recipe_id', 'equipment_id', 'quantity_required', 'notes'],
-  'food.menus': [], 'food.menu_services': [], 'food.menu_items': [], 'food.shopping_lists': [], 'food.shopping_list_items': [], 'food.preparation_items': [],
+  'food.menus': ['event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
+    'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes'],
+  'food.menu_services': ['menu_id', 'service_date', 'service_type', 'service_time', 'position', 'notes'],
+  'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
+  'food.shopping_lists': [], 'food.shopping_list_items': [], 'food.preparation_items': [],
 };
 
 /** Valores por defecto de las columnas, como los pondría PostgreSQL. */
@@ -89,7 +109,11 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.recipe_ingredients': { position: 0 },
   'food.equipment': { quantity: 1, status: 'operativo' },
   'food.recipe_equipment': { quantity_required: 1 },
+  'food.menus': { status: 'borrador' },
+  'food.menu_services': { position: 0 },
+  'food.menu_items': { position: 0 },
 };
+const MENU_TRANSITIONS = ['borrador>revisar', 'revisar>borrador', 'validado>revisar', 'validado>cerrado', 'cerrado>validado'];
 const FILE_FIELDS = ['photo_file_id', 'photo_thumb_file_id'];
 
 export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeApi> {
@@ -101,6 +125,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string }>();
   const requests: Array<{ method: string; path: string }> = [];
   const files = new Map<string, FakeFile>();
+  const events: FakeEvent[] = (options.events ?? []).map((e) => ({ ...e }));
   let cursor = 0;
 
   const userIds = new Map(users.map((u) => [u.email, randomUUID()]));
@@ -181,7 +206,42 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const results: unknown[] = [];
     const batchChanges: FakeChange[] = [];
     (body.operations as FakeOperation[]).forEach((op, index) => {
-      if (op.op === 'call') throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
+      if (op.op === 'call') {
+        // Versión mínima de los procedimientos de estado; las reglas completas se prueban contra PGlite.
+        const { procedure, args = {} } = op as unknown as { procedure: string; args?: Record<string, any> };
+        const menu = stagedTable('food.menus').get(args.menu_id);
+        if (!menu || menu.deleted_at) throw new Fault(422, 'MENU_NOT_FOUND', 'El menú no existe.', { index });
+        if (args.expectedRevision !== menu.revision) {
+          throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: 'food.menus', id: menu.id, expectedRevision: args.expectedRevision, currentRevision: menu.revision, current: { ...menu } });
+        }
+        const touch = (fields: Record<string, unknown>) => {
+          Object.assign(menu, fields);
+          menu.revision += 1; menu.updated_at = nowIso(); menu.updated_by = actorId;
+          batchChanges.push(record('food.menus', 'update', menu, nextCursor, index + 1, body.requestId, actorId));
+        };
+        if (procedure === 'food.set_menu_status') {
+          if (!MENU_TRANSITIONS.includes(`${menu.status}>${args.status}`)) throw new Fault(422, 'INVALID_TRANSITION', 'Transición no permitida.', { from: menu.status, to: args.status });
+          touch({ status: args.status });
+        } else if (procedure === 'food.acknowledge_event' || procedure === 'food.validate_menu') {
+          const event = events.find((e) => e.event_id === menu.event_id);
+          if (!event || args.event_revision !== event.event_revision) throw new Fault(422, 'EVENT_CHANGED', 'El evento ha cambiado.', { index, currentRevision: event?.event_revision ?? null });
+          if (procedure === 'food.acknowledge_event') {
+            if (menu.status === 'validado' || menu.status === 'cerrado') throw new Fault(422, 'MENU_LOCKED', 'El menú está validado.', { index });
+            touch({ source_event_revision: args.event_revision, source_event_snapshot: args.event_snapshot });
+          } else {
+            const services = Array.from(stagedTable('food.menu_services').values()).filter((s) => s.menu_id === menu.id && !s.deleted_at).map((s) => s.id);
+            if (!Array.from(stagedTable('food.menu_items').values()).some((i) => !i.deleted_at && services.includes(i.service_id as string))) {
+              throw new Fault(422, 'MENU_EMPTY', 'El menú no tiene platos.', { index });
+            }
+            touch({ status: 'validado', validated_at: nowIso(), validated_by: actorId, validated_warnings: args.acknowledged ?? [],
+              source_event_revision: args.event_revision, source_event_snapshot: args.event_snapshot });
+          }
+        } else {
+          throw new Fault(422, 'INVALID_OPERATION', 'Procedimiento no permitido.', { index });
+        }
+        results.push({ op: 'call', procedure, result: { menu_id: menu.id, status: menu.status } });
+        return;
+      }
       if (!op.table || !tables[op.table]) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.', { index });
       if (!op.id) throw new Fault(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
       const store = stagedTable(op.table);
@@ -270,6 +330,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       if (path === 'me') return json(res, 200, { userId: session.userId, email: session.email, role: 'owner', scopes: null });
+      if (path === 'events' && method === 'GET') {
+        return json(res, 200, { events: [...events].sort((a, b) => a.start_date.localeCompare(b.start_date)), serverTime: nowIso() });
+      }
+      if (path.startsWith('events/') && method === 'GET') {
+        const event = events.find((e) => e.event_id === path.slice('events/'.length));
+        if (!event) throw new Fault(404, 'NOT_FOUND', 'No se encontró el evento.');
+        return json(res, 200, { event });
+      }
       if (path === 'uploads' && method === 'POST') {
         const body = await readJson(req);
         if (!['image/webp', 'image/jpeg'].includes(body.mime)) throw new Fault(422, 'UNSUPPORTED_MEDIA', 'Tipo de archivo no admitido.');
@@ -341,6 +409,22 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     requests,
     files: () => Array.from(files.values()),
+    seed(table, fields) {
+      const allowed = tables[table];
+      if (!allowed) throw new Error(`tabla ${table} no registrada`);
+      const now = nowIso();
+      const row: FakeRow = { id: (fields.id as string | undefined) ?? randomUUID(), revision: 1, created_at: now, updated_at: now, updated_by: null, deleted_at: null };
+      for (const column of allowed) row[column] = fields[column] ?? DEFAULTS[table]?.[column] ?? null;
+      data.get(table)!.set(row.id, row);
+      return row;
+    },
+    updateEvent(eventId, fields) {
+      const event = events.find((e) => e.event_id === eventId);
+      if (!event) throw new Error(`evento ${eventId} no existe`);
+      Object.assign(event, fields);
+      event.event_revision += 1;
+      return event;
+    },
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }

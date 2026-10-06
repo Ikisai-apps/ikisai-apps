@@ -49,3 +49,37 @@
 .machinerows{display:flex;flex-direction:column;gap:4px}
 .machinerow{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:8px;align-items:center}
 .sublabel{display:block;margin:2px 0 4px;font-weight:700;font-size:var(--text-sm,.875rem)}
+
+/* Eventos */
+.stamp{margin-top:12px;font-size:var(--text-sm,.875rem)}
+.segmented button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.restrictions h4,.restrictions h3{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:var(--text-sm,.875rem);letter-spacing:.06em;text-transform:uppercase}
+.restrictions.card{margin:12px 0}
+.warninglist{margin:8px 0 0;padding:8px 0 0 18px;border-top:1px solid var(--line);font-size:var(--text-sm,.875rem)}
+.crumb{margin:0 0 4px;font-size:var(--text-sm,.875rem)}
+.crumb a{color:var(--muted);text-decoration:none}
+.banner.warn{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:12px;background:var(--warn-soft);color:var(--warn-ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.banner.warn .plainlist{margin-top:6px}
+.menuactions{flex-wrap:wrap;align-items:center;margin:12px 0}
+.menuactions .hint{flex-basis:100%;color:var(--muted);font-size:var(--text-xs,.75rem)}
+.ackline{align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+
+/* Constructor de menú por días */
+.menuday{margin-top:18px}
+.menuday>h3{margin:0 0 8px;font-family:var(--font-display,inherit);font-size:1.1rem}
+.menuday>h3::first-letter{text-transform:uppercase}
+.service{border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:12px;margin-bottom:10px}
+.service>header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.service>header h4{margin:0;flex:1;font-size:1rem}
+.service input[type=time],.dish .servings{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:inherit}
+.dishes{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}
+.dish{display:grid;grid-template-columns:44px minmax(0,1fr) 64px auto auto;gap:8px;align-items:center}
+.dishphoto{position:relative;display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:var(--paper-2);color:var(--muted);overflow:hidden}
+.dishphoto img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.dishname{display:flex;flex-direction:column;min-width:0}
+.dishname strong{overflow-wrap:anywhere}
+.dish .servings{width:100%;text-align:right}
+.dish[data-pending="true"] .dishname strong::after{content:' ·';color:var(--warn)}
+.addService{margin-top:2px}
+.recipegrid.picker{grid-template-columns:repeat(2,minmax(0,1fr))}
+

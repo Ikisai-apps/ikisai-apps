@@ -3,6 +3,7 @@ import './styles/app.css';
 import { applyTheme, renderLogin } from '@ikisai/ui-kit';
 import { createClient, describeError } from './app/client.ts';
 import { safeToUpdate } from './app/guard.ts';
+import { clearEventsCache } from './app/events.ts';
 import { clearPhotoCache } from './app/photos.ts';
 import { renderShell } from './ui/shell.ts';
 import { initUpdates } from './updates.ts';
@@ -37,6 +38,7 @@ function route(): void {
       client,
       onLogout: () => {
         void clearPhotoCache();
+        void clearEventsCache();
         location.hash = '';
         route();
       },

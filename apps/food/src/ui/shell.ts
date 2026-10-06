@@ -4,8 +4,9 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountRecipes } from './recipes.ts';
 import { mountEquipment } from './equipment.ts';
+import { mountEvents } from './events.ts';
+import { mountMenu, mountMenus } from './menus.ts';
 import { mountConflicts } from './conflicts.ts';
-import { mountPlaceholder } from './placeholder.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -23,8 +24,8 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
-  { hash: '#/eventos', label: 'Eventos', icon: 'calendar', soon: true },
-  { hash: '#/menus', label: 'Menús', icon: 'menu', soon: true },
+  { hash: '#/eventos', label: 'Eventos', icon: 'calendar' },
+  { hash: '#/menus', label: 'Menús', icon: 'menu' },
   { hash: '#/recetario', label: 'Recetario', icon: 'chef' },
   { hash: '#/maquinaria', label: 'Maquinaria', icon: 'settings' },
 ];
@@ -34,8 +35,8 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/recetario': { title: 'Recetario', mount: mountRecipes },
   '#/maquinaria': { title: 'Maquinaria', mount: mountEquipment },
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
-  '#/eventos': { title: 'Eventos', mount: mountPlaceholder('Eventos', 'Los retiros confirmados en Booking, con personas, régimen y restricciones.') },
-  '#/menus': { title: 'Menús', mount: mountPlaceholder('Menús', 'El menú de cada evento, su lista de compra y su plan de preparación.') },
+  '#/eventos': { title: 'Eventos', mount: mountEvents },
+  '#/menus': { title: 'Menús', mount: mountMenus },
 };
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Food. */
@@ -107,10 +108,12 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   function route(): void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
-    const entry = ROUTES[hash] ?? ROUTES['#/']!;
+    // `#/menus/<id>` es la ficha de un menú; el resto son rutas fijas.
+    const menuId = hash.match(/^#\/menus\/([0-9a-f-]{36})$/i)?.[1];
+    const entry = menuId ? { title: 'Menú', mount: mountMenu(menuId) } : ROUTES[hash] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(hash);
+    shell.setRoute(menuId ? '#/menus' : hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     document.title = `${entry.title} · Ikisai Food`;

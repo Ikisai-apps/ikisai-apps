@@ -1,12 +1,14 @@
 /**
  * Fotos de receta (docs/food/API.md §8 y §10.2).
- * - La imagen elegida se recomprime aquí a «resolución WhatsApp»: 1600 px de lado mayor y una miniatura de 480 px,
- *   en WebP (JPEG si el navegador no codifica WebP). El original NO se conserva (decisión del usuario, contrato §11).
+ * - La imagen elegida se recomprime en el dispositivo con `compressImage` del kit a «resolución WhatsApp»: 1600 px de lado
+ *   mayor y una miniatura de 480 px, en WebP (JPEG si el navegador no codifica WebP). El original NO se conserva
+ *   (decisión del usuario, contrato §11).
  * - Los dos archivos se dejan en la cola de blobs de sync-client y la receta los referencia con `{ "$blob": sha }`;
  *   el cliente sustituye el marcador por el `file_id` cuando la subida está verificada, también si la foto se hizo sin red.
  * - Para verlas sin red, cada foto se guarda en Cache Storage: por sha mientras está en cola y por `file_id` después.
  */
 import type { SyncClient } from '@ikisai/sync-client';
+import { compressImage } from '@ikisai/ui-kit';
 import { PHOTO_MAX_BYTES, PHOTO_MAX_SIDE, PHOTO_THUMB_SIDE } from '@ikisai/domain-food';
 
 const CACHE = 'ikisai-food-photos-v1';
@@ -30,47 +32,23 @@ async function openCache(): Promise<Cache | null> {
   }
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
-}
-
-/** Reduce una imagen a `side` px de lado mayor. Nunca la amplía. */
-async function resize(bitmap: ImageBitmap, side: number, maxBytes: number): Promise<Blob> {
-  const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Este navegador no puede preparar la foto.');
-  context.imageSmoothingQuality = 'high';
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  for (const quality of [0.78, 0.6, 0.45]) {
-    let blob = await canvasToBlob(canvas, 'image/webp', quality);
-    // Safari antiguo ignora el tipo pedido y devuelve PNG: se usa JPEG.
-    if (!blob || blob.type !== 'image/webp') blob = await canvasToBlob(canvas, 'image/jpeg', quality);
-    if (blob && blob.size <= maxBytes) return blob;
-  }
-  throw new Error('La foto es demasiado grande incluso recomprimida.');
-}
-
 export interface PreparedPhoto {
   display: Blob;
   thumb: Blob;
 }
 
-/** Decodifica (respetando la orientación de la cámara) y genera la versión de 1600 px y la miniatura. */
+/** Recomprime con el kit (respeta la orientación de la cámara y nunca amplía): versión de 1600 px y miniatura de 480 px. */
 export async function preparePhoto(file: Blob): Promise<PreparedPhoto> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    throw new Error('No se pudo leer la imagen. Prueba con una foto JPEG, PNG o WebP.');
+  for (const quality of [0.8, 0.6, 0.45]) {
+    let image;
+    try {
+      image = await compressImage(file, { maxSide: PHOTO_MAX_SIDE, thumbSide: PHOTO_THUMB_SIDE, quality });
+    } catch {
+      throw new Error('No se pudo leer la imagen. Prueba con una foto JPEG, PNG o WebP.');
+    }
+    if (image.thumb && image.full.size <= PHOTO_MAX_BYTES) return { display: image.full, thumb: image.thumb };
   }
-  try {
-    return { display: await resize(bitmap, PHOTO_MAX_SIDE, PHOTO_MAX_BYTES), thumb: await resize(bitmap, PHOTO_THUMB_SIDE, PHOTO_MAX_BYTES) };
-  } finally {
-    bitmap.close();
-  }
+  throw new Error('La foto es demasiado grande incluso recomprimida.');
 }
 
 const extension = (blob: Blob) => (blob.type === 'image/webp' ? 'webp' : 'jpg');
