@@ -512,11 +512,13 @@ Casi toda la lectura se resuelve en el cliente contra el espejo local (Inicio, l
 |---|---|---|---|
 | `GET calendar/status` | `?reservationIds=a,b` opcional | `{ configured, calendarId, health, items: [{ reservationId, syncStatus, lastSyncedAt, lastError, htmlLink, pendingJob, attempts, nextAttemptAt }] }` | reader |
 | `POST calendar/:reservationId/retry` | — | `{ queued: true }` | editor |
-| `GET events/:id/guest-summary` | — | `{ total, bySex: { H, M, X, sinDato }, minors, dataStatus: {…}, sesStatus: {…} }` | reader |
+| `POST read/booking.guest_summary` | `{ event_id }` | `{ eventId, total, bySex: { H, M, X, sinDato }, minors, signed, dataStatus: {…}, sesStatus: {…} }` | reader |
+| `GET read/booking.food_event_projection?where[event_id]=…` | filtros de igualdad, `limit`, `offset` | `{ rows, total }` con las columnas de §7.1 | reader |
 
 - `calendar/status` además empuja los trabajos vencidos (hasta 3 por llamada, sin retrasar la respuesta). Así hay reintentos siempre que alguien tenga la app abierta, sin depender de un planificador (ver P8).
 - `health` ∈ `ok | not_configured | auth_error | calendar_not_found`.
-- `guest-summary` da a quien no ve huéspedes los recuentos del canon §10 («24 huéspedes · 13 mujeres · 10 hombres · 2 menores»). Quien sí los ve lo calcula en local.
+- `booking.guest_summary` da a quien no ve huéspedes los recuentos del canon §10 («24 huéspedes · 13 mujeres · 10 hombres · 2 menores»). Quien sí los ve lo calcula en local. Es una lectura registrada con `core.allow_read` (contrato §5.1), no una ruta propia.
+- La proyección de Food también está registrada para la propia app `booking`, para poder comprobar desde Booking qué está viendo cocina.
 - Errores: los del núcleo más `NOT_FOUND` si la reserva o el evento no existen.
 
 Sin exportación de huéspedes en V1: un CSV con documentos es justo lo que el protocolo 9 quiere evitar. La pantalla ofrece copiar campo a campo para el envío manual a SES.

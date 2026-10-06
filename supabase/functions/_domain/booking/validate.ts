@@ -3,9 +3,12 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  CUSTOMER_TYPES, EVENT_TYPES, MEAL_PLANS, MENU_STYLES, PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES,
-  SETUP_STYLES, TABLES, TASK_STATUSES_F, TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
+  CHECKLIST_STATUSES, CHECKLIST_TYPES, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
+  RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
+  TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
 } from './catalog.ts';
+import { missingForSes } from './guests.ts';
 import { dayNumber, isValidDate } from './rules.ts';
 
 export type Role = 'reader' | 'editor' | 'owner';
@@ -31,13 +34,16 @@ type Spec =
   | { kind: 'text'; max: number; nullable: boolean }
   | { kind: 'enum'; values: readonly string[]; nullable: boolean }
   | { kind: 'bool' }
-  | { kind: 'int'; nullable: boolean }
+  | { kind: 'int'; nullable: boolean; min?: number }
+  | { kind: 'number' }
   | { kind: 'money' }
   | { kind: 'date' }
   | { kind: 'time' }
   | { kind: 'timestamp' }
   | { kind: 'email' }
-  | { kind: 'uuid' };
+  | { kind: 'country' }
+  | { kind: 'uuid'; nullable?: boolean }
+  | { kind: 'file' };
 
 const text = (max: number, nullable = true): Spec => ({ kind: 'text', max, nullable });
 const choice = (values: readonly string[], nullable = true): Spec => ({ kind: 'enum', values, nullable });
@@ -105,23 +111,89 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
     incidents: text(LONG),
     post_event_notes: text(LONG),
   },
+  [TABLES.guests]: {
+    event_id: { kind: 'uuid' },
+    first_name: text(120, false),
+    last_name_1: text(120),
+    last_name_2: text(120),
+    sex: choice(SEXES),
+    document_type: choice(DOCUMENT_TYPES),
+    document_number: text(40),
+    document_support_number: text(40),
+    nationality: { kind: 'country' },
+    birth_date: { kind: 'date' },
+    residence_address: text(300),
+    residence_postal_code: text(20),
+    residence_city: text(120),
+    residence_country: { kind: 'country' },
+    phone: text(40),
+    email: { kind: 'email' },
+    is_minor: { kind: 'bool' },
+    guardian_name: text(200),
+    kinship: text(80),
+    signed_at: { kind: 'timestamp' },
+    signed_by_name: text(200),
+    signature_file_id: { kind: 'file' },
+    data_status: choice(GUEST_DATA_STATUSES, false),
+    ses_status: choice(SES_STATUSES, false),
+    ses_sent_at: { kind: 'timestamp' },
+    ses_sent_by: text(200),
+    ses_receipt_ref: text(500),
+    ses_receipt_file_id: { kind: 'file' },
+    notes: text(LONG),
+  },
+  [TABLES.restrictions]: {
+    event_id: { kind: 'uuid' },
+    guest_id: { kind: 'uuid', nullable: true },
+    restriction_type: choice(RESTRICTION_TYPES, false),
+    subject: text(200),
+    severity: choice(RESTRICTION_SEVERITIES),
+    servings: { kind: 'int', nullable: true, min: 1 },
+    kitchen_notes: text(2000),
+    active: { kind: 'bool' },
+  },
+  [TABLES.checklist]: {
+    event_id: { kind: 'uuid' },
+    checklist_type: choice(CHECKLIST_TYPES, false),
+    label: text(200, false),
+    status: choice(CHECKLIST_STATUSES, false),
+    responsible_name: text(200),
+    reviewed_on: { kind: 'date' },
+    notes: text(LONG),
+    position: { kind: 'number' },
+  },
+};
+
+/** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
+const PARENT_LINK: Record<string, string> = {
+  [TABLES.events]: 'reservation_id',
+  [TABLES.guests]: 'event_id',
+  [TABLES.restrictions]: 'event_id',
+  [TABLES.checklist]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
 const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.reservations]: ['title'],
   [TABLES.events]: ['reservation_id'],
+  [TABLES.guests]: ['event_id', 'first_name'],
+  [TABLES.restrictions]: ['event_id', 'restriction_type'],
+  [TABLES.checklist]: ['event_id', 'checklist_type', 'label'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const COUNTRY = /^[A-Z]{3}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 const MAX_INT = 100_000;
 const MAX_MONEY = 9_999_999_999.99;
 
 /** Devuelve el motivo por el que `value` no cumple `spec`, o null si es válido. */
 export function checkValue(spec: Spec, value: unknown): string | null {
-  const nullable = spec.kind === 'text' || spec.kind === 'enum' || spec.kind === 'int' ? spec.nullable : spec.kind !== 'bool' && spec.kind !== 'uuid';
+  const nullable = spec.kind === 'text' || spec.kind === 'enum' || spec.kind === 'int' ? spec.nullable
+    : spec.kind === 'uuid' ? spec.nullable === true
+    : spec.kind !== 'bool' && spec.kind !== 'number';
   if (value === null) return nullable ? null : 'no puede quedar vacío';
   switch (spec.kind) {
     case 'text':
@@ -134,7 +206,10 @@ export function checkValue(spec: Spec, value: unknown): string | null {
     case 'bool':
       return typeof value === 'boolean' ? null : 'debe ser sí o no';
     case 'int':
-      return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_INT ? null : 'debe ser un número entero no negativo';
+      if (typeof value !== 'number' || !Number.isInteger(value) || value > MAX_INT) return 'debe ser un número entero';
+      return value >= (spec.min ?? 0) ? null : `debe ser como mínimo ${spec.min ?? 0}`;
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9 ? null : 'debe ser un número';
     case 'money':
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_MONEY) return 'debe ser un importe no negativo';
       return Math.abs(value * 100 - Math.round(value * 100)) < 1e-6 ? null : 'admite como máximo dos decimales';
@@ -147,8 +222,16 @@ export function checkValue(spec: Spec, value: unknown): string | null {
     case 'email':
       if (typeof value !== 'string' || value.length > 320) return 'debe ser un correo';
       return EMAIL.test(value) ? null : 'no tiene forma de correo';
+    case 'country':
+      return typeof value === 'string' && COUNTRY.test(value) ? null : 'debe ser un código de país de tres letras (ESP, FRA…)';
     case 'uuid':
       return typeof value === 'string' && UUID.test(value) ? null : 'debe ser un identificador uuid';
+    case 'file': {
+      // id de `core.files`, o el marcador `{"$blob": "<sha256>"}` que `sync-client` sustituye al subir el adjunto
+      if (typeof value === 'string') return UUID.test(value) ? null : 'debe ser un identificador de archivo';
+      const sha = typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>).$blob : undefined;
+      return typeof sha === 'string' && SHA256.test(sha) ? null : 'debe ser un identificador de archivo';
+    }
   }
 }
 
@@ -185,6 +268,38 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
     const minors = fields.minors_count;
     if (typeof guests === 'number' && typeof minors === 'number' && minors > guests) issues.push(invalid(table, 'minors_count', 'no puede superar el número de personas'));
   }
+
+  if (table === TABLES.restrictions) {
+    const has = (field: string) => fields[field] !== undefined;
+    const type = fields.restriction_type as string | undefined;
+    if (mode === 'insert' || (has('guest_id') && has('servings'))) {
+      const guest = fields.guest_id ?? null;
+      const servings = fields.servings ?? null;
+      if (guest !== null && servings !== null) issues.push(invalid(table, 'servings', 'no se indica cuando la restricción es de un huésped concreto'));
+      if (guest === null && servings === null) issues.push(invalid(table, 'servings', 'es obligatorio cuando la restricción no es de un huésped concreto'));
+    }
+    if (type !== undefined && (mode === 'insert' || has('severity'))) {
+      if ((fields.severity ?? null) !== null && !RESTRICTION_TYPES_WITH_SEVERITY.includes(type)) issues.push(invalid(table, 'severity', 'solo se indica en alergias e intolerancias'));
+    }
+    if (type !== undefined && (mode === 'insert' || has('subject'))) {
+      const subject = fields.subject;
+      if (RESTRICTION_TYPES_WITH_SUBJECT.includes(type) && !(typeof subject === 'string' && subject.trim())) issues.push(invalid(table, 'subject', 'es obligatorio en alergias, intolerancias y «otra»'));
+    }
+  }
+
+  if (table === TABLES.guests) {
+    const has = (field: string) => fields[field] !== undefined;
+    if (fields.ses_status === 'enviado_SES' && (mode === 'insert' || has('ses_sent_at')) && !fields.ses_sent_at) issues.push(invalid(table, 'ses_sent_at', 'es obligatorio al marcar el envío a SES'));
+    if (fields.ses_status === 'listo_para_envio' && (mode === 'insert' || has('data_status')) && (fields.data_status ?? 'pendiente_datos') !== 'datos_revisados') {
+      issues.push(invalid(table, 'ses_status', 'no puede ser «listo para envío» sin los datos revisados'));
+    }
+    if (has('signature_file_id') && fields.signature_file_id !== null && (mode === 'insert' || has('signed_at')) && !fields.signed_at) issues.push(invalid(table, 'signed_at', 'es obligatorio al guardar la firma'));
+    // Solo en el alta viaja la fila completa; en una edición lo comprueba la app con la fila fusionada (`missingForSes`).
+    if (mode === 'insert' && fields.data_status === 'datos_revisados') {
+      const missing = missingForSes(fields);
+      if (missing.length) issues.push({ status: 422, code: 'INVALID_FIELDS', message: 'Faltan datos obligatorios para dar al huésped por revisado.', details: { table, field: 'data_status', missing } });
+    }
+  }
   return issues;
 }
 
@@ -203,7 +318,7 @@ function validateConfirmArgs(args: Record<string, unknown>): Issue[] {
 }
 
 /** Reglas de `beforeCommit` para un lote completo. Devuelve todos los problemas; la Edge responde con el primero. */
-export function validateOperations(operations: readonly OperationLike[], actor: { role: Role }): Issue[] {
+export function validateOperations(operations: readonly OperationLike[], actor: { role: Role; canSeeGuests?: boolean }): Issue[] {
   const issues: Issue[] = [];
   operations.forEach((op, index) => {
     const at = (issue: Issue): Issue => ({ ...issue, details: { ...issue.details, index } });
@@ -221,10 +336,15 @@ export function validateOperations(operations: readonly OperationLike[], actor: 
         issues.push(at({ status: 403, code: 'FORBIDDEN', message: 'Solo un propietario puede borrar o restaurar un evento operativo.', details: { table } }));
         return;
       }
-      if (op.op === 'update' && op.fields && 'reservation_id' in op.fields) {
-        issues.push(at(invalid(table, 'reservation_id', 'no se puede cambiar')));
-        return;
-      }
+    }
+    if (table === TABLES.guests && !(actor.canSeeGuests ?? actor.role === 'owner')) {
+      issues.push(at({ status: 403, code: 'FORBIDDEN', message: 'Los datos de huéspedes están restringidos a los responsables designados.', details: { table } }));
+      return;
+    }
+    const link = PARENT_LINK[table];
+    if (link && op.op === 'update' && op.fields && link in op.fields) {
+      issues.push(at(invalid(table, link, 'no se puede cambiar')));
+      return;
     }
     if (op.op === 'insert' || op.op === 'update') issues.push(...validateFields(table, op.fields ?? {}, op.op).map(at));
   });

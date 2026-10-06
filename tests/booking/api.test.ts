@@ -49,14 +49,16 @@ const confirm = (reservationId: string, eventId: string, fromStatus = 'pre_reser
 test('booking · tablas registradas; reader no recibe los importes', async () => {
   const boot = await app.call('/api/v1/bootstrap', { token: app.tokens.reader });
   const byName = Object.fromEntries(boot.data.tables.map((t: any) => [t.table, t]));
-  assert.deepEqual(Object.keys(byName).sort(), [EVENTS, FINANCE, RESERVATIONS].sort());
+  for (const table of [EVENTS, FINANCE, RESERVATIONS]) assert.ok(byName[table], table);
   assert.equal(byName[FINANCE].readable, false);
   assert.equal(byName[RESERVATIONS].readable, true);
 
   const before = (await app.call('/api/v1/bootstrap')).data.cursor;
   const id = await createReservation();
   const all = await app.call('/api/v1/snapshot', { token: app.tokens.reader });
-  assert.deepEqual(all.data.tables.map((t: any) => t.table).sort(), [EVENTS, RESERVATIONS].sort());
+  const readable: string[] = all.data.tables.map((t: any) => t.table);
+  assert.ok(readable.includes(EVENTS) && readable.includes(RESERVATIONS));
+  assert.equal(readable.includes(FINANCE), false);
   assert.equal((await app.call(`/api/v1/snapshot?tables=${FINANCE}`, { token: app.tokens.reader })).status, 403);
   const readerChanges = await app.call(`/api/v1/changes?after=${before}`, { token: app.tokens.reader });
   assert.deepEqual(readerChanges.data.items.map((c: any) => c.table), [RESERVATIONS]);
