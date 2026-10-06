@@ -1,5 +1,18 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.11.0 · 6 de octubre de 2026
+
+- **Agentes de IA** (contrato §3.1), piezas comunes para las cuatro apps; el kit no conoce el dominio: la app traduce códigos de riesgo, tablas y campos.
+  - `openProposalReview({ proposal, changes, threshold, note, canDecide, onApprove, onReject, approveAttrs, rejectAttrs })`: hoja con agente, estado y fechas, resumen de riesgo, cambios agrupados y **pie fijo** «Rechazar» / «Aprobar N cambios» (solo si está pendiente y se puede decidir).
+  - `renderSecretOnce({ value, label, warning, confirmBeforeDone, onDone, valueAttrs, copyAttrs, doneAttrs })`: clave entera en monoespaciada, «Copiar» que confirma «Copiada» y «Hecho» que pide «La he guardado» si no se copió. `maskSecret(value)` → `…AzvE`.
+  - `renderRiskSummary({ affected, threshold, reasons: [{ label, tone }] })`: contador de afectados (con umbral si se alcanza) y motivos en chips.
+  - `renderProposalRow({ id, agent, status, createdAt, expiresAt, affected, reasons, onOpen })` y `proposalStatusChip(status)`: estados `pending`, `approved`, `consumed` (Aplicada), `rejected`, `expired`, `revoked` con colores fijos; caducidad relativa con `relativeTime`.
+  - `renderChangeList({ changes: [{ op, table, tablePlural, title, fields: [{ label, before, after }] }], max, opLabels })`: agrupado por operación y tabla, antes tachado y después resaltado, «y N más».
+  - `renderAccessLog({ entries: [{ at, label, actor, actorKind, target, icon, tone }] })`: por días (Hoy, Ayer, fecha), con icono, hora y chip de persona o agente.
+  - `createScopePicker({ areas, value, onChange })` → `{ element, get, set, isEmpty }`: «Todo, también lo futuro» → área entera → proyectos; valor `'*'` o `{ tabs, projects }`.
+- Iconos `bot` y `copy`. `.chip.small`, `.chip.warn`.
+- Barra de espacio de trabajo: la pestaña «General» conserva el borde discontinuo visible en tema oscuro (revisión de Tasks de #114).
+
 ## 0.10.0 · 6 de octubre de 2026
 
 - **Barra de espacio de trabajo** para apps con áreas, vistas guardadas y menú agrupado (Tasks, paso 1 de su cáscara): `renderWorkspaceBar` (cabecera apilada: fila de marca con `.spacer` y herramientas, más filas), `renderAreaTabs` (`.tabstrip` con `.tabpill`, `.general`, color propio y `.tabcount`), `renderStripTool` (`.tabtool`), `renderQuickViews` (`.viewstrip` con `.viewpill`), `renderNavMenu` (menú de grupos `details.navgroup` con `.navitem`: desplegable en móvil con `show`, barra lateral fija de `--sidebar-width` en escritorio), `renderNavBackdrop` y `renderTabBar` (navegación inferior en móvil). Son piezas sin estado: la app las monta o las serializa y repinta en cada `render()`; los ganchos de la app van en `attrs`. Demo en `#workspace`, prueba `v13`.
