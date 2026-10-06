@@ -34,8 +34,6 @@ if(typeof homeTaskRow==='function'){
   };
 }
 // Anillo de progreso en la esquina de cada tarjeta de proyecto.
-const projectCardBeforeTaller=projectCard;
-projectCard=function(p){const html=projectCardBeforeTaller(p);if(p.system||typeof ringSvg!=='function')return html;return html.replace('<div class="projecttop">',`<div class="projecttop"><span class="cardring" aria-hidden="true">${ringSvg(progress(p),46,'')}</span>`)};
 // Atajo a la paleta dentro del buscador.
 const searchbarBeforeTaller=searchbar;
 searchbar=function(){return searchbarBeforeTaller().replace(/(<input id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
