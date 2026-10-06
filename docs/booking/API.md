@@ -889,6 +889,235 @@ El estado de cada una y la respuesta de Core se llevan en `docs/booking/PETICION
 
 ---
 
+## 15. Ampliación V2 · propuesta para revisión de Core
+
+Fecha: 6 de octubre de 2026. Estado: **propuesta, sin código**. Aprobada por el usuario en alcance (ronda 14 de Core): habitaciones y camas, tarifas y propuestas, personal en eventos. Referencias funcionales: `C03` (`Doc_C03_Reservas_Condiciones_y_tarifas.md` §8–§10) y `C05` (`asignaciones`, `refuerzos`). Todo sigue el contrato: tablas tipadas con las seis columnas, escrituras por `core.commit`, offline con `sync-client`, pruebas en PGlite.
+
+Principios comunes a los tres bloques:
+
+- **Nada sustituye de golpe lo que ya funciona.** `events.room_distribution`, `reservation_finance` y el checklist siguen igual; lo nuevo convive y, cuando hay datos estructurados, la ficha los prefiere.
+- **Lo calculado se calcula en el dominio** (`_domain/booking`), igual en la Edge y en el navegador; en la base solo se guardan los importes que un documento ya enviado no puede cambiar.
+- **Proyecciones solo con lo necesario** para la app lectora, sin datos personales.
+- **Todo lo que tiene orden lleva `position`** y se reordena a mano (decisión del usuario).
+
+### 15.1 Habitaciones, camas y espacios
+
+**Tablas** (migración `0410_booking_spaces`):
+
+```text
+booking.spaces                      inventario de espacios (cambia poco)
+  code        text unique           ESP_NNN — trigger, no escribible
+  name        text not null         «Habitación 4», «Sala grande», «Pinar»
+  kind        text not null         habitacion | sala | zona_exterior | otro
+  zone        text null             edificio o zona («Posada», «Casa principal»)
+  capacity    integer null          personas (salas y zonas); en habitaciones se deriva de las camas
+  accessible  boolean default false accesible para movilidad reducida
+  active      boolean default true  un espacio fuera de uso no se ofrece al asignar
+  position    numeric
+  notes       text null
+  lectura: todos · escritura: editor/owner
+
+booking.beds
+  space_id    uuid not null → booking.spaces   (solo kind = 'habitacion'; inmutable tras el alta)
+  label       text not null          «Cama 1», «Litera A arriba»
+  kind        text not null          individual | doble | litera | sofa_cama | supletoria
+  capacity    integer not null       1 o 2
+  active      boolean default true
+  position    numeric
+
+booking.room_assignments           quién duerme dónde en un evento
+  event_id    uuid not null → booking.events     (inmutable)
+  space_id    uuid not null → booking.spaces
+  bed_id      uuid null     → booking.beds       (cama concreta, del mismo espacio)
+  guest_id    uuid null     → booking.guests     (persona concreta) …
+  group_label text null                          … o grupo sin identificar («Equipo de cocina»)
+  persons     integer not null default 1         personas que ocupa (1 si guest_id)
+  from_date   date null                          por defecto, las fechas de la reserva
+  to_date     date null
+  notes       text null
+```
+
+**Reglas** (`check`, `beforeCommit` e invariantes):
+
+- `guest_id` o `group_label`, uno de los dos; con `guest_id`, `persons = 1`.
+- **Nunca dos ocupaciones de la misma cama** en noches que se solapen entre eventos vivos de reservas no canceladas, perdidas ni archivadas (`BED_OVERBOOKED`). La salida de un grupo puede ser la entrada del siguiente.
+- La suma de personas de una habitación frente a la capacidad de sus camas activas: **aviso en la interfaz, no bloqueo** (supletorias, niños con sus padres). El bloqueo es solo por cama.
+- El huésped asignado es del mismo evento (`GUEST_MISMATCH`).
+- Espacios o camas con asignaciones vivas no se borran (`ORPHAN_CHILD`).
+
+**Visibilidad:** las asignaciones las ven todos los miembros (limpieza y acogida las necesitan). `guest_id` es opaco para quien no ve huéspedes: la interfaz le muestra «Huésped asignado» o el `group_label`.
+
+**Interfaz:**
+
+- **Ficha → «Alojamiento»** (dentro de Operación): habitaciones con sus camas, asignar huéspedes o grupos, ocupación «12 / 14 camas». Si hay asignaciones, el resumen sustituye a `room_distribution`; si no, se sigue viendo el texto libre (no se migra nada).
+- **Inventario** (`#/espacios`, desde «Más» en Inicio): espacios por zona, reordenables, con sus camas.
+- Vista de ocupación por espacio en el Calendario: más adelante, fuera de esta fase.
+
+**Proyección para Tasks** (incidencias de mantenimiento ligadas a un espacio):
+
+```text
+booking.tasks_space_projection   (core.allow_read('tasks', …, 'view'))
+  space_id, code, name, kind, zone, active, revision
+```
+
+Sin ocupación ni huéspedes. Tasks guardaría un enlace tipado `target_app='booking', target_kind='space', target_id`.
+
+**«Espacio bloqueado»** (fuera de esta fase): cuando Tasks publique `tasks.booking_space_blocks_projection(space_id, from_date, to_date, reason, task_ref)`, Booking lo leerá para avisar al asignar y en el calendario. Queda definida la forma esperada; no crea dependencia ahora.
+
+### 15.2 Tarifas y propuestas
+
+**Tablas** (migración `0420_booking_rates`; todas con `readable_roles '{editor,owner}'`, como `reservation_finance`):
+
+```text
+booking.rates                       tarifario (C03 §8.5–§8.6)
+  code         text unique          TAR_NNN — trigger
+  name         text not null        «Grupo con pernocta», «Jornada sin pernocta»
+  layer        text not null        recinto | por_persona | servicio | ajuste        (las cuatro capas de C03 §8.5)
+  unit         text not null        persona_noche | persona_dia | dia | noche | estancia | unidad | porcentaje
+  amount       numeric(12,2)        importe unitario, o porcentaje con signo (descuentos) si unit = porcentaje
+  min_persons  integer null          tramo de personas (C03 §8.5 B)
+  max_persons  integer null
+  event_types  text[] null           tipos de reserva a los que aplica; null = todos
+  valid_from   date null             temporada o vigencia
+  valid_to     date null
+  includes     text null             qué incluye (C03 §8.7: nunca un precio «pelado»)
+  excludes     text null
+  active       boolean
+  position     numeric
+
+booking.conditions                  condiciones comerciales (C03 §9–§10)
+  name                 text           «Condiciones generales 2026»
+  deposit_percent      numeric(5,2)   30
+  deposit_minimum      numeric(12,2)  300
+  deposit_days         integer        5   plazo de abono
+  deposit_days_short   integer        2   plazo si la entrada está próxima
+  short_notice_days    integer        15  desde cuándo es «entrada próxima»
+  text                 text           texto legible que acompaña a la propuesta
+  is_default           boolean        una sola por defecto (índice único parcial)
+  active               boolean
+
+booking.cancellation_tiers          tramos de cancelación (C03 §10.3)
+  conditions_id        uuid → booking.conditions
+  min_days_before      integer        60, 30, 15, 3, 0
+  deposit_refund_pct   numeric(5,2)   100, 50, 0…
+  extra_costs          boolean        «podrán repercutirse costes directos»
+  position             numeric
+
+booking.proposals                   propuestas por reserva, versionadas
+  reservation_id   uuid → booking.reservations         (inmutable)
+  version          integer                              1, 2, 3… (único por reserva; trigger)
+  status           text   borrador | enviada | aceptada | rechazada | caducada | sustituida
+  nature           text   orientativa | cerrada         (C03 §8.2)
+  conditions_id    uuid → booking.conditions
+  start_date, end_date, persons      copia de lo presupuestado (la reserva puede cambiar después)
+  subtotal, adjustments, total       numeric(12,2): calculados por el dominio, verificados en beforeCommit
+  deposit_amount   numeric(12,2)     calculado con las condiciones
+  valid_until      date null
+  includes, excludes, notes   text
+  sent_at, decided_at         timestamptz null
+
+booking.proposal_lines
+  proposal_id   uuid → booking.proposals   (inmutable)
+  rate_id       uuid null → booking.rates  (origen; la línea guarda su propio importe)
+  description   text
+  unit          text
+  quantity      numeric
+  unit_amount   numeric(12,2)
+  amount        numeric(12,2)   = quantity × unit_amount, redondeado a céntimos; verificado
+  position      numeric
+```
+
+**Cálculo** (dominio, puro):
+
+- `suggestLines(reservation, rates)` propone líneas desde el tarifario según tipo de reserva, personas, noches, temporada y servicios marcados (alojamiento, comidas, salas…). La persona las acepta o corrige.
+- `proposalTotals(lines, conditions)`: subtotal, ajustes, total y señal (`max(total × porcentaje, mínimo)`; el 50 % de jornadas pequeñas como opción manual).
+- `refundFor(proposal, cancelledOn, tiers)`: cuánto de la señal se devuelve. Se mostrará al cancelar una reserva con propuesta aceptada.
+
+**Ciclo:**
+
+- `borrador` se edita libremente.
+- **`enviada` es inmutable** (trigger `PROPOSAL_LOCKED`): solo cambian `status`, `decided_at` y `notes`. Para cambiar algo, `booking.new_proposal_version(reservation_id, from_proposal_id, proposal_id)` copia cabecera y líneas en un `borrador` nuevo.
+- `booking.send_proposal(proposal_id, expectedRevision)`: `borrador → enviada`, fija `sent_at` y pasa a `sustituida` la enviada anterior.
+- `booking.accept_proposal(proposal_id, expectedRevision)`: `enviada → aceptada`, el resto de versiones vivas a `sustituida`, y **escribe en `reservation_finance`** `final_amount = total` y `deposit_required = deposit_amount` (y `budget_amount` si estaba vacío). Es el único punto en que la propuesta toca los importes de la reserva, y queda en `core.changes`.
+- `rechazada` y `caducada` se marcan a mano (la caducidad por `valid_until` solo se avisa en la interfaz).
+- Los tres procedimientos **exigen aprobación si los lanza un agente** y `agentRisk` añade `booking:proposal` a cualquier escritura en propuestas.
+
+**Interfaz:**
+
+- **Ficha → «Propuesta»** (encima de Cobro, solo editor/owner): versión vigente, estado, total y señal; «Nueva versión», «Marcar enviada», «Aceptada», «Rechazada»; historial plegado.
+- **Editor de propuesta**: líneas sugeridas, editables y reordenables; total y señal en vivo; condiciones elegidas.
+- **Documento para el organizador**: vista A4 con «Imprimir / Guardar PDF» (como el menú de Food): qué incluye, qué no, orientativa o cerrada, señal, plazos y tramos de cancelación. Sin envío de correo en esta fase.
+- **Tarifario y condiciones** (`#/tarifas`, desde «Más»; solo owner escribe).
+
+**Invoices:** el importe acordado vive en Booking (`reservation_finance`) y los cobros reales en Invoices. Si Invoices quiere comparar acordado frente a cobrado, Booking publicará `booking.invoices_agreed_projection(reservation_id, code, final_amount, deposit_required, accepted_proposal_version)` cuando lo pida.
+
+### 15.3 Personal en eventos
+
+**Tablas** (migración `0430_booking_staff`; lectura todos los miembros, escritura editor/owner):
+
+```text
+booking.staff_assignments           C05 «asignaciones»
+  event_id        uuid → booking.events        (inmutable)
+  person_name     text not null                «Marga»: solo el nombre, sin teléfono ni documento
+  member_user_id  uuid null → auth.users       si la persona es miembro de Booking
+  person_ref_app  text null                    enlace tipado futuro a la ficha de personal (Encarna):
+  person_ref_id   text null                    target_app = 'encarna', target_kind = 'person'
+  function        text not null    coordinacion_general | acogida_grupo | cocina | apoyo_cocina | limpieza_previa |
+                                   limpieza_rotacion | mantenimiento_guardia | soporte_tecnico | apoyo_logistico |
+                                   cierre_evento | otra                                           (C05 §5)
+  work_date       date null        día del turno (null = todo el evento)
+  planned_hours   numeric(5,2) null
+  actual_hours    numeric(5,2) null
+  status          text   prevista | confirmada | realizada | cancelada
+  notes           text null
+  position        numeric
+
+booking.staff_needs                 C05 «refuerzos»
+  event_id      uuid → booking.events
+  need_type     text   cocina | limpieza | mantenimiento | tecnico | acogida | mixto
+  persons       integer   ≥ 1
+  priority      text   baja | media | alta | urgente
+  status        text   detectado | buscando | cubierto
+  notes         text null
+```
+
+**Reglas:** horas no negativas; al anotar el cierre operativo la ficha avisa de turnos sin horas reales. Una necesidad pasa a `cubierto` a mano (en C05 son cosas distintas y no se cruzan solas).
+
+**Proyección para Invoices** (coste de personal por evento):
+
+```text
+booking.invoices_staff_hours_projection   (core.allow_read('invoices', …, 'view'))
+  assignment_id, event_id, event_code, reservation_id, reservation_code,
+  function, staff_ref, work_date, planned_hours, actual_hours, status, revision
+```
+
+`staff_ref` es un identificador estable sin nombre (`member_user_id`, `person_ref_id` o el id de la asignación). **El nombre no sale de Booking**; Invoices calcula el coste con tarifas por función que serán suyas.
+
+**Interfaz:** **Ficha → «Personal»** (dentro de Operación): turnos por día y función con horas previstas y reales, reordenables; necesidades de refuerzo con su prioridad. **Inicio:** aviso «N refuerzos sin cubrir en los próximos 7 días».
+
+### 15.4 Lo transversal
+
+- **Migraciones:** `0410_booking_spaces`, `0420_booking_rates`, `0430_booking_staff`, cada una con sus tablas registradas, invariantes añadidas a `booking.check_invariants`, procedimientos y `allow_read`.
+- **Offline:** todo va al espejo local; las tablas de importes se borran al cerrar sesión, como `reservation_finance`. Asignar camas y apuntar turnos funciona sin red; enviar o aceptar una propuesta es un `call` y queda «pendiente de enviar» como la confirmación.
+- **Papelera:** las tablas nuevas entran en el orden de hijos a padres de «Vaciar papelera»; espacios y tarifas en uso no se purgan (FK).
+- **Agentes:** aprobación para cualquier escritura en propuestas y para borrar espacios o camas; asignar camas y apuntar horas, no.
+- **Pruebas:** dominio (sugerencia de líneas, totales, señal, devolución por tramos, solape de camas), SQL en PGlite (invariantes, propuesta enviada inmutable, procedimientos), proyecciones sin datos personales, humo y un escenario sin red por bloque.
+
+### 15.5 Orden propuesto
+
+1. **Espacios y camas**: lo más operativo; desbloquea el enlace con Tasks.
+2. **Personal en eventos**: pequeño; desbloquea el coste de personal en Invoices.
+3. **Tarifas y propuestas**: el mayor (tarifario, editor y documento imprimible).
+
+Una PR por bloque.
+
+### 15.6 Preguntas de producto para el usuario
+
+1. **Alojamiento: ¿por cama o por habitación?** (a) Siempre por cama: más preciso, más trabajo al montar cada evento. (b) Por habitación con número de personas, y cama solo si se quiere: más rápido. Propuesta: **(b)**.
+2. **Precios del tarifario: ¿con IVA incluido o sin IVA?** Propuesta: **con IVA incluido** y una nota del tipo aplicado, porque el organizador compara precios finales. Si se trabaja en base imponible, al revés.
+3. **¿La app elige la tarifa o se elige a mano?** (a) Sugiere la que encaja por tipo, personas y temporada, cambiable línea a línea. (b) Siempre a mano de una lista. Propuesta: **(a)**.
+4. **Horas reales del personal: ¿quién las apunta?** (a) El responsable del evento al cerrarlo. (b) Cada persona las suyas (necesita cuenta). Propuesta: **(a)** ahora; (b) cuando exista Encarna.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
