@@ -1,0 +1,24 @@
+/* Ikisai Booking · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
+   Aquí solo lo específico de Booking. Móvil primero (390 px), escritorio desde 1024 px. */
+
+/* Filtros de la lista de reservas: una fila que se desplaza en horizontal en móvil. */
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
+.filters .softbtn { flex: 0 0 auto; }
+
+/* Avisos de Inicio: una línea cada uno, solo si hay algo que atender. */
+.notices { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.notices li { display: flex; align-items: baseline; gap: 10px; }
+.notices .n { font-family: var(--serif); font-size: 20px; min-width: 1.4em; text-align: right; }
+
+/* Estado de la reserva como pastilla; los colores de Calendar llegan con esa pantalla. */
+.chip[data-status='pre_reservada'] { --chip: #c9a227; }
+.chip[data-status='confirmada'] { --chip: #4f7a3a; }
+.chip[data-status='en_ejecucion'] { --chip: #3a6ea5; }
+.chip[data-status='cancelada'], .chip[data-status='perdida'] { --chip: #8a8a8a; }
