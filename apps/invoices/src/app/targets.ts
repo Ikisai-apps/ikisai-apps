@@ -62,7 +62,7 @@ export function kindsFor(app: string): readonly string[] {
 }
 
 export const KIND_LABELS: Record<string, string> = {
-  area: 'Área', project: 'Proyecto', task: 'Tarea',
+  area: 'Área', project: 'Proyecto', task: 'Tarea', purchase_request: 'Solicitud de compra',
   reservation: 'Reserva', event: 'Evento',
   ingredient: 'Ingrediente', equipment: 'Maquinaria',
   unassigned: 'Sin asignar', operating_expense: 'Gasto de explotación', investment: 'Inversión',

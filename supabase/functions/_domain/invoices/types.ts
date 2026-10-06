@@ -58,7 +58,7 @@ export type TargetApp = (typeof TARGET_APPS)[number];
 
 /** Pares `target_app` → `target_kind` admitidos (API.md §2.6). */
 export const TARGET_KINDS: Record<TargetApp, readonly string[]> = {
-  tasks: ['area', 'project', 'task'],
+  tasks: ['area', 'project', 'task', 'purchase_request'],
   booking: ['reservation', 'event'],
   food: ['ingredient', 'equipment'],
   general: ['unassigned', 'operating_expense', 'investment'],

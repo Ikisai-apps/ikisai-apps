@@ -71,6 +71,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Fase 3, PR 3 de 3 (`invoices/fase3-app`): las plantillas en la app. «Leer PDF» usa la plantilla del proveedor (`extractWithTemplates`) y guarda el texto leído en el servidor; «Validar» aprende o actualiza la plantilla en el mismo lote; la ficha del proveedor muestra sus plantillas y el owner puede retirarlas. Fase 3 completa.
 
+- Compras de Tasks (ronda 34, migración 0208): destino `tasks` / `purchase_request` en la hoja de asignación y lecturas `invoices.allocations_by_target` e `invoices.supplier_options` para Tasks (API.md §7.4).
+
 ## En curso
 
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.

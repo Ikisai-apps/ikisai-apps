@@ -54,7 +54,7 @@ export interface TargetInfo {
 interface TasksTarget { kind: string; id: string; tabId: string | null; projectId: string | null; title: string; revision: number; deleted: boolean; archived: boolean; done?: boolean }
 interface TasksTree { tabs: Array<{ id: string; name: string; revision: number; deleted: boolean; projects: Array<{ id: string; title: string; status: string; revision: number; deleted: boolean; tasks: Array<{ id: string; title: string; done: boolean; revision: number; deleted: boolean }> }> }> }
 
-const TASKS_KIND: Record<string, string> = { area: 'tab', project: 'project', task: 'task' };
+const TASKS_KIND: Record<string, string> = { area: 'tab', project: 'project', task: 'task', purchase_request: 'purchase_request' };
 
 function createTargets(supabase: Supabase, options: InvoicesAppOptions) {
   const base = (options.tasksApiBase ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
@@ -85,10 +85,16 @@ function createTargets(supabase: Supabase, options: InvoicesAppOptions) {
     if (!tasksKind || !UUID.test(id)) fail(422, 'TARGET_NOT_FOUND', domainMessage('TARGET_NOT_FOUND'), { app: 'tasks', kind, id });
     const t = await tasksRead<TasksTarget>(ctx, { kind: tasksKind, id: id.toLowerCase() });
     if (t.deleted) fail(422, 'TARGET_NOT_FOUND', domainMessage('TARGET_NOT_FOUND'), { app: 'tasks', kind, id, deleted: true });
-    return { app: 'tasks', kind, id: t.id, code: null, label: t.title, path: [], revision: t.revision, archived: !!t.archived };
+    // Solicitud de compra de Tasks (ronda 34): se ve como «Compras › título».
+    return { app: 'tasks', kind, id: t.id, code: null, label: t.title, path: kind === 'purchase_request' ? ['Compras'] : [], revision: t.revision, archived: !!t.archived };
   }
 
   async function listTasks(ctx: RequestContext, query: string, kind: string | null): Promise<TargetInfo[]> {
+    if (kind === 'purchase_request') {
+      // Modo lista de tasks.targets: solicitudes aprobadas, compradas o recibidas que esperan factura, visibles para el usuario.
+      const out = await tasksRead<{ items?: Array<{ id: string; title: string; revision: number; status?: string; estimatedAmount?: number | null }> }>(ctx, { kind: 'purchase_request', q: query, limit: 50 });
+      return (out.items ?? []).map((r) => ({ app: 'tasks' as const, kind: 'purchase_request', id: r.id, code: null, label: r.title, path: ['Compras'], revision: r.revision, archived: false }));
+    }
     const tree = await tasksRead<TasksTree>(ctx, {});
     const items: TargetInfo[] = [];
     for (const tab of tree.tabs ?? []) {
@@ -580,7 +586,7 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
       method: 'GET', pattern: 'targets/tasks', handler: async ({ ctx, url }) => {
         requireEditor(ctx);
         const kind = url.searchParams.get('kind');
-        if (kind && !['area', 'project', 'task'].includes(kind)) fail(422, 'INVALID_FILTER', 'Parámetro kind inválido.');
+        if (kind && !['area', 'project', 'task', 'purchase_request'].includes(kind)) fail(422, 'INVALID_FILTER', 'Parámetro kind inválido.');
         return { items: await targets.listTasks(ctx, url.searchParams.get('q') ?? '', kind) };
       },
     },
