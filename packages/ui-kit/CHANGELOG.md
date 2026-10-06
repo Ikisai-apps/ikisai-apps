@@ -1,5 +1,11 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.6.0 · 6 de octubre de 2026
+
+- `createSortableList`: lista reordenable con asa de arrastre (ratón; en táctil, pulsación mantenida para no robar el scroll), indicador de destino, fantasma, desplazamiento automático en los bordes, botones «Subir»/«Bajar», teclado sobre el asa (flechas, Inicio, Fin) y anuncio `aria-live`. `onReorder` recibe el nuevo orden y el movimiento; `positionBetween` y `renumber` calculan `position numeric` (contrato §2.1). Pedido por Food para platos, servicios y pasos; sirve a Tasks.
+- `createDateField`: campo de fecha nativo (selector del sistema en móvil) con atajos «Hoy», «Mañana», «+7 días», «Quitar» (configurables), descripción en palabras con distancia a hoy («Martes, 13 de octubre de 2026 · en 7 días»), validación de obligatorio y límites, `setMin`/`setMax` para rangos (entrada y salida de Booking). `relativeDayLabel` y `longDayLabel` exportadas.
+- Iconos `grip` y `chevronUp`. Demo y pruebas (38 en total).
+
 ## 0.5.0 · 6 de octubre de 2026
 
 - Página completa imprimible (`renderPrintPage`, `createPrintView`, `printElement`): cabecera con marca Ikisai, título, fechas y datos; secciones (días) con grupos (servicios) y tarjetas con imagen, nombre público, descripción y chips de dieta y alérgenos; notas y pie; marca «BORRADOR». En pantalla se ve como papel A4; al imprimir: `@page A4` con 14 mm, sin navegación ni botones, salto de página por sección, `break-inside: avoid` por servicio y plato, `print-color-adjust: exact`, y espera a que las imágenes estén decodificadas antes de `window.print()`. Pensada para la vista del organizador de Food y reutilizable para la ficha imprimible de factura de Invoices.

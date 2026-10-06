@@ -36,4 +36,6 @@ export { createCalendar, toDayKey, fromDayKey, addDays, todayKey, startOfWeek, s
 export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
 export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
+export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
+export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';
