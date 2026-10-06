@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.3.0 (tanda 3): `compressImage` (WebP 1600 px + miniatura 480 px, con prueba), calendario mensual y semanal accesible, campo de cantidad con unidad. 28 pruebas Playwright.
 - v0.2.1: separador en `.row-meta`.
 - v0.2.0 fusionada en main (PR #17): hoja inferior y diálogo con foco atrapado, conflicto campo a campo sobre `PendingConflict`, rechazados sobre `RejectedBatch`, barra y banners con `rejected` y `USER_CHANGED` (sync-client 0.2), lista «pendiente» como componente, selector de tema y paleta Ctrl K. 22 pruebas Playwright.
 - v0.1.0 fusionada en main (PR #4). v0.1.1 fusionada con la adopción de Invoices (PR #5).
@@ -11,12 +12,12 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## En curso
 
-- Invoices: segunda adopción (hoja de proveedores con `openSheet`, pantalla de conflictos con `renderConflicts`, rechazados, `confirmDialog` en cerrar sesión y papelera, importación del CSS por alias). PR a `apps/invoices` con visto bueno de Core.
+- Revisión visual de `apps/booking` cuando se fusione la PR #28 y de `apps/food` cuando exista (tanda 3, punto 4).
 
 ## Pendiente
 
-- Revisión visual de Tasks, Booking y Food cuando existan sus shells; componentes que pidan (calendario, cantidades, fotos recomprimidas).
-- v0.3 candidatos: campo de fecha con atajos (hoy, mañana), selector de etiquetas con familias, tarjeta de proyecto con anillo de progreso (de Tareas), esqueleto de página completa.
+- Revisión visual de Tasks cuando exista su shell; componentes que pidan los equipos.
+- Candidatos v0.4: campo de fecha con atajos (hoy, mañana), selector de etiquetas con familias, tarjeta de proyecto con anillo de progreso (de Tareas), esqueleto de página completa, calendario con horas (si Booking lo necesita).
 
 ## Bloqueos y peticiones
 
