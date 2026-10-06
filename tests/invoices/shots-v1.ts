@@ -62,7 +62,7 @@ async function main() {
   await shoot(m, '02-nuevo-proveedor-en-la-hoja', '#newSupplierFields');
 
   // Flujo 2 · documento subido → «Extraer con ChatGPT»
-  await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.jpg', mimeType: 'application/pdf', buffer: PDF });
+  await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) });
   await sheet.locator('#chatgptNew').waitFor();
   await shoot(m, '03-extraer-con-chatgpt-tras-subir', '#chatgptNew');
   await sheet.locator('#chatgptNew [data-step="paste"]').click();

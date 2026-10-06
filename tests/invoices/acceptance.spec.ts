@@ -591,7 +591,11 @@ test('Aceptación V1 (Android): proveedor nuevo desde la hoja y «Extraer con Ch
     await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.pdf');
     // Incidencia 2 · en cuanto hay documento aparece el camino manual con ChatGPT
     await expect(sheet.locator('#chatgptNew')).toBeHidden();
+    // Con una foto, la vista previa lleva la extensión con la que se guardará (WebP), no .pdf
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) });
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.webp');
     await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'foto factura.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(sheet.locator('#namePreview')).toHaveText('2026_10_06_(frutas_nuevas_sl)_fruta.pdf');
     await expect(sheet.locator('#chatgptNew')).toBeVisible();
     await expect(sheet.locator('#chatgptNew')).toContainText('adjunta esta misma foto o PDF');
     await sheet.locator('#saveInvoice').click();

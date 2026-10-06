@@ -16,7 +16,7 @@ import {
   DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
-import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
+import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
 import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTargets, rememberTarget, searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
@@ -578,7 +578,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     el('div', { class: 'row2' }, field('Fecha', date), field('Número de factura', number)),
     field('Objeto', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
     field('Total del documento', total),
-    field('PDF o fotos', files, 'Las fotos se reducen en el móvil antes de subirse. Puedes añadir más páginas después.'),
+    field('PDF o fotos', files, 'Las fotos se reducen en el móvil y se guardan como imagen WebP (los PDF, como PDF). Puedes añadir más páginas después.'),
     chatgpt,
     el('p', { class: 'hint' }, 'Vista previa del nombre: ', el('code', { id: 'namePreview' }, '…')),
     error,
@@ -586,8 +586,9 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const preview = () => {
     const chosen = mirror.supplierById.get(supplier.value);
     const name = supplier.value === NEW_SUPPLIER ? supplierName.value : chosen?.name ?? '';
-    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || todayIso(), supplierSlug: chosen?.slug ?? slugify(name), object: object.value, mime: 'application/pdf' });
+    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || todayIso(), supplierSlug: chosen?.slug ?? slugify(name), object: object.value, mime: storedMime(files.files?.[0]) });
   };
+  files.addEventListener('change', preview);
   form.addEventListener('input', preview);
   preview();
   openSheet({
