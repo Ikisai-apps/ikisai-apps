@@ -22,6 +22,8 @@ export const CHECKLIST = 'booking.checklist_items';
 export const SPACES = 'booking.spaces';
 export const BEDS = 'booking.beds';
 export const ASSIGNMENTS = 'booking.room_assignments';
+export const STAFF = 'booking.staff_assignments';
+export const NEEDS = 'booking.staff_needs';
 
 export interface Harness {
   api: FakeApi;

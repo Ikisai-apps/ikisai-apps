@@ -85,13 +85,13 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   async function emptyTrash(): Promise<void> {
     if (!navigator.onLine) return void toast('Vaciar la papelera necesita conexión.');
     if (client.status().pendingCommands > 0) return void toast('Hay cambios sin sincronizar. Espera a que se envíen antes de vaciar la papelera.');
-    const tables = [TABLES.checklist, TABLES.restrictions, TABLES.roomAssignments, GUESTS, EVENTS, FINANCE, RESERVATIONS, TABLES.beds, TABLES.spaces];
+    const tables = [TABLES.checklist, TABLES.restrictions, TABLES.roomAssignments, TABLES.staffAssignments, TABLES.staffNeeds, GUESTS, EVENTS, FINANCE, RESERVATIONS, TABLES.beds, TABLES.spaces];
     const counts = await Promise.all(tables.map(async (table) => ((await client.list(table, { includeDeleted: true })).filter((row) => row.deleted_at !== null).length)));
     const reservations = counts[tables.indexOf(RESERVATIONS)]!;
     const others = counts.reduce((sum, n) => sum + n, 0) - reservations;
     const go = await confirmDialog({
       title: 'Vaciar papelera',
-      text: `Se borran definitivamente ${plural(reservations, 'reserva', 'reservas')} y ${plural(others, 'elemento asociado', 'elementos asociados')} (eventos, huéspedes, restricciones, tareas, importes, asignaciones de alojamiento, camas y espacios). No se puede deshacer.`,
+      text: `Se borran definitivamente ${plural(reservations, 'reserva', 'reservas')} y ${plural(others, 'elemento asociado', 'elementos asociados')} (eventos, huéspedes, restricciones, tareas, importes, asignaciones de alojamiento, turnos y refuerzos del personal, camas y espacios). No se puede deshacer.`,
       confirmLabel: 'Vaciar papelera', danger: true,
     });
     if (!go) return;

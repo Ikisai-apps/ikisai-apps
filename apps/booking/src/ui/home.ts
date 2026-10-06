@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
-import { canSeeGuests, dayNumber, depositStatus, nights } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { canSeeGuests, dayNumber, depositStatus, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
+import { EVENTS, FINANCE, GUESTS, NEEDS, RESERVATIONS, canRead, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -61,7 +61,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         })));
 
     const soon = (r: ReservationRow, days: number) => { const start = dayNumber(r.start_date); return start !== null && start >= now && start - now <= days; };
-    const notices: Array<[number, string, string]> = [
+    const notices: Array<[number, string, string, string?]> = [
       [reservations.filter((r) => r.status === 'pre_reservada').length, 'pre-reserva pendiente de confirmar', 'pre-reservas pendientes de confirmar'],
       [upcoming.filter((r) => soon(r, 30) && r.status !== 'pre_reservada' && (eventByReservation.get(r.id)?.final_guests ?? null) === null).length, 'evento próximo sin número final de personas', 'eventos próximos sin número final de personas'],
       [upcoming.filter((r) => soon(r, 30) && !r.briefing_received).length, 'reserva próxima sin briefing final', 'reservas próximas sin briefing final'],
@@ -79,11 +79,22 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         .filter((g) => urgentEvents.has(g.event_id) && g.ses_status !== 'enviado_SES' && g.ses_status !== 'no_aplica').length;
       notices.push([unsent, 'huésped sin comunicar a SES', 'huéspedes sin comunicar a SES']);
     }
+    // Refuerzos sin cubrir en los próximos 7 días (fechas de la reserva de cada evento; no cuentan reservas canceladas, perdidas ni archivadas).
+    let needsHref = '#/reservas';
+    if (canRead(client, NEEDS)) {
+      const reservationOf = new Map(reservations.filter((r) => !['cancelada', 'perdida'].includes(r.status)).map((r) => [r.id, r]));
+      const eventDates = new Map(events.filter((e) => reservationOf.has(e.reservation_id)).map((e) => [e.id, reservationOf.get(e.reservation_id)!]));
+      const uncovered = uncoveredNeedsSoon(((await client.list(NEEDS)) as unknown as Array<{ id: string; event_id: string; persons: number; priority: string; status: string }>).filter((n) => eventDates.has(n.event_id)), eventDates, today());
+      const targets = new Set(uncovered.map((n) => eventDates.get(n.event_id)!.id));
+      if (targets.size === 1) needsHref = `#/reservas/${[...targets][0]}`;
+      notices.push([uncovered.length, 'refuerzo sin cubrir en los próximos 7 días', 'refuerzos sin cubrir en los próximos 7 días', needsHref]);
+    }
     const visible = notices.filter(([n]) => n > 0);
     replace(noticesHost, visible.length === 0
       ? null
       : [el('div', { class: 'sectionlabel' }, 'Requiere atención'),
-         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many]) => el('li', null, el('span', { class: 'n' }, n), n === 1 ? one : many)))]);
+         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many, href]) => el('li', { dataset: href ? { notice: 'needs' } : {} }, el('span', { class: 'n' }, n),
+           href ? el('a', { href, class: 'noticelink' }, n === 1 ? one : many) : (n === 1 ? one : many))))]);
   }
 
   const name = client.bootstrap()?.profile.displayName;
@@ -126,6 +137,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     client.onTable(RESERVATIONS, () => void paintData()),
     client.onTable(EVENTS, () => void paintData()),
     client.onTable(GUESTS, () => void paintData()),
+    ...(canRead(client, NEEDS) ? [client.onTable(NEEDS, () => void paintData())] : []),
   ];
   return () => offs.forEach((off) => off());
 };

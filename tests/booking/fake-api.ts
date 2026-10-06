@@ -23,6 +23,8 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.spaces': { accessible: false, active: true, bookable: true, position: 0 },
   'booking.beds': { capacity: 1, active: true, position: 0 },
   'booking.room_assignments': { persons: 1 },
+  'booking.staff_assignments': { status: 'prevista', position: 0 },
+  'booking.staff_needs': { persons: 1, priority: 'media', status: 'detectado' },
 };
 
 export interface FakeRow {

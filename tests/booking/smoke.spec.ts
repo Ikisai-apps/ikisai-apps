@@ -5,7 +5,7 @@
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
 import { expect, test } from 'playwright/test';
-import { ASSIGNMENTS, BEDS, SPACES, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, NEEDS, SPACES, STAFF, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
 let harness: Harness;
 let api: Harness['api'];
@@ -561,10 +561,104 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.rows(RESERVATIONS).map((r) => r.title)).toEqual(['Retiro Test']);
     expect(api.rows(FINANCE)).toHaveLength(1);
     expect(api.rows(CHECKLIST)).toHaveLength(20); // lo vivo no se toca
-    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, ASSIGNMENTS, GUESTS, EVENTS, FINANCE, RESERVATIONS, BEDS, SPACES]]);
+    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, ASSIGNMENTS, STAFF, NEEDS, GUESTS, EVENTS, FINANCE, RESERVATIONS, BEDS, SPACES]]);
     await page.reload();
     await expect(page.locator('#reservationList')).toBeVisible();
     await expect(page.locator('#trash')).toBeHidden(); // tampoco queda en el espejo local
+  });
+
+  await test.step('personal: turnos por día, horas reales, reorden con un solo update, refuerzo urgente en Inicio y aviso al cerrar', async () => {
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.locator('.filters').getByRole('button', { name: 'Activas' }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await expect(page.locator('#blockStaff')).toContainText('Sin turnos todavía.');
+    await expect(page.locator('#blockOperation')).toContainText('Personal—');
+    const eventId = api.rows(EVENTS)[0]!.id;
+
+    const addShift = async (name: string, fn: string, planned: string, day?: string) => {
+      await page.locator('#addShift').click();
+      const dialog = page.getByRole('dialog', { name: 'Nuevo turno' });
+      await expect(dialog).toContainText('Solo el nombre: sin teléfono ni documento');
+      await dialog.locator('#f-person_name').fill(name);
+      await dialog.getByLabel('Función').selectOption({ label: fn });
+      await dialog.getByLabel('Horas previstas').fill(planned);
+      if (day) await dialog.locator('#f-work_date').fill(day);
+      return dialog;
+    };
+
+    // El día tiene que caer dentro de las fechas de la reserva.
+    let dialog = await addShift('Persona Sintética Dos', 'Soporte técnico', '6', inDays(40));
+    await page.locator('#saveRow').click();
+    await expect(dialog.locator('.formerror')).toContainText('dentro de las fechas de la reserva');
+    await dialog.locator('#f-work_date').fill(inDays(11));
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    for (const [name, fn, hours] of [['Persona Sintética Uno', 'Cocina', '8'], ['Persona Sintética Tres', 'Mantenimiento de guardia', '4']] as const) {
+      dialog = await addShift(name, fn, hours);
+      await page.locator('#saveRow').click();
+      await expect(dialog).toBeHidden();
+    }
+    await expect.poll(() => api.rows(STAFF).map((r) => r.person_name).sort()).toEqual(['Persona Sintética Dos', 'Persona Sintética Tres', 'Persona Sintética Uno']);
+    expect(api.rows(STAFF).find((r) => r.person_name === 'Persona Sintética Dos')).toMatchObject({ event_id: eventId, function: 'soporte_tecnico', work_date: inDays(11), planned_hours: 6, status: 'prevista' });
+    expect(api.rows(STAFF).find((r) => r.person_name === 'Persona Sintética Uno')).toMatchObject({ function: 'cocina', work_date: null, planned_hours: 8 });
+    await expect(page.locator('#blockStaff .staff-day')).toHaveCount(2);
+    await expect(page.locator('#blockStaff .staff-day').first()).toContainText('Todo el evento');
+    await expect(page.locator('#blockStaff .staff-day[data-day="all"] .staff-item .name')).toHaveText(['Persona Sintética Uno', 'Persona Sintética Tres']);
+    await expect(page.locator(`#blockStaff .staff-day[data-day="${inDays(11)}"]`)).toContainText('Persona Sintética Dos');
+    await expect(page.locator('#staffTotals')).toHaveText('3 turnos · 18 h previstas · 0 h reales');
+
+    // Horas reales de un turno.
+    await page.getByRole('button', { name: 'Editar turno de Persona Sintética Uno' }).click();
+    dialog = page.getByRole('dialog', { name: 'Editar turno' });
+    await dialog.getByLabel('Horas reales').fill('7.5');
+    await dialog.getByLabel('Estado').selectOption({ label: 'Realizada' });
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator('#staffTotals')).toHaveText('3 turnos · 18 h previstas · 7,5 h reales');
+    await expect(page.locator('#blockOperation')).toContainText('3 turnos · 18 h previstas · 7,5 h reales');
+    await expect.poll(() => api.rows(STAFF).find((r) => r.person_name === 'Persona Sintética Uno')).toMatchObject({ actual_hours: 7.5, status: 'realizada' });
+
+    // Reordenar: solo cambia el turno movido (un `update`).
+    const before = new Map(api.rows(STAFF).map((r) => [r.id, { position: r.position, revision: r.revision }]));
+    await page.locator('#blockStaff').getByRole('button', { name: 'Bajar Persona Sintética Uno', exact: true }).click();
+    await expect.poll(() => api.rows(STAFF).filter((r) => r.position !== before.get(r.id)!.position || r.revision !== before.get(r.id)!.revision).map((r) => r.person_name)).toEqual(['Persona Sintética Uno']);
+    await expect(page.locator('#blockStaff .staff-day[data-day="all"] .staff-item .name')).toHaveText(['Persona Sintética Tres', 'Persona Sintética Uno']);
+
+    // Refuerzo urgente: aviso en Inicio hasta que se marca cubierto.
+    await page.locator('#addNeed').click();
+    dialog = page.getByRole('dialog', { name: 'Nuevo refuerzo' });
+    await dialog.getByLabel('Tipo').selectOption({ label: 'Cocina' });
+    await dialog.getByLabel('Personas').fill('2');
+    await dialog.getByLabel('Prioridad').selectOption({ label: 'Urgente' });
+    await page.locator('#saveRow').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(NEEDS)[0]).toMatchObject({ event_id: eventId, need_type: 'cocina', persons: 2, priority: 'urgente', status: 'detectado' });
+    await expect(page.locator('#needList .row [data-role="priority"]')).toHaveClass(/alert/);
+
+    await page.locator('.nav').getByText('Inicio', { exact: true }).click();
+    await expect(page.locator('#upcomingList')).toBeVisible();
+    await expect(page.locator('[data-notice="needs"]')).toHaveCount(0); // la entrada es dentro de diez días
+    api.serverUpdate(RESERVATIONS, api.rows(RESERVATIONS)[0]!.id, { start_date: inDays(3), end_date: inDays(12) });
+    await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
+    await expect(page.locator('[data-notice="needs"]')).toHaveText(/^1\s*refuerzo sin cubrir en los próximos 7 días$/);
+    await page.locator('[data-notice="needs"] a').click(); // una sola reserva: va a su ficha
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
+    await page.getByRole('button', { name: 'Marcar cubierto el refuerzo de Cocina' }).click();
+    await expect.poll(() => api.rows(NEEDS)[0]!.status).toBe('cubierto');
+    await expect(page.locator('#needList [data-action="cover"]')).toHaveCount(0);
+    await page.locator('.nav').getByText('Inicio', { exact: true }).click();
+    await expect(page.locator('#upcomingList')).toBeVisible();
+    await expect(page.locator('[data-notice="needs"]')).toHaveCount(0);
+
+    // Cierre operativo: avisa de los turnos sin horas reales, pero no bloquea.
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await page.locator('#closeEvent').click();
+    const warning = page.getByRole('alertdialog', { name: 'Anotar cierre operativo' });
+    await expect(warning).toContainText('2 turnos sin horas reales');
+    await warning.getByRole('button', { name: 'Anotar cierre' }).click();
+    await expect.poll(() => api.rows(EVENTS)[0]!.closed_at).not.toBeNull();
+    await expect(page.locator('#blockOperation')).toContainText('Reabrir evento');
   });
 });
 

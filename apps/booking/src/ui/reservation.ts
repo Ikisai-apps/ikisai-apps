@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, RESERVATIONS, SPACES, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
@@ -13,6 +13,7 @@ import { fetchCosts, invoiceUrl, purchasesUrl, readCostCache, type CostResult } 
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
+import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import type { ViewMount } from './shell.ts';
 
 const RESTRICTIONS: TableName = TABLES.restrictions;
@@ -139,6 +140,7 @@ export function mountReservation(id: string): ViewMount {
 
     // Listas reordenables del checklist: se conservan entre repintados y se actualizan con `setItems`, de modo que
     // cada movimiento lleva revisiones al día y el foco del asa no se pierde (receta de Food).
+    const staffBlock = createStaffBlock();
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
@@ -161,6 +163,7 @@ export function mountReservation(id: string): ViewMount {
       const checklist = ofEvent(await client.list(CHECKLIST)).sort((a, b) => Number(a.position) - Number(b.position));
       const guests = seesGuests ? ofEvent(await client.list(GUESTS)) : [];
       const lodging = liveEvent ? await loadLodging(client, liveEvent.id) : null;
+      const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
 
       // Confirmación enviada sin red: la marca vive hasta que aparece el evento (API §10).
@@ -201,7 +204,8 @@ export function mountReservation(id: string): ViewMount {
       async function trash(): Promise<void> {
         if (event && !owner) return void toast('Esta reserva ya tiene evento operativo: solo un propietario puede borrarla. Puedes cancelarla o archivarla.');
         const children = liveEvent ? [...ofEvent(await client.list(CHECKLIST)).map((r) => del(CHECKLIST, r)), ...restrictions.map((r) => del(RESTRICTIONS, r)),
-          ...(canRead(client, ASSIGNMENTS) ? ofEvent(await client.list(ASSIGNMENTS)).map((r) => del(ASSIGNMENTS, r)) : []), ...guests.map((r) => del(GUESTS, r))] : [];
+          ...(canRead(client, ASSIGNMENTS) ? ofEvent(await client.list(ASSIGNMENTS)).map((r) => del(ASSIGNMENTS, r)) : []),
+          ...(staff ? [...staff.shifts.map((r) => del(STAFF, r)), ...staff.needs.map((r) => del(NEEDS, r))] : []), ...guests.map((r) => del(GUESTS, r))] : [];
         if (liveEvent && !seesGuests) return void toast('No puedes ver los huéspedes de este evento; pide a un propietario que la borre.');
         const go = await confirmDialog({
           title: 'Enviar a la papelera',
@@ -228,7 +232,9 @@ export function mountReservation(id: string): ViewMount {
           ...(seesFinance ? await same(FINANCE, (row) => row.id === id) : []),
           ...eventOps,
           ...(event ? [...(seesGuests ? await same(GUESTS, (row) => row.event_id === event.id) : []), ...await same(RESTRICTIONS, (row) => row.event_id === event.id), ...await same(CHECKLIST, (row) => row.event_id === event.id),
-        ...(canRead(client, ASSIGNMENTS) ? await same(ASSIGNMENTS, (row) => row.event_id === event.id) : [])] : []),
+        ...(canRead(client, ASSIGNMENTS) ? await same(ASSIGNMENTS, (row) => row.event_id === event.id) : []),
+        ...(canRead(client, STAFF) ? await same(STAFF, (row) => row.event_id === event.id) : []),
+        ...(canRead(client, NEEDS) ? await same(NEEDS, (row) => row.event_id === event.id) : [])] : []),
         ];
         await run(operations, 'Reserva restaurada.');
       }
@@ -268,6 +274,15 @@ export function mountReservation(id: string): ViewMount {
         reservation.internal_notes ? ['Notas internas', reservation.internal_notes] : null,
       ));
 
+      // Cierre operativo: si faltan horas reales en algún turno, la hoja de cierre lo avisa (aviso, no bloquea).
+      async function toggleClose(): Promise<void> {
+        const reopening = !!liveEvent!.closed_at;
+        const warning = reopening ? null : missingHoursWarning(staff);
+        if (warning && !(await confirmDialog({ title: 'Anotar cierre operativo', text: `${warning}. Es solo un aviso: puedes anotar el cierre igualmente.`, confirmLabel: 'Anotar cierre' }))) return;
+        await run([{ op: 'update', table: EVENTS, id: liveEvent!.id, expectedRevision: liveEvent!.revision, fields: { closed_at: reopening ? null : new Date().toISOString() } }],
+          reopening ? 'Evento reabierto.' : 'Cierre operativo anotado.');
+      }
+
       const operation = !liveEvent
         ? block('blockOperation', 'Operación', el('p', { class: 'hint' }, 'El evento operativo se crea al confirmar la reserva.'))
         : block('blockOperation', 'Operación', [
@@ -277,15 +292,16 @@ export function mountReservation(id: string): ViewMount {
               ['Cocina', label(liveEvent.kitchen_status)], ['Limpieza', label(liveEvent.cleaning_status)],
               ['Registro de viajeros', label(liveEvent.traveler_registration_status)],
               ['Montaje', label(liveEvent.setup_style)], ['Habitaciones', [liveEvent.rooms_count, lodgingSummary(lodging) ?? liveEvent.room_distribution].filter((v) => v !== null && v !== '').join(' · ') || '—'],
+              ['Personal', staffSummary(staff) ?? '—'],
               liveEvent.operational_notes ? ['Notas', liveEvent.operational_notes] : null,
               ['Cierre', liveEvent.closed_at ? formatDate(liveEvent.closed_at) : 'Abierto'],
               liveEvent.incidents ? ['Incidencias', liveEvent.incidents] : null),
-            editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', onclick: () => void run(
-              [{ op: 'update', table: EVENTS, id: liveEvent.id, expectedRevision: liveEvent.revision, fields: { closed_at: liveEvent.closed_at ? null : new Date().toISOString() } }],
-              liveEvent.closed_at ? 'Evento reabierto.' : 'Cierre operativo anotado.') }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
+            editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
           ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.' })));
 
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
+
+      const staffCard = !liveEvent || !staff ? null : staffBlock.render({ client, reservation, event: liveEvent, data: staff, editable, run });
 
       // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
       const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) } },
@@ -463,17 +479,17 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, checklistBlock, guestsBlock, meals, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, checklistBlock, guestsBlock, meals, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, STAFF, NEEDS].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id)) void paint(); }));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); };
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); };
   };
 }

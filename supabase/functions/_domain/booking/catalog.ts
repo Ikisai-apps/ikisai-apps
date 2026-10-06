@@ -10,12 +10,16 @@ export const TABLES = {
   spaces: 'booking.spaces',
   beds: 'booking.beds',
   roomAssignments: 'booking.room_assignments',
+  staffAssignments: 'booking.staff_assignments',
+  staffNeeds: 'booking.staff_needs',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
 export const READS = {
   guestSummary: 'booking.guest_summary',
   foodEventProjection: 'booking.food_event_projection',
+  tasksSpaceProjection: 'booking.tasks_space_projection',
+  invoicesStaffHoursProjection: 'booking.invoices_staff_hours_projection',
 } as const;
 
 export const PROCEDURES = {
@@ -57,6 +61,15 @@ export const SPACE_KINDS = ['habitacion', 'sala', 'zona_exterior', 'otro'] as co
 export const BED_KINDS = ['individual', 'doble', 'litera', 'sofa_cama', 'supletoria'] as const;
 export type SpaceKind = (typeof SPACE_KINDS)[number];
 export type BedKind = (typeof BED_KINDS)[number];
+
+/** Funciones del personal en un evento (C05 §5). */
+export const STAFF_FUNCTIONS = ['coordinacion_general', 'acogida_grupo', 'cocina', 'apoyo_cocina', 'limpieza_previa', 'limpieza_rotacion',
+  'mantenimiento_guardia', 'soporte_tecnico', 'apoyo_logistico', 'cierre_evento', 'otra'] as const;
+export const STAFF_STATUSES = ['prevista', 'confirmada', 'realizada', 'cancelada'] as const;
+export const NEED_TYPES = ['cocina', 'limpieza', 'mantenimiento', 'tecnico', 'acogida', 'mixto'] as const;
+export const NEED_PRIORITIES = ['baja', 'media', 'alta', 'urgente'] as const;
+export const NEED_STATUSES = ['detectado', 'buscando', 'cubierto'] as const;
+export type StaffFunction = (typeof STAFF_FUNCTIONS)[number];
 
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 export type RestrictionType = (typeof RESTRICTION_TYPES)[number];
