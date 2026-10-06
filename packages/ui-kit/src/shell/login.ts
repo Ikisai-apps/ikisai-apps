@@ -1,5 +1,5 @@
 import { el, replace } from '../dom.ts';
-import { icon } from '../icons.ts';
+import { icon, type IconName } from '../icons.ts';
 
 export interface LoginOptions {
   /** Nombre de la app, por ejemplo «Invoices»: se muestra como «Ikisai Invoices». */
@@ -12,6 +12,8 @@ export interface LoginOptions {
   describeError?: (error: unknown) => string;
   /** Nota al pie (versión, aviso legal). */
   footnote?: string;
+  /** Icono de la marca de la app; por defecto el genérico. */
+  markIcon?: IconName;
 }
 
 /** Shell de login común: tarjeta centrada, formulario accesible, ayuda sin red y marca Ikisai. */
@@ -76,7 +78,7 @@ export function renderLogin(root: HTMLElement, options: LoginOptions): () => voi
     'section',
     { class: 'login-card', 'aria-labelledby': 'loginTitle' },
     el('div', { class: 'login-brand' },
-      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)),
+      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
       el('h1', { id: 'loginTitle' }, title, options.tagline ? el('small', null, options.tagline) : null),
     ),
     form,

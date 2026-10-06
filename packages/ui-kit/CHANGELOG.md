@@ -5,6 +5,7 @@
 - `compressImage(file, { maxSide, thumbSide, quality, thumbQuality, mime })`: WebP de calidad media con lado mayor 1600 px y miniatura de 480 px, orientación EXIF respetada, sin ampliar imágenes pequeñas, JPEG si el navegador no codifica WebP (contrato §11.3). `isImageFile`, `supportsWebp`, `compressedFilename`.
 - `createCalendar`: calendario mensual y semanal de días completos sin librerías, accesible (`role="grid"`, flechas, Inicio, AvPág/RePág, Enter), barras multidía con el color del estado, «+N» por día, eventos síncronos o asíncronos por rango; utilidades `toDayKey`, `fromDayKey`, `addDays`, `startOfWeek`, `startOfMonth`, `daysBetween`, `todayKey`.
 - `createQuantityField`: cantidad con unidad fija o seleccionable, número a la española (`1.250,5`), botones y flechas de paso, validación de mínimo, máximo y decimales, `fixedDecimals` para importes; `parseQuantity`, `formatQuantity`.
+- `markIcon` en `renderLogin` y `createAppShell` para que cada app lleve su icono de marca (`bed`, `chef`, `invoice`, `tasks`).
 - Iconos `minus` e `image`. Demo y 6 pruebas nuevas (28 en total).
 
 ## 0.2.1 · 6 de octubre de 2026

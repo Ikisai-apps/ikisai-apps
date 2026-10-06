@@ -21,6 +21,8 @@ export interface AppShellOptions {
   appName: string;
   /** Texto pequeño bajo el nombre (perfil, área activa). */
   subtitle?: string;
+  /** Icono de la marca de la app (`bed`, `chef`, `invoice`, `tasks`); por defecto el genérico. */
+  markIcon?: IconName;
   nav: readonly NavItem[];
   /** Barra de estado: cliente o estado inicial, acción de sincronizar, clic. */
   status?: StatusBarOptions;
@@ -63,7 +65,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     : null;
   const header = el('header', { class: 'topbar' },
     el('div', { class: 'brand' },
-      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)),
+      el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
       el('h1', null, `Ikisai ${options.appName}`, subtitle),
     ),
     status.element,
