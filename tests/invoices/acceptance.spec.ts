@@ -57,7 +57,7 @@ async function login(page: Page, user: { email: string; password: string; displa
 /** Espera a «Todo sincronizado». Si el cliente quedó en error por un fallo pasajero de red (ocurre en CI), reintenta con «Sincronizar ahora». */
 async function synced(page: Page): Promise<void> {
   await expect.poll(async () => {
-    const text = await page.locator('#syncStatus').innerText().catch(() => '');
+    const text = (await page.locator('#syncStatus').textContent().catch(() => '')) ?? '';
     if (/Error/.test(text)) await page.getByRole('button', { name: 'Sincronizar ahora' }).click({ timeout: 2_000 }).catch(() => undefined);
     return text;
   }, { timeout: 40_000, intervals: [500, 1000, 2000] }).toContain('Todo sincronizado');
