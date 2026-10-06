@@ -36,7 +36,7 @@ export class RpcError extends Error {
 
 const AUTH_STUBS = `
 create schema if not exists auth;
-create table if not exists auth.users (id uuid primary key, email text);
+create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now(), last_sign_in_at timestamptz);
 create table if not exists auth.sessions (id uuid primary key, user_id uuid references auth.users(id) on delete cascade, not_after timestamptz, created_at timestamptz default now());
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon; end if;

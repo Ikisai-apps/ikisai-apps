@@ -7,6 +7,7 @@ import { createUploads, type UploadsConfig } from './uploads.ts';
 import { createAgents } from './agents.ts';
 import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
+import { createAdmin } from './admin.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -27,6 +28,8 @@ export interface AppConfig extends SupabaseConfig {
   workerRoutes?: WorkerRoute[];
   /** Herramientas MCP de dominio (contrato §3.2), además de las genéricas `<app>_snapshot`, `<app>_commit`… */
   mcpTools?: McpTool[];
+  /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
+  admin?: boolean;
 }
 
 export interface WorkerRequest {
@@ -155,6 +158,17 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'uploads', handler: async ({ ctx, json }) => uploads.create(ctx, await json()) },
       { method: 'POST', pattern: 'uploads/:id/verify', handler: ({ ctx, params }) => uploads.verify(ctx, params.id ?? '') },
       { method: 'GET', pattern: 'files/:id', handler: ({ ctx, params }) => uploads.readUrl(ctx, params.id ?? '') },
+    );
+  }
+  if (config.admin) {
+    const admin = createAdmin(supabase);
+    routes.push(
+      { method: 'GET', pattern: 'admin/accounts', handler: ({ ctx }) => admin.accounts(ctx) },
+      { method: 'POST', pattern: 'admin/memberships', handler: async ({ ctx, json }) => admin.setMembership(ctx, await json()) },
+      { method: 'POST', pattern: 'admin/invite', handler: async ({ ctx, json }) => admin.invite(ctx, await json()) },
+      { method: 'GET', pattern: 'admin/access-log', handler: ({ ctx, url }) => admin.accessLog(ctx, url.searchParams) },
+      { method: 'GET', pattern: 'admin/agents', handler: ({ ctx }) => admin.agents(ctx) },
+      { method: 'DELETE', pattern: 'admin/agents/:keyId', handler: ({ ctx, params }) => admin.revokeAgent(ctx, params.keyId ?? '') },
     );
   }
   routes.push(...(config.routes ?? []));
