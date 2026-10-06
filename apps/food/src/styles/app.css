@@ -137,3 +137,9 @@
 .preptext{display:flex;flex-direction:column;gap:2px;text-align:left;border:0;background:transparent;color:inherit;font:inherit;padding:0;cursor:pointer;min-width:0}
 .preptext:disabled{cursor:default}
 
+/* Coste estimado del menú */
+.menucost{margin:12px 0}
+.menucost h3{margin:0 0 4px;font-size:1rem}
+.menucost>p{margin:0 0 6px;font-size:var(--text-sm,.875rem)}
+.costmissing{margin-top:8px!important}
+.dishcost{margin-top:6px}

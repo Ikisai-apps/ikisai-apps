@@ -2,6 +2,7 @@
 export * from './catalog.ts';
 export * from './menus.ts';
 export * from './planning.ts';
+export * from './costing.ts';
 export * from './procedures.ts';
 export * from './units.ts';
 export * from './validate.ts';

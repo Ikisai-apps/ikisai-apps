@@ -18,6 +18,9 @@ const EVENT_ID = randomUUID();
 const MENU_ID = randomUUID();
 
 let api: FakeApi;
+const TOMATO_ID = randomUUID();
+// Compras de Invoices: 10 kg de tomate por 25 € (2,50 €/kg). El arroz no tiene compras: el coste lo dice.
+const PURCHASES = [{ allocation_id: randomUUID(), target_kind: 'ingredient', target_id: TOMATO_ID, invoice_date: '2026-10-01', supplier_name: 'Frutería', line_description: 'Tomate pera', allocated_quantity: 10, unit: 'Kg', allocated_amount: 25 }];
 let server: PreviewServer;
 let baseURL: string;
 
@@ -25,6 +28,7 @@ let baseURL: string;
 test.beforeAll(async () => {
   api = await startFakeApi({
     users: [USER],
+    purchases: PURCHASES,
     events: [{
       event_id: EVENT_ID, event_code: 'EVT_2026_001', reservation_code: 'RSV_2026_001', title: 'Retiro Test', event_type: 'retiro',
       start_date: day(10), end_date: day(11), arrival_time: '17:00:00', departure_time: '12:00:00', guest_count: 22, guest_count_is_final: true, minors_count: 0,
@@ -32,7 +36,7 @@ test.beforeAll(async () => {
       dietary_restrictions: [],
     }],
   });
-  const tomato = api.seed('food.ingredients', { name: 'Tomate', preferred_unit: 'kg', preferred_supplier: 'Frutería' });
+  const tomato = api.seed('food.ingredients', { id: TOMATO_ID, name: 'Tomate', preferred_unit: 'kg', preferred_supplier: 'Frutería' });
   const rice = api.seed('food.ingredients', { name: 'Arroz', preferred_unit: 'kg' });
   const curry = api.seed('food.recipes', { name: 'Curry de verduras', category: 'principal', base_servings: 20, prep_minutes: 90, status: 'validada', allergens: ['apio'], allergens_checked: true, method: 'Sofreír, añadir el tomate y cocer 40 minutos.' });
   const side = api.seed('food.recipes', { name: 'Arroz especiado', category: 'guarnicion', base_servings: 10, status: 'validada', allergens_checked: true });
@@ -84,6 +88,16 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
   test.setTimeout(150_000);
   await login(page);
 
+  await test.step('coste estimado con las compras de Invoices', async () => {
+    await page.goto(`${baseURL}/#/menus/${MENU_ID}`);
+    const cost = page.locator('#menuCost');
+    // Tomate: 2,75 kg × 2,50 € = 6,88 € (redondeado por plato). El arroz no tiene compras.
+    await expect(cost).toContainText('Total del menú');
+    await expect(cost).toContainText('6,88');
+    await expect(cost).toContainText('por persona');
+    await expect(cost).toContainText('Sin precio (no hay compras con unidad compatible): Arroz');
+  });
+
   await test.step('vista de cocinero: ingredientes escalados a las raciones del plato', async () => {
     await page.goto(`${baseURL}/#/menus/${MENU_ID}`);
     await expect(page.locator('.dish')).toHaveCount(2);
@@ -94,6 +108,7 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(curry.locator('.cookdetails')).toContainText('550');
     await expect(curry.locator('.cookdetails')).toContainText('Alérgenos: Apio');
     await expect(curry.locator('.cookdetails')).toContainText('Sofreír, añadir el tomate');
+    await expect(curry.locator('.cookdetails')).toContainText('Coste estimado: 6,88');
     await expect(page.getByRole('button', { name: 'Añadir plato' })).toHaveCount(0);
     await page.locator('#cookView').click();
     await expect(page.locator('.cookdetails')).toHaveCount(0);

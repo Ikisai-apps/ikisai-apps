@@ -70,3 +70,33 @@ test('validación · líneas de receta: recipe_id solo al insertar; lote con ín
   assert.equal(found?.details.index, 1);
   assert.equal(found?.details.field, 'quantity');
 });
+
+test('coste · precio medio por familia de unidad y coste de plato con huecos señalados', async () => {
+  const { ingredientPrices, dishCost, serviceCosts, purchaseUnit } = await import('../../supabase/functions/_domain/food/mod.ts');
+  assert.equal(purchaseUnit('Kg.'), 'kg');
+  assert.equal(purchaseUnit('Litros'), 'l');
+  assert.equal(purchaseUnit('ud'), 'unidad');
+  assert.equal(purchaseUnit('caja'), null);
+  const p = (id: string, quantity: number, unit: string, amount: number, date = '2026-10-01') =>
+    ({ allocation_id: crypto.randomUUID(), target_kind: 'ingredient', target_id: id, invoice_date: date, supplier_name: null, line_description: null, allocated_quantity: quantity, unit, allocated_amount: amount });
+  // Tomate: 10 kg por 20 € y 5000 g por 12,50 € → 32,50 € / 15 000 g. Arroz: en «cajas», no se reconoce.
+  const prices = ingredientPrices([p('tomate', 10, 'kg', 20), p('tomate', 5000, 'g', 12.5, '2026-10-05'), p('arroz', 3, 'caja', 9)]);
+  const tomato = prices.get('tomate')![0]!;
+  assert.equal(tomato.purchases, 2);
+  assert.equal(tomato.lastDate, '2026-10-05');
+  assert.ok(Math.abs(tomato.perBase - 32.5 / 15000) < 1e-12);
+  assert.equal(prices.has('arroz'), false);
+  const row = (id: string, extra: Record<string, unknown>) => ({ id, revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, ...extra }) as any;
+  const graph = {
+    services: [row('s1', { menu_id: 'm', service_date: '2026-10-16', service_type: 'cena', service_time: null, position: 1 })],
+    items: [row('i1', { service_id: 's1', recipe_id: 'r1', servings: 30, position: 1 })],
+    recipes: [row('r1', { name: 'Curry', base_servings: 20 })],
+    recipe_ingredients: [row('l1', { recipe_id: 'r1', ingredient_id: 'tomate', quantity: 2, unit: 'kg', position: 1 }), row('l2', { recipe_id: 'r1', ingredient_id: 'arroz', quantity: 1, unit: 'kg', position: 2 })],
+    ingredients: [],
+  };
+  // 2 kg × 30 ÷ 20 = 3 kg = 3000 g × 32,50/15 000 = 6,50 €; el arroz no tiene precio.
+  assert.deepEqual(dishCost(graph, 'i1', prices), { amount: 6.5, missing: ['arroz'] });
+  assert.deepEqual(serviceCosts(graph, prices), [{ service_id: 's1', amount: 6.5, servings: 30, missing: ['arroz'] }]);
+  // Una compra por unidades no sirve para una receta en gramos.
+  assert.deepEqual(dishCost(graph, 'i1', ingredientPrices([p('tomate', 12, 'ud', 6)])).missing.sort(), ['arroz', 'tomate']);
+});
