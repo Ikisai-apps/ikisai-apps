@@ -699,7 +699,7 @@ a.mb-open:hover,button.mb-open:hover{color:var(--accent-deep)}
 .palette-input{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--edge);color:var(--muted)}
 .palette-input svg{width:19px;height:19px;flex:none}
 .palette-input input{flex:1;min-width:0;min-height:0;border:0;background:transparent;box-shadow:none;padding:0;font:inherit;font-size:16px;outline:none;color:var(--ink)}
-.palette-input input:focus{box-shadow:none}
+.palette-input input:focus,.palette-input input:focus-visible{box-shadow:none;outline:none}
 .palette-input kbd{font:inherit;font-size:11px;font-weight:700;padding:3px 7px;border-radius:7px;border:1px solid var(--edge);background:var(--paper-2);color:var(--muted)}
 .palette-list{overflow:auto;padding:6px;flex:1}
 .palette-group{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:10px 10px 4px}
