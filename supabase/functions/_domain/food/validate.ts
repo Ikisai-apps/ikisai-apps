@@ -5,6 +5,7 @@
  */
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
 import { MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
+import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
 import { invalidCallArgument } from './procedures.ts';
 import { UNITS } from './units.ts';
 
@@ -30,7 +31,7 @@ type FieldSpec =
   | { kind: 'boolean' }
   | { kind: 'tags'; values: readonly string[] }
   | { kind: 'uuid'; nullable?: boolean }
-  | { kind: 'date' }
+  | { kind: 'date'; nullable?: boolean }
   | { kind: 'time'; nullable?: boolean }
   | { kind: 'json'; nullable?: boolean };
 
@@ -160,6 +161,53 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       notes: freeText,
     },
   },
+  // La lista la crea food.regenerate_shopping; a mano solo cambian su estado y sus notas.
+  'food.shopping_lists': {
+    required: ['menu_id'],
+    reserved: ['menu_id', 'generated_at', 'source_revisions'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      status: { kind: 'enum', values: SHOPPING_LIST_STATUSES },
+      generated_at: { kind: 'text', max: 40 },
+      source_revisions: { kind: 'json' },
+      notes: freeText,
+    },
+  },
+  // A mano solo se insertan líneas manuales; required_quantity es siempre calculada.
+  'food.shopping_list_items': {
+    required: ['shopping_list_id', 'ingredient_id', 'unit', 'purchase_quantity', 'manual'],
+    insertOnly: ['shopping_list_id', 'ingredient_id', 'unit', 'manual'],
+    reserved: ['required_quantity'],
+    fields: {
+      shopping_list_id: { kind: 'uuid' },
+      ingredient_id: { kind: 'uuid' },
+      required_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX },
+      unit: { kind: 'enum', values: UNITS },
+      stock_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX, nullable: true },
+      purchase_quantity: { kind: 'number', min: 0, max: QUANTITY_MAX },
+      supplier: { kind: 'text', max: 120, nullable: true },
+      status: { kind: 'enum', values: SHOPPING_ITEM_STATUSES },
+      manual_override: { kind: 'boolean' },
+      manual: { kind: 'boolean' },
+      notes: freeText,
+    },
+  },
+  'food.preparation_items': {
+    required: ['menu_id', 'text'],
+    insertOnly: ['menu_id', 'menu_item_id'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      menu_item_id: { kind: 'uuid', nullable: true },
+      recipe_id: { kind: 'uuid', nullable: true },
+      scheduled_date: { kind: 'date', nullable: true },
+      scheduled_time: { kind: 'time', nullable: true },
+      text: { kind: 'text', max: 300, required: true },
+      responsible: { kind: 'text', max: 120, nullable: true },
+      done: { kind: 'boolean' },
+      position: { kind: 'number', min: -1e9, max: 1e9 },
+      manual: { kind: 'boolean' },
+    },
+  },
 };
 
 function issue(code: string, message: string, details: Record<string, unknown>): Issue {
@@ -229,6 +277,9 @@ export function validateOperation(op: DomainOperation): Issue | null {
     for (const field of spec.insertOnly ?? []) {
       if (field in fields) return issue('IMMUTABLE_FIELD', `El campo ${field} no se puede cambiar.`, { table: op.table, field });
     }
+  }
+  if (op.table === 'food.shopping_list_items' && op.op === 'insert' && fields.manual !== true) {
+    return issue('INVALID_FIELDS', 'Solo se añaden a mano líneas manuales; las calculadas las genera la lista.', { table: op.table, field: 'manual' });
   }
   if (op.table === 'food.recipes' && fields.status === 'validada') {
     // En un update que no trae allergens_checked decide el trigger con la fila actual.
