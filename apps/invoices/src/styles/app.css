@@ -37,3 +37,6 @@
 .totals-foot .alert{color:var(--alert);font-weight:600}
 @media (min-width:1024px){.totals-foot{position:static}}
 code{font-size:12.5px;word-break:break-all}
+
+/* El atributo hidden gana a la clase (los .fab y .primary del kit fijan display). */
+[hidden]{display:none !important}

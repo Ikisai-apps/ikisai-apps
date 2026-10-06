@@ -55,7 +55,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   const emptyActive = el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay proveedores'), 'Crea el primero con «Nuevo proveedor». Funciona también sin conexión.');
   const emptyFiltered = el('div', { class: 'empty plain' }, 'Ningún proveedor coincide con la búsqueda.');
   const listHost = el('div');
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newSupplier', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo proveedor');
+  const canEdit = client.bootstrap()?.membership.role !== 'reader';
+  const newButton = el('button', { class: 'fab', type: 'button', id: 'newSupplier', hidden: !canEdit, onclick: () => openEditor(null) }, icon('plus'), 'Nuevo proveedor');
 
   replace(
     main,
@@ -73,7 +74,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   }
 
   function rowItem(row: SupplierRow, deleted: boolean): HTMLElement {
-    const edit = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar');
+    const edit = canEdit ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar') : null;
     const restore = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
     return listRow({
       id: row.id,

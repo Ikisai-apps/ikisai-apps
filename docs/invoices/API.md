@@ -385,7 +385,7 @@ Desde una línea: «Asignar a…» → `general` (sin asignar / gasto de explota
 
 ### 6.3 Compras (`invoices.items`)
 
-Unidad: la **línea** (artículo comprado). Por fila: factura (código, fecha, proveedor, estado), descripción, `item_type`, `match_name`, cantidad y unidad, `net_amount`, IVA, categoría efectiva (línea → factura), inversión efectiva, asignado (`Σ allocated_amount`), sin asignar, destinos (chips). Filtros del handoff: fecha, proveedor, categoría, destino (`target_app`/`target_id`), retiro (`booking` + `event`), ingrediente (`food` + `ingredient`), **sin asignar**; además inversión y `item_type`. Agrupaciones: por categoría, por destino, por proveedor, por `item_type`. Totales del filtro (base). Solo facturas no `anulada`; las `pendiente_*` se incluyen marcadas (el handoff dice «líneas validadas»; se muestran las demás atenuadas con filtro «solo validadas» activado por defecto).
+Unidad: la **línea** (artículo comprado). Por fila: factura (código, fecha, proveedor, estado), descripción, `item_type`, `match_name`, cantidad y unidad, `net_amount`, IVA, categoría efectiva (línea → factura), inversión efectiva, asignado (`Σ allocated_amount`), sin asignar, destinos (chips). Filtros del handoff: fecha, proveedor, categoría, destino (`target_app`/`target_id`), retiro (`booking` + `event`), ingrediente (`food` + `ingredient`), **sin asignar**; además inversión y `item_type`. Agrupaciones: por categoría, por destino, por proveedor, por `item_type`. Filtros en la app: destino (retiro = `booking/event`, ingrediente = `food/ingredient`, maquinaria, proyecto, tarea, área, generales), tipo de artículo y «solo sin asignar». Totales del filtro (base). Solo facturas no `anulada`; las `pendiente_*` se incluyen marcadas (el handoff dice «líneas validadas»; se muestran las demás atenuadas con filtro «solo validadas» activado por defecto).
 
 ### 6.4 Resumen fiscal (`invoices.fiscal_summary`)
 
@@ -582,7 +582,7 @@ Escenarios offline en Playwright (`tests/invoices/`), sobre `smoke.spec.ts` y `f
 | O8 | `reader` offline: lectura completa; ZIP deshabilitado sin red con explicación. |
 | O9 | Cierre de sesión borra el espejo (`clearOnLogout`). |
 
-Estado el 6 de octubre de 2026: `tests/invoices/acceptance.spec.ts` automatiza A1–A13, A18 y O1–O6 contra la app compilada y la API falsa (`fake-api.ts`, misma superficie que `invoices-api`: subidas con verificación, destinos, procedimientos mínimos); A14–A17 y A19–A21 están cubiertos por `tests/invoices/sql.test.ts` y `api.test.ts` contra PGlite (entregas, ZIP, archivar, papelera, `reader`, deshacer). Pendientes de pasar a mano sobre la app publicada: instalación PWA en Android y descarga del ZIP en el móvil.
+Estado el 6 de octubre de 2026: `tests/invoices/acceptance.spec.ts` automatiza A1–A13, A18 y O1–O9 contra la app compilada y la API falsa (`fake-api.ts`, misma superficie que `invoices-api`: subidas con verificación, destinos, procedimientos mínimos); A14–A17 y A19–A21 están cubiertos por `tests/invoices/sql.test.ts` y `api.test.ts` contra PGlite (entregas, ZIP, archivar, papelera, `reader`, deshacer). Pendientes de pasar a mano sobre la app publicada: instalación PWA en Android y descarga del ZIP en el móvil.
 
 Pruebas de dominio (`supabase/functions/_domain/invoices`, `tsx --test`): schema `ikisai.invoice.v1` (el ejemplo del handoff valida; casos inválidos), `recalculate` con tabla de redondeos y tolerancia, `normalizedFilename` (paridad con SQL en PGlite, incluidos `_pNN` y `_NN`), `fiscalSummary`, `purchaseItems`, categorías iguales a la migración.
 
