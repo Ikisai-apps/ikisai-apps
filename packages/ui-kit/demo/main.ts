@@ -5,6 +5,7 @@ import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-cl
 import {
   addDays,
   alertDialog,
+  closeSheet,
   compressImage,
   createCalendar,
   createQuantityField,
@@ -20,6 +21,7 @@ import {
   el,
   icon,
   itemColorStyle,
+  openImportSheet,
   openSheet,
   renderConflicts,
   renderLogin,
@@ -344,17 +346,67 @@ const quantities = section('quantity', 'Cantidad con unidad', 'Para Food (ingred
   el('div', { class: 'demo-form' }, qtyWeight.element, qtyMoney.element, qtyCount.element, el('p', { class: 'small muted' }, 'Último cambio: ', qtyOut)),
 );
 
+
+// --- Hoja de importación (JSON ikisai.invoice.v1) ------------------------------------
+const SAMPLE_IMPORT = {
+  schema_version: 'ikisai.invoice.v1',
+  invoice: { invoice_date: '2026-10-05', supplier_name: 'Proveedor Ejemplo S.L.', supplier_tax_id: 'B00000000', invoice_number: 'F-2026-123', object: 'alimentos_retiro_ejemplo', currency: 'EUR' },
+  lines: [
+    { description: 'Tomate', quantity: 20, unit: 'kg', unit_price: 2, discount_amount: 0, net_amount: 40, vat_rate: 10, vat_amount: 4, confidence: 0.99 },
+    { description: 'Aceite de oliva', quantity: 5, unit: 'l', unit_price: 8.5, discount_amount: 0, net_amount: 42.5, vat_rate: 10, vat_amount: 4.25, confidence: 0.6 },
+  ],
+  taxes: [{ tax_type: 'iva', rate: 10, taxable_base: 82.5, amount: 8.25 }],
+  document_totals: { base: 82.5, vat: 8.25, withholding: 0, total: 90.75 },
+  extraction_notes: null,
+  overall_confidence: 0.95,
+};
+type Doc = typeof SAMPLE_IMPORT;
+function demoParse(text: string): { ok: true; document: Doc } | { ok: false; errors: Array<{ path: string; reason: string }> } {
+  try {
+    const value = JSON.parse(text) as Partial<Doc>;
+    const errors: Array<{ path: string; reason: string }> = [];
+    if (value.schema_version !== 'ikisai.invoice.v1') errors.push({ path: 'schema_version', reason: 'debe ser ikisai.invoice.v1' });
+    if (!Array.isArray(value.lines) || value.lines.length === 0) errors.push({ path: 'lines', reason: 'al menos una línea' });
+    if (!value.document_totals) errors.push({ path: 'document_totals', reason: 'obligatorio' });
+    return errors.length ? { ok: false, errors } : { ok: true, document: value as Doc };
+  } catch (e) {
+    return { ok: false, errors: [{ path: '$', reason: (e as Error).message }] };
+  }
+}
+function demoRecalc(doc: Doc) {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const base = r2(doc.lines.reduce((s, l) => s + l.net_amount, 0));
+  const vat = r2(doc.taxes.filter((t) => t.tax_type === 'iva').reduce((s, t) => s + t.amount, 0));
+  const withholding = r2(doc.taxes.filter((t) => t.tax_type === 'irpf').reduce((s, t) => s + t.amount, 0));
+  const total = r2(base + vat - withholding);
+  const delta = r2(doc.document_totals.total - total);
+  const warnings = doc.lines.flatMap((l, i) => l.quantity != null && l.unit_price != null && Math.abs(r2(l.quantity * l.unit_price - (l.discount_amount ?? 0)) - l.net_amount) > 0.02 ? [{ code: 'LINE_NET_MISMATCH', message: `Línea ${i + 1}: cantidad × precio − descuento no coincide con el neto.`, line: i }] : []);
+  return { calculated_base: base, calculated_vat: vat, calculated_other: 0, calculated_withholding: withholding, calculated_total: total, totals_delta: delta, within_tolerance: Math.abs(delta) <= 0.02, taxes_derived: false, warnings };
+}
+const importSection = section('import', 'Hoja de importación', 'Pegar o subir un JSON (ikisai.invoice.v1), ver errores de formato o la previsualización con artículos, impuestos y cuadre de totales con tolerancia de 0,02 €. La app aporta parse, recálculo y sus campos (proveedor, categoría).',
+  el('div', { class: 'demo-row' },
+    el('button', { class: 'primary', type: 'button', id: 'openImport', onclick: () => openImportSheet<Doc>({
+      title: 'Importar factura',
+      parse: demoParse,
+      recalculate: demoRecalc,
+      initialText: JSON.stringify(SAMPLE_IMPORT, null, 2),
+      fields: () => el('div', { class: 'row2' }, el('label', { class: 'field' }, el('span', null, 'Proveedor'), el('select', null, el('option', null, 'Crear «Proveedor Ejemplo S.L.»'))), el('label', { class: 'field' }, el('span', null, 'Categoría'), el('select', null, el('option', null, 'Compras')))),
+      onImport: (doc, recalc) => { toast(`Importada ${doc.invoice.invoice_number} · ${recalc.within_tolerance ? 'cuadra' : 'revisar importes'}`); void closeSheet(true); },
+    }) }, icon('upload', 18), 'Importar JSON de ejemplo'),
+  ),
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { compressImage };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
-    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.3.0'))),
+    el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.4.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection),
 );

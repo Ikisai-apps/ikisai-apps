@@ -4,6 +4,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.4.0 (tanda 4): hoja de importación con previsualización de JSON y cuadre de totales (para Invoices, sin tocar `apps/invoices`); revisión visual de `apps/food` y de la ficha de reserva de Booking.
 - v0.3.0 (tanda 3): `compressImage` (WebP 1600 px + miniatura 480 px, con prueba), calendario mensual y semanal accesible, campo de cantidad con unidad. 28 pruebas Playwright.
 - v0.2.1: separador en `.row-meta`.
 - v0.2.0 fusionada en main (PR #17): hoja inferior y diálogo con foco atrapado, conflicto campo a campo sobre `PendingConflict`, rechazados sobre `RejectedBatch`, barra y banners con `rejected` y `USER_CHANGED` (sync-client 0.2), lista «pendiente» como componente, selector de tema y paleta Ctrl K. 22 pruebas Playwright.
@@ -12,7 +13,7 @@ Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## En curso
 
-- Revisión visual de `apps/booking` cuando se fusione la PR #28 y de `apps/food` cuando exista (tanda 3, punto 4).
+- Adopción de `openImportSheet` por Invoices cuando su equipo lo decida (hoy tienen su propia hoja en `invoices.ts`; el kit replica su comportamiento y permite inyectar proveedor, categoría y avisos de duplicado).
 
 ## Pendiente
 
