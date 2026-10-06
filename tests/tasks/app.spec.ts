@@ -63,9 +63,15 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.close(); });
 
-const settled = (page: Page) => page.waitForFunction(() => {
-  return typeof Sync !== 'undefined' && Sync.mode === 'online' && !Sync.busy && Sync.record.queue.length === 0;
-}, null, { timeout: 20_000 });
+/** Espera a que la interfaz quede al día con el servidor; si no llega, explica en qué estado se quedó. */
+async function settled(page: Page): Promise<void> {
+  try {
+    await page.waitForFunction(() => typeof Sync !== 'undefined' && Sync.mode === 'online' && !Sync.busy && Sync.record.queue.length === 0, null, { timeout: 20_000 });
+  } catch (error) {
+    const snapshot = await page.evaluate(() => JSON.stringify({ mode: Sync.mode, busy: Sync.busy, queue: Sync.record.queue.length, conflict: Sync.record.conflict, failure: Sync.record.failure, status: Sync.core?.status() })).catch(() => 'sin página');
+    throw new Error(`La interfaz no quedó al día: ${snapshot}`);
+  }
+}
 
 async function open(context: BrowserContext, user = OWNER): Promise<Page> {
   const page = await context.newPage();
@@ -168,4 +174,293 @@ test('arranque, edición, sin red, fusión y conflicto', async ({ browser }) => 
 
   await contextA.close();
   await contextB.close();
+});
+
+const reforma = (s: typeof S) => state.tabs.find((t: any) => t.id === s.obra).projects.find((p: any) => p.id === s.reforma);
+const allTasks = () => state.tabs.flatMap((t: any) => t.projects.flatMap((p: any) => p.tasks));
+// Estas dos funciones se serializan dentro de page.evaluate: se inyectan como texto junto al cuerpo de cada edición.
+const HELPERS = `const reforma = ${reforma.toString()}; const allTasks = ${allTasks.toString()};`;
+const editWith = (page: Page, fn: (s: typeof S) => void) => page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); if (!save()) throw new Error('save() devolvió false: ' + document.getElementById('toast').textContent); render(); })()`);
+/** Como `editWith`, pero devuelve si `save()` aceptó el cambio y el aviso mostrado. */
+const tryWith = (page: Page, fn: (s: typeof S) => void): Promise<{ saved: boolean; toast: string }> =>
+  page.evaluate(`(() => { const S = ${JSON.stringify(S)}; ${HELPERS} (${fn.toString()})(S); const saved = save(); render(); return { saved, toast: document.getElementById('toast').textContent }; })()`);
+
+test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const a = await open(context);
+
+  await test.step('[12] mover una tarea a otro proyecto arrastra sus etiquetas', async () => {
+    await editWith(a, (s) => {
+      const from = reforma(s), to = state.tabs[0].projects.find((p: any) => p.id === s.jardin);
+      const moving = from.tasks.filter((t: any) => t.id === s.puerta || t.parentId === s.puerta);
+      from.tasks = from.tasks.filter((t: any) => !moving.includes(t)); to.tasks.push(...moving);
+    });
+    await settled(a);
+    const rows = await server.rows('tasks.tasks');
+    expect(rows.filter((r) => [S.puerta, S.marco, S.pedir].includes(r.id)).every((r) => r.project_id === S.jardin)).toBeTruthy();
+    expect((await server.rows('tasks.task_labels')).find((r) => r.task_id === S.puerta).project_id).toBe(S.jardin);
+  });
+
+  await test.step('[13] un área nueva nace con una sola Entrada protegida y sus familias', async () => {
+    await a.evaluate(() => (window as any).handleTopAction('newtab'));
+    await a.locator('#tabName').fill('Taller');
+    await a.locator('#createTab').click();
+    await settled(a);
+    const tab = (await server.rows('tasks.tabs')).find((r) => r.name === 'Taller');
+    expect(tab).toBeTruthy();
+    expect((await server.rows('tasks.projects')).filter((r) => r.tab_id === tab.id).map((r) => [r.system, r.title])).toEqual([['inbox', 'Entrada']]);
+    expect((await server.rows('tasks.families')).filter((r) => r.tab_id === tab.id).map((r) => r.system_key).sort()).toEqual(['building', 'person', 'phase', 'space', 'trade']);
+    await a.evaluate((obra) => { state.activeTab = obra; state.view = 'projects'; render(); }, S.obra);
+  });
+
+  await test.step('[14] completar hijas completa al padre; borrar el padre arrastra a las hijas; restaurar devuelve el lote', async () => {
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.pedir).done = true; });
+    await settled(a);
+    expect((await taskOf(a, S.puerta)).done).toBe(true);
+    expect((await serverTask(S.puerta)).done).toBe(false);
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.puerta).deleted = true; });
+    await settled(a);
+    let rows = (await server.rows('tasks.tasks')).filter((r) => [S.puerta, S.marco, S.pedir].includes(r.id));
+    expect(rows.every((r) => r.deleted_at)).toBeTruthy();
+    // Restaurar desde la papelera, como hace la interfaz: todo el lote de borrado.
+    await editWith(a, (s) => { const batch = allTasks().find((t: any) => t.id === s.marco).deleteBatch; for (const t of allTasks()) if (t.deleteBatch === batch) t.deleted = false; });
+    await settled(a);
+    rows = (await server.rows('tasks.tasks')).filter((r) => [S.puerta, S.marco, S.pedir].includes(r.id));
+    expect(rows.every((r) => !r.deleted_at)).toBeTruthy();
+  });
+
+  await test.step('[19] renombrar, borrar y restaurar un área conserva su contenido', async () => {
+    await editWith(a, (s) => { state.tabs.find((x: any) => x.id === s.personal).name = 'Casa'; });
+    await settled(a);
+    await editWith(a, (s) => { state.tabs.find((x: any) => x.id === s.personal).deleted = true; });
+    await settled(a);
+    const deleted = (await server.rows('tasks.tabs')).find((r) => r.id === S.personal);
+    expect(deleted.name).toBe('Casa');
+    expect(deleted.deleted_at).toBeTruthy();
+    await editWith(a, (s) => { state.tabs.find((x: any) => x.id === s.personal).deleted = false; });
+    await settled(a);
+    expect((await server.rows('tasks.tabs')).find((r) => r.id === S.personal).deleted_at).toBeNull();
+    expect((await server.rows('tasks.projects')).filter((r) => r.tab_id === S.personal && !r.deleted_at)).toHaveLength(1);
+  });
+
+  await test.step('[43] completar una tarea bloqueada se rechaza en la interfaz y en la API', async () => {
+    const local = await tryWith(a, (s) => { allTasks().find((t: any) => t.id === s.pintar).done = true; });
+    expect(local.saved).toBe(false);
+    expect(await a.evaluate(() => Sync.record.queue.length)).toBe(0);
+    const row = await serverTask(S.pintar);
+    const remote = await server.commit([{ op: 'update', table: 'tasks.tasks', id: S.pintar, expectedRevision: row.revision, fields: { done: true } }]);
+    expect([remote.status, remote.data.error.code]).toEqual([422, 'TASK_BLOCKED']);
+    expect((await taskOf(a, S.pintar)).blocked).toBe(true);
+  });
+
+  await test.step('[45] una dependencia circular no entra en la cola', async () => {
+    const result = await tryWith(a, (s) => { allTasks().find((t: any) => t.id === s.enfoscar).dependsOn = [s.pintar]; });
+    expect(result.saved).toBe(false);
+    expect(await a.evaluate(() => Sync.record.queue.length)).toBe(0);
+    expect((await server.rows('tasks.task_dependencies')).filter((r) => r.task_id === S.enfoscar)).toHaveLength(0);
+  });
+
+  await test.step('[49][50] completar en secuencia sin red; una condición reabierta en remoto rechaza el lote y lo conserva', async () => {
+    await context.setOffline(true);
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.enfoscar).done = true; });
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.pintar).done = true; });
+    await a.waitForFunction(() => Sync.record.queue.length === 2);
+    await context.setOffline(false);
+    await a.evaluate(() => syncNow()); await settled(a);
+    expect((await serverTask(S.pintar)).done).toBe(true);
+
+    // Se reabre Pintar; sin red vuelve a completarla mientras otro dispositivo reabre Enfoscar.
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.pintar).done = false; });
+    await settled(a);
+    await context.setOffline(true);
+    await editWith(a, (s) => { allTasks().find((t: any) => t.id === s.pintar).done = true; });
+    const enfoscar = await serverTask(S.enfoscar);
+    expect((await server.commit([{ op: 'update', table: 'tasks.tasks', id: S.enfoscar, expectedRevision: enfoscar.revision, fields: { done: false } }], server.app.tokens.editor)).status).toBe(200);
+    await context.setOffline(false);
+    await a.evaluate(() => syncNow());
+    await a.waitForFunction(() => Sync.mode === 'error');
+    await expect(a.locator('#syncBadge')).toHaveText('Revisar guardado');
+    expect(await a.evaluate(() => Sync.record.failure.code)).toBe('TASK_BLOCKED');
+    expect((await serverTask(S.pintar)).done).toBe(false);
+    await a.locator('#syncBadge').click();
+    await a.locator('#syncFailure').click();
+    await expect(a.locator('#sheet')).toContainText('Revisar lote fallido');
+    await a.locator('#discardFailed').click();
+    await settled(a);
+    expect((await taskOf(a, S.pintar)).done).toBe(false);
+    expect((await taskOf(a, S.enfoscar)).done).toBe(false);
+  });
+
+  await test.step('[16] Entrada protegida: el editor no deja renombrarla y el servidor rechaza el intento', async () => {
+    await a.evaluate((inbox) => (window as any).openProjectEditor(inbox), S.obraInbox);
+    await expect(a.locator('#peTitle')).toBeDisabled();
+    await expect(a.locator('#peStatus')).toBeDisabled();
+    await a.evaluate(() => (window as any).closeSheet());
+    await editWith(a, (s) => { state.tabs[0].projects.find((p: any) => p.id === s.obraInbox).title = 'Bandeja'; });
+    await a.waitForFunction(() => Sync.mode === 'error');
+    expect(await a.evaluate(() => Sync.record.failure.code)).toBe('INBOX_PROTECTED');
+    await a.evaluate(() => (window as any).showFailure());
+    await a.locator('#discardFailed').click();
+    await settled(a);
+    expect(await a.evaluate((inbox) => state.tabs[0].projects.find((p: any) => p.id === inbox).title, S.obraInbox)).toBe('Entrada');
+  });
+
+  await test.step('[35] respuesta perdida tras confirmar: el reintento no duplica', async () => {
+    server.app.supabase.loseNextCommitReply();
+    await editWith(a, (s) => { reforma(s).tasks.push({ id: uid('t'), text: 'Una sola vez', note: '', done: false, priority: 'normal', due: '', labels: [], owner: null, parentId: null, order: 12000, attachments: [], dependsOn: [] }); });
+    await a.waitForFunction(() => Sync.record.queue.length === 1 && !Sync.busy);
+    await a.evaluate(() => syncNow()); await settled(a);
+    expect((await server.rows('tasks.tasks')).filter((r) => r.title === 'Una sola vez')).toHaveLength(1);
+  });
+
+  await test.step('[5][22][60][65] etiquetas, vistas, colores e importes se guardan en el servidor', async () => {
+    await editWith(a, (s) => {
+      const tab = state.tabs.find((t: any) => t.id === s.obra);
+      tab.labels.find((l: any) => l.id === s.carpinteria).text = 'Carpintería fina';
+      tab.labels.find((l: any) => l.id === s.juan).archived = true;
+      tab.views.push({ id: uid('view-'), name: 'Pendientes de Juan', search: '', filters: { _state: ['pending'], [tab.labels.find((l: any) => l.id === s.juan).family]: [s.juan] }, groupBy: 'state' });
+      const project = reforma(s); project.color = '#b76b3d'; project.budget = 1800.5;
+      project.tasks.find((t: any) => t.id === s.enfoscar).cost = 240;
+      tab.color = '#46513b';
+    });
+    await settled(a);
+    const labels = await server.rows('tasks.labels');
+    expect(labels.find((r) => r.id === S.carpinteria).name).toBe('Carpintería fina');
+    expect(labels.find((r) => r.id === S.juan).archived).toBe(true);
+    expect((await server.rows('tasks.task_labels')).find((r) => r.task_id === S.puerta && !r.deleted_at).label_id).toBe(S.carpinteria);
+    const view = (await server.rows('tasks.saved_views')).find((r) => r.name === 'Pendientes de Juan');
+    expect(view.group_by).toBe('state');
+    const project = (await server.rows('tasks.projects')).find((r) => r.id === S.reforma);
+    expect([project.color, project.budget]).toEqual(['#b76b3d', 1800.5]);
+    expect((await serverTask(S.enfoscar)).cost).toBe(240);
+    await editWith(a, (s) => { state.tabs.find((t: any) => t.id === s.obra).views[0].deleted = true; });
+    await settled(a);
+    expect((await server.rows('tasks.saved_views')).find((r) => r.id === view.id).deleted_at).toBeTruthy();
+    await editWith(a, (s) => { state.tabs.find((t: any) => t.id === s.obra).views[0].deleted = false; });
+    await settled(a);
+    expect((await server.rows('tasks.saved_views')).find((r) => r.id === view.id).deleted_at).toBeNull();
+  });
+
+  await test.step('[17] una segunda pestaña del mismo navegador queda en solo lectura', async () => {
+    const second = await context.newPage();
+    await second.goto(server.url + '/');
+    await second.waitForFunction(() => typeof Sync !== 'undefined' && Sync.secondary === true && state.tabs.length > 0, null, { timeout: 20_000 });
+    await expect(second.locator('#syncBadge')).toHaveText('Otra pestaña activa');
+    const result = await tryWith(second, (s) => { reforma(s).tasks[0].note = 'desde la secundaria'; });
+    expect(result.saved).toBe(false);
+    await second.close();
+  });
+
+  await test.step('[37] cerrar sesión borra los datos locales y vuelve a pedir la cuenta', async () => {
+    await a.evaluate(() => (window as any).sessionsSheet());
+    await a.locator('#logoutAccount').click();
+    await expect(a.locator('#accountLoginForm')).toBeVisible();
+    expect(await a.evaluate(() => [state.tabs.length, Sync.token, Sync.actor])).toEqual([0, '', null]);
+    expect(await a.evaluate(async () => {
+      const db: IDBDatabase = await new Promise((resolve, reject) => { const r = indexedDB.open('ikisai-tasks-v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      const count: number = await new Promise((resolve) => { const r = db.transaction('tasks.tasks').objectStore('tasks.tasks').count(); r.onsuccess = () => resolve(r.result); });
+      db.close(); return count;
+    })).toBe(0);
+  });
+  await context.close();
+  // El Auth simulado identifica la sesión con el usuario: tras el cierre de sesión hay que volver a abrirla para las pruebas siguientes.
+  await server.app.t.createUser(server.app.users.owner);
+
+  await test.step('[18] lector: interfaz y API en solo lectura', async () => {
+    const readerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const r = await open(readerContext, READER);
+    await expect(r.locator('#app')).toHaveAttribute('data-readonly', 'true');
+    const result = await tryWith(r, (s) => { reforma(s).tasks[0].note = 'no debería'; });
+    expect(result).toEqual({ saved: false, toast: 'Tu acceso es de solo lectura.' });
+    const denied = await server.commit([{ op: 'update', table: 'tasks.tasks', id: S.enfoscar, expectedRevision: 1, fields: { note: 'x' } }], server.app.tokens.reader);
+    expect(denied.status).toBe(403);
+    await readerContext.close();
+  });
+
+  await test.step('un editor con acceso completo edita tareas', async () => {
+    const editorContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const e = await open(editorContext, EDITOR);
+    await editWith(e, (s) => { reforma(s).tasks.find((t: any) => t.id === s.enfoscar).note = 'Nota de la editora'; });
+    await settled(e);
+    expect((await serverTask(S.enfoscar)).note).toBe('Nota de la editora');
+    await editorContext.close();
+  });
+});
+
+test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y catálogo', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const G = { project: id(100), parent: id(101), child: id(102), single: id(103), label: id(104) };
+  const seeded = await server.commit([
+    insert('tasks.projects', G.project, { tab_id: S.obra, title: 'Gestos', position: 9000 }),
+    insert('tasks.tasks', G.parent, { tab_id: S.obra, project_id: G.project, title: 'Montar el andamio', position: 1024 }),
+    insert('tasks.tasks', G.child, { tab_id: S.obra, project_id: G.project, title: 'Revisar anclajes', position: 2048, parent_id: G.parent }),
+    insert('tasks.tasks', G.single, { tab_id: S.obra, project_id: G.project, title: 'Barrer', position: 3072 }),
+    insert('tasks.labels', G.label, { tab_id: S.obra, family_id: families.phase, name: 'Acabados' }),
+  ], server.app.tokens.editor);
+  expect(seeded.status).toBe(200);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const a = await open(context);
+  await a.evaluate((obra) => { state.activeTab = obra; state.view = 'projects'; render(); }, S.obra);
+  await a.locator(`[data-open-project="${G.project}"]`).first().click();
+
+  await test.step('[58] la fila de alta escribe la tarea en el sitio y la guarda', async () => {
+    await a.locator('[data-add-task]').first().click();
+    await a.keyboard.type('Alicatar la ducha');
+    await a.keyboard.press('Enter');
+    await a.keyboard.press('Escape');
+    await settled(a);
+    expect((await server.rows('tasks.tasks')).filter((r) => r.title === 'Alicatar la ducha' && r.project_id === G.project)).toHaveLength(1);
+  });
+
+  await test.step('[68] completar con la casilla ofrece Deshacer, y deshacer restaura el estado en el servidor', async () => {
+    await a.locator(`[data-toggle-task="${G.single}"]`).click();
+    await settled(a);
+    expect((await serverTask(G.single)).done).toBe(true);
+    await a.locator('#undoNow').click({ timeout: 15_000 });
+    await a.locator('#confirmUndo').click();
+    await settled(a);
+    expect((await serverTask(G.single)).done).toBe(false);
+    await a.evaluate(() => (window as any).closeSheet());
+  });
+
+  await test.step('[14] enviar a la papelera un padre con su hija y restaurarlo desde la papelera', async () => {
+    await a.locator(`[data-task-menu="${G.parent}"]`).click();
+    await a.locator('#menuDelete').click();
+    await settled(a);
+    let rows = (await server.rows('tasks.tasks')).filter((r) => [G.parent, G.child].includes(r.id));
+    expect(rows.every((r) => r.deleted_at) && rows[0].deleted_at === rows[1].deleted_at).toBeTruthy();
+    await a.evaluate(() => (window as any).showTrash());
+    await a.locator(`[data-restore-task$="${G.child}"]`).click();
+    await settled(a);
+    rows = (await server.rows('tasks.tasks')).filter((r) => [G.parent, G.child].includes(r.id));
+    expect(rows.every((r) => !r.deleted_at)).toBeTruthy();
+    await a.evaluate(() => (window as any).closeSheet());
+  });
+
+  await test.step('[31] el historial muestra los cambios con su autor', async () => {
+    await a.evaluate(() => (window as any).handleTopAction('history'));
+    await expect(a.locator('#sheet')).toContainText('Historial');
+    await expect(a.locator('#sheet')).toContainText('Owner');
+    await a.evaluate(() => (window as any).closeSheet());
+  });
+
+  await test.step('archivar una familia desde Etiquetas archiva sus etiquetas, y reactivarla las devuelve', async () => {
+    await a.evaluate(() => { state.view = 'labels'; render(); });
+    await a.locator(`[data-toggle-family="${families.phase}"]`).click();
+    await settled(a);
+    let label = (await server.rows('tasks.labels')).find((r) => r.id === G.label);
+    expect([label.archived, label.archived_before_family]).toEqual([true, false]);
+    expect((await server.rows('tasks.families')).find((r) => r.id === families.phase).archived).toBe(true);
+    await a.locator(`[data-toggle-family="${families.phase}"]`).click();
+    await settled(a);
+    label = (await server.rows('tasks.labels')).find((r) => r.id === G.label);
+    expect([label.archived, label.archived_before_family]).toEqual([false, null]);
+  });
+
+  await test.step('[26] sin errores de JavaScript y sin desbordes horizontales en móvil', async () => {
+    await a.evaluate(() => { state.view = 'projects'; render(); });
+    expect(await a.evaluate(() => document.documentElement.scrollWidth <= 390)).toBeTruthy();
+  });
+  await context.close();
 });

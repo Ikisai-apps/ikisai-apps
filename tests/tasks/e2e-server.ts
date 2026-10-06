@@ -29,7 +29,7 @@ export interface E2EServer {
   app: TestApp;
   /** Lote confirmado directamente en el servidor, como si viniera de otro dispositivo. */
   commit(operations: Operation[], token?: string): Promise<{ status: number; data: any }>;
-  /** Filas vivas de una tabla tal y como están en el servidor. */
+  /** Filas de una tabla (incluida la papelera) tal y como están en el servidor. */
   rows(table: string): Promise<any[]>;
   /** Peticiones recibidas por la API (método y ruta). */
   requests: Array<{ method: string; path: string }>;
@@ -79,8 +79,9 @@ export async function startE2EServer(): Promise<E2EServer> {
     url, app: ready, requests,
     commit: (operations, token) => ready.call('/api/v1/commands', { body: { requestId: `server-${++sequence}`, operations }, ...(token ? { token } : {}) }),
     async rows(table) {
-      const result = await ready.call(`/api/v1/snapshot?tables=${table}&includeDeleted=1&limit=2000`);
-      return result.data.tables[0].rows;
+      // Directo a la base: no depende de que la sesión de ningún usuario siga abierta.
+      const result = (await ready.t.rpc('core_snapshot_table', { p_app: 'tasks', p_role: 'owner', p_table: table, p_include_deleted: true, p_limit: 2000, p_offset: 0 })) as { rows: any[] };
+      return result.rows;
     },
     async close() {
       await new Promise<void>((resolve) => server.close(() => resolve()));
