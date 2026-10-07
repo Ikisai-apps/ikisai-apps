@@ -291,9 +291,8 @@ export function mountPerson(personId: string): ViewMount {
     replace(main, el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.persona.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'), host);
 
     /** Clave cerrada de cada bloque de la ficha para su id de «Sugerencias y QA». */
-    const BLOCK_KEYS: Record<string, string> = { blockBasic: 'ficha', blockPrivate: 'contacto', blockRecords: 'documentacion', blockTeams: 'equipos', blockAccount: 'cuenta' };
     function block(title: string, id: string, body: (HTMLElement | null)[], action?: HTMLElement | null): HTMLElement {
-      return el('section', { class: 'card personblock', id, 'data-feedback-id': `central.persona.${BLOCK_KEYS[id] ?? 'bloque'}`, 'data-feedback-label': title },
+      return el('section', { class: 'card personblock', id },
         el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
     }
     const kv = (label: string, value: string | null | undefined) => (value ? el('div', { class: 'kv' }, el('dt', null, label), el('dd', null, value)) : null);
@@ -362,6 +361,11 @@ export function mountPerson(personId: string): ViewMount {
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
       replace(host, head, basic, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
+      fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
+      fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');
+      fbMark(host.querySelector('#blockPrivate'), 'central.persona.contacto', 'Contacto y vinculación');
+      fbMark(host.querySelector('#blockRecords'), 'central.persona.documentacion', 'Documentación y formación');
+      fbMark(host.querySelector('#blockAccount'), 'central.persona.cuenta', 'Cuenta');
     }
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
@@ -595,7 +599,7 @@ export function mountPerson(personId: string): ViewMount {
         const s = el('select', { id: `ga-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
           ...(['reader', 'editor', 'owner'] as Role[]).map((r) => el('option', { value: r }, ROLE_LABELS[r]))) as HTMLSelectElement;
         selects.set(app.id, s);
-        fbMark(s, `central.persona.cuenta.dar.rol_${app.id}`, `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
+        fbMark(s, 'central.persona.cuenta.dar.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
         return el('label', { class: 'approw', 'data-feedback-id': 'central.persona.cuenta.dar.app', 'data-feedback-label': 'Acceso a una app' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, ''))), s);
       });
       const submit = el('button', { class: 'primary', type: 'submit', form: 'giveForm', id: 'giveSubmit', 'data-feedback-id': 'central.persona.cuenta.dar.enviar', 'data-feedback-label': 'Dar cuenta' }, 'Dar cuenta') as HTMLButtonElement;

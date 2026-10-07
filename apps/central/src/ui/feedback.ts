@@ -4,7 +4,8 @@
  * Estas funciones son para los nodos que crea el kit (filas de lista, hojas) y no admiten atributos propios;
  * en el resto de elementos los atributos se escriben directamente en el `el(...)`.
  */
-export function fbMark<T extends Element>(node: T, id: string, label: string): T {
+export function fbMark<T extends Element | null>(node: T, id: string, label: string): T {
+  if (!node) return node;
   node.setAttribute('data-feedback-id', id);
   node.setAttribute('data-feedback-label', label);
   return node;

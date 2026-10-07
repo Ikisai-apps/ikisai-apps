@@ -2,6 +2,7 @@ import type { SyncClient } from '@ikisai/sync-client';
 import { el, icon, openSheet, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
 import { formatKpi, formatPeriod, validateOperations, type KpiState } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
+import { fbMark } from './feedback.ts';
 
 interface DashboardItem {
   app: string; kpi: string; label: string; value: number | null; unit: string; period: string; periodStart: string | null; periodEnd: string | null;
@@ -81,10 +82,10 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       const rows = await client.list(T.kpiTargets);
       const current = rows.find((r) => r.kpi === i.kpi && r.period === '*') as Record<string, any> | undefined;
       let sheet: Sheet | null = null;
-      const num = (id: string, v: unknown, fb: string, fl: string) => el('input', { id, 'data-feedback-id': `central.direccion.objetivo.${fb}`, 'data-feedback-label': fl, type: 'number', step: 'any', inputmode: 'decimal', value: v === null || v === undefined ? '' : String(v) }) as HTMLInputElement;
-      const target = num('k-target', current?.target, 'objetivo', 'Objetivo');
-      const warn = num('k-warn', current?.warn_at, 'atencion', 'Umbral de atención');
-      const critical = num('k-critical', current?.critical_at, 'critico', 'Umbral crítico');
+      const num = (id: string, v: unknown) => el('input', { id, type: 'number', step: 'any', inputmode: 'decimal', value: v === null || v === undefined ? '' : String(v) }) as HTMLInputElement;
+      const target = fbMark(num('k-target', current?.target), 'central.direccion.objetivo.objetivo', 'Objetivo');
+      const warn = fbMark(num('k-warn', current?.warn_at), 'central.direccion.objetivo.atencion', 'Umbral de atención');
+      const critical = fbMark(num('k-critical', current?.critical_at), 'central.direccion.objetivo.critico', 'Umbral crítico');
       const direction = el('select', { id: 'k-direction', 'data-feedback-id': 'central.direccion.objetivo.sentido', 'data-feedback-label': 'Sentido' },
         el('option', { value: 'up', selected: (current?.direction ?? i.direction ?? 'up') === 'up' }, 'Más es mejor'),
         el('option', { value: 'down', selected: (current?.direction ?? i.direction) === 'down' }, 'Menos es mejor')) as HTMLSelectElement;

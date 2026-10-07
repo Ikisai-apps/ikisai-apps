@@ -23,6 +23,8 @@
 
 - 2026-10-07 · **Feedback y uso (fase 4)**: «Sugerencias y QA», revisor y lanzador; unos 400 `data-feedback-id` en todas las pantallas, `data-feedback-ignore` en datos personales; `createUsage` con aviso y 11 operaciones con `usage.run`/`track`. Pruebas `tests/central/feedback-ids.test.ts` y `feedback.spec.ts`; el servidor de pruebas acepta el aviso de uso por defecto.
 
+- 2026-10-07 · Kit 0.18.2: ids de feedback fijos (el catálogo de la publicación los recoge todos: 471 funciones, 0 dinámicas), comprobado en `tests/central/feedback-ids.test.ts`.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.

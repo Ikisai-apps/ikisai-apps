@@ -25,7 +25,7 @@ export interface ViewContext extends ShellContext {
   /** Administración común (solo la usa quien es owner de Central). */
   admin: AdminApi;
   isAdmin: boolean;
-  /** Uso semántico (USO.md): `usage.run('central.<pantalla>.<…>', fn)` en las operaciones importantes. */
+  /** Uso semántico (USO.md): `usage.run` con el id de la operación (`central.` + pantalla + operación) en las importantes. */
   usage: Usage;
   navigate(hash: string): void;
   /** Cierra sesión con la misma confirmación que el botón de la cabecera. */
@@ -63,6 +63,22 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/accesos/agentes': { title: 'Agentes', slug: 'accesos', mount: mountAccess('agentes'), admin: true },
   '#/accesos/registro': { title: 'Registro de accesos', slug: 'accesos', mount: mountAccess('registro'), admin: true },
 };
+
+/** Raíz de la ruta de etiquetas por pantalla, con ids fijos (el catálogo de la publicación solo recoge literales). */
+function markScreen(main: HTMLElement, slug: string): void {
+  switch (slug) {
+    case 'inicio': fbMark(main, 'central.inicio', 'Inicio'); break;
+    case 'conflictos': fbMark(main, 'central.conflictos', 'Conflictos'); break;
+    case 'entidad': fbMark(main, 'central.entidad', 'Entidad'); break;
+    case 'decisiones': fbMark(main, 'central.decisiones', 'Decisiones'); break;
+    case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
+    case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
+    case 'equipos': fbMark(main, 'central.equipos', 'Equipos'); break;
+    case 'cumplimiento': fbMark(main, 'central.cumplimiento', 'Cumplimiento'); break;
+    case 'obligacion': fbMark(main, 'central.obligacion', 'Obligación'); break;
+    case 'accesos': fbMark(main, 'central.accesos', 'Accesos'); break;
+  }
+}
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Central. */
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
@@ -128,14 +144,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const logoutButton = shell.header.querySelector('#logoutButton');
   if (logoutButton) fbMark(logoutButton, 'central.cabecera.cerrar_sesion', 'Cerrar sesión');
   fbMark(shell.nav, 'central.navegacion', 'Navegación');
-  const NAV_IDS: Record<string, [string, string]> = {
-    '#/': ['central.navegacion.inicio', 'Inicio'], '#/cumplimiento': ['central.navegacion.cumplimiento', 'Cumplimiento'],
-    '#/personas': ['central.navegacion.personas', 'Personas'], '#/accesos': ['central.navegacion.accesos', 'Accesos'],
-  };
-  for (const link of shell.nav.querySelectorAll<HTMLElement>('a.navbtn')) {
-    const mark = NAV_IDS[link.dataset.hash ?? ''];
-    if (mark) fbMark(link, mark[0], mark[1]);
-  }
+  // Ids fijos (el catálogo de la publicación solo recoge literales: kit 0.18.2).
+  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/"]'), 'central.navegacion.inicio', 'Inicio');
+  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/cumplimiento"]'), 'central.navegacion.cumplimiento', 'Cumplimiento');
+  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/personas"]'), 'central.navegacion.personas', 'Personas');
+  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/accesos"]'), 'central.navegacion.accesos', 'Accesos');
   fbMark(shell.banners, 'central.avisos', 'Avisos');
 
   function paintBanners(status: SyncStatus): void {
@@ -205,7 +218,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin, usage });
     // La pantalla es la raíz de la ruta de etiquetas («Persona › Documentación › Adjuntar») y el nodo de reserva.
     screen = { id: `central.${entry.slug}`, label: entry.title };
-    fbMark(main, screen.id, screen.label);
+    markScreen(main, entry.slug);
     if (!personId && !requirementId) document.title = `${entry.title} · Ikisai Central`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
