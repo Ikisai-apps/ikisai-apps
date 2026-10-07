@@ -14,7 +14,7 @@ const SRC = path.resolve(here, '../../apps/invoices/src');
 const PATTERN = /^invoices(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `invoices.…` del código que no son ids de feedback: procedimientos, lecturas y tablas del servidor. */
-const NOT_IDS = /^invoices\.(issue|rectify|annul|annul_issued|validate|import_v1|create_export|mark_delivered|archive_period|close_series|take_issuer|vf_records_of|document_text|[a-z_]+_summary|customers|issued_[a-z_]+|invoices|suppliers|allocations|invoice_[a-z_]+|tax_lines|exports|export_items|supplier_templates)$/;
+const NOT_IDS = /^invoices\.(issue|rectify|series_start|annul|annul_issued|validate|import_v1|create_export|mark_delivered|archive_period|close_series|take_issuer|vf_records_of|document_text|[a-z_]+_summary|customers|issued_[a-z_]+|invoices|suppliers|allocations|invoice_[a-z_]+|tax_lines|exports|export_items|supplier_templates)$/;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

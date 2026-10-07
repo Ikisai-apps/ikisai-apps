@@ -859,6 +859,7 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
   const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const year = new Date().toLocaleDateString('sv-SE').slice(0, 4);
+  const yy = year.slice(2);
   api.setEntity({ entity_id: '44444444-4444-4444-8444-444444444444', entity_revision: 3, legal_name: 'Ikisai Retiros SL', trade_name: 'Ikisai', tax_id: 'B12345674',
     address_line: 'Calle Prueba 1', postal_code: '28001', city: 'Madrid', province: 'Madrid', country: 'ES', email: null, phone: null, website: null, logo_file_id: null });
   try {
@@ -957,6 +958,9 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await ficha.locator('#rectifyIssued').click();
       // Sin serie de rectificativas: lleva a crearla
       const settings = page.getByRole('dialog', { name: 'Series y VERI*FACTU' });
+      // Rectificativas con el formato de la hoja (ronda 47): R_01_26, un dato de la serie
+      await settings.locator('#newSeriesFormat-rectificativa').selectOption('{serie}_{n:2}_{aa}');
+      await expect(settings.locator('#newSeriesNext-rectificativa')).toContainText(`Siguiente: R_01_${yy}`);
       await settings.locator('#createSeries-rectificativa').click();
       await expect(settings).toBeHidden({ timeout: 20_000 });
       await synced(page);
@@ -981,13 +985,13 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await page.locator('#issuedList .row', { hasText: 'Borrador R' }).click();
       ficha = page.locator('.sheet[role="dialog"]');
       await ficha.locator('#issueDraft').click();
-      await expect(page.getByRole('alertdialog')).toContainText(`R${year}-0001`);
+      await expect(page.getByRole('alertdialog')).toContainText(`R_01_${yy}`);
       await page.getByRole('alertdialog').getByRole('button', { name: 'Emitir' }).click();
-      await expect(page.locator('#issuedList')).toContainText(`R${year}-0001`, { timeout: 20_000 });
+      await expect(page.locator('#issuedList')).toContainText(`R_01_${yy}`, { timeout: 20_000 });
       await synced(page);
       expect(api.rows('invoices.issued_invoices').find((i) => i.full_number === `F${year}-0001`)).toMatchObject({ status: 'rectificada' });
       await page.keyboard.press('Escape').catch(() => undefined);
-      await page.locator('#issuedList .row', { hasText: `R${year}-0001` }).click();
+      await page.locator('#issuedList .row', { hasText: `R_01_${yy}` }).click();
       ficha = page.locator('.sheet[role="dialog"]');
       await ficha.locator('#printInvoice').click();
       const doc = page.locator('#issuedDocumentView');
@@ -996,7 +1000,7 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.locator('#issuedList .row', { hasText: `F${year}-0001 · Cliente Emisión SL` }).click();
-      await expect(page.locator('.sheet[role="dialog"]').locator('#issuedRectifiedBy')).toContainText(`R${year}-0001`);
+      await expect(page.locator('.sheet[role="dialog"]').locator('#issuedRectifiedBy')).toContainText(`R_01_${yy}`);
     });
 
     await test.step('el cliente guardado se busca y rellena NIF y domicilio', async () => {

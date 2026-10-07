@@ -887,3 +887,40 @@ test('campos de archivo (§3.9): documentos de facturas legales, extracciones y 
   const gc = await app.t.db.query(`select 1 from core.file_gc_apps where app = 'invoices'`);
   assert.equal(gc.rows.length, 1);
 });
+
+test('numeración como dato de la serie (ronda 47): continuar F_02_26 con F_03_26, sin huecos; año de la serie; sin recortar', async () => {
+  const today = (await app.t.db.query<{ d: string; y: number }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d, extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!;
+  const yy = String(today.y % 100).padStart(2, '0');
+  const fmt = await app.t.db.query<{ a: string; b: string }>(`select invoices.format_issued_number('{serie}_{n:2}_{aa}', 'F', 2026, 3) a, invoices.format_issued_number('{serie}_{n:2}_{aa}', 'F', 2026, 100) b`);
+  assert.deepEqual(fmt.rows[0], { a: 'F_03_26', b: 'F_100_26' });
+  // Serie con el formato de la hoja y su año; el último emitido fuera de Finance fue el 2
+  const g = uuid();
+  await ok([insert('invoices.issued_series', g, { code: 'G', kind: 'ordinaria', mode: 'emision', format: '{serie}_{n:2}_{aa}', yearly: true, valid_year: today.y })]);
+  await rejected([call('invoices.series_start', { code: 'G', last_number: 2 })], 'FORBIDDEN', 403, app.tokens.reader);
+  const start = await ok([call('invoices.series_start', { code: 'G', last_number: 2, year: today.y })]);
+  assert.equal(start.results[0].result.next, `G_03_${yy}`);
+  const draft = async (description: string) => {
+    const id = uuid();
+    await ok([
+      insert('invoices.issued_invoices', id, { series_code: 'G', status: 'borrador', issue_date: today.d, description, recipient_name: 'Cliente Hoja SL', recipient_tax_id: 'B77777777',
+        recipient_address: { line: 'Calle 7', postal_code: '28007', city: 'Madrid' } }),
+      insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: id, description: 'Servicio', net_amount: 10, vat_rate: 21 }),
+    ]);
+    return id;
+  };
+  const first = (await ok([call('invoices.issue', { id: await draft('Primera de la serie G') })])).results[0].result;
+  const second = (await ok([call('invoices.issue', { id: await draft('Segunda de la serie G') })])).results[0].result;
+  assert.deepEqual([first.full_number, second.full_number], [`G_03_${yy}`, `G_04_${yy}`]);
+  // Con emitidas, el comienzo ya no se cambia
+  await rejected([call('invoices.series_start', { code: 'G', last_number: 10 })], 'SERIES_IN_USE', 409);
+  // Una serie de otro año no emite (la de 2027 será otra serie, creada en su año)
+  await ok([insert('invoices.issued_series', uuid(), { code: 'GV', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', valid_year: today.y - 1 })]);
+  const old = uuid();
+  await ok([
+    insert('invoices.issued_invoices', old, { series_code: 'GV', status: 'borrador', issue_date: today.d, description: 'Serie vieja', recipient_name: 'Cliente', recipient_tax_id: 'B77777777',
+      recipient_address: { line: 'Calle 7', postal_code: '28007', city: 'Madrid' } }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: old, description: 'x', net_amount: 1, vat_rate: 21 }),
+  ]);
+  await rejected([call('invoices.issue', { id: old })], 'SERIES_YEAR_MISMATCH');
+  await rejected([insert('invoices.issued_series', uuid(), { code: 'GX', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', valid_year: 1999 })], 'INVALID_FIELDS');
+});

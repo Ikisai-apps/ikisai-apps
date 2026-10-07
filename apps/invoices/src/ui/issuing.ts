@@ -22,11 +22,18 @@ import { MISSING_ENTITY, fetchEntity, issuerLines, numberOf, type IssuedData } f
 import type { ViewContext } from './shell.ts';
 
 const RECIPIENT_KIND_LABELS: Record<string, string> = { empresa: 'Empresa', profesional: 'Profesional (autónomo)', particular: 'Particular' };
-const DEFAULT_FORMAT = '{serie}{año}-{n:4}';
 
 export function emissionSeries(data: IssuedData, kind: LocalIssuedSeries['kind'] = 'ordinaria'): LocalIssuedSeries[] {
-  return data.series.filter((s) => !s.deleted_at && s.mode === 'emision' && s.active && !s.closed_at && s.kind === kind).sort((a, b) => a.code.localeCompare(b.code));
+  const year = Number(todayIso().slice(0, 4));
+  return data.series.filter((s) => !s.deleted_at && s.mode === 'emision' && s.active && !s.closed_at && s.kind === kind && (s.valid_year === null || s.valid_year === undefined || s.valid_year === year))
+    .sort((a, b) => a.code.localeCompare(b.code));
 }
+
+/** Formatos que se ofrecen al crear una serie (el patrón es un dato de la serie, no del código). */
+const SERIES_FORMATS: Array<[string, string]> = [
+  ['{serie}{año}-{n:4}', 'F2026-0001 · serie, año y cuatro cifras'],
+  ['{serie}_{n:2}_{aa}', 'F_03_26 · como la hoja: número y año en dos cifras'],
+];
 
 /** El número que recibiría la siguiente emisión (orientativo: lo decide el servidor). */
 export function nextNumber(series: LocalIssuedSeries): string {
@@ -463,18 +470,53 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
     .catch(() => replace(vfState, 'Sin conexión: el estado del registro se verá al conectar.'));
 
   function createRow(kind: 'ordinaria' | 'rectificativa', suggested: string, label: string, buttonMark: FbMark): HTMLElement | null {
-    if (!canEdit || emission.some((s) => s.kind === kind && s.active && !s.closed_at)) return null;
+    if (!canEdit || emissionSeries(data, kind).length) return null;
+    const year = Number(todayIso().slice(0, 4));
     const code = el('input', { type: 'text', id: `newSeries-${kind}`, maxlength: '10', value: suggested, 'aria-label': `Código de la serie de ${label}` });
+    const format = select(`newSeriesFormat-${kind}`, SERIES_FORMATS, SERIES_FORMATS[0]![0], { 'aria-label': `Formato del número de ${label}` });
+    const last = el('input', { type: 'text', inputmode: 'numeric', id: `newSeriesLast-${kind}`, maxlength: '6', value: '0', 'aria-label': `Último número ya emitido de ${label}` });
+    const preview = el('span', { class: 'hint', id: `newSeriesNext-${kind}` });
+    const paintNext = () => {
+      const n = Number(last.value) || 0;
+      preview.textContent = `Siguiente: ${formatIssuedNumber(format.value, code.value.trim().toUpperCase() || suggested, year, n + 1)} · solo en ${year}`;
+    };
+    for (const input of [code, format, last]) input.addEventListener('input', paintNext);
+    format.addEventListener('change', paintNext);
+    paintNext();
     const button = el('button', { class: 'softbtn', type: 'button', id: `createSeries-${kind}`, onclick: async () => {
       const c = code.value.trim().toUpperCase();
       if (!/^[A-Z0-9-]{1,10}$/.test(c)) { toast('El código lleva letras, cifras o guiones.'); return; }
       if (live.some((s) => s.code.toUpperCase() === c)) { toast(`Ya existe la serie ${c}.`); return; }
-      if (await commitSafely(client, [{ op: 'insert', table: ISSUED_SERIES, id: crypto.randomUUID(), fields: { code: c, kind, mode: 'emision', format: DEFAULT_FORMAT, yearly: true, description: label } }],
-        `Serie ${c} creada.`)) await closeSheet(true);
+      const lastNumber = Number(last.value.trim() || '0');
+      if (!Number.isInteger(lastNumber) || lastNumber < 0) { toast('El último número emitido va en cifras (0 si no hay ninguno).'); return; }
+      const ops: RowOperation[] = [{ op: 'insert', table: ISSUED_SERIES, id: crypto.randomUUID(), fields: { code: c, kind, mode: 'emision', format: format.value, yearly: true, valid_year: year, description: label } }];
+      if (lastNumber > 0) ops.push({ op: 'call', procedure: 'invoices.series_start', args: { code: c, last_number: lastNumber, year } });
+      if (await commitSafely(client, ops, `Serie ${c} creada.`)) await closeSheet(true);
     } }, icon('plus', 16), `Crear serie de ${label}`);
     fb(code, { feedbackId: 'invoices.emitidas.series.codigo', feedbackLabel: 'Código de la serie' });
+    fb(format, { feedbackId: 'invoices.emitidas.series.formato', feedbackLabel: 'Formato del número' });
+    fb(last, { feedbackId: 'invoices.emitidas.series.ultimo_emitido', feedbackLabel: 'Último número ya emitido' });
     fb(button, buttonMark);
-    return el('div', { class: 'row2' }, code, button);
+    return el('div', { class: 'series-new' }, el('div', { class: 'row2' }, code, format), el('div', { class: 'row2' }, last, button), preview);
+  }
+
+  /** Una serie sin emitidas todavía admite cambiar su formato y su último número (p. ej. continuar la hoja: F_02_26 → F_03_26). */
+  async function adjustSeries(s: LocalIssuedSeries): Promise<void> {
+    const year = s.valid_year ?? Number(todayIso().slice(0, 4));
+    const format = select('adjustSeriesFormat', SERIES_FORMATS.some(([f]) => f === s.format) ? SERIES_FORMATS : [[s.format, s.format], ...SERIES_FORMATS], s.format, { 'aria-label': 'Formato del número' });
+    const last = el('input', { type: 'text', inputmode: 'numeric', id: 'adjustSeriesLast', maxlength: '6', value: String(s.counter_last ?? 0), 'aria-label': 'Último número ya emitido' });
+    fb(format, { feedbackId: 'invoices.emitidas.series.ajustar.formato', feedbackLabel: 'Formato del número' });
+    fb(last, { feedbackId: 'invoices.emitidas.series.ajustar.ultimo', feedbackLabel: 'Último número ya emitido' });
+    const ok = await confirmDialog({ title: `Ajustar la serie ${s.code}`, text: el('div', null,
+      el('p', null, `Solo mientras no haya emitido ninguna factura. La siguiente será la del último número más uno, en ${year}.`),
+      field('Formato', format), field('Último número ya emitido', last)), confirmLabel: 'Guardar' });
+    if (!ok) return;
+    const lastNumber = Number(last.value.trim() || '0');
+    if (!Number.isInteger(lastNumber) || lastNumber < 0) { toast('El último número emitido va en cifras.'); return; }
+    if (await commitSafely(client, [
+      { op: 'update', table: ISSUED_SERIES, id: s.id, expectedRevision: s.revision, fields: { format: format.value, valid_year: year } },
+      { op: 'call', procedure: 'invoices.series_start', args: { code: s.code, last_number: lastNumber, year } },
+    ], `Serie ${s.code}: la siguiente será ${formatIssuedNumber(format.value, s.code, year, lastNumber + 1)}.`)) await closeSheet(true);
   }
 
   async function closeSeries(s: LocalIssuedSeries): Promise<void> {
@@ -492,7 +534,11 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
     emission.length
       ? el('ul', { class: 'plain', id: 'emissionSeries' }, ...emission.map((s) => el('li', { dataset: { series: s.code } },
         el('strong', null, s.code), ` · ${s.kind === 'rectificativa' ? 'rectificativas' : 'facturas'} · siguiente ${nextNumber(s)}`,
-        s.closed_at ? ` · cerrada en ${s.closed_last_number}` : '')))
+        s.valid_year ? ` · solo ${s.valid_year}` : '',
+        s.closed_at ? ` · cerrada en ${s.closed_last_number}` : '',
+        canEdit && !s.closed_at && !data.invoices.some((i) => !i.deleted_at && i.status !== 'borrador' && i.series_code.toUpperCase() === s.code.toUpperCase())
+          ? fb(el('button', { class: 'linkbtn', type: 'button', dataset: { adjust: s.code }, onclick: () => void adjustSeries(s) }, 'Ajustar'), { feedbackId: 'invoices.emitidas.series.ajustar', feedbackLabel: 'Ajustar formato y comienzo' })
+          : null)))
       : el('p', { class: 'hint' }, 'Aún no hay series de emisión. Crea una para facturas y otra para rectificativas: el número tiene la forma F2026-0001, reinicia cada año y no cambia una vez emitida la primera.'),
     createRow('ordinaria', 'F', 'facturas', { feedbackId: 'invoices.emitidas.series.crear_facturas', feedbackLabel: 'Crear serie de facturas' }),
     createRow('rectificativa', 'R', 'rectificativas', { feedbackId: 'invoices.emitidas.series.crear_rectificativas', feedbackLabel: 'Crear serie de rectificativas' }),

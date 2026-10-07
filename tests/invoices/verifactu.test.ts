@@ -29,6 +29,11 @@ test('importes, codificación de URL y QR de cotejo', () => {
 test('formato del número de una serie de emisión', () => {
   assert.equal(formatIssuedNumber('{serie}{año}-{n:4}', 'F', 2026, 1), 'F2026-0001');
   assert.equal(formatIssuedNumber('{serie}-{año}-{n}', 'R', 2026, 12), 'R-2026-12');
+  // Numeración de la hoja del usuario (ronda 47): F_02_26 → F_03_26, sin recortar a partir de 100
+  assert.equal(formatIssuedNumber('{serie}_{n:2}_{aa}', 'F', 2026, 3), 'F_03_26');
+  assert.equal(formatIssuedNumber('{serie}_{n:2}_{aa}', 'F', 2026, 100), 'F_100_26');
+  assert.equal(formatIssuedNumber('{serie}_{n:2}_{aa}', 'R', 2026, 1), 'R_01_26');
+  assert.equal(validIssuedNumberFormat('{serie}_{n:2}_{aa}', 'F'), true);
   assert.equal(validIssuedNumberFormat('{serie}{año}-{n:4}', 'F'), true);
   assert.equal(validIssuedNumberFormat('{serie}{año}', 'F'), false);
   assert.equal(validIssuedNumberFormat('{serie}-ñ-{n}', 'F'), false);

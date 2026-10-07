@@ -361,7 +361,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     }
     if (table === 'invoices.issued_series') {
       row.kind = row.kind ?? 'ordinaria'; row.yearly = row.yearly ?? true; row.active = row.active ?? true; row.format = row.format ?? '{serie}-{año}-{n:4}';
-      row.mode = row.mode ?? 'registro'; row.counter_year = null; row.counter_last = 0; row.counter_last_date = null; row.closed_at = null; row.closed_last_number = null;
+      row.mode = row.mode ?? 'registro'; row.valid_year = row.valid_year ?? null; row.counter_year = null; row.counter_last = 0; row.counter_last_date = null; row.closed_at = null; row.closed_last_number = null;
     }
     if (table === 'invoices.issued_invoice_lines') { row.discount_amount = row.discount_amount ?? 0; row.tax = row.tax ?? 'iva'; row.position = row.position ?? 0; }
     if (table === 'invoices.issued_tax_lines') { row.regime_key = row.regime_key ?? '01'; row.position = row.position ?? 0; }
@@ -506,6 +506,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (inv.status !== 'borrador') throw new Fault(409, 'ISSUED_NOT_DRAFT', 'Esta factura ya está emitida.', { index });
       const series = [...stagedTable('invoices.issued_series').values()].find((x) => !x.deleted_at && String(x.code).toUpperCase() === String(inv.series_code).toUpperCase());
       if (!series || series.mode !== 'emision') throw new Fault(422, 'SERIES_NOT_ISSUING', 'Esa serie es de registro de otra herramienta.', { index });
+      if (series.valid_year && Number(series.valid_year) !== Number(new Date().toLocaleDateString('sv-SE').slice(0, 4))) throw new Fault(422, 'SERIES_YEAR_MISMATCH', 'Esa serie es de otro año.', { index });
       const lines = [...stagedTable('invoices.issued_invoice_lines').values()].filter((l) => l.issued_invoice_id === inv.id && !l.deleted_at)
         .sort((a, b) => Number(a.position) - Number(b.position));
       const missing = issueMissing(inv as never, lines.length);
@@ -558,6 +559,16 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         }
       }
       return { id: inv.id, full_number: fullNumber, issue_date: today, vf_hash: hash, vf_status: 'no_enviar' };
+    }
+    if (op.procedure === 'invoices.series_start') {
+      const series = [...stagedTable('invoices.issued_series').values()].find((x) => !x.deleted_at && String(x.code).toUpperCase() === String(args.code ?? '').toUpperCase());
+      if (!series || series.mode !== 'emision') throw new Fault(422, 'SERIES_NOT_ISSUING', 'Esa serie no es de emisión.', { index });
+      const used = [...stagedTable('invoices.issued_invoices').values()].some((i) => !i.deleted_at && i.status !== 'borrador' && String(i.series_code).toUpperCase() === String(series.code).toUpperCase());
+      if (used) throw new Fault(409, 'SERIES_IN_USE', 'La serie ya tiene facturas emitidas.', { index });
+      const year = Number(args.year ?? series.valid_year ?? new Date().getFullYear());
+      Object.assign(series, { counter_year: series.yearly ? year : null, counter_last: Number(args.last_number), counter_last_date: null, revision: series.revision + 1, updated_at: nowIso() });
+      batchChanges.push(record('invoices.issued_series', 'update', series, nextCursor, batchChanges.length + 1, requestId, actorId));
+      return { code: series.code, last_number: series.counter_last };
     }
     if (op.procedure === 'invoices.rectify') {
       const o = stagedTable('invoices.issued_invoices').get(String(args.id));

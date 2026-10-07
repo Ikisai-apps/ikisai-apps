@@ -77,9 +77,12 @@ export function vfQrUrl(env: 'pruebas' | 'produccion', issuerTaxId: string, numS
   return `${base}/wlpl/TIKE-CONT/ValidarQR?nif=${vfUrlEncode(issuerTaxId)}&numserie=${vfUrlEncode(numSerie)}&fecha=${vfUrlEncode(issueDate)}&importe=${vfAmount(amountTotal)}`;
 }
 
-/** Formato del número de una serie de emisión: {serie}, {año} y {n} o {n:K}. Misma regla que invoices.format_issued_number. */
+/**
+ * Formato del número de una serie de emisión: {serie}, {año}, {aa} (año en dos cifras) y {n} o {n:K} (ceros hasta K cifras,
+ * sin recortar: `F_100_26`). Misma regla que invoices.format_issued_number.
+ */
 export function formatIssuedNumber(format: string, code: string, year: number, n: number): string {
-  const withSeries = format.replaceAll('{serie}', code.trim()).replaceAll('{año}', String(year));
+  const withSeries = format.replaceAll('{serie}', code.trim()).replaceAll('{año}', String(year)).replaceAll('{aa}', String(year % 100).padStart(2, '0'));
   const padded = withSeries.match(/\{n:(\d)\}/);
   return padded ? withSeries.replace(/\{n:\d\}/g, String(n).padStart(Number(padded[1]), '0')) : withSeries.replaceAll('{n}', String(n));
 }
