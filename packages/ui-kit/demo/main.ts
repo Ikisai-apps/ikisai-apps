@@ -733,7 +733,7 @@ const fbApi = (async (path: string, init: { method?: string; json?: unknown } = 
     return { nodes: [...nodes.values()] };
   }
   if (path.startsWith('/feedback?')) {
-    return { items: st.reports.filter((r) => (!q.get('node') || r.node.id === q.get('node')) && (!q.get('status') || disp(r) === q.get('status'))).map(toReport) };
+    return { items: st.reports.filter((r) => (!q.get('node') || r.node.id === q.get('node')) && (!q.get('status') || q.get('status') === 'all' || disp(r) === q.get('status'))).map(toReport) };
   }
   const action = /^\/feedback\/([^/?]+)\/(verify|reopen|dismiss)$/.exec(path);
   if (action) {

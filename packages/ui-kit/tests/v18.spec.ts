@@ -61,8 +61,8 @@ test.describe('ui-kit v0.15 · feedback: composer, borradores y bandeja', () => 
     const context = JSON.stringify(st.reports[0].context);
     expect(context).not.toContain('Alergia');
     expect(context).not.toContain('Juan');
-    expect(st.reports[0].context.route).toBe('#/feedback');
-    expect(st.reports[0].context.nodeId).toBe('demo.reservation.guests.add');
+    expect(st.reports[0].context.route).toBe('/feedback');
+    expect(st.reports[0].context.steps.length).toBeGreaterThan(0);
   });
 
   test('sin red queda «Pendiente de enviar», sobrevive a recargar y al volver la red se envía una sola vez', async ({ page }) => {
@@ -147,7 +147,7 @@ test.describe('ui-kit v0.15 · feedback: composer, borradores y bandeja', () => 
     await composer(page).locator('.fb-send').click();
     await expect(page.locator('.toast.show')).toContainText('Enviado');
     const sent = (await server(page)).reports[0].context;
-    expect(sent.httpFailures.some((f: { path: string }) => f.path === '/no-existe/:id/x')).toBe(true);
+    expect(sent.http.some((f: { path: string }) => f.path === '/no-existe/:id/x')).toBe(true);
     expect(JSON.stringify(sent)).not.toContain('secreto');
     expect(new TextEncoder().encode(JSON.stringify(sent)).length).toBeLessThanOrEqual(8192);
   });

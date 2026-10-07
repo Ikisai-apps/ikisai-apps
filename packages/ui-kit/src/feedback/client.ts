@@ -17,7 +17,7 @@ export type FeedbackApi = <T = unknown>(path: string, init?: FeedbackApiInit) =>
 export interface FeedbackReport {
   id: string; code: string; originApp: string; subject: string; intent: string; message: string;
   node: { id: string; path: string[] } | null; status: string; display: string; supportersCount: number; mine: boolean;
-  createdAt: string; verifiedAt?: string | null; verifiedBuild?: string | null;
+  createdAt: string; verifiedAt?: string | null; verifiedBuild?: string | null; releasedBuild?: string | null;
   /** «Me bloquea» (FEEDBACK.md §8.6). */
   blocking?: boolean;
 }
@@ -38,7 +38,7 @@ export interface FeedbackClient {
   pending(): Promise<FeedbackOutboxItem[]>;
   openReports(nodeId: string): Promise<FeedbackReport[]>;
   support(reportId: string): Promise<number>;
-  /** Reportes corregidos a la espera de que alguien compruebe (`GET feedback?status=pending_verify&app=`). */
+  /** Reportes corregidos que esta persona puede comprobar: los suyos y, para el owner, todos (`status=pending_verify&pin=true`). */
   pendingVerify(): Promise<FeedbackReport[]>;
   verify(reportId: string, build: string | null): Promise<void>;
   reopen(reportId: string, message?: string): Promise<void>;
@@ -132,7 +132,7 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
       catch { return []; }
     },
     async pendingVerify() {
-      try { return (await options.api<{ items: FeedbackReport[] }>(`/feedback?status=pending_verify&app=${encodeURIComponent(options.app)}`)).items ?? []; }
+      try { return (await options.api<{ items: FeedbackReport[] }>(`/feedback?status=pending_verify&pin=true&app=${encodeURIComponent(options.app)}`)).items ?? []; }
       catch { return []; }
     },
     async verify(reportId, build) { await options.api(`/feedback/${encodeURIComponent(reportId)}/verify`, { method: 'POST', json: { build } }); },

@@ -25,7 +25,8 @@ export interface FeedbackReportDetail {
   report: FeedbackReport;
   attachments: { id: string; url: string }[];
   tasks: { taskId: string; status: string; sequence?: number | null }[];
-  agentBlock: string;
+  /** Solo en apps internas (los portales no reciben el diagnóstico). */
+  agentBlock?: string;
 }
 
 export interface FeedbackCenterOptions {
@@ -155,7 +156,7 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
       b.open ? el('span', { class: 'fb-count', title: 'Abiertos' }, String(b.open)) : null,
       b.pendingVerify ? el('span', { class: 'fb-count verify', title: 'Pendientes de verificar' }, icon('check', 12), String(b.pendingVerify)) : null);
     const openNode = (b: Branch, trail: string[]) => {
-      if (b.nodeId) void list(`/feedback?node=${encodeURIComponent(b.nodeId)}&limit=50`, trail.join(' › '), 'Sin reportes en este punto.', () => void show('map'));
+      if (b.nodeId) void list(`/feedback?node=${encodeURIComponent(b.nodeId)}&status=all&limit=50`, trail.join(' › '), 'Sin reportes en este punto.', () => void show('map'));
     };
     const row = (b: Branch, trail: string[], depth: number): HTMLElement => {
       const kids = [...b.children.values()];
@@ -250,12 +251,13 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
         el('p', { class: 'fb-card-meta' },
           el('span', null, when(r.createdAt)),
           r.supportersCount > 1 ? el('span', null, `${r.supportersCount} personas`) : null,
+          r.releasedBuild && !r.verifiedBuild ? el('span', null, `Corregido en ${r.releasedBuild}`) : null,
           r.verifiedBuild ? el('span', null, `Verificado en ${r.verifiedBuild}`) : null),
         detail.attachments?.length ? el('div', { class: 'fb-images' }, ...detail.attachments.map((a) => el('a', { class: 'fb-thumb', href: a.url, target: '_blank', rel: 'noopener' }, el('img', { src: a.url, alt: 'Imagen adjunta', loading: 'lazy' })))) : null,
         detail.tasks?.length ? el('ul', { class: 'fb-tasks' }, ...detail.tasks.map((t) => el('li', null, `Tarea ${t.sequence ?? t.taskId} · ${t.status}`))) : null,
-        el('div', { class: 'fb-agent' },
-          el('button', { type: 'button', class: 'ghost fb-copy', onclick: async () => { toast((await copyText(detail.agentBlock)) ? 'Copiado: pégalo en Claude.' : 'No se pudo copiar.'); } }, icon('copy', 16), 'Copiar para Claude'),
-          el('button', { type: 'button', class: 'ghost fb-download', onclick: () => download(`${r.code}.md`, detail.agentBlock) }, icon('download', 16), 'Descargar .md')),
+        detail.agentBlock ? el('div', { class: 'fb-agent' },
+          el('button', { type: 'button', class: 'ghost fb-copy', onclick: async () => { toast((await copyText(detail.agentBlock!)) ? 'Copiado: pégalo en Claude.' : 'No se pudo copiar.'); } }, icon('copy', 16), 'Copiar para Claude'),
+          el('button', { type: 'button', class: 'ghost fb-download', onclick: () => download(`${r.code}.md`, detail.agentBlock!) }, icon('download', 16), 'Descargar .md')) : null,
         reason, status,
         el('div', { class: 'fb-foot' },
           editor && r.status === 'open' ? dismiss : null,

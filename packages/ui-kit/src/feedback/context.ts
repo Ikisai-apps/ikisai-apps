@@ -1,15 +1,17 @@
 /**
- * Contexto técnico con lista blanca (especificación §9 y §10; FEEDBACK.md §2.7 y §6): versión de `version.json`, ruta
- * saneada, nodo, viewport, clase de dispositivo, en línea, rol, service worker, últimos errores de JS y últimos fallos HTTP.
- * Nunca HTML, texto de la página, valores de campos, almacenamiento, cookies, cabeceras ni cuerpos. Como mucho 8 KB.
+ * Contexto técnico con lista blanca (especificación §9 y §10; FEEDBACK.md §2.7, §6 y §8.5), con los nombres de
+ * `cleanContext` de la Edge (contrato §3.7): `release` y `commit` de `version.json`, ruta saneada, clase de dispositivo,
+ * viewport, en línea, rol, idioma, service worker, estado de sincronización, últimos 5 errores de JS (`errors`), últimos 5
+ * fallos HTTP (`http`) y últimos 10 pasos (`steps`: ruta y nodo). Nunca HTML, texto de la página, valores de campos,
+ * almacenamiento, cookies, cabeceras ni cuerpos. Como mucho 8 KB.
  */
 import { FEEDBACK_MAX_CONTEXT_BYTES } from './constants.ts';
 import type { FeedbackNode } from './node.ts';
 
 const MAX_EVENTS = 5;
 const MAX_STEPS = 10;
-/** Pasos para reproducir (FEEDBACK.md §8.5): ruta y nodo de las últimas acciones, nunca valores. */
-const steps: ({ at: string; kind: 'route'; route: string } | { at: string; kind: 'tap'; nodeId: string; path: string[] })[] = [];
+/** Pasos para reproducir (FEEDBACK.md §8.5): «abrió» una ruta o «tocó» un nodo; nunca valores ni etiquetas. */
+const steps: { at: string; action: 'abrió' | 'tocó'; route: string; node?: string }[] = [];
 const errors: { at: string; type: string; message: string }[] = [];
 const httpFailures: { at: string; method: string; path: string; status: number }[] = [];
 let observing = false;
@@ -30,10 +32,10 @@ export function sanitizePath(raw: string): string {
   }).join('/').slice(0, 160);
 }
 
-/** Ruta de la app saneada: la del hash si la app navega por hash, si no la del `pathname`. */
+/** Ruta de la app saneada: la del hash si la app navega por hash (sin `#`: la Edge corta en `#`), si no la del `pathname`. */
 export function sanitizedRoute(): string {
   const hash = location.hash.replace(/^#/, '').split('?')[0]!;
-  return hash ? `#${sanitizePath(hash.startsWith('/') ? hash : `/${hash}`)}` : sanitizePath(location.pathname);
+  return hash ? sanitizePath(hash.startsWith('/') ? hash : `/${hash}`) : sanitizePath(location.pathname);
 }
 
 function push<T>(list: T[], item: T): void {
@@ -45,17 +47,15 @@ function push<T>(list: T[], item: T): void {
 export function observeFeedbackContext(): void {
   if (observing) return;
   observing = true;
-  const route = () => { const r = sanitizedRoute(); const last = steps[steps.length - 1]; if (!last || last.kind !== 'route' || last.route !== r) { steps.push({ at: new Date().toISOString(), kind: 'route', route: r }); if (steps.length > MAX_STEPS) steps.shift(); } };
+  const step = (s: (typeof steps)[number]) => { steps.push(s); if (steps.length > MAX_STEPS) steps.shift(); };
+  const route = () => { const r = sanitizedRoute(); const last = steps[steps.length - 1]; if (!last || last.route !== r) step({ at: new Date().toISOString(), action: 'abrió', route: r }); };
   route();
   window.addEventListener('hashchange', route);
   window.addEventListener('popstate', route);
   document.addEventListener('click', (e) => {
     const node = e.target instanceof Element ? e.target.closest('[data-feedback-id]') : null;
     if (!node) return;
-    const chain: string[] = [];
-    for (let el: Element | null = node; el; el = el.parentElement) if (el.hasAttribute('data-feedback-id')) chain.unshift(el.getAttribute('data-feedback-label') || (el.getAttribute('data-feedback-id') ?? '').split('.').pop() || '');
-    steps.push({ at: new Date().toISOString(), kind: 'tap', nodeId: node.getAttribute('data-feedback-id')!, path: chain.slice(-6) });
-    if (steps.length > MAX_STEPS) steps.shift();
+    step({ at: new Date().toISOString(), action: 'tocó', route: sanitizedRoute(), node: node.getAttribute('data-feedback-id')! });
     setTimeout(route, 0);
   }, true);
   window.addEventListener('error', (e) => push(errors, { at: new Date().toISOString(), type: (e.error as Error | undefined)?.name ?? 'Error', message: String(e.message ?? '').slice(0, 160) }));
@@ -92,7 +92,7 @@ export interface FeedbackContextInput {
   node?: FeedbackNode | null;
   role?: string | null;
   /** Estado de sincronización de `sync-client` (`getSyncSummary()`); solo se copian los campos de la lista blanca. */
-  sync?: { pending?: number; conflicts?: number; rejected?: number; lastSyncAt?: string | null; online?: boolean } | null;
+  sync?: { pending?: number; conflicts?: number; lastSyncAt?: string | null; cursor?: number | null } | null;
 }
 
 /** Contexto listo para `POST feedback` (`context`), recortado a 8 KB quitando primero lo menos útil. */
@@ -100,24 +100,23 @@ export async function collectFeedbackContext(input: FeedbackContextInput): Promi
   const version = await appVersion();
   const sw = navigator.serviceWorker?.controller?.scriptURL;
   const context: Record<string, unknown> = {
-    app: input.app,
-    appVersion: version?.release ?? null,
-    commit: version?.commit ?? null,
+    release: version?.release,
+    commit: version?.commit,
     route: sanitizedRoute(),
-    nodeId: input.node?.id ?? null,
-    nodePath: input.node?.path ?? [],
     deviceClass: matchMedia('(pointer: coarse)').matches ? (innerWidth < 768 ? 'mobile' : 'tablet') : 'desktop',
     viewport: { width: innerWidth, height: innerHeight },
     online: navigator.onLine,
-    role: input.role ?? null,
-    serviceWorker: sw ? sanitizePath(sw) : null,
-    sync: input.sync ? { pending: input.sync.pending ?? null, conflicts: input.sync.conflicts ?? null, rejected: input.sync.rejected ?? null, lastSyncAt: input.sync.lastSyncAt ?? null, online: input.sync.online ?? null } : null,
+    role: input.role ?? undefined,
+    language: navigator.language,
+    userAgent: navigator.userAgent.slice(0, 200),
+    serviceWorker: sw ? sanitizePath(sw) : undefined,
+    sync: input.sync ? { pending: input.sync.pending, conflicts: input.sync.conflicts, lastSyncAt: input.sync.lastSyncAt ?? undefined, cursor: input.sync.cursor ?? undefined } : undefined,
     steps: steps.slice(),
     errors: errors.slice(),
-    httpFailures: httpFailures.slice(),
+    http: httpFailures.slice(),
   };
   const size = () => new Blob([JSON.stringify(context)]).size;
-  for (const key of ['steps', 'errors', 'httpFailures'] as const) {
+  for (const key of ['steps', 'errors', 'http'] as const) {
     while (size() > FEEDBACK_MAX_CONTEXT_BYTES && (context[key] as unknown[]).length) (context[key] as unknown[]).shift();
   }
   return context;

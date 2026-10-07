@@ -116,9 +116,9 @@ test.describe('ui-kit v0.15 · feedback: verificación, pasos, «Me bloquea» y 
     await sendOne(page, 'No deja añadir', true);
     const report = (await server(page)).reports[0];
     expect(report.blocking).toBe(true);
-    const steps = report.context.steps as { kind: string; nodeId?: string; route?: string }[];
-    expect(steps.some((s) => s.kind === 'tap' && s.nodeId === 'demo.reservation.guests.add')).toBe(true);
-    expect(steps.some((s) => s.kind === 'route' && s.route === '#/feedback')).toBe(true);
+    const steps = report.context.steps as { action: string; node?: string; route?: string }[];
+    expect(steps.some((s) => s.action === 'tocó' && s.node === 'demo.reservation.guests.add' && s.route === '/feedback')).toBe(true);
+    expect(steps.some((s) => s.action === 'abrió' && s.route === '/feedback')).toBe(true);
     expect(JSON.stringify(steps)).not.toContain('Alergia');
     expect(steps.length).toBeLessThanOrEqual(10);
   });
