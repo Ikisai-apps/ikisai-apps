@@ -270,7 +270,7 @@ al_dia      el resto
 
 ### 4.2 `validate_hooks` (SQL)
 
-`central.check_invariants` comprueba lo que no puede romperse aunque la Edge falle: unicidad `people.user_id` viva, `person_private` única por persona viva, FK a filas vivas (un requisito no puede apuntar a una persona en la papelera) y las parejas `(kind, record_type)`.
+`central.check_account_link` (migración `0502`): si el lote cambia `people.user_id` (alta con valor o modificación) y quien escribe no es owner de Central → `FORBIDDEN 403`; borrar o restaurar una persona enlazada no cuenta como cambio. `central.check_invariants` comprueba lo que no puede romperse aunque la Edge falle: unicidad `people.user_id` viva, `person_private` única por persona viva, FK a filas vivas (un requisito no puede apuntar a una persona en la papelera) y las parejas `(kind, record_type)`.
 
 ### 4.3 Borrado y papelera
 
@@ -329,9 +329,7 @@ function visible(table, row, ctx) {
 | `GET requirements/tasks-status?ids=` | reader | Ids de `requirement_tasks` → `{items: [{id, done, deleted, title, revision, stale}]}` leyendo `tasks.targets` con el token del usuario. Sin acceso a Tasks: `unknown`. | — |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, kpis: [{kpi, app, label, unit, period, value, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 con la service key y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
-| `GET people/:id/account` | owner | Cuenta enlazada con sus accesos por app (filtra `admin/accounts` por `userId`). | `NOT_FOUND` |
-| `GET people/records/:id/file` | editor | URL firmada (10 min) del archivo de un registro de documentación, solo si el actor ve la fila (§5); mientras no exista P1. | `NOT_FOUND` (también si no la ve) |
-| `POST people/:id/account` | owner | `{email?, memberships: [{app, role, scopes?}]}` → hace `admin/invite` (correo por defecto de `person_private.email`) y enlaza `people.user_id` en el mismo paso; devuelve la contraseña temporal una sola vez. | los de `admin/invite`; `ALREADY_LINKED 409` |
+| — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
 
 No hay rutas propias de escritura para personas, requisitos ni documentos: todo va por `commands`, para que funcione sin red.
 

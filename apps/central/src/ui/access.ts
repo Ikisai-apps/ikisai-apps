@@ -226,7 +226,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
 }
 
 /** Contraseña temporal mostrada una sola vez, con botón de copiar (kit). */
-function showSecret(password: string, email: string, onDone?: () => void): void {
+export function showSecret(password: string, email: string, onDone?: () => void): void {
   let sheet: Sheet | null = null;
   sheet = openSheet({
     title: 'Contraseña temporal',
