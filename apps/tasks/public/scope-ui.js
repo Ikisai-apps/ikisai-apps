@@ -44,7 +44,7 @@ bind=function(){bindBeforeScope();
   const general=document.querySelector('[data-general-area]');if(general)general.onclick=enterGeneral;
   // Una acción dentro del bloque de otra área la convierte en área activa antes de ejecutarse.
   document.querySelectorAll('[data-area-block]').forEach(block=>{const id=block.dataset.areaBlock,enter=()=>{if(state.activeTab!==id)state.activeTab=id};block.addEventListener('pointerdown',enter,true);block.addEventListener('click',enter,true)});
-  document.querySelectorAll('[data-tab]:not(.fb-center [data-tab])').forEach(b=>{const previous=b.onclick;b.onclick=e=>{state.taskScope='area';previous?.(e)}});
+  document.querySelectorAll('[data-tab]').forEach(b=>{const previous=b.onclick;b.onclick=e=>{state.taskScope='area';previous?.(e)}});
   document.querySelectorAll('[data-add-project]').forEach(b=>b.onclick=()=>{if(!canEdit())return;state.activeTab=b.dataset.addProject;openProjectEditor()});
   document.querySelectorAll('[data-add-family]').forEach(b=>b.onclick=()=>{state.activeTab=b.dataset.addFamily;openFamilyEditor()});
   document.querySelectorAll('[data-add-task]').forEach(b=>b.onclick=()=>{if(!canEdit())return;const pid=b.dataset.addTask,rows=b.previousElementSibling?.querySelectorAll('[data-row]')||[],last=rows[rows.length-1],parentId=last?taskLocation(last.dataset.row)?.t.parentId||null:null;state.currentProject=pid;openTaskEditor(null,null,parentId?{parentId}:null)});

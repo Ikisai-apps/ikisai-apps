@@ -52,7 +52,7 @@ render=function(){const result=renderBeforeHome();if(state.view==='home')fillHom
 const bindBeforeHome=bind;
 bind=function(){bindBeforeHome();
   // Cambiar de área desde Inicio mantiene Inicio; desde otra vista se conserva el comportamiento original.
-  document.querySelectorAll('[data-tab]:not(.fb-center [data-tab])').forEach(b=>{const previous=b.onclick;b.onclick=e=>{const wasHome=state.view==='home';previous?.(e);if(wasHome){state.view='home';state.currentProject=null;persistUI();render()}}});
+  document.querySelectorAll('[data-tab]').forEach(b=>{const previous=b.onclick;b.onclick=e=>{const wasHome=state.view==='home';previous?.(e);if(wasHome){state.view='home';state.currentProject=null;persistUI();render()}}});
   if(state.view!=='home')return;
   document.querySelectorAll('[data-home-task]:not([data-drag-task])').forEach(b=>b.onclick=()=>openHomeTask(b.dataset.homeTask,b.dataset.homeArea));
   document.querySelectorAll('[data-drag-task]').forEach(b=>b.onpointerdown=homeDragStart);
