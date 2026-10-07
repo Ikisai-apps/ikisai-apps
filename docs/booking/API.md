@@ -1308,6 +1308,17 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 
 `booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
 
+## 19. Lectura para facturar desde una reserva (Finance)
+
+`booking.reservation_invoice_source({reservation_id})`, registrada para `invoices` (migración `20261007_0444_booking_invoice_source.sql`; contrato en `docs/invoices/API.md` §14.8, con estos ajustes de Booking):
+
+- `reservation`: `id, code, label` (título), `revision, check_in, check_out`.
+- `customer`: `name` (contacto de la reserva) y `kind` (`customer_type`); **`tax_id`, `id_type`, `country` y `address` en `null`**: Booking no guarda hoy los datos fiscales del organizador y Finance los completa en el borrador (pendiente de decisión del usuario si deben guardarse en Booking).
+- `prices_include_vat` y, en cada línea, `vat_rate` de las condiciones de la propuesta (si no, las condiciones por defecto): sugerencia; el tipo por categoría es de Finance.
+- `lines` de la **propuesta aceptada** en su orden: `kind` `tarifa` o `extra` (capa de la tarifa), `quantity`, `unit`, `unit_price` (unitario de la línea), `discount_amount` (su descuento en % convertido a importe) e `income_category` (`alojamiento` para recinto y por persona, `restauracion` para el servicio de comidas, `extras`, y `servicios` para el resto o las líneas sin tarifa). Los **ajustes en porcentaje** van como línea propia `kind: 'ajuste'` con `unit_price` negativo. La suma de las líneas cuadra con el total de la propuesta. Sin propuesta aceptada, una línea «Estancia · <título>» por `final_amount`.
+- `proposal` (`id, version, total`) y `final_amount`, para comprobar.
+- **`invoiced: null`**: Booking no sabe qué se ha facturado; lo une Finance con sus facturas.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
