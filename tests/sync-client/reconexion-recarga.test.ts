@@ -54,7 +54,8 @@ test('P18: recarga sin red con outbox guardada; al llegar `online` la cola se en
     for (const f of [...(listeners.get('online') ?? [])]) f();
 
     const t0 = Date.now();
-    while (b.status().pendingCommands > 0 && Date.now() - t0 < 2000) await new Promise((r) => setTimeout(r, 20));
+    // La cola se vacía y el ciclo termina (tras el envío viene el pull: un instante en 'syncing' es correcto).
+    while ((b.status().pendingCommands > 0 || b.status().network === 'syncing') && Date.now() - t0 < 2000) await new Promise((r) => setTimeout(r, 20));
     assert.equal(b.status().pendingCommands, 0, 'la cola debe vaciarse sin esperar al pull periódico');
     assert.equal(b.status().network, 'online');
   } finally {
