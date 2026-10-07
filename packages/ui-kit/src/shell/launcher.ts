@@ -37,6 +37,8 @@ export interface AppLauncherOptions {
   title?: string;
   /** Interruptor «Señalar para comentar» al pie (FEEDBACK.md §8.1): normalmente `createFeedback(...).mode`. */
   feedback?: { get(): boolean; set(on: boolean): void };
+  /** Interruptor «Revisor de QA» debajo (FEEDBACK.md §9.2): `createFeedbackReview(...)`; aparece solo si `available()`. */
+  review?: { get(): boolean; set(on: boolean): void; available(): Promise<boolean> };
 }
 
 export interface AppLauncher {
@@ -104,23 +106,32 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       internal.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Apps' }, ...internal.map((a) => row(a, current))) : null,
       portals.length ? el('h3', { class: 'launcher-group' }, 'Portales') : null,
       portals.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Portales' }, ...portals.map((a) => row(a, current))) : null,
-      options.feedback ? feedbackSwitch(options.feedback) : null,
+      options.feedback ? modeSwitch(options.feedback, 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.') : null,
+      options.review ? reviewSlot : null,
     );
   }
 
-  function feedbackSwitch(mode: NonNullable<AppLauncherOptions['feedback']>): HTMLElement {
-    const input = el('input', { type: 'checkbox', role: 'switch', class: 'launcher-fb-input' }) as HTMLInputElement;
+  function modeSwitch(mode: { get(): boolean; set(on: boolean): void }, cls: string, title: string, text: string): HTMLElement {
+    const input = el('input', { type: 'checkbox', role: 'switch', class: `${cls}-input` }) as HTMLInputElement;
     input.checked = mode.get();
     input.addEventListener('change', () => mode.set(input.checked));
-    return el('label', { class: 'launcher-fb' },
-      el('span', { class: 'launcher-text' },
-        el('strong', null, 'Señalar para comentar'),
-        el('small', null, 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.')),
+    return el('label', { class: `launcher-fb ${cls}` },
+      el('span', { class: 'launcher-text' }, el('strong', null, title), el('small', null, text)),
       input);
+  }
+  /** El del revisor llega tarde (hay que preguntar al servidor si la cuenta puede revisar). */
+  const reviewSlot = el('div', { class: 'launcher-review-slot' });
+  function askReview(): void {
+    const review = options.review;
+    if (!review) return;
+    void review.available().then((ok) => {
+      replace(reviewSlot, ok ? modeSwitch(review, 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.') : null);
+    });
   }
 
   async function open(): Promise<Sheet> {
     const host = el('div', { class: 'launcher' });
+    askReview();
     const cached = readCache(key);
     paint(host, cached, cached ? 'fresh' : 'loading');
     const sheet = openSheet({ title: options.title ?? 'Apps de Ikisai', body: host });

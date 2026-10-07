@@ -1,10 +1,11 @@
 export * from './constants.ts';
 export { resolveFeedbackNode, feedbackLabel, type FeedbackNode } from './node.ts';
 export { installFeedbackGesture, isFeedbackExcluded, type FeedbackGesture, type FeedbackGestureOptions } from './gesture.ts';
-export { appVersion, collectFeedbackContext, observeFeedbackContext, sanitizePath, sanitizedRoute, type FeedbackContextInput } from './context.ts';
+export { appVersion, rawRoute, collectFeedbackContext, observeFeedbackContext, sanitizePath, sanitizedRoute, type FeedbackContextInput } from './context.ts';
 export { feedbackDrafts, feedbackOutbox, clearFeedbackForUser, type FeedbackDraft, type FeedbackOutboxItem, type FeedbackImage } from './store.ts';
 export { createFeedbackClient, type FeedbackApi, type FeedbackApiInit, type FeedbackClient, type FeedbackClientOptions, type FeedbackReport } from './client.ts';
 export { openFeedbackComposer, type FeedbackComposer, type FeedbackComposerOptions, type ComposerState, type ComposerValue } from './composer.ts';
 export { createFeedback, type Feedback, type FeedbackMode, type FeedbackOptions } from './feedback.ts';
 export { renderFeedbackCenter, openFeedbackCenter, feedbackReportCard, buildFeedbackTree, reportChip, type FeedbackCenter, type FeedbackCenterOptions, type FeedbackCenterTab, type FeedbackTreeNode, type FeedbackReportDetail } from './center.ts';
 export { createFeedbackProgressiveForm, type ProgressiveForm, type ProgressiveFormOptions, type ProgressiveFormConfig, type ProgressiveStep, type ProgressiveOption, type ProgressiveAnswers, type ProgressiveResult } from './progressive.ts';
+export { createFeedbackReview, type FeedbackReview, type FeedbackReviewOptions } from './review.ts';

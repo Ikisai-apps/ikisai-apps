@@ -6,6 +6,7 @@ import {
   createFeedback,
   createFeedbackProgressiveForm,
   openFeedbackCenter,
+  createFeedbackReview,
   type FeedbackApi,
   createAppLauncher,
   renderProposalReview,
@@ -679,7 +680,7 @@ const LAUNCHER_CATALOG = { current: 'tasks', items: [
   { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com', kind: 'portal', description: 'Portal de huéspedes', role: 'owner' },
 ] };
 let launcherOnline = true;
-const launcher = createAppLauncher({ storageKey: 'demo-launcher', feedback: { get: () => feedback.mode.get(), set: (on) => feedback.mode.set(on) }, fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
+const launcher = createAppLauncher({ storageKey: 'demo-launcher', feedback: { get: () => feedback.mode.get(), set: (on) => feedback.mode.set(on) }, review: { get: () => review.mode.get(), set: (on) => review.mode.set(on), available: () => review.available() }, fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
 const launcherMark = el('button', { type: 'button', class: 'mark markbtn', id: 'demoLauncher' }, icon('tasks', 20));
 launcher.attach(launcherMark);
 const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la cabecera abre la hoja con las apps de la cuenta (GET /api/v1/apps): internas arriba, portales debajo, la actual marcada; sin red, la última lista guardada.',
@@ -691,15 +692,15 @@ const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la 
 // --- Feedback (banco de pruebas aislado, servidor simulado de FEEDBACK.md §7) -------------------------------
 /** Servidor simulado con estado en localStorage (sobrevive a recargar, para probar «se envía una sola vez»). */
 const FB_KEY = 'demo-feedback-server';
-type MockReport = { id: string; requestId: string; code: string; node: { id: string; path: string[] }; message: string; intent: string; status: string; display?: string; blocking?: boolean; supporters: string[]; attachments: string[]; context: unknown; verifiedBuild?: string | null; dismissReason?: string };
-type FbState = { reports: MockReport[]; posts: number; offline: boolean; fail: string | null };
+type MockReport = { id: string; requestId: string; code: string; node: { id: string; path: string[] }; message: string; intent: string; status: string; display?: string; blocking?: boolean; supporters: string[]; attachments: string[]; context: unknown; verifiedBuild?: string | null; dismissReason?: string; reviewStatus?: string; originApp?: string; mergedInto?: string };
+type FbState = { reports: MockReport[]; posts: number; offline: boolean; fail: string | null; notReviewer?: boolean };
 const fbState = (): FbState => {
   try { const v = JSON.parse(localStorage.getItem(FB_KEY) ?? 'null') as FbState | null; if (v) return v; } catch { /* */ }
   return { reports: [], posts: 0, offline: false, fail: null };
 };
 const fbSave = (v: FbState) => { try { localStorage.setItem(FB_KEY, JSON.stringify(v)); } catch { /* */ } };
 const fbError = (status: number, code: string) => Object.assign(new Error(code), { status, code });
-const toReport = (r: MockReport) => ({ id: r.id, code: r.code, originApp: 'demo', subject: 'application', intent: r.intent, message: r.message, node: r.node, status: r.status, display: r.display ?? r.status, blocking: !!r.blocking, supportersCount: r.supporters.length, mine: true, createdAt: '2026-10-07T09:30:00.000Z', verifiedBuild: r.verifiedBuild ?? null });
+const toReport = (r: MockReport) => ({ id: r.id, code: r.code, originApp: r.originApp ?? 'demo', reviewStatus: r.reviewStatus ?? 'new', routeRaw: (r.context as { routeRaw?: string } | null)?.routeRaw ?? null, subject: 'application', intent: r.intent, message: r.message, node: r.node, status: r.status, display: r.display ?? r.status, blocking: !!r.blocking, supportersCount: r.supporters.length, mine: true, createdAt: '2026-10-07T09:30:00.000Z', verifiedBuild: r.verifiedBuild ?? null });
 const agentBlock = (r: MockReport) => `## ${r.code} · ${r.intent}${r.blocking ? ' · ME BLOQUEA' : ''}\n\nDónde: ${r.node.path.join(' › ')} (\`${r.node.id}\`)\n\n${r.message}\n\nContexto: ${JSON.stringify(r.context)}\n`;
 const fbApi = (async (path: string, init: { method?: string; json?: unknown } = {}) => {
   await new Promise((r) => setTimeout(r, 60));
@@ -722,6 +723,17 @@ const fbApi = (async (path: string, init: { method?: string; json?: unknown } = 
     return { report: toReport(report) };
   }
   const q = new URLSearchParams(path.split('?')[1] ?? '');
+  if (q.get('review') === 'true') {
+    if (st.notReviewer) throw fbError(403, 'FORBIDDEN');
+    return { items: st.reports.filter((r) => !r.mergedInto && (r.display ?? r.status) !== 'dismissed' && ((r.reviewStatus ?? 'new') === 'new' || (r.display ?? r.status) === 'pending_verify')).map(toReport) };
+  }
+  const review = /^\/feedback\/([^/?]+)\/(approve|merge)$/.exec(path);
+  if (review) {
+    const r = st.reports.find((x) => x.id === review[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE');
+    if (review[2] === 'approve') r.reviewStatus = 'approved';
+    else { const into = st.reports.find((x) => x.code === body.into); if (!into || into.id === r.id) throw fbError(404, 'OUT_OF_SCOPE'); r.mergedInto = into.code; r.reviewStatus = 'rejected'; into.supporters.push('merged'); }
+    fbSave(st); return { report: toReport(r) };
+  }
   const disp = (r: MockReport) => r.display ?? r.status;
   if (path.startsWith('/feedback/tree')) {
     const nodes = new Map<string, { id: string; path: string[]; open: number; pendingVerify: number; verified: number; total: number }>();
@@ -740,11 +752,11 @@ const fbApi = (async (path: string, init: { method?: string; json?: unknown } = 
     const r = st.reports.find((x) => x.id === action[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE');
     if (action[2] === 'verify') { r.status = 'verified'; r.display = 'verified'; r.verifiedBuild = body.build ?? null; }
     if (action[2] === 'reopen') { r.status = 'open'; r.display = 'open'; if (body.message) r.message += `\n\nSigue fallando: ${body.message}`; }
-    if (action[2] === 'dismiss') { r.status = 'dismissed'; r.display = 'dismissed'; r.dismissReason = body.reason; }
+    if (action[2] === 'dismiss') { r.status = 'dismissed'; r.display = 'dismissed'; r.dismissReason = body.reason; r.reviewStatus = 'rejected'; }
     fbSave(st); return { report: toReport(r) };
   }
   const one = /^\/feedback\/([^/?]+)$/.exec(path);
-  if (one && !init.json) { const r = st.reports.find((x) => x.id === one[1] || x.code === one[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); return { report: toReport(r), attachments: [], tasks: [], agentBlock: agentBlock(r) }; }
+  if (one && !init.json) { const r = st.reports.find((x) => x.id === one[1] || x.code === one[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); return { report: toReport(r), attachments: [], tasks: [], context: r.context, agentBlock: agentBlock(r) }; }
   const support = /^\/feedback\/([^/]+)\/support$/.exec(path);
   if (support) { const r = st.reports.find((x) => x.id === support[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); if (!r.supporters.includes('demo-user')) r.supporters.push('demo-user'); fbSave(st); return { supportersCount: r.supporters.length }; }
   throw fbError(404, 'NOT_FOUND');
@@ -764,6 +776,24 @@ const fbScreen = el('div', { class: 'card', id: 'fbScreen', 'data-feedback-id': 
 const fbStatus = el('pre', { id: 'fbServer', class: 'small' });
 const paintFbStatus = () => { const st = fbState(); fbStatus.textContent = `posts=${st.posts} reportes=${st.reports.length} sinRed=${st.offline} fallo=${st.fail ?? '-'}`; };
 paintFbStatus(); setInterval(paintFbStatus, 400);
+const fbOpened = el('output', { id: 'fbOpened', class: 'small' });
+const review = createFeedbackReview({
+  api: fbApi, app: 'demo', waitMs: 1200,
+  appDomain: (app) => LAUNCHER_CATALOG.items.find((a) => a.id === app)?.domain,
+  openUrl: (url) => { fbOpened.textContent = url; },
+});
+/** Reportes de ejemplo para el revisor: uno de otra app, uno cuyo elemento ya no existe y uno publicado. */
+const fbSeed = () => {
+  const st = fbState();
+  const mk = (code: string, node: { id: string; path: string[] }, message: string, extra: Partial<MockReport> = {}): MockReport => ({ id: crypto.randomUUID(), requestId: code, code, node, message, intent: 'bug', status: 'open', supporters: [], attachments: [], context: { routeRaw: '/#feedback', steps: [{ action: 'abrió', route: '/feedback' }, { action: 'tocó', node: node.id, route: '/feedback' }] }, ...extra });
+  st.reports.push(
+    mk('FB_2026_0101', { id: 'demo.reservation.guests.add', path: ['Reserva', 'Huéspedes', 'Añadir huésped'] }, 'No añade al segundo huésped\nDetalle en otra línea', { blocking: true }),
+    mk('FB_2026_0102', { id: 'booking.reservations.list', path: ['Reservas', 'Lista'] }, 'La lista tarda mucho', { originApp: 'booking' }),
+    mk('FB_2026_0103', { id: 'demo.reservation.guests.gone', path: ['Reserva', 'Huéspedes', 'Botón antiguo'] }, 'El botón viejo no hacía nada'),
+    mk('FB_2026_0104', { id: 'demo.reservation', path: ['Reserva'] }, 'El título salía cortado', { reviewStatus: 'approved', display: 'pending_verify' }),
+  );
+  fbSave(st);
+};
 const fbPortalOut = el('pre', { id: 'fbPortalOut', class: 'small' });
 const fbPortal = createFeedbackProgressiveForm({
   config: { start: 'about', steps: [
@@ -787,16 +817,18 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'demo-row' },
     el('label', { class: 'field check' }, fbModeSwitch, el('span', null, 'Señalar para comentar')),
     el('button', { type: 'button', class: 'ghost small', id: 'fbCenter', onclick: () => void openFeedbackCenter({ api: fbApi, app: 'demo', canEdit: () => true, feedback }) }, 'Sugerencias y QA'),
+    el('button', { type: 'button', class: 'ghost small', id: 'fbSeed', onclick: () => { fbSeed(); void review.refresh(); } }, 'Ejemplos del revisor'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbFix', onclick: async () => { const st = fbState(); for (const r of st.reports) if ((r.display ?? r.status) === 'open') r.display = 'pending_verify'; fbSave(st); await feedback.refreshVerify(); } }, 'Publicar arreglo'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbOpen', onclick: () => void feedback.signal(fbTarget) }, 'Comentar «Añadir huésped»'),
     el('label', { class: 'field check' }, el('input', { type: 'checkbox', id: 'fbOffline', checked: fbState().offline, onchange: (e: Event) => { const st = fbState(); st.offline = (e.target as HTMLInputElement).checked; fbSave(st); if (!st.offline) void feedback.flush(); } }), el('span', null, 'Servidor sin red')),
     el('button', { type: 'button', class: 'ghost small', id: 'fbReset', onclick: async () => { fbSave({ reports: [], posts: 0, offline: false, fail: null }); await feedback.clear('demo-user'); location.reload(); } }, 'Reiniciar banco')),
   fbStatus,
+  el('p', { class: 'small muted' }, 'Abriría: ', fbOpened),
   el('h3', null, 'Formulario progresivo (portales)'),
   el('div', { class: 'card' }, fbPortal.element),
   fbPortalOut,
 );
-(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal };
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed };
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
