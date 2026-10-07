@@ -9,7 +9,7 @@ import {
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
-import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS } from './texts.ts';
+import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
@@ -188,10 +188,11 @@ const SPECS: Record<string, TableSpec> = {
       title: { kind: 'text', min: 1, max: 160 },
       body: { kind: 'text', min: 1, max: 8000 },
       kind: { kind: 'enum', values: TEXT_KINDS },
+      lang: { kind: 'enum', values: TEXT_LANGS },
       position: { kind: 'number' },
     },
     required: ['key', 'title', 'body', 'kind'],
-    immutable: ['key'],
+    immutable: ['key', 'lang'],
   },
   [KPI_TARGETS_TABLE]: {
     fields: {

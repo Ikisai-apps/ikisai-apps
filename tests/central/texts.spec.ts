@@ -49,7 +49,9 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await expect(page.locator('[data-text="contact.email"]')).toContainText('organiza@ikisai.com');
   await expect(page.locator('[data-text="contact.phone"]')).toContainText('614 76 57 96');
   const privacy = page.locator('[data-text="portal.privacy"]');
-  await expect(privacy).toContainText('v1');
+  await expect(privacy).toContainText('ES v1');
+  await expect(privacy).toContainText('EN v1');
+  await expect(page.locator('[data-text="contact.email"]')).toContainText('EN usa el español');
 
   // Editar: la vista previa sustituye los marcadores (sin Entidad, «—»; el contacto, de sus textos).
   await privacy.getByRole('button', { name: 'Editar' }).click();
@@ -64,8 +66,9 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await expect(page.locator('#tx-version')).toContainText('Al guardar se crea la versión v2; las aceptaciones anteriores conservan su versión');
   await page.locator('#saveText').click();
   await expect(page.getByText('Texto guardado.')).toBeVisible();
-  await expect(privacy).toContainText('v2');
-  await expect.poll(async () => (await api.app.t.db.query<{ version: string }>(`select version from central.texts where key = 'portal.privacy'`)).rows[0]!.version).toBe('v2');
+  await expect(privacy).toContainText('ES v2');
+  await expect(privacy).toContainText('EN v1');
+  await expect.poll(async () => (await api.app.t.db.query<{ version: string }>(`select version from central.texts where key = 'portal.privacy' and lang = 'es'`)).rows[0]!.version).toBe('v2');
 
   // Historial: la v1 sigue ahí, tal como era.
   await privacy.getByRole('button', { name: 'Editar' }).click();
@@ -75,12 +78,27 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await expect(page.locator('.textversion[data-version="v1"]')).not.toContainText('Escríbenos a');
   await page.keyboard.press('Escape');
 
+  // Inglés: la traducción existente se abre aparte; un texto sin traducción se traduce partiendo del español.
+  await privacy.locator('[data-lang-action="en"]').click();
+  await expect(page.locator('#tx-preview')).toContainText('Data protection information');
+  await page.keyboard.press('Escape');
+  const phone = page.locator('[data-text="contact.phone"]');
+  await phone.getByRole('button', { name: 'Traducir al inglés' }).click();
+  await expect(page.locator('#tx-translate')).toBeVisible();
+  await expect(page.locator('#tx-body')).toHaveValue('614 76 57 96');
+  await page.locator('#tx-body').fill('+34 614 76 57 96');
+  await page.locator('#saveText').click();
+  await expect(page.getByText('Texto guardado.')).toBeVisible();
+  await expect(phone).toContainText('EN v1');
+  await expect.poll(async () => (await api.app.t.db.query<{ n: number }>(`select count(*)::int as n from central.texts where key = 'contact.phone' and lang = 'en'`)).rows[0]!.n).toBe(1);
+
   // Quien no es owner lo lee sin poder cambiarlo.
   const other = await browser.newContext();
   const reader = await other.newPage();
   await login(reader, 'reader@example.invalid', 'Reader');
   await reader.locator('#homeTexts').click();
   await expect(reader.locator('#newText')).toHaveCount(0);
+  await expect(reader.getByRole('button', { name: 'Traducir al inglés' })).toHaveCount(0);
   await reader.locator('[data-text="portal.privacy"]').getByRole('button', { name: 'Versiones' }).click();
   await expect(reader.locator('#tx-body')).toBeDisabled();
   await expect(reader.locator('#saveText')).toBeHidden();

@@ -11,7 +11,7 @@ const uuid = () => crypto.randomUUID();
 let app: TestApp;
 let seq = 0;
 const commit = (operations: unknown[], token?: string) => app.call('/api/v1/commands', { token, body: { requestId: `txt-${++seq}`, operations } });
-const textRow = async (key: string) => (await app.call(`/api/v1/snapshot?tables=${TEXTS_TABLE}`)).data.tables[0].rows.find((r: any) => r.key === key);
+const textRow = async (key: string, lang = 'es') => (await app.call(`/api/v1/snapshot?tables=${TEXTS_TABLE}`)).data.tables[0].rows.find((r: any) => r.key === key && r.lang === lang && !r.deleted_at);
 
 test.before(async () => {
   app = await createTestApp({
@@ -37,14 +37,16 @@ test('textos · dominio: marcadores, domicilio, versión, marcadores desconocido
   assert.equal(validateOperations([{ op: 'insert', table: TEXTS_TABLE, id: 'x', fields: { key: 'a.b', title: 'x', body: 'x', kind: 'legal' } }], { role: 'editor' })?.code, 'FORBIDDEN');
 });
 
-test('textos · semilla idempotente con los cuatro textos del usuario en v1', async () => {
+test('textos · semilla idempotente: los cuatro textos en español y los dos legales también en inglés, en v1', async () => {
   const first = await app.t.db.query<{ n: number }>(`select central.seed_texts() as n`);
-  assert.equal(first.rows[0]!.n, 4);
+  assert.equal(first.rows[0]!.n, 6);
   const again = await app.t.db.query<{ n: number }>(`select central.seed_texts() as n`);
   assert.equal(again.rows[0]!.n, 0);
-  const rows = (await app.t.db.query<{ key: string; version: string; kind: string }>(`select key, version, kind from central.texts order by position`)).rows;
-  assert.deepEqual(rows.map((r) => [r.key, r.version, r.kind]), [
-    ['contact.email', 'v1', 'contacto'], ['contact.phone', 'v1', 'contacto'], ['organizers.declaration', 'v1', 'legal'], ['portal.privacy', 'v1', 'legal'],
+  const rows = (await app.t.db.query<{ key: string; lang: string; version: string; kind: string }>(`select key, lang, version, kind from central.texts order by key, lang desc`)).rows;
+  assert.deepEqual(rows.map((r) => [r.key, r.lang, r.version, r.kind]), [
+    ['contact.email', 'es', 'v1', 'contacto'], ['contact.phone', 'es', 'v1', 'contacto'],
+    ['organizers.declaration', 'es', 'v1', 'legal'], ['organizers.declaration', 'en', 'v1', 'legal'],
+    ['portal.privacy', 'es', 'v1', 'legal'], ['portal.privacy', 'en', 'v1', 'legal'],
   ]);
   // La semilla llega a los dispositivos: está en core.changes.
   const changes = await app.call('/api/v1/changes?after=0');
@@ -56,7 +58,7 @@ test('textos · versión al cambiar el contenido, versiones guardadas tal como s
   const read = async (appId: string) => {
     const user = await app.t.createUser();
     await app.t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'reader')`, [appId, user]);
-    return (await app.t.rpc('core_read', { p_app: appId, p_actor: user, p_name: TEXTS_PROJECTION, p_args: { where: { key: 'portal.privacy' } } }) as { rows: any[] }).rows[0];
+    return (await app.t.rpc('core_read', { p_app: appId, p_actor: user, p_name: TEXTS_PROJECTION, p_args: { where: { key: 'portal.privacy', lang: 'es' } } }) as { rows: any[] }).rows[0];
   };
   const before = await read('organizers');
   assert.match(before.body, /\*\*Responsable:\*\* — \(NIF —\), —\. Contacto: organiza@ikisai\.com · 614 76 57 96\./);
@@ -92,6 +94,39 @@ test('textos · versión al cambiar el contenido, versiones guardadas tal como s
   const foodUser = await app.t.createUser();
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('food', $1, 'reader')`, [foodUser]);
   await assert.rejects(app.t.rpc('core_read', { p_app: 'food', p_actor: foodUser, p_name: TEXTS_PROJECTION, p_args: {} }));
+});
+
+test('textos · idiomas: el inglés que falta cae al español; una traducción necesita su español; versiones por idioma', async () => {
+  const owner = app.users.owner;
+  const proj = async (key: string, lang: string) => (await app.t.rpc('core_read', { p_app: 'central', p_actor: owner, p_name: TEXTS_PROJECTION, p_args: { where: { key, lang } } }) as { rows: any[] }).rows[0];
+  const declEn = await proj('organizers.declaration', 'en');
+  assert.equal(declEn.fallback, false); assert.equal(declEn.source_lang, 'en'); assert.match(declEn.body, /^I am providing this information/);
+  const mailEn = await proj('contact.email', 'en');
+  assert.equal(mailEn.fallback, true); assert.equal(mailEn.source_lang, 'es'); assert.equal(mailEn.body, 'organiza@ikisai.com');
+  const privacyEn = await proj('portal.privacy', 'en');
+  assert.match(privacyEn.body, /\*\*Controller:\*\* Entidad de Prueba S\.L\. \(Tax ID B12345674\)/);
+  assert.match(privacyEn.body, /Contact: organiza@ikisai\.com · 614 76 57 96\./);
+
+  // La versión inglesa va por su cuenta; sin traducción, `text_version` da la del español.
+  const enV1 = await app.t.rpc('core_read', { p_app: 'guests', p_actor: owner, p_name: 'central.text_version', p_args: { key: 'organizers.declaration', lang: 'en' } }).catch(() => null);
+  assert.equal(enV1, null); // el owner de central no es miembro de guests
+  const guest = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('guests', $1, 'reader')`, [guest]);
+  const en = await app.t.rpc('core_read', { p_app: 'guests', p_actor: guest, p_name: 'central.text_version', p_args: { key: 'organizers.declaration', lang: 'en' } }) as any;
+  assert.equal(en.lang, 'en'); assert.equal(en.version, 'v1'); assert.match(en.body, /^I am providing/);
+  const fallback = await app.t.rpc('core_read', { p_app: 'guests', p_actor: guest, p_name: 'central.text_version', p_args: { key: 'contact.phone', lang: 'en' } }) as any;
+  assert.equal(fallback.lang, 'es'); assert.equal(fallback.body, '614 76 57 96');
+
+  // Un texto en inglés sin su español no vale; borrar el español con la traducción viva, tampoco.
+  const orphan = await commit([{ op: 'insert', table: TEXTS_TABLE, id: uuid(), fields: { key: 'portal.only_en', lang: 'en', title: 'Only', body: 'x', kind: 'mensaje' } }]);
+  assert.equal(orphan.status, 422); assert.equal(orphan.data.error.code, 'MISSING_BASE_LANGUAGE');
+  const decl = await textRow('organizers.declaration');
+  const dropBase = await commit([{ op: 'delete', table: TEXTS_TABLE, id: decl.id, expectedRevision: decl.revision }]);
+  assert.equal(dropBase.data.error.code, 'MISSING_BASE_LANGUAGE');
+  const relang = await commit([{ op: 'update', table: TEXTS_TABLE, id: decl.id, expectedRevision: decl.revision, fields: { lang: 'en' } }]);
+  assert.equal(relang.data.error.code, 'IMMUTABLE_FIELD');
+  const mismatch = await commit([{ op: 'insert', table: TEXTS_TABLE, id: uuid(), fields: { key: 'contact.email', lang: 'en', title: 'Email', body: 'x@y.es', kind: 'legal' } }]);
+  assert.equal(mismatch.data.error.code, 'KIND_MISMATCH');
 });
 
 test('textos · solo el owner escribe; la clave no cambia; claves únicas; el lector lee', async () => {
