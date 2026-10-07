@@ -67,6 +67,23 @@ function resolve(hash: string): { title: string; slug: string; mount: ViewMount;
   return { ...ROUTES['#/']!, base: '#/' };
 }
 
+/** Raíz de la ruta de etiquetas por pantalla, con ids literales (el catálogo de la publicación solo recoge literales). */
+function markScreen(main: HTMLElement, slug: string, title: string): { id: string; label: string } {
+  switch (slug) {
+    case 'inicio': fbMark(main, 'booking.inicio', 'Inicio'); return { id: 'booking.inicio', label: 'Inicio' };
+    case 'reservas': fbMark(main, 'booking.reservas', 'Reservas'); return { id: 'booking.reservas', label: 'Reservas' };
+    case 'reserva': fbMark(main, 'booking.reserva', 'Reserva'); return { id: 'booking.reserva', label: 'Reserva' };
+    case 'pendientes': fbMark(main, 'booking.pendientes', 'Pendientes'); return { id: 'booking.pendientes', label: 'Pendientes' };
+    case 'calendario': fbMark(main, 'booking.calendario', 'Calendario'); return { id: 'booking.calendario', label: 'Calendario' };
+    case 'huespedes': fbMark(main, 'booking.huespedes', 'Huéspedes'); return { id: 'booking.huespedes', label: 'Huéspedes' };
+    case 'espacios': fbMark(main, 'booking.espacios', 'Espacios y camas'); return { id: 'booking.espacios', label: 'Espacios y camas' };
+    case 'tarifas': fbMark(main, 'booking.tarifas', 'Tarifas y condiciones'); return { id: 'booking.tarifas', label: 'Tarifas y condiciones' };
+    case 'propuesta': fbMark(main, 'booking.propuesta', 'Propuesta'); return { id: 'booking.propuesta', label: 'Propuesta' };
+    case 'ses': fbMark(main, 'booking.ses', 'SES.HOSPEDAJES'); return { id: 'booking.ses', label: 'SES.HOSPEDAJES' };
+    default: fbMark(main, 'booking.inicio', title); return { id: 'booking.inicio', label: title };
+  }
+}
+
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Booking. */
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const { client } = ctx;
@@ -215,9 +232,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(entry.base);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
-    screen = { id: `booking.${entry.slug}`, label: entry.title };
     // La pantalla es la raíz de la ruta de etiquetas («Reserva › Acciones › Editar») y el nodo de reserva si no hay nada más cerca.
-    fbMark(main, screen.id, screen.label);
+    screen = markScreen(main, entry.slug, entry.title);
     document.title = `${entry.title} · Ikisai Booking`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });

@@ -366,8 +366,17 @@ Además de las del núcleo (contrato §5), con `uploads` configurado como en §8
 |---|---|---|---|---|
 | `GET events` | `scope=upcoming` (por defecto: `end_date ≥ hoy − 7 días`) o `scope=all`; `from`, `to` opcionales | `{events: [fila de la proyección], serverTime}` | `PROJECTION_UNAVAILABLE 503` | `reader` |
 | `GET events/:id` | — | `{event}` | `NOT_FOUND 404` | `reader` |
+| `POST equipment/:id/fault` | `{name, status: limitado\|averiado\|fuera_de_servicio, location?, note?}` | `{created, routed, taskId}` | `INVALID_OPERATION 422`, `TASKS_FORBIDDEN 403`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` | `editor` |
 
 Son las únicas. Lo que el handoff §25 listaba como rutas REST de cocina lo cubren `snapshot`, `changes` y `commands` sobre las tablas de §2; las regeneraciones son `call`. El panel de Inicio, la vista de cocinero y la del organizador se calculan en el cliente sobre el espejo local, que es lo que permite verlos sin red; no hay `GET dashboard`.
+
+### 6.1 Peticiones a Tasks
+
+Desde la ficha de una máquina que no está operativa, «Avisar a Tasks para repararla» llama a `POST equipment/:id/fault`, y la Edge de Food pide a Tasks con el token de la persona (`POST https://tasks.ikisai.com/api/v1/requests/task`, docs/tasks/API.md §19.6 y §20):
+- `source: 'food'`, `kind: 'food.equipment_fault'`, `kind_label: 'Averías de cocina'`, sin área ni proyecto: Tasks la enruta con las reglas del usuario o la deja en «Por clasificar».
+- `external_ref: 'equipment_fault:<id de la máquina>:<día en Madrid>'`: como mucho una petición por máquina y día; repetir el aviso devuelve la misma tarea (`created: false`).
+- Título «Reparar: <nombre> (<ubicación>)» (averiada o fuera de servicio, prioridad `high`) o «Revisar: …» (limitada, `normal`); la nota es la de la ficha; `external_url` = `https://food.ikisai.com/#/maquinaria`.
+- Necesita red y permiso de edición en Food; en Tasks, el de la persona (sin él, `TASKS_FORBIDDEN`). La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
 
 V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoices y crea las entradas de stock (§7.3).
 

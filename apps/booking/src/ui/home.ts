@@ -159,7 +159,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', null, 'Entorno de las comunicaciones (pruebas o real) y pausa de envíos.'),
         el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSesHome', 'data-feedback-id': 'booking.inicio.ses.abrir', 'data-feedback-label': 'Abrir SES.HOSPEDAJES', onclick: () => navigate('#/ses') }, 'SES.HOSPEDAJES')),
       ) : null,
-      el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.instalar', 'data-feedback-label': 'Instalar en este dispositivo' },
+      // FB_2026_001: abierta como app instalada (Android, escritorio o iOS), el cuadro de instalar sobra
+      isInstalled() ? null : el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.instalar', 'data-feedback-label': 'Instalar en este dispositivo' },
         el('h3', null, 'Instalar en este dispositivo'),
         el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
         deferredInstall
@@ -185,3 +186,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   ];
   return () => { disposed = true; offs.forEach((off) => off()); };
 };
+
+/** ¿Se está usando como app instalada? `display-mode` standalone/fullscreen/minimal-ui, o `navigator.standalone` en iOS. */
+export function isInstalled(): boolean {
+  if (typeof window === 'undefined') return false;
+  const mode = (m: string) => typeof window.matchMedia === 'function' && window.matchMedia(`(display-mode: ${m})`).matches;
+  return mode('standalone') || mode('fullscreen') || mode('minimal-ui') || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}

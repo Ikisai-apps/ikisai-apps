@@ -4,7 +4,8 @@ buckets registrados en `scripts/apps.py`, con hash SHA-256 de cada tabla y de ca
 
   backup  --output RUTA.zip           exporta por /database/query en lotes y descarga los objetos; verifica el zip
   verify  --source RUTA.zip           comprueba inventario y hashes
-  restore --source RUTA.zip --plan    plan de restauración (solo lectura; la restauración real no está implementada)
+  restore --source RUTA.zip --plan    plan de restauración (solo lectura)
+  restore --source RUTA.zip --apply   restauración real en el proyecto de ensayo de private/restore-target.json (nunca producción)
 
 No se guardan tokens ni sesiones en el archivo. La service key (solo para Storage) se revela desde la Management
 API y vive en memoria.
@@ -18,7 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from apps import ALL_SCHEMAS, BUCKETS
-from cloud_management import CloudError, SupabaseManagement, run_cli
+from cloud_management import PRIVATE, CloudError, SupabaseManagement, run_cli
+from backup_restore import RestoreTarget, restore
 
 FORMAT = 'IkisaiAppsBackup'
 BATCH = 500
@@ -114,6 +116,12 @@ def backup(client, destination):
           data, count, order = export_table(client, schema, table)
           manifest['schemas'][schema][table] = {'rows': count, 'sha256': hashlib.sha256(data).hexdigest(), 'orderBy': order}
           archive.writestr(f'data/{schema}/{table}.jsonl', data)
+      # Cuentas sin contraseñas ni sesiones: id, correo y metadatos, para que una restauración no deje pertenencias sin dueño.
+      users = client.query("select jsonb_build_object('id', id, 'email', email, 'created_at', created_at, 'user_metadata', coalesce(raw_user_meta_data, '{}'::jsonb)) as u "
+                           "from auth.users where email is not null order by created_at") or []
+      user_data = ('\n'.join(json.dumps(r['u'], ensure_ascii=False, sort_keys=True) for r in users) + ('\n' if users else '')).encode('utf-8')
+      manifest['authUsers'] = {'rows': len(users), 'sha256': hashlib.sha256(user_data).hexdigest()}
+      archive.writestr('auth/users.jsonl', user_data)
       for bucket in storage.buckets():
         manifest['buckets'][bucket] = {}
         for path, meta in sorted(storage.list(bucket).items()):
@@ -142,12 +150,17 @@ def validate(source):
     if len(names) != len(set(names)) or 'manifest.json' not in names:
       raise ValueError('Invalid backup entries')
     for item in archive.infolist():
-      if item.file_size > MAX_ENTRY or (item.filename != 'manifest.json' and not re.fullmatch(r'(data/[a-z_][a-z0-9_]*/[a-z_][a-z0-9_]*\.jsonl|objects/[a-z0-9-]+/[A-Za-z0-9][A-Za-z0-9._/-]*)', item.filename)) or '..' in item.filename.split('/'):
+      if item.file_size > MAX_ENTRY or (item.filename not in ('manifest.json', 'auth/users.jsonl') and not re.fullmatch(r'(data/[a-z_][a-z0-9_]*/[a-z_][a-z0-9_]*\.jsonl|objects/[a-z0-9-]+/[A-Za-z0-9][A-Za-z0-9._/-]*)', item.filename)) or '..' in item.filename.split('/'):
         raise ValueError('Invalid backup path or size')
     manifest = json.loads(archive.read('manifest.json'))
     if manifest.get('format') != FORMAT or manifest.get('version') != 1 or manifest.get('credentialsTransferred') is not False:
       raise ValueError('Invalid backup manifest')
     expected = {'manifest.json'}
+    if 'authUsers' in manifest:
+      expected.add('auth/users.jsonl')
+      data = archive.read('auth/users.jsonl')
+      if hashlib.sha256(data).hexdigest() != manifest['authUsers']['sha256'] or data.count(b'\n') != manifest['authUsers']['rows']:
+        raise ValueError('Auth users hash or row count mismatch')
     for schema, items in manifest['schemas'].items():
       for table, meta in items.items():
         entry = f'data/{ident(schema)}/{ident(table)}.jsonl'
@@ -181,7 +194,7 @@ def restore_plan(source):
       'Las pertenencias (core.memberships) no se activan automáticamente: se revisan a mano.',
     ],
   }
-  return {'apply': False, 'restoreImplemented': False, 'sourceProject': manifest['projectRef'], 'createdAt': manifest['createdAt'], 'plan': plan, 'credentialsTransferred': False}
+  return {'apply': False, 'restoreImplemented': True, 'sourceProject': manifest['projectRef'], 'createdAt': manifest['createdAt'], 'plan': plan, 'credentialsTransferred': False}
 
 
 if __name__ == '__main__':
@@ -194,10 +207,12 @@ if __name__ == '__main__':
   v.add_argument('--source', required=True)
   r = sub.add_parser('restore')
   r.add_argument('--source', required=True)
-  r.add_argument('--plan', action='store_true', help='única modalidad disponible: plan de solo lectura')
+  r.add_argument('--plan', action='store_true', help='plan de solo lectura')
+  r.add_argument('--apply', action='store_true', help='restaura en el proyecto de ensayo (private/restore-target.json)')
+  r.add_argument('--no-objects', action='store_true', help='solo base de datos y cuentas')
   args = parser.parse_args()
-  if args.command == 'restore' and not args.plan:
-    parser.error('restore solo admite --plan; la restauración real no está implementada todavía')
+  if args.command == 'restore' and args.plan == args.apply:
+    parser.error('restore necesita --plan o --apply (uno de los dos)')
 
   def action():
     if args.command == 'verify':
@@ -205,7 +220,10 @@ if __name__ == '__main__':
       return {'status': 'PASS', 'schemas': {s: len(t) for s, t in manifest['schemas'].items()}, 'buckets': {k: len(o) for k, o in manifest['buckets'].items()}}
     if args.command == 'backup':
       return backup(SupabaseManagement(args.credentials), args.output)
-    return restore_plan(args.source)
+    if args.plan:
+      return restore_plan(args.source)
+    target = json.loads((PRIVATE / 'restore-target.json').read_text(encoding='utf-8'))
+    return restore(args.source, RestoreTarget(SupabaseManagement(restore_target=target)), validate, objects=not args.no_objects)
 
   try:
     run_cli(action)

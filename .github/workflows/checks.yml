@@ -61,6 +61,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run test
+      - name: Pruebas de los scripts de operación (Python)
+        run: python3 -m unittest discover -s tests/scripts
   e2e:
     name: Playwright (solo si existe playwright.config.ts)
     needs: cambios

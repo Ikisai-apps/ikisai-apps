@@ -1105,14 +1105,14 @@ Propongo una **lectura** y no una escritura entre funciones. Booking no crea fil
 
 La alternativa sería que Booking cree el borrador llamando a la Edge de Finance. La descarto porque añade escrituras entre funciones y deja un borrador sin revisar en otra app.
 
-### 14.9 Preguntas
+### 14.9 Preguntas (respondidas el 7-10-2026)
 
-1. **Usuario (gestoría, pregunta 3):** ¿habrá facturas simplificadas (tiques)? Si las hay, se añade la serie `T` con sus límites.
-2. **Usuario:** ¿le valen las series `F` y `R` con el formato `F2026-0001`? Antes de emitir hace falta el último número de la serie de la hoja, para cerrarla.
-3. **Core:** visto bueno a que el QR y la leyenda **no se impriman** mientras el envío esté apagado (§14.5).
-4. **Core:** visto bueno al documento con la impresión del navegador ahora, y el PDF del servidor después (§14.4).
-5. **Core y Booking:** la lectura `booking.reservation_invoice_source` (§14.8), con precios con o sin IVA y la categoría de ingreso por línea.
-6. **Core:** el envío real (XML, firma y certificado) queda para cuando se acerque la fecha. ¿De acuerdo?
+1. **Simplificadas (tiques):** no, por ahora (usuario y gestoría). Si llegan, se añade la serie `T` con sus límites.
+2. **Series:** `F` y `R` con el formato `F2026-0001`, empezando en 1. **La serie de la hoja de Google no se cierra:** la gestoría confirma emitir con programa propio desde ya y con serie nueva, así que no hace falta su último número. «Cerrar serie» queda para las series de registro que el usuario quiera cerrar.
+3. **QR y leyenda:** no se imprimen mientras el envío esté apagado (Core, ronda 41).
+4. **Documento:** se imprime desde el navegador; el PDF del servidor, más adelante (Core, ronda 41).
+5. **Lectura de Booking:** publicada (#225); Finance la usa desde el PR 4 (§14.8).
+6. **Envío real:** XML, firma y certificado, cuando se acerque la fecha, junto con el interruptor (Core, rondas 41 y 43). La gestoría confirma VERI*FACTU solo cuando sea obligatorio.
 
 ### 14.10 Errores del PR 1
 
