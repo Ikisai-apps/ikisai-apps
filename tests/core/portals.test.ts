@@ -186,3 +186,17 @@ test('portales · contacto público sin sesión (C1): textos de contacto de Cent
   assert.equal(en.data.items[0].title, 'Contact email');
   assert.equal((await callPortal(guests, 'guests', '/api/v1/public/contact?lang=xx')).data.lang, 'es', 'idioma desconocido → español');
 });
+
+test('portales · core.portal_in_scope (K1): reserva del organizador; reserva y huésped en Guests; nada sin ámbito', async () => {
+  const user = await app.t.createUser(); const R = crypto.randomUUID(); const G = crypto.randomUUID();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('guests', $1, 'editor', $2), ('organizers', $1, 'editor', $3)`,
+    [user, JSON.stringify({ grants: [{ reservation_id: R, guest_id: G }] }), JSON.stringify({ grants: [{ reservation_id: R }] })]);
+  const q = async (portal: string, r: string | null, g: string | null) =>
+    (await app.t.db.query<{ ok: boolean }>('select core.portal_in_scope($1, $2, $3, $4) ok', [portal, user, r, g])).rows[0]!.ok;
+  assert.equal(await q('organizers', R, null), true);
+  assert.equal(await q('organizers', crypto.randomUUID(), null), false, 'otra reserva');
+  assert.equal(await q('guests', R, G), true);
+  assert.equal(await q('guests', R, null), false, 'en Guests hace falta el huésped');
+  assert.equal(await q('guests', R, crypto.randomUUID()), false, 'otro huésped de la misma reserva');
+  assert.equal(await q('organizers', null, null), false);
+});
