@@ -189,6 +189,11 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - `uploads`, `files/:id` y el feedback ya usan la abstracción. El contrato del frontend no cambia.
 - **Activación:** secretos `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`, más `IKISAI_STORAGE_PROVIDER=r2` para que los archivos nuevos vayan a R2. Lo que ya está en Supabase sigue sirviéndose de allí.
 - **Regla para las apps:** nunca llamar a `/storage/v1/object…` directamente. Hay que usar `createStorage(supabase).readUrl(fila)` o `.download(fila)`, con la fila de `core.files` (que lleva `storage_provider`).
+- **Campos de archivo y huérfanos (migración `0075`):**
+  - Cada app declara en su migración las columnas que guardan un `file_id`: `select core.register_file_field('<app>', '<schema>', '<tabla>', '<columna>', 'operational|legal|permanent|temporary');`.
+  - Cuando las tiene todas, lo dice con `select core.enable_file_gc('<app>');`. Hasta entonces, la recogida no toca sus archivos.
+  - El lint avisa de las columnas `*file_id` sin declarar.
+  - El worker `files/gc` de central-api, diario, marca los huérfanos de más de 2 días. Borra del proveedor y de `core.files` los que siguen sin referencia a los 30 días, salvo que alguna vez fueran `legal` o `permanent`. Antes de borrar vuelve a comprobarlo.
 - **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
 ## 4. Commit

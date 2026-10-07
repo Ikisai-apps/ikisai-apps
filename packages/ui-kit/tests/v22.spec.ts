@@ -19,4 +19,22 @@ test.describe('ui-kit v0.18 · «Sugerencias y QA» en el panel del lanzador', (
     await expect(page.locator('.launcher')).toHaveCount(0);
     await expect(page.locator('.fb-center .fb-tabs')).toBeVisible();
   });
+
+  test('el centro se monta en el contenedor de la app y las reglas de <html> van en una hoja global propia', async ({ page }) => {
+    await page.goto('/#feedback');
+    const inLayer = await page.evaluate(async () => {
+      const kit = (window as any).ikisaiFeedback;
+      const layer = document.createElement('div');
+      layer.id = 'appKitLayer';
+      layer.className = 'ikisai-kit';
+      document.body.appendChild(layer);
+      kit.openFeedbackCenter({ api: async () => ({ nodes: [] }), app: 'demo', container: () => layer });
+      return !!layer.querySelector('.sheetback .fb-center');
+    });
+    expect(inLayer).toBe(true);
+    const global = await page.evaluate(() => document.getElementById('ikisai-kit-feedback-global')?.textContent ?? '');
+    expect(global).toContain('html.fb-mode #appLauncher::after');
+    expect(global).toContain('html.fb-pressing');
+    await expect(page.locator('#appKitLayer [data-fb-tab="map"]')).toBeVisible();
+  });
 });

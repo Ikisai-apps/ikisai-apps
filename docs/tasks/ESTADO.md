@@ -87,3 +87,21 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 ## Bloqueos
 
 - Ninguno. Abiertos sin bloquear: C2 (resto), C7 (resto), C8, C9, C10, C11, C19, C20.
+
+- **Sugerencias y QA, y uso de funciones** (tanda 40, `coordinacion/ampliacion/FEEDBACK.md` fase 4 y `USO.md`; referencia, Booking #227):
+  - `public/feedback-ui.js` monta lo del kit 0.17: `createFeedback`, con sus capas dentro de un contenedor `.ikisai-kit` porque la hoja del kit va acotada; `createFeedbackReview`; `createUsage`; el lanzador con los dos interruptores, y la limpieza con `onSessionEnd`, ahora expuesto en `src/core.ts`.
+  - «Sugerencias y QA» está en el menú (grupo Sistema) y abre el centro del kit dentro de `#kitLayer`.
+  - Marcas `data-feedback-id` y `data-feedback-label` en todo control con significado: 437 funciones de 34 archivos, sin ids dinámicos (`packages/ui-kit/scripts/feature-catalog.mjs --app tasks`).
+    - La cáscara y la pantalla actual las marca `feedback-ui.js` con mapas de ids literales; el resto va escrito en cada plantilla.
+    - Los datos personales y lo que se copia llevan `data-feedback-ignore`.
+  - `usage.track` / `usage.run` en las operaciones importantes:
+    - tareas: crear, completar, reabrir, borrar, restaurar y mover;
+    - compras: aprobar y recibir;
+    - preparar un plan;
+    - mover una petición;
+    - importar y exportar la copia portable, y el respaldo.
+  - **Reglas para quien toque plantillas:**
+    - no metas atributos dentro de una cadena que otro módulo busque con `.replace` (`SAVED_VIEWS_BUTTON`, `quickAdd`, `dragHelp`…);
+    - `taller.css` ya no pisa los `.segmented` del kit.
+  - Desde el kit 0.18.2: `openFeedbackCenter` recibe `container` (`#kitLayer`), el kit inyecta sus reglas de `html.fb-*` y sus pestañas usan `data-fb-tab`, así que ya no hacen falta las copias locales.
+  - Pruebas: `tests/tasks/feedback-ids.test.ts` (forma y literales) y `tests/tasks/feedback.spec.ts` (interruptor, pulsación larga, envío real, centro y uso).

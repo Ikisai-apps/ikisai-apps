@@ -19,6 +19,7 @@ import { openFeedbackComposer, type ComposerValue, type FeedbackComposer } from 
 import type { FeedbackIntent } from './constants.ts';
 import { appVersion, collectFeedbackContext, observeFeedbackContext, type FeedbackContextInput } from './context.ts';
 import { installFeedbackGesture, type FeedbackGesture } from './gesture.ts';
+import { ensureFeedbackGlobalStyles } from './global-style.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
 import { clearFeedbackForUser, feedbackDrafts, feedbackOutbox, type FeedbackDraft, type FeedbackOutboxItem } from './store.ts';
 
@@ -76,6 +77,7 @@ const VERIFY_EVERY_MS = 5 * 60_000;
 
 export function createFeedback(options: FeedbackOptions): Feedback {
   observeFeedbackContext();
+  ensureFeedbackGlobalStyles();
   const host = () => options.container?.() ?? document.body;
   const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': 'Comentarios sobre la pantalla' });
   let current: FeedbackComposer | null = null;

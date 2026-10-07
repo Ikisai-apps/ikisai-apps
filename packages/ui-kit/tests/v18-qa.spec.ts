@@ -173,7 +173,7 @@ test.describe('ui-kit v0.15 · feedback: verificación, pasos, «Me bloquea» y 
     await expect(page.locator('.fb-detail [data-display="dismissed"]')).toBeVisible();
     expect((await server(page)).reports[0].dismissReason).toBe('Duplicado de otro');
     // Búsqueda en el mapa.
-    await page.locator('.fb-tabs [data-tab="map"]').click();
+    await page.locator('.fb-tabs [data-fb-tab="map"]').click();
     await page.locator('.fb-tree-search').fill('huésped');
     await expect(page.locator('.fb-tree .fb-branch-label')).toHaveText(['Reserva › Huéspedes › Añadir huésped']);
   });
@@ -184,7 +184,7 @@ test.describe('ui-kit v0.15 · feedback: verificación, pasos, «Me bloquea» y 
     await composer(page).locator('.fb-message').fill('A medias');
     await page.keyboard.press('Escape');
     await page.locator('#fbCenter').click();
-    await page.locator('.fb-tabs [data-tab="drafts"]').click();
+    await page.locator('.fb-tabs [data-fb-tab="drafts"]').click();
     await page.locator('.fb-card.draft').click();
     await expect(composer(page).locator('.fb-message')).toHaveValue('A medias');
   });

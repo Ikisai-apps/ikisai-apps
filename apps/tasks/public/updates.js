@@ -11,7 +11,7 @@ if ('serviceWorker' in navigator && isSecureContext) {
   function showUpdate(){
     if(!registration?.waiting){navigator.serviceWorker.getRegistration().then(found=>{registration=found;if(found?.waiting)showUpdate();}).catch(()=>{});return;}
     let button=document.getElementById('appUpdate');
-    if(!button){button=document.createElement('button');button.id='appUpdate';button.className='syncbadge';button.textContent='Nueva versión disponible';button.onclick=applyUpdate;document.querySelector('.brandrow')?.append(button);}
+    if(!button){button=document.createElement('button');button.id='appUpdate';button.dataset.feedbackId='tasks.actualizacion.aplicar';button.dataset.feedbackLabel='Nueva versión disponible';button.className='syncbadge';button.textContent='Nueva versión disponible';button.onclick=applyUpdate;document.querySelector('.brandrow')?.append(button);}
   }
   async function applyUpdate(){
     if(Sync.secondary)return toast('Actualiza desde la pestaña activa.');

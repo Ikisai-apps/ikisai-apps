@@ -166,5 +166,19 @@ test.describe('ui-kit v0.17 · catálogo de funciones al compilar', () => {
     const written = JSON.parse(readFileSync(join(root, 'apps', 'booking', 'dist', 'feature-catalog.json'), 'utf8'));
     expect(written.features).toHaveLength(4);
     expect(extractFeatures("usage.track('booking.import.ok')").features[0].kind).toBe('operation');
+    // `fbMark(nodo, 'id', 'etiqueta')`, aunque el nodo ocupe varias líneas con paréntesis y llaves dentro.
+    const marked = extractFeatures([
+      "return fbMark(listRow({ id: r.id, title: r.title, meta: [fmt(r), r.code ?? 'pendiente'], onClick: () => open(r) }),",
+      "  'booking.reservas.fila', 'Reserva');",
+      "fbMark(shell.header, 'booking.cabecera', 'Cabecera');",
+      "fbMark(main, screen.id, screen.label);",
+      "export function fbMark(node, id, label) { return node; }",
+    ].join('\n'));
+    expect(marked.features.map((f: { id: string; label: string; kind: string }) => [f.id, f.label, f.kind])).toEqual([
+      ['booking.reservas.fila', 'Reserva', 'item'], ['booking.cabecera', 'Cabecera', 'section']]);
+    expect(marked.dynamic).toHaveLength(1);
+    // Ternario entre dos ids fijos: las dos ramas, con su etiqueta.
+    const ternary = extractFeatures("openForm({ feedbackId: guest ? 'booking.huespedes.ficha' : 'booking.huespedes.nuevo', feedbackLabel: guest ? 'Ficha' : 'Nuevo huésped' });");
+    expect(ternary.features.map((f: { id: string; label: string }) => [f.id, f.label])).toEqual([['booking.huespedes.ficha', 'Ficha'], ['booking.huespedes.nuevo', 'Nuevo huésped']]);
   });
 });
