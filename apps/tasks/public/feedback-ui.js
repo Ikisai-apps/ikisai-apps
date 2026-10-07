@@ -42,9 +42,8 @@ const navigationBeforeFeedback=navigationGroups;
 navigationGroups=function(){const groups=navigationBeforeFeedback(),system=groups.find(g=>g.id==='system');
   if(system&&Sync.core)system.items.unshift(['feedbackCenter','Sugerencias y QA','help','action']);return groups};
 function openTasksFeedbackCenter(){const p=tasksFeedback();if(!p)return toast('Aún no hay conexión con la cuenta.');
-  closeNavigation?.();const sheet=IkisaiKit.openFeedbackCenter({api:(path,init)=>Sync.core.api(path,init),app:'tasks',canEdit:()=>canEdit(),feedback:p.feedback});
   // Como las hojas heredadas (index.html): dentro de #kitLayer, que lleva .ikisai-kit, para que el CSS acotado del kit la pinte.
-  sheetKitLayer().appendChild(sheet.element)}
+  closeNavigation?.();IkisaiKit.openFeedbackCenter({api:(path,init)=>Sync.core.api(path,init),app:'tasks',canEdit:()=>canEdit(),feedback:p.feedback,container:sheetKitLayer})}
 const actionBeforeFeedback=handleTopAction;
 handleTopAction=function(action){if(action==='feedbackCenter')return openTasksFeedbackCenter();return actionBeforeFeedback(action)};
 

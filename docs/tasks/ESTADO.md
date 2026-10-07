@@ -102,6 +102,6 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
     - importar y exportar la copia portable, y el respaldo.
   - **Reglas para quien toque plantillas:**
     - no metas atributos dentro de una cadena que otro módulo busque con `.replace` (`SAVED_VIEWS_BUTTON`, `quickAdd`, `dragHelp`…);
-    - los `[data-tab]` heredados excluyen el centro del kit;
     - `taller.css` ya no pisa los `.segmented` del kit.
+  - Desde el kit 0.18.2: `openFeedbackCenter` recibe `container` (`#kitLayer`), el kit inyecta sus reglas de `html.fb-*` y sus pestañas usan `data-fb-tab`, así que ya no hacen falta las copias locales.
   - Pruebas: `tests/tasks/feedback-ids.test.ts` (forma y literales) y `tests/tasks/feedback.spec.ts` (interruptor, pulsación larga, envío real, centro y uso).
