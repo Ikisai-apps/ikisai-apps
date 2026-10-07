@@ -45,7 +45,7 @@ async function enter(page: Page, token: string): Promise<void> {
   expect(page.url()).not.toContain(token);
 }
 
-test('organizers · enlace no válido: pantalla clara, sin sesión', async ({ page }) => {
+test('organizers · enlace no válido: pantalla clara, sin sesión @smoke', async ({ page }) => {
   await page.goto(`${baseURL}/i/${'A'.repeat(43)}`);
   await expect(page.locator('#entryTitle')).toHaveText('Este enlace no funciona');
   await expect(page).not.toHaveURL(/\/i\//);
@@ -137,7 +137,7 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await expect(page.locator('#guestRows')).toContainText('Aún no has añadido a nadie');
 });
 
-test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin registro de viajeros, solo nombre y contacto', async ({ page }) => {
+test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin registro de viajeros, solo nombre y contacto @smoke', async ({ page }) => {
   const pending = await api.reservation({ title: 'Retiro de otoño', confirm: false, start: '2027-10-01', end: '2027-10-03' });
   const simple = await api.reservation({ title: 'Encuentro de invierno', confirm: true, start: '2027-12-01', end: '2027-12-02', ses: false });
   await enter(page, await api.organizerLink([pending, simple], 'lucia@example.invalid'));
@@ -166,7 +166,7 @@ test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin 
   await expect(page.locator('#guestState')).toHaveText('Faltan datos');
 });
 
-test('organizers · sin red: última copia con aviso; lo escrito se guarda solo al volver la conexión', async ({ page, context }) => {
+test('organizers · sin red: última copia con aviso; lo escrito se guarda solo al volver la conexión @smoke', async ({ page, context }) => {
   const reservation = await api.reservation({ title: 'Retiro sin cobertura', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'nuria@example.invalid'));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro sin cobertura');
