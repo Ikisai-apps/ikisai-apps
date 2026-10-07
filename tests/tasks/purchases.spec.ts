@@ -168,3 +168,16 @@ test('Finance: factura asignada en la solicitud y proveedor del catálogo (con n
   expect((await server.rows('tasks.purchase_requests')).find((r) => r.title === 'Guantes de nitrilo').supplier_id).toBeNull();
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('tarea pedida desde otra app (§19): el editor dice de dónde viene', async () => {
+  const asked = await server.app.call('/api/v1/requests/task', { body: { source: 'central', external_ref: 'LEG_2026_004', title: 'Renovar licencia de piscina', tab_id: ID.ikisai } });
+  expect(asked.status, JSON.stringify(asked.data)).toBe(200);
+  await owner.evaluate(() => (window as any).syncNow?.());
+  await settled(owner);
+  await expect.poll(() => owner.evaluate((id) => !!Sync.core.data['tasks.tasks'].find((t: any) => t.id === id), asked.data.task.id)).toBe(true);
+  await owner.evaluate((id) => (window as any).openTaskEditor(id), asked.data.task.id);
+  await expect(owner.locator('#taskOrigin')).toContainText('Pedida desde');
+  await expect(owner.locator('#taskOrigin')).toContainText('LEG_2026_004');
+  await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});

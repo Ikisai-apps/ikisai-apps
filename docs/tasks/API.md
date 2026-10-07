@@ -905,7 +905,7 @@ Invoices ya asigna líneas a destinos de Tasks (`target_app = 'tasks'`, `target_
 4. Integración con Invoices cuando existan sus tres piezas: destino `purchase_request`, `invoices.allocations_by_target` e `invoices.supplier_options`.
 
 
-## 19. Trabajo pedido desde otras apps (petición P5 de Central; propuesta para revisión de Core, 7 de octubre de 2026)
+## 19. Trabajo pedido desde otras apps (petición P5 de Central; visto bueno de Core en la ronda 36, construido el 7 de octubre de 2026)
 
 Central quiere crear tareas en Tasks desde su módulo de cumplimiento, sin duplicarlas al reintentar, y leer el estado de varias a la vez. Lo hace con el token de la persona, como Invoices con `tasks.targets`.
 
@@ -940,11 +940,11 @@ Rol `editor` u `owner`, con alcance sobre el destino (las reglas de siempre del 
 - Si existe pero no es visible para quien llama: `409 EXTERNAL_REF_IN_USE`, sin datos de la tarea.
 
 **Procedencia visible:** columna nueva `tasks.tasks.external_ref text` (migración `0307`).
-- Contenido: `<source>:<external_ref>`, inmutable, con índice único entre las filas que la tienen.
+- Contenido: `<source>:<external_ref>`, inmutable, con índice único entre las tareas **vivas** (decisión de Core). La que está en la papelera conserva su referencia.
 - Así la tarjeta muestra «Pedida desde Central» y la idempotencia no depende solo de cómo se deriva el id.
 - No es escribible desde la interfaz ni desde `commands`: solo la rellena esta ruta. El hook rechaza fijarla o cambiarla por otro camino.
 
-**Alternativa sin migración:** solo el id determinista. Funciona, pero la tarea no diría de dónde viene. Recomiendo la columna.
+**Alternativa sin migración** (descartada en la ronda 36): solo el id determinista. Funcionaba, pero la tarea no diría de dónde viene.
 
 ### 19.3 `tasks.targets` con lista de ids
 
@@ -969,3 +969,37 @@ Central puede guardar el `id` que le devuelve §19.2 o recalcularlo. No hace fal
 2. Ruta `requests/task` en `tasks-api`, con las pruebas de idempotencia, papelera, alcance y concurrencia.
 3. La tarjeta muestra «Pedida desde Central», con el nombre de la app sacado del catálogo `GET /api/v1/apps`.
 4. Ejemplo de llamada en este apartado, para Central.
+
+### 19.6 Tal y como se ha construido
+
+- **Migración `20261007_0307_tasks_external_requests.sql`:**
+  - columna `external_ref`, con su comprobación de formato, índice único entre las vivas e inmutable (`guard_immutable`);
+  - procedimiento `tasks.request_task`, que solo lanza la ruta: los `call` no pasan por `commands`;
+  - regla en `tasks.validate_batch`: `external_ref` solo se fija en el insert de ese procedimiento;
+  - `tasks.targets` con `ids` y `externalRef`.
+- **Ruta:** `supabase/functions/tasks-api/requests.ts`.
+  - Primero lee `tasks.targets` con el id derivado. Si no existe, confirma el `call` con un `requestId` nuevo cada vez: la idempotencia la da el id de la tarea, no el recibo.
+  - Si dos peticiones chocan a la vez, la segunda devuelve la tarea de la primera.
+- **Agentes:** el núcleo pide aprobación para cualquier `call` de un agente, así que esta ruta es para personas (Central llama con el token de la persona). Un agente ya tiene `tasks_create_task`.
+- **Interfaz:** el editor de la tarea muestra «Pedida desde Central · LEG_2026_004». El nombre de la app sale de `GET /api/v1/apps`.
+
+Ejemplo para Central (desde su Edge, con `ctx.token`):
+
+```http
+POST https://tasks.ikisai.com/api/v1/requests/task
+Authorization: Bearer <token de la persona>
+Content-Type: application/json
+
+{"source": "central", "external_ref": "LEG_2026_004", "title": "Renovar la licencia de la piscina",
+ "note": "Vence el 30 de noviembre", "due": "2026-11-15", "priority": "high", "tab_id": "<área>"}
+```
+
+→ `200 {"created": true, "task": {"kind": "task", "id": "…", "tabId": "…", "projectId": "<Entrada>", "title": "…", "revision": 1, "deleted": false, "archived": false, "done": false, "externalRef": "central:LEG_2026_004"}}`
+
+Errores:
+- `422 INVALID_INPUT` si la entrada no vale;
+- `403` sin permiso de edición o fuera de su alcance (la Entrada es del área entera);
+- `404` si el proyecto o el área no existen;
+- `409 EXTERNAL_REF_IN_USE` si la referencia es de una tarea que no ve.
+
+Estado de varias: `POST /api/v1/read/tasks.targets` con `{"kind": "task", "ids": ["…", "…"]}` → `{"items": [...], "missing": [...]}`.
