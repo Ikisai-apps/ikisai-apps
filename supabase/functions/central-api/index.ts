@@ -9,4 +9,7 @@ Deno.serve(createCentralApp({
   serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   release: Deno.env.get('IKISAI_RELEASE') ?? 'development',
   stage: 'beta',
+  // Core: worker del feedback (contrato §3.7), despertado por pg_cron con la clave de worker.
+  workerKey: Deno.env.get('IKISAI_WORKER_KEY'),
+  feedbackWorker: true,
 }, { tasksApiBase: Deno.env.get('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE }));

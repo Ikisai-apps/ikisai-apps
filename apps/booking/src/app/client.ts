@@ -16,6 +16,7 @@ export const CONDITIONS: TableName = TABLES.conditions;
 export const TIERS: TableName = TABLES.cancellationTiers;
 export const PROPOSALS: TableName = TABLES.proposals;
 export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
+export const SES_SETTINGS: TableName = TABLES.sesSettings;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -30,6 +31,11 @@ export interface ReservationRow extends SyncedRow {
   contact_phone: string | null;
   briefing_received: boolean;
   archived_at: string | null;
+  /** Interruptores de SES (API §17.1): ausentes en filas antiguas, que cuentan como «con SES». */
+  ses_enabled?: boolean;
+  ses_disabled_reason?: string | null;
+  ses_disabled_note?: string | null;
+  collect_guest_data?: boolean;
   _pending?: boolean;
 }
 
@@ -43,6 +49,9 @@ export interface EventRow extends SyncedRow {
 export interface FinanceRow extends SyncedRow {
   deposit_required: number | string | null;
   deposit_paid: number | string | null;
+  payment_date?: string | null;
+  /** Momento en que el servidor registró el pago: inicio legal del plazo de 24 h de SES. */
+  payment_registered_at?: string | null;
 }
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
@@ -97,6 +106,8 @@ export function technicalDetail(error: unknown): string {
 }
 
 /** Mensaje legible en español para un error de la API o de red. */
+const SES_REASON_MESSAGE = 'Si no se comunica a SES hay que indicar el motivo; con «Otro», además, escribirlo.';
+
 export function describeError(error: unknown): string {
   const e = error as Partial<ApiError> & { message?: string };
   const code = typeof e?.code === 'string' ? e.code : '';
@@ -140,7 +151,24 @@ export function describeError(error: unknown): string {
       return 'El total de la propuesta sería negativo: revisa los descuentos.';
     case 'CONDITIONS_IN_USE':
       return 'Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.';
+    case 'reservations_ses_reason':
+      return SES_REASON_MESSAGE;
+    case 'SES_PAYMENT_REQUIRED':
+      return 'Registra primero el pago de la reserva (fecha de pago) para poder comunicarla a SES.';
+    case 'SES_DISABLED':
+      return 'Esta reserva está marcada para no comunicarse a SES. Activa el interruptor para comunicarla.';
+    case 'SES_NOT_CONFIRMED':
+      return 'Solo se comunica a SES una reserva confirmada.';
+    case 'SES_ALREADY_COMMUNICATED':
+      return 'Esta reserva ya tiene una comunicación a SES en curso o aceptada.';
+    case 'SES_NOT_CANCELLABLE':
+      return 'Esa comunicación ya no se puede anular: solo se anulan las aceptadas que no estén ya anuladas.';
+    case 'SES_DATA': {
+      const field = (e?.details as { field?: unknown } | null | undefined)?.field;
+      return typeof e?.message === 'string' && e.message ? e.message : `Faltan datos para comunicar la reserva a SES${typeof field === 'string' ? ` (${field})` : ''}.`;
+    }
     case 'CONSTRAINT_VIOLATION':
+      if (JSON.stringify(e?.details ?? '').includes('reservations_ses_reason') || /reservations_ses_reason/.test(String(e?.message ?? ''))) return SES_REASON_MESSAGE;
       return 'Los datos no cumplen una regla de la reserva (por ejemplo, fechas obligatorias desde la pre-reserva).';
     case 'ORPHAN_CHILD': {
       const table = (e?.details as { table?: unknown } | null | undefined)?.table;

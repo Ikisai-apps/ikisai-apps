@@ -27,6 +27,7 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
       el('p', null, ROLE_TEXT[boot?.membership.role ?? 'reader'] ?? ''))),
     docs,
     summary,
+    el('a', { class: 'homelink', href: '#/decisiones', id: 'homeDecisions' }, icon('history', 18), 'Registro de decisiones', el('span', { class: 'muted small' }, 'qué se decidió, por qué y cómo se aplica')),
     el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
     dashboardHost,
   );

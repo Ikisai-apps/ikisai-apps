@@ -337,6 +337,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     // Ratón: arrastrar el asa del último ítem por encima del primero.
     const now = await order();
     const last = now[now.length - 1]!;
+    await expect(handleOf(last)).toBeVisible();
     const from = (await handleOf(last).boundingBox())!;
     const to = (await list().locator('.sortable-row').first().boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -497,6 +498,341 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     expect(api.rows(GUESTS)[0]).toMatchObject({ ses_status: 'enviado_SES' });
   });
 
+  await test.step('SES: interruptor con motivo, modo operativo y sin lista de huéspedes, reactivar y ajuste global', async () => {
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const eventId = api.rows(EVENTS)[0]!.id;
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    const block = page.locator('#blockSes');
+    await expect(block).toContainText('Registro de viajeros');
+    await expect(block.getByLabel('Comunicar a SES.HOSPEDAJES')).toBeChecked();
+    await expect(block.locator('#sesModeHelp')).toHaveText('Se piden los datos del registro de viajeros y la firma.');
+    await expect(block.getByLabel('Pedir datos a los huéspedes')).toHaveCount(0);
+
+    // «Otro» sin texto: no guarda
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    let sheet = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await sheet.getByLabel('Otro:').check();
+    await sheet.locator('#saveSesReason').click();
+    await expect(sheet.locator('.formerror')).toContainText('es obligatorio con «Otro»');
+    expect(api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: true });
+
+    // «Uso privado» con importe: aviso, y guarda los tres campos en un solo update
+    await sheet.getByLabel('Uso privado sin contraprestación').check();
+    const before = api.changeLog().length;
+    await sheet.locator('#saveSesReason').click();
+    await expect(page.getByRole('alertdialog', { name: 'Reserva con importe' })).toContainText('Esta reserva tiene importe. ¿Seguro que es sin contraprestación?');
+    await page.getByRole('button', { name: 'Sí, es sin contraprestación' }).click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'uso_privado', ses_disabled_note: null, collect_guest_data: true });
+    expect(api.changeLog().slice(before).filter((c) => c.table === RESERVATIONS)).toHaveLength(1);
+    await expect(block.locator('#sesReason')).toHaveText('Sin comunicar a SES: uso privado sin contraprestación.');
+    await expect(block.locator('#sesModeHelp')).toHaveText('Solo nombre, contacto, alergias y dieta.');
+    await expect(block.getByLabel('Pedir datos a los huéspedes')).toBeChecked();
+
+    // modo operativo en la pantalla de huéspedes: sin documento, dirección, nacimiento ni firma
+    await page.goto(`${baseURL}/#/huespedes/${eventId}`);
+    await expect(page.locator('#sesQueue')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    sheet = page.getByRole('dialog', { name: 'Persona Sintética' });
+    for (const name of ['Nombre', 'Primer apellido', 'Teléfono', 'Correo']) await expect(sheet.getByLabel(name, { exact: true })).toBeVisible();
+    for (const name of ['Número de documento', 'Dirección', 'Fecha de nacimiento']) await expect(sheet.getByLabel(name, { exact: true })).toHaveCount(0);
+    await expect(sheet.locator('#signOnScreen, #sesMissing')).toHaveCount(0);
+    await expect(sheet.locator('#guestRestrictions')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+
+    // sin «Pedir datos»: aviso en lugar de la lista
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    await page.locator('#blockSes').getByLabel('Pedir datos a los huéspedes').uncheck();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.collect_guest_data).toBe(false);
+    await expect(page.locator('#sesModeHelp')).toHaveText('Sin lista de huéspedes ni enlaces de huésped.');
+    await page.goto(`${baseURL}/#/huespedes/${eventId}`);
+    await expect(page.getByText('Esta reserva no pide datos de huéspedes')).toBeVisible();
+    await expect(page.locator('#guestList')).toHaveCount(0);
+    await page.locator('#goSesBlock').click();
+    await expect(page.locator('#blockSes')).toBeVisible();
+
+    // reactivar con un clic (el motivo anterior no se borra) y motivo «Otro» con texto
+    await page.locator('#blockSes').getByLabel('Pedir datos a los huéspedes').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.collect_guest_data).toBe(true);
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: true, ses_disabled_reason: 'uso_privado' });
+    await expect(page.getByText('Se pedirán los datos legales que falten')).toBeVisible();
+    await expect(page.locator('#sesModeHelp')).toHaveText('Se piden los datos del registro de viajeros y la firma.');
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    sheet = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await sheet.getByPlaceholder('Escribe el motivo').fill('Prueba de formación interna');
+    await sheet.locator('#saveSesReason').click();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'otro', ses_disabled_note: 'Prueba de formación interna' });
+    await expect(page.locator('#sesReason')).toContainText('Otro: Prueba de formación interna');
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.ses_enabled).toBe(true);
+
+    // ajuste global: pruebas por defecto, PROD pide confirmación, pausar envíos
+    await page.goto(`${baseURL}/#/`);
+    await page.locator('#openSesHome').click();
+    await expect(page.getByRole('heading', { name: 'SES.HOSPEDAJES', level: 2 })).toBeVisible();
+    await expect(page.locator('#sesEnvironment')).toHaveValue('pre');
+    await page.locator('#sesEnvironment').selectOption('prod');
+    await expect(page.getByRole('alertdialog', { name: 'Pasar a entorno real' })).toContainText('comunicaciones reales');
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.locator('#sesEnvironment')).toHaveValue('pre');
+    expect(api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'pre', paused: false });
+    await page.locator('#sesPaused').check();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'pre', paused: true });
+    await page.locator('#sesEnvironment').selectOption('prod');
+    await page.getByRole('button', { name: 'Pasar a real' }).click();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'prod', paused: true });
+    await page.locator('#sesPaused').uncheck();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]!.paused).toBe(false);
+    await page.locator('#sesEnvironment').selectOption('pre');
+    await expect.poll(() => api.rows('booking.ses_settings')[0]!.environment).toBe('pre');
+  });
+
+  await test.step('SES: comunicar la reserva con el pago registrado, estados, cambios, anulación, rechazo y plazo de 24 h', async () => {
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const block = page.locator('#blockSes');
+    const sync = () => page.getByRole('button', { name: 'Sincronizar ahora' }).click();
+    const lastComm = () => api.sesComms(reservationId)[0]!;
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    await expect(block).toContainText('Registro de viajeros');
+
+    // Sin pago registrado no hay botón: se explica por qué.
+    await expect(block.locator('#sesNeedsPayment')).toHaveText('Se podrá comunicar cuando se registre el pago.');
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0);
+
+    // Registrar la fecha de pago: el servidor anota el momento legal y aparece el botón.
+    await page.locator('#editFinance').click();
+    const finance = page.getByRole('dialog', { name: 'Cobro' });
+    await finance.getByLabel('Fecha del pago').fill(inDays(0));
+    await page.locator('#saveRow').click();
+    await expect(finance).toBeHidden();
+    await expect.poll(() => typeof api.rows(FINANCE)[0]!.payment_registered_at).toBe('string');
+    await expect(block.locator('#sesNeedsPayment')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toBeEnabled();
+    await expect(block.locator('#sesDeadline')).toHaveCount(0);
+
+    // Sin red el bloque lo dice y deshabilita el botón.
+    await context.setOffline(true);
+    await expect(block.locator('#sesOffline')).toContainText('Sin conexión');
+    await expect(block.locator('#sesCommunicate')).toBeDisabled();
+    await context.setOffline(false);
+    await page.waitForFunction(() => navigator.onLine);
+    await expect(block.locator('#sesOffline')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toBeEnabled();
+
+    // Datos que faltan: el mensaje del servidor, en claro, y nada se crea.
+    api.failNextSes('SES_DATA', 422, 'Falta el apellido del contacto de la reserva.', { field: 'contact_name' });
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesActionError')).toHaveText('Falta el apellido del contacto de la reserva.');
+    expect(api.sesComms()).toHaveLength(0);
+
+    // Comunicar: en proceso, con la etiqueta de pruebas; hasta que SES acepta no se dice «comunicada».
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('En proceso en SES');
+    await expect(block.locator('#sesEnv')).toHaveText('Pruebas (PRE)');
+    await expect(block.locator('#sesStatusDetail')).toHaveCount(0);
+    await expect(block.locator('#sesActionError')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0);
+    await expect(block.locator('#sesCancel')).toHaveCount(0);
+    expect(api.sesComms()).toHaveLength(1);
+    expect(lastComm()).toMatchObject({ kind: 'RH', status: 'en_proceso', environment: 'pre', snapshot: { start_date: inDays(10), end_date: inDays(12), persons: 23 } });
+
+    // El tick del servidor la acepta: al volver a la ficha se ve «Aceptada» con el código.
+    api.sesAccept(lastComm().id);
+    await page.reload();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Aceptada');
+    await expect(block.locator('#sesStatusDetail')).toContainText(/Comunicada a SES · código SYN-\d+/);
+    await expect(block.locator('#sesCancel')).toBeVisible();
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+
+    // Cambian las fechas: aviso destacado y anulación con confirmación.
+    api.serverUpdate(RESERVATIONS, reservationId, { end_date: inDays(13) });
+    await sync();
+    await expect(block.locator('#sesChanged')).toContainText('La reserva cambió desde que se comunicó: anula y vuelve a comunicar');
+    await expect(block.locator('#sesCancel')).toHaveCount(0);
+    await block.locator('#sesCancelChanged').click();
+    const confirmCancel = page.getByRole('alertdialog', { name: 'Anular en SES' });
+    await expect(confirmCancel).toBeVisible();
+    await confirmCancel.getByRole('button', { name: 'Anular en SES' }).click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Anulada');
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+    expect(api.sesComms().map((c) => `${c.kind}:${c.status}`)).toEqual(['anulacion:aceptada', 'RH:anulada']);
+    // Con la comunicación anulada se puede volver a comunicar (ya con las fechas nuevas).
+    api.serverUpdate(RESERVATIONS, reservationId, { end_date: inDays(12) });
+    await sync();
+    api.setSesNext('aceptada');
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Aceptada');
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+
+    // Desactivar SES con una comunicación aceptada: tras guardar el motivo se ofrece anularla.
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    const reason = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await reason.getByLabel('Prueba').check();
+    await reason.locator('#saveSesReason').click();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'prueba' });
+    const offer = page.getByRole('alertdialog', { name: 'Anular la comunicación en SES' });
+    await expect(offer).toBeVisible();
+    await offer.getByRole('button', { name: 'Anular la comunicación en SES' }).click();
+    await expect.poll(() => api.sesComms().filter((c) => c.kind === 'RH')[0]!.status).toBe('anulada');
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0); // con SES desactivado no se comunica
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.ses_enabled).toBe(true);
+    await expect(block.locator('#sesCommunicate')).toBeVisible();
+
+    // Rechazo: el texto de SES en claro y qué hacer.
+    api.setSesNext('rechazada', { errorText: 'El número de soporte del documento no es válido.' });
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Rechazada');
+    await expect(block.locator('#sesStatusDetail')).toHaveText('El número de soporte del documento no es válido. Corrige los datos y vuelve a comunicar.');
+    await expect(block.locator('#sesCommunicate')).toBeVisible();
+
+    // Plazo legal desde el momento legal de la comunicación: 13 h (aviso), 19 h (alerta) y 25 h (vencido).
+    const patchDeadline = async (hours: number) => { api.sesPatch(lastComm().id, { legal_start_at: hoursAgo(hours) }); await page.reload(); };
+    await patchDeadline(13);
+    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 12 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'warn');
+    await patchDeadline(19);
+    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 6 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'alert');
+    await patchDeadline(25);
+    await expect(block.locator('#sesDeadline')).toHaveText('Plazo legal vencido');
+
+    // Pago antiguo: la fecha es de hace días pero el plazo cuenta desde que se registró.
+    api.serverUpdate(FINANCE, reservationId, { payment_date: inDays(-3), payment_registered_at: hoursAgo(13) });
+    await page.reload();
+    await expect(block.locator('#sesPaymentOld')).toContainText('El pago es del');
+    await expect(block.locator('#sesPaymentOld')).toContainText('el plazo legal puede haber vencido');
+
+    // Inicio: aviso de reservas con pago registrado hace más de 12 h y sin comunicación aceptada; enlaza a la ficha.
+    await page.goto(`${baseURL}/#/`);
+    await expect(page.locator('[data-notice="ses"]')).toHaveText(/^1\s*reserva sin comunicar a SES$/);
+    await page.locator('[data-notice="ses"] a').click();
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
+    // Aceptada, deja de avisar.
+    api.sesAccept(lastComm().id);
+    const asked = page.waitForResponse((response) => response.url().includes('/api/v1/ses/'));
+    await page.goto(`${baseURL}/#/`);
+    await asked;
+    await expect(page.locator('#upcomingList')).toBeVisible();
+    await expect(page.locator('[data-notice="ses"]')).toHaveCount(0);
+
+    // Se deja la reserva como estaba para los pasos siguientes.
+    api.serverUpdate(FINANCE, reservationId, { payment_date: null, payment_registered_at: null });
+    api.sesPatch(lastComm().id, { status: 'anulada' });
+    await sync();
+  });
+
+  await test.step('huéspedes: completitud, origen de cada dato, recordatorios, firma desde Guests y papelera del organizador', async () => {
+    await page.goto(`${baseURL}/#/huespedes/${api.rows(EVENTS)[0]!.id}`);
+    await expect(page.locator('#newGuest')).toBeVisible();
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const commands: string[] = [];
+    page.on('request', (request) => { if (request.method() === 'POST' && request.url().endsWith('/api/v1/commands')) commands.push(request.postData() ?? ''); });
+    const addGuest = async (first: string, last: string) => {
+      await page.locator('#newGuest').click();
+      const dialog = page.getByRole('dialog', { name: 'Nuevo huésped' });
+      await dialog.getByLabel('Nombre', { exact: true }).fill(first);
+      await dialog.getByLabel('Primer apellido').fill(last);
+      await page.locator('#saveRow').click();
+      await expect(dialog).toBeHidden();
+    };
+    await addGuest('Ana', 'García');
+    await addGuest('Luis', 'Pérez');
+    await addGuest('Marta', 'Baja');
+    await expect.poll(() => api.rows(GUESTS).length).toBe(4); // los altas llegan al servidor antes de simular al portal
+    const byName = (name: string) => api.rows(GUESTS).find((g) => g.first_name === name)!;
+    const persona = byName('Persona');
+    const organizerUser = crypto.randomUUID();
+    const at = new Date().toISOString();
+    // lo que escribirían los portales (el trigger de la migración 0433 lo deja en `field_sources`)
+    api.serverUpdate(RESERVATIONS, api.rows(RESERVATIONS)[0]!.id, { contact_name: 'Organizadora Sintética' });
+    api.serverUpdate(GUESTS, persona.id, {
+      field_sources: { first_name: { by: 'staff', at }, document_number: { by: 'guest', at }, phone: { by: 'organizer', at } },
+      allergies_visible_to_organizer: true, privacy_ack_at: '2026-10-01T10:00:00.000Z', privacy_ack_version: 'v1',
+    });
+    api.serverUpdate(GUESTS, byName('Ana').id, { phone: '600000001', field_sources: { phone: { by: 'guest', at } } });
+    const gluten = api.rows(RESTRICTIONS).find((r) => r.guest_id === persona.id)!;
+    api.serverUpdate(RESTRICTIONS, gluten.id, { source: 'organizer' });
+    api.serverUpdate(GUESTS, byName('Marta').id, { deleted_at: at, updated_by: organizerUser });
+    await page.reload();
+
+    // completitud por reserva y por huésped
+    await expect(page.locator('#completeness')).toHaveText('1 de 3 completos · 2 con datos pendientes · 2 sin firmar');
+    const row = (name: string) => page.locator('#guestList .row', { hasText: name });
+    await expect(row('Persona Sintética').locator('[data-chip="complete"]')).toHaveText('Completo');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).toContainText('Falta: ');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).toContainText('fecha de nacimiento');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).not.toContainText('teléfono o correo');
+    await expect(row('Luis Pérez').locator('[data-chip="missing"]')).toContainText('teléfono o correo');
+    await expect(row('Ana García').locator('[data-chip="unsigned"]')).toHaveText('Sin firmar');
+    await expect(row('Persona Sintética').locator('[data-act="copyReminder"]')).toHaveCount(0);
+
+    // recordatorios al portapapeles
+    await row('Ana García').getByRole('button', { name: /Copiar recordatorio/ }).click();
+    await expect(page.getByText('Recordatorio copiado')).toBeVisible();
+    const reminder = await page.evaluate(() => navigator.clipboard.readText());
+    expect(reminder).toMatch(/^Hola, Ana: para tu estancia en Retiro Test del \d{2}\/\d{2}\/\d{4} al \d{2}\/\d{2}\/\d{4} nos falta: /);
+    expect(reminder).toContain('fecha de nacimiento');
+    expect(reminder).toContain('la firma del parte de entrada');
+    expect(reminder).not.toContain('teléfono');
+    await page.locator('#copyOrganizerReminder').click();
+    const toOrganizer = await page.evaluate(() => navigator.clipboard.readText());
+    expect(toOrganizer).toMatch(/^Hola, Organizadora Sintética: de Retiro Test, 2 huéspedes tienen datos pendientes: Ana G\., Luis P\./);
+    expect(toOrganizer).not.toMatch(/García|Pérez/);
+
+    // origen de cada dato en la ficha, consentimientos y firma subida desde Guests
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Persona Sintética' });
+    await expect(sheet.locator('label:has(#f-first_name) .src')).toHaveText('Personal');
+    await expect(sheet.locator('label:has(#f-document_number) .src')).toHaveText('Huésped');
+    await expect(sheet.locator('label:has(#f-document_number) .src')).toHaveAttribute('title', /propio huésped/);
+    await expect(sheet.locator('label:has(#f-phone) .src')).toHaveText('Organizador');
+    await expect(sheet.locator('label:has(#f-email) .src')).toHaveCount(0);
+    await expect(sheet.locator('#guestConsent')).toContainText('Alergias visibles para el organizador: sí');
+    await expect(sheet.locator('#guestConsent')).toContainText('Aviso legal visto el');
+    await expect(sheet.locator('#guestRestrictions .src')).toHaveText('Organizador');
+    // el formulario del personal no envía lo que solo cambia el huésped ni el origen
+    await sheet.getByLabel('Notas').fill('Nota sintética del personal');
+    await page.locator('#saveRow').click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => api.rows(GUESTS).find((g) => g.id === persona.id)!.notes).toBe('Nota sintética del personal');
+    const written = commands.filter((body) => body.includes(persona.id)).join('\n');
+    expect(written).toContain('Nota sintética del personal');
+    for (const forbidden of ['allergies_visible_to_organizer', 'privacy_ack_at', 'privacy_ack_version', 'field_sources']) expect(written).not.toContain(forbidden);
+    expect(api.rows(GUESTS).find((g) => g.id === persona.id)).toMatchObject({ allergies_visible_to_organizer: true, privacy_ack_at: '2026-10-01T10:00:00.000Z' });
+
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    await page.locator('#viewSignature').click();
+    const signature = page.getByRole('dialog', { name: /Firma · Persona Sintética/ });
+    await expect(signature.locator('img.sigimg')).toBeVisible();
+    await expect.poll(() => signature.locator('img.sigimg').evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    expect(api.requests.some((r) => r.path === `/api/v1/guest-signature/${persona.id}`)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(signature).toBeHidden();
+
+    // papelera: «Dado de baja por el organizador» solo si quien lo quitó no es del personal
+    await page.getByRole('button', { name: 'Editar Luis Pérez' }).click();
+    page.once('dialog', (confirmation) => void confirmation.accept()); // «El huésped va a la papelera»
+    await page.locator('#removeRow').click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.locator('#guestTrash')).toBeVisible();
+    await page.locator('#guestTrash summary').click({ position: { x: 20, y: 10 } });
+    await expect(page.locator('#guestTrashCount')).toHaveText('2');
+    const trashed = (name: string) => page.locator('#guestTrash .row', { hasText: name });
+    await expect(trashed('Marta Baja')).toContainText('Dado de baja por el organizador');
+    await expect(trashed('Luis Pérez')).not.toContainText('Dado de baja por el organizador');
+    await trashed('Marta Baja').getByRole('button', { name: /Restaurar a Marta Baja/ }).click();
+    await expect(page.locator('#guestList .row', { hasText: 'Marta Baja' })).toBeVisible();
+    await expect.poll(() => byName('Marta').deleted_at).toBeNull();
+    await expect(page.locator('#guestTrashCount')).toHaveText('1');
+    await trashed('Luis Pérez').getByRole('button', { name: /Restaurar a Luis Pérez/ }).click();
+    await expect(page.locator('#guestList .row', { hasText: 'Luis Pérez' })).toBeVisible();
+    await expect(page.locator('#guestTrash')).toHaveCount(0);
+  });
+
   await test.step('Calendario: la reserva aparece y el panel refleja el estado de Google Calendar', async () => {
     const reservationId = api.rows(RESERVATIONS)[0]!.id;
     api.setCalendarStatus({ configured: true, calendarId: 'prueba@group.calendar.example', health: 'calendar_not_shared',
@@ -522,7 +858,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#trashReservation')).toBeHidden();
     await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('25 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped, 2 asignaciones
+    await expect(page.locator('.dialog')).toContainText('28 elementos asociados'); // 20 tareas, 2 restricciones, 4 huéspedes, 2 asignaciones
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');

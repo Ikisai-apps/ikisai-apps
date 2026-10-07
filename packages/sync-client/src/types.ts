@@ -158,6 +158,11 @@ export interface SyncClient {
   refreshBootstrap(): Promise<Bootstrap | null>;
   status(): SyncStatus;
   onStatus(listener: (status: SyncStatus) => void): () => void;
+  /**
+   * Fin de la sesión de una persona en este dispositivo: al cerrar sesión o al entrar otra persona. Lo usan el kit y las apps
+   * para borrar lo local que no pertenece a nadie más (borradores y bandeja del feedback, contrato §3.7). Recibe su userId.
+   */
+  onSessionEnd(listener: (userId: string) => void): () => void;
   /** Se dispara cuando cambian filas de una tabla en el espejo local, por pull o por edición. */
   onTable(table: TableName, listener: (rows: SyncedRow[]) => void): () => void;
 

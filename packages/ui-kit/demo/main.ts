@@ -3,6 +3,10 @@ import '../src/styles/ui-kit.css';
 import './demo.css';
 import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
 import {
+  createFeedback,
+  createFeedbackProgressiveForm,
+  openFeedbackCenter,
+  type FeedbackApi,
   createAppLauncher,
   renderProposalReview,
   createColorField,
@@ -675,7 +679,7 @@ const LAUNCHER_CATALOG = { current: 'tasks', items: [
   { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com', kind: 'portal', description: 'Portal de huéspedes', role: 'owner' },
 ] };
 let launcherOnline = true;
-const launcher = createAppLauncher({ storageKey: 'demo-launcher', fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
+const launcher = createAppLauncher({ storageKey: 'demo-launcher', feedback: { get: () => feedback.mode.get(), set: (on) => feedback.mode.set(on) }, fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
 const launcherMark = el('button', { type: 'button', class: 'mark markbtn', id: 'demoLauncher' }, icon('tasks', 20));
 launcher.attach(launcherMark);
 const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la cabecera abre la hoja con las apps de la cuenta (GET /api/v1/apps): internas arriba, portales debajo, la actual marcada; sin red, la última lista guardada.',
@@ -683,6 +687,116 @@ const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la 
     el('label', { class: 'field check' }, el('input', { type: 'checkbox', id: 'launcherOffline', onchange: (e: Event) => { launcherOnline = !(e.target as HTMLInputElement).checked; } }), el('span', null, 'Simular sin red')),
     el('button', { type: 'button', class: 'ghost small', id: 'launcherForget', onclick: () => { try { localStorage.removeItem('demo-launcher'); } catch { /* */ } toast('Lista guardada borrada'); } }, 'Olvidar lista guardada')),
 );
+
+// --- Feedback (banco de pruebas aislado, servidor simulado de FEEDBACK.md §7) -------------------------------
+/** Servidor simulado con estado en localStorage (sobrevive a recargar, para probar «se envía una sola vez»). */
+const FB_KEY = 'demo-feedback-server';
+type MockReport = { id: string; requestId: string; code: string; node: { id: string; path: string[] }; message: string; intent: string; status: string; display?: string; blocking?: boolean; supporters: string[]; attachments: string[]; context: unknown; verifiedBuild?: string | null; dismissReason?: string };
+type FbState = { reports: MockReport[]; posts: number; offline: boolean; fail: string | null };
+const fbState = (): FbState => {
+  try { const v = JSON.parse(localStorage.getItem(FB_KEY) ?? 'null') as FbState | null; if (v) return v; } catch { /* */ }
+  return { reports: [], posts: 0, offline: false, fail: null };
+};
+const fbSave = (v: FbState) => { try { localStorage.setItem(FB_KEY, JSON.stringify(v)); } catch { /* */ } };
+const fbError = (status: number, code: string) => Object.assign(new Error(code), { status, code });
+const toReport = (r: MockReport) => ({ id: r.id, code: r.code, originApp: 'demo', subject: 'application', intent: r.intent, message: r.message, node: r.node, status: r.status, display: r.display ?? r.status, blocking: !!r.blocking, supportersCount: r.supporters.length, mine: true, createdAt: '2026-10-07T09:30:00.000Z', verifiedBuild: r.verifiedBuild ?? null });
+const agentBlock = (r: MockReport) => `## ${r.code} · ${r.intent}${r.blocking ? ' · ME BLOQUEA' : ''}\n\nDónde: ${r.node.path.join(' › ')} (\`${r.node.id}\`)\n\n${r.message}\n\nContexto: ${JSON.stringify(r.context)}\n`;
+const fbApi = (async (path: string, init: { method?: string; json?: unknown } = {}) => {
+  await new Promise((r) => setTimeout(r, 60));
+  const st = fbState();
+  if (st.offline) throw fbError(0, 'NETWORK');
+  const body = (init.json ?? {}) as Record<string, any>;
+  if (path === '/feedback/uploads') { const id = crypto.randomUUID(); return { id, uploadUrl: `mock://upload/${id}`, method: 'PUT', headers: { 'Content-Type': body.mime }, duplicateOf: null }; }
+  const verify = /^\/feedback\/uploads\/([^/]+)\/verify$/.exec(path);
+  if (verify) return { id: verify[1], verified: true };
+  if (path === '/feedback' && init.json) {
+    st.posts += 1;
+    if (st.fail) { const code = st.fail; fbSave(st); throw fbError(code === 'FEEDBACK_RATE_LIMITED' ? 429 : 422, code); }
+    const known = st.reports.find((r) => r.id === body.id);
+    if (known) { fbSave(st); return { report: toReport(known) }; }
+    if (String(body.message).length > 4000) throw fbError(422, 'FEEDBACK_MESSAGE_TOO_LONG');
+    if ((body.attachmentIds ?? []).length > 3) throw fbError(422, 'FEEDBACK_TOO_MANY_ATTACHMENTS');
+    if (new Blob([JSON.stringify(body.context)]).size > 8192) throw fbError(422, 'FEEDBACK_CONTEXT_TOO_LARGE');
+    const report: MockReport = { id: body.id, requestId: body.requestId, code: `FB_2026_${String(st.reports.length + 1).padStart(4, '0')}`, node: body.node, message: body.message, intent: body.intent, status: 'open', blocking: !!body.blocking, supporters: [], attachments: body.attachmentIds ?? [], context: body.context };
+    st.reports.push(report); fbSave(st);
+    return { report: toReport(report) };
+  }
+  const q = new URLSearchParams(path.split('?')[1] ?? '');
+  const disp = (r: MockReport) => r.display ?? r.status;
+  if (path.startsWith('/feedback/tree')) {
+    const nodes = new Map<string, { id: string; path: string[]; open: number; pendingVerify: number; verified: number; total: number }>();
+    for (const r of st.reports) {
+      const n = nodes.get(r.node.id) ?? { id: r.node.id, path: r.node.path, open: 0, pendingVerify: 0, verified: 0, total: 0 };
+      n.total += 1; if (disp(r) === 'open' || disp(r) === 'in_progress') n.open += 1; if (disp(r) === 'pending_verify') n.pendingVerify += 1; if (disp(r) === 'verified') n.verified += 1;
+      nodes.set(r.node.id, n);
+    }
+    return { nodes: [...nodes.values()] };
+  }
+  if (path.startsWith('/feedback?')) {
+    return { items: st.reports.filter((r) => (!q.get('node') || r.node.id === q.get('node')) && (!q.get('status') || q.get('status') === 'all' || disp(r) === q.get('status'))).map(toReport) };
+  }
+  const action = /^\/feedback\/([^/?]+)\/(verify|reopen|dismiss)$/.exec(path);
+  if (action) {
+    const r = st.reports.find((x) => x.id === action[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE');
+    if (action[2] === 'verify') { r.status = 'verified'; r.display = 'verified'; r.verifiedBuild = body.build ?? null; }
+    if (action[2] === 'reopen') { r.status = 'open'; r.display = 'open'; if (body.message) r.message += `\n\nSigue fallando: ${body.message}`; }
+    if (action[2] === 'dismiss') { r.status = 'dismissed'; r.display = 'dismissed'; r.dismissReason = body.reason; }
+    fbSave(st); return { report: toReport(r) };
+  }
+  const one = /^\/feedback\/([^/?]+)$/.exec(path);
+  if (one && !init.json) { const r = st.reports.find((x) => x.id === one[1] || x.code === one[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); return { report: toReport(r), attachments: [], tasks: [], agentBlock: agentBlock(r) }; }
+  const support = /^\/feedback\/([^/]+)\/support$/.exec(path);
+  if (support) { const r = st.reports.find((x) => x.id === support[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); if (!r.supporters.includes('demo-user')) r.supporters.push('demo-user'); fbSave(st); return { supportersCount: r.supporters.length }; }
+  throw fbError(404, 'NOT_FOUND');
+}) as FeedbackApi;
+const fbFetch: typeof fetch = async (input, init) => (String(input).startsWith('mock://') ? new Response(null, { status: fbState().offline ? 503 : 200 }) : fetch(input, init));
+const feedback = createFeedback({ app: 'demo', api: fbApi, userId: () => 'demo-user', role: () => 'owner', fetchImpl: fbFetch, fallbackNode: () => ({ id: 'demo.feedback', path: ['Banco de feedback'] }) });
+const fbClicks = el('output', { id: 'fbClicks' }, '0');
+const fbTarget = el('button', { type: 'button', class: 'primary', id: 'fbAction', 'data-feedback-id': 'demo.reservation.guests.add', 'data-feedback-label': 'Añadir huésped', onclick: () => { fbClicks.textContent = String(Number(fbClicks.textContent) + 1); } }, 'Añadir huésped');
+const fbScreen = el('div', { class: 'card', id: 'fbScreen', 'data-feedback-id': 'demo.reservation', 'data-feedback-label': 'Reserva' },
+  el('h3', null, 'Reserva RSV_0042'),
+  el('section', { 'data-feedback-id': 'demo.reservation.guests', 'data-feedback-label': 'Huéspedes' },
+    el('p', null, 'Huéspedes: ', el('span', { 'data-feedback-ignore': '' }, 'Juan Pérez · 600 123 123')),
+    el('label', { class: 'field' }, el('span', null, 'Nota'), el('input', { id: 'fbPrivate', value: 'Alergia al marisco' })),
+    el('div', { class: 'demo-row' }, fbTarget, el('span', { class: 'small muted' }, 'Clics: ', fbClicks)),
+  ),
+);
+const fbStatus = el('pre', { id: 'fbServer', class: 'small' });
+const paintFbStatus = () => { const st = fbState(); fbStatus.textContent = `posts=${st.posts} reportes=${st.reports.length} sinRed=${st.offline} fallo=${st.fail ?? '-'}`; };
+paintFbStatus(); setInterval(paintFbStatus, 400);
+const fbPortalOut = el('pre', { id: 'fbPortalOut', class: 'small' });
+const fbPortal = createFeedbackProgressiveForm({
+  config: { start: 'about', steps: [
+    { id: 'about', kind: 'choice', question: '¿Sobre qué quieres comentarnos algo?', options: [{ value: 'app', label: 'Aplicación', next: 'appKind' }, { value: 'event', label: 'Retiro / evento', next: 'eventCat' }, { value: 'space', label: 'Espacio', next: 'place' }] },
+    { id: 'appKind', kind: 'choice', question: '¿Qué pasa?', options: [{ value: 'bug', label: 'Algo no funciona' }, { value: 'suggestion', label: 'Tengo una sugerencia' }], next: 'appWhere' },
+    { id: 'appWhere', kind: 'signal', question: 'Mantén pulsado sobre el lugar de la aplicación al que te refieres.', action: 'Señalar en la pantalla' },
+    { id: 'eventCat', kind: 'choice', question: '¿Sobre qué parte del retiro?', options: ['Horarios', 'Organización', 'Actividades', 'Comunicación', 'Comida', 'Otra'].map((l) => ({ value: l.toLowerCase(), label: l })), next: 'message' },
+    { id: 'place', kind: 'choice', question: '¿Dónde?', suggest: () => ({ value: 'room-3', label: 'Habitación 3' }), options: [{ value: 'room-3', label: 'Tu habitación' }, { value: 'dining', label: 'Comedor' }, { value: 'pool', label: 'Piscina' }, { value: 'bath', label: 'Baños' }, { value: 'outside', label: 'Exterior' }, { value: 'other', label: 'Otro' }], next: 'spaceKind' },
+    { id: 'spaceKind', kind: 'choice', question: '¿Qué tipo de problema?', options: [{ value: 'damage', label: 'Algo está roto' }, { value: 'cleaning', label: 'Limpieza' }, { value: 'missing', label: 'Falta algo' }, { value: 'utilities', label: 'Agua / electricidad' }, { value: 'safety', label: 'Seguridad' }, { value: 'other', label: 'Otra cosa' }], next: 'message' },
+    { id: 'message', kind: 'text', question: 'Cuéntanos', placeholder: '¿Qué ha pasado?', images: true },
+  ] },
+  onSignal: () => { fbPortalOut.textContent = 'señalar'; },
+  onSubmit: async (r) => { fbPortalOut.textContent = JSON.stringify({ answers: r.answers, message: r.message, images: r.images.length }); return 'sent'; },
+});
+fbPortal.element.id = 'fbPortal';
+const fbModeSwitch = el('input', { type: 'checkbox', id: 'fbMode', onchange: (e: Event) => feedback.mode.set((e.target as HTMLInputElement).checked) }) as HTMLInputElement;
+fbModeSwitch.checked = feedback.mode.get();
+feedback.mode.onChange((on) => { fbModeSwitch.checked = on; });
+const feedbackSection = section('feedback', 'Feedback: modo, composer, borradores, bandeja y QA', 'Banco aislado con servidor simulado (rutas de FEEDBACK.md §7). Con «Señalar para comentar» (también al pie del lanzador) la pulsación mantenida o Mayúsculas+F10 abre el composer y se ven los pines.',
+  fbScreen,
+  el('div', { class: 'demo-row' },
+    el('label', { class: 'field check' }, fbModeSwitch, el('span', null, 'Señalar para comentar')),
+    el('button', { type: 'button', class: 'ghost small', id: 'fbCenter', onclick: () => void openFeedbackCenter({ api: fbApi, app: 'demo', canEdit: () => true, feedback }) }, 'Sugerencias y QA'),
+    el('button', { type: 'button', class: 'ghost small', id: 'fbFix', onclick: async () => { const st = fbState(); for (const r of st.reports) if ((r.display ?? r.status) === 'open') r.display = 'pending_verify'; fbSave(st); await feedback.refreshVerify(); } }, 'Publicar arreglo'),
+    el('button', { type: 'button', class: 'ghost small', id: 'fbOpen', onclick: () => void feedback.signal(fbTarget) }, 'Comentar «Añadir huésped»'),
+    el('label', { class: 'field check' }, el('input', { type: 'checkbox', id: 'fbOffline', checked: fbState().offline, onchange: (e: Event) => { const st = fbState(); st.offline = (e.target as HTMLInputElement).checked; fbSave(st); if (!st.offline) void feedback.flush(); } }), el('span', null, 'Servidor sin red')),
+    el('button', { type: 'button', class: 'ghost small', id: 'fbReset', onclick: async () => { fbSave({ reports: [], posts: 0, offline: false, fail: null }); await feedback.clear('demo-user'); location.reload(); } }, 'Reiniciar banco')),
+  fbStatus,
+  el('h3', null, 'Formulario progresivo (portales)'),
+  el('div', { class: 'card' }, fbPortal.element),
+  fbPortalOut,
+);
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal };
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
@@ -695,12 +809,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection),
 );

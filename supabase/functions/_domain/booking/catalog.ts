@@ -17,6 +17,7 @@ export const TABLES = {
   cancellationTiers: 'booking.cancellation_tiers',
   proposals: 'booking.proposals',
   proposalLines: 'booking.proposal_lines',
+  sesSettings: 'booking.ses_settings',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
