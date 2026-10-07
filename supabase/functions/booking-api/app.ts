@@ -1,5 +1,5 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createSupabase, ensureServiceActor, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, ensureServiceActor, fail, messageFor, r2ConfigFromEnv, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
@@ -119,6 +119,8 @@ const ENTITY_LOGO_BUCKET = 'central-documents';
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
+  // Archivos ajenos (logotipo de Central, firmas subidas desde Guests): siempre por la abstracción del kit (contrato §3.9)
+  const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
     {
       // Datos de la entidad (Central) para la cabecera de la propuesta al organizador. El logotipo está en el bucket privado
@@ -130,13 +132,11 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
         const entity = row && (row.legal_name || row.tax_id) ? row : null;
         let logoUrl: string | null = null;
         if (entity?.logo_bucket === ENTITY_LOGO_BUCKET && typeof entity.logo_path === 'string' && entity.logo_path) {
-          const path = entity.logo_path.split('/').map(encodeURIComponent).join('/');
-          const signed = await supabase.remote(`/storage/v1/object/sign/${ENTITY_LOGO_BUCKET}/${path}`, { service: true, method: 'POST', body: { expiresIn: 600 } }).catch(() => null);
-          const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
-          logoUrl = rel ? supabase.base + '/storage/v1' + rel : null;
+          // dónde vive el archivo lo dice su fila de core.files (contrato §3.9); la proyección de Central lo trae en logo_storage_provider
+          logoUrl = await storage.readUrl({ bucket: ENTITY_LOGO_BUCKET, path: entity.logo_path, storage_provider: entity.logo_storage_provider ?? null }, 600).catch(() => null);
         }
         if (!entity) return { entity: null, logoUrl: null };
-        const { logo_bucket: _b, logo_path: _p, ...visible } = entity;
+        const { logo_bucket: _b, logo_path: _p, logo_storage_provider: _s, ...visible } = entity;
         return { entity: visible, logoUrl };
       },
     },
@@ -167,13 +167,10 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
       method: 'GET', pattern: 'guest-signature/:guestId',
       handler: async ({ ctx, params }) => {
         if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', 'Los datos de huéspedes están restringidos a los responsables designados.');
-        const file = await supabase.rpc<{ bucket: string; path: string; mime: string } | null>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: GUEST_SIGNATURE, p_args: { guest_id: params.guestId } });
+        const file = await supabase.rpc<{ bucket: string; path: string; mime: string; storage_provider?: 'supabase' | 'r2' | null } | null>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: GUEST_SIGNATURE, p_args: { guest_id: params.guestId } });
         if (!file) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
-        const path = file.path.split('/').map(encodeURIComponent).join('/');
-        const signed = await supabase.remote(`/storage/v1/object/sign/${encodeURIComponent(file.bucket)}/${path}`, { service: true, method: 'POST', body: { expiresIn: 300 } });
-        const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
-        if (!rel) fail(503, 'STORAGE_UNAVAILABLE', messageFor('STORAGE_UNAVAILABLE'));
-        return { url: supabase.base + '/storage/v1' + rel, mime: file.mime, expiresAt: new Date(Date.now() + 300_000).toISOString() };
+        const url = await storage.readUrl(file!, 300);
+        return { url, mime: file!.mime, expiresAt: new Date(Date.now() + 300_000).toISOString() };
       },
     },
     {
