@@ -420,14 +420,15 @@ No hay escrituras cruzadas: Invoices no inserta en `food.stock_entries`. Propues
 
 ### 7.4 Indicadores para Central
 
-Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Una migración de Food no puede leer `booking.*` (lint de migraciones), así que las fechas del evento son las de `food.menus.source_event_snapshot`: lo que la cocina tenía delante al crear, revisar o validar el menú.
+Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Las fechas del evento de las claves de menús y listas son las de `food.menus.source_event_snapshot`: lo que la cocina tenía delante al crear, revisar o validar el menú.
 
 | Clave | Etiqueta | Fórmula | Unidad · sentido | Enlace |
 |---|---|---|---|---|
 | `food.menus_unvalidated_30d` | Menús sin validar en los próximos 30 días | Menús vivos en `borrador` o `revisar` cuyo evento empieza entre hoy y hoy + 30. `period_end` = hoy + 30. | `count` · `down` | `#/menus` |
 | `food.shopping_lists_open` | Listas de la compra abiertas | Listas vivas con estado distinto de `cerrada`, de un menú vivo y no cerrado, cuyo evento termina hoy o después. | `count` · `down` | `#/menus` |
+| `food.events_without_menu_30d` | Eventos sin menú en los próximos 30 días | Eventos de `booking.food_event_projection` que piden menú (misma regla que `needsMenu`: reserva no cancelada ni perdida, `requires_meals` distinto de `false`, régimen distinto de `no_aplica`), empiezan entre hoy y hoy + 30 y no tienen menú vivo. `period_end` = hoy + 30. Desde `20261007_0190`. | `count` · `down` | `#/eventos` |
 
-`food.events_without_menu_30d` (propuesta del catálogo de Central) necesita cruzar eventos de Booking con menús de Food y queda pendiente de Core (petición P14).
+`food.events_without_menu_30d` es la única clave que lee `booking.food_event_projection`: el lint lo permite solo para esa proyección (petición P14, PR #265 de Core).
 
 ---
 
