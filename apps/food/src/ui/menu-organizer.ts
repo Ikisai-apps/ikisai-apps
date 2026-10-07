@@ -6,6 +6,8 @@ import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import { photoUrl } from '../app/photos.ts';
 import { SERVICE_LABELS } from './events.ts';
 import type { TabContext } from './menu-shopping.ts';
+import { usage } from '../app/usage.ts';
+import { fb, fbIgnore } from './feedback.ts';
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -68,9 +70,17 @@ export function mountOrganizer({ client, menuId, host }: TabContext): () => void
     const event = snapshot.events.find((e) => e.event_id === data.menu!.event_id) ?? null;
     const page = await spec(data, event);
     if (current !== version) return; // llegó otro cambio mientras se cargaban las fotos
-    if (view) view.update(page);
+    if (view) { view.update(page); fbIgnore(view.page); }
     else {
       view = createPrintView(page, { printLabel: 'Imprimir / Guardar PDF' });
+      // La hoja lleva el nombre del grupo (título del evento, de Booking): su texto no viaja en el reporte.
+      fb(view.element, { feedbackId: 'food.menu.organizador.hoja', feedbackLabel: 'Hoja del organizador' });
+      fbIgnore(view.page);
+      const printButton = view.element.querySelector('#printPage');
+      if (printButton) {
+        fb(printButton, { feedbackId: 'food.menu.organizador.imprimir', feedbackLabel: 'Imprimir / Guardar PDF' });
+        printButton.addEventListener('click', () => usage.track('food.organizador.imprimir'));
+      }
       replace(host,
         el('p', { class: 'muted tabhead' }, page.draft ? 'El menú no está validado: la hoja sale marcada como borrador.' : 'Esta es la hoja para enviar al organizador. No incluye cantidades ni notas internas.'),
         view.element);

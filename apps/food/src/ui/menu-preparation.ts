@@ -6,6 +6,8 @@ import { T, describeError, type Mirror } from '../app/client.ts';
 import { longDay, shortTime } from '../app/events.ts';
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import type { TabContext } from './menu-shopping.ts';
+import { usage } from '../app/usage.ts';
+import { fb } from './feedback.ts';
 
 type PrepRow = Mirror<PreparationItem>;
 
@@ -25,7 +27,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
   const listSigs = new Map<string, string>();
   let shape = '';
   const top = el('div');
-  const listsHost = el('div', { id: 'preparationDays' });
+  const listsHost = el('div', { 'data-feedback-id': 'food.menu.preparacion.dias', 'data-feedback-label': 'Pasos por día', id: 'preparationDays' });
   const rowSig = (rows: PrepRow[]) => rows.map((r) => `${r.id}:${r.revision}:${r.position}:${r._pending ? 1 : 0}`).join(',');
   const sortSteps = (rows: PrepRow[]) => [...rows].sort((a, b) => (a.scheduled_date ?? '9999').localeCompare(b.scheduled_date ?? '9999')
     || Number(a.position) - Number(b.position) || (a.scheduled_time ?? '99').localeCompare(b.scheduled_time ?? '99') || a.created_at.localeCompare(b.created_at));
@@ -52,7 +54,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     busy = true;
     paint();
     try {
-      const result = await runCall<RegenerateResult>(client, FOOD_PROCEDURES.regeneratePreparation, { menu_id: menuId });
+      const result = await usage.run('food.preparacion.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regeneratePreparation, { menu_id: menuId }));
       toast(`Propuesta lista: ${result.inserted} pasos nuevos, ${result.updated} actualizados, ${result.deleted} retirados.`);
     } catch (error) {
       toast(describeError(error));
@@ -64,11 +66,11 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
 
   /** Editar o crear un paso. Reescribir el texto o el horario de una propuesta la convierte en un paso propio. */
   function openStep(step: PrepRow | null): void {
-    const text = el('textarea', { id: 'p-text', rows: '2', maxlength: '300' });
+    const text = el('textarea', { 'data-feedback-id': 'food.menu.preparacion.paso.texto', 'data-feedback-label': 'Qué hay que hacer', id: 'p-text', rows: '2', maxlength: '300' });
     text.value = step?.text ?? '';
-    const date = el('input', { id: 'p-date', type: 'date', value: step?.scheduled_date ?? '' });
-    const time = el('input', { id: 'p-time', type: 'time', value: shortTime(step?.scheduled_time ?? null) });
-    const responsible = el('input', { id: 'p-responsible', type: 'text', maxlength: '120', value: step?.responsible ?? '' });
+    const date = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.dia', 'data-feedback-label': 'Día', id: 'p-date', type: 'date', value: step?.scheduled_date ?? '' });
+    const time = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.hora', 'data-feedback-label': 'Hora', id: 'p-time', type: 'time', value: shortTime(step?.scheduled_time ?? null) });
+    const responsible = el('input', { 'data-feedback-id': 'food.menu.preparacion.paso.responsable', 'data-feedback-label': 'Responsable', 'data-feedback-ignore': '', id: 'p-responsible', type: 'text', maxlength: '120', value: step?.responsible ?? '' });
     const error = el('p', { class: 'formerror', role: 'alert' });
     const field = (label: string, control: HTMLElement) => el('label', { class: 'field' }, el('span', null, label), control);
     const save = async () => {
@@ -87,17 +89,19 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
         if (!step.manual && ('text' in changed || 'scheduled_date' in changed || 'scheduled_time' in changed)) changed.manual = true;
         operations = [{ op: 'update', table: T.preparation, id: step.id, expectedRevision: step.revision, fields: changed }];
       }
-      if (await commitSafely(operations)) await sheet?.close(true);
+      const saved = await commitSafely(operations);
+      usage.track('food.preparacion.guardar_paso', saved ? 'success' : 'error');
+      if (saved) await sheet?.close(true);
     };
     sheet = openSheet({
       title: step ? 'Editar paso' : 'Nuevo paso',
       meta: step && !step.manual ? 'Propuesta del menú: si cambias el texto o la hora pasa a ser un paso tuyo y no se recalcula.' : undefined,
-      body: el('div', null, field('Qué hay que hacer', text), field('Día', date), field('Hora', time), field('Responsable', responsible), error,
-        step ? el('div', { class: 'zone' }, el('button', { class: 'danger', type: 'button', id: 'deleteStep', onclick: async () => {
+      body: el('div', { 'data-feedback-id': 'food.menu.preparacion.paso', 'data-feedback-label': 'Paso de preparación' }, field('Qué hay que hacer', text), field('Día', date), field('Hora', time), field('Responsable', responsible), error,
+        step ? el('div', { class: 'zone' }, el('button', { 'data-feedback-id': 'food.menu.preparacion.paso.quitar', 'data-feedback-label': 'Quitar paso', class: 'danger', type: 'button', id: 'deleteStep', onclick: async () => {
           if (!(await confirmDialog({ title: '¿Quitar este paso?', text: step.text, confirmLabel: 'Quitar', danger: true }))) return;
           if (await commitSafely([{ op: 'delete', table: T.preparation, id: step.id, expectedRevision: step.revision }])) await sheet?.close(true);
         } }, icon('trash', 18), 'Quitar paso')) : null),
-      foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), el('button', { class: 'primary', type: 'button', id: 'saveStep', onclick: () => void save() }, 'Guardar')],
+      foot: [el('button', { 'data-feedback-id': 'food.menu.preparacion.paso.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), el('button', { 'data-feedback-id': 'food.menu.preparacion.paso.guardar', 'data-feedback-label': 'Guardar paso', class: 'primary', type: 'button', id: 'saveStep', onclick: () => void save() }, 'Guardar')],
       initialFocus: text,
       onClose: () => { sheet = null; },
     });
@@ -105,14 +109,14 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
 
   function stepRow(step: PrepRow): HTMLElement {
     const writable = canWrite();
-    const done = el('input', { type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable, 'aria-label': `Hecho: ${step.text}`,
-      onchange: () => void commitSafely([{ op: 'update', table: T.preparation, id: step.id, expectedRevision: step.revision, fields: { done: done.checked } }]) });
-    return el('div', { class: 'preprow', 'data-id': step.id, 'data-done': String(step.done), 'data-pending': String(step._pending === true) },
+    const done = el('input', { 'data-feedback-id': 'food.menu.preparacion.fila.hecho', 'data-feedback-label': 'Hecho', type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable, 'aria-label': `Hecho: ${step.text}`,
+      onchange: () => void commitSafely([{ op: 'update', table: T.preparation, id: step.id, expectedRevision: step.revision, fields: { done: done.checked } }]).then((ok) => usage.track('food.preparacion.marcar_hecho', ok ? 'success' : 'error')) });
+    return el('div', { 'data-feedback-id': 'food.menu.preparacion.fila', 'data-feedback-label': 'Paso', class: 'preprow', 'data-id': step.id, 'data-done': String(step.done), 'data-pending': String(step._pending === true) },
       done,
       el('span', { class: 'preptime' }, shortTime(step.scheduled_time) || '—'),
-      el('button', { class: 'preptext', type: 'button', disabled: !writable, 'aria-label': `Editar: ${step.text}`, onclick: () => openStep(step) },
+      el('button', { 'data-feedback-id': 'food.menu.preparacion.fila.editar', 'data-feedback-label': 'Editar paso', class: 'preptext', type: 'button', disabled: !writable, 'aria-label': `Editar: ${step.text}`, onclick: () => openStep(step) },
         el('strong', null, step.text),
-        el('span', { class: 'recipemeta' }, [step.responsible, step.manual ? 'paso propio' : null, step._pending ? 'pendiente de sincronizar' : null].filter(Boolean).join(' · '))),
+        el('span', { class: 'recipemeta', 'data-feedback-ignore': '' }, [step.responsible, step.manual ? 'paso propio' : null, step._pending ? 'pendiente de sincronizar' : null].filter(Boolean).join(' · '))),
     );
   }
 
@@ -125,7 +129,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
   }
 
   function dayList(day: string, rows: PrepRow[]): HTMLElement {
-    if (!canWrite() || rows.length < 2) return el('ul', { class: 'preplist' }, ...rows.map((row) => el('li', null, stepRow(row))));
+    if (!canWrite() || rows.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.preparacion.lista', 'data-feedback-label': 'Pasos del día', class: 'preplist' }, ...rows.map((row) => el('li', null, stepRow(row))));
     const list = createSortableList<PrepRow>({
       items: rows,
       key: (row) => row.id,
@@ -135,6 +139,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
       render: (row) => stepRow(row),
       onReorder: (ordered) => reorder(ordered),
     });
+    fb(list.element, { feedbackId: 'food.menu.preparacion.lista', feedbackLabel: 'Pasos del día' });
     dayLists.set(day, list);
     listSigs.set(day, rowSig(rows));
     return list.element;
@@ -147,11 +152,11 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     const generated = menu.preparation_generated_at;
     if (!generated && steps.length === 0) {
       dropLists();
-      replace(host, el('div', { class: 'empty', id: 'preparationEmpty' }, el('strong', null, 'Todavía no hay plan de preparación'),
+      replace(host, el('div', { 'data-feedback-id': 'food.menu.preparacion.vacia', 'data-feedback-label': 'Sin plan de preparación', class: 'empty', id: 'preparationEmpty' }, el('strong', null, 'Todavía no hay plan de preparación'),
         'La propuesta pone un paso por plato a la hora del servicio menos la antelación de cada receta. Después se edita y se ordena a mano.',
         writable ? el('p', { style: 'margin-top:10px' },
-          el('button', { class: 'primary', type: 'button', id: 'generatePreparation', disabled: busy, onclick: () => void regenerate() }, 'Generar propuesta'), ' ',
-          el('button', { class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, 'Añadir paso')) : null,
+          el('button', { 'data-feedback-id': 'food.menu.preparacion.generar', 'data-feedback-label': 'Generar propuesta', class: 'primary', type: 'button', id: 'generatePreparation', disabled: busy, onclick: () => void regenerate() }, 'Generar propuesta'), ' ',
+          el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, 'Añadir paso')) : null,
         el('span', { class: 'hint' }, 'Generar necesita conexión; añadir pasos, no.')));
       return;
     }
@@ -162,15 +167,15 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     const ofDay = (day: string) => sorted.filter((s) => (s.scheduled_date ?? '') === day);
 
     replace(top,
-      stale ? el('div', { class: 'banner warn notice', id: 'preparationStale', role: 'status' },
+      stale ? el('div', { 'data-feedback-id': 'food.menu.preparacion.aviso_cambios', 'data-feedback-label': 'Aviso de cambios', class: 'banner warn notice', id: 'preparationStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú ha cambiado desde que se generó la propuesta.'), ' Regenerar no toca tus pasos ni lo ya hecho.'),
-        writable ? el('div', { class: 'btnrow' }, el('button', { class: 'ghost', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, 'Regenerar propuesta')) : null) : null,
-      el('div', { class: 'tabhead' },
+        writable ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'ghost', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, 'Regenerar propuesta')) : null) : null,
+      el('div', { 'data-feedback-id': 'food.menu.preparacion.progreso', 'data-feedback-label': 'Progreso', class: 'tabhead' },
         el('div', { class: 'chips' }, el('span', { class: doneCount === sorted.length && sorted.length ? 'chip ok' : 'chip', id: 'preparationProgress' }, `${doneCount} de ${sorted.length} hechos`)),
         generated ? el('p', { class: 'muted' }, `Propuesta generada el ${formatDate(generated)}.`) : null),
-      writable ? el('div', { class: 'btnrow menuactions' },
-        el('button', { class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
-        !stale ? el('button', { class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
+      writable ? el('div', { 'data-feedback-id': 'food.menu.preparacion.acciones', 'data-feedback-label': 'Acciones de preparación', class: 'btnrow menuactions' },
+        el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
+        !stale ? el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
 
@@ -185,7 +190,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     }
     dropLists();
     shape = next;
-    replace(listsHost, ...days.map((day) => el('section', { class: 'menuday' }, el('h3', null, day ? longDay(day) : 'Sin día'), dayList(day, ofDay(day)))));
+    replace(listsHost, ...days.map((day) => el('section', { 'data-feedback-id': 'food.menu.preparacion.dia', 'data-feedback-label': 'Día', class: 'menuday' }, el('h3', null, day ? longDay(day) : 'Sin día'), dayList(day, ofDay(day)))));
   }
 
   async function load(): Promise<void> {

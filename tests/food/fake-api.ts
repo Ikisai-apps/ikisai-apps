@@ -48,7 +48,19 @@ export interface FakeApiOptions {
   events?: FakeEvent[];
   /** Filas de `invoices.food_stock_projection` que sirve `GET read/invoices.food_stock_projection`. */
   purchases?: Array<Record<string, unknown>>;
+  /** Si la cuenta ya aceptó el aviso de medición de uso (por defecto sí, para que el aviso no tape las demás pruebas). */
+  usageConsent?: boolean;
 }
+
+/** Reporte de «Sugerencias y QA» tal como lo manda el kit (`POST /feedback`), más lo que el servidor le añade. */
+export interface FakeFeedbackReport {
+  id: string; code: string; originApp: string; subject: string; intent: string; message: string;
+  node: { id: string; path: string[] } | null; status: string; display: string; supportersCount: number; mine: boolean;
+  createdAt: string; context: Record<string, unknown> | null; requestId: string;
+}
+
+/** Totales de uso recibidos en `POST /usage/batch` (el último total por día, función y contexto). */
+export interface FakeUsageItem { day: string; featureId: string; context: string; exposures: number; activations: number; successes: number; errors: number }
 
 export interface FakeEvent {
   event_id: string;
@@ -82,6 +94,10 @@ export interface FakeApi {
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
+  /** Reportes recibidos en `POST /feedback`. */
+  feedbackReports(): FakeFeedbackReport[];
+  /** Totales de uso recibidos en `POST /usage/batch`. */
+  usageItems(): FakeUsageItem[];
   close(): Promise<void>;
 }
 
@@ -135,6 +151,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const requests: Array<{ method: string; path: string }> = [];
   const files = new Map<string, FakeFile>();
   const events: FakeEvent[] = (options.events ?? []).map((e) => ({ ...e }));
+  const feedbackStore = new Map<string, FakeFeedbackReport>();
+  const feedbackByRequest = new Map<string, string>();
+  const usage = new Map<string, FakeUsageItem>();
+  let consentedAt: string | null = options.usageConsent === false ? null : new Date().toISOString();
   let cursor = 0;
 
   const userIds = new Map(users.map((u) => [u.email, randomUUID()]));
@@ -418,6 +438,54 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       const session = authenticate(req);
       // Catálogo del lanzador (contrato §3.3): las apps a las que tiene acceso la cuenta.
+      // Medición de uso (USO.md): aviso la primera vez y totales acumulados del día por dispositivo.
+      if (path === 'usage/consent') {
+        if (method === 'POST') consentedAt = nowIso();
+        return json(res, 200, { consentedAt });
+      }
+      if (path === 'usage/batch' && method === 'POST') {
+        const body = await readJson(req);
+        for (const item of (body.items ?? []) as FakeUsageItem[]) usage.set(`${item.day}|${item.featureId}|${item.context}`, { ...item });
+        return json(res, 200, { accepted: (body.items ?? []).length });
+      }
+      // «Sugerencias y QA» (FEEDBACK.md §5): lo justo para enviar un reporte y verlo en el centro.
+      if (path === 'feedback' && method === 'POST') {
+        const body = await readJson(req);
+        const known = feedbackByRequest.get(String(body.requestId));
+        if (known) return json(res, 200, { report: feedbackStore.get(known) });
+        const report: FakeFeedbackReport = {
+          id: String(body.id), code: `FB-${String(feedbackStore.size + 1).padStart(4, '0')}`, originApp: 'food', subject: String(body.subject ?? 'application'),
+          intent: String(body.intent ?? 'bug'), message: String(body.message ?? ''), node: body.node ?? null, status: 'open', display: 'open',
+          supportersCount: 1, mine: true, createdAt: nowIso(), context: body.context ?? null, requestId: String(body.requestId),
+        };
+        feedbackStore.set(report.id, report);
+        feedbackByRequest.set(report.requestId, report.id);
+        return json(res, 200, { report });
+      }
+      if (path === 'feedback' && method === 'GET') {
+        if (url.searchParams.get('review') === 'true') throw new Fault(403, 'FORBIDDEN', 'Sin acceso al revisor.');
+        let items = Array.from(feedbackStore.values());
+        if (url.searchParams.get('node')) items = items.filter((r) => r.node?.id === url.searchParams.get('node'));
+        if (url.searchParams.get('status') === 'open') items = items.filter((r) => r.status === 'open');
+        return json(res, 200, { items });
+      }
+      if (path === 'feedback/tree' && method === 'GET') {
+        const byNode = new Map<string, { id: string; path: string[]; open: number; pendingVerify: number; verified: number; total: number }>();
+        for (const r of feedbackStore.values()) {
+          if (!r.node) continue;
+          const entry = byNode.get(r.node.id) ?? { id: r.node.id, path: r.node.path, open: 0, pendingVerify: 0, verified: 0, total: 0 };
+          entry.total += 1;
+          if (r.status === 'open') entry.open += 1;
+          byNode.set(r.node.id, entry);
+        }
+        return json(res, 200, { nodes: Array.from(byNode.values()) });
+      }
+      const oneReport = /^feedback\/([^/]+)$/.exec(path);
+      if (oneReport && method === 'GET') {
+        const report = Array.from(feedbackStore.values()).find((r) => r.id === oneReport[1] || r.code === oneReport[1]);
+        if (!report) throw new Fault(404, 'NOT_FOUND', 'Reporte desconocido.');
+        return json(res, 200, { report, attachments: [], tasks: [], agentBlock: `Reporte ${report.code}` });
+      }
       if (path === 'apps' && method === 'GET') {
         return json(res, 200, {
           current: 'food',
@@ -505,6 +573,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   return {
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
+    feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
+    usageItems: () => Array.from(usage.values()).map((u) => ({ ...u })),
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
