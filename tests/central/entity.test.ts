@@ -78,6 +78,7 @@ test('entidad · proyección de solo lectura para Booking y Finance, con el logo
     const e = out.rows[0];
     assert.equal(e.legal_name, ENTITY.legal_name); assert.equal(e.tax_id, ENTITY.tax_id);
     assert.equal(e.logo_bucket, 'central-documents'); assert.equal(e.logo_mime, 'image/png'); assert.ok(e.logo_path);
+    assert.equal(e.logo_provider, 'supabase');
     assert.ok(e.entity_revision >= 2);
   }
   // Una app sin permiso registrado no la lee.

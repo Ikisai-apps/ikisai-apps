@@ -223,10 +223,10 @@ Primer bloque de configuración común: los datos legales de Ikisai. Migración 
 
 ```text
 entity_id, legal_name, trade_name, tax_id, address_line, postal_code, city, province, country, email, phone, website,
-entity_revision, updated_at, logo_file_id, logo_bucket, logo_path, logo_mime, logo_sha256
+entity_revision, updated_at, logo_file_id, logo_bucket, logo_path, logo_mime, logo_sha256, logo_provider
 ```
 
-La leen Booking (documento de la propuesta al organizador) y Finance (facturas emitidas) con `GET read/central.common_entity_projection` en su propia API. El **logotipo** va como referencia al archivo verificado (`logo_bucket`, `logo_path`): la Edge lectora firma una URL de lectura con su clave de servicio (`POST /storage/v1/object/sign/<bucket>/<path>`), igual que `files/:id`, o descarga los bytes para incrustarlos. `entity_revision` sirve para saber si un documento ya emitido usó datos anteriores (contrato §8).
+La leen Booking (documento de la propuesta al organizador) y Finance (facturas emitidas) con `GET read/central.common_entity_projection` en su propia API. El **logotipo** va como referencia al archivo verificado (`logo_bucket`, `logo_path`, `logo_provider`): la Edge lectora lo firma con `createStorage(supabase).readUrl({ bucket: logo_bucket, path: logo_path, storage_provider: logo_provider })` (contrato §3.9; nunca llamando a `/storage/v1/object…` directamente) o lo descarga con `.download(…)` para incrustarlo. Migración `0550` (columna `logo_provider`, la última de la vista). `entity_revision` sirve para saber si un documento ya emitido usó datos anteriores (contrato §8).
 
 Otros candidatos de configuración común, sin hacer hasta que alguien los pida: textos legales y versiones de consentimiento (fase de portales), plazos de conservación (irán con el registro de tratamientos). Espacios, tipos de evento y categorías de gasto ya tienen dueño.
 
