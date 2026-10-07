@@ -638,6 +638,8 @@ Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `
 
 ## 8. Archivos
 
+**Almacenamiento por proveedor (contrato §3.9, migración 0215):** la Edge nunca llama a `/storage/v1/object…`. El ZIP de la gestoría descarga cada documento con `createStorage` del kit, usando el `storage_provider` de `core.files` que ahora devuelve `invoices.export_bundle`. El logotipo de Central se firma igual (`readUrl`, 10 minutos); su proveedor llegará en `logo_storage_provider` de la proyección de Central y, mientras no llegue, se toma Supabase Storage.
+
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.
 - **Ruta** la decide `core.file_create` (`invoices/<año>/<file_id>/<nombre_seguro>`); el nombre canónico vive en `invoice_files.normalized_filename` y es el que se usa en el ZIP. (El handoff proponía `invoices/<year>/<invoice_uuid>/…`; con `core.files` la ruta es del núcleo y no se discute.)
 - **PDF** tal cual; aviso informativo por encima de 20 MB. **Fotos** recomprimidas en cliente (lado mayor 1600 px, WebP calidad media, sin original). Varias fotos = varios `invoice_files` `original` con `page_order` → `_p01`, `_p02`.

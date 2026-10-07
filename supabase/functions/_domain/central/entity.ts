@@ -68,4 +68,6 @@ export interface EntityProjection extends Omit<EntityRow, 'logo_file_id'> {
   logo_path: string | null;
   logo_mime: string | null;
   logo_sha256: string | null;
+  /** `supabase | r2` (contrato §3.9): con qué proveedor se firma el logotipo (`createStorage(supabase).readUrl`). */
+  logo_provider: string | null;
 }

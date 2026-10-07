@@ -1,5 +1,5 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
-import { createApp, createSupabase, createUploads, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, canSeeKpi, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
   type KpiRow, type KpiTarget,
@@ -88,8 +88,9 @@ async function derivedUuid(seed: string): Promise<string> {
 
 interface TasksTask { id: string; title?: string; revision?: number; deleted?: boolean; pending?: boolean; visible?: boolean; done?: boolean; request?: string }
 
-function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: CentralAppOptions): AppRoute[] {
-  const files = createUploads(supabase, 'central', uploads);
+function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: CentralAppOptions, storage: StorageAccess): AppRoute[] {
+  // Mismo almacenamiento que el kit (Supabase o R2 según `core.files.storage_provider`; contrato §3.9).
+  const files = createUploads(supabase, 'central', uploads, storage);
   const tasks = createTasksClient(options);
   const read = <T>(ctx: RequestContext, name: string, args: Record<string, unknown> = {}) =>
     supabase.rpc<T>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: name, p_args: args });
@@ -181,6 +182,12 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
 export function createCentralApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads' | 'admin'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>>, options: CentralAppOptions = {}) {
   const supabase = createSupabase(base);
   const uploads = base.uploads ?? CENTRAL_UPLOADS;
+  const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
+  const storage = createStorage(supabase, {
+    r2: base.storage?.r2 !== undefined ? base.storage.r2 : r2ConfigFromEnv(env),
+    defaultProvider: base.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
+    fetch: base.fetch,
+  });
   return createApp({
     ...base,
     app: 'central',
@@ -196,6 +203,6 @@ export function createCentralApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
         await checkFiles(supabase, operations, ctx);
       },
     },
-    routes: centralRoutes(supabase, uploads, options),
+    routes: centralRoutes(supabase, uploads, options, storage),
   });
 }

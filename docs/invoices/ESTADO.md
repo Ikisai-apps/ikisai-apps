@@ -81,6 +81,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Indicadores para el panel de Dirección de Central (ronda 40, migración 0211): vista `invoices.central_kpi_projection` con cinco claves (API.md §7.6).
 
+- Almacenamiento por proveedor (contrato §3.9, migración 0215): descarga del ZIP y firma del logotipo con `createStorage` del kit, listo para R2.
+
 ## En curso
 
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. Siguiente: facturar desde una reserva cuando Booking publique su lectura (§14.8).
