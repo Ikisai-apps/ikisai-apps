@@ -24,7 +24,7 @@ PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
   'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
@@ -36,6 +36,9 @@ BUCKET_MIME_TYPES = {
   'purchase-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
   # Central: documentación de personas y cumplimiento (contratos, certificados, seguros): PDF e imágenes.
   'central-documents': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
+  # Comunes: imágenes del feedback de todas las apps (contrato §3.7) y firmas del parte desde Guests.
+  'feedback-media': ['image/webp', 'image/jpeg', 'image/png'],
+  'guests-documents': ['image/webp', 'image/jpeg', 'image/png'],
 }
 
 
@@ -56,7 +59,8 @@ def _entry(name):
 
 APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central')}
 APP_NAMES = tuple(APPS)
-BUCKETS = tuple(dict.fromkeys(app['bucket'] for app in APPS.values()))
+SHARED_BUCKETS = ('feedback-media', 'guests-documents')
+BUCKETS = tuple(dict.fromkeys([app['bucket'] for app in APPS.values()] + list(SHARED_BUCKETS)))
 
 
 def get_app(name):
