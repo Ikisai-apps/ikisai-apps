@@ -152,3 +152,22 @@ test('textos · solo el owner escribe; la clave no cambia; claves únicas; el le
   // La tabla de versiones es cerrada: ni se lee ni se escribe por el núcleo.
   assert.notEqual((await app.call('/api/v1/snapshot?tables=central.text_versions')).status, 200);
 });
+
+test('textos · contacto público sin sesión (C1): solo los textos de contacto, por idioma y en su orden', async () => {
+  const contact = async (lang: string | null) => (await app.t.db.query<{ out: any[] }>(`select central.public_contact($1) as out`, [lang])).rows[0]!.out;
+  const es = await contact('es');
+  assert.deepEqual(es.map((c) => c.key), ['contact.email', 'contact.phone']);
+  assert.equal(es[0].body, 'organiza@ikisai.com'); assert.equal(es[0].version, 'v1'); assert.ok(es[0].title);
+  assert.deepEqual(Object.keys(es[0]).sort(), ['body', 'key', 'title', 'version']);
+  // Inglés: el que falta cae al español; un idioma desconocido o nulo, español.
+  assert.deepEqual((await contact('en')).map((c) => c.body), ['organiza@ikisai.com', '614 76 57 96']);
+  assert.deepEqual(await contact('fr'), es);
+  assert.deepEqual(await contact(null), es);
+  // Ningún texto legal ni de otro tipo.
+  assert.equal(JSON.stringify(es).includes('Protección de datos'), false);
+  // Solo para la clave de servicio.
+  const grants = await app.t.db.query<{ role: string; ok: boolean }>(
+    `select r as role, has_function_privilege(r, 'central.public_contact(text)', 'execute') as ok from unnest(array['anon','authenticated','service_role']) r
+      where exists (select 1 from pg_roles where rolname = r)`);
+  for (const g of grants.rows) assert.equal(g.ok, g.role === 'service_role', g.role);
+});
