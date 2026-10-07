@@ -452,6 +452,19 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       return { invoice: { ...inv }, exports: [] };
     }
+    if (op.procedure === 'invoices.take_issuer') {
+      if (!entity) throw new Fault(422, 'ENTITY_MISSING', 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.', { index });
+      const filled: string[] = [];
+      for (const id of (args.ids as string[] | undefined) ?? []) {
+        const issued = stagedTable('invoices.issued_invoices').get(String(id));
+        if (!issued || issued.deleted_at || issued.issuer || issued.issuer_tax_id || issued.status === 'anulada') continue;
+        issued.issuer_tax_id = entity.tax_id; issued.issuer_name = entity.legal_name; issued.issuer = { ...entity };
+        issued.revision += 1; issued.updated_at = nowIso();
+        batchChanges.push(record('invoices.issued_invoices', 'update', issued, nextCursor, batchChanges.length + 1, requestId, actorId));
+        filled.push(issued.id as string);
+      }
+      return { filled, skipped: [] };
+    }
     if (op.procedure === 'invoices.annul_issued') {
       const issued = stagedTable('invoices.issued_invoices').get(String(args.issued_invoice_id));
       if (!issued) throw new Fault(404, 'NOT_FOUND', 'La factura emitida no existe.', { index });

@@ -798,7 +798,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
   });
 
-  await test.step('emisor (ronda 37): sin entidad en Central se avisa; con ella se copia al registrar y sale en la copia imprimible', async () => {
+  await test.step('emisor (rondas 37 y 38): sin entidad en Central se avisa; con ella se completan las que no lo tienen, se copia al registrar y sale en la copia imprimible', async () => {
     await page.locator('#issuedList .row', { hasText: 'A-2026-0010' }).click();
     let sheet = page.locator('.sheet[role="dialog"]');
     await expect(sheet.locator('#issuerMissing')).toContainText('Faltan los datos de la entidad en Central');
@@ -806,6 +806,24 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     api.setEntity({ entity_id: '44444444-4444-4444-8444-444444444444', entity_revision: 2, legal_name: 'Ikisai Retiros SL', trade_name: 'Ikisai', tax_id: 'B12345674',
       address_line: 'Calle Prueba 1', postal_code: '28001', city: 'Madrid', province: 'Madrid', country: 'ES', email: 'hola@example.invalid', phone: null, website: null, logo_file_id: null });
     try {
+      // Ronda 38: completar las ya registradas sin emisor, una desde la ficha y el resto en lote desde la lista
+      await expect(page.locator('#issuersMissing')).toContainText('sin emisor');
+      await page.locator('#issuedList .row', { hasText: 'A-2026-0010' }).click();
+      sheet = page.locator('.sheet[role="dialog"]');
+      await sheet.locator('#takeIssuer').click();
+      await expect(page.getByRole('alertdialog')).toContainText('Ikisai Retiros SL · NIF B12345674');
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Completar' }).click();
+      await expect(sheet.locator('#issuedIssuer')).toContainText('Ikisai Retiros SL', { timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ issuer_tax_id: 'B12345674' });
+      await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+      await page.locator('#fillIssuers').click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Completar' }).click();
+      await expect(page.locator('#issuersMissing')).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').filter((i) => i.status !== 'anulada' && !i.issuer_tax_id)).toEqual([]);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', issuer_tax_id: null });
+
       await page.locator('#newIssued').click();
       sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
       await expect(sheet.locator('#newIssuedIssuer')).toContainText('Emisor: Ikisai Retiros SL · NIF B12345674');

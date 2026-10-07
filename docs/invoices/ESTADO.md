@@ -77,6 +77,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Emisor de las emitidas (ronda 37, migración 0209): copia de `central.common_entity_projection` al registrar (`issuer_tax_id`, `issuer_name`, `issuer`), ruta `GET entity` con el logotipo firmado sin guardarlo, bloque «Emisor» y aviso «Faltan los datos de la entidad en Central» en la ficha y en «Nueva emitida», y «Imprimir copia» marcada «COPIA DE REGISTRO» (API.md §13).
 
+- Completar el emisor de las emitidas registradas sin él (ronda 38, migración 0210): procedimiento `invoices.take_issuer`, en la ficha («Tomar el emisor actual») y en lote desde el aviso de la lista; nunca sobrescribe ni toca anuladas.
+
 ## En curso
 
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.

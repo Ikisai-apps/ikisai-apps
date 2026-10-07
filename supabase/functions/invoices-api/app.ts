@@ -225,6 +225,13 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
     for (const [index, op] of operations.entries()) {
       if (op.op === 'call') {
         if (op.procedure === 'invoices.import_v1') await checkImport(supabase, ctx, op.args ?? {}, index);
+        // Completar el emisor (ronda 38): la copia la pone la Edge desde Central; lo que mande el cliente se descarta.
+        if (op.procedure === 'invoices.take_issuer') {
+          entityRow ??= { row: await readEntity(supabase, ctx) };
+          const snap = issuerSnapshot(entityRow.row);
+          if (!snap) fail(422, 'ENTITY_MISSING', domainMessage('ENTITY_MISSING'), { index });
+          op.args = { ids: op.args?.ids, issuer: snap };
+        }
         continue;
       }
       if (!op.table?.startsWith('invoices.')) continue;
