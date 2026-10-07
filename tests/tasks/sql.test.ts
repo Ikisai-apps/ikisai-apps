@@ -517,3 +517,10 @@ test('indicadores para Central (§21): agregados de hoy, solo lo vivo, y registr
   assert.deepEqual([row.unit, row.period, row.direction, row.link], ['count', 'actual', 'down', 'https://tasks.ikisai.com/#/tasks']);
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.allowed_reads where app = 'central' and name = 'tasks.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
 });
+
+test('almacenamiento: los adjuntos son el campo de archivo de Tasks (operativo) y la recogida de huérfanos está activa', async () => {
+  const fields = (await db.t.db.query<{ schema_name: string; table_name: string; column_name: string; retention: string }>(
+    `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks'`)).rows;
+  assert.deepEqual(fields, [{ schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' }]);
+  assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.file_gc_apps where app = 'tasks'`)).rows[0]!.n), 1);
+});
