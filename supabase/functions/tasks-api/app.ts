@@ -1,5 +1,5 @@
 /** Ikisai Tasks · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/tasks/API.md §4–§6). */
-import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess } from '../_kit/mod.ts';
 import {
   ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
   type AttachmentRow, type ProjectRow, type Role, type TaskDependencyRow, type TaskRow,
@@ -51,7 +51,7 @@ async function allRows<T>(supabase: Supabase, role: string, table: string, inclu
   }
 }
 
-export function tasksRoutes(supabase: Supabase): AppRoute[] {
+export function tasksRoutes(supabase: Supabase, storage: StorageAccess = createStorage(supabase)): AppRoute[] {
   return [
     /**
      * Bloqueos privados (API.md §5.3): por cada tarea visible, cuántas de sus condiciones incumplidas están fuera
@@ -91,9 +91,10 @@ export function tasksRoutes(supabase: Supabase): AppRoute[] {
         if (!attachment || !visibleRow('tasks.attachments', attachment as unknown as Record<string, unknown>, ctx.membership.scopes)) {
           fail(404, 'NOT_FOUND', 'Adjunto no encontrado.');
         }
-        const file = await supabase.rpc<{ bucket: string; path: string; status: string; mime: string }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: attachment.file_id });
+        // La fila de core.files dice dónde vive el objeto (Supabase Storage o R2): nunca se llama a Storage directamente (contrato §3.9).
+        const file = await supabase.rpc<{ bucket: string; path: string; status: string; mime: string; storage_provider?: 'supabase' | 'r2' }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: attachment.file_id });
         if (file.status !== 'verified') fail(404, 'NOT_FOUND', 'El archivo no está disponible.');
-        const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${file.path.split('/').map(encodeURIComponent).join('/')}`, { service: true, raw: true });
+        const response: Response = await storage.download(file);
         if (!response.ok) fail(response.status === 404 || response.status === 400 ? 404 : 503, response.status === 404 || response.status === 400 ? 'NOT_FOUND' : 'STORAGE_UNAVAILABLE', 'No se pudo leer el archivo.');
         return new Response(response.body, {
           status: 200,
@@ -111,6 +112,9 @@ export function tasksRoutes(supabase: Supabase): AppRoute[] {
 
 export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>>) {
   const supabase = createSupabase(base);
+  // El mismo almacenamiento que monta el kit (contrato §3.9): R2 si están sus secretos, si no Supabase Storage.
+  const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
+  const storage = createStorage(supabase, { r2: r2ConfigFromEnv(env), fetch: base.fetch });
   return createApp({
     ...base,
     app: 'tasks',
@@ -122,7 +126,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
       agentRisk: tasksAgentRiskHook(supabase),
     },
-    routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase), ...requestRoutes(supabase)],
+    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase)],
     workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],
     mcpTools: tasksMcpTools(),
   });
