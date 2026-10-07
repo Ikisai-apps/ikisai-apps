@@ -140,6 +140,8 @@ export interface FakeApi {
   failNextCommit(code: string, status: number): void;
   /** Rol con el que la API falsa atiende `portal-links` (con `reader` responde 403). */
   setPortalRole(role: 'owner' | 'editor' | 'reader'): void;
+  /** Datos de la entidad (Central) que devuelve `GET /entity`; null = Central aún no los tiene. */
+  setEntity(entity: Record<string, unknown> | null, logoUrl?: string | null): void;
   /** Enlaces de portal emitidos, con su token (la lista de la API no lo lleva). */
   portalLinks(): FakePortalLink[];
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
@@ -406,6 +408,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let nextCommitFailure: { code: string; status: number } | null = null;
   // Enlaces de portal (contrato §3.6): solo editor y owner; la lista nunca lleva el token.
   let portalRole: 'owner' | 'editor' | 'reader' = 'owner';
+  let entityData: { entity: Record<string, unknown> | null; logoUrl: string | null } = { entity: null, logoUrl: null };
   const portalLinks = new Map<string, FakePortalLink>();
   const base64url = () => randomBytes(32).toString('base64url');
   const linkValidUntil = (link: FakePortalLink): string | null => {
@@ -455,6 +458,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       // catálogo del lanzador (contrato §3.3): apps con acceso de la cuenta, internas y portales
+      if (path === 'entity') return json(res, 200, entityData);
       if (path === 'apps') return json(res, 200, {
         current: 'booking',
         items: [
@@ -596,6 +600,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     changeLog: () => changes.map((c) => ({ requestId: c.requestId, table: c.table, id: c.id, op: c.op })),
     failNextCommit(code, status) { nextCommitFailure = { code, status }; },
     setPortalRole(role) { portalRole = role; },
+    setEntity(entity, logoUrl = null) { entityData = { entity, logoUrl }; },
     portalLinks: () => Array.from(portalLinks.values()).map((l) => ({ ...l })),
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);

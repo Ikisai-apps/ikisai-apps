@@ -1,4 +1,7 @@
-/** Documento de la propuesta para el organizador (`#/propuesta/<id>/documento`): vista A4 limpia, con «Imprimir / Guardar PDF». Sin datos de huéspedes. */
+/**
+ * Documento de la propuesta para el organizador (`#/propuesta/<id>/documento`): vista A4 limpia, con «Imprimir / Guardar PDF».
+ * Cabecera con los datos de la entidad (Central: logotipo, razón social, NIF/CIF y domicilio fiscal). Sin datos de huéspedes.
+ */
 import type { TableName } from '@ikisai/sync-client';
 import { el, plural, replace, type Child } from '@ikisai/ui-kit';
 import { nights } from '@ikisai/domain-booking';
@@ -7,11 +10,49 @@ import { RATE_LABELS } from '../app/labels.ts';
 import { amountText, byPosition, eur, figures, lineAmounts, pct, qty, signedPct, tierText, tiersOf, type Row } from '../app/rates.ts';
 import type { ViewMount } from './shell.ts';
 
+interface Entity {
+  legal_name: string;
+  trade_name: string | null;
+  tax_id: string;
+  address_line: string;
+  postal_code: string;
+  city: string;
+  province: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+}
+/** `ok`: datos de la entidad; `missing`: Central aún no los tiene; `offline`: no se pudieron pedir (sin red). */
+type EntityState = { kind: 'loading' } | { kind: 'ok'; entity: Entity; logoUrl: string | null } | { kind: 'missing' } | { kind: 'offline' };
+
+function entityHeader(state: EntityState): Child {
+  if (state.kind === 'loading') return null;
+  if (state.kind === 'missing') return el('p', { class: 'banner warn noprint', id: 'entityMissing', role: 'status' }, 'Faltan los datos de la entidad en Central: el documento sale sin cabecera.');
+  if (state.kind === 'offline') return el('p', { class: 'banner noprint', id: 'entityOffline', role: 'status' }, 'Sin conexión: la cabecera con los datos de la entidad se añade al volver la red.');
+  const e = state.entity;
+  const place = [e.postal_code, e.city, e.province && e.province !== e.city ? `(${e.province})` : null].filter(Boolean).join(' ');
+  const contact = [e.phone, e.email, e.website?.replace(/^https:\/\//, '')].filter(Boolean).join(' · ');
+  return el('div', { class: 'pdoc-entity', id: 'documentEntity' },
+    state.logoUrl ? el('img', { class: 'pdoc-logo', src: state.logoUrl, alt: e.trade_name ?? e.legal_name }) : null,
+    el('div', { class: 'pdoc-entity-text' },
+      el('strong', null, e.legal_name),
+      el('span', null, `NIF/CIF ${e.tax_id}`),
+      el('span', null, e.address_line),
+      el('span', null, place),
+      contact ? el('span', null, contact) : null));
+}
+
 export function mountProposalDocument(id: string): ViewMount {
   return ({ main, client, navigate }) => {
     const host = el('div');
     replace(main, host);
     let destroyed = false;
+    let entity: EntityState = { kind: 'loading' };
+    // Se pide una vez al abrir: la URL firmada del logotipo caduca en minutos y no se guarda.
+    void client.api<{ entity: Entity | null; logoUrl: string | null }>('/entity')
+      .then((out) => { entity = out.entity ? { kind: 'ok', entity: out.entity, logoUrl: out.logoUrl } : { kind: 'missing' }; })
+      .catch(() => { entity = { kind: 'offline' }; })
+      .then(() => { if (!destroyed) void paint(); });
 
     async function paint(): Promise<void> {
       const proposal = (await client.get(PROPOSALS, id)) as Row | null;
@@ -51,6 +92,7 @@ export function mountProposalDocument(id: string): ViewMount {
           el('button', { class: 'linkbtn', type: 'button', id: 'backFromDocument', onclick: () => navigate(`#/reservas/${proposal.reservation_id}`) }, `← ${reservation?.title ?? 'Reserva'}`),
           el('button', { class: 'primary', type: 'button', id: 'printDocument', onclick: () => window.print() }, 'Imprimir / Guardar PDF')),
         el('article', { class: 'pdoc', id: 'proposalDocument' },
+          entityHeader(entity),
           el('header', { class: 'pdoc-head' },
             el('p', { class: 'pdoc-kind', id: 'documentNature' }, `Propuesta ${RATE_LABELS.nature[proposal.nature]!.toLowerCase()}`),
             el('h1', null, reservation?.title ?? 'Propuesta'),

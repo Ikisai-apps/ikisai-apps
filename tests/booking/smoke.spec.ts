@@ -888,6 +888,15 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     // Documento para el organizador: sin datos de huéspedes.
     await page.locator('#viewDocument').click();
     await expect(page.getByRole('heading', { name: 'Retiro Test', level: 1 })).toBeVisible();
+    // Sin datos de la entidad en Central: aviso (no se imprime) en vez de fallar.
+    await expect(page.locator('#entityMissing')).toContainText('Faltan los datos de la entidad en Central');
+    api.setEntity({ legal_name: 'Entidad Sintética S.L.', trade_name: 'Sintética', tax_id: 'B00000000', address_line: 'Calle Falsa 1',
+      postal_code: '00000', city: 'Villaprueba', province: 'Provincia', email: 'hola@example.invalid', phone: null, website: 'https://example.invalid' });
+    await page.reload();
+    await expect(page.locator('#documentEntity')).toContainText('Entidad Sintética S.L.');
+    await expect(page.locator('#documentEntity')).toContainText('NIF/CIF B00000000');
+    await expect(page.locator('#documentEntity')).toContainText('00000 Villaprueba (Provincia)');
+    await expect(page.locator('#entityMissing')).toHaveCount(0);
     await expect(page.locator('#documentNature')).toHaveText('Propuesta orientativa');
     await shows(page.locator('#documentTotal'), t2.total);
     await expect(page.locator('#proposalDocument')).toContainText('IVA incluido (10 %)');

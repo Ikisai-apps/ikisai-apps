@@ -69,10 +69,33 @@ function requireEditor(ctx: RequestContext): void {
  * acciones del núcleo son solo SQL: por eso es una ruta propia y no `invoke/booking.calendar_tick`.
  * `claim` y `report` se ejecutan como sistema (actor null); el permiso del usuario se comprueba aquí.
  */
+const ENTITY_PROJECTION = 'central.common_entity_projection';
+const ENTITY_LOGO_BUCKET = 'central-documents';
+
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
   return [
+    {
+      // Datos de la entidad (Central) para la cabecera de la propuesta al organizador. El logotipo está en el bucket privado
+      // de Central: se firma aquí con la clave de servicio, de corta duración, y no se guarda en ninguna parte.
+      method: 'GET', pattern: 'entity',
+      handler: async ({ ctx }) => {
+        const out = await supabase.rpc<{ rows: Array<Record<string, any>> }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: ENTITY_PROJECTION, p_args: { limit: 1 } });
+        const row = out.rows?.[0] ?? null;
+        const entity = row && (row.legal_name || row.tax_id) ? row : null;
+        let logoUrl: string | null = null;
+        if (entity?.logo_bucket === ENTITY_LOGO_BUCKET && typeof entity.logo_path === 'string' && entity.logo_path) {
+          const path = entity.logo_path.split('/').map(encodeURIComponent).join('/');
+          const signed = await supabase.remote(`/storage/v1/object/sign/${ENTITY_LOGO_BUCKET}/${path}`, { service: true, method: 'POST', body: { expiresIn: 600 } }).catch(() => null);
+          const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+          logoUrl = rel ? supabase.base + '/storage/v1' + rel : null;
+        }
+        if (!entity) return { entity: null, logoUrl: null };
+        const { logo_bucket: _b, logo_path: _p, ...visible } = entity;
+        return { entity: visible, logoUrl };
+      },
+    },
     {
       method: 'POST', pattern: 'calendar/tick',
       handler: async ({ ctx, json }) => {
