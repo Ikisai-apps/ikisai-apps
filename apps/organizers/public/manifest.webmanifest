@@ -1,0 +1,17 @@
+{
+  "name": "Ikisai Organizers",
+  "short_name": "Organizers",
+  "description": "Tus retiros en Ikisai: fechas, asistentes y lo que necesita cocina.",
+  "lang": "es",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef0f4",
+  "theme_color": "#2f3d57",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

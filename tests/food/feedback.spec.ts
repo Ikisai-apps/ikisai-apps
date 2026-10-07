@@ -11,7 +11,7 @@ import { build, preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { day, freePort } from './helpers.ts';
+import { day, freePort, TIME_ZONE } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +22,9 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const GROUP = 'Retiro Feedback';
 
 test.use({ viewport: { width: 1280, height: 800 } });
+
+// La app calcula «hoy» con la fecha local del navegador: la misma zona que `day()` y el servidor.
+test.use({ timezoneId: TIME_ZONE });
 
 let api: FakeApi;
 let server: PreviewServer;

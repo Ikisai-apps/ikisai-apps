@@ -155,3 +155,21 @@ test('portales · reenviar el enlace de un huésped reutiliza su cuenta y, con r
   assert.equal((await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(first.data.url) } })).data.error.code, 'LINK_INVALID', 'el enlace antiguo ya no vale');
   assert.equal((await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(again.data.url) } })).status, 200);
 });
+
+test('portales · un huésped solo lee los archivos que subió él (la firma de otro, no)', async () => {
+  const base = { url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch };
+  const withUploads = createApp({ ...base, app: 'guests', slug: 'guests-api', origins: ['https://guests.ikisai.com'], uploads: { bucket: 'guests-documents', allowedMime: ['image/png'] } });
+  const enter = async (name: string) => {
+    const link = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: crypto.randomUUID() }, person: { name } } });
+    assert.equal(link.status, 200, JSON.stringify(link.data));
+    return (await callPortal(withUploads, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } })).data.token as string;
+  };
+  const ana = await enter('Ana Firma'); const luis = await enter('Luis Curioso');
+  const ticket = await callPortal(withUploads, 'guests', '/api/v1/uploads', { token: ana, body: { filename: 'firma.png', mime: 'image/png', size: 10, sha256: 'a'.repeat(64) } });
+  assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+  await app.t.db.query(`update core.files set status = 'verified' where id = $1`, [ticket.data.id]);
+  const other = await callPortal(withUploads, 'guests', `/api/v1/files/${ticket.data.id}`, { token: luis });
+  assert.equal(other.status, 404); assert.equal(other.data.error.code, 'FILE_NOT_FOUND');
+  assert.equal((await callPortal(withUploads, 'guests', `/api/v1/uploads/${ticket.data.id}/verify`, { token: luis, body: {} })).status, 404);
+  assert.notEqual((await callPortal(withUploads, 'guests', `/api/v1/files/${ticket.data.id}`, { token: ana })).status, 404, 'la autora sí');
+});

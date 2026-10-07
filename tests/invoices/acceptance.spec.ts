@@ -72,6 +72,12 @@ async function synced(page: Page): Promise<void> {
 }
 
 /** Enlace de la navegación principal (en Inicio hay tarjetas con los mismos nombres). */
+/** Fila del servidor simulado que llega por la sincronización: espera a que exista (la CI es más lenta que el local). */
+async function eventually<T>(read: () => T | undefined, timeout = 20_000): Promise<T> {
+  await expect.poll(() => read() !== undefined, { timeout }).toBe(true);
+  return read()!;
+}
+
 function nav(page: Page, name: string) {
   return page.locator('.nav').getByRole('link', { name: new RegExp(name) });
 }
@@ -683,10 +689,10 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await expect(sheet).toBeHidden({ timeout: 20_000 });
     await expect(page.locator('#issuedList')).toContainText('A-2026-0001 · Cliente Retiro SL', { timeout: 20_000 });
     await synced(page);
-    const row = api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')!;
+    const row = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'));
     expect(row).toMatchObject({ series_code: 'A', invoice_type: 'F1', origin: 'manual', status: 'registrada', total: 170.5, base_total: 150, quota_total: 20.5, review_reason: null });
-    expect(api.rows('invoices.issued_series').map((s) => s.code)).toEqual(['A']);
-    expect(api.rows('invoices.issued_tax_lines').filter((t) => t.issued_invoice_id === row.id).map((t) => `${t.rate}:${t.taxable_base}:${t.quota}`).sort()).toEqual(['10:100:10', '21:50:10.5']);
+    await expect.poll(() => api.rows('invoices.issued_series').map((s) => s.code), { timeout: 20_000 }).toEqual(['A']);
+    await expect.poll(() => api.rows('invoices.issued_tax_lines').filter((t) => t.issued_invoice_id === row.id).map((t) => `${t.rate}:${t.taxable_base}:${t.quota}`).sort(), { timeout: 20_000 }).toEqual(['10:100:10', '21:50:10.5']);
   });
 
   await test.step('el mismo número en la misma serie se rechaza en el formulario', async () => {
@@ -723,7 +729,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
       await expect(page.locator('#issuedAllocations')).toContainText('Reservas › Reserva García · 150,00 €', { timeout: 20_000 });
       await synced(page);
       await expect.poll(() => api.rows('invoices.issued_allocations').length, { timeout: 20_000 }).toBe(1);
-      expect(api.rows('invoices.issued_allocations')).toEqual([expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: reservation.id, allocated_amount: 150 })]);
+      await expect.poll(() => api.rows('invoices.issued_allocations'), { timeout: 20_000 }).toEqual([expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: reservation.id, allocated_amount: 150 })]);
     } finally {
       api.targets.splice(api.targets.findIndex((t) => t.id === reservation.id), 1);
     }
@@ -753,7 +759,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await expect(page.locator('#issuedList')).toContainText('Ninguna emitida coincide', { timeout: 20_000 });
     await page.locator('#issuedFilter').selectOption('anulada');
     await expect(page.locator('#issuedList')).toContainText('A-2026-0001');
-    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'), { timeout: 20_000 }).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
   });
 
   await test.step('IVA sugerido por categoría; importar CSV del Sheet (nueva, ya registrada, con error) y emitida desde ChatGPT con su PDF', async () => {
@@ -776,10 +782,10 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await sheet.locator('#confirmIssuedCsv').click();
     await expect(page.locator('#issuedList')).toContainText('C-2026-0001 · Cliente PDF', { timeout: 20_000 });
     await synced(page);
-    const fromPdf = api.rows('invoices.issued_invoices').find((i) => i.number === 'C-2026-0001')!;
+    const fromPdf = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.number === 'C-2026-0001'));
     expect(fromPdf).toMatchObject({ origin: 'importada', external_tool: 'chatgpt_pdf', income_category: 'consultoria', total: 242 });
-    expect(api.rows('invoices.issued_invoice_files').filter((f) => f.issued_invoice_id === fromPdf.id).map((f) => f.original_filename)).toEqual(['emitida.pdf']);
-    expect(api.rows('invoices.issued_series').map((x) => x.code).sort()).toEqual(['A', 'C']);
+    await expect.poll(() => api.rows('invoices.issued_invoice_files').filter((f) => f.issued_invoice_id === fromPdf.id).map((f) => f.original_filename), { timeout: 20_000 }).toEqual(['emitida.pdf']);
+    await expect.poll(() => api.rows('invoices.issued_series').map((x) => x.code).sort(), { timeout: 20_000 }).toEqual(['A', 'C']);
     // CSV del Google Sheet: mapeo adivinado, serie por defecto, una ya registrada y una con error
     await page.locator('#importIssuedCsv').click();
     sheet = page.locator('.sheet[role="dialog"]');
@@ -795,7 +801,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await sheet.locator('#confirmIssuedCsv').click();
     await expect(page.locator('#issuedList')).toContainText('A-2026-0010 · Cliente CSV', { timeout: 20_000 });
     await synced(page);
-    expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010'), { timeout: 20_000 }).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
   });
 
   await test.step('emisor (rondas 37 y 38): sin entidad en Central se avisa; con ella se completan las que no lo tienen, se copia al registrar y sale en la copia imprimible', async () => {
@@ -815,14 +821,14 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
       await page.getByRole('alertdialog').getByRole('button', { name: 'Completar' }).click();
       await expect(sheet.locator('#issuedIssuer')).toContainText('Ikisai Retiros SL', { timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ issuer_tax_id: 'B12345674' });
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010'), { timeout: 20_000 }).toMatchObject({ issuer_tax_id: 'B12345674' });
       await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
       await page.locator('#fillIssuers').click();
       await page.getByRole('alertdialog').getByRole('button', { name: 'Completar' }).click();
       await expect(page.locator('#issuersMissing')).toBeHidden({ timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').filter((i) => i.status !== 'anulada' && !i.issuer_tax_id)).toEqual([]);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001')).toMatchObject({ status: 'anulada', issuer_tax_id: null });
+      await expect.poll(() => api.rows('invoices.issued_invoices').filter((i) => i.status !== 'anulada' && !i.issuer_tax_id), { timeout: 20_000 }).toEqual([]);
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'), { timeout: 20_000 }).toMatchObject({ status: 'anulada', issuer_tax_id: null });
 
       await page.locator('#newIssued').click();
       sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
@@ -835,7 +841,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
       await sheet.locator('#saveIssued').click();
       await expect(sheet).toBeHidden({ timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0020')).toMatchObject({ issuer_tax_id: 'B12345674', issuer_name: 'Ikisai Retiros SL' });
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0020'), { timeout: 20_000 }).toMatchObject({ issuer_tax_id: 'B12345674', issuer_name: 'Ikisai Retiros SL' });
       await page.locator('#issuedList .row', { hasText: 'A-2026-0020' }).click();
       sheet = page.locator('.sheet[role="dialog"]');
       await expect(sheet.locator('#issuedIssuer')).toContainText('Ikisai Retiros SL (Ikisai)', { timeout: 20_000 });
@@ -875,7 +881,7 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await settings.locator('#createSeries-ordinaria').click();
       await expect(settings).toBeHidden({ timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_series').find((s) => s.code === 'F')).toMatchObject({ mode: 'emision', kind: 'ordinaria', format: '{serie}{año}-{n:4}' });
+      await expect.poll(() => api.rows('invoices.issued_series').find((s) => s.code === 'F'), { timeout: 20_000 }).toMatchObject({ mode: 'emision', kind: 'ordinaria', format: '{serie}{año}-{n:4}' });
     });
 
     await test.step('borrador sin número; el domicilio es obligatorio para emitir a una empresa', async () => {
@@ -892,9 +898,9 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await sheet.locator('#saveDraft').click();
       await expect(sheet).toBeHidden({ timeout: 20_000 });
       await synced(page);
-      const draft = api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!;
+      const draft = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo'));
       expect(draft).toMatchObject({ status: 'borrador', number: null, origin: 'app', series_code: 'F' });
-      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id)).toEqual([expect.objectContaining({ quantity: 2, unit_price: 50, net_amount: 100, vat_rate: 10 })]);
+      await expect.poll(() => api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id), { timeout: 20_000 }).toEqual([expect.objectContaining({ quantity: 2, unit_price: 50, net_amount: 100, vat_rate: 10 })]);
       await page.locator('#issuedList .row', { hasText: 'Borrador F' }).click();
       const ficha = page.locator('.sheet[role="dialog"]');
       await expect(ficha.locator('#draftBanner')).toContainText('Borrador sin número');
@@ -908,8 +914,8 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await edit.locator('#saveDraft').click();
       await expect(edit).toBeHidden({ timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.id === draft.id)!.recipient_address).toMatchObject({ line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid', country: 'ES' });
-      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at)).toHaveLength(1);
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.id === draft.id)!.recipient_address, { timeout: 20_000 }).toMatchObject({ line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid', country: 'ES' });
+      await expect.poll(() => api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at), { timeout: 20_000 }).toHaveLength(1);
     });
 
     await test.step('emitir: número del servidor, congelada, factura imprimible con los datos obligatorios y sin QR con el envío apagado', async () => {
@@ -927,11 +933,11 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await save.getByRole('button', { name: 'Guardar cliente' }).click();
       await expect(page.locator('#issuedList')).toContainText(`F${year}-0001 · Cliente Emisión SL`, { timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.customers')).toEqual([expect.objectContaining({ name: 'Cliente Emisión SL', tax_id: 'B55555555', kind: 'empresa',
+      await expect.poll(() => api.rows('invoices.customers'), { timeout: 20_000 }).toEqual([expect.objectContaining({ name: 'Cliente Emisión SL', tax_id: 'B55555555', kind: 'empresa',
         address: expect.objectContaining({ line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid' }) })]);
-      const issued = api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!;
-      expect(issued).toMatchObject({ status: 'emitida', number: `F${year}-0001`, issuer_tax_id: 'B12345674', total: 110, vf_status: 'no_enviar' });
-      expect(issued.vf_hash).toMatch(/^[0-9A-F]{64}$/);
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo'), { timeout: 20_000 })
+        .toMatchObject({ status: 'emitida', number: `F${year}-0001`, issuer_tax_id: 'B12345674', total: 110, vf_status: 'no_enviar' });
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!.vf_hash, { timeout: 20_000 }).toMatch(/^[0-9A-F]{64}$/);
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.locator('#issuedList .row', { hasText: `F${year}-0001` }).click();
       const sheet = page.locator('.sheet[role="dialog"]');
@@ -972,9 +978,9 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await dialog.getByRole('button', { name: 'Crear rectificativa' }).click();
       await expect(page.locator('#issuedList')).toContainText('Borrador R', { timeout: 20_000 });
       await synced(page);
-      const draft = api.rows('invoices.issued_invoices').find((i) => i.series_code === 'R' && i.status === 'borrador')!;
+      const draft = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.series_code === 'R' && i.status === 'borrador'));
       expect(draft).toMatchObject({ invoice_type: 'R4', rectification_kind: 'I', recipient_tax_id: 'B55555555' });
-      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id).map((l) => l.net_amount)).toEqual([-100]);
+      await expect.poll(() => api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id).map((l) => l.net_amount), { timeout: 20_000 }).toEqual([-100]);
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.locator('#issuedList .row', { hasText: 'Borrador R' }).click();
       ficha = page.locator('.sheet[role="dialog"]');
@@ -989,7 +995,7 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await page.getByRole('alertdialog').getByRole('button', { name: 'Emitir' }).click();
       await expect(page.locator('#issuedList')).toContainText(`R_01_${yy}`, { timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.full_number === `F${year}-0001`)).toMatchObject({ status: 'rectificada' });
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.full_number === `F${year}-0001`), { timeout: 20_000 }).toMatchObject({ status: 'rectificada' });
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.locator('#issuedList .row', { hasText: `R_01_${yy}` }).click();
       ficha = page.locator('.sheet[role="dialog"]');
@@ -1034,8 +1040,8 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click();
       await expect(page.locator('#issuedList')).not.toContainText('Particular Prueba', { timeout: 20_000 });
       await synced(page);
-      expect(api.rows('invoices.issued_invoices').find((i) => i.description === 'Para borrar')!.deleted_at).not.toBeNull();
-      expect(api.rows('invoices.issued_series').find((s) => s.code === 'F')!.counter_last).toBe(1);
+      await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.description === 'Para borrar')!.deleted_at, { timeout: 20_000 }).not.toBeNull();
+      await expect.poll(() => api.rows('invoices.issued_series').find((s) => s.code === 'F')!.counter_last, { timeout: 20_000 }).toBe(1);
     });
   } finally {
     api.setEntity(null);
@@ -1079,17 +1085,17 @@ test('Facturar desde una reserva (API.md §14.8): borrador relleno desde Booking
     await sheet.locator('#saveDraft').click();
     await expect(sheet).toBeHidden({ timeout: 20_000 });
     await synced(page);
-    const draft = api.rows('invoices.issued_invoices').find((i) => i.recipient_name === 'Asociación Yoga Norte')!;
+    const draft = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.recipient_name === 'Asociación Yoga Norte'));
     expect(draft).toMatchObject({ status: 'borrador', prices_include_vat: true, recipient_kind: 'empresa', income_category: 'alojamiento', operation_date: '2026-11-08' });
-    const lines = api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at).sort((x, y) => Number(x.position) - Number(y.position));
-    expect(lines.map((l) => [l.net_amount, l.vat_amount])).toEqual([[1000, 100], [100, 21]]);
-    expect(api.rows('invoices.issued_allocations').filter((al) => al.issued_invoice_id === draft.id)).toEqual([
+    await expect.poll(() => api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at)
+      .sort((x, y) => Number(x.position) - Number(y.position)).map((l) => [l.net_amount, l.vat_amount]), { timeout: 20_000 }).toEqual([[1000, 100], [100, 21]]);
+    await expect.poll(() => api.rows('invoices.issued_allocations').filter((al) => al.issued_invoice_id === draft.id), { timeout: 20_000 }).toEqual([
       expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: RES, allocated_amount: 1100 })]);
     // Pulsar otra vez «Emitir factura» en Booking abre el borrador que ya existe, sin duplicarlo
     await page.goto(`${baseURL}/#/facturas?vista=emitidas&desde=booking:reservation:${RES}`);
     await expect(page.getByText('Esta reserva ya tiene un borrador de factura.')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.sheet[role="dialog"]').locator('#draftBanner')).toBeVisible();
-    expect(api.rows('invoices.issued_invoices').filter((i) => i.recipient_name === 'Asociación Yoga Norte')).toHaveLength(1);
+    await expect.poll(() => api.rows('invoices.issued_invoices').filter((i) => i.recipient_name === 'Asociación Yoga Norte'), { timeout: 20_000 }).toHaveLength(1);
   } finally {
     api.targets.splice(api.targets.findIndex((t) => t.id === RES), 1);
     api.setReservationSource(RES, null);

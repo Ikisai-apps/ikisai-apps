@@ -78,7 +78,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   );
 
   const links = new Map<string, HTMLAnchorElement>();
-  const nav = el('nav', { class: 'nav', 'aria-label': 'Secciones' },
+  // Sin secciones (portales con `nav: []`): ni barra inferior ni lateral.
+  const nav = el('nav', { class: 'nav', 'aria-label': 'Secciones', hidden: !options.nav.length },
     ...options.nav.map((item) => {
       const link = el('a', { class: 'navbtn', href: item.hash, dataset: { hash: item.hash }, onclick: (event: Event) => { event.preventDefault(); navigate(item.hash); } },
         icon(item.icon),

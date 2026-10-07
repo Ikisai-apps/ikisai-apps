@@ -9,6 +9,9 @@ import {
   createFeedbackReview,
   createUsage,
   createI18n,
+  createSaveState,
+  createSignaturePad,
+  createInstallPrompt,
   createLanguageSelect,
   type I18n,
   showUsageNotice,
@@ -934,6 +937,39 @@ const i18nSection = section('i18n', 'Idiomas (portales)', 'createI18n: diccionar
   i18nHost, i18nOut);
 (window as unknown as { ikisaiI18n: unknown }).ikisaiI18n = { start: startI18n, get: () => demoI18n };
 
+// --- Piezas de portal: estado de guardado, firma, instalar, cáscara sin barra --------------------------
+let saveMode: 'ok' | 'fail' | 'offline' = 'ok';
+const saves = createSaveState({ savedMs: 0 });
+saves.element.id = 'saveGlobal';
+const fakeSave = () => new Promise<void>((resolve, reject) => setTimeout(() => {
+  if (saveMode === 'ok') resolve();
+  else reject(Object.assign(new Error(saveMode), { code: saveMode === 'offline' ? 'NETWORK' : 'VALIDATION' }));
+}, 120));
+const saveField = (key: string, label: string) => {
+  const f = saves.field(key);
+  const input = el('input', { id: `save-${key}`, onchange: () => { void saves.track(key, fakeSave(), { retry: fakeSave }).catch(() => null); } });
+  return el('label', { class: 'field' }, el('span', null, label, ' ', f.element), input);
+};
+const signature = createSignaturePad({ label: 'Firma del organizador', attrs: { id: 'sigPad' } });
+const sigOut = el('output', { id: 'sigOut' });
+const install = createInstallPrompt({ appName: 'Ikisai Guests', app: 'demo-guests', markIcon: 'guest' });
+const portalShellHost = el('div', { id: 'portalShellHost', class: 'card', style: 'position:relative;transform:translateZ(0);height:220px;overflow:auto' });
+const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado por campo y global, recuadro de firma (trazo, deshacer, borrar, escribir el nombre, PNG recortado), «Instala la app» y la cáscara sin barra inferior con nav: [].',
+  el('div', { class: 'demo-row' },
+    ...(['ok', 'fail', 'offline'] as const).map((m) => el('label', { class: 'field check' }, el('input', { type: 'radio', name: 'saveMode', id: `saveMode-${m}`, checked: m === 'ok', onchange: () => { saveMode = m; } }), el('span', null, m))),
+    saves.element),
+  el('div', { class: 'cardgrid' }, saveField('nombre', 'Nombre del retiro'), saveField('plazas', 'Plazas')),
+  el('div', { class: 'card', style: 'max-width:520px' }, signature.element,
+    el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'ghost small', id: 'sigExport', onclick: async () => {
+      const blob = await signature.toBlob();
+      if (!blob) { sigOut.textContent = 'vacía'; return; }
+      const bmp = await createImageBitmap(blob);
+      sigOut.textContent = `${blob.type} ${bmp.width}x${bmp.height}`;
+    } }, 'Exportar PNG'), sigOut)),
+  el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'ghost small', id: 'installSheet', onclick: () => void install.openSheet() }, 'Hoja «Instala la app»'), install.card() ?? el('span', null, 'instalada')),
+  portalShellHost);
+createAppShell(portalShellHost, { appName: 'Guests', markIcon: 'guest', nav: [] });
+
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
@@ -945,12 +981,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

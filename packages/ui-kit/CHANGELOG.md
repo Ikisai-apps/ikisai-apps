@@ -1,5 +1,26 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.20.0 · 7 de octubre de 2026
+
+Piezas que piden los portales (Organizers y Guests); todas en español e inglés:
+- **Estado de guardado** `createSaveState({ savedMs, isNetworkError })` → `{ element, field(key), set, track, status, onChange }`:
+  - por campo («Guardando…», «Guardado», «Pendiente: se guardará con conexión», «No se guardó · Reintentar») y global (lo más grave);
+  - `track(key, promesa, { retry })` decide solo entre guardado, pendiente (error de red o sin conexión) y error.
+- **Recuadro de firma** `createSignaturePad({ label, height, color, typed, onChange, attrs })` → `{ element, canvas, isEmpty, clear, undo, toBlob }`:
+  - trazo suave con dedo, lápiz o ratón, sin desplazar la página, y alta densidad;
+  - «Deshacer» y «Borrar»;
+  - «Escribir mi nombre» como alternativa accesible;
+  - `toBlob()` da un PNG recortado a la firma con margen y fondo transparente;
+  - ignora el gesto de feedback. Booking puede sustituir el suyo.
+- **«Instala la app»** `createInstallPrompt({ appName, app, markIcon, snoozeDays, onOutcome, container })` → `{ canPrompt, isInstalled, shouldPromote, install, openSheet, card, onChange }`:
+  - guarda `beforeinstallprompt` desde que se importa el kit;
+  - si el navegador no deja instalar, explica cómo hacerlo en iPhone, Android o escritorio;
+  - ofrece «Seguir en la web»; «Ahora no» se recuerda 14 días;
+  - `isAppInstalled()` e `installPlatform()` exportados.
+- **Cáscara con `nav: []`**: ya no pinta la barra inferior vacía.
+- **Iconos `guest` y `organizer`**, que el lanzador usa para Guests y Organizers.
+- Demo `#portal`; prueba `v26` (con tres pruebas `@smoke`).
+
 ## 0.19.0 · 7 de octubre de 2026
 
 - **Idiomas (español e inglés) para los portales** (PORTALES_V2.md §8):
