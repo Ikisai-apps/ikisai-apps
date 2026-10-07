@@ -35,11 +35,27 @@ export interface AppLauncherOptions {
   appIcon?: (app: LauncherApp) => string | Node | null | undefined;
   /** Título de la hoja; por defecto «Apps de Ikisai». */
   title?: string;
-  /** Interruptor «Señalar para comentar» al pie (FEEDBACK.md §8.1): normalmente `createFeedback(...).mode`. */
-  feedback?: { get(): boolean; set(on: boolean): void };
-  /** Interruptor «Revisor de QA» debajo (FEEDBACK.md §9.2): `createFeedbackReview(...)`; aparece solo si `available()`. */
-  review?: { get(): boolean; set(on: boolean): void; available(): Promise<boolean> };
+  /**
+   * Interruptor «Señalar para comentar» al pie (FEEDBACK.md §8.1): el objeto de `createFeedback(...)` (o su `mode`).
+   */
+  feedback?: LauncherMode | { mode: LauncherMode };
+  /**
+   * Interruptor «Revisor de QA» debajo (FEEDBACK.md §9.2): el objeto de `createFeedbackReview(...)` tal cual (o
+   * `{ get, set, available }`). Aparece solo si `available()`.
+   */
+  review?: (LauncherMode & { available(): Promise<boolean> }) | { mode: LauncherMode; available(): Promise<boolean> };
+  /**
+   * Entrada «Sugerencias y QA» en el panel, junto a los interruptores: así la app no necesita botón propio en la
+   * cabecera (que a 390 px no cabe). Se cierra el lanzador y se llama a la función, normalmente
+   * `() => openFeedbackCenter({ api, app, canEdit, feedback })`.
+   */
+  center?: () => void;
 }
+
+/** Un interruptor del lanzador: `get` y `set` (como `FeedbackMode`). */
+export interface LauncherMode { get(): boolean; set(on: boolean): void }
+
+const asMode = (value: LauncherMode | { mode: LauncherMode }): LauncherMode => ('mode' in value && value.mode ? value.mode : value as LauncherMode);
 
 export interface AppLauncher {
   open(): Promise<Sheet>;
@@ -106,12 +122,15 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       internal.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Apps' }, ...internal.map((a) => row(a, current))) : null,
       portals.length ? el('h3', { class: 'launcher-group' }, 'Portales') : null,
       portals.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Portales' }, ...portals.map((a) => row(a, current))) : null,
-      options.feedback ? modeSwitch(options.feedback, 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.') : null,
+      options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
+        el('span', { class: 'launcher-text' }, el('strong', null, 'Sugerencias y QA'), el('small', null, 'Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')),
+        icon('chevronRight', 16)) : null,
+      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.') : null,
       options.review ? reviewSlot : null,
     );
   }
 
-  function modeSwitch(mode: { get(): boolean; set(on: boolean): void }, cls: string, title: string, text: string): HTMLElement {
+  function modeSwitch(mode: LauncherMode, cls: string, title: string, text: string): HTMLElement {
     const input = el('input', { type: 'checkbox', role: 'switch', class: `${cls}-input` }) as HTMLInputElement;
     input.checked = mode.get();
     input.addEventListener('change', () => mode.set(input.checked));
@@ -121,11 +140,12 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
   }
   /** El del revisor llega tarde (hay que preguntar al servidor si la cuenta puede revisar). */
   const reviewSlot = el('div', { class: 'launcher-review-slot' });
+  let currentSheet: Sheet | null = null;
   function askReview(): void {
     const review = options.review;
     if (!review) return;
     void review.available().then((ok) => {
-      replace(reviewSlot, ok ? modeSwitch(review, 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.') : null);
+      replace(reviewSlot, ok ? modeSwitch(asMode(review), 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.') : null);
     });
   }
 
@@ -135,6 +155,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     const cached = readCache(key);
     paint(host, cached, cached ? 'fresh' : 'loading');
     const sheet = openSheet({ title: options.title ?? 'Apps de Ikisai', body: host });
+    currentSheet = sheet;
     try {
       const catalog = await options.fetchApps();
       writeCache(key, catalog);
