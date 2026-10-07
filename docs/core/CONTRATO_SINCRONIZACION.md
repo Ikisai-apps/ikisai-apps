@@ -166,6 +166,22 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - **`sync-client` 0.4:** `onSessionEnd(userId)` avisa al cerrar sesión o al entrar otra persona. El resumen de sincronización para el contexto es `status()`, con `pendingCommands`, `conflicts`, `lastPullAt` y `cursor`.
 
 
+### 3.8 Uso semántico de funcionalidades (migración `0071`, diseño en `coordinacion/ampliacion/USO.md`)
+
+- **Catálogo:**
+  - Lo genera el kit al compilar (`dist/feature-catalog.json`, con los `data-feedback-id` y los `usage.run` del código).
+  - `release.yml` lo sube con `scripts/usage_catalog_ingest.py`, que llama a `core.usage_catalog_ingest`: altas, etiquetas y funciones retiradas.
+  - `GEN: <id>` en un commit publicado sube la generación de esa función (`core.usage_bump_generation`).
+- **`POST usage/batch {deviceId, items}`:**
+  - Recibe los totales del día por dispositivo; el núcleo guarda el máximo por clave, así que es idempotente sin recibos.
+  - Solo admite funciones de la propia app y días de los últimos 14.
+  - La persona (`user_key`) solo se guarda si es interna, en `production` y aceptó el aviso (`POST usage/consent`). En portales, en QA y en el revisor, nunca.
+- **Revisor › Uso (solo el owner de Central):**
+  - `GET usage/review?app=` devuelve los insights calculados al consultar: `NEW`, `HEALTHY`, `HIGH_ACTIVITY`, `DORMANT`, `IGNORED`, `POSSIBLY_INACCESSIBLE`, `FRICTION`, `HIGH_ERROR`, `TARGET_CANNOT_REACH_FEATURE`, `TARGET_NOT_ADOPTING`, `USED_BY_WRONG_AUDIENCE`, `RARE_AS_EXPECTED`, `ORPHANED_USAGE_ID`, `KEPT` y `NOT_EVALUATED`.
+  - `GET usage/features/:id` devuelve la tarjeta con `byPerson`, `byTeam` (de `central.common_team_projection`) y `byContext`.
+  - `POST usage/features/:id/decision|settings` fija la decisión, la frecuencia, la audiencia o una nueva generación.
+- **Retención:** el detalle por persona dura 180 días; después se agrega sin persona ni dispositivo (pg_cron mensual).
+
 ## 4. Commit
 
 ### 4.1 Firma
