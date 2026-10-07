@@ -75,7 +75,7 @@ async function setSignal(page: Page, on: boolean): Promise<void> {
   await expect(dialog).toBeHidden();
 }
 
-test('feedback · aviso de uso, marcas de pantalla, señalar y comentar, «Sugerencias y QA» y usage.run', async ({ page, context }) => {
+test('feedback · aviso de uso, marcas de pantalla, señalar y comentar, «Sugerencias y QA» y usage.run @smoke', async ({ page, context }) => {
   test.setTimeout(120_000);
 
   await test.step('login y aviso de medición la primera vez', async () => {
