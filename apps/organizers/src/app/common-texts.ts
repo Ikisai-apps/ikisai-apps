@@ -5,7 +5,7 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 
-export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null }
+export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null; lang?: string; source_lang?: string }
 
 export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone';
 const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone'];
@@ -34,10 +34,16 @@ function readStored(): Partial<Record<TextKey, CommonText>> {
   }
 }
 
-/** Pide los textos a Central (con sesión). Si falla, se quedan la última copia o la reserva. */
+/** Idioma del dispositivo: inglés si el navegador está en inglés; si no, español. */
+export const deviceLang = (): 'es' | 'en' => (navigator.language?.toLowerCase().startsWith('en') ? 'en' : 'es');
+
+/**
+ * Pide los textos a Central (con sesión), en el idioma del dispositivo (la proyección trae una fila por clave e idioma, con
+ * el español como reserva). Si falla, se quedan la última copia o la reserva.
+ */
 export async function loadCommonTexts(client: SyncClient): Promise<void> {
   try {
-    const out = await client.api<{ rows?: CommonText[]; items?: CommonText[] }>('/read/central.common_texts_projection?limit=200');
+    const out = await client.api<{ rows?: CommonText[]; items?: CommonText[] }>(`/read/central.common_texts_projection?where[lang]=${deviceLang()}&limit=200`);
     const rows = out.rows ?? out.items ?? [];
     const next: Partial<Record<TextKey, CommonText>> = {};
     for (const row of rows) if ((KEYS as readonly string[]).includes(row.key) && typeof row.body === 'string' && row.body.trim()) next[row.key as TextKey] = row;
@@ -53,7 +59,7 @@ export async function loadCommonTexts(client: SyncClient): Promise<void> {
  * Contacto sin sesión (pantallas de enlace no válido o caducado): `GET /api/v1/public/contact?lang=`, cacheable, solo
  * textos de tipo contacto. Admite lista (`items` o `rows`) u objeto por clave; si la ruta aún no existe, queda la reserva.
  */
-export async function loadPublicContact(lang = navigator.language?.slice(0, 2) === 'en' ? 'en' : 'es'): Promise<void> {
+export async function loadPublicContact(lang = deviceLang()): Promise<void> {
   try {
     const res = await fetch(`/api/v1/public/contact?lang=${lang}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return;
@@ -80,7 +86,22 @@ export function contactLine(): string {
   return `Escríbenos a ${commonText('contact.email').body} o llámanos al ${commonText('contact.phone').body}.`;
 }
 
-/** Versión de la declaración que se acepta (se guarda en Booking con la aceptación). */
+/** Versión de la declaración que se acepta, con el idioma del texto que se vio (`v1/es`); se guarda en Booking con la aceptación. */
 export function declarationVersion(): string {
-  return commonText('organizers.declaration').version ?? 'v1';
+  const text = commonText('organizers.declaration');
+  return `${text.version ?? 'v1'}/${text.source_lang ?? text.lang ?? 'es'}`;
+}
+
+/** Cuerpo de un texto de Central (markdown sencillo: párrafos y **negrita**) como nodos, sin HTML del servidor. */
+export function textParagraphs(body: string): HTMLElement[] {
+  return body.split(/\n{2,}/).map((block) => {
+    const p = document.createElement('p');
+    p.className = 'small';
+    for (const [i, part] of block.split('**').entries()) {
+      if (!part) continue;
+      if (i % 2) { const b = document.createElement('strong'); b.textContent = part; p.append(b); }
+      else p.append(document.createTextNode(part));
+    }
+    return p;
+  });
 }

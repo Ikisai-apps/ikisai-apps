@@ -76,6 +76,8 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await page.locator('#f-first_name').fill('Ana');
   await page.locator('#f-last_name_1').fill('Sintética');
   await expect(page.locator('#declarationBox')).toBeVisible();
+  // «Más información» es el texto `portal.privacy` de Central (#281), no un texto fijo del código.
+  await expect(page.locator('#declarationBox details strong').first()).toContainText('protección de datos');
   await page.locator('#saveNewGuest').click();
   await expect(page.locator('#newGuestError')).toContainText('marca la casilla');
   await page.locator('#declaration').check();

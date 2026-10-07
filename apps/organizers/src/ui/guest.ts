@@ -10,7 +10,7 @@ import {
   COUNTRIES, fieldsFor, RESTRICTION_HAS_SEVERITY, RESTRICTION_LABELS, RESTRICTION_NEEDS_SUBJECT, restrictionText, SEVERITY_LABELS, type FieldSpec,
 } from '../app/labels.ts';
 import { linkMessage, personReminder } from '../app/texts.ts';
-import { commonText } from '../app/common-texts.ts';
+import { commonText, textParagraphs } from '../app/common-texts.ts';
 import { copyText, failure, fbIgnore, loading, staleNote } from './common.ts';
 import { guestState, linksByGuest, linkText } from './guests.ts';
 import { openShareSheet } from './share.ts';
@@ -77,7 +77,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     const element = el('div', { class: 'card orgdeclaration', id: 'declarationBox', 'data-feedback-id': 'organizers.asistentes.declaracion.aceptar', 'data-feedback-label': 'Declaración' },
       el('label', { class: 'field check' }, input, el('span', { id: 'declarationText' }, commonText('organizers.declaration').body)),
       el('details', null, el('summary', null, 'Más información'),
-        ...privacy.body.split(/\n{2,}/).map((p) => el('p', { class: 'small' }, p))));
+        ...textParagraphs(privacy.body)));
     return {
       element,
       needed: () => needed,

@@ -32,6 +32,8 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!] }),
   });
   const organizers = createOrganizersApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, origins: [origin], release: 'test' });
+  // Textos legales y de contacto de Central (#281): en producción los siembra la migración; aquí, a mano.
+  await booking.t.db.query('select central.seed_texts()');
   let seq = 0;
   let offline = false;
 
