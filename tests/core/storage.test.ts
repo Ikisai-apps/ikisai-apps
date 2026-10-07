@@ -51,3 +51,19 @@ test('storage · con R2 por defecto: el ticket apunta a R2, core.files lo anota 
     await app.close();
   }
 });
+
+test('storage · medición para Central: tamaños, niveles e historial, solo para el owner de Central', async () => {
+  const app = await createTestApp({ app: 'central', slug: 'central-api', origin: 'https://central.ikisai.com', createHandler: (config) =>
+    createApp({ ...config, app: 'central', slug: 'central-api', origins: ['https://central.ikisai.com'], admin: true }) });
+  try {
+    await app.t.db.query('select core.storage_snapshot()');
+    const res = await app.call('/api/v1/admin/storage', { token: app.tokens.owner });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    assert.ok(Number(res.data.databaseBytes) > 0);
+    assert.equal(res.data.levels.database, 'ok');
+    assert.ok(res.data.history.length >= 1);
+    assert.equal((await app.call('/api/v1/admin/storage', { token: app.tokens.editor })).status, 403);
+  } finally {
+    await app.close();
+  }
+});

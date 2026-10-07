@@ -210,6 +210,7 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'admin/memberships', handler: async ({ ctx, json }) => admin.setMembership(ctx, await json()) },
       { method: 'POST', pattern: 'admin/invite', handler: async ({ ctx, json }) => admin.invite(ctx, await json()) },
       { method: 'GET', pattern: 'admin/access-log', handler: ({ ctx, url }) => admin.accessLog(ctx, url.searchParams) },
+      { method: 'GET', pattern: 'admin/storage', handler: ({ ctx }) => admin.storage(ctx) },
       { method: 'GET', pattern: 'admin/agents', handler: ({ ctx }) => admin.agents(ctx) },
       { method: 'DELETE', pattern: 'admin/agents/:keyId', handler: ({ ctx, params }) => admin.revokeAgent(ctx, params.keyId ?? '') },
       { method: 'POST', pattern: 'admin/accounts/:userId/password', handler: ({ ctx, params }) => admin.resetPassword(ctx, params.userId ?? '') },
