@@ -109,6 +109,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
         if ([...users.values()].includes(email)) return Response.json({ code: 'email_exists', msg: 'User already registered' }, { status: 422 });
         const id = await t.createUser();
         users.set(id, email);
+        await t.db.query('update auth.users set email = $2 where id = $1', [id, email]); // como Auth: el correo queda en la base
         return Response.json({ id, email, role: 'authenticated' });
       }
       return Response.json({ users: [...users.entries()].map(([id, email]) => ({ id, email })) });

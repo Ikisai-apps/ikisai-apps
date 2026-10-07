@@ -15,14 +15,14 @@ test.after(async () => { await on.close(); });
 test('recuperación · apagada sin correo propio: la app no ofrece el enlace y las rutas responden 503', async () => {
   const off = await createTestApp({ app: 'booking', slug: 'booking-api', origin: ORIGIN, createHandler: (config) => createApp({ ...config, app: 'booking', slug: 'booking-api', origins: [ORIGIN], passwordRecovery: false }) });
   try {
-    assert.deepEqual((await off.call('/api/v1/auth/config', { token: null })).data, { passwordRecovery: false });
+    assert.deepEqual((await off.call('/api/v1/auth/config', { token: null })).data, { passwordRecovery: false, permanentAccount: false });
     const res = await off.call('/api/v1/auth/recover', { token: null, body: { email: 'editor@example.invalid' } });
     assert.equal(res.status, 503); assert.equal(res.data.error.code, 'RECOVERY_DISABLED');
   } finally { await off.close(); }
 });
 
 test('recuperación · misma respuesta exista o no la cuenta; el enlace vuelve a la app, vale una vez y cambia la contraseña', async () => {
-  assert.deepEqual((await on.call('/api/v1/auth/config', { token: null })).data, { passwordRecovery: true });
+  assert.deepEqual((await on.call('/api/v1/auth/config', { token: null })).data, { passwordRecovery: true, permanentAccount: false });
   const unknown = await on.call('/api/v1/auth/recover', { token: null, body: { email: 'nadie@example.invalid' } });
   assert.equal(unknown.status, 200); assert.deepEqual(unknown.data, { sent: true });
   assert.equal(on.supabase.lastRecovery(), null, 'sin cuenta no se envía nada, pero la respuesta es la misma');

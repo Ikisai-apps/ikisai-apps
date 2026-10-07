@@ -298,7 +298,9 @@ export function createApp(config: AppConfig): AppHandler {
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
       // «¿Has olvidado tu contraseña?» (contrato §3.4): se enciende con IKISAI_PASSWORD_RECOVERY=1 cuando haya correo propio.
       const recoveryOn = config.passwordRecovery ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_PASSWORD_RECOVERY') === '1');
-      if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn });
+      // permanentAccount: «Guarda tu acceso» de los portales (Google y código por correo), cuando haya Workspace.
+      const permanentOn = (globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_ACCOUNTS') === '1';
+      if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn });
       if (path === '/api/v1/auth/recover' && request.method === 'POST') {
         if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
         // El correo vuelve a la propia app: https://<app>/?token_hash=…&type=recovery (plantilla de Auth).
