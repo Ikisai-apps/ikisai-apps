@@ -60,22 +60,32 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(v('central.people_active'), 1);
   assert.equal(v('central.people_records_expired'), 1);
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
-  // Las apps que aún no publican no rompen el panel (Booking ya publica la suya, migración 0450).
-  assert.deepEqual(dash.data.unavailable, ['invoices', 'tasks', 'food']);
+  // Las apps que aún no publican van en `unavailable` y no rompen el panel; las que ya publican, no. No depende de cuáles sean.
+  const published = (await app.t.db.query<{ app: string }>(`select split_part(name, '.', 1) as app from core.allowed_reads where app = 'central' and name like '%.central_kpi_projection' and name <> 'central.central_kpi_projection'`)).rows.map((r) => r.app);
+  const expected = ['booking', 'invoices', 'tasks', 'food'].filter((a) => !published.includes(a));
+  assert.deepEqual(dash.data.unavailable, expected);
 });
 
 test('kpis · otra app publica su proyección con el contrato y entra en el panel', async () => {
-  // Sustituye la vista real de Booking por una de valores fijos con el mismo contrato (vista + core.allow_read para central).
+  // Simula lo que hará Booking en su migración (vista + core.allow_read para central).
   await app.t.db.query(`create or replace view booking.central_kpi_projection as
     select 'booking.events_next_30d'::text as kpi, 'Eventos en los próximos 30 días'::text as label, 4::numeric as value, 'count'::text as unit,
            'actual'::text as period, current_date as period_start, current_date + 30 as period_end, 'up'::text as direction,
            'https://booking.ikisai.com/#/'::text as link, now() as computed_at
     union all
-    select 'booking.occupancy_rate', 'Ocupación', 62.5, 'pct', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()`);
+    select 'booking.occupancy_rate', 'Ocupación', 62.5, 'pct', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()
+    union all
+    select 'booking.income_agreed_month', 'Importe acordado del mes', 12500, 'eur', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()`);
   await app.t.db.query(`select core.allow_read('central', 'booking.central_kpi_projection', 'view')`);
   const dash = await app.call('/api/v1/dashboard');
   const booking = dash.data.items.filter((i: any) => i.app === 'booking');
-  assert.deepEqual(booking.map((i: any) => [i.kpi, i.value, i.period]), [['booking.events_next_30d', 4, 'actual'], ['booking.occupancy_rate', 62.5, '2026-10']]);
+  assert.deepEqual(booking.map((i: any) => [i.kpi, i.value, i.period]), [['booking.events_next_30d', 4, 'actual'], ['booking.income_agreed_month', 12500, '2026-10'], ['booking.occupancy_rate', 62.5, '2026-10']]);
+  // Los importes, solo para owner y editor de Central.
+  const asEditor = await app.call('/api/v1/dashboard', { token: app.tokens.editor });
+  assert.ok(asEditor.data.items.some((i: any) => i.kpi === 'booking.income_agreed_month'));
+  const asReader = await app.call('/api/v1/dashboard', { token: app.tokens.reader });
+  assert.equal(asReader.data.items.some((i: any) => i.unit === 'eur'), false);
+  assert.ok(asReader.data.items.some((i: any) => i.kpi === 'booking.occupancy_rate'));
   assert.equal(dash.data.unavailable.includes('booking'), false);
   assert.equal(dash.data.items[0].app, 'central');
 });

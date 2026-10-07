@@ -81,6 +81,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 ## En curso
 
+- Emitir facturas desde Finance (ronda 40): propuesta en API.md §14, pendiente de revisión de Core. Huella comprobada con los tres ejemplos oficiales de la AEAT.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente

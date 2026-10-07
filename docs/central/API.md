@@ -368,7 +368,8 @@ Propuesta para que Core la reparta (ronda 6). Cada app que quiera aparecer en el
 | `computed_at` | `timestamptz` | `now()` en la vista. |
 
 **Reglas.**
-- **Solo agregados**: ningún nombre, contacto ni importe de una persona. Todo miembro de Central (también un lector) ve el panel; no publiquéis nada que un lector de Central no deba ver.
+- **Solo agregados**: ningún nombre, contacto ni importe de una persona.
+- **Importes (`unit = 'eur'`) solo para owner y editor de Central** (ronda 8): `GET dashboard` no los entrega a un lector. El resto de indicadores los ve cualquier miembro de Central.
 - Horizonte fijo, porque las vistas no reciben parámetros: lo actual y, en mensuales, los 12 meses anteriores y los 3 siguientes como mucho (≤ 500 filas).
 - Fechas de «hoy» en hora de Madrid: `(now() at time zone 'Europe/Madrid')::date`.
 - La clave y su fórmula se documentan en el `API.md` de la app dueña. Cambiar el significado de una clave es crear otra.
@@ -382,7 +383,9 @@ select 'booking.events_next_30d'::text as kpi, 'Eventos en los próximos 30 día
        count(*)::numeric as value, 'count'::text as unit, 'actual'::text as period,
        (now() at time zone 'Europe/Madrid')::date as period_start, (now() at time zone 'Europe/Madrid')::date + 30 as period_end,
        'up'::text as direction, 'https://booking.ikisai.com/#/calendario'::text as link, now() as computed_at
-  from booking.events e where e.deleted_at is null and e.start_date between current_date and current_date + 30;
+  from booking.events e
+ where e.deleted_at is null
+   and e.start_date between (now() at time zone 'Europe/Madrid')::date and (now() at time zone 'Europe/Madrid')::date + 30;
 revoke all on booking.central_kpi_projection from public, anon, authenticated;
 grant select on booking.central_kpi_projection to service_role;
 select core.allow_read('central', 'booking.central_kpi_projection', 'view');
