@@ -154,7 +154,8 @@ test('textos · solo el owner escribe; la clave no cambia; claves únicas; el le
 });
 
 test('textos · contacto público sin sesión (C1): solo los textos de contacto, por idioma y en su orden', async () => {
-  const contact = async (lang: string | null) => (await app.t.db.query<{ out: any[] }>(`select central.public_contact($1) as out`, [lang])).rows[0]!.out;
+  // Por el camino público del núcleo (lo que usa `GET /api/v1/public/contact?lang=`).
+  const contact = async (lang: string | null) => (await app.t.db.query<{ out: any[] }>(`select core.public_read('contact', $1::jsonb) as out`, [JSON.stringify(lang === null ? {} : { lang })])).rows[0]!.out;
   const es = await contact('es');
   assert.deepEqual(es.map((c) => c.key), ['contact.email', 'contact.phone']);
   assert.equal(es[0].body, 'organiza@ikisai.com'); assert.equal(es[0].version, 'v1'); assert.ok(es[0].title);
@@ -167,7 +168,7 @@ test('textos · contacto público sin sesión (C1): solo los textos de contacto,
   assert.equal(JSON.stringify(es).includes('Protección de datos'), false);
   // Solo para la clave de servicio.
   const grants = await app.t.db.query<{ role: string; ok: boolean }>(
-    `select r as role, has_function_privilege(r, 'central.public_contact(text)', 'execute') as ok from unnest(array['anon','authenticated','service_role']) r
+    `select r as role, has_function_privilege(r, 'central.public_contact(jsonb)', 'execute') as ok from unnest(array['anon','authenticated','service_role']) r
       where exists (select 1 from pg_roles where rolname = r)`);
   for (const g of grants.rows) assert.equal(g.ok, g.role === 'service_role', g.role);
 });
