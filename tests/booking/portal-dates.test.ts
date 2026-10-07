@@ -104,7 +104,7 @@ test('fechas · calendario libre (fechas del organizador), opciones de Ikisai y 
   tasks.length = 0;
   const t1 = await tick();
   assert.equal(t1.notified, 3, JSON.stringify(t1));
-  assert.ok(tasks.every((r) => r.kind === 'booking.portal_dates' && r.source === 'booking' && r.external_url.endsWith(res)));
+  assert.ok(tasks.every((r) => r.kind === 'booking.organizer_dates' && /^RES.+-FECHAS-[0-9a-f]{8}$/.test(r.external_ref) && r.source === 'booking' && r.external_url.endsWith(res)));
   assert.equal(new Set(tasks.map((r) => r.external_ref)).size, 3);
   assert.equal((await tick()).notified, 0);
   assert.equal((await app.t.db.query<{ v: boolean }>(`select booking.portal_has_work() v`)).rows[0]!.v, false);

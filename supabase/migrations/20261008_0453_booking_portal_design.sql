@@ -185,6 +185,10 @@ begin
     from booking.portal_requests q where q.reservation_id = v_r.id and q.deleted_at is null), '[]'::jsonb));
 end $$;
 
+-- K1: la comprobación de ámbito es ya del núcleo (core.portal_in_scope, #300); la de Booking queda como alias.
+create or replace function booking.portal_in_scope(p_app text, p_actor uuid, p_reservation uuid, p_guest uuid)
+returns boolean language sql stable as $$ select core.portal_in_scope(p_app, p_actor, p_reservation, p_guest) $$;
+
 select core.allow_read('organizers', 'booking.portal_update_draft', 'action', '{editor,owner}');
 select core.allow_read('organizers', 'booking.portal_extra_requests', 'function', '{editor,owner}');
 select core.allow_read('organizers', 'booking.portal_rates', 'function', '{editor,owner}');

@@ -85,7 +85,7 @@ test('diseño · el organizador diseña en estudio, pide extras visibles, calcul
   // avisos a Tasks: «quiere confirmar» con prioridad alta
   tasks.length = 0;
   await app.handler(new Request(`${app.supabase.url}/functions/v1/booking-api/api/v1/worker/portal/tick`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: '{}' }));
-  assert.deepEqual(tasks.map((t) => [t.kind, t.priority]).sort(), [['booking.portal_comment', 'normal'], ['booking.portal_wants_confirm', 'high']]);
+  assert.deepEqual(tasks.map((t) => [t.kind, t.priority]).sort(), [['booking.organizer_confirm', 'high'], ['booking.proposal_comment', 'normal']]);
 
   // con la reserva fuera de estudio o negociación, el diseño se bloquea
   await app.t.db.query(`update booking.reservations set status = 'pre_reservada' where id = $1`, [res]);

@@ -1370,7 +1370,7 @@ Regla del usuario: **Ikisai fija y el organizador propone**. Migraciones `202610
 - `portal_proposals({reservation_id})`: propuestas `enviada` y `aceptada` con líneas, condiciones, tramos y validez (nunca borradores ni sustituidas).
 - `portal_request({reservation_id, kind: 'quiere_confirmar'|'comentario', proposal_id?, message?})` → `booking.portal_requests` (estado `enviada`/`vista`/`respondida`, que cambia el personal). `portal_my_requests` las lista. **La aceptación sigue siendo del personal** (`accept_proposal`).
 
-**Avisos al comercial:** las acciones del portal dejan un aviso en `booking.portal_notices` (tabla cerrada) y `POST /api/v1/worker/portal/tick` (sonda `booking.portal_has_work`) crea las peticiones a Tasks con la cuenta de servicio: `booking.portal_dates`, `booking.portal_wants_confirm` (prioridad alta) y `booking.portal_comment`, con `external_ref` = `<código>:<tipo>:<aviso>`.
+**Avisos al comercial:** las acciones del portal dejan un aviso en `booking.portal_notices` (tabla cerrada) y `POST /api/v1/worker/portal/tick` (sonda `booking.portal_has_work`) crea las peticiones a Tasks con la cuenta de servicio (formato de `docs/tasks/API.md` §22): `booking.organizer_dates` (`RES<código>-FECHAS-<n>`), `booking.organizer_confirm` (`RES<código>-CONFIRMAR`, prioridad alta) y `booking.proposal_comment` (`PROP<código>-COMENTARIO-<n>`), sin datos de contacto. El ámbito de los portales se comprueba con `core.portal_in_scope` (K1).
 
 ## Anexo · Campos de C03 y C04 que no se portan
 
