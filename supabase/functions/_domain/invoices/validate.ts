@@ -298,6 +298,8 @@ export function validateIssuedSeriesFields(fields: Fields, op: 'insert' | 'updat
   bool(fields, 'active');
   text(fields, 'format', { max: 60 });
   oneOf(fields, 'mode', SERIES_MODES, { nullable: false });
+  integer(fields, 'valid_year', { min: 2000 });
+  if (typeof fields.valid_year === 'number' && fields.valid_year > 2100) domainFail('INVALID_FIELDS', 'El año de la serie no es válido.', { field: 'valid_year' });
   if (fields.mode === 'emision' && typeof fields.format === 'string' && typeof fields.code === 'string' && !validIssuedNumberFormat(fields.format, fields.code)) {
     domainFail('INVALID_FIELDS', 'El formato del número debe llevar {n} o {n:4} y caber en 60 caracteres.', { field: 'format' });
   }
@@ -487,6 +489,7 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   VF_SERVER_ONLY: 'El registro VERI*FACTU solo lo escribe el servidor.',
   RECTIFY_NOT_ISSUED: 'Solo se rectifica una factura emitida desde Finance.',
   SERIES_MISSING: 'Falta una serie de rectificativas: créala en «Series».',
+  SERIES_YEAR_MISMATCH: 'Esa serie es de otro año: crea la serie de este año en «Series».',
   VF_IMMUTABLE: 'El registro VERI*FACTU no se modifica ni se borra.',
   TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
   DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',

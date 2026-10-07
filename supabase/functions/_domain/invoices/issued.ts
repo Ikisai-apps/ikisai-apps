@@ -129,6 +129,8 @@ export interface IssuedSeriesRow extends SyncedColumns {
   counter_year: number | null;
   counter_last: number;
   counter_last_date: string | null;
+  /** La serie solo emite en este año (p. ej. la de 2026 con el formato de la hoja, `F_03_26`). */
+  valid_year: number | null;
 }
 
 export interface IssuedInvoiceRow extends SyncedColumns {

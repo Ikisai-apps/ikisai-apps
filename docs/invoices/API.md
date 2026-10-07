@@ -962,6 +962,13 @@ Normas: Reglamento de facturación (RD 1619/2012) y Reglamento de sistemas de fa
 
 - **Series de emisión propuestas:** `F` para las ordinarias y `R` para las rectificativas, con reinicio anual. Formato `{serie}{año}-{n:4}`, que da `F2026-0001` y `R2026-0001`. Si el usuario quiere tiques, se añade `T` para las simplificadas (§14.9, pregunta 1). El código y el formato los elige el usuario en Ajustes antes de la primera emisión, y después no se cambian.
 - **Contador** (hecho así en el PR 1): columnas `counter_year`, `counter_last` y `counter_last_date` de la propia serie. Solo las escribe el procedimiento de emisión, que bloquea la fila de la serie con `for update`. Así dos emisiones a la vez nunca reciben el mismo número ni dejan hueco. El contador se sincroniza, así que la app puede mostrar el próximo número. No hace falta `core.next_number` (§13.3).
+- **Numeración del usuario (ronda 47, migración 0218):** es un dato de la serie, no del código.
+  - **Formato:** admite `{serie}`, `{año}`, `{aa}` (año en dos cifras) y `{n}` o `{n:K}`, que rellena con ceros hasta K cifras sin recortar (`F_100_26`).
+  - **Año de validez:** `valid_year` hace que la serie solo emita en ese año (`SERIES_YEAR_MISMATCH`).
+  - **Comienzo:** `invoices.series_start {code, last_number, year}` (editor y owner) fija el último número ya emitido fuera de Finance. Solo vale mientras la serie no tenga emitidas (`SERIES_IN_USE`).
+  - **2026:** la serie `F` con formato `{serie}_{n:2}_{aa}` y último número 2 continúa la hoja (`F_02_26` → `F_03_26`). Las rectificativas, `R_01_26`.
+  - **2027:** se crea la serie del año (`F2027` con `{serie}-{n:4}`, que da `F2027-0001`). La app solo ofrece las series del año en curso.
+  - **En «Series»:** al crear una serie se elige el formato (estándar o «como la hoja») y el último número emitido, con la siguiente a la vista. Una serie sin emitidas se puede ajustar.
 - **Orden de fechas:** la fecha de expedición es la de hoy en hora de Madrid, y nunca anterior a la última emitida de la serie. Así número y fecha van siempre en el mismo orden. La fecha de la operación puede ser otra, por ejemplo la salida de una reserva.
 - **Cierre de la serie de la hoja:** `invoices.close_series {code, last_number}` (owner) marca la serie como cerrada en ese número. Desde entonces no admite más emitidas, ni registradas ni importadas.
 - **Formato del número:** solo caracteres ASCII imprimibles y como mucho 60, como piden el XSD y el QR.

@@ -121,7 +121,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
   'invoices.exports': ['status', 'delivered_at', 'delivered_to', 'notes'],
   'invoices.export_items': [],
-  'invoices.issued_series': ['code', 'description', 'kind', 'yearly', 'format', 'active', 'mode'],
+  'invoices.issued_series': ['code', 'description', 'kind', 'yearly', 'format', 'active', 'mode', 'valid_year'],
   'invoices.issued_invoices': [
     'series_code', 'number', 'issue_date', 'operation_date', 'invoice_type', 'rectification_kind', 'rectified', 'rectification_reason', 'rectified_base', 'rectified_quota',
     'recipient_name', 'recipient_tax_id', 'recipient_id_type', 'recipient_country', 'extra_recipients', 'description', 'notes', 'currency',
