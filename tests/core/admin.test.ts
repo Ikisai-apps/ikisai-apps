@@ -75,3 +75,20 @@ test('admin · la ruta agents del kit no puede dar acceso a Central a un agente'
   const res = await app.call('/api/v1/agents', { body: { name: 'Intruso', role: 'reader' } });
   assert.equal(res.status, 422, JSON.stringify(res.data)); assert.equal(res.data.error.details.reason, 'agents have no access to central');
 });
+
+test('admin · estado de cuenta, contraseña temporal nueva, desactivar y reactivar (sin desactivarse a uno mismo)', async () => {
+  const accounts = (await app.call('/api/v1/admin/accounts')).data.items;
+  const editor = accounts.find((a: any) => a.userId === app.users.editor);
+  assert.equal(editor.disabled, false); assert.ok(editor.memberships[0].updatedAt);
+  const reset = await app.call(`/api/v1/admin/accounts/${app.users.editor}/password`, { body: {} });
+  assert.equal(reset.status, 200, JSON.stringify(reset.data)); assert.ok(reset.data.temporaryPassword);
+  const off = await app.call(`/api/v1/admin/accounts/${app.users.editor}/disable`, { body: {} });
+  assert.equal(off.status, 200); assert.equal(off.data.disabled, true);
+  assert.equal((await app.call('/api/v1/admin/accounts')).data.items.find((a: any) => a.userId === app.users.editor).disabled, true);
+  const on = await app.call(`/api/v1/admin/accounts/${app.users.editor}/enable`, { body: {} });
+  assert.equal(on.data.disabled, false);
+  assert.equal((await app.call('/api/v1/admin/accounts')).data.items.find((a: any) => a.userId === app.users.editor).disabled, false);
+  const self = await app.call(`/api/v1/admin/accounts/${app.users.owner}/disable`, { body: {} });
+  assert.equal(self.status, 422); assert.equal(self.data.error.code, 'CURRENT_ACCOUNT');
+  assert.equal((await app.call(`/api/v1/admin/accounts/${app.users.reader}/disable`, { token: app.tokens.editor, body: {} })).status, 403);
+});

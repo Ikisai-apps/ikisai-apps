@@ -68,6 +68,12 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       return Response.json({ message: 'unsupported' }, { status: 400 });
     }
 
+    if (route.pathname.startsWith('/auth/v1/admin/users/') && method === 'PUT') {
+      if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
+      const id = route.pathname.split('/').at(-1)!;
+      if (body.ban_duration) await t.db.query('update auth.users set banned_until = $2 where id = $1', [id, body.ban_duration === 'none' ? null : new Date(Date.now() + 1e11).toISOString()]);
+      return Response.json({ id, email: users.get(id) });
+    }
     if (route.pathname.startsWith('/auth/v1/admin/users/') && method === 'GET') {
       if (apikey !== serviceKey || auth !== serviceKey) return Response.json({ message: 'permission denied' }, { status: 401 });
       const id = route.pathname.split('/').at(-1)!;
