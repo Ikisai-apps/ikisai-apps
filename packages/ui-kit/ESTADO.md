@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.20.0 (tanda 32): estado de guardado, recuadro de firma, «Instala la app», `nav: []` sin barra e iconos de Guests y Organizers (peticiones de los portales).
 - v0.19.0 (tanda 31): capa de idiomas (es, en) para los portales: `createI18n`, `createLanguageSelect`, textos del kit con `kt()` y `KIT_EN`, formulario progresivo con textos por idioma.
 - v0.18.5: `centerLabel` en el lanzador y señalar una vez en el formulario de portales (`captureFeedbackTarget`), petición C4 de Organizers.
 - v0.18.4: `feedbackId` en `renderConflict(s)` (con hijos en el catálogo) y `onPrint` en `createPrintView` (petición de Food).
