@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
@@ -7,6 +7,8 @@ import { mountConflicts } from './conflicts.ts';
 import { mountInvoices } from './invoices.ts';
 import { mountPurchases } from './purchases.ts';
 import { mountAccounting } from './accounting.ts';
+import { fb } from './feedback.ts';
+import { setUsage } from '../app/usage.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -29,13 +31,14 @@ const NAV: readonly NavItem[] = [
   { hash: '#/gestoria', label: 'Gestoría', icon: 'briefcase' },
 ];
 
-const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
-  '#/': { title: 'Inicio', mount: mountHome },
-  '#/proveedores': { title: 'Proveedores', mount: mountSuppliers },
-  '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
-  '#/facturas': { title: 'Facturas', mount: mountInvoices },
-  '#/compras': { title: 'Compras', mount: mountPurchases },
-  '#/gestoria': { title: 'Gestoría', mount: mountAccounting },
+// `screen`: raíz de la ruta de etiquetas de «Sugerencias y QA» (`<main>` lleva `invoices.<screen>`).
+const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }> = {
+  '#/': { title: 'Inicio', screen: 'invoices.inicio', mount: mountHome },
+  '#/proveedores': { title: 'Proveedores', screen: 'invoices.proveedores', mount: mountSuppliers },
+  '#/conflictos': { title: 'Conflictos', screen: 'invoices.conflictos', mount: mountConflicts },
+  '#/facturas': { title: 'Facturas', screen: 'invoices.facturas', mount: mountInvoices },
+  '#/compras': { title: 'Compras', screen: 'invoices.compras', mount: mountPurchases },
+  '#/gestoria': { title: 'Gestoría', screen: 'invoices.gestoria', mount: mountAccounting },
 };
 
 /** Cabecera, estado y navegación del kit; rutas y acciones propias de Invoices. */
@@ -45,8 +48,35 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let lastAutoMerged = client.status().autoMerged;
   let updateApply: (() => void) | null = null;
 
-  // Lanzador común (kit 0.14.0): la marca de la cabecera abre las apps de la cuenta; con la sesión única no pide contraseña.
-  const launcher = createAppLauncher({ current: 'invoices', fetchApps: () => client.api<LauncherCatalog>('/apps') });
+  // «Sugerencias y QA» (kit 0.18, demo/adopcion.ts): modo «Señalar para comentar», revisor de QA y uso de funcionalidades.
+  // Los dos interruptores y la entrada «Sugerencias y QA» van en el panel del lanzador: ningún botón propio en la cabecera.
+  const api = client.api.bind(client);
+  const userId = () => client.bootstrap()?.profile.userId ?? null;
+  let screen = { id: 'invoices.inicio', label: 'Inicio' };
+  let catalog: LauncherCatalog | null = null;
+  const feedback = createFeedback({
+    app: 'invoices',
+    api,
+    userId,
+    role: () => client.bootstrap()?.membership.role ?? null,
+    syncSummary: () => {
+      const s = client.status();
+      return { pending: s.pendingCommands + s.pendingBlobs, conflicts: s.conflicts, lastSyncAt: s.lastPullAt, cursor: s.cursor };
+    },
+    fallbackNode: () => ({ id: screen.id, path: [screen.label] }),
+  });
+  const review = createFeedbackReview({ api, app: 'invoices', appDomain: (id) => catalog?.items.find((a) => a.id === id)?.domain });
+  const usageCollector = createUsage({ app: 'invoices', api, userId });
+  setUsage(usageCollector);
+  const offSessionEnd = client.onSessionEnd((id) => { void feedback.clear(id); void usageCollector.clear(id); });
+  // Lanzador común: la marca de la cabecera abre las apps de la cuenta; con la sesión única no pide contraseña.
+  const launcher = createAppLauncher({
+    current: 'invoices',
+    fetchApps: async () => (catalog = await client.api<LauncherCatalog>('/apps')),
+    feedback,
+    review,
+    center: () => { openFeedbackCenter({ api, app: 'invoices', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
+  });
   const shell = createAppShell(root, {
     appName: 'Finance',
     launcher,
@@ -57,6 +87,27 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     navigate,
   });
   const { main } = shell;
+
+  // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
+  fb(shell.header, { feedbackId: 'invoices.cabecera', feedbackLabel: 'Cabecera' });
+  const launcherButton = shell.header.querySelector('#appLauncher');
+  if (launcherButton) fb(launcherButton, { feedbackId: 'invoices.cabecera.lanzador', feedbackLabel: 'Lanzador de apps' });
+  const statusBar = shell.header.querySelector('#syncStatus');
+  if (statusBar) fb(statusBar, { feedbackId: 'invoices.cabecera.estado', feedbackLabel: 'Estado de sincronización' });
+  const logoutButton = shell.header.querySelector('#logoutButton');
+  if (logoutButton) fb(logoutButton, { feedbackId: 'invoices.cabecera.cerrar_sesion', feedbackLabel: 'Cerrar sesión' });
+  fb(shell.nav, { feedbackId: 'invoices.navegacion', feedbackLabel: 'Navegación' });
+  const NAV_MARKS: Record<string, Record<'feedbackId' | 'feedbackLabel', string>> = {
+    '#/': { feedbackId: 'invoices.navegacion.inicio', feedbackLabel: 'Inicio' },
+    '#/facturas': { feedbackId: 'invoices.navegacion.facturas', feedbackLabel: 'Facturas' },
+    '#/compras': { feedbackId: 'invoices.navegacion.compras', feedbackLabel: 'Compras' },
+    '#/gestoria': { feedbackId: 'invoices.navegacion.gestoria', feedbackLabel: 'Gestoría' },
+  };
+  for (const link of shell.nav.querySelectorAll<HTMLElement>('a.navbtn')) {
+    const mark = NAV_MARKS[link.dataset.hash ?? ''];
+    if (mark) fb(link, mark);
+  }
+  fb(shell.banners, { feedbackId: 'invoices.avisos', feedbackLabel: 'Avisos' });
 
   function paintBanners(status: SyncStatus): void {
     shell.setBanners(status, {
@@ -120,6 +171,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
+    screen = { id: entry.screen, label: entry.title };
+    main.setAttribute('data-feedback-id', screen.id);
+    main.setAttribute('data-feedback-label', screen.label);
     document.title = `${entry.title} · Ikisai Finance`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
@@ -143,6 +197,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   route();
 
   return () => {
+    offSessionEnd();
+    feedback.destroy();
+    review.destroy();
+    usageCollector.destroy();
+    setUsage(null);
     offStatus();
     unmountView?.();
     window.removeEventListener('hashchange', route);

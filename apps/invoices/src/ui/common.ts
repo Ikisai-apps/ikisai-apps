@@ -26,3 +26,11 @@ export function select(id: string, options: Array<[string, string]>, value: stri
 export function block(title: string, summary: string, open: boolean, ...children: Array<HTMLElement | null>): HTMLElement {
   return el('details', { class: 'inv-block', open }, el('summary', null, el('span', null, title), el('span', { class: 'hint' }, summary)), ...children);
 }
+
+/** Bloque plegable con su marca de «Sugerencias y QA» (`{ feedbackId, feedbackLabel }` literal: así entra en el catálogo). */
+export function fbBlock(mark: Record<'feedbackId' | 'feedbackLabel', string>, title: string, summary: string, open: boolean, ...children: Array<HTMLElement | null>): HTMLElement {
+  const node = block(title, summary, open, ...children);
+  node.setAttribute('data-feedback-id', mark.feedbackId);
+  node.setAttribute('data-feedback-label', mark.feedbackLabel);
+  return node;
+}

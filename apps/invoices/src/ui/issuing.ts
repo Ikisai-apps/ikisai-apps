@@ -7,6 +7,8 @@
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
+import { fb, type FbMark } from './feedback.ts';
+import { usage } from '../app/usage.ts';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUE_MISSING_LABELS, ISSUED_TYPE_LABELS,
   customerOffer, customerTaxId, displayPrice, draftLineFromPrice, findCustomerByTaxId, formatIssuedNumber, issueMissing, reservationPrefill, searchCustomers,
@@ -51,19 +53,19 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     return;
   }
   const a: IssuedAddress = draft?.recipient_address ?? prefill?.recipient_address ?? {};
-  const series = select('draftSeries', seriesList.map((s) => [s.code, `${s.code} · siguiente ${nextNumber(s)}`] as [string, string]), draft?.series_code ?? seriesList[0]!.code);
-  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? prefill?.recipient_kind ?? 'empresa');
-  const name = el('input', { type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? prefill?.recipient_name ?? '' });
-  const taxId = el('input', { type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? prefill?.recipient_tax_id ?? '' });
-  const line = el('input', { type: 'text', id: 'draftAddressLine', maxlength: '200', autocomplete: 'street-address', value: a.line ?? '' });
-  const postal = el('input', { type: 'text', id: 'draftPostalCode', maxlength: '12', autocomplete: 'postal-code', value: a.postal_code ?? '' });
-  const city = el('input', { type: 'text', id: 'draftCity', maxlength: '80', value: a.city ?? '' });
-  const province = el('input', { type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
-  const country = el('input', { type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
+  const series = select('draftSeries', seriesList.map((s) => [s.code, `${s.code} · siguiente ${nextNumber(s)}`] as [string, string]), draft?.series_code ?? seriesList[0]!.code, { 'data-feedback-id': 'invoices.emitidas.borrador.serie', 'data-feedback-label': 'Serie' });
+  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? prefill?.recipient_kind ?? 'empresa', { 'data-feedback-id': 'invoices.emitidas.borrador.tipo_cliente', 'data-feedback-label': 'Tipo de destinatario' });
+  const name = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? prefill?.recipient_name ?? '' });
+  const taxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? prefill?.recipient_tax_id ?? '' });
+  const line = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftAddressLine', maxlength: '200', autocomplete: 'street-address', value: a.line ?? '' });
+  const postal = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftPostalCode', maxlength: '12', autocomplete: 'postal-code', value: a.postal_code ?? '' });
+  const city = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftCity', maxlength: '80', value: a.city ?? '' });
+  const province = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
+  const country = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
   const addressNote = el('span', { class: 'hint', id: 'draftAddressNote' });
   // Directorio de clientes (ronda 46): buscar por nombre o NIF rellena NIF, tipo, país y domicilio fiscal.
-  const customerSearch = el('input', { type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
-  const customerResults = el('div', { class: 'customer-results', id: 'draftCustomerResults' });
+  const customerSearch = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.buscar_cliente', 'data-feedback-label': 'Buscar cliente guardado', type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
+  const customerResults = el('div', { 'data-feedback-ignore': '', class: 'customer-results', id: 'draftCustomerResults' });
   function useCustomer(c: LocalCustomer): void {
     name.value = c.name; taxId.value = c.tax_id; if (c.kind) kind.value = c.kind;
     const ad = c.address ?? {};
@@ -86,12 +88,12 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     if (!line.value.trim() && !postal.value.trim() && !city.value.trim()) { line.value = ad.line ?? ''; postal.value = ad.postal_code ?? ''; city.value = ad.city ?? ''; province.value = ad.province ?? ''; }
     taxId.value = c.tax_id;
   });
-  const description = el('input', { type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
-  const operationDate = el('input', { type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
-  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null);
+  const description = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
+  const operationDate = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.fecha_operacion', 'data-feedback-label': 'Fecha de la operación', type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
+  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null, { 'data-feedback-id': 'invoices.emitidas.borrador.categoria', 'data-feedback-label': 'Categoría de ingreso' });
   // Precios con IVA incluido (las tarifas de Booking lo están): base y cuota se guardan exactas por línea.
-  const includeVat = el('input', { type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
-  const totals = el('p', { class: 'hint', id: 'draftTotals' });
+  const includeVat = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.iva_incluido', 'data-feedback-label': 'Precios con IVA incluido', type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
+  const totals = el('p', { 'data-feedback-ignore': '', class: 'hint', id: 'draftTotals' });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const linesHost = el('div', { id: 'draftLineInputs' });
   const lineInputs: DraftLineInputs[] = [];
@@ -112,14 +114,14 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   const text = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
   function addLine(initial?: PricedLine): void {
     const n = lineInputs.length + 1;
-    const d = el('input', { type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, value: initial?.description ?? '' });
-    const q = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : text(initial.quantity) });
-    const p = el('input', { type: 'text', inputmode: 'decimal', placeholder: includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`, value: initial ? text(initial.unit_price) : '' });
-    const dto = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Dto.', 'aria-label': `Descuento de la línea ${n}`, value: initial?.discount_amount ? text(initial.discount_amount) : '' });
+    const d = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.linea_concepto', 'data-feedback-label': 'Concepto de la línea', type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, value: initial?.description ?? '' });
+    const q = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.linea_cantidad', 'data-feedback-label': 'Cantidad de la línea', type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : text(initial.quantity) });
+    const p = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`, value: initial ? text(initial.unit_price) : '' });
+    const dto = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Dto.', 'aria-label': `Descuento de la línea ${n}`, value: initial?.discount_amount ? text(initial.discount_amount) : '' });
     const suggested = initial ? (initial.vat_rate === null ? '0' : String(Number(initial.vat_rate))) : category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
     const options: Array<[string, string]> = [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']];
     if (!options.some(([v]) => v === suggested)) options.push([suggested, `IVA ${suggested.replace('.', ',')} %`]);
-    const rate = select('', options, suggested, { 'aria-label': `IVA de la línea ${n}` });
+    const rate = select('', options, suggested, { 'data-feedback-id': 'invoices.emitidas.borrador.linea_iva', 'data-feedback-label': 'IVA de la línea', 'aria-label': `IVA de la línea ${n}` });
     rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     if (initial) rate.dataset.touched = '1';
     const row = el('div', { class: 'draft-line' }, d, q, p, dto, rate);
@@ -159,18 +161,18 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   }
 
   const rectInfo = rectificative
-    ? el('div', { class: 'banner info', id: 'draftRectInfo' }, icon('info', 18), el('span', null,
+    ? el('div', { 'data-feedback-id': 'invoices.emitidas.borrador.rectifica', 'data-feedback-label': 'Qué rectifica', class: 'banner info', id: 'draftRectInfo' }, icon('info', 18), el('span', null,
       `Rectifica a ${draft!.rectified.map((r) => (r as { full_number?: string }).full_number ?? r.number).join(', ')} · ${draft!.rectification_kind === 'S' ? 'por sustitución' : 'por diferencias'} · ${draft!.rectification_reason ?? ''}. `
       + (draft!.rectification_kind === 'S' ? 'Escribe las líneas correctas.' : 'Las líneas van en negativo: deja solo lo que se devuelve o corrige.')))
     : null;
   const sourceInfo = prefill
-    ? el('div', { class: 'banner info', id: 'draftSource' }, icon('info', 18), el('span', null,
+    ? el('div', { 'data-feedback-id': 'invoices.emitidas.borrador.desde_reserva', 'data-feedback-label': 'Desde la reserva', class: 'banner info', id: 'draftSource' }, icon('info', 18), el('span', null,
       `Desde la reserva ${[prefill.source.code, prefill.source.label].filter(Boolean).join(' · ')}: líneas de la propuesta aceptada${prefill.prices_include_vat ? ', con IVA incluido' : ''}. `
       + 'Completa el NIF y el domicilio fiscal del cliente. La factura quedará asignada a la reserva.'))
     : null;
 
-  const save = el('button', { class: 'primary', type: 'submit', id: 'saveDraft', form: 'draftForm' }, draft ? 'Guardar borrador' : 'Crear borrador');
-  const form = el('form', { id: 'draftForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
+  const save = el('button', { 'data-feedback-id': 'invoices.emitidas.borrador.guardar', 'data-feedback-label': 'Guardar borrador', class: 'primary', type: 'submit', id: 'saveDraft', form: 'draftForm' }, draft ? 'Guardar borrador' : 'Crear borrador');
+  const form = el('form', { 'data-feedback-id': 'invoices.emitidas.borrador', 'data-feedback-label': 'Borrador de factura', id: 'draftForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
     if (!description.value.trim()) { error.textContent = 'Indica el concepto de la factura.'; description.focus(); return; }
@@ -206,7 +208,9 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
         issued_invoice_id: id, target_app: 'booking', target_kind: 'reservation', target_id: prefill.source.reservationId, allocated_amount: base } });
     }
     save.disabled = true;
-    if (await commitSafely(client, ops, draft ? 'Borrador guardado.' : 'Borrador creado. Revísalo y pulsa «Emitir».')) { guard.dirtyEditor = false; await closeSheet(true); }
+    const saved = await commitSafely(client, ops, draft ? 'Borrador guardado.' : 'Borrador creado. Revísalo y pulsa «Emitir».');
+    usage.track('invoices.emitidas.guardar_borrador', saved ? 'success' : 'error');
+    if (saved) { guard.dirtyEditor = false; await closeSheet(true); }
     save.disabled = false;
   } },
     rectInfo,
@@ -219,7 +223,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     field('Concepto', description),
     el('div', { class: 'row2' }, field('Fecha de la operación', operationDate, 'Solo si no es la de hoy (por ejemplo, la salida).'), field('Categoría de ingreso', category)),
     el('label', { class: 'check' }, includeVat, el('span', null, 'Precios con IVA incluido')),
-    el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { class: 'linkbtn', type: 'button', id: 'addDraftLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
+    el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { 'data-feedback-id': 'invoices.emitidas.borrador.anadir_linea', 'data-feedback-label': 'Añadir línea', class: 'linkbtn', type: 'button', id: 'addDraftLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
     totals,
     error,
   );
@@ -241,7 +245,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     title: draft ? 'Editar borrador' : 'Nueva factura',
     meta: 'Borrador: se guarda sin número y se puede cambiar hasta que lo emitas.',
     body: form,
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
+    foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.borrador.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
     initialFocus: prefill ? taxId : name,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
@@ -269,7 +273,8 @@ export async function startFromReservation(ctx: ViewContext, data: IssuedData, r
     toast(describeError(error));
     return;
   }
-  if (!src.lines.length) { toast('La reserva no tiene propuesta aceptada ni importe final: no hay nada que facturar.'); return; }
+  if (!src.lines.length) { toast('La reserva no tiene propuesta aceptada ni importe final: no hay nada que facturar.'); usage.track('invoices.emitidas.desde_reserva', 'error'); return; }
+  usage.track('invoices.emitidas.desde_reserva', 'success');
   openInvoiceDraft(ctx, data, undefined, reservationPrefill(src));
 }
 
@@ -311,7 +316,7 @@ export async function issueDraft(ctx: ViewContext, invoice: LocalIssuedInvoice, 
   });
   if (!ok) return;
   try {
-    await client.commit([{ op: 'call', procedure: 'invoices.issue', args: { id: invoice.id, expectedRevision: invoice.revision } }]);
+    await usage.run('invoices.emitidas.emitir', () => client.commit([{ op: 'call', procedure: 'invoices.issue', args: { id: invoice.id, expectedRevision: invoice.revision } }]));
     toast(client.status().network === 'offline' ? 'Se emitirá al conectar.' : 'Factura emitida.');
   } catch (error) {
     toast(issueErrorText(error));
@@ -330,10 +335,11 @@ async function offerCustomer(client: SyncClient, invoice: LocalIssuedInvoice, da
     ? { title: '¿Guardar el cliente?', text: `${who}. La próxima factura lo rellenará buscando por nombre o NIF. Solo se guardan los datos fiscales.`, confirmLabel: 'Guardar cliente', cancelLabel: 'Ahora no' }
     : { title: '¿Actualizar el cliente guardado?', text: `${who}: el nombre, el tipo o el domicilio de esta factura no coinciden con los guardados.`, confirmLabel: 'Actualizar', cancelLabel: 'Dejarlo como está' });
   if (!ok) return;
-  await commitSafely(client, [offer.action === 'create'
+  const stored = await commitSafely(client, [offer.action === 'create'
     ? { op: 'insert', table: CUSTOMERS, id: crypto.randomUUID(), fields: offer.fields }
     : { op: 'update', table: CUSTOMERS, id: offer.customer.id, expectedRevision: (offer.customer as LocalCustomer).revision, fields: offer.fields }],
   offer.action === 'create' ? 'Cliente guardado.' : 'Cliente actualizado.');
+  usage.track('invoices.emitidas.guardar_cliente', stored ? 'success' : 'error');
 }
 
 // ---------------------------------------------------------------------------
@@ -371,16 +377,16 @@ const RECTIFY_REASONS: Array<[string, string]> = [
 export async function rectifyIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
   const { client } = ctx;
   if (!emissionSeries(data, 'rectificativa').length) { toast('Falta una serie de rectificativas.'); openIssuingSettings(ctx, data); return; }
-  const kind = select('rectifyKind', [['I', 'Por diferencias: solo lo que cambia (por defecto)'], ['S', 'Por sustitución: la factura entera corregida']], 'I');
-  const code = select('rectifyCode', RECTIFY_REASONS, 'R4');
-  const reason = el('input', { type: 'text', id: 'rectifyReason', maxlength: '400', placeholder: 'Devolución de una noche, NIF erróneo…' });
+  const kind = select('rectifyKind', [['I', 'Por diferencias: solo lo que cambia (por defecto)'], ['S', 'Por sustitución: la factura entera corregida']], 'I', { 'data-feedback-id': 'invoices.emitidas.rectificar.tipo', 'data-feedback-label': 'Tipo de rectificación' });
+  const code = select('rectifyCode', RECTIFY_REASONS, 'R4', { 'data-feedback-id': 'invoices.emitidas.rectificar.causa', 'data-feedback-label': 'Causa' });
+  const reason = el('input', { 'data-feedback-id': 'invoices.emitidas.rectificar.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'rectifyReason', maxlength: '400', placeholder: 'Devolución de una noche, NIF erróneo…' });
   const ok = await confirmDialog({ title: `Rectificar ${numberOf(invoice)}`, text: el('div', null,
     el('p', null, 'Se crea un borrador de rectificativa con las líneas de esta factura. Revísalo y emítelo; al emitirlo, esta queda como rectificada.'),
     field('Tipo', kind), invoice.invoice_type === 'F2' ? null : field('Causa', code), field('Motivo', reason)), confirmLabel: 'Crear rectificativa' });
   if (!ok) return;
   if (!reason.value.trim()) { toast('Indica el motivo de la rectificación.'); return; }
   try {
-    await client.commit([{ op: 'call', procedure: 'invoices.rectify', args: { id: invoice.id, kind: kind.value, reason_code: code.value, reason: reason.value.trim() } }]);
+    await usage.run('invoices.emitidas.rectificar', () => client.commit([{ op: 'call', procedure: 'invoices.rectify', args: { id: invoice.id, kind: kind.value, reason_code: code.value, reason: reason.value.trim() } }]));
     toast(client.status().network === 'offline' ? 'La rectificativa se creará al conectar.' : 'Borrador de rectificativa creado: revísalo y emítelo.');
     await closeSheet(true);
   } catch (error) {
@@ -432,8 +438,8 @@ export async function openInvoiceDocument(ctx: ViewContext, invoice: LocalIssued
     notes: doc.breakdown.some((b) => b.exemption) ? 'Operación exenta del IVA según la mención indicada en el desglose.' : undefined,
     runningFoot: isDraft ? 'Borrador sin número' : `${doc.issuer.legal_name} · NIF ${doc.issuer.tax_id} · Factura ${doc.full_number}`,
   }, { printLabel: 'Imprimir / Guardar PDF' });
-  openSheet({ title: isDraft ? 'Vista previa del borrador' : `Factura ${doc.full_number}`, body: el('div', { id: 'issuedDocumentView' }, view.element),
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
+  openSheet({ title: isDraft ? 'Vista previa del borrador' : `Factura ${doc.full_number}`, body: el('div', { 'data-feedback-id': 'invoices.emitidas.documento', 'data-feedback-label': 'Factura', 'data-feedback-ignore': '', id: 'issuedDocumentView' }, view.element),
+    foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.documento.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +452,7 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
   const live = data.series.filter((s) => !s.deleted_at);
   const emission = live.filter((s) => s.mode === 'emision');
   const registro = live.filter((s) => s.mode !== 'emision');
-  const vfState = el('p', { class: 'hint', id: 'vfSending' }, 'Comprobando el registro VERI*FACTU…');
+  const vfState = el('p', { 'data-feedback-id': 'invoices.emitidas.series.verifactu', 'data-feedback-label': 'Registro VERI*FACTU', class: 'hint', id: 'vfSending' }, 'Comprobando el registro VERI*FACTU…');
   void client.api<{ settings: { sending: string; locked_until: string | null } | null }>('/read/invoices.vf_records_of', { json: { issued_invoice_id: null } })
     .then((r) => {
       const sending = r.settings?.sending ?? 'apagado';
@@ -456,7 +462,7 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
     })
     .catch(() => replace(vfState, 'Sin conexión: el estado del registro se verá al conectar.'));
 
-  function createRow(kind: 'ordinaria' | 'rectificativa', suggested: string, label: string): HTMLElement | null {
+  function createRow(kind: 'ordinaria' | 'rectificativa', suggested: string, label: string, buttonMark: FbMark): HTMLElement | null {
     if (!canEdit || emission.some((s) => s.kind === kind && s.active && !s.closed_at)) return null;
     const code = el('input', { type: 'text', id: `newSeries-${kind}`, maxlength: '10', value: suggested, 'aria-label': `Código de la serie de ${label}` });
     const button = el('button', { class: 'softbtn', type: 'button', id: `createSeries-${kind}`, onclick: async () => {
@@ -466,11 +472,13 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
       if (await commitSafely(client, [{ op: 'insert', table: ISSUED_SERIES, id: crypto.randomUUID(), fields: { code: c, kind, mode: 'emision', format: DEFAULT_FORMAT, yearly: true, description: label } }],
         `Serie ${c} creada.`)) await closeSheet(true);
     } }, icon('plus', 16), `Crear serie de ${label}`);
+    fb(code, { feedbackId: 'invoices.emitidas.series.codigo', feedbackLabel: 'Código de la serie' });
+    fb(button, buttonMark);
     return el('div', { class: 'row2' }, code, button);
   }
 
   async function closeSeries(s: LocalIssuedSeries): Promise<void> {
-    const last = el('input', { type: 'text', id: 'closeSeriesLast', maxlength: '40', placeholder: '2026-0123' });
+    const last = el('input', { 'data-feedback-id': 'invoices.emitidas.series.ultimo_numero', 'data-feedback-label': 'Último número', type: 'text', id: 'closeSeriesLast', maxlength: '40', placeholder: '2026-0123' });
     const ok = await confirmDialog({ title: `¿Cerrar la serie ${s.code}?`, text: el('div', null,
       el('p', null, 'No admitirá más facturas, ni registradas ni importadas. Indica el último número que se emitió con ella.'), field('Último número', last)),
       confirmLabel: 'Cerrar serie', danger: true });
@@ -479,23 +487,23 @@ export function openIssuingSettings(ctx: ViewContext, data: IssuedData): void {
     if (await commitSafely(client, [{ op: 'call', procedure: 'invoices.close_series', args: { code: s.code, last_number: last.value.trim() } }], `Serie ${s.code} cerrada.`)) await closeSheet(true);
   }
 
-  const body = el('div', { id: 'issuingSettings' },
+  const body = el('div', { 'data-feedback-id': 'invoices.emitidas.series', 'data-feedback-label': 'Series y VERI*FACTU', id: 'issuingSettings' },
     el('h3', null, 'Series de emisión'),
     emission.length
       ? el('ul', { class: 'plain', id: 'emissionSeries' }, ...emission.map((s) => el('li', { dataset: { series: s.code } },
         el('strong', null, s.code), ` · ${s.kind === 'rectificativa' ? 'rectificativas' : 'facturas'} · siguiente ${nextNumber(s)}`,
         s.closed_at ? ` · cerrada en ${s.closed_last_number}` : '')))
       : el('p', { class: 'hint' }, 'Aún no hay series de emisión. Crea una para facturas y otra para rectificativas: el número tiene la forma F2026-0001, reinicia cada año y no cambia una vez emitida la primera.'),
-    createRow('ordinaria', 'F', 'facturas'),
-    createRow('rectificativa', 'R', 'rectificativas'),
+    createRow('ordinaria', 'F', 'facturas', { feedbackId: 'invoices.emitidas.series.crear_facturas', feedbackLabel: 'Crear serie de facturas' }),
+    createRow('rectificativa', 'R', 'rectificativas', { feedbackId: 'invoices.emitidas.series.crear_rectificativas', feedbackLabel: 'Crear serie de rectificativas' }),
     registro.length ? el('h3', null, 'Series de registro (otra herramienta)') : null,
     registro.length ? el('ul', { class: 'plain', id: 'registroSeries' }, ...registro.map((s) => el('li', null, el('strong', null, s.code),
       s.closed_at ? ` · cerrada en ${s.closed_last_number}` : ' · abierta',
-      owner && !s.closed_at ? el('button', { class: 'linkbtn', type: 'button', id: `closeSeries-${s.code}`, onclick: () => void closeSeries(s) }, 'Cerrar serie') : null))) : null,
+      owner && !s.closed_at ? el('button', { 'data-feedback-id': 'invoices.emitidas.series.cerrar_serie', 'data-feedback-label': 'Cerrar serie', class: 'linkbtn', type: 'button', id: `closeSeries-${s.code}`, onclick: () => void closeSeries(s) }, 'Cerrar serie') : null))) : null,
     el('h3', null, 'Registro VERI*FACTU'),
     vfState,
   );
-  openSheet({ title: 'Series y VERI*FACTU', body, foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
+  openSheet({ title: 'Series y VERI*FACTU', body, foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.series.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
 
 /** Resumen del registro VERI*FACTU de una emitida desde Finance, para la ficha. */
