@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
 import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
+import { simulateServiceIdentity } from './fixtures.ts';
 import { classifyRequestOps, createTabOps, dismissRequestOps, emptyDataset, pendingRequests, routeWaitingOps, saveRouteOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
@@ -221,4 +222,53 @@ test('puente con Feedback (§22.3): worker/requests/status da el estado por refe
   assert.equal((await status({ externalRefs: ['qa:FB_2026_0001'] })).status, 422);
   // Una persona no puede lanzar la acción por invoke.
   assert.equal((await app.call('/api/v1/invoke/tasks.requests_status', { body: { externalRefs: ['feedback:FB_2026_0001'] } })).status, 403);
+});
+
+test('puente con Feedback (§22.2): worker/requests/task escribe como la identidad de servicio, con quién informó como metadato', async () => {
+  const post = (body: unknown, key: string | null = WORKER_KEY) => app.handler(new Request('http://localhost/api/v1/worker/requests/task', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Ikisai-Worker-Key': key } : {}) }, body: JSON.stringify(body) }));
+  const report = (code: string, extra: Record<string, unknown> = {}) => ({
+    source: 'feedback', kind: 'feedback.space.damage', kind_label: 'Espacio · Avería', external_ref: code, title: 'Ducha no evacúa bien · Habitación 3',
+    note: 'Reporte de huésped. Ver detalle autorizado.', external_url: `https://tasks.ikisai.com/#/feedback/${code}`,
+    on_behalf_of: { kind: 'guest', report_code: code }, ...extra });
+  // La identidad de servicio la crea Core (migración 0067). Mientras no existe, 503.
+  const service = uuid();
+  assert.equal((await post(report('FB_2026_000429'))).status, 503);
+  await simulateServiceIdentity(app.t.db, service);
+
+  const first = await post(report('FB_2026_000429'));
+  assert.equal(first.status, 200);
+  const out = await first.json() as any;
+  assert.deepEqual(out, { taskId: await requestTaskId('feedback:FB_2026_000429'), status: 'pending' }, 'sin regla, por clasificar');
+  const request = (await rows('tasks.requests')).find((r) => r.id === out.taskId);
+  assert.deepEqual([request.requested_by, request.on_behalf_of, request.updated_by], [service, { kind: 'guest', report_code: 'FB_2026_000429' }, service]);
+  // Idempotente: el reintento devuelve lo mismo sin crear nada.
+  assert.deepEqual(await (await post(report('FB_2026_000429'))).json(), out);
+  assert.equal((await rows('tasks.requests')).filter((r) => r.external_ref === 'feedback:FB_2026_000429').length, 1);
+
+  // Con regla para su tipo, va a su proyecto y la tarea guarda quién informó (organizador de un evento).
+  await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind: 'feedback.event.setup', tab_id: TAB, project_id: OBRA, position: 3072 } }]);
+  const event = await (await post(report('FB_2026_000430', { kind: 'feedback.event.setup', title: 'Necesitamos diez sillas adicionales', on_behalf_of: { kind: 'organizer', report_code: 'FB_2026_000430' } }))).json() as any;
+  assert.equal(event.status, 'open');
+  const task = (await rows('tasks.tasks')).find((t) => t.id === event.taskId);
+  assert.deepEqual([task.project_id, task.external_kind, task.external_on_behalf, task.external_url], [OBRA, 'feedback.event.setup', 'organizer', 'https://tasks.ikisai.com/#/feedback/FB_2026_000430']);
+
+  // Clasificar a mano la pendiente lleva también quién informó.
+  const data: any = { ...emptyDataset() };
+  for (const table of ['tasks.tabs', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.requests']) data[table] = await rows(table);
+  assert.equal((await commit(classifyRequestOps(data, out.taskId, { project_id: OBRA }))).status, 200);
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === out.taskId).external_on_behalf, 'guest');
+
+  // Solo lo del contrato.
+  for (const bad of [
+    report('FB_1', { source: 'qa' }), report('FB_1', { kind: 'qa.booking' }), report('FB_1', { kind: 'central.otra' }),
+    report('FB_1', { title: 'x'.repeat(121) }), report('FB_1', { note: 'x'.repeat(1001) }), report('FB_1', { external_url: 'https://booking.ikisai.com/#/x' }),
+    report('FB_1', { on_behalf_of: { kind: 'vecino', report_code: 'FB_1' } }), report('FB_1', { on_behalf_of: { kind: 'guest', report_code: 'FB_1', name: 'Juan' } }),
+    report('FB_1', { tab_id: TAB }),
+  ]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
+  assert.equal((await post(report('FB_1'), null)).status, 401);
+  assert.equal((await post(report('FB_1'), 'otra')).status, 401);
+  // Nadie más fija quién informó: ni por commands en una tarea, ni cambiándolo después.
+  assert.equal((await commit([{ op: 'update', table: 'tasks.tasks', id: task.id, expectedRevision: task.revision, fields: { external_on_behalf: 'internal' } }])).status, 422);
+  assert.equal((await commit([{ op: 'insert', table: 'tasks.tasks', id: uuid(), fields: { tab_id: TAB, project_id: INBOX, title: 'x', position: 7, external_on_behalf: 'guest' } }])).status, 422);
 });

@@ -1177,7 +1177,7 @@ Cambiar el significado de una clave es crear otra (regla del contrato).
 
 Tasks pone el destino de las tareas que nacen de un reporte de Feedback, reutilizando lo de §20: `tasks.request_task`, las reglas de entrada y «Por clasificar». No hay un enrutador paralelo y no se guarda el reporte entero, solo el resumen operativo, la categoría y el enlace.
 
-### 22.1 Lo que necesito de Core (objeción de la fase 0)
+### 22.1 Identidad de servicio (objeción de la fase 0, resuelta por Core)
 
 `POST /api/v1/worker/requests/task` no tiene sesión, pero `tasks.request_task` escribe por `core.commit`. Eso lo deja en `core.changes`, los espejos y el historial, y por eso no se puede hacer como acción de sistema: las acciones van fuera de `core.commit`. Además, `core.commit` exige que quien escribe tenga **pertenencia** a la app.
 
@@ -1193,21 +1193,25 @@ Con eso:
 
 Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de sistema para una lista cerrada de procedimientos), me adapto. Lo que no cabe es escribir `tasks.*` desde Core ni usar una clave de agente (especificación §14.5).
 
-### 22.2 `POST /api/v1/worker/requests/task` (pendiente de §22.1)
+### 22.2 `POST /api/v1/worker/requests/task` (construido, con el contrato de Core)
 
 - Clave `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY`), de servidor a servidor.
-- Cuerpo igual que §19 y §20 (`source`, `kind`, `kind_label`, `external_ref`, `title`, `note`, `due`, `priority`, `external_url`), con estos límites:
-  - `source` = `feedback`;
-  - `kind` en la lista del §4 de FEEDBACK.md:
-    - `feedback.space.{damage, cleaning, missing, utilities, safety, other}`;
-    - `feedback.event.{setup, accommodation, cleaning, food, technical, operation, other}`;
-  - `external_url` solo `https://tasks.ikisai.com/#/feedback/<código>`;
-  - **sin** `project_id | tab_id`: decide la regla del usuario y, sin regla, va a «Por clasificar».
-- **`on_behalf_of: {kind: 'internal' | 'organizer' | 'guest', report_code}`** es un metadato, nunca el actor.
-  - Columna nueva `tasks.requests.on_behalf_of jsonb` y `tasks.tasks.external_on_behalf text` (`internal | organizer | guest`), las dos inmutables. Van en la migración que acompañe a la ruta.
-  - El editor de la tarea lo enseña: «Reporte de huésped · FB_2026_000429».
-- Idempotencia por `external_ref`, como en §19: los reintentos del worker crean una sola tarea.
-- **Respuesta:** `{created, routed, taskId, status}`.
+- **Cuerpo**, solo con estos campos: `{source: 'feedback', kind, kind_label?, external_ref, title, note?, external_url?, on_behalf_of: {kind: 'internal' | 'organizer' | 'guest', report_code}}`.
+  - `title` hasta 120 caracteres y `note` hasta 1000.
+  - `external_ref` es el código del reporte.
+  - `external_url` solo puede ser `https://tasks.ikisai.com/#/feedback/<código>`.
+  - `kind` puede ser `feedback.space.{damage, cleaning, missing, utilities, safety, other}` o `feedback.event.{setup, accommodation, cleaning, food, technical, operation, other}`.
+  - Sin `project_id | tab_id`: decide la regla del usuario y, sin regla, va a «Por clasificar».
+- **Quién escribe:** la identidad de servicio de Feedback (`core.service_actor('feedback')`, de Core, migración `0067`), por `core.commit` con `tasks.request_task`.
+  - La ruta la obtiene con la acción de sistema `tasks.feedback_actor` (migración `0311`), que la busca en `core.profiles` (`kind = 'service'`, `service_name = 'feedback'`, con pertenencia a Tasks). No llama a `core.service_actor` porque el lint de migraciones solo deja usar los ayudantes de `core` de su lista.
+  - Mientras no exista: `503 SERVICE_NOT_READY`.
+- **`on_behalf_of`** es un metadato, nunca el actor. Se guarda en `tasks.requests.on_behalf_of` y, su `kind`, en `tasks.tasks.external_on_behalf`.
+  - Los dos son inmutables y forman parte del origen: solo se fijan por el procedimiento o al clasificar la petición.
+  - El editor de la tarea dice «Reporte de huésped · Espacio · Avería · FB_2026_000429».
+- **Respuesta:** `{taskId, status}`.
+  - `taskId` es el id derivado de `feedback:<código>`, también para una pendiente, porque será el de su tarea.
+  - `status` es el de §22.3.
+- **Idempotente por `external_ref`:** un reintento devuelve lo que hay sin tocar nada, y dos a la vez crean una sola petición.
 
 ### 22.3 `POST /api/v1/worker/requests/status {externalRefs}` (construido)
 

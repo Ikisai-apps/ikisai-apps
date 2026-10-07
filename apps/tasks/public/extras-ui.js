@@ -81,6 +81,8 @@ openTaskEditor=function(id,...rest){taskEditorBeforeOrigin(id,...rest);const ori
   // §20: también el tipo (con el nombre que mandó quien pidió) y el enlace al elemento que la generó.
   const row=Sync.core.data['tasks.tasks'].find(t=>t.id===id),request=Sync.core.data['tasks.requests']?.find(r=>r.id===id);
   const kind=row?.external_kind?(typeof kindName==='function'?kindName(row.external_kind,request?.kind_label):row.external_kind):'';
-  const text=()=>['Pedida desde '+appName(origin.source),kind,origin.reference].filter(Boolean).join(' · ');
+  // §22: de un reporte de Feedback se dice quién informó (metadato), no la app.
+  const behalf={guest:'Reporte de huésped',organizer:'Reporte de organizador',internal:'Reporte interno'}[row?.external_on_behalf];
+  const text=()=>[behalf||'Pedida desde '+appName(origin.source),kind,origin.reference].filter(Boolean).join(' · ');
   title.insertAdjacentHTML('afterend',`<p class="notice" id="taskOrigin"><span id="taskOriginText">${esc(text())}</span>${row?.external_url?` · <a href="${esc(row.external_url)}" target="_blank" rel="noopener">Abrir</a>`:''}</p>`);
   if(!appNames&&Sync.core&&navigator.onLine)Sync.core.api('/apps').then(out=>{appNames=new Map((out?.items||out?.apps||[]).map(a=>[a.id,a.name]));const el=document.getElementById('taskOriginText');if(el)el.textContent=text()}).catch(()=>{appNames=new Map()})};

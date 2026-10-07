@@ -5,8 +5,9 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { build } from 'vite';
-import { EDITOR, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { E2E_WORKER_KEY, EDITOR, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { simulateServiceIdentity } from './fixtures.ts';
 
 declare const navigateView: any, manageTab: any, Sync: any;
 
@@ -256,6 +257,24 @@ test('enlace de un reporte de Feedback (§22.4): #/feedback/<código> enseña el
   await expect(owner.locator('main h1')).toHaveText('Reporte FB_2026_0042');
   await owner.locator('[data-feedback-task]').click();
   await expect(owner.locator('#taskOrigin')).toContainText('FB_2026_0042');
+  await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('reporte de huésped por el worker de Feedback (§22.2): entra por la regla y el editor dice quién informó', async () => {
+  // La identidad de servicio es de Core (0067); aquí se simula.
+  await simulateServiceIdentity(server.app.t.db, crypto.randomUUID());
+  await server.commit([{ op: 'insert', table: 'tasks.request_routes', id: crypto.randomUUID(), fields: { kind: 'feedback.space.damage', tab_id: ID.ikisai, position: 1 } }], server.app.tokens.owner);
+  const res = await server.app.handler(new Request('http://localhost/api/v1/worker/requests/task', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': E2E_WORKER_KEY }, body: JSON.stringify({
+    source: 'feedback', kind: 'feedback.space.damage', kind_label: 'Espacio · Avería', external_ref: 'FB_2026_000429', title: 'Ducha no evacúa bien · Habitación 3',
+    note: 'Reporte de huésped. Ver detalle autorizado.', external_url: 'https://tasks.ikisai.com/#/feedback/FB_2026_000429', on_behalf_of: { kind: 'guest', report_code: 'FB_2026_000429' } }) }));
+  const out = await res.json() as any;
+  expect(out.status, JSON.stringify(out)).toBe('open');
+  await owner.evaluate(() => (window as any).syncNow?.());
+  await settled(owner);
+  await expect.poll(() => owner.evaluate((id) => !!Sync.core.data['tasks.tasks'].find((t: any) => t.id === id), out.taskId)).toBe(true);
+  await owner.evaluate((id) => (window as any).openTaskEditor(id), out.taskId);
+  await expect(owner.locator('#taskOrigin')).toContainText('Reporte de huésped · Espacio · Avería · FB_2026_000429');
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

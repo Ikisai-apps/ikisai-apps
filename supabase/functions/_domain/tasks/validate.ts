@@ -138,6 +138,7 @@ const RULES: Record<TableName, TableRules> = {
       // Origen (§19, §20): solo en el insert de la tarea de una petición que se clasifica en el mismo lote (ver abajo).
       external_ref: text(3, 182, 'INVALID_FIELDS', 'Referencia de origen inválida.'), external_kind: nullable(text(3, 100, 'INVALID_FIELDS', 'Tipo de origen inválido.')),
       external_url: nullable(externalUrl),
+      external_on_behalf: nullable(oneOf(['internal', 'organizer', 'guest'], 'INVALID_FIELDS', 'Origen del reporte desconocido.')),
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
   },
@@ -211,6 +212,7 @@ const RULES: Record<TableName, TableRules> = {
       suggested_tab_id: nullable(uuid()), suggested_project_id: nullable(uuid()), requested_by: nullable(uuid()),
       status: oneOf(['pending', 'routed', 'dismissed'], 'INVALID_STATUS', 'Estado de la petición desconocido.'),
       routed_by: nullable(oneOf(['rule', 'hint', 'manual'], 'INVALID_STATUS', 'Origen del enrutado desconocido.')),
+      on_behalf_of: (_v, f) => reject(422, 'INVALID_REQUEST', 'Las peticiones solo llegan por requests/task.', { field: f }),
     },
     required: [],
   },
@@ -323,7 +325,7 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
   operations.forEach((op, index) => {
     if (op.op !== 'insert' || op.table !== 'tasks.tasks') return;
     const f = op.fields ?? {};
-    if (f.external_ref === undefined && f.external_kind === undefined && f.external_url === undefined) return;
+    if (f.external_ref === undefined && f.external_kind === undefined && f.external_url === undefined && f.external_on_behalf === undefined) return;
     const routed = operations.some((o) => o.table === 'tasks.requests' && o.op === 'update' && o.id === op.id && o.fields?.status === 'routed');
     if (!routed) reject(422, 'INVALID_FIELDS', 'El origen de una tarea solo se fija al clasificar su petición.', { index, field: 'external_ref' });
   });

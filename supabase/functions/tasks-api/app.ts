@@ -123,7 +123,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       agentRisk: tasksAgentRiskHook(supabase),
     },
     routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase), ...requestRoutes(supabase)],
-    workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes()],
+    workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],
     mcpTools: tasksMcpTools(),
   });
 }

@@ -30,6 +30,8 @@ export interface TaskRow extends BaseRow {
   /** Tipo (`central.compliance_due`) y enlace al elemento que la generó (§20). */
   external_kind?: string | null;
   external_url?: string | null;
+  /** §22: quién informó del reporte de Feedback que la originó (metadato, nunca el actor). */
+  external_on_behalf?: 'internal' | 'organizer' | 'guest' | null;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
@@ -65,6 +67,7 @@ export interface RequestRow extends BaseRow {
   source: string; kind: string; kind_label: string | null; external_ref: string; external_url: string | null;
   title: string; note: string; due: string | null; priority: Priority; suggested_tab_id: Uuid | null; suggested_project_id: Uuid | null;
   requested_by: Uuid | null; status: 'pending' | 'routed' | 'dismissed'; routed_by: 'rule' | 'hint' | 'manual' | null;
+  on_behalf_of?: { kind: 'internal' | 'organizer' | 'guest'; report_code: string } | null;
 }
 /** Regla de entrada (§20): un tipo de petición va a un área, un proyecto (si no, su Entrada) y un responsable. */
 export interface RequestRouteRow extends BaseRow {
@@ -105,7 +108,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
@@ -117,7 +120,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'supply_item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position'],
-  'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by'],
+  'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -127,7 +130,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id'],
   'tasks.labels': ['tab_id'],
   'tasks.projects': ['tab_id', 'system'],
-  'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url'],
+  'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
@@ -141,7 +144,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id'],
   'tasks.request_routes': [],
   // Una petición solo la da de alta `tasks.request_task`; después solo cambia su estado (lo comprueba el hook).
-  'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by'],
+  'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */
