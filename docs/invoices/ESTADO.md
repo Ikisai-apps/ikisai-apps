@@ -87,7 +87,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Campos de archivo declarados y recogida de huérfanos activada (contrato §3.9, migración 0217): facturas `legal`, extracciones y texto `operational`, ZIP `temporary`.
 
-- Numeración como dato de la serie (ronda 47, migración 0218): formato con `{aa}`, año de la serie y último número inicial; 2026 continúa la hoja (`F_03_26`), 2027 con serie nueva (`F2027-0001`).
+- Numeración como dato de la serie (ronda 47, migración 0218): formato con `{aa}`, año de la serie y último número inicial; 2026 continúa la hoja (`F_03_26`), 2027 con serie nueva (`F2027-0001`). Series `F` y `R` de 2026 sembradas (migración 0219).
 
 ## En curso
 

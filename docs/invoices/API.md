@@ -966,7 +966,8 @@ Normas: Reglamento de facturación (RD 1619/2012) y Reglamento de sistemas de fa
   - **Formato:** admite `{serie}`, `{año}`, `{aa}` (año en dos cifras) y `{n}` o `{n:K}`, que rellena con ceros hasta K cifras sin recortar (`F_100_26`).
   - **Año de validez:** `valid_year` hace que la serie solo emita en ese año (`SERIES_YEAR_MISMATCH`).
   - **Comienzo:** `invoices.series_start {code, last_number, year}` (editor y owner) fija el último número ya emitido fuera de Finance. Solo vale mientras la serie no tenga emitidas (`SERIES_IN_USE`).
-  - **2026:** la serie `F` con formato `{serie}_{n:2}_{aa}` y último número 2 continúa la hoja (`F_02_26` → `F_03_26`). Las rectificativas, `R_01_26`.
+  - **2026:** la serie `F` con formato `{serie}_{n:2}_{aa}` y último número 2 continúa la hoja (`F_02_26` → `F_03_26`). Las rectificativas, `R_01_26`. **Sembradas por la migración 0219** con `core.apply_migration_operations`, que deja cambio en `core.changes`. Si ya existe una serie con ese código, la migración no hace nada.
+  - **Ajustar:** una serie se puede ajustar, en formato y comienzo, mientras no tenga facturas emitidas, aunque ya tenga un último número puesto.
   - **2027:** se crea la serie del año (`F2027` con `{serie}-{n:4}`, que da `F2027-0001`). La app solo ofrece las series del año en curso.
   - **En «Series»:** al crear una serie se elige el formato (estándar o «como la hoja») y el último número emitido, con la siguiente a la vista. Una serie sin emitidas se puede ajustar.
 - **Orden de fechas:** la fecha de expedición es la de hoy en hora de Madrid, y nunca anterior a la última emitida de la serie. Así número y fecha van siempre en el mismo orden. La fecha de la operación puede ser otra, por ejemplo la salida de una reserva.
