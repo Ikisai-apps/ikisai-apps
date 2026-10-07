@@ -1,6 +1,6 @@
 # Ikisai Central · API y modelo de datos (puerta G2)
 
-Fecha: 7 de octubre de 2026 (revisión 1). Autor: agente Central (sesión `app-09`). Estado: **propuesta para revisión de Core**; no hay migraciones ni rutas hasta que Core la apruebe. Sigue `docs/core/PLANTILLA_API_APP.md`; el contrato `docs/core/CONTRATO_SINCRONIZACION.md` es normativo y aquí no se repite.
+Fecha: 7 de octubre de 2026 (revisión 1). Autor: agente Central (sesión `app-09`). Estado: **aprobado por Core** (ronda 1, 7 oct: orden V1-a → V1-b → V1.1 → V2; P2, P3 y P4 hechas en la PR #181). Las preguntas de §15 siguen con los valores por defecto que fijó Core hasta que responda el usuario. Sigue `docs/core/PLANTILLA_API_APP.md`; el contrato `docs/core/CONTRATO_SINCRONIZACION.md` es normativo y aquí no se repite.
 
 Fuentes: encargo de Core (`coordinacion/central/RESPUESTAS.md`, 7 oct), contrato §2, §3.1–3.5, §4, §5 y §8; `coordinacion/ampliacion/VALORACION_CORE.md` y `CRUCE_SHEETS.md`; hojas C01 Dirección, C05 Equipo y C09 Legal (`C0x.md`, esquemas y listas de «App de gestión»); migración `0062_core_admin` y `_kit/admin.ts`; `docs/booking/API.md` §5 y §15.3 (huéspedes y personal en eventos), `docs/tasks/API.md` §6–7 e `docs/invoices/API.md` (patrón de lecturas entre apps).
 
@@ -480,9 +480,9 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | # | Petición | Para qué | Alternativa mientras tanto |
 |---|---|---|---|
 | P1 | Visibilidad de archivos: hook `fileVisible(file, ctx)` en `files/:id` (o que `core_file_get` compruebe la fila que lo referencia). Es la P5 de Booking, aún pendiente. | Documentos de personas | Ruta propia `GET people/records/:id/file` que comprueba la fila; los ids solo llegan a quien la ve (§8) |
-| P2 | `admin`: restablecer la contraseña temporal de una cuenta existente (`POST admin/accounts/:userId/password`) y desactivar o reactivar una cuenta (bloqueo en Auth, revoca pases y sesiones). Hoy `admin/invite` sobre una cuenta existente no devuelve contraseña y quitar todos los accesos no cierra la sesión de Auth. | Altas y bajas de personal | Quitar todos los accesos (cada petición relee la pertenencia) |
-| P3 | Que las migraciones de `central` puedan leer `core.profiles` (y comprobar que existe un `auth.users.id`) para validar `people.user_id` en `validate_hooks`. | Enlace persona–cuenta | Validación solo en la Edge con `core_admin_accounts` (owner) |
-| P4 | `admin/accounts`: incluir `bannedUntil`/estado cuando exista P2, y `memberships[].updatedAt`. | Pantalla Accesos | — |
+| P2 ✅ #181 | `admin`: restablecer la contraseña temporal de una cuenta existente (`POST admin/accounts/:userId/password`) y desactivar o reactivar una cuenta (bloqueo en Auth, revoca pases y sesiones). Hoy `admin/invite` sobre una cuenta existente no devuelve contraseña y quitar todos los accesos no cierra la sesión de Auth. | Altas y bajas de personal | Quitar todos los accesos (cada petición relee la pertenencia) |
+| P3 ✅ #181 | Que las migraciones de `central` puedan leer `core.profiles` (y comprobar que existe un `auth.users.id`) para validar `people.user_id` en `validate_hooks`. | Enlace persona–cuenta | Validación solo en la Edge con `core_admin_accounts` (owner) |
+| P4 ✅ #181 | `admin/accounts`: incluir `bannedUntil`/estado cuando exista P2, y `memberships[].updatedAt`. | Pantalla Accesos | — |
 | P5 | Petición a **Tasks**: ruta para que otra app pida una tarea (§7.3) y `tasks.targets` con lista de ids. | Cumplimiento → trabajo | Sin botón «Crear tarea»; el responsable la crea a mano en Tasks |
 | P6 | Petición a **Booking**: usar `target_app = 'central'` (no `'encarna'`) en `staff_assignments.person_ref_app` y decir si quiere ya `central.booking_person_projection`. | Turnos con la persona de Central | — |
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
@@ -498,3 +498,5 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 4. **Ámbitos de cada app en Central.** (a) Central solo muestra los ámbitos y enlaza a la pantalla de miembros de cada app (recomendado: cada app sabe qué significan); (b) Central los edita todos (más cómodo, pero acopla Central a cada app).
 5. **Configuración común.** ¿Arrancamos con los datos de la entidad (razón social, NIF, domicilio, logotipo) como única pieza, o lo dejamos hasta que una app lo pida? Recomendación: dejarlo hasta que Finance o los portales lo necesiten.
 6. **Incidencias de equipo** (C05: ausencias, retrasos, conflictos): ¿entran en Central? Son información laboral sensible. Recomendación: no en V1.
+
+**Valores por defecto mientras responde el usuario** (Core, ronda 1): 1) editor de Central con ámbito `people` lleva personas y cumplimiento sin tocar accesos; 2) avisos solo en el panel; 3) contacto de emergencia opcional; 4) ámbitos de cada app en solo lectura con enlace; 5) configuración común, esperar; 6) incidencias de equipo fuera de V1.
