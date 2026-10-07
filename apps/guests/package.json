@@ -1,0 +1,13 @@
+{
+  "name": "@ikisai/guests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ikisai Guests · portal de los huéspedes de los retiros (Vite + TypeScript, sin framework)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.sw.json --noEmit"
+  }
+}

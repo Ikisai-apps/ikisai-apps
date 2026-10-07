@@ -191,7 +191,6 @@ Responde a cuatro preguntas: qué retiro es, cuándo, qué me falta y qué puedo
   | Tus datos | «Completos ✓» / «Faltan 3: documento, dirección, código postal» | siempre, salvo modo `ninguno` |
   | Alimentación | «Revisada ✓» / «Cuéntanos si tienes alergias o una dieta especial» | siempre |
   | Firma del registro de entrada | «Firmado ✓» / «Pendiente» / «Primero completa tus datos» | solo en modo `ses` |
-  | Compartir tus alergias con tu organizador | «Sí» / «No» (informativo, no es una tarea pendiente) | si tiene alguna alergia o intolerancia |
 
   - Cuando todo está hecho: «¡Todo listo! Nos vemos el {fecha}.»
   - El estado sale de `missing`, `signed` y la marca de alimentación revisada (BG3). «Revisada» es `diet_reviewed_at`.
@@ -429,7 +428,29 @@ Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking n
   - varias entradas;
   - ningún dato de otro huésped en el DOM.
 
-## 12. Reparto entre agentes
+## 12. Reparto entre agentes y estado
+
+**Construido (7-10-2026, #283):** Edge, migración 0600 y la PWA de la fase 1 entera:
+- entrada, aviso legal, Inicio según el momento y selector de persona;
+- Mis datos con autoguardado y conflictos;
+- alimentación, firma, información práctica, ayuda, «Guarda tu acceso» e instalación;
+- español e inglés;
+- offline con cola local (`writer.ts`).
+
+Detalles de la implementación:
+- **Idioma:** `createI18n` y `createLanguageSelect` del kit 0.19 (#285), con los diccionarios de la app en `app/i18n-es.ts` e `i18n-en.ts`. Los textos del kit (lanzador y formulario de ayuda) también cambian de idioma.
+- **Recuadro de firma:** propio en `ui/sign.ts` (U2 sigue abierta por si el kit lo adopta).
+- **Textos de Central** (migración 0570): una fila por clave e idioma, con `fallback` y `source_lang`, y negritas con `**…**`.
+  - La versión que se guarda al aceptar el aviso (`privacy_ack_version`) o al firmar (`text_version`) es `<idioma de origen>-<versión>` (`es-v1`, `en-v1`).
+  - Aceptar en un idioma vale para el otro mientras las dos versiones sigan vigentes.
+  - Sin Central se usan los textos de reserva del código, con la versión `reserva-1`.
+
+**Pruebas:**
+- `tests/guests/api.test.ts` (8);
+- `tests/guests/static.test.ts` (6): diccionarios iguales, claves usadas y ids de feedback;
+- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`).
+
+
 
 Lo hago yo: `supabase/functions/guests-api` (índice y conformidad), `apps/guests`, `tests/guests` y `docs/guests`. Con subagente (`sonnet`), solo lo mecánico:
 - los escenarios de Playwright a partir de uno aprobado;

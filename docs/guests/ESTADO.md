@@ -21,11 +21,27 @@
   - migración `0600_guests_file_gc`;
   - `tests/guests/api.test.ts` (8 pruebas, la última sobre BG1–BG6 de Booking, #284): canje, ámbito por huésped, ficha, datos con procedencia y conflicto, aviso legal, consentimiento, restricciones, firma (propia sí, ajena no), modo operativo.
 
+- 2026-10-07 · PWA `apps/guests` de la fase 1 (API.md §9 y §12):
+  - entrada por enlace;
+  - aviso de protección de datos, que bloquea Mis datos y Alimentación;
+  - Inicio con lo que falta, según el momento;
+  - selector si la cuenta tiene varias personas;
+  - Mis datos con procedencia, validación y autoguardado campo a campo;
+  - cola local sin red y conflictos con elección;
+  - alimentación con «No tengo nada» y consentimiento;
+  - firma con el dedo (propia o del acompañante) que caduca si cambian los datos;
+  - información práctica de Central;
+  - ayuda y sugerencias;
+  - «Guarda tu acceso», instalación y salir del dispositivo;
+  - español e inglés.
+
+  Pruebas: 14 de nodo y 9 de Playwright (3 `@smoke`). Idiomas con el kit 0.19; textos de Central de la migración 0570.
+
 ## Pendiente
 
-- PWA `apps/guests` (PR 2 a 4 de API.md §12), en cuanto entre la #278 (`loginWithLink`).
+- Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
+- Fases 4 y 5 (API.md §13) cuando Organizers publique su configuración.
 
 ## Bloqueos
 
-- Ninguno para empezar la Edge. La PWA necesita `loginWithLink` (#278) y, para los textos, la #281 de Central.
-- El inglés completo necesita la capa de traducción del kit (U1).
+- Ninguno para la fase 1. Mientras no exista el contacto público (C1), la pantalla de enlace no válido usa el contacto de reserva o la última copia guardada.
