@@ -1,14 +1,14 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  CONTACT_KEYS, TEXT_KINDS, TEXT_KIND_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
-  type MarkerSource, type TextKind,
+  CONTACT_KEYS, TEXT_KINDS, TEXT_KIND_LABELS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
+  type MarkerSource, type TextKind, type TextLang,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
-type Text = Mirror<{ id: string; revision: number; deleted_at: string | null; updated_at: string; key: string; title: string; body: string; version: string; kind: TextKind; position: number }>;
+type Text = Mirror<{ id: string; revision: number; deleted_at: string | null; updated_at: string; key: string; lang: TextLang; title: string; body: string; version: string; kind: TextKind; position: number }>;
 interface Version { version: string; title: string; body: string; createdAt: string }
 
 /** Markdown sencillo de los textos (párrafos, saltos de línea y **negrita**) pintado sin `innerHTML`. */
@@ -37,17 +37,22 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     host,
     isAdmin ? el('button', { class: 'fab', type: 'button', id: 'newText', 'data-feedback-id': 'central.textos.nuevo', 'data-feedback-label': 'Nuevo texto', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo texto') : null);
 
-  function card(t: Text): HTMLElement {
+  function card(t: Text, en: Text | null): HTMLElement {
     const rendered = renderMarkers(t.body, source);
     return el('article', { class: 'textcard', 'data-text': t.key, 'data-feedback-id': 'central.textos.texto', 'data-feedback-label': 'Texto' },
       el('div', { class: 'blockhead' },
         el('div', null, el('h3', null, t.title), el('code', { class: 'muted small', 'data-feedback-ignore': '' }, t.key)),
-        el('span', { class: 'chips' }, el('span', { class: 'chip' }, t.version), t._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)),
+        el('span', { class: 'chips' }, el('span', { class: 'chip' }, `ES ${t.version}`),
+          en ? el('span', { class: 'chip', 'data-lang': 'en' }, `EN ${en.version}`) : el('span', { class: 'chip muted', 'data-lang': 'en' }, 'EN usa el español'),
+          t._pending || en?._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)),
       t.kind === 'contacto' ? el('p', { class: 'textvalue', 'data-feedback-ignore': '' }, rendered)
         : el('details', { class: 'textbody', 'data-feedback-id': 'central.textos.texto.contenido', 'data-feedback-label': 'Contenido del texto' },
           el('summary', null, 'Ver el texto'), renderSimpleMarkdown(rendered)),
-      el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.textos.texto.abrir', 'data-feedback-label': isAdmin ? 'Editar texto' : 'Ver texto', onclick: () => openEditor(t) },
-        icon(isAdmin ? 'edit' : 'eye', 16), isAdmin ? 'Editar' : 'Versiones'));
+      el('div', { class: 'zone' },
+        el('button', { class: 'linkbtn', type: 'button', 'data-lang-action': 'es', 'data-feedback-id': 'central.textos.texto.abrir', 'data-feedback-label': isAdmin ? 'Editar texto' : 'Ver texto', onclick: () => openEditor(t) },
+          icon(isAdmin ? 'edit' : 'eye', 16), isAdmin ? 'Editar' : 'Versiones'),
+        en || isAdmin ? el('button', { class: 'linkbtn', type: 'button', 'data-lang-action': 'en', 'data-feedback-id': 'central.textos.texto.ingles', 'data-feedback-label': 'Texto en inglés',
+          onclick: () => (en ? openEditor(en) : openEditor(null, t)) }, icon('edit', 16), en ? 'Inglés' : 'Traducir al inglés') : null));
   }
 
   function paint(): void {
@@ -57,20 +62,24 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       return;
     }
     replace(host, ...TEXT_KINDS.map((kind) => {
-      const rows = alive.filter((t) => t.kind === kind).sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key));
-      return rows.length ? el('section', { class: 'textgroup', 'data-kind': kind }, el('div', { class: 'sectionlabel' }, TEXT_KIND_LABELS[kind]), ...rows.map(card)) : null;
+      const rows = alive.filter((t) => t.kind === kind && t.lang === 'es').sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key));
+      const english = (key: string) => alive.find((t) => t.key === key && t.lang === 'en') ?? null;
+      return rows.length ? el('section', { class: 'textgroup', 'data-kind': kind }, el('div', { class: 'sectionlabel' }, TEXT_KIND_LABELS[kind]), ...rows.map((t) => card(t, english(t.key)))) : null;
     }));
   }
 
-  function openEditor(t: Text | null): void {
+  /** `base`: al traducir, el texto en español del que parte la versión inglesa (misma clave y tipo). */
+  function openEditor(t: Text | null, base: Text | null = null): void {
     let sheet: Sheet | null = null;
     const readOnly = !isAdmin;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
-    const key = el('input', { id: 'tx-key', type: 'text', maxlength: '60', value: t?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || readOnly }) as HTMLInputElement;
-    const kind = el('select', { id: 'tx-kind', disabled: readOnly }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
-    const title = el('input', { id: 'tx-title', type: 'text', maxlength: '160', value: t?.title ?? '', disabled: readOnly }) as HTMLInputElement;
+    const lang: TextLang = t?.lang ?? (base ? 'en' : 'es');
+    const key = el('input', { id: 'tx-key', type: 'text', maxlength: '60', value: t?.key ?? base?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || base !== null || readOnly }) as HTMLInputElement;
+    // Una traducción tiene el mismo tipo que su texto en español; solo se elige al crear el español.
+    const kind = el('select', { id: 'tx-kind', disabled: readOnly || lang !== 'es' }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? base?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'tx-title', type: 'text', maxlength: '160', value: t?.title ?? base?.title ?? '', disabled: readOnly }) as HTMLInputElement;
     const body = el('textarea', { id: 'tx-body', rows: '10', maxlength: '8000', disabled: readOnly }) as HTMLTextAreaElement;
-    body.value = t?.body ?? '';
+    body.value = t?.body ?? base?.body ?? '';
     const preview = el('div', { id: 'tx-preview', class: 'textpreviewbox', 'data-feedback-id': 'central.textos.editar.vista_previa', 'data-feedback-label': 'Vista previa' });
     const versionNote = el('p', { class: 'note', id: 'tx-version' });
     const markerWarn = el('p', { class: 'formerror', id: 'tx-markers' });
@@ -101,7 +110,7 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       const fields: Record<string, unknown> = { title: title.value.trim(), body: body.value, kind: kind.value };
       const operations: RowOperation[] = t
         ? [{ op: 'update', table: T.texts, id: t.id, expectedRevision: t.revision, fields: Object.fromEntries(Object.entries(fields).filter(([k, v]) => t[k] !== v)) }]
-        : [{ op: 'insert', table: T.texts, id: crypto.randomUUID(), fields: { ...fields, key: key.value.trim(), position: Date.now() / 1000 } }];
+        : [{ op: 'insert', table: T.texts, id: crypto.randomUUID(), fields: { ...fields, key: key.value.trim(), lang, position: base?.position ?? Date.now() / 1000 } }];
       const issue = validateOperations(operations, client.bootstrap()?.membership ?? { role: 'reader' }, () => t ?? undefined);
       if (issue) { error.textContent = issue.message; error.scrollIntoView({ block: 'nearest' }); return; }
       save.disabled = true;
@@ -112,7 +121,8 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
         await sheet?.close(true);
       } catch (e) { error.textContent = describeError(e); } finally { save.disabled = false; }
     } },
-    t ? null : el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.clave', 'data-feedback-label': 'Clave' }, el('span', null, 'Clave'), key,
+    base ? el('p', { class: 'note', id: 'tx-translate' }, `Traducción al inglés de «${base.title}». Parte del texto en español: tradúcelo y guarda. Hasta entonces, los portales en inglés muestran el español.`) : null,
+    t || base ? null : el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.clave', 'data-feedback-label': 'Clave' }, el('span', null, 'Clave'), key,
       el('span', { class: 'muted small' }, 'La usan las apps para encontrar el texto (p. ej. «portal.privacy»). No se puede cambiar después.')),
     el('div', { class: 'fieldrow' },
       el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.tipo', 'data-feedback-label': 'Tipo' }, el('span', null, 'Tipo'), kind),
@@ -129,14 +139,24 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     error,
     history,
     !readOnly && t ? el('div', { class: 'zone' }, el('button', { class: 'danger', type: 'button', id: 'deleteText', 'data-feedback-id': 'central.textos.editar.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: async () => {
-      if (!(await confirmDialog({ title: '¿Enviar el texto a la papelera?', text: 'Las apps que lo usan dejarán de encontrarlo. Sus versiones se conservan.', confirmLabel: 'Enviar a papelera', danger: true }))) return;
-      try { await client.commit([{ op: 'delete', table: T.texts, id: t.id, expectedRevision: t.revision }]); guard.dirtyEditor = false; await sheet?.close(true); toast('Texto enviado a la papelera.'); }
+      const translation = t.lang === 'es' ? texts.find((x) => x.key === t.key && x.lang === 'en' && !x.deleted_at) : undefined;
+      const message = t.lang === 'es'
+        ? `Las apps que lo usan dejarán de encontrarlo${translation ? ', también en inglés' : ''}. Sus versiones se conservan.`
+        : 'Los portales en inglés volverán a mostrar el texto en español. Sus versiones se conservan.';
+      if (!(await confirmDialog({ title: t.lang === 'es' ? '¿Enviar el texto a la papelera?' : '¿Quitar la traducción al inglés?', text: message, confirmLabel: 'Enviar a papelera', danger: true }))) return;
+      try {
+        await client.commit([
+          ...(translation ? [{ op: 'delete' as const, table: T.texts, id: translation.id, expectedRevision: translation.revision }] : []),
+          { op: 'delete', table: T.texts, id: t.id, expectedRevision: t.revision },
+        ]);
+        guard.dirtyEditor = false; await sheet?.close(true); toast('Texto enviado a la papelera.');
+      }
       catch (e) { error.textContent = describeError(e); }
     } }, icon('trash', 18), 'Enviar a papelera')) : null) as HTMLFormElement;
     refresh();
 
     if (t && navigator.onLine) {
-      void client.api<{ items: Version[] }>('/read/central.text_history', { method: 'POST', json: { key: t.key } }).then((out) => {
+      void client.api<{ items: Version[] }>('/read/central.text_history', { method: 'POST', json: { key: t.key, lang: t.lang } }).then((out) => {
         const older = out.items.filter((v) => v.version !== t.version);
         replace(history, older.length ? el('details', null, el('summary', null, `Versiones anteriores (${older.length})`),
           ...older.map((v) => el('details', { class: 'textversion', 'data-version': v.version },
@@ -145,12 +165,12 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     }
 
     sheet = openSheet({
-      title: t ? t.title : 'Nuevo texto', meta: t ? `${t.key} · ${t.version}` : undefined, body: form,
+      title: t ? t.title : base ? `${base.title} (inglés)` : 'Nuevo texto', meta: t ? `${t.key} · ${TEXT_LANG_LABELS[t.lang]} · ${t.version}` : base ? `${base.key} · ${TEXT_LANG_LABELS.en}` : undefined, body: form,
       panelAttrs: { 'data-feedback-id': 'central.textos.editar', 'data-feedback-label': 'Editar texto' },
       closeAttrs: { 'data-feedback-id': 'central.textos.editar.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
       foot: readOnly ? undefined : [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.textos.editar.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, t ? 'Cerrar' : 'Cancelar'), save],
       footHidden: readOnly || t !== null,
-      initialFocus: readOnly ? undefined : (t ? body : key),
+      initialFocus: readOnly ? undefined : (t || base ? body : key),
       beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
     });
@@ -160,7 +180,8 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     texts = (await client.list(T.texts, { includeDeleted: true })) as unknown as Text[];
     const entity = (await client.list(T.entity)).find((e) => !e.deleted_at) as MarkerSource['entity'] | undefined;
     const alive = texts.filter((t) => !t.deleted_at);
-    source = { entity: entity ?? null, email: alive.find((t) => t.key === CONTACT_KEYS.email)?.body ?? null, phone: alive.find((t) => t.key === CONTACT_KEYS.phone)?.body ?? null };
+    const es = (k: string) => alive.find((t) => t.key === k && t.lang === 'es')?.body ?? null;
+    source = { entity: entity ?? null, email: es(CONTACT_KEYS.email), phone: es(CONTACT_KEYS.phone) };
     paint();
   }
   void load();

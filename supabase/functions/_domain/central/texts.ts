@@ -10,6 +10,10 @@ export const TEXT_KINDS = ['legal', 'mensaje', 'contacto'] as const;
 export type TextKind = typeof TEXT_KINDS[number];
 export const TEXT_KIND_LABELS: Record<TextKind, string> = { legal: 'Legal', mensaje: 'Mensajes y avisos', contacto: 'Contacto' };
 export const TEXT_KEY = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,3}$/;
+/** Idiomas de los textos (portales bilingües): `es` obligatorio, `en` opcional; si falta, los portales usan el español. */
+export const TEXT_LANGS = ['es', 'en'] as const;
+export type TextLang = typeof TEXT_LANGS[number];
+export const TEXT_LANG_LABELS: Record<TextLang, string> = { es: 'Español', en: 'Inglés' };
 export const CONTACT_KEYS = { email: 'contact.email', phone: 'contact.phone' } as const;
 
 /** Marcadores admitidos, con lo que significan (para la ayuda del editor). */
