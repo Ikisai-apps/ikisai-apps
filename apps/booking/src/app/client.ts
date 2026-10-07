@@ -49,6 +49,9 @@ export interface EventRow extends SyncedRow {
 export interface FinanceRow extends SyncedRow {
   deposit_required: number | string | null;
   deposit_paid: number | string | null;
+  payment_date?: string | null;
+  /** Momento en que el servidor registró el pago: inicio legal del plazo de 24 h de SES. */
+  payment_registered_at?: string | null;
 }
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
@@ -150,6 +153,20 @@ export function describeError(error: unknown): string {
       return 'Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.';
     case 'reservations_ses_reason':
       return SES_REASON_MESSAGE;
+    case 'SES_PAYMENT_REQUIRED':
+      return 'Registra primero el pago de la reserva (fecha de pago) para poder comunicarla a SES.';
+    case 'SES_DISABLED':
+      return 'Esta reserva está marcada para no comunicarse a SES. Activa el interruptor para comunicarla.';
+    case 'SES_NOT_CONFIRMED':
+      return 'Solo se comunica a SES una reserva confirmada.';
+    case 'SES_ALREADY_COMMUNICATED':
+      return 'Esta reserva ya tiene una comunicación a SES en curso o aceptada.';
+    case 'SES_NOT_CANCELLABLE':
+      return 'Esa comunicación ya no se puede anular: solo se anulan las aceptadas que no estén ya anuladas.';
+    case 'SES_DATA': {
+      const field = (e?.details as { field?: unknown } | null | undefined)?.field;
+      return typeof e?.message === 'string' && e.message ? e.message : `Faltan datos para comunicar la reserva a SES${typeof field === 'string' ? ` (${field})` : ''}.`;
+    }
     case 'CONSTRAINT_VIOLATION':
       if (JSON.stringify(e?.details ?? '').includes('reservations_ses_reason') || /reservations_ses_reason/.test(String(e?.message ?? ''))) return SES_REASON_MESSAGE;
       return 'Los datos no cumplen una regla de la reserva (por ejemplo, fechas obligatorias desde la pre-reserva).';

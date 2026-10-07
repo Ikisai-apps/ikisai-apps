@@ -35,6 +35,8 @@ export interface AppLauncherOptions {
   appIcon?: (app: LauncherApp) => string | Node | null | undefined;
   /** Título de la hoja; por defecto «Apps de Ikisai». */
   title?: string;
+  /** Interruptor «Señalar para comentar» al pie (FEEDBACK.md §8.1): normalmente `createFeedback(...).mode`. */
+  feedback?: { get(): boolean; set(on: boolean): void };
 }
 
 export interface AppLauncher {
@@ -102,7 +104,19 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       internal.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Apps' }, ...internal.map((a) => row(a, current))) : null,
       portals.length ? el('h3', { class: 'launcher-group' }, 'Portales') : null,
       portals.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Portales' }, ...portals.map((a) => row(a, current))) : null,
+      options.feedback ? feedbackSwitch(options.feedback) : null,
     );
+  }
+
+  function feedbackSwitch(mode: NonNullable<AppLauncherOptions['feedback']>): HTMLElement {
+    const input = el('input', { type: 'checkbox', role: 'switch', class: 'launcher-fb-input' }) as HTMLInputElement;
+    input.checked = mode.get();
+    input.addEventListener('change', () => mode.set(input.checked));
+    return el('label', { class: 'launcher-fb' },
+      el('span', { class: 'launcher-text' },
+        el('strong', null, 'Señalar para comentar'),
+        el('small', null, 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.')),
+      input);
   }
 
   async function open(): Promise<Sheet> {

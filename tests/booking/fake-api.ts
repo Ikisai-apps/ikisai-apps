@@ -36,6 +36,14 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
 
 /** Columnas que fija el servidor en las propuestas (no son escribibles desde el cliente). */
 const PROPOSAL_SERVER_COLUMNS = ['version', 'subtotal', 'adjustments', 'vat_amount', 'total', 'deposit_amount', 'sent_at'];
+/** Columnas que fija el servidor (trigger o portal) y los clientes no escriben: huéspedes y restricciones (migración 0433). */
+const SERVER_COLUMNS: Record<string, Record<string, unknown>> = {
+  'booking.guests': { field_sources: {}, allergies_visible_to_organizer: false, privacy_ack_at: null, privacy_ack_version: null },
+  'booking.dietary_restrictions': { source: 'staff' },
+  'booking.reservation_finance': { payment_registered_at: null },
+};
+/** PNG de 1x1 que sirve de firma en `GET /guest-signature/:id`. */
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const PROPOSAL_PROCEDURES = ['booking.new_proposal_version', 'booking.send_proposal', 'booking.accept_proposal'];
 
 export interface FakeRow {
@@ -120,6 +128,29 @@ export interface FakePortalLink {
   email: string | null;
 }
 
+export type FakeSesStatus = 'preparada' | 'enviando' | 'en_proceso' | 'aceptada' | 'rechazada' | 'anulada' | 'error';
+
+/** Fila de `GET /ses/:reservationId` (docs/booking/API.md §17.2). */
+export interface FakeSesCommunication {
+  id: string;
+  reservation_id: string;
+  kind: 'RH' | 'PV' | 'anulacion';
+  status: FakeSesStatus;
+  environment: string;
+  cancels_id: string | null;
+  lot_id: string | null;
+  ses_code: string | null;
+  error_code: string | null;
+  error_text: string | null;
+  legal_start_at: string | null;
+  snapshot: { start_date: unknown; end_date: unknown; persons: unknown };
+  attempts: number;
+  sent_at: string | null;
+  accepted_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+}
+
 export interface FakeApi {
   url: string;
   /** Fija las filas de `GET /read/invoices.booking_cost_projection` (se filtran por `where[target_id]`). */
@@ -146,6 +177,21 @@ export interface FakeApi {
   setEntity(entity: Record<string, unknown> | null, logoUrl?: string | null): void;
   /** Enlaces de portal emitidos, con su token (la lista de la API no lo lleva). */
   portalLinks(): FakePortalLink[];
+  /**
+   * SES (API §17.4). Estado con que nace la próxima comunicación de `POST /ses/:id/rh` (por defecto `en_proceso`; se consume una vez).
+   * Con `rechazada` o `error` se puede dar `errorText`; con `preparada`, `errorCode` (`PAUSED` o `NOT_CONFIGURED`).
+   */
+  setSesNext(status: FakeSesStatus, extra?: { errorText?: string; errorCode?: string }): void;
+  /** Hace que el siguiente `POST /ses/...` falle con ese código y estado (p. ej. `SES_DATA` con su mensaje y `details.field`). */
+  failNextSes(code: string, status: number, message: string, details?: unknown): void;
+  /** Simula el tick del servidor: la comunicación pasa a `aceptada` con código y fecha. */
+  sesAccept(id: string): void;
+  /** Simula que SES la rechaza. */
+  sesReject(id: string, errorText: string): void;
+  /** Comunicaciones de SES guardadas (la más reciente primero). */
+  sesComms(reservationId?: string): FakeSesCommunication[];
+  /** Cambia campos de una comunicación (p. ej. `legal_start_at` de hace 13 h). */
+  sesPatch(id: string, fields: Partial<FakeSesCommunication>): void;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -367,6 +413,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (op.table === 'booking.reservations' && (typeof fields.title !== 'string' || !fields.title.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? COLUMN_DEFAULTS[op.table]?.[column] ?? null;
+        for (const [column, value] of Object.entries(SERVER_COLUMNS[op.table!] ?? {})) row[column] = structuredClone(value);
+        if (op.table === 'booking.reservation_finance' && row.payment_date) row.payment_registered_at = now;
         if (op.table === 'booking.proposals') {
           for (const column of PROPOSAL_SERVER_COLUMNS) row[column] = null;
           row.version = Math.max(0, ...Array.from(store.values()).filter((x) => x.reservation_id === fields.reservation_id).map((x) => Number(x.version))) + 1;
@@ -379,7 +427,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (op.expectedRevision !== row.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
+        const hadPaymentDate = row.payment_date;
         if (op.op === 'update') Object.assign(row, fields);
+        // Como el trigger de la migración 0441: el servidor anota cuándo se registró el pago (momento legal del plazo de SES).
+        if (op.op === 'update' && op.table === 'booking.reservation_finance') row.payment_registered_at = !row.payment_date ? null : hadPaymentDate ? row.payment_registered_at ?? null : now;
         if (op.op === 'update' && op.table === 'booking.proposal_lines') row.amount = row.unit === 'porcentaje' ? null : round2(Number(row.quantity) * Number(row.unit_amount) * (100 - Number(row.discount_pct ?? 0)) / 100);
         if (op.op === 'delete') row.deleted_at = now;
         if (op.op === 'restore') {
@@ -407,6 +458,31 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return result;
   }
 
+  // SES: comunicaciones en memoria con estados guionizables.
+  const sesStore = new Map<string, FakeSesCommunication>();
+  let sesNext: { status: FakeSesStatus; errorText?: string; errorCode?: string } = { status: 'en_proceso' };
+  let sesFailure: { code: string; status: number; message: string; details: unknown } | null = null;
+  let sesSeq = 0;
+  const sesPublic = ({ reservation_id: _reservationId, ...rest }: FakeSesCommunication) => rest;
+  const sesList = (reservationId: string) => Array.from(sesStore.values()).filter((c) => c.reservation_id === reservationId).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+  const SES_LIVE = ['preparada', 'enviando', 'en_proceso', 'aceptada', 'error'];
+  function sesCreate(reservationId: string, kind: 'RH' | 'anulacion', fields: Partial<FakeSesCommunication>): FakeSesCommunication {
+    const reservation = data.get('booking.reservations')!.get(reservationId)!;
+    const event = Array.from(data.get('booking.events')?.values() ?? []).find((e) => e.reservation_id === reservationId && e.deleted_at === null);
+    const settings = Array.from(data.get('booking.ses_settings')?.values() ?? [])[0];
+    const stamp = nowIso();
+    sesSeq += 1;
+    const comm: FakeSesCommunication = {
+      id: randomUUID(), reservation_id: reservationId, kind, status: 'en_proceso', environment: String(settings?.environment ?? 'pre'), cancels_id: null, lot_id: null, ses_code: null,
+      error_code: null, error_text: null, legal_start_at: String(data.get('booking.reservation_finance')?.get(reservationId)?.payment_registered_at ?? stamp),
+      snapshot: { start_date: reservation.start_date, end_date: reservation.end_date, persons: event?.final_guests ?? reservation.expected_guests ?? null },
+      attempts: 1, sent_at: stamp, accepted_at: null, cancelled_at: null,
+      // Marca creciente: dos comunicaciones en el mismo milisegundo siguen ordenadas.
+      created_at: new Date(Date.now() + sesSeq).toISOString(), ...fields,
+    };
+    sesStore.set(comm.id, comm);
+    return comm;
+  }
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
   const calendarRetries: string[] = [];
   let costRows: FakeCostRow[] = [];
@@ -445,6 +521,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         upload.size = Buffer.concat(chunks).byteLength;
         return json(res, 200, { Key: stored[1] });
       }
+      if (path.startsWith('_sig/') && method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+        return void res.end(TINY_PNG);
+      }
       if (path === 'auth/login' && method === 'POST') {
         const body = await readJson(req);
         const email = String(body.username ?? body.email ?? '').trim().toLowerCase();
@@ -466,6 +546,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       // catálogo del lanzador (contrato §3.3): apps con acceso de la cuenta, internas y portales
+      if (path === 'members') return json(res, 200, users.map((u) => ({ userId: userIds.get(u.email), role: 'owner', displayName: u.displayName ?? u.email })));
+      const signature = /^guest-signature\/([0-9a-f-]+)$/.exec(path);
+      if (signature && method === 'GET') {
+        const guest = data.get('booking.guests')?.get(signature[1]!);
+        if (!guest || guest.deleted_at || typeof guest.signature_file_id !== 'string' || !uploads.has(guest.signature_file_id)) throw new Fault(404, 'FILE_NOT_FOUND', 'No hay firma de ese huésped.');
+        return json(res, 200, { url: `/api/v1/_sig/${guest.signature_file_id}`, mime: 'image/png', expiresAt: new Date(Date.now() + 300_000).toISOString() });
+      }
       if (path === 'entity') return json(res, 200, entityData);
       if (path === 'apps') return json(res, 200, {
         current: 'booking',
@@ -534,6 +621,39 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             link.extendedUntil = new Date(until).toISOString();
           }
           return json(res, 200, { linkId: link.linkId, revokedAt: link.revokedAt, validUntil: linkValidUntil(link) });
+        }
+      }
+      const sesPath = /^ses\/([0-9a-f-]+)(?:\/(rh)|\/cancel\/([0-9a-f-]+))?$/.exec(path);
+      if (sesPath) {
+        const reservationId = sesPath[1]!;
+        if (sesPath[2] === undefined && sesPath[3] === undefined && method === 'GET') return json(res, 200, { items: sesList(reservationId).map(sesPublic) });
+        if (method === 'POST') {
+          if (sesFailure) {
+            const failure = sesFailure;
+            sesFailure = null;
+            throw new Fault(failure.status, failure.code, failure.message, failure.details);
+          }
+          const reservation = data.get('booking.reservations')?.get(reservationId);
+          if (!reservation || reservation.deleted_at) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+          if (sesPath[2] === 'rh') {
+            if (reservation.ses_enabled === false) throw new Fault(422, 'SES_DISABLED', 'SES está desactivado para esta reserva.');
+            if (!['confirmada', 'en_ejecucion', 'cerrada'].includes(String(reservation.status))) throw new Fault(422, 'SES_NOT_CONFIRMED', 'La reserva no está confirmada.');
+            if (!data.get('booking.reservation_finance')?.get(reservationId)?.payment_registered_at) throw new Fault(422, 'SES_PAYMENT_REQUIRED', 'Falta el pago.');
+            if (sesList(reservationId).some((c) => c.kind === 'RH' && SES_LIVE.includes(c.status))) throw new Fault(409, 'SES_ALREADY_COMMUNICATED', 'Ya hay una comunicación viva.');
+            const scripted = sesNext;
+            sesNext = { status: 'en_proceso' };
+            const accepted = scripted.status === 'aceptada';
+            const comm = sesCreate(reservationId, 'RH', { status: scripted.status, error_text: scripted.errorText ?? null, error_code: scripted.errorCode ?? null,
+              accepted_at: accepted ? nowIso() : null, ses_code: accepted ? `SYN-${String(sesSeq).padStart(4, '0')}` : null });
+            return json(res, 200, { id: comm.id, status: comm.status });
+          }
+          const target = sesStore.get(sesPath[3] ?? '');
+          if (!target || target.reservation_id !== reservationId) throw new Fault(404, 'NOT_FOUND', 'La comunicación no existe.');
+          if (target.status !== 'aceptada') throw new Fault(422, 'SES_NOT_CANCELLABLE', 'Solo se anulan comunicaciones aceptadas.');
+          target.status = 'anulada';
+          target.cancelled_at = nowIso();
+          const cancellation = sesCreate(reservationId, 'anulacion', { cancels_id: target.id, status: 'aceptada', accepted_at: nowIso(), ses_code: target.ses_code });
+          return json(res, 200, { id: cancellation.id, status: cancellation.status });
         }
       }
       if (path === 'calendar/status' && method === 'GET') return json(res, 200, calendarStatus);
@@ -608,6 +728,24 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     changeLog: () => changes.map((c) => ({ requestId: c.requestId, table: c.table, id: c.id, op: c.op })),
     failNextCommit(code, status) { nextCommitFailure = { code, status }; },
     setPortalRole(role) { portalRole = role; },
+    setSesNext(status, extra = {}) { sesNext = { status, ...extra }; },
+    failNextSes(code, status, message, details = {}) { sesFailure = { code, status, message, details }; },
+    sesAccept(id) {
+      const comm = sesStore.get(id);
+      if (!comm) throw new Error(`comunicación ${id} no existe`);
+      Object.assign(comm, { status: 'aceptada', accepted_at: nowIso(), ses_code: comm.ses_code ?? `SYN-${String(++sesSeq).padStart(4, '0')}`, error_code: null, error_text: null });
+    },
+    sesReject(id, errorText) {
+      const comm = sesStore.get(id);
+      if (!comm) throw new Error(`comunicación ${id} no existe`);
+      Object.assign(comm, { status: 'rechazada', error_code: 'SES_REJECTED', error_text: errorText });
+    },
+    sesComms: (reservationId) => Array.from(sesStore.values()).filter((c) => !reservationId || c.reservation_id === reservationId).sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => ({ ...c })),
+    sesPatch(id, fields) {
+      const comm = sesStore.get(id);
+      if (!comm) throw new Error(`comunicación ${id} no existe`);
+      Object.assign(comm, fields);
+    },
     setEntity(entity, logoUrl = null) { entityData = { entity, logoUrl }; },
     portalLinks: () => Array.from(portalLinks.values()).map((l) => ({ ...l })),
     serverUpdate(table, id, fields) {

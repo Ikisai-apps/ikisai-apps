@@ -9,6 +9,7 @@ import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
+import { createFeedback, createFeedbackWorker } from './feedback.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -31,6 +32,8 @@ export interface AppConfig extends SupabaseConfig {
   mcpTools?: McpTool[];
   /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
   admin?: boolean;
+  /** Solo central-api: worker del feedback (`worker/feedback/tick`), que envía a Tasks lo operativo y copia el estado de las tareas. */
+  feedbackWorker?: boolean;
   /** Booking y Organizers: montan `portal-links` para emitir y gestionar enlaces de los portales (contrato §3.6). */
   portalIssuer?: boolean;
 }
@@ -163,6 +166,22 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'files/:id', handler: ({ ctx, params }) => uploads.readUrl(ctx, params.id ?? '') },
     );
   }
+  // Feedback y QA (contrato §3.7): en todas las apps y portales.
+  const feedback = createFeedback(supabase, config.app);
+  routes.push(
+    { method: 'POST', pattern: 'feedback/uploads', handler: async ({ ctx, json }) => feedback.uploads.create(ctx, await json()) },
+    { method: 'POST', pattern: 'feedback/uploads/:id/verify', handler: ({ ctx, params }) => feedback.uploads.verify(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback', handler: async ({ ctx, json }) => feedback.create(ctx, await json()) },
+    { method: 'GET', pattern: 'feedback', handler: ({ ctx, url }) => feedback.list(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'feedback/tree', handler: ({ ctx, url }) => feedback.tree(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'feedback/:id', handler: ({ ctx, params }) => feedback.get(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback/:id/support', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'support', {}) },
+    { method: 'POST', pattern: 'feedback/:id/verify', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'verify', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/reopen', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'reopen', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/dismiss', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'dismiss', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/approve', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'approve', {}) },
+    { method: 'POST', pattern: 'feedback/:id/merge', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'merge', await json()) },
+  );
   if (config.admin) {
     const admin = createAdmin(supabase);
     routes.push(
@@ -188,7 +207,12 @@ export function createApp(config: AppConfig): AppHandler {
   }
   routes.push(...(config.routes ?? []));
   const compiled = routes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
-  const compiledWorkers = (config.workerRoutes ?? []).map((route) => ({ ...route, matcher: compile(route.pattern) }));
+  const workerRoutes = [...(config.workerRoutes ?? [])];
+  if (config.feedbackWorker) {
+    const feedbackWorker = createFeedbackWorker(supabase, { workerKey: config.workerKey, fetch: config.fetch });
+    workerRoutes.push({ method: 'POST', pattern: 'feedback/tick', handler: () => feedbackWorker.tick() });
+  }
+  const compiledWorkers = workerRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
 
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');

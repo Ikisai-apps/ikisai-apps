@@ -2,7 +2,8 @@
 import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
-import { sesTlsPing } from './ses/transport.ts';
+import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
+import { createTasksNotifier, sesCancel, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
@@ -18,6 +19,23 @@ export function visibleBookingRow(table: string, _row: Record<string, unknown>, 
   return table !== TABLES.guests || canSeeGuests(ctx.membership);
 }
 
+/** SES.HOSPEDAJES (API.md §17): transporte y secretos. En la Edge, `Deno.env`; en las pruebas, un SES simulado. */
+export interface BookingSesConfig {
+  transport?: SesTransport;
+  env?: (name: string) => string | undefined;
+  /** Aviso a Tasks (`booking.ses_deadline`); por defecto, la ruta de worker de Tasks si hay `IKISAI_WORKER_KEY`. */
+  notifyTasks?: SesDeps['notifyTasks'] | null;
+}
+
+// deno-lint-ignore no-explicit-any
+const denoEnv = (name: string): string | undefined => (globalThis as any).Deno?.env?.get?.(name);
+const sesDeps = (supabase: Supabase, ses: BookingSesConfig): SesDeps => ({
+  invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args }),
+  transport: ses.transport ?? createSesTransport(),
+  env: ses.env ?? denoEnv,
+  notifyTasks: ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv),
+});
+
 export interface BookingCalendarConfig {
   /** Adaptador de calendario. Sin él la integración está apagada (`health: 'not_configured'`) y nada se marca como sincronizado. */
   adapter?: CalendarAdapter | null;
@@ -30,7 +48,7 @@ declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | unde
 const systemInvoke = (supabase: Supabase): CalendarInvoke => (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args });
 
 /** Ruta de sistema para el planificador de Core: `POST /api/v1/worker/calendar/tick` con `X-Ikisai-Worker-Key`. */
-export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}): WorkerRoute[] {
+export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supabase?: Supabase, ses: BookingSesConfig = {}): WorkerRoute[] {
   return [{
     method: 'POST', pattern: 'calendar/tick',
     handler: async ({ invoke, json }) => {
@@ -42,6 +60,15 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}): Worke
     // Prueba de TLS contra SES PRE sin credenciales (API.md §17.3): dice qué vía del runtime acepta el intermedio de la FNMT.
     method: 'POST', pattern: 'ses/ping',
     handler: () => sesTlsPing(),
+  }, {
+    // Envía lo preparado y consulta los lotes en proceso; si no hay nada pendiente, no llama a SES.
+    method: 'POST', pattern: 'ses/tick',
+    handler: async ({ json }) => {
+      if (!supabase) return { sent: 0, checked: 0, skipped: 0, notices: 0 };
+      const body = await json().catch(() => ({}));
+      const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 50) : 10;
+      return sesTick(sesDeps(supabase, ses), limit);
+    },
   }];
 }
 
@@ -78,7 +105,7 @@ const ENTITY_PROJECTION = 'central.common_entity_projection';
 const GUEST_SIGNATURE = 'booking.guest_signature_file';
 const ENTITY_LOGO_BUCKET = 'central-documents';
 
-export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}): AppRoute[] {
+export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}): AppRoute[] {
   const adapter = calendar.adapter ?? null;
   const system = systemInvoke(supabase);
   return [
@@ -139,6 +166,37 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
       },
     },
     {
+      // Estado de las comunicaciones a SES de una reserva (editor y owner).
+      method: 'GET', pattern: 'ses/:reservationId',
+      handler: ({ ctx, params }) => supabase.rpc('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_status', p_args: { reservation_id: params.reservationId } }),
+    },
+    {
+      // «Comunicar reserva a SES»: solo con SES activo, reserva confirmada y pago registrado (lo comprueba la fuente).
+      method: 'POST', pattern: 'ses/:reservationId/rh',
+      handler: async ({ ctx, params }) => {
+        requireEditor(ctx);
+        const source = await supabase.rpc<any>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_reservation_source', p_args: { reservation_id: params.reservationId } });
+        try {
+          return await sesCommunicateReservation(sesDeps(supabase, ses), source, ctx.user.id);
+        } catch (error) {
+          const e = error as { name?: string; field?: string; message?: string };
+          if (e?.name === 'SesDataError') fail(422, 'SES_DATA', e.message ?? 'Faltan datos para comunicar a SES.', { field: e.field });
+          throw error;
+        }
+      },
+    },
+    {
+      // «Anular en SES»: anula una comunicación aceptada de la reserva.
+      method: 'POST', pattern: 'ses/:reservationId/cancel/:communicationId',
+      handler: async ({ ctx, params }) => {
+        requireEditor(ctx);
+        const status = await supabase.rpc<{ items: Array<Record<string, any>> }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_status', p_args: { reservation_id: params.reservationId } });
+        const target = status.items.find((c) => c.id === params.communicationId);
+        if (!target || target.status !== 'aceptada' || !target.ses_code) fail(422, 'SES_NOT_CANCELLABLE', 'Solo se anula una comunicación aceptada por SES.');
+        return sesCancel(sesDeps(supabase, ses), { reservationId: params.reservationId!, communicationId: target.id, sesCode: target.ses_code, environment: target.environment, requestedBy: ctx.user.id });
+      },
+    },
+    {
       method: 'POST', pattern: 'calendar/:reservationId/retry',
       handler: async ({ ctx, params }) => {
         requireEditor(ctx);
@@ -148,8 +206,8 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   ];
 }
 
-export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig }) {
-  const { calendar = {}, ...config } = base;
+export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>> & { calendar?: BookingCalendarConfig; ses?: BookingSesConfig }) {
+  const { calendar = {}, ses = {}, ...config } = base;
   const supabase = createSupabase(config);
   return createApp({
     ...config,
@@ -158,8 +216,8 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     origins: base.origins ?? BOOKING_ORIGINS,
     uploads: { bucket: 'booking-documents', maxBytes: 15 * 1024 * 1024, allowedMime: ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'] },
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
-    routes: bookingRoutes(supabase, calendar),
-    workerRoutes: bookingWorkerRoutes(calendar),
+    routes: bookingRoutes(supabase, calendar, ses),
+    workerRoutes: bookingWorkerRoutes(calendar, supabase, ses),
     // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
     portalIssuer: true,
   });
