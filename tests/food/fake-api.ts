@@ -96,6 +96,8 @@ export interface FakeApi {
   requests: Array<{ method: string; path: string }>;
   /** Reportes recibidos en `POST /feedback`. */
   feedbackReports(): FakeFeedbackReport[];
+  /** Avisos de avería recibidos en `POST /equipment/:id/fault` (lo que Food reenviaría a Tasks). */
+  faults(): Array<{ id: string; body: Record<string, unknown> }>;
   /** Totales de uso recibidos en `POST /usage/batch`. */
   usageItems(): FakeUsageItem[];
   close(): Promise<void>;
@@ -154,6 +156,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const feedbackStore = new Map<string, FakeFeedbackReport>();
   const feedbackByRequest = new Map<string, string>();
   const usage = new Map<string, FakeUsageItem>();
+  const faults: Array<{ id: string; body: Record<string, unknown> }> = [];
   let consentedAt: string | null = options.usageConsent === false ? null : new Date().toISOString();
   let cursor = 0;
 
@@ -486,6 +489,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (!report) throw new Fault(404, 'NOT_FOUND', 'Reporte desconocido.');
         return json(res, 200, { report, attachments: [], tasks: [], agentBlock: `Reporte ${report.code}` });
       }
+      // Aviso de avería a Tasks (API.md §6.1): una petición por máquina y día; sin regla en Tasks, «Por clasificar».
+      const fault = /^equipment\/([0-9a-f-]{36})\/fault$/.exec(path);
+      if (fault && method === 'POST') {
+        const body = await readJson(req);
+        const created = !faults.some((f) => f.id === fault[1]);
+        faults.push({ id: fault[1]!, body });
+        return json(res, 200, { created, routed: 'pending', taskId: randomUUID() });
+      }
       if (path === 'apps' && method === 'GET') {
         return json(res, 200, {
           current: 'food',
@@ -573,6 +584,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   return {
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
+    faults: () => faults.map((f) => ({ ...f, body: { ...f.body } })),
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
     usageItems: () => Array.from(usage.values()).map((u) => ({ ...u })),
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
