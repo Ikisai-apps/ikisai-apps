@@ -103,6 +103,39 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   external_qr_url: string | null;
   external_csv: string | null;
   vf_status: string | null;
+  /** Emisor (la entidad de Central) copiado al registrar: NIF y nombre para Verifactu, y el resto en `issuer`. */
+  issuer_tax_id: string | null;
+  issuer_name: string | null;
+  issuer: IssuerSnapshot | null;
+}
+
+/** Datos de la entidad (Central) tal como se copian en una emitida al registrarla. */
+export interface IssuerSnapshot {
+  entity_id: string;
+  entity_revision: number;
+  legal_name: string;
+  trade_name: string | null;
+  tax_id: string;
+  address_line: string;
+  postal_code: string;
+  city: string;
+  province: string | null;
+  country: string;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  logo_file_id: string | null;
+}
+
+/** Fila de `central.common_entity_projection` a copia del emisor (sin rutas de almacenamiento). */
+export function issuerSnapshot(row: Record<string, unknown> | null | undefined): IssuerSnapshot | null {
+  if (!row || !row.entity_id || !row.legal_name || !row.tax_id) return null;
+  const s = (k: string) => (row[k] === null || row[k] === undefined ? null : String(row[k]));
+  return {
+    entity_id: String(row.entity_id), entity_revision: Number(row.entity_revision ?? 0), legal_name: String(row.legal_name), trade_name: s('trade_name'),
+    tax_id: String(row.tax_id), address_line: s('address_line') ?? '', postal_code: s('postal_code') ?? '', city: s('city') ?? '', province: s('province'),
+    country: s('country') ?? 'ES', email: s('email'), phone: s('phone'), website: s('website'), logo_file_id: s('logo_file_id'),
+  };
 }
 
 export interface IssuedLineRow extends SyncedColumns {

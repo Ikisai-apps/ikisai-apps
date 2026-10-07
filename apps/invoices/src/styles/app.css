@@ -78,3 +78,8 @@ code{font-size:12.5px;word-break:break-all}
 .csv-mapping{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 12px}
 .provenance{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
 .provenance li{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px}
+/* Emisor (ronda 37) y copia imprimible de una emitida. */
+.issuer{display:flex;flex-direction:column;gap:2px;margin:8px 0 12px;font-size:14px}
+.issued-print-parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.issued-print-parties small{display:block;color:var(--muted)}
+.issued-print-logo{max-height:56px;max-width:180px;display:block;margin:4px 0}

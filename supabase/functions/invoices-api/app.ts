@@ -2,7 +2,7 @@
 import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
 import { sha256Hex, stable } from '../_kit/supabase.ts';
 import {
-  DomainError, EXPORT_CSV_FILES, buildImportArgs, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
+  DomainError, EXPORT_CSV_FILES, buildImportArgs, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
   type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
@@ -221,6 +221,7 @@ async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unk
 
 export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
   return async function beforeCommit(operations: Operation[], ctx: RequestContext): Promise<void> {
+    let entityRow: { row: Record<string, unknown> | null } | null = null;
     for (const [index, op] of operations.entries()) {
       if (op.op === 'call') {
         if (op.procedure === 'invoices.import_v1') await checkImport(supabase, ctx, op.args ?? {}, index);
@@ -260,6 +261,12 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       if (op.table === TABLES.exportItems) fail(422, 'INVALID_OPERATION', 'Las filas de entrega las escribe el procedimiento invoices.create_export.', { index });
       // Emitidas (API.md §13): sin papelera; documentos comprobados; destino de ingreso en Booking resuelto con el token del usuario.
+      // Emisor de una emitida: copia de la entidad de Central al registrarla (ronda 37). Sin datos en Central, queda vacío.
+      if (op.table === TABLES.issuedInvoices && op.op === 'insert') {
+        entityRow ??= { row: await readEntity(supabase, ctx) };
+        const snap = issuerSnapshot(entityRow.row);
+        if (snap) Object.assign(fields, { issuer_tax_id: snap.tax_id, issuer_name: snap.legal_name, issuer: snap });
+      }
       if (ISSUED_NO_DELETE.includes(op.table) && op.op === 'delete') fail(422, 'ISSUED_NOT_DELETABLE', domainMessage('ISSUED_NOT_DELETABLE'), { index, table: op.table, id: op.id });
       if (op.table === TABLES.issuedFiles && op.op === 'insert') {
         Object.assign(fields, await verifiedFile(supabase, ctx, fields.file_id, index));
@@ -401,6 +408,16 @@ async function logExtraction(supabase: Supabase, ctx: RequestContext, status: Ex
     await edgeCommit(supabase, ctx, `extract-log-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['extract:log'] } });
   } catch (error) {
     console.warn('[invoices] no se pudo registrar la extracción', error);
+  }
+}
+
+/** La entidad de Central (una fila) leída con la sesión del usuario; `null` si aún no tiene datos o no está la lectura. */
+async function readEntity(supabase: Supabase, ctx: RequestContext): Promise<Record<string, unknown> | null> {
+  try {
+    const out = await supabase.rpc<{ rows: Array<Record<string, unknown>> }>('core_read', { p_app: ctx.app, p_actor: ctx.user.id, p_name: 'central.common_entity_projection', p_args: { limit: 1 } });
+    return out.rows?.[0] ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -548,6 +565,26 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         await logExtraction(supabase, ctx, status.rows, validation.ok ? 'ok' : 'invalida', out.usage ?? null, approved);
         if (!validation.ok) fail(422, 'EXTRACTION_INVALID', domainMessage('EXTRACTION_INVALID'), { errors: validation.errors, warnings: out.warnings ?? [], usage: out.usage ?? null });
         return { document: validation.document, document_sha256: await importDocumentSha256(validation.document), warnings: out.warnings ?? [], usage: out.usage ?? null };
+      },
+    },
+    {
+      /**
+       * Entidad emisora (Central, ronda 37): datos para la ficha y la copia imprimible de las emitidas. El logotipo, del
+       * bucket privado de Central, va como URL firmada de 10 minutos; no se guarda. Sin datos en Central: `entity: null`.
+       */
+      method: 'GET', pattern: 'entity', handler: async ({ ctx }) => {
+        const row = await readEntity(supabase, ctx);
+        const entity = issuerSnapshot(row);
+        let logoUrl: string | null = null;
+        if (entity && row?.logo_bucket && row?.logo_path) {
+          try {
+            const path = String(row.logo_path).split('/').map(encodeURIComponent).join('/');
+            const signed = await supabase.remote(`/storage/v1/object/sign/${row.logo_bucket}/${path}`, { service: true, method: 'POST', body: { expiresIn: 600 } });
+            const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+            logoUrl = rel ? supabase.base + '/storage/v1' + rel : null;
+          } catch { logoUrl = null; }
+        }
+        return { entity, logo_url: logoUrl, logo_mime: entity && row?.logo_mime ? row.logo_mime : null };
       },
     },
     {

@@ -4,7 +4,7 @@
  * Sin papelera: una emitida se anula con motivo y su número sigue ocupado.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUED_CSV_FIELDS, ISSUED_CSV_FIELD_LABELS, ISSUED_CSV_REQUIRED, ISSUED_CSV_TEMPLATE_HEADER,
   ISSUED_EXTRACTION_PROMPT, ISSUED_ORIGIN_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
@@ -20,6 +20,21 @@ import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument 
 import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
+import type { IssuerSnapshot } from '@ikisai/domain-invoices';
+
+/** Entidad emisora de Central (ronda 37), leída de la Edge; sin red o sin datos, `null`. */
+async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot | null; logo_url: string | null }> {
+  if (!navigator.onLine) return { entity: null, logo_url: null };
+  try { return await client.api<{ entity: IssuerSnapshot | null; logo_url: string | null }>('/entity'); } catch { return { entity: null, logo_url: null }; }
+}
+
+const MISSING_ENTITY = 'Faltan los datos de la entidad en Central';
+
+function issuerLines(e: IssuerSnapshot): string[] {
+  return [e.trade_name && e.trade_name !== e.legal_name ? `${e.legal_name} (${e.trade_name})` : e.legal_name, `NIF ${e.tax_id}`,
+    [e.address_line, [e.postal_code, e.city].filter(Boolean).join(' '), e.province, e.country !== 'ES' ? e.country : null].filter(Boolean).join(', '),
+    [e.email, e.phone, e.website].filter(Boolean).join(' · ')].filter(Boolean);
+}
 import type { ViewContext } from './shell.ts';
 
 interface IssuedData {
@@ -155,6 +170,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
     actions.push(el('button', { class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
     actions.push(el('button', { class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
   }
+  actions.push(el('button', { class: 'softbtn', type: 'button', id: 'printIssued', onclick: () => void openIssuedPrint(ctx, invoice, data) }, icon('download', 18), 'Imprimir copia'));
 
   async function toggleCollected(): Promise<void> {
     const fields = invoice.payment_status === 'cobrada' ? { payment_status: 'pendiente', paid_at: null } : { payment_status: 'cobrada', paid_at: todayIso() };
@@ -172,8 +188,12 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   }
 
   const recipient = [invoice.recipient_name, invoice.recipient_tax_id].filter(Boolean).join(' · ') || 'Sin destinatario (simplificada)';
+  const issuer = invoice.issuer;
   return el('div', null,
     actions.length ? el('div', { class: 'btnrow' }, ...actions) : null,
+    issuer
+      ? el('div', { class: 'issuer', id: 'issuedIssuer' }, el('span', { class: 'hint' }, 'Emisor'), ...issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('span', null, l))))
+      : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`)),
     invoice.status === 'anulada' ? el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `Anulada: ${invoice.annulled_reason ?? ''}`)) : null,
     invoice.review_reason === 'REVISAR IMPORTES' ? el('div', { class: 'banner warn', id: 'issuedReview' }, icon('warn', 18), el('span', null, `El total del documento no cuadra con el desglose (diferencia ${eur(Number(invoice.totals_delta ?? 0))}).`)) : null,
     el('div', { class: 'inv-totals' },
@@ -216,6 +236,45 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         ? 'Emitida desde la app: registro Verifactu.'
         : `${ISSUED_ORIGIN_LABELS[invoice.origin] ?? invoice.origin}. El registro Verifactu lo hace la herramienta que la expidió; aquí queda en el libro registro de expedidas.`)),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Copia imprimible (ronda 37): datos del emisor de Central. Marcada «COPIA DE REGISTRO»: la factura original la expidió
+// otra herramienta, así que esta hoja no es una factura (no se generan dos documentos de la misma factura).
+// ---------------------------------------------------------------------------
+async function openIssuedPrint(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
+  const live = await fetchEntity(ctx.client);
+  const issuer = invoice.issuer ?? live.entity;
+  const lines = data.linesBy.get(invoice.id) ?? [];
+  const taxes = data.taxesBy.get(invoice.id) ?? [];
+  const body = el('div', { class: 'issued-print' },
+    el('div', { class: 'issued-print-parties' },
+      el('div', { id: 'printIssuer' }, el('small', null, 'Emisor'),
+        issuer && live.logo_url ? el('img', { src: live.logo_url, alt: issuer.legal_name, class: 'issued-print-logo' }) : null,
+        ...(issuer ? issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('div', null, l))) : [el('div', { class: 'banner warn' }, MISSING_ENTITY)])),
+      el('div', null, el('small', null, 'Destinatario'),
+        el('strong', null, invoice.recipient_name ?? 'Sin destinatario (simplificada)'), invoice.recipient_tax_id ? el('div', null, `NIF ${invoice.recipient_tax_id}`) : null)),
+    el('table', { class: 'inv-table' },
+      el('thead', null, el('tr', null, el('th', null, 'Concepto'), el('th', { class: 'num' }, 'Base'), el('th', { class: 'num' }, 'IVA'))),
+      el('tbody', null, ...lines.map((l) => el('tr', null, el('td', null, l.description), el('td', { class: 'num' }, eur(l.net_amount)), el('td', { class: 'num' }, l.vat_rate === null ? '—' : `${Number(l.vat_rate)} %`))))),
+    taxes.length ? el('table', { class: 'inv-table' }, el('tbody', null, ...taxes.map((t) => el('tr', null, el('td', null, `${t.tax.toUpperCase()} ${t.rate === null ? '' : `${Number(t.rate)} %`}`), el('td', { class: 'num' }, eur(Number(t.taxable_base ?? 0))), el('td', { class: 'num' }, eur(t.quota)))))) : null,
+    el('div', { class: 'inv-totals' },
+      el('div', null, el('span', null, 'Base'), el('strong', null, eur(invoice.base_total))),
+      el('div', null, el('span', null, 'Cuotas'), el('strong', null, eur(Number(invoice.quota_total) + Number(invoice.surcharge_total)))),
+      el('div', null, el('span', null, 'Retenciones'), el('strong', null, eur(invoice.withholding_total))),
+      el('div', { class: 'total' }, el('span', null, 'TOTAL'), el('strong', null, eur(invoice.total)))));
+  const view = createPrintView({
+    brand: { appName: 'Finance', markIcon: 'invoice', line: issuer?.legal_name ?? MISSING_ENTITY },
+    title: `Factura ${numberOf(invoice)}`,
+    subtitle: ISSUED_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type,
+    meta: [`Expedida el ${shortDate(invoice.issue_date)}`, invoice.description],
+    draft: 'COPIA DE REGISTRO',
+    intro: body,
+    sections: [],
+    notes: `Copia de registro de Ikisai Finance: no es una factura. La factura original se expidió con ${invoice.external_tool === 'google_sheet' ? 'la hoja de cálculo de facturación' : invoice.external_tool ?? 'otra herramienta'}${invoice.status === 'anulada' ? ' y está ANULADA' : ''}.`,
+    runningFoot: `Ikisai Finance · copia de registro ${numberOf(invoice)}`,
+  }, { printLabel: 'Imprimir / Guardar PDF' });
+  openSheet({ title: `Copia de ${numberOf(invoice)}`, body: el('div', { id: 'issuedPrintView' }, view.element), foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
 
 // ---------------------------------------------------------------------------
@@ -574,6 +633,13 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     error,
   );
   addLine();
+  // Emisor que se copiará al registrar (lo pone el servidor desde Central).
+  const issuerNote = el('p', { class: 'hint', id: 'newIssuedIssuer' }, 'Emisor: comprobando los datos de la entidad…');
+  form.prepend(issuerNote);
+  void fetchEntity(client).then(({ entity }) => {
+    if (entity) replace(issuerNote, `Emisor: ${entity.legal_name} · NIF ${entity.tax_id} (de Central).`);
+    else { issuerNote.className = 'banner warn'; replace(issuerNote, icon('warn', 18), el('span', null, `${MISSING_ENTITY}. La factura se registrará sin emisor; complétalos en Central.`)); }
+  });
   openSheet({
     title: 'Nueva emitida',
     meta: 'Registro de una factura expedida con otra herramienta. No se envía nada a la AEAT desde aquí.',
