@@ -189,6 +189,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - `uploads`, `files/:id` y el feedback ya usan la abstracción. El contrato del frontend no cambia.
 - **Activación:** secretos `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`, más `IKISAI_STORAGE_PROVIDER=r2` para que los archivos nuevos vayan a R2. Lo que ya está en Supabase sigue sirviéndose de allí.
 - **Regla para las apps:** nunca llamar a `/storage/v1/object…` directamente. Hay que usar `createStorage(supabase).readUrl(fila)` o `.download(fila)`, con la fila de `core.files` (que lleva `storage_provider`).
+- **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
 ## 4. Commit
 

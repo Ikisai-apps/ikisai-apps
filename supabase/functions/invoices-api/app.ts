@@ -1,5 +1,5 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
-import { createApp, createSupabase, fail, isFault, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type Supabase } from '../_kit/mod.ts';
+import { createApp, createStorage, createSupabase, fail, isFault, r2ConfigFromEnv, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type StorageAccess, type Supabase } from '../_kit/mod.ts';
 import { sha256Hex, stable } from '../_kit/supabase.ts';
 import {
   DomainError, EXPORT_CSV_FILES, buildImportArgs, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
@@ -478,11 +478,11 @@ interface Bundle {
   export: { id: string; code: string; folder_name: string; manifest_sha256: string; status: string };
   manifest_text: string;
   manifest: ExportManifest;
-  files: Array<{ folder?: 'facturas' | 'emitidas'; invoice_code: string; file_id: string; normalized_filename: string; sha256: string; size_bytes: number; bucket: string | null; path: string | null; status: string | null }>;
+  files: Array<{ folder?: 'facturas' | 'emitidas'; invoice_code: string; file_id: string; normalized_filename: string; sha256: string; size_bytes: number; bucket: string | null; path: string | null; status: string | null; storage_provider?: string | null }>;
   stale: boolean;
 }
 
-export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?: ExtractInvoice): AppRoute[] {
+export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?: ExtractInvoice, storage: StorageAccess = createStorage(supabase)): AppRoute[] {
   async function bundle(ctx: RequestContext, id: string): Promise<Bundle> {
     if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Entrega no encontrada.');
     return read<Bundle>(supabase, ctx, 'invoices.export_bundle', { export_id: id.toLowerCase() });
@@ -590,12 +590,10 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         const entity = issuerSnapshot(row);
         let logoUrl: string | null = null;
         if (entity && row?.logo_bucket && row?.logo_path) {
-          try {
-            const path = String(row.logo_path).split('/').map(encodeURIComponent).join('/');
-            const signed = await supabase.remote(`/storage/v1/object/sign/${row.logo_bucket}/${path}`, { service: true, method: 'POST', body: { expiresIn: 600 } });
-            const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
-            logoUrl = rel ? supabase.base + '/storage/v1' + rel : null;
-          } catch { logoUrl = null; }
+          // Contrato §3.9: el proveedor lo dice la fila del archivo (la proyección de Central lo trae en logo_storage_provider;
+          // mientras no lo traiga, el logotipo está en Supabase Storage).
+          const provider = row.logo_storage_provider === 'r2' ? 'r2' : 'supabase';
+          try { logoUrl = await storage.readUrl({ bucket: String(row.logo_bucket), path: String(row.logo_path), storage_provider: provider }, 600); } catch { logoUrl = null; }
         }
         return { entity, logo_url: logoUrl, logo_mime: entity && row?.logo_mime ? row.logo_mime : null };
       },
@@ -671,7 +669,7 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
           const b = await bundle(ctx, params.id ?? '');
           const missing = b.files.filter((f) => !f.path || f.status !== 'verified');
           if (missing.length) fail(409, 'EXPORT_FILE_MISSING', domainMessage('EXPORT_FILE_MISSING'), { files: missing.map((f) => ({ invoice_code: f.invoice_code, file_id: f.file_id, normalized_filename: f.normalized_filename })) });
-          return attachment(zipStream(exportEntries(supabase, b)), 'application/zip', `${b.export.folder_name}.zip`);
+          return attachment(zipStream(exportEntries(storage, b)), 'application/zip', `${b.export.folder_name}.zip`);
         }
         if (!(name in EXPORT_CSV_FILES)) fail(404, 'NOT_FOUND', 'Ruta desconocida.');
         const b = await bundle(ctx, params.id ?? '');
@@ -683,16 +681,18 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
 }
 
 /** Entradas del ZIP: manifest, CSV y los documentos leídos de Storage en streaming. */
-async function* exportEntries(supabase: Supabase, b: Bundle): AsyncGenerator<ZipEntrySource> {
+async function* exportEntries(storage: StorageAccess, b: Bundle): AsyncGenerator<ZipEntrySource> {
   const folder = b.export.folder_name;
   const encoder = new TextEncoder();
   const modified = new Date(b.manifest.export.created_at);
   yield { name: `${folder}/manifest.json`, data: encoder.encode(b.manifest_text), modified };
   for (const [name, build] of Object.entries(EXPORT_CSV_FILES)) yield { name: `${folder}/${name}`, data: encoder.encode(build(b.manifest)), modified };
   for (const file of b.files) {
-    const path = (file.path ?? '').split('/').map(encodeURIComponent).join('/');
-    const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${path}`, { service: true, raw: true });
-    if (!response.ok || !response.body) {
+    let response: Response | null = null;
+    try {
+      response = await storage.download({ bucket: file.bucket ?? '', path: file.path ?? '', storage_provider: file.storage_provider === 'r2' ? 'r2' : 'supabase' });
+    } catch { response = null; }
+    if (!response || !response.ok || !response.body) {
       yield { name: `${folder}/${file.folder ?? 'facturas'}/FALTA_${file.normalized_filename}.txt`, data: encoder.encode(`El documento ${file.normalized_filename} (${file.invoice_code}, sha256 ${file.sha256}) no estaba disponible al generar el ZIP.\n`), modified };
       continue;
     }
@@ -703,6 +703,13 @@ async function* exportEntries(supabase: Supabase, b: Bundle): AsyncGenerator<Zip
 export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>> & InvoicesAppOptions) {
   const supabase = createSupabase(base);
   const targets = createTargets(supabase, base);
+  // El mismo almacenamiento que crea el kit (contrato §3.9): proveedor por archivo, R2 si hay secretos.
+  const env = (name: string) => (globalThis as { Deno?: { env?: { get?: (n: string) => string | undefined } } }).Deno?.env?.get?.(name);
+  const storage = createStorage(supabase, {
+    r2: base.storage?.r2 !== undefined ? base.storage.r2 : r2ConfigFromEnv(env),
+    defaultProvider: base.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
+    fetch: base.fetch,
+  });
   return createApp({
     ...base,
     app: 'invoices',
@@ -711,7 +718,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks: { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) },
     mcpTools: invoicesMcpTools(supabase),
-    routes: invoicesRoutes(supabase, targets, base.extractInvoice),
+    routes: invoicesRoutes(supabase, targets, base.extractInvoice, storage),
   });
 }
 

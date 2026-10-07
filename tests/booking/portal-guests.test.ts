@@ -138,6 +138,11 @@ test('portales · alergias con consentimiento, firma solo del huésped y baja po
   assert.equal(sig.status, 200, JSON.stringify(sig.data));
   assert.match(sig.data.url, /\/object\/sign\/guests-documents\/guests\//);
   assert.equal((await app.call(`/api/v1/guest-signature/${guestId}`, { token: app.tokens.reader })).status, 403);
+  // un archivo en R2 se firma por la abstracción del kit: sin configuración de R2, 503 (nunca contra Supabase Storage)
+  await app.t.db.query(`update core.files set storage_provider = 'r2' where id = (select signature_file_id from booking.guests where id = $1)`, [guestId]);
+  const r2 = await app.call(`/api/v1/guest-signature/${guestId}`, { token: app.tokens.owner });
+  assert.equal(r2.status, 503); assert.equal(r2.data.error.code, 'STORAGE_UNAVAILABLE');
+  await app.t.db.query(`update core.files set storage_provider = 'supabase' where id = (select signature_file_id from booking.guests where id = $1)`, [guestId]);
 
   // baja por el organizador: a la papelera con sus restricciones, y su enlace de Guests revocado
   const link = await app.call('/api/v1/portal-links', { token: app.tokens.editor, body: { app: 'guests', scope: { reservation_id: res, guest_id: guestId }, person: { name: 'Leo' } } });
