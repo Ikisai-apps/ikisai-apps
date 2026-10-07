@@ -1,5 +1,9 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.1 · 7 de octubre de 2026
+
+- `createUsage`: cada elemento de `POST usage/batch` lleva `route`, la ruta real (sin consulta) donde la función se vio o usó por última vez. Core la guarda como pista (#238) y la devuelve en la tarjeta como `routeRaw`, así «Ir al sitio» de «Revisor › Uso» abre la pantalla exacta. El servidor anterior la ignora.
+
 ## 0.18.0 · 7 de octubre de 2026
 
 - `createAppLauncher({ center })`: entrada **«Sugerencias y QA»** en el panel del lanzador, encima de los interruptores. Cierra el lanzador y llama a `center()` (normalmente `openFeedbackCenter(...)`). Las apps ya no necesitan botón propio en la cabecera, que a 390 px no cabía (nota de Booking).
