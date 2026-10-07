@@ -110,6 +110,10 @@ export function describeError(error: unknown): string {
       return 'La sesión ha caducado. Vuelve a iniciar sesión.';
     case 'FORBIDDEN':
       return 'No tienes permiso para esta operación.';
+    case 'LINK_INVALID':
+      return 'El enlace no existe o ya se revocó.';
+    case 'LINK_EXPIRED':
+      return 'El enlace ha caducado. Amplía su fecha o genera otro.';
     case 'NO_MEMBERSHIP':
       return 'Tu cuenta no tiene acceso a Booking.';
     case 'VERSION_CONFLICT':

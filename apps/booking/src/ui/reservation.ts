@@ -13,6 +13,7 @@ import { fetchCosts, invoiceUrl, purchasesUrl, readCostCache, type CostResult } 
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
+import { createPortalBlock } from './portal.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
@@ -142,6 +143,7 @@ export function mountReservation(id: string): ViewMount {
     // Listas reordenables del checklist: se conservan entre repintados y se actualizan con `setItems`, de modo que
     // cada movimiento lleva revisiones al día y el foco del asa no se pierde (receta de Food).
     const staffBlock = createStaffBlock();
+    const portalBlock = createPortalBlock();
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
@@ -304,7 +306,8 @@ export function mountReservation(id: string): ViewMount {
 
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
-      const staffCard = !liveEvent || !staff ? null : staffBlock.render({ client, reservation, event: liveEvent, data: staff, editable, run });
+      const portalCard = editable ? portalBlock.render({ client, reservation, editable }) : null;
+      const staffCard =!liveEvent || !staff ? null : staffBlock.render({ client, reservation, event: liveEvent, data: staff, editable, run });
 
       // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
       const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) } },
@@ -484,7 +487,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
@@ -497,6 +500,6 @@ export function mountReservation(id: string): ViewMount {
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));
     // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); };
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); };
   };
 }
