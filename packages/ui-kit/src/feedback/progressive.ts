@@ -16,25 +16,36 @@ import { FEEDBACK_MAX_ATTACHMENTS, FEEDBACK_MAX_MESSAGE } from './constants.ts';
 import { captureFeedbackTarget } from './capture.ts';
 import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
+import { kitLocaleNow, kt, onKitLocaleChange, type Locale } from '../i18n/i18n.ts';
 
 export type ProgressiveAnswers = Record<string, string>;
 
-export interface ProgressiveOption { value: string; label: string; hint?: string; next?: string | null }
+/** Texto de un paso u opción: literal o por idioma (`{ es: 'Espacio', en: 'Space' }`), según el idioma del kit. */
+export type LocalizedText = string | Partial<Record<Locale, string>>;
+
+/** Texto en el idioma actual del kit (o español, o el primero que haya). */
+export function localized(text: LocalizedText | undefined): string {
+  if (text === undefined) return '';
+  if (typeof text === 'string') return text;
+  return text[kitLocaleNow()] ?? text.es ?? Object.values(text).find(Boolean) ?? '';
+}
+
+export interface ProgressiveOption { value: string; label: LocalizedText; hint?: LocalizedText; next?: string | null }
 
 export interface ProgressiveStep {
   id: string;
   kind: 'choice' | 'text' | 'signal';
-  question: string;
+  question: LocalizedText;
   options?: ProgressiveOption[] | ((answers: ProgressiveAnswers) => ProgressiveOption[]);
   /** Opción probable por el contexto: se pregunta «¿Es sobre …?» antes de enseñar todas. */
   suggest?: (answers: ProgressiveAnswers) => ProgressiveOption | null | undefined;
   /** Paso siguiente cuando la opción elegida no dice otro. */
   next?: string | null;
-  placeholder?: string;
+  placeholder?: LocalizedText;
   /** `text`: permitir imágenes. */
   images?: boolean;
   /** `signal`: texto del botón. */
-  action?: string;
+  action?: LocalizedText;
 }
 
 export interface ProgressiveFormConfig { start: string; steps: ProgressiveStep[] }
@@ -74,7 +85,7 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   let answers: ProgressiveAnswers = { ...(options.known ?? {}) };
   const known = new Set(Object.keys(options.known ?? {}));
   const declined = new Set<string>();
-  const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), 'aria-label': 'Comentario' }) as HTMLTextAreaElement;
+  const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), 'aria-label': kt('Comentario') }) as HTMLTextAreaElement;
   let images: FeedbackImage[] = [];
   const element = el('div', { class: 'fb-progressive' });
   /** Nodos señalados por paso `signal`. */
@@ -123,10 +134,10 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
     replace(imagesRow,
       ...images.map((img) => {
         const url = URL.createObjectURL(img.blob);
-        return el('figure', { class: 'fb-thumb' }, el('img', { src: url, alt: 'Imagen adjunta', onload: () => URL.revokeObjectURL(url) }),
-          el('button', { type: 'button', class: 'fb-remove', 'aria-label': 'Quitar imagen', onclick: () => { images = images.filter((x) => x.id !== img.id); paintImages(); } }, '×'));
+        return el('figure', { class: 'fb-thumb' }, el('img', { src: url, alt: kt('Imagen adjunta'), onload: () => URL.revokeObjectURL(url) }),
+          el('button', { type: 'button', class: 'fb-remove', 'aria-label': kt('Quitar imagen'), onclick: () => { images = images.filter((x) => x.id !== img.id); paintImages(); } }, '×'));
       }),
-      images.length < FEEDBACK_MAX_ATTACHMENTS ? el('button', { type: 'button', class: 'ghost small fb-add-image', onclick: () => fileInput.click() }, icon('camera', 16), 'Imagen (opcional)') : null);
+      images.length < FEEDBACK_MAX_ATTACHMENTS ? el('button', { type: 'button', class: 'ghost small fb-add-image', onclick: () => fileInput.click() }, icon('camera', 16), kt('Imagen (opcional)')) : null);
   }
   fileInput.addEventListener('change', async () => {
     for (const file of Array.from(fileInput.files ?? []).slice(0, FEEDBACK_MAX_ATTACHMENTS - images.length)) {
@@ -143,11 +154,12 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
       const opts = optionsOf(step);
       const block = el('section', { class: 'fb-step', dataset: { step: step.id } });
       if (step.kind === 'choice' && answered !== undefined) {
-        const label = opts.find((o) => o.value === answered)?.label ?? answered;
+        const found = opts.find((o) => o.value === answered);
+        const label = found ? localized(found.label) : answered;
         replace(block,
-          el('p', { class: 'fb-step-q' }, step.question),
+          el('p', { class: 'fb-step-q' }, localized(step.question)),
           el('div', { class: 'fb-step-answer' }, el('strong', null, label),
-            el('button', { type: 'button', class: 'linkbtn fb-change', 'aria-label': `Cambiar: ${step.question}`, onclick: () => reset(step.id) }, 'Cambiar')));
+            el('button', { type: 'button', class: 'linkbtn fb-change', 'aria-label': kt('Cambiar: {question}', { question: localized(step.question) }), onclick: () => reset(step.id) }, kt('Cambiar'))));
         if (known.has(step.id)) block.classList.add('known');
         return block;
       }
@@ -155,60 +167,60 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
         const guess = !declined.has(step.id) ? step.suggest?.(answers) : null;
         if (guess) {
           replace(block,
-            el('p', { class: 'fb-step-q' }, `¿Es sobre ${guess.label}?`),
+            el('p', { class: 'fb-step-q' }, kt('¿Es sobre {label}?', { label: localized(guess.label) })),
             el('div', { class: 'fb-choices' },
-              el('button', { type: 'button', class: 'fb-choice', dataset: { value: guess.value }, onclick: () => set(step.id, guess.value) }, 'Sí'),
-              el('button', { type: 'button', class: 'fb-choice', dataset: { value: '' }, onclick: () => { declined.add(step.id); paint(step.id); } }, 'Otro sitio')));
+              el('button', { type: 'button', class: 'fb-choice', dataset: { value: guess.value }, onclick: () => set(step.id, guess.value) }, kt('Sí')),
+              el('button', { type: 'button', class: 'fb-choice', dataset: { value: '' }, onclick: () => { declined.add(step.id); paint(step.id); } }, kt('Otro sitio'))));
           return block;
         }
-        replace(block, el('p', { class: 'fb-step-q' }, step.question),
-          el('div', { class: 'fb-choices', role: 'group', 'aria-label': step.question }, ...opts.map((o) => el('button', {
+        replace(block, el('p', { class: 'fb-step-q' }, localized(step.question)),
+          el('div', { class: 'fb-choices', role: 'group', 'aria-label': localized(step.question) }, ...opts.map((o) => el('button', {
             type: 'button', class: 'fb-choice', dataset: { value: o.value }, onclick: () => set(step.id, o.value),
-          }, el('span', null, o.label), o.hint ? el('small', null, o.hint) : null))));
+          }, el('span', null, localized(o.label)), o.hint ? el('small', null, localized(o.hint)) : null))));
         return block;
       }
       if (step.kind === 'signal' && answered !== undefined) {
         const node = signalled.get(step.id);
         replace(block,
-          el('p', { class: 'fb-step-q' }, step.question),
+          el('p', { class: 'fb-step-q' }, localized(step.question)),
           el('div', { class: 'fb-step-answer' }, el('strong', null, node?.path.join(' › ') || answered),
-            el('button', { type: 'button', class: 'linkbtn fb-change', 'aria-label': `Cambiar: ${step.question}`, onclick: () => reset(step.id) }, 'Cambiar')));
+            el('button', { type: 'button', class: 'linkbtn fb-change', 'aria-label': kt('Cambiar: {question}', { question: localized(step.question) }), onclick: () => reset(step.id) }, kt('Cambiar'))));
         return block;
       }
       if (step.kind === 'signal') {
-        const button = el('button', { type: 'button', class: 'primary fb-signal' }, icon('pin', 16), step.action ?? 'Señalar en la pantalla') as HTMLButtonElement;
+        const button = el('button', { type: 'button', class: 'primary fb-signal' }, icon('pin', 16), (step.action ? localized(step.action) : kt('Señalar en la pantalla'))) as HTMLButtonElement;
         button.addEventListener('click', async () => {
           button.disabled = true;
           try {
             const node = options.onSignal
               ? await options.onSignal({ ...answers })
-              : await captureFeedbackTarget({ text: step.question, fallbackNode: options.fallbackNode, container: options.container });
+              : await captureFeedbackTarget({ text: localized(step.question), fallbackNode: options.fallbackNode, container: options.container });
             if (node && typeof node === 'object' && 'id' in node) {
               signalled.set(step.id, { id: node.id, path: node.path });
               set(step.id, node.id);
             }
           } finally { button.disabled = false; }
         });
-        replace(block, el('p', { class: 'fb-step-q' }, step.question), button);
+        replace(block, el('p', { class: 'fb-step-q' }, localized(step.question)), button);
         return block;
       }
       // text: último paso.
-      message.placeholder = step.placeholder ?? '';
+      message.placeholder = localized(step.placeholder);
       const status = el('p', { class: 'fb-status', role: 'status', 'aria-live': 'polite' });
-      const send = el('button', { type: 'button', class: 'primary fb-send' }, 'Enviar');
+      const send = el('button', { type: 'button', class: 'primary fb-send' }, kt('Enviar'));
       send.addEventListener('click', async () => {
-        if (!message.value.trim()) { status.textContent = 'Escribe un comentario antes de enviar.'; status.className = 'fb-status error'; message.focus(); return; }
-        send.disabled = true; status.className = 'fb-status'; status.textContent = 'Enviando…';
+        if (!message.value.trim()) { status.textContent = kt('Escribe un comentario antes de enviar.'); status.className = 'fb-status error'; message.focus(); return; }
+        send.disabled = true; status.className = 'fb-status'; status.textContent = kt('Enviando…');
         try {
           const node = [...chain()].reverse().map((s) => signalled.get(s.id)).find(Boolean);
           const result = await options.onSubmit({ answers: { ...answers }, message: message.value.trim(), images, ...(node ? { node } : {}) });
-          status.textContent = result === 'sent' ? 'Enviado. Gracias.' : 'Pendiente de enviar: se enviará al volver la conexión.';
+          status.textContent = result === 'sent' ? kt('Enviado. Gracias.') : kt('Pendiente de enviar: se enviará al volver la conexión.');
           element.dataset.state = result;
         } catch (error) {
-          send.disabled = false; status.className = 'fb-status error'; status.textContent = (error as Error)?.message || 'No se pudo enviar.';
+          send.disabled = false; status.className = 'fb-status error'; status.textContent = (error as Error)?.message || kt('No se pudo enviar.');
         }
       });
-      replace(block, el('p', { class: 'fb-step-q' }, step.question), message,
+      replace(block, el('p', { class: 'fb-step-q' }, localized(step.question)), message,
         step.images ? imagesRow : null, step.images ? fileInput : null, status, el('div', { class: 'fb-foot' }, send));
       if (step.images) paintImages();
       return block;
@@ -221,5 +233,7 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   }
 
   paint();
+  // Con idiomas (portales), al cambiar de idioma se repinta con los textos nuevos.
+  onKitLocaleChange(() => paint());
   return { element, answers: () => ({ ...answers }), set };
 }

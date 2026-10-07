@@ -8,6 +8,7 @@
 import { el, replace } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
 import { openSheet, type Sheet } from '../overlay/sheet.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface LauncherApp {
   id: string;
@@ -99,11 +100,11 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
 
   function row(app: LauncherApp, current: string | null): HTMLElement {
     const here = app.id === current;
-    const role = app.role ? ROLE_LABELS[app.role] ?? app.role : null;
+    const role = app.role ? (ROLE_LABELS[app.role] ? kt(ROLE_LABELS[app.role]!) : app.role) : null;
     const body = [
       appMark(app, options.appIcon?.(app)),
       el('span', { class: 'launcher-text' },
-        el('strong', null, app.name, here ? el('span', { class: 'chip small ok' }, el('span', null, 'Aquí')) : null),
+        el('strong', null, app.name, here ? el('span', { class: 'chip small ok' }, el('span', null, kt('Aquí'))) : null),
         app.description ? el('small', null, app.description) : null,
         role && app.role !== 'owner' ? el('small', { class: 'launcher-role' }, role) : null,
       ),
@@ -120,16 +121,16 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     const internal = items.filter((a) => a.kind !== 'portal');
     const portals = items.filter((a) => a.kind === 'portal');
     replace(host,
-      state === 'cached' ? el('div', { class: 'banner info launcher-note' }, icon('offline', 18), el('span', null, 'Sin conexión: es la última lista guardada en este dispositivo.')) : null,
-      state === 'offline-empty' ? el('div', { class: 'banner warn launcher-note' }, icon('offline', 18), el('span', null, 'Sin conexión y sin lista guardada. Vuelve a intentarlo con red.')) : null,
-      state === 'loading' && !items.length ? el('p', { class: 'hint' }, 'Cargando tus apps…') : null,
-      internal.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Apps' }, ...internal.map((a) => row(a, current))) : null,
-      portals.length ? el('h3', { class: 'launcher-group' }, 'Portales') : null,
-      portals.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Portales' }, ...portals.map((a) => row(a, current))) : null,
+      state === 'cached' ? el('div', { class: 'banner info launcher-note' }, icon('offline', 18), el('span', null, kt('Sin conexión: es la última lista guardada en este dispositivo.'))) : null,
+      state === 'offline-empty' ? el('div', { class: 'banner warn launcher-note' }, icon('offline', 18), el('span', null, kt('Sin conexión y sin lista guardada. Vuelve a intentarlo con red.'))) : null,
+      state === 'loading' && !items.length ? el('p', { class: 'hint' }, kt('Cargando tus apps…')) : null,
+      internal.length ? el('ul', { class: 'launcher-list', 'aria-label': kt('Apps') }, ...internal.map((a) => row(a, current))) : null,
+      portals.length ? el('h3', { class: 'launcher-group' }, kt('Portales')) : null,
+      portals.length ? el('ul', { class: 'launcher-list', 'aria-label': kt('Portales') }, ...portals.map((a) => row(a, current))) : null,
       options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
-        el('span', { class: 'launcher-text' }, el('strong', null, options.centerLabel ?? 'Sugerencias y QA'), el('small', null, options.centerText ?? (options.centerLabel ? 'Cuéntanos qué falla o qué mejorarías.' : 'Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.'))),
+        el('span', { class: 'launcher-text' }, el('strong', null, options.centerLabel ?? kt('Sugerencias y QA')), el('small', null, options.centerText ?? (options.centerLabel ? kt('Cuéntanos qué falla o qué mejorarías.') : kt('Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')))),
         icon('chevronRight', 16)) : null,
-      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.', 'Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo.') : null,
+      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', kt('Señalar para comentar'), kt('Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.'), kt('Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo.')) : null,
       options.review ? reviewSlot : null,
     );
   }
@@ -140,7 +141,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     const small = el('small', null);
     const paint = () => {
       const on = input.checked;
-      replace(strong, title, on ? el('span', { class: 'launcher-active' }, ' · activo') : null);
+      replace(strong, title, on ? el('span', { class: 'launcher-active' }, kt(' · activo')) : null);
       small.textContent = on ? activeText : text;
     };
     input.checked = mode.get();
@@ -155,7 +156,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     const review = options.review;
     if (!review) return;
     void review.available().then((ok) => {
-      replace(reviewSlot, ok ? modeSwitch(asMode(review), 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.', 'Activo: la lista está en el lateral y el punto verde de la marca lo recuerda.') : null);
+      replace(reviewSlot, ok ? modeSwitch(asMode(review), 'launcher-review', kt('Revisor de QA'), kt('Lista de lo que hay que revisar y comprobar en todas las apps.'), kt('Activo: la lista está en el lateral y el punto verde de la marca lo recuerda.')) : null);
     });
   }
 
@@ -164,7 +165,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     askReview();
     const cached = readCache(key);
     paint(host, cached, cached ? 'fresh' : 'loading');
-    const sheet = openSheet({ title: options.title ?? 'Apps de Ikisai', body: host });
+    const sheet = openSheet({ title: options.title ?? kt('Apps de Ikisai'), body: host });
     currentSheet = sheet;
     try {
       const catalog = await options.fetchApps();
@@ -180,7 +181,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     open,
     attach(trigger) {
       trigger.setAttribute('aria-haspopup', 'dialog');
-      if (!trigger.getAttribute('aria-label')) trigger.setAttribute('aria-label', 'Abrir otra app de Ikisai');
+      if (!trigger.getAttribute('aria-label')) trigger.setAttribute('aria-label', kt('Abrir otra app de Ikisai'));
       trigger.addEventListener('click', (e) => { e.preventDefault(); void open(); });
     },
   };

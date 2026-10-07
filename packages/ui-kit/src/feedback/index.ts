@@ -8,6 +8,6 @@ export { openFeedbackComposer, type FeedbackComposer, type FeedbackComposerOptio
 export { createFeedback, type Feedback, type FeedbackMode, type FeedbackOptions } from './feedback.ts';
 export { renderFeedbackCenter, openFeedbackCenter, feedbackReportCard, buildFeedbackTree, reportChip, type FeedbackCenter, type FeedbackCenterOptions, type FeedbackCenterTab, type FeedbackTreeNode, type FeedbackReportDetail } from './center.ts';
 export { captureFeedbackTarget, type CaptureOptions } from './capture.ts';
-export { createFeedbackProgressiveForm, type ProgressiveForm, type ProgressiveFormOptions, type ProgressiveFormConfig, type ProgressiveStep, type ProgressiveOption, type ProgressiveAnswers, type ProgressiveResult } from './progressive.ts';
+export { createFeedbackProgressiveForm, localized, type LocalizedText, type ProgressiveForm, type ProgressiveFormOptions, type ProgressiveFormConfig, type ProgressiveStep, type ProgressiveOption, type ProgressiveAnswers, type ProgressiveResult } from './progressive.ts';
 export { createFeedbackReview, type FeedbackReview, type FeedbackReviewOptions, type ReviewHost, type ReviewTab } from './review.ts';
 export { USAGE_INSIGHT_LABELS, USAGE_FREQUENCY_LABELS, type UsageReviewItem, type UsageFeatureCard, type UsageActivity, type UsageNumbers, type UsageAudience } from './review-usage.ts';

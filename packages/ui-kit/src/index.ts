@@ -25,6 +25,7 @@ export {
 export { renderLogin, type LoginOptions } from './shell/login.ts';
 export * from './feedback/index.ts';
 export * from './usage/index.ts';
+export * from './i18n/index.ts';
 export { createAppLauncher, type AppLauncher, type AppLauncherOptions, type LauncherApp, type LauncherCatalog } from './shell/launcher.ts';
 export { createAppShell, type AppShell, type AppShellOptions, type NavItem } from './shell/app-shell.ts';
 export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, renderNavMenu, renderNavBackdrop, renderTabBar, type WorkspaceBarOptions, type AreaTab, type AreaTabsOptions, type QuickView, type NavMenuItem, type NavMenuGroup, type NavMenuOptions, type TabBarItem, type HookAttrs, type IconLike } from './shell/workspace.ts';

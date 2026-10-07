@@ -22,6 +22,7 @@ import { installFeedbackGesture, type FeedbackGesture } from './gesture.ts';
 import { ensureFeedbackGlobalStyles, syncMarkHint } from './global-style.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
 import { clearFeedbackForUser, feedbackDrafts, feedbackOutbox, type FeedbackDraft, type FeedbackOutboxItem } from './store.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface FeedbackOptions {
   app: string;
@@ -73,6 +74,8 @@ const ERROR_TEXT: Record<string, string> = {
   FEEDBACK_ATTACHMENT_INVALID: 'Una de las imágenes no es válida.',
   OUT_OF_SCOPE: 'No tienes acceso a esto.',
 };
+/** Texto de un código de error conocido (traducido al momento) o el de reserva ya traducido. */
+const errorText = (code: string | undefined, fallback: string): string => { const known = ERROR_TEXT[code ?? '']; return known ? kt(known) : fallback; };
 const VERIFY_EVERY_MS = 5 * 60_000;
 
 export function createFeedback(options: FeedbackOptions): Feedback {
@@ -80,7 +83,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   if (options.fallbackNode) setFeedbackStepNode(() => options.fallbackNode?.().id);
   ensureFeedbackGlobalStyles();
   const host = () => options.container?.() ?? document.body;
-  const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': 'Comentarios sobre la pantalla' });
+  const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': kt('Comentarios sobre la pantalla') });
   let current: FeedbackComposer | null = null;
   let currentVerify: (() => void) | null = null;
   let frame = 0;
@@ -96,7 +99,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   const client: FeedbackClient = createFeedbackClient({
     api: options.api, app: options.app, userId: options.userId, fetchImpl: options.fetchImpl,
     onChange: () => { void backToDraftOnFailure(); refreshPins(); },
-    onSent: (report) => { toast(`Enviado · ${report.code}`); options.onSent?.(report); void refreshVerify(); },
+    onSent: (report) => { toast(kt('Enviado · {code}', { code: report.code })); options.onSent?.(report); void refreshVerify(); },
   });
 
   // --- Modo «Señalar para comentar» --------------------------------------------------------------
@@ -118,7 +121,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
     set(on) {
       try { if (on) localStorage.setItem(modeKey(), '1'); else localStorage.removeItem(modeKey()); } catch { /* sin almacenamiento */ }
       applyMode();
-      if (on) toast('Señalar para comentar: activo. Mantén pulsado cualquier elemento para comentarlo; el punto amarillo de la marca lo recuerda.');
+      if (on) toast(kt('Señalar para comentar: activo. Mantén pulsado cualquier elemento para comentarlo; el punto amarillo de la marca lo recuerda.'));
       for (const l of listeners) l(on);
     },
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -132,7 +135,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
       void requestId; void context; void scope; void category; void attempts; void failed;
       await feedbackDrafts.put({ ...draft, updatedAt: new Date().toISOString() });
       await feedbackOutbox.delete(item.id);
-      toast(ERROR_TEXT[lastError ?? ''] ?? 'No se pudo enviar el comentario. Se queda como borrador.');
+      toast(errorText(lastError, kt('No se pudo enviar el comentario. Se queda como borrador.')));
     }
   }
 
@@ -181,7 +184,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
         if (!at) continue;
         pins.push(el('button', {
           type: 'button', class: 'fb-pin draft', dataset: { node: nodeId }, style: at.style,
-          'aria-label': `Borrador de comentario (${items.length}) sobre ${items[0]!.nodePath.join(' › ')}`,
+          'aria-label': kt('Borrador de comentario ({count}) sobre {path}', { count: items.length, path: items[0]!.nodePath.join(' › ') }),
           onclick: () => { void compose({ id: nodeId, path: items[0]!.nodePath, element: at.target }, at.target, items[0]); },
         }, icon('pin', 14), el('span', null, String(items.length))));
       }
@@ -192,7 +195,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
         if (!at) continue;
         pins.push(el('button', {
           type: 'button', class: 'fb-pin mine', dataset: { node: nodeId, mine: String(reports.length) }, style: at.style,
-          'aria-label': `Tus sugerencias abiertas aquí (${reports.length}): toca para verlas o añadir otra`,
+          'aria-label': kt('Tus sugerencias abiertas aquí ({count}): toca para verlas o añadir otra', { count: reports.length }),
           onclick: () => { void compose({ id: nodeId, path: reports[0]!.node!.path, element: at.target }, at.target); },
         }, icon('edit', 14), el('span', null, String(reports.length))));
       }
@@ -202,9 +205,9 @@ export function createFeedback(options: FeedbackOptions): Feedback {
         if (!at) continue;
         pins.push(el('button', {
           type: 'button', class: 'fb-pin verify', dataset: { node: report.node.id, report: report.id }, style: at.style,
-          'aria-label': `Corregido: ${report.code}. ¿Lo compruebas?`,
+          'aria-label': kt('Corregido: {code}. ¿Lo compruebas?', { code: report.code }),
           onclick: () => openVerify(report, at.target),
-        }, icon('check', 14), el('span', null, '¿Ya va?')));
+        }, icon('check', 14), el('span', null, kt('¿Ya va?'))));
       }
       replace(pinLayer, ...pins);
     });
@@ -213,14 +216,14 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   // --- «Esto ya está corregido. ¿Lo compruebas?» -------------------------------------------------------
   function openVerify(report: FeedbackReport, anchor: Element): void {
     currentVerify?.();
-    const note = el('textarea', { class: 'fb-message', rows: '3', maxlength: '4000', placeholder: '¿Qué sigue pasando? (opcional)', 'aria-label': 'Qué sigue fallando', hidden: true }) as HTMLTextAreaElement;
+    const note = el('textarea', { class: 'fb-message', rows: '3', maxlength: '4000', placeholder: kt('¿Qué sigue pasando? (opcional)'), 'aria-label': kt('Qué sigue fallando'), hidden: true }) as HTMLTextAreaElement;
     const status = el('p', { class: 'fb-status', role: 'status' });
-    const works = el('button', { type: 'button', class: 'primary fb-works' }, 'Funciona');
-    const fails = el('button', { type: 'button', class: 'ghost fb-fails' }, 'Sigue fallando');
-    const panel = el('section', { class: 'fb-composer fb-verify', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Comprobar una corrección', tabindex: '-1' },
+    const works = el('button', { type: 'button', class: 'primary fb-works' }, kt('Funciona'));
+    const fails = el('button', { type: 'button', class: 'ghost fb-fails' }, kt('Sigue fallando'));
+    const panel = el('section', { class: 'fb-composer fb-verify', role: 'dialog', 'aria-modal': 'true', 'aria-label': kt('Comprobar una corrección'), tabindex: '-1' },
       el('header', { class: 'fb-head' },
-        el('div', { class: 'fb-where' }, el('small', null, `${report.code}${report.node ? ` · ${report.node.path.join(' › ')}` : ''}`), el('strong', null, 'Esto ya está corregido. ¿Lo compruebas?')),
-        el('button', { type: 'button', class: 'iconbtn small fb-close', 'aria-label': 'Cerrar', onclick: () => close() }, icon('close', 18))),
+        el('div', { class: 'fb-where' }, el('small', null, `${report.code}${report.node ? ` · ${report.node.path.join(' › ')}` : ''}`), el('strong', null, kt('Esto ya está corregido. ¿Lo compruebas?'))),
+        el('button', { type: 'button', class: 'iconbtn small fb-close', 'aria-label': kt('Cerrar'), onclick: () => close() }, icon('close', 18))),
       el('p', { class: 'fb-quote' }, report.message.slice(0, 280)),
       note, status,
       el('div', { class: 'fb-foot' }, fails, works));
@@ -236,12 +239,12 @@ export function createFeedback(options: FeedbackOptions): Feedback {
     const act = async (run: () => Promise<void>, done: string) => {
       works.disabled = fails.disabled = true;
       try { await run(); verifyList = verifyList.filter((r) => r.id !== report.id); refreshPins(); close(); toast(done); }
-      catch { works.disabled = fails.disabled = false; status.textContent = 'No se pudo guardar. Prueba otra vez con conexión.'; status.className = 'fb-status error'; }
+      catch { works.disabled = fails.disabled = false; status.textContent = kt('No se pudo guardar. Prueba otra vez con conexión.'); status.className = 'fb-status error'; }
     };
-    works.addEventListener('click', () => void act(async () => client.verify(report.id, (await appVersion())?.release ?? null), 'Gracias: queda verificado.'));
+    works.addEventListener('click', () => void act(async () => client.verify(report.id, (await appVersion())?.release ?? null), kt('Gracias: queda verificado.')));
     fails.addEventListener('click', () => {
-      if (note.hidden) { note.hidden = false; fails.textContent = 'Enviar: sigue fallando'; note.focus(); return; }
-      void act(() => client.reopen(report.id, note.value.trim() || undefined), 'Reabierto: vuelve a la lista de pendientes.');
+      if (note.hidden) { note.hidden = false; fails.textContent = kt('Enviar: sigue fallando'); note.focus(); return; }
+      void act(() => client.reopen(report.id, note.value.trim() || undefined), kt('Reabierto: vuelve a la lista de pendientes.'));
     });
     works.focus();
   }
@@ -267,7 +270,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
         else if (existing) void feedbackDrafts.delete(existing.id).then(refreshPins);
       },
       onSend: async (value) => {
-        if (!user) throw new Error('Inicia sesión para enviar comentarios.');
+        if (!user) throw new Error(kt('Inicia sesión para enviar comentarios.'));
         const item: FeedbackOutboxItem = {
           id: draftId, requestId: newId(), userId: user, app: options.app, nodeId: node.id, nodePath: node.path,
           message: value.message, intent: value.intent, blocking: value.blocking, subject: 'application', images: value.images, updatedAt: new Date().toISOString(),
@@ -279,7 +282,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
         refreshPins();
         const still = (await client.pending()).find((i) => i.id === item.id);
         if (!still) return 'sent';
-        if (still.failed) throw new Error(ERROR_TEXT[still.lastError ?? ''] ?? 'No se pudo enviar.');
+        if (still.failed) throw new Error(errorText(still.lastError, kt('No se pudo enviar.')));
         return 'pending';
       },
     });

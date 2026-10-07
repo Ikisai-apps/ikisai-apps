@@ -1,5 +1,6 @@
 import { el, type Child } from '../dom.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface DialogOptions {
   title: string;
@@ -20,8 +21,8 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
   return new Promise((resolve) => {
     const opener = document.activeElement as HTMLElement | null;
     const titleId = 'dialogTitle';
-    const confirm = el('button', { class: options.danger ? 'danger' : 'primary', type: 'button', id: 'dialogConfirm' }, options.confirmLabel ?? 'Aceptar');
-    const cancel = options.noCancel ? null : el('button', { class: 'ghost', type: 'button', id: 'dialogCancel' }, options.cancelLabel ?? 'Cancelar');
+    const confirm = el('button', { class: options.danger ? 'danger' : 'primary', type: 'button', id: 'dialogConfirm' }, options.confirmLabel ?? kt('Aceptar'));
+    const cancel = options.noCancel ? null : el('button', { class: 'ghost', type: 'button', id: 'dialogCancel' }, options.cancelLabel ?? kt('Cancelar'));
     const panel = el('section', { class: 'dialog', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, 'aria-describedby': options.text ? 'dialogText' : null, tabindex: '-1' },
       el('h2', { id: titleId }, options.title),
       options.text ? el('p', { id: 'dialogText' }, options.text) : null,
@@ -53,6 +54,6 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
 }
 
 /** Aviso con un solo botón. */
-export function alertDialog(title: string, text?: Child, label = 'Entendido'): Promise<void> {
-  return confirmDialog({ title, text, confirmLabel: label, noCancel: true }).then(() => undefined);
+export function alertDialog(title: string, text?: Child, label?: string): Promise<void> {
+  return confirmDialog({ title, text, confirmLabel: label ?? kt('Entendido'), noCancel: true }).then(() => undefined);
 }

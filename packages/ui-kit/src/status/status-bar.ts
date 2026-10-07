@@ -1,6 +1,7 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { el, plural, replace } from '../dom.ts';
+import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { kt } from '../i18n/i18n.ts';
 
 /**
  * Barra de estado de sincronización (contrato §6.4): red, cambios pendientes, conflictos y «guardado» solo cuando el
@@ -28,13 +29,13 @@ export interface StatusBar {
 export function networkLabel(status: SyncStatus): string {
   switch (status.network) {
     case 'syncing':
-      return 'Sincronizando…';
+      return kt('Sincronizando…');
     case 'offline':
-      return 'Sin conexión';
+      return kt('Sin conexión');
     case 'error':
-      return 'Error de sincronización';
+      return kt('Error de sincronización');
     default:
-      return 'En línea';
+      return kt('En línea');
   }
 }
 
@@ -44,16 +45,16 @@ export function pendingCount(status: SyncStatus): number {
 
 export function pendingLabel(status: SyncStatus): string {
   const n = pendingCount(status);
-  if (n === 0) return status.network === 'online' ? 'Todo sincronizado' : 'Sin cambios pendientes';
-  return n === 1 ? '1 cambio pendiente' : `${n} cambios pendientes`;
+  if (n === 0) return status.network === 'online' ? kt('Todo sincronizado') : kt('Sin cambios pendientes');
+  return n === 1 ? kt('1 cambio pendiente') : kt('{count} cambios pendientes', { count: n });
 }
 
 export function conflictsLabel(status: SyncStatus): string {
-  return status.conflicts === 1 ? '1 conflicto' : `${status.conflicts} conflictos`;
+  return status.conflicts === 1 ? kt('1 conflicto') : kt('{count} conflictos', { count: status.conflicts });
 }
 
 export function rejectedLabel(status: SyncStatus): string {
-  return status.rejected === 1 ? '1 rechazado' : `${status.rejected} rechazados`;
+  return status.rejected === 1 ? kt('1 rechazado') : kt('{count} rechazados', { count: status.rejected });
 }
 
 /** Otra persona ha entrado en este dispositivo: el cliente vació lo local y lo avisa en `lastError` durante un ciclo. */
@@ -74,7 +75,7 @@ export function statusShort(status: SyncStatus): string {
   if (status.conflicts > 0) return conflictsLabel(status);
   if (status.rejected > 0) return rejectedLabel(status);
   const n = pendingCount(status);
-  if (n > 0) return plural(n, 'pendiente', 'pendientes');
+  if (n > 0) return n === 1 ? kt('1 pendiente') : kt('{count} pendientes', { count: n });
   return networkLabel(status);
 }
 
@@ -87,7 +88,7 @@ export function createStatusBar(options: StatusBarOptions = {}): StatusBar {
     ...(options.onClick ? { type: 'button' } : {}),
   }) as HTMLElement;
   const syncButton = options.onSync
-    ? el('button', { class: 'iconbtn syncbtn', type: 'button', 'aria-label': 'Sincronizar ahora', title: 'Sincronizar ahora', onclick: () => void options.onSync?.() }, icon('sync'))
+    ? el('button', { class: 'iconbtn syncbtn', type: 'button', 'aria-label': kt('Sincronizar ahora'), title: kt('Sincronizar ahora'), onclick: () => void options.onSync?.() }, icon('sync'))
     : null;
   const element = el('div', { class: 'statusbar' }, chip, syncButton);
   let current: SyncStatus | null = null;
@@ -155,37 +156,37 @@ export function statusBanners(status: SyncStatus, options: StatusBannersOptions 
   if (status.conflicts > 0 && !options.hideConflicts) {
     items.push(el('div', { class: 'banner alert', role: 'alert' },
       icon('warn', 18),
-      el('span', null, status.conflicts === 1 ? 'Hay 1 conflicto que necesita tu decisión.' : `Hay ${status.conflicts} conflictos que necesitan tu decisión.`),
-      options.onResolveConflicts ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onResolveConflicts?.() }, 'Resolver') : null,
+      el('span', null, status.conflicts === 1 ? kt('Hay 1 conflicto que necesita tu decisión.') : kt('Hay {count} conflictos que necesitan tu decisión.', { count: status.conflicts })),
+      options.onResolveConflicts ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onResolveConflicts?.() }, kt('Resolver')) : null,
     ));
   }
   if (status.rejected > 0 && !options.hideRejected) {
     items.push(el('div', { class: 'banner alert', role: 'alert', dataset: { banner: 'rejected' } },
       icon('warn', 18),
-      el('span', null, status.rejected === 1 ? 'El servidor rechazó 1 cambio; revísalo, corrígelo o descártalo.' : `El servidor rechazó ${status.rejected} cambios; revísalos, corrígelos o descártalos.`),
-      options.onShowRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onShowRejected?.() }, 'Ver') : null,
-      options.onRetryRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetryRejected?.() }, 'Reintentar') : null,
-      options.onDiscardRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onDiscardRejected?.() }, 'Descartar') : null,
+      el('span', null, status.rejected === 1 ? kt('El servidor rechazó 1 cambio; revísalo, corrígelo o descártalo.') : kt('El servidor rechazó {count} cambios; revísalos, corrígelos o descártalos.', { count: status.rejected })),
+      options.onShowRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => options.onShowRejected?.() }, kt('Ver')) : null,
+      options.onRetryRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetryRejected?.() }, kt('Reintentar')) : null,
+      options.onDiscardRejected ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onDiscardRejected?.() }, kt('Descartar')) : null,
     ));
   }
   if (isUserChanged(status)) {
     items.push(el('div', { class: 'banner info', role: 'status', dataset: { banner: 'user-changed' } },
       icon('user', 18),
-      el('span', null, options.userChangedText ?? 'Ha entrado otra persona en este dispositivo: se cargaron sus datos y se retiraron los anteriores.'),
+      el('span', null, options.userChangedText ?? kt('Ha entrado otra persona en este dispositivo: se cargaron sus datos y se retiraron los anteriores.')),
     ));
   }
   if (status.lastError && status.network === 'error' && !isUserChanged(status)) {
     items.push(el('div', { class: 'banner warn', dataset: { banner: 'error' } },
       icon('warn', 18),
-      el('span', null, options.describeError ? options.describeError(status.lastError) : 'No se pudo sincronizar.'),
-      options.onRetry ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetry?.() }, 'Reintentar') : null,
+      el('span', null, options.describeError ? options.describeError(status.lastError) : kt('No se pudo sincronizar.')),
+      options.onRetry ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void options.onRetry?.() }, kt('Reintentar')) : null,
     ));
   }
   if (options.updateApply) {
     items.push(el('div', { class: 'banner info' },
       icon('info', 18),
-      el('span', null, 'Hay una nueva versión de la app.'),
-      el('button', { class: 'linkbtn', type: 'button', id: 'appUpdate', onclick: () => options.updateApply?.() }, 'Actualizar'),
+      el('span', null, kt('Hay una nueva versión de la app.')),
+      el('button', { class: 'linkbtn', type: 'button', id: 'appUpdate', onclick: () => options.updateApply?.() }, kt('Actualizar')),
     ));
   }
   return items;
