@@ -152,3 +152,43 @@ test('textos · solo el owner escribe; la clave no cambia; claves únicas; el le
   // La tabla de versiones es cerrada: ni se lee ni se escribe por el núcleo.
   assert.notEqual((await app.call('/api/v1/snapshot?tables=central.text_versions')).status, 200);
 });
+
+test('textos · contacto público sin sesión (C1): solo los textos de contacto, por idioma y en su orden', async () => {
+  // Por el camino público del núcleo (lo que usa `GET /api/v1/public/contact?lang=`).
+  const contact = async (lang: string | null) => (await app.t.db.query<{ out: any[] }>(`select core.public_read('contact', $1::jsonb) as out`, [JSON.stringify(lang === null ? {} : { lang })])).rows[0]!.out;
+  const es = await contact('es');
+  assert.deepEqual(es.map((c) => c.key), ['contact.email', 'contact.phone']);
+  assert.equal(es[0].body, 'organiza@ikisai.com'); assert.equal(es[0].version, 'v1'); assert.ok(es[0].title);
+  assert.deepEqual(Object.keys(es[0]).sort(), ['body', 'key', 'title', 'version']);
+  // Inglés: el que falta cae al español; un idioma desconocido o nulo, español.
+  assert.deepEqual((await contact('en')).map((c) => c.body), ['organiza@ikisai.com', '614 76 57 96']);
+  assert.deepEqual(await contact('fr'), es);
+  assert.deepEqual(await contact(null), es);
+  // Ningún texto legal ni de otro tipo.
+  assert.equal(JSON.stringify(es).includes('Protección de datos'), false);
+  // Solo para la clave de servicio.
+  const grants = await app.t.db.query<{ role: string; ok: boolean }>(
+    `select r as role, has_function_privilege(r, 'central.public_contact(jsonb)', 'execute') as ok from unnest(array['anon','authenticated','service_role']) r
+      where exists (select 1 from pg_roles where rolname = r)`);
+  for (const g of grants.rows) assert.equal(g.ok, g.role === 'service_role', g.role);
+});
+
+test('textos · X2: tres textos de Organizers en español e inglés, de tipo mensaje, sin duplicar', async () => {
+  const first = await app.t.db.query<{ n: number }>(`select central.seed_texts_organizers() as n`);
+  assert.equal(first.rows[0]!.n, 6);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_organizers() as n`)).rows[0]!.n, 0);
+  const rows = (await app.t.db.query<{ key: string; lang: string; kind: string; version: string; body: string }>(
+    `select key, lang, kind, version, body from central.texts where key in ('organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note') order by key, lang desc`)).rows;
+  assert.deepEqual(rows.map((r) => [r.key, r.lang, r.kind, r.version]), [
+    ['organizers.dates_note', 'es', 'mensaje', 'v1'], ['organizers.dates_note', 'en', 'mensaje', 'v1'],
+    ['organizers.proposal_note', 'es', 'mensaje', 'v1'], ['organizers.proposal_note', 'en', 'mensaje', 'v1'],
+    ['organizers.quote_note', 'es', 'mensaje', 'v1'], ['organizers.quote_note', 'en', 'mensaje', 'v1'],
+  ]);
+  assert.match(rows.find((r) => r.key === 'organizers.quote_note' && r.lang === 'es')!.body, /IVA/);
+  // Organizers los lee por la proyección, en su idioma.
+  const organizer = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('organizers', $1, 'reader')`, [organizer]);
+  const out = await app.t.rpc('core_read', { p_app: 'organizers', p_actor: organizer, p_name: TEXTS_PROJECTION, p_args: { where: { key: 'organizers.dates_note', lang: 'en' } } }) as { rows: any[] };
+  assert.equal(out.rows[0].body, 'Ikisai will confirm the final date; the dates you mark are only possibilities.');
+  assert.equal(out.rows[0].fallback, false);
+});

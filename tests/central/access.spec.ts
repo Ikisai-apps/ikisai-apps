@@ -20,6 +20,8 @@ let server: PreviewServer;
 let baseURL: string;
 
 test.beforeAll(async () => {
+  // Compilar la app con Vite puede pasar de los 90 s con la máquina cargada (fallo visto con @smoke en paralelo).
+  test.setTimeout(180_000);
   api = await startCentralServer();
   // Otra app con un propietario y una clave de agente, para que la tabla tenga algo que mostrar.
   const t = api.app.t;
@@ -122,7 +124,7 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await expect(page.locator('#accessLog')).not.toContainText('Clave de agente revocada');
 });
 
-test('accesos · un editor de Central no ve Accesos ni puede abrirlos por la dirección', async ({ page }) => {
+test('accesos · un editor de Central no ve Accesos ni puede abrirlos por la dirección @smoke', async ({ page }) => {
   await api.app.t.db.query(`update core.memberships set scopes = null where app = 'central' and user_id = $1`, [api.app.users.editor]);
   await login(page, 'reader@example.invalid');
   await expect(page.getByRole('heading', { name: 'Hola, Reader' })).toBeVisible();
