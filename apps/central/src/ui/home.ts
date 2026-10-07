@@ -15,20 +15,20 @@ const ROLE_TEXT: Record<string, string> = {
  * Inicio. En V1-a: quién eres en Central y, si administras, un resumen de cuentas y agentes con acceso rápido.
  * El panel de dirección (KPIs) y los vencimientos llegan con sus bloques (API.md §13).
  */
-export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate }) => {
+export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate, usage }) => {
   const boot = client.bootstrap();
-  const summary = el('div', { class: 'homecards', id: 'homeSummary' });
-  const docs = el('div', { id: 'homeDocs' });
-  const dashboardHost = el('div');
+  const summary = el('div', { class: 'homecards', id: 'homeSummary', 'data-feedback-id': 'central.inicio.resumen', 'data-feedback-label': 'Resumen de cuentas' });
+  const docs = el('div', { id: 'homeDocs', 'data-feedback-id': 'central.inicio.vencimientos', 'data-feedback-label': 'Vencimientos' });
+  const dashboardHost = el('div', { 'data-feedback-id': 'central.inicio.direccion', 'data-feedback-label': 'Panel de dirección' });
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null,
-      el('h2', null, boot?.profile.displayName ? `Hola, ${boot.profile.displayName}` : 'Ikisai Central'),
+    el('div', { class: 'pagehead', 'data-feedback-id': 'central.inicio.cabecera', 'data-feedback-label': 'Cabecera de Inicio' }, el('div', null,
+      el('h2', { 'data-feedback-ignore': '' }, boot?.profile.displayName ? `Hola, ${boot.profile.displayName}` : 'Ikisai Central'),
       el('p', null, ROLE_TEXT[boot?.membership.role ?? 'reader'] ?? ''))),
     docs,
     summary,
-    el('a', { class: 'homelink', href: '#/decisiones', id: 'homeDecisions' }, icon('history', 18), 'Registro de decisiones', el('span', { class: 'muted small' }, 'qué se decidió, por qué y cómo se aplica')),
-    el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
+    el('a', { class: 'homelink', href: '#/decisiones', id: 'homeDecisions', 'data-feedback-id': 'central.inicio.enlaces.decisiones', 'data-feedback-label': 'Registro de decisiones' }, icon('history', 18), 'Registro de decisiones', el('span', { class: 'muted small' }, 'qué se decidió, por qué y cómo se aplica')),
+    el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity', 'data-feedback-id': 'central.inicio.enlaces.entidad', 'data-feedback-label': 'Datos de la entidad' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
     dashboardHost,
   );
 
@@ -42,20 +42,20 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
     if (!due.length) { replace(docs); return; }
     const expired = due.filter((x) => x.state === 'vencido').length;
     const href = (x: (typeof due)[number]) => x.source === 'person_record' ? `#/personas/${x.parentId}` : x.source === 'requirement' ? `#/cumplimiento/${x.id}` : x.parentId ? `#/cumplimiento/${x.parentId}` : '#/cumplimiento/documentos';
-    replace(docs, el('section', { class: 'card duecard' },
+    replace(docs, el('section', { class: 'card duecard', 'data-feedback-id': 'central.inicio.vencimientos.tarjeta', 'data-feedback-label': 'Vence pronto' },
       el('h3', null, icon('warn', 18), ' Vence pronto'),
       el('p', null, [expired ? plural(expired, 'vencido', 'vencidos') : '', due.length - expired ? plural(due.length - expired, 'vence pronto', 'vencen pronto') : ''].filter(Boolean).join(' · ')),
-      el('ul', { class: 'plainlist' }, ...due.slice(0, 5).map((x) => el('li', null,
-        el('a', { href: href(x) }, x.title), x.state === 'vencido' ? ` · venció el ${x.dueOn.split('-').reverse().join('/')}` : ` · vence el ${x.dueOn.split('-').reverse().join('/')}`))),
-      due.length > 5 ? el('a', { href: '#/cumplimiento' }, 'Ver todos los vencimientos') : null));
+      el('ul', { class: 'plainlist', 'data-feedback-id': 'central.inicio.vencimientos.lista', 'data-feedback-label': 'Lista de vencimientos' }, ...due.slice(0, 5).map((x) => el('li', null,
+        el('a', { href: href(x), 'data-feedback-id': 'central.inicio.vencimientos.enlace', 'data-feedback-label': 'Vencimiento' }, x.title), x.state === 'vencido' ? ` · venció el ${x.dueOn.split('-').reverse().join('/')}` : ` · vence el ${x.dueOn.split('-').reverse().join('/')}`))),
+      due.length > 5 ? el('a', { href: '#/cumplimiento', 'data-feedback-id': 'central.inicio.vencimientos.ver_todos', 'data-feedback-label': 'Ver todos los vencimientos' }, 'Ver todos los vencimientos') : null));
   }
   void paintDocs();
-  const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin);
+  const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin, usage);
 
   if (!isAdmin) return () => unmountDashboard();
 
-  function card(id: string, title: string, value: string, hint: string, hash: string): HTMLElement {
-    return el('button', { class: 'homecard', type: 'button', id, onclick: () => navigate(hash) },
+  function card(id: string, title: string, value: string, hint: string, hash: string, slug: string): HTMLElement {
+    return el('button', { class: 'homecard', type: 'button', id, 'data-feedback-id': `central.inicio.resumen.${slug}`, 'data-feedback-label': title, onclick: () => navigate(hash) },
       el('span', { class: 'homecard-title' }, title), el('strong', null, value), el('span', { class: 'muted' }, hint));
   }
 
@@ -69,10 +69,10 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
       const disabled = humans.filter((a) => a.disabled).length;
       const activeKeys = agents.filter((k) => !k.revokedAt).length;
       replace(summary,
-        card('homeAccounts', 'Cuentas', String(humans.length), disabled ? `${plural(disabled, 'desactivada', 'desactivadas')}` : 'personas con acceso', '#/accesos'),
-        card('homeAgents', 'Agentes', String(activeKeys), plural(activeKeys, 'clave activa', 'claves activas'), '#/accesos/agentes'),
-        card('homeInvite', 'Alta', '+', 'dar acceso a una persona nueva', '#/accesos/alta'),
-        card('homeLog', 'Registro', '', 'quién cambió qué y cuándo', '#/accesos/registro'),
+        card('homeAccounts', 'Cuentas', String(humans.length), disabled ? `${plural(disabled, 'desactivada', 'desactivadas')}` : 'personas con acceso', '#/accesos', 'cuentas'),
+        card('homeAgents', 'Agentes', String(activeKeys), plural(activeKeys, 'clave activa', 'claves activas'), '#/accesos/agentes', 'agentes'),
+        card('homeInvite', 'Alta', '+', 'dar acceso a una persona nueva', '#/accesos/alta', 'alta'),
+        card('homeLog', 'Registro', '', 'quién cambió qué y cuándo', '#/accesos/registro', 'registro'),
       );
     } catch {
       if (!alive) return;

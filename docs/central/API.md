@@ -497,6 +497,13 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 
 Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexión se muestra la última lista leída **en esta sesión** con su hora (solo en memoria: lleva correos y no se guarda en el dispositivo) y los cambios fallan con «Esta acción necesita conexión». Central edita el único ámbito propio (`people`) en la ficha de la cuenta; los de las demás apps se ven en solo lectura con enlace a la app.
 
+### 9.5 «Sugerencias y QA» y uso semántico (fase 4 del feedback)
+
+- Cáscara con `createFeedback`, `createFeedbackReview` (revisor), el lanzador con «Señalar para comentar» y el centro **Sugerencias y QA** (botón de ayuda en la cabecera). `onSessionEnd` borra borradores y totales del dispositivo.
+- `data-feedback-id="central.<pantalla>.<sección>.<elemento>"` con su `data-feedback-label` en todo control con significado y en las secciones. Raíces: `inicio`, `direccion`, `accesos`, `entidad`, `personas`, `persona`, `equipos`, `cumplimiento`, `obligacion`, `decisiones`, `conflictos`, `cabecera`, `navegacion`, `avisos`. Sin uuids ni datos de negocio; lo comprueba `tests/central/feedback-ids.test.ts`.
+- `data-feedback-ignore` en datos personales y en lo que se copia: correos, teléfonos, contacto y vinculación, nombres en filas y cabeceras, contraseña temporal, NIF/CIF y domicilio de la entidad, códigos `PER_`/`LEG_`/`DOC_`/`DEC_` y enlaces externos.
+- `createUsage` (USO.md) con el aviso al equipo la primera vez. Operaciones contadas con éxito o error: `central.accesos.alta.crear`, `central.accesos.cuenta.cambiar_acceso`, `central.accesos.cuenta.contrasena`, `central.accesos.agentes.revocar`, `central.persona.cuenta.dar`, `central.persona.documentacion.guardar`, `central.obligacion.crear_tarea`, `central.obligacion.marcar_cumplido`, `central.entidad.guardar`, `central.decisiones.guardar` y `central.direccion.objetivo.guardar`.
+
 ---
 
 ## 10. Offline
