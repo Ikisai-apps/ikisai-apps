@@ -1,7 +1,7 @@
 /**
- * Facturas emitidas registradas (API.md §13): lista por mes, ficha y alta manual. Se registran las expedidas con otra
- * herramienta (libro registro de expedidas); la emisión desde la app con Verifactu queda preparada en el modelo.
- * Sin papelera: una emitida se anula con motivo y su número sigue ocupado.
+ * Facturas emitidas (API.md §13 y §14): lista por mes, ficha, alta manual de las expedidas con otra herramienta y, desde
+ * la ronda 41, emisión desde Finance (borrador → emitida, en ./issuing.ts). Sin papelera: una emitida se anula con
+ * motivo y su número sigue ocupado; solo los borradores se borran.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
@@ -21,14 +21,15 @@ import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import type { IssuerSnapshot } from '@ikisai/domain-invoices';
+import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, verifactuSummary } from './issuing.ts';
 
 /** Entidad emisora de Central (ronda 37), leída de la Edge; sin red o sin datos, `null`. */
-async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot | null; logo_url: string | null }> {
+export async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot | null; logo_url: string | null }> {
   if (!navigator.onLine) return { entity: null, logo_url: null };
   try { return await client.api<{ entity: IssuerSnapshot | null; logo_url: string | null }>('/entity'); } catch { return { entity: null, logo_url: null }; }
 }
 
-const MISSING_ENTITY = 'Faltan los datos de la entidad en Central';
+export const MISSING_ENTITY = 'Faltan los datos de la entidad en Central';
 
 /** Emitidas registradas sin emisor que se pueden completar (las anuladas no se editan). */
 function withoutIssuer(invoices: LocalIssuedInvoice[]): LocalIssuedInvoice[] {
@@ -56,14 +57,14 @@ async function fillIssuers(client: SyncClient, invoices: LocalIssuedInvoice[]): 
   await commitSafely(client, operations, invoices.length === 1 ? 'Emisor completado.' : 'Emisores completados.');
 }
 
-function issuerLines(e: IssuerSnapshot): string[] {
+export function issuerLines(e: IssuerSnapshot): string[] {
   return [e.trade_name && e.trade_name !== e.legal_name ? `${e.legal_name} (${e.trade_name})` : e.legal_name, `NIF ${e.tax_id}`,
     [e.address_line, [e.postal_code, e.city].filter(Boolean).join(' '), e.province, e.country !== 'ES' ? e.country : null].filter(Boolean).join(', '),
     [e.email, e.phone, e.website].filter(Boolean).join(' · ')].filter(Boolean);
 }
 import type { ViewContext } from './shell.ts';
 
-interface IssuedData {
+export interface IssuedData {
   series: LocalIssuedSeries[];
   invoices: LocalIssuedInvoice[];
   linesBy: Map<string, LocalIssuedLine[]>;
@@ -94,7 +95,7 @@ export async function loadIssued(client: SyncClient): Promise<IssuedData> {
   return { series, invoices, linesBy, taxesBy: by(taxes, (t) => t.issued_invoice_id), filesBy: by(files, (f) => f.issued_invoice_id), allocationsBy: by(allocations, (a) => a.issued_invoice_id) };
 }
 
-const numberOf = (i: LocalIssuedInvoice) => i.full_number || (i.number ? fullNumber(i.series_code, i.number) : `Borrador ${i.series_code}`);
+export const numberOf = (i: LocalIssuedInvoice) => i.full_number || (i.number ? fullNumber(i.series_code, i.number) : `Borrador ${i.series_code}`);
 const recipientOf = (i: LocalIssuedInvoice) => i.recipient_name || 'Sin destinatario';
 
 // ---------------------------------------------------------------------------
@@ -109,16 +110,18 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   let opened: { id: string; sheet: Sheet } | null = null;
   const search = el('input', { type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente o concepto', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const statusSelect = select('issuedFilter', [['activas', 'Registradas'], ['anulada', 'Anuladas'], ['pendientes', 'Sin cobrar'], ['revisar', 'Revisar importes']], filter,
+  const statusSelect = select('issuedFilter', [['activas', 'Activas'], ['borradores', 'Borradores'], ['anulada', 'Anuladas'], ['pendientes', 'Sin cobrar'], ['revisar', 'Revisar importes']], filter,
     { 'aria-label': 'Filtrar emitidas', onchange: () => { filter = statusSelect.value; paint(); } });
   const list = el('div', { id: 'issuedList' });
   const issuerBanner = el('div', { id: 'issuersMissing', hidden: true });
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus'), 'Nueva emitida');
+  const newButton = el('button', { class: 'fab', type: 'button', id: 'newIssuedInvoice', hidden: !canEdit, onclick: () => data && openInvoiceDraft(ctx, data) }, icon('plus'), 'Nueva factura');
+  const registerButton = el('button', { class: 'softbtn small', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus', 16), 'Registrar emitida');
+  const settingsButton = el('button', { class: 'softbtn small', type: 'button', id: 'issuingSettings', onclick: () => data && openIssuingSettings(ctx, data) }, icon('settings', 16), 'Series');
   const importButton = el('button', { class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
   const element = el('div', { id: 'issuedPanel' },
-    el('p', { class: 'hint' }, 'Registro de las facturas que emites con otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
+    el('p', { class: 'hint' }, 'Las facturas que emites desde Finance y las que registras de otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
-    el('div', { class: 'toolbar' }, importButton), issuerBanner, list, newButton);
+    el('div', { class: 'toolbar' }, settingsButton, registerButton, importButton), issuerBanner, list, newButton);
 
   function visible(i: LocalIssuedInvoice): boolean {
     if (i.deleted_at) return false;
@@ -126,8 +129,9 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     if (query && !hay.includes(query)) return false;
     switch (filter) {
       case 'anulada': return i.status === 'anulada';
-      case 'pendientes': return i.status !== 'anulada' && i.payment_status !== 'cobrada';
-      case 'revisar': return i.status !== 'anulada' && i.review_reason === 'REVISAR IMPORTES';
+      case 'borradores': return i.status === 'borrador';
+      case 'pendientes': return i.status !== 'anulada' && i.status !== 'borrador' && i.payment_status !== 'cobrada';
+      case 'revisar': return i.status !== 'anulada' && i.status !== 'borrador' && i.review_reason === 'REVISAR IMPORTES';
       default: return i.status !== 'anulada';
     }
   }
@@ -157,6 +161,8 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
       renderList({ label: `Emitidas de ${monthLabel(key)}`, rows: items.map((i): ListRowSpec => {
         const chips = [el('span', { class: 'chip' }, i.invoice_type)];
         if (i.status === 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Anulada'));
+        if (i.status === 'borrador') chips.push(el('span', { class: 'chip warn' }, 'Borrador'));
+        if (i.status === 'rectificada') chips.push(el('span', { class: 'chip' }, 'Rectificada'));
         if (i.review_reason === 'REVISAR IMPORTES') chips.push(el('span', { class: 'chip alert' }, 'Revisar importes'));
         if (i.payment_status === 'cobrada') chips.push(el('span', { class: 'chip ok' }, 'Cobrada'));
         return { id: i.id, title: `${numberOf(i)} · ${recipientOf(i)}`, meta: [shortDate(i.issue_date), i.description, eur(i.total)], chips, pending: i._pending === true,
@@ -197,17 +203,32 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
 // ---------------------------------------------------------------------------
 function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData, reopen: (id: string) => void): HTMLElement {
   const { client } = ctx;
-  const canEdit = client.bootstrap()?.membership.role !== 'reader' && invoice.status !== 'anulada';
+  const role = client.bootstrap()?.membership.role;
+  const canEdit = role !== 'reader' && invoice.status !== 'anulada';
+  const isDraft = invoice.status === 'borrador';
+  const fromApp = invoice.origin === 'app' && !isDraft;
   const lines = data.linesBy.get(invoice.id) ?? [];
   const taxes = data.taxesBy.get(invoice.id) ?? [];
   const files = data.filesBy.get(invoice.id) ?? [];
   const allocations = data.allocationsBy.get(invoice.id) ?? [];
   const actions: HTMLElement[] = [];
-  if (canEdit) {
-    actions.push(el('button', { class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
-    actions.push(el('button', { class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
+  if (isDraft) {
+    if (canEdit) {
+      actions.push(el('button', { class: 'primary', type: 'button', id: 'issueDraft', onclick: () => void issueDraft(ctx, invoice, data) }, icon('check', 18), 'Emitir'));
+      actions.push(el('button', { class: 'softbtn', type: 'button', id: 'editDraft', onclick: () => openInvoiceDraft(ctx, data, invoice) }, icon('edit', 18), 'Editar'));
+    }
+    actions.push(el('button', { class: 'softbtn', type: 'button', id: 'previewDraft', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('eye', 18), 'Vista previa'));
+    if (canEdit) actions.push(el('button', { class: 'danger', type: 'button', id: 'deleteDraft', onclick: () => void deleteDraft(client, invoice, data) }, icon('trash', 18), 'Borrar'));
+  } else {
+    if (canEdit) {
+      actions.push(el('button', { class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
+      // Una emitida desde Finance solo la anula el owner (genera el registro de anulación).
+      if (!fromApp || role === 'owner') actions.push(el('button', { class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
+    }
+    actions.push(fromApp
+      ? el('button', { class: 'softbtn', type: 'button', id: 'printInvoice', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('download', 18), 'Factura (PDF)')
+      : el('button', { class: 'softbtn', type: 'button', id: 'printIssued', onclick: () => void openIssuedPrint(ctx, invoice, data) }, icon('download', 18), 'Imprimir copia'));
   }
-  actions.push(el('button', { class: 'softbtn', type: 'button', id: 'printIssued', onclick: () => void openIssuedPrint(ctx, invoice, data) }, icon('download', 18), 'Imprimir copia'));
 
   async function toggleCollected(): Promise<void> {
     const fields = invoice.payment_status === 'cobrada' ? { payment_status: 'pendiente', paid_at: null } : { payment_status: 'cobrada', paid_at: todayIso() };
@@ -217,7 +238,9 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   async function annul(): Promise<void> {
     const reason = el('input', { type: 'text', id: 'annulIssuedReason', maxlength: '500', placeholder: 'Emitida por error, sustituida…' });
     const ok = await confirmDialog({ title: `¿Anular ${numberOf(invoice)}?`, text: el('div', null,
-      el('p', null, 'Queda en el registro como anulada y fuera de los resúmenes. Su número sigue ocupado. Si la corriges, registra la rectificativa.'), field('Motivo', reason)),
+      el('p', null, fromApp
+        ? 'Solo si la factura no debió emitirse y no llegó al cliente: se genera el registro de anulación y su número sigue ocupado. Si el cliente ya la tiene, lo correcto es una rectificativa.'
+        : 'Queda en el registro como anulada y fuera de los resúmenes. Su número sigue ocupado. Si la corriges, registra la rectificativa.'), field('Motivo', reason)),
       confirmLabel: 'Anular', danger: true });
     if (!ok) return;
     if (!reason.value.trim()) { toast('Indica el motivo de la anulación.'); return; }
@@ -225,10 +248,12 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   }
 
   const recipient = [invoice.recipient_name, invoice.recipient_tax_id].filter(Boolean).join(' · ') || 'Sin destinatario (simplificada)';
+  const address = invoice.recipient_address ? [invoice.recipient_address.line, [invoice.recipient_address.postal_code, invoice.recipient_address.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
   const issuer = invoice.issuer;
   return el('div', null,
     actions.length ? el('div', { class: 'btnrow' }, ...actions) : null,
-    issuer
+    isDraft ? el('div', { class: 'banner info', id: 'draftBanner' }, icon('info', 18), el('span', null, 'Borrador sin número: se numera al emitir. Hasta entonces se puede editar o borrar.')) : null,
+    isDraft ? null : issuer
       ? el('div', { class: 'issuer', id: 'issuedIssuer' }, el('span', { class: 'hint' }, 'Emisor'), ...issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('span', null, l))))
       : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`),
         canEdit ? el('button', { class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
@@ -247,6 +272,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         isRectificative(invoice.invoice_type) ? el('dd', null, `${invoice.rectified.map((r) => fullNumber(r.series ?? '', r.number)).join(', ')} · ${RECTIFICATION_KIND_LABELS[invoice.rectification_kind ?? ''] ?? ''} · ${invoice.rectification_reason ?? ''}`) : null,
         el('dt', null, 'Fecha'), el('dd', null, shortDate(invoice.issue_date) + (invoice.operation_date && invoice.operation_date !== invoice.issue_date ? ` (operación ${shortDate(invoice.operation_date)})` : '')),
         el('dt', null, 'Destinatario'), el('dd', null, recipient),
+        address ? el('dt', null, 'Domicilio') : null, address ? el('dd', null, address) : null,
         el('dt', null, 'Concepto'), el('dd', null, invoice.description),
         el('dt', null, 'Ingreso'), el('dd', null, invoice.income_category ? INCOME_CATEGORY_LABELS[invoice.income_category] : 'Sin categoría'),
         el('dt', null, 'Cobro'), el('dd', null, invoice.payment_status === 'cobrada' ? `Cobrada${invoice.paid_at ? ` el ${shortDate(invoice.paid_at)}` : ''}` : 'Sin cobrar'),
@@ -269,9 +295,9 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
           canEdit ? el('button', { class: 'x', type: 'button', 'aria-label': `Quitar ${a.target_label}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ISSUED_ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación quitada.') }, '×') : null)))
         : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.'),
       canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento')) : null),
-    block('Verifactu', invoice.origin === 'app' ? (invoice.vf_status ?? 'pendiente') : 'otra herramienta', false,
-      el('p', { class: 'hint' }, invoice.origin === 'app'
-        ? 'Emitida desde la app: registro Verifactu.'
+    block('Verifactu', invoice.origin === 'app' ? (isDraft ? 'borrador' : invoice.vf_status === 'no_enviar' ? 'guardado, sin enviar' : (invoice.vf_status ?? 'pendiente')) : 'otra herramienta', false,
+      el('p', { class: 'hint', id: 'issuedVerifactu' }, invoice.origin === 'app'
+        ? verifactuSummary(invoice)
         : `${ISSUED_ORIGIN_LABELS[invoice.origin] ?? invoice.origin}. El registro Verifactu lo hace la herramienta que la expidió; aquí queda en el libro registro de expedidas.`)),
   );
 }
@@ -532,7 +558,7 @@ interface LineInputs { row: HTMLElement; description: HTMLInputElement; net: HTM
 
 export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
   const { client } = ctx;
-  const liveSeries = data.series.filter((s) => s.active).sort((a, b) => a.code.localeCompare(b.code));
+  const liveSeries = data.series.filter((s) => s.active && s.mode !== 'emision' && !s.closed_at).sort((a, b) => a.code.localeCompare(b.code));
   const series = select('issuedSeries', [...liveSeries.map((s) => [s.code, s.description ? `${s.code} · ${s.description}` : s.code] as [string, string]), [NEW_SERIES, '+ Nueva serie…']], liveSeries[0]?.code ?? NEW_SERIES);
   const newSeries = el('input', { type: 'text', id: 'issuedNewSeries', maxlength: '20', placeholder: 'A, R, 2026-A…' });
   const newSeriesField = field('Código de la serie nueva', newSeries);

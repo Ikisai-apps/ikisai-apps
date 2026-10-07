@@ -854,6 +854,121 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
   await context.close();
 });
 
+test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emitir con número del servidor y factura imprimible', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const year = new Date().toLocaleDateString('sv-SE').slice(0, 4);
+  api.setEntity({ entity_id: '44444444-4444-4444-8444-444444444444', entity_revision: 3, legal_name: 'Ikisai Retiros SL', trade_name: 'Ikisai', tax_id: 'B12345674',
+    address_line: 'Calle Prueba 1', postal_code: '28001', city: 'Madrid', province: 'Madrid', country: 'ES', email: null, phone: null, website: null, logo_file_id: null });
+  try {
+    await login(page);
+    await synced(page);
+    await nav(page, 'Facturas').click();
+    await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+
+    await test.step('sin serie de emisión, «Nueva factura» lleva a crearla', async () => {
+      await page.locator('#newIssuedInvoice').click();
+      const settings = page.getByRole('dialog', { name: 'Series y VERI*FACTU' });
+      await expect(settings.locator('#vfSending')).toContainText('Envío a la AEAT: apagado');
+      await settings.locator('#createSeries-ordinaria').click();
+      await expect(settings).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_series').find((s) => s.code === 'F')).toMatchObject({ mode: 'emision', kind: 'ordinaria', format: '{serie}{año}-{n:4}' });
+    });
+
+    await test.step('borrador sin número; el domicilio es obligatorio para emitir a una empresa', async () => {
+      await page.locator('#newIssuedInvoice').click();
+      const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+      await expect(sheet.locator('#draftSeries')).toContainText(`siguiente F${year}-0001`);
+      await sheet.locator('#draftRecipientName').fill('Cliente Emisión SL');
+      await sheet.locator('#draftRecipientTaxId').fill('B55555555');
+      await sheet.locator('#draftDescription').fill('Retiro de grupo');
+      await sheet.getByLabel('Concepto de la línea 1').fill('Alojamiento');
+      await sheet.getByLabel('Cantidad de la línea 1').fill('2');
+      await sheet.getByLabel('Precio de la línea 1').fill('50');
+      await expect(sheet.locator('#draftTotals')).toContainText('TOTAL 110,00 €');
+      await sheet.locator('#saveDraft').click();
+      await expect(sheet).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      const draft = api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!;
+      expect(draft).toMatchObject({ status: 'borrador', number: null, origin: 'app', series_code: 'F' });
+      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id)).toEqual([expect.objectContaining({ quantity: 2, unit_price: 50, net_amount: 100, vat_rate: 10 })]);
+      await page.locator('#issuedList .row', { hasText: 'Borrador F' }).click();
+      const ficha = page.locator('.sheet[role="dialog"]');
+      await expect(ficha.locator('#draftBanner')).toContainText('Borrador sin número');
+      await ficha.locator('#issueDraft').click();
+      await expect(page.getByText('Para emitir falta el domicilio del destinatario')).toBeVisible();
+      await ficha.locator('#editDraft').click();
+      const edit = page.getByRole('dialog', { name: 'Editar borrador' });
+      await edit.locator('#draftAddressLine').fill('Calle Cliente 2');
+      await edit.locator('#draftPostalCode').fill('28002');
+      await edit.locator('#draftCity').fill('Madrid');
+      await edit.locator('#saveDraft').click();
+      await expect(edit).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.id === draft.id)!.recipient_address).toMatchObject({ line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid', country: 'ES' });
+      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at)).toHaveLength(1);
+    });
+
+    await test.step('emitir: número del servidor, congelada, factura imprimible con los datos obligatorios y sin QR con el envío apagado', async () => {
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: 'Borrador F' }).click();
+      const ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#issueDraft').click();
+      const confirm = page.getByRole('alertdialog');
+      await expect(confirm).toContainText(`F${year}-0001`);
+      await expect(confirm).toContainText('no se podrá editar');
+      await confirm.getByRole('button', { name: 'Emitir' }).click();
+      await expect(page.locator('#issuedList')).toContainText(`F${year}-0001 · Cliente Emisión SL`, { timeout: 20_000 });
+      await synced(page);
+      const issued = api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!;
+      expect(issued).toMatchObject({ status: 'emitida', number: `F${year}-0001`, issuer_tax_id: 'B12345674', total: 110, vf_status: 'no_enviar' });
+      expect(issued.vf_hash).toMatch(/^[0-9A-F]{64}$/);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: `F${year}-0001` }).click();
+      const sheet = page.locator('.sheet[role="dialog"]');
+      await expect(sheet.locator('#editDraft')).toHaveCount(0);
+      await expect(sheet.locator('#issuedVerifactu')).toContainText('Registro de alta guardado (primero de la cadena)');
+      await sheet.locator('#printInvoice').click();
+      const doc = page.locator('#issuedDocumentView');
+      await expect(doc).toContainText(`Factura F${year}-0001`);
+      await expect(doc.locator('#docIssuer')).toContainText('NIF B12345674');
+      await expect(doc.locator('#docIssuer')).toContainText('Calle Prueba 1');
+      await expect(doc.locator('#docRecipient')).toContainText('NIF B55555555');
+      await expect(doc.locator('#docRecipient')).toContainText('Calle Cliente 2, 28002 Madrid');
+      await expect(doc.locator('#docBreakdown')).toContainText('IVA 10 %');
+      await expect(doc.locator('#docTotals')).toContainText('110,00 €');
+      await expect(doc).not.toContainText('VERI*FACTU');
+      await expect(doc).not.toContainText('COPIA DE REGISTRO');
+    });
+
+    await test.step('un borrador se borra sin dejar número', async () => {
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#newIssuedInvoice').click();
+      const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+      await sheet.locator('#draftRecipientKind').selectOption('particular');
+      await sheet.locator('#draftRecipientName').fill('Particular Prueba');
+      await sheet.locator('#draftDescription').fill('Para borrar');
+      await sheet.getByLabel('Concepto de la línea 1').fill('Cena');
+      await sheet.getByLabel('Precio de la línea 1').fill('20');
+      await sheet.locator('#saveDraft').click();
+      await expect(sheet).toBeHidden({ timeout: 20_000 });
+      await page.locator('#issuedList .row', { hasText: 'Particular Prueba' }).click();
+      await page.locator('.sheet[role="dialog"]').locator('#deleteDraft').click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar' }).click();
+      await expect(page.locator('#issuedList')).not.toContainText('Particular Prueba', { timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.description === 'Para borrar')!.deleted_at).not.toBeNull();
+      expect(api.rows('invoices.issued_series').find((s) => s.code === 'F')!.counter_last).toBe(1);
+    });
+  } finally {
+    api.setEntity(null);
+    await context.close();
+  }
+});
+
 test('IA sin API de pago (fase 1): compartir documento y contrato, volver por share_target, sobre que no coincide y escritorio sin Web Share', async ({ browser }) => {
   test.setTimeout(180_000);
   const pdfSha = createHash('sha256').update(PDF).digest('hex');
