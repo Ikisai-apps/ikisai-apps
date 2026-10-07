@@ -86,7 +86,7 @@ async function validate(page: Page, acknowledgements: number): Promise<void> {
   await expect(page.locator('#menuStatus')).toHaveText('Validado');
 }
 
-test('evento → menú → avisos → validar → el evento cambia → revisar y validar de nuevo', async ({ page, context }) => {
+test('evento → menú → avisos → validar → el evento cambia → revisar y validar de nuevo @smoke', async ({ page, context }) => {
   test.setTimeout(120_000);
 
   await test.step('Inicio y Eventos enseñan el retiro tal como lo publica Booking', async () => {

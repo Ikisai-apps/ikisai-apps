@@ -65,7 +65,7 @@ async function cameraPhoto(page: Page): Promise<Buffer> {
   return Buffer.from(base64, 'base64');
 }
 
-test('login → receta con ingrediente nuevo y foto → edición sin red → sincronizar', async ({ page, context }) => {
+test('login → receta con ingrediente nuevo y foto → edición sin red → sincronizar @smoke', async ({ page, context }) => {
   test.setTimeout(120_000);
 
   await test.step('login y las cinco entradas', async () => {
