@@ -79,6 +79,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Completar el emisor de las emitidas registradas sin él (ronda 38, migración 0210): procedimiento `invoices.take_issuer`, en la ficha («Tomar el emisor actual») y en lote desde el aviso de la lista; nunca sobrescribe ni toca anuladas.
 
+- Indicadores para el panel de Dirección de Central (ronda 40, migración 0211): vista `invoices.central_kpi_projection` con cinco claves (API.md §7.6).
+
 ## En curso
 
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. Siguiente: PR 3, rectificativas.
