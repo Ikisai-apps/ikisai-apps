@@ -78,5 +78,9 @@ function appName(source){return appNames?.get(source)||source.charAt(0).toUpperC
 const taskEditorBeforeOrigin=openTaskEditor;
 openTaskEditor=function(id,...rest){taskEditorBeforeOrigin(id,...rest);const origin=id?requestOrigin(id):null;if(!origin)return;
   const title=document.querySelector('#sheet .sheettitle');if(!title||document.getElementById('taskOrigin'))return;
-  title.insertAdjacentHTML('afterend',`<p class="notice" id="taskOrigin">Pedida desde ${esc(appName(origin.source))} · ${esc(origin.reference)}</p>`);
-  if(!appNames&&Sync.core&&navigator.onLine)Sync.core.api('/apps').then(out=>{appNames=new Map((out?.items||out?.apps||[]).map(a=>[a.id,a.name]));const el=document.getElementById('taskOrigin');if(el)el.textContent=`Pedida desde ${appName(origin.source)} · ${origin.reference}`}).catch(()=>{appNames=new Map()})};
+  // §20: también el tipo (con el nombre que mandó quien pidió) y el enlace al elemento que la generó.
+  const row=Sync.core.data['tasks.tasks'].find(t=>t.id===id),request=Sync.core.data['tasks.requests']?.find(r=>r.id===id);
+  const kind=row?.external_kind?(typeof kindName==='function'?kindName(row.external_kind,request?.kind_label):row.external_kind):'';
+  const text=()=>['Pedida desde '+appName(origin.source),kind,origin.reference].filter(Boolean).join(' · ');
+  title.insertAdjacentHTML('afterend',`<p class="notice" id="taskOrigin"><span id="taskOriginText">${esc(text())}</span>${row?.external_url?` · <a href="${esc(row.external_url)}" target="_blank" rel="noopener">Abrir</a>`:''}</p>`);
+  if(!appNames&&Sync.core&&navigator.onLine)Sync.core.api('/apps').then(out=>{appNames=new Map((out?.items||out?.apps||[]).map(a=>[a.id,a.name]));const el=document.getElementById('taskOriginText');if(el)el.textContent=text()}).catch(()=>{appNames=new Map()})};
