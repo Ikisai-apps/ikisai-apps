@@ -3,7 +3,7 @@ import { createApp, createStorage, createSupabase, ensureServiceActor, fail, mes
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
-import { createTasksNotifier, sesCancel, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
+import { createTasksNotifier, sesCancel, sesCommunicateGuestReport, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
@@ -186,6 +186,28 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
         const source = await supabase.rpc<any>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_reservation_source', p_args: { reservation_id: params.reservationId } });
         try {
           return await sesCommunicateReservation(sesDeps(supabase, ses), source, ctx.user.id);
+        } catch (error) {
+          const e = error as { name?: string; field?: string; message?: string };
+          if (e?.name === 'SesDataError') fail(422, 'SES_DATA', e.message ?? 'Faltan datos para comunicar a SES.', { field: e.field });
+          throw error;
+        }
+      },
+    },
+    {
+      // Huéspedes que han llegado, listos o con lo que les falta para el parte (editor y owner).
+      method: 'GET', pattern: 'ses/:reservationId/pv',
+      handler: ({ ctx, params }) => supabase.rpc('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_guest_report_source', p_args: { reservation_id: params.reservationId } }),
+    },
+    {
+      // «Cerrar la entrada y comunicar» (o comunicar a quien llega tarde, con `guest_ids`): parte de viajeros de los listos.
+      method: 'POST', pattern: 'ses/:reservationId/pv',
+      handler: async ({ ctx, params, json }) => {
+        requireEditor(ctx);
+        const body = await json().catch(() => ({}));
+        const guestIds = Array.isArray(body?.guest_ids) ? body.guest_ids.filter((id: unknown) => typeof id === 'string').slice(0, 200) : undefined;
+        const source = await supabase.rpc<any>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_guest_report_source', p_args: { reservation_id: params.reservationId, ...(guestIds ? { guest_ids: guestIds } : {}) } });
+        try {
+          return await sesCommunicateGuestReport(sesDeps(supabase, ses), source, ctx.user.id);
         } catch (error) {
           const e = error as { name?: string; field?: string; message?: string };
           if (e?.name === 'SesDataError') fail(422, 'SES_DATA', e.message ?? 'Faltan datos para comunicar a SES.', { field: e.field });
