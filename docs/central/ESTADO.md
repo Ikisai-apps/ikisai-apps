@@ -19,6 +19,8 @@
 - 2026-10-07 · **Registro de decisiones** (ronda 9): migración `0530_central_decisions` (`DEC`, tres niveles: nombre llano, descripción llana y explicación técnica; sustitución coherente), pantalla Decisiones con búsqueda y filtros, enlace desde Inicio. Pruebas `tests/central/decisions.test.ts` y `decisions.spec.ts`.
 - 2026-10-07 · **Equipos** (para la medición de uso): migración `0540_central_teams` (equipos, pertenencia múltiple, permiso en Edge y base, proyección `central.common_team_projection` para el núcleo), filtro y chips en Personas, bloque en la ficha y pantalla Equipos con semilla sugerida. Pruebas `tests/central/teams.test.ts` y `teams.spec.ts`.
 
+- 2026-10-07 · Almacenamiento (contrato §3.9): `logo_provider` en `central.common_entity_projection` (migración `0550`) y `central-api` con el mismo `createStorage` que el kit (Supabase o R2).
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
