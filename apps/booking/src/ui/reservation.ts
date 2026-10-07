@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
@@ -13,6 +13,7 @@ import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, t
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
+import { createDatesBlock } from './dates.ts';
 import { createPortalBlock } from './portal.ts';
 import { createSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
@@ -145,6 +146,7 @@ export function mountReservation(id: string): ViewMount {
     // cada movimiento lleva revisiones al día y el foco del asa no se pierde (receta de Food).
     const staffBlock = createStaffBlock();
     const portalBlock = createPortalBlock();
+    const datesBlock = createDatesBlock();
     const sesBlock = createSesBlock();
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
@@ -171,6 +173,7 @@ export function mountReservation(id: string): ViewMount {
       const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
       const proposalData = writable ? await loadProposals(client, id) : null;
+      const dateOptions = writable && canRead(client, DATE_OPTIONS) ? ((await client.list(DATE_OPTIONS)) as Row[]).filter((r) => r.reservation_id === id) : null;
       const proposalMarks = proposalData ? await loadMarks(client, id, proposalData.proposals) : null;
 
       // Confirmación enviada sin red: la marca vive hasta que aparece el evento (API §10).
@@ -188,6 +191,7 @@ export function mountReservation(id: string): ViewMount {
           : { ...spec, options: OPTIONS.status.filter(([value]) => !requiresEvent(value as ReservationStatus) || liveEvent !== null || value === reservation.status) }),
         check: (merged) => {
           const row = merged as unknown as ReservationRow;
+          if (row.dates_definitive === true && (!row.start_date || !row.end_date)) return 'La fecha es definitiva: no puedes quitar la entrada ni la salida. Desmarca «Fecha definitiva» antes.';
           return canHoldStatus(row, row.status) ? null : `Para el estado «${statusLabel(row.status)}» falta ${missingForConfirmation(row).map((key) => MISSING[key]).join(', ')}.`;
         },
         savedMessage: 'Reserva guardada.',
@@ -275,8 +279,18 @@ export function mountReservation(id: string): ViewMount {
       const EDIT_IDS: Record<string, string> = { editOperation: 'booking.reserva.operacion.editar', editFinance: 'booking.reserva.cobro.editar' };
       const editLink = (idAttr: string, textLabel: string, onclick: () => void) => (editable ? el('button', { class: 'linkbtn', type: 'button', id: idAttr, 'data-feedback-id': EDIT_IDS[idAttr], 'data-feedback-label': textLabel, onclick }, textLabel) : null);
 
-      const summary = block('blockSummary', 'Resumen', kv(
-        ['Fechas', dateRange(reservation)], ['Noches', n === null ? '—' : String(n)],
+      // «Fecha definitiva»: el organizador la ve fija y no propone otras. Sin entrada y salida no se puede marcar.
+      const definitive = reservation.dates_definitive === true;
+      const hasDates = !!reservation.start_date && !!reservation.end_date;
+      const definitiveCheck = el('input', { type: 'checkbox', id: 'datesDefinitive', checked: definitive, disabled: !editable,
+        onchange: (event: Event) => {
+          const box = event.target as HTMLInputElement;
+          if (box.checked && !hasDates) { box.checked = false; return void toast('Para marcar la fecha como definitiva indica antes la entrada y la salida.'); }
+          void run([{ op: 'update', table: RESERVATIONS, id, expectedRevision: reservation.revision, fields: { dates_definitive: box.checked } }],
+            box.checked ? 'Fecha marcada como definitiva.' : 'Fecha marcada como provisional.');
+        } });
+      const summary = block('blockSummary', 'Resumen', [kv(
+        ['Fechas', el('span', null, dateRange(reservation), ' ', el('span', { class: `chip${definitive ? ' ok' : ''}`, id: 'datesChip', 'data-feedback-id': 'booking.reserva.resumen.fechas_estado', 'data-feedback-label': 'Estado de las fechas' }, definitive ? 'Definitiva' : 'Provisional'))], ['Noches', n === null ? '—' : String(n)],
         ['Personas', `${text(reservation.expected_guests)} previstas · ${text(liveEvent?.final_guests)} finales`],
         ['Menores', text(reservation.minors_count)], ['Tipo', label(reservation.event_type)],
         ['Contacto', el('span', { 'data-feedback-ignore': '' }, [reservation.contact_name, reservation.contact_phone, reservation.contact_email].filter(Boolean).join(' · ') || '—')],
@@ -284,7 +298,8 @@ export function mountReservation(id: string): ViewMount {
         ['Briefing final', reservation.briefing_received ? 'Recibido' : 'Pendiente'],
         reservation.customer_notes ? ['Observaciones', reservation.customer_notes] : null,
         reservation.internal_notes ? ['Notas internas', reservation.internal_notes] : null,
-      ));
+      ), editable ? el('label', { class: 'date-check', 'data-feedback-id': 'booking.reserva.resumen.definitiva', 'data-feedback-label': 'Fecha definitiva' }, definitiveCheck,
+        el('span', null, 'Fecha definitiva', el('span', { class: 'hint', style: 'display:block' }, 'El organizador la verá fija y no podrá proponer otras.'))) : null]);
 
       // Cierre operativo: si faltan horas reales en algún turno, la hoja de cierre lo avisa (aviso, no bloquea).
       async function toggleClose(): Promise<void> {
@@ -313,6 +328,7 @@ export function mountReservation(id: string): ViewMount {
 
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
+      const datesCard = dateOptions ? datesBlock.render({ client, reservation, options: dateOptions, editable, run }) : null;
       const portalCard = editable ? portalBlock.render({ client, reservation, editable }) : null;
       const staffCard =!liveEvent || !staff ? null : staffBlock.render({ client, reservation, event: liveEvent, data: staff, editable, run });
 
@@ -504,7 +520,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
@@ -516,7 +532,8 @@ export function mountReservation(id: string): ViewMount {
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));
     // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
+    if (writable && canRead(client, DATE_OPTIONS)) offs.push(client.onTable(DATE_OPTIONS, () => void paint()));
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); sesBlock.destroy(); };
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
   };
 }

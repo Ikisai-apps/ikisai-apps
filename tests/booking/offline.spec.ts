@@ -80,7 +80,7 @@ const offline = async (page: Page, context: BrowserContext) => {
   await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
 };
 
-test('O1 crear una reserva sin red, recargar y reconectar', async ({ page, context }) => {
+test('@smoke O1 crear una reserva sin red, recargar y reconectar', async ({ page, context }) => {
   await login(page, harness.baseURL);
   await offline(page, context);
   await createReservation(page);
