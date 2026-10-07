@@ -1319,6 +1319,26 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 - `proposal` (`id, version, total`) y `final_amount`, para comprobar.
 - **`invoiced: null`**: Booking no sabe qué se ha facturado; lo une Finance con sus facturas.
 
+## 20. SES-4 · conservación del registro de viajeros (propuesta)
+
+Base: RD 933/2021 art. 5.3 y `coordinacion/ampliacion/SES.md` §3.
+
+**Ventanas** (desde el **fin de la estancia**, `reservations.end_date`, hora de Madrid; nunca una estancia en curso ni futura):
+- Reserva en modo `ses`: **3 años**.
+- Modo `operativo` o `ninguno` (sin obligación legal): **6 meses**.
+- El modo es el de la reserva en el momento de la tarea. Si una reserva tuvo partes aceptados, cuenta como `ses` aunque después cambie (ya no se puede desactivar: `SES_ALREADY_REGISTERED`).
+
+**Qué se hace con cada huésped vencido** (una vez; `guests.anonymized_at` lo marca):
+- Datos personales a `null`: apellidos, documento y soporte, nacimiento, nacionalidad, sexo, dirección, teléfono, correo, tutor, parentesco, notas, `signed_by_name`, `field_sources`. Nombre a «Huésped anonimizado».
+- Archivos: firma y justificante de SES se marcan `retention_class = 'temporary'` en `core.files` y se quitan las referencias (`signature_file_id`, `ses_receipt_file_id` a `null`); la recogida de huérfanos los borra sin esperar.
+- Restricciones del huésped (datos de salud): a la papelera.
+- Se conservan: la fila del huésped (para los recuentos de la reserva), `arrived_at`, estados (`data_status`, `ses_status`, `ses_sent_at`) y las comunicaciones a SES (`booking.ses_communications`, que no llevan datos personales).
+- Declaraciones del organizador de esa reserva (`portal_declarations`): a la papelera con la misma ventana.
+
+**Cómo:** acción del sistema `booking.retention_run({limit})` llamada por `POST /api/v1/worker/retention/tick`, diaria con `core.schedule_tick('booking', 'retention/tick', '30 3 * * *', 'booking.retention_has_work')`. Lotes de como mucho 200 huéspedes por vuelta. Las escrituras deben llegar a los dispositivos por `core.changes` (para que borren su copia local), así que van en un lote propio del sistema: **petición P22 a Core** (`core.apply_system_operations`, como `apply_portal_operations` pero con la cuenta de servicio `booking`).
+
+**Pruebas:** las dos ventanas (justo antes y justo después), que nunca toca una estancia en curso, que los archivos quedan `temporary` y sin referencia, que el cambio llega por `changes`, y que repetir la tarea no hace nada.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
