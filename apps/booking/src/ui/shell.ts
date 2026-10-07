@@ -118,12 +118,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     fetchApps: async () => (catalog = await client.api<LauncherCatalog>('/apps')),
     feedback: feedback.mode,
     review: { get: () => review.mode.get(), set: (on) => review.mode.set(on), available: () => review.available() },
+    // «Sugerencias y QA» vive en el panel del lanzador (kit 0.18), no en la cabecera
+    center: () => { openFeedbackCenter({ api: client.api.bind(client), app: 'booking', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
-  const feedbackButton = el('button', {
-    class: 'iconbtn', type: 'button', id: 'feedbackCenter', title: 'Sugerencias y QA', 'aria-label': 'Sugerencias y QA',
-    'data-feedback-id': 'booking.cabecera.sugerencias', 'data-feedback-label': 'Sugerencias y QA',
-    onclick: () => { openFeedbackCenter({ api: client.api.bind(client), app: 'booking', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
-  }, icon('help'));
   const shell = createAppShell(root, {
     appName: 'Booking',
     markIcon: 'bed',
@@ -133,7 +130,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     launcher,
-    tools: [feedbackButton],
   });
   const { main } = shell;
 
