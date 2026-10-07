@@ -164,7 +164,7 @@ test('guests · aviso legal y consentimiento de alergias; restricciones propias'
   assert.equal(code(await call('/api/v1/invoke/booking.portal_set_restrictions', { token: leoToken, body: { guest_id: ana, items: [] } })), 'OUT_OF_SCOPE');
 });
 
-test('guests · firma: imagen propia al bucket guests-documents; la de otra cuenta no vale; los archivos no se leen', async () => {
+test('guests · firma: imagen propia al bucket guests-documents; la de otra cuenta no vale ni se lee', async () => {
   assert.equal(code(await upload(anaToken, new TextEncoder().encode('%PDF'), 'application/pdf')), 'UNSUPPORTED_MEDIA');
   assert.equal((await call('/api/v1/uploads', { token: anaToken, body: { filename: 'f.png', mime: 'image/png', size: 400_000, sha256: 'a'.repeat(64) } })).status, 413);
 
@@ -185,9 +185,10 @@ test('guests · firma: imagen propia al bucket guests-documents; la de otra cuen
   const row = await booking.t.db.query<{ signature_file_id: string; signed_by_name: string }>('select signature_file_id, signed_by_name from booking.guests where id = $1', [ana]);
   assert.deepEqual(row.rows[0], { signature_file_id: anaFile.data.id, signed_by_name: 'Ana Corregida' });
 
-  // Nadie lee archivos por Guests, ni los suyos ni los de otro (API.md §8).
+  // En los portales cada persona solo lee y verifica lo que subió ella (C7 del kit): la firma de Ana no la ve Leo.
   assert.equal(code(await call(`/api/v1/files/${anaFile.data.id}`, { token: leoToken })), 'FILE_NOT_FOUND');
-  assert.equal(code(await call(`/api/v1/files/${anaFile.data.id}`, { token: anaToken })), 'FILE_NOT_FOUND');
+  assert.equal(code(await call(`/api/v1/uploads/${anaFile.data.id}/verify`, { token: leoToken, body: {} })), 'FILE_NOT_FOUND');
+  assert.equal((await call(`/api/v1/files/${anaFile.data.id}`, { token: anaToken })).status, 200);
 });
 
 test('guests · modo operativo: solo nombre, apellido y contacto; sin firma', async () => {
