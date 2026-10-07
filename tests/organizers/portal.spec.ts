@@ -29,6 +29,12 @@ test.beforeAll(async () => {
   baseURL = server.resolvedUrls?.local[0]?.replace(/\/$/, '') ?? `http://127.0.0.1:${server.config.preview.port}`;
 });
 
+// La hoja «Instala la app» se ofrece al entrar por enlace; en estas pruebas se da por vista («Ahora no»), salvo en la suya.
+test.beforeEach(async ({ context }, info) => {
+  if (info.title.includes('instalar')) return;
+  await context.addInitScript(() => { try { localStorage.setItem('ikisai-install-dismissed:organizers', String(Date.now())); } catch { /* */ } });
+});
+
 test.afterAll(async () => {
   await new Promise<void>((resolve) => server?.httpServer.close(() => resolve()));
   await api?.close();
@@ -193,7 +199,7 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await openGroup(page, 'Contacto');
   await page.locator('#f-email').fill('rosa@example.invalid');
   await page.locator('#f-phone').focus();
-  await expect(page.locator('#saveState')).toContainText('se guardará al recuperar la conexión');
+  await expect(page.locator('#saveState')).toContainText('se guardará con conexión');
   await context.setOffline(false);
   await expect(page.locator('#saveState')).toContainText('Guardado');
   await page.reload();
@@ -216,4 +222,45 @@ test('organizers · ayuda y sugerencias: un comentario sobre «Mi retiro» llega
   const stored = await api.booking.t.db.query<{ subject: string; category: string; scope: any }>(`select subject, category, scope from core.feedback_reports where message like '%toallas%'`);
   expect(stored.rows[0]).toMatchObject({ subject: 'event', category: 'cleaning' });
   expect(stored.rows[0]!.scope.reservation_id).toBe(reservation);
+});
+
+test('organizers · en inglés: navegador en inglés, selector ES | EN y textos de Central en el idioma elegido', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'en-GB', viewport: { width: 390, height: 844 } });
+  await context.addInitScript(() => { try { localStorage.setItem('ikisai-install-dismissed:organizers', String(Date.now())); } catch { /* */ } });
+  const page = await context.newPage();
+  await page.goto(`${baseURL}/i/${'C'.repeat(43)}`);
+  await expect(page.locator('#entryTitle')).toHaveText('This link does not work');
+  await expect(page.locator('#entryContact')).toContainText('Email us at');
+
+  const reservation = await api.reservation({ title: 'Spring retreat', confirm: true });
+  await enter(page, await api.organizerLink([reservation], 'emma@example.invalid', 'Emma'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Spring retreat');
+  await expect(page.locator('#retreatStatus')).toHaveText('Confirmed');
+  await expect(page.locator('#retreatHead')).toContainText('12–15 March 2027');
+  await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
+
+  // Cambio manual a español: se repinta y se recuerda en el dispositivo.
+  await page.locator('#langSelect [data-locale="es"]').click();
+  await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
+  await expect(page.locator('#tab-asistentes')).toHaveText('Asistentes');
+  await page.reload();
+  await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
+  await page.locator('#langSelect [data-locale="en"]').click();
+  await page.locator('#tab-asistentes').click();
+  await page.locator('#addGuest').click();
+  await expect(page.locator('#declarationText')).toContainText('this information with the knowledge of my attendees');
+  await context.close();
+});
+
+test('organizers · instalar: al entrar por enlace se ofrece instalar la app y «Ahora no» se recuerda', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES' });
+  const page = await context.newPage();
+  const reservation = await api.reservation({ title: 'Retiro para instalar', confirm: true });
+  await enter(page, await api.organizerLink([reservation], 'ines@example.invalid', 'Inés'));
+  await expect(page.getByRole('heading', { name: 'Instala la app' })).toBeVisible();
+  await page.locator('.install-later').click();
+  await expect(page.getByRole('heading', { name: 'Instala la app' })).toHaveCount(0);
+  const dismissed = await page.evaluate(() => localStorage.getItem('ikisai-install-dismissed:organizers'));
+  expect(Number(dismissed)).toBeGreaterThan(0);
+  await context.close();
 });

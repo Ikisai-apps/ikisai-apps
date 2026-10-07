@@ -3,7 +3,9 @@
  * Dos niveles (API.md §9): Mis retiros → Retiro (Resumen · Asistentes · Cocina) → ficha del asistente.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, createAppLauncher, createAppShell, createUsage, el, replace, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
+import { i18n, t } from '../app/i18n.ts';
+import { install } from '../app/install.ts';
+import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect, createUsage, el, replace, type LauncherCatalog, type Usage } from '@ikisai/ui-kit';
 import { createPortalApi, type PortalApi } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { loadCommonTexts } from '../app/common-texts.ts';
@@ -16,6 +18,8 @@ import { mountAccessButton } from './access.ts';
 export interface ShellContext {
   client: SyncClient;
   onLogout(): void;
+  /** Se acaba de entrar por un enlace: es el momento de ofrecer la instalación. */
+  fromLink?: boolean;
 }
 
 export interface ViewContext {
@@ -48,12 +52,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     current: 'organizers',
     fetchApps: async () => client.api<LauncherCatalog>('/apps'),
     center: () => { void openHelp({ client, api, userId, reservationId: currentReservation }); },
-    centerLabel: 'Ayuda y sugerencias',
-    centerText: 'Cuéntanos un problema o una idea sobre la aplicación, tu retiro o un espacio.',
+    centerLabel: t('Ayuda y sugerencias'),
+    centerText: t('Cuéntanos un problema o una idea sobre la aplicación, tu retiro o un espacio.'),
   });
   const shell = createAppShell(root, {
     appName: 'Organizers',
-    markIcon: 'calendar',
+    markIcon: 'organizer',
+    tools: [createLanguageSelect(i18n, { attrs: { id: 'langSelect', 'data-feedback-id': 'organizers.cabecera.idioma', 'data-feedback-label': 'Idioma' } })],
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     onLogout: logout,
@@ -70,9 +75,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   async function logout(): Promise<void> {
     const ok = await confirmDialog({
-      title: '¿Salir de Organizers?',
-      text: 'Para volver a entrar necesitarás el enlace que te enviamos.',
-      confirmLabel: 'Salir',
+      title: t('¿Salir de Organizers?'),
+      text: t('Para volver a entrar necesitarás el enlace que te enviamos.'),
+      confirmLabel: t('Salir'),
     });
     if (!ok) return;
     try { await client.logout(); } finally { ctx.onLogout(); }
@@ -111,10 +116,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       unmountView = mountRetreats({ autoOpen: firstRoute })(view);
       main.setAttribute('data-feedback-id', 'organizers.retiros');
       main.setAttribute('data-feedback-label', 'Mis retiros');
-      document.title = 'Mis retiros · Ikisai Organizers';
+      document.title = t('Mis retiros · Ikisai Organizers');
     }
     // En Mis retiros y en la ficha del retiro; en los formularios taparía el botón de guardar.
     access.setVisible(!guest);
+    if (firstRoute && ctx.fromLink && install.shouldPromote()) setTimeout(() => { if (install.shouldPromote()) install.openSheet(); }, 800);
     firstRoute = false;
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });

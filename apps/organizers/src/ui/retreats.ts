@@ -1,21 +1,23 @@
 /** Mis retiros (API.md §9.2): tarjetas por fecha; con un solo retiro activo, se abre su ficha la primera vez. */
 import { el, replace } from '@ikisai/ui-kit';
+import { t } from '../app/i18n.ts';
 import type { PortalReservation } from '../app/api.ts';
-import { dateRange, isCancelled, STATUS_LABELS, STATUS_TONE } from '../app/labels.ts';
+import { install } from '../app/install.ts';
+import { dateRange, isCancelled, statusLabel, STATUS_TONE } from '../app/labels.ts';
 import { failure, loading, staleNote } from './common.ts';
 import type { ViewMount } from './shell.ts';
 
 export function progressText(r: Pick<PortalReservation, 'confirmed' | 'mode' | 'guests' | 'complete' | 'expected_guests'>): string | null {
   if (!r.confirmed || r.mode === 'ninguno') return null;
   const total = Math.max(r.guests, r.expected_guests ?? 0);
-  return `${r.complete} de ${total} asistentes con los datos completos`;
+  return t('{hechos} de {total} asistentes con los datos completos', { hechos: r.complete, total });
 }
 
 export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ api, main, navigate }) => {
   let alive = true;
   const host = el('div', { id: 'retreats' });
   replace(main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Mis retiros'), el('p', { class: 'muted' }, 'Los retiros que organizas en Ikisai.'))),
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, t('Mis retiros')), el('p', { class: 'muted' }, t('Los retiros que organizas en Ikisai.')))),
     host);
 
   async function load(): Promise<void> {
@@ -30,11 +32,12 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
         return;
       }
       if (!items.length) {
-        replace(host, el('div', { class: 'empty' }, el('strong', null, 'Aún no tienes retiros'), el('p', null, 'Cuando Ikisai te dé acceso a una reserva, aparecerá aquí.')));
+        replace(host, el('div', { class: 'empty' }, el('strong', null, t('Aún no tienes retiros')), el('p', null, t('Cuando Ikisai te dé acceso a una reserva, aparecerá aquí.'))));
         return;
       }
       replace(host,
         out.stale ? staleNote(out.at) : null,
+        install.shouldPromote() ? install.card() : null,
         el('div', { class: 'orgcards', 'data-feedback-id': 'organizers.retiros.lista', 'data-feedback-label': 'Lista de retiros' },
           ...items.map((r) => {
             const progress = progressText(r);
@@ -44,7 +47,7 @@ export const mountRetreats = (options: { autoOpen: boolean }): ViewMount => ({ a
             },
             el('strong', { class: 'orgretreat-title' }, r.title),
             el('span', null, dateRange(r.start_date, r.end_date)),
-            el('span', { class: 'chips' }, el('span', { class: `chip status ${STATUS_TONE[r.status]}` }, STATUS_LABELS[r.status] ?? r.status)),
+            el('span', { class: 'chips' }, el('span', { class: `chip status ${STATUS_TONE[r.status]}` }, statusLabel(r.status))),
             progress ? el('span', { class: 'muted small' }, progress) : null);
           })));
     } catch (error) {

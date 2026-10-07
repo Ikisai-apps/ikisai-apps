@@ -1,4 +1,5 @@
 import { el, icon, toast, type Child } from '@ikisai/ui-kit';
+import { t } from '../app/i18n.ts';
 import { timeLabel } from '../app/labels.ts';
 import { describeError } from '../app/client.ts';
 
@@ -16,7 +17,7 @@ export function fbMark<T extends Element>(node: T, id: string, label: string): T
 }
 
 /** Copia al portapapeles (con alternativa para navegadores sin la API) y lo confirma. */
-export async function copyText(text: string, done = 'Copiado. Ya puedes pegarlo donde quieras.'): Promise<void> {
+export async function copyText(text: string, done = t('Copiado. Ya puedes pegarlo donde quieras.')): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -31,18 +32,18 @@ export async function copyText(text: string, done = 'Copiado. Ya puedes pegarlo 
 
 /** Aviso de datos guardados en el dispositivo cuando no hay red. */
 export function staleNote(at: string): HTMLElement {
-  return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18), ` Sin conexión · datos de las ${timeLabel(at)}. Para guardar cambios necesitas red.`);
+  return el('p', { class: 'banner warn', role: 'status', id: 'staleNote' }, icon('offline', 18), ' ', t('Sin conexión · datos de las {hora}. Para guardar cambios necesitas red.', { hora: timeLabel(at) }));
 }
 
-export function loading(text = 'Cargando…'): HTMLElement {
+export function loading(text = t('Cargando…')): HTMLElement {
   return el('p', { class: 'muted', role: 'status' }, text);
 }
 
 export function failure(error: unknown, retry?: () => void): HTMLElement {
   return el('div', { class: 'empty plain', role: 'alert' },
-    el('strong', null, 'No se ha podido cargar'),
+    el('strong', null, t('No se ha podido cargar')),
     el('p', null, describeError(error)),
-    retry ? el('button', { type: 'button', class: 'ghost', onclick: retry }, 'Reintentar') : null);
+    retry ? el('button', { type: 'button', class: 'ghost', onclick: retry }, t('Reintentar')) : null);
 }
 
 export function section(title: string, attrs: Record<string, string>, ...children: Child[]): HTMLElement {

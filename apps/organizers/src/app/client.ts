@@ -1,4 +1,5 @@
 import { createSyncClient, type ApiError, type SyncClient } from '@ikisai/sync-client';
+import { t } from './i18n.ts';
 
 export const APP = 'organizers';
 
@@ -14,30 +15,30 @@ export function createClient(): SyncClient {
 export function describeError(error: unknown, name?: string): string {
   const e = error as Partial<ApiError> & { message?: string; details?: Record<string, unknown> };
   const code = typeof e?.code === 'string' ? e.code : '';
-  const who = name || 'Esta persona';
+  const who = name || t('Esta persona');
   switch (code) {
-    case 'LINK_INVALID': return 'Este enlace no es válido o ya no está activo. Pide uno nuevo a Ikisai.';
-    case 'LINK_EXPIRED': return 'Este enlace ha caducado. Si tu retiro sigue en marcha, pide uno nuevo a Ikisai.';
-    case 'RESERVATION_NOT_CONFIRMED': return 'Podrás añadir a tus asistentes cuando la reserva esté confirmada.';
-    case 'GUEST_DATA_OFF': return 'En este retiro no hace falta la lista de asistentes.';
-    case 'DECLARATION_REQUIRED': return 'Antes de guardar, marca la casilla de conformidad.';
-    case 'FIELD_OWNED_BY_GUEST': return `${who} ya ha rellenado este dato. No hace falta que lo cambies.`;
-    case 'GUEST_CHECKED_IN': return `${who} ya ha hecho la entrada. Para darle de baja, habla con Ikisai.`;
-    case 'VERSION_CONFLICT': return 'Alguien ha cambiado estos datos mientras los editabas. Te enseñamos lo último; lo que escribiste sigue en el formulario.';
-    case 'ROW_EXISTS': return 'Ese asistente ya existe. Recarga la lista.';
+    case 'LINK_INVALID': return t('Este enlace no es válido o ya no está activo. Pide uno nuevo a Ikisai.');
+    case 'LINK_EXPIRED': return t('Este enlace ha caducado. Si tu retiro sigue en marcha, pide uno nuevo a Ikisai.');
+    case 'RESERVATION_NOT_CONFIRMED': return t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.');
+    case 'GUEST_DATA_OFF': return t('En este retiro no hace falta la lista de asistentes.');
+    case 'DECLARATION_REQUIRED': return t('Antes de guardar, marca la casilla de conformidad.');
+    case 'FIELD_OWNED_BY_GUEST': return t('{nombre} ya ha rellenado este dato. No hace falta que lo cambies.', { nombre: who });
+    case 'GUEST_CHECKED_IN': return t('{nombre} ya ha hecho la entrada. Para darle de baja, habla con Ikisai.', { nombre: who });
+    case 'VERSION_CONFLICT': return t('Alguien ha cambiado estos datos mientras los editabas. Te enseñamos lo último; lo que escribiste sigue en el formulario.');
+    case 'ROW_EXISTS': return t('Ese asistente ya existe. Recarga la lista.');
     case 'OUT_OF_SCOPE':
     case 'NO_MEMBERSHIP':
-    case 'FORBIDDEN': return 'Ya no tienes acceso a este retiro.';
-    case 'INVALID_FIELDS': return 'Revisa los datos: falta el nombre o hay alguno con un formato que no vale.';
+    case 'FORBIDDEN': return t('Ya no tienes acceso a este retiro.');
+    case 'INVALID_FIELDS': return t('Revisa los datos: falta el nombre o hay alguno con un formato que no vale.');
     case 'INVALID_VALUE':
-    case 'CONSTRAINT_VIOLATION': return 'Algún dato tiene un formato que no vale. Revísalo.';
+    case 'CONSTRAINT_VIOLATION': return t('Algún dato tiene un formato que no vale. Revísalo.');
     case 'UNAUTHENTICATED':
-    case 'UNAUTHORIZED': return 'Tu acceso ha caducado. Abre de nuevo el enlace que te enviamos.';
-    case 'FEEDBACK_RATE_LIMITED': return 'Has enviado muchos comentarios hoy. Inténtalo mañana.';
+    case 'UNAUTHORIZED': return t('Tu acceso ha caducado. Abre de nuevo el enlace que te enviamos.');
+    case 'FEEDBACK_RATE_LIMITED': return t('Has enviado muchos comentarios hoy. Inténtalo mañana.');
     case 'NETWORK':
     case 'OFFLINE':
-    case 'BACKEND_UNAVAILABLE': return 'Sin conexión. Tus cambios no se han guardado; inténtalo cuando vuelvas a tener red.';
-    default: return 'Algo ha fallado. Inténtalo de nuevo en un momento.';
+    case 'BACKEND_UNAVAILABLE': return t('Sin conexión. Tus cambios no se han guardado; inténtalo cuando vuelvas a tener red.');
+    default: return t('Algo ha fallado. Inténtalo de nuevo en un momento.');
   }
 }
 
