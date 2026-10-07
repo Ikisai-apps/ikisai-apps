@@ -176,8 +176,9 @@ test('portales · un huésped solo lee los archivos que subió él (la firma de 
 
 test('portales · contacto público sin sesión (C1): textos de contacto de Central por idioma, cacheable', async () => {
   // Simulado de la función que publica Central (su schema); aquí solo se prueba la ruta del kit.
-  await app.t.db.exec(`create or replace function public.central_public_contact(p_lang text) returns jsonb language sql stable as $$
-    select jsonb_build_array(jsonb_build_object('key', 'contact.email', 'title', case when p_lang = 'en' then 'Contact email' else 'Correo de contacto' end, 'body', 'organiza@ikisai.com')) $$;`);
+  await app.t.db.exec(`create function public.test_contact(p_args jsonb) returns jsonb language sql stable as $$
+    select jsonb_build_array(jsonb_build_object('key', 'contact.email', 'title', case when p_args->>'lang' = 'en' then 'Contact email' else 'Correo de contacto' end, 'body', 'organiza@ikisai.com')) $$;
+    select core.allow_public_read('contact', 'public.test_contact');`);
   const es = await callPortal(guests, 'guests', '/api/v1/public/contact?lang=es');
   assert.equal(es.status, 200, JSON.stringify(es.data)); assert.equal(es.data.lang, 'es'); assert.equal(es.data.items[0].title, 'Correo de contacto');
   assert.match(es.headers.get('cache-control') ?? '', /max-age=300/);

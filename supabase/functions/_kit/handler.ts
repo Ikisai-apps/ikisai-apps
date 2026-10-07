@@ -302,10 +302,11 @@ export function createApp(config: AppConfig): AppHandler {
       const permanentOn = (globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_ACCOUNTS') === '1';
       if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn });
       // Contacto público (portales, C1): sin sesión, para las pantallas de enlace no válido o caducado. Los textos de tipo
-      // `contacto` de Central («Textos y contacto», editables por el owner); cacheable 5 minutos. Sin datos personales.
+      // `contacto` de Central («Textos y contacto», editables por el owner), registrados como lectura pública `contact`
+      // (core.allow_public_read); cacheable 5 minutos. Sin datos personales.
       if (path === '/api/v1/public/contact' && request.method === 'GET') {
         const lang = url.searchParams.get('lang') === 'en' ? 'en' : 'es';
-        const items = await supabase.rpc<unknown[] | null>('central_public_contact', { p_lang: lang });
+        const items = await supabase.rpc<unknown[] | null>('core_public_read', { p_name: 'contact', p_args: { lang } });
         return json(withHeaders({ lang, items: Array.isArray(items) ? items : [] }, { 'Cache-Control': 'public, max-age=300' }));
       }
       if (path === '/api/v1/auth/recover' && request.method === 'POST') {
