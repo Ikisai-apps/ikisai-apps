@@ -7,7 +7,7 @@ import {
 
 import { exchangeRoutes, exchangeWorkerRoutes } from './exchange.ts';
 import { tasksMcpTools } from './mcp.ts';
-import { requestRoutes } from './requests.ts';
+import { requestRoutes, requestWorkerRoutes } from './requests.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -123,7 +123,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       agentRisk: tasksAgentRiskHook(supabase),
     },
     routes: [...tasksRoutes(supabase), ...exchangeRoutes(supabase), ...requestRoutes(supabase)],
-    workerRoutes: exchangeWorkerRoutes(),
+    workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes()],
     mcpTools: tasksMcpTools(),
   });
 }

@@ -247,3 +247,15 @@ test('enlace directo del panel de Central (§21): #/supplies abre Suministros y 
   expect(await owner.evaluate(() => location.hash)).toBe('');
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('enlace de un reporte de Feedback (§22.4): #/feedback/<código> enseña el reporte y su tarea', async () => {
+  const asked = await server.app.call('/api/v1/requests/task', { body: { source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0042', title: 'Persiana rota en la sala 2', tab_id: ID.ikisai } });
+  expect(asked.status, JSON.stringify(asked.data)).toBe(200);
+  await owner.goto(server.url + '/#/feedback/FB_2026_0042');
+  await settled(owner);
+  await expect(owner.locator('main h1')).toHaveText('Reporte FB_2026_0042');
+  await owner.locator('[data-feedback-task]').click();
+  await expect(owner.locator('#taskOrigin')).toContainText('FB_2026_0042');
+  await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});

@@ -96,7 +96,20 @@ bind=function(){bindBeforeInbox();
    la vista en cuanto hay modelo y se limpia el hash, para que recargar no vuelva a saltar. */
 const HASH_VIEWS=['home','projects','tasks','triage','purchases','supplies','plans'];
 let hashPending=true;
-function openHashView(){const view=location.hash.replace(/^#\/?/,'');hashPending=false;if(!HASH_VIEWS.includes(view))return;history.replaceState(null,'',location.pathname+location.search);navigateView(view)}
+function openHashView(){const view=location.hash.replace(/^#\/?/,'');hashPending=false;
+  const report=view.match(/^feedback\/([A-Za-z0-9_-]{1,40})$/);
+  if(report){history.replaceState(null,'',location.pathname+location.search);state.feedbackCode=report[1];navigateView('feedback');return}
+  if(!HASH_VIEWS.includes(view))return;history.replaceState(null,'',location.pathname+location.search);navigateView(view)}
+
+/* Reporte de Feedback (§22.4): `#/feedback/<código>` es el `external_url` de las tareas que nacen de un reporte. El detalle lo
+   pintará el componente del kit con la API de Core cuando existan; por ahora, el código y la tarea que lo trabaja. */
+function feedbackView(){const code=state.feedbackCode||'';const task=(Sync.core?.data?.['tasks.tasks']||[]).find(t=>t.external_ref==='feedback:'+code);
+  return `<main class="screen"><h1 class="title">Reporte ${esc(code)}</h1><div class="notice">El detalle del reporte se verá aquí cuando esté disponible.</div>
+    ${task?`<button class="pcard" type="button" data-feedback-task="${task.id}"><span class="phead"><strong>${esc(task.title)}</strong>${task.deleted_at?'<span class="pstate trash">En la papelera</span>':''}</span><span class="pmeta">Abrir la tarea</span></button>`:'<p class="small muted">No hay ninguna tarea tuya enlazada a este reporte.</p>'}</main>`}
+const mainBeforeFeedback=main;
+main=function(){return state.view==='feedback'?feedbackView():mainBeforeFeedback()};
+const bindBeforeFeedback=bind;
+bind=function(){bindBeforeFeedback();document.querySelectorAll('[data-feedback-task]').forEach(b=>b.onclick=()=>openTaskEditor(b.dataset.feedbackTask))};
 const renderBeforeHash=render;
 render=function(...args){renderBeforeHash(...args);if(hashPending&&state.tabs.length&&Sync.ready)openHashView()};
 window.addEventListener('hashchange',()=>{if(state.tabs.length)openHashView()});

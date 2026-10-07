@@ -10,7 +10,7 @@
  * sugerencia `project_id | tab_id` si quien pide la ve, o «Por clasificar». Lo que una regla manda a un área que quien
  * pide no ve entra igualmente (buzón) y quien pide solo recibe su estado (`request`: pending, created o dismissed).
  */
-import { createSync, fail, sha256Hex, type AppRoute, type Supabase } from '../_kit/mod.ts';
+import { createSync, fail, sha256Hex, type AppRoute, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 
 const SOURCE = /^[a-z][a-z0-9_-]{1,30}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -87,6 +87,24 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       const task = await read();
       if (!task) fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una tarea que no puedes ver.');
       return { created, routed, task };
+    },
+  }];
+}
+
+/**
+ * Puente con Feedback (§22.3): `POST worker/requests/status {externalRefs}` con la clave de worker (de servidor a
+ * servidor, sin sesión). Devuelve solo el estado de cada petición de `feedback` (pending, open, done, dismissed,
+ * deleted o unknown), para que el worker de Feedback de Core copie «hecha» a sus reportes.
+ */
+export function requestWorkerRoutes(): WorkerRoute[] {
+  return [{
+    method: 'POST', pattern: 'requests/status', handler: async ({ json, invoke }) => {
+      const body = await json() as { externalRefs?: unknown };
+      const refs = body?.externalRefs;
+      if (!Array.isArray(refs) || refs.length > 200 || refs.some((r) => typeof r !== 'string' || !/^feedback:.{1,150}$/.test(r))) {
+        fail(422, 'INVALID_INPUT', 'externalRefs: hasta 200 referencias de feedback.', { field: 'externalRefs' });
+      }
+      return invoke('tasks.requests_status', { externalRefs: refs });
     },
   }];
 }

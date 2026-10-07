@@ -10,6 +10,7 @@ import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
 import { classifyRequestOps, createTabOps, dismissRequestOps, emptyDataset, pendingRequests, routeWaitingOps, saveRouteOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
+const WORKER_KEY = 'clave-de-worker-de-prueba';
 const uuid = (): string => crypto.randomUUID();
 const TAB = uuid(), INBOX = uuid(), OBRA = uuid(), PRIVADO = uuid(), LABEL = uuid(), PL = uuid();
 let app: TestApp;
@@ -22,7 +23,7 @@ const commit = (operations: Operation[], token?: string) => app.call('/api/v1/co
 const targets = (args: Record<string, unknown>, token?: string) => app.call('/api/v1/read/tasks.targets', { token, body: args });
 
 test.before(async () => {
-  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin] }) });
+  app = await createTestApp({ app: 'tasks', slug: 'tasks-api', origin, createHandler: (config) => createTasksApp({ ...config, origins: [origin], workerKey: WORKER_KEY }) });
   const tabOps = createTabOps({ id: TAB, name: 'Casa', position: 1024, inboxId: INBOX });
   const phase = tabOps.find((o) => o.fields?.system_key === 'phase')!.id!;
   await commit(tabOps);
@@ -196,4 +197,28 @@ test('por clasificar (§20): sin regla espera; clasificar crea la tarea con el m
   assert.equal((await commit(all)).status, 200, 'una sola vez, en un lote');
   assert.equal(pendingRequests(await data(), 'booking.space_incident').length, 0);
   assert.equal((await rows('tasks.tasks')).filter((t) => t.external_kind === 'booking.space_incident' && !t.deleted_at).length, 3);
+});
+
+test('puente con Feedback (§22.3): worker/requests/status da el estado por referencia, solo con la clave de worker', async () => {
+  const status = (body: unknown, key: string | null = WORKER_KEY) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Ikisai-Worker-Key': key } : {}) }, body: JSON.stringify(body) }));
+  const open = (await ask({ source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0001', title: 'Persiana rota', tab_id: TAB })).data.task;
+  const done = (await ask({ source: 'feedback', kind: 'feedback.event.setup', external_ref: 'FB_2026_0002', title: 'Diez sillas más', tab_id: TAB })).data.task;
+  await commit([{ op: 'update', table: 'tasks.tasks', id: done.id, expectedRevision: done.revision, fields: { done: true } }]);
+  await ask({ source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0003', title: 'Ducha' });
+  const out = await status({ externalRefs: ['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'] });
+  assert.equal(out.status, 200);
+  const items = Object.fromEntries(((await out.json()) as any).items.map((i: any) => [i.externalRef, i]));
+  assert.deepEqual(['feedback:FB_2026_0001', 'feedback:FB_2026_0002', 'feedback:FB_2026_0003', 'feedback:FB_2026_9999'].map((r) => items[r].status), ['open', 'done', 'pending', 'unknown']);
+  assert.equal(items['feedback:FB_2026_0001'].taskId, open.id);
+  assert.ok(items['feedback:FB_2026_0002'].doneAt);
+  assert.equal(JSON.stringify(items).includes('Persiana'), false, 'solo estados, sin títulos');
+  // Sin clave, con otra o con la sesión de una persona: 401. Solo referencias de feedback (los fallos de aplicación no van a Tasks).
+  assert.equal((await status({ externalRefs: [] }, null)).status, 401);
+  assert.equal((await status({ externalRefs: [] }, 'otra')).status, 401);
+  assert.equal((await app.call('/api/v1/worker/requests/status', { body: { externalRefs: [] } })).status, 401);
+  assert.equal((await status({ externalRefs: ['central:LEG_2026_004'] })).status, 422);
+  assert.equal((await status({ externalRefs: ['qa:FB_2026_0001'] })).status, 422);
+  // Una persona no puede lanzar la acción por invoke.
+  assert.equal((await app.call('/api/v1/invoke/tasks.requests_status', { body: { externalRefs: ['feedback:FB_2026_0001'] } })).status, 403);
 });
