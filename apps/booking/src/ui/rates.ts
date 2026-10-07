@@ -67,8 +67,8 @@ function validityText(rate: Row): string | null {
 export const mountRates: ViewMount = ({ main, client, navigate }) => {
   const owner = client.bootstrap()?.membership.role === 'owner';
   const seesProposals = canRead(client, PROPOSALS);
-  const rateHost = el('div');
-  const conditionHost = el('div');
+  const rateHost = el('div', { 'data-feedback-id': 'booking.tarifas.tarifario', 'data-feedback-label': 'Tarifas' });
+  const conditionHost = el('div', { 'data-feedback-id': 'booking.tarifas.condiciones', 'data-feedback-label': 'Condiciones' });
   let rates: Row[] = [];
   let conditions: Row[] = [];
   let tiers: Row[] = [];
@@ -97,7 +97,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
   function openRate(rate: Row | null): void {
     const last = rates.reduce((max, r) => Math.max(max, num(r.position)), 0);
     openRowSheet({
-      client, title: rate ? 'Tarifa' : 'Nueva tarifa', table: RATES, row: rate, specs: RATE_SPECS,
+      client, title: rate ? 'Tarifa' : 'Nueva tarifa', table: RATES, row: rate, specs: RATE_SPECS, feedbackId: rate ? 'booking.tarifas.tarifa' : 'booking.tarifas.nueva_tarifa', feedbackLabel: rate ? 'Editar tarifa' : 'Nueva tarifa',
       defaults: { layer: 'por_persona', unit: 'persona_noche', active: true },
       insertFields: { position: positionBetween(last || null, null) },
       remove: rate ? { label: 'Quitar', operations: () => [del(RATES, rate)], confirmDialog: { title: 'Quitar tarifa', text: 'La tarifa deja de sugerirse. Las propuestas que ya la usan no cambian.', confirmLabel: 'Quitar' } } : undefined,
@@ -105,11 +105,11 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
     });
   }
 
-  const editButton = (name: string, onclick: () => void) => (owner ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': name, onclick }, icon('edit', 16)) : null);
+  const editButton = (name: string, fbId: string, fbLabel: string, onclick: () => void) => (owner ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': name, 'data-feedback-id': fbId, 'data-feedback-label': fbLabel, onclick }, icon('edit', 16)) : null);
 
   function rateItem(rate: Row): HTMLElement {
     const details = [personsText(rate), validityText(rate), rate.event_types?.length ? (rate.event_types as string[]).map((t) => label(t)).join(', ') : 'Todos los tipos de reserva'].filter(Boolean).join(' · ');
-    return el('div', { class: 'space-item rate-item', dataset: { pending: String(rate._pending === true), rate: rate.name } },
+    return el('div', { class: 'space-item rate-item', dataset: { pending: String(rate._pending === true), rate: rate.name }, 'data-feedback-id': 'booking.tarifas.tarifario.tarifa', 'data-feedback-label': 'Tarifa' },
       el('div', { class: 'space-main' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, rate.name),
           rate.service ? el('span', { class: 'chip' }, RATE_LABELS.service[rate.service] ?? rate.service) : null, rate.active ? null : el('span', { class: 'chip' }, 'Inactiva')),
@@ -117,11 +117,11 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
         el('div', { class: 'row-meta' }, details),
         rate.includes ? el('div', { class: 'row-meta' }, `Incluye: ${rate.includes}`) : null,
         rate.excludes ? el('div', { class: 'row-meta' }, `No incluye: ${rate.excludes}`) : null),
-      editButton(`Editar ${rate.name}`, () => openRate(rate)));
+      editButton(`Editar ${rate.name}`, 'booking.tarifas.tarifario.editar', 'Editar tarifa', () => openRate(rate)));
   }
 
   function rateList(layer: string, items: Row[]): HTMLElement {
-    if (!owner) return el('ul', { class: 'list' }, items.map((item) => el('li', { class: 'row' }, rateItem(item))));
+    if (!owner) return el('ul', { class: 'list', 'data-feedback-id': 'booking.tarifas.tarifario.lista', 'data-feedback-label': 'Lista de tarifas' }, items.map((item) => el('li', { class: 'row' }, rateItem(item))));
     const signature = sig(items);
     const kept = lists.get(layer);
     if (kept) {
@@ -132,6 +132,8 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
       items, key: (item) => item.id, name: (item) => String(item.name), label: `Tarifas de ${RATE_LABELS.layer[layer]}`, render: rateItem,
       onReorder: (ordered, move) => reorder(ordered, move.item, move.to),
     });
+    sortable.element.setAttribute('data-feedback-id', 'booking.tarifas.tarifario.lista');
+    sortable.element.setAttribute('data-feedback-label', 'Lista de tarifas');
     lists.set(layer, { sortable, sig: signature });
     return sortable.element;
   }
@@ -161,7 +163,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
 
   function openConditions(row: Row | null): void {
     openRowSheet({
-      client, title: row ? 'Condiciones' : 'Nuevas condiciones', table: CONDITIONS, row, specs: CONDITION_SPECS,
+      client, title: row ? 'Condiciones' : 'Nuevas condiciones', table: CONDITIONS, row, specs: CONDITION_SPECS, feedbackId: row ? 'booking.tarifas.condiciones_hoja' : 'booking.tarifas.nuevas_condiciones', feedbackLabel: row ? 'Editar condiciones' : 'Nuevas condiciones',
       defaults: { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, prices_include_vat: true, vat_rate: 10, active: true, is_default: conditions.every((c) => c.is_default !== true) },
       check: (merged) => (num(merged.deposit_percent) > 100 || num(merged.vat_rate) > 100 ? 'Los porcentajes van de 0 a 100.' : null),
       extra: () => (row && inUse(row)
@@ -205,7 +207,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
 
   function openTier(condition: Row, tier: Row | null): void {
     openRowSheet({
-      client, title: tier ? 'Tramo de cancelación' : 'Nuevo tramo de cancelación', table: TIERS, row: tier, specs: TIER_SPECS,
+      client, title: tier ? 'Tramo de cancelación' : 'Nuevo tramo de cancelación', table: TIERS, row: tier, specs: TIER_SPECS, feedbackId: tier ? 'booking.tarifas.tramo' : 'booking.tarifas.nuevo_tramo', feedbackLabel: tier ? 'Editar tramo' : 'Nuevo tramo',
       defaults: { min_days_before: 30, deposit_refund_pct: 50, extra_costs: false },
       insertFields: { conditions_id: condition.id },
       remove: tier ? { label: 'Quitar', operations: () => [del(TIERS, tier)], confirmDialog: { title: 'Quitar tramo', text: 'Se quita este tramo de cancelación.', confirmLabel: 'Quitar' } } : undefined,
@@ -216,8 +218,8 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
   function conditionCard(c: Row): HTMLElement {
     const own = tiersOf(tiers, c.id);
     const used = inUse(c);
-    return el('article', { class: 'card condition', dataset: { conditions: c.name, pending: String(c._pending === true) } },
-      el('div', { class: 'cardhead' }, el('h3', null, c.name), editButton(`Editar condiciones ${c.name}`, () => openConditions(c))),
+    return el('article', { class: 'card condition', dataset: { conditions: c.name, pending: String(c._pending === true) }, 'data-feedback-id': 'booking.tarifas.condiciones.tarjeta', 'data-feedback-label': 'Condiciones comerciales' },
+      el('div', { class: 'cardhead' }, el('h3', null, c.name), editButton(`Editar condiciones ${c.name}`, 'booking.tarifas.condiciones.editar', 'Editar condiciones', () => openConditions(c))),
       el('div', { class: 'chips' },
         c.is_default ? el('span', { class: 'chip', dataset: { role: 'default' } }, 'Por defecto') : null,
         c.active ? null : el('span', { class: 'chip' }, 'Inactivas'),
@@ -229,13 +231,13 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
         c.text ? el('dt', null, 'Texto') : null, c.text ? el('dd', null, c.text) : null),
       el('div', { class: 'sectionlabel' }, 'Cancelación', el('span', { class: 'count' }, String(own.length))),
       own.length === 0 ? el('p', { class: 'hint' }, 'Sin tramos: no se devuelve nada de la señal.')
-        : el('ul', { class: 'list tiers' }, own.map((t) => el('li', { class: 'row tier', dataset: { pending: String(t._pending === true) } },
+        : el('ul', { class: 'list tiers', 'data-feedback-id': 'booking.tarifas.condiciones.tramos', 'data-feedback-label': 'Tramos de cancelación' }, own.map((t) => el('li', { class: 'row tier', dataset: { pending: String(t._pending === true) }, 'data-feedback-id': 'booking.tarifas.condiciones.tramos.fila', 'data-feedback-label': 'Tramo' },
             el('span', { class: 'tier-text' }, tierText(t)),
-            editButton(`Editar tramo de ${t.min_days_before} días de ${c.name}`, () => openTier(c, t))))),
+            editButton(`Editar tramo de ${t.min_days_before} días de ${c.name}`, 'booking.tarifas.condiciones.tramos.editar', 'Editar tramo', () => openTier(c, t))))),
       owner ? el('div', { class: 'choices', style: 'margin-top:10px' },
-        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'addTier' }, onclick: () => openTier(c, null) }, 'Añadir tramo', el('span', { class: 'vh' }, ` a ${c.name}`)),
-        !c.is_default && c.active ? el('button', { class: 'ghost small', type: 'button', dataset: { action: 'makeDefault' }, onclick: () => void makeDefault(c) }, 'Marcar por defecto', el('span', { class: 'vh' }, ` ${c.name}`)) : null,
-        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'duplicate' }, onclick: () => void duplicate(c) }, 'Duplicar', el('span', { class: 'vh' }, ` ${c.name}`))) : null);
+        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'addTier' }, 'data-feedback-id': 'booking.tarifas.condiciones.anadir_tramo', 'data-feedback-label': 'Añadir tramo', onclick: () => openTier(c, null) }, 'Añadir tramo', el('span', { class: 'vh' }, ` a ${c.name}`)),
+        !c.is_default && c.active ? el('button', { class: 'ghost small', type: 'button', dataset: { action: 'makeDefault' }, 'data-feedback-id': 'booking.tarifas.condiciones.por_defecto', 'data-feedback-label': 'Marcar por defecto', onclick: () => void makeDefault(c) }, 'Marcar por defecto', el('span', { class: 'vh' }, ` ${c.name}`)) : null,
+        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'duplicate' }, 'data-feedback-id': 'booking.tarifas.condiciones.duplicar', 'data-feedback-label': 'Duplicar', onclick: () => void duplicate(c) }, 'Duplicar', el('span', { class: 'vh' }, ` ${c.name}`))) : null);
   }
 
   async function paint(): Promise<void> {
@@ -254,17 +256,17 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
     const groups = RATE_LAYERS.filter((layer) => rates.some((r) => r.layer === layer)).map((layer) => {
       const items = rates.filter((r) => r.layer === layer);
       liveLayers.add(layer);
-      return el('section', { class: 'zone', dataset: { layer } },
+      return el('section', { class: 'zone', dataset: { layer }, 'data-feedback-id': 'booking.tarifas.tarifario.capa', 'data-feedback-label': 'Capa de tarifas' },
         el('div', { class: 'sectionlabel' }, RATE_LABELS.layer[layer], el('span', { class: 'count' }, String(items.length))),
         rateList(layer, items));
     });
     for (const [key, entry] of lists) if (!liveLayers.has(key)) { entry.sortable.destroy(); lists.delete(key); }
 
     replace(rateHost, groups.length === 0
-      ? el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay tarifas'), owner ? 'Crea la primera: por ejemplo «Alojamiento en grupo», 40 € por persona y noche.' : 'El propietario aún no ha creado el tarifario.')
+      ? el('div', { class: 'empty', 'data-feedback-id': 'booking.tarifas.tarifario.vacio', 'data-feedback-label': 'Sin tarifas' }, el('strong', null, 'Todavía no hay tarifas'), owner ? 'Crea la primera: por ejemplo «Alojamiento en grupo», 40 € por persona y noche.' : 'El propietario aún no ha creado el tarifario.')
       : groups);
     replace(conditionHost, conditions.length === 0
-      ? el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay condiciones'), owner ? 'Crea unas condiciones: señal, IVA y tramos de cancelación. Las marcadas por defecto se usan en las propuestas nuevas.' : 'El propietario aún no ha creado condiciones.')
+      ? el('div', { class: 'empty', 'data-feedback-id': 'booking.tarifas.condiciones.vacio', 'data-feedback-label': 'Sin condiciones' }, el('strong', null, 'Todavía no hay condiciones'), owner ? 'Crea unas condiciones: señal, IVA y tramos de cancelación. Las marcadas por defecto se usan en las propuestas nuevas.' : 'El propietario aún no ha creado condiciones.')
       : conditions.map(conditionCard));
     if (focused) {
       const target = Array.from(rateHost.querySelectorAll<HTMLElement>('ul.sortable')).find((ul) => ul.getAttribute('aria-label') === focused.list);
@@ -273,22 +275,22 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
   }
 
   if (!canRead(client, RATES)) {
-    replace(main, el('p', null, el('button', { class: 'linkbtn', type: 'button', onclick: () => navigate('#/') }, '← Inicio')),
+    replace(main, el('p', null, el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.tarifas.cabecera.volver', 'data-feedback-label': 'Volver a Inicio', onclick: () => navigate('#/') }, '← Inicio')),
       el('div', { class: 'empty' }, el('strong', null, 'Sin acceso'), 'El tarifario es solo para editores y propietarios.'));
     return () => undefined;
   }
 
   replace(
     main,
-    el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', onclick: () => navigate('#/') }, '← Inicio')),
+    el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', 'data-feedback-id': 'booking.tarifas.cabecera.volver', 'data-feedback-label': 'Volver a Inicio', onclick: () => navigate('#/') }, '← Inicio')),
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Tarifas y condiciones'),
       el('p', null, owner ? 'Lo que se sugiere al preparar una propuesta y las condiciones comerciales que se le aplican.' : 'Solo lectura: el tarifario y las condiciones los edita el propietario.'))),
     el('div', { class: 'sectionlabel' }, 'Tarifas'),
     rateHost,
     el('div', { class: 'sectionlabel', style: 'margin-top:22px' }, 'Condiciones'),
-    owner ? el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'newConditions', onclick: () => openConditions(null) }, icon('plus', 16), 'Nuevas condiciones')) : null,
+    owner ? el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'newConditions', 'data-feedback-id': 'booking.tarifas.condiciones.nuevas', 'data-feedback-label': 'Nuevas condiciones', onclick: () => openConditions(null) }, icon('plus', 16), 'Nuevas condiciones')) : null,
     conditionHost,
-    owner ? el('button', { class: 'fab', type: 'button', id: 'newRate', onclick: () => openRate(null) }, icon('plus'), 'Nueva tarifa') : null,
+    owner ? el('button', { class: 'fab', type: 'button', id: 'newRate', 'data-feedback-id': 'booking.tarifas.nueva_tarifa_boton', 'data-feedback-label': 'Nueva tarifa', onclick: () => openRate(null) }, icon('plus'), 'Nueva tarifa') : null,
   );
 
   void paint();

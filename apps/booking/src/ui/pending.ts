@@ -10,8 +10,8 @@ const FIELD_LABELS: Record<string, string> = {
 
 /** Lo que espera una decisión: conflictos con otra persona (contrato §6.3) y lotes que el servidor rechazó. */
 export const mountPending: ViewMount = ({ main, client }) => {
-  const conflictsHost = el('div');
-  const rejectedHost = el('div');
+  const conflictsHost = el('div', { 'data-feedback-id': 'booking.pendientes.conflictos', 'data-feedback-label': 'Conflictos' });
+  const rejectedHost = el('div', { 'data-feedback-id': 'booking.pendientes.rechazados', 'data-feedback-label': 'Rechazados por el servidor' });
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Por resolver'), el('p', null, 'Cambios tuyos que no se pudieron aplicar tal cual. Nada se pierde hasta que decidas.'))),

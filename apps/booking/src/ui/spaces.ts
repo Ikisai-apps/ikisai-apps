@@ -68,7 +68,7 @@ const byPosition = (a: Row, b: Row) => Number(a.position) - Number(b.position) |
 export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   const seesAssignments = canRead(client, ASSIGNMENTS);
-  const host = el('div');
+  const host = el('div', { 'data-feedback-id': 'booking.espacios.lista', 'data-feedback-label': 'Espacios' });
   let spaces: Row[] = [];
   let beds: Row[] = [];
   let assignments: Row[] = [];
@@ -98,7 +98,8 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
 
   /** Lista reordenable (o simple, sin permiso de escritura) conservada por clave. */
   function list(key: string, items: Row[], listLabel: string, render: (item: Row) => HTMLElement, onReorder: (ordered: Row[], moved: Row, to: number) => Promise<void>, deps = ''): HTMLElement {
-    if (!writable) return el('ul', { class: 'list' }, items.map((item) => el('li', { class: 'row' }, render(item))));
+    const listMark = key.startsWith('beds:') ? ['booking.espacios.camas.lista', 'Camas'] : ['booking.espacios.zonas.lista', 'Lista de espacios'];
+    if (!writable) return el('ul', { class: 'list', 'data-feedback-id': listMark[0], 'data-feedback-label': listMark[1] }, items.map((item) => el('li', { class: 'row' }, render(item))));
     const signature = `${sig(items)}#${deps}`;
     const kept = lists.get(key);
     if (kept) {
@@ -109,6 +110,8 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
       items, key: (item) => item.id, name: (item) => String(item.name ?? item.label), label: listLabel, render,
       onReorder: (ordered, move) => onReorder(ordered, move.item, move.to),
     });
+    sortable.element.setAttribute('data-feedback-id', listMark[0]!);
+    sortable.element.setAttribute('data-feedback-label', listMark[1]!);
     lists.set(key, { sortable, sig: signature });
     return sortable.element;
   }
@@ -118,7 +121,7 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     const blocking = space ? assignments.filter((a) => a.space_id === space.id) : [];
     const last = spaces.reduce((max, s) => Math.max(max, Number(s.position) || 0), 0);
     openRowSheet({
-      client, title: space ? 'Espacio' : 'Nuevo espacio', table: SPACES, row: space, specs: space ? SPACE_SPECS : [SPACE_SPECS[0]!, SPACE_SPECS[1]!, ...QUICK_SPECS, ...SPACE_SPECS.slice(2)],
+      client, title: space ? 'Espacio' : 'Nuevo espacio', table: SPACES, row: space, feedbackId: space ? 'booking.espacios.espacio' : 'booking.espacios.nuevo', feedbackLabel: space ? 'Editar espacio' : 'Nuevo espacio', specs: space ? SPACE_SPECS : [SPACE_SPECS[0]!, SPACE_SPECS[1]!, ...QUICK_SPECS, ...SPACE_SPECS.slice(2)],
       defaults: { kind: 'habitacion', active: true, accessible: false, bookable: true },
       ...(space ? {} : {
         buildOperations: (values: Record<string, unknown>) => {
@@ -188,7 +191,7 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     const blocking = bed ? assignments.filter((a) => a.bed_id === bed.id) : [];
     const last = beds.filter((b) => b.space_id === space.id).reduce((max, b) => Math.max(max, Number(b.position) || 0), 0);
     openRowSheet({
-      client, title: bed ? `Cama de ${space.name}` : `Nueva cama en ${space.name}`, table: BEDS, row: bed, specs: BED_SPECS,
+      client, title: bed ? `Cama de ${space.name}` : `Nueva cama en ${space.name}`, table: BEDS, row: bed, specs: BED_SPECS, feedbackId: bed ? 'booking.espacios.cama' : 'booking.espacios.nueva_cama', feedbackLabel: bed ? 'Editar cama' : 'Nueva cama',
       defaults: { kind: 'individual', capacity: 1, active: true },
       insertFields: { space_id: space.id, position: positionBetween(last || null, null) },
       check: (merged) => (merged.capacity === 1 || merged.capacity === 2 ? null : 'Una cama admite 1 o 2 personas.'),
@@ -200,20 +203,20 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     });
   }
 
-  const editButton = (name: string, onclick: () => void) => (writable
-    ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': name, onclick }, icon('edit', 16)) : null);
+  const editButton = (name: string, fbId: string, fbLabel: string, onclick: () => void) => (writable
+    ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': name, 'data-feedback-id': fbId, 'data-feedback-label': fbLabel, onclick }, icon('edit', 16)) : null);
 
   function bedItem(space: Row, bed: Row): HTMLElement {
-    return el('div', { class: 'space-item bed-item', dataset: { pending: String(bed._pending === true) } },
+    return el('div', { class: 'space-item bed-item', dataset: { pending: String(bed._pending === true) }, 'data-feedback-id': 'booking.espacios.camas.cama', 'data-feedback-label': 'Cama' },
       el('div', { class: 'space-main' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, bed.label), el('span', { class: 'chip', dataset: { role: 'bed-kind' } }, label(bed.kind)), bed.active ? null : el('span', { class: 'chip' }, 'Inactiva')),
         el('div', { class: 'row-meta' }, plural(Number(bed.capacity), 'plaza', 'plazas'))),
-      editButton(`Editar cama ${bed.label} de ${space.name}`, () => openBed(space, bed)));
+      editButton(`Editar cama ${bed.label} de ${space.name}`, 'booking.espacios.camas.editar', 'Editar cama', () => openBed(space, bed)));
   }
 
   /** Camas plegables: con muchas camas la lista sería larguísima; se recuerda qué habitaciones están abiertas. */
   function bedsDetails(space: Row, own: Row[]): HTMLElement {
-    const details = el('details', { class: 'bed-details', dataset: { space: String(space.name) } },
+    const details = el('details', { class: 'bed-details', dataset: { space: String(space.name) }, 'data-feedback-id': 'booking.espacios.camas', 'data-feedback-label': 'Camas de la habitación' },
       el('summary', { class: 'sectionlabel' }, 'Camas', el('span', { class: 'count' }, String(own.length))),
       list(`beds:${space.id}`, own, `Camas de ${space.name}`, (bed) => bedItem(space, bed), (ordered, moved, to) => reorder(BEDS, ordered, moved, to, 'Orden de las camas guardado.'))) as HTMLDetailsElement;
     details.open = openBeds.has(space.id) || (!closedBeds.has(space.id) && own.length <= 4);
@@ -227,20 +230,20 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     const own = beds.filter((b) => b.space_id === space.id && b.deleted_at === null).sort(byPosition);
     const places = spaceCapacity(space as any, own as any), extra = extraCapacity(space as any, own as any);
     const isRoom = space.kind === 'habitacion';
-    return el('div', { class: 'space-item', dataset: { pending: String(space._pending === true), kind: space.kind } },
+    return el('div', { class: 'space-item', dataset: { pending: String(space._pending === true), kind: space.kind }, 'data-feedback-id': 'booking.espacios.espacio_fila', 'data-feedback-label': 'Espacio' },
       el('div', { class: 'space-main' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, space.name), el('span', { class: 'chip' }, label(space.kind)),
           space.accessible ? el('span', { class: 'chip' }, 'Accesible') : null, space.active ? null : el('span', { class: 'chip' }, 'Inactivo'),
           space.bookable === false ? el('span', { class: 'chip' }, 'No reservable') : null),
         el('div', { class: 'row-meta', dataset: { role: 'places' } }, plural(places, 'plaza', 'plazas'), extra > 0 ? ` + ${plural(extra, 'supletoria', 'supletorias')}` : '', space.notes ? ` · ${space.notes}` : ''),
-        editButton(`Editar ${space.name}`, () => openSpace(space))),
+        editButton(`Editar ${space.name}`, 'booking.espacios.espacio_fila.editar', 'Editar espacio', () => openSpace(space))),
       isRoom ? el('div', { class: 'bed-block' },
         own.length === 0 ? el('div', { class: 'sectionlabel' }, 'Camas', el('span', { class: 'count' }, '0'))
           : bedsDetails(space, own),
         own.length === 0 ? el('p', { class: 'hint' }, 'Sin camas todavía.') : null,
         writable ? el('div', { class: 'btnrow' },
-          el('button', { class: 'ghost small', type: 'button', onclick: () => openBed(space, null) }, 'Añadir cama', el('span', { class: 'vh' }, ` a ${space.name}`)),
-          el('button', { class: 'ghost small', type: 'button', onclick: () => void duplicate(space, own) }, 'Duplicar', el('span', { class: 'vh' }, ` ${space.name}`))) : null) : null);
+          el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.espacios.espacio_fila.anadir_cama', 'data-feedback-label': 'Añadir cama', onclick: () => openBed(space, null) }, 'Añadir cama', el('span', { class: 'vh' }, ` a ${space.name}`)),
+          el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.espacios.espacio_fila.duplicar', 'data-feedback-label': 'Duplicar', onclick: () => void duplicate(space, own) }, 'Duplicar', el('span', { class: 'vh' }, ` ${space.name}`))) : null) : null);
   }
 
   async function paint(): Promise<void> {
@@ -264,7 +267,7 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     const groups = Array.from(zones, ([zone, items]) => {
       const key = `zone:${zone}`;
       live.add(key);
-      return el('section', { class: 'zone', dataset: { zone } },
+      return el('section', { class: 'zone', dataset: { zone }, 'data-feedback-id': 'booking.espacios.zonas', 'data-feedback-label': 'Zona' },
         el('div', { class: 'sectionlabel' }, zone, el('span', { class: 'count' }, String(items.length))),
         list(key, items, `Espacios de ${zone}`, spaceItem, (ordered, moved, to) => reorder(SPACES, ordered, moved, to, 'Orden de los espacios guardado.'), bedsSig));
     });
@@ -272,8 +275,8 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     for (const [key, entry] of lists) if (!live.has(key)) { entry.sortable.destroy(); lists.delete(key); }
 
     replace(host, groups.length === 0
-      ? el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay espacios'), writable ? 'Crea la primera habitación, sala o zona exterior.' : 'Aún no se ha registrado ningún espacio.',
-        writable ? el('p', null, el('button', { class: 'ghost', type: 'button', id: 'createLayout', onclick: () => void createInitial() }, 'Crear distribución inicial')) : null)
+      ? el('div', { class: 'empty', 'data-feedback-id': 'booking.espacios.vacio', 'data-feedback-label': 'Sin espacios' }, el('strong', null, 'Todavía no hay espacios'), writable ? 'Crea la primera habitación, sala o zona exterior.' : 'Aún no se ha registrado ningún espacio.',
+        writable ? el('p', null, el('button', { class: 'ghost', type: 'button', id: 'createLayout', 'data-feedback-id': 'booking.espacios.vacio.distribucion', 'data-feedback-label': 'Crear distribución inicial', onclick: () => void createInitial() }, 'Crear distribución inicial')) : null)
       : groups);
     if (focused) {
       const target = Array.from(host.querySelectorAll<HTMLElement>('ul.sortable')).find((ul) => ul.getAttribute('aria-label') === focused.list);
@@ -283,11 +286,11 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
 
   replace(
     main,
-    el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', onclick: () => navigate('#/') }, '← Inicio')),
+    el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', 'data-feedback-id': 'booking.espacios.cabecera.volver', 'data-feedback-label': 'Volver a Inicio', onclick: () => navigate('#/') }, '← Inicio')),
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Espacios y camas'), el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores. Se asignan desde la ficha de cada reserva.'))),
     host,
     writable ? el('div', { class: 'fab-gap', 'aria-hidden': 'true' }) : null,
-    writable ? el('button', { class: 'fab', type: 'button', id: 'newSpace', onclick: () => openSpace(null) }, icon('plus'), 'Nuevo espacio') : null,
+    writable ? el('button', { class: 'fab', type: 'button', id: 'newSpace', 'data-feedback-id': 'booking.espacios.nuevo_espacio', 'data-feedback-label': 'Nuevo espacio', onclick: () => openSpace(null) }, icon('plus'), 'Nuevo espacio') : null,
   );
 
   void paint();

@@ -4,6 +4,7 @@ import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, uncoveredN
 import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import { COMMUNICABLE_STATUSES, HOUR, acceptedReservationComm, fetchSes } from '../app/ses.ts';
 import type { ViewMount } from './shell.ts';
+import { fbMark } from './feedback.ts';
 
 interface InstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -24,8 +25,8 @@ const SES_NOTICE_AFTER_MS = 12 * HOUR;
 
 /** Inicio: qué viene y qué requiere atención (canon §3). Todo se calcula con el espejo local. */
 export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
-  const upcomingHost = el('div');
-  const noticesHost = el('div');
+  const upcomingHost = el('div', { 'data-feedback-id': 'booking.inicio.proximas', 'data-feedback-label': 'Próximas' });
+  const noticesHost = el('div', { 'data-feedback-id': 'booking.inicio.avisos', 'data-feedback-label': 'Requiere atención' });
   const network = el('dd');
   const pending = el('dd');
   const lastPull = el('dd');
@@ -59,7 +60,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       ? el('div', { class: 'empty' }, el('strong', null, 'Nada a la vista'), 'No hay pre-reservas ni reservas confirmadas próximas.')
       : el('ul', { class: 'list', id: 'upcomingList', 'aria-label': 'Próximas reservas' }, upcoming.slice(0, 6).map((r) => {
           const n = nights(r.start_date, r.end_date);
-          return listRow({
+          return fbMark(listRow({
             id: r.id,
             title: `${shortDay(r.start_date).toUpperCase()} · ${r.title}`,
             meta: [r.expected_guests !== null ? plural(r.expected_guests, 'persona', 'personas') : null, n !== null ? plural(n, 'noche', 'noches') : null, dateRange(r)],
@@ -67,7 +68,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
             pending: r._pending === true,
             onClick: () => navigate('#/reservas'),
             label: `Ver ${r.title} en Reservas`,
-          });
+          }), 'booking.inicio.proximas.fila', 'Reserva próxima');
         })));
 
     const soon = (r: ReservationRow, days: number) => { const start = dayNumber(r.start_date); return start !== null && start >= now && start - now <= days; };
@@ -126,8 +127,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     replace(noticesHost, visible.length === 0
       ? null
       : [el('div', { class: 'sectionlabel' }, 'Requiere atención'),
-         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many, href, kind]) => el('li', { dataset: href ? { notice: kind ?? 'needs' } : {} }, el('span', { class: 'n' }, n),
-           href ? el('a', { href, class: 'noticelink' }, n === 1 ? one : many) : (n === 1 ? one : many))))]);
+         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many, href, kind]) => el('li', { dataset: href ? { notice: kind ?? 'needs' } : {}, 'data-feedback-id': 'booking.inicio.avisos.aviso', 'data-feedback-label': 'Aviso' }, el('span', { class: 'n' }, n),
+           href ? el('a', { href, class: 'noticelink', 'data-feedback-id': 'booking.inicio.avisos.enlace', 'data-feedback-label': 'Ir al aviso' }, n === 1 ? one : many) : (n === 1 ? one : many))))]);
   }
 
   const name = client.bootstrap()?.profile.displayName;
@@ -138,37 +139,37 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     upcomingHost,
     noticesHost,
     el('div', { class: 'cardgrid', style: 'margin-top:18px' },
-      el('article', { class: 'card' },
+      el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
         el('h3', null, 'Sincronización'),
         el('p', null, 'Estado del espejo local en este dispositivo.'),
         el('dl', { class: 'kv' }, el('dt', null, 'Red'), network, el('dt', null, 'Pendientes'), pending, el('dt', null, 'Último pull'), lastPull, el('dt', null, 'Rol'), role),
       ),
-      el('article', { class: 'card' },
+      el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.espacios', 'data-feedback-label': 'Espacios y camas' },
         el('h3', null, 'Espacios y camas'),
         el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores, para asignar el alojamiento de cada reserva.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSpacesHome', onclick: () => navigate('#/espacios') }, 'Espacios y camas')),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSpacesHome', 'data-feedback-id': 'booking.inicio.espacios.abrir', 'data-feedback-label': 'Abrir Espacios y camas', onclick: () => navigate('#/espacios') }, 'Espacios y camas')),
       ),
-      canWrite(client) && canRead(client, RATES) ? el('article', { class: 'card' },
+      canWrite(client) && canRead(client, RATES) ? el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.tarifas', 'data-feedback-label': 'Tarifas y condiciones' },
         el('h3', null, 'Tarifas y condiciones'),
         el('p', null, 'Tarifario, condiciones comerciales y tramos de cancelación para preparar las propuestas.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openRatesHome', onclick: () => navigate('#/tarifas') }, 'Tarifas y condiciones')),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openRatesHome', 'data-feedback-id': 'booking.inicio.tarifas.abrir', 'data-feedback-label': 'Abrir Tarifas y condiciones', onclick: () => navigate('#/tarifas') }, 'Tarifas y condiciones')),
       ) : null,
-      canRead(client, SES_SETTINGS) ? el('article', { class: 'card' },
+      canRead(client, SES_SETTINGS) ? el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.ses', 'data-feedback-label': 'SES.HOSPEDAJES' },
         el('h3', null, 'SES.HOSPEDAJES'),
         el('p', null, 'Entorno de las comunicaciones (pruebas o real) y pausa de envíos.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSesHome', onclick: () => navigate('#/ses') }, 'SES.HOSPEDAJES')),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSesHome', 'data-feedback-id': 'booking.inicio.ses.abrir', 'data-feedback-label': 'Abrir SES.HOSPEDAJES', onclick: () => navigate('#/ses') }, 'SES.HOSPEDAJES')),
       ) : null,
-      el('article', { class: 'card' },
+      el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.instalar', 'data-feedback-label': 'Instalar en este dispositivo' },
         el('h3', null, 'Instalar en este dispositivo'),
         el('p', null, 'Como app instalada se abre a pantalla completa y funciona sin conexión.'),
         deferredInstall
-          ? el('p', null, el('button', { class: 'ghost', type: 'button', style: 'margin-top:10px', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; } }, 'Instalar Ikisai Booking'))
+          ? el('p', null, el('button', { class: 'ghost', type: 'button', style: 'margin-top:10px', 'data-feedback-id': 'booking.inicio.instalar.boton', 'data-feedback-label': 'Instalar Ikisai Booking', onclick: async () => { await deferredInstall?.prompt(); deferredInstall = null; } }, 'Instalar Ikisai Booking'))
           : el('p', { style: 'margin-top:8px' }, 'En Android: menú del navegador → «Instalar aplicación». En iPhone: Compartir → «Añadir a pantalla de inicio».'),
       ),
-      el('article', { class: 'card' },
+      el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.cuenta', 'data-feedback-label': 'Cuenta' },
         el('h3', null, 'Cuenta'),
         el('p', null, name ? `Sesión iniciada como ${name}.` : 'Sesión iniciada.'),
-        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'logoutHome', onclick: () => void logout() }, 'Cerrar sesión')),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'logoutHome', 'data-feedback-id': 'booking.inicio.cuenta.cerrar_sesion', 'data-feedback-label': 'Cerrar sesión', onclick: () => void logout() }, 'Cerrar sesión')),
       ),
     ),
   );

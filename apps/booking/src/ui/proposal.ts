@@ -156,14 +156,21 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
     }
   }
 
-  const button = (id: string, text: string, onclick: () => void, kind = 'ghost small', ...icons: Child[]) => el('button', { class: kind, type: 'button', id, onclick }, ...icons, text);
+  // Id de feedback de cada acción de la propuesta (la etiqueta es el propio texto del botón).
+  const ACTION_IDS: Record<string, string> = {
+    editProposal: 'booking.reserva.propuesta.editar', sendProposal: 'booking.reserva.propuesta.enviar', createProposal: 'booking.reserva.propuesta.crear',
+    acceptProposal: 'booking.reserva.propuesta.aceptar', rejectProposal: 'booking.reserva.propuesta.rechazar', expireProposal: 'booking.reserva.propuesta.caducar',
+    newVersion: 'booking.reserva.propuesta.nueva_version', viewDocument: 'booking.reserva.propuesta.documento',
+  };
+  const button = (id: string, text: string, onclick: () => void, kind = 'ghost small', ...icons: Child[]) =>
+    el('button', { class: kind, type: 'button', id, 'data-feedback-id': ACTION_IDS[id], 'data-feedback-label': text.replace(/ la versión \d+$/, '').replace(/ versión \d+$/, ''), onclick }, ...icons, text);
 
   // --- cuerpo
   const body: Child[] = [];
   for (const { mark, batch } of marks.rejected) {
-    body.push(el('div', { class: 'banner alert', role: 'alert', dataset: { role: 'proposalRejected' } },
+    body.push(el('div', { class: 'banner alert', role: 'alert', dataset: { role: 'proposalRejected' }, 'data-feedback-id': 'booking.reserva.propuesta.rechazo', 'data-feedback-label': 'Cambio rechazado' },
       el('span', null, `No se pudo ${mark.kind === 'new' ? 'crear la propuesta' : mark.kind === 'send' ? 'enviar la propuesta' : 'aceptar la propuesta'}: ${explain(batch.error)}`),
-      el('button', { class: 'ghost small', type: 'button', onclick: async () => {
+      el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.reserva.propuesta.rechazo.entendido', 'data-feedback-label': 'Entendido', onclick: async () => {
         await client.discardRejected(mark.requestId);
         writeMarks(readMarks().filter((m) => m.requestId !== mark.requestId));
         options.refresh();
@@ -183,19 +190,21 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
     const expired = current.status === 'enviada' && isPast(current.valid_until, today());
     body.push(
       el('div', { class: 'chips' },
-        el('span', { class: `chip${current.status === 'aceptada' ? ' ok' : current.status === 'borrador' ? ' pending' : ''}`, id: 'proposalStatus', dataset: { status: current.status } }, `v${current.version} · ${RATE_LABELS.status[current.status]}`),
-        el('span', { class: 'chip', id: 'proposalNature' }, RATE_LABELS.nature[current.nature]),
+        el('span', { class: `chip${current.status === 'aceptada' ? ' ok' : current.status === 'borrador' ? ' pending' : ''}`, id: 'proposalStatus', 'data-feedback-id': 'booking.reserva.propuesta.estado', 'data-feedback-label': 'Estado de la propuesta', dataset: { status: current.status } }, `v${current.version} · ${RATE_LABELS.status[current.status]}`),
+        el('span', { class: 'chip', id: 'proposalNature', 'data-feedback-id': 'booking.reserva.propuesta.naturaleza', 'data-feedback-label': 'Naturaleza' }, RATE_LABELS.nature[current.nature]),
         current._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null),
-      expired ? el('p', { class: 'banner alert', id: 'proposalExpired', role: 'alert' }, `La propuesta era válida hasta el ${fullDay(current.valid_until)} y sigue enviada: márcala como caducada o crea una nueva versión.`) : null,
+      expired ? el('p', { class: 'banner alert', id: 'proposalExpired', role: 'alert', 'data-feedback-id': 'booking.reserva.propuesta.caducada', 'data-feedback-label': 'Aviso de caducidad' }, `La propuesta era válida hasta el ${fullDay(current.valid_until)} y sigue enviada: márcala como caducada o crea una nueva versión.`) : null,
       lines.length === 0 ? el('p', { class: 'hint' }, 'Sin líneas todavía: edita la propuesta y sugiere las del tarifario.') : (() => {
         const breakdown = renderMoneyBreakdown({
           totalLabel: f.live ? 'Total (en vivo)' : 'Total', total: f.total, sort: false, max: 4,
           lines: lines.map((l) => ({ id: l.id, label: String(l.description), amount: amounts.get(l.id) ?? 0 })),
         });
         breakdown.querySelector('.mb-total .mb-amount')?.setAttribute('id', 'proposalTotal');
+        breakdown.setAttribute('data-feedback-id', 'booking.reserva.propuesta.importes');
+        breakdown.setAttribute('data-feedback-label', 'Importes');
         return breakdown;
       })(),
-      el('dl', { class: 'kv' },
+      el('dl', { class: 'kv', 'data-feedback-id': 'booking.reserva.propuesta.condiciones', 'data-feedback-label': 'Señal, IVA y condiciones' },
         el('dt', null, 'Señal'), el('dd', { id: 'proposalDeposit' }, eur(f.deposit_amount)),
         el('dt', null, 'IVA'), el('dd', null, f.includesVat ? `Incluido (${f.vatRate} %)` : `${eur(f.vat_amount)} (${f.vatRate} %), no incluido`),
         el('dt', null, 'Condiciones'), el('dd', null, conditionsOf(current)?.name ?? 'Sin elegir'),
@@ -205,7 +214,7 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
 
   if (nextDraft) {
     const df = figures(nextDraft, linesOf(nextDraft), conditionsOf(nextDraft));
-    body.push(el('p', { class: 'hint', id: 'proposalDraft' }, `La versión ${nextDraft.version} está en borrador (${eur(df.total)}). Hasta que la marques enviada, la vigente sigue siendo la versión ${current!.version}.`));
+    body.push(el('p', { class: 'hint', id: 'proposalDraft', 'data-feedback-id': 'booking.reserva.propuesta.borrador', 'data-feedback-label': 'Nueva versión en borrador' }, `La versión ${nextDraft.version} está en borrador (${eur(df.total)}). Hasta que la marques enviada, la vigente sigue siendo la versión ${current!.version}.`));
   }
   const actions: Child[] = [];
   if (editable && nextDraft) {
@@ -228,17 +237,17 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
   if (current) actions.push(button('viewDocument', 'Ver documento', () => navigate(doc(current.id))));
 
   const older = data.proposals.filter((p) => p.id !== current?.id).sort((a, b) => Number(b.version) - Number(a.version));
-  const history = older.length === 0 ? null : el('details', { class: 'more-panel', id: 'proposalHistory' },
+  const history = older.length === 0 ? null : el('details', { class: 'more-panel', id: 'proposalHistory', 'data-feedback-id': 'booking.reserva.propuesta.historial', 'data-feedback-label': 'Historial de versiones' },
     el('summary', null, `Historial de versiones (${older.length})`),
     el('ul', { class: 'list' }, older.map((p) => {
       const f = figures(p, linesOf(p), conditionsOf(p));
-      return el('li', { class: 'row', dataset: { version: String(p.version) } },
+      return el('li', { class: 'row', dataset: { version: String(p.version) }, 'data-feedback-id': 'booking.reserva.propuesta.historial.fila', 'data-feedback-label': 'Versión anterior' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, `Versión ${p.version}`), el('span', { class: 'chip' }, RATE_LABELS.status[p.status]), el('span', null, eur(f.total))),
         el('div', { class: 'row-meta' }, p.sent_at ? `Enviada el ${fullDay(String(p.sent_at).slice(0, 10))}` : 'Sin enviar', ' · ',
-          el('a', { href: doc(p.id) }, 'Ver documento', el('span', { class: 'vh' }, ` de la versión ${p.version}`))));
+          el('a', { href: doc(p.id), 'data-feedback-id': 'booking.reserva.propuesta.historial.documento', 'data-feedback-label': 'Ver documento' }, 'Ver documento', el('span', { class: 'vh' }, ` de la versión ${p.version}`))));
     })));
 
-  return el('article', { class: 'card', id: 'blockProposal' },
+  return el('article', { class: 'card', id: 'blockProposal', 'data-feedback-id': 'booking.reserva.propuesta', 'data-feedback-label': 'Propuesta' },
     el('div', { class: 'cardhead' }, el('h3', null, 'Propuesta')),
-    body, actions.length ? el('div', { class: 'choices', style: 'margin-top:10px' }, actions) : null, history);
+    body, actions.length ? el('div', { class: 'choices', style: 'margin-top:10px', 'data-feedback-id': 'booking.reserva.propuesta.acciones', 'data-feedback-label': 'Acciones de la propuesta' }, actions) : null, history);
 }

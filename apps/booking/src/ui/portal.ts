@@ -55,7 +55,7 @@ export function createPortalBlock(): PortalBlock {
   let items: PortalLink[] | null = null;
   let loadError: string | null = null;
   let loading = false;
-  const host = el('article', { class: 'card', id: 'blockPortal' });
+  const host = el('article', { class: 'card', id: 'blockPortal', 'data-feedback-id': 'booking.reserva.portal', 'data-feedback-label': 'Portal del organizador' });
 
   async function refresh(): Promise<void> {
     const o = current;
@@ -86,13 +86,13 @@ export function createPortalBlock(): PortalBlock {
     const sheet: Sheet = openSheet({
       title: 'Enlace generado',
       meta: `Para ${name}${issued.validUntil ? ` · válido hasta ${formatDate(issued.validUntil)}` : ''}`,
-      body: el('div', { class: 'portal-issued' },
-        el('div', { class: 'portal-urlbox' }, field),
+      body: el('div', { class: 'portal-issued', 'data-feedback-id': 'booking.reserva.portal.enlace_generado', 'data-feedback-label': 'Enlace generado', 'data-feedback-ignore': '' },
+        el('div', { class: 'portal-urlbox', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.url', 'data-feedback-label': 'Enlace' }, field),
         el('div', { class: 'choices' },
-          el('button', { class: 'primary', type: 'button', id: 'portalCopy', onclick: () => void copy() }, 'Copiar'),
-          canShare ? el('button', { class: 'ghost', type: 'button', id: 'portalShare', onclick: () => void share() }, 'Compartir') : null),
-        el('p', { class: 'hint', id: 'portalOnce', role: 'note' }, 'Este enlace no se volverá a mostrar. Si se pierde, genera otro.')),
-      foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', id: 'portalDone', onclick: () => void sheet.close(true) }, 'Cerrar')),
+          el('button', { class: 'primary', type: 'button', id: 'portalCopy', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.copiar', 'data-feedback-label': 'Copiar', onclick: () => void copy() }, 'Copiar'),
+          canShare ? el('button', { class: 'ghost', type: 'button', id: 'portalShare', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.compartir', 'data-feedback-label': 'Compartir', onclick: () => void share() }, 'Compartir') : null),
+        el('p', { class: 'hint', id: 'portalOnce', role: 'note', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.aviso', 'data-feedback-label': 'Aviso de enlace único' }, 'Este enlace no se volverá a mostrar. Si se pierde, genera otro.')),
+      foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', id: 'portalDone', 'data-feedback-id': 'booking.reserva.portal.enlace_generado.cerrar', 'data-feedback-label': 'Cerrar', onclick: () => void sheet.close(true) }, 'Cerrar')),
       onClose: () => { field.value = ''; void refresh(); },
     });
   }
@@ -100,11 +100,11 @@ export function createPortalBlock(): PortalBlock {
   function openIssue(): void {
     const o = current!;
     const specs: FieldSpec[] = [
-      { key: 'person_name', label: 'Nombre del organizador', type: 'text', max: 120 },
+      { key: 'person_name', label: 'Nombre del organizador', type: 'text', max: 120, personal: true },
       { key: 'person_email', label: 'Correo (opcional)', type: 'email', max: 320, hint: 'Con correo, el organizador conserva la misma cuenta en sus próximos retiros' },
     ];
-    const form = buildForm(specs, null, { person_name: str(o.reservation.contact_name), person_email: str(o.reservation.contact_email) });
-    const send = el('button', { class: 'primary', type: 'button', id: 'portalIssue', onclick: () => void submit() }, 'Generar enlace');
+    const form = buildForm(specs, null, { person_name: str(o.reservation.contact_name), person_email: str(o.reservation.contact_email) }, undefined, 'booking.reserva.portal.emitir');
+    const send = el('button', { class: 'primary', type: 'button', id: 'portalIssue', 'data-feedback-id': 'booking.reserva.portal.emitir.generar', 'data-feedback-label': 'Generar enlace', onclick: () => void submit() }, 'Generar enlace');
     async function submit(): Promise<void> {
       const values = form.values();
       const name = str(values.person_name);
@@ -123,16 +123,16 @@ export function createPortalBlock(): PortalBlock {
     }
     const sheet: Sheet = openSheet({
       title: 'Enlace para el organizador',
-      body: el('form', { onsubmit: (e: Event) => { e.preventDefault(); void submit(); } }, form.element),
-      foot: el('div', { class: 'choices' }, send, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+      body: el('form', { 'data-feedback-id': 'booking.reserva.portal.emitir', 'data-feedback-label': 'Enlace para el organizador', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } }, form.element),
+      foot: el('div', { class: 'choices' }, send, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.portal.emitir.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
       initialFocus: form.first(),
     });
   }
 
   function openExtend(link: PortalLink): void {
     const min = localDay(new Date());
-    const form = buildForm([{ key: 'until', label: 'Ampliar hasta', type: 'date', dateMin: min, hint: 'El enlace sirve hasta el final de ese día.' }], null, { until: link.validUntil ? localDay(new Date(link.validUntil)) : null });
-    const save = el('button', { class: 'primary', type: 'button', id: 'portalExtendSave', onclick: () => void submit() }, 'Ampliar');
+    const form = buildForm([{ key: 'until', label: 'Ampliar hasta', type: 'date', dateMin: min, hint: 'El enlace sirve hasta el final de ese día.' }], null, { until: link.validUntil ? localDay(new Date(link.validUntil)) : null }, undefined, 'booking.reserva.portal.ampliar');
+    const save = el('button', { class: 'primary', type: 'button', id: 'portalExtendSave', 'data-feedback-id': 'booking.reserva.portal.ampliar.guardar', 'data-feedback-label': 'Ampliar', onclick: () => void submit() }, 'Ampliar');
     async function submit(): Promise<void> {
       const until = str(form.values().until);
       if (!until) return form.showError('Elige una fecha.');
@@ -151,8 +151,8 @@ export function createPortalBlock(): PortalBlock {
     const sheet: Sheet = openSheet({
       title: 'Ampliar enlace',
       meta: link.label ?? 'Organizador',
-      body: el('form', { onsubmit: (e: Event) => { e.preventDefault(); void submit(); } }, form.element),
-      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+      body: el('form', { 'data-feedback-id': 'booking.reserva.portal.ampliar', 'data-feedback-label': 'Ampliar enlace', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } }, form.element),
+      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.portal.ampliar.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
       initialFocus: form.first(),
     });
   }
@@ -172,13 +172,13 @@ export function createPortalBlock(): PortalBlock {
   function linkRow(link: PortalLink, online: boolean): HTMLElement {
     const v = validityText(link);
     const who = link.label ?? 'organizador';
-    return el('li', { class: 'row portal-link', dataset: { state: v.state, link: link.linkId } },
-      el('div', { class: 'row-title' }, el('span', { class: 'name' }, link.label ?? 'Organizador'),
+    return el('li', { class: 'row portal-link', dataset: { state: v.state, link: link.linkId }, 'data-feedback-id': 'booking.reserva.portal.enlaces.fila', 'data-feedback-label': 'Enlace' },
+      el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, link.label ?? 'Organizador'),
         el('span', { class: `chip${v.state === 'valid' ? ' ok' : ' muted'}`, dataset: { role: 'validity' } }, v.text)),
       el('div', { class: 'row-meta' }, el('span', null, `Creado ${formatDate(link.createdAt)}`), el('span', null, link.lastUsedAt ? `Último uso ${formatDate(link.lastUsedAt)}` : 'Sin usar')),
       link.revokedAt ? null : el('div', { class: 'row-actions portal-actions' },
-        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'extend' }, disabled: !online, 'aria-label': `Ampliar hasta… (enlace de ${who})`, onclick: () => openExtend(link) }, 'Ampliar hasta…'),
-        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'revoke' }, disabled: !online, 'aria-label': `Revocar (enlace de ${who})`, onclick: () => void revoke(link) }, 'Revocar')));
+        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'extend' }, 'data-feedback-id': 'booking.reserva.portal.enlaces.ampliar', 'data-feedback-label': 'Ampliar hasta', disabled: !online, 'aria-label': `Ampliar hasta… (enlace de ${who})`, onclick: () => openExtend(link) }, 'Ampliar hasta…'),
+        el('button', { class: 'ghost small', type: 'button', dataset: { action: 'revoke' }, 'data-feedback-id': 'booking.reserva.portal.enlaces.revocar', 'data-feedback-label': 'Revocar', disabled: !online, 'aria-label': `Revocar (enlace de ${who})`, onclick: () => void revoke(link) }, 'Revocar')));
   }
 
   function paint(): void {
@@ -190,8 +190,8 @@ export function createPortalBlock(): PortalBlock {
       online && loadError ? el('p', { class: 'hint', id: 'portalError', role: 'alert' }, loadError) : null,
       items === null ? (online && !loadError ? el('p', { class: 'hint' }, 'Cargando enlaces…') : null)
         : items.length === 0 ? el('p', { class: 'hint', id: 'portalEmpty' }, 'Todavía no hay enlaces para esta reserva.')
-        : el('ul', { class: 'list', id: 'portalList' }, items.map((link) => linkRow(link, online))),
-      el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'generatePortalLink', disabled: !online, onclick: openIssue }, 'Generar enlace para el organizador')),
+        : el('ul', { class: 'list', id: 'portalList', 'data-feedback-id': 'booking.reserva.portal.enlaces', 'data-feedback-label': 'Enlaces emitidos' }, items.map((link) => linkRow(link, online))),
+      el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'generatePortalLink', 'data-feedback-id': 'booking.reserva.portal.generar', 'data-feedback-label': 'Generar enlace', disabled: !online, onclick: openIssue }, 'Generar enlace para el organizador')),
     ];
     host.replaceChildren(...parts.filter((part): part is HTMLElement => part !== null));
   }

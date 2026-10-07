@@ -10,6 +10,7 @@ import {
   type ReservationRow,
 } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
+import { fbIgnore, fbMark } from './feedback.ts';
 
 type Filter = 'proximas' | 'activas' | 'pre' | 'confirmadas' | 'cerradas' | 'canceladas';
 
@@ -67,16 +68,16 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   let sheet: Sheet | null = null;
   const writable = canWrite(client);
 
-  const search = el('input', { type: 'search', id: 'reservationSearch', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
+  const search = el('input', { type: 'search', id: 'reservationSearch', 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const filterBar = el('div', { class: 'filters', role: 'group', 'aria-label': 'Filtrar reservas' });
+  const filterBar = el('div', { class: 'filters', role: 'group', 'aria-label': 'Filtrar reservas', 'data-feedback-id': 'booking.reservas.filtros', 'data-feedback-label': 'Filtros' });
   const count = el('span', { class: 'count', id: 'reservationCount' }, '0');
-  const listHost = el('div');
-  const trashList = el('ul', { class: 'list', 'aria-label': 'Reservas en la papelera' });
+  const listHost = el('div', { 'data-feedback-id': 'booking.reservas.lista', 'data-feedback-label': 'Lista de reservas' });
+  const trashList = el('ul', { class: 'list', 'aria-label': 'Reservas en la papelera', 'data-feedback-id': 'booking.reservas.papelera.lista', 'data-feedback-label': 'Reservas en la papelera' });
   const trashCount = el('span', { class: 'count', id: 'trashCount' }, '0');
   const owner = client.bootstrap()?.membership.role === 'owner';
-  const trash = el('details', { id: 'trash', hidden: true }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList,
-    owner ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'danger small', type: 'button', id: 'emptyTrash', onclick: () => void emptyTrash() }, icon('trash', 16), 'Vaciar papelera')) : null);
+  const trash = el('details', { id: 'trash', hidden: true, 'data-feedback-id': 'booking.reservas.papelera', 'data-feedback-label': 'Papelera' }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList,
+    owner ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'danger small', type: 'button', id: 'emptyTrash', 'data-feedback-id': 'booking.reservas.papelera.vaciar', 'data-feedback-label': 'Vaciar papelera', onclick: () => void emptyTrash() }, icon('trash', 16), 'Vaciar papelera')) : null);
 
   /**
    * Borrado definitivo de todo lo que hay en la papelera de Booking (contrato §11.2: solo el propietario, con recuento).
@@ -111,17 +112,17 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Reservas'), el('p', null, 'Del primer contacto al cierre: fechas, personas y estado.'))),
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    el('div', { class: 'toolbar', 'data-feedback-id': 'booking.reservas.buscador', 'data-feedback-label': 'Buscador' }, el('div', { class: 'search' }, search)),
     filterBar,
     el('div', { class: 'sectionlabel' }, 'Reservas', count),
     listHost,
     trash,
-    writable ? el('button', { class: 'fab', type: 'button', id: 'newReservation', onclick: () => openForm() }, icon('plus'), 'Nueva reserva') : null,
+    writable ? el('button', { class: 'fab', type: 'button', id: 'newReservation', 'data-feedback-id': 'booking.reservas.nueva', 'data-feedback-label': 'Nueva reserva', onclick: () => openForm() }, icon('plus'), 'Nueva reserva') : null,
   );
 
   function paintFilters(): void {
     replace(filterBar, FILTERS.map(([key, label]) => el('button', {
-      class: `softbtn small${filter === key ? ' active' : ''}`, type: 'button', 'aria-pressed': String(filter === key), dataset: { filter: key },
+      class: `softbtn small${filter === key ? ' active' : ''}`, type: 'button', 'aria-pressed': String(filter === key), dataset: { filter: key }, 'data-feedback-id': 'booking.reservas.filtros.filtro', 'data-feedback-label': 'Filtro',
       onclick: () => { filter = key; paintFilters(); paint(); },
     }, label)));
   }
@@ -135,17 +136,17 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     count.textContent = String(visible.length);
     trash.hidden = deleted.length === 0;
     trashCount.textContent = String(deleted.length);
-    replace(trashList, deleted.map((r) => listRow({ id: r.id, title: r.title, meta: [dateRange(r), r.code ?? 'código pendiente'], deleted: true, pending: r._pending === true,
-      onClick: () => navigate(`#/reservas/${r.id}`), label: `Abrir ${r.title} en la papelera` })));
+    replace(trashList, deleted.map((r) => fbMark(listRow({ id: r.id, title: r.title, meta: [dateRange(r), r.code ?? 'código pendiente'], deleted: true, pending: r._pending === true,
+      onClick: () => navigate(`#/reservas/${r.id}`), label: `Abrir ${r.title} en la papelera` }), 'booking.reservas.papelera.fila', 'Reserva en la papelera')));
     if (visible.length === 0) {
-      replace(listHost, el('div', { class: 'empty' }, rows.length === 0
+      replace(listHost, el('div', { class: 'empty', 'data-feedback-id': 'booking.reservas.lista.vacia', 'data-feedback-label': 'Lista vacía' }, rows.length === 0
         ? [el('strong', null, 'Todavía no hay reservas'), writable ? 'Crea la primera con «Nueva reserva». Funciona también sin conexión.' : 'Cuando alguien cree una reserva aparecerá aquí.']
         : 'Ninguna reserva coincide con el filtro o la búsqueda.'));
       return;
     }
     replace(listHost, el('ul', { class: 'list', id: 'reservationList', 'aria-label': 'Reservas' }, visible.map((r) => {
       const n = nights(r.start_date, r.end_date);
-      return listRow({
+      return fbMark(listRow({
         id: r.id,
         title: r.title,
         meta: [dateRange(r), r.expected_guests !== null ? plural(r.expected_guests, 'persona', 'personas') : null, n !== null ? plural(n, 'noche', 'noches') : null,
@@ -154,14 +155,14 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
         pending: r._pending === true,
         onClick: () => navigate(`#/reservas/${r.id}`),
         label: `Abrir ${r.title}`,
-      });
+      }), 'booking.reservas.lista.fila', 'Reserva');
     })));
   }
 
   /** Hoja de alta. La edición de una reserva vive en su ficha. */
   function openForm(): void {
     const initial = valuesOf();
-    const field = (label: string, control: HTMLElement) => el('label', { class: 'field' }, el('span', null, label), control);
+    const field = (label: string, control: HTMLElement, key: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control);
     const input = (id: string, type: string, value: string, extra: Record<string, string | number | boolean> = {}) =>
       el('input', { id, type, value, autocomplete: 'off', oninput: onChange, ...extra });
     const select = (id: string, options: Array<[string, string]>, value: string) => {
@@ -180,7 +181,7 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const contact = input('resContact', 'text', initial.contact_name, { maxlength: 200 });
     const phone = input('resPhone', 'tel', initial.contact_phone, { maxlength: 40 });
     const error = el('p', { class: 'formerror', id: 'reservationError', role: 'alert', hidden: true });
-    const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', onclick: () => void submit() }, 'Guardar');
+    const save = el('button', { class: 'primary', type: 'button', id: 'saveReservation', 'data-feedback-id': 'booking.reservas.alta.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
 
     function current(): FormValues {
       return { title: title.value, event_type: type.value, status: status.value, start_date: start.value, end_date: end.value, expected_guests: guests.value, contact_name: contact.value, contact_phone: phone.value };
@@ -226,15 +227,15 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
 
     sheet = openSheet({
       title: 'Nueva reserva',
-      body: el('form', { id: 'reservationForm', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
-        field('Nombre del grupo o evento', title),
-        el('div', { class: 'row2' }, field('Tipo', type), field('Estado', status)),
-        el('div', { class: 'row2' }, field('Entrada', start), field('Salida', end)),
-        field('Personas previstas', guests),
-        el('div', { class: 'row2' }, field('Contacto', contact), field('Teléfono', phone)),
+      body: el('form', { id: 'reservationForm', 'data-feedback-id': 'booking.reservas.alta', 'data-feedback-label': 'Nueva reserva', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
+        field('Nombre del grupo o evento', title, 'nombre'),
+        el('div', { class: 'row2' }, field('Tipo', type, 'tipo'), field('Estado', status, 'estado')),
+        el('div', { class: 'row2' }, field('Entrada', start, 'entrada'), field('Salida', end, 'salida')),
+        field('Personas previstas', guests, 'personas'),
+        el('div', { class: 'row2' }, fbIgnore(field('Contacto', contact, 'contacto')), fbIgnore(field('Teléfono', phone, 'telefono'))),
         error,
       ),
-      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar')),
+      foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reservas.alta.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar')),
       beforeClose: () => !dirty() || confirm('Hay cambios sin guardar. ¿Cerrar sin guardar?'),
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
       initialFocus: title,

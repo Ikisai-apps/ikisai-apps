@@ -8,14 +8,15 @@ import { guestReminder, missingLabels, organizerReminder, SOURCE_LABELS, SOURCE_
 import { openRowSheet, type FieldMark, type FieldSpec } from './form.ts';
 import { RESTRICTION_SPECS } from './reservation.ts';
 import type { ViewMount } from './shell.ts';
+import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
 type Row = SyncedRow & Record<string, any>;
 const RESTRICTIONS: TableName = TABLES.restrictions;
 /** Restricciones de un huésped concreto: la regla del dominio es `guest_id` o `servings`, nunca los dos. */
 const GUEST_RESTRICTION_SPECS: FieldSpec[] = RESTRICTION_SPECS.filter((spec) => spec.key !== 'servings');
 
-const GUEST_SPECS: FieldSpec[] = [
-  { key: 'first_name', label: 'Nombre', type: 'text', max: 120, section: 'Identidad' },
+const PERSONAL_KEYS = new Set(['first_name', 'last_name_1', 'last_name_2', 'birth_date', 'nationality', 'document_type', 'document_number', 'document_support_number', 'residence_address', 'residence_postal_code', 'residence_city', 'residence_country', 'guardian_name', 'kinship', 'notes']);
+const GUEST_SPECS: FieldSpec[] = [  { key: 'first_name', label: 'Nombre', type: 'text', max: 120, section: 'Identidad' },
   { key: 'last_name_1', label: 'Primer apellido', type: 'text', max: 120 },
   { key: 'last_name_2', label: 'Segundo apellido', type: 'text', max: 120 },
   { key: 'sex', label: 'Sexo', type: 'select', options: OPTIONS.sex, optional: true },
@@ -35,14 +36,14 @@ const GUEST_SPECS: FieldSpec[] = [
   { key: 'kinship', label: 'Parentesco', type: 'text', max: 80, hint: 'Obligatorio si es menor: madre, padre, abuela…' },
   { key: 'data_status', label: 'Estado de los datos', type: 'select', options: OPTIONS.dataStatus, section: 'Estado' },
   { key: 'notes', label: 'Notas', type: 'textarea' },
-];
+].map((spec): FieldSpec => (PERSONAL_KEYS.has(spec.key) ? { ...(spec as FieldSpec), personal: true } : (spec as FieldSpec)));
 
 /** Sin SES solo se piden nombre, primer apellido, teléfono y correo (minimización: nada de documento, dirección, nacimiento ni firma). */
 const OPERATIVE_SPECS: FieldSpec[] = GUEST_SPECS.filter((spec) => (OPERATIVE_GUEST_FIELDS as readonly string[]).includes(spec.key)).map((spec) => { const { section: _omit, ...rest } = spec; return spec.key === 'first_name' ? { ...rest, section: 'Contacto' } : rest; });
 
 const SENT_SPECS: FieldSpec[] = [
-  { key: 'ses_sent_by', label: 'Quién lo envió', type: 'text', max: 200 },
-  { key: 'ses_receipt_ref', label: 'Referencia o enlace del justificante', type: 'text', max: 500 },
+  { key: 'ses_sent_by', label: 'Quién lo envió', type: 'text', max: 200, personal: true },
+  { key: 'ses_receipt_ref', label: 'Referencia o enlace del justificante', type: 'text', max: 500, personal: true },
 ];
 
 const fullName = (g: Row): string => [g.first_name, g.last_name_1, g.last_name_2].filter(Boolean).join(' ');
@@ -61,7 +62,7 @@ const yesNo = (value: unknown): string => (value === true ? 'sí' : 'no');
 
 /** Lienzo para firmar con el dedo o el ratón. Devuelve el PNG o null si está vacío. */
 function signaturePad(): { element: HTMLElement; clear(): void; toBlob(): Promise<Blob | null> } {
-  const canvas = el('canvas', { class: 'signature', id: 'signaturePad', width: 600, height: 240, 'aria-label': 'Recuadro de firma' });
+  const canvas = el('canvas', { class: 'signature', id: 'signaturePad', 'data-feedback-id': 'booking.huespedes.firma.recuadro', 'data-feedback-label': 'Recuadro de firma', 'data-feedback-ignore': '', width: 600, height: 240, 'aria-label': 'Recuadro de firma' });
   const ctx = canvas.getContext('2d')!;
   let drawing = false;
   let empty = true;
@@ -88,9 +89,9 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     const writable = allowed && canWrite(client);
     let eventId = initialEventId;
     let sheet: Sheet | null = null;
-    const selectHost = el('div');
-    const body = el('div');
-    const printArea = el('div', { class: 'printarea', 'aria-hidden': 'true' });
+    const selectHost = el('div', { 'data-feedback-id': 'booking.huespedes.evento', 'data-feedback-label': 'Selector de evento' });
+    const body = el('div', { 'data-feedback-id': 'booking.huespedes.lista', 'data-feedback-label': 'Huéspedes del evento' });
+    const printArea = el('div', { class: 'printarea', 'aria-hidden': 'true', 'data-feedback-ignore': '' });
 
     replace(main,
       el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Huéspedes'), el('p', null, 'Registro de viajeros, firma del parte y envío a SES.Hospedajes.'))),
@@ -110,9 +111,9 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     function openSign(guest: Row, onDate: string): void {
       const own = signsOwnEntry(guest as GuestLike, onDate);
       const pad = signaturePad();
-      const signer = el('input', { id: 'signerName', type: 'text', maxlength: 200, value: own ? fullName(guest) : guest.guardian_name ?? '' });
+      const signer = el('input', { id: 'signerName', type: 'text', 'data-feedback-id': 'booking.huespedes.firma.nombre', 'data-feedback-label': 'Quién firma', maxlength: 200, value: own ? fullName(guest) : guest.guardian_name ?? '' });
       const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
-      const save = el('button', { class: 'primary', type: 'button', id: 'saveSignature', onclick: async () => {
+      const save = el('button', { class: 'primary', type: 'button', id: 'saveSignature', 'data-feedback-id': 'booking.huespedes.firma.guardar', 'data-feedback-label': 'Guardar firma', onclick: async () => {
         const blob = await pad.toBlob();
         const name = signer.value.trim();
         if (!blob || !name) { error.hidden = false; error.textContent = !blob ? 'Falta la firma en el recuadro.' : 'Indica quién firma.'; return; }
@@ -123,15 +124,15 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       } }, 'Guardar firma');
       sheet = openSheet({
         title: 'Firma del parte de entrada',
-        body: el('div', null,
-          el('dl', { class: 'kv' }, el('dt', null, 'Huésped'), el('dd', null, fullName(guest)), el('dt', null, 'Documento'), el('dd', null, [guest.document_type, guest.document_number].filter(Boolean).join(' ') || '—'),
+        body: el('div', { 'data-feedback-id': 'booking.huespedes.firma', 'data-feedback-label': 'Firma del parte' },
+          el('dl', { class: 'kv', 'data-feedback-id': 'booking.huespedes.firma.datos', 'data-feedback-label': 'Datos del huésped', 'data-feedback-ignore': '' }, el('dt', null, 'Huésped'), el('dd', null, fullName(guest)), el('dt', null, 'Documento'), el('dd', null, [guest.document_type, guest.document_number].filter(Boolean).join(' ') || '—'),
             el('dt', null, 'Nacimiento'), el('dd', null, guest.birth_date ?? '—')),
           el('p', { class: 'hint' }, 'Al firmar confirmas que estos datos son correctos. Se recogen para el registro de viajeros que exige el RD 933/2021 y se comunican a las Fuerzas y Cuerpos de Seguridad. No se guarda copia de tu documento.'),
           own ? null : el('p', { class: 'hint' }, 'Por su edad, firma la persona que le acompaña.'),
           pad.element,
-          el('label', { class: 'field' }, el('span', null, 'Firma'), signer),
+          el('label', { class: 'field', 'data-feedback-id': 'booking.huespedes.firma.campo_nombre', 'data-feedback-label': 'Nombre de quien firma', 'data-feedback-ignore': '' }, el('span', null, 'Firma'), signer),
           error),
-        foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => pad.clear() }, 'Borrar'), el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close(true) }, 'Cancelar')),
+        foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.huespedes.firma.borrar', 'data-feedback-label': 'Borrar', onclick: () => pad.clear() }, 'Borrar'), el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.huespedes.firma.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close(true) }, 'Cancelar')),
         onClose: () => { sheet = null; },
       });
     }
@@ -156,7 +157,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     async function openRestriction(guest: Row, restriction: Row | null, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): Promise<void> {
       if (!(await sheet?.close())) return;
       sheet = openRowSheet({
-        client, title: restriction ? 'Restricción de ' + fullName(guest) : 'Nueva restricción', table: RESTRICTIONS, row: restriction, specs: GUEST_RESTRICTION_SPECS,
+        client, title: restriction ? 'Restricción de ' + fullName(guest) : 'Nueva restricción', table: RESTRICTIONS, row: restriction, specs: GUEST_RESTRICTION_SPECS, feedbackId: restriction ? 'booking.huespedes.restriccion' : 'booking.huespedes.nueva_restriccion', feedbackLabel: restriction ? 'Editar restricción' : 'Nueva restricción',
         defaults: { restriction_type: 'vegetariano', active: true }, insertFields: { event_id: context.event.id, guest_id: guest.id },
         ...(restriction ? { remove: { label: 'Quitar', operations: () => [{ op: 'delete', table: RESTRICTIONS, id: restriction.id, expectedRevision: restriction.revision } as RowOperation] } } : {}),
         savedMessage: 'Restricción guardada.',
@@ -165,21 +166,21 @@ export function mountGuests(initialEventId: string | null): ViewMount {
 
     function restrictionsBlock(guest: Row, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): Child {
       const own = context.restrictions.filter((r) => r.guest_id === guest.id);
-      return el('div', { id: 'guestRestrictions', class: 'formsection' },
+      return el('div', { id: 'guestRestrictions', class: 'formsection', 'data-feedback-id': 'booking.huespedes.ficha.restricciones', 'data-feedback-label': 'Restricciones alimentarias' },
         el('div', { class: 'sectionlabel' }, 'Restricciones alimentarias', el('span', { class: 'count' }, String(own.length))),
-        own.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : el('ul', { class: 'list' }, own.map((r) => el('li', { class: 'row' },
+        own.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : el('ul', { class: 'list' }, own.map((r) => el('li', { class: 'row', 'data-feedback-id': 'booking.huespedes.ficha.restricciones.fila', 'data-feedback-label': 'Restricción' },
           el('div', { class: 'row-title' }, el('span', { class: 'name' }, `${label(r.restriction_type)}${r.subject ? ` · ${r.subject}` : ''}`),
             r.severity ? el('span', { class: `chip${r.severity === 'grave' ? ' alert' : ''}` }, label(r.severity)) : null, r.active ? null : el('span', { class: 'chip' }, 'Inactiva'), sourceChip(asSource(r.source))),
           el('div', { class: 'row-actions' },
-            el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar restricción ${label(r.restriction_type)}`, onclick: () => void openRestriction(guest, r, context) }, icon('edit', 16)))))),
-        el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'addGuestRestriction', onclick: () => void openRestriction(guest, null, context) }, 'Añadir restricción')));
+            el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar restricción ${label(r.restriction_type)}`, 'data-feedback-id': 'booking.huespedes.ficha.restricciones.editar', 'data-feedback-label': 'Editar restricción', onclick: () => void openRestriction(guest, r, context) }, icon('edit', 16)))))),
+        el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'addGuestRestriction', 'data-feedback-id': 'booking.huespedes.ficha.restricciones.anadir', 'data-feedback-label': 'Añadir restricción', onclick: () => void openRestriction(guest, null, context) }, 'Añadir restricción')));
     }
 
     /** «Ver justificante»: el archivo está en el almacén remoto; la URL firmada solo se pide con red. */
     function receiptLink(guest: Row): Child {
       const fileId = guest.ses_receipt_file_id;
       if (typeof fileId !== 'string' || !fileId) return null;
-      return el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'viewReceipt', onclick: async () => {
+      return el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'viewReceipt', 'data-feedback-id': 'booking.huespedes.ficha.justificante', 'data-feedback-label': 'Ver justificante', onclick: async () => {
         if (!navigator.onLine) return void toast('Ver el justificante necesita conexión.');
         try { window.open(await client.fileUrl(fileId), '_blank', 'noopener'); } catch (error) { toast(describeError(error)); }
       } }, 'Ver justificante'));
@@ -189,16 +190,16 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     function signatureLink(guest: Row): Child {
       const fileId = guest.signature_file_id;
       if (typeof fileId !== 'string' || !fileId) return null;
-      return el('button', { class: 'ghost small', type: 'button', id: 'viewSignature', onclick: async () => {
+      return el('button', { class: 'ghost small', type: 'button', id: 'viewSignature', 'data-feedback-id': 'booking.huespedes.ficha.ver_firma', 'data-feedback-label': 'Ver firma', onclick: async () => {
         if (!navigator.onLine) return void toast('Ver la firma necesita conexión.');
         try {
           const { url } = await client.api<{ url: string; mime: string }>(`/guest-signature/${encodeURIComponent(guest.id)}`);
           void sheet?.close(true);
           sheet = openSheet({
             title: `Firma · ${fullName(guest)}`,
-            body: el('div', { id: 'signatureView' }, el('img', { class: 'sigimg', src: url, alt: `Firma de ${fullName(guest)}` }),
+            body: el('div', { id: 'signatureView', 'data-feedback-id': 'booking.huespedes.firma_ver', 'data-feedback-label': 'Firma guardada', 'data-feedback-ignore': '' }, el('img', { class: 'sigimg', src: url, alt: `Firma de ${fullName(guest)}` }),
               guest.signed_by_name ? el('p', { class: 'hint' }, `Firmado por ${guest.signed_by_name}.`) : null),
-            foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close(true) }, 'Cerrar')),
+            foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.huespedes.firma_ver.cerrar', 'data-feedback-label': 'Cerrar', onclick: () => void sheet?.close(true) }, 'Cerrar')),
             onClose: () => { sheet = null; },
           });
         } catch (error) { toast(describeError(error)); }
@@ -207,7 +208,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
 
     /** Consentimientos que solo cambia el huésped desde su portal: el personal los ve, no los edita. */
     function consentBlock(guest: Row): Child {
-      return el('div', { class: 'consent', id: 'guestConsent' },
+      return el('div', { class: 'consent', id: 'guestConsent', 'data-feedback-id': 'booking.huespedes.ficha.consentimientos', 'data-feedback-label': 'Consentimientos' },
         el('span', null, `Alergias visibles para el organizador: ${yesNo(guest.allergies_visible_to_organizer)}`),
         guest.privacy_ack_at ? el('span', null, `Aviso legal visto el ${formatDate(guest.privacy_ack_at)}`) : null);
     }
@@ -216,23 +217,23 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       const onDate = context.reservation.start_date ?? today();
       const operative = guestModeOf(context.reservation) === 'operativo';
       sheet = openRowSheet({
-        client, title: guest ? fullName(guest) || 'Huésped' : 'Nuevo huésped', table: GUESTS, row: guest, specs: operative ? OPERATIVE_SPECS : GUEST_SPECS, mark: fieldMark(guest),
+        client, title: guest ? fullName(guest) || 'Huésped' : 'Nuevo huésped', table: GUESTS, row: guest, specs: operative ? OPERATIVE_SPECS : GUEST_SPECS, mark: fieldMark(guest), feedbackId: guest ? 'booking.huespedes.ficha' : 'booking.huespedes.nuevo', feedbackLabel: guest ? 'Ficha del huésped' : 'Nuevo huésped',
         defaults: operative ? {} : { data_status: 'pendiente_datos', residence_country: 'ESP', nationality: 'ESP' }, insertFields: { event_id: context.event.id },
         check: (merged) => operative ? null : (merged.data_status === 'datos_revisados' && missingForSes(merged).length ? `Para dar los datos por revisados falta: ${missingText(merged)}.` : null),
         extra: (merged) => {
           if (operative) return (guest ? restrictionsBlock(guest, context) : el('p', { class: 'hint' }, 'Guarda al huésped para añadirle restricciones alimentarias.')) as Child;
           const missing = missingText(merged);
           return [
-            el('p', { class: missing ? 'banner warn' : 'banner ok', id: 'sesMissing' }, missing ? `Falta para SES: ${missing}.` : 'Datos completos para SES.Hospedajes.'),
+            el('p', { class: missing ? 'banner warn' : 'banner ok', id: 'sesMissing', 'data-feedback-id': 'booking.huespedes.ficha.completitud', 'data-feedback-label': 'Completitud para SES' }, missing ? `Falta para SES: ${missing}.` : 'Datos completos para SES.Hospedajes.'),
             guest ? consentBlock(guest) : null,
             guest ? restrictionsBlock(guest, context) : null,
             guest ? receiptLink(guest) : null,
             guest ? el('div', { class: 'choices', style: 'margin-top:10px' },
-              guest.signed_at ? el('span', { class: 'chip ok', id: 'signedChip' }, `Firmado ${formatDate(guest.signed_at)}${guest.signature_file_id ? '' : ' (en papel)'}`) : null,
-              el('button', { class: 'ghost small', type: 'button', id: 'signOnScreen', onclick: async () => { if (await sheet?.close()) openSign(guest, onDate); } }, guest.signed_at ? 'Volver a firmar' : 'Firmar en pantalla'),
-              el('button', { class: 'ghost small', type: 'button', id: 'printEntry', onclick: () => printEntry(guest, context.reservation, context.event) }, 'Imprimir parte'),
+              guest.signed_at ? el('span', { class: 'chip ok', id: 'signedChip', 'data-feedback-id': 'booking.huespedes.ficha.firmado', 'data-feedback-label': 'Estado de la firma' }, `Firmado ${formatDate(guest.signed_at)}${guest.signature_file_id ? '' : ' (en papel)'}`) : null,
+              el('button', { class: 'ghost small', type: 'button', id: 'signOnScreen', 'data-feedback-id': 'booking.huespedes.ficha.firmar', 'data-feedback-label': 'Firmar en pantalla', onclick: async () => { if (await sheet?.close()) openSign(guest, onDate); } }, guest.signed_at ? 'Volver a firmar' : 'Firmar en pantalla'),
+              el('button', { class: 'ghost small', type: 'button', id: 'printEntry', 'data-feedback-id': 'booking.huespedes.ficha.imprimir', 'data-feedback-label': 'Imprimir parte', onclick: () => printEntry(guest, context.reservation, context.event) }, 'Imprimir parte'),
               signatureLink(guest),
-              guest.signed_at ? null : el('button', { class: 'ghost small', type: 'button', id: 'signedOnPaper', onclick: async () => {
+              guest.signed_at ? null : el('button', { class: 'ghost small', type: 'button', id: 'signedOnPaper', 'data-feedback-id': 'booking.huespedes.ficha.firma_papel', 'data-feedback-label': 'Firmado en papel', onclick: async () => {
                 const ok = await run([{ op: 'update', table: GUESTS, id: guest.id, expectedRevision: guest.revision, fields: { signed_at: new Date().toISOString(), signed_by_name: signsOwnEntry(guest as GuestLike, onDate) ? fullName(guest) : guest.guardian_name ?? fullName(guest) } }], 'Anotado como firmado en papel.');
                 if (ok) await sheet?.close(true);
               } }, 'Firmado en papel')) : el('p', { class: 'hint' }, 'Guarda al huésped para poder firmar el parte. No se guardan copias ni fotos del documento.'),
@@ -269,7 +270,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         ['Número de personas', alive], ['Habitaciones', event.rooms_count],
         ...(finance ? [['Tipo de pago', finance.payment_type ? label(finance.payment_type) : null]] as Array<[string, unknown]> : []),
       ];
-      const list = (pairs: Array<[string, unknown]>) => el('dl', { class: 'kv sesdata' }, pairs.flatMap(([term, raw]) => {
+      const list = (pairs: Array<[string, unknown]>, fbId: string, fbLabel: string) => el('dl', { class: 'kv sesdata', 'data-feedback-id': fbId, 'data-feedback-label': fbLabel, 'data-feedback-ignore': '' }, pairs.flatMap(([term, raw]) => {
         const value = raw === null || raw === undefined || raw === '' ? '' : String(raw);
         return [el('dt', null, term), el('dd', null, el('span', { class: 'value' }, value || '—'),
           value ? el('button', { class: 'ghost small', type: 'button', 'aria-label': `Copiar ${term.toLowerCase()}`, onclick: () => {
@@ -279,18 +280,18 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       void sheet?.close(true);
       sheet = openSheet({
         title: `Datos para SES · ${fullName(guest)}`,
-        body: el('div', { id: 'sesData' }, el('div', { class: 'sectionlabel' }, 'Viajero'), list(traveler), el('div', { class: 'sectionlabel' }, 'Transacción'), list(transaction)),
-        foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close(true) }, 'Cerrar')),
+        body: el('div', { id: 'sesData', 'data-feedback-id': 'booking.huespedes.ses_datos', 'data-feedback-label': 'Datos para SES' }, el('div', { class: 'sectionlabel' }, 'Viajero'), list(traveler, 'booking.huespedes.ses_datos.viajero', 'Datos del viajero'), el('div', { class: 'sectionlabel' }, 'Transacción'), list(transaction, 'booking.huespedes.ses_datos.transaccion', 'Datos de la transacción')),
+        foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.huespedes.ses_datos.cerrar', 'data-feedback-label': 'Cerrar', onclick: () => void sheet?.close(true) }, 'Cerrar')),
         onClose: () => { sheet = null; },
       });
     }
 
     function openSent(guest: Row): void {
-      const file = el('input', { type: 'file', id: 'receiptFile', accept: 'application/pdf,image/*' });
+      const file = el('input', { type: 'file', id: 'receiptFile', 'data-feedback-id': 'booking.huespedes.envio_ses.justificante', 'data-feedback-label': 'Justificante', accept: 'application/pdf,image/*' });
       const fileField = el('label', { class: 'field' }, el('span', null, 'Justificante (PDF o imagen)'), file,
         el('span', { class: 'hint' }, 'Opcional. Las imágenes se reducen antes de guardarse.'));
       sheet = openRowSheet({
-        client, title: `Envío a SES · ${fullName(guest)}`, table: GUESTS, row: null, specs: SENT_SPECS,
+        client, title: `Envío a SES · ${fullName(guest)}`, table: GUESTS, row: null, specs: SENT_SPECS, feedbackId: 'booking.huespedes.envio_ses', feedbackLabel: 'Registrar envío a SES',
         defaults: { ses_sent_by: boot?.profile.displayName ?? '' }, submitLabel: 'Registrar envío', savedMessage: 'Envío a SES registrado.',
         extra: () => fileField,
         buildOperations: async (values) => {
@@ -340,15 +341,15 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     let trashOpen = false;
     function trashBlock(deleted: Row[], restrictionsAll: Row[], staff: Set<string> | null): Child {
       if (deleted.length === 0) return null;
-      return el('details', { id: 'guestTrash', open: trashOpen, ontoggle: (event: Event) => { trashOpen = (event.target as HTMLDetailsElement).open; } }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera de huéspedes', el('span', { class: 'count', id: 'guestTrashCount' }, String(deleted.length))),
+      return el('details', { id: 'guestTrash', open: trashOpen, 'data-feedback-id': 'booking.huespedes.papelera', 'data-feedback-label': 'Papelera de huéspedes', ontoggle: (event: Event) => { trashOpen = (event.target as HTMLDetailsElement).open; } }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera de huéspedes', el('span', { class: 'count', id: 'guestTrashCount' }, String(deleted.length))),
         el('ul', { class: 'list', 'aria-label': 'Huéspedes en la papelera' }, deleted.map((g) => {
           const byOrganizer = !!staff && typeof g.updated_by === 'string' && !staff.has(g.updated_by);
-          return listRow({
+          return fbIgnoreWithin(fbMark(listRow({
             id: g.id, title: fullName(g) || 'Sin nombre', deleted: true, pending: g._pending === true,
             chips: byOrganizer ? [el('span', { class: 'chip missing' }, 'Dado de baja por el organizador')] : [],
             meta: [g.code ?? 'código pendiente', g.deleted_at ? `quitado ${formatDate(g.deleted_at)}` : null],
-            actions: writable ? [el('button', { class: 'ghost small', type: 'button', 'aria-label': `Restaurar a ${fullName(g)}`, onclick: () => void restoreGuest(g, restrictionsAll) }, icon('restore', 16), 'Restaurar')] : [],
-          });
+            actions: writable ? [el('button', { class: 'ghost small', type: 'button', 'aria-label': `Restaurar a ${fullName(g)}`, 'data-feedback-id': 'booking.huespedes.papelera.restaurar', 'data-feedback-label': 'Restaurar', onclick: () => void restoreGuest(g, restrictionsAll) }, icon('restore', 16), 'Restaurar')] : [],
+          }), 'booking.huespedes.papelera.fila', 'Huésped en la papelera'), '.name, .row-meta');
         })));
     }
 
@@ -368,13 +369,13 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       }
       if (!eventId || !events.some((e) => e.event.id === eventId)) eventId = events[0]!.event.id;
       const current = events.find((e) => e.event.id === eventId)!;
-      const select = el('select', { id: 'eventSelect', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
+      const select = el('select', { id: 'eventSelect', 'data-feedback-id': 'booking.huespedes.evento.selector', 'data-feedback-label': 'Evento', 'aria-label': 'Evento', onchange: () => navigate(`#/huespedes/${select.value}`) },
         events.map(({ event, reservation }) => el('option', { value: event.id }, `${reservation.title} · ${dateRange(reservation)}`)));
       select.value = eventId;
       replace(selectHost, el('label', { class: 'field' }, el('span', null, 'Evento'), select));
 
       if (!allowed) {
-        const counts = el('div', { class: 'card', id: 'guestSummary' }, el('p', { class: 'hint' }, 'Cargando recuentos…'));
+        const counts = el('div', { class: 'card', id: 'guestSummary', 'data-feedback-id': 'booking.huespedes.recuentos', 'data-feedback-label': 'Recuentos' }, el('p', { class: 'hint' }, 'Cargando recuentos…'));
         replace(body, counts, el('div', { class: 'empty plain' }, el('strong', null, 'Acceso restringido'), 'El detalle de huéspedes solo lo ven los responsables designados. Aquí tienes los recuentos.'));
         try {
           const s = await client.api<any>(`/read/${READS.guestSummary}`, { method: 'POST', json: { event_id: eventId } });
@@ -391,7 +392,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       if (mode === 'ninguno') {
         replace(body, el('div', { class: 'empty', id: 'guestsNone' }, el('strong', null, 'Esta reserva no pide datos de huéspedes'),
           'No hay lista de huéspedes ni enlaces de huésped. Se cambia en el bloque «Registro de viajeros» de la ficha.',
-          el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'goSesBlock', onclick: () => navigate(`#/reservas/${current.reservation.id}`) }, 'Ir al registro de viajeros de la ficha'))));
+          el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'goSesBlock', 'data-feedback-id': 'booking.huespedes.sin_datos.ir_ficha', 'data-feedback-label': 'Ir al registro de viajeros', onclick: () => navigate(`#/reservas/${current.reservation.id}`) }, 'Ir al registro de viajeros de la ficha'))));
         return;
       }
       const sesMode = mode === 'ses';
@@ -417,41 +418,41 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       const count = (filter: (g: Row) => boolean) => String(guests.filter(filter).length);
 
       replace(body,
-        el('div', { class: 'card', id: 'guestSummary' }, el('h3', null, plural(guests.length, 'huésped', 'huéspedes')), el('dl', { class: 'kv' },
+        el('div', { class: 'card', id: 'guestSummary', 'data-feedback-id': 'booking.huespedes.recuentos', 'data-feedback-label': 'Recuentos' }, el('h3', null, plural(guests.length, 'huésped', 'huéspedes')), el('dl', { class: 'kv' },
           el('dt', null, 'Mujeres'), el('dd', null, count((g) => g.sex === 'M')), el('dt', null, 'Hombres'), el('dd', null, count((g) => g.sex === 'H')),
           el('dt', null, 'Otro o sin indicar'), el('dd', null, count((g) => g.sex !== 'M' && g.sex !== 'H')), el('dt', null, 'Menores'), el('dd', null, count((g) => g.is_minor === true)),
           ...(sesMode ? [el('dt', null, 'Firmados'), el('dd', null, count((g) => !!g.signed_at)), el('dt', null, 'Enviados a SES'), el('dd', null, count((g) => g.ses_status === 'enviado_SES'))] : []))),
         !sesMode || queue.length + reviewed.length === 0 ? null : [
           el('div', { class: 'sectionlabel' }, 'Envío a SES.Hospedajes', el('span', { class: 'count' }, String(queue.length))),
           el('p', { class: 'hint' }, 'El plazo es de 24 horas desde la entrada. El envío se hace en la web de SES; aquí se anota.'),
-          el('ul', { class: 'list', id: 'sesQueue' }, [...queue, ...reviewed].map((g) => listRow({
+          el('ul', { class: 'list', id: 'sesQueue', 'data-feedback-id': 'booking.huespedes.cola_ses', 'data-feedback-label': 'Cola de envío a SES' }, [...queue, ...reviewed].map((g) => fbIgnoreWithin(fbMark(listRow({
             id: g.id, title: fullName(g), meta: [[g.document_type, g.document_number].filter(Boolean).join(' ') || 'menor sin documento', label(g.ses_status)], pending: g._pending === true,
-            actions: [el('button', { class: 'ghost small', type: 'button', 'aria-label': `Datos para SES de ${fullName(g)}`, onclick: () => void openSesData(g, context) }, 'Datos para SES'), ...(writable ? [g.ses_status === 'listo_para_envio'
-              ? el('button', { class: 'ghost small', type: 'button', 'aria-label': `Registrar envío de ${fullName(g)}`, onclick: () => openSent(g) }, 'Registrar envío')
-              : el('button', { class: 'ghost small', type: 'button', 'aria-label': `Marcar listo para envío a ${fullName(g)}`, onclick: () => void run(
+            actions: [el('button', { class: 'ghost small', type: 'button', 'aria-label': `Datos para SES de ${fullName(g)}`, 'data-feedback-id': 'booking.huespedes.cola_ses.datos', 'data-feedback-label': 'Datos para SES', onclick: () => void openSesData(g, context) }, 'Datos para SES'), ...(writable ? [g.ses_status === 'listo_para_envio'
+              ? el('button', { class: 'ghost small', type: 'button', 'aria-label': `Registrar envío de ${fullName(g)}`, 'data-feedback-id': 'booking.huespedes.cola_ses.registrar', 'data-feedback-label': 'Registrar envío', onclick: () => openSent(g) }, 'Registrar envío')
+              : el('button', { class: 'ghost small', type: 'button', 'aria-label': `Marcar listo para envío a ${fullName(g)}`, 'data-feedback-id': 'booking.huespedes.cola_ses.listo', 'data-feedback-label': 'Listo para envío', onclick: () => void run(
                   [{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { ses_status: 'listo_para_envio' } }], 'Listo para envío.') }, 'Listo para envío')] : [])],
-          })))],
+          }), 'booking.huespedes.cola_ses.fila', 'Huésped en la cola'), '.name, .row-meta')))],
         el('div', { class: 'sectionlabel' }, 'Registro', el('span', { class: 'count', id: 'guestCount' }, String(guests.length))),
-        guests.length === 0 ? null : el('p', { class: 'completeness', id: 'completeness' },
+        guests.length === 0 ? null : el('p', { class: 'completeness', id: 'completeness', 'data-feedback-id': 'booking.huespedes.completitud', 'data-feedback-label': 'Completitud del registro' },
           `${totals.complete} de ${totals.total} completos · ${totals.missingData} con datos pendientes · ${totals.unsigned} sin firmar`),
-        pendingGuests.length === 0 ? null : el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'copyOrganizerReminder', onclick: () => copyText(
+        pendingGuests.length === 0 ? null : el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'copyOrganizerReminder', 'data-feedback-id': 'booking.huespedes.recordatorio_organizador', 'data-feedback-label': 'Copiar recordatorio para el organizador', onclick: () => copyText(
           organizerReminder({ contact: current.reservation.contact_name, title: reservationTitle, guests: pendingGuests }), 'Recordatorio copiado') }, 'Copiar recordatorio para el organizador')),
         guests.length === 0
           ? el('div', { class: 'empty' }, el('strong', null, 'Nadie registrado todavía'), sesMode ? 'Añade a cada persona alojada con los datos de su documento. No se guardan copias ni fotos.' : 'Añade a cada persona con su nombre y contacto. Esta reserva no se comunica a SES.')
-          : el('ul', { class: 'list', id: 'guestList', 'aria-label': 'Huéspedes' }, guests.map((g) => listRow({
+          : el('ul', { class: 'list', id: 'guestList', 'data-feedback-id': 'booking.huespedes.registro', 'data-feedback-label': 'Registro de huéspedes', 'aria-label': 'Huéspedes' }, guests.map((g) => fbIgnoreWithin(fbMark(listRow({
               id: g.id, title: fullName(g) || 'Sin nombre',
               meta: [g.code ?? 'código pendiente', g.is_minor && sesMode ? 'menor' : null, sesMode && missingForSes(g as GuestLike).length ? 'faltan datos para SES' : null, !sesMode ? [g.phone, g.email].filter(Boolean).join(' · ') || null : null],
               chips: sesMode ? [el('span', { class: 'chip' }, label(g.data_status)), g.signed_at ? el('span', { class: 'chip ok' }, 'Firmado') : null,
                 g.ses_status === 'enviado_SES' ? el('span', { class: 'chip ok' }, 'Enviado a SES') : null, ...completenessChips(g)] : completenessChips(g),
-              actions: guestCompleteness(g as GuestLike, mode).complete ? [] : [el('button', { class: 'ghost small', type: 'button', dataset: { act: 'copyReminder' }, 'aria-label': `Copiar recordatorio para ${fullName(g)}`, onclick: () => {
+              actions: guestCompleteness(g as GuestLike, mode).complete ? [] : [el('button', { class: 'ghost small', type: 'button', dataset: { act: 'copyReminder' }, 'data-feedback-id': 'booking.huespedes.registro.recordatorio', 'data-feedback-label': 'Copiar recordatorio', 'aria-label': `Copiar recordatorio para ${fullName(g)}`, onclick: () => {
                 const c = guestCompleteness(g as GuestLike, mode);
                 copyText(guestReminder({ guest: g, title: reservationTitle, start: current.reservation.start_date, end: current.reservation.end_date, missing: c.missing, unsigned: c.needsSignature && !c.signed }), 'Recordatorio copiado');
               } }, 'Copiar recordatorio')],
               pending: g._pending === true,
               ...(writable ? { onClick: () => openGuest(g, context), label: `Editar ${fullName(g)}` } : {}),
-            }))),
+            }), 'booking.huespedes.registro.fila', 'Huésped'), '.name, .row-meta'))),
         trashBlock(deletedGuests, everyRestriction, staff),
-        writable ? el('button', { class: 'fab', type: 'button', id: 'newGuest', onclick: () => openGuest(null, context) }, icon('plus'), 'Nuevo huésped') : null,
+        writable ? el('button', { class: 'fab', type: 'button', id: 'newGuest', 'data-feedback-id': 'booking.huespedes.nuevo_huesped', 'data-feedback-label': 'Nuevo huésped', onclick: () => openGuest(null, context) }, icon('plus'), 'Nuevo huésped') : null,
       );
     }
 
