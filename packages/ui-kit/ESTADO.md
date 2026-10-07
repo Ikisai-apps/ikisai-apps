@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.19.0 (tanda 31): capa de idiomas (es, en) para los portales: `createI18n`, `createLanguageSelect`, textos del kit con `kt()` y `KIT_EN`, formulario progresivo con textos por idioma.
 - v0.18.5: `centerLabel` en el lanzador y señalar una vez en el formulario de portales (`captureFeedbackTarget`), petición C4 de Organizers.
 - v0.18.4: `feedbackId` en `renderConflict(s)` (con hijos en el catálogo) y `onPrint` en `createPrintView` (petición de Food).
 - v0.18.3: arreglos del piloto de Booking (FB_2026_002 pin, FB_2026_003 punto de la marca) y nodo en los pasos «abrió».

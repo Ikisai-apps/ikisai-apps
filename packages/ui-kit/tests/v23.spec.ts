@@ -34,8 +34,12 @@ test.describe('ui-kit v0.18.3 · piloto: pines y punto de la marca', () => {
     await page.keyboard.press('Escape');
     const draft = page.locator('.fb-pin.draft[data-node="demo.reservation.guests.add"]');
     await expect(draft).toBeVisible();
-    const [a, b] = [await draft.boundingBox(), await mine.boundingBox()];
-    expect(Math.abs(a!.x - b!.x)).toBeGreaterThan(30);
+    // Las dos posiciones en el mismo instante (los pines se repintan al desplazar o al recargar la lista).
+    await expect.poll(() => page.evaluate(() => {
+      const d = document.querySelector('.fb-pin.draft[data-node="demo.reservation.guests.add"]')?.getBoundingClientRect();
+      const m = document.querySelector('.fb-pin.mine[data-node="demo.reservation.guests.add"]')?.getBoundingClientRect();
+      return d && m ? Math.round(Math.abs(d.left - m.left)) : 0;
+    })).toBeGreaterThan(30);
   });
 
   test('FB_2026_002: con una copia oculta del mismo id, el pin va al elemento visible', async ({ page }) => {

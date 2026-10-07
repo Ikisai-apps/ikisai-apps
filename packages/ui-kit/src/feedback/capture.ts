@@ -8,6 +8,7 @@ import { el } from '../dom.ts';
 import { ensureFeedbackGlobalStyles } from './global-style.ts';
 import { installFeedbackGesture } from './gesture.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface CaptureOptions {
   /** Texto de la barra; por defecto «Mantén pulsado sobre el lugar al que te refieres». */
@@ -23,9 +24,9 @@ export function captureFeedbackTarget(options: CaptureOptions = {}): Promise<Fee
   return new Promise((resolve) => {
     const html = document.documentElement;
     let done = false;
-    const cancel = el('button', { type: 'button', class: 'ghost small fb-capture-cancel' }, 'Cancelar');
+    const cancel = el('button', { type: 'button', class: 'ghost small fb-capture-cancel' }, kt('Cancelar'));
     const bar = el('div', { class: 'ikisai-fb-layer fb-capture-bar', role: 'status', 'aria-live': 'polite', 'data-feedback-ignore': '' },
-      el('span', null, options.text ?? 'Mantén pulsado sobre el lugar al que te refieres'), cancel);
+      el('span', null, options.text ?? kt('Mantén pulsado sobre el lugar al que te refieres')), cancel);
     const finish = (node: FeedbackNode | null) => {
       if (done) return;
       done = true;

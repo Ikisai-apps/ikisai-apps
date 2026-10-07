@@ -1,5 +1,6 @@
 import type { PendingConflict, SyncClient } from '@ikisai/sync-client';
 import { el, formatDate, replace, type Child } from '../dom.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export type ConflictDecision = Parameters<SyncClient['resolveConflict']>[1];
 
@@ -61,7 +62,7 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   let busy = false;
 
   const name = (options.rowName ?? defaultRowName)(conflict);
-  const title = op.op === 'delete' ? `Querías borrar «${name}»` : `«${name}»`;
+  const title = op.op === 'delete' ? kt('Querías borrar «{name}»', { name }) : `«${name}»`;
   const article = el('article', { class: 'conflict', dataset: { requestId: conflict.requestId } });
 
   async function resolve(decision: ConflictDecision): Promise<void> {
@@ -78,15 +79,15 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
 
   function pick(field: string, side: 'mine' | 'theirs'): HTMLElement {
     const input = el('input', { type: 'radio', name: `pick-${conflict.requestId}-${field}`, value: side, checked: (picks.get(field) ?? 'mine') === side, onchange: () => picks.set(field, side) });
-    return el('label', { class: 'pick' }, input, side === 'mine' ? 'usar la mía' : 'usar esta');
+    return el('label', { class: 'pick' }, input, side === 'mine' ? kt('usar la mía') : kt('usar esta'));
   }
 
   function table(): HTMLElement {
     return el('table', null,
-      el('thead', null, el('tr', null, el('th', null, 'Campo'), el('th', null, 'Tu versión'), el('th', null, 'Servidor'))),
+      el('thead', null, el('tr', null, el('th', null, kt('Campo')), el('th', null, kt('Tu versión')), el('th', null, kt('Servidor')))),
       el('tbody', null, ...fields.map((field) => {
         const overlap = conflict.overlapping.includes(field);
-        const myValue = field in mine ? mine[field] : op.op === 'delete' && field === 'deleted_at' ? 'borrar' : conflict.base?.[field];
+        const myValue = field in mine ? mine[field] : op.op === 'delete' && field === 'deleted_at' ? kt('borrar') : conflict.base?.[field];
         const editable = merging && field in mine;
         return el('tr', { class: overlap ? 'overlap' : '' },
           el('th', { scope: 'row' }, labels[field] ?? field),
@@ -106,9 +107,9 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   function choices(): HTMLElement {
     if (!merging) {
       return el('div', { class: 'choices' },
-        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, 'Mantener la mía'),
-        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, 'Tomar la del servidor'),
-        op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', ...mark('merge'), onclick: () => { merging = true; repaint(); } }, 'Combinar campo a campo') : null,
+        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, kt(CONFLICT_MARKS.mine[1])),
+        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, kt(CONFLICT_MARKS.theirs[1])),
+        op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', ...mark('merge'), onclick: () => { merging = true; repaint(); } }, kt(CONFLICT_MARKS.merge[1])) : null,
       );
     }
     return el('div', { class: 'choices' },
@@ -116,15 +117,15 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
         const merged: Record<string, unknown> = {};
         for (const field of Object.keys(mine)) if ((picks.get(field) ?? 'mine') === 'mine') merged[field] = mine[field];
         void resolve({ choice: 'merge', fields: merged });
-      } }, 'Guardar combinación'),
-      el('button', { class: 'ghost', type: 'button', 'data-choice': 'back', ...mark('back'), onclick: () => { merging = false; repaint(); } }, 'Volver'),
+      } }, kt(CONFLICT_MARKS.save[1])),
+      el('button', { class: 'ghost', type: 'button', 'data-choice': 'back', ...mark('back'), onclick: () => { merging = false; repaint(); } }, kt(CONFLICT_MARKS.back[1])),
     );
   }
 
   function repaint(): void {
     replace(article,
       el('h3', null, title),
-      el('p', { class: 'meta' }, `Detectado ${formatDate(conflict.detectedAt)} · revisión del servidor ${conflict.current.revision}`),
+      el('p', { class: 'meta' }, kt('Detectado {date} · revisión del servidor {revision}', { date: formatDate(conflict.detectedAt), revision: String(conflict.current.revision) })),
       table(),
       choices(),
     );
@@ -136,7 +137,7 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
 /** Lista de conflictos o estado vacío. */
 export function renderConflicts(conflicts: PendingConflict[], options: ConflictOptions & { emptyTitle?: string; emptyText?: string }): HTMLElement[] {
   if (conflicts.length === 0) {
-    return [el('div', { class: 'empty' }, el('strong', null, options.emptyTitle ?? 'Sin conflictos'), options.emptyText ?? 'Todo lo tuyo se ha podido aplicar sin pisar cambios de nadie.')];
+    return [el('div', { class: 'empty' }, el('strong', null, options.emptyTitle ?? kt('Sin conflictos')), options.emptyText ?? kt('Todo lo tuyo se ha podido aplicar sin pisar cambios de nadie.'))];
   }
   return conflicts.map((conflict) => renderConflict(conflict, options));
 }

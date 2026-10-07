@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.19.0 · 7 de octubre de 2026
+
+- **Idiomas (español e inglés) para los portales** (PORTALES_V2.md §8):
+  - `createI18n({ app, dictionaries: { es, en }, supported, fallback, currency })` → `{ locale, setLocale, supported, t, onChange, formatDate, formatNumber, formatMoney, tag }`.
+    - Toma el idioma del navegador si está entre los admitidos y recuerda el cambio manual por dispositivo (`ikisai-locale:<app>`).
+    - Pone `<html lang>` y cambia también el idioma de los textos del kit.
+    - `t('clave', vars)` interpola `{nombre}`, admite plurales `{ one, other }` (con `Intl.PluralRules`) y, si falta la clave, usa el idioma de reserva.
+    - Fechas, números y monedas con `Intl` (`es-ES`, `en-GB`).
+  - `createLanguageSelect(i18n)`: selector ES | EN.
+  - **Textos del kit traducidos** con `kt('texto en español', vars)`:
+    - piezas: lanzador, feedback (composer, pines, verificación, centro, formulario progresivo, captura), aviso de uso, conflictos, hoja, diálogo y barra de estado;
+    - diccionario `KIT_EN` (170 textos), ampliable con `extendKitDictionary`;
+    - la clave es el propio texto en español: **las apps internas no cambian nada** (sin `createI18n` todo sigue en español aunque el navegador esté en inglés).
+  - `createFeedbackProgressiveForm`: preguntas, opciones, pistas, marcadores y acciones admiten textos por idioma (`{ es, en }`, tipo `LocalizedText`, función `localized`); el formulario se repinta al cambiar de idioma.
+- Demo `#i18n` (se activa a mano, como haría un portal); prueba `v25`: cobertura de todas las llamadas a `kt()` en `KIT_EN`, variables conservadas, navegador en inglés, cambio manual recordado y apps internas en español. `v23` más estable en móvil.
+
 ## 0.18.5 · 7 de octubre de 2026
 
 Petición C4 de Organizers (portales):

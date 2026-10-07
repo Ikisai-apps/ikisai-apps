@@ -8,6 +8,9 @@ import {
   openFeedbackCenter,
   createFeedbackReview,
   createUsage,
+  createI18n,
+  createLanguageSelect,
+  type I18n,
   showUsageNotice,
   type FeedbackApi,
   createAppLauncher,
@@ -862,7 +865,7 @@ const usage = createUsage({ app: 'demo', api: fbApi, userId: () => 'demo-user', 
 const fbPortalOut = el('pre', { id: 'fbPortalOut', class: 'small' });
 const fbPortal = createFeedbackProgressiveForm({
   config: { start: 'about', steps: [
-    { id: 'about', kind: 'choice', question: '¿Sobre qué quieres comentarnos algo?', options: [{ value: 'app', label: 'Aplicación', next: 'appKind' }, { value: 'event', label: 'Retiro / evento', next: 'eventCat' }, { value: 'space', label: 'Espacio', next: 'place' }] },
+    { id: 'about', kind: 'choice', question: { es: '¿Sobre qué quieres comentarnos algo?', en: 'What would you like to tell us about?' }, options: [{ value: 'app', label: { es: 'Aplicación', en: 'The app' }, next: 'appKind' }, { value: 'event', label: { es: 'Retiro / evento', en: 'Retreat / event' }, next: 'eventCat' }, { value: 'space', label: { es: 'Espacio', en: 'A space' }, next: 'place' }] },
     { id: 'appKind', kind: 'choice', question: '¿Qué pasa?', options: [{ value: 'bug', label: 'Algo no funciona' }, { value: 'suggestion', label: 'Tengo una sugerencia' }], next: 'appWhere' },
     { id: 'appWhere', kind: 'signal', question: 'Mantén pulsado sobre el lugar de la aplicación al que te refieres.', action: 'Señalar en la pantalla', next: 'message' },
     { id: 'eventCat', kind: 'choice', question: '¿Sobre qué parte del retiro?', options: ['Horarios', 'Organización', 'Actividades', 'Comunicación', 'Comida', 'Otra'].map((l) => ({ value: l.toLowerCase(), label: l })), next: 'message' },
@@ -896,6 +899,41 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
 );
 (window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter, createAppLauncher };
 
+// --- Idiomas (portales): español e inglés -----------------------------------------------------------
+/** Diccionario de ejemplo de una app (claves propias). */
+const DEMO_DICT = {
+  es: { greeting: 'Hola, {name}', nights: { one: '1 noche', other: '{count} noches' }, onlyEs: 'Solo en español' },
+  en: { greeting: 'Hello, {name}', nights: { one: '1 night', other: '{count} nights' } },
+};
+const i18nOut = el('div', { id: 'i18nOut', class: 'card' });
+const i18nHost = el('div', { class: 'demo-row', id: 'i18nHost' });
+let demoI18n: I18n | null = null;
+function paintI18n(): void {
+  const i = demoI18n!;
+  replace(i18nOut,
+    el('p', { id: 'i18nGreeting' }, i.t('greeting', { name: 'Ana' })),
+    el('p', { id: 'i18nNights' }, i.t('nights', { count: 1 }), ' · ', i.t('nights', { count: 3 })),
+    el('p', { id: 'i18nFallback' }, i.t('onlyEs')),
+    el('p', { id: 'i18nDate' }, i.formatDate('2026-10-07T12:00:00Z')),
+    el('p', { id: 'i18nMoney' }, i.formatMoney(1234.5)),
+    el('p', { id: 'i18nNumber' }, i.formatNumber(1234567.891, { maximumFractionDigits: 2 })));
+}
+/** Arranca bajo demanda: al cargar, el kit sigue en español para el resto de la demo (y de las pruebas). */
+function startI18n(): I18n {
+  if (demoI18n) return demoI18n;
+  demoI18n = createI18n({ app: 'demo-portal', dictionaries: DEMO_DICT });
+  demoI18n.onChange(paintI18n);
+  replace(i18nHost, createLanguageSelect(demoI18n, { attrs: { id: 'i18nSelect' } }),
+    el('button', { type: 'button', class: 'ghost small', id: 'i18nDialog', onclick: () => void confirmDialog({ title: 'Demo', text: '…' }) }, 'Diálogo'),
+    el('button', { type: 'button', class: 'ghost small', id: 'i18nComposer', onclick: () => void feedback.signal(fbTarget) }, 'Composer'));
+  paintI18n();
+  return demoI18n;
+}
+replace(i18nHost, el('button', { type: 'button', class: 'primary', id: 'i18nStart', onclick: () => startI18n() }, 'Activar idiomas (como un portal)'));
+const i18nSection = section('i18n', 'Idiomas (portales)', 'createI18n: diccionarios de la app, idioma del navegador o el elegido (se recuerda), Intl para fechas, números y monedas, y los textos del kit en el mismo idioma. Las apps internas no lo usan y siguen en español.',
+  i18nHost, i18nOut);
+(window as unknown as { ikisaiI18n: unknown }).ikisaiI18n = { start: startI18n, get: () => demoI18n };
+
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
@@ -907,12 +945,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection),
 );

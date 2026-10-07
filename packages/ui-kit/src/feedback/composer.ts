@@ -12,6 +12,7 @@ import { FEEDBACK_INTENT_LABELS, FEEDBACK_MAX_ATTACHMENTS, FEEDBACK_MAX_MESSAGE,
 import type { FeedbackReport } from './client.ts';
 import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export type ComposerState = 'empty' | 'draft' | 'sending' | 'pending' | 'sent' | 'error';
 
@@ -52,41 +53,41 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
   let closed = false;
   const opener = document.activeElement as HTMLElement | null;
 
-  const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), placeholder: '¿Qué pasa o qué propones?', 'aria-label': 'Comentario' }) as HTMLTextAreaElement;
+  const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), placeholder: kt('¿Qué pasa o qué propones?'), 'aria-label': kt('Comentario') }) as HTMLTextAreaElement;
   message.value = options.initial?.message ?? '';
   const counter = el('small', { class: 'fb-counter', 'aria-live': 'polite' });
-  const intentsRow = el('div', { class: 'segmented fb-intents', role: 'radiogroup', 'aria-label': 'Tipo' });
+  const intentsRow = el('div', { class: 'segmented fb-intents', role: 'radiogroup', 'aria-label': kt('Tipo') });
   const imagesRow = el('div', { class: 'fb-images' });
   const fileInput = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, class: 'fb-file' }) as HTMLInputElement;
   const blocking = el('input', { type: 'checkbox', class: 'fb-blocking-input' }) as HTMLInputElement;
   blocking.checked = !!options.initial?.blocking;
-  const blockingRow = el('label', { class: 'field check fb-blocking' }, blocking, el('span', null, 'Me bloquea: no puedo seguir trabajando'));
+  const blockingRow = el('label', { class: 'field check fb-blocking' }, blocking, el('span', null, kt('Me bloquea: no puedo seguir trabajando')));
   const status = el('p', { class: 'fb-status', role: 'status', 'aria-live': 'polite' });
   const dupes = el('div', { class: 'fb-dupes', hidden: true });
-  const send = el('button', { type: 'button', class: 'primary fb-send' }, 'Enviar');
-  const closeButton = el('button', { type: 'button', class: 'iconbtn small fb-close', 'aria-label': 'Cerrar comentario' }, icon('close', 18));
+  const send = el('button', { type: 'button', class: 'primary fb-send' }, kt('Enviar'));
+  const closeButton = el('button', { type: 'button', class: 'iconbtn small fb-close', 'aria-label': kt('Cerrar comentario') }, icon('close', 18));
 
   function isEmpty(): boolean { return !message.value.trim() && !images.length; }
   function value(): ComposerValue { return { message: message.value.trim(), intent, images, blocking: blocking.checked }; }
   function paintCounter(): void {
     const left = FEEDBACK_MAX_MESSAGE - message.value.length;
-    counter.textContent = left < 400 ? `Quedan ${left} caracteres` : '';
+    counter.textContent = left < 400 ? kt('Quedan {left} caracteres', { left }) : '';
   }
   function paintIntents(): void {
     replace(intentsRow, ...intents.map((i) => el('button', {
       type: 'button', role: 'radio', 'aria-checked': String(i === intent), class: i === intent ? 'on' : '', dataset: { intent: i },
       onclick: () => { intent = i; paintIntents(); },
-    }, FEEDBACK_INTENT_LABELS[i])));
+    }, kt(FEEDBACK_INTENT_LABELS[i]))));
   }
   function paintImages(): void {
     replace(imagesRow,
       ...images.map((img) => {
         const url = URL.createObjectURL(img.blob);
         return el('figure', { class: 'fb-thumb', dataset: { image: img.id } },
-          el('img', { src: url, alt: 'Imagen adjunta', onload: () => URL.revokeObjectURL(url) }),
-          el('button', { type: 'button', class: 'fb-remove', 'aria-label': 'Quitar imagen', onclick: () => { images = images.filter((x) => x.id !== img.id); paintImages(); } }, '×'));
+          el('img', { src: url, alt: kt('Imagen adjunta'), onload: () => URL.revokeObjectURL(url) }),
+          el('button', { type: 'button', class: 'fb-remove', 'aria-label': kt('Quitar imagen'), onclick: () => { images = images.filter((x) => x.id !== img.id); paintImages(); } }, '×'));
       }),
-      images.length < FEEDBACK_MAX_ATTACHMENTS ? el('button', { type: 'button', class: 'ghost small fb-add-image', onclick: () => fileInput.click() }, icon('camera', 16), 'Imagen') : null,
+      images.length < FEEDBACK_MAX_ATTACHMENTS ? el('button', { type: 'button', class: 'ghost small fb-add-image', onclick: () => fileInput.click() }, icon('camera', 16), kt('Imagen')) : null,
     );
   }
   fileInput.addEventListener('change', async () => {
@@ -96,7 +97,7 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
       try {
         const c = await compressImage(file, { thumbSide: 0 });
         images = [...images, { id: newId(), blob: c.full, mime: c.mime, filename: c.filename }];
-      } catch { setState('error', 'No se pudo leer esa imagen.'); }
+      } catch { setState('error', kt('No se pudo leer esa imagen.')); }
     }
     paintImages();
   });
@@ -105,8 +106,8 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
   function setState(state: ComposerState, text?: string): void {
     panel.dataset.state = state;
     const texts: Record<ComposerState, string> = {
-      empty: '', draft: '', sending: 'Enviando…', pending: 'Pendiente de enviar: se enviará al volver la conexión.',
-      sent: 'Enviado. Gracias.', error: 'No se pudo enviar.',
+      empty: '', draft: '', sending: kt('Enviando…'), pending: kt('Pendiente de enviar: se enviará al volver la conexión.'),
+      sent: kt('Enviado. Gracias.'), error: kt('No se pudo enviar.'),
     };
     status.textContent = text ?? texts[state];
     status.className = `fb-status${state === 'error' ? ' error' : ''}`;
@@ -114,20 +115,20 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
   }
 
   send.addEventListener('click', async () => {
-    if (!message.value.trim()) { setState('error', 'Escribe un comentario antes de enviar.'); message.focus(); return; }
+    if (!message.value.trim()) { setState('error', kt('Escribe un comentario antes de enviar.')); message.focus(); return; }
     setState('sending');
     try {
       const result = await options.onSend(value());
       setState(result);
       setTimeout(() => finish(), result === 'sent' ? 700 : 1400);
     } catch (error) {
-      setState('error', (error as Error)?.message || 'No se pudo enviar.');
+      setState('error', (error as Error)?.message || kt('No se pudo enviar.'));
     }
   });
 
-  const panel = el('section', { class: 'fb-composer', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Comentar este elemento', tabindex: '-1' },
+  const panel = el('section', { class: 'fb-composer', role: 'dialog', 'aria-modal': 'true', 'aria-label': kt('Comentar este elemento'), tabindex: '-1' },
     el('header', { class: 'fb-head' },
-      el('div', { class: 'fb-where' }, el('small', null, 'Sobre'), el('strong', null, options.node.path.join(' › '))),
+      el('div', { class: 'fb-where' }, el('small', null, kt('Sobre')), el('strong', null, options.node.path.join(' › '))),
       closeButton),
     dupes,
     intentsRow,
@@ -136,7 +137,7 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
     blockingRow,
     status,
     el('div', { class: 'fb-foot' },
-      options.onReclassify ? el('button', { type: 'button', class: 'linkbtn fb-reclassify', onclick: () => { finish(); options.onReclassify?.(); } }, 'No es sobre la aplicación') : null,
+      options.onReclassify ? el('button', { type: 'button', class: 'linkbtn fb-reclassify', onclick: () => { finish(); options.onReclassify?.(); } }, kt('No es sobre la aplicación')) : null,
       send),
   );
   const catcher = el('div', { class: 'fb-catcher', onclick: () => leave() });
@@ -201,13 +202,13 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
     if (closed || !reports.length) return;
     dupes.hidden = false;
     replace(dupes,
-      el('p', null, el('strong', null, reports.length === 1 ? 'Ya hay 1 reporte abierto aquí' : `Ya hay ${reports.length} reportes abiertos aquí`)),
+      el('p', null, el('strong', null, reports.length === 1 ? kt('Ya hay 1 reporte abierto aquí') : kt('Ya hay {count} reportes abiertos aquí', { count: reports.length }))),
       el('ul', { class: 'fb-dupe-list' }, ...reports.slice(0, 3).map((r) => el('li', null, el('span', { class: 'fb-dupe-msg' }, r.message.slice(0, 120)),
         options.onSupport ? el('button', { type: 'button', class: 'ghost small fb-support', dataset: { report: r.id }, onclick: async (e: Event) => {
           const b = e.currentTarget as HTMLButtonElement; b.disabled = true;
-          try { const n = await options.onSupport!(r); b.textContent = `Te sumaste · ${n}`; setTimeout(() => finish(), 600); options.onClose(null); } catch { b.disabled = false; }
-        } }, 'También me pasa') : null))),
-      el('button', { type: 'button', class: 'linkbtn fb-new', onclick: () => { dupes.hidden = true; message.focus(); } }, 'Es otra cosa: nueva sugerencia'),
+          try { const n = await options.onSupport!(r); b.textContent = kt('Te sumaste · {count}', { count: n }); setTimeout(() => finish(), 600); options.onClose(null); } catch { b.disabled = false; }
+        } }, kt('También me pasa')) : null))),
+      el('button', { type: 'button', class: 'linkbtn fb-new', onclick: () => { dupes.hidden = true; message.focus(); } }, kt('Es otra cosa: nueva sugerencia')),
     );
     place();
   }).catch(() => { /* sin duplicados */ });

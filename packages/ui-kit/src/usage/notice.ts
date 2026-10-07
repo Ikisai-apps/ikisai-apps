@@ -8,6 +8,7 @@
 import { el } from '../dom.ts';
 import { currentSheet, openSheet, type Sheet } from '../overlay/sheet.ts';
 import type { FeedbackApi } from '../feedback/client.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface UsageNoticeOptions {
   api: FeedbackApi;
@@ -36,12 +37,12 @@ export async function showUsageNotice(options: UsageNoticeOptions): Promise<Shee
   if (options.userId() !== user) return null;
 
   const status = el('p', { class: 'fb-status', role: 'status' });
-  const ok = el('button', { type: 'button', class: 'primary usage-ok' }, 'Entendido') as HTMLButtonElement;
+  const ok = el('button', { type: 'button', class: 'primary usage-ok' }, kt('Entendido')) as HTMLButtonElement;
   const sheet = openSheet({
-    title: 'Mejoramos las herramientas con su uso',
+    title: kt('Mejoramos las herramientas con su uso'),
     body: el('div', { class: 'usage-notice' },
-      el('p', null, USAGE_NOTICE_TEXT),
-      el('p', { class: 'hint' }, 'Se cuenta qué botones y pantallas se usan y cuántas veces, por día. Nunca lo que escribes, ni los datos de clientes o huéspedes, ni la hora exacta.'),
+      el('p', null, kt(USAGE_NOTICE_TEXT)),
+      el('p', { class: 'hint' }, kt('Se cuenta qué botones y pantallas se usan y cuántas veces, por día. Nunca lo que escribes, ni los datos de clientes o huéspedes, ni la hora exacta.')),
       status),
     foot: ok,
     container: options.container?.(),
@@ -55,7 +56,7 @@ export async function showUsageNotice(options: UsageNoticeOptions): Promise<Shee
     } catch {
       ok.disabled = false;
       status.className = 'fb-status error';
-      status.textContent = 'No se pudo guardar. Prueba otra vez con conexión.';
+      status.textContent = kt('No se pudo guardar. Prueba otra vez con conexión.');
     }
   });
   return sheet;

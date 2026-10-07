@@ -1,6 +1,7 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
+import { kt } from '../i18n/i18n.ts';
 
 export interface SheetOptions {
   title: string;
@@ -59,7 +60,7 @@ export function openSheet(options: SheetOptions): Sheet {
   const titleId = options.titleId ?? 'sheetTitle';
   const title = el('h2', { id: titleId, class: options.hideTitle ? 'vh' : null }, options.title);
   const withClass = (base: string, attrs?: Record<string, string | null | undefined>) => ({ ...(attrs ?? {}), class: [base, attrs?.class].filter(Boolean).join(' ') });
-  const closeButton = el('button', { class: 'iconbtn', type: 'button', 'aria-label': options.closeLabel ?? 'Cerrar', ...(options.closeAttrs ?? {}), onclick: () => void close(false) }, icon('close'));
+  const closeButton = el('button', { class: 'iconbtn', type: 'button', 'aria-label': options.closeLabel ?? kt('Cerrar'), ...(options.closeAttrs ?? {}), onclick: () => void close(false) }, icon('close'));
   const body = el('div', withClass('sheet-body', options.bodyAttrs), options.meta ? el('p', { class: 'meta' }, options.meta) : null, options.body);
   const foot = options.foot ? el('div', { class: 'sheet-foot', hidden: !!options.footHidden }, options.foot) : null;
   const panel = el('section', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1', ...withClass(options.hideTitle ? 'sheet notitle' : 'sheet', options.panelAttrs) },
