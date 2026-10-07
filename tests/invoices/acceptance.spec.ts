@@ -1454,7 +1454,7 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
   }
 });
 
-test('todas las pantallas de Finance llevan ids con la forma estable, con etiqueta y sin ids de negocio', async ({ browser }) => {
+test('@smoke todas las pantallas de Finance llevan ids con la forma estable, con etiqueta y sin ids de negocio', async ({ browser }) => {
   test.setTimeout(120_000);
   const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
