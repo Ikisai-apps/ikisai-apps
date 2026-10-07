@@ -76,3 +76,20 @@ export function fieldSource(guest: { field_sources?: Record<string, { by?: strin
   const by = guest.field_sources?.[field]?.by;
   return by === 'guest' || by === 'organizer' || by === 'staff' ? by : null;
 }
+
+/**
+ * Parentesco de un menor con su acompañante: códigos del catálogo de SES (instrucciones §8.3). Guests guarda el código y
+ * muestra la etiqueta traducida; el texto libre antiguo se sigue aceptando y se convierte al enviar a SES (`kinshipCode`).
+ */
+export const KINSHIP_CODES = {
+  PM: 'Padre o madre', TU: 'Tutor o tutora legal', AB: 'Abuelo o abuela', HR: 'Hermano o hermana', TI: 'Tío o tía',
+  CY: 'Cónyuge', HJ: 'Hijo o hija', NI: 'Nieto o nieta', SB: 'Sobrino o sobrina', CD: 'Cuñado o cuñada', SG: 'Suegro o suegra',
+  YN: 'Yerno o nuera', BA: 'Bisabuelo o bisabuela', BN: 'Bisnieto o bisnieta', OT: 'Otro',
+} as const;
+export type KinshipCode = keyof typeof KINSHIP_CODES;
+
+/** Etiqueta legible de un parentesco guardado como código; el texto libre antiguo se devuelve tal cual. */
+export function kinshipLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return (KINSHIP_CODES as Record<string, string>)[value.trim().toUpperCase()] ?? value;
+}
