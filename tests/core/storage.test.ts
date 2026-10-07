@@ -73,7 +73,8 @@ test('storage · recogida de huérfanos: solo en apps activadas, 30 días de esp
     createApp({ ...config, app: 'booking', slug: 'booking-api', origins: ['https://booking.ikisai.com'] }) });
   try {
     const db = app.t.db;
-    await db.exec(`create table booking.test_docs (id uuid primary key, file_id uuid);`);
+    // Independiente de qué apps hayan activado ya la recogida en sus migraciones: se parte de ninguna activada.
+    await db.exec(`delete from core.file_gc_apps; create table booking.test_docs (id uuid primary key, file_id uuid);`);
     const mk = async (app_: string) => (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status, created_at)
       values ($1, 'booking-documents', gen_random_uuid()::text, 'a.webp', 'image/webp', 10, repeat('a', 64), 'verified', now() - interval '5 days') returning id`, [app_])).rows[0]!.id;
     const orphan = await mk('booking'); const kept = await mk('booking'); const legal = await mk('booking'); const other = await mk('tasks');
