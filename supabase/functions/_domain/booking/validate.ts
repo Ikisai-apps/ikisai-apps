@@ -554,8 +554,8 @@ export function validateOperations(operations: readonly OperationLike[], actor: 
       issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'La declaración del organizador solo la registra su portal.', details: { table } }));
       return;
     }
-    if (table === TABLES.guests && op.fields && ['allergies_visible_to_organizer', 'privacy_ack_at', 'privacy_ack_version'].some((f) => f in op.fields!)) {
-      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'El consentimiento y el aviso legal solo los marca el propio huésped desde su enlace.', details: { table } }));
+    if (table === TABLES.guests && op.fields && ['allergies_visible_to_organizer', 'privacy_ack_at', 'privacy_ack_version', 'anonymized_at'].some((f) => f in op.fields!)) {
+      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'El consentimiento y el aviso legal solo los marca el propio huésped desde su enlace, y la anonimización la hace la conservación automática.', details: { table } }));
       return;
     }
     if (table === TABLES.guests && !(actor.canSeeGuests ?? actor.role === 'owner')) {
