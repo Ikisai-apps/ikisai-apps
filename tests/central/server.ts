@@ -11,14 +11,34 @@ export interface CentralTestServer {
   url: string;
   app: TestApp;
   password: string;
+  /** Peticiones que la Edge ha hecho al Tasks simulado. */
+  tasksCalls: Array<{ path: string; body: any }>;
   close(): Promise<void>;
+}
+
+/**
+ * Tasks simulado: crea peticiones «por clasificar» (sin regla de enrutado) y devuelve su estado. Nunca se llama al real.
+ */
+function fakeTasks(calls: Array<{ path: string; body: any }>): typeof fetch {
+  const ids = new Map<string, string>();
+  return async (input, init) => {
+    const path = new URL(String(input)).pathname.replace('/api/v1/', '');
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    calls.push({ path, body });
+    if (path === 'requests/task') {
+      if (!ids.has(body.external_ref)) ids.set(body.external_ref, crypto.randomUUID());
+      return Response.json({ created: true, routed: 'pending', task: { kind: 'task', id: ids.get(body.external_ref), visible: false, pending: true } });
+    }
+    return Response.json({ items: (body.ids ?? []).map((id: string) => ({ kind: 'task', id, visible: false, request: 'pending' })), missing: [] });
+  };
 }
 
 export async function startCentralServer(): Promise<CentralTestServer> {
   const origin = CENTRAL_ORIGINS[0]!;
+  const tasksCalls: Array<{ path: string; body: any }> = [];
   const app = await createTestApp({
     app: 'central', slug: 'central-api', origin,
-    createHandler: (config) => createCentralApp({ ...config, origins: [origin] }),
+    createHandler: (config) => createCentralApp({ ...config, origins: [origin] }, { tasksApiBase: 'https://tasks.example.invalid', tasksFetch: fakeTasks(tasksCalls) }),
   });
   const server: Server = createServer(async (req, res) => {
     try {
@@ -61,6 +81,7 @@ export async function startCentralServer(): Promise<CentralTestServer> {
     url: `http://127.0.0.1:${port}`,
     app,
     password: TEST_PASSWORD,
+    tasksCalls,
     close: async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await app.close();

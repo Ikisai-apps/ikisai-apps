@@ -1,5 +1,6 @@
 import { el, icon, plural, replace } from '@ikisai/ui-kit';
-import { canSeeReserved, dueState, todayInMadrid } from '@ikisai/domain-central';
+import { canSeeReserved, todayInMadrid } from '@ikisai/domain-central';
+import { computeDue } from './compliance.ts';
 import { T } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -24,29 +25,29 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
       el('p', null, ROLE_TEXT[boot?.membership.role ?? 'reader'] ?? ''))),
     docs,
     summary,
+    el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
     el('section', { class: 'card soon' },
       el('h3', null, 'Próximamente en Central'),
       el('ul', { class: 'plainlist' },
-        el('li', null, 'Cumplimiento: obligaciones legales, seguros y licencias con sus vencimientos.'),
         el('li', null, 'Panel de dirección con los indicadores de cada app.'))),
   );
 
-  // Documentación de personas que caduca (solo quien ve los datos reservados), calculada en el dispositivo.
+  // Lo que vence (obligaciones, documentos clave y, para quien la ve, documentación de personas), calculado en el dispositivo.
   async function paintDocs(): Promise<void> {
-    if (!canSeeReserved(boot?.membership)) return;
-    const today = todayInMadrid();
-    const people = new Map((await client.list(T.people)).map((p) => [p.id, String(p.display_name ?? '')]));
-    const due = (await client.list(T.personRecords))
-      .filter((r) => people.has(String(r.person_id)) && r.status !== 'no_aplica')
-      .map((r) => ({ r, state: dueState(r.expires_on as string | null, today, 30) }))
-      .filter((x) => x.state !== 'al_dia');
+    const raw = {
+      requirements: await client.list(T.requirements), documents: await client.list(T.keyDocuments), links: [], people: await client.list(T.people),
+      records: canSeeReserved(boot?.membership) ? await client.list(T.personRecords) : [],
+    } as unknown as Parameters<typeof computeDue>[0];
+    const due = computeDue(raw, todayInMadrid());
     if (!due.length) { replace(docs); return; }
     const expired = due.filter((x) => x.state === 'vencido').length;
+    const href = (x: (typeof due)[number]) => x.source === 'person_record' ? `#/personas/${x.parentId}` : x.source === 'requirement' ? `#/cumplimiento/${x.id}` : x.parentId ? `#/cumplimiento/${x.parentId}` : '#/cumplimiento/documentos';
     replace(docs, el('section', { class: 'card duecard' },
-      el('h3', null, icon('warn', 18), ' Documentación de personas'),
-      el('p', null, [expired ? plural(expired, 'registro caducado', 'registros caducados') : '', due.length - expired ? plural(due.length - expired, 'caduca en 30 días', 'caducan en 30 días') : ''].filter(Boolean).join(' · ')),
-      el('ul', { class: 'plainlist' }, ...due.slice(0, 5).map(({ r, state }) => el('li', null,
-        el('a', { href: `#/personas/${String(r.person_id)}` }, people.get(String(r.person_id)) ?? ''), state === 'vencido' ? ' · caducado' : ` · caduca el ${String(r.expires_on).split('-').reverse().join('/')}`)))));
+      el('h3', null, icon('warn', 18), ' Vence pronto'),
+      el('p', null, [expired ? plural(expired, 'vencido', 'vencidos') : '', due.length - expired ? plural(due.length - expired, 'vence pronto', 'vencen pronto') : ''].filter(Boolean).join(' · ')),
+      el('ul', { class: 'plainlist' }, ...due.slice(0, 5).map((x) => el('li', null,
+        el('a', { href: href(x) }, x.title), x.state === 'vencido' ? ` · venció el ${x.dueOn.split('-').reverse().join('/')}` : ` · vence el ${x.dueOn.split('-').reverse().join('/')}`))),
+      due.length > 5 ? el('a', { href: '#/cumplimiento' }, 'Ver todos los vencimientos') : null));
   }
   void paintDocs();
 
