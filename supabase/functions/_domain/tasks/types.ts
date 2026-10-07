@@ -25,6 +25,8 @@ export interface ProjectRow extends BaseRow {
 export interface TaskRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; parent_id: Uuid | null; title: string; note: string; done: boolean; done_at: string | null;
   priority: Priority; due: string | null; owner_label_id: Uuid | null; cost: number | null; position: number;
+  /** `<source>:<referencia>` de una tarea pedida desde otra app (§19); solo la fija la ruta `requests/task`. */
+  external_ref?: string | null;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
@@ -88,7 +90,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
@@ -108,7 +110,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id'],
   'tasks.labels': ['tab_id'],
   'tasks.projects': ['tab_id', 'system'],
-  'tasks.tasks': ['tab_id'],
+  'tasks.tasks': ['tab_id', 'external_ref'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],

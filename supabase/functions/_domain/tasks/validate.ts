@@ -130,6 +130,8 @@ const RULES: Record<TableName, TableRules> = {
     fields: {
       tab_id: uuid(), project_id: uuid(), parent_id: nullable(uuid('INVALID_PARENT')), title: text(1, 1000, 'REQUIRED_TEXT', 'La tarea necesita texto.'), note,
       done: flag('INVALID_DONE'), priority, due: nullable(date), owner_label_id: nullable(uuid('INVALID_OWNER')), cost: nullable(amount), position,
+      // Escribible en el registro para que la fije `tasks.request_task`; por `commands` nunca (§19).
+      external_ref: (_v, f) => reject(422, 'INVALID_FIELDS', 'La procedencia de una tarea solo la fija la ruta requests/task.', { field: f }),
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
   },

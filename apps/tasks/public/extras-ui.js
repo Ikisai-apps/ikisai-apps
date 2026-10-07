@@ -69,3 +69,14 @@ openTaskEditor=function(id,...rest){editorBeforeActions(id,...rest);if(!id||!can
   document.getElementById('menuHistory').onclick=()=>historySheet({kind:'task',id,tabId:tab().id})};
 const bindBeforeTaskEdit=bind;
 bind=function(){bindBeforeTaskEdit();document.querySelectorAll('[data-task-menu]').forEach(b=>{const name=b.getAttribute('aria-label')?.replace(/^Opciones de /,'')||'';b.setAttribute('aria-label','Editar '+name);b.title='Editar';b.classList.add('editbtn');b.onclick=()=>openTaskEditor(b.dataset.taskMenu)})};
+
+/* Tarea pedida desde otra app (API.md §19): el editor dice de dónde viene. El nombre sale del catálogo de apps
+   (GET /api/v1/apps); sin red, el id de la app con mayúscula. */
+let appNames=null;
+function requestOrigin(id){const ref=Sync.core?.data?.['tasks.tasks']?.find(t=>t.id===id)?.external_ref;if(!ref)return null;const source=ref.slice(0,ref.indexOf(':'));return {source,reference:ref.slice(source.length+1)}}
+function appName(source){return appNames?.get(source)||source.charAt(0).toUpperCase()+source.slice(1)}
+const taskEditorBeforeOrigin=openTaskEditor;
+openTaskEditor=function(id,...rest){taskEditorBeforeOrigin(id,...rest);const origin=id?requestOrigin(id):null;if(!origin)return;
+  const title=document.querySelector('#sheet .sheettitle');if(!title||document.getElementById('taskOrigin'))return;
+  title.insertAdjacentHTML('afterend',`<p class="notice" id="taskOrigin">Pedida desde ${esc(appName(origin.source))} · ${esc(origin.reference)}</p>`);
+  if(!appNames&&Sync.core&&navigator.onLine)Sync.core.api('/apps').then(out=>{appNames=new Map((out?.items||out?.apps||[]).map(a=>[a.id,a.name]));const el=document.getElementById('taskOrigin');if(el)el.textContent=`Pedida desde ${appName(origin.source)} · ${origin.reference}`}).catch(()=>{appNames=new Map()})};

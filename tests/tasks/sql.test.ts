@@ -337,7 +337,7 @@ test('lectura tasks.targets: árbol visible para el usuario y validación de un 
   assert.deepEqual(seen.tabs[0].projects.map((p: any) => p.id), [mine]);
 
   const one = await db.read('tasks.targets', { kind: 'task', id: t1 }, guest);
-  assert.deepEqual(one, { kind: 'task', id: t1, tabId: tab, projectId: mine, title: 'Pintar', revision: 1, deleted: false, archived: false, done: false });
+  assert.deepEqual(one, { kind: 'task', id: t1, tabId: tab, projectId: mine, title: 'Pintar', revision: 1, deleted: false, archived: false, done: false, externalRef: null });
   assert.equal((await db.read('tasks.targets', { kind: 'project', id: archived })).archived, true);
   assert.equal((await db.read('tasks.targets', { kind: 'tab', id: tab }, guest)).title, 'Destinos');
   await rejects(db.read('tasks.targets', { kind: 'task', id: hidden }, guest), 'NOT_FOUND');
