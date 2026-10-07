@@ -29,6 +29,7 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate, u
     docs,
     summary,
     el('a', { class: 'homelink', href: '#/decisiones', id: 'homeDecisions', 'data-feedback-id': 'central.inicio.enlaces.decisiones', 'data-feedback-label': 'Registro de decisiones' }, icon('history', 18), 'Registro de decisiones', el('span', { class: 'muted small' }, 'qué se decidió, por qué y cómo se aplica')),
+    el('a', { class: 'homelink', href: '#/textos', id: 'homeTexts', 'data-feedback-id': 'central.inicio.textos', 'data-feedback-label': 'Textos y contacto' }, icon('list', 18), 'Textos y contacto', el('span', { class: 'muted small' }, 'avisos legales, declaraciones, mensajes y contacto de los portales')),
     el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity', 'data-feedback-id': 'central.inicio.enlaces.entidad', 'data-feedback-label': 'Datos de la entidad' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
     dashboardHost,
   );

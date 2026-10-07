@@ -5,6 +5,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore: ['docs/**', '**.md', 'CODEOWNERS']
   workflow_call:
+  # Completa cada noche (solo si main cambió en las últimas 24 h) y a mano: en las PR, de lo compartido solo va el humo.
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -18,7 +22,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      frontend: ${{ steps.detect.outputs.frontend }}
       e2e: ${{ steps.detect.outputs.e2e }}
       uikit: ${{ steps.detect.outputs.uikit }}
     steps:
@@ -28,26 +31,37 @@ jobs:
       - id: detect
         shell: bash
         run: |
+          # Salida: matriz JSON [{app, grep}] para Playwright, un job por app en paralelo.
+          #  · App tocada (su código, su API, su dominio, sus pruebas o sus migraciones): su suite completa.
+          #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
+          #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
+          apps="invoices booking food tasks central organizers guests"
+          full=""; smoke=false; uikit=false
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          else
-            files="__todo__"
-          fi
-          frontend=false; e2e=""; uikit=false
-          if [ "$files" = "__todo__" ] || echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then
-            # Algo compartido (o push a main): Playwright de todas las apps y del kit.
-            frontend=true; e2e="all"; uikit=true
-          else
-            for app in invoices booking food tasks central; do
-              if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then
-                frontend=true; e2e="$e2e tests/$app"
-              fi
+            if echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then smoke=true; fi
+            if echo "$files" | grep -Eq '^(packages/ui-kit/|package-lock\.json)'; then uikit=true; fi
+            for app in $apps; do
+              if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then full="$full $app"; fi
             done
+          elif [ "${{ github.event_name }}" = "schedule" ] && [ -z "$(git log --since='25 hours ago' --format=%H -1)" ]; then
+            echo "Sin cambios en main desde ayer: nada que probar"
+          else
+            full="$apps"; uikit=true
           fi
-          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
-          echo "e2e=${e2e# }" >> "$GITHUB_OUTPUT"
+          items=""
+          for app in $apps; do
+            [ -n "$(find tests/$app -name '*.spec.ts' 2>/dev/null | head -1)" ] || continue
+            grep=""
+            if echo " $full " | grep -q " $app "; then :
+            elif [ "$smoke" = true ]; then
+              grep -rq "@smoke" tests/$app && grep="@smoke"
+            else continue; fi
+            items="$items{\"app\":\"$app\",\"grep\":\"$grep\"},"
+          done
+          echo "e2e=[${items%,}]" >> "$GITHUB_OUTPUT"
           echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
-          echo "Archivos: $(echo "$files" | wc -l)  frontend=$frontend  e2e='${e2e# }'  uikit=$uikit"
+          echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
     runs-on: ubuntu-24.04
@@ -64,11 +78,16 @@ jobs:
       - name: Pruebas de los scripts de operación (Python)
         run: python3 -m unittest discover -s tests/scripts
   e2e:
-    name: Playwright (solo si existe playwright.config.ts)
+    name: Playwright · ${{ matrix.app }}${{ matrix.grep && ' (humo)' || '' }}
     needs: cambios
-    if: needs.cambios.outputs.frontend == 'true'
+    if: needs.cambios.outputs.e2e != '[]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Un job por app: el tiempo total es el de la app más lenta, no la suma. Si una app supera esto, se parte su suite.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.cambios.outputs.e2e) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -77,24 +96,32 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Instalar Chromium
-        if: hashFiles('playwright.config.ts') != ''
         run: npx playwright install --with-deps chromium
-      - name: Pruebas end-to-end (solo las apps afectadas; todas si cambia algo compartido)
-        if: hashFiles('playwright.config.ts') != '' && needs.cambios.outputs.e2e != ''
+      - name: Pruebas end-to-end de ${{ matrix.app }}
         shell: bash
         run: |
-          # --retries=2: una prueba que falla por tiempos y pasa al repetir queda marcada «flaky» en el informe, no tumba la CI.
-          if [ "${{ needs.cambios.outputs.e2e }}" = "all" ]; then npx playwright test --retries=2; else npx playwright test ${{ needs.cambios.outputs.e2e }} --retries=2; fi
-      - name: Pruebas del ui-kit
-        if: hashFiles('packages/ui-kit/tests/playwright.config.ts') != '' && needs.cambios.outputs.uikit == 'true'
-        run: npm run test:ui-kit
-      - name: Sin configuración de Playwright
-        if: hashFiles('playwright.config.ts') == ''
-        run: echo "playwright.config.ts no existe todavía; se omite la suite e2e"
+          # --retries=2: una prueba que falla por tiempos y pasa al repetir queda marcada «flaky», no tumba la CI.
+          # --workers=2: cada archivo levanta su servidor en un puerto libre; el runner tiene 4 núcleos.
+          npx playwright test tests/${{ matrix.app }} --retries=2 --workers=2 ${{ matrix.grep && format('--grep {0}', matrix.grep) || '' }}
       - uses: actions/upload-artifact@v4
-        if: always() && hashFiles('playwright.config.ts') != ''
+        if: failure()
         with:
-          name: playwright-report-${{ github.run_id }}
-          path: playwright-report
+          name: playwright-report-${{ matrix.app }}-${{ github.run_id }}
+          path: test-results
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 7
+  uikit:
+    name: Pruebas del ui-kit
+    needs: cambios
+    if: needs.cambios.outputs.uikit == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui-kit
