@@ -30,6 +30,8 @@ export function sanitizeRoute(route: unknown): string | undefined {
 export function cleanContext(raw: any): Record<string, unknown> {
   const c = raw && typeof raw === 'object' ? raw : {};
   const out: Record<string, unknown> = {
+    // Ruta real con ids técnicos, sin consulta: el núcleo la saca del contexto y la guarda aparte (solo revisor y quien informó).
+    routeRaw: typeof c.routeRaw === 'string' ? c.routeRaw.split('?')[0]!.slice(0, 300) : undefined,
     release: str(c.release, 80), commit: str(c.commit, 40), serviceWorker: str(c.serviceWorker, 80), route: sanitizeRoute(c.route),
     deviceClass: ['mobile', 'tablet', 'desktop'].includes(c.deviceClass) ? c.deviceClass : undefined,
     viewport: c.viewport ? { width: num(c.viewport.width), height: num(c.viewport.height) } : undefined,
@@ -132,6 +134,7 @@ export function createFeedback(supabase: Supabase, app: string) {
     const requestedApp = params.get('app');
     if (requestedApp && !/^[a-z][a-z0-9_]{1,30}$/.test(requestedApp)) fail(422, 'INVALID_FILTER', 'app inválida.');
     const filters = {
+      review: params.get('review') === 'true' || undefined,
       app: requestedApp ?? app, node: node ?? undefined, status, mine: params.get('mine') === 'true' || undefined,
       pin: params.get('pin') === 'true' || undefined, limit: Number(params.get('limit') ?? 100) || 100,
     };
@@ -161,10 +164,10 @@ export function createFeedback(supabase: Supabase, app: string) {
     return { report: detail.report, attachments, tasks: detail.tasks, sourceRoute: detail.sourceRoute, context: detail.context, agentBlock: agentBlock({ ...detail, attachments }) };
   }
 
-  async function act(ctx: RequestContext, id: string, action: 'support' | 'verify' | 'reopen' | 'dismiss', body: any) {
+  async function act(ctx: RequestContext, id: string, action: 'support' | 'verify' | 'reopen' | 'dismiss' | 'approve' | 'merge', body: any) {
     human(ctx);
     if (!UUID.test(id)) fail(404, 'OUT_OF_SCOPE', messageFor('OUT_OF_SCOPE'));
-    const args = { build: str(body?.build, 80), message: str(body?.message, 1000), reason: str(body?.reason, 500) };
+    const args = { build: str(body?.build, 80), message: str(body?.message, 1000), reason: str(body?.reason, 500), into: str(body?.into, 40) };
     return { report: await supabase.rpc('core_feedback_act', { p_actor: ctx.user.id, p_id: id, p_action: action, p_args: args }) };
   }
 
