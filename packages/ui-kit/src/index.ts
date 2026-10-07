@@ -43,6 +43,9 @@ export { openImportSheet, createJsonSource, renderImportHeader, renderImportLine
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
+export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
+export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
+export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';
 export { createColorField, createColorField as createColorPicker, hexToHsv, hsvToHex, normalizeHex, type ColorField, type ColorFieldOptions, type Hsv } from './fields/color.ts';
 export { createLabelPicker, labelChips, type LabelPicker, type LabelPickerOptions, type LabelFamily, type LabelItem } from './fields/labels.ts';
 export { renderProjectCard, ringSvg, type ProjectCardSpec } from './cards/project-card.ts';
