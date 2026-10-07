@@ -7,6 +7,8 @@ import {
   createFeedbackProgressiveForm,
   openFeedbackCenter,
   createFeedbackReview,
+  createUsage,
+  showUsageNotice,
   type FeedbackApi,
   createAppLauncher,
   renderProposalReview,
@@ -693,7 +695,7 @@ const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la 
 /** Servidor simulado con estado en localStorage (sobrevive a recargar, para probar «se envía una sola vez»). */
 const FB_KEY = 'demo-feedback-server';
 type MockReport = { id: string; requestId: string; code: string; node: { id: string; path: string[] }; message: string; intent: string; status: string; display?: string; blocking?: boolean; supporters: string[]; attachments: string[]; context: unknown; verifiedBuild?: string | null; dismissReason?: string; reviewStatus?: string; originApp?: string; mergedInto?: string };
-type FbState = { reports: MockReport[]; posts: number; offline: boolean; fail: string | null; notReviewer?: boolean };
+type FbState = { reports: MockReport[]; posts: number; offline: boolean; fail: string | null; notReviewer?: boolean; usage?: Record<string, Record<string, number | string>>; usageBatches?: number; consentedAt?: string | null; usagePosts?: { path: string; body: unknown }[]; usageSettings?: Record<string, Record<string, unknown>> };
 const fbState = (): FbState => {
   try { const v = JSON.parse(localStorage.getItem(FB_KEY) ?? 'null') as FbState | null; if (v) return v; } catch { /* */ }
   return { reports: [], posts: 0, offline: false, fail: null };
@@ -721,6 +723,48 @@ const fbApi = (async (path: string, init: { method?: string; json?: unknown } = 
     const report: MockReport = { id: body.id, requestId: body.requestId, code: `FB_2026_${String(st.reports.length + 1).padStart(4, '0')}`, node: body.node, message: body.message, intent: body.intent, status: 'open', blocking: !!body.blocking, supporters: [], attachments: body.attachmentIds ?? [], context: body.context };
     st.reports.push(report); fbSave(st);
     return { report: toReport(report) };
+  }
+  if (path === '/usage/consent') {
+    if (init.method === 'POST') { st.consentedAt = '2026-10-07T10:00:00.000Z'; fbSave(st); }
+    return { consentedAt: st.consentedAt ?? null };
+  }
+  if (path === '/usage/review?app=all') {
+    if (st.notReviewer) throw fbError(403, 'FORBIDDEN');
+    return { items: DEMO_USAGE.map((u) => ({ ...u, ...(st.usageSettings?.[u.featureId] ?? {}) })) };
+  }
+  const feature = /^\/usage\/features\/([^/]+)(?:\/(decision|settings))?$/.exec(path);
+  if (feature) {
+    const id = decodeURIComponent(feature[1]!);
+    const base = DEMO_USAGE.find((u) => u.featureId === id);
+    if (!base) throw fbError(404, 'OUT_OF_SCOPE');
+    if (feature[2]) {
+      (st.usagePosts ??= []).push({ path: feature[2], body });
+      st.usageSettings ??= {};
+      const cur = (st.usageSettings[id] ??= {});
+      { if (body.audience) cur.audience = body.audience; if ('frequency' in body) cur.frequency = body.frequency; if (body.newGeneration) cur.generation = Number(cur.generation ?? base.generation) + 1; }
+      if ('decision' in body) { cur.decision = body.decision === 'clear' ? null : body.decision; cur.reviewAfter = body.reviewAfter ?? null; }
+      fbSave(st); return { ok: true };
+    }
+    return {
+      ...base, ...(st.usageSettings?.[id] ?? {}),
+      byTeam: [{ teamId: TEAM_RECEPCION, name: 'Recepción', people: 2, exposures: 30, activations: 0, successes: 0 }, { teamId: TEAM_COCINA, name: 'Cocina', people: 1, exposures: 22, activations: 11, successes: 10 }],
+      byPerson: [{ userId: PERSON_1, name: 'Persona 1', exposures: 22, activations: 11, successes: 10, errors: 1, lastUse: '2026-10-06' }],
+      unattributed: { exposures: 4, activations: 1 },
+      byContext: { production: 11, qa: 3 },
+      teams: [{ teamId: TEAM_RECEPCION, name: 'Recepción' }, { teamId: TEAM_COCINA, name: 'Cocina' }, { teamId: TEAM_MANTENIMIENTO, name: 'Mantenimiento' }],
+    };
+  }
+  if (path === '/usage/batch') {
+    // Totales del día por dispositivo: el servidor se queda con el máximo de cada contador.
+    st.usage ??= {}; st.usageBatches = (st.usageBatches ?? 0) + 1;
+    for (const item of (body.items ?? []) as Record<string, number | string>[]) {
+      const key = `${body.deviceId}|${item.day}|${item.featureId}|${item.context}`;
+      const prev = st.usage[key] ?? {};
+      const next: Record<string, number | string> = { ...item };
+      for (const [k, v] of Object.entries(item)) if (typeof v === 'number') next[k] = Math.max(v, Number(prev[k] ?? 0));
+      st.usage[key] = next;
+    }
+    fbSave(st); return { accepted: (body.items ?? []).length };
   }
   const q = new URLSearchParams(path.split('?')[1] ?? '');
   if (q.get('review') === 'true') {
@@ -772,11 +816,29 @@ const fbScreen = el('div', { class: 'card', id: 'fbScreen', 'data-feedback-id': 
     el('label', { class: 'field' }, el('span', null, 'Nota'), el('input', { id: 'fbPrivate', value: 'Alergia al marisco' })),
     el('div', { class: 'demo-row' }, fbTarget, el('span', { class: 'small muted' }, 'Clics: ', fbClicks)),
   ),
+  el('div', { class: 'segmented', role: 'tablist' },
+    el('span', { role: 'tab', tabindex: '0', id: 'usageTab', 'data-feedback-id': 'demo.reservation.tab_payment', 'data-feedback-label': 'Cobro' }, 'Cobro')),
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'ghost small', id: 'usageSaveOk', 'data-feedback-id': 'demo.reservation.save', 'data-feedback-label': 'Guardar', onclick: () => void usage.run('demo.reservation.save', async () => 'ok') }, 'Guardar'),
+    el('button', { type: 'button', class: 'ghost small', id: 'usageSaveFail', onclick: () => void usage.run('demo.reservation.save', async () => { throw new Error('falla'); }).catch(() => null) }, 'Guardar (falla)'),
+    el('button', { type: 'button', hidden: true, id: 'usageHidden', 'data-feedback-id': 'demo.reservation.hidden' }, 'Oculto'),
+    el('details', null, el('summary', null, 'Más'), el('button', { type: 'button', id: 'usageInDetails', 'data-feedback-id': 'demo.reservation.more.export' }, 'Exportar'))),
 );
 const fbStatus = el('pre', { id: 'fbServer', class: 'small' });
 const paintFbStatus = () => { const st = fbState(); fbStatus.textContent = `posts=${st.posts} reportes=${st.reports.length} sinRed=${st.offline} fallo=${st.fail ?? '-'}`; };
 paintFbStatus(); setInterval(paintFbStatus, 400);
 const fbOpened = el('output', { id: 'fbOpened', class: 'small' });
+/** Funciones de ejemplo para «Revisor › Uso» (forma de `core.usage_feature_stats`, migración 0071). */
+const TEAM_RECEPCION = '0b6f0e0a-0000-4000-8000-000000000001';
+const TEAM_COCINA = '0b6f0e0a-0000-4000-8000-000000000002';
+const TEAM_MANTENIMIENTO = '0b6f0e0a-0000-4000-8000-000000000003';
+const PERSON_1 = '0b6f0e0a-0000-4000-8000-0000000000a1';
+const DEMO_USAGE = [
+  { featureId: 'demo.reservation.guests.add', app: 'demo', label: 'Añadir huésped', kind: 'button', insight: 'TARGET_NOT_ADOPTING', activity: 'baja', generation: 1, generationRelease: 'v0.17.0', frequency: 'frequent', decision: null, reviewAfter: null, audience: { teams: [TEAM_RECEPCION], people: [] }, lastProductiveUse: '2026-10-06', last30: { exposures: 52, activations: 11, successes: 10, errors: 1, target: { exposures: 30, activations: 0 }, others: { exposures: 22, activations: 11 }, qaActivations: 3 }, feedback: { open: 1, pendingVerify: 0 } },
+  { featureId: 'demo.reservation.more.export', app: 'demo', label: 'Exportar', kind: 'button', insight: 'POSSIBLY_INACCESSIBLE', activity: 'dormida', generation: 1, frequency: 'normal', audience: { teams: [], people: [] }, last30: { exposures: 0, activations: 0, successes: 0, errors: 0, target: { exposures: 0, activations: 0 }, others: { exposures: 0, activations: 0 }, qaActivations: 0 }, feedback: { open: 0, pendingVerify: 0 } },
+  { featureId: 'booking.reservations.import', app: 'booking', label: 'Importar reservas', kind: 'operation', insight: 'HIGH_ERROR', activity: 'media', generation: 2, frequency: 'occasional', audience: { teams: [], people: [] }, last30: { exposures: 20, activations: 14, successes: 9, errors: 5 }, feedback: { open: 2, pendingVerify: 0 } },
+  { featureId: 'demo.reservation.save', app: 'demo', label: 'Guardar', kind: 'operation', insight: 'HIGH_ACTIVITY', activity: 'alta', generation: 1, frequency: 'frequent', audience: { teams: [], people: [] }, last30: { exposures: 300, activations: 280, successes: 279, errors: 1 }, feedback: { open: 0, pendingVerify: 0 } },
+];
 const review = createFeedbackReview({
   api: fbApi, app: 'demo', waitMs: 1200,
   appDomain: (app) => LAUNCHER_CATALOG.items.find((a) => a.id === app)?.domain,
@@ -794,6 +856,7 @@ const fbSeed = () => {
   );
   fbSave(st);
 };
+const usage = createUsage({ app: 'demo', api: fbApi, userId: () => 'demo-user', flushEveryMs: 600_000, notice: false });
 const fbPortalOut = el('pre', { id: 'fbPortalOut', class: 'small' });
 const fbPortal = createFeedbackProgressiveForm({
   config: { start: 'about', steps: [
@@ -817,6 +880,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'demo-row' },
     el('label', { class: 'field check' }, fbModeSwitch, el('span', null, 'Señalar para comentar')),
     el('button', { type: 'button', class: 'ghost small', id: 'fbCenter', onclick: () => void openFeedbackCenter({ api: fbApi, app: 'demo', canEdit: () => true, feedback }) }, 'Sugerencias y QA'),
+    el('button', { type: 'button', class: 'ghost small', id: 'usageNotice', 'data-feedback-ignore': '', onclick: () => void showUsageNotice({ api: fbApi, userId: () => 'demo-user', delayMs: 0 }) }, 'Aviso de uso'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbSeed', onclick: () => { fbSeed(); void review.refresh(); } }, 'Ejemplos del revisor'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbFix', onclick: async () => { const st = fbState(); for (const r of st.reports) if ((r.display ?? r.status) === 'open') r.display = 'pending_verify'; fbSave(st); await feedback.refreshVerify(); } }, 'Publicar arreglo'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbOpen', onclick: () => void feedback.signal(fbTarget) }, 'Comentar «Añadir huésped»'),
@@ -828,7 +892,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'card' }, fbPortal.element),
   fbPortalOut,
 );
-(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed };
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage };
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
