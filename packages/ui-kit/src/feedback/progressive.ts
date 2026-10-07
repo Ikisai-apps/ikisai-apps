@@ -3,7 +3,9 @@
  * la hoja crece al contestar (nada de «Paso 1 de 7»). Lo define la app con un catálogo de pasos, sin código de UI:
  * - `choice`: opciones; cada una puede llevar a otro paso (`next`), así se ramifica (Aplicación / Retiro / Espacio).
  * - `text`: comentario (y hasta 3 imágenes con `images: true`); es el último paso y lleva «Enviar».
- * - `signal`: «Mantén pulsado sobre el lugar de la aplicación…» con un botón para señalar.
+ * - `signal`: «Mantén pulsado sobre el lugar de la aplicación…»: el botón arma el gesto **solo para este reporte**
+ *   (`captureFeedbackTarget`, sin el interruptor «Señalar para comentar», que los portales no tienen); lo señalado
+ *   queda como respuesta y va en `result.node`. Una app puede dar su propio `onSignal`.
  * Cambiar una respuesta anterior borra las de después. Lo que ya se sabe por el contexto (`known`) no se pregunta, y
  * `suggest` ofrece primero la opción probable («¿Es sobre Habitación 3?» · Sí · Otro sitio).
  */
@@ -11,6 +13,8 @@ import { el, replace } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { compressImage } from '../media/compress-image.ts';
 import { FEEDBACK_MAX_ATTACHMENTS, FEEDBACK_MAX_MESSAGE } from './constants.ts';
+import { captureFeedbackTarget } from './capture.ts';
+import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
 
 export type ProgressiveAnswers = Record<string, string>;
@@ -35,15 +39,25 @@ export interface ProgressiveStep {
 
 export interface ProgressiveFormConfig { start: string; steps: ProgressiveStep[] }
 
-export interface ProgressiveResult { answers: ProgressiveAnswers; message: string; images: FeedbackImage[] }
+export interface ProgressiveResult {
+  answers: ProgressiveAnswers; message: string; images: FeedbackImage[];
+  /** Elemento señalado en un paso `signal` (id y ruta de etiquetas). */
+  node?: { id: string; path: string[] };
+}
 
 export interface ProgressiveFormOptions {
   config: ProgressiveFormConfig;
   /** Respuestas que ya da el contexto (no se preguntan; se pueden cambiar). */
   known?: ProgressiveAnswers;
   onSubmit: (result: ProgressiveResult) => Promise<'sent' | 'pending'>;
-  /** Paso `signal`: la app deja señalar un elemento (p. ej. cerrando la hoja y activando el gesto). */
-  onSignal?: (answers: ProgressiveAnswers) => void;
+  /**
+   * Paso `signal` a medida: la app deja señalar y devuelve el nodo (o `null`). Por defecto, `captureFeedbackTarget`
+   * arma el gesto una sola vez. Si devuelve `void`, el paso queda sin responder (comportamiento anterior).
+   */
+  onSignal?: (answers: ProgressiveAnswers) => void | Promise<FeedbackNode | { id: string; path: string[] } | null | void>;
+  /** Nodo de reserva para lo señalado sin `data-feedback-id`, y capa donde va la barra de señalar. */
+  fallbackNode?: () => { id: string; path: string[] };
+  container?: () => HTMLElement;
   onChange?: (answers: ProgressiveAnswers) => void;
 }
 
@@ -63,6 +77,8 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), 'aria-label': 'Comentario' }) as HTMLTextAreaElement;
   let images: FeedbackImage[] = [];
   const element = el('div', { class: 'fb-progressive' });
+  /** Nodos señalados por paso `signal`. */
+  const signalled = new Map<string, { id: string; path: string[] }>();
 
   const optionsOf = (step: ProgressiveStep) => (typeof step.options === 'function' ? step.options(answers) : step.options ?? []);
   const nextOf = (step: ProgressiveStep): string | null => {
@@ -78,7 +94,7 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
       const step = steps.get(id);
       if (!step) break;
       out.push(step);
-      if (step.kind !== 'choice' || !(step.id in answers)) break;
+      if ((step.kind !== 'choice' && step.kind !== 'signal') || !(step.id in answers)) break;
       id = nextOf(step);
     }
     return out;
@@ -87,7 +103,7 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   function set(stepId: string, value: string): void {
     const path = chain().map((s) => s.id);
     const at = path.indexOf(stepId);
-    for (const id of path.slice(at + 1)) { delete answers[id]; known.delete(id); declined.delete(id); }
+    for (const id of path.slice(at + 1)) { delete answers[id]; known.delete(id); declined.delete(id); signalled.delete(id); }
     answers[stepId] = value;
     for (const id of Object.keys(answers)) if (!chain().some((s) => s.id === id)) delete answers[id];
     options.onChange?.({ ...answers });
@@ -95,7 +111,7 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   }
   function reset(stepId: string): void {
     const path = chain().map((s) => s.id);
-    for (const id of path.slice(path.indexOf(stepId))) { delete answers[id]; known.delete(id); }
+    for (const id of path.slice(path.indexOf(stepId))) { delete answers[id]; known.delete(id); signalled.delete(id); }
     declined.add(stepId);
     options.onChange?.({ ...answers });
     paint(stepId);
@@ -151,9 +167,29 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
           }, el('span', null, o.label), o.hint ? el('small', null, o.hint) : null))));
         return block;
       }
+      if (step.kind === 'signal' && answered !== undefined) {
+        const node = signalled.get(step.id);
+        replace(block,
+          el('p', { class: 'fb-step-q' }, step.question),
+          el('div', { class: 'fb-step-answer' }, el('strong', null, node?.path.join(' › ') || answered),
+            el('button', { type: 'button', class: 'linkbtn fb-change', 'aria-label': `Cambiar: ${step.question}`, onclick: () => reset(step.id) }, 'Cambiar')));
+        return block;
+      }
       if (step.kind === 'signal') {
-        replace(block, el('p', { class: 'fb-step-q' }, step.question),
-          el('button', { type: 'button', class: 'primary fb-signal', onclick: () => options.onSignal?.({ ...answers }) }, icon('pin', 16), step.action ?? 'Señalar en la pantalla'));
+        const button = el('button', { type: 'button', class: 'primary fb-signal' }, icon('pin', 16), step.action ?? 'Señalar en la pantalla') as HTMLButtonElement;
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          try {
+            const node = options.onSignal
+              ? await options.onSignal({ ...answers })
+              : await captureFeedbackTarget({ text: step.question, fallbackNode: options.fallbackNode, container: options.container });
+            if (node && typeof node === 'object' && 'id' in node) {
+              signalled.set(step.id, { id: node.id, path: node.path });
+              set(step.id, node.id);
+            }
+          } finally { button.disabled = false; }
+        });
+        replace(block, el('p', { class: 'fb-step-q' }, step.question), button);
         return block;
       }
       // text: último paso.
@@ -164,7 +200,8 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
         if (!message.value.trim()) { status.textContent = 'Escribe un comentario antes de enviar.'; status.className = 'fb-status error'; message.focus(); return; }
         send.disabled = true; status.className = 'fb-status'; status.textContent = 'Enviando…';
         try {
-          const result = await options.onSubmit({ answers: { ...answers }, message: message.value.trim(), images });
+          const node = [...chain()].reverse().map((s) => signalled.get(s.id)).find(Boolean);
+          const result = await options.onSubmit({ answers: { ...answers }, message: message.value.trim(), images, ...(node ? { node } : {}) });
           status.textContent = result === 'sent' ? 'Enviado. Gracias.' : 'Pendiente de enviar: se enviará al volver la conexión.';
           element.dataset.state = result;
         } catch (error) {

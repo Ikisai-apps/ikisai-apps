@@ -1186,7 +1186,8 @@ Lecturas (`core.allow_read('<portal>', 'booking.fn', 'function')`):
 | Función | Portal | Devuelve |
 |---|---|---|
 | `booking.portal_reservations` | organizers | sus reservas: código, título, fechas, personas previstas, estado, si tiene evento, completitud agregada |
-| `booking.portal_guests` | organizers | huéspedes de una reserva con la regla de §16.3 (valor si `by = organizer`, `true` si rellenado por otro, `null` si vacío), estado y lo que falta |
+| `booking.portal_guests` | organizers | huéspedes de una reserva con la regla de §16.3 (valor si `by = organizer`, `true` si rellenado por otro, `null` si vacío), estado y lo que falta; `declared` dice si el organizador ya hizo la declaración en esa reserva (B2) |
+| `booking.portal_reservation_detail` | organizers | detalle de una reserva para su ficha (B1): horas de llegada y salida, plazas previstas y finales, menores, régimen y estilo de menú (confirmados o, si no, pedidos, con la marca), servicios, modo de datos y alojamiento por espacio (nombre, tipo, zona y personas); sin huéspedes, importes ni notas internas |
 | `booking.portal_kitchen_summary` | organizers | requisitos de cocina agregados sin nombres + los de huéspedes que consintieron |
 | `booking.portal_my_guest` | guests | su ficha completa, su consentimiento, su aviso legal y su firma |
 
@@ -1194,7 +1195,7 @@ Acciones (`core.allow_read('<portal>', 'booking.fn', 'action', '{editor}')`), ca
 
 | Acción | Portal | Hace |
 |---|---|---|
-| `booking.portal_add_guest` | organizers | alta de un huésped de su reserva (`by: organizer`); exige `declaration` |
+| `booking.portal_add_guest` | organizers | alta de un huésped de su reserva (`by: organizer`); exige `declaration`; idempotente ante un reintento del mismo actor con el mismo `guest_id` (`existing: true`), `409 ROW_EXISTS` si el id es de otro (B3) |
 | `booking.portal_update_guest` | organizers | rellena campos de datos (`by: organizer`); `FIELD_OWNED_BY_GUEST` si el campo es del huésped |
 | `booking.portal_remove_guest` | organizers | baja en cualquier momento (decisión del usuario): a la papelera con sus restricciones y asignaciones, con quién y cuándo, y revoca su enlace de Guests; `422 GUEST_CHECKED_IN` si ya firmó con el retiro empezado o su parte se comunicó a SES (lo corrige el personal). Al vaciar la papelera se borra de verdad |
 | `booking.portal_set_restrictions` | organizers, guests | restricciones de un huésped (`by` según portal); el organizador no ve ni pisa las del huésped sin consentimiento |
