@@ -60,8 +60,9 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(v('central.people_active'), 1);
   assert.equal(v('central.people_records_expired'), 1);
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
-  // Ninguna otra app publica todavía: no rompe el panel.
-  assert.deepEqual(dash.data.unavailable, ['booking', 'invoices', 'tasks', 'food']);
+  // Las apps que aún no publican salen en «Aún sin indicadores» y no rompen el panel (Finance ya publica, migración 0211).
+  for (const a of dash.data.unavailable) assert.ok(['booking', 'tasks', 'food'].includes(a), a);
+  assert.equal(dash.data.unavailable.includes('invoices'), false);
 });
 
 test('kpis · otra app publica su proyección con el contrato y entra en el panel', async () => {
