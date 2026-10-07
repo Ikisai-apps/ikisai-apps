@@ -472,9 +472,9 @@ test('emitidas: registro manual con totales recalculados, reglas de tipo y desti
   // Reglas: completa sin destinatario, rectificativa sin referencia, número repetido, origen app, campos Verifactu no escribibles
   const bad = await commit([insert('invoices.issued_invoices', uuid(), { series_code: 'A', number: '2026-0002', issue_date: '2026-10-06', invoice_type: 'F1', description: 'Sin cliente' })]);
   assert.equal(bad.status, 422);
-  const rect = await commit([insert('invoices.issued_invoices', uuid(), { series_code: 'R', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
+  const rect = await commit([insert('invoices.issued_invoices', uuid(), { series_code: 'RX', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
   assert.equal(rect.status, 422);
-  await ok([insert('invoices.issued_invoices', uuid(), { series_code: 'R', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', rectification_kind: 'I', rectified: [{ series: 'A', number: '2026-0001', issue_date: '2026-10-06' }], rectification_reason: 'Error en el precio', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
+  await ok([insert('invoices.issued_invoices', uuid(), { series_code: 'RX', number: '2026-0001', issue_date: '2026-10-06', invoice_type: 'R1', rectification_kind: 'I', rectified: [{ series: 'A', number: '2026-0001', issue_date: '2026-10-06' }], rectification_reason: 'Error en el precio', recipient_name: 'Cliente Uno SL', recipient_tax_id: 'B22222222', description: 'Rectifica' })]);
   await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'a', number: '2026-0001', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Repetida' })], 'CONSTRAINT_VIOLATION');
   await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'A', number: '2026-0099', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Desde la app', origin: 'app' })], 'UNSUPPORTED_IN_V1');
   await rejected([update('invoices.issued_invoices', issued, inv.revision, { vf_hash: 'x' })], 'INVALID_FIELDS');
@@ -704,13 +704,20 @@ test('huella VERI*FACTU en SQL: los tres ejemplos oficiales de la AEAT (v0.1.2)'
 test('emisión (§14): borrador sin número, datos obligatorios, número correlativo en el servidor, cadena de huellas, congelada, anulación del owner', async () => {
   const today = (await app.t.db.query<{ d: string; y: number }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d, extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!;
   const fmt = (d: string) => d.split('-').reverse().join('-');
-  // Series de emisión
-  const sf = uuid(); const sr = uuid();
+  // Series de emisión: F y R vienen sembradas por la migración 0219 (continúan la hoja en 2026, F_03_26 y R_01_26)
   await rejected([insert('invoices.issued_series', uuid(), { code: 'X', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}' })], 'INVALID_FIELDS');
-  await ok([
-    insert('invoices.issued_series', sf, { code: 'F', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', yearly: true }),
-    insert('invoices.issued_series', sr, { code: 'R', kind: 'rectificativa', mode: 'emision', format: '{serie}{año}-{n:4}', yearly: true }),
-  ]);
+  // En la base de pruebas la migración no siembra (sin miembros); se ejecuta como en producción y es idempotente
+  assert.equal((await app.t.db.query<{ n: number }>(`select invoices.seed_series_2026() n`)).rows[0]!.n, 2);
+  assert.equal((await app.t.db.query<{ n: number }>(`select invoices.seed_series_2026() n`)).rows[0]!.n, 0);
+  const seeded = await rows('invoices.issued_series', (r) => ['F', 'R'].includes(r.code));
+  assert.deepEqual(seeded.map((r) => [r.code, r.kind, r.format, r.valid_year, r.counter_year, r.counter_last]).sort(), [
+    ['F', 'ordinaria', '{serie}_{n:2}_{aa}', 2026, 2026, 2], ['R', 'rectificativa', '{serie}_{n:2}_{aa}', 2026, 2026, 0]]);
+  const seedChange = await app.t.db.query(`select 1 from core.changes where app = 'invoices' and request_id = 'migration:invoices-0219-series-2026' and table_name = 'issued_series'`);
+  assert.equal(seedChange.rows.length, 2, 'la siembra deja cambio en core.changes para los dispositivos');
+  // Para no depender del año del reloj, las pruebas las pasan al formato estándar del año en curso (sin emitidas aún se puede)
+  const sf = seeded.find((r) => r.code === 'F')!.id as string;
+  const sr = seeded.find((r) => r.code === 'R')!.id as string;
+  for (const x of seeded) await ok([update('invoices.issued_series', x.id, x.revision, { format: '{serie}{año}-{n:4}', valid_year: today.y }), call('invoices.series_start', { code: x.code, last_number: 0, year: today.y })]);
   // Borrador: sin número; con número o como registrada se rechaza
   await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'F', status: 'borrador', number: '1', issue_date: today.d, description: 'x' })], 'INVALID_FIELDS');
   await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'F', number: '1', issue_date: today.d, description: 'x' })], 'ISSUE_REQUIRES_PROCEDURE');
