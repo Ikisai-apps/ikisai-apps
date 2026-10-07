@@ -13,3 +13,4 @@ export { createApp } from './handler.ts';
 export type { AppConfig, AppRoute, RouteRequest, AppHandler, WorkerRoute, WorkerRequest } from './handler.ts';
 export { createMcp, MCP_PROTOCOL_VERSIONS } from './mcp.ts';
 export type { McpTool, McpToolKit } from './mcp.ts';
+export { ensureServiceActor } from './service.ts';

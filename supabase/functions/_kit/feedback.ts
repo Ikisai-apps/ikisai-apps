@@ -7,6 +7,7 @@ import { fail, messageFor } from './errors.ts';
 import { sha256Hex, type Supabase } from './supabase.ts';
 import type { RequestContext } from './sync.ts';
 import { createUploads } from './uploads.ts';
+import { ensureServiceActor as ensureServiceActorFor } from './service.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^FB_\d{4}_\d{3,}$/i;
@@ -206,18 +207,7 @@ export function createFeedbackWorker(supabase: Supabase, options: { workerKey?: 
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': options.workerKey ?? '' }, body: JSON.stringify(body),
   });
 
-  /** Cuenta de servicio «Feedback (sistema)»: la crea en Auth la primera vez, sin contraseña utilizable, y la registra. */
-  async function ensureServiceActor(): Promise<string> {
-    const existing = await supabase.rpc<string | null>('core_service_actor', { p_name: 'feedback' });
-    if (existing) return existing;
-    const bytes = new Uint8Array(32); crypto.getRandomValues(bytes);
-    const user = await supabase.remote('/auth/v1/admin/users', {
-      service: true, method: 'POST',
-      body: { email: 'svc-feedback-' + crypto.randomUUID().slice(0, 8) + '@sistema.ikisai.com', password: btoa(String.fromCharCode(...bytes)), email_confirm: true, user_metadata: { service: 'feedback' } },
-    });
-    if (typeof user?.id !== 'string') fail(502, 'AUTH_ADMIN_FAILED', messageFor('AUTH_ADMIN_FAILED'));
-    return supabase.rpc<string>('core_register_service_actor', { p_user: user.id, p_name: 'feedback' });
-  }
+  const ensureServiceActor = () => ensureServiceActorFor(supabase, 'feedback');
 
   async function tick() {
     const out = { routed: 0, errors: 0, statusUpdates: 0 };
