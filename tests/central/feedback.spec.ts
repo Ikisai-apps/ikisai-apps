@@ -1,6 +1,6 @@
 /**
- * Central · «Sugerencias y QA» y uso semántico (fase 4): aviso de medición la primera vez, centro de reportes en la
- * cabecera, marcas de pantalla y una operación importante contada con `usage.run`. Contra la central-api real (server.ts),
+ * Central · «Sugerencias y QA» y uso semántico (fase 4): aviso de medición la primera vez, centro de reportes en el
+ * panel del lanzador, marcas de pantalla y una operación importante contada con `usage.run`. Contra la central-api real (server.ts),
  * sin el consentimiento previo de las cuentas de prueba para ver el aviso.
  */
 import { expect, test } from 'playwright/test';
@@ -50,13 +50,14 @@ test('feedback · aviso de uso, centro «Sugerencias y QA», marcas de pantalla 
 
   // Marcas de la cáscara y de la pantalla.
   await expect(page.locator('main')).toHaveAttribute('data-feedback-id', 'central.inicio');
-  await expect(page.locator('#feedbackCenter')).toHaveAttribute('data-feedback-id', 'central.cabecera.sugerencias');
+  await expect(page.locator('#feedbackCenter')).toHaveCount(0); // kit 0.18: el centro va en el panel del lanzador
   await page.getByRole('link', { name: 'Personas', exact: true }).click();
   await expect(page.locator('main')).toHaveAttribute('data-feedback-id', 'central.personas');
   expect(await page.locator('main [data-feedback-id]').count()).toBeGreaterThan(3);
 
-  // Centro de reportes.
-  await page.locator('#feedbackCenter').click();
+  // Centro de reportes, desde el panel del lanzador.
+  await page.locator('#appLauncher').click();
+  await page.locator('.launcher-center').click();
   await expect(page.getByRole('heading', { name: 'Sugerencias y QA' })).toBeVisible();
   await page.keyboard.press('Escape');
 

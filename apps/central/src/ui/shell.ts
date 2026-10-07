@@ -1,6 +1,6 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, icon, openFeedbackCenter, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast,
   type LauncherCatalog, type NavItem, type Usage,
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
@@ -91,18 +91,15 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const usage = createUsage({ app: 'central', api, userId: () => client.bootstrap()?.profile.userId ?? null });
   const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); void usage.clear(userId); });
 
-  // La marca de la cabecera abre el lanzador común: las demás apps de la cuenta, sin volver a pedir contraseña.
+  // La marca de la cabecera abre el lanzador común: las demás apps de la cuenta (sin volver a pedir contraseña), los
+  // interruptores «Señalar para comentar» y «Revisor de QA», y la entrada «Sugerencias y QA» (kit 0.18; guía demo/adopcion.ts).
   const launcher = createAppLauncher({
     current: 'central',
     fetchApps: async () => (catalog = await client.api<LauncherCatalog>('/apps')),
-    feedback: feedback.mode,
-    review: { get: () => review.mode.get(), set: (on) => review.mode.set(on), available: () => review.available() },
+    feedback,
+    review,
+    center: () => { openFeedbackCenter({ api, app: 'central', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
-  const feedbackButton = el('button', {
-    class: 'iconbtn', type: 'button', id: 'feedbackCenter', title: 'Sugerencias y QA', 'aria-label': 'Sugerencias y QA',
-    'data-feedback-id': 'central.cabecera.sugerencias', 'data-feedback-label': 'Sugerencias y QA',
-    onclick: () => { openFeedbackCenter({ api, app: 'central', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
-  }, icon('help'));
   const admin = createAdminApi(client);
   const boot = client.bootstrap();
   const isAdmin = boot?.membership.role === 'owner' && boot.profile.kind !== 'agent';
@@ -115,7 +112,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     launcher,
-    tools: [feedbackButton],
   });
   const { main } = shell;
 
@@ -232,6 +228,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offStatus();
     offSessionEnd();
     feedback.destroy();
+    review.destroy();
     usage.destroy();
     unmountView?.();
     window.removeEventListener('hashchange', route);
