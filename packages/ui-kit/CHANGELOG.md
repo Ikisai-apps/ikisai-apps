@@ -1,5 +1,23 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.17.0 · 7 de octubre de 2026
+
+- **Uso semántico de funcionalidades** (coordinacion/ampliacion/USO.md; rutas de Core #223, contrato §3.8).
+  - **Catálogo al compilar:** `node packages/ui-kit/scripts/feature-catalog.mjs --app <app> [--release v…] [--commit …]` recorre `apps/<app>/src`, `public` (sin `sw.js`) e `index.html` y escribe `apps/<app>/dist/feature-catalog.json` `{ app, release, commit, generatedAt, features: [{ id, label, kind, parent }], dynamic }`. Saca cada `data-feedback-id` (con `data-feedback-label` y el tipo: botón, enlace, pestaña, campo, sección…) y cada `usage.run('…')`/`usage.track('…')` (tipo `operation`). Los ids construidos en ejecución van en `dynamic` con archivo y línea. Sin dependencias.
+  - **Recolector** `createUsage({ app, api, userId, context, generation, flushEveryMs, notice })` → `{ run, track, activate, flush, today, clear, destroy }`:
+    - exposición con `IntersectionObserver` (≥ 50 % durante 1 s, una por función y sesión; nada oculto ni dentro de un `<details>` o menú cerrado);
+    - activación automática por clic o teclado en controles marcados (no en `data-feedback-ignore` ni en la capa del feedback; la pulsación larga no cuenta); repetir antes de 2 s es un intento repetido;
+    - `usage.run(id, fn)` para éxito y error;
+    - contexto `production | qa | reviewer` desde los interruptores del kit (el revisor manda);
+    - totales acumulados del día por dispositivo (uuid por instalación) en IndexedDB, enviados a `POST usage/batch` al volver la red, al pasar a segundo plano, al salir y cada 3 minutos. Nunca bloquea. Solo ids de la propia app. `clear(userId)` al cerrar sesión.
+  - **Aviso al equipo** `showUsageNotice({ api, userId })`: la primera vez, hoja «Ikisai mide qué funciones se usan para mejorar las herramientas. Lo ve solo Víctor; no se usa para evaluar a nadie» con «Entendido» → `POST usage/consent`. No pisa una hoja abierta. `createUsage` lo muestra salvo `notice: false` (portales).
+  - **Revisor › Uso:** la lista lateral del revisor pasa a tener dos pestañas, «Incidencias | Uso» (recordada en el dispositivo). `review.ts` queda como armazón y se divide en `review-feedback.ts` y `review-usage.ts`.
+    - Uso: funciones de todas las apps (`GET usage/review?app=all`) agrupadas por *insight* (`HIGH_ERROR`, `TARGET_NOT_ADOPTING`, `IGNORED`…), lo más grave arriba.
+    - «Ir al sitio» con la misma navegación (`?fbf=<función>&qa=1` en otra app). Si la función no está a la vista, se ancla a su sección y se ilumina sola cuando aparece.
+    - Tarjeta (`GET usage/features/:id`): estado, últimos 30 días (audiencia frente a otros, QA), matriz por equipo y por persona, uso sin persona, generación, último uso e incidencias. Acciones: audiencia (equipos y personas), frecuencia esperada, mantener o revisar más tarde con fecha, no evaluar, nueva generación y «Revisar utilidad» (crea un reporte de feedback normal con el texto generado).
+    - En móvil la tarjeta se puede minimizar para llegar a la función; un diálogo abierto desde ella va por encima.
+- Demo `#feedback` con rutas simuladas de `usage/*`; pruebas `v20` (recolector, aviso y catálogo) y `v21` (Revisor › Uso).
+
 ## 0.16.0 · 7 de octubre de 2026
 
 - **Modo «Revisor de QA»** (FEEDBACK.md §9), solo para el dueño del ecosistema: `createFeedbackReview({ api, app, appDomain, navigate, openUrl, waitMs, container })` → `{ mode, available, refresh, goTo, show, destroy }`.
