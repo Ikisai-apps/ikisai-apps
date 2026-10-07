@@ -1,0 +1,46 @@
+/* Ikisai Central · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
+   Aquí solo lo específico de Central. Móvil primero (390 px), escritorio desde 1024 px. */
+
+.muted{color:var(--muted)}
+.small{font-size:var(--text-sm,.875rem)}
+.plainlist{margin:0;padding-left:18px}
+.plainlist li{margin:4px 0}
+
+/* Inicio */
+.homecards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:8px 0 16px}
+@media (min-width:720px){.homecards{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.homecard{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer;min-width:0}
+.homecard:hover,.homecard:focus-visible{border-color:var(--accent)}
+.homecard strong{font-family:var(--font-display,inherit);font-size:1.6rem;line-height:1.1;min-height:1.1em}
+.homecard-title{font-size:var(--text-xs,.75rem);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card.soon{padding:14px 16px;border:1px dashed var(--line);border-radius:var(--radius-card,16px)}
+.card.soon h3{margin:0 0 6px;font-size:1rem}
+
+/* Secciones de Accesos */
+.segmented{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto}
+.segmented a{flex:1 0 auto;padding:8px 14px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:500;white-space:nowrap}
+.segmented a.active{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px}
+.toolbar input[type=search]{flex:1 1 220px;min-width:0}
+.check{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.note{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;background:var(--paper-2);margin:0 0 12px}
+.note.warn{color:var(--warn,var(--ink))}
+
+/* Cuentas */
+.accounts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.accountrow{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.accountrow:hover,.accountrow:focus-visible{border-color:var(--accent)}
+.accountname{font-weight:600;overflow-wrap:anywhere}
+.accountmeta{font-size:var(--text-sm,.875rem);overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip.role-owner{border-color:var(--accent);color:var(--accent)}
+.approw{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.approw > :nth-child(n+3){grid-column:1 / -1}
+.appname{display:flex;flex-direction:column;min-width:0}
+.approw select{min-width:140px}
+.zone{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.formactions{display:flex;justify-content:flex-end;margin-top:14px}
+
+/* Agentes */
+.agentrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.agentrow > div{min-width:0;overflow-wrap:anywhere}

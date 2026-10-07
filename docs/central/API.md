@@ -261,7 +261,7 @@ al_dia      el resto
 
 ### 4.3 Borrado y papelera
 
-`people`: se borra lógicamente; si tiene `person_private` o `person_records` vivos, el borrado los arrastra en el mismo lote (la Edge añade las operaciones; restaurar la persona las devuelve). Si está enlazada en requisitos o documentos como responsable, el borrado se rechaza (`IN_USE`) y la interfaz propone desactivarla (`active = false`). `requirements` con documentos o tareas enlazadas: igual. Ninguna tabla es `never_purge`; «Vaciar papelera» del owner purga de hijos a padres.
+`people`: se borra lógicamente. Si tiene `person_private` o `person_records` vivos, el lote debe borrarlos también (el cliente lo compone; restaurar la persona devuelve sus hijos en el mismo lote); si no, `central.check_invariants` responde `ORPHAN_CHILD`. La interfaz propone antes desactivarla (`active = false`). Cuando existan requisitos y documentos (V1.1), una persona responsable de alguno no se podrá borrar. Ninguna tabla es `never_purge`; «Vaciar papelera» del owner purga de hijos a padres.
 
 ---
 
@@ -314,6 +314,7 @@ function visible(table, row, ctx) {
 |---|---|---|---|
 | `POST requirements/:id/task` | editor | `{requestId, title?, dueOn?, projectId?, notes?}` → `{requirementTaskId, target: {app, kind, id, revision, label}}`. Pide la tarea a Tasks con el token del usuario (§7.3) y luego inserta `requirement_tasks` por `core.commit` con un `requestId` derivado. Idempotente: el mismo `requestId` devuelve la misma tarea. | `NOT_FOUND`, `TASKS_UNAVAILABLE 503`, `TASKS_FORBIDDEN 403` (sin acceso de editor en Tasks), `TASKS_REJECTED 422` (con el error de Tasks) |
 | `GET requirements/tasks-status?ids=` | reader | Ids de `requirement_tasks` → `{items: [{id, done, deleted, title, revision, stale}]}` leyendo `tasks.targets` con el token del usuario. Sin acceso a Tasks: `unknown`. | — |
+| `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, kpis: [{kpi, app, label, unit, period, value, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 con la service key y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
 | `GET people/:id/account` | owner | Cuenta enlazada con sus accesos por app (filtra `admin/accounts` por `userId`). | `NOT_FOUND` |
 | `GET people/records/:id/file` | editor | URL firmada (10 min) del archivo de un registro de documentación, solo si el actor ve la fila (§5); mientras no exista P1. | `NOT_FOUND` (también si no la ve) |
@@ -413,7 +414,7 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 - **Agentes:** claves de todas las apps, último uso, caducidad, revocar.
 - **Registro:** registro de accesos de todas las apps, filtrable por app, paginado.
 
-Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexión se muestra la última lista con su hora y los botones desactivados.
+Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexión se muestra la última lista leída **en esta sesión** con su hora (solo en memoria: lleva correos y no se guarda en el dispositivo) y los cambios fallan con «Esta acción necesita conexión». Central edita el único ámbito propio (`people`) en la ficha de la cuenta; los de las demás apps se ven en solo lectura con enlace a la app.
 
 ---
 
