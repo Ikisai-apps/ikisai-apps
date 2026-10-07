@@ -307,16 +307,17 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 - Lo marcado son **posibilidades, nunca la fecha definitiva**. La pantalla lo dice («Ikisai confirmará la fecha definitiva») y el calendario no revela quién ocupa una fecha.
 - Cuando el comercial marca la fecha definitiva en Booking, Organizers la refleja al instante y desaparecen las opciones.
-- Se guarda solo, como el resto del diseño; cada marca avisa al comercial (B8).
+- Se guarda solo, como el resto del diseño. Cada marca avisa al comercial por la cola de Booking, no al instante (B8).
+- Fin de semana = de viernes a domingo; las opciones entre semana se ven por día. Lo ocupado incluye los bloqueos internos del personal, sin decir el motivo, y la propia reserva no cuenta en su contra (B6).
 
 **El resto del diseño:**
 - Personas previstas, sin nombres; se pueden añadir asistentes desde ya.
 - Orientación del menú, con los valores de Booking (`menu_style`).
 - Alojamiento, con o sin pernocta; las habitaciones de 2–4 plazas con baño, como extra.
-- Extras del catálogo de Booking, más «Necesito otra cosa» como texto libre.
+- Extras del catálogo de Booking, con su nombre y descripción públicos (`public_name`, `public_description`), más «Necesito otra cosa» como texto libre. Los extras pedidos van a `booking.reservation_extra_requests` (B10).
 - Todo se guarda solo, campo a campo, con las acciones de Booking (B7).
 
-**Calculadora.** Usa el motor de tarifas de Booking (`suggestLines` y `proposalTotals`) en solo lectura, con la fecha definitiva o la opción que elija el organizador:
+**Calculadora.** Calcula en el dispositivo con el dominio de Booking (`@ikisai/domain-booking`: `suggestLines` y `proposalTotals`, código puro, el mismo que usa el personal). Usa las tarifas visibles, las condiciones y el mínimo que publica `booking.portal_rates({reservation_id})` (B9), con la fecha definitiva o la opción que elija el organizador. No hay cálculo en SQL:
 - Precios con el **IVA incluido** y desglosado.
 - Noches = salida − llegada. Cada noche incluye dos comidas por persona; las extra van aparte.
 - **Mínimo comercial** en los ajustes de Booking.

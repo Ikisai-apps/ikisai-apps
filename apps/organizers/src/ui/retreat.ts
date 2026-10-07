@@ -3,7 +3,8 @@
  * Booking (detalle, asistentes, cocina) van en paralelo; sin red se pinta la última copia con el aviso.
  */
 import { el, icon, plural, replace, type Child } from '@ikisai/ui-kit';
-import type { GuestList, KitchenSummary, Loaded, PortalLink, ReservationDetail } from '../app/api.ts';
+import type { Coorganizer, GuestList, KitchenSummary, Loaded, PortalLink, ReservationDetail } from '../app/api.ts';
+import { organizersLine } from '../app/texts.ts';
 import { dateRange, hourLabel, isCancelled, MEAL_PLAN_LABELS, MENU_STYLE_LABELS, restrictionText, STATUS_LABELS, STATUS_TONE } from '../app/labels.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import { renderGuestList } from './guests.ts';
@@ -17,6 +18,8 @@ export interface RetreatData {
   guests: Loaded<GuestList>;
   kitchen: Loaded<KitchenSummary>;
   links: Loaded<{ items: PortalLink[] }> | null;
+  /** Coorganizadores (B11); si la lectura falla, la cabecera sigue sin esa línea. */
+  organizers: Coorganizer[];
 }
 
 /** Completo: sin datos que falten y, con registro de viajeros, firmado. */
@@ -34,11 +37,14 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
 
   async function load(): Promise<void> {
     try {
-      const [detail, guests, kitchen] = await Promise.all([api.detail(reservationId), api.guests(reservationId), api.kitchen(reservationId)]);
+      const [detail, guests, kitchen, organizers] = await Promise.all([
+        api.detail(reservationId), api.guests(reservationId), api.kitchen(reservationId),
+        api.organizers(reservationId).then((x) => x.value.items).catch(() => [] as Coorganizer[]),
+      ]);
       // Los enlaces de huésped solo hacen falta en la pestaña Asistentes; si fallan, la lista sigue sin su estado.
       const links = tab === 'asistentes' && guests.value.confirmed ? await api.links(reservationId).catch(() => null) : null;
       if (!alive) return;
-      paint({ detail, guests, kitchen, links });
+      paint({ detail, guests, kitchen, links, organizers });
     } catch (error) {
       if (alive) replace(body, failure(error, () => void load()));
     }
@@ -54,7 +60,8 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
         el('p', null, dateRange(d.start_date, d.end_date), hours ? el('span', { class: 'muted' }, ` · ${hours}`) : null),
         el('p', { class: 'chips' },
           el('span', { class: `chip status ${STATUS_TONE[d.status]}`, id: 'retreatStatus' }, STATUS_LABELS[d.status] ?? d.status),
-          d.code ? el('span', { class: 'muted small', title: 'Código de tu reserva, para hablar con Ikisai' }, ` Reserva ${d.code}`) : null))));
+          d.code ? el('span', { class: 'muted small', title: 'Código de tu reserva, para hablar con Ikisai' }, ` Reserva ${d.code}`) : null),
+        organizersLine(data.organizers) ? el('p', { class: 'muted small', id: 'retreatOrganizers', 'data-feedback-ignore': '' }, organizersLine(data.organizers)) : null)));
 
     const showGuests = data.guests.value.mode !== 'ninguno' && !isCancelled(d.status);
     const tabButton = (id: RetreatTab, label: string) => el('a', {

@@ -11,7 +11,7 @@
 
 ## Pendiente
 
-- Fase 1, ajustes V2 aún sin hacer: idiomas (español e inglés; espera la capa de traducción del kit, U1), hoja de instalación (U3), coorganizadores en la ficha (B11).
+- Fase 1, ajustes V2 aún sin hacer: idiomas (español e inglés; espera la capa de traducción del kit, U1), hoja de instalación (U3), coorganizadores: hecho («Organizáis tú y Pablo» en la ficha, con B11).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.

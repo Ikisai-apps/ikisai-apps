@@ -42,6 +42,8 @@ export interface PortalLink {
   createdAt: string; lastUsedAt: string | null; revokedAt: string | null; validUntil: string | null;
 }
 
+export interface Coorganizer { display_name: string; me: boolean }
+
 export interface IssuedLink { linkId: string; url: string; validUntil: string | null }
 
 /** Resultado de una lectura: `at` es la hora de los datos y `stale` dice si vienen de la caché por falta de red. */
@@ -53,6 +55,7 @@ export interface PortalApi {
   guests(reservationId: string): Promise<Loaded<GuestList>>;
   kitchen(reservationId: string): Promise<Loaded<KitchenSummary>>;
   links(reservationId: string): Promise<Loaded<{ items: PortalLink[] }>>;
+  organizers(reservationId: string): Promise<Loaded<{ items: Coorganizer[] }>>;
   addGuest(args: { reservation_id: string; guest_id: string; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   updateGuest(args: { guest_id: string; expectedRevision: number; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   removeGuest(args: { guest_id: string; expectedRevision: number }): Promise<unknown>;
@@ -91,6 +94,7 @@ export function createPortalApi(client: SyncClient): PortalApi {
     detail: (reservationId) => read('booking.portal_reservation_detail', { reservation_id: reservationId }),
     guests: (reservationId) => read('booking.portal_guests', { reservation_id: reservationId }),
     kitchen: (reservationId) => read('booking.portal_kitchen_summary', { reservation_id: reservationId }),
+    organizers: (reservationId) => read('booking.portal_organizers', { reservation_id: reservationId }),
     links: (reservationId) => load('portal-links', { reservation: reservationId }, () => client.api(`/portal-links?reservation=${encodeURIComponent(reservationId)}`)),
     addGuest: (args) => invoke('booking.portal_add_guest', { ...args, declaration_version: declarationVersion() }),
     updateGuest: (args) => invoke('booking.portal_update_guest', { ...args, declaration_version: declarationVersion() }),

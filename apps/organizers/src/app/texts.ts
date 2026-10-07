@@ -26,6 +26,16 @@ export function groupReminder(retreat: RetreatRef, incomplete: number): string {
   return `Hola a todos: para el retiro «${retreat.title}» (${dateRange(retreat.start_date, retreat.end_date)}) aún ${who} con datos por completar. Abrid el enlace personal que os mandé; si no lo encontráis, decídmelo y os lo reenvío.`;
 }
 
+/** «Organizas este retiro», «Organizáis tú y Pablo», «Organizáis tú, Pablo y Lucía» (coorganizadores, §13.1). */
+export function organizersLine(items: ReadonlyArray<{ display_name: string; me: boolean }>): string | null {
+  if (!items.length) return null;
+  const others = items.filter((o) => !o.me).map((o) => o.display_name);
+  if (!others.length) return 'Organizas este retiro';
+  const names = [...(items.some((o) => o.me) ? ['tú'] : []), ...others];
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+  return items.some((o) => o.me) ? `Organizáis ${list}` : `Organizan ${list}`;
+}
+
 /** WhatsApp: al número si lo escribió el organizador (solo cifras; sin prefijo se asume España), si no a elegir contacto. */
 export function whatsappUrl(text: string, phone?: string | null): string {
   let digits = (phone ?? '').replace(/[^\d+]/g, '');

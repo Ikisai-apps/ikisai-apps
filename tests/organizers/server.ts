@@ -15,7 +15,7 @@ export interface OrganizersTestServer {
   /** Reserva nueva (`confirm` crea su evento). */
   reservation(options: { title: string; confirm: boolean; start?: string; end?: string; guests?: number; ses?: boolean }): Promise<string>;
   /** Enlace del organizador emitido por el personal de Booking; devuelve el token de `/i/<token>`. */
-  organizerLink(reservations: string[], email: string): Promise<string>;
+  organizerLink(reservations: string[], email: string, name?: string): Promise<string>;
   /** El propio huésped escribe datos desde Guests (procedencia «guest»). */
   guestWrites(reservationId: string, guestId: string, fields: Record<string, unknown>, consent?: boolean): Promise<void>;
   /** Simula la caída de la API (sin red para la app). */
@@ -75,10 +75,10 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
       if (confirm) await commit([{ op: 'call', procedure: 'booking.confirm_reservation', args: { reservation_id: id, event_id: uuid(), from_status: 'pre_reservada' } }]);
       return id;
     },
-    async organizerLink(reservations, email) {
+    async organizerLink(reservations, email, name = 'Marta') {
       let token = '';
       for (const reservation_id of reservations) {
-        const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'organizers', scope: { reservation_id }, person: { name: 'Marta', email } } });
+        const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'organizers', scope: { reservation_id }, person: { name, email } } });
         if (link.status !== 200) throw new Error(`portal-links ${link.status}: ${JSON.stringify(link.data)}`);
         token = link.data.url.split('/i/')[1];
       }

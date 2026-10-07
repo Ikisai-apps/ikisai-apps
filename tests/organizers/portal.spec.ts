@@ -62,6 +62,12 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de primavera');
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmada');
   await expect(page.locator('#summaryIncludes')).toContainText('Pensión completa, menú vegetariano');
+  await expect(page.locator('#retreatOrganizers')).toHaveText('Organizas este retiro');
+
+  // Coorganizador: su propio enlace y su cuenta; los dos ven lo mismo.
+  await api.organizerLink([reservation], 'pablo@example.invalid', 'Pablo');
+  await page.reload();
+  await expect(page.locator('#retreatOrganizers')).toHaveText('Organizáis tú y Pablo');
 
   // Alta: la primera vez pide la declaración.
   await page.locator('#tab-asistentes').click();
@@ -162,7 +168,7 @@ test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin 
 
 test('organizers · sin red: última copia con aviso; lo escrito se guarda solo al volver la conexión', async ({ page, context }) => {
   const reservation = await api.reservation({ title: 'Retiro sin cobertura', confirm: true });
-  await enter(page, await api.organizerLink([reservation], 'pablo@example.invalid'));
+  await enter(page, await api.organizerLink([reservation], 'nuria@example.invalid'));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro sin cobertura');
   await page.locator('#tab-asistentes').click();
   await page.locator('#addGuest').click();
