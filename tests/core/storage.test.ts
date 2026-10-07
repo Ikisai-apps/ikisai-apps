@@ -67,3 +67,36 @@ test('storage · medición para Central: tamaños, niveles e historial, solo par
     await app.close();
   }
 });
+
+test('storage · recogida de huérfanos: solo en apps activadas, 30 días de espera, nunca lo legal y se vuelve a comprobar', async () => {
+  const app = await createTestApp({ app: 'booking', slug: 'booking-api', origin: 'https://booking.ikisai.com', createHandler: (config) =>
+    createApp({ ...config, app: 'booking', slug: 'booking-api', origins: ['https://booking.ikisai.com'] }) });
+  try {
+    const db = app.t.db;
+    await db.exec(`create table booking.test_docs (id uuid primary key, file_id uuid);`);
+    const mk = async (app_: string) => (await db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status, created_at)
+      values ($1, 'booking-documents', gen_random_uuid()::text, 'a.webp', 'image/webp', 10, repeat('a', 64), 'verified', now() - interval '5 days') returning id`, [app_])).rows[0]!.id;
+    const orphan = await mk('booking'); const kept = await mk('booking'); const legal = await mk('booking'); const other = await mk('tasks');
+    await db.query(`insert into booking.test_docs values (gen_random_uuid(), $1), (gen_random_uuid(), $2)`, [kept, legal]);
+    await db.query(`select core.register_file_field('booking', 'booking', 'test_docs', 'file_id', 'legal')`);
+    // Sin activar, no toca nada.
+    assert.deepEqual((await db.query<{ r: any }>(`select core.file_gc_mark(100) r`)).rows[0]!.r, { marked: 0, cleared: 0 });
+    await db.query(`select core.enable_file_gc('booking')`);
+    await db.query(`select core.file_gc_mark(100)`);
+    const state = async (id: string) => (await db.query<{ orphaned_at: string | null; retention_class: string | null }>(`select orphaned_at, retention_class from core.files where id = $1`, [id])).rows[0]!;
+    assert.ok((await state(orphan)).orphaned_at, 'el huérfano queda marcado');
+    assert.equal((await state(kept)).retention_class, 'legal');
+    assert.equal((await state(other)).orphaned_at, null, 'apps sin activar, intactas');
+    assert.equal((await db.query<{ r: any[] }>(`select core.file_gc_claim(100) r`)).rows[0]!.r.length, 0, 'antes de 30 días no se borra');
+    // Pasan 30 días; el «legal» deja de estar referenciado pero sigue protegido.
+    await db.query(`delete from booking.test_docs where file_id = $1`, [legal]);
+    await db.query(`select core.file_gc_mark(100)`);
+    await db.query(`update core.files set orphaned_at = now() - interval '31 days' where orphaned_at is not null`);
+    const claim = (await db.query<{ r: any[] }>(`select core.file_gc_claim(100) r`)).rows[0]!.r;
+    assert.deepEqual(claim.map((c) => c.id), [orphan], 'solo el huérfano operativo; el legal nunca');
+    await db.query(`select core.file_gc_done($1)`, [orphan]);
+    assert.equal((await db.query(`select 1 from core.files where id = $1`, [orphan])).rows.length, 0);
+  } finally {
+    await app.close();
+  }
+});

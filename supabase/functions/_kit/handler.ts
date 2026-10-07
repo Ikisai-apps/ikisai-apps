@@ -11,6 +11,7 @@ import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
 import { createFeedback, createFeedbackWorker } from './feedback.ts';
 import { createUsage } from './usage.ts';
+import { createFilesGc } from './files-gc.ts';
 import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 
 export interface AppConfig extends SupabaseConfig {
@@ -233,6 +234,9 @@ export function createApp(config: AppConfig): AppHandler {
   if (config.feedbackWorker) {
     const feedbackWorker = createFeedbackWorker(supabase, { workerKey: config.workerKey, fetch: config.fetch });
     workerRoutes.push({ method: 'POST', pattern: 'feedback/tick', handler: () => feedbackWorker.tick() });
+    // Recogida de huérfanos del almacenamiento (ALMACENAMIENTO.md fase 2), también en central-api.
+    const filesGc = createFilesGc(supabase, storage);
+    workerRoutes.push({ method: 'POST', pattern: 'files/gc', handler: () => filesGc.tick() });
   }
   const compiledWorkers = workerRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
 
