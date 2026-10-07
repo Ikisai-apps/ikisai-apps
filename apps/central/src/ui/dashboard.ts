@@ -9,15 +9,15 @@ interface DashboardItem {
 }
 interface Dashboard { computedAt: string; items: DashboardItem[]; unavailable: string[] }
 
-const CACHE_KEY = 'ikisai-central-dashboard-v1';
+const CACHE_PREFIX = 'ikisai-central-dashboard-v1:';
 const APP_NAMES: Record<string, string> = { central: 'Central', booking: 'Booking', invoices: 'Finance', tasks: 'Tasks', food: 'Food' };
 const STATE_LABELS: Record<string, string> = { ok: 'En objetivo', atencion: 'Atención', critico: 'Crítico' };
 
-function readCache(): Dashboard | null {
-  try { const raw = localStorage.getItem(CACHE_KEY); return raw ? JSON.parse(raw) as Dashboard : null; } catch { return null; }
+function readCache(key: string): Dashboard | null {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) as Dashboard : null; } catch { return null; }
 }
-function writeCache(d: Dashboard): void {
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch { /* sin almacenamiento: se pinta igual */ }
+function writeCache(key: string, d: Dashboard): void {
+  try { localStorage.setItem(key, JSON.stringify(d)); } catch { /* sin almacenamiento: se pinta igual */ }
 }
 
 /**
@@ -26,6 +26,8 @@ function writeCache(d: Dashboard): void {
  */
 export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: boolean): () => void {
   let alive = true;
+  // Copia por cuenta: en un dispositivo compartido, nadie ve lo que leyó otra cuenta (p. ej. importes del owner).
+  const cacheKey = CACHE_PREFIX + (client.bootstrap()?.profile.userId ?? 'anon');
   const body = el('div', { class: 'kpigroups' });
   const meta = el('p', { class: 'muted small', id: 'dashboardMeta' });
   replace(host, el('section', { class: 'dashboard', id: 'dashboard' },
@@ -61,14 +63,14 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
   }
 
   async function load(): Promise<void> {
-    if (!navigator.onLine) { const cached = readCache(); if (cached) paint(cached, true); else meta.textContent = 'Sin conexión: los indicadores se leen de cada app.'; return; }
+    if (!navigator.onLine) { const cached = readCache(cacheKey); if (cached) paint(cached, true); else meta.textContent = 'Sin conexión: los indicadores se leen de cada app.'; return; }
     try {
       const d = await client.api<Dashboard>('/dashboard');
       if (!alive) return;
-      writeCache(d);
+      writeCache(cacheKey, d);
       paint(d, false);
     } catch (error) {
-      const cached = readCache();
+      const cached = readCache(cacheKey);
       if (cached) paint(cached, true);
       meta.textContent = `${meta.textContent ? meta.textContent + ' · ' : ''}${describeError(error)}`;
     }
@@ -114,7 +116,7 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
     })();
   }
 
-  const cached = readCache();
+  const cached = readCache(cacheKey);
   if (cached) paint(cached, !navigator.onLine);
   void load();
   return () => { alive = false; };

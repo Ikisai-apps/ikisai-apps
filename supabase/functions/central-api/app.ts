@@ -1,7 +1,7 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createSupabase, createUploads, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
+  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, canSeeKpi, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
   type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
@@ -141,6 +141,7 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
           try {
             const out = await read<{ rows: KpiRow[] }>(ctx, source.projection, { limit: 500 });
             for (const row of out.rows) {
+              if (!canSeeKpi(String(row.unit), ctx.membership.role)) continue;
               const value = row.value === null || row.value === undefined ? null : Number(row.value);
               const target = targetFor(targets, row.kpi, row.period);
               items.push({ app: source.app, kpi: row.kpi, label: row.label, value, unit: row.unit, period: row.period,
