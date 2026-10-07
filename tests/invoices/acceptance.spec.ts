@@ -1019,6 +1019,61 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
   }
 });
 
+test('Facturar desde una reserva (API.md §14.8): borrador relleno desde Booking, datos fiscales a mano, asignado a la reserva; volver a pulsar abre el mismo', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const RES = '55555555-5555-4555-8555-555555555555';
+  const reservation = { app: 'booking' as const, kind: 'reservation', id: RES, label: 'Retiro Primavera', path: ['Reservas'], revision: 4 };
+  api.targets.push(reservation);
+  api.setEntity({ entity_id: '44444444-4444-4444-8444-444444444444', entity_revision: 3, legal_name: 'Ikisai Retiros SL', trade_name: 'Ikisai', tax_id: 'B12345674',
+    address_line: 'Calle Prueba 1', postal_code: '28001', city: 'Madrid', province: 'Madrid', country: 'ES', email: null, phone: null, website: null, logo_file_id: null });
+  api.setReservationSource(RES, {
+    reservation: { id: RES, code: 'R-2026-014', label: 'Retiro Primavera', revision: 4, check_in: '2026-11-06', check_out: '2026-11-08' },
+    customer: { name: 'Asociación Yoga Norte', kind: 'asociacion', tax_id: null, id_type: null, country: null, address: null },
+    prices_include_vat: true, proposal: { id: '66666666-6666-4666-8666-666666666666', version: 2, total: 1221 }, final_amount: null, invoiced: null,
+    lines: [
+      { kind: 'tarifa', description: 'Alojamiento por persona y noche', quantity: 20, unit: 'persona_noche', unit_price: 55, discount_amount: 0, vat_rate: 10, income_category: 'alojamiento' },
+      { kind: 'extra', description: 'Masaje', quantity: 2, unit: 'unidad', unit_price: 60.5, discount_amount: 0, vat_rate: 21, income_category: 'extras' },
+    ],
+  });
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas?vista=emitidas&desde=booking:reservation:${RES}`);
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await expect(sheet.locator('#draftSource')).toContainText('Desde la reserva R-2026-014 · Retiro Primavera', { timeout: 20_000 });
+    await expect(sheet.locator('#draftRecipientName')).toHaveValue('Asociación Yoga Norte');
+    await expect(sheet.locator('#draftPricesIncludeVat')).toBeChecked();
+    await expect(sheet.getByLabel('Precio de la línea 1')).toHaveValue('55');
+    await expect(sheet.locator('#draftTotals')).toContainText('TOTAL 1.221,00 €');
+    await expect(sheet.locator('#draftOperationDate')).toHaveValue('2026-11-08');
+    await sheet.locator('#draftRecipientTaxId').fill('G12345678');
+    await sheet.locator('#draftAddressLine').fill('Calle del Norte 5');
+    await sheet.locator('#draftPostalCode').fill('48001');
+    await sheet.locator('#draftCity').fill('Bilbao');
+    await sheet.locator('#saveDraft').click();
+    await expect(sheet).toBeHidden({ timeout: 20_000 });
+    await synced(page);
+    const draft = api.rows('invoices.issued_invoices').find((i) => i.recipient_name === 'Asociación Yoga Norte')!;
+    expect(draft).toMatchObject({ status: 'borrador', prices_include_vat: true, recipient_kind: 'empresa', income_category: 'alojamiento', operation_date: '2026-11-08' });
+    const lines = api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at).sort((x, y) => Number(x.position) - Number(y.position));
+    expect(lines.map((l) => [l.net_amount, l.vat_amount])).toEqual([[1000, 100], [100, 21]]);
+    expect(api.rows('invoices.issued_allocations').filter((al) => al.issued_invoice_id === draft.id)).toEqual([
+      expect.objectContaining({ target_app: 'booking', target_kind: 'reservation', target_id: RES, allocated_amount: 1100 })]);
+    // Pulsar otra vez «Emitir factura» en Booking abre el borrador que ya existe, sin duplicarlo
+    await page.goto(`${baseURL}/#/facturas?vista=emitidas&desde=booking:reservation:${RES}`);
+    await expect(page.getByText('Esta reserva ya tiene un borrador de factura.')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.sheet[role="dialog"]').locator('#draftBanner')).toBeVisible();
+    expect(api.rows('invoices.issued_invoices').filter((i) => i.recipient_name === 'Asociación Yoga Norte')).toHaveLength(1);
+  } finally {
+    api.targets.splice(api.targets.findIndex((t) => t.id === RES), 1);
+    api.setReservationSource(RES, null);
+    api.setEntity(null);
+    await context.close();
+  }
+});
+
 test('IA sin API de pago (fase 1): compartir documento y contrato, volver por share_target, sobre que no coincide y escritorio sin Web Share', async ({ browser }) => {
   test.setTimeout(180_000);
   const pdfSha = createHash('sha256').update(PDF).digest('hex');

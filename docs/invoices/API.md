@@ -638,7 +638,7 @@ Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `
 
 ## 8. Archivos
 
-**Almacenamiento por proveedor (contrato §3.9, migración 0215):** la Edge nunca llama a `/storage/v1/object…`. El ZIP de la gestoría descarga cada documento con `createStorage` del kit, usando el `storage_provider` de `core.files` que ahora devuelve `invoices.export_bundle`. El logotipo de Central se firma igual (`readUrl`, 10 minutos); su proveedor llegará en `logo_storage_provider` de la proyección de Central y, mientras no llegue, se toma Supabase Storage.
+**Almacenamiento por proveedor (contrato §3.9, migración 0215):** la Edge nunca llama a `/storage/v1/object…`. El ZIP de la gestoría descarga cada documento con `createStorage` del kit, usando el `storage_provider` de `core.files` que ahora devuelve `invoices.export_bundle`. El logotipo de Central se firma igual (`readUrl`, 10 minutos); su proveedor viene en `logo_provider` de la proyección de Central (#232).
 
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.
 - **Ruta** la decide `core.file_create` (`invoices/<año>/<file_id>/<nombre_seguro>`); el nombre canónico vive en `invoice_files.normalized_filename` y es el que se usa en el ZIP. (El handoff proponía `invoices/<year>/<invoice_uuid>/…`; con `core.files` la ruta es del núcleo y no se discute.)
@@ -1052,6 +1052,18 @@ Propongo una **lectura** y no una escritura entre funciones. Booking no crea fil
 3. **Finance** crea un **borrador** con esas líneas y lo asigna a la reserva. Si la reserva ya tiene un borrador o una emitida no rectificada, la abre en lugar de duplicarla. El usuario revisa el borrador y lo emite.
 4. **Sin red**, Finance pide conexión, porque necesita los datos actuales de la reserva.
 
+**Cómo quedó (PR 4, ronda 45; Booking: `docs/booking/API.md` §19, migración 0444):**
+- **Entrada:** el panel de Emitidas lee `desde=booking:reservation:<id>` al cargar y lo quita de la URL.
+- **Factura ya existente:** si la reserva ya tiene un borrador, una emitida o una registrada asignada, la abre y lo avisa. No crea otra.
+- **Si no existe:** lee la reserva, con conexión. Rellena el borrador con el cliente (nombre y tipo), el concepto («código · título»), la fecha de la operación (la salida), la categoría dominante y las líneas.
+  - Categorías: `extras` y `servicios` de Booking pasan a `otros`.
+  - Tipo de cliente: `particular` sigue igual. Asociación, colectivo, empresa y organizador pasan a `empresa`, que exige NIF y domicilio.
+- **IVA incluido:** Booking da los precios con IVA incluido. El borrador lo marca (`prices_include_vat`) y guarda cada línea con su base y su **cuota exacta** (`vat_amount`), así que la factura suma exactamente el importe de la reserva. El editor muestra los precios con IVA y los convierte al guardar (`draftLineFromPrice`).
+- **Datos fiscales:** Booking no guarda el NIF ni el domicilio fiscal. Los escribe el usuario en el borrador, y el aviso de la hoja se lo pide.
+- **Asignación:** al guardar, el borrador queda asignado a la reserva (`issued_allocations`, destino `booking/reservation`) por su base.
+- **`invoiced`:** Booking lo devuelve `null`. Finance lo calcula con sus propias asignaciones.
+- **Directorio de clientes (pendiente de decisión del usuario):** el borrador ya recibe `recipient_tax_id` y `recipient_address` en `DraftPrefill`. Recordarlos por NIF o por nombre sería una tabla y una búsqueda en `startFromReservation` que rellene esos dos campos; el editor no cambia.
+
 La alternativa sería que Booking cree el borrador llamando a la Edge de Finance. La descarto porque añade escrituras entre funciones y deja un borrador sin revisar en otra app.
 
 ### 14.9 Preguntas
@@ -1098,4 +1110,4 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
    - **Base negativa:** la regla del ingreso asignado ahora solo aplica si hay algo asignado, porque una rectificativa por diferencias tiene base negativa.
    - **En la app:** «Rectificar» en la ficha de una emitida pide el tipo, la causa y el motivo. El borrador conserva su tipo y su serie y explica qué rectifica. La factura impresa dice de qué factura es rectificativa, con el motivo.
    - **Anulación:** la anulación del owner con su registro ya estaba en el PR 1.
-4. **Desde Booking,** cuando Booking publique la lectura.
+4. **Desde Booking (hecho, ronda 45):** ver «Cómo quedó» en §14.8. El editor admite además descuento por línea y «Precios con IVA incluido» en cualquier factura.

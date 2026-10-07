@@ -590,9 +590,8 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         const entity = issuerSnapshot(row);
         let logoUrl: string | null = null;
         if (entity && row?.logo_bucket && row?.logo_path) {
-          // Contrato §3.9: el proveedor lo dice la fila del archivo (la proyección de Central lo trae en logo_storage_provider;
-          // mientras no lo traiga, el logotipo está en Supabase Storage).
-          const provider = row.logo_storage_provider === 'r2' ? 'r2' : 'supabase';
+          // Contrato §3.9: el proveedor lo dice la fila del archivo (la proyección de Central lo trae en logo_provider, #232).
+          const provider = row.logo_provider === 'r2' ? 'r2' : 'supabase';
           try { logoUrl = await storage.readUrl({ bucket: String(row.logo_bucket), path: String(row.logo_path), storage_provider: provider }, 600); } catch { logoUrl = null; }
         }
         return { entity, logo_url: logoUrl, logo_mime: entity && row?.logo_mime ? row.logo_mime : null };

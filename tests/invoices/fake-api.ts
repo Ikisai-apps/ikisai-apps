@@ -82,6 +82,8 @@ export interface FakeApi {
   /** Extractor simulado para `POST imports/extract`; sin él la ruta responde EXTRACTION_UNAVAILABLE 503. */
   /** Entidad de Central (ronda 37) que sirve `GET entity` y se copia como emisor de las emitidas. */
   setEntity(entity: Record<string, unknown> | null): void;
+  /** Lo que devuelve booking.reservation_invoice_source para una reserva (§14.8). */
+  setReservationSource(id: string, source: Record<string, unknown> | null): void;
   setExtractor(fn: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null): void;
   close(): Promise<void>;
 }
@@ -107,6 +109,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
   let entity: Record<string, unknown> | null = null;
+  const reservationSources = new Map<string, Record<string, unknown>>();
   // Registro VERI*FACTU del simulado (§14.6): solo lo que la app consulta con invoices.vf_records_of.
   const vfRecords: Array<Record<string, unknown>> = [];
   let vfLastHash: string | null = null;
@@ -702,6 +705,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         documentTexts.set(docText[1]!, { items: Array.isArray(body.items) ? body.items : [], source: body.source ?? 'pdf_text' });
         return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length });
       }
+      if (path === 'read/booking.reservation_invoice_source' && method === 'POST') {
+        const body = await readJson(req);
+        const found = reservationSources.get(String(body.reservation_id ?? ''));
+        if (!found) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+        return json(res, 200, found);
+      }
       if (path === 'read/invoices.vf_records_of' && method === 'POST') {
         const body = await readJson(req);
         return json(res, 200, { records: vfRecords.filter((r) => r.issued_invoice_id === body.issued_invoice_id), settings: { sending: 'apagado', locked_until: null } });
@@ -784,6 +793,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     setExtractor(fn) { extractor = fn; },
     setEntity(e) { entity = e; },
+    setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
     failNextVerify: () => { failVerify = true; },
     targets,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),

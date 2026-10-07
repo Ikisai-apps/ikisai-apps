@@ -846,3 +846,20 @@ test('rectificativas (§14.3): borrador desde una emitida, por diferencias en ne
   const draftS = await row('invoices.issued_invoices', outS.results[0].result.id);
   assert.equal(draftS.rectification_kind, 'S'); assert.equal(draftS.rectified_base, 300); assert.equal(draftS.rectified_quota, 30); assert.equal(draftS.base_total, 300);
 });
+
+
+test('IVA incluido (§14.8): con la cuota exacta por línea, la emitida suma exactamente el importe de la reserva', async () => {
+  const today = (await app.t.db.query<{ d: string }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d`)).rows[0]!;
+  const id = uuid();
+  await ok([
+    insert('invoices.issued_invoices', id, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Reserva con IVA incluido', recipient_name: 'Asociación Prueba',
+      recipient_tax_id: 'G12345678', recipient_address: { line: 'Calle 9', postal_code: '48001', city: 'Bilbao' }, prices_include_vat: true }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: id, position: 0, description: 'Masaje', quantity: 3, unit_price: 27.5455, discount_amount: 4.13, net_amount: 78.5, vat_rate: 21, vat_amount: 16.49 }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: id, position: 1, description: 'Alojamiento', quantity: 20, unit_price: 50, net_amount: 1000, vat_rate: 10, vat_amount: 100 }),
+  ]);
+  await ok([call('invoices.issue', { id })]);
+  const inv = await row('invoices.issued_invoices', id);
+  assert.equal(inv.status, 'emitida'); assert.equal(inv.base_total, 1078.5); assert.equal(inv.quota_total, 116.49); assert.equal(inv.total, 1194.99);
+  assert.equal(inv.document.totals.total, 1194.99);
+  assert.deepEqual(inv.document.breakdown.map((b: any) => [b.rate, b.base, b.quota]), [[10, 1000, 100], [21, 78.5, 16.49]]);
+});
