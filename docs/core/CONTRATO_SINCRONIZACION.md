@@ -130,6 +130,9 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - En los portales, `members` solo devuelve al propio miembro salvo al owner.
 - Pendiente: cuenta permanente (Google y código por correo) y lecturas/escrituras de Booking filtradas por ámbito con procedencia por campo.
 
+- **Escrituras de un portal en la app dueña.** Una acción de la app dueña registrada para el portal (`core.allow_read('<portal>', '<app>.fn', 'action', '{editor}')`) comprueba el ámbito del actor (`scopes.grants`) y escribe con `core.apply_portal_operations('<app>', ops)`. Es un lote propio de la app dueña, con cursor, hooks de validación y `core.changes`, así que el personal lo recibe por la sincronización normal. Solo funciona dentro de una acción invocada desde un portal por un miembro editor de ese portal. Admite operaciones de fila, no `call`, con un máximo de 100. `updated_by` es el usuario del portal. No genera recibo: la idempotencia la da `expectedRevision`. Al volver, el contexto (`core.app`, `core.role`) es otra vez el del portal.
+- **Revocar por ámbito.** `core.portal_revoke_scope('<portal>', 'guest_id' | 'reservation_id', valor)` revoca los enlaces con ese ámbito y quita el permiso de las pertenencias, de modo que una sesión ya abierta también lo pierde. Devuelve cuántos enlaces revocó.
+
 ## 4. Commit
 
 ### 4.1 Firma
