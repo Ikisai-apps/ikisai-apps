@@ -239,3 +239,11 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('enlace directo del panel de Central (§21): #/supplies abre Suministros y limpia el hash', async () => {
+  await owner.goto(server.url + '/#/supplies');
+  await settled(owner);
+  await expect.poll(() => owner.evaluate('state.view')).toBe('supplies');
+  expect(await owner.evaluate(() => location.hash)).toBe('');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
