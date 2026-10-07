@@ -6,9 +6,9 @@
 
 export const TEXTS_TABLE = 'central.texts';
 export const TEXTS_PROJECTION = 'central.common_texts_projection';
-export const TEXT_KINDS = ['legal', 'mensaje', 'contacto'] as const;
+export const TEXT_KINDS = ['legal', 'mensaje', 'info', 'contacto'] as const;
 export type TextKind = typeof TEXT_KINDS[number];
-export const TEXT_KIND_LABELS: Record<TextKind, string> = { legal: 'Legal', mensaje: 'Mensajes y avisos', contacto: 'Contacto' };
+export const TEXT_KIND_LABELS: Record<TextKind, string> = { legal: 'Legal', mensaje: 'Mensajes y avisos', info: 'Información práctica', contacto: 'Contacto' };
 export const TEXT_KEY = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,3}$/;
 /** Idiomas de los textos (portales bilingües): `es` obligatorio, `en` opcional; si falta, los portales usan el español. */
 export const TEXT_LANGS = ['es', 'en'] as const;

@@ -37,17 +37,23 @@ test('textos · dominio: marcadores, domicilio, versión, marcadores desconocido
   assert.equal(validateOperations([{ op: 'insert', table: TEXTS_TABLE, id: 'x', fields: { key: 'a.b', title: 'x', body: 'x', kind: 'legal' } }], { role: 'editor' })?.code, 'FORBIDDEN');
 });
 
-test('textos · semilla idempotente: los cuatro textos en español y los dos legales también en inglés, en v1', async () => {
+test('textos · semilla idempotente: textos de los portales en español y en inglés, en v1', async () => {
   const first = await app.t.db.query<{ n: number }>(`select central.seed_texts() as n`);
-  assert.equal(first.rows[0]!.n, 6);
+  assert.equal(first.rows[0]!.n, 22);
   const again = await app.t.db.query<{ n: number }>(`select central.seed_texts() as n`);
   assert.equal(again.rows[0]!.n, 0);
   const rows = (await app.t.db.query<{ key: string; lang: string; version: string; kind: string }>(`select key, lang, version, kind from central.texts order by key, lang desc`)).rows;
-  assert.deepEqual(rows.map((r) => [r.key, r.lang, r.version, r.kind]), [
-    ['contact.email', 'es', 'v1', 'contacto'], ['contact.phone', 'es', 'v1', 'contacto'],
-    ['organizers.declaration', 'es', 'v1', 'legal'], ['organizers.declaration', 'en', 'v1', 'legal'],
-    ['portal.privacy', 'es', 'v1', 'legal'], ['portal.privacy', 'en', 'v1', 'legal'],
-  ]);
+  const byKey = new Map<string, string[]>();
+  for (const r of rows) { assert.equal(r.version, 'v1'); byKey.set(r.key, [...(byKey.get(r.key) ?? []), `${r.lang}:${r.kind}`]); }
+  assert.deepEqual(Object.fromEntries(byKey), {
+    'contact.email': ['es:contacto'], 'contact.phone': ['es:contacto'],
+    'guests.allergies_notice': ['es:mensaje', 'en:mensaje'], 'guests.data_why': ['es:mensaje', 'en:mensaje'], 'guests.signature_statement': ['es:legal', 'en:legal'],
+    'info.arrival': ['es:info', 'en:info'], 'info.bring': ['es:info', 'en:info'], 'info.facilities': ['es:info', 'en:info'], 'info.parking': ['es:info', 'en:info'], 'info.rules': ['es:info', 'en:info'],
+    'organizers.declaration': ['es:legal', 'en:legal'], 'portal.privacy': ['es:legal', 'en:legal'],
+  });
+  // Los párrafos se conservan y los marcadores se sustituyen al leer.
+  const arrival = (await app.t.db.query<{ body: string }>(`select body from central.common_texts_projection where key = 'info.arrival' and lang = 'es'`)).rows[0]!.body;
+  assert.match(arrival, /614 76 57 96\.\n\nDirección: —\./);
   // La semilla llega a los dispositivos: está en core.changes.
   const changes = await app.call('/api/v1/changes?after=0');
   assert.ok(changes.data.items.some((c: any) => c.table === TEXTS_TABLE));

@@ -5,6 +5,7 @@
 
 -- ---------------------------------------------------------------------------
 -- Textos (sincronizados): escribe solo el owner, leen todos los miembros.
+-- Tipos: `legal`, `mensaje`, `contacto` e `info` (información práctica de los portales).
 -- `version` la lleva el servidor: `v1` al crear y sube (`v2`, `v3`…) cuando cambia el título o el cuerpo.
 -- ---------------------------------------------------------------------------
 create table central.texts (
@@ -18,7 +19,7 @@ create table central.texts (
   title text not null check (length(btrim(title)) between 1 and 160),
   body text not null check (length(body) between 1 and 8000),
   version text not null default 'v1' check (version ~ '^v[1-9][0-9]{0,4}$'),
-  kind text not null check (kind in ('legal','mensaje','contacto')),
+  kind text not null check (kind in ('legal','mensaje','contacto','info')),
   lang text not null default 'es' check (lang in ('es','en')),
   position numeric not null default 0
 );
@@ -211,7 +212,24 @@ begin
 
 **How long we keep it:** traveller registration data, three years from the end of your stay, as required by law; everything else, at most six months after your stay. After that it is deleted or anonymised.
 
-**Your rights:** you can request access, rectification, erasure, objection, restriction and portability by writing to {{contacto.correo}}. If you believe we have not handled your request properly, you can lodge a complaint with the Spanish Data Protection Agency (www.aepd.es).$privacy_en$, 40)
+**Your rights:** you can request access, rectification, erasure, objection, restriction and portability by writing to {{contacto.correo}}. If you believe we have not handled your request properly, you can lodge a complaint with the Spanish Data Protection Agency (www.aepd.es).$privacy_en$, 40),
+    -- Portal de huéspedes e información práctica (CE2). Las claves «guests.…» se componen por partes por el lint.
+    ('guests' || '.data_why', 'es', 'mensaje', 'Por qué te pedimos estos datos', 'Te pedimos estos datos para preparar tu estancia (alojamiento y comidas) y porque la ley obliga a los alojamientos a registrar a sus huéspedes y comunicarlo al Ministerio del Interior. Solo pedimos lo necesario. Quien organiza tu retiro no ve tus datos de identidad.', 50),
+    ('guests' || '.data_why', 'en', 'mensaje', 'Why we ask for this information', 'We ask for this information to prepare your stay (accommodation and meals) and because the law requires accommodation providers to register their guests and report them to the Spanish Ministry of the Interior. We only ask for what is necessary. The organiser of your retreat cannot see your identity details.', 50),
+    ('guests' || '.signature_statement', 'es', 'legal', 'Declaración al firmar', 'Declaro que los datos que he facilitado son ciertos y completos. Con mi firma acepto el parte de entrada del alojamiento, que Ikisai conservará durante el plazo que exige la ley (Real Decreto 933/2021).', 60),
+    ('guests' || '.signature_statement', 'en', 'legal', 'Declaration when signing', 'I declare that the information I have provided is true and complete. By signing, I accept the accommodation check-in record, which Ikisai will keep for the period required by law (Royal Decree 933/2021).', 60),
+    ('guests' || '.allergies_notice', 'es', 'mensaje', 'Alergias e intolerancias', 'Cuéntanos tus alergias e intolerancias para que la cocina las tenga en cuenta. Hacemos lo posible por adaptar los menús, pero en una cocina compartida no podemos garantizar la ausencia total de trazas. Si tu alergia es grave, avísanos también en persona al llegar.', 70),
+    ('guests' || '.allergies_notice', 'en', 'mensaje', 'Allergies and intolerances', 'Tell us about your allergies and intolerances so that the kitchen can take them into account. We do our best to adapt the menus, but in a shared kitchen we cannot guarantee that there will be no traces at all. If your allergy is severe, please also tell us in person when you arrive.', 70),
+    ('info.arrival', 'es', 'info', 'Llegada y salida', E'La hora de llegada y de salida la acuerda quien organiza tu retiro. Si vas a llegar fuera de ese horario o te retrasas, avísanos en el {{contacto.telefono}}.\n\nDirección: {{entidad.domicilio}}.', 100),
+    ('info.arrival', 'en', 'info', 'Arrival and departure', E'Arrival and departure times are agreed with the organiser of your retreat. If you will arrive outside those times or are running late, please call us on {{contacto.telefono}}.\n\nAddress: {{entidad.domicilio}}.', 100),
+    ('info.parking', 'es', 'info', 'Cómo llegar y aparcar', 'Si vienes en coche, pregunta a quien organiza tu retiro o escríbenos a {{contacto.correo}} y te indicaremos dónde aparcar. Si podéis, compartid coche.', 110),
+    ('info.parking', 'en', 'info', 'Getting here and parking', 'If you are coming by car, ask the organiser of your retreat or write to us at {{contacto.correo}} and we will tell you where to park. If you can, please share a car.', 110),
+    ('info.facilities', 'es', 'info', 'Instalaciones', 'Al llegar, el equipo de Ikisai te enseñará los espacios que tu grupo tiene reservados: alojamiento, comedor y salas de actividad. Si necesitas algo durante la estancia, pregúntanos.', 120),
+    ('info.facilities', 'en', 'info', 'Facilities', 'When you arrive, the Ikisai team will show you the spaces booked for your group: accommodation, dining room and activity rooms. If you need anything during your stay, just ask us.', 120),
+    ('info.rules', 'es', 'info', 'Convivencia', 'Cuida los espacios y respeta el descanso de los demás. Sigue las indicaciones del equipo de Ikisai y de quien organiza tu retiro. Si algo se rompe o no funciona, avísanos cuanto antes.', 130),
+    ('info.rules', 'en', 'info', 'House rules', 'Please look after the spaces and respect other people''s rest. Follow the instructions of the Ikisai team and of your retreat''s organiser. If something breaks or does not work, let us know as soon as possible.', 130),
+    ('info.bring', 'es', 'info', 'Qué traer', 'Ropa cómoda, calzado para caminar, algo de abrigo para la noche, tu medicación habitual y lo que indique quien organiza tu retiro.', 140),
+    ('info.bring', 'en', 'info', 'What to bring', 'Comfortable clothes, walking shoes, something warm for the evening, any regular medication you take, and anything your retreat organiser asks you to bring.', 140)
   ) as t(key, lang, kind, title, body, pos) loop
     if not exists (select 1 from central.texts where key = s.key and lang = s.lang and deleted_at is null) then
       v_ops := v_ops || jsonb_build_object('op', 'insert', 'table', 'central.texts', 'id', gen_random_uuid(),
