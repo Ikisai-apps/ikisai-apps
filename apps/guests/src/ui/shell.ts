@@ -61,7 +61,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     'data-feedback-id': 'guests.cuenta.dispositivo.salir', 'data-feedback-label': 'Salir de este dispositivo', onclick: () => void logout() }, icon('logout', 18));
   const shell = createAppShell(root, {
     appName: 'Guests',
-    markIcon: 'home',
+    markIcon: 'guest',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
     navigate,
