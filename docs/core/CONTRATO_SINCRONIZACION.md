@@ -189,6 +189,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - `uploads`, `files/:id` y el feedback ya usan la abstracción. El contrato del frontend no cambia.
 - **Activación:** secretos `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`, más `IKISAI_STORAGE_PROVIDER=r2` para que los archivos nuevos vayan a R2. Lo que ya está en Supabase sigue sirviéndose de allí.
 - **Regla para las apps:** nunca llamar a `/storage/v1/object…` directamente. Hay que usar `createStorage(supabase).readUrl(fila)` o `.download(fila)`, con la fila de `core.files` (que lleva `storage_provider`).
+- **Copias y restauración:** la copia (`scripts/cloud_backup.py backup`) incluye las cuentas sin contraseñas (`auth/users.jsonl`: id, correo y metadatos). `restore --apply` restaura en el proyecto de ensayo de `private/restore-target.json` y nunca en producción. Recrea las cuentas con contraseña aleatoria, carga los datos sin disparadores, recalcula los cursores, sube los objetos comprobando su huella y verifica los recuentos. La prueba está en `tests/scripts`.
 - **Campos de archivo y huérfanos (migración `0075`):**
   - Cada app declara en su migración las columnas que guardan un `file_id`: `select core.register_file_field('<app>', '<schema>', '<tabla>', '<columna>', 'operational|legal|permanent|temporary');`.
   - Cuando las tiene todas, lo dice con `select core.enable_file_gc('<app>');`. Hasta entonces, la recogida no toca sus archivos.
