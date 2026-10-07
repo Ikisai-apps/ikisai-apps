@@ -29,3 +29,8 @@ html.dark .pstock.alert{color:#f0b58e}
 html.dark .pinvoice{color:#d9e0c3}
 .pcard .pmeta a,#taskOrigin a{color:var(--olive-dark);font-weight:700}
 html.dark .pcard .pmeta a,html.dark #taskOrigin a{color:#d9e0c3}
+/* Kit de feedback (feedback-ui.js): reglas del kit sobre <html> que el acotado a .ikisai-kit anula (vite.config.ts). */
+html.fb-pressing,html.fb-pressing *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.fb-mode #appLauncher,html.fb-reviewing #appLauncher{position:relative}
+html.fb-mode #appLauncher::after{content:"";position:absolute;right:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--warn,#c87847);border:2px solid var(--bg)}
+html.fb-reviewing #appLauncher::before{content:"";position:absolute;left:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--accent,#68704a);border:2px solid var(--bg)}

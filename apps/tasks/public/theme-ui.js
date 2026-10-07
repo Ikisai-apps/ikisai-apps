@@ -12,7 +12,7 @@ function applyTheme(){const dark=isDarkTheme();document.documentElement.classLis
 function setTheme(pref){try{if(pref==='system')localStorage.removeItem(THEME_KEY);else localStorage.setItem(THEME_KEY,pref)}catch(e){}applyTheme()}
 function toggleTheme(){setTheme(isDarkTheme()?'light':'dark')}
 function drawThemeToggle(button){const dark=isDarkTheme();button.innerHTML=menuIcon(dark?'sun':'moon');button.setAttribute('aria-label',dark?'Cambiar a tema claro':'Cambiar a tema oscuro');button.dataset.tip=dark?'Tema claro':'Tema oscuro';button.classList.toggle('dark',dark)}
-function themeToggleButton(){const dark=isDarkTheme();return `<button type="button" class="iconbtn themetoggle ${dark?'dark':''}" id="themeToggle" aria-label="${dark?'Cambiar a tema claro':'Cambiar a tema oscuro'}" data-tip="${dark?'Tema claro':'Tema oscuro'}">${menuIcon(dark?'sun':'moon')}</button>`}
+function themeToggleButton(){const dark=isDarkTheme();return `<button type="button" class="iconbtn themetoggle ${dark?'dark':''}" id="themeToggle" data-feedback-id="tasks.tema.alternar" data-feedback-label="Cambiar tema claro u oscuro" aria-label="${dark?'Cambiar a tema claro':'Cambiar a tema oscuro'}" data-tip="${dark?'Tema claro':'Tema oscuro'}">${menuIcon(dark?'sun':'moon')}</button>`}
 themeMedia.addEventListener('change',applyTheme);applyTheme();
 const groupsBeforeTheme=navigationGroups;
 navigationGroups=function(){const groups=groupsBeforeTheme(),work=groups.find(g=>g.id==='work'),organize=groups.find(g=>g.id==='organize');if(organize)organize.items=organize.items.filter(i=>i[0]!=='areas');if(work){const at=work.items.findIndex(i=>i[0]==='tasks');work.items.splice(at+1,0,['labels','Etiquetas','tag','view']);work.items.push(['areas','Áreas de trabajo','areas'])}return groups};
