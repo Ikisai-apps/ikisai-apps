@@ -2,6 +2,7 @@ import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
 import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
 import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { COMMUNICABLE_STATUSES, HOUR, acceptedReservationComm, fetchSes } from '../app/ses.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -16,6 +17,10 @@ window.addEventListener('beforeinstallprompt', (event) => {
 });
 
 const UPCOMING = ['pre_reservada', 'confirmada', 'en_ejecucion'];
+/** Reservas que Inicio vigila para el plazo de SES (las cerradas ya pasaron su momento). */
+const SES_WATCHED = COMMUNICABLE_STATUSES.filter((status) => status !== 'cerrada');
+const SES_MAX_CHECKS = 20;
+const SES_NOTICE_AFTER_MS = 12 * HOUR;
 
 /** Inicio: qué viene y qué requiere atención (canon §3). Todo se calcula con el espejo local. */
 export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
@@ -24,6 +29,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const network = el('dd');
   const pending = el('dd');
   const lastPull = el('dd');
+  // Reservas con SES, pago registrado hace más de 12 h y sin comunicación aceptada (se consulta solo con red y solo a las candidatas).
+  let sesUnsent = new Set<string>();
+  let sesCheckedKey = '';
+  let sesCheckedAt = 0;
+  let disposed = false;
   const role = el('dd');
 
   function paintStatus(status: SyncStatus): void {
@@ -61,7 +71,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         })));
 
     const soon = (r: ReservationRow, days: number) => { const start = dayNumber(r.start_date); return start !== null && start >= now && start - now <= days; };
-    const notices: Array<[number, string, string, string?]> = [
+    const notices: Array<[number, string, string, string?, string?]> = [
       [reservations.filter((r) => r.status === 'pre_reservada').length, 'pre-reserva pendiente de confirmar', 'pre-reservas pendientes de confirmar'],
       [upcoming.filter((r) => soon(r, 30) && r.status !== 'pre_reservada' && (eventByReservation.get(r.id)?.final_guests ?? null) === null).length, 'evento próximo sin número final de personas', 'eventos próximos sin número final de personas'],
       [upcoming.filter((r) => soon(r, 30) && !r.briefing_received).length, 'reserva próxima sin briefing final', 'reservas próximas sin briefing final'],
@@ -80,6 +90,28 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         .filter((g) => urgentEvents.has(g.event_id) && g.ses_status !== 'enviado_SES' && g.ses_status !== 'no_aplica').length;
       notices.push([unsent, 'huésped sin comunicar a SES', 'huéspedes sin comunicar a SES']);
     }
+    // Reservas con SES sin comunicar pasadas 12 h desde el pago (el plazo legal es de 24 h): se pregunta a la API solo por las candidatas.
+    if (canWrite(client) && finance) {
+      const candidates = reservations.filter((r) => r.ses_enabled !== false && SES_WATCHED.includes(r.status))
+        .map((r) => ({ id: r.id, at: Date.parse(String(finance.get(r.id)?.payment_registered_at ?? '')) }))
+        .filter((c) => Number.isFinite(c.at) && Date.now() - c.at > SES_NOTICE_AFTER_MS)
+        .sort((a, b) => a.at - b.at).slice(0, SES_MAX_CHECKS).map((c) => c.id);
+      const key = candidates.join(',');
+      if (navigator.onLine && candidates.length > 0 && (key !== sesCheckedKey || Date.now() - sesCheckedAt > 60_000)) {
+        sesCheckedKey = key;
+        sesCheckedAt = Date.now();
+        void Promise.allSettled(candidates.map(async (id) => ({ id, accepted: acceptedReservationComm(await fetchSes(client, id)) !== null }))).then((results) => {
+          if (disposed) return;
+          // Si una consulta falla no se avisa de esa reserva: mejor callar que acusar sin saberlo.
+          const next = new Set(results.flatMap((r) => (r.status === 'fulfilled' && !r.value.accepted ? [r.value.id] : [])));
+          const changed = next.size !== sesUnsent.size || [...next].some((id) => !sesUnsent.has(id));
+          sesUnsent = next;
+          if (changed) void paintData();
+        });
+      }
+      const pending = candidates.filter((id) => sesUnsent.has(id));
+      notices.push([pending.length, 'reserva sin comunicar a SES', 'reservas sin comunicar a SES', pending.length === 1 ? `#/reservas/${pending[0]}` : '#/reservas', 'ses']);
+    }
     // Refuerzos sin cubrir en los próximos 7 días (fechas de la reserva de cada evento; no cuentan reservas canceladas, perdidas ni archivadas).
     let needsHref = '#/reservas';
     if (canRead(client, NEEDS)) {
@@ -94,7 +126,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     replace(noticesHost, visible.length === 0
       ? null
       : [el('div', { class: 'sectionlabel' }, 'Requiere atención'),
-         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many, href]) => el('li', { dataset: href ? { notice: 'needs' } : {} }, el('span', { class: 'n' }, n),
+         el('ul', { class: 'notices', id: 'notices' }, visible.map(([n, one, many, href, kind]) => el('li', { dataset: href ? { notice: kind ?? 'needs' } : {} }, el('span', { class: 'n' }, n),
            href ? el('a', { href, class: 'noticelink' }, n === 1 ? one : many) : (n === 1 ? one : many))))]);
   }
 
@@ -150,5 +182,5 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     client.onTable(GUESTS, () => void paintData()),
     ...(canRead(client, NEEDS) ? [client.onTable(NEEDS, () => void paintData())] : []),
   ];
-  return () => offs.forEach((off) => off());
+  return () => { disposed = true; offs.forEach((off) => off()); };
 };

@@ -589,6 +589,142 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.rows('booking.ses_settings')[0]!.environment).toBe('pre');
   });
 
+  await test.step('SES: comunicar la reserva con el pago registrado, estados, cambios, anulación, rechazo y plazo de 24 h', async () => {
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const block = page.locator('#blockSes');
+    const sync = () => page.getByRole('button', { name: 'Sincronizar ahora' }).click();
+    const lastComm = () => api.sesComms(reservationId)[0]!;
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    await expect(block).toContainText('Registro de viajeros');
+
+    // Sin pago registrado no hay botón: se explica por qué.
+    await expect(block.locator('#sesNeedsPayment')).toHaveText('Se podrá comunicar cuando se registre el pago.');
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0);
+
+    // Registrar la fecha de pago: el servidor anota el momento legal y aparece el botón.
+    await page.locator('#editFinance').click();
+    const finance = page.getByRole('dialog', { name: 'Cobro' });
+    await finance.getByLabel('Fecha del pago').fill(inDays(0));
+    await page.locator('#saveRow').click();
+    await expect(finance).toBeHidden();
+    await expect.poll(() => typeof api.rows(FINANCE)[0]!.payment_registered_at).toBe('string');
+    await expect(block.locator('#sesNeedsPayment')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toBeEnabled();
+    await expect(block.locator('#sesDeadline')).toHaveCount(0);
+
+    // Sin red el bloque lo dice y deshabilita el botón.
+    await context.setOffline(true);
+    await expect(block.locator('#sesOffline')).toContainText('Sin conexión');
+    await expect(block.locator('#sesCommunicate')).toBeDisabled();
+    await context.setOffline(false);
+    await page.waitForFunction(() => navigator.onLine);
+    await expect(block.locator('#sesOffline')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toBeEnabled();
+
+    // Datos que faltan: el mensaje del servidor, en claro, y nada se crea.
+    api.failNextSes('SES_DATA', 422, 'Falta el apellido del contacto de la reserva.', { field: 'contact_name' });
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesActionError')).toHaveText('Falta el apellido del contacto de la reserva.');
+    expect(api.sesComms()).toHaveLength(0);
+
+    // Comunicar: en proceso, con la etiqueta de pruebas; hasta que SES acepta no se dice «comunicada».
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('En proceso en SES');
+    await expect(block.locator('#sesEnv')).toHaveText('Pruebas (PRE)');
+    await expect(block.locator('#sesStatusDetail')).toHaveCount(0);
+    await expect(block.locator('#sesActionError')).toHaveCount(0);
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0);
+    await expect(block.locator('#sesCancel')).toHaveCount(0);
+    expect(api.sesComms()).toHaveLength(1);
+    expect(lastComm()).toMatchObject({ kind: 'RH', status: 'en_proceso', environment: 'pre', snapshot: { start_date: inDays(10), end_date: inDays(12), persons: 23 } });
+
+    // El tick del servidor la acepta: al volver a la ficha se ve «Aceptada» con el código.
+    api.sesAccept(lastComm().id);
+    await page.reload();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Aceptada');
+    await expect(block.locator('#sesStatusDetail')).toContainText(/Comunicada a SES · código SYN-\d+/);
+    await expect(block.locator('#sesCancel')).toBeVisible();
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+
+    // Cambian las fechas: aviso destacado y anulación con confirmación.
+    api.serverUpdate(RESERVATIONS, reservationId, { end_date: inDays(13) });
+    await sync();
+    await expect(block.locator('#sesChanged')).toContainText('La reserva cambió desde que se comunicó: anula y vuelve a comunicar');
+    await expect(block.locator('#sesCancel')).toHaveCount(0);
+    await block.locator('#sesCancelChanged').click();
+    const confirmCancel = page.getByRole('alertdialog', { name: 'Anular en SES' });
+    await expect(confirmCancel).toBeVisible();
+    await confirmCancel.getByRole('button', { name: 'Anular en SES' }).click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Anulada');
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+    expect(api.sesComms().map((c) => `${c.kind}:${c.status}`)).toEqual(['anulacion:aceptada', 'RH:anulada']);
+    // Con la comunicación anulada se puede volver a comunicar (ya con las fechas nuevas).
+    api.serverUpdate(RESERVATIONS, reservationId, { end_date: inDays(12) });
+    await sync();
+    api.setSesNext('aceptada');
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Aceptada');
+    await expect(block.locator('#sesChanged')).toHaveCount(0);
+
+    // Desactivar SES con una comunicación aceptada: tras guardar el motivo se ofrece anularla.
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    const reason = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await reason.getByLabel('Prueba').check();
+    await reason.locator('#saveSesReason').click();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'prueba' });
+    const offer = page.getByRole('alertdialog', { name: 'Anular la comunicación en SES' });
+    await expect(offer).toBeVisible();
+    await offer.getByRole('button', { name: 'Anular la comunicación en SES' }).click();
+    await expect.poll(() => api.sesComms().filter((c) => c.kind === 'RH')[0]!.status).toBe('anulada');
+    await expect(block.locator('#sesCommunicate')).toHaveCount(0); // con SES desactivado no se comunica
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.ses_enabled).toBe(true);
+    await expect(block.locator('#sesCommunicate')).toBeVisible();
+
+    // Rechazo: el texto de SES en claro y qué hacer.
+    api.setSesNext('rechazada', { errorText: 'El número de soporte del documento no es válido.' });
+    await block.locator('#sesCommunicate').click();
+    await expect(block.locator('#sesStatusChip')).toHaveText('Rechazada');
+    await expect(block.locator('#sesStatusDetail')).toHaveText('El número de soporte del documento no es válido. Corrige los datos y vuelve a comunicar.');
+    await expect(block.locator('#sesCommunicate')).toBeVisible();
+
+    // Plazo legal desde el momento legal de la comunicación: 13 h (aviso), 19 h (alerta) y 25 h (vencido).
+    const patchDeadline = async (hours: number) => { api.sesPatch(lastComm().id, { legal_start_at: hoursAgo(hours) }); await page.reload(); };
+    await patchDeadline(13);
+    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 12 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'warn');
+    await patchDeadline(19);
+    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 6 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'alert');
+    await patchDeadline(25);
+    await expect(block.locator('#sesDeadline')).toHaveText('Plazo legal vencido');
+
+    // Pago antiguo: la fecha es de hace días pero el plazo cuenta desde que se registró.
+    api.serverUpdate(FINANCE, reservationId, { payment_date: inDays(-3), payment_registered_at: hoursAgo(13) });
+    await page.reload();
+    await expect(block.locator('#sesPaymentOld')).toContainText('El pago es del');
+    await expect(block.locator('#sesPaymentOld')).toContainText('el plazo legal puede haber vencido');
+
+    // Inicio: aviso de reservas con pago registrado hace más de 12 h y sin comunicación aceptada; enlaza a la ficha.
+    await page.goto(`${baseURL}/#/`);
+    await expect(page.locator('[data-notice="ses"]')).toHaveText(/^1\s*reserva sin comunicar a SES$/);
+    await page.locator('[data-notice="ses"] a').click();
+    await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
+    // Aceptada, deja de avisar.
+    api.sesAccept(lastComm().id);
+    const asked = page.waitForResponse((response) => response.url().includes('/api/v1/ses/'));
+    await page.goto(`${baseURL}/#/`);
+    await asked;
+    await expect(page.locator('#upcomingList')).toBeVisible();
+    await expect(page.locator('[data-notice="ses"]')).toHaveCount(0);
+
+    // Se deja la reserva como estaba para los pasos siguientes.
+    api.serverUpdate(FINANCE, reservationId, { payment_date: null, payment_registered_at: null });
+    api.sesPatch(lastComm().id, { status: 'anulada' });
+    await sync();
+  });
+
   await test.step('huéspedes: completitud, origen de cada dato, recordatorios, firma desde Guests y papelera del organizador', async () => {
     await page.goto(`${baseURL}/#/huespedes/${api.rows(EVENTS)[0]!.id}`);
     await expect(page.locator('#newGuest')).toBeVisible();
