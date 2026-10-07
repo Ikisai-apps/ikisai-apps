@@ -98,19 +98,42 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
 }
 
 /**
- * Puente con Feedback (§22.3): `POST worker/requests/status {externalRefs}` con la clave de worker (de servidor a
- * servidor, sin sesión). Devuelve solo el estado de cada petición de `feedback` (pending, open, done, dismissed,
- * deleted o unknown), para que el worker de Feedback de Core copie «hecha» a sus reportes.
+ * Orígenes de sistema (§22.2): qué app puede pedir trabajo desde su worker, sin persona, con qué tipos, con qué
+ * identidad de servicio de Core escribe y qué enlace y metadatos lleva. Nada fuera de esta lista entra por aquí.
+ */
+interface SystemSource {
+  service: string;
+  kinds: ReadonlySet<string>;
+  /** `external_ref` sin el prefijo de la app. */
+  reference: RegExp;
+  /** `external_url` válido para esta petición. */
+  url: (reference: string, url: string) => boolean;
+  /** Si `on_behalf_of` es obligatorio (Feedback) u opcional (Booking). */
+  behalf: 'required' | 'optional';
+}
+const SYSTEM_SOURCES: Record<string, SystemSource> = {
+  feedback: {
+    service: 'feedback', kinds: FEEDBACK_KINDS, reference: REPORT_CODE, behalf: 'required',
+    url: (reference, url) => url === `https://tasks.ikisai.com/#/feedback/${reference}`,
+  },
+  booking: {
+    service: 'booking', kinds: new Set(['booking.ses_deadline']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
+  },
+};
+const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
+
+/**
+ * Rutas de worker (§22.2 y §22.3), de servidor a servidor con la clave de worker y sin sesión:
+ * - `POST worker/requests/task`: una app de la lista pide trabajo; escribe su identidad de servicio por `core.commit`,
+ *   con `tasks.request_task` y las reglas del usuario. Quién informó va como metadato (`on_behalf_of`), nunca como
+ *   actor. Idempotente por `external_ref`.
+ * - `POST worker/requests/status {externalRefs}`: solo el estado de cada petición (pending, open, done, dismissed,
+ *   deleted o unknown), para que el worker de quien pidió lo copie.
  */
 export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
   const internal = createSync(supabase, 'tasks', {});
   return [{
-    /**
-     * `POST worker/requests/task` (§22.2, contrato de Core): Feedback pide trabajo operativo (espacios y eventos) para
-     * un reporte. Escribe la identidad de servicio de Feedback (`core.service_actor('feedback')`) por `core.commit`,
-     * con `tasks.request_task` y las reglas del usuario; quién informó va como metadato (`on_behalf_of`), nunca como
-     * actor. Idempotente por `external_ref`.
-     */
     method: 'POST', pattern: 'requests/task', handler: async ({ json, invoke }) => {
       const body = await json() as Record<string, unknown>;
       const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
@@ -122,34 +145,39 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       };
       // Solo los campos del contrato: el destino lo deciden las reglas del usuario, nunca quien pide.
       for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
-      if (body?.source !== 'feedback') invalid('source', 'source debe ser feedback.');
+      const sourceName = String(body?.source ?? '');
+      const source = Object.hasOwn(SYSTEM_SOURCES, sourceName) ? SYSTEM_SOURCES[sourceName]! : invalid('source', `source debe ser ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`);
       const kind = text('kind', 100, true)!;
-      if (!FEEDBACK_KINDS.has(kind)) invalid('kind', 'Tipo de feedback no admitido: feedback.space.* o feedback.event.* de la lista del contrato.');
-      const reference = text('external_ref', 40, true)!;
-      if (!REPORT_CODE.test(reference)) invalid('external_ref', 'external_ref es el código del reporte.');
+      if (!source.kinds.has(kind)) invalid('kind', `Tipo no admitido para ${sourceName}: ${[...source.kinds].join(', ')}.`);
+      const reference = text('external_ref', 150, true)!;
+      if (!source.reference.test(reference)) invalid('external_ref', 'external_ref no es una referencia válida.');
       const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || undefined;
       const externalUrl = text('external_url', 200);
-      if (externalUrl !== undefined && externalUrl !== `https://tasks.ikisai.com/#/feedback/${reference}`) invalid('external_url', 'external_url es el enlace de Tasks al reporte.');
+      if (externalUrl !== undefined && !source.url(reference, externalUrl)) invalid('external_url', `external_url no es un enlace válido para ${sourceName}.`);
       const behalf = body?.on_behalf_of as { kind?: unknown; report_code?: unknown } | undefined;
-      if (!behalf || typeof behalf !== 'object' || !['internal', 'organizer', 'guest'].includes(String(behalf.kind)) || typeof behalf.report_code !== 'string' || !REPORT_CODE.test(behalf.report_code)
+      if (behalf === undefined || behalf === null) {
+        if (source.behalf === 'required') invalid('on_behalf_of', 'Falta on_behalf_of.');
+      } else if (typeof behalf !== 'object' || !['internal', 'organizer', 'guest'].includes(String(behalf.kind)) || typeof behalf.report_code !== 'string' || !REPORT_CODE.test(behalf.report_code)
         || Object.keys(behalf).some((k) => k !== 'kind' && k !== 'report_code')) {
         invalid('on_behalf_of', 'on_behalf_of es {kind: internal|organizer|guest, report_code}.');
       }
 
-      const externalRef = `feedback:${reference}`;
+      const externalRef = `${sourceName}:${reference}`;
       const id = await requestTaskId(externalRef);
       const status = async () => ((await invoke('tasks.requests_status', { externalRefs: [externalRef] })) as { items: Array<{ status: string; taskId: string | null }> }).items[0]!;
       const reply = (current: { status: string }) => ({ taskId: id, status: current.status });
       const before = await status();
       if (before.status !== 'unknown') return reply(before);
 
-      const actor = ((await invoke('tasks.feedback_actor', {})) as { actor: string | null }).actor;
-      if (!actor) fail(503, 'SERVICE_NOT_READY', 'La identidad de servicio de Feedback aún no existe.');
-      const ctx = await internal.context({ id: actor!, email: null, sessionId: 'service:feedback', kind: 'human' }, '');
+      const actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
+      if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
+      const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
       try {
         await internal.commit(ctx, {
-          requestId: `feedback-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_task', args: { id, externalRef, kind, kindLabel, externalUrl, title, note, onBehalfOf: { kind: behalf!.kind, report_code: behalf!.report_code } } }],
+          requestId: `${sourceName}-${crypto.randomUUID()}`,
+          operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
+            id, externalRef, kind, kindLabel, externalUrl, title, note, ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
+          } }],
         });
       } catch (error) {
         // Dos reintentos a la vez: el segundo choca con la petición que acaba de dar de alta el primero.
@@ -163,8 +191,8 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
     method: 'POST', pattern: 'requests/status', handler: async ({ json, invoke }) => {
       const body = await json() as { externalRefs?: unknown };
       const refs = body?.externalRefs;
-      if (!Array.isArray(refs) || refs.length > 200 || refs.some((r) => typeof r !== 'string' || !/^feedback:.{1,150}$/.test(r))) {
-        fail(422, 'INVALID_INPUT', 'externalRefs: hasta 200 referencias de feedback.', { field: 'externalRefs' });
+      if (!Array.isArray(refs) || refs.length > 200 || refs.some((r) => typeof r !== 'string' || !SYSTEM_REF.test(r))) {
+        fail(422, 'INVALID_INPUT', `externalRefs: hasta 200 referencias de ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`, { field: 'externalRefs' });
       }
       return invoke('tasks.requests_status', { externalRefs: refs });
     },

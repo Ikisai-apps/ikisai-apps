@@ -1,4 +1,4 @@
--- Ikisai Tasks · puente con Feedback, en nombre de quién (docs/tasks/API.md §22.2). Toca solo el schema tasks.
+-- Ikisai Tasks · peticiones de sistema (Feedback y Booking) y en nombre de quién (docs/tasks/API.md §22.2). Toca solo el schema tasks.
 -- 1. tasks.requests.on_behalf_of ({kind: internal|organizer|guest, report_code}) y tasks.tasks.external_on_behalf
 --    (su kind): metadato de quién informó, nunca el actor (escribe la identidad de servicio de Feedback, de Core).
 --    Inmutables y parte del origen de la tarea.
@@ -556,20 +556,25 @@ begin
   end if;
 end $$;
 
--- La identidad de servicio de Feedback (la crea Core, migración 0067: perfil `kind = 'service'` con
--- `service_name = 'feedback'` y pertenencia a Tasks). Acción de sistema para la ruta de worker: null mientras no exista
--- (ni la columna), para que la ruta responda 503 SERVICE_NOT_READY en vez de fallar.
-create or replace function tasks.feedback_actor(p jsonb)
+-- Identidades de servicio de Core (migraciones 0067 y 0068: perfil `kind = 'service'` con `service_name` y pertenencia a
+-- Tasks), para las rutas de worker (§22.2). Acción de sistema, solo para los servicios de la lista: null mientras no
+-- exista (ni la columna), para que la ruta responda 503 SERVICE_NOT_READY en vez de fallar.
+create or replace function tasks.service_actor(p jsonb)
 returns jsonb language plpgsql stable as $$
-declare v_actor uuid;
+declare
+  v_name text := p->'args'->>'name';
+  v_actor uuid;
 begin
+  if v_name is null or v_name not in ('feedback', 'booking') then
+    perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'unknown service'));
+  end if;
   execute 'select pr.user_id from core.profiles pr join core.memberships m on m.user_id = pr.user_id and m.app = ''tasks''
-           where pr.kind = ''service'' and pr.service_name = ''feedback'' limit 1' into v_actor;
+           where pr.kind = ''service'' and pr.service_name = $1 limit 1' into v_actor using v_name;
   return jsonb_build_object('actor', v_actor);
-exception when undefined_column or check_violation or invalid_text_representation then
+exception when undefined_column then
   return jsonb_build_object('actor', null);
 end $$;
-select core.allow_read('tasks', 'tasks.feedback_actor', 'action', '{}', false);
+select core.allow_read('tasks', 'tasks.service_actor', 'action', '{}', false);
 
 do $$
 declare f text;

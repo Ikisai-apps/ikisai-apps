@@ -1203,7 +1203,7 @@ Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de s
   - `kind` puede ser `feedback.space.{damage, cleaning, missing, utilities, safety, other}` o `feedback.event.{setup, accommodation, cleaning, food, technical, operation, other}`.
   - Sin `project_id | tab_id`: decide la regla del usuario y, sin regla, va a «Por clasificar».
 - **Quién escribe:** la identidad de servicio de Feedback (`core.service_actor('feedback')`, de Core, migración `0067`), por `core.commit` con `tasks.request_task`.
-  - La ruta la obtiene con la acción de sistema `tasks.feedback_actor` (migración `0311`), que la busca en `core.profiles` (`kind = 'service'`, `service_name = 'feedback'`, con pertenencia a Tasks). No llama a `core.service_actor` porque el lint de migraciones solo deja usar los ayudantes de `core` de su lista.
+  - La ruta la obtiene con la acción de sistema `tasks.service_actor` (migración `0311`), que la busca en `core.profiles` (`kind = 'service'`, `service_name = 'feedback'`, con pertenencia a Tasks). No llama a `core.service_actor` porque el lint de migraciones solo deja usar los ayudantes de `core` de su lista.
   - Mientras no exista: `503 SERVICE_NOT_READY`.
 - **`on_behalf_of`** es un metadato, nunca el actor. Se guarda en `tasks.requests.on_behalf_of` y, su `kind`, en `tasks.tasks.external_on_behalf`.
   - Los dos son inmutables y forman parte del origen: solo se fijan por el procedimiento o al clasificar la petición.
@@ -1213,9 +1213,18 @@ Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de s
   - `status` es el de §22.3.
 - **Idempotente por `external_ref`:** un reintento devuelve lo que hay sin tocar nada, y dos a la vez crean una sola petición.
 
+**Orígenes de sistema (ampliación de Core, ronda del mismo día):** la ruta acepta una lista cerrada de pares `(source, kind)`, y cada par escribe con su identidad de servicio.
+
+| `source` | `kind` | Servicio (Core) | `external_url` | `on_behalf_of` |
+|---|---|---|---|---|
+| `feedback` | `feedback.space.*`, `feedback.event.*` | `feedback` (`0067`) | `https://tasks.ikisai.com/#/feedback/<código>` | obligatorio |
+| `booking` | `booking.ses_deadline` | `booking` (`0068`) | `https://booking.ikisai.com/#/…` | opcional |
+
+La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los servicios de la lista, busca la identidad. Añadir un origen es una fila más en `SYSTEM_SOURCES` (`tasks-api/requests.ts`) y en esa acción.
+
 ### 22.3 `POST /api/v1/worker/requests/status {externalRefs}` (construido)
 
-- Hasta 200 referencias, solo de `feedback:`.
+- Hasta 200 referencias, solo de `feedback:` o `booking:`.
 - Devuelve `{items: [{externalRef, status, taskId, doneAt, updatedAt}]}`. `status` puede ser:
   - `pending`: por clasificar;
   - `open`;

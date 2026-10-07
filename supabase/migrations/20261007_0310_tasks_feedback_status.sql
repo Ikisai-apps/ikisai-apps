@@ -1,5 +1,5 @@
 -- Ikisai Tasks · puente con Feedback, estado (docs/tasks/API.md §22.3; coordinacion/ampliacion/FEEDBACK.md §2.6).
--- Toca solo el schema tasks. tasks.requests_status: el estado de las peticiones de Feedback por su referencia,
+-- Toca solo el schema tasks. tasks.requests_status: el estado de las peticiones de sistema (Feedback y Booking) por su referencia,
 -- para que el worker de Feedback de Core copie «hecha» a sus reportes. Acción de sistema: solo la lanza la ruta de
 -- worker `worker/requests/status` (clave IKISAI_WORKER_KEY), nunca una persona ni un agente. Solo lectura y solo
 -- estados: ni títulos ni notas.
@@ -10,8 +10,8 @@ declare
   v_out jsonb;
 begin
   if jsonb_typeof(v_refs) <> 'array' or jsonb_array_length(v_refs) > 200
-     or exists (select 1 from jsonb_array_elements(v_refs) x where jsonb_typeof(x) <> 'string' or (x #>> '{}') !~ '^feedback:.{1,150}$') then
-    perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'externalRefs: up to 200 references of source feedback'));
+     or exists (select 1 from jsonb_array_elements(v_refs) x where jsonb_typeof(x) <> 'string' or (x #>> '{}') !~ '^(feedback|booking):.{1,150}$') then
+    perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'externalRefs: up to 200 references of source feedback or booking'));
   end if;
   select coalesce(jsonb_agg(jsonb_build_object(
       'externalRef', ref,

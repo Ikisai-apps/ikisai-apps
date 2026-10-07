@@ -225,6 +225,8 @@ test('puente con Feedback (§22.3): worker/requests/status da el estado por refe
 });
 
 test('puente con Feedback (§22.2): worker/requests/task escribe como la identidad de servicio, con quién informó como metadato', async () => {
+  const status = (body: unknown) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
   const post = (body: unknown, key: string | null = WORKER_KEY) => app.handler(new Request('http://localhost/api/v1/worker/requests/task', {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Ikisai-Worker-Key': key } : {}) }, body: JSON.stringify(body) }));
   const report = (code: string, extra: Record<string, unknown> = {}) => ({
@@ -266,6 +268,17 @@ test('puente con Feedback (§22.2): worker/requests/task escribe como la identid
     report('FB_1', { on_behalf_of: { kind: 'vecino', report_code: 'FB_1' } }), report('FB_1', { on_behalf_of: { kind: 'guest', report_code: 'FB_1', name: 'Juan' } }),
     report('FB_1', { tab_id: TAB }),
   ]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
+  // Booking: el plazo de SES, desde su worker, con su propia identidad de servicio y sin on_behalf_of.
+  const ses = { source: 'booking', kind: 'booking.ses_deadline', kind_label: 'SES · Plazo', external_ref: 'SES-2026-10-12-RES42', title: 'Enviar el parte de viajeros de la reserva 42',
+    external_url: 'https://booking.ikisai.com/#/reservas/42/ses' };
+  assert.equal((await post(ses)).status, 503, 'sin la identidad de Booking');
+  await simulateServiceIdentity(app.t.db, uuid(), 'booking');
+  const booked = await post(ses);
+  assert.equal(booked.status, 200);
+  assert.equal(((await booked.json()) as any).status, 'pending');
+  assert.equal((await rows('tasks.requests')).find((x) => x.external_ref === 'booking:SES-2026-10-12-RES42').on_behalf_of, null);
+  for (const bad of [{ ...ses, kind: 'booking.otra' }, { ...ses, external_url: 'https://tasks.ikisai.com/#/x' }, { ...ses, source: 'central' }]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
+  assert.equal((await status({ externalRefs: ['booking:SES-2026-10-12-RES42'] })).status, 200);
   assert.equal((await post(report('FB_1'), null)).status, 401);
   assert.equal((await post(report('FB_1'), 'otra')).status, 401);
   // Nadie más fija quién informó: ni por commands en una tarea, ni cambiándolo después.
