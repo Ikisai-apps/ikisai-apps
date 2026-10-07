@@ -169,6 +169,9 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'admin/access-log', handler: ({ ctx, url }) => admin.accessLog(ctx, url.searchParams) },
       { method: 'GET', pattern: 'admin/agents', handler: ({ ctx }) => admin.agents(ctx) },
       { method: 'DELETE', pattern: 'admin/agents/:keyId', handler: ({ ctx, params }) => admin.revokeAgent(ctx, params.keyId ?? '') },
+      { method: 'POST', pattern: 'admin/accounts/:userId/password', handler: ({ ctx, params }) => admin.resetPassword(ctx, params.userId ?? '') },
+      { method: 'POST', pattern: 'admin/accounts/:userId/disable', handler: ({ ctx, params }) => admin.setDisabled(ctx, params.userId ?? '', true) },
+      { method: 'POST', pattern: 'admin/accounts/:userId/enable', handler: ({ ctx, params }) => admin.setDisabled(ctx, params.userId ?? '', false) },
     );
   }
   routes.push(...(config.routes ?? []));

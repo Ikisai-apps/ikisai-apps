@@ -87,5 +87,25 @@ export function createAdmin(supabase: Supabase) {
     return supabase.rpc('core_admin_revoke_agent_key', { p_actor: ctx.user.id, p_key: keyId });
   }
 
-  return { accounts, setMembership, invite, accessLog, agents, revokeAgent };
+  /** Contraseña temporal nueva (la persona la cambia al entrar); revoca sus pases de sesión única. */
+  async function resetPassword(ctx: RequestContext, userId: string) {
+    human(ctx);
+    if (!UUID.test(userId)) fail(422, 'INVALID_OPERATION', 'userId inválido.');
+    await supabase.rpc('core_admin_account_event', { p_actor: ctx.user.id, p_user: userId, p_event: 'password_reset' });
+    const bytes = new Uint8Array(18); crypto.getRandomValues(bytes);
+    const temporaryPassword = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '');
+    await supabase.remote('/auth/v1/admin/users/' + userId, { service: true, method: 'PUT', body: { password: temporaryPassword } });
+    return { userId, temporaryPassword };
+  }
+
+  /** Desactiva (sin acceso a ninguna app, sin borrar nada) o reactiva una cuenta. */
+  async function setDisabled(ctx: RequestContext, userId: string, disabled: boolean) {
+    human(ctx);
+    if (!UUID.test(userId)) fail(422, 'INVALID_OPERATION', 'userId inválido.');
+    await supabase.rpc('core_admin_account_event', { p_actor: ctx.user.id, p_user: userId, p_event: disabled ? 'account_disabled' : 'account_enabled' });
+    await supabase.remote('/auth/v1/admin/users/' + userId, { service: true, method: 'PUT', body: { ban_duration: disabled ? '876000h' : 'none' } });
+    return { userId, disabled };
+  }
+
+  return { accounts, setMembership, invite, accessLog, agents, revokeAgent, resetPassword, setDisabled };
 }
