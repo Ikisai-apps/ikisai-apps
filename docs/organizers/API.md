@@ -50,9 +50,9 @@ Privacidad de los huéspedes (Booking §16.3, ya aplicada por `booking.portal_gu
 | `POST auth/sso`, `refresh`, `logout` | los gestiona `sync-client` |
 | `GET me`, `GET bootstrap` | nombre de la persona y sus ámbitos |
 | `GET apps` | lanzador del kit (catálogo) |
-| `GET read/booking.portal_reservations` | Mis retiros |
-| `GET read/booking.portal_guests?reservation_id=` | asistentes de un retiro |
-| `GET read/booking.portal_kitchen_summary?reservation_id=` | resumen de cocina |
+| `POST read/booking.portal_reservations {}` | Mis retiros (las lecturas con argumentos van por `POST read/:name` con los `args` en el cuerpo; `GET read` solo admite filtros `where[…]` de vistas) |
+| `POST read/booking.portal_guests {reservation_id}` | asistentes de un retiro |
+| `POST read/booking.portal_kitchen_summary {reservation_id}` | resumen de cocina |
 | `POST invoke/booking.portal_add_guest` · `portal_update_guest` · `portal_remove_guest` · `portal_set_restrictions` | escrituras (§6.2) |
 | `POST portal-links {app: 'guests', scope: {reservation_id, guest_id}, person: {name, email?}, label}` | enlace personal de un huésped → `{linkId, url, validUntil, shownOnce}` |
 | `GET portal-links?reservation=` | enlaces de huésped de la reserva: `lastUsedAt` dice si el huésped lo ha abierto |
