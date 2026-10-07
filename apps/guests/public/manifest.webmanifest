@@ -1,0 +1,17 @@
+{
+  "name": "Ikisai Guests",
+  "short_name": "Guests",
+  "description": "Tu estancia en Ikisai: tus datos, tu alimentación, la firma del registro e información práctica.",
+  "lang": "es",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef2ee",
+  "theme_color": "#3f5a4a",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f6f5c"/>
+      <stop offset="1" stop-color="#2f4538"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <!-- Provisional hasta el icono de UI (U4): una puerta abierta con luz cálida -->
+  <path d="M176 400V152a24 24 0 0 1 24-24h112a24 24 0 0 1 24 24v248" fill="none" stroke="#fffdf8" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M200 400V160l96-20v260z" fill="#c9a24a"/>
+  <circle cx="272" cy="280" r="12" fill="#fffdf8"/>
+  <path d="M140 400h232" stroke="#fffdf8" stroke-width="22" stroke-linecap="round"/>
+</svg>

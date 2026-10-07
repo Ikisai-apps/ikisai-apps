@@ -1,0 +1,103 @@
+/* Ikisai Guests · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
+   Público externo, móvil primero (390 px): una columna cómoda de leer, botones grandes, un paso por pantalla. */
+
+.muted{color:var(--muted)}
+.small{font-size:var(--text-sm,.875rem)}
+.plainlist{margin:0;padding-left:18px}
+.plainlist li{margin:4px 0}
+a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.wide{width:100%}
+.linklike{display:inline-flex;align-items:center;gap:6px;padding:0;margin:0 0 12px;border:0;background:none;color:var(--accent-deep,var(--ink));font-weight:600;text-decoration:underline;cursor:pointer}
+.backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
+.backlink:hover{color:var(--ink)}
+
+/* Sin navegación inferior en la fase 1 (Inicio es el centro): el kit pinta la barra vacía. */
+.nonav>.nav{display:none}
+.nonav .main{padding-bottom:48px}
+@media (min-width:1024px){ .main{max-width:720px;margin-inline:auto} }
+
+/* Entrada */
+.gentry .login-card h2{margin:18px 0 6px;font-size:1.2rem}
+.gentry-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.gentry #entryContact{font-weight:600}
+.gentry-foot{margin-top:16px}
+.glang{min-height:36px;padding:4px 8px;border-radius:999px;font-size:var(--text-sm,.875rem)}
+
+/* Estado de guardado global */
+.gsavestate{margin:0;padding:4px 16px;font-size:var(--text-sm,.875rem);text-align:center}
+.gsavestate:empty{display:none}
+.gsavestate[data-state="offline"]{background:var(--warn-soft,var(--paper-2))}
+.gsavestate[data-state="error"]{color:var(--alert,var(--ink))}
+.gsavestate[data-state="saved"]{color:var(--ok,var(--ink))}
+
+/* Cabecera de cada pantalla: título arriba y la explicación debajo (en el kit van en fila). */
+.pagehead{display:block}
+.pagehead p{font-size:var(--text-sm,.875rem)}
+
+/* Tarjetas */
+.gcard{padding:14px 16px;margin:0 0 12px}
+.gcard h3{margin:0 0 8px;font-size:1rem}
+.gcards{display:grid;gap:12px;margin:0 0 12px}
+.gcards .gcard{margin:0}
+.glink{display:flex;align-items:center;gap:12px;width:100%;color:var(--ink);text-decoration:none;text-align:left;font:inherit;cursor:pointer}
+.glink>span{display:flex;flex-direction:column;gap:2px}
+.ghead{margin:4px 0 14px}
+.ghead h2{margin:2px 0 4px;font-family:var(--font-display,inherit);font-size:1.5rem}
+.ghead p{margin:0}
+
+/* Lo que te falta */
+.gtasks{list-style:none;margin:0;padding:0}
+.gtask{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none}
+.gtasks li:last-child .gtask{border-bottom:0}
+.gtask-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:999px;background:var(--paper-2);flex:none}
+.gtask.done .gtask-icon{background:var(--ok-soft,var(--paper-2));color:var(--ok,var(--ink))}
+.gtask-text{display:flex;flex-direction:column;gap:2px;flex:1}
+.gsuggest{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:8px 0 24px}
+
+/* Formularios */
+.gform{display:block}
+.ggroup{padding:4px 16px;margin:0 0 12px}
+.ggroup>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;font-weight:700;cursor:pointer}
+.gsummary-state{font-weight:600;font-size:var(--text-sm,.875rem)}
+.gsummary-state[data-state="missing"]{color:var(--alert,var(--ink))}
+.gsummary-state[data-state="done"]{color:var(--ok,var(--ink))}
+.gfield{display:grid;gap:4px;margin:0 0 14px}
+.gfield>label{font-weight:600}
+.gfield input,.gfield select,.gfield textarea{width:100%;min-height:44px}
+.gfield-meta{display:flex;flex-wrap:wrap;gap:4px 10px;min-height:1.1em;font-size:var(--text-sm,.875rem)}
+.gfield-state{color:var(--muted)}
+.gfield-state[data-state="saved"]{color:var(--ok,var(--ink))}
+.gfield-state[data-state="error"],.gfield-state[data-state="invalid"]{color:var(--alert,var(--ink));font-weight:600}
+.gsource{color:var(--accent-deep,var(--ink));font-weight:600}
+.gsource:empty,.ghint:empty{display:none}
+.ghint{color:var(--alert,var(--ink))}
+.gcountry{display:grid;gap:8px}
+.gswitch{display:flex;align-items:center;gap:10px;font-weight:600;min-height:44px}
+.gswitch input{width:22px;height:22px;flex:none}
+.gautosave{display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0 24px}
+
+/* Alimentación */
+.grestrictions{list-style:none;margin:0 0 8px;padding:0}
+.grestriction{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.grestriction>span{display:flex;flex-wrap:wrap;gap:2px 6px}
+.gnote{flex-basis:100%}
+
+/* Firma */
+.gdl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 8px}
+.gdl dt{color:var(--muted)}
+.gdl dd{margin:0}
+.gpad{display:block;width:100%;height:180px;margin:8px 0;border:2px dashed var(--line);border-radius:var(--radius,12px);background:var(--paper);color:var(--ink);touch-action:none;cursor:crosshair}
+.gdone{display:flex;align-items:center;gap:10px;color:var(--ok,var(--ink));font-weight:600}
+.gdone p{margin:0}
+
+/* Textos de Central */
+.gtext p{margin:0 0 8px;white-space:pre-line}
+.gspanish{font-style:italic}
+
+/* Conflictos y ayuda */
+.gconflict p{margin:4px 0}
+.gmine{list-style:none;padding:0}
+.gmine li{padding:6px 0;border-bottom:1px solid var(--line)}
+.gprivacy h2{margin-top:0}
+.gprivacy>*+*{margin-top:12px}
+.gtext p:last-child{margin-bottom:0}
