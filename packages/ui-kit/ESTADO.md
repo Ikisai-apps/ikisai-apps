@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.18.4: `feedbackId` en `renderConflict(s)` (con hijos en el catálogo) y `onPrint` en `createPrintView` (petición de Food).
 - v0.18.3: arreglos del piloto de Booking (FB_2026_002 pin, FB_2026_003 punto de la marca) y nodo en los pasos «abrió».
 - v0.18.2: `container` en hoja, diálogo, centro y aviso; reglas de `<html>` en hoja global inyectada; `data-fb-tab`; catálogo con `fbMark` y ternarios (petición de Tasks y Finance).
 - v0.18.1: pista de ruta (`route`) en `usage/batch` para «Ir al sitio» del Revisor › Uso.

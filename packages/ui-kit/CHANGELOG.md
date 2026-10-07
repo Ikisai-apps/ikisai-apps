@@ -1,5 +1,12 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.4 · 7 de octubre de 2026
+
+Dos ganchos que pide Food:
+- `renderConflict(s)({ feedbackId: 'food.menu.conflicto' })`: la tarjeta lleva la base y sus botones `<base>.mantener_mia`, `.tomar_servidor`, `.combinar`, `.guardar_combinacion` y `.volver` (con etiqueta), también al repintar con «Combinar campo a campo». `CONFLICT_MARKS` exportado. El catálogo (`feature-catalog.mjs`) añade esos hijos cuando ve la base literal dentro de `renderConflict(s)`.
+- `createPrintView({ onPrint })`: se llama al pulsar «Imprimir» (o con `print()`) antes del diálogo, para `usage.track('…imprimir')` sin escuchar el DOM.
+- Prueba `v24`.
+
 ## 0.18.3 · 7 de octubre de 2026
 
 Primeros reportes reales del piloto de Booking en Android (build 251):

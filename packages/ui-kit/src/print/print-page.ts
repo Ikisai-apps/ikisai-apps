@@ -162,6 +162,8 @@ export interface PrintViewOptions {
   printLabel?: string;
   /** Acciones extra en la barra (solo pantalla). */
   actions?: HTMLElement[];
+  /** Se llama al pulsar «Imprimir» (o con `print()`), antes de abrir el diálogo: p. ej. `() => usage.track('food.menu.imprimir')`. */
+  onPrint?: () => void;
 }
 
 export interface PrintView {
@@ -180,6 +182,7 @@ export function createPrintView(spec: PrintPageSpec, options: PrintViewOptions =
   const bar = el('div', { class: 'print-actions' }, back, ...(options.actions ?? []), printButton);
   const element = el('div', { class: 'print-view' }, bar, page);
   async function print(): Promise<void> {
+    try { options.onPrint?.(); } catch { /* la medición nunca bloquea la impresión */ }
     printButton.disabled = true;
     try {
       await printElement(page);

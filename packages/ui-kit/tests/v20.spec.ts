@@ -180,5 +180,8 @@ test.describe('ui-kit v0.17 · catálogo de funciones al compilar', () => {
     // Ternario entre dos ids fijos: las dos ramas, con su etiqueta.
     const ternary = extractFeatures("openForm({ feedbackId: guest ? 'booking.huespedes.ficha' : 'booking.huespedes.nuevo', feedbackLabel: guest ? 'Ficha' : 'Nuevo huésped' });");
     expect(ternary.features.map((f: { id: string; label: string }) => [f.id, f.label])).toEqual([['booking.huespedes.ficha', 'Ficha'], ['booking.huespedes.nuevo', 'Nuevo huésped']]);
+    // Componentes del kit con base (`feedbackId` dentro de renderConflicts): la base y sus botones.
+    const conflicts = extractFeatures("replace(host, ...renderConflicts(list, { onResolve: resolve, feedbackId: 'booking.reserva.conflicto' }));").features.map((f: { id: string }) => f.id);
+    expect(conflicts).toEqual(['booking.reserva.conflicto', 'booking.reserva.conflicto.mantener_mia', 'booking.reserva.conflicto.tomar_servidor', 'booking.reserva.conflicto.combinar', 'booking.reserva.conflicto.guardar_combinacion', 'booking.reserva.conflicto.volver']);
   });
 });

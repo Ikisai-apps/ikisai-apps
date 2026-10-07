@@ -31,7 +31,7 @@ export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, 
 export { openSheet, closeSheet, currentSheet, type Sheet, type SheetOptions } from './overlay/sheet.ts';
 export { confirmDialog, alertDialog, type DialogOptions } from './overlay/dialog.ts';
 export { trapFocus, focusFirst, focusables, lockScroll } from './overlay/focus.ts';
-export { renderConflict, renderConflicts, SYSTEM_COLUMNS, type ConflictDecision, type ConflictOptions } from './sync/conflict.ts';
+export { renderConflict, renderConflicts, CONFLICT_MARKS, SYSTEM_COLUMNS, type ConflictDecision, type ConflictOptions } from './sync/conflict.ts';
 export { renderRejected, renderRejectedList, type RejectedOptions } from './sync/rejected.ts';
 export { listRow, renderList, type ListRowSpec, type ListSpec, type ListOptions } from './list.ts';
 export { createThemeToggle, createThemeSelect } from './theme-switch.ts';
