@@ -132,11 +132,11 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
         const entity = row && (row.legal_name || row.tax_id) ? row : null;
         let logoUrl: string | null = null;
         if (entity?.logo_bucket === ENTITY_LOGO_BUCKET && typeof entity.logo_path === 'string' && entity.logo_path) {
-          // dónde vive el archivo lo dice su fila de core.files (contrato §3.9); la proyección de Central lo trae en logo_storage_provider
-          logoUrl = await storage.readUrl({ bucket: ENTITY_LOGO_BUCKET, path: entity.logo_path, storage_provider: entity.logo_storage_provider ?? null }, 600).catch(() => null);
+          // dónde vive el archivo lo dice su fila de core.files (contrato §3.9); la proyección de Central lo trae en logo_provider
+          logoUrl = await storage.readUrl({ bucket: ENTITY_LOGO_BUCKET, path: entity.logo_path, storage_provider: entity.logo_provider ?? null }, 600).catch(() => null);
         }
         if (!entity) return { entity: null, logoUrl: null };
-        const { logo_bucket: _b, logo_path: _p, logo_storage_provider: _s, ...visible } = entity;
+        const { logo_bucket: _b, logo_path: _p, logo_provider: _s, ...visible } = entity;
         return { entity: visible, logoUrl };
       },
     },
