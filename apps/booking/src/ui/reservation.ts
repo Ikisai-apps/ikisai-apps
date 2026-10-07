@@ -14,7 +14,7 @@ import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirm
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
 import { createPortalBlock } from './portal.ts';
-import { renderSesBlock } from './ses.ts';
+import { createSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
@@ -145,6 +145,7 @@ export function mountReservation(id: string): ViewMount {
     // cada movimiento lleva revisiones al día y el foco del asa no se pierde (receta de Food).
     const staffBlock = createStaffBlock();
     const portalBlock = createPortalBlock();
+    const sesBlock = createSesBlock();
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
@@ -374,7 +375,7 @@ export function mountReservation(id: string): ViewMount {
             insertFields: { event_id: liveEvent.id, position: checklist.length + 1 } }) }, 'Añadir tarea')) : null,
       ]);
 
-      const sesCard = renderSesBlock({ client, reservation, finance, editable, run });
+      const sesCard = sesBlock.render({ client, reservation, event: liveEvent, finance, editable, run });
       const guestMode = guestModeOf(reservation);
       const guestsBlock = !liveEvent ? null : block('blockGuests', 'Huéspedes',
         guestMode === 'ninguno' ? el('p', { class: 'hint', id: 'guestsNone' }, 'Esta reserva no pide datos de huéspedes.')
@@ -505,6 +506,6 @@ export function mountReservation(id: string): ViewMount {
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));
     // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); };
+    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); sesBlock.destroy(); };
   };
 }
