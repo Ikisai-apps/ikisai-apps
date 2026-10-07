@@ -108,3 +108,39 @@ test('portales · un miembro del portal solo se ve a sí mismo en members', asyn
   const members = await callPortal(organizers, 'organizers', '/api/v1/members', { token: orgSession });
   assert.equal(members.status, 200); assert.equal(members.data.length, 1); assert.equal(members.data[0].displayName, 'Paco');
 });
+
+test('portales · una acción de portal escribe en la app dueña con su propio lote (P20); fuera de un portal, no', async () => {
+  await app.t.db.exec(`create table public.test_notes (id uuid primary key, body text, revision bigint not null default 1, created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(), updated_by uuid, deleted_at timestamptz);
+    select core.register_table('booking', 'public', 'test_notes', array['body']);
+    create function public.test_portal_write(p_ctx jsonb) returns jsonb language plpgsql as $$
+      begin return core.apply_portal_operations('booking', jsonb_build_array(jsonb_build_object('op', 'insert', 'table', 'public.test_notes', 'id', p_ctx->'args'->>'id', 'fields', jsonb_build_object('body', p_ctx->'args'->>'body'))))
+        || jsonb_build_object('appAfter', current_setting('core.app', true)); end $$;
+    select core.allow_read('organizers', 'public.test_portal_write', 'action', '{editor}');
+    select core.allow_read('booking', 'public.test_portal_write', 'action', '{editor,owner}');`);
+  const before = await app.t.db.query<{ cursor: string }>(`select cursor::text from core.app_state where app = 'booking'`);
+  const id = crypto.randomUUID();
+  const out = await callPortal(organizers, 'organizers', '/api/v1/invoke/public.test_portal_write', { token: orgSession, body: { id, body: 'hola' } });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  const result = out.data.result ?? out.data;
+  assert.equal(result.appAfter, 'organizers', 'el contexto del portal se restaura');
+  assert.equal(String(result.cursor), String(BigInt(before.rows[0]!.cursor) + 1n));
+  const change = await app.t.db.query<{ actor_id: string; app: string }>(`select actor_id::text, app from core.changes where row_id = $1`, [id]);
+  assert.equal(change.rows[0]!.app, 'booking', 'el cambio llega a Booking por changes');
+  // El personal de Booking no puede usar esta vía (no es un portal).
+  const staff = await app.call('/api/v1/invoke/public.test_portal_write', { body: { id: crypto.randomUUID(), body: 'x' } });
+  assert.equal(staff.status, 403, JSON.stringify(staff.data));
+});
+
+test('portales · revocar por ámbito anula los enlaces y quita el permiso de la sesión abierta (P21)', async () => {
+  const g2 = crypto.randomUUID();
+  const link = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: g2 }, person: { name: 'Luis' } } });
+  assert.equal(link.status, 200, JSON.stringify(link.data));
+  const entered = await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } });
+  assert.equal(entered.status, 200);
+  const n = await app.t.db.query<{ n: number }>(`select core.portal_revoke_scope('guests', 'guest_id', $1) n`, [g2]);
+  assert.equal(n.rows[0]!.n, 1);
+  assert.equal((await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } })).data.error.code, 'LINK_INVALID');
+  const boot = await callPortal(guests, 'guests', '/api/v1/bootstrap', { token: entered.data.token });
+  assert.ok(!(boot.data.membership?.scopes?.grants ?? []).some((g: any) => g.guest_id === g2), 'la sesión abierta pierde el permiso');
+});
