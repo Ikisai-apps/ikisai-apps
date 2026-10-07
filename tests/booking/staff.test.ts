@@ -56,7 +56,8 @@ test('personal · dominio: horas, turnos sin horas reales y refuerzos sin cubrir
   assert.deepEqual(fields({ actual_hours: 2.555 }), ['actual_hours']);
   assert.deepEqual(fields({ work_date: '2027-03-05', planned_hours: 25 }), ['planned_hours']);
   assert.deepEqual(fields({ planned_hours: 25 }), [], 'sin día concreto, el total del evento puede pasar de 24');
-  assert.deepEqual(fields({ person_ref_app: 'encarna' }), ['person_ref_id']);
+  assert.deepEqual(fields({ person_ref_app: 'central' }), ['person_ref_id']);
+  assert.deepEqual(fields({ person_ref_app: 'encarna', person_ref_id: 'P-1' }), ['person_ref_app'], 'la app es Central; encarna es solo su alias');
   assert.deepEqual(fields({ function: 'jardineria' }), ['function']);
   assert.deepEqual(validateFields(NEEDS, { event_id: uuid(), need_type: 'cocina', persons: 0 }, 'insert').map((i) => i.details.field), ['persons']);
 });
@@ -76,6 +77,7 @@ test('personal · turnos y refuerzos: alta, horas reales, cubrir a mano; SQL rec
 
   // Negativas, más de 24 h en un día y el turno que cambia de evento: no pasan.
   assert.equal((await commands([shift(eventId, { planned_hours: -2 })])).status, 422);
+  await assert.rejects(app.t.db.query(`insert into booking.staff_assignments (event_id, person_name, function, person_ref_app, person_ref_id) values ($1, 'X', 'cocina', 'encarna', 'P-1')`, [eventId]));
   assert.equal((await commands([shift(eventId, { work_date: '2027-03-06', actual_hours: 30 })])).status, 422);
   const other = await createEvent('2027-03-20', '2027-03-21');
   assert.equal((await commands([{ op: 'update', table: STAFF, id: shiftId, expectedRevision: await revision(STAFF, shiftId), fields: { event_id: other.eventId } }])).status, 422);
@@ -94,7 +96,7 @@ test('personal · proyección para Invoices: horas por función sin nombres; Foo
   const named = uuid(); const linked = uuid();
   await ok([
     shift(eventId, { person_name: 'Nombre Que No Sale', function: 'acogida_grupo', planned_hours: 4, actual_hours: 3.5 }, named),
-    shift(eventId, { person_name: 'Con Ficha', person_ref_app: 'encarna', person_ref_id: 'P-17', planned_hours: 2 }, linked),
+    shift(eventId, { person_name: 'Con Ficha', person_ref_app: 'central', person_ref_id: 'P-17', planned_hours: 2 }, linked),
   ]);
   const invoicesUser = await app.t.createUser();
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('invoices', $1, 'reader')`, [invoicesUser]);
