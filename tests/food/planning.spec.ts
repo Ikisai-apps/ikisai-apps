@@ -8,20 +8,22 @@ import { build, preview, type PreviewServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freePort } from './helpers.ts';
+import { freePort, day, TIME_ZONE } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/food/vite.config.ts');
 const USER = { email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' };
-const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const EVENT_ID = randomUUID();
 const MENU_ID = randomUUID();
+
+// La app calcula «hoy» con la fecha local del navegador: la misma zona que `day()` y el servidor.
+test.use({ timezoneId: TIME_ZONE });
 
 let api: FakeApi;
 const TOMATO_ID = randomUUID();
 // Compras de Invoices: 10 kg de tomate por 25 € (2,50 €/kg). El arroz no tiene compras: el coste lo dice.
-const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+const ago = (days: number) => day(-days);
 const PURCHASES = [{ allocation_id: randomUUID(), target_kind: 'ingredient', target_id: TOMATO_ID, invoice_date: ago(5), supplier_name: 'Frutería', line_description: 'Tomate pera', allocated_quantity: 10, unit: 'Kg', allocated_amount: 25 }];
 let server: PreviewServer;
 let baseURL: string;

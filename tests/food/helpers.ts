@@ -2,7 +2,15 @@
 import { createServer } from 'node:net';
 import type { TestApp } from '../../packages/test-kit/src/http.ts';
 
-export const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+/** Zona de la casa: el servidor cuenta los días en hora de Madrid, y las pruebas de navegador fijan la misma zona. */
+export const TIME_ZONE = 'Europe/Madrid';
+const MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/**
+ * Fecha AAAA-MM-DD de hoy + `offset` días en hora de Madrid. En UTC, entre las 00:00 y las 02:00 de Madrid saldría el día
+ * anterior y las pruebas que comparan con «hoy» del servidor fallarían cada noche.
+ */
+export const day = (offset: number) => MADRID_DATE.format(new Date(Date.now() + offset * 86400000));
 
 export interface SeedRestriction {
   type: string;
