@@ -19,6 +19,8 @@ let server: PreviewServer;
 let baseURL: string;
 
 test.beforeAll(async () => {
+  // Compilar la app con Vite puede pasar de los 90 s con la máquina cargada (fallo visto con @smoke en paralelo).
+  test.setTimeout(180_000);
   api = await startCentralServer();
   process.env.VITE_API_PROXY = api.url;
   await build({ configFile, logLevel: 'silent' });
@@ -43,7 +45,7 @@ async function login(page: Page, email: string, name: string): Promise<void> {
   await expect(page.getByRole('heading', { name: `Hola, ${name}` })).toBeVisible();
 }
 
-test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin editar', async ({ page, browser }) => {
+test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin editar @smoke', async ({ page, browser }) => {
   await login(page, 'owner@example.invalid', 'Owner');
   await page.locator('#homeEntity').click();
   await expect(page.getByText('Todavía no hay datos de la entidad')).toBeVisible();

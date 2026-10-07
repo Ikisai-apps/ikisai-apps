@@ -18,6 +18,8 @@ let server: PreviewServer;
 let baseURL: string;
 
 test.beforeAll(async () => {
+  // Compilar la app con Vite puede pasar de los 90 s con la máquina cargada (fallo visto con @smoke en paralelo).
+  test.setTimeout(180_000);
   api = await startCentralServer({ consent: false });
   process.env.VITE_API_PROXY = api.url;
   await build({ configFile, logLevel: 'silent' });
@@ -34,7 +36,7 @@ test.afterAll(async () => {
   await api?.close();
 });
 
-test('feedback · aviso de uso, centro «Sugerencias y QA», marcas de pantalla y usage.run', async ({ page, context }) => {
+test('feedback · aviso de uso, centro «Sugerencias y QA», marcas de pantalla y usage.run @smoke', async ({ page, context }) => {
   await page.goto(`${baseURL}/`);
   await page.getByLabel('Correo electrónico').fill('owner@example.invalid');
   await page.getByLabel('Contraseña').fill(api.password);
