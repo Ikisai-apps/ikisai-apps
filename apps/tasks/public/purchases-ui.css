@@ -27,3 +27,5 @@ html.dark .pstock.alert{color:#f0b58e}
 .pinvoice{display:block;padding:9px 12px;border:1px solid var(--line);border-radius:12px;color:var(--olive-dark);font-weight:700;text-decoration:none;background:var(--paper)}
 .pinvoice:hover{border-color:var(--olive)}
 html.dark .pinvoice{color:#d9e0c3}
+.pcard .pmeta a,#taskOrigin a{color:var(--olive-dark);font-weight:700}
+html.dark .pcard .pmeta a,html.dark #taskOrigin a{color:#d9e0c3}

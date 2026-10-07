@@ -181,3 +181,61 @@ test('tarea pedida desde otra app (§19): el editor dice de dónde viene', async
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('entradas (§20): por clasificar, mover a…, crear regla y mover las que esperaban, descartar', async () => {
+  const ask = (body: Record<string, unknown>) => server.app.call('/api/v1/requests/task', { body: { source: 'central', kind: 'central.compliance_due', kind_label: 'Vencimientos', ...body } });
+  const first = await ask({ external_ref: 'VTO_1', title: 'Renovar seguro', external_url: 'https://central.ikisai.com/#/cumplimiento/VTO_1' });
+  expect(first.data.routed, JSON.stringify(first.data)).toBe('pending');
+  const sync = async () => { await owner.evaluate(() => (window as any).syncNow?.()); await settled(owner); };
+  await sync();
+  await expect.poll(() => owner.evaluate(() => Sync.core.data['tasks.requests'].length)).toBeGreaterThan(0);
+  await owner.evaluate(() => (window as any).render());
+  // El menú lleva la entrada con su contador (en el móvil, dentro del menú; puede estar en un grupo plegado).
+  await expect(owner.locator('[data-menu-view="triage"]').first()).toContainText('Por clasificar · 1');
+  await owner.evaluate(() => (window as any).navigateView('triage'));
+  await expect(owner.locator('.inboxgroup h2')).toContainText('Central · Vencimientos');
+  await expect(owner.locator('[data-request-row] a')).toHaveAttribute('href', 'https://central.ikisai.com/#/cumplimiento/VTO_1');
+
+  // Mover a… la Entrada del área: se crea la tarea con su origen.
+  await owner.locator('[data-request-move]').click();
+  await owner.locator('#moveRequest').click();
+  await expect(owner.locator('.empty')).toContainText('Nada por clasificar');
+  await settled(owner);
+  const task = (await server.rows('tasks.tasks')).find((t) => t.id === first.data.task.id);
+  expect([task.external_kind, task.external_url]).toEqual(['central.compliance_due', 'https://central.ikisai.com/#/cumplimiento/VTO_1']);
+  await owner.evaluate((id) => (window as any).openTaskEditor(id), task.id);
+  await expect(owner.locator('#taskOrigin')).toContainText('Vencimientos');
+  await expect(owner.locator('#taskOrigin a')).toHaveAttribute('href', 'https://central.ikisai.com/#/cumplimiento/VTO_1');
+  await owner.evaluate(() => (window as any).closeSheet());
+
+  // Otra del mismo tipo: «Crear regla para este tipo» y mover también la que esperaba.
+  await ask({ external_ref: 'VTO_2', title: 'Revisar extintores' });
+  await sync();
+  await owner.evaluate(() => (window as any).navigateView('triage'));
+  await owner.locator('[data-route-new="central.compliance_due"]').click();
+  await expect(owner.locator('#routeKind')).toBeDisabled();
+  await expect(owner.locator('#routeLabel')).toHaveValue('Vencimientos');
+  await owner.locator('#routeSave').click();
+  await owner.locator('#routeWaiting').click();
+  await expect(owner.locator('.empty')).toContainText('Nada por clasificar');
+  await settled(owner);
+  expect((await server.rows('tasks.request_routes')).map((r) => r.kind)).toEqual(['central.compliance_due']);
+  expect((await server.rows('tasks.requests')).find((r) => r.external_ref === 'central:VTO_2').status).toBe('routed');
+  // Con la regla, lo nuevo de ese tipo ya no pasa por «Por clasificar».
+  expect((await ask({ external_ref: 'VTO_3', title: 'Pasar la ITV' })).data.routed).toBe('rule');
+
+  // Descartar lo que no es trabajo.
+  await server.app.call('/api/v1/requests/task', { body: { source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_1', title: 'Prueba' } });
+  await sync();
+  await owner.evaluate(() => (window as any).navigateView('triage'));
+  await owner.locator('[data-request-dismiss]').click();
+  await settled(owner);
+  expect((await server.rows('tasks.requests')).find((r) => r.external_ref === 'booking:INC_1').status).toBe('dismissed');
+
+  // «Gestionar entradas» lista los tipos conocidos con su destino.
+  await owner.locator('#manageRoutes').click();
+  await expect(owner.locator('[data-route-edit="central.compliance_due"]')).toContainText('Vencimientos');
+  await expect(owner.locator('[data-route-edit="booking.space_incident"]')).toContainText('Por clasificar');
+  await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
