@@ -23,7 +23,11 @@ begin
   return new;
 end $$;
 
-do $$
+-- La siembra va en una función: la migración la ejecuta solo si Invoices ya tiene miembros (producción). En una base recién
+-- creada (pruebas de PGlite, donde el núcleo comprueba el cursor inicial de la app) no siembra; las pruebas de Invoices
+-- la llaman explícitamente.
+create or replace function invoices.seed_series_2026()
+returns int language plpgsql as $$
 declare v_ops jsonb := '[]'::jsonb; s record;
 begin
   for s in select * from (values ('F', 'ordinaria', 'Facturas 2026 (continúa la hoja)', 2), ('R', 'rectificativa', 'Rectificativas 2026', 0)) as t(code, kind, label, last_number) loop
@@ -36,4 +40,11 @@ begin
   if jsonb_array_length(v_ops) > 0 then
     perform core.apply_migration_operations('invoices', 'migration:invoices-0219-series-2026', v_ops);
   end if;
+  return jsonb_array_length(v_ops);
+end $$;
+revoke all on function invoices.seed_series_2026() from public, anon, authenticated;
+
+do $$
+begin
+  if exists (select 1 from core.memberships where app = 'invoices') then perform invoices.seed_series_2026(); end if;
 end $$;

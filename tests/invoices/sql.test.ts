@@ -706,6 +706,9 @@ test('emisión (§14): borrador sin número, datos obligatorios, número correla
   const fmt = (d: string) => d.split('-').reverse().join('-');
   // Series de emisión: F y R vienen sembradas por la migración 0219 (continúan la hoja en 2026, F_03_26 y R_01_26)
   await rejected([insert('invoices.issued_series', uuid(), { code: 'X', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}' })], 'INVALID_FIELDS');
+  // En la base de pruebas la migración no siembra (sin miembros); se ejecuta como en producción y es idempotente
+  assert.equal((await app.t.db.query<{ n: number }>(`select invoices.seed_series_2026() n`)).rows[0]!.n, 2);
+  assert.equal((await app.t.db.query<{ n: number }>(`select invoices.seed_series_2026() n`)).rows[0]!.n, 0);
   const seeded = await rows('invoices.issued_series', (r) => ['F', 'R'].includes(r.code));
   assert.deepEqual(seeded.map((r) => [r.code, r.kind, r.format, r.valid_year, r.counter_year, r.counter_last]).sort(), [
     ['F', 'ordinaria', '{serie}_{n:2}_{aa}', 2026, 2026, 2], ['R', 'rectificativa', '{serie}_{n:2}_{aa}', 2026, 2026, 0]]);
