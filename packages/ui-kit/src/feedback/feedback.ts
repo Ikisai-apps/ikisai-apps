@@ -107,7 +107,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
     const on = modeOn();
     document.documentElement.classList.toggle('fb-mode', on);
     syncMarkHint();
-    if (on && !gesture) gesture = installFeedbackGesture({ onSignal: (target) => { void signal(target); }, enabled: () => modeOn() && !current && !currentVerify });
+    if (on && !gesture) gesture = installFeedbackGesture({ onSignal: (target) => { void signal(target); }, enabled: () => modeOn() && !current && !currentVerify && !document.documentElement.classList.contains('fb-capturing') });
     if (!on && gesture) { gesture.destroy(); gesture = null; }
     if (on && !verifyTimer) { void refreshVerify(); verifyTimer = setInterval(() => void refreshVerify(), VERIFY_EVERY_MS); }
     if (!on && verifyTimer) { clearInterval(verifyTimer); verifyTimer = null; }

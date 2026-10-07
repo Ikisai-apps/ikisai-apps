@@ -50,6 +50,10 @@ export interface AppLauncherOptions {
    * `() => openFeedbackCenter({ api, app, canEdit, feedback })`.
    */
   center?: () => void;
+  /** Etiqueta de la entrada; por defecto «Sugerencias y QA» (los portales: «Ayuda y sugerencias»). */
+  centerLabel?: string;
+  /** Línea pequeña bajo la etiqueta. */
+  centerText?: string;
 }
 
 /** Un interruptor del lanzador: `get` y `set` (como `FeedbackMode`). */
@@ -123,7 +127,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       portals.length ? el('h3', { class: 'launcher-group' }, 'Portales') : null,
       portals.length ? el('ul', { class: 'launcher-list', 'aria-label': 'Portales' }, ...portals.map((a) => row(a, current))) : null,
       options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
-        el('span', { class: 'launcher-text' }, el('strong', null, 'Sugerencias y QA'), el('small', null, 'Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')),
+        el('span', { class: 'launcher-text' }, el('strong', null, options.centerLabel ?? 'Sugerencias y QA'), el('small', null, options.centerText ?? (options.centerLabel ? 'Cuéntanos qué falla o qué mejorarías.' : 'Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.'))),
         icon('chevronRight', 16)) : null,
       options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.', 'Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo.') : null,
       options.review ? reviewSlot : null,

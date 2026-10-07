@@ -211,13 +211,33 @@ test.describe('ui-kit v0.15 · feedback: formulario progresivo de portales', () 
     await expect(page.locator('#fbPortalOut')).toHaveText(JSON.stringify({ answers: { about: 'event', eventCat: 'comida' }, message: 'La cena llegó fría', images: 0 }));
   });
 
-  test('rama Aplicación: pide señalar en la pantalla', async ({ page }) => {
+  test('rama Aplicación: señala una vez sin el interruptor y sigue con el comentario (C4 de Organizers)', async ({ page }) => {
     await fresh(page);
+    expect(await page.evaluate(() => document.documentElement.classList.contains('fb-mode'))).toBe(false);
     const form = page.locator('#fbPortal');
     await form.locator('.fb-choice', { hasText: 'Aplicación' }).click();
     await form.locator('.fb-choice', { hasText: 'Algo no funciona' }).click();
+    await form.locator('.fb-signal').click();
+    await expect(page.locator('.fb-capture-bar')).toContainText('Mantén pulsado sobre el lugar');
+    // Cancelar no responde el paso.
+    await page.locator('.fb-capture-cancel').click();
+    await expect(page.locator('.fb-capture-bar')).toHaveCount(0);
     await expect(form.locator('.fb-signal')).toBeVisible();
     await form.locator('.fb-signal').click();
-    await expect(page.locator('#fbPortalOut')).toHaveText('señalar');
+    await longPress(page, '#fbAction');
+    await expect(page.locator('.fb-capture-bar')).toHaveCount(0);
+    await expect(page.locator('.fb-composer')).toHaveCount(0);
+    await expect(page.locator('#fbClicks')).toHaveText('0');
+    await expect(form.locator('.fb-step[data-step="appWhere"] .fb-step-answer')).toContainText('Reserva › Huéspedes › Añadir huésped');
+    await form.locator('textarea').fill('No deja añadir');
+    await form.locator('.fb-send').click();
+    const out = JSON.parse(await page.locator('#fbPortalOut').textContent() ?? '{}');
+    expect(out.node).toEqual({ id: 'demo.reservation.guests.add', path: ['Reserva', 'Huéspedes', 'Añadir huésped'] });
+    expect(out.answers.appWhere).toBe('demo.reservation.guests.add');
+    // Cambiar el elemento vuelve a pedir que se señale.
+    // Con teclado: en la emulación móvil, tras desplazar, el clic por coordenadas cae en otra sección.
+    await form.locator('.fb-step[data-step="appWhere"] .fb-change').focus();
+    await page.keyboard.press('Enter');
+    await expect(form.locator('.fb-signal')).toBeVisible();
   });
 });

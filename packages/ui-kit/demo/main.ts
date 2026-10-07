@@ -864,14 +864,14 @@ const fbPortal = createFeedbackProgressiveForm({
   config: { start: 'about', steps: [
     { id: 'about', kind: 'choice', question: '¿Sobre qué quieres comentarnos algo?', options: [{ value: 'app', label: 'Aplicación', next: 'appKind' }, { value: 'event', label: 'Retiro / evento', next: 'eventCat' }, { value: 'space', label: 'Espacio', next: 'place' }] },
     { id: 'appKind', kind: 'choice', question: '¿Qué pasa?', options: [{ value: 'bug', label: 'Algo no funciona' }, { value: 'suggestion', label: 'Tengo una sugerencia' }], next: 'appWhere' },
-    { id: 'appWhere', kind: 'signal', question: 'Mantén pulsado sobre el lugar de la aplicación al que te refieres.', action: 'Señalar en la pantalla' },
+    { id: 'appWhere', kind: 'signal', question: 'Mantén pulsado sobre el lugar de la aplicación al que te refieres.', action: 'Señalar en la pantalla', next: 'message' },
     { id: 'eventCat', kind: 'choice', question: '¿Sobre qué parte del retiro?', options: ['Horarios', 'Organización', 'Actividades', 'Comunicación', 'Comida', 'Otra'].map((l) => ({ value: l.toLowerCase(), label: l })), next: 'message' },
     { id: 'place', kind: 'choice', question: '¿Dónde?', suggest: () => ({ value: 'room-3', label: 'Habitación 3' }), options: [{ value: 'room-3', label: 'Tu habitación' }, { value: 'dining', label: 'Comedor' }, { value: 'pool', label: 'Piscina' }, { value: 'bath', label: 'Baños' }, { value: 'outside', label: 'Exterior' }, { value: 'other', label: 'Otro' }], next: 'spaceKind' },
     { id: 'spaceKind', kind: 'choice', question: '¿Qué tipo de problema?', options: [{ value: 'damage', label: 'Algo está roto' }, { value: 'cleaning', label: 'Limpieza' }, { value: 'missing', label: 'Falta algo' }, { value: 'utilities', label: 'Agua / electricidad' }, { value: 'safety', label: 'Seguridad' }, { value: 'other', label: 'Otra cosa' }], next: 'message' },
     { id: 'message', kind: 'text', question: 'Cuéntanos', placeholder: '¿Qué ha pasado?', images: true },
   ] },
-  onSignal: () => { fbPortalOut.textContent = 'señalar'; },
-  onSubmit: async (r) => { fbPortalOut.textContent = JSON.stringify({ answers: r.answers, message: r.message, images: r.images.length }); return 'sent'; },
+  fallbackNode: () => ({ id: 'demo.feedback', path: ['Banco de feedback'] }),
+  onSubmit: async (r) => { fbPortalOut.textContent = JSON.stringify({ answers: r.answers, message: r.message, images: r.images.length, ...(r.node ? { node: r.node } : {}) }); return 'sent'; },
 });
 fbPortal.element.id = 'fbPortal';
 const fbModeSwitch = el('input', { type: 'checkbox', id: 'fbMode', onchange: (e: Event) => feedback.mode.set((e.target as HTMLInputElement).checked) }) as HTMLInputElement;
@@ -894,7 +894,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'card' }, fbPortal.element),
   fbPortalOut,
 );
-(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter };
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter, createAppLauncher };
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),

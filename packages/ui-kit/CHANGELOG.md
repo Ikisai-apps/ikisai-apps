@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.5 · 7 de octubre de 2026
+
+Petición C4 de Organizers (portales):
+- `createAppLauncher({ centerLabel, centerText })`: la entrada puede llamarse «Ayuda y sugerencias» (por defecto «Sugerencias y QA»).
+- **Señalar una vez** sin el interruptor: `captureFeedbackTarget({ text, fallbackNode, container })` arma el gesto solo para ese reporte, aparta las hojas abiertas, muestra «Mantén pulsado sobre el lugar… · Cancelar» y resuelve con el nodo (o `null`). Mientras tanto el gesto del modo «Señalar para comentar» no se dispara.
+- Formulario progresivo: el paso `signal` usa `captureFeedbackTarget` por defecto. Lo señalado queda como respuesta (con «Cambiar»), el camino sigue a `next` y el resultado lleva `node: { id, path }`. Opciones nuevas `fallbackNode` y `container`; `onSignal` puede devolver el nodo.
+- Pruebas `v18-qa` y `v22` ampliadas.
+
 ## 0.18.4 · 7 de octubre de 2026
 
 Dos ganchos que pide Food:

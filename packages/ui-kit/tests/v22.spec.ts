@@ -37,4 +37,15 @@ test.describe('ui-kit v0.18 · «Sugerencias y QA» en el panel del lanzador', (
     expect(global).toContain('html.fb-pressing');
     await expect(page.locator('#appKitLayer [data-fb-tab="map"]')).toBeVisible();
   });
+
+  test('centerLabel: los portales llaman a la entrada «Ayuda y sugerencias»', async ({ page }) => {
+    await page.goto('/#launcher');
+    await page.evaluate(() => {
+      const w = window as any;
+      const launcher = w.ikisaiFeedback.createAppLauncher({ fetchApps: async () => ({ items: [] }), center: () => undefined, centerLabel: 'Ayuda y sugerencias' });
+      void launcher.open();
+    });
+    await expect(page.locator('.launcher-center strong')).toHaveText('Ayuda y sugerencias');
+    await expect(page.locator('.launcher-center small')).toContainText('qué falla');
+  });
 });
