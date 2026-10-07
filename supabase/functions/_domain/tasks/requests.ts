@@ -50,6 +50,7 @@ export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { pro
   }, newId);
   Object.assign(ops.find((o) => o.table === 'tasks.tasks' && o.op === 'insert')!.fields!, {
     external_ref: request!.external_ref, external_kind: request!.kind, external_url: request!.external_url,
+    ...(request!.on_behalf_of ? { external_on_behalf: request!.on_behalf_of.kind } : {}),
   });
   return [update('tasks.requests', request!, { status: 'routed', routed_by: how }), ...ops];
 }

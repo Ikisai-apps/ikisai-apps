@@ -42,3 +42,16 @@ export function taskLabel(id: string, taskRow: TaskRow, labelId: string, extra: 
 export function dataset(parts: Partial<Dataset>): Dataset {
   return { ...emptyDataset(), ...parts };
 }
+
+/**
+ * Simula una identidad de servicio de Core (migraciones 0067 y 0068: perfil `kind = 'service'` con `service_name` y
+ * pertenencia `tasks` `editor`), para probar `worker/requests/task` antes de que exista.
+ * Si la 0067 ya está aplicada, solo añade el perfil.
+ */
+export async function simulateServiceIdentity(db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, id: string, service = 'feedback'): Promise<void> {
+  await db.query(`alter table core.profiles drop constraint if exists profiles_kind_check`);
+  await db.query(`alter table core.profiles add column if not exists service_name text`);
+  await db.query('insert into auth.users (id, email) values ($1, $2) on conflict do nothing', [id, `${id}@service.invalid`]);
+  await db.query(`insert into core.profiles (user_id, display_name, kind, service_name) values ($1, $2, 'service', $3)`, [id, `${service} (sistema)`, service]);
+  await db.query(`insert into core.memberships (app, user_id, role) values ('tasks', $1, 'editor')`, [id]);
+}

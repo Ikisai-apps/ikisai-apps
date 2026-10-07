@@ -1169,3 +1169,85 @@ La vista `tasks.central_kpi_projection` se crea en la migración `20261007_0309_
 **Enlaces directos.** `https://tasks.ikisai.com/#/<vista>` abre la vista en cuanto hay modelo y limpia el hash. Vistas admitidas: `home`, `projects`, `tasks`, `triage`, `purchases`, `supplies` y `plans`.
 
 Cambiar el significado de una clave es crear otra (regla del contrato).
+
+
+## 22. Puente con Feedback (fase 1b de `coordinacion/ampliacion/FEEDBACK.md`; propuesta, 7 de octubre de 2026)
+
+**Alcance (decisión del usuario, mismo día):** solo lo operativo, `feedback.space.*` y `feedback.event.*`. **Los fallos de aplicación no van a Tasks**: van a la vista de QA y al buzón de cada agente. Las reglas `qa.*` y la estructura recomendada de QA (§22.5) no se construyen; quedan como opción futura que el `owner` podría activar.
+
+Tasks pone el destino de las tareas que nacen de un reporte de Feedback, reutilizando lo de §20: `tasks.request_task`, las reglas de entrada y «Por clasificar». No hay un enrutador paralelo y no se guarda el reporte entero, solo el resumen operativo, la categoría y el enlace.
+
+### 22.1 Identidad de servicio (objeción de la fase 0, resuelta por Core)
+
+`POST /api/v1/worker/requests/task` no tiene sesión, pero `tasks.request_task` escribe por `core.commit`. Eso lo deja en `core.changes`, los espejos y el historial, y por eso no se puede hacer como acción de sistema: las acciones van fuera de `core.commit`. Además, `core.commit` exige que quien escribe tenga **pertenencia** a la app.
+
+Propongo que Core aporte una **identidad de servicio formal**, que es la opción 2 de la especificación §14.5, en su migración `0066`:
+- un perfil `core.profiles` con `kind = 'service'` y nombre «Feedback (sistema)»;
+- una pertenencia `tasks` con rol `editor` y ámbito `*`;
+- una función, por ejemplo `core.service_actor('feedback') → uuid`, para que la Edge lo encuentre sin ids escritos en el código.
+
+Con eso:
+- la ruta de worker confirma con ese actor, y en el historial y en «Actualizado por» se lee «Feedback (sistema)»;
+- no es un agente, así que no pide aprobación por `call`;
+- no puede hacer nada más que lo que permite esta ruta, porque nadie tiene su sesión.
+
+Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de sistema para una lista cerrada de procedimientos), me adapto. Lo que no cabe es escribir `tasks.*` desde Core ni usar una clave de agente (especificación §14.5).
+
+### 22.2 `POST /api/v1/worker/requests/task` (construido, con el contrato de Core)
+
+- Clave `X-Ikisai-Worker-Key` (`IKISAI_WORKER_KEY`), de servidor a servidor.
+- **Cuerpo**, solo con estos campos: `{source: 'feedback', kind, kind_label?, external_ref, title, note?, external_url?, on_behalf_of: {kind: 'internal' | 'organizer' | 'guest', report_code}}`.
+  - `title` hasta 120 caracteres y `note` hasta 1000.
+  - `external_ref` es el código del reporte.
+  - `external_url` solo puede ser `https://tasks.ikisai.com/#/feedback/<código>`.
+  - `kind` puede ser `feedback.space.{damage, cleaning, missing, utilities, safety, other}` o `feedback.event.{setup, accommodation, cleaning, food, technical, operation, other}`.
+  - Sin `project_id | tab_id`: decide la regla del usuario y, sin regla, va a «Por clasificar».
+- **Quién escribe:** la identidad de servicio de Feedback (`core.service_actor('feedback')`, de Core, migración `0067`), por `core.commit` con `tasks.request_task`.
+  - La ruta la obtiene con la acción de sistema `tasks.service_actor` (migración `0311`), que la busca en `core.profiles` (`kind = 'service'`, `service_name = 'feedback'`, con pertenencia a Tasks). No llama a `core.service_actor` porque el lint de migraciones solo deja usar los ayudantes de `core` de su lista.
+  - Mientras no exista: `503 SERVICE_NOT_READY`.
+- **`on_behalf_of`** es un metadato, nunca el actor. Se guarda en `tasks.requests.on_behalf_of` y, su `kind`, en `tasks.tasks.external_on_behalf`.
+  - Los dos son inmutables y forman parte del origen: solo se fijan por el procedimiento o al clasificar la petición.
+  - El editor de la tarea dice «Reporte de huésped · Espacio · Avería · FB_2026_000429».
+- **Respuesta:** `{taskId, status}`.
+  - `taskId` es el id derivado de `feedback:<código>`, también para una pendiente, porque será el de su tarea.
+  - `status` es el de §22.3.
+- **Idempotente por `external_ref`:** un reintento devuelve lo que hay sin tocar nada, y dos a la vez crean una sola petición.
+
+**Orígenes de sistema (ampliación de Core, ronda del mismo día):** la ruta acepta una lista cerrada de pares `(source, kind)`, y cada par escribe con su identidad de servicio.
+
+| `source` | `kind` | Servicio (Core) | `external_url` | `on_behalf_of` |
+|---|---|---|---|---|
+| `feedback` | `feedback.space.*`, `feedback.event.*` | `feedback` (`0067`) | `https://tasks.ikisai.com/#/feedback/<código>` | obligatorio |
+| `booking` | `booking.ses_deadline` | `booking` (`0068`) | `https://booking.ikisai.com/#/…` | opcional |
+
+Los dos orígenes admiten además `due` (`AAAA-MM-DD`) y `priority` (`normal`, `high` o `critical`), opcionales y con la misma validación que `requests/task`.
+
+La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los servicios de la lista, busca la identidad. Añadir un origen es una fila más en `SYSTEM_SOURCES` (`tasks-api/requests.ts`) y en esa acción.
+
+### 22.3 `POST /api/v1/worker/requests/status {externalRefs}` (construido)
+
+- Hasta 200 referencias, solo de `feedback:` o `booking:`.
+- Devuelve `{items: [{externalRef, status, taskId, doneAt, updatedAt}]}`. `status` puede ser:
+  - `pending`: por clasificar;
+  - `open`;
+  - `done`: hecha (en una tarea con hijas, cuando están hechas todas);
+  - `dismissed`: descartada;
+  - `deleted`: en la papelera o purgada;
+  - `unknown`: Tasks no la conoce.
+- Sin títulos ni notas.
+- Por dentro es la acción `tasks.requests_status` (migración `0310`), registrada sin roles de persona (`{}`): solo la lanza el worker como sistema. Una persona recibe 403 por `invoke`.
+
+### 22.4 `#/feedback/<código>` (reservado)
+
+- La ruta ya existe en la app.
+- Hoy enseña el código y la tarea que lo trabaja, si quien mira la ve.
+- Cuando existan el componente del kit y la API de Core, pintará el reporte con sus permisos.
+
+### 22.5 «Crear estructura recomendada de QA» (no se construye; opción futura)
+
+- Acción del `owner` con acceso completo, en «Gestionar entradas», e idempotente.
+- Propone el área «Depuración de aplicaciones», con un proyecto por app (Tasks, Invoices, Booking, Food, Central, Organizers, Guests) y las 7 reglas `qa.<app>` hacia esos proyectos.
+- Antes de crear nada, enseña qué falta y permite elegir un área y proyectos que ya existan, en vez de crearlos.
+- Sin ids escritos en el código: busca por nombre y deja elegir.
+- Es un lote del dominio: área, proyectos y reglas con `saveRouteOps`.
+- Las reglas `feedback.space.*` y `feedback.event.*` las configura el usuario cuando sepa adónde quiere mandarlas (operaciones). La pantalla las lista como tipos conocidos en cuanto llega el primero.
