@@ -47,6 +47,8 @@ export const MESSAGES: Record<string, string> = {
   FILE_NOT_FOUND: 'Archivo no encontrado.',
   FILE_MISMATCH: 'El archivo subido no coincide con lo declarado.',
   LAST_OWNER: 'La app se quedaría sin ninguna persona propietaria.',
+  LINK_INVALID: 'El enlace no es válido o ha sido revocado. Pide uno nuevo.',
+  LINK_EXPIRED: 'El enlace ha caducado. Pide que te lo amplíen o te envíen uno nuevo.',
   NO_SSO: 'No hay una sesión de Ikisai abierta en este dispositivo.',
   CONFIRMATION_REQUIRED: 'Esta operación de un agente necesita la aprobación de una persona.',
   CONFIRMATION_NOT_NEEDED: 'Este lote no necesita aprobación: envíalo directamente.',

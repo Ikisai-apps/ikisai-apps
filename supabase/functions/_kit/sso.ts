@@ -74,6 +74,11 @@ export function createSso(supabase: Supabase, app: string) {
     if (!pass) fail(401, 'NO_SSO', messageFor('NO_SSO'));
     const user = await supabase.rpc<string | null>('core_sso_resolve', { p_digest: await sha256Hex(pass), p_days: DAYS });
     if (!user) fail(401, 'NO_SSO', messageFor('NO_SSO'));
+    return sessionFor(user);
+  }
+
+  /** Sesión de Supabase nueva e independiente para un usuario con acceso a esta app (enlace mágico verificado en el servidor). */
+  async function sessionFor(user: string): Promise<SessionTokens> {
     // Comprueba el acceso a esta app antes de crear la sesión (lanza NO_MEMBERSHIP 403).
     await supabase.rpc('core_bootstrap', { p_app: app, p_user: user });
     const account = await supabase.remote(`/auth/v1/admin/users/${user}`, { service: true });
@@ -100,5 +105,5 @@ export function createSso(supabase: Supabase, app: string) {
     await supabase.rpc('core_sso_revoke_user', { p_user: user });
   }
 
-  return { issueFor, issueForUser, login, revoke, revokeUser };
+  return { issueFor, issueForUser, login, sessionFor, revoke, revokeUser };
 }

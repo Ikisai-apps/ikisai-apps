@@ -120,6 +120,16 @@ Entrar con contraseña en cualquier app emite un **pase** del núcleo (32 bytes 
 
 La app `central` (Ikisai Central, `central.ikisai.com`, alias `encarna.ikisai.com`) administra el ecosistema: quien es `owner` de `central` (y no es agente) puede, en **todas** las apps, ver cuentas y accesos (`GET admin/accounts`), dar, cambiar o quitar accesos (`POST admin/memberships {app, userId, role | null, scopes?, displayName?}`), dar de alta personas con contraseña temporal y accesos iniciales (`POST admin/invite`), ver y revocar agentes (`GET admin/agents`, `DELETE admin/agents/:keyId`) y leer el registro de accesos de todas o de una (`GET admin/access-log?app=&before=&limit=`). Además, por cuenta: contraseña temporal nueva (`POST admin/accounts/:userId/password`) y desactivar o reactivar (`POST admin/accounts/:userId/disable|enable`; bloquea el acceso a todas las apps sin borrar nada y revoca sus pases). `admin/accounts` incluye `disabled` y `memberships[].updatedAt`. Las rutas solo existen en la función que monta `createApp({ admin: true })`. Protecciones: ninguna app se queda sin propietario humano (`LAST_OWNER`), el administrador no puede quitarse ni degradarse en `central` (`CURRENT_ACCOUNT`), ningún agente es owner ni tiene acceso a `central`. Cada app sigue gestionando sus propios miembros como hasta ahora.
 
+### 3.6 Portales externos: enlaces personales y ámbitos
+
+Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las apps `organizers` (Ikisai Organizers, `organizers.ikisai.com`, alias `organiza`) y `guests` (Ikisai Guests, `guests.ikisai.com`, alias `ven`) son `kind = 'portal'`. Un organizador o huésped es un usuario de Auth (con su correo real si se conoce, así repite cuenta en el siguiente retiro; si no, una cuenta interna `p-…@portales.ikisai.com`) con pertenencia `editor` al portal y `scopes = {grants: [{reservation_id} | {reservation_id, guest_id}]}`.
+
+- **Emisión** (`createApp({ portalIssuer: true })`, en Booking y Organizers): `POST portal-links {app, scope, person: {name, email?}, label?}` → `{linkId, userId, scope, validUntil, url, shownOnce}` con `url = https://<portal>/i/<token>` (32 bytes; en `core.portal_links` solo el sha256). Booking (editor u owner) emite enlaces de organizador y de huésped; un organizador solo de huésped y solo de sus reservas. `GET portal-links?reservation=`, `POST portal-links/:id/revoke`, `POST portal-links/:id/extend {until}` (ampliar: solo el personal de Booking).
+- **Caducidad dinámica:** la app dueña del dato registra un procedimiento con `core.allow_portal_resolver(portal, 'schema.fn')`, `fn(p_scope jsonb) returns timestamptz`, que el núcleo consulta en cada canje (Booking: fin de la reserva más un margen). Si la fecha se mueve, el enlace se amplía o reduce solo; la ampliación manual manda si es posterior.
+- **Canje** (cualquier portal): `POST auth/link {token}` → sesión propia de Supabase (como la sesión única) y pase común; `401 LINK_INVALID` (no existe o revocado) o `401 LINK_EXPIRED {validUntil}`.
+- En los portales, `members` solo devuelve al propio miembro salvo al owner.
+- Pendiente: cuenta permanente (Google y código por correo) y lecturas/escrituras de Booking filtradas por ámbito con procedencia por campo.
+
 ## 4. Commit
 
 ### 4.1 Firma

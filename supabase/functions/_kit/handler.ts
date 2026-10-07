@@ -8,6 +8,7 @@ import { createAgents } from './agents.ts';
 import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
+import { createPortalLinks, resolvePortalLink } from './portal.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -30,6 +31,8 @@ export interface AppConfig extends SupabaseConfig {
   mcpTools?: McpTool[];
   /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
   admin?: boolean;
+  /** Booking y Organizers: montan `portal-links` para emitir y gestionar enlaces de los portales (contrato §3.6). */
+  portalIssuer?: boolean;
 }
 
 export interface WorkerRequest {
@@ -174,6 +177,15 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'admin/accounts/:userId/enable', handler: ({ ctx, params }) => admin.setDisabled(ctx, params.userId ?? '', false) },
     );
   }
+  if (config.portalIssuer) {
+    const links = createPortalLinks(supabase, config.app);
+    routes.push(
+      { method: 'POST', pattern: 'portal-links', handler: async ({ ctx, json }) => links.issue(ctx, await json()) },
+      { method: 'GET', pattern: 'portal-links', handler: ({ ctx, url }) => links.list(ctx, url.searchParams) },
+      { method: 'POST', pattern: 'portal-links/:id/revoke', handler: ({ ctx, params }) => links.manage(ctx, params.id ?? '', 'revoke', {}) },
+      { method: 'POST', pattern: 'portal-links/:id/extend', handler: async ({ ctx, params, json }) => links.manage(ctx, params.id ?? '', 'extend', await json()) },
+    );
+  }
   routes.push(...(config.routes ?? []));
   const compiled = routes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
   const compiledWorkers = (config.workerRoutes ?? []).map((route) => ({ ...route, matcher: compile(route.pattern) }));
@@ -213,6 +225,14 @@ export function createApp(config: AppConfig): AppHandler {
         const tokens = await auth.login(await readJson());
         // El pase de sesión única no debe impedir entrar: si falla su emisión, se entra sin él.
         const pass = await sso.issueFor(tokens).catch(() => null);
+        return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
+      }
+      // Portales: canje del enlace personal por una sesión propia y el pase de sesión única (contrato §3.6).
+      if (path === '/api/v1/auth/link' && request.method === 'POST') {
+        const body = await readJson();
+        const user = await resolvePortalLink(supabase, config.app, (body as any).token);
+        const tokens = await sso.sessionFor(user);
+        const pass = await sso.issueForUser(user).catch(() => null);
         return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
       }
       if (path === '/api/v1/auth/sso' && request.method === 'POST') {
