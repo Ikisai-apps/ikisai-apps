@@ -17,9 +17,9 @@ import { toast } from '../toast.ts';
 import { createFeedbackClient, type FeedbackApi, type FeedbackClient, type FeedbackReport } from './client.ts';
 import { openFeedbackComposer, type ComposerValue, type FeedbackComposer } from './composer.ts';
 import type { FeedbackIntent } from './constants.ts';
-import { appVersion, collectFeedbackContext, observeFeedbackContext, type FeedbackContextInput } from './context.ts';
+import { appVersion, collectFeedbackContext, observeFeedbackContext, setFeedbackStepNode, type FeedbackContextInput } from './context.ts';
 import { installFeedbackGesture, type FeedbackGesture } from './gesture.ts';
-import { ensureFeedbackGlobalStyles } from './global-style.ts';
+import { ensureFeedbackGlobalStyles, syncMarkHint } from './global-style.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
 import { clearFeedbackForUser, feedbackDrafts, feedbackOutbox, type FeedbackDraft, type FeedbackOutboxItem } from './store.ts';
 
@@ -77,6 +77,7 @@ const VERIFY_EVERY_MS = 5 * 60_000;
 
 export function createFeedback(options: FeedbackOptions): Feedback {
   observeFeedbackContext();
+  if (options.fallbackNode) setFeedbackStepNode(() => options.fallbackNode?.().id);
   ensureFeedbackGlobalStyles();
   const host = () => options.container?.() ?? document.body;
   const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': 'Comentarios sobre la pantalla' });
@@ -85,6 +86,9 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   let frame = 0;
   let gesture: FeedbackGesture | null = null;
   let verifyList: FeedbackReport[] = [];
+  /** Mis reportes abiertos (pin «tus sugerencias aquí»: FB_2026_002, el usuario espera ver marcado lo que ya envió). */
+  let mineList: FeedbackReport[] = [];
+  let paintRun = 0;
   let verifyTimer: ReturnType<typeof setInterval> | null = null;
   const listeners = new Set<(on: boolean) => void>();
   const modeKey = () => `ikisai-feedback-mode:${options.app}:${options.userId() ?? ''}`;
@@ -92,7 +96,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   const client: FeedbackClient = createFeedbackClient({
     api: options.api, app: options.app, userId: options.userId, fetchImpl: options.fetchImpl,
     onChange: () => { void backToDraftOnFailure(); refreshPins(); },
-    onSent: (report) => { toast(`Enviado · ${report.code}`); options.onSent?.(report); },
+    onSent: (report) => { toast(`Enviado · ${report.code}`); options.onSent?.(report); void refreshVerify(); },
   });
 
   // --- Modo «Señalar para comentar» --------------------------------------------------------------
@@ -102,6 +106,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   function applyMode(): void {
     const on = modeOn();
     document.documentElement.classList.toggle('fb-mode', on);
+    syncMarkHint();
     if (on && !gesture) gesture = installFeedbackGesture({ onSignal: (target) => { void signal(target); }, enabled: () => modeOn() && !current && !currentVerify });
     if (!on && gesture) { gesture.destroy(); gesture = null; }
     if (on && !verifyTimer) { void refreshVerify(); verifyTimer = setInterval(() => void refreshVerify(), VERIFY_EVERY_MS); }
@@ -113,6 +118,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
     set(on) {
       try { if (on) localStorage.setItem(modeKey(), '1'); else localStorage.removeItem(modeKey()); } catch { /* sin almacenamiento */ }
       applyMode();
+      if (on) toast('Señalar para comentar: activo. Mantén pulsado cualquier elemento para comentarlo; el punto amarillo de la marca lo recuerda.');
       for (const l of listeners) l(on);
     },
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -136,37 +142,63 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   }
 
   async function refreshVerify(): Promise<void> {
-    verifyList = modeOn() ? await client.pendingVerify() : [];
+    if (modeOn()) [verifyList, mineList] = await Promise.all([client.pendingVerify(), client.mine()]);
+    else { verifyList = []; mineList = []; }
     refreshPins();
   }
 
   // --- Pines ------------------------------------------------------------------------------------------
-  function pinFor(nodeId: string): { target: Element; style: string } | null {
-    const target = document.querySelector(`[data-feedback-id="${CSS.escape(nodeId)}"]`);
-    const rect = target?.getBoundingClientRect();
-    if (!target || !rect || (!rect.width && !rect.height)) return null;
-    return { target, style: `left:${Math.max(4, Math.min(innerWidth - 44, rect.right - 18))}px;top:${Math.max(4, rect.top - 10)}px` };
+  /**
+   * Dónde va el pin de un nodo: el primer elemento **visible** con ese id (una app puede tener copias ocultas para otro
+   * tamaño de pantalla), arriba a la derecha. `slot` separa los pines de un mismo nodo para que no se tapen.
+   */
+  function pinFor(nodeId: string, slot = 0): { target: Element; style: string } | null {
+    let target: Element | null = null;
+    let rect: DOMRect | null = null;
+    for (const candidate of document.querySelectorAll(`[data-feedback-id="${CSS.escape(nodeId)}"]`)) {
+      const r = candidate.getBoundingClientRect();
+      if (r.width || r.height) { target = candidate; rect = r; break; }
+    }
+    if (!target || !rect) return null;
+    const left = Math.max(4, Math.min(innerWidth - 44, rect.right - 18) - slot * 46);
+    return { target, style: `left:${left}px;top:${Math.max(4, rect.top - 10)}px` };
   }
   function refreshPins(): void {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(async () => {
+      // Solo pinta la última pasada: una anterior que termine tarde (lectura de IndexedDB lenta) no pisa a la nueva.
+      const run = ++paintRun;
       if (!pinLayer.isConnected) host().appendChild(pinLayer);
       if (!modeOn()) { replace(pinLayer); return; }
       const byNode = new Map<string, FeedbackDraft[]>();
       for (const d of await drafts()) byNode.set(d.nodeId, [...(byNode.get(d.nodeId) ?? []), d]);
+      if (run !== paintRun) return;
+      const slots = new Map<string, number>();
+      const slot = (nodeId: string) => { const n = slots.get(nodeId) ?? 0; slots.set(nodeId, n + 1); return n; };
       const pins: HTMLElement[] = [];
       for (const [nodeId, items] of byNode) {
-        const at = pinFor(nodeId);
+        const at = pinFor(nodeId, slot(nodeId));
         if (!at) continue;
         pins.push(el('button', {
-          type: 'button', class: 'fb-pin', dataset: { node: nodeId }, style: at.style,
+          type: 'button', class: 'fb-pin draft', dataset: { node: nodeId }, style: at.style,
           'aria-label': `Borrador de comentario (${items.length}) sobre ${items[0]!.nodePath.join(' › ')}`,
           onclick: () => { void compose({ id: nodeId, path: items[0]!.nodePath, element: at.target }, at.target, items[0]); },
         }, icon('pin', 14), el('span', null, String(items.length))));
       }
+      const mineByNode = new Map<string, FeedbackReport[]>();
+      for (const r of mineList) if (r.node?.id) mineByNode.set(r.node.id, [...(mineByNode.get(r.node.id) ?? []), r]);
+      for (const [nodeId, reports] of mineByNode) {
+        const at = pinFor(nodeId, slot(nodeId));
+        if (!at) continue;
+        pins.push(el('button', {
+          type: 'button', class: 'fb-pin mine', dataset: { node: nodeId, mine: String(reports.length) }, style: at.style,
+          'aria-label': `Tus sugerencias abiertas aquí (${reports.length}): toca para verlas o añadir otra`,
+          onclick: () => { void compose({ id: nodeId, path: reports[0]!.node!.path, element: at.target }, at.target); },
+        }, icon('edit', 14), el('span', null, String(reports.length))));
+      }
       for (const report of verifyList) {
         if (!report.node) continue;
-        const at = pinFor(report.node.id);
+        const at = pinFor(report.node.id, slot(report.node.id));
         if (!at) continue;
         pins.push(el('button', {
           type: 'button', class: 'fb-pin verify', dataset: { node: report.node.id, report: report.id }, style: at.style,
@@ -256,6 +288,11 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   const signal = (element: Element) => compose(resolveFeedbackNode(element, options.fallbackNode), element);
 
   const onLayout = () => { if (modeOn()) refreshPins(); };
+  const onNavigate = () => { if (modeOn()) setTimeout(() => { refreshPins(); syncMarkHint(); }, 60); };
+  const onVisible = () => { if (document.visibilityState === 'visible' && modeOn()) void refreshVerify(); };
+  window.addEventListener('popstate', onNavigate);
+  window.addEventListener('hashchange', onNavigate);
+  document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('resize', onLayout);
   window.addEventListener('scroll', onLayout, { capture: true, passive: true });
   // Solo cambios de la página: los de los pines y del composer no cuentan (si no, se repintarían sin fin).
@@ -282,7 +319,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
     refreshPins,
     destroy() {
       client.destroy(); gesture?.destroy(); observer.disconnect(); if (verifyTimer) clearInterval(verifyTimer);
-      window.removeEventListener('resize', onLayout); window.removeEventListener('scroll', onLayout, { capture: true } as EventListenerOptions);
+      window.removeEventListener('resize', onLayout); window.removeEventListener('popstate', onNavigate); window.removeEventListener('hashchange', onNavigate); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('scroll', onLayout, { capture: true } as EventListenerOptions);
       pinLayer.remove(); current?.close(); currentVerify?.(); document.documentElement.classList.remove('fb-mode');
     },
   };

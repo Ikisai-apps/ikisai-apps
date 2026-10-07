@@ -15,6 +15,10 @@ const steps: { at: string; action: 'abrió' | 'tocó'; route: string; node?: str
 const errors: { at: string; type: string; message: string }[] = [];
 const httpFailures: { at: string; method: string; path: string; status: number }[] = [];
 let observing = false;
+const NODE_ID = /^[a-z][a-z0-9_]*(\.[a-z0-9_-]+){0,7}$/;
+/** Nodo de la pantalla actual para los pasos «abrió» (el `fallbackNode` de `createFeedback`). */
+let stepNode: (() => string | null | undefined) | null = null;
+export function setFeedbackStepNode(fn: (() => string | null | undefined) | null): void { stepNode = fn; }
 let versionCache: Promise<{ release?: string; commit?: string } | null> | null = null;
 
 /**
@@ -57,15 +61,26 @@ export function observeFeedbackContext(): void {
   if (observing) return;
   observing = true;
   const step = (s: (typeof steps)[number]) => { steps.push(s); if (steps.length > MAX_STEPS) steps.shift(); };
-  const route = () => { const r = sanitizedRoute(); const last = steps[steps.length - 1]; if (!last || last.route !== r) step({ at: new Date().toISOString(), action: 'abrió', route: r }); };
-  route();
-  window.addEventListener('hashchange', route);
-  window.addEventListener('popstate', route);
+  const route = () => {
+    const r = sanitizedRoute();
+    const last = steps[steps.length - 1];
+    if (last && last.route === r && last.action === 'abrió') return;
+    if (last && last.route === r && last.action === 'tocó') return;
+    let node: string | undefined;
+    try { const id = stepNode?.(); if (id && NODE_ID.test(id)) node = id; } catch { /* sin nodo */ }
+    step({ at: new Date().toISOString(), action: 'abrió', route: r, ...(node ? { node } : {}) });
+  };
+  // La app repinta tras la navegación: se espera un momento para leer la pantalla nueva.
+  const later = () => setTimeout(route, 30);
+  // También la primera: `createFeedback` registra el nodo de la pantalla justo después de empezar a observar.
+  later();
+  window.addEventListener('hashchange', later);
+  window.addEventListener('popstate', later);
   document.addEventListener('click', (e) => {
     const node = e.target instanceof Element ? e.target.closest('[data-feedback-id]') : null;
     if (!node) return;
     step({ at: new Date().toISOString(), action: 'tocó', route: sanitizedRoute(), node: node.getAttribute('data-feedback-id')! });
-    setTimeout(route, 0);
+    setTimeout(route, 30);
   }, true);
   window.addEventListener('error', (e) => push(errors, { at: new Date().toISOString(), type: (e.error as Error | undefined)?.name ?? 'Error', message: String(e.message ?? '').slice(0, 160) }));
   window.addEventListener('unhandledrejection', (e) => {

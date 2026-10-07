@@ -125,18 +125,24 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
         el('span', { class: 'launcher-text' }, el('strong', null, 'Sugerencias y QA'), el('small', null, 'Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')),
         icon('chevronRight', 16)) : null,
-      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.') : null,
+      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', 'Señalar para comentar', 'Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.', 'Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo.') : null,
       options.review ? reviewSlot : null,
     );
   }
 
-  function modeSwitch(mode: LauncherMode, cls: string, title: string, text: string): HTMLElement {
+  function modeSwitch(mode: LauncherMode, cls: string, title: string, text: string, activeText = text): HTMLElement {
     const input = el('input', { type: 'checkbox', role: 'switch', class: `${cls}-input` }) as HTMLInputElement;
+    const strong = el('strong', null);
+    const small = el('small', null);
+    const paint = () => {
+      const on = input.checked;
+      replace(strong, title, on ? el('span', { class: 'launcher-active' }, ' · activo') : null);
+      small.textContent = on ? activeText : text;
+    };
     input.checked = mode.get();
-    input.addEventListener('change', () => mode.set(input.checked));
-    return el('label', { class: `launcher-fb ${cls}` },
-      el('span', { class: 'launcher-text' }, el('strong', null, title), el('small', null, text)),
-      input);
+    paint();
+    input.addEventListener('change', () => { mode.set(input.checked); paint(); });
+    return el('label', { class: `launcher-fb ${cls}` }, el('span', { class: 'launcher-text' }, strong, small), input);
   }
   /** El del revisor llega tarde (hay que preguntar al servidor si la cuenta puede revisar). */
   const reviewSlot = el('div', { class: 'launcher-review-slot' });
@@ -145,7 +151,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     const review = options.review;
     if (!review) return;
     void review.available().then((ok) => {
-      replace(reviewSlot, ok ? modeSwitch(asMode(review), 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.') : null);
+      replace(reviewSlot, ok ? modeSwitch(asMode(review), 'launcher-review', 'Revisor de QA', 'Lista de lo que hay que revisar y comprobar en todas las apps.', 'Activo: la lista está en el lateral y el punto verde de la marca lo recuerda.') : null);
     });
   }
 

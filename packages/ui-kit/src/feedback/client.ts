@@ -44,6 +44,8 @@ export interface FeedbackClient {
   support(reportId: string): Promise<number>;
   /** Reportes corregidos que esta persona puede comprobar: los suyos y, para el owner, todos (`status=pending_verify&pin=true`). */
   pendingVerify(): Promise<FeedbackReport[]>;
+  /** Mis reportes abiertos en esta app (`GET feedback?status=open&mine=true`), para su pin. */
+  mine(): Promise<FeedbackReport[]>;
   verify(reportId: string, build: string | null): Promise<void>;
   reopen(reportId: string, message?: string): Promise<void>;
   destroy(): void;
@@ -137,6 +139,10 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
     },
     async pendingVerify() {
       try { return (await options.api<{ items: FeedbackReport[] }>(`/feedback?status=pending_verify&pin=true&app=${encodeURIComponent(options.app)}`)).items ?? []; }
+      catch { return []; }
+    },
+    async mine() {
+      try { return (await options.api<{ items: FeedbackReport[] }>(`/feedback?status=open&mine=true&app=${encodeURIComponent(options.app)}&limit=100`)).items ?? []; }
       catch { return []; }
     },
     async verify(reportId, build) { await options.api(`/feedback/${encodeURIComponent(reportId)}/verify`, { method: 'POST', json: { build } }); },
