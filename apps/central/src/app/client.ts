@@ -13,6 +13,8 @@ export const T = {
   requirementTasks: 'central.requirement_tasks',
   kpiTargets: 'central.kpi_targets',
   decisions: 'central.decisions',
+  teams: 'central.teams',
+  personTeams: 'central.person_teams',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */

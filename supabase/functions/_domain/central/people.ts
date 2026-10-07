@@ -7,7 +7,15 @@ export const TABLES = {
   people: 'central.people',
   personPrivate: 'central.person_private',
   personRecords: 'central.person_records',
+  teams: 'central.teams',
+  personTeams: 'central.person_teams',
 } as const;
+
+/** Equipos que propone la interfaz cuando no hay ninguno (sin datos reales en Git). */
+export const SUGGESTED_TEAMS = ['Cocina', 'Mantenimiento', 'Limpieza', 'Dirección', 'Administración', 'Recepción'] as const;
+
+/** Equipos y pertenencia: escriben el owner y el editor con ámbito `people` (los mismos que ven lo reservado). */
+export const TEAM_TABLES: readonly string[] = ['central.teams', 'central.person_teams'];
 
 /** Tablas reservadas: solo owner, o editor con ámbito `people`. */
 export const RESERVED_TABLES: readonly string[] = [TABLES.personPrivate, TABLES.personRecords];

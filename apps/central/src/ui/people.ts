@@ -34,14 +34,33 @@ const day = (d: string | null | undefined) => (d ? d.split('-').reverse().join('
 const STATE_LABEL = { vencido: 'Caducado', por_vencer: 'Caduca pronto', al_dia: '' } as const;
 
 /** Lectura del espejo local; las tablas reservadas solo llegan a quien puede verlas. */
-async function loadPeople(client: SyncClient): Promise<{ people: Person[]; privates: Private[]; records: PersonRecord[] }> {
+export type Team = Mirror<Base & { name: string; color: string | null; position: number }>;
+export type PersonTeam = Mirror<Base & { person_id: string; team_id: string }>;
+
+async function loadPeople(client: SyncClient): Promise<{ people: Person[]; privates: Private[]; records: PersonRecord[]; teams: Team[]; personTeams: PersonTeam[] }> {
   const reserved = canSeeReserved(client.bootstrap()?.membership);
-  const [people, privates, records] = await Promise.all([
+  const [people, privates, records, teams, personTeams] = await Promise.all([
     client.list(T.people, { includeDeleted: true }),
     reserved ? client.list(T.personPrivate, { includeDeleted: true }) : Promise.resolve([]),
     reserved ? client.list(T.personRecords, { includeDeleted: true }) : Promise.resolve([]),
+    client.list(T.teams),
+    client.list(T.personTeams, { includeDeleted: true }),
   ]);
-  return { people: people as unknown as Person[], privates: privates as unknown as Private[], records: records as unknown as PersonRecord[] };
+  return {
+    people: people as unknown as Person[], privates: privates as unknown as Private[], records: records as unknown as PersonRecord[],
+    teams: (teams as unknown as Team[]).sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name, 'es')),
+    personTeams: personTeams as unknown as PersonTeam[],
+  };
+}
+
+/** Equipos vivos de una persona, en el orden de los equipos. */
+function teamsOf(data: { teams: Team[]; personTeams: PersonTeam[] }, personId: string): Team[] {
+  const ids = new Set(data.personTeams.filter((x) => x.person_id === personId && !x.deleted_at).map((x) => x.team_id));
+  return data.teams.filter((t) => ids.has(t.id));
+}
+
+function teamChip(t: Team): HTMLElement {
+  return el('span', { class: 'chip teamchip', style: t.color ? `--team:${t.color}` : null }, t.name);
 }
 
 async function commitSafely(client: SyncClient, operations: RowOperation[], okMessage: string, current?: (table: string, id: string) => Record<string, unknown> | undefined): Promise<boolean> {
@@ -83,9 +102,10 @@ export const mountPeople: ViewMount = (ctx) => {
   const { main, client, navigate } = ctx;
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
-  let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [] };
+  let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [] };
   let query = '';
   let relation = '';
+  let team = '';
   let showInactive = false;
 
   const host = el('div', { id: 'peopleList' });
@@ -96,13 +116,16 @@ export const mountPeople: ViewMount = (ctx) => {
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const relationFilter = el('select', { id: 'peopleRelation', 'aria-label': 'Relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(RELATIONS, RELATION_LABELS, '', 'Todas las relaciones'));
+  const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
+    el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
   const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
 
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Personas'),
       el('p', null, 'Quién trabaja o colabora con Ikisai, tenga o no cuenta en las apps.'))),
-    el('div', { class: 'toolbar' }, search, relationFilter, inactive),
+    el('div', { class: 'toolbar' }, search, relationFilter, teamFilter, inactive,
+      el('a', { class: 'ghost btnlike', href: '#/personas/equipos', id: 'manageTeams' }, icon('people', 16), 'Equipos')),
     host,
     trash,
     canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', onclick: () => openPersonEditor(ctx, null, (id) => navigate(`#/personas/${id}`)) }, icon('plus'), 'Nueva persona') : null,
@@ -113,6 +136,7 @@ export const mountPeople: ViewMount = (ctx) => {
     const chips = [
       ...(p.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]),
       ...(p.committed_post ? [el('span', { class: 'chip' }, 'Puesto comprometido')]: []),
+      ...teamsOf(data, p.id).map(teamChip),
       ...statusChips(data.records, p.id, today),
       ...(p._pending ? [el('span', { class: 'chip pending' }, 'Pendiente de sincronizar')] : []),
     ];
@@ -124,12 +148,16 @@ export const mountPeople: ViewMount = (ctx) => {
 
   function paint(): void {
     const alive = data.people.filter((p) => !p.deleted_at).sort((a, b) => (a.position - b.position) || a.display_name.localeCompare(b.display_name, 'es'));
-    const filtered = alive.filter((p) => (showInactive || p.active) && (!relation || p.relation === relation) && (!query || p.display_name.toLowerCase().includes(query)));
+    const inTeam = team ? new Set(data.personTeams.filter((x) => x.team_id === team && !x.deleted_at).map((x) => x.person_id)) : null;
+    const filtered = alive.filter((p) => (showInactive || p.active) && (!relation || p.relation === relation) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
+    if (teamFilter.options.length !== data.teams.length + 1) {
+      replace(teamFilter, el('option', { value: '' }, 'Todos los equipos'), ...data.teams.map((t) => el('option', { value: t.id, selected: t.id === team }, t.name)));
+    }
     if (!filtered.length) {
       replace(host, el('div', { class: 'empty' },
         el('strong', null, alive.length ? 'Ninguna persona coincide' : 'Todavía no hay personas'),
         alive.length ? 'Cambia el filtro o la búsqueda.' : canEdit ? 'Añade a quien trabaja o colabora con Ikisai: con o sin cuenta.' : ''));
-    } else if (canEdit && !query && !relation && showInactive) {
+    } else if (canEdit && !query && !relation && !team && showInactive) {
       // Orden manual (decisión del usuario): solo con la lista completa, para que la posición tenga sentido.
       const sortable = createSortableList<Person>({
         items: filtered, key: (p) => p.id, render: (p) => row(p), name: (p) => p.display_name, label: 'Personas', id: 'peopleSortable',
@@ -159,16 +187,18 @@ export const mountPeople: ViewMount = (ctx) => {
   }
 
   void load();
-  const offs = [T.people, T.personPrivate, T.personRecords].map((t) => client.onTable(t, () => void load()));
+  const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams].map((t) => client.onTable(t, () => void load()));
   return () => offs.forEach((off) => off());
 };
 
 /** Restaurar una persona y, en el mismo lote, lo reservado que se borró con ella (si quien restaura lo ve). */
 async function restorePerson(client: SyncClient, data: Awaited<ReturnType<typeof loadPeople>>, p: Person): Promise<void> {
   const children = [...data.privates, ...data.records].filter((c) => c.person_id === p.id && c.deleted_at && c.deleted_at === p.deleted_at);
+  const links = data.personTeams.filter((x) => x.person_id === p.id && x.deleted_at && x.deleted_at === p.deleted_at && data.teams.some((t) => t.id === x.team_id));
   await commitSafely(client, [
     { op: 'restore', table: T.people, id: p.id, expectedRevision: p.revision },
     ...children.map((c) => ({ op: 'restore' as const, table: 'kind' in c ? T.personRecords : T.personPrivate, id: c.id, expectedRevision: c.revision })),
+    ...links.map((x) => ({ op: 'restore' as const, table: T.personTeams, id: x.id, expectedRevision: x.revision })),
   ], `«${p.display_name}» restaurada.`);
 }
 
@@ -250,7 +280,7 @@ export function mountPerson(personId: string): ViewMount {
     const membership = client.bootstrap()?.membership;
     const canEdit = membership?.role !== 'reader';
     const reserved = canSeeReserved(membership);
-    let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [] };
+    let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [] };
     let accounts: Account[] | null = null;
     const host = el('div', { id: 'personView' });
     replace(main, el('a', { href: '#/personas', class: 'backlink' }, '← Personas'), host);
@@ -314,6 +344,9 @@ export function mountPerson(personId: string): ViewMount {
         })) : el('p', { class: 'muted' }, 'Sin documentación ni formación registradas.')],
       el('button', { class: 'linkbtn', type: 'button', id: 'newRecord', onclick: () => openRecordEditor(person, null) }, icon('plus', 16), 'Añadir')) : null;
 
+      const mine = teamsOf(data, person.id);
+      const teamsBlock = block('Equipos', 'blockTeams', [mine.length ? el('span', { class: 'chips', id: 'personTeams' }, ...mine.map(teamChip)) : el('p', { class: 'muted' }, 'Sin equipo.')],
+        reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', id: 'editTeams', onclick: () => openTeamsEditor(person) }, icon('edit', 16), 'Cambiar') : null);
       const accountBlock = isAdmin ? block('Cuenta', 'blockAccount', accountBody(person, priv)) : null;
 
       const danger = canEdit && !person.deleted_at ? el('div', { class: 'zone' },
@@ -321,7 +354,7 @@ export function mountPerson(personId: string): ViewMount {
           person.active ? 'Marcar inactiva' : 'Marcar activa'),
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
-      replace(host, head, basic, privateBlock, recordsBlock, accountBlock, danger);
+      replace(host, head, basic, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
     }
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
@@ -345,6 +378,29 @@ export function mountPerson(personId: string): ViewMount {
       ].filter(Boolean) as HTMLElement[];
     }
 
+    function openTeamsEditor(person: Person): void {
+      let sheet: Sheet | null = null;
+      const current = new Map(data.personTeams.filter((x) => x.person_id === person.id && !x.deleted_at).map((x) => [x.team_id, x]));
+      const boxes = data.teams.map((t) => el('input', { type: 'checkbox', value: t.id, checked: current.has(t.id) }) as HTMLInputElement);
+      const save = el('button', { class: 'primary', type: 'button', id: 'saveTeams', onclick: async () => {
+        const wanted = new Set(boxes.filter((b) => b.checked).map((b) => b.value));
+        const operations: RowOperation[] = [
+          ...[...wanted].filter((id) => !current.has(id)).map((id) => ({ op: 'insert' as const, table: T.personTeams, id: crypto.randomUUID(), fields: { person_id: person.id, team_id: id } })),
+          ...[...current].filter(([id]) => !wanted.has(id)).map(([, x]) => ({ op: 'delete' as const, table: T.personTeams, id: x.id, expectedRevision: x.revision })),
+        ];
+        if (!operations.length) { await sheet?.close(true); return; }
+        if (await commitSafely(client, operations, 'Equipos guardados.')) await sheet?.close(true);
+      } }, 'Guardar');
+      sheet = openSheet({
+        title: 'Equipos', meta: person.display_name,
+        body: el('div', null,
+          data.teams.length ? el('div', { class: 'scopes', id: 'teamChoices' }, ...boxes.map((b, i) => el('label', { class: 'check' }, b, el('span', null, data.teams[i]!.name))))
+            : el('p', { class: 'muted' }, 'Todavía no hay equipos.'),
+          el('a', { href: '#/personas/equipos', class: 'small', onclick: () => void sheet?.close(true) }, 'Gestionar equipos')),
+        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      });
+    }
+
     async function openFile(r: PersonRecord): Promise<void> {
       if (!navigator.onLine) { toast('Abrir el archivo necesita conexión.'); return; }
       const win = window.open('', '_blank');
@@ -365,6 +421,8 @@ export function mountPerson(personId: string): ViewMount {
       if (!(await confirmDialog({ title: `¿Enviar a «${person.display_name}» a la papelera?`, text, confirmLabel: 'Enviar a papelera', danger: true }))) return;
       const ok = await commitSafely(client, [
         ...children.map((c) => ({ op: 'delete' as const, table: 'kind' in c ? T.personRecords : T.personPrivate, id: c.id, expectedRevision: c.revision })),
+        ...data.personTeams.filter((x) => x.person_id === person.id && !x.deleted_at)
+          .map((x) => ({ op: 'delete' as const, table: T.personTeams, id: x.id, expectedRevision: x.revision })),
         { op: 'delete' as const, table: T.people, id: person.id, expectedRevision: person.revision },
       ], 'Enviada a la papelera.');
       if (ok) navigate('#/personas');
@@ -588,7 +646,7 @@ export function mountPerson(personId: string): ViewMount {
     }
 
     void load().then(() => loadAccounts());
-    const offs = [T.people, T.personPrivate, T.personRecords].map((t) => client.onTable(t, () => void load()));
+    const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams].map((t) => client.onTable(t, () => void load()));
     return () => offs.forEach((off) => off());
   };
 }

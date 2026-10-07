@@ -8,6 +8,7 @@ import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountDecisions } from './decisions.ts';
 import { mountPeople, mountPerson } from './people.ts';
+import { mountTeams } from './teams.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
 
 export interface ShellContext {
@@ -35,7 +36,7 @@ function navFor(isAdmin: boolean): NavItem[] {
     // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
     { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones'] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
-    { hash: '#/personas', label: 'Personas', icon: 'people' },
+    { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos'] },
   ];
   if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
   return items;
@@ -47,6 +48,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount; admin?: boolean 
   '#/entidad': { title: 'Entidad', mount: mountEntity },
   '#/decisiones': { title: 'Decisiones', mount: mountDecisions },
   '#/personas': { title: 'Personas', mount: mountPeople },
+  '#/personas/equipos': { title: 'Equipos', mount: mountTeams },
   '#/cumplimiento': { title: 'Vencimientos', mount: mountCompliance('vencimientos') },
   '#/cumplimiento/requisitos': { title: 'Obligaciones', mount: mountCompliance('requisitos') },
   '#/cumplimiento/documentos': { title: 'Documentos clave', mount: mountCompliance('documentos') },

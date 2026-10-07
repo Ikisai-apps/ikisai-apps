@@ -17,6 +17,7 @@
 - 2026-10-07 · **V2 (dirección), primer paso**: migración `0520_central_kpis` (`central.kpi_targets`, solo owner; `central.central_kpi_projection` con 7 KPIs de Central), contrato `<schema>.central_kpi_projection` propuesto en `API.md` §7.2 para que Core lo reparta, ruta `GET dashboard` (lee todas las fuentes, una caída no rompe el panel), panel en Inicio con objetivos y lectura sin red. Pruebas `tests/central/kpis.test.ts` y `dashboard.spec.ts`.
 - 2026-10-07 · Ronda 8: indicadores en euros solo para owner y editor; copia del panel sin red por cuenta (#202).
 - 2026-10-07 · **Registro de decisiones** (ronda 9): migración `0530_central_decisions` (`DEC`, tres niveles: nombre llano, descripción llana y explicación técnica; sustitución coherente), pantalla Decisiones con búsqueda y filtros, enlace desde Inicio. Pruebas `tests/central/decisions.test.ts` y `decisions.spec.ts`.
+- 2026-10-07 · **Equipos** (para la medición de uso): migración `0540_central_teams` (equipos, pertenencia múltiple, permiso en Edge y base, proyección `central.common_team_projection` para el núcleo), filtro y chips en Personas, bloque en la ficha y pantalla Equipos con semilla sugerida. Pruebas `tests/central/teams.test.ts` y `teams.spec.ts`.
 
 ## Pendiente
 
