@@ -9,6 +9,7 @@ import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
+import { createFeedback } from './feedback.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -163,6 +164,20 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'GET', pattern: 'files/:id', handler: ({ ctx, params }) => uploads.readUrl(ctx, params.id ?? '') },
     );
   }
+  // Feedback y QA (contrato §3.7): en todas las apps y portales.
+  const feedback = createFeedback(supabase, config.app);
+  routes.push(
+    { method: 'POST', pattern: 'feedback/uploads', handler: async ({ ctx, json }) => feedback.uploads.create(ctx, await json()) },
+    { method: 'POST', pattern: 'feedback/uploads/:id/verify', handler: ({ ctx, params }) => feedback.uploads.verify(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback', handler: async ({ ctx, json }) => feedback.create(ctx, await json()) },
+    { method: 'GET', pattern: 'feedback', handler: ({ ctx, url }) => feedback.list(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'feedback/tree', handler: ({ ctx, url }) => feedback.tree(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'feedback/:id', handler: ({ ctx, params }) => feedback.get(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'feedback/:id/support', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'support', {}) },
+    { method: 'POST', pattern: 'feedback/:id/verify', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'verify', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/reopen', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'reopen', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/dismiss', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'dismiss', await json()) },
+  );
   if (config.admin) {
     const admin = createAdmin(supabase);
     routes.push(
