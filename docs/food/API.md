@@ -409,6 +409,17 @@ No se publica nada para Booking en V1. Si Booking quiere derivar su «estado coc
 
 No hay escrituras cruzadas: Invoices no inserta en `food.stock_entries`. Propuesta para G4: Invoices publica `invoices.food_purchase_projection` (líneas validadas asignadas a `food:ingredient`, con cantidad, unidad, fecha, importe, proveedor, evento opcional y revisión de la asignación) y Food la materializa con `POST stock-entries/sync`, idempotente por `(source_app, source_kind, source_id)`. Con eso `stock_quantity` de la lista de compra podrá proponerse en vez de teclearse.
 
+### 7.4 Indicadores para Central
+
+Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Lee los eventos de `booking.food_event_projection` con la misma regla de «pide menú» que la app (`needsMenu`): reserva no cancelada ni perdida, `requires_meals` distinto de `false` y régimen distinto de `no_aplica`.
+
+| Clave | Etiqueta | Fórmula | Unidad · sentido | Enlace |
+|---|---|---|---|---|
+| `food.events_without_menu_30d` | Eventos sin menú en los próximos 30 días | Eventos que piden menú, empiezan entre hoy y hoy + 30 y no tienen menú vivo. `period_end` = hoy + 30. | `count` · `down` | `#/eventos` |
+| `food.shopping_lists_open` | Listas de la compra abiertas | Listas vivas con estado distinto de `cerrada`, de un menú vivo y no cerrado, cuyo evento termina hoy o después. | `count` · `down` | `#/menus` |
+
+Como la vista depende de `booking.food_event_projection`, si Booking necesita recrear esa proyección (no un `create or replace` compatible) tendrá que recrear también esta en la misma migración, o pedírselo a Food.
+
 ---
 
 ## 8. Archivos
