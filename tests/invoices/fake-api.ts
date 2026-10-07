@@ -514,7 +514,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           discount_amount: l.discount_amount ?? 0, net_amount: Number(l.net_amount), tax: l.tax ?? 'iva', vat_rate: l.vat_rate, vat_amount: l.vat_amount ?? null })),
         breakdown, withholdings: [], prices_include_vat: !!inv.prices_include_vat,
         totals: { base, quota, surcharge: 0, withholding: 0, total: Math.round((base + quota) * 100) / 100, vf_amount: Math.round((base + quota) * 100) / 100 },
-        rectification: null, currency: inv.currency ?? 'EUR', issued_at: nowIso(),
+        rectification: /^R[1-5]$/.test(String(inv.invoice_type)) ? { kind: inv.rectification_kind, rectified: inv.rectified, reason: inv.rectification_reason, base: inv.rectified_base, quota: inv.rectified_quota } : null,
+        currency: inv.currency ?? 'EUR', issued_at: nowIso(),
       };
       vfRecords.push({ issued_invoice_id: inv.id, record_kind: 'alta', hash, previous_hash: vfLastHash, generated_at_text: genAt, send_status: 'no_enviar', seq: vfRecords.length + 1 });
       Object.assign(inv, {
@@ -527,7 +528,39 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       });
       vfLastHash = hash;
       batchChanges.push(record('invoices.issued_invoices', 'update', inv, nextCursor, batchChanges.length + 1, requestId, actorId));
+      // Rectificativa emitida: la original pasa a «rectificada»
+      if (/^R[1-5]$/.test(String(inv.invoice_type))) {
+        for (const r of (inv.rectified as Array<{ issued_invoice_id?: string }>) ?? []) {
+          const o = r.issued_invoice_id ? stagedTable('invoices.issued_invoices').get(r.issued_invoice_id) : undefined;
+          if (!o || !['emitida', 'rectificada'].includes(String(o.status))) continue;
+          Object.assign(o, { status: 'rectificada', rectified_by: [...((o.rectified_by as unknown[]) ?? []), { issued_invoice_id: inv.id, full_number: fullNumber, issue_date: today }],
+            revision: o.revision + 1, updated_at: nowIso() });
+          batchChanges.push(record('invoices.issued_invoices', 'update', o, nextCursor, batchChanges.length + 1, requestId, actorId));
+        }
+      }
       return { id: inv.id, full_number: fullNumber, issue_date: today, vf_hash: hash, vf_status: 'no_enviar' };
+    }
+    if (op.procedure === 'invoices.rectify') {
+      const o = stagedTable('invoices.issued_invoices').get(String(args.id));
+      if (!o || o.deleted_at) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
+      if (!['emitida', 'rectificada'].includes(String(o.status)) || o.origin !== 'app') throw new Fault(422, 'RECTIFY_NOT_ISSUED', 'Solo se rectifica una factura emitida desde Finance.', { index });
+      const series = [...stagedTable('invoices.issued_series').values()].find((x) => !x.deleted_at && x.mode === 'emision' && x.kind === 'rectificativa' && x.active && !x.closed_at);
+      if (!series) throw new Fault(422, 'SERIES_MISSING', 'Falta una serie de rectificativas.', { index });
+      const kind = String(args.kind ?? 'I'); const sign = kind === 'I' ? -1 : 1;
+      const id = randomUUID();
+      const draft = insertRow('invoices.issued_invoices', id, {
+        series_code: series.code, status: 'borrador', issue_date: new Date().toLocaleDateString('sv-SE'), operation_date: o.operation_date ?? null,
+        invoice_type: o.invoice_type === 'F2' ? 'R5' : String(args.reason_code ?? 'R4'), rectification_kind: kind, rectification_reason: String(args.reason ?? ''),
+        rectified: [{ issued_invoice_id: o.id, series: o.series_code, number: o.number, full_number: o.full_number, issue_date: o.issue_date }],
+        rectified_base: kind === 'S' ? o.base_total : null, rectified_quota: kind === 'S' ? Number(o.quota_total) + Number(o.surcharge_total ?? 0) : null,
+        recipient_name: o.recipient_name, recipient_tax_id: o.recipient_tax_id, recipient_id_type: o.recipient_id_type, recipient_country: o.recipient_country,
+        recipient_address: o.recipient_address, recipient_kind: o.recipient_kind, description: `Rectificación de ${o.full_number}: ${args.reason ?? ''}`, income_category: o.income_category,
+      });
+      for (const l of [...stagedTable('invoices.issued_invoice_lines').values()].filter((x) => x.issued_invoice_id === o.id && !x.deleted_at)) {
+        insertRow('invoices.issued_invoice_lines', randomUUID(), { issued_invoice_id: id, position: l.position, description: l.description, quantity: l.quantity,
+          unit_price: l.unit_price === null ? null : sign * Number(l.unit_price), net_amount: sign * Number(l.net_amount), vat_rate: l.vat_rate });
+      }
+      return { id: draft.id, series_code: series.code };
     }
     if (op.procedure === 'invoices.annul_issued') {
       const issued = stagedTable('invoices.issued_invoices').get(String(args.issued_invoice_id));

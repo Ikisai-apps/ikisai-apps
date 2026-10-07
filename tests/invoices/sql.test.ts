@@ -802,3 +802,47 @@ test('emisión (§14): borrador sin número, datos obligatorios, número correla
   await ok([call('invoices.close_series', { code: 'H', last_number: '2026-0103' })]);
   await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'H', number: '2026-0999', issue_date: today.d, invoice_type: 'F2', description: 'Tarde' })], 'SERIES_CLOSED', 409);
 });
+
+
+test('rectificativas (§14.3): borrador desde una emitida, por diferencias en negativo o por sustitución; al emitir, la original queda rectificada', async () => {
+  const today = (await app.t.db.query<{ d: string; y: number }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d, extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!;
+  // Una emitida en F (las series F y R y la entidad vienen de la prueba de emisión)
+  const f = uuid();
+  await ok([
+    insert('invoices.issued_invoices', f, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Retiro para rectificar', recipient_name: 'Cliente Rect SL', recipient_tax_id: 'B66666666',
+      recipient_address: { line: 'Calle 3', postal_code: '28003', city: 'Madrid', country: 'ES' } }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: f, position: 0, description: 'Alojamiento', quantity: 3, unit_price: 100, net_amount: 300, vat_rate: 10 }),
+  ]);
+  const issued = (await ok([call('invoices.issue', { id: f })])).results[0].result;
+  // No se rectifica un borrador ni una registrada de otra herramienta; el lector no rectifica
+  const draftOnly = uuid();
+  await ok([insert('invoices.issued_invoices', draftOnly, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Borrador' })]);
+  await rejected([call('invoices.rectify', { id: draftOnly, reason: 'x' })], 'RECTIFY_NOT_ISSUED');
+  await rejected([call('invoices.rectify', { id: f, reason: 'x' })], 'FORBIDDEN', 403, app.tokens.reader);
+  await rejected([call('invoices.rectify', { id: f, reason: '' })], 'INVALID_ARGS');
+  // Por diferencias: líneas en negativo
+  const outI = await ok([call('invoices.rectify', { id: f, kind: 'I', reason_code: 'R4', reason: 'Devolución de la estancia' })], app.tokens.editor);
+  const rI = outI.results[0].result.id as string;
+  const draftI = await row('invoices.issued_invoices', rI);
+  assert.equal(draftI.status, 'borrador'); assert.equal(draftI.series_code, 'R'); assert.equal(draftI.invoice_type, 'R4'); assert.equal(draftI.rectification_kind, 'I');
+  assert.equal(draftI.rectified[0].issued_invoice_id, f); assert.equal(draftI.rectified[0].full_number, issued.full_number);
+  assert.equal(draftI.recipient_tax_id, 'B66666666'); assert.equal(draftI.base_total, -300); assert.equal(draftI.total, -330);
+  const linesI = await rows('invoices.issued_invoice_lines', (l) => l.issued_invoice_id === rI);
+  assert.deepEqual(linesI.map((l) => [l.net_amount, l.unit_price, l.vat_rate]), [[-300, -100, 10]]);
+  // Emitirla: R{año}-000N, la original pasa a rectificada y anota la rectificativa
+  const outIssue = (await ok([call('invoices.issue', { id: rI })])).results[0].result;
+  assert.match(outIssue.full_number, new RegExp(`^R${today.y}-\\d{4}$`));
+  const orig = await row('invoices.issued_invoices', f);
+  assert.equal(orig.status, 'rectificada'); assert.deepEqual(orig.rectified_by.map((r: any) => r.full_number), [outIssue.full_number]);
+  const recR = (await app.t.db.query<Record<string, any>>(`select * from invoices.vf_records where issued_invoice_id = $1`, [rI])).rows[0]!;
+  assert.equal(recR.payload.TipoFactura, 'R4'); assert.equal(recR.payload.TipoRectificativa, 'I');
+  assert.equal(recR.payload.FacturasRectificadas[0].full_number, issued.full_number);
+  assert.equal(recR.payload.ImporteTotal, '-330.00'); assert.equal(recR.payload.CuotaTotal, '-30.00');
+  assert.equal(recR.hash, await vfAltaHash({ issuerTaxId: 'B12345674', numSerie: outIssue.full_number, issueDate: today.d.split('-').reverse().join('-'), invoiceType: 'R4',
+    quotaTotal: -30, amountTotal: -330, previousHash: recR.previous_hash, generatedAt: recR.generated_at_text }));
+  // La original rectificada sigue congelada; se puede volver a rectificar (por sustitución, con base y cuota rectificadas)
+  await rejected([update('invoices.issued_invoices', f, orig.revision, { description: 'Cambio' })], 'ISSUED_FROZEN', 409);
+  const outS = await ok([call('invoices.rectify', { id: f, kind: 'S', reason_code: 'R1', reason: 'NIF del cliente erróneo' })]);
+  const draftS = await row('invoices.issued_invoices', outS.results[0].result.id);
+  assert.equal(draftS.rectification_kind, 'S'); assert.equal(draftS.rectified_base, 300); assert.equal(draftS.rectified_quota, 30); assert.equal(draftS.base_total, 300);
+});

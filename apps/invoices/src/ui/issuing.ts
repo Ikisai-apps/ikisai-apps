@@ -41,9 +41,11 @@ interface DraftLineInputs { row: HTMLElement; description: HTMLInputElement; qua
 
 export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: LocalIssuedInvoice): void {
   const { client } = ctx;
-  const seriesList = emissionSeries(data);
+  // Un borrador de rectificativa conserva su tipo, su serie y lo que rectifica (lo crea invoices.rectify).
+  const rectificative = !!draft && /^R[1-5]$/.test(draft.invoice_type);
+  const seriesList = emissionSeries(data, rectificative ? 'rectificativa' : 'ordinaria');
   if (!seriesList.length) {
-    toast('Primero crea una serie de facturas.');
+    toast(rectificative ? 'Falta una serie de rectificativas.' : 'Primero crea una serie de facturas.');
     openIssuingSettings(ctx, data);
     return;
   }
@@ -110,6 +112,11 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   }
 
   const save = el('button', { class: 'primary', type: 'submit', id: 'saveDraft', form: 'draftForm' }, draft ? 'Guardar borrador' : 'Crear borrador');
+  const rectInfo = rectificative
+    ? el('div', { class: 'banner info', id: 'draftRectInfo' }, icon('info', 18), el('span', null,
+      `Rectifica a ${draft!.rectified.map((r) => (r as { full_number?: string }).full_number ?? r.number).join(', ')} · ${draft!.rectification_kind === 'S' ? 'por sustitución' : 'por diferencias'} · ${draft!.rectification_reason ?? ''}. `
+      + (draft!.rectification_kind === 'S' ? 'Escribe las líneas correctas.' : 'Las líneas van en negativo: deja solo lo que se devuelve o corrige.')))
+    : null;
   const form = el('form', { id: 'draftForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
@@ -122,7 +129,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     const recipientCountry = address.country ?? 'ES';
     const id = draft?.id ?? crypto.randomUUID();
     const fields = {
-      series_code: series.value, invoice_type: 'F1', recipient_kind: kind.value,
+      series_code: series.value, invoice_type: rectificative ? draft!.invoice_type : 'F1', recipient_kind: kind.value,
       recipient_name: name.value.trim() || null, recipient_tax_id: taxId.value.trim().toUpperCase() || null,
       recipient_id_type: taxId.value.trim() ? (recipientCountry === 'ES' ? 'NIF' : '02') : null, recipient_country: recipientCountry,
       recipient_address: hasAddress ? address : null, description: description.value.trim(), operation_date: operationDate.value || null,
@@ -140,6 +147,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     if (await commitSafely(client, ops, draft ? 'Borrador guardado.' : 'Borrador creado. Revísalo y pulsa «Emitir».')) { guard.dirtyEditor = false; await closeSheet(true); }
     save.disabled = false;
   } },
+    rectInfo,
     field('Serie', series, 'El número se asigna al emitir, nunca antes.'),
     field('Destinatario', kind),
     el('div', { class: 'row2' }, field('Nombre o razón social', name), field('NIF', taxId)),
@@ -227,8 +235,38 @@ function draftDocument(invoice: LocalIssuedInvoice, data: IssuedData, issuer: Is
       net_amount: Number(l.net_amount), tax: l.tax, vat_rate: l.vat_rate, vat_amount: l.vat_amount })),
     breakdown, withholdings: [], prices_include_vat: invoice.prices_include_vat,
     totals: { base, quota, surcharge: 0, withholding: 0, total: base + quota, vf_amount: base + quota },
-    rectification: null, currency: invoice.currency, issued_at: '',
+    rectification: /^R[1-5]$/.test(invoice.invoice_type) ? { kind: invoice.rectification_kind, rectified: invoice.rectified, reason: invoice.rectification_reason,
+      base: invoice.rectified_base, quota: invoice.rectified_quota } : null,
+    currency: invoice.currency, issued_at: '',
   };
+}
+
+const RECTIFY_REASONS: Array<[string, string]> = [
+  ['R4', 'Resto de causas (error en importes, descuento, devolución…)'],
+  ['R1', 'Error fundado en derecho o art. 80 Uno, Dos y Seis de la Ley del IVA'],
+  ['R2', 'Concurso de acreedores del cliente (art. 80 Tres)'],
+  ['R3', 'Crédito incobrable (art. 80 Cuatro)'],
+];
+
+/** «Rectificar» una emitida desde Finance: crea el borrador de rectificativa en el servidor (invoices.rectify). */
+export async function rectifyIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
+  const { client } = ctx;
+  if (!emissionSeries(data, 'rectificativa').length) { toast('Falta una serie de rectificativas.'); openIssuingSettings(ctx, data); return; }
+  const kind = select('rectifyKind', [['I', 'Por diferencias: solo lo que cambia (por defecto)'], ['S', 'Por sustitución: la factura entera corregida']], 'I');
+  const code = select('rectifyCode', RECTIFY_REASONS, 'R4');
+  const reason = el('input', { type: 'text', id: 'rectifyReason', maxlength: '400', placeholder: 'Devolución de una noche, NIF erróneo…' });
+  const ok = await confirmDialog({ title: `Rectificar ${numberOf(invoice)}`, text: el('div', null,
+    el('p', null, 'Se crea un borrador de rectificativa con las líneas de esta factura. Revísalo y emítelo; al emitirlo, esta queda como rectificada.'),
+    field('Tipo', kind), invoice.invoice_type === 'F2' ? null : field('Causa', code), field('Motivo', reason)), confirmLabel: 'Crear rectificativa' });
+  if (!ok) return;
+  if (!reason.value.trim()) { toast('Indica el motivo de la rectificación.'); return; }
+  try {
+    await client.commit([{ op: 'call', procedure: 'invoices.rectify', args: { id: invoice.id, kind: kind.value, reason_code: code.value, reason: reason.value.trim() } }]);
+    toast(client.status().network === 'offline' ? 'La rectificativa se creará al conectar.' : 'Borrador de rectificativa creado: revísalo y emítelo.');
+    await closeSheet(true);
+  } catch (error) {
+    toast(describeError(error));
+  }
 }
 
 const addressText = (a: IssuedAddress | null | undefined) => (a ? [a.line, [a.postal_code, a.city].filter(Boolean).join(' '), a.province, a.country && a.country !== 'ES' ? a.country : null].filter(Boolean).join(', ') : '');
@@ -243,6 +281,9 @@ export async function openInvoiceDocument(ctx: ViewContext, invoice: LocalIssued
       el('div', { id: 'docIssuer' }, el('small', null, 'Emisor'), ...issuerLines(doc.issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('div', null, l)))),
       el('div', { id: 'docRecipient' }, el('small', null, 'Destinatario'), el('strong', null, r.name ?? 'Sin destinatario'),
         r.tax_id ? el('div', null, `NIF ${r.tax_id}`) : null, addressText(r.address) ? el('div', null, addressText(r.address)) : null)),
+    doc.rectification ? el('p', { id: 'docRectification' }, `Factura rectificativa ${doc.rectification.kind === 'S' ? 'por sustitución' : 'por diferencias'} de `
+      + `${(doc.rectification.rectified as Array<{ full_number?: string; number?: string; issue_date?: string }>).map((r) => `${r.full_number ?? r.number}${r.issue_date ? ` (${shortDate(r.issue_date)})` : ''}`).join(', ')}. Motivo: ${doc.rectification.reason ?? ''}.`
+      + (doc.rectification.kind === 'S' && doc.rectification.base !== null ? ` Base rectificada ${eur(doc.rectification.base)}, cuota rectificada ${eur(doc.rectification.quota ?? 0)}.` : '')) : null,
     el('p', null, doc.description),
     el('table', { class: 'inv-table', id: 'docLines' },
       el('thead', null, el('tr', null, el('th', null, 'Concepto'), el('th', { class: 'num' }, 'Cant.'), el('th', { class: 'num' }, 'Precio'), el('th', { class: 'num' }, 'Dto.'),

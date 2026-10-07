@@ -464,6 +464,8 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   SERIES_KIND_MISMATCH: 'El tipo de factura no corresponde a esa serie (ordinarias, rectificativas o simplificadas).',
   INVALID_NUMBER_FORMAT: 'El número de la serie no cabe en 60 caracteres o lleva caracteres no admitidos.',
   VF_SERVER_ONLY: 'El registro VERI*FACTU solo lo escribe el servidor.',
+  RECTIFY_NOT_ISSUED: 'Solo se rectifica una factura emitida desde Finance.',
+  SERIES_MISSING: 'Falta una serie de rectificativas: créala en «Series».',
   VF_IMMUTABLE: 'El registro VERI*FACTU no se modifica ni se borra.',
   TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
   DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',
