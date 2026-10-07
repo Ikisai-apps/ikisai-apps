@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
 import { requestTaskId } from '../../supabase/functions/tasks-api/requests.ts';
-import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import { classifyRequestOps, createTabOps, dismissRequestOps, emptyDataset, pendingRequests, routeWaitingOps, saveRouteOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -80,11 +80,11 @@ test('en la papelera se devuelve como borrada y no se resucita', async () => {
   assert.ok((await rows('tasks.tasks')).find((t) => t.id === made.id).deleted_at, 'sigue en la papelera');
 });
 
-test('alcance: fuera de sus proyectos no crea; una referencia de una tarea que no ve da 409', async () => {
+test('alcance: una sugerencia fuera de su alcance no vale (queda por clasificar); una referencia de una tarea que no ve da 409', async () => {
   const outside = await ask({ source: 'central', external_ref: 'FUERA', title: 'x', project_id: PRIVADO }, limited);
-  assert.equal(outside.status, 403, JSON.stringify(outside.data));
-  const inbox = await ask({ source: 'central', external_ref: 'FUERA', title: 'x', tab_id: TAB }, limited);
-  assert.equal(inbox.status, 403, 'la Entrada es del área entera');
+  assert.equal(outside.status, 200, JSON.stringify(outside.data));
+  assert.deepEqual([outside.data.created, outside.data.routed, outside.data.task.visible, outside.data.task.request], [true, 'pending', false, 'pending']);
+  assert.equal(outside.data.task.title, undefined, 'quien pide sin acceso completo no ve los datos de la pendiente');
   await ask({ source: 'central', external_ref: 'PRIVADA', title: 'Privada', project_id: PRIVADO });
   const hidden = await ask({ source: 'central', external_ref: 'PRIVADA', title: 'Privada', project_id: OBRA }, limited);
   assert.equal(hidden.status, 409, JSON.stringify(hidden.data));
@@ -100,7 +100,9 @@ test('entradas inválidas y procedencia protegida fuera de la ruta', async () =>
     { source: 'Central', external_ref: 'X', title: 'x', tab_id: TAB },
     { source: 'central', title: 'x', tab_id: TAB },
     { source: 'central', external_ref: 'X', title: '  ', tab_id: TAB },
-    { source: 'central', external_ref: 'X', title: 'x' },
+    { source: 'central', external_ref: 'X', title: 'x', kind: 'booking.otra' },
+    { source: 'central', external_ref: 'X', title: 'x', kind: 'central.Mayúsculas' },
+    { source: 'central', external_ref: 'X', title: 'x', external_url: 'https://ejemplo.com/x' },
     { source: 'central', external_ref: 'X', title: 'x', tab_id: TAB, due: '15/11/2026' },
     { source: 'central', external_ref: 'X', title: 'x', tab_id: 'no' },
   ]) {
@@ -130,4 +132,68 @@ test('tasks.targets con lista de ids: las visibles (papelera incluida) y las que
   assert.deepEqual(seen.data.missing, [privada.id], 'lo que no ve sale como que falta');
   assert.equal((await targets({ kind: 'task', ids: ['no'] })).status, 422);
   assert.equal((await targets({ kind: 'task', id: licencia.id })).data.externalRef, 'central:LEG_2026_004');
+});
+
+test('enrutado (§20): la regla manda sobre la sugerencia, el buzón y el estado para quien pide', async () => {
+  const route = uuid();
+  // Regla del usuario: los vencimientos de Central van a Licencias, aunque la petición sugiera otro sitio.
+  assert.equal((await commit([{ op: 'insert', table: 'tasks.request_routes', id: route, fields: { kind: 'central.compliance_due', kind_label: 'Vencimientos', tab_id: TAB, project_id: OBRA, position: 1024 } }])).status, 200);
+  const ruled = await ask({ source: 'central', kind: 'central.compliance_due', kind_label: 'Vencimientos', external_ref: 'VTO_1', title: 'Seguro de responsabilidad', external_url: 'https://central.ikisai.com/#/cumplimiento/VTO_1', tab_id: TAB });
+  assert.equal(ruled.status, 200, JSON.stringify(ruled.data));
+  assert.deepEqual([ruled.data.routed, ruled.data.task.projectId, ruled.data.task.externalKind, ruled.data.task.externalUrl, ruled.data.task.request],
+    ['rule', OBRA, 'central.compliance_due', 'https://central.ikisai.com/#/cumplimiento/VTO_1', 'created']);
+  // Buzón: la regla manda a Privado y quien pide no lo ve; entra igualmente y solo sabe que está creada.
+  const other = uuid();
+  await commit([{ op: 'insert', table: 'tasks.request_routes', id: other, fields: { kind: 'central.secret', tab_id: TAB, project_id: PRIVADO, position: 2048 } }]);
+  const mailbox = await ask({ source: 'central', kind: 'central.secret', external_ref: 'S_1', title: 'Auditoría interna' }, limited);
+  assert.equal(mailbox.status, 200, JSON.stringify(mailbox.data));
+  assert.deepEqual([mailbox.data.routed, mailbox.data.task.visible, mailbox.data.task.request], ['rule', false, 'created']);
+  assert.equal((await rows('tasks.tasks')).find((t) => t.external_ref === 'central:S_1').project_id, PRIVADO);
+  // Una regla de otra área o con un proyecto archivado no se guarda.
+  const bad = await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind: 'central.otra', tab_id: TAB, project_id: uuid(), position: 1 } }]);
+  assert.equal(bad.status, 422, JSON.stringify(bad.data));
+  // Solo el propietario escribe reglas.
+  const asEditor = await commit([{ op: 'update', table: 'tasks.request_routes', id: route, expectedRevision: 1, fields: { kind_label: 'Otra' } }], app.tokens.editor);
+  assert.equal(asEditor.status, 403, JSON.stringify(asEditor.data));
+});
+
+test('por clasificar (§20): sin regla espera; clasificar crea la tarea con el mismo id y su origen; descartar se ve', async () => {
+  const waiting = await ask({ source: 'booking', kind: 'booking.space_incident', kind_label: 'Incidencias', external_ref: 'INC_7', title: 'Fuga en la sala 2', external_url: 'https://booking.ikisai.com/#/incidencias/INC_7' });
+  assert.equal(waiting.status, 200, JSON.stringify(waiting.data));
+  assert.deepEqual([waiting.data.routed, waiting.data.task.pending, waiting.data.task.request, waiting.data.task.title], ['pending', true, 'pending', 'Fuga en la sala 2']);
+  const id = waiting.data.task.id;
+  assert.equal((await rows('tasks.tasks')).some((t) => t.id === id), false, 'todavía no es una tarea');
+  const data = async () => {
+    const out: any = {};
+    for (const table of ['tasks.tabs', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.requests', 'tasks.request_routes', 'tasks.labels', 'tasks.families']) out[table] = await rows(table);
+    return { ...emptyDataset(), ...out };
+  };
+  // Nadie fija el origen por su cuenta, ni cambia los datos de una petición.
+  const forged = await commit([{ op: 'insert', table: 'tasks.tasks', id, fields: { tab_id: TAB, project_id: OBRA, title: 'x', position: 5, external_ref: 'booking:INC_7' } }]);
+  assert.equal(forged.status, 422, JSON.stringify(forged.data));
+  const request = (await rows('tasks.requests')).find((r) => r.id === id);
+  assert.equal((await commit([{ op: 'update', table: 'tasks.requests', id, expectedRevision: request.revision, fields: { title: 'Otro' } }])).status, 422);
+  // Un acceso por proyectos no clasifica.
+  const ops = classifyRequestOps(await data(), id, { project_id: OBRA });
+  assert.equal((await commit(ops, limited)).status, 403);
+  const moved = await commit(ops);
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+  const task = (await rows('tasks.tasks')).find((t) => t.id === id);
+  assert.deepEqual([task.project_id, task.external_ref, task.external_kind, task.external_url], [OBRA, 'booking:INC_7', 'booking.space_incident', 'https://booking.ikisai.com/#/incidencias/INC_7']);
+  assert.deepEqual((await rows('tasks.task_labels')).filter((l) => l.task_id === id && !l.deleted_at).map((l) => l.label_id), [LABEL]);
+  assert.equal((await rows('tasks.requests')).find((r) => r.id === id).status, 'routed');
+  // Descartar: la app que pidió lo ve así.
+  const junk = (await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_8', title: 'Prueba' }, limited)).data.task.id;
+  assert.equal((await commit(dismissRequestOps(await data(), junk))).status, 200);
+  const seen = await targets({ kind: 'task', ids: [junk] }, limited);
+  assert.deepEqual(seen.data.items, [{ kind: 'task', id: junk, visible: false, request: 'dismissed' }]);
+  // Regla nueva y «mover también las que esperaban».
+  await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_9', title: 'Bombilla fundida' });
+  await ask({ source: 'booking', kind: 'booking.space_incident', external_ref: 'INC_10', title: 'Puerta atascada' });
+  assert.equal((await commit(saveRouteOps(await data(), { kind: 'booking.space_incident', kind_label: 'Incidencias', tab_id: TAB, project_id: OBRA }))).status, 200);
+  assert.equal(pendingRequests(await data(), 'booking.space_incident').length, 2);
+  const all = routeWaitingOps(await data(), 'booking.space_incident');
+  assert.equal((await commit(all)).status, 200, 'una sola vez, en un lote');
+  assert.equal(pendingRequests(await data(), 'booking.space_incident').length, 0);
+  assert.equal((await rows('tasks.tasks')).filter((t) => t.external_kind === 'booking.space_incident' && !t.deleted_at).length, 3);
 });

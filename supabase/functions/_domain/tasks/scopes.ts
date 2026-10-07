@@ -80,6 +80,11 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
       return fullTab(scopes, tab);
     case 'tasks.purchase_requests':
       return row.project_id ? canProject(scopes, tab, String(row.project_id)) : fullTab(scopes, tab);
+    // Entradas (§20): las reglas, con el área entera; las peticiones no tienen área: con acceso a toda la app.
+    case 'tasks.request_routes':
+      return fullTab(scopes, tab);
+    case 'tasks.requests':
+      return allAccess(scopes);
     default:
       return false;
   }

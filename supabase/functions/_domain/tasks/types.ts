@@ -25,8 +25,11 @@ export interface ProjectRow extends BaseRow {
 export interface TaskRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; parent_id: Uuid | null; title: string; note: string; done: boolean; done_at: string | null;
   priority: Priority; due: string | null; owner_label_id: Uuid | null; cost: number | null; position: number;
-  /** `<source>:<referencia>` de una tarea pedida desde otra app (§19); solo la fija la ruta `requests/task`. */
+  /** `<source>:<referencia>` de una tarea pedida desde otra app (§19); solo la fija la ruta `requests/task` o la clasificación. */
   external_ref?: string | null;
+  /** Tipo (`central.compliance_due`) y enlace al elemento que la generó (§20). */
+  external_kind?: string | null;
+  external_url?: string | null;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
@@ -57,6 +60,16 @@ export interface PurchaseRequestRow extends BaseRow {
   status: PurchaseStatus; needs_invoice: boolean; repeat_days: number | null; due: string | null;
   supplier_id: string | null; supplier_name: string | null; approved_at: string | null; purchased_at: string | null; received_at: string | null; position: number;
 }
+/** Petición de otra app (§20): pendiente en «Por clasificar», enrutada (su tarea tiene el mismo id) o descartada. */
+export interface RequestRow extends BaseRow {
+  source: string; kind: string; kind_label: string | null; external_ref: string; external_url: string | null;
+  title: string; note: string; due: string | null; priority: Priority; suggested_tab_id: Uuid | null; suggested_project_id: Uuid | null;
+  requested_by: Uuid | null; status: 'pending' | 'routed' | 'dismissed'; routed_by: 'rule' | 'hint' | 'manual' | null;
+}
+/** Regla de entrada (§20): un tipo de petición va a un área, un proyecto (si no, su Entrada) y un responsable. */
+export interface RequestRouteRow extends BaseRow {
+  kind: string; kind_label: string | null; tab_id: Uuid; project_id: Uuid | null; owner_label_id: Uuid | null; position: number;
+}
 export interface SupplyMovementRow extends BaseRow {
   tab_id: Uuid; supply_item_id: Uuid; kind: MovementKind; delta: number; purchase_request_id: Uuid | null; note: string;
 }
@@ -66,6 +79,7 @@ export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
   'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
+  'tasks.request_routes', 'tasks.requests',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 
@@ -75,6 +89,7 @@ export interface RowTypes {
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow;
   'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
   'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
+  'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow;
 }
 
 /** Filas de todas las tablas, tal y como salen de `snapshot` o del espejo local (incluidas las borradas). */
@@ -90,7 +105,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
@@ -101,6 +116,8 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'supply_item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
+  'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position'],
+  'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -110,7 +127,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id'],
   'tasks.labels': ['tab_id'],
   'tasks.projects': ['tab_id', 'system'],
-  'tasks.tasks': ['tab_id', 'external_ref'],
+  'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
@@ -122,6 +139,9 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_requests': ['tab_id'],
   // Un movimiento no se edita salvo su nota: corregir es otro movimiento o enviarlo a la papelera.
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id'],
+  'tasks.request_routes': [],
+  // Una petición solo la da de alta `tasks.request_task`; después solo cambia su estado (lo comprueba el hook).
+  'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */

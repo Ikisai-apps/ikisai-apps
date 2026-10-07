@@ -15,14 +15,14 @@ const taskOp = (tab: string, projectId: string, id: string, extra: Record<string
 const dep = (tab: string, projectId: string, taskId: string, dependsOn: string, id = newId()) => insert('tasks.task_dependencies', id, { tab_id: tab, project_id: projectId, task_id: taskId, depends_on_id: dependsOn, position: 1024 });
 const rev = async (table: keyof Awaited<ReturnType<TasksDb['data']>>, id: string) => (await db.data())[table].find((r) => r.id === id)!.revision;
 
-test('registro: diez tablas con las columnas escribibles del dominio, hook, procedimiento y lectura', async () => {
+test('registro: todas las tablas con las columnas escribibles del dominio, hook, procedimiento y lectura', async () => {
   const rows = (await db.t.db.query<{ table_name: string; writable_columns: string[]; writable_roles: string[] }>(
     `select table_name, writable_columns, writable_roles from core.synced_tables where app = 'tasks'`)).rows;
   assert.equal(rows.length, TABLES.length);
   for (const table of TABLES) {
     const row = rows.find((r) => `tasks.${r.table_name}` === table)!;
     assert.deepEqual([...row.writable_columns].sort(), [...WRITABLE[table]].sort(), table);
-    assert.deepEqual(row.writable_roles, table === 'tasks.tabs' ? ['owner'] : ['editor', 'owner'], table);
+    assert.deepEqual(row.writable_roles, ['tasks.tabs', 'tasks.request_routes'].includes(table) ? ['owner'] : ['editor', 'owner'], table);
   }
   const count = async (sql: string) => Number((await db.t.db.query<{ n: number }>(sql)).rows[0]!.n);
   assert.equal(await count(`select count(*) n from core.validate_hooks where app = 'tasks' and procedure = 'tasks.validate_batch'`), 1);
@@ -337,7 +337,7 @@ test('lectura tasks.targets: árbol visible para el usuario y validación de un 
   assert.deepEqual(seen.tabs[0].projects.map((p: any) => p.id), [mine]);
 
   const one = await db.read('tasks.targets', { kind: 'task', id: t1 }, guest);
-  assert.deepEqual(one, { kind: 'task', id: t1, tabId: tab, projectId: mine, title: 'Pintar', revision: 1, deleted: false, archived: false, done: false, externalRef: null });
+  assert.deepEqual(one, { kind: 'task', id: t1, tabId: tab, projectId: mine, title: 'Pintar', revision: 1, deleted: false, archived: false, done: false, externalRef: null, externalKind: null, externalUrl: null });
   assert.equal((await db.read('tasks.targets', { kind: 'project', id: archived })).archived, true);
   assert.equal((await db.read('tasks.targets', { kind: 'tab', id: tab }, guest)).title, 'Destinos');
   await rejects(db.read('tasks.targets', { kind: 'task', id: hidden }, guest), 'NOT_FOUND');
