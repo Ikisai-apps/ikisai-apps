@@ -16,14 +16,12 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 export const PORTAL_DOMAINS: Record<string, string> = { organizers: 'organizers.ikisai.com', guests: 'guests.ikisai.com' };
 
 export function createPortalLinks(supabase: Supabase, issuerApp: string) {
-  async function userFor(person: { name?: string; email?: string | null }): Promise<string> {
+  async function userFor(person: { name?: string; email?: string | null }, app: string, scope: Record<string, unknown>): Promise<string> {
     const email = typeof person.email === 'string' && person.email.trim() ? person.email.trim().toLowerCase() : null;
     if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320)) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
-    if (email) {
-      const page = await supabase.remote('/auth/v1/admin/users?page=1&per_page=1000', { service: true });
-      const found = (Array.isArray(page?.users) ? page.users : []).find((u: any) => typeof u?.email === 'string' && u.email.toLowerCase() === email);
-      if (found) return found.id;
-    }
+    // Misma persona: por correo (en la base, no en la primera página de Auth) o, en huéspedes, por su reserva y su huésped.
+    const existing = await supabase.rpc<string | null>('core_portal_find_user', { p_app: app, p_scope: scope, p_email: email });
+    if (existing) return existing;
     // Sin contraseña: se entra por enlace y, después, con la cuenta permanente (Google o código por correo).
     const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
     const password = btoa(String.fromCharCode(...bytes));
@@ -50,7 +48,9 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
     // Autoriza antes de crear la cuenta (la función SQL vuelve a comprobarlo todo en la transacción).
     if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (issuerApp === 'organizers' && app !== 'guests') fail(403, 'FORBIDDEN', 'Un organizador solo genera enlaces de huésped.');
-    const userId = await userFor(person);
+    const userId = await userFor(person, app, clean);
+    // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío).
+    if (app === 'guests' && body?.replace === true) await supabase.rpc('core_portal_revoke_guest_links', { p_scope: clean });
     const token = newPass();
     const link = await supabase.rpc<any>('core_portal_link_issue', {
       p_issuer_app: issuerApp, p_actor: ctx.user.id, p_app: app, p_user: userId, p_digest: await sha256Hex(token), p_scope: clean,

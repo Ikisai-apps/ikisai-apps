@@ -1213,6 +1213,17 @@ Ninguna toca `data_status`, `ses_*`, `notes` ni la papelera del personal. Las es
 4. **Declaración del organizador** en `booking.portal_declarations` (sincronizada para editor y owner; solo la escribe la acción, en el mismo lote que el dato; `422 DECLARATION_REQUIRED` la primera vez si no viene).
 5. **Baja por el organizador:** en cualquier momento (ver §16.6). La revocación usa `core.portal_revoke_scope('guests', 'guest_id', id)` (P21), que además quita el permiso a la sesión abierta del huésped.
 
+### 16.8 Peticiones de fase 1 de los portales (migración 0451)
+
+- **BG1** `portal_my_guest.sources` (`{campo: 'guest'|'organizer'|'staff'}`, solo el `by`) y `source` en cada restricción.
+- **BG2** `portal_guest_update`, `portal_guest_consent`, `portal_guest_sign` y `portal_set_restrictions` responden `{guest_id, revision, cursor}`.
+- **BG3** `guests.diet_reviewed_at`: la marca `portal_set_restrictions` siempre, también con la lista vacía («No tengo alergias ni dieta especial»); está en `portal_my_guest` y como `diet_reviewed` en `portal_guests`. Los clientes de Booking no la escriben.
+- **BG4** `portal_my_guest.reservation` con `status`, `arrival_time` y `departure_time`.
+- **BG5** si cambia un dato del registro (cualquier campo de `portal_guest_fields`) después de firmar, la firma deja de valer: `signed_at`, `signature_file_id`, `signed_by_name` y `signature_text_version` a `null` (lo cambie el huésped, el organizador o el personal; no al firmar en el mismo cambio ni al anonimizar). `portal_guest_update` responde `signature_reset`. `portal_guest_sign` acepta `text_version` (de Central `guests.signature_statement`) y lo guarda en `guests.signature_text_version`.
+- **BG6** parentesco con los **códigos del catálogo de SES** (`KINSHIP_CODES` y `kinshipLabel` en el dominio): Guests guarda el código; el texto libre antiguo se sigue convirtiendo al enviar a SES.
+- **B11** `booking.portal_organizers({reservation_id})` para `organizers`: `items: [{display_name, me}]` de quienes tienen acceso a esa reserva.
+- **C6** la conservación revoca el enlace y el permiso del huésped en Guests (`core.portal_revoke_scope`) al anonimizarlo.
+
 ## 17. SES.HOSPEDAJES · propuesta para revisión de Core
 
 Diseño de producto aprobado por el usuario en `coordinacion/ampliacion/SES.md` (su §0 manda). Referencia técnica: especificación v3.1.3 y XSD oficiales (copiados a `integrations/ses/`, documentación pública sin datos personales). Orden: §17.1 interruptores → §17.3 cliente (SES-1) → reserva con botón (SES-2) → llegada (SES-3) → conservación (SES-4).

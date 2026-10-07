@@ -144,3 +144,14 @@ test('portales · revocar por ámbito anula los enlaces y quita el permiso de la
   const boot = await callPortal(guests, 'guests', '/api/v1/bootstrap', { token: entered.data.token });
   assert.ok(!(boot.data.membership?.scopes?.grants ?? []).some((g: any) => g.guest_id === g2), 'la sesión abierta pierde el permiso');
 });
+
+test('portales · reenviar el enlace de un huésped reutiliza su cuenta y, con replace, revoca el anterior', async () => {
+  const G2 = crypto.randomUUID();
+  const first = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: G2 }, person: { name: 'Eva' } } });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const again = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: G2 }, person: { name: 'Eva' }, replace: true } });
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  assert.equal(again.data.userId, first.data.userId, 'misma cuenta: no se duplican');
+  assert.equal((await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(first.data.url) } })).data.error.code, 'LINK_INVALID', 'el enlace antiguo ya no vale');
+  assert.equal((await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(again.data.url) } })).status, 200);
+});

@@ -620,6 +620,21 @@ export class SyncClientImpl implements SyncClient {
     return { ...session };
   }
 
+  async loginWithLink(token: string): Promise<Session> {
+    await this.ensureReady();
+    const res = await this.rawFetch(this.url('/auth/link'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) throw await this.errorFromResponse(res);
+    const data = (await this.parseBody<Record<string, unknown>>(res)) ?? {};
+    const session = normalizeSession(data, null, Math.floor(this.now() / 1000));
+    await this.setSession(session);
+    this.setStatus({ lastError: null });
+    return { ...session };
+  }
+
   /**
    * Sesión única entre apps de ikisai.com (contrato §3.4): sin sesión local, pide una sesión propia para esta app con el pase
    * de la cookie común (`POST /auth/sso`, que el navegador envía solo). Devuelve la sesión o null si no hay pase o no hay acceso.

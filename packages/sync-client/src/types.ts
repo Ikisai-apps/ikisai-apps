@@ -145,6 +145,8 @@ export interface SyncClientOptions {
 export interface SyncClient {
   /** Inicia sesión por email y contraseña (proxy de Supabase Auth). */
   login(email: string, password: string): Promise<Session>;
+  /** Portales (contrato §3.6): canjea el token de un enlace personal (`/i/<token>`) por una sesión. */
+  loginWithLink(token: string): Promise<Session>;
   /** Entra con el pase de sesión única del dispositivo si existe (contrato §3.4); null si no hay pase o acceso. */
   trySso(): Promise<Session | null>;
   logout(): Promise<void>;
