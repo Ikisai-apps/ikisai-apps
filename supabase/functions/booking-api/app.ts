@@ -3,7 +3,7 @@ import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRo
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
-import { sesCancel, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
+import { createTasksNotifier, sesCancel, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
@@ -23,6 +23,8 @@ export function visibleBookingRow(table: string, _row: Record<string, unknown>, 
 export interface BookingSesConfig {
   transport?: SesTransport;
   env?: (name: string) => string | undefined;
+  /** Aviso a Tasks (`booking.ses_deadline`); por defecto, la ruta de worker de Tasks si hay `IKISAI_WORKER_KEY`. */
+  notifyTasks?: SesDeps['notifyTasks'] | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -31,6 +33,7 @@ const sesDeps = (supabase: Supabase, ses: BookingSesConfig): SesDeps => ({
   invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args }),
   transport: ses.transport ?? createSesTransport(),
   env: ses.env ?? denoEnv,
+  notifyTasks: ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv),
 });
 
 export interface BookingCalendarConfig {
@@ -61,7 +64,7 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     // Envía lo preparado y consulta los lotes en proceso; si no hay nada pendiente, no llama a SES.
     method: 'POST', pattern: 'ses/tick',
     handler: async ({ json }) => {
-      if (!supabase) return { sent: 0, checked: 0, skipped: 0 };
+      if (!supabase) return { sent: 0, checked: 0, skipped: 0, notices: 0 };
       const body = await json().catch(() => ({}));
       const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 50) : 10;
       return sesTick(sesDeps(supabase, ses), limit);

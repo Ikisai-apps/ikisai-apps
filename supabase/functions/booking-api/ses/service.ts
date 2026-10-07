@@ -17,6 +17,57 @@ export interface SesDeps {
   invoke: SesInvoke;
   transport: SesTransport;
   env: (name: string) => string | undefined;
+  /** Petición a Tasks por su ruta de worker (`booking.ses_deadline`); sin ella, los avisos quedan solo en la ficha e Inicio. */
+  notifyTasks?: (request: TasksRequest) => Promise<boolean>;
+}
+
+/** Cuerpo de `POST /api/v1/worker/requests/task` de Tasks (identidad de servicio `booking`). */
+export interface TasksRequest {
+  source: 'booking';
+  kind: 'booking.ses_deadline';
+  kind_label: string;
+  external_ref: string;
+  title: string;
+  note: string;
+  due: string;
+  priority: 'urgente';
+  external_url: string;
+}
+
+/** Notificador real: la ruta de worker de Tasks con la clave de sistema. Devuelve si Tasks aceptó la petición. */
+export function createTasksNotifier(env: (name: string) => string | undefined, fetchImpl: typeof fetch = fetch): ((request: TasksRequest) => Promise<boolean>) | undefined {
+  const key = env('IKISAI_WORKER_KEY');
+  if (!key) return undefined;
+  const url = env('TASKS_WORKER_REQUEST_URL') ?? 'https://tasks.ikisai.com/api/v1/worker/requests/task';
+  return async (request) => {
+    try {
+      const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ikisai-worker-key': key }, body: JSON.stringify(request) });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+}
+
+const BOOKING_URL = 'https://booking.ikisai.com';
+
+/** Avisos de plazo: reservas con el pago registrado hace 12 h sin comunicación aceptada ni en proceso. Idempotente por reserva. */
+async function deadlineNotices(deps: SesDeps): Promise<number> {
+  if (!deps.notifyTasks) return 0;
+  const { items } = (await deps.invoke('booking.ses_deadlines', {})) as { items: Array<{ reservation_id: string; code: string | null; title: string; legal_start_at: string }> };
+  let sent = 0;
+  for (const r of items) {
+    const due = new Date(Date.parse(r.legal_start_at) + 24 * 3_600_000).toISOString();
+    const ok = await deps.notifyTasks({
+      source: 'booking', kind: 'booking.ses_deadline', kind_label: 'Comunicación a SES pendiente',
+      external_ref: `${r.code ?? r.reservation_id}:deadline`,
+      title: `Comunicar a SES la reserva ${r.code ?? ''}`.trim(),
+      note: `Pago registrado hace más de 12 h sin comunicación aceptada. El plazo legal de 24 h vence el ${due.slice(0, 16).replace('T', ' ')} (UTC).`,
+      due, priority: 'urgente', external_url: `${BOOKING_URL}/#/reservas/${r.reservation_id}`,
+    });
+    if (ok) { await deps.invoke('booking.ses_deadline_mark', { reservation_id: r.reservation_id, legal_start_at: r.legal_start_at }); sent++; }
+  }
+  return sent;
 }
 
 interface Source {
@@ -115,7 +166,7 @@ export async function sesCancel(deps: SesDeps, input: { reservationId: string; c
 }
 
 /** Tick del planificador: envía lo preparado (si no está en pausa) o con error, y consulta los lotes en proceso. */
-export async function sesTick(deps: SesDeps, limit = 10): Promise<{ sent: number; checked: number; skipped: number }> {
+export async function sesTick(deps: SesDeps, limit = 10): Promise<{ sent: number; checked: number; skipped: number; notices: number }> {
   const due = (await deps.invoke('booking.ses_due', { limit })) as { items: Array<Record<string, any>> };
   let sent = 0; let checked = 0; let skipped = 0;
   const inProgress = due.items.filter((c) => c.status === 'en_proceso' && c.lot_id);
@@ -171,5 +222,6 @@ export async function sesTick(deps: SesDeps, limit = 10): Promise<{ sent: number
       }
     }
   }
-  return { sent, checked, skipped };
+  const notices = await deadlineNotices(deps);
+  return { sent, checked, skipped, notices };
 }

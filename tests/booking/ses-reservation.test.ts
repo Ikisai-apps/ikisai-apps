@@ -24,13 +24,15 @@ const fakeFetch: typeof fetch = async (_url, init) => {
   return new Response(ses.submit(), { status: 200 });
 };
 
+const tasks: Array<Record<string, any>> = [];
+let tasksUp = true;
 let app: TestApp;
 let seq = 0;
 test.before(async () => {
   app = await createTestApp({
     app: 'booking', slug: 'booking-api', origin: BOOKING_ORIGINS[0]!,
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!], workerKey: WORKER_KEY,
-      ses: { transport: createSesTransport({ fetchImpl: fakeFetch }), env: (n) => ENV[n] } }),
+      ses: { transport: createSesTransport({ fetchImpl: fakeFetch }), env: (n) => ENV[n], notifyTasks: async (r) => { tasks.push(r); return tasksUp; } } }),
   });
 });
 test.after(async () => { await app.close(); });
@@ -130,4 +132,27 @@ test('ses · datos que faltan, rechazo de SES y pausa', async () => {
   await ok([{ op: 'update', table: TABLES.sesSettings, id: settings, expectedRevision: await revision(TABLES.sesSettings, settings), fields: { paused: false } }]);
   await due(); await tick();
   assert.equal((await status(paused))[0]!.status, 'en_proceso');
+});
+
+test('ses · aviso a Tasks a las 12 h del pago sin comunicar: una vez, idempotente, y no si ya está en proceso', async () => {
+  const late = await confirmed('Persona Tardía');
+  const onTime = await confirmed('Persona Puntual');
+  for (const id of [late, onTime]) await ok([{ op: 'insert', table: TABLES.finance, id, fields: { payment_type: 'transferencia', payment_date: '2027-10-03' } }]);
+  await app.t.db.query(`update booking.reservation_finance set payment_registered_at = now() - interval '13 hours' where id = any($1::uuid[])`, [[late, onTime]]);
+  await app.call(`/api/v1/ses/${onTime}/rh`, { body: {} }); // ya en proceso: no avisa
+  tasks.length = 0;
+  tasksUp = false;
+  assert.equal((await tick()).notices, 0, 'si Tasks no responde, se reintenta en el siguiente tick');
+  tasksUp = true;
+  const t = await tick();
+  const mine = tasks.filter((r) => r.external_url.endsWith(late));
+  assert.equal(mine.length, 2, 'un intento fallido y uno bueno');
+  assert.ok(!tasks.some((r) => r.external_url.endsWith(onTime)));
+  assert.equal(t.notices >= 1, true);
+  assert.deepEqual([mine[1]!.source, mine[1]!.kind, mine[1]!.priority], ['booking', 'booking.ses_deadline', 'urgente']);
+  assert.match(mine[1]!.external_ref, /:deadline$/);
+  const before = tasks.length;
+  await tick();
+  assert.equal(tasks.filter((r) => r.external_url.endsWith(late)).length, 2, 'una sola vez por reserva y momento legal');
+  assert.ok(tasks.length >= before);
 });

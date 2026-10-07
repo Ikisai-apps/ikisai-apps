@@ -14,9 +14,8 @@ begin
     new.payment_registered_at := now();
   elsif new.payment_date is null then
     new.payment_registered_at := null;
-  elsif tg_op = 'UPDATE' then
-    new.payment_registered_at := old.payment_registered_at;
   end if;
+  -- (los clientes no pueden escribir esta columna: no es escribible en core.synced_tables)
   return new;
 end $$;
 create trigger reservation_finance_payment_registered before insert or update on booking.reservation_finance
@@ -196,6 +195,47 @@ returns jsonb language sql stable as $$
       'cancelled_at', c.cancelled_at, 'created_at', c.created_at) order by c.created_at desc), '[]'::jsonb))
     from booking.ses_communications c where c.reservation_id = (p->'args'->>'reservation_id')::uuid and c.deleted_at is null;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Aviso a Tasks a las 12 h del pago sin comunicación aceptada ni en proceso (una vez por reserva)
+-- ---------------------------------------------------------------------------
+create table booking.ses_deadline_notices (
+  id uuid primary key default gen_random_uuid(),
+  revision bigint not null default 1,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id),
+  deleted_at timestamptz,
+  reservation_id uuid not null references booking.reservations(id),
+  legal_start_at timestamptz not null,
+  unique (reservation_id, legal_start_at)
+);
+select core.register_table('booking', 'booking', 'ses_deadline_notices', array[]::text[], '{}', '{}');
+
+-- Reservas que necesitan el aviso: SES activo, confirmada, pago registrado hace 12 h o más, sin comunicación de reserva
+-- aceptada ni en proceso, y sin aviso para ese mismo momento legal.
+create or replace function booking.ses_deadlines(p jsonb)
+returns jsonb language sql stable as $$
+  select jsonb_build_object('items', coalesce(jsonb_agg(jsonb_build_object('reservation_id', r.id, 'code', r.code, 'title', r.title,
+      'legal_start_at', f.payment_registered_at) order by f.payment_registered_at), '[]'::jsonb))
+    from booking.reservations r join booking.reservation_finance f on f.id = r.id and f.deleted_at is null
+   where r.deleted_at is null and r.archived_at is null and r.ses_enabled and r.status in ('confirmada','en_ejecucion')
+     and f.payment_registered_at <= now() - interval '12 hours'
+     and not exists (select 1 from booking.ses_communications c where c.reservation_id = r.id and c.kind = 'RH' and c.status in ('en_proceso','aceptada'))
+     and not exists (select 1 from booking.ses_deadline_notices n where n.reservation_id = r.id and n.legal_start_at = f.payment_registered_at)
+   limit 20;
+$$;
+
+create or replace function booking.ses_deadline_mark(p jsonb)
+returns jsonb language plpgsql as $$
+begin
+  insert into booking.ses_deadline_notices (reservation_id, legal_start_at)
+  values ((p->'args'->>'reservation_id')::uuid, (p->'args'->>'legal_start_at')::timestamptz) on conflict do nothing;
+  return jsonb_build_object('ok', true);
+end $$;
+
+select core.allow_read('booking', 'booking.ses_deadlines', 'action', '{}');
+select core.allow_read('booking', 'booking.ses_deadline_mark', 'action', '{}');
 
 select core.allow_read('booking', 'booking.ses_reservation_source', 'function', '{editor,owner}');
 select core.allow_read('booking', 'booking.ses_status', 'function', '{editor,owner}');
