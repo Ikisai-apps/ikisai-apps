@@ -162,7 +162,7 @@ test('ses · aviso a Tasks a las 12 h del pago sin comunicar: una vez, idempoten
 
 test('planificador · sondas: SES y Calendar solo despiertan la Edge si hay trabajo', async () => {
   const ticks = (await app.t.db.query<{ route: string; probe: string }>(`select route, probe from core.scheduled_ticks where app = 'booking' order by route`)).rows;
-  assert.deepEqual(ticks, [{ route: 'calendar/tick', probe: 'booking.calendar_has_work' }, { route: 'retention/tick', probe: 'booking.retention_has_work' }, { route: 'ses/tick', probe: 'booking.ses_has_work' }]);
+  assert.deepEqual(ticks, [{ route: 'calendar/tick', probe: 'booking.calendar_has_work' }, { route: 'portal/tick', probe: 'booking.portal_has_work' }, { route: 'retention/tick', probe: 'booking.retention_has_work' }, { route: 'ses/tick', probe: 'booking.ses_has_work' }]);
   const has = async (fn: string) => (await app.t.db.query<{ v: boolean }>(`select ${fn}() v`)).rows[0]!.v;
   await app.t.db.query(`update booking.ses_communications set next_attempt_at = now() + interval '1 hour' where status in ('preparada','en_proceso','error')`);
   await app.t.db.query(`insert into booking.ses_deadline_notices (reservation_id, legal_start_at) select f.id, f.payment_registered_at from booking.reservation_finance f where f.payment_registered_at is not null on conflict do nothing`);

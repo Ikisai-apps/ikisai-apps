@@ -18,6 +18,8 @@ export const TABLES = {
   proposals: 'booking.proposals',
   proposalLines: 'booking.proposal_lines',
   sesSettings: 'booking.ses_settings',
+  dateOptions: 'booking.reservation_date_options',
+  dateBlocks: 'booking.date_blocks',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */

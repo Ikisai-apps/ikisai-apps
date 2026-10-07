@@ -82,6 +82,7 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
     ses_disabled_reason: choice(['uso_privado', 'prueba', 'otro']),
     ses_disabled_note: text(300),
     collect_guest_data: { kind: 'bool' },
+    dates_definitive: { kind: 'bool' },
   },
   [TABLES.finance]: {
     budget_amount: { kind: 'money' },
@@ -293,6 +294,22 @@ FIELDS[TABLES.sesSettings] = {
   paused: { kind: 'bool' },
 };
 
+FIELDS[TABLES.dateOptions] = {
+  reservation_id: { kind: 'uuid' },
+  start_date: { kind: 'date' },
+  end_date: { kind: 'date' },
+  arrival_time: { kind: 'time' },
+  departure_time: { kind: 'time' },
+  proposed_by: choice(['ikisai', 'organizer'], false),
+  organizer_ok: { kind: 'bool' },
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.dateBlocks] = {
+  start_date: { kind: 'date' },
+  end_date: { kind: 'date' },
+  reason: text(300),
+};
+
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
 const PARENT_LINK: Record<string, string> = {
   [TABLES.events]: 'reservation_id',
@@ -306,6 +323,7 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.cancellationTiers]: 'conditions_id',
   [TABLES.proposals]: 'reservation_id',
   [TABLES.proposalLines]: 'proposal_id',
+  [TABLES.dateOptions]: 'reservation_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -325,6 +343,8 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.cancellationTiers]: ['conditions_id', 'min_days_before', 'deposit_refund_pct'],
   [TABLES.proposals]: ['reservation_id'],
   [TABLES.proposalLines]: ['proposal_id', 'description', 'unit', 'unit_amount'],
+  [TABLES.dateOptions]: ['reservation_id', 'start_date', 'end_date'],
+  [TABLES.dateBlocks]: ['start_date', 'end_date'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -468,6 +488,13 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
   if (table === TABLES.proposals && typeof fields.status === 'string' && !['borrador', 'rechazada', 'caducada'].includes(fields.status)) {
     issues.push(invalid(table, 'status', 'enviar y aceptar una propuesta va por su botón, no editando el estado'));
+  }
+
+  if (table === TABLES.dateOptions || table === TABLES.dateBlocks) {
+    const from = dayNumber(fields.start_date as string | null | undefined);
+    const to = dayNumber(fields.end_date as string | null | undefined);
+    if (from !== null && to !== null && to <= from) issues.push(invalid(table, 'end_date', 'debe ser posterior a la entrada'));
+    if (table === TABLES.dateOptions && fields.proposed_by === 'organizer') issues.push(invalid(table, 'proposed_by', 'las fechas del organizador las marca él desde su portal'));
   }
 
   if (table === TABLES.staffAssignments) {
