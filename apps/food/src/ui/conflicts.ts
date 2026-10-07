@@ -3,7 +3,30 @@ import { confirmDialog, el, formatDate, renderConflicts, renderRejectedList, rep
 import { T, describeError, formatQuantity } from '../app/client.ts';
 import { shortDay } from '../app/events.ts';
 import { SERVICE_LABELS } from './events.ts';
+import { usage } from '../app/usage.ts';
+import { fb, fbIgnore, type FbMark } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
+
+/** Botones de decisión que pinta el kit, por su `data-choice` (catálogo fijo, ids literales). */
+const CHOICE_MARKS: Record<string, FbMark> = {
+  mine: { feedbackId: 'food.conflictos.conflicto.mantener_mia', feedbackLabel: 'Mantener la mía' },
+  theirs: { feedbackId: 'food.conflictos.conflicto.tomar_servidor', feedbackLabel: 'Tomar la del servidor' },
+  merge: { feedbackId: 'food.conflictos.conflicto.combinar', feedbackLabel: 'Combinar campo a campo' },
+  retry: { feedbackId: 'food.conflictos.rechazados.reintentar', feedbackLabel: 'Reintentar' },
+  discard: { feedbackId: 'food.conflictos.rechazados.descartar', feedbackLabel: 'Descartar' },
+};
+
+/** Marca la tarjeta del kit, sus botones de decisión y deja fuera del reporte la tabla de valores (puede llevar notas o responsables). */
+function markCard(card: HTMLElement, mark: FbMark): HTMLElement {
+  if (!card.matches('article')) return card; // estado vacío
+  fb(card, mark);
+  for (const button of card.querySelectorAll<HTMLElement>('[data-choice]')) {
+    const choice = CHOICE_MARKS[button.dataset.choice ?? ''];
+    if (choice) fb(button, choice);
+  }
+  for (const node of card.querySelectorAll('table, ul, .meta')) fbIgnore(node);
+  return card;
+}
 
 const FIELD_LABELS: Record<string, string> = {
   name: 'Nombre', public_name: 'Nombre público', public_description: 'Descripción pública', category: 'Categoría', base_servings: 'Raciones base',
@@ -29,8 +52,8 @@ function show(field: string, value: unknown): string {
 
 /** Conflictos (§6.3) y lotes rechazados por el servidor, con los componentes del kit. */
 export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
-  const conflictHost = el('div', { id: 'conflictList' });
-  const rejectedHost = el('div', { id: 'rejectedList' });
+  const conflictHost = el('div', { 'data-feedback-id': 'food.conflictos.lista', 'data-feedback-label': 'Conflictos pendientes', id: 'conflictList' });
+  const rejectedHost = el('div', { 'data-feedback-id': 'food.conflictos.rechazados', 'data-feedback-label': 'Rechazados por el servidor', id: 'rejectedList' });
   // Nombres para titular cada tarjeta con algo que la cocina reconozca, no con el identificador de la fila.
   const names = new Map<string, string>();
   const nameOf = (id: unknown) => names.get(String(id)) ?? '';
@@ -62,7 +85,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
 
   async function resolve(conflict: PendingConflict, decision: Parameters<typeof client.resolveConflict>[1]): Promise<void> {
     try {
-      await client.resolveConflict(conflict.requestId, decision);
+      await usage.run('food.conflictos.resolver', () => client.resolveConflict(conflict.requestId, decision));
       toast('Conflicto resuelto. Se enviará tu decisión al servidor.');
       await load();
       if ((await client.conflicts()).length === 0 && (await client.rejected()).length === 0) navigate('#/recetario');
@@ -79,7 +102,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
     replace(conflictHost, ...renderConflicts(conflicts, {
       fieldLabels: FIELD_LABELS, show, onResolve: resolve,
       rowName: (conflict) => rowName(conflict.operation.table, conflict.current ?? conflict.base),
-    }));
+    }).map((card) => markCard(card, { feedbackId: 'food.conflictos.conflicto', feedbackLabel: 'Conflicto' })));
     rejectedSection.hidden = rejected.length === 0;
     replace(rejectedHost, ...renderRejectedList(rejected, {
       describeError: (error) => describeError(error),
@@ -99,7 +122,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
         toast('Cambios descartados.');
         await load();
       },
-    }));
+    }).map((card) => markCard(card, { feedbackId: 'food.conflictos.rechazados.lote', feedbackLabel: 'Lote rechazado' })));
   }
 
   void load();

@@ -6,6 +6,19 @@ import {
 } from '../_domain/food/mod.ts';
 
 export const FOOD_ORIGINS = ['https://food.ikisai.com', 'https://ikisai-food.pages.dev'];
+export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
+
+export interface FoodAppOptions {
+  /** Base de la API de Tasks para las peticiones de §6.1 (en pruebas, una falsa). */
+  tasksApiBase?: string;
+  tasksFetch?: typeof fetch;
+}
+
+const FAULT_STATUSES: Record<string, { title: string; priority: 'normal' | 'high' }> = {
+  limitado: { title: 'Revisar', priority: 'normal' },
+  averiado: { title: 'Reparar', priority: 'high' },
+  fuera_de_servicio: { title: 'Reparar', priority: 'high' },
+};
 
 export const FOOD_UPLOADS: UploadsConfig = { bucket: 'kitchen-media', maxBytes: PHOTO_MAX_BYTES, allowedMime: [...PHOTO_MIME] };
 
@@ -125,7 +138,66 @@ function eventRoutes(events: EventReader): AppRoute[] {
   ];
 }
 
-export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>>) {
+/** Llamada a Tasks con el token de la persona (como Central, docs/tasks/API.md §19.6 y §20). */
+function createTasksClient(options: FoodAppOptions) {
+  const base = (options.tasksApiBase ?? DEFAULT_TASKS_API_BASE).replace(/\/$/, '');
+  const transport = options.tasksFetch ?? fetch;
+  return async function call<T>(ctx: RequestContext, path: string, body: unknown): Promise<T> {
+    let response: Response;
+    try {
+      response = await transport(`${base}/api/v1/${path}`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + ctx.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      fail(503, 'TASKS_UNAVAILABLE', 'Tasks no responde ahora mismo. Inténtalo más tarde.');
+    }
+    const out = await response.json().catch(() => ({})) as any;
+    if (response.status === 401 || response.status === 403) fail(403, 'TASKS_FORBIDDEN', 'Tu cuenta no puede pedir tareas en Tasks.', { error: out?.error ?? null });
+    if (response.status >= 400 && response.status < 500) fail(422, 'TASKS_REJECTED', out?.error?.message ?? 'Tasks no ha aceptado la petición.', { error: out?.error ?? null });
+    if (!response.ok) fail(503, 'TASKS_UNAVAILABLE', 'Tasks no responde ahora mismo. Inténtalo más tarde.', { status: response.status });
+    return out as T;
+  };
+}
+
+/** Hoy en hora de Madrid (AAAA-MM-DD). */
+function madridToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+function tasksRoutes(options: FoodAppOptions): AppRoute[] {
+  const tasks = createTasksClient(options);
+  return [{
+    // Avisa a Tasks de una máquina averiada, limitada o fuera de servicio (API.md §6.1). Necesita red. Una petición por
+    // máquina y día: `external_ref` = `equipment_fault:<id>:<día>`, así que repetir el aviso el mismo día no duplica la tarea.
+    method: 'POST', pattern: 'equipment/:id/fault', handler: async ({ ctx, params, json }) => {
+      if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', 'Solo quien edita puede avisar de una avería.');
+      const id = params.id ?? '';
+      if (!UUID.test(id)) fail(422, 'INVALID_OPERATION', 'Máquina no válida.');
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      const status = typeof body.status === 'string' ? body.status : '';
+      const location = typeof body.location === 'string' ? body.location.trim() : '';
+      const note = typeof body.note === 'string' ? body.note.trim() : '';
+      const fault = FAULT_STATUSES[status];
+      if (!name || name.length > 120 || !fault || location.length > 200 || note.length > 2000) fail(422, 'INVALID_OPERATION', 'Nombre, estado o nota no válidos.');
+      const out = await tasks<{ created: boolean; routed?: string; task?: { id?: string; title?: string } }>(ctx, 'requests/task', {
+        source: 'food', kind: 'food.equipment_fault', kind_label: 'Averías de cocina',
+        external_ref: `equipment_fault:${id}:${madridToday()}`,
+        external_url: `${FOOD_ORIGINS[0]}/#/maquinaria`,
+        title: `${fault!.title}: ${name}${location ? ` (${location})` : ''}`,
+        ...(note ? { note } : {}),
+        priority: fault!.priority,
+      });
+      if (!out?.task?.id) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
+      return { created: out.created, routed: out.routed ?? null, taskId: out.task!.id };
+    },
+  }];
+}
+
+export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins' | 'uploads'>>, options: FoodAppOptions = {}) {
   const supabase = createSupabase(base);
   const events = createEventReader(supabase);
   return createApp({
@@ -143,6 +215,6 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
         await checkMenuCalls(supabase, events, operations, ctx);
       },
     },
-    routes: eventRoutes(events),
+    routes: [...eventRoutes(events), ...tasksRoutes(options)],
   });
 }

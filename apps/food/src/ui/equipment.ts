@@ -3,6 +3,8 @@ import { validateOperations, type Equipment } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
 import { EQUIPMENT_STATUSES, EQUIPMENT_STATUS_LABELS, T, describeError, type Mirror } from '../app/client.ts';
+import { usage } from '../app/usage.ts';
+import { fb } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
 
 type Row = Mirror<Equipment>;
@@ -12,12 +14,13 @@ const text = (value: string) => value.trim() || null;
 /** Maquinaria: lista sencilla en lectura, hoja de edición y papelera. Sin fotos ni optimizador (docs/food/API.md §9). */
 export const mountEquipment: ViewMount = ({ main, client }) => {
   let rows: Row[] = [];
+  const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
 
-  const list = el('ul', { class: 'list', id: 'equipmentList', 'aria-label': 'Maquinaria' });
+  const list = el('ul', { 'data-feedback-id': 'food.maquinaria.lista', 'data-feedback-label': 'Lista de maquinaria', class: 'list', id: 'equipmentList', 'aria-label': 'Maquinaria' });
   const trashList = el('ul', { class: 'list', 'aria-label': 'Maquinaria en la papelera' });
-  const trashLabel = el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', el('span', { class: 'count' }, '0'));
-  const trash = el('details', { id: 'trash' }, trashLabel, trashList);
+  const trashLabel = el('summary', { 'data-feedback-id': 'food.maquinaria.papelera.abrir', 'data-feedback-label': 'Abrir papelera', class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', el('span', { class: 'count' }, '0'));
+  const trash = el('details', { 'data-feedback-id': 'food.maquinaria.papelera', 'data-feedback-label': 'Papelera', id: 'trash' }, trashLabel, trashList);
   const empty = el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay maquinaria'), 'Añade hornos, fuegos, ollas grandes o lo que condicione qué se puede cocinar.');
   const host = el('div');
 
@@ -26,12 +29,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Maquinaria'), el('p', null, 'Qué hay en la cocina, cuánto y en qué estado.'))),
     host,
     trash,
-    el('button', { class: 'fab', type: 'button', id: 'newEquipment', onclick: () => openEditor(null) }, icon('plus'), 'Nueva máquina'),
+    el('button', { 'data-feedback-id': 'food.maquinaria.nueva', 'data-feedback-label': 'Nueva máquina', class: 'fab', type: 'button', id: 'newEquipment', onclick: () => openEditor(null) }, icon('plus'), 'Nueva máquina'),
   );
 
   function item(row: Row, deleted: boolean): HTMLElement {
     const chip = row.status === 'operativo' ? [] : [el('span', { class: row.status === 'limitado' ? 'chip' : 'chip alert' }, EQUIPMENT_STATUS_LABELS[row.status])];
-    return listRow({
+    const node = listRow({
       id: row.id,
       title: row.name,
       meta: [row.quantity === 1 ? '1 unidad' : `${row.quantity} unidades`, row.category ?? '', row.location ?? ''].filter(Boolean),
@@ -39,9 +42,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       pending: row._pending === true,
       deleted,
       actions: [deleted
-        ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
-        : el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],
+        ? el('button', { 'data-feedback-id': 'food.maquinaria.papelera.restaurar', 'data-feedback-label': 'Restaurar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
+        : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],
     });
+    return deleted
+      ? fb(node, { feedbackId: 'food.maquinaria.papelera.fila', feedbackLabel: 'Máquina en la papelera' })
+      : fb(node, { feedbackId: 'food.maquinaria.lista.fila', feedbackLabel: 'Máquina' });
   }
 
   function paint(): void {
@@ -60,11 +66,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     paint();
   }
 
-  async function commitSafely(operations: RowOperation[], okMessage: string): Promise<boolean> {
+  /** `track` envuelve el envío para medir el uso (p. ej. `usage.run` al guardar); el error sigue llegando al `catch`. */
+  async function commitSafely(operations: RowOperation[], okMessage: string, track: (send: () => Promise<unknown>) => Promise<unknown> = (send) => send()): Promise<boolean> {
     const issue = validateOperations(operations);
     if (issue) { toast(issue.message); return false; }
     try {
-      await client.commit(operations);
+      await track(() => client.commit(operations));
       toast(client.status().network === 'offline' || !navigator.onLine ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
       await load();
       return true;
@@ -76,13 +83,13 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
 
   function openEditor(row: Row | null): void {
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
-    const name = el('input', { id: 'e-name', type: 'text', required: true, maxlength: '120', value: row?.name ?? '' });
-    const category = el('input', { id: 'e-category', type: 'text', maxlength: '60', value: row?.category ?? '', placeholder: 'Horno, fuego, olla…' });
-    const quantity = el('input', { id: 'e-quantity', type: 'number', min: '0', step: '1', inputmode: 'numeric', value: String(row?.quantity ?? 1) });
-    const capacity = el('input', { id: 'e-capacity', type: 'text', value: row?.capacity ?? '', placeholder: '70 cm, 40 litros…' });
-    const location = el('input', { id: 'e-location', type: 'text', value: row?.location ?? '' });
-    const status = el('select', { id: 'e-status' }, ...EQUIPMENT_STATUSES.map((s) => el('option', { value: s, selected: (row?.status ?? 'operativo') === s }, EQUIPMENT_STATUS_LABELS[s])));
-    const notes = el('textarea', { id: 'e-notes', rows: '3' });
+    const name = el('input', { 'data-feedback-id': 'food.maquinaria.formulario.nombre', 'data-feedback-label': 'Nombre', id: 'e-name', type: 'text', required: true, maxlength: '120', value: row?.name ?? '' });
+    const category = el('input', { 'data-feedback-id': 'food.maquinaria.formulario.tipo', 'data-feedback-label': 'Tipo', id: 'e-category', type: 'text', maxlength: '60', value: row?.category ?? '', placeholder: 'Horno, fuego, olla…' });
+    const quantity = el('input', { 'data-feedback-id': 'food.maquinaria.formulario.cantidad', 'data-feedback-label': 'Cantidad', id: 'e-quantity', type: 'number', min: '0', step: '1', inputmode: 'numeric', value: String(row?.quantity ?? 1) });
+    const capacity = el('input', { 'data-feedback-id': 'food.maquinaria.formulario.capacidad', 'data-feedback-label': 'Capacidad', id: 'e-capacity', type: 'text', value: row?.capacity ?? '', placeholder: '70 cm, 40 litros…' });
+    const location = el('input', { 'data-feedback-id': 'food.maquinaria.formulario.ubicacion', 'data-feedback-label': 'Ubicación', id: 'e-location', type: 'text', value: row?.location ?? '' });
+    const status = el('select', { 'data-feedback-id': 'food.maquinaria.formulario.estado', 'data-feedback-label': 'Estado', id: 'e-status' }, ...EQUIPMENT_STATUSES.map((s) => el('option', { value: s, selected: (row?.status ?? 'operativo') === s }, EQUIPMENT_STATUS_LABELS[s])));
+    const notes = el('textarea', { 'data-feedback-id': 'food.maquinaria.formulario.notas', 'data-feedback-label': 'Notas', id: 'e-notes', rows: '3' });
     notes.value = row?.notes ?? '';
 
     const fields = (): Record<string, unknown> => ({
@@ -100,8 +107,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       sheet?.setFootHidden(row !== null && !dirty);
     };
 
-    const save = el('button', { class: 'primary', type: 'submit', id: 'saveEquipment', form: 'equipmentForm' }, 'Guardar');
-    const form = el('form', { novalidate: true, id: 'equipmentForm', oninput: refreshDirty, onchange: refreshDirty,
+    const save = el('button', { 'data-feedback-id': 'food.maquinaria.formulario.guardar', 'data-feedback-label': 'Guardar máquina', class: 'primary', type: 'submit', id: 'saveEquipment', form: 'equipmentForm' }, 'Guardar');
+    const form = el('form', { 'data-feedback-id': 'food.maquinaria.formulario', 'data-feedback-label': 'Formulario de máquina', novalidate: true, id: 'equipmentForm', oninput: refreshDirty, onchange: refreshDirty,
       onsubmit: async (event: Event) => {
         event.preventDefault();
         error.textContent = '';
@@ -111,7 +118,7 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
           ? [{ op: 'update', table: T.equipment, id: row.id, expectedRevision: row.revision, fields: changed() }]
           : [{ op: 'insert', table: T.equipment, id: crypto.randomUUID(), fields: fields() }];
         save.disabled = true;
-        const ok = await commitSafely(operations, row ? 'Cambios guardados en este dispositivo.' : 'Máquina creada en este dispositivo.');
+        const ok = await commitSafely(operations, row ? 'Cambios guardados en este dispositivo.' : 'Máquina creada en este dispositivo.', (send) => usage.run('food.maquinaria.guardar', send));
         save.disabled = false;
         if (ok) { guard.dirtyEditor = false; await sheet?.close(true); }
       } },
@@ -124,8 +131,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
       error,
       row ? el('div', { class: 'zone' },
-        el('button', { class: 'danger', type: 'button', id: 'deleteEquipment', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
+        el('button', { 'data-feedback-id': 'food.maquinaria.formulario.papelera', 'data-feedback-label': 'Enviar máquina a papelera', class: 'danger', type: 'button', id: 'deleteEquipment', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
         el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Si alguna receta la necesita, márcala fuera de servicio en lugar de borrarla.'),
+      ) : null,
+      row && row.status !== 'operativo' && !row.deleted_at && canWrite() ? el('div', { 'data-feedback-id': 'food.maquinaria.formulario.aviso_tasks', 'data-feedback-label': 'Avisar a Tasks', class: 'zone', id: 'faultZone' },
+        el('button', { 'data-feedback-id': 'food.maquinaria.formulario.avisar_averia', 'data-feedback-label': 'Avisar a Tasks', class: 'ghost', type: 'button', id: 'reportFault', onclick: (event: Event) => void reportFault(row, event.currentTarget as HTMLButtonElement, notes.value) }, 'Avisar a Tasks para repararla'),
+        el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Crea una petición en Tasks con el nombre, el estado y las notas. Necesita conexión.'),
       ) : null,
     );
 
@@ -133,13 +144,31 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       title: row ? 'Editar máquina' : 'Nueva máquina',
       meta: row ? `Revisión ${row.revision} · actualizada ${formatDate(row.updated_at)}${row._pending ? ' · pendiente de sincronizar' : ''}` : undefined,
       body: form,
-      foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, row ? 'Cerrar' : 'Cancelar'), save],
+      foot: [el('button', { 'data-feedback-id': 'food.maquinaria.formulario.cerrar', 'data-feedback-label': 'Cerrar o cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, row ? 'Cerrar' : 'Cancelar'), save],
       footHidden: row !== null,
       initialFocus: name,
       beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
     });
     refreshDirty();
+  }
+
+  /** Petición a Tasks (API.md §6.1): una por máquina y día; Tasks la enruta con las reglas del usuario o la deja en «Por clasificar». */
+  async function reportFault(row: Row, button: HTMLButtonElement, note: string): Promise<void> {
+    if (!navigator.onLine) { toast('Sin conexión: avisa a Tasks cuando vuelva la red.'); return; }
+    button.disabled = true;
+    try {
+      const out = await usage.run('food.maquinaria.avisar_averia', () => client.api<{ created: boolean; routed: string | null }>(`/equipment/${row.id}/fault`, {
+        method: 'POST',
+        json: { name: row.name, status: row.status, location: row.location ?? '', note: note.trim() },
+      }));
+      toast(!out.created ? 'Ya se había avisado hoy a Tasks de esta máquina.'
+        : out.routed === 'pending' ? 'Aviso enviado a Tasks: queda en «Por clasificar».' : 'Aviso enviado a Tasks.');
+    } catch (error) {
+      toast(describeError(error));
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function deleteRow(row: Row): Promise<void> {

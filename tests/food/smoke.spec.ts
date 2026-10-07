@@ -99,6 +99,21 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     expect(api.rows('food.equipment')[0]).toMatchObject({ name: 'Horno 1', category: 'Horno', quantity: 1, status: 'operativo' });
   });
 
+  await test.step('maquinaria: el horno se avería y se avisa a Tasks', async () => {
+    await page.locator('#equipmentList .row', { hasText: 'Horno 1' }).getByRole('button', { name: 'Editar Horno 1' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Editar máquina' });
+    await expect(dialog.locator('#reportFault')).toHaveCount(0); // operativa: nada que avisar
+    await dialog.getByLabel('Estado').selectOption('averiado');
+    await page.locator('#saveEquipment').click();
+    await expect(dialog).toBeHidden();
+    await page.locator('#equipmentList .row', { hasText: 'Horno 1' }).getByRole('button', { name: 'Editar Horno 1' }).click();
+    await page.locator('#reportFault').click();
+    await expect(page.getByText('Aviso enviado a Tasks: queda en «Por clasificar».')).toBeVisible();
+    expect(api.faults()).toEqual([{ id: api.rows('food.equipment')[0]!.id, body: { name: 'Horno 1', status: 'averiado', location: '', note: '' } }]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Editar máquina' })).toBeHidden();
+  });
+
   await test.step('recetario vacío y receta nueva con ingrediente, maquinaria y foto', async () => {
     await page.goto(`${baseURL}/#/recetario`);
     await expect(page.getByText('Todavía no hay recetas')).toBeVisible();
