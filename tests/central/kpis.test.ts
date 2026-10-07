@@ -71,11 +71,19 @@ test('kpis · otra app publica su proyección con el contrato y entra en el pane
            'actual'::text as period, current_date as period_start, current_date + 30 as period_end, 'up'::text as direction,
            'https://booking.ikisai.com/#/'::text as link, now() as computed_at
     union all
-    select 'booking.occupancy_rate', 'Ocupación', 62.5, 'pct', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()`);
+    select 'booking.occupancy_rate', 'Ocupación', 62.5, 'pct', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()
+    union all
+    select 'booking.income_agreed_month', 'Importe acordado del mes', 12500, 'eur', '2026-10', date '2026-10-01', date '2026-10-31', 'up', null, now()`);
   await app.t.db.query(`select core.allow_read('central', 'booking.central_kpi_projection', 'view')`);
   const dash = await app.call('/api/v1/dashboard');
   const booking = dash.data.items.filter((i: any) => i.app === 'booking');
-  assert.deepEqual(booking.map((i: any) => [i.kpi, i.value, i.period]), [['booking.events_next_30d', 4, 'actual'], ['booking.occupancy_rate', 62.5, '2026-10']]);
+  assert.deepEqual(booking.map((i: any) => [i.kpi, i.value, i.period]), [['booking.events_next_30d', 4, 'actual'], ['booking.income_agreed_month', 12500, '2026-10'], ['booking.occupancy_rate', 62.5, '2026-10']]);
+  // Los importes, solo para owner y editor de Central.
+  const asEditor = await app.call('/api/v1/dashboard', { token: app.tokens.editor });
+  assert.ok(asEditor.data.items.some((i: any) => i.kpi === 'booking.income_agreed_month'));
+  const asReader = await app.call('/api/v1/dashboard', { token: app.tokens.reader });
+  assert.equal(asReader.data.items.some((i: any) => i.unit === 'eur'), false);
+  assert.ok(asReader.data.items.some((i: any) => i.kpi === 'booking.occupancy_rate'));
   assert.equal(dash.data.unavailable.includes('booking'), false);
   assert.equal(dash.data.items[0].app, 'central');
 });

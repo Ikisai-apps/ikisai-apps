@@ -42,6 +42,11 @@ export interface KpiTarget {
 
 export type KpiState = 'ok' | 'atencion' | 'critico' | null;
 
+/** Importes agregados del negocio (`unit = 'eur'`): solo owner y editor de Central (ronda 8 de Core); un lector ve el resto. */
+export function canSeeKpi(unit: string, role: string): boolean {
+  return unit !== 'eur' || role === 'owner' || role === 'editor';
+}
+
 /** Objetivo aplicable: el del periodo exacto, si no el del año del periodo, si no el general (`*`). */
 export function targetFor(targets: readonly KpiTarget[], kpi: string, period: string): KpiTarget | null {
   const mine = targets.filter((t) => t.kpi === kpi);
