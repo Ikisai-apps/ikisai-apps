@@ -32,7 +32,7 @@ Guests es el sitio donde una persona **vive su estancia en Ikisai**, desde que r
 
 ## 2. Tablas sincronizables (`guests.*`)
 
-Ninguna en la fase 1. No hay migraciones de Guests en esta tanda.
+Ninguna en la fase 1. La única migración, `20261007_0600_guests_file_gc.sql`, activa la recogida de huérfanos de sus archivos (§8).
 
 ## 3. Procedimientos (`call`)
 
@@ -70,11 +70,12 @@ createApp({
   app: 'guests', slug: 'guests-api',
   origins: ['https://guests.ikisai.com', 'https://ven.ikisai.com', <local>],
   uploads: { bucket: 'guests-documents', allowedMime: ['image/png', 'image/webp'], maxBytes: 300_000 },
-  workerKey: Deno.env.get('IKISAI_WORKER_KEY'),
 })
 ```
 
-**Sin rutas propias en la fase 1:** todo lo que necesita lo monta el kit. Sin `portalIssuer`, porque un huésped no emite enlaces.
+**Sin rutas propias en la fase 1:** todo lo que necesita lo monta el kit. Sin `portalIssuer`, porque un huésped no emite enlaces, y sin `workerKey`, porque no tiene trabajos programados.
+
+**`GET files/:id` cerrada.** El kit solo comprueba la pertenencia a la app, así que en un portal cualquier huésped podría pedir el archivo de otro (su firma) si conociera el id. Guests nunca vuelve a leer sus archivos, de modo que `guests-api` responde siempre `404 FILE_NOT_FOUND` en esa ruta (`createGuestsApp` envuelve el manejador del kit). Petición C7 a Core: que el kit lo ofrezca como opción.
 
 | Ruta (prefijo `/api/v1/`) | Uso en Guests |
 |---|---|
@@ -137,7 +138,10 @@ Solo la **imagen de la firma**:
 
 El personal la ve desde Booking (`GET /api/v1/guest-signature/:guestId`).
 
-**Conservación:** la columna que la referencia es de Booking (`booking.guests.signature_file_id`, clase `legal`, tres años, anonimización de SES-4). El archivo, en cambio, queda en `core.files` con `app = 'guests'`. Pregunta C2 a Core: quién declara ese campo para la recogida de huérfanos y si Guests debe activar `core.enable_file_gc('guests')`.
+**Conservación:** la columna que la referencia es de Booking (`booking.guests.signature_file_id`, clase `legal`, tres años, anonimización de SES-4). El archivo, en cambio, queda en `core.files` con `app = 'guests'`.
+- El registro de Booking cubre la referencia (respuesta C2 de Core).
+- Guests activa la recogida con `core.enable_file_gc('guests')` en su migración 0600, sin campos propios.
+- Una firma subida que nunca llega a guardarse queda huérfana y se borra a los 30 días; una que llegó a ser legal no se borra sola.
 
 Las imágenes de «Ayuda y sugerencias» van por `feedback/uploads` (bucket `feedback-media`, kit).
 
@@ -314,7 +318,7 @@ Abre `createFeedbackProgressiveForm` del kit con este catálogo (especificación
    - tipo: Horarios · Organización · Actividades · Comunicación · Comida · Otra;
    - comentario;
    - `subject: event`, `scope: {reservation_id, guest_id}`, `intent: problem | suggestion`;
-   - aviso: «Lo leerá tu organizador». Destino `organizer` (FEEDBACK.md §4); ver la pregunta C5 mientras Organizers no tenga su bandeja.
+   - aviso: «Lo leerá tu organizador». Destino `organizer` (FEEDBACK.md §4). Mientras Organizers no tenga su bandeja, los ve el personal de Booking en «Sugerencias y QA» (respuesta C5).
 4. **Un espacio de Ikisai:**
    - lugar, como texto y sin `space_id`: Mi habitación · Comedor · Sala · Baños · Exterior · Piscina · Otro;
    - tipo: Algo está roto · Limpieza · Falta algo · Agua o electricidad · Seguridad · Otra cosa (`damage | cleaning | missing | utilities | safety | other`);
@@ -408,7 +412,7 @@ Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking n
 ### 11.2 Pruebas automáticas
 
 - **`tests/guests/*.test.ts`** (PGlite, como Booking y Organizers):
-  - conformidad de `guests-api` con `packages/test-kit`;
+  - sin la suite de conformidad de `packages/test-kit`, que necesita una tabla sincronizable propia (como Organizers);
   - canje del enlace;
   - `portal_my_guest` y las cuatro acciones por `guests-api`, dentro y fuera de ámbito (otro `guest_id` de la misma reserva → `OUT_OF_SCOPE`);
   - subida de la firma al bucket `guests-documents`, y que una firma subida por otra cuenta se rechaza;
@@ -480,10 +484,13 @@ Fases de `PORTALES_V2.md` §4: 4 (experiencia configurable) y 5 (decisiones del 
 
 ### 13.5 Ofertas, pagos y preguntas del organizador
 
-- **Ofertas del organizador:**
-  - según la decisión del usuario del 7-10-2026, le sirven para sus cálculos y para el cartel, sin cobro ni intermediación de Ikisai;
-  - si se enseñan en Guests, serán **solo informativas**: qué incluye cada opción, el precio y cómo pagarle al organizador (Bizum, transferencia o efectivo), con el estado de pago que marca él;
-  - **pendiente de confirmar** que se muestren en Guests.
+- **Ofertas del organizador: no se muestran en Guests** (decisión del usuario, confirmada por Core el 7-10-2026). Le sirven para sus cálculos y para su cartel en PDF o JPG, que difunde por su cuenta.
+- **Contrato con Organizers** (`docs/organizers/API.md` §13.5). Guests usa cuatro lecturas registradas para `guests` y filtradas por `{reservation_id, guest_id}`:
+  - `organizers.guest_experience_for` (módulos y acciones);
+  - `organizers.guest_questions` (preguntas vigentes y sus respuestas);
+  - `organizers.guest_materials` (materiales publicados para el momento actual).
+
+  Escribe solo con `organizers.guest_answer`. Sobra `organizers.guest_offers`, por la decisión anterior. Falta precisar quién firma las URL de los materiales (petición O1).
 - **Pagos a Ikisai** (extras de Ikisai) llegarán con la fase 6, de Finance y la pasarela. Guests nunca guarda datos de tarjeta.
 - **Preguntas propias del organizador:**
   - las define Organizers;
@@ -530,12 +537,18 @@ Detalle y estado en `docs/guests/PETICIONES.md`.
 
 ### A Core
 
-- **C1 · Contacto sin sesión.** Una lectura pública y cacheable de los textos de tipo `contacto` (por ejemplo `GET /api/v1/public/contact?lang=`), para las pantallas de enlace no válido o caducado, donde aún no hay sesión. Si no, esas pantallas solo pueden usar el texto de reserva del código (Organizers tiene el mismo caso).
-- **C2 · Firma y recogida de huérfanos.** La firma es un `core.files` de `app = 'guests'` referenciado desde `booking.guests.signature_file_id`, que es una columna de Booking de clase `legal`. ¿Lo cubre el registro de Booking (`core.register_file_field`)? ¿Debe Guests llamar a `core.enable_file_gc('guests')` sin campos propios?
+- **C1 · Contacto sin sesión** (lo hace Core: `GET /api/v1/public/contact?lang=`). Una lectura pública y cacheable de los textos de tipo `contacto` (por ejemplo `GET /api/v1/public/contact?lang=`), para las pantallas de enlace no válido o caducado, donde aún no hay sesión. Si no, esas pantallas solo pueden usar el texto de reserva del código (Organizers tiene el mismo caso).
+- **C2 · Firma y recogida de huérfanos** (respondida: lo cubre Booking; Guests activa la recogida en la 0600). La firma es un `core.files` de `app = 'guests'` referenciado desde `booking.guests.signature_file_id`, que es una columna de Booking de clase `legal`. ¿Lo cubre el registro de Booking (`core.register_file_field`)? ¿Debe Guests llamar a `core.enable_file_gc('guests')` sin campos propios?
 - **C3 · Alta de infraestructura** cuando abra la PR con `apps/guests`: `scripts/apps.py`, Pages, `guests.ikisai.com` y la redirección de `ven.ikisai.com`, como C5 de Organizers.
-- **C4 · Varias entradas por cuenta.** Confirmar que, con la #278, una cuenta de Guests acumula entradas en `scopes.grants` cuando se le emiten enlaces de otro huésped o de otro retiro con el mismo correo, y que revocar uno quita solo esa entrada.
-- **C5 · Comentarios «Mi retiro» de huéspedes antes de la bandeja de Organizers.** El destino es `organizer`, pero Organizers V1 no tiene aún «Comentarios del retiro». ¿Los ve mientras tanto el personal de Booking (que ya puede ver los reportes de portales) o escondo esa rama hasta que exista la bandeja? Propuesta: ofrecerla, porque Booking los ve.
-- **C6 · Cuentas internas de huésped al caducar.** ¿Qué pasa con las cuentas `p-…@portales.ikisai.com` y sus pertenencias cuando vence la conservación de SES-4? Propuesta: el mismo trabajo de anonimización revoca el ámbito y, sin otras entradas, borra la cuenta.
+- **C4 · Varias entradas por cuenta** (confirmada). Confirmar que, con la #278, una cuenta de Guests acumula entradas en `scopes.grants` cuando se le emiten enlaces de otro huésped o de otro retiro con el mismo correo, y que revocar uno quita solo esa entrada.
+- **C5 · Comentarios «Mi retiro» de huéspedes antes de la bandeja de Organizers** (respondida: se ofrece; los ve el personal de Booking). El destino es `organizer`, pero Organizers V1 no tiene aún «Comentarios del retiro». ¿Los ve mientras tanto el personal de Booking (que ya puede ver los reportes de portales) o escondo esa rama hasta que exista la bandeja? Propuesta: ofrecerla, porque Booking los ve.
+- **C6 · Cuentas internas de huésped al caducar** (lo hace Core con Booking). ¿Qué pasa con las cuentas `p-…@portales.ikisai.com` y sus pertenencias cuando vence la conservación de SES-4? Propuesta: el mismo trabajo de anonimización revoca el ámbito y, sin otras entradas, borra la cuenta.
+
+- **C7 · Lectura de archivos solo del autor en el kit.** Una opción de `uploads` (por ejemplo `readOwnOnly: true`) para que `GET files/:id` y `uploads/:id/verify` solo valgan para quien subió el archivo. Hoy `guests-api` cierra la lectura por su cuenta (§6.1).
+
+### A Organizers (por Core)
+
+- **O1 · URL de los materiales.** `organizers.guest_materials` no puede firmar URL desde SQL, y el `files/:id` de `guests-api` solo ve archivos de Guests (y está cerrado). Una ruta de `organizers-api` no sirve, porque los huéspedes no son miembros de Organizers. Propuesta: una ruta propia de `guests-api`, `GET materials/:fileId`, que compruebe con una lectura de Organizers que el material está publicado para la reserva del huésped y firme la URL con `createStorage`. Organizers lo confirma en su G2 de la fase 4.
 
 ### A UI (por Core)
 

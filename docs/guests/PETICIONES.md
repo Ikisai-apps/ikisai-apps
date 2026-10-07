@@ -12,12 +12,14 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | BG6 | Booking | parentesco: ¿códigos del catálogo de SES en el dominio? | abierta |
 | CE1 | Central | textos por idioma (`es`, `en`) con alternativa en español | abierta |
 | CE2 | Central | claves `guests.data_why`, `guests.signature_statement`, `guests.allergies_notice` e `info.*` | abierta |
-| C1 | Core | lectura pública del contacto para las pantallas sin sesión | abierta |
-| C2 | Core | firma (`app = 'guests'`, columna de Booking) y recogida de huérfanos | abierta |
+| C1 | Core | lectura pública del contacto para las pantallas sin sesión | la hace Core |
+| C2 | Core | firma (`app = 'guests'`, columna de Booking) y recogida de huérfanos | respondida: migración 0600 |
 | C3 | Core | alta de infraestructura con la primera PR de `apps/guests` | abierta |
-| C4 | Core | varias entradas de ámbito por cuenta con la #278 | abierta |
-| C5 | Core | comentarios «Mi retiro» antes de la bandeja de Organizers | abierta |
-| C6 | Core | cuentas internas de huésped al vencer la conservación | abierta |
+| C4 | Core | varias entradas de ámbito por cuenta con la #278 | confirmada |
+| C5 | Core | comentarios «Mi retiro» antes de la bandeja de Organizers | respondida: los ve Booking |
+| C6 | Core | cuentas internas de huésped al vencer la conservación | la hace Core con Booking |
+| C7 | Core | `uploads`: lectura y verificación solo del autor (hoy `guests-api` cierra `files/:id`) | abierta |
+| O1 | Organizers | URL firmadas de los materiales publicados para el huésped | abierta |
 | U1 | UI | capa de traducción y catálogos del feedback por idioma | abierta |
 | U2 | UI | recuadro de firma en el kit | abierta |
 | U3 | UI | estado de guardado por campo y global | abierta |

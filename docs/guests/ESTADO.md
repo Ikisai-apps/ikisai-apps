@@ -16,9 +16,14 @@
 
   Las fases 4 y 5, a grandes rasgos (§13).
 
+- 2026-10-07 · Diseño aprobado por Core. Edge `guests-api` (PR 1 de API.md §12):
+  - `createGuestsApp` con subidas al bucket `guests-documents` (PNG o WebP, ≤ 300 KB) y `GET files/:id` cerrada;
+  - migración `0600_guests_file_gc`;
+  - `tests/guests/api.test.ts` (7 pruebas): canje, ámbito por huésped, ficha, datos con procedencia y conflicto, aviso legal, consentimiento, restricciones, firma (propia sí, ajena no), modo operativo.
+
 ## Pendiente
 
-- Código (Edge `guests-api`, PWA `apps/guests`, pruebas) tras la revisión de Core, en cuatro PR (API.md §12).
+- PWA `apps/guests` (PR 2 a 4 de API.md §12), en cuanto entre la #278 (`loginWithLink`).
 
 ## Bloqueos
 
