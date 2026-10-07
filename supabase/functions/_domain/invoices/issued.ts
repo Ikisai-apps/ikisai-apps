@@ -30,8 +30,12 @@ export const RECIPIENT_ID_TYPE_LABELS: Record<string, string> = {
   NIF: 'NIF español', '02': 'NIF-IVA (UE)', '03': 'Pasaporte', '04': 'Documento oficial del país', '05': 'Certificado de residencia', '06': 'Otro',
 };
 
-export const ISSUED_STATUSES = ['registrada', 'anulada'] as const;
+export const ISSUED_STATUSES = ['registrada', 'anulada', 'borrador', 'emitida', 'rectificada'] as const;
 export type IssuedStatus = (typeof ISSUED_STATUSES)[number];
+/** Estados que cuentan en resúmenes y entregas: registradas de otra herramienta, emitidas y rectificadas (§14.3). */
+export const ISSUED_COUNTED_STATUSES: readonly IssuedStatus[] = ['registrada', 'emitida', 'rectificada'];
+export const SERIES_MODES = ['registro', 'emision'] as const;
+export const RECIPIENT_KINDS = ['empresa', 'profesional', 'particular'] as const;
 export const ISSUED_ORIGINS = ['manual', 'importada', 'app'] as const;
 export type IssuedOrigin = (typeof ISSUED_ORIGINS)[number];
 export const ISSUED_ORIGIN_LABELS: Record<IssuedOrigin, string> = { manual: 'Registrada a mano', importada: 'Importada de otra herramienta', app: 'Emitida desde la app' };
@@ -59,12 +63,20 @@ export interface IssuedSeriesRow extends SyncedColumns {
   yearly: boolean;
   format: string;
   active: boolean;
+  /** `registro` (otra herramienta) o `emision` (Finance asigna el número al emitir, §14.2). */
+  mode: (typeof SERIES_MODES)[number];
+  closed_at: string | null;
+  closed_last_number: string | null;
+  counter_year: number | null;
+  counter_last: number;
+  counter_last_date: string | null;
 }
 
 export interface IssuedInvoiceRow extends SyncedColumns {
   series_code: string;
-  number: string;
-  full_number: string;
+  /** `null` solo en borrador: el número lo asigna el servidor al emitir. */
+  number: string | null;
+  full_number: string | null;
   issue_date: string;
   operation_date: string | null;
   fiscal_year: number;
@@ -268,8 +280,8 @@ export interface IssuedSummaryInput {
 }
 
 export function issuedSummary(input: IssuedSummaryInput, range: { from: string; to: string }): IssuedSummary {
-  const live = input.invoices.filter((i) => !i.deleted_at && i.issue_date >= range.from && i.issue_date <= range.to);
-  const summed = live.filter((i) => i.status === 'registrada');
+  const live = input.invoices.filter((i) => !i.deleted_at && i.status !== 'borrador' && i.issue_date >= range.from && i.issue_date <= range.to);
+  const summed = live.filter((i) => ISSUED_COUNTED_STATUSES.includes(i.status));
   const ids = new Set(summed.map((i) => i.id));
   const sum = (values: Array<number | null | undefined>) => fromCents(values.reduce<number>((acc, v) => acc + toCents(Number(v ?? 0)), 0));
   const breakdown = input.taxLines.filter((t) => !t.deleted_at && ids.has(t.issued_invoice_id) && !(WITHHOLDING_TAXES as readonly string[]).includes(t.tax));
@@ -309,8 +321,8 @@ export function issuedSummary(input: IssuedSummaryInput, range: { from: string; 
       .map((c) => ({ income_category: c.income_category, base: sum(c.base), total: sum(c.total), count: c.count })),
     alerts: {
       unpaid: summed.filter((i) => i.payment_status !== 'cobrada').length,
-      discrepancies: summed.filter((i) => i.review_reason === 'REVISAR IMPORTES').sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.full_number.localeCompare(b.full_number))
-        .map((i) => ({ id: i.id, full_number: i.full_number, totals_delta: i.totals_delta === null ? null : Number(i.totals_delta) })),
+      discrepancies: summed.filter((i) => i.review_reason === 'REVISAR IMPORTES').sort((a, b) => a.issue_date.localeCompare(b.issue_date) || (a.full_number ?? '').localeCompare(b.full_number ?? ''))
+        .map((i) => ({ id: i.id, full_number: i.full_number ?? '', totals_delta: i.totals_delta === null ? null : Number(i.totals_delta) })),
       missing_file: input.withFile ? summed.filter((i) => !input.withFile!.has(i.id)).length : 0,
     },
   };
