@@ -116,5 +116,7 @@ export function createBookingApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins
     hooks: { beforeCommit: validateBookingOperations, visible: visibleBookingRow, afterCommit: calendarAfterCommit(supabase, calendar), agentRisk: (operations) => bookingAgentRisk(operations) },
     routes: bookingRoutes(supabase, calendar),
     workerRoutes: bookingWorkerRoutes(calendar),
+    // enlaces personales de los portales Organizers y Guests (contrato §3.6): solo editor y owner
+    portalIssuer: true,
   });
 }

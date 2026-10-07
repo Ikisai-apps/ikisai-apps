@@ -662,6 +662,84 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#blockOperation')).toContainText('Reabrir evento');
   });
 
+  await test.step('portal del organizador: enlace con el contacto prellenado, URL una sola vez, copiar, ampliar, revocar y 403 de lector', async () => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    api.serverUpdate(RESERVATIONS, reservationId, { contact_name: 'Organizadora Sintética', contact_email: 'organiza@example.invalid' });
+    await page.locator('.nav').getByText('Reservas', { exact: true }).click();
+    await page.getByRole('button', { name: 'Abrir Retiro Test' }).click();
+    await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
+    const block = page.locator('#blockPortal');
+    await expect(block).toContainText('Todavía no hay enlaces para esta reserva.');
+    expect(api.requests.some((r) => r.method === 'GET' && r.path === `/api/v1/portal-links?reservation=${reservationId}`)).toBeTruthy();
+
+    // La hoja sale con el contacto de la reserva (editable) y la ayuda del correo.
+    await page.locator('#generatePortalLink').click();
+    const form = page.getByRole('dialog', { name: 'Enlace para el organizador' });
+    await expect(form.locator('#f-person_name')).toHaveValue('Organizadora Sintética');
+    await expect(form.locator('#f-person_email')).toHaveValue('organiza@example.invalid');
+    await expect(form).toContainText('Con correo, el organizador conserva la misma cuenta en sus próximos retiros');
+    await form.locator('#f-person_name').fill('Organizadora Sintética Dos');
+    await page.locator('#portalIssue').click();
+
+    // La URL se enseña una vez, con su aviso.
+    const issued = page.getByRole('dialog', { name: 'Enlace generado' });
+    const [link] = api.portalLinks();
+    expect(link).toMatchObject({ label: 'Organizadora Sintética Dos', email: 'organiza@example.invalid', reservationId });
+    expect(link!.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const url = `https://organizers.ikisai.com/i/${link!.token}`;
+    await expect(issued.locator('#portalUrl')).toHaveValue(url);
+    await expect(issued).toContainText('Este enlace no se volverá a mostrar. Si se pierde, genera otro.');
+    await page.locator('#portalCopy').click();
+    await expect(page.getByText('Enlace copiado')).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+
+    // Al cerrar, la URL desaparece y la lista no la lleva.
+    await page.locator('#portalDone').click();
+    await expect(issued).toBeHidden();
+    const row = block.locator('#portalList .portal-link');
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('Organizadora Sintética Dos');
+    await expect(row).toContainText('Sin usar');
+    await expect(row.locator('[data-role="validity"]')).toContainText('Válido hasta');
+    expect(await page.content()).not.toContain(link!.token);
+    await expect(row.locator('[data-role="validity"]')).toContainText('Válido hasta');
+
+    // Ampliar: la fecha manda si es posterior al fin de la reserva más margen.
+    await row.getByRole('button', { name: 'Ampliar hasta…' }).click();
+    const extend = page.getByRole('dialog', { name: 'Ampliar enlace' });
+    await extend.locator('#f-until').fill(inDays(40));
+    await page.locator('#portalExtendSave').click();
+    await expect(extend).toBeHidden();
+    await expect.poll(() => api.portalLinks()[0]!.extendedUntil).not.toBeNull();
+    expect(api.portalLinks()[0]!.extendedUntil!.slice(0, 10) >= inDays(39)).toBeTruthy();
+    await expect(row.locator('[data-role="validity"]')).not.toContainText('Caducado');
+
+    // Un lector recibe 403 y el aviso lo dice.
+    api.setPortalRole('reader');
+    await page.locator('#generatePortalLink').click();
+    await page.locator('#portalIssue').click();
+    await expect(page.getByRole('dialog', { name: 'Enlace para el organizador' }).locator('.formerror')).toContainText('No tienes permiso para esta operación.');
+    await page.getByRole('dialog', { name: 'Enlace para el organizador' }).getByRole('button', { name: 'Cancelar' }).click();
+    api.setPortalRole('owner');
+
+    // Revocar con confirmación.
+    await row.getByRole('button', { name: 'Revocar' }).click();
+    await page.locator('.dialog').getByRole('button', { name: 'Revocar', exact: true }).click();
+    await expect(row.locator('[data-role="validity"]')).toHaveText('Revocado');
+    await expect(row.getByRole('button', { name: 'Revocar' })).toHaveCount(0);
+    expect(api.portalLinks()[0]!.revokedAt).not.toBeNull();
+
+    // Sin red el bloque lo dice y deshabilita el botón.
+    await context.setOffline(true);
+    await expect(page.locator('#portalOffline')).toContainText('necesitan conexión');
+    await expect(page.locator('#generatePortalLink')).toBeDisabled();
+    await context.setOffline(false);
+    await page.waitForFunction(() => navigator.onLine);
+    await expect(page.locator('#portalOffline')).toHaveCount(0);
+    await expect(page.locator('#generatePortalLink')).toBeEnabled();
+  });
+
   await test.step('tarifas y propuesta: tarifario, condiciones, borrador con sugerencia y extra, enviar, bloqueo, nueva versión, aceptar y documento', async () => {
     const euros = (n: number) => `${n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`.replace(/\./g, '');
     const plain = (text: string | null) => (text ?? '').replace(/\./g, '').replace(/ /g, ' ');

@@ -5,7 +5,7 @@
  */
 import { FIELDS, proposalTotals, round2 } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 /** Valores por defecto de las columnas, los mismos que ponen las migraciones `*_booking_*` al insertar. */
 const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
@@ -103,6 +103,21 @@ export interface FakeCostRow {
   allocation_revision: number;
 }
 
+export interface FakePortalLink {
+  linkId: string;
+  app: string;
+  userId: string;
+  label: string | null;
+  scope: { reservation_id: string };
+  reservationId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  extendedUntil: string | null;
+  token: string;
+  email: string | null;
+}
+
 export interface FakeApi {
   url: string;
   /** Fija las filas de `GET /read/invoices.booking_cost_projection` (se filtran por `where[target_id]`). */
@@ -123,6 +138,10 @@ export interface FakeApi {
   changeLog(): Array<{ requestId: string | null; table: string; id: string; op: string }>;
   /** Hace que el siguiente `POST /commands` falle con ese código y estado (la API falsa no aplica los invariantes del servidor). */
   failNextCommit(code: string, status: number): void;
+  /** Rol con el que la API falsa atiende `portal-links` (con `reader` responde 403). */
+  setPortalRole(role: 'owner' | 'editor' | 'reader'): void;
+  /** Enlaces de portal emitidos, con su token (la lista de la API no lo lleva). */
+  portalLinks(): FakePortalLink[];
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -385,6 +404,18 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const uploads = new Map<string, { filename: string; mime: string; sha256: string; size: number | null }>();
   const purgeRequests: string[][] = [];
   let nextCommitFailure: { code: string; status: number } | null = null;
+  // Enlaces de portal (contrato §3.6): solo editor y owner; la lista nunca lleva el token.
+  let portalRole: 'owner' | 'editor' | 'reader' = 'owner';
+  const portalLinks = new Map<string, FakePortalLink>();
+  const base64url = () => randomBytes(32).toString('base64url');
+  const linkValidUntil = (link: FakePortalLink): string | null => {
+    if (link.revokedAt) return null;
+    const reservation = data.get('booking.reservations')?.get(link.reservationId);
+    const end = typeof reservation?.end_date === 'string' ? Date.parse(`${reservation.end_date}T23:59:59Z`) + 3 * 86_400_000 : null;
+    const extended = link.extendedUntil ? Date.parse(link.extendedUntil) : null;
+    const best = Math.max(end ?? -Infinity, extended ?? -Infinity);
+    return Number.isFinite(best) && best > Date.now() ? new Date(best).toISOString() : null;
+  };
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://fake.local');
@@ -460,6 +491,39 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const rows = costRows.filter((row) => target === null || row.target_id === target);
         return json(res, 200, { rows, total: rows.length });
       }
+      if (path === 'portal-links' || path.startsWith('portal-links/')) {
+        if (portalRole === 'reader') throw new Fault(403, 'FORBIDDEN', 'Solo el personal con permiso de escritura gestiona enlaces.');
+        if (path === 'portal-links' && method === 'POST') {
+          const body = await readJson(req);
+          const reservationId = body?.scope?.reservation_id;
+          if (body?.app !== 'organizers' || typeof reservationId !== 'string' || typeof body?.person?.name !== 'string' || !body.person.name.trim()) throw new Fault(422, 'INVALID_OPERATION', 'Datos del enlace inválidos.');
+          const link: FakePortalLink = {
+            linkId: randomUUID(), app: 'organizers', userId: randomUUID(), label: typeof body.label === 'string' ? body.label : body.person.name.trim(), scope: { reservation_id: reservationId },
+            reservationId, createdAt: nowIso(), lastUsedAt: null, revokedAt: null, extendedUntil: null, token: base64url(), email: typeof body.person.email === 'string' ? body.person.email : null,
+          };
+          portalLinks.set(link.linkId, link);
+          return json(res, 200, { linkId: link.linkId, userId: link.userId, scope: link.scope, validUntil: linkValidUntil(link), url: `https://organizers.ikisai.com/i/${link.token}`, shownOnce: true });
+        }
+        if (path === 'portal-links' && method === 'GET') {
+          const reservation = url.searchParams.get('reservation');
+          const items = Array.from(portalLinks.values()).filter((l) => l.reservationId === reservation).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            .map(({ token: _token, email: _email, reservationId: _reservationId, ...rest }) => ({ ...rest, issuerApp: 'booking', validUntil: linkValidUntil({ ...rest, token: _token, email: _email, reservationId: _reservationId }) }));
+          return json(res, 200, { items });
+        }
+        const manage = /^portal-links\/([0-9a-f-]+)\/(revoke|extend)$/.exec(path);
+        if (manage && method === 'POST') {
+          const link = portalLinks.get(manage[1]!);
+          if (!link) throw new Fault(404, 'NOT_FOUND', 'No existe ese enlace.');
+          if (manage[2] === 'revoke') link.revokedAt = link.revokedAt ?? nowIso();
+          else {
+            const body = await readJson(req);
+            const until = Date.parse(String(body?.until));
+            if (Number.isNaN(until) || until < Date.now()) throw new Fault(422, 'INVALID_OPERATION', 'La fecha debe ser futura.');
+            link.extendedUntil = new Date(until).toISOString();
+          }
+          return json(res, 200, { linkId: link.linkId, revokedAt: link.revokedAt, validUntil: linkValidUntil(link) });
+        }
+      }
       if (path === 'calendar/status' && method === 'GET') return json(res, 200, calendarStatus);
       const retry = /^calendar\/([0-9a-f-]+)\/retry$/.exec(path);
       if (retry && method === 'POST') {
@@ -531,6 +595,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     purgeRequests: () => purgeRequests,
     changeLog: () => changes.map((c) => ({ requestId: c.requestId, table: c.table, id: c.id, op: c.op })),
     failNextCommit(code, status) { nextCommitFailure = { code, status }; },
+    setPortalRole(role) { portalRole = role; },
+    portalLinks: () => Array.from(portalLinks.values()).map((l) => ({ ...l })),
     serverUpdate(table, id, fields) {
       const row = data.get(table)?.get(id);
       if (!row) throw new Error(`fila ${id} no existe`);

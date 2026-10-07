@@ -122,6 +122,12 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .staff-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
 #needList .row-title { flex-wrap: wrap; }
 #needList .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
+/* Bloque «Portal del organizador» y hoja con la URL recién emitida */
+#blockPortal .row-title { flex-wrap: wrap; }
+#blockPortal .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
+.portal-issued { display: grid; gap: 12px; }
+.portal-urlbox { border: 1px dashed var(--line); border-radius: var(--radius-xs); padding: 10px; background: var(--paper-2); }
+.portal-url { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; resize: none; }
 .noticelink { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .chip.muted { opacity: .7; }
 
