@@ -1,0 +1,287 @@
+/**
+ * Feedback en una app interna (especificación §2–§2.6, §18; FEEDBACK.md §6 y §8).
+ * - **Modo «Señalar para comentar»** (§8.1), por persona y dispositivo, apagado por defecto. Apagado: ni gesto ni pines,
+ *   la app se comporta como siempre. Encendido: la pulsación mantenida (o Mayúsculas+F10) señala, se ven los pines y
+ *   `html.fb-mode` deja una marca discreta en la cabecera. Se cambia desde el lanzador (`createAppLauncher({ feedback })`).
+ * - **Borradores**: salir con contenido deja un borrador local (IndexedDB) y un pin sobre el elemento; vacío no guarda nada.
+ * - **Enviar**: pasa a la bandeja y se envía; sin red, «Pendiente de enviar». Si el servidor lo rechaza para siempre,
+ *   vuelve a ser borrador con el motivo.
+ * - **Pin verde** (§8.4) sobre los nodos con reportes corregidos: «Esto ya está corregido. ¿Lo compruebas?», con
+ *   «Funciona» (`verify`) y «Sigue fallando» (`reopen`).
+ * - `clear(userId)` borra borradores y bandeja de una cuenta (`onSessionEnd` de `sync-client`).
+ */
+import { el, replace } from '../dom.ts';
+import { icon } from '../icons.ts';
+import { trapFocus } from '../overlay/focus.ts';
+import { toast } from '../toast.ts';
+import { createFeedbackClient, type FeedbackApi, type FeedbackClient, type FeedbackReport } from './client.ts';
+import { openFeedbackComposer, type ComposerValue, type FeedbackComposer } from './composer.ts';
+import type { FeedbackIntent } from './constants.ts';
+import { appVersion, collectFeedbackContext, observeFeedbackContext, type FeedbackContextInput } from './context.ts';
+import { installFeedbackGesture, type FeedbackGesture } from './gesture.ts';
+import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
+import { clearFeedbackForUser, feedbackDrafts, feedbackOutbox, type FeedbackDraft, type FeedbackOutboxItem } from './store.ts';
+
+export interface FeedbackOptions {
+  app: string;
+  api: FeedbackApi;
+  userId: () => string | null;
+  role?: () => string | null;
+  /** Estado de sincronización (`sync-client` `getSyncSummary()`) para el contexto. */
+  syncSummary?: () => FeedbackContextInput['sync'];
+  /** Nodo de reserva cuando no hay `data-feedback-id` en la cadena (página o sección). */
+  fallbackNode?: () => { id: string; path: string[] };
+  intents?: FeedbackIntent[];
+  /** Capa donde montar el composer y los pines (en Tasks, `#kitLayer`); por defecto `document.body`. */
+  container?: () => HTMLElement;
+  fetchImpl?: typeof fetch;
+  onSent?: (report: FeedbackReport) => void;
+}
+
+export interface FeedbackMode {
+  get(): boolean;
+  set(on: boolean): void;
+  onChange(listener: (on: boolean) => void): () => void;
+}
+
+export interface Feedback {
+  /** Modo «Señalar para comentar» (por persona y dispositivo). */
+  mode: FeedbackMode;
+  /** Abre el composer sobre el elemento (sube hasta el `data-feedback-id` más cercano). */
+  signal(element: Element): Promise<FeedbackComposer>;
+  /** Abre el composer para un nodo concreto (p. ej. desde una entrada de menú). */
+  open(node: FeedbackNode, anchor?: Element | null): Promise<FeedbackComposer>;
+  /** Reabre un borrador (p. ej. desde «Mis borradores» del centro). */
+  openDraft(draft: FeedbackDraft): Promise<FeedbackComposer>;
+  drafts(): Promise<FeedbackDraft[]>;
+  pending(): Promise<FeedbackOutboxItem[]>;
+  flush(): Promise<void>;
+  /** Vuelve a pedir los reportes pendientes de verificar (pin verde). */
+  refreshVerify(): Promise<void>;
+  /** Borra borradores y bandeja de la cuenta (al cerrar sesión o cambiar de usuario). */
+  clear(userId: string): Promise<void>;
+  refreshPins(): void;
+  destroy(): void;
+}
+
+const newId = () => crypto.randomUUID();
+const ERROR_TEXT: Record<string, string> = {
+  FEEDBACK_RATE_LIMITED: 'Has llegado al máximo de comentarios de hoy. Se queda guardado como borrador.',
+  FEEDBACK_TOO_MANY_ATTACHMENTS: 'Como mucho 3 imágenes por comentario.',
+  FEEDBACK_MESSAGE_TOO_LONG: 'El comentario es demasiado largo (4000 caracteres como mucho).',
+  FEEDBACK_ATTACHMENT_INVALID: 'Una de las imágenes no es válida.',
+  OUT_OF_SCOPE: 'No tienes acceso a esto.',
+};
+const VERIFY_EVERY_MS = 5 * 60_000;
+
+export function createFeedback(options: FeedbackOptions): Feedback {
+  observeFeedbackContext();
+  const host = () => options.container?.() ?? document.body;
+  const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': 'Comentarios sobre la pantalla' });
+  let current: FeedbackComposer | null = null;
+  let currentVerify: (() => void) | null = null;
+  let frame = 0;
+  let gesture: FeedbackGesture | null = null;
+  let verifyList: FeedbackReport[] = [];
+  let verifyTimer: ReturnType<typeof setInterval> | null = null;
+  const listeners = new Set<(on: boolean) => void>();
+  const modeKey = () => `ikisai-feedback-mode:${options.app}:${options.userId() ?? ''}`;
+
+  const client: FeedbackClient = createFeedbackClient({
+    api: options.api, app: options.app, userId: options.userId, fetchImpl: options.fetchImpl,
+    onChange: () => { void backToDraftOnFailure(); refreshPins(); },
+    onSent: (report) => { toast(`Enviado · ${report.code}`); options.onSent?.(report); },
+  });
+
+  // --- Modo «Señalar para comentar» --------------------------------------------------------------
+  function modeOn(): boolean {
+    try { return localStorage.getItem(modeKey()) === '1'; } catch { return false; }
+  }
+  function applyMode(): void {
+    const on = modeOn();
+    document.documentElement.classList.toggle('fb-mode', on);
+    if (on && !gesture) gesture = installFeedbackGesture({ onSignal: (target) => { void signal(target); }, enabled: () => modeOn() && !current && !currentVerify });
+    if (!on && gesture) { gesture.destroy(); gesture = null; }
+    if (on && !verifyTimer) { void refreshVerify(); verifyTimer = setInterval(() => void refreshVerify(), VERIFY_EVERY_MS); }
+    if (!on && verifyTimer) { clearInterval(verifyTimer); verifyTimer = null; }
+    refreshPins();
+  }
+  const mode: FeedbackMode = {
+    get: modeOn,
+    set(on) {
+      try { if (on) localStorage.setItem(modeKey(), '1'); else localStorage.removeItem(modeKey()); } catch { /* sin almacenamiento */ }
+      applyMode();
+      for (const l of listeners) l(on);
+    },
+    onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  };
+
+  /** Lo que el servidor rechazó para siempre vuelve a ser borrador, con el motivo. */
+  async function backToDraftOnFailure(): Promise<void> {
+    for (const item of await client.pending()) {
+      if (!item.failed) continue;
+      const { requestId, context, scope, category, attempts, lastError, failed, ...draft } = item;
+      void requestId; void context; void scope; void category; void attempts; void failed;
+      await feedbackDrafts.put({ ...draft, updatedAt: new Date().toISOString() });
+      await feedbackOutbox.delete(item.id);
+      toast(ERROR_TEXT[lastError ?? ''] ?? 'No se pudo enviar el comentario. Se queda como borrador.');
+    }
+  }
+
+  async function drafts(): Promise<FeedbackDraft[]> {
+    const user = options.userId();
+    return user ? feedbackDrafts.list(user, options.app) : [];
+  }
+
+  async function refreshVerify(): Promise<void> {
+    verifyList = modeOn() ? await client.pendingVerify() : [];
+    refreshPins();
+  }
+
+  // --- Pines ------------------------------------------------------------------------------------------
+  function pinFor(nodeId: string): { target: Element; style: string } | null {
+    const target = document.querySelector(`[data-feedback-id="${CSS.escape(nodeId)}"]`);
+    const rect = target?.getBoundingClientRect();
+    if (!target || !rect || (!rect.width && !rect.height)) return null;
+    return { target, style: `left:${Math.max(4, Math.min(innerWidth - 44, rect.right - 18))}px;top:${Math.max(4, rect.top - 10)}px` };
+  }
+  function refreshPins(): void {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(async () => {
+      if (!pinLayer.isConnected) host().appendChild(pinLayer);
+      if (!modeOn()) { replace(pinLayer); return; }
+      const byNode = new Map<string, FeedbackDraft[]>();
+      for (const d of await drafts()) byNode.set(d.nodeId, [...(byNode.get(d.nodeId) ?? []), d]);
+      const pins: HTMLElement[] = [];
+      for (const [nodeId, items] of byNode) {
+        const at = pinFor(nodeId);
+        if (!at) continue;
+        pins.push(el('button', {
+          type: 'button', class: 'fb-pin', dataset: { node: nodeId }, style: at.style,
+          'aria-label': `Borrador de comentario (${items.length}) sobre ${items[0]!.nodePath.join(' › ')}`,
+          onclick: () => { void compose({ id: nodeId, path: items[0]!.nodePath, element: at.target }, at.target, items[0]); },
+        }, icon('pin', 14), el('span', null, String(items.length))));
+      }
+      for (const report of verifyList) {
+        if (!report.node) continue;
+        const at = pinFor(report.node.id);
+        if (!at) continue;
+        pins.push(el('button', {
+          type: 'button', class: 'fb-pin verify', dataset: { node: report.node.id, report: report.id }, style: at.style,
+          'aria-label': `Corregido: ${report.code}. ¿Lo compruebas?`,
+          onclick: () => openVerify(report, at.target),
+        }, icon('check', 14), el('span', null, '¿Ya va?')));
+      }
+      replace(pinLayer, ...pins);
+    });
+  }
+
+  // --- «Esto ya está corregido. ¿Lo compruebas?» -------------------------------------------------------
+  function openVerify(report: FeedbackReport, anchor: Element): void {
+    currentVerify?.();
+    const note = el('textarea', { class: 'fb-message', rows: '3', maxlength: '4000', placeholder: '¿Qué sigue pasando? (opcional)', 'aria-label': 'Qué sigue fallando', hidden: true }) as HTMLTextAreaElement;
+    const status = el('p', { class: 'fb-status', role: 'status' });
+    const works = el('button', { type: 'button', class: 'primary fb-works' }, 'Funciona');
+    const fails = el('button', { type: 'button', class: 'ghost fb-fails' }, 'Sigue fallando');
+    const panel = el('section', { class: 'fb-composer fb-verify', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Comprobar una corrección', tabindex: '-1' },
+      el('header', { class: 'fb-head' },
+        el('div', { class: 'fb-where' }, el('small', null, `${report.code}${report.node ? ` · ${report.node.path.join(' › ')}` : ''}`), el('strong', null, 'Esto ya está corregido. ¿Lo compruebas?')),
+        el('button', { type: 'button', class: 'iconbtn small fb-close', 'aria-label': 'Cerrar', onclick: () => close() }, icon('close', 18))),
+      el('p', { class: 'fb-quote' }, report.message.slice(0, 280)),
+      note, status,
+      el('div', { class: 'fb-foot' }, fails, works));
+    const layer = el('div', { class: 'ikisai-fb-layer fb-layer' }, el('div', { class: 'fb-catcher', onclick: () => close() }), panel);
+    host().appendChild(layer);
+    const rect = anchor.getBoundingClientRect();
+    layer.classList.toggle('sheet-mode', innerWidth < 720);
+    if (innerWidth >= 720) { panel.style.left = `${Math.min(Math.max(12, rect.left), innerWidth - 392)}px`; panel.style.top = `${Math.min(rect.bottom + 8, innerHeight - 260)}px`; }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); } else if (e.key === 'Tab') trapFocus(e, panel); };
+    document.addEventListener('keydown', onKey, true);
+    function close(): void { document.removeEventListener('keydown', onKey, true); layer.remove(); currentVerify = null; }
+    currentVerify = close;
+    const act = async (run: () => Promise<void>, done: string) => {
+      works.disabled = fails.disabled = true;
+      try { await run(); verifyList = verifyList.filter((r) => r.id !== report.id); refreshPins(); close(); toast(done); }
+      catch { works.disabled = fails.disabled = false; status.textContent = 'No se pudo guardar. Prueba otra vez con conexión.'; status.className = 'fb-status error'; }
+    };
+    works.addEventListener('click', () => void act(async () => client.verify(report.id, (await appVersion())?.release ?? null), 'Gracias: queda verificado.'));
+    fails.addEventListener('click', () => {
+      if (note.hidden) { note.hidden = false; fails.textContent = 'Enviar: sigue fallando'; note.focus(); return; }
+      void act(() => client.reopen(report.id, note.value.trim() || undefined), 'Reabierto: vuelve a la lista de pendientes.');
+    });
+    works.focus();
+  }
+
+  // --- Composer ---------------------------------------------------------------------------------------
+  async function compose(node: FeedbackNode, anchor: Element | null | undefined, existing?: FeedbackDraft): Promise<FeedbackComposer> {
+    current?.close();
+    const user = options.userId();
+    const draftId = existing?.id ?? newId();
+    const saveDraft = async (value: ComposerValue) => {
+      if (!user) return;
+      await feedbackDrafts.put({ id: draftId, userId: user, app: options.app, nodeId: node.id, nodePath: node.path, message: value.message, intent: value.intent, blocking: value.blocking, subject: 'application', images: value.images, updatedAt: new Date().toISOString() });
+      refreshPins();
+    };
+    current = openFeedbackComposer({
+      node, anchor: anchor ?? node.element, container: host(), intents: options.intents,
+      initial: existing ? { message: existing.message, intent: existing.intent, images: existing.images, blocking: !!existing.blocking } : undefined,
+      openReports: client.openReports(node.id),
+      onSupport: (report) => client.support(report.id),
+      onClose: (value) => {
+        current = null;
+        if (value) void saveDraft(value);
+        else if (existing) void feedbackDrafts.delete(existing.id).then(refreshPins);
+      },
+      onSend: async (value) => {
+        if (!user) throw new Error('Inicia sesión para enviar comentarios.');
+        const item: FeedbackOutboxItem = {
+          id: draftId, requestId: newId(), userId: user, app: options.app, nodeId: node.id, nodePath: node.path,
+          message: value.message, intent: value.intent, blocking: value.blocking, subject: 'application', images: value.images, updatedAt: new Date().toISOString(),
+          context: await collectFeedbackContext({ app: options.app, node, role: options.role?.(), sync: options.syncSummary?.() }), attempts: 0,
+        };
+        await feedbackDrafts.delete(draftId);
+        await client.enqueue(item);
+        current = null;
+        refreshPins();
+        const still = (await client.pending()).find((i) => i.id === item.id);
+        if (!still) return 'sent';
+        if (still.failed) throw new Error(ERROR_TEXT[still.lastError ?? ''] ?? 'No se pudo enviar.');
+        return 'pending';
+      },
+    });
+    return current;
+  }
+  const signal = (element: Element) => compose(resolveFeedbackNode(element, options.fallbackNode), element);
+
+  const onLayout = () => { if (modeOn()) refreshPins(); };
+  window.addEventListener('resize', onLayout);
+  window.addEventListener('scroll', onLayout, { capture: true, passive: true });
+  // Solo cambios de la página: los de los pines y del composer no cuentan (si no, se repintarían sin fin).
+  const observer = new MutationObserver((records) => {
+    if (!modeOn()) return;
+    if (records.some((r) => !(r.target instanceof Element) || (!r.target.closest('.ikisai-fb-layer') && !r.target.classList.contains('ikisai-fb-layer')))) refreshPins();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  applyMode();
+
+  return {
+    mode,
+    signal,
+    open: (node, anchor) => compose(node, anchor),
+    openDraft(draft) {
+      const element = document.querySelector(`[data-feedback-id="${CSS.escape(draft.nodeId)}"]`);
+      return compose({ id: draft.nodeId, path: draft.nodePath, element }, element, draft);
+    },
+    drafts,
+    pending: () => client.pending(),
+    flush: () => client.flush(),
+    refreshVerify,
+    async clear(userId) { current?.close(); await clearFeedbackForUser(userId); refreshPins(); },
+    refreshPins,
+    destroy() {
+      client.destroy(); gesture?.destroy(); observer.disconnect(); if (verifyTimer) clearInterval(verifyTimer);
+      window.removeEventListener('resize', onLayout); window.removeEventListener('scroll', onLayout, { capture: true } as EventListenerOptions);
+      pinLayer.remove(); current?.close(); currentVerify?.(); document.documentElement.classList.remove('fb-mode');
+    },
+  };
+}
