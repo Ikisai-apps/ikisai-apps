@@ -1,5 +1,22 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.3 · 7 de octubre de 2026
+
+Primeros reportes reales del piloto de Booking en Android (build 251):
+- **FB_2026_002 · pin que no aparece.**
+  - Nuevo pin **«tus sugerencias aquí»** (`GET feedback?status=open&mine=true`): el elemento queda marcado tras enviar; al tocarlo se abre el composer con «Ya hay N reportes abiertos aquí».
+  - El pin va al primer elemento **visible** con ese `data-feedback-id` (con una copia oculta del mismo id no se pintaba).
+  - Solo se aplica el último repintado (una lectura lenta de IndexedDB ya no pisa a la nueva).
+  - Se repinta al navegar (`popstate`, `hashchange`) y al volver a la pestaña.
+  - Los pines de un mismo elemento (borrador, tuyos, «¿Ya va?») van uno al lado del otro.
+- **FB_2026_003 · punto amarillo sin explicar.**
+  - Al activar el modo sale un aviso que explica el punto.
+  - En el lanzador, el interruptor dice «Señalar para comentar · activo» con su explicación.
+  - La marca (`#appLauncher`) lleva `title` y `aria-label` con los modos activos.
+  - Lo mismo para el revisor, cuyo punto pasa a verde.
+- Los pasos «abrió» llevan el nodo de la pantalla (`fallbackNode`) cuando la app no la marca.
+- Prueba `v23`.
+
 ## 0.18.2 · 7 de octubre de 2026
 
 Ajustes que piden Tasks y Finance al adoptar (apps con el CSS del kit acotado a `.ikisai-kit`):

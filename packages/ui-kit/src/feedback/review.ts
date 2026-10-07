@@ -15,7 +15,7 @@ import { icon } from '../icons.ts';
 import { toast } from '../toast.ts';
 import type { FeedbackApi, FeedbackReport } from './client.ts';
 import type { FeedbackMode } from './feedback.ts';
-import { ensureFeedbackGlobalStyles } from './global-style.ts';
+import { ensureFeedbackGlobalStyles, syncMarkHint } from './global-style.ts';
 import { createFeedbackReviewTab } from './review-feedback.ts';
 import { createUsageReviewTab, type UsageReviewItem } from './review-usage.ts';
 
@@ -146,6 +146,7 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
     set(on) {
       try { if (on) localStorage.setItem(key, '1'); else localStorage.removeItem(key); } catch { /* sin almacenamiento */ }
       apply();
+      if (on) toast('Revisor de QA: activo. La lista está en el lateral; el punto verde de la marca lo recuerda.');
       for (const l of listeners) l(on);
     },
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -280,6 +281,7 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
   function apply(): void {
     const on = isOn();
     document.documentElement.classList.toggle('fb-reviewing', on);
+    syncMarkHint();
     if (on) { if (!panel.isConnected) host().appendChild(panel); void refresh(); }
     else { panel.remove(); closeCard(); }
   }
