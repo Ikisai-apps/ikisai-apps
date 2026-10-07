@@ -31,6 +31,7 @@ for (const file of files) {
       if (ref.endsWith('.ikisai')) continue; // dominio (central.ikisai.com…), no un objeto de schema
       if (other === 'core' && CORE_HELPERS.includes(ref)) continue;
       if (schema === 'food' && other === 'booking' && /booking\.events\b/.test(ref) && /references\s+booking\.events/.test(sql)) continue; // FK permitida por contrato
+      if (schema === 'food' && other === 'booking' && ref === 'booking.food_event_projection') continue; // proyección publicada para Food (petición P14 de Food)
       problems.push(`${file}: referencia a ${ref} fuera de su schema`);
     }
   }
