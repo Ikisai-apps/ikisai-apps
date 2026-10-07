@@ -206,3 +206,47 @@ test('guests · modo operativo: solo nombre, apellido y contacto; sin firma', as
   const now = await myGuest(evaToken, eva);
   assert.equal(code(await call('/api/v1/invoke/booking.portal_guest_sign', { token: evaToken, body: { guest_id: eva, expectedRevision: now.data.revision, file_id: file.data.id, signed_by_name: 'Eva' } })), 'GUEST_DATA_OFF');
 });
+
+test('guests · fase 1 de Booking (BG1–BG5): procedencia, revisión encadenada, alimentación revisada, estancia y firma que caduca', async () => {
+  const id = await guest(R.event, { first_name: 'Iris', last_name_1: 'Organizada' });
+  const token = await guestSession(R.id, id, 'Iris');
+  let me = await myGuest(token, id);
+  // BG1: lo escrito por el personal llega como `staff`; BG4: estado y horas de la estancia.
+  assert.equal(me.data.sources.last_name_1, 'staff');
+  assert.equal(me.data.reservation.status, 'confirmada');
+  assert.ok('arrival_time' in me.data.reservation && 'departure_time' in me.data.reservation);
+  assert.equal(me.data.diet_reviewed_at, null);
+
+  // BG2: cada acción devuelve la revisión nueva y la siguiente escritura la usa sin releer la ficha.
+  let revision = me.data.revision;
+  for (const fields of [{ last_name_1: 'Propia' }, { birth_date: '1985-02-03' }, { residence_country: 'ESP' }]) {
+    const res = await call('/api/v1/invoke/booking.portal_guest_update', { token, body: { guest_id: id, expectedRevision: revision, fields } });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    assert.ok(res.data.revision > revision); revision = res.data.revision;
+  }
+  me = await myGuest(token, id);
+  assert.equal(me.data.revision, revision);
+  assert.equal(me.data.sources.last_name_1, 'guest');
+
+  // BG3: «No tengo alergias ni dieta especial» deja la alimentación revisada.
+  const none = await call('/api/v1/invoke/booking.portal_set_restrictions', { token, body: { guest_id: id, items: [] } });
+  assert.equal(none.status, 200, JSON.stringify(none.data)); revision = none.data.revision;
+  assert.ok((await myGuest(token, id)).data.diet_reviewed_at);
+
+  // BG5: firma con la versión del texto; un dato del registro cambiado después la invalida.
+  const file = await upload(token, new TextEncoder().encode('trazo-de-iris'));
+  const signed = await call('/api/v1/invoke/booking.portal_guest_sign', { token, body: { guest_id: id, expectedRevision: revision, file_id: file.data.id, signed_by_name: 'Iris Propia', text_version: 'v1' } });
+  assert.equal(signed.status, 200, JSON.stringify(signed.data));
+  me = await myGuest(token, id);
+  assert.equal(me.data.signed, true); assert.equal(me.data.signature_text_version, 'v1');
+  const changed = await call('/api/v1/invoke/booking.portal_guest_update', { token, body: { guest_id: id, expectedRevision: signed.data.revision, fields: { residence_city: 'Segovia' } } });
+  assert.equal(changed.status, 200, JSON.stringify(changed.data));
+  assert.equal(changed.data.signature_reset, true);
+  me = await myGuest(token, id);
+  assert.equal(me.data.signed, false); assert.equal(me.data.signature_text_version, null);
+
+  // BG6: el parentesco se guarda como código del catálogo de SES.
+  const kin = await call('/api/v1/invoke/booking.portal_guest_update', { token, body: { guest_id: id, expectedRevision: changed.data.revision, fields: { kinship: 'PM' } } });
+  assert.equal(kin.status, 200, JSON.stringify(kin.data));
+  assert.equal((await myGuest(token, id)).data.fields.kinship, 'PM');
+});

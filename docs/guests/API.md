@@ -98,13 +98,13 @@ Todas responden `403 OUT_OF_SCOPE` fuera de ámbito.
 
 | Nombre | `args` | Devuelve / hace | Errores que la interfaz traduce |
 |---|---|---|---|
-| `booking.portal_my_guest` | `guest_id` | `{id, revision, fields{campo: valor}, mode, missing[], signed, allergies_visible_to_organizer, privacy_ack_at, privacy_ack_version, reservation{title, start_date, end_date}, restrictions[{id, restriction_type, subject, severity, kitchen_notes}]}` | — |
+| `booking.portal_my_guest` | `guest_id` | `{id, revision, fields{campo: valor}, mode, missing[], signed, allergies_visible_to_organizer, privacy_ack_at, privacy_ack_version, reservation{title, start_date, end_date, status, arrival_time, departure_time}, sources{campo: guest\|organizer\|staff}, diet_reviewed_at, signature_text_version, restrictions[{id, restriction_type, subject, severity, kitchen_notes, source}]}` | — |
 | `booking.portal_guest_update` | `guest_id, expectedRevision, fields` | completa o corrige sus datos (procedencia «huésped»); en modo `operativo` solo admite nombre, primer apellido, teléfono y correo | `VERSION_CONFLICT`, `GUEST_DATA_OFF`, `INVALID_OPERATION` |
 | `booking.portal_guest_consent` | `guest_id, expectedRevision, allergies_visible_to_organizer?, privacy_ack_version?` | interruptor de alergias y acuse del aviso legal (con la hora del servidor) | `VERSION_CONFLICT` |
 | `booking.portal_set_restrictions` | `guest_id, items: [{restriction_type, subject?, severity?, kitchen_notes?}]` (≤ 30) | **sustituye todas** sus restricciones, también las que había escrito el organizador | `INVALID_OPERATION`, `CONSTRAINT_VIOLATION` (falta el «qué» o la gravedad no corresponde) |
-| `booking.portal_guest_sign` | `guest_id, expectedRevision, file_id, signed_by_name` | firma: `signature_file_id`, `signed_at`, `signed_by_name`; solo en modo `ses` y con un archivo verificado subido por esa misma cuenta | `GUEST_DATA_OFF`, `INVALID_OPERATION`, `INVALID_FIELDS` |
+| `booking.portal_guest_sign` | `guest_id, expectedRevision, file_id, signed_by_name, text_version` | firma: `signature_file_id`, `signed_at`, `signed_by_name` y `signature_text_version` (versión de `guests.signature_statement`); solo en modo `ses` y con un archivo verificado subido por esa misma cuenta | `GUEST_DATA_OFF`, `INVALID_OPERATION`, `INVALID_FIELDS` |
 
-Lo que falta para cumplir el diseño (procedencia por campo, revisión nueva tras cada escritura, «alimentación revisada», horas de llegada y salida, y firma tras corregir datos) está en el §14 como peticiones a Booking.
+Las cuatro acciones responden `{guest_id, revision, cursor}`, y `portal_guest_update` añade `signature_reset: true` cuando el cambio invalida la firma (Booking §16.8, BG1–BG6). `portal_set_restrictions` marca `diet_reviewed_at` también con la lista vacía.
 
 ### 6.3 Mensajes de error para el huésped (ES · EN)
 
@@ -194,7 +194,7 @@ Responde a cuatro preguntas: qué retiro es, cuándo, qué me falta y qué puedo
   | Compartir tus alergias con tu organizador | «Sí» / «No» (informativo, no es una tarea pendiente) | si tiene alguna alergia o intolerancia |
 
   - Cuando todo está hecho: «¡Todo listo! Nos vemos el {fecha}.»
-  - El estado sale de `missing`, `signed` y la marca de alimentación revisada (BG3). Hasta que exista esa marca, «Revisada» se aproxima con «tiene alguna restricción o pulsó "No tengo ninguna" en este dispositivo».
+  - El estado sale de `missing`, `signed` y la marca de alimentación revisada (BG3). «Revisada» es `diet_reviewed_at`.
 - **Información práctica:** tarjeta a §9.7.
 - **Ayuda y sugerencias:** tarjeta a §9.8.
 - **«Guarda tu acceso»** e **«Instalar la app»:** sugerencias discretas al final cuando todo está completo, nunca antes (§9.9).
@@ -223,24 +223,24 @@ Un formulario por bloques plegables según el modo de la reserva. **Solo se abre
   - un campo que escribió el organizador lleva la marca «Lo indicó tu organizador» y se edita igual que los demás;
   - al cambiarlo pasa a ser del huésped (Booking anota `by: guest`) y la marca desaparece;
   - un campo escrito por el personal lleva «Lo indicó Ikisai».
-  - Necesita la procedencia en `portal_my_guest` (petición BG1). Hasta entonces no se muestra ninguna marca.
+  - La procedencia llega en `portal_my_guest.sources`.
 - **Controles:**
   - tipo de documento: DNI, NIE, Pasaporte, TIE, Otro;
   - sexo: Hombre, Mujer, Otro (`H`, `M`, `X`);
   - país y nacionalidad: selector con buscador, con los nombres de `Intl.DisplayNames` en el idioma elegido y el código alfa-3 que guarda Booking;
   - fecha: campo de fecha del kit;
-  - parentesco: lista traducida (madre o padre, tutor o tutora legal, abuela o abuelo, hermana o hermano, otro familiar, otra persona). Guarda la etiqueta en español, que es lo que espera hoy Booking (texto libre); ver la pregunta BG6.
+  - parentesco: lista traducida con los códigos del catálogo de SES (`KINSHIP_CODES` del dominio de Booking: `PM` padre o madre, `TU` tutor legal, `AB` abuelo o abuela…); Guests guarda el código. Un texto libre antiguo se muestra con `kinshipLabel` tal cual.
 - **Normalización antes de enviar:** el número de documento, sin espacios y en mayúsculas (como Booking).
 
 **Guardado automático, sin botón «Guardar»:**
 - **Cuándo:** cada campo se guarda al salir de él, o tras 800 ms sin teclear en los de texto, con `portal_guest_update {guest_id, expectedRevision, fields: {campo}}`.
-- **Cola:** las escrituras van en una cola local por huésped, en orden y con una sola en vuelo. Cada una lleva la revisión que devolvió la anterior (petición BG2); hasta que exista, se relee `portal_my_guest` tras cada escritura.
+- **Cola:** las escrituras van en una cola local por huésped, en orden y con una sola en vuelo. Cada una lleva la revisión que devolvió la anterior (`revision` de la respuesta), sin releer la ficha.
 - **Estado junto al campo:** «Guardando…», luego «Guardado ✓» (se desvanece). Si falla: «No se ha guardado · Reintentar». Sin red: «Se guardará al volver la conexión».
 - **Estado global**, discreto, arriba: «Todo guardado» · «Guardando 2 cambios» · «Sin conexión: 2 cambios pendientes».
 - **`VERSION_CONFLICT`:** se recarga la ficha. Si el valor del servidor del campo en conflicto es distinto del que tecleó el huésped, se muestran los dos («Tu organizador lo cambió a… · Tú habías puesto…») con «Quedarme con el mío» o «Usar el nuevo». Los campos sin conflicto se reenvían solos.
 - Un campo que no pasa la validación del dominio (por ejemplo, una fecha imposible) no se envía: queda marcado con el motivo.
 
-**Firma ya hecha y datos cambiados:** si el huésped corrige un dato del registro después de firmar, se le avisa: «Has cambiado tus datos después de firmar. Vuelve a firmar para que el registro coincida.» La regla de servidor la propone el §14 (BG5).
+**Firma ya hecha y datos cambiados:** si el huésped corrige un dato del registro después de firmar, se le avisa: «Has cambiado tus datos después de firmar. Vuelve a firmar para que el registro coincida.» La regla es de Booking (BG5): la respuesta trae `signature_reset: true`, Inicio vuelve a mostrar la firma como pendiente y el aviso sale en ese momento.
 
 ### 9.5 Alimentación (`#/alimentacion`)
 
@@ -271,7 +271,7 @@ Un formulario por bloques plegables según el modo de la reserva. **Solo se abre
 Solo en modo `ses`. Hasta que los datos estén completos (`missing` vacío), la fila de Inicio dice «Primero completa tus datos» y la pantalla explica qué falta.
 
 - **Resumen** de los datos que se firman (nombre, documento, nacimiento, dirección y fechas de la estancia), en solo lectura, con «Corregir» hacia Mis datos.
-- **Texto de la declaración**, de Central (`guests.signature_statement`, petición CE2; texto de reserva: «Declaro que estos datos son ciertos. Se incorporan al registro de viajeros de Ikisai, que la ley obliga a conservar tres años.»). La versión del texto no viaja hoy a Booking; ver BG5.
+- **Texto de la declaración**, de Central (`guests.signature_statement`, petición CE2; texto de reserva: «Declaro que estos datos son ciertos. Se incorporan al registro de viajeros de Ikisai, que la ley obliga a conservar tres años.»). Su `version` viaja como `text_version` en `portal_guest_sign`.
 - **Quién firma:**
   - lo decide `signsOwnEntry(guest, reservation.start_date)` del dominio de Booking: desde 14 años, el propio huésped;
   - por debajo, «Firma de la persona que acompaña a {nombre}», con `signed_by_name` prellenado con `guardian_name`;
@@ -511,20 +511,20 @@ Detalle y estado en `docs/guests/PETICIONES.md`.
 
 ### A Booking (por Core)
 
-- **BG1 · Procedencia en la ficha del huésped.** En `portal_my_guest`:
+- **BG1 (hecha, #284) · Procedencia en la ficha del huésped.** En `portal_my_guest`:
   - `sources: {campo: 'guest' | 'organizer' | 'staff'}` (de `field_sources`, solo el `by`);
   - `source` en cada restricción.
 
   Sin esto no se cumple «lo que escribió el organizador lo ves y lo puedes corregir» con su marca.
-- **BG2 · Revisión nueva en la respuesta de las acciones** (`portal_guest_update`, `portal_guest_consent`, `portal_set_restrictions` y `portal_guest_sign`): `{guest_id, revision, cursor}`. Permite encadenar el autoguardado campo a campo sin releer la ficha tras cada cambio.
-- **BG3 · «Alimentación revisada».** Una columna `diet_reviewed_at` en `booking.guests` (escribible solo por las acciones de portal) que `portal_set_restrictions` marca también con la lista vacía («No tengo alergias ni dieta especial»). Se expone en `portal_my_guest` y como `diet_reviewed` en `portal_guests` y en la completitud del personal. Hoy no se distingue «no tiene nada» de «no ha contestado».
-- **BG4 · Datos de la estancia para el huésped.** En `portal_my_guest.reservation`: `status`, `arrival_time` y `departure_time`. Sin importes, notas ni otros huéspedes. En la fase 4 se sumará su alojamiento asignado.
-- **BG5 · Firma y datos cambiados.** Propuesta: si después de firmar cambia un campo del registro de viajeros, la firma deja de valer:
+- **BG2 (hecha, #284) · Revisión nueva en la respuesta de las acciones** (`portal_guest_update`, `portal_guest_consent`, `portal_set_restrictions` y `portal_guest_sign`): `{guest_id, revision, cursor}`. Permite encadenar el autoguardado campo a campo sin releer la ficha tras cada cambio.
+- **BG3 (hecha, #284) · «Alimentación revisada».** Una columna `diet_reviewed_at` en `booking.guests` (escribible solo por las acciones de portal) que `portal_set_restrictions` marca también con la lista vacía («No tengo alergias ni dieta especial»). Se expone en `portal_my_guest` y como `diet_reviewed` en `portal_guests` y en la completitud del personal. Hoy no se distingue «no tiene nada» de «no ha contestado».
+- **BG4 (hecha, #284) · Datos de la estancia para el huésped.** En `portal_my_guest.reservation`: `status`, `arrival_time` y `departure_time`. Sin importes, notas ni otros huéspedes. En la fase 4 se sumará su alojamiento asignado.
+- **BG5 (hecha, #284) · Firma y datos cambiados.** Propuesta: si después de firmar cambia un campo del registro de viajeros, la firma deja de valer:
   - si lo cambia el huésped, `portal_guest_update` pone `signed_at` y `signature_file_id` a `null` y responde `signature_reset: true`;
   - si lo cambia el organizador o el personal, se marca igual.
 
   Además, guardar la versión del texto de la declaración firmado (`signature_text_version`, de Central). Booking decide si lo prefiere de otra forma.
-- **BG6 · Parentesco.** Hoy es texto libre. Guests ofrece una lista traducida y guarda la etiqueta en español. ¿Prefiere Booking los códigos del catálogo de parentesco de SES en el dominio, para que Guests guarde el código?
+- **BG6 (hecha, #284) · Parentesco.** Hoy es texto libre. Guests ofrece una lista traducida y guarda la etiqueta en español. ¿Prefiere Booking los códigos del catálogo de parentesco de SES en el dominio, para que Guests guarde el código?
 
 ### A Central (por Core)
 

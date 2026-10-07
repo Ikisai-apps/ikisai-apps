@@ -19,7 +19,7 @@
 - 2026-10-07 · Diseño aprobado por Core. Edge `guests-api` (PR 1 de API.md §12):
   - `createGuestsApp` con subidas al bucket `guests-documents` (PNG o WebP, ≤ 300 KB) y `GET files/:id` cerrada;
   - migración `0600_guests_file_gc`;
-  - `tests/guests/api.test.ts` (7 pruebas): canje, ámbito por huésped, ficha, datos con procedencia y conflicto, aviso legal, consentimiento, restricciones, firma (propia sí, ajena no), modo operativo.
+  - `tests/guests/api.test.ts` (8 pruebas, la última sobre BG1–BG6 de Booking, #284): canje, ámbito por huésped, ficha, datos con procedencia y conflicto, aviso legal, consentimiento, restricciones, firma (propia sí, ajena no), modo operativo.
 
 ## Pendiente
 
@@ -28,5 +28,4 @@
 ## Bloqueos
 
 - Ninguno para empezar la Edge. La PWA necesita `loginWithLink` (#278) y, para los textos, la #281 de Central.
-- La marca de procedencia, el autoguardado sin relecturas y «Alimentación revisada» necesitan BG1–BG3 de Booking. Mientras no estén, hay alternativas provisionales (API.md §9.3 y §9.4).
 - El inglés completo necesita la capa de traducción del kit (U1).

@@ -4,14 +4,14 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 
 | Id | Para | Petición | Estado |
 |---|---|---|---|
-| BG1 | Booking | `sources` por campo y `source` por restricción en `portal_my_guest` | abierta |
-| BG2 | Booking | `revision` nueva en la respuesta de las acciones del huésped | abierta |
-| BG3 | Booking | `diet_reviewed_at`: alimentación revisada, también con la lista vacía | abierta |
-| BG4 | Booking | `status`, `arrival_time` y `departure_time` en `portal_my_guest.reservation` | abierta |
-| BG5 | Booking | la firma deja de valer si cambia un dato del registro después de firmar; versión del texto firmado | abierta |
-| BG6 | Booking | parentesco: ¿códigos del catálogo de SES en el dominio? | abierta |
+| BG1 | Booking | `sources` por campo y `source` por restricción en `portal_my_guest` | hecha (#284) |
+| BG2 | Booking | `revision` nueva en la respuesta de las acciones del huésped | hecha (#284) |
+| BG3 | Booking | `diet_reviewed_at`: alimentación revisada, también con la lista vacía | hecha (#284) |
+| BG4 | Booking | `status`, `arrival_time` y `departure_time` en `portal_my_guest.reservation` | hecha (#284) |
+| BG5 | Booking | la firma deja de valer si cambia un dato del registro después de firmar; versión del texto firmado | hecha (#284) |
+| BG6 | Booking | parentesco: ¿códigos del catálogo de SES en el dominio? | hecha (#284) |
 | CE1 | Central | textos por idioma (`es`, `en`) con alternativa en español | abierta |
-| CE2 | Central | claves `guests.data_why`, `guests.signature_statement`, `guests.allergies_notice` e `info.*` | abierta |
+| CE2 | Central | claves `guests.data_why`, `guests.signature_statement`, `guests.allergies_notice` e `info.*` | en la #281 |
 | C1 | Core | lectura pública del contacto para las pantallas sin sesión | la hace Core |
 | C2 | Core | firma (`app = 'guests'`, columna de Booking) y recogida de huérfanos | respondida: migración 0600 |
 | C3 | Core | alta de infraestructura con la primera PR de `apps/guests` | abierta |
