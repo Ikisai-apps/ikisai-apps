@@ -14,6 +14,7 @@
  * Este módulo no se reexporta desde `mod.ts` a propósito: solo lo importan las funciones que extraen (`../_kit/extract.ts`),
  * así el SDK solo se resuelve en ellas. En Deno el especificador `@anthropic-ai/sdk` lo resuelve `supabase/functions/import_map.json`.
  */
+import { createStorage, r2ConfigFromEnv } from './storage.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { fail, isFault, messageFor } from './errors.ts';
 import { createSupabase, type Supabase, type SupabaseConfig } from './supabase.ts';
@@ -23,6 +24,8 @@ export interface ExtractFile {
   id: string;
   bucket: string;
   path: string;
+  /** Proveedor del objeto (core.files.storage_provider); sin él, Supabase. */
+  storage_provider?: 'supabase' | 'r2' | null;
   mime: string;
   filename: string;
   size: number;
@@ -170,8 +173,8 @@ export function createDocumentExtractor(supabaseOrConfig: Supabase | SupabaseCon
 }
 
 async function download(supabase: Supabase, file: ExtractFile): Promise<Uint8Array> {
-  const path = file.path.split('/').map(encodeURIComponent).join('/');
-  const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${path}`, { service: true, raw: true });
+  const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
+  const response: Response = await createStorage(supabase, { r2: r2ConfigFromEnv(env) }).download(file);
   if (response.status === 404 || response.status === 400) fail(404, 'FILE_NOT_FOUND', 'El documento ya no está en el almacenamiento.', { id: file.id });
   if (!response.ok) fail(503, 'STORAGE_UNAVAILABLE', messageFor('STORAGE_UNAVAILABLE'));
   return new Uint8Array(await response.arrayBuffer());

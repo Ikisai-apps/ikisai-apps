@@ -107,5 +107,11 @@ export function createAdmin(supabase: Supabase) {
     return { userId, disabled };
   }
 
-  return { accounts, setMembership, invite, accessLog, agents, revokeAgent, resetPassword, setDisabled };
+  /** Almacenamiento (ALMACENAMIENTO.md fase 0): tamaños, niveles respecto a los límites e historial semanal. */
+  async function storage(ctx: RequestContext) {
+    human(ctx);
+    return supabase.rpc('core_admin_storage', { p_actor: ctx.user.id });
+  }
+
+  return { accounts, setMembership, invite, accessLog, agents, revokeAgent, resetPassword, setDisabled, storage };
 }
