@@ -7,6 +7,7 @@ import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
 import { mountPeople, mountPerson } from './people.ts';
+import { mountCompliance, mountRequirement } from './compliance.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -30,9 +31,10 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
 /** Accesos solo para quien administra el ecosistema (owner de Central). Personas y Cumplimiento llegan en V1-b y V1.1. */
 function navFor(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
+    // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad'] },
+    { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people' },
-    { hash: '#/entidad', label: 'Entidad', icon: 'briefcase' },
   ];
   if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
   return items;
@@ -43,6 +45,9 @@ const ROUTES: Record<string, { title: string; mount: ViewMount; admin?: boolean 
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
   '#/entidad': { title: 'Entidad', mount: mountEntity },
   '#/personas': { title: 'Personas', mount: mountPeople },
+  '#/cumplimiento': { title: 'Vencimientos', mount: mountCompliance('vencimientos') },
+  '#/cumplimiento/requisitos': { title: 'Obligaciones', mount: mountCompliance('requisitos') },
+  '#/cumplimiento/documentos': { title: 'Documentos clave', mount: mountCompliance('documentos') },
   '#/accesos': { title: 'Accesos', mount: mountAccess('cuentas'), admin: true },
   '#/accesos/alta': { title: 'Alta de cuenta', mount: mountAccess('alta'), admin: true },
   '#/accesos/agentes': { title: 'Agentes', mount: mountAccess('agentes'), admin: true },
@@ -128,15 +133,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     // `#/personas/<id>` es la ficha de una persona; el resto son rutas fijas.
     const [, personId] = hash.match(/^#\/personas\/([0-9a-f-]{36})$/i) ?? [];
-    const found = personId ? { title: 'Persona', mount: mountPerson(personId) } : ROUTES[hash];
+    const [, requirementId] = hash.match(/^#\/cumplimiento\/([0-9a-f-]{36})$/i) ?? [];
+    const found = personId ? { title: 'Persona', mount: mountPerson(personId) }
+      : requirementId ? { title: 'Obligación', mount: mountRequirement(requirementId) } : ROUTES[hash];
     const allowed = found && (!('admin' in found && found.admin) || isAdmin);
     const entry = allowed ? found : ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : hash);
+    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin });
-    if (!personId) document.title = `${entry.title} · Ikisai Central`;
+    if (!personId && !requirementId) document.title = `${entry.title} · Ikisai Central`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });

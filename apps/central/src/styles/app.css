@@ -74,3 +74,6 @@
 .lockednote{display:flex;align-items:center;gap:4px;margin:0 0 12px}
 .duecard{padding:14px 16px;margin:0 0 14px;border:1px solid var(--warn,#b7791f);border-radius:var(--radius-card,16px);background:var(--paper)}
 .duecard h3{display:flex;align-items:center;gap:6px;margin:0 0 4px;font-size:1rem}
+
+.homelink{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-decoration:none;font-weight:600;max-width:720px}
+.homelink .muted{font-weight:400}

@@ -8,6 +8,9 @@ import {
   recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, type RecordKind,
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
+import {
+  COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
+} from './compliance.ts';
 
 export interface DomainOperation {
   op: string;
@@ -94,6 +97,59 @@ const SPECS: Record<string, TableSpec> = {
     required: ['person_id', 'kind', 'record_type'],
     immutable: ['person_id'],
   },
+  [COMPLIANCE_TABLES.requirements]: {
+    fields: {
+      name: { kind: 'text', min: 1, max: 160 },
+      requirement_type: { kind: 'enum', values: REQUIREMENT_TYPES },
+      description: { kind: 'text', max: 2000, nullable: true },
+      source: { kind: 'text', max: 300, nullable: true },
+      authority: { kind: 'text', max: 160, nullable: true },
+      responsible_person_id: { kind: 'uuid', nullable: true },
+      status: { kind: 'enum', values: REQUIREMENT_STATUSES },
+      reference_date: { kind: 'date', nullable: true },
+      expires_on: { kind: 'date', nullable: true },
+      frequency: { kind: 'enum', values: FREQUENCIES },
+      frequency_months: { kind: 'number', nullable: true },
+      notice_days: { kind: 'number' },
+      risk: { kind: 'enum', values: RISKS },
+      impact: { kind: 'enum', values: IMPACTS, nullable: true },
+      blocks_operation: { kind: 'boolean' },
+      generates_cost: { kind: 'boolean' },
+      next_action: { kind: 'text', max: 300, nullable: true },
+      next_action_on: { kind: 'date', nullable: true },
+      notes: { kind: 'text', max: 1000, nullable: true },
+      position: { kind: 'number' },
+    },
+    required: ['name', 'requirement_type'],
+  },
+  [COMPLIANCE_TABLES.keyDocuments]: {
+    fields: {
+      requirement_id: { kind: 'uuid', nullable: true },
+      document_type: { kind: 'enum', values: DOCUMENT_KINDS },
+      name: { kind: 'text', min: 1, max: 160 },
+      description: { kind: 'text', max: 1000, nullable: true },
+      status: { kind: 'enum', values: KEY_DOCUMENT_STATUSES },
+      document_date: { kind: 'date', nullable: true },
+      reviewed_on: { kind: 'date', nullable: true },
+      expires_on: { kind: 'date', nullable: true },
+      version: { kind: 'text', max: 40, nullable: true },
+      signed: { kind: 'boolean' },
+      file_id: { kind: 'uuid', nullable: true, file: true },
+      external_url: { kind: 'text', max: 500, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
+      responsible_person_id: { kind: 'uuid', nullable: true },
+      notes: { kind: 'text', max: 1000, nullable: true },
+    },
+    required: ['document_type', 'name'],
+  },
+  [COMPLIANCE_TABLES.requirementTasks]: {
+    fields: {
+      target_label: { kind: 'text', max: 500, nullable: true },
+      target_revision: { kind: 'number', nullable: true },
+      due_on: { kind: 'date', nullable: true },
+    },
+    required: [],
+    immutable: ['requirement_id', 'target_app', 'target_kind', 'target_id', 'external_ref'],
+  },
   [ENTITY_TABLE]: {
     fields: {
       legal_name: { kind: 'text', min: 1, max: 200 },
@@ -175,6 +231,30 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     } else {
       for (const field of spec.immutable ?? []) {
         if (field in fields) return { code: 'IMMUTABLE_FIELD', message: `El campo ${field} no se puede cambiar.`, details: { index, table, field } };
+      }
+    }
+    if (table === COMPLIANCE_TABLES.requirementTasks && op.op === 'insert') {
+      return { code: 'INVALID_OPERATION', message: 'Las tareas se piden a Tasks desde la obligación («Crear tarea en Tasks»).', details: { index, table } };
+    }
+    if (table === COMPLIANCE_TABLES.requirements) {
+      if (typeof fields.frequency_months === 'number' && (!Number.isInteger(fields.frequency_months) || fields.frequency_months < 1 || fields.frequency_months > 120)) {
+        return fieldIssue(index, table, 'frequency_months', 'debe ser un número de meses entre 1 y 120');
+      }
+      if (typeof fields.notice_days === 'number' && (!Number.isInteger(fields.notice_days) || fields.notice_days < 0 || fields.notice_days > 365)) {
+        return fieldIssue(index, table, 'notice_days', 'debe ser un número de días entre 0 y 365');
+      }
+      const row = { ...(op.id && current ? current(table, op.id) ?? {} : {}), ...fields } as Record<string, unknown>;
+      if ((row.frequency ?? 'unica') === 'otra' && (row.frequency_months === null || row.frequency_months === undefined)) {
+        return fieldIssue(index, table, 'frequency_months', 'indica cada cuántos meses');
+      }
+      if (row.frequency !== 'otra' && row.frequency !== undefined && row.frequency_months !== null && row.frequency_months !== undefined) {
+        return fieldIssue(index, table, 'frequency_months', 'solo se usa con frecuencia «otra»');
+      }
+    }
+    if (table === COMPLIANCE_TABLES.keyDocuments) {
+      const row = { ...(op.id && current ? current(table, op.id) ?? {} : {}), ...fields } as Record<string, unknown>;
+      if (typeof row.document_date === 'string' && typeof row.expires_on === 'string' && row.expires_on < row.document_date) {
+        return fieldIssue(index, table, 'expires_on', 'no puede ser anterior a la fecha del documento');
       }
     }
     if (table === ENTITY_TABLE && actor.role !== 'owner') {
