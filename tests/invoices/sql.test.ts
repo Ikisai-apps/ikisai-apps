@@ -99,7 +99,7 @@ test.after(async () => { await app.close(); });
 
 test('bootstrap registra las veinte tablas (extracciones, emitidas, plantillas, texto de documentos y registro VERI*FACTU); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.document_texts', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines', 'invoices.vf_events', 'invoices.vf_records', 'invoices.vf_state']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.customers', 'invoices.document_texts', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines', 'invoices.vf_events', 'invoices.vf_records', 'invoices.vf_state']);
   // Las tablas VERI*FACTU están registradas pero nadie las lee ni las escribe por sincronización
   for (const t of boot.data.tables.filter((x: any) => x.table.startsWith('invoices.vf_'))) assert.deepEqual([t.readable, t.writable], [false, false]);
   const id = await newSupplier('Makro España S.A.', { tax_id: 'A28647451', aliases: ['MAKRO'] });
@@ -862,4 +862,18 @@ test('IVA incluido (§14.8): con la cuota exacta por línea, la emitida suma exa
   assert.equal(inv.status, 'emitida'); assert.equal(inv.base_total, 1078.5); assert.equal(inv.quota_total, 116.49); assert.equal(inv.total, 1194.99);
   assert.equal(inv.document.totals.total, 1194.99);
   assert.deepEqual(inv.document.breakdown.map((b: any) => [b.rate, b.base, b.quota]), [[10, 1000, 100], [21, 78.5, 16.49]]);
+});
+
+test('directorio de clientes (ronda 46): un NIF por país, NIF normalizado, solo editor y owner escriben', async () => {
+  const c = uuid();
+  await ok([insert('invoices.customers', c, { name: 'Asociación Yoga Norte', tax_id: 'G12345678', kind: 'empresa', address: { line: 'Calle del Norte 5', postal_code: '48001', city: 'Bilbao' } })]);
+  const row1 = await row('invoices.customers', c);
+  assert.equal(row1.country, 'ES'); assert.equal(row1.id_type, 'NIF');
+  await rejected([insert('invoices.customers', uuid(), { name: 'Otra', tax_id: 'G12345678' })], 'CONSTRAINT_VIOLATION');
+  await ok([insert('invoices.customers', uuid(), { name: 'Misma cifra en Francia', tax_id: 'G12345678', country: 'FR', id_type: '02' })]);
+  await rejected([insert('invoices.customers', uuid(), { name: 'Minúsculas', tax_id: 'g 123' })], 'INVALID_FIELDS');
+  await rejected([insert('invoices.customers', uuid(), { name: 'Con teléfono', tax_id: 'B10000001', phone: '600000000' })], 'INVALID_FIELDS');
+  await rejected([insert('invoices.customers', uuid(), { name: 'Lector', tax_id: 'B10000002' })], 'FORBIDDEN', 403, app.tokens.reader);
+  await ok([update('invoices.customers', c, row1.revision, { address: { line: 'Calle Nueva 1', postal_code: '48002', city: 'Bilbao' } })], app.tokens.editor);
+  assert.equal((await row('invoices.customers', c)).address.line, 'Calle Nueva 1');
 });

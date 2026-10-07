@@ -4,6 +4,7 @@ export * from './issued.ts';
 export * from './issued-csv.ts';
 export * from './verifactu.ts';
 export * from './from-booking.ts';
+export * from './customers.ts';
 export * from './money.ts';
 export * from './filename.ts';
 export * from './import-v1.schema.ts';

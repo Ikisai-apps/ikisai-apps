@@ -920,8 +920,14 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await expect(confirm).toContainText(`F${year}-0001`);
       await expect(confirm).toContainText('no se podrá editar');
       await confirm.getByRole('button', { name: 'Emitir' }).click();
+      // NIF nuevo: se ofrece guardar el cliente (ronda 46)
+      const save = page.getByRole('alertdialog');
+      await expect(save).toContainText('Cliente Emisión SL · B55555555', { timeout: 20_000 });
+      await save.getByRole('button', { name: 'Guardar cliente' }).click();
       await expect(page.locator('#issuedList')).toContainText(`F${year}-0001 · Cliente Emisión SL`, { timeout: 20_000 });
       await synced(page);
+      expect(api.rows('invoices.customers')).toEqual([expect.objectContaining({ name: 'Cliente Emisión SL', tax_id: 'B55555555', kind: 'empresa',
+        address: expect.objectContaining({ line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid' }) })]);
       const issued = api.rows('invoices.issued_invoices').find((i) => i.description === 'Retiro de grupo')!;
       expect(issued).toMatchObject({ status: 'emitida', number: `F${year}-0001`, issuer_tax_id: 'B12345674', total: 110, vf_status: 'no_enviar' });
       expect(issued.vf_hash).toMatch(/^[0-9A-F]{64}$/);
@@ -991,6 +997,20 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.locator('#issuedList .row', { hasText: `F${year}-0001 · Cliente Emisión SL` }).click();
       await expect(page.locator('.sheet[role="dialog"]').locator('#issuedRectifiedBy')).toContainText(`R${year}-0001`);
+    });
+
+    await test.step('el cliente guardado se busca y rellena NIF y domicilio', async () => {
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#newIssuedInvoice').click();
+      const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+      await sheet.locator('#draftCustomerSearch').fill('cliente emi');
+      await sheet.locator('#draftCustomerResults').getByRole('button', { name: 'Cliente Emisión SL · B55555555' }).click();
+      await expect(sheet.locator('#draftRecipientTaxId')).toHaveValue('B55555555');
+      await expect(sheet.locator('#draftAddressLine')).toHaveValue('Calle Cliente 2');
+      await expect(sheet.locator('#draftCity')).toHaveValue('Madrid');
+      await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
     });
 
     await test.step('un borrador se borra sin dejar número', async () => {
