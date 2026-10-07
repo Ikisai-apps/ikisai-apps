@@ -274,6 +274,7 @@ const rejectedSample: RejectedBatch = {
   rejectedAt: new Date().toISOString(),
 };
 const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict], {
+  feedbackId: 'demo.conflicto',
   fieldLabels: { name: 'Nombre', tax_id: 'NIF', notes: 'Notas', deleted_at: 'Borrado' },
   onResolve: (conflict, decision) => { toast(`Conflicto ${conflict.requestId}: ${decision.choice}${decision.choice === 'merge' ? ' ' + JSON.stringify(decision.fields) : ''}`); conflictHost.querySelector(`[data-request-id="${conflict.requestId}"]`)?.remove(); },
 }));
@@ -470,7 +471,8 @@ const printSpec = {
   notes: el('div', null, el('strong', null, 'Información dietética. '), 'Hay alternativa sin gluten y sin lácteos en todos los servicios. Indica en recepción cualquier alergia no declarada.'),
   footer: 'Ikisai Food · Casa de la Sierra',
 };
-const printView = createPrintView(printSpec, { onBack: () => toast('Volver'), actions: [el('button', { class: 'ghost', type: 'button', id: 'togglePrintDraft', onclick: () => { printSpec.draft = !printSpec.draft; printView.update(printSpec); } }, 'Alternar borrador')] });
+let printCount = 0;
+const printView = createPrintView(printSpec, { onPrint: () => { printCount += 1; document.body.dataset.printCount = String(printCount); }, onBack: () => toast('Volver'), actions: [el('button', { class: 'ghost', type: 'button', id: 'togglePrintDraft', onclick: () => { printSpec.draft = !printSpec.draft; printView.update(printSpec); } }, 'Alternar borrador')] });
 const printSection = section('print', 'Página imprimible', 'Vista del organizador (canon §28–29): marca, título y fechas, días → servicios → platos con foto, nombre público, descripción, dietas y alérgenos; «BORRADOR» si el menú no está validado. Imprime en A4 sin navegación y sin partir platos.',
   el('div', { id: 'printHost' }, printView.element),
 );

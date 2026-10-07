@@ -132,6 +132,29 @@ function ternaryLiterals(text, at) {
   return parts.length === 2 && parts.every((x) => x && (ID.test(x) || !x.includes('.'))) ? parts : null;
 }
 
+/**
+ * Componentes del kit que marcan sus propios controles a partir de una base (`feedbackId`): el catálogo añade los hijos.
+ * Mantener al día con `CONFLICT_MARKS` de `src/sync/conflict.ts`.
+ */
+const KIT_CHILDREN = {
+  renderConflict: [['mantener_mia', 'Mantener la mía', 'button'], ['tomar_servidor', 'Tomar la del servidor', 'button'], ['combinar', 'Combinar campo a campo', 'button'], ['guardar_combinacion', 'Guardar combinación', 'button'], ['volver', 'Volver', 'button']],
+};
+KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
+
+/** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
+function enclosingCall(text, at) {
+  let depth = 0;
+  for (let i = at - 1; i >= Math.max(0, at - 4000); i--) {
+    const c = text[i];
+    if (c === ')' || c === ']' || c === '}') depth++;
+    else if (c === '(' || c === '[' || c === '{') {
+      if (depth === 0 && c === '(') return /([A-Za-z_$][\w$]*)\s*$/.exec(text.slice(Math.max(0, i - 60), i))?.[1] ?? null;
+      if (depth > 0) depth--;
+    }
+  }
+  return null;
+}
+
 /** Extrae funciones de un texto. Exportada para las pruebas. */
 export function extractFeatures(text, file = '') {
   const features = [];
@@ -156,6 +179,13 @@ export function extractFeatures(text, file = '') {
     }
     const before = text.slice(0, m.index);
     const after = text.slice(m.index + m[0].length);
+    const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
+    const children = call ? KIT_CHILDREN[call] : null;
+    if (children) {
+      features.push({ id: raw, label: labelNear(before, after) ?? 'Conflicto', kind: 'section', file, line: lineOf(text, m.index) });
+      for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
+      continue;
+    }
     features.push({ id: raw, label: labelNear(before, after), kind: kindNear(before, after), file, line: lineOf(text, m.index) });
   }
   const calls = /\busage\s*\.\s*(run|track)\s*\(\s*(?:(['"])([^'"]+)\2|(`)([^`]*)`|([^,)]+))/g;

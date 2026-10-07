@@ -15,7 +15,22 @@ export interface ConflictOptions {
   rowName?: (conflict: PendingConflict) => string;
   /** Resuelve el conflicto en el cliente; la app llama a `client.resolveConflict` y recarga. */
   onResolve: (conflict: PendingConflict, decision: ConflictDecision) => void | Promise<void>;
+  /**
+   * Base de las marcas de feedback y uso (p. ej. `'food.menu.conflicto'`): la tarjeta lleva la base y sus botones
+   * `<base>.mantener_mia`, `.tomar_servidor`, `.combinar`, `.guardar_combinacion` y `.volver` (también al repintar).
+   * Escrita como literal, el catálogo (`feature-catalog.mjs`) añade esos hijos solo.
+   */
+  feedbackId?: string;
 }
+
+/** Sufijos y etiquetas de los controles de la tarjeta de conflicto (los lee también el generador del catálogo). */
+export const CONFLICT_MARKS = {
+  mine: ['mantener_mia', 'Mantener la mía'],
+  theirs: ['tomar_servidor', 'Tomar la del servidor'],
+  merge: ['combinar', 'Combinar campo a campo'],
+  save: ['guardar_combinacion', 'Guardar combinación'],
+  back: ['volver', 'Volver'],
+} as const;
 
 function defaultShow(field: string, value: unknown): Child {
   if (value === null || value === undefined || value === '') return '—';
@@ -82,21 +97,27 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
     );
   }
 
+  /** Marca de un control (si la app dio `feedbackId`). */
+  const mark = (key: keyof typeof CONFLICT_MARKS): Record<string, string> => (options.feedbackId
+    ? { 'data-feedback-id': `${options.feedbackId}.${CONFLICT_MARKS[key][0]}`, 'data-feedback-label': CONFLICT_MARKS[key][1] }
+    : {});
+  if (options.feedbackId) { article.setAttribute('data-feedback-id', options.feedbackId); article.setAttribute('data-feedback-label', 'Conflicto'); }
+
   function choices(): HTMLElement {
     if (!merging) {
       return el('div', { class: 'choices' },
-        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', onclick: () => void resolve({ choice: 'mine' }) }, 'Mantener la mía'),
-        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', onclick: () => void resolve({ choice: 'theirs' }) }, 'Tomar la del servidor'),
-        op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', onclick: () => { merging = true; repaint(); } }, 'Combinar campo a campo') : null,
+        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, 'Mantener la mía'),
+        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, 'Tomar la del servidor'),
+        op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', ...mark('merge'), onclick: () => { merging = true; repaint(); } }, 'Combinar campo a campo') : null,
       );
     }
     return el('div', { class: 'choices' },
-      el('button', { class: 'primary', type: 'button', 'data-choice': 'save-merge', onclick: () => {
+      el('button', { class: 'primary', type: 'button', 'data-choice': 'save-merge', ...mark('save'), onclick: () => {
         const merged: Record<string, unknown> = {};
         for (const field of Object.keys(mine)) if ((picks.get(field) ?? 'mine') === 'mine') merged[field] = mine[field];
         void resolve({ choice: 'merge', fields: merged });
       } }, 'Guardar combinación'),
-      el('button', { class: 'ghost', type: 'button', onclick: () => { merging = false; repaint(); } }, 'Volver'),
+      el('button', { class: 'ghost', type: 'button', 'data-choice': 'back', ...mark('back'), onclick: () => { merging = false; repaint(); } }, 'Volver'),
     );
   }
 
