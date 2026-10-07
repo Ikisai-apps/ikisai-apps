@@ -30,6 +30,8 @@ def main():
       rank = lambda y: 3 if y["status"] != "COMPLETED" else (1 if y["conclusion"] == "CANCELLED" else 2)  # en curso: esperar
       if prev is None or rank(x) > rank(prev): best[x["name"]] = x
     c = list(best.values())
+    # Job de matriz cancelado antes de expandirse (nombre con «${{»): lo sustituyen los jobs expandidos de la otra ejecución.
+    c = [x for x in c if not ("${{" in x["name"] and x["conclusion"] == "CANCELLED")]
     # PR que no dispara la CI (solo docs: paths-ignore en checks.yml): sin checks tras 90 s y mergeable → se fusiona.
     no_ci = not c and time.time() - start > 90 and info["m"] in ("CLEAN", "UNSTABLE", "HAS_HOOKS")
     if no_ci or (c and all(x["status"] == "COMPLETED" for x in c)):
