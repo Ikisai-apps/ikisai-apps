@@ -4,7 +4,9 @@ import {
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { describeScopes, EVENT_LABELS, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
+import type { Usage } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
+import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
 export type AccessTab = 'cuentas' | 'alta' | 'agentes' | 'registro';
 
@@ -18,7 +20,7 @@ const TABS: Array<{ id: AccessTab; label: string; hash: string }> = [
 const ROLES: Role[] = ['reader', 'editor', 'owner'];
 
 function offlineNote(at?: string): HTMLElement {
-  return el('p', { class: 'note warn', role: 'status' }, icon('offline', 18),
+  return el('p', { class: 'note warn', role: 'status', 'data-feedback-id': 'central.accesos.sin_conexion', 'data-feedback-label': 'Aviso sin conexión' }, icon('offline', 18),
     at ? ` Sin conexión: lista del ${formatDate(at)}. Los cambios necesitan red.` : ' Sin conexión: los accesos se leen y cambian en el momento y necesitan red.');
 }
 
@@ -33,22 +35,22 @@ function roleSelect(id: string, value: Role | null, options: { agent: boolean; a
 export function mountAccess(tab: AccessTab): ViewMount {
   return (ctx) => {
     const { main, admin, client } = ctx;
-    const body = el('div', { id: `access-${tab}` });
+    const body = el('div', { id: `access-${tab}`, 'data-feedback-id': `central.accesos.${tab}`, 'data-feedback-label': `Accesos: ${TABS.find((t) => t.id === tab)?.label ?? ''}` });
     replace(
       main,
-      el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Accesos'),
+      el('div', { class: 'pagehead', 'data-feedback-id': 'central.accesos.cabecera', 'data-feedback-label': 'Cabecera de Accesos' }, el('div', null, el('h2', null, 'Accesos'),
         el('p', null, 'Quién entra en cada app de Ikisai y con qué permiso.'))),
-      el('nav', { class: 'segmented', 'aria-label': 'Secciones de accesos' },
-        ...TABS.map((t) => el('a', { href: t.hash, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null, id: `tab-${t.id}` }, t.label))),
+      el('nav', { class: 'segmented', 'aria-label': 'Secciones de accesos', 'data-feedback-id': 'central.accesos.pestanas', 'data-feedback-label': 'Pestañas de Accesos' },
+        ...TABS.map((t) => el('a', { href: t.hash, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null, id: `tab-${t.id}`, 'data-feedback-id': `central.accesos.pestanas.${t.id}`, 'data-feedback-label': `Pestaña ${t.label}` }, t.label))),
       body,
     );
     const me = client.bootstrap()?.profile.userId ?? '';
     const state = { alive: true };
     const stop = () => { state.alive = false; };
     switch (tab) {
-      case 'cuentas': void mountAccounts(body, admin, me, state, ctx.navigate); break;
-      case 'alta': mountInvite(body, admin, ctx.navigate); break;
-      case 'agentes': void mountAgents(body, admin, state); break;
+      case 'cuentas': void mountAccounts(body, admin, me, state, ctx.navigate, ctx.usage); break;
+      case 'alta': mountInvite(body, admin, ctx.navigate, ctx.usage); break;
+      case 'agentes': void mountAgents(body, admin, state, ctx.usage); break;
       case 'registro': void mountLog(body, admin, state); break;
     }
     return stop;
@@ -58,20 +60,20 @@ export function mountAccess(tab: AccessTab): ViewMount {
 // ---------------------------------------------------------------------------
 // Cuentas: lista de cuentas con su acceso en cada app; ficha con cambios de acceso, contraseña y desactivación.
 // ---------------------------------------------------------------------------
-async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, state: { alive: boolean }, navigate: (hash: string) => void): Promise<void> {
+async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, state: { alive: boolean }, navigate: (hash: string) => void, usage: Usage): Promise<void> {
   let catalog: CatalogApp[] = admin.cached.catalog ?? [];
   let accounts: Account[] = admin.cached.accounts?.items ?? [];
   let query = '';
   let showAgents = false;
-  const list = el('ul', { class: 'list accounts', id: 'accountList', 'aria-label': 'Cuentas' });
-  const note = el('div');
-  const search = el('input', { type: 'search', id: 'accountSearch', placeholder: 'Buscar por nombre o correo', 'aria-label': 'Buscar cuenta',
+  const list = el('ul', { class: 'list accounts', id: 'accountList', 'aria-label': 'Cuentas', 'data-feedback-id': 'central.accesos.cuentas.lista', 'data-feedback-label': 'Lista de cuentas' });
+  const note = el('div', { 'data-feedback-id': 'central.accesos.cuentas.aviso', 'data-feedback-label': 'Aviso de cuentas' });
+  const search = el('input', { type: 'search', id: 'accountSearch', 'data-feedback-id': 'central.accesos.cuentas.buscar', 'data-feedback-label': 'Buscar cuenta', placeholder: 'Buscar por nombre o correo', 'aria-label': 'Buscar cuenta',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const agentsToggle = el('label', { class: 'check' },
-    el('input', { type: 'checkbox', id: 'showAgents', onchange: (e: Event) => { showAgents = (e.target as HTMLInputElement).checked; paint(); } }),
+    el('input', { type: 'checkbox', id: 'showAgents', 'data-feedback-id': 'central.accesos.cuentas.mostrar_agentes', 'data-feedback-label': 'Mostrar agentes', onchange: (e: Event) => { showAgents = (e.target as HTMLInputElement).checked; paint(); } }),
     el('span', null, 'Mostrar agentes'));
-  replace(body, el('div', { class: 'toolbar' }, search, agentsToggle,
-    el('button', { class: 'primary', type: 'button', id: 'goInvite', onclick: () => navigate('#/accesos/alta') }, icon('plus', 18), 'Alta')), note, list);
+  replace(body, el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.cuentas.barra', 'data-feedback-label': 'Barra de cuentas' }, search, agentsToggle,
+    el('button', { class: 'primary', type: 'button', id: 'goInvite', 'data-feedback-id': 'central.accesos.cuentas.alta', 'data-feedback-label': 'Alta de cuenta', onclick: () => navigate('#/accesos/alta') }, icon('plus', 18), 'Alta')), note, list);
 
   const appName = (id: string) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
 
@@ -88,10 +90,10 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
         `${appName(m.app)} · ${ROLE_LABELS[m.role]}`, describeScopes(m.app, m.scopes) ? ' *' : ''));
       if (a.disabled) chips.unshift(el('span', { class: 'chip alert' }, 'Desactivada'));
       if (a.kind === 'agent') chips.unshift(el('span', { class: 'chip' }, icon('bot', 14), 'Agente'));
-      return el('li', null, el('button', { class: 'accountrow', type: 'button', 'data-user': a.userId, onclick: () => openAccount(a) },
-        el('span', { class: 'accountname' }, a.displayName || a.email || 'Sin nombre', a.userId === me ? el('span', { class: 'muted' }, ' (tú)') : null),
-        el('span', { class: 'muted accountmeta' }, [a.email ?? '', a.lastSignInAt ? `último acceso ${relativeTime(a.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
-        el('span', { class: 'chips' }, ...(chips.length ? chips : [el('span', { class: 'muted' }, 'Sin accesos')]))));
+      return el('li', null, el('button', { class: 'accountrow', type: 'button', 'data-user': a.userId, 'data-feedback-id': 'central.accesos.cuentas.fila', 'data-feedback-label': 'Cuenta', onclick: () => openAccount(a) },
+        el('span', { class: 'accountname', 'data-feedback-ignore': '' }, a.displayName || a.email || 'Sin nombre', a.userId === me ? el('span', { class: 'muted' }, ' (tú)') : null),
+        el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [a.email ?? '', a.lastSignInAt ? `último acceso ${relativeTime(a.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
+        el('span', { class: 'chips', 'data-feedback-id': 'central.accesos.cuentas.permisos', 'data-feedback-label': 'Accesos de la cuenta' }, ...(chips.length ? chips : [el('span', { class: 'muted' }, 'Sin accesos')]))));
     }));
   }
 
@@ -100,13 +102,13 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
       [catalog, accounts] = await Promise.all([admin.catalog(), admin.accounts()]);
       replace(note);
     } catch (error) {
-      replace(note, navigator.onLine ? el('p', { class: 'formerror', role: 'alert' }, describeError(error)) : offlineNote(admin.cached.accounts?.at));
+      replace(note, navigator.onLine ? el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.accesos.cuentas.error', 'data-feedback-label': 'Error de cuentas' }, describeError(error)) : offlineNote(admin.cached.accounts?.at));
     }
     if (state.alive) paint();
   }
 
   function openAccount(account: Account): void {
-    const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+    const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.accesos.cuenta.error', 'data-feedback-label': 'Error de la cuenta' });
     const isMe = account.userId === me;
     const agent = account.kind === 'agent';
     const current = (app: string) => account.memberships.find((m) => m.app === app) ?? null;
@@ -133,7 +135,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
       select.disabled = true;
       try {
         // Al cambiar el rol se conservan los ámbitos que la app ya tuviera (cada app edita los suyos).
-        await admin.setMembership({ app: app.id, userId: account.userId, role, ...(role && before ? { scopes: before.scopes } : {}) });
+        await usage.run('central.accesos.cuenta.cambiar_acceso', () => admin.setMembership({ app: app.id, userId: account.userId, role, ...(role && before ? { scopes: before.scopes } : {}) }));
         toast(role ? `Acceso a ${app.name}: ${ROLE_LABELS[role]}.` : `Acceso a ${app.name} quitado.`);
         await refresh();
       } catch (e) {
@@ -165,7 +167,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
     async function resetPassword(): Promise<void> {
       if (!(await confirmDialog({ title: '¿Crear una contraseña temporal nueva?', text: 'La contraseña actual deja de valer y se cierran sus sesiones en los demás dispositivos.', confirmLabel: 'Crear contraseña' }))) return;
       try {
-        const out = await admin.resetPassword(account.userId);
+        const out = await usage.run('central.accesos.cuenta.contrasena', () => admin.resetPassword(account.userId));
         showSecret(out.temporaryPassword, account.email ?? '');
       } catch (e) { error.textContent = describeError(e); }
     }
@@ -180,45 +182,50 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
       } catch (e) { error.textContent = describeError(e); }
     }
 
-    const content = el('div', { class: 'accountsheet' });
+    const content = el('div', { class: 'accountsheet', 'data-feedback-id': 'central.accesos.cuenta.contenido', 'data-feedback-label': 'Ficha de la cuenta' });
     function renderBody(): void {
       const rows = catalog.map((app) => {
         const m = current(app.id);
         const select = roleSelect(`role-${app.id}`, m?.role ?? null, { agent, app: app.id });
+        fbMark(select, `central.accesos.cuenta.rol_${app.id}`, `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
         select.addEventListener('change', () => void change(app, select));
         if (isMe && app.id === 'central') select.disabled = true;
         const scopes = m ? describeScopes(app.id, m.scopes) : null;
         let extra: HTMLElement | null = null;
         if (app.id === 'central' && m?.role === 'editor') {
-          const box = el('input', { type: 'checkbox', id: 'scope-people', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
+          const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
           box.addEventListener('change', () => void togglePeopleScope(box));
           extra = el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)'));
         } else if (scopes && app.id !== 'central') {
-          extra = el('p', { class: 'muted small' }, scopes, ' · ', el('a', { href: `https://${app.domain}/`, target: '_blank', rel: 'noopener' }, `Editar en ${app.name.replace(/^Ikisai /, '')}`));
+          extra = el('p', { class: 'muted small' }, scopes, ' · ', el('a', { href: `https://${app.domain}/`, target: '_blank', rel: 'noopener', 'data-feedback-id': 'central.accesos.cuenta.editar_en_app', 'data-feedback-label': 'Editar en la app' }, `Editar en ${app.name.replace(/^Ikisai /, '')}`));
         }
-        return el('div', { class: 'approw' },
+        return el('div', { class: 'approw', 'data-feedback-id': 'central.accesos.cuenta.app', 'data-feedback-label': 'Acceso a una app' },
           el('div', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, '')), el('span', { class: 'muted small' }, app.domain)),
           select, extra);
       });
       replace(content,
-        el('p', { class: 'muted' }, [account.email, `alta ${formatDate(account.createdAt)}`, account.lastSignInAt ? `último acceso ${relativeTime(account.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
+        el('p', { class: 'muted', 'data-feedback-ignore': '' }, [account.email, `alta ${formatDate(account.createdAt)}`, account.lastSignInAt ? `último acceso ${relativeTime(account.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
         account.disabled ? el('p', { class: 'note warn' }, 'Cuenta desactivada: no puede entrar en ninguna app.') : null,
         isMe ? el('p', { class: 'note' }, 'Es tu cuenta: no puedes quitarte la administración ni desactivarte.') : null,
-        el('div', { class: 'sectionlabel' }, 'Acceso por app'),
+        el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.cuenta.acceso_por_app', 'data-feedback-label': 'Acceso por app' }, 'Acceso por app'),
         ...rows,
         error,
-        agent ? el('p', { class: 'muted' }, 'Las claves de este agente se gestionan en la pestaña Agentes.') : el('div', { class: 'zone' },
-          el('button', { class: 'ghost', type: 'button', id: 'resetPassword', onclick: () => void resetPassword() }, icon('lock', 18), 'Contraseña temporal nueva'),
-          isMe ? null : el('button', { class: account.disabled ? 'ghost' : 'danger', type: 'button', id: 'toggleDisabled', onclick: () => void toggleDisabled() },
+        agent ? el('p', { class: 'muted' }, 'Las claves de este agente se gestionan en la pestaña Agentes.') : el('div', { class: 'zone', 'data-feedback-id': 'central.accesos.cuenta.zona', 'data-feedback-label': 'Acciones de la cuenta' },
+          el('button', { class: 'ghost', type: 'button', id: 'resetPassword', 'data-feedback-id': 'central.accesos.cuenta.contrasena_nueva', 'data-feedback-label': 'Contraseña temporal nueva', onclick: () => void resetPassword() }, icon('lock', 18), 'Contraseña temporal nueva'),
+          isMe ? null : el('button', { class: account.disabled ? 'ghost' : 'danger', type: 'button', id: 'toggleDisabled', 'data-feedback-id': 'central.accesos.cuenta.desactivar', 'data-feedback-label': 'Desactivar o reactivar cuenta', onclick: () => void toggleDisabled() },
             account.disabled ? 'Reactivar cuenta' : 'Desactivar cuenta')),
       );
     }
     renderBody();
-    openSheet({
+    const accountSheet = openSheet({
       title: account.displayName || account.email || 'Cuenta',
       meta: account.kind === 'agent' ? 'Agente' : undefined,
       body: content,
+      panelAttrs: { 'data-feedback-id': 'central.accesos.cuenta', 'data-feedback-label': 'Cuenta' },
+      closeAttrs: { 'data-feedback-id': 'central.accesos.cuenta.cerrar', 'data-feedback-label': 'Cerrar' },
     });
+    // El título de la hoja es el nombre o el correo de la cuenta.
+    fbIgnoreWithin(accountSheet.element, '.sheet-head h2');
   }
 
   if (accounts.length) paint();
@@ -231,24 +238,33 @@ export function showSecret(password: string, email: string, onDone?: () => void)
   sheet = openSheet({
     title: 'Contraseña temporal',
     meta: email,
-    body: el('div', null,
+    panelAttrs: { 'data-feedback-id': 'central.accesos.contrasena', 'data-feedback-label': 'Contraseña temporal' },
+    closeAttrs: { 'data-feedback-id': 'central.accesos.contrasena.cerrar', 'data-feedback-label': 'Cerrar' },
+    body: el('div', { 'data-feedback-id': 'central.accesos.contrasena.contenido', 'data-feedback-label': 'Contraseña temporal' },
       el('p', null, 'Pásasela a la persona por un canal privado. Al entrar, conviene que la cambie.'),
-      renderSecretOnce({ value: password, label: 'Contraseña temporal', warning: 'Solo se muestra ahora: no se puede volver a consultar.', onDone: () => { void sheet?.close(); onDone?.(); } })),
+      fbMark(renderSecretOnce({
+        value: password, label: 'Contraseña temporal', warning: 'Solo se muestra ahora: no se puede volver a consultar.', onDone: () => { void sheet?.close(); onDone?.(); },
+        valueAttrs: { 'data-feedback-id': 'central.accesos.contrasena.valor', 'data-feedback-label': 'Contraseña', 'data-feedback-ignore': '' },
+        copyAttrs: { 'data-feedback-id': 'central.accesos.contrasena.copiar', 'data-feedback-label': 'Copiar' },
+        doneAttrs: { 'data-feedback-id': 'central.accesos.contrasena.hecho', 'data-feedback-label': 'Hecho' },
+      }), 'central.accesos.contrasena.bloque', 'Datos de la contraseña')),
   });
+  // El correo de la cuenta va en la línea secundaria de la hoja.
+  if (sheet) fbIgnoreWithin(sheet.element, '.sheet-body > .meta');
 }
 
 // ---------------------------------------------------------------------------
 // Alta: correo, nombre y accesos iniciales → contraseña temporal una vez.
 // ---------------------------------------------------------------------------
-function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string) => void): void {
-  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
-  const email = el('input', { id: 'inviteEmail', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
-  const name = el('input', { id: 'inviteName', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
-  const appsHost = el('div', { id: 'inviteApps' }, el('p', { class: 'muted' }, 'Cargando apps…'));
+function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string) => void, usage: Usage): void {
+  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.accesos.alta.error', 'data-feedback-label': 'Error del alta' });
+  const email = el('input', { id: 'inviteEmail', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
+  const name = el('input', { id: 'inviteName', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
+  const appsHost = el('div', { id: 'inviteApps', 'data-feedback-id': 'central.accesos.alta.apps', 'data-feedback-label': 'Accesos iniciales por app' }, el('p', { class: 'muted' }, 'Cargando apps…'));
   const selects = new Map<string, HTMLSelectElement>();
-  const submit = el('button', { class: 'primary', type: 'submit', id: 'inviteSubmit' }, 'Dar de alta') as HTMLButtonElement;
+  const submit = el('button', { class: 'primary', type: 'submit', id: 'inviteSubmit', 'data-feedback-id': 'central.accesos.alta.enviar', 'data-feedback-label': 'Dar de alta' }, 'Dar de alta') as HTMLButtonElement;
 
-  const form = el('form', { novalidate: true, id: 'inviteForm', onsubmit: async (event: Event) => {
+  const form = el('form', { novalidate: true, id: 'inviteForm', 'data-feedback-id': 'central.accesos.alta.formulario', 'data-feedback-label': 'Formulario de alta', onsubmit: async (event: Event) => {
     event.preventDefault();
     error.textContent = '';
     const mail = email.value.trim().toLowerCase();
@@ -257,7 +273,7 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
     if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
     submit.disabled = true;
     try {
-      const out = await admin.invite({ email: mail, ...(name.value.trim() ? { displayName: name.value.trim() } : {}), memberships });
+      const out = await usage.run('central.accesos.alta.crear', () => admin.invite({ email: mail, ...(name.value.trim() ? { displayName: name.value.trim() } : {}), memberships }));
       if (out.temporaryPassword) {
         showSecret(out.temporaryPassword, out.email, () => navigate('#/accesos'));
       } else {
@@ -271,12 +287,12 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
       submit.disabled = false;
     }
   } },
-  el('label', { class: 'field' }, el('span', null, 'Correo'), email),
-  el('label', { class: 'field' }, el('span', null, 'Nombre visible'), name),
-  el('div', { class: 'sectionlabel' }, 'Accesos iniciales'),
+  el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_correo', 'data-feedback-label': 'Correo' }, el('span', null, 'Correo'), email),
+  el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nombre', 'data-feedback-label': 'Nombre visible' }, el('span', null, 'Nombre visible'), name),
+  el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.alta.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'),
   appsHost,
   error,
-  el('div', { class: 'formactions' }, submit));
+  el('div', { class: 'formactions', 'data-feedback-id': 'central.accesos.alta.acciones', 'data-feedback-label': 'Acciones del alta' }, submit));
 
   replace(body, el('p', { class: 'muted' }, 'Crea la cuenta con una contraseña temporal que se muestra una sola vez. Si el correo ya tiene cuenta, solo se añaden los accesos.'), form);
 
@@ -284,40 +300,41 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
     replace(appsHost, ...catalog.map((app) => {
       const select = roleSelect(`invite-${app.id}`, null, { agent: false, app: app.id });
       selects.set(app.id, select);
-      return el('label', { class: 'approw' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, '')), el('span', { class: 'muted small' }, app.description ?? '')), select);
+      fbMark(select, `central.accesos.alta.rol_${app.id}`, `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
+      return el('label', { class: 'approw', 'data-feedback-id': 'central.accesos.alta.app', 'data-feedback-label': 'Acceso a una app' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, '')), el('span', { class: 'muted small' }, app.description ?? '')), select);
     }));
-  }).catch((e) => replace(appsHost, navigator.onLine ? el('p', { class: 'formerror' }, describeError(e)) : offlineNote()));
+  }).catch((e) => replace(appsHost, navigator.onLine ? el('p', { class: 'formerror', 'data-feedback-id': 'central.accesos.alta.error_apps', 'data-feedback-label': 'Error al cargar las apps' }, describeError(e)) : offlineNote()));
 }
 
 // ---------------------------------------------------------------------------
 // Agentes: claves de todas las apps; revocar corta al agente en todas.
 // ---------------------------------------------------------------------------
-async function mountAgents(body: HTMLElement, admin: AdminApi, state: { alive: boolean }): Promise<void> {
-  const list = el('ul', { class: 'list', id: 'agentList', 'aria-label': 'Claves de agentes' });
-  const note = el('div');
+async function mountAgents(body: HTMLElement, admin: AdminApi, state: { alive: boolean }, usage: Usage): Promise<void> {
+  const list = el('ul', { class: 'list', id: 'agentList', 'aria-label': 'Claves de agentes', 'data-feedback-id': 'central.accesos.agentes.lista', 'data-feedback-label': 'Claves de agentes' });
+  const note = el('div', { 'data-feedback-id': 'central.accesos.agentes.aviso', 'data-feedback-label': 'Aviso de agentes' });
   let showRevoked = false;
-  const toggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'showRevoked', onchange: (e: Event) => { showRevoked = (e.target as HTMLInputElement).checked; paint(admin.cached.agents?.items ?? []); } }), el('span', null, 'Mostrar revocadas'));
-  replace(body, el('p', { class: 'muted' }, 'Las claves las emite el propietario de cada app. Revocar una clave la corta en todas las apps y revoca sus propuestas abiertas.'), el('div', { class: 'toolbar' }, toggle), note, list);
+  const toggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'showRevoked', 'data-feedback-id': 'central.accesos.agentes.mostrar_revocadas', 'data-feedback-label': 'Mostrar revocadas', onchange: (e: Event) => { showRevoked = (e.target as HTMLInputElement).checked; paint(admin.cached.agents?.items ?? []); } }), el('span', null, 'Mostrar revocadas'));
+  replace(body, el('p', { class: 'muted' }, 'Las claves las emite el propietario de cada app. Revocar una clave la corta en todas las apps y revoca sus propuestas abiertas.'), el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.agentes.barra', 'data-feedback-label': 'Barra de agentes' }, toggle), note, list);
 
   function paint(keys: AgentKey[]): void {
     const shown = keys.filter((k) => showRevoked || !k.revokedAt);
     if (!shown.length) { replace(list, el('li', { class: 'empty' }, 'No hay claves de agentes activas.')); return; }
-    replace(list, ...shown.map((k) => el('li', { class: 'agentrow', 'data-key': k.keyId },
+    replace(list, ...shown.map((k) => el('li', { class: 'agentrow', 'data-key': k.keyId, 'data-feedback-id': 'central.accesos.agentes.fila', 'data-feedback-label': 'Clave de agente' },
       el('div', null,
-        el('strong', null, icon('bot', 16), ' ', k.name), el('span', { class: 'muted' }, ` · …${k.hint}`),
+        el('strong', null, icon('bot', 16), ' ', k.name), el('span', { class: 'muted', 'data-feedback-ignore': '' }, ` · …${k.hint}`),
         el('div', { class: 'muted small' }, [
           k.memberships.map((m) => `${m.app} (${ROLE_LABELS[m.role]})`).join(', ') || 'sin accesos',
           k.lastUsedAt ? `usada ${relativeTime(k.lastUsedAt)}` : 'sin usar',
           k.expiresAt ? `caduca ${formatDate(k.expiresAt)}` : '',
         ].filter(Boolean).join(' · '))),
       k.revokedAt ? el('span', { class: 'chip alert' }, `Revocada ${formatDate(k.revokedAt, 'short')}`)
-        : el('button', { class: 'danger small', type: 'button', onclick: () => void revoke(k) }, 'Revocar'))));
+        : el('button', { class: 'danger small', type: 'button', 'data-feedback-id': 'central.accesos.agentes.revocar', 'data-feedback-label': 'Revocar clave', onclick: () => void revoke(k) }, 'Revocar'))));
   }
 
   async function revoke(k: AgentKey): Promise<void> {
     if (!(await confirmDialog({ title: `¿Revocar la clave de «${k.name}»?`, text: 'El agente deja de poder entrar en todas las apps. No se puede deshacer: habría que emitir otra clave.', confirmLabel: 'Revocar', danger: true }))) return;
     try {
-      const out = await admin.revokeAgent(k.keyId);
+      const out = await usage.run('central.accesos.agentes.revocar', () => admin.revokeAgent(k.keyId));
       toast(out.proposalsRevoked ? `Clave revocada y ${plural(out.proposalsRevoked, 'propuesta cerrada', 'propuestas cerradas')}.` : 'Clave revocada.');
       await load();
     } catch (e) { toast(describeError(e)); }
@@ -329,7 +346,7 @@ async function mountAgents(body: HTMLElement, admin: AdminApi, state: { alive: b
       replace(note);
       if (state.alive) paint(keys);
     } catch (e) {
-      replace(note, navigator.onLine ? el('p', { class: 'formerror' }, describeError(e)) : offlineNote(admin.cached.agents?.at));
+      replace(note, navigator.onLine ? el('p', { class: 'formerror', 'data-feedback-id': 'central.accesos.agentes.error', 'data-feedback-label': 'Error de agentes' }, describeError(e)) : offlineNote(admin.cached.agents?.at));
       if (state.alive) paint(admin.cached.agents?.items ?? []);
     }
   }
@@ -344,11 +361,11 @@ async function mountLog(body: HTMLElement, admin: AdminApi, state: { alive: bool
   let nextBefore: number | null = null;
   let app = '';
   const names = new Map<string, string>();
-  const host = el('div', { id: 'accessLog' });
-  const more = el('button', { class: 'ghost', type: 'button', id: 'logMore', hidden: true, onclick: () => void load(false) }, 'Cargar más') as HTMLButtonElement;
-  const filter = el('select', { id: 'logApp', 'aria-label': 'App', onchange: (e: Event) => { app = (e.target as HTMLSelectElement).value; void load(true); } },
+  const host = el('div', { id: 'accessLog', 'data-feedback-id': 'central.accesos.registro.entradas', 'data-feedback-label': 'Registro de accesos' });
+  const more = el('button', { class: 'ghost', type: 'button', id: 'logMore', 'data-feedback-id': 'central.accesos.registro.cargar_mas', 'data-feedback-label': 'Cargar más', hidden: true, onclick: () => void load(false) }, 'Cargar más') as HTMLButtonElement;
+  const filter = el('select', { id: 'logApp', 'aria-label': 'App', 'data-feedback-id': 'central.accesos.registro.filtro_app', 'data-feedback-label': 'Filtro por app', onchange: (e: Event) => { app = (e.target as HTMLSelectElement).value; void load(true); } },
     el('option', { value: '' }, 'Todas las apps')) as HTMLSelectElement;
-  replace(body, el('div', { class: 'toolbar' }, filter), host, more);
+  replace(body, el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.registro.barra', 'data-feedback-label': 'Barra del registro' }, filter), host, more);
 
   try {
     const [catalog, accounts] = await Promise.all([admin.catalog(), admin.accounts()]);
@@ -383,10 +400,10 @@ async function mountLog(body: HTMLElement, admin: AdminApi, state: { alive: bool
       items = [...items, ...out.items];
       nextBefore = out.hasMore ? out.nextBefore : null;
       if (!state.alive) return;
-      replace(host, renderAccessLog({ entries: items.map(entry), emptyText: 'Sin accesos registrados.' }));
+      replace(host, fbIgnoreWithin(renderAccessLog({ entries: items.map(entry), emptyText: 'Sin accesos registrados.' }), '.al-actor, .al-target'));
       more.hidden = nextBefore === null;
     } catch (e) {
-      replace(host, navigator.onLine ? el('p', { class: 'formerror' }, describeError(e)) : offlineNote());
+      replace(host, navigator.onLine ? el('p', { class: 'formerror', 'data-feedback-id': 'central.accesos.registro.error', 'data-feedback-label': 'Error del registro' }, describeError(e)) : offlineNote());
     } finally {
       more.disabled = false;
     }

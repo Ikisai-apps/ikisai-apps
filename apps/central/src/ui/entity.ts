@@ -22,14 +22,14 @@ async function prepareLogo(file: File): Promise<Blob> {
  * Datos de la entidad (configuración común, API.md §2.9): razón social, NIF/CIF, domicilio fiscal y logotipo.
  * Los ve cualquier miembro de Central; solo el owner los edita. Booking y Finance los leen por su proyección.
  */
-export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
+export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
   let row: Row | null = null;
   let sheet: Sheet | null = null;
   const blobUrls = new Map<string, string>();
-  const host = el('div', { id: 'entityView' });
+  const host = el('div', { id: 'entityView', 'data-feedback-id': 'central.entidad.contenido', 'data-feedback-label': 'Datos de la entidad' });
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Entidad'),
+    el('div', { class: 'pagehead', 'data-feedback-id': 'central.entidad.cabecera', 'data-feedback-label': 'Cabecera de Entidad' }, el('div', null, el('h2', null, 'Entidad'),
       el('p', null, 'Los datos legales de Ikisai que usan las propuestas de Booking y las facturas emitidas de Finance.'))),
     host,
   );
@@ -51,32 +51,32 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
     }
   }
 
-  function line(label: string, value: string | null | undefined): HTMLElement | null {
-    return value ? el('div', { class: 'kv' }, el('dt', null, label), el('dd', null, value)) : null;
+  function line(label: string, value: string | null | undefined, key: string, personal = false): HTMLElement | null {
+    return value ? el('div', { class: 'kv', 'data-feedback-id': `central.entidad.ficha.${key}`, 'data-feedback-label': label }, el('dt', null, label), el('dd', personal ? { 'data-feedback-ignore': '' } : null, value)) : null;
   }
 
   async function paint(): Promise<void> {
     if (!row) {
-      replace(host, el('div', { class: 'empty' },
+      replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.entidad.vacio', 'data-feedback-label': 'Entidad sin datos' },
         el('strong', null, 'Todavía no hay datos de la entidad'),
         isAdmin ? 'Escribe la razón social, el NIF/CIF y el domicilio fiscal, y sube el logotipo.' : 'Los rellena quien administra Central.',
-        isAdmin ? el('button', { class: 'primary', type: 'button', id: 'editEntity', onclick: () => openEditor() }, icon('edit', 18), 'Rellenar datos') : null));
+        isAdmin ? el('button', { class: 'primary', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.vacio.rellenar', 'data-feedback-label': 'Rellenar datos', onclick: () => openEditor() }, icon('edit', 18), 'Rellenar datos') : null));
       return;
     }
     const r = row;
     const address = [r.address_line, [r.postal_code, r.city].filter(Boolean).join(' '), r.province, r.country !== 'ES' ? r.country : null].filter(Boolean).join(', ');
-    replace(host, el('section', { class: 'card entitycard' },
+    replace(host, el('section', { class: 'card entitycard', 'data-feedback-id': 'central.entidad.ficha', 'data-feedback-label': 'Ficha de la entidad' },
       (await logoNode(r.logo_file_id as LogoRef, `Logotipo de ${r.legal_name}`)) ?? el('p', { class: 'muted' }, 'Sin logotipo.'),
-      el('dl', { class: 'kvlist' },
-        line('Razón social', r.legal_name),
-        line('Nombre comercial', r.trade_name),
-        line('NIF/CIF', r.tax_id),
-        line('Domicilio fiscal', address),
-        line('Correo', r.email),
-        line('Teléfono', r.phone),
-        line('Web', r.website)),
-      el('p', { class: 'muted small' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
-      isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
+      el('dl', { class: 'kvlist', 'data-feedback-id': 'central.entidad.ficha.datos', 'data-feedback-label': 'Datos legales' },
+        line('Razón social', r.legal_name, 'razon_social'),
+        line('Nombre comercial', r.trade_name, 'nombre_comercial'),
+        line('NIF/CIF', r.tax_id, 'nif', true),
+        line('Domicilio fiscal', address, 'domicilio', true),
+        line('Correo', r.email, 'correo', true),
+        line('Teléfono', r.phone, 'telefono', true),
+        line('Web', r.website, 'web')),
+      el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
+      isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
   }
 
   async function load(): Promise<void> {
@@ -87,24 +87,24 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
 
   function openEditor(): void {
     const current = row;
-    const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+    const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.entidad.editar.error', 'data-feedback-label': 'Error del formulario' });
     const input = (id: string, value: string | null | undefined, attrs: Record<string, string | boolean> = {}) =>
       el('input', { id, type: 'text', value: value ?? '', ...attrs }) as HTMLInputElement;
     const legal = input('en-legal', current?.legal_name, { maxlength: '200', required: true });
     const trade = input('en-trade', current?.trade_name, { maxlength: '120' });
-    const taxId = input('en-tax', current?.tax_id, { maxlength: '20', required: true, autocapitalize: 'characters' });
-    const street = input('en-address', current?.address_line, { maxlength: '200', required: true });
+    const taxId = input('en-tax', current?.tax_id, { maxlength: '20', required: true, autocapitalize: 'characters', 'data-feedback-ignore': '' });
+    const street = input('en-address', current?.address_line, { maxlength: '200', required: true, 'data-feedback-ignore': '' });
     const postal = input('en-postal', current?.postal_code, { maxlength: '12', required: true, inputmode: 'numeric' });
     const city = input('en-city', current?.city, { maxlength: '80', required: true });
     const province = input('en-province', current?.province, { maxlength: '80' });
     const country = input('en-country', current?.country ?? 'ES', { maxlength: '2' });
-    const email = input('en-email', current?.email, { maxlength: '320', type: 'email' });
-    const phone = input('en-phone', current?.phone, { maxlength: '32', type: 'tel' });
+    const email = input('en-email', current?.email, { maxlength: '320', type: 'email', 'data-feedback-ignore': '' });
+    const phone = input('en-phone', current?.phone, { maxlength: '32', type: 'tel', 'data-feedback-ignore': '' });
     const web = input('en-web', current?.website, { maxlength: '200', placeholder: 'https://' });
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
-    const logoPreview = el('div', { class: 'logopreview' });
-    const logoInput = el('input', { id: 'en-logo', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden' }) as HTMLInputElement;
+    const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
+    const logoInput = el('input', { id: 'en-logo', type: 'file', accept: LOGO_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.logotipo_archivo', 'data-feedback-label': 'Archivo del logotipo' }) as HTMLInputElement;
     const paintLogo = async () => {
       if (stagedLogo) {
         const url = URL.createObjectURL(stagedLogo);
@@ -146,8 +146,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
     };
 
     const newId = crypto.randomUUID();
-    const save = el('button', { class: 'primary', type: 'submit', id: 'saveEntity', form: 'entityForm' }, 'Guardar') as HTMLButtonElement;
-    const form = el('form', { novalidate: true, id: 'entityForm', oninput: refreshDirty, onchange: refreshDirty,
+    const save = el('button', { class: 'primary', type: 'submit', id: 'saveEntity', form: 'entityForm', 'data-feedback-id': 'central.entidad.editar.guardar', 'data-feedback-label': 'Guardar' }, 'Guardar') as HTMLButtonElement;
+    const form = el('form', { novalidate: true, id: 'entityForm', 'data-feedback-id': 'central.entidad.editar.formulario', 'data-feedback-label': 'Formulario de la entidad', oninput: refreshDirty, onchange: refreshDirty,
       onsubmit: async (event: Event) => {
         event.preventDefault();
         error.textContent = '';
@@ -175,7 +175,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
             logoRef = { $blob: sha };
           }
           const operations = operationsWith(logoRef);
-          await client.commit(operations);
+          await usage.run('central.entidad.guardar', () => client.commit(operations));
           toast(!navigator.onLine ? 'Datos guardados en este dispositivo. Se sincronizarán cuando haya red.' : 'Datos de la entidad guardados.');
           guard.dirtyEditor = false;
           await sheet?.close(true);
@@ -187,30 +187,32 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin }) => {
           save.disabled = false;
         }
       } },
-      el('label', { class: 'field' }, el('span', null, 'Razón social'), legal),
-      el('label', { class: 'field' }, el('span', null, 'Nombre comercial (opcional)'), trade),
-      el('label', { class: 'field' }, el('span', null, 'NIF/CIF'), taxId),
-      el('label', { class: 'field' }, el('span', null, 'Domicilio fiscal'), street),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_razon_social', 'data-feedback-label': 'Razón social' }, el('span', null, 'Razón social'), legal),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_nombre_comercial', 'data-feedback-label': 'Nombre comercial' }, el('span', null, 'Nombre comercial (opcional)'), trade),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_nif', 'data-feedback-label': 'NIF/CIF' }, el('span', null, 'NIF/CIF'), taxId),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_domicilio', 'data-feedback-label': 'Domicilio fiscal' }, el('span', null, 'Domicilio fiscal'), street),
       el('div', { class: 'fieldrow' },
-        el('label', { class: 'field' }, el('span', null, 'Código postal'), postal),
-        el('label', { class: 'field' }, el('span', null, 'Municipio'), city)),
+        el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_codigo_postal', 'data-feedback-label': 'Código postal' }, el('span', null, 'Código postal'), postal),
+        el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_municipio', 'data-feedback-label': 'Municipio' }, el('span', null, 'Municipio'), city)),
       el('div', { class: 'fieldrow' },
-        el('label', { class: 'field' }, el('span', null, 'Provincia'), province),
-        el('label', { class: 'field' }, el('span', null, 'País'), country)),
-      el('label', { class: 'field' }, el('span', null, 'Correo (opcional)'), email),
-      el('label', { class: 'field' }, el('span', null, 'Teléfono (opcional)'), phone),
-      el('label', { class: 'field' }, el('span', null, 'Web (opcional)'), web),
-      el('div', { class: 'field' }, el('span', null, 'Logotipo'), logoPreview,
-        el('label', { class: 'ghost btnlike', for: 'en-logo' }, icon('upload', 18), 'Elegir imagen'), logoInput,
+        el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_provincia', 'data-feedback-label': 'Provincia' }, el('span', null, 'Provincia'), province),
+        el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_pais', 'data-feedback-label': 'País' }, el('span', null, 'País'), country)),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_correo', 'data-feedback-label': 'Correo' }, el('span', null, 'Correo (opcional)'), email),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_telefono', 'data-feedback-label': 'Teléfono' }, el('span', null, 'Teléfono (opcional)'), phone),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_web', 'data-feedback-label': 'Web' }, el('span', null, 'Web (opcional)'), web),
+      el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_logotipo', 'data-feedback-label': 'Logotipo' }, el('span', null, 'Logotipo'), logoPreview,
+        el('label', { class: 'ghost btnlike', for: 'en-logo', 'data-feedback-id': 'central.entidad.editar.elegir_imagen', 'data-feedback-label': 'Elegir imagen' }, icon('upload', 18), 'Elegir imagen'), logoInput,
         el('span', { class: 'muted small' }, 'PNG, JPEG o WebP. Si pesa más de 2 MB se reduce al subirlo.')),
       error,
     );
 
     sheet = openSheet({
+      panelAttrs: { 'data-feedback-id': 'central.entidad.editar', 'data-feedback-label': 'Editar datos de la entidad' },
+      closeAttrs: { 'data-feedback-id': 'central.entidad.editar.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
       title: current ? 'Editar datos de la entidad' : 'Datos de la entidad',
       meta: current ? `Revisión ${current.revision}` : undefined,
       body: form,
-      foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, current ? 'Cerrar' : 'Cancelar'), save],
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.entidad.editar.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, current ? 'Cerrar' : 'Cancelar'), save],
       footHidden: current !== null,
       initialFocus: legal,
       beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),

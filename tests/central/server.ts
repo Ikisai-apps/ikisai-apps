@@ -33,13 +33,23 @@ function fakeTasks(calls: Array<{ path: string; body: any }>): typeof fetch {
   };
 }
 
-export async function startCentralServer(): Promise<CentralTestServer> {
+/**
+ * `consent` (por defecto sí): las cuentas de prueba ya aceptaron el aviso de medición de uso, para que su hoja no tape
+ * las pantallas en las pruebas. `consent: false` lo deja sin aceptar (prueba del propio aviso).
+ */
+export async function startCentralServer(options: { consent?: boolean } = {}): Promise<CentralTestServer> {
   const origin = CENTRAL_ORIGINS[0]!;
   const tasksCalls: Array<{ path: string; body: any }> = [];
   const app = await createTestApp({
     app: 'central', slug: 'central-api', origin,
     createHandler: (config) => createCentralApp({ ...config, origins: [origin] }, { tasksApiBase: 'https://tasks.example.invalid', tasksFetch: fakeTasks(tasksCalls) }),
   });
+  if (options.consent !== false) {
+    for (const token of Object.values(app.tokens)) {
+      const res = await app.call('/api/v1/usage/consent', { token, body: {} });
+      if (res.status !== 200) throw new Error(`usage/consent ${res.status}: ${JSON.stringify(res.data)}`);
+    }
+  }
   const server: Server = createServer(async (req, res) => {
     try {
       const chunks: Buffer[] = [];

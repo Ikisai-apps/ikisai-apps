@@ -9,6 +9,7 @@ import {
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
+import { fbIgnoreWithin } from './feedback.ts';
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null; code?: string };
 type Requirement = Mirror<Base & Record<string, unknown> & { name: string; requirement_type: string; status: string; risk: string; frequency: string; notice_days: number; expires_on: string | null }>;
@@ -74,8 +75,8 @@ function stateChip(expires: string | null, notice: number, closed: boolean, toda
 }
 
 function tabsNav(tab: ComplianceTab): HTMLElement {
-  return el('nav', { class: 'segmented', 'aria-label': 'Secciones de cumplimiento' },
-    ...TABS.map((t) => el('a', { href: t.hash, id: `ctab-${t.id}`, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null }, t.label)));
+  return el('nav', { class: 'segmented', 'aria-label': 'Secciones de cumplimiento', 'data-feedback-id': 'central.cumplimiento.pestanas', 'data-feedback-label': 'Pestañas de Cumplimiento' },
+    ...TABS.map((t) => el('a', { href: t.hash, id: `ctab-${t.id}`, 'data-feedback-id': `central.cumplimiento.pestanas.${t.id}`, 'data-feedback-label': `Pestaña ${t.label}`, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null }, t.label)));
 }
 
 // ---------------------------------------------------------------------------
@@ -87,11 +88,11 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
     const canEdit = client.bootstrap()?.membership.role !== 'reader';
     let data: Data | null = null;
     let typeFilter = '';
-    const host = el('div', { id: `compliance-${tab}` });
-    const fab = canEdit && tab === 'requisitos' ? el('button', { class: 'fab', type: 'button', id: 'newRequirement', onclick: () => openRequirementEditor(ctx.client, null, data, (id) => navigate(`#/cumplimiento/${id}`)) }, icon('plus'), 'Nueva obligación')
-      : canEdit && tab === 'documentos' ? el('button', { class: 'fab', type: 'button', id: 'newDocument', onclick: () => openDocumentEditor(ctx.client, null, data, null) }, icon('plus'), 'Nuevo documento') : null;
+    const host = el('div', { id: `compliance-${tab}`, 'data-feedback-id': `central.cumplimiento.${tab}`, 'data-feedback-label': `Cumplimiento: ${TABS.find((t) => t.id === tab)?.label ?? ''}` });
+    const fab = canEdit && tab === 'requisitos' ? el('button', { class: 'fab', type: 'button', id: 'newRequirement', 'data-feedback-id': 'central.cumplimiento.obligaciones.nueva', 'data-feedback-label': 'Nueva obligación', onclick: () => openRequirementEditor(ctx.client, null, data, (id) => navigate(`#/cumplimiento/${id}`)) }, icon('plus'), 'Nueva obligación')
+      : canEdit && tab === 'documentos' ? el('button', { class: 'fab', type: 'button', id: 'newDocument', 'data-feedback-id': 'central.cumplimiento.documentos.nuevo', 'data-feedback-label': 'Nuevo documento', onclick: () => openDocumentEditor(ctx.client, null, data, null) }, icon('plus'), 'Nuevo documento') : null;
     replace(main,
-      el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Cumplimiento'), el('p', null, 'Obligaciones legales, seguros, licencias y revisiones, con sus vencimientos.'))),
+      el('div', { class: 'pagehead', 'data-feedback-id': 'central.cumplimiento.cabecera', 'data-feedback-label': 'Cabecera de Cumplimiento' }, el('div', null, el('h2', null, 'Cumplimiento'), el('p', null, 'Obligaciones legales, seguros, licencias y revisiones, con sus vencimientos.'))),
       tabsNav(tab), host, fab);
 
     function paint(): void {
@@ -99,45 +100,45 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
       const today = todayInMadrid();
       if (tab === 'vencimientos') {
         const items = computeDue(data, today);
-        replace(host, items.length ? el('ul', { class: 'accounts', id: 'dueList' }, ...items.map((i) => el('li', null,
-          el('button', { class: 'personrow', type: 'button', 'data-due': i.id, onclick: () => {
+        replace(host, items.length ? el('ul', { class: 'accounts', id: 'dueList', 'data-feedback-id': 'central.cumplimiento.vencimientos.lista', 'data-feedback-label': 'Lista de vencimientos' }, ...items.map((i) => el('li', null,
+          el('button', { class: 'personrow', type: 'button', 'data-due': i.id, 'data-feedback-id': 'central.cumplimiento.vencimientos.fila', 'data-feedback-label': 'Vencimiento', onclick: () => {
             if (i.source === 'requirement') navigate(`#/cumplimiento/${i.id}`);
             else if (i.source === 'person_record') navigate(`#/personas/${i.parentId}`);
             else if (i.parentId) navigate(`#/cumplimiento/${i.parentId}`);
             else openDocumentEditor(client, data!.documents.find((d) => d.id === i.id) ?? null, data, null);
           } },
-            el('span', { class: 'accountname' }, i.title),
-            el('span', { class: 'muted accountmeta' }, [i.code, i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona',
+            el('span', { class: 'accountname', 'data-feedback-ignore': '' }, i.title),
+            el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [i.code, i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona',
               i.state === 'vencido' ? `venció el ${day(i.dueOn)}` : `vence el ${day(i.dueOn)} (${i.daysLeft === 0 ? 'hoy' : `en ${i.daysLeft} días`})`].filter(Boolean).join(' · ')),
-            el('span', { class: 'chips' }, el('span', { class: i.state === 'vencido' ? 'chip alert' : 'chip warn' }, i.state === 'vencido' ? 'Vencido' : 'Vence pronto'),
+            el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.vencimientos.etiquetas', 'data-feedback-label': 'Estado del vencimiento' }, el('span', { class: i.state === 'vencido' ? 'chip alert' : 'chip warn' }, i.state === 'vencido' ? 'Vencido' : 'Vence pronto'),
               i.risk === 'critico' || i.risk === 'alto' ? el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, i.risk).toLowerCase()}`) : null,
               i.blocksOperation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null)))))
-          : el('div', { class: 'empty' }, el('strong', null, 'Nada vencido ni por vencer'), 'Aquí aparecen las obligaciones, los documentos y la documentación de personas que vencen.'));
+          : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.vencimientos.vacio', 'data-feedback-label': 'Sin vencimientos' }, el('strong', null, 'Nada vencido ni por vencer'), 'Aquí aparecen las obligaciones, los documentos y la documentación de personas que vencen.'));
         return;
       }
       if (tab === 'requisitos') {
         const alive = data.requirements.filter((r) => !r.deleted_at && (!typeFilter || r.requirement_type === typeFilter))
           .sort((a, b) => String(a.expires_on ?? '9999').localeCompare(String(b.expires_on ?? '9999')) || a.name.localeCompare(b.name, 'es'));
-        const filter = el('select', { id: 'reqType', 'aria-label': 'Tipo', onchange: (e: Event) => { typeFilter = (e.target as HTMLSelectElement).value; paint(); } },
+        const filter = el('select', { id: 'reqType', 'aria-label': 'Tipo', 'data-feedback-id': 'central.cumplimiento.obligaciones.filtro_tipo', 'data-feedback-label': 'Filtro por tipo', onchange: (e: Event) => { typeFilter = (e.target as HTMLSelectElement).value; paint(); } },
           ...options(REQUIREMENT_TYPES, REQUIREMENT_TYPE_LABELS, typeFilter, 'Todos los tipos'));
-        replace(host, el('div', { class: 'toolbar' }, filter), alive.length ? el('ul', { class: 'accounts', id: 'requirementList' }, ...alive.map((r) => el('li', null,
-          el('button', { class: 'personrow', type: 'button', 'data-requirement': r.id, onclick: () => navigate(`#/cumplimiento/${r.id}`) },
+        replace(host, el('div', { class: 'toolbar', 'data-feedback-id': 'central.cumplimiento.obligaciones.barra', 'data-feedback-label': 'Filtros de obligaciones' }, filter), alive.length ? el('ul', { class: 'accounts', id: 'requirementList', 'data-feedback-id': 'central.cumplimiento.obligaciones.lista', 'data-feedback-label': 'Lista de obligaciones' }, ...alive.map((r) => el('li', null,
+          el('button', { class: 'personrow', type: 'button', 'data-requirement': r.id, 'data-feedback-id': 'central.cumplimiento.obligaciones.fila', 'data-feedback-label': 'Obligación', onclick: () => navigate(`#/cumplimiento/${r.id}`) },
             el('span', { class: 'accountname' }, r.name),
-            el('span', { class: 'muted accountmeta' }, [r.code, label(REQUIREMENT_TYPE_LABELS, r.requirement_type), label(REQUIREMENT_STATUS_LABELS, r.status), r.expires_on ? `vence el ${day(r.expires_on)}` : ''].filter(Boolean).join(' · ')),
-            el('span', { class: 'chips' }, stateChip(r.expires_on, r.notice_days, CLOSED_REQUIREMENT_STATUSES.includes(r.status), today),
+            el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [r.code, label(REQUIREMENT_TYPE_LABELS, r.requirement_type), label(REQUIREMENT_STATUS_LABELS, r.status), r.expires_on ? `vence el ${day(r.expires_on)}` : ''].filter(Boolean).join(' · ')),
+            el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.obligaciones.etiquetas', 'data-feedback-label': 'Estado de la obligación' }, stateChip(r.expires_on, r.notice_days, CLOSED_REQUIREMENT_STATUSES.includes(r.status), today),
               r.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
               r._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)))))
-          : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay obligaciones'), canEdit ? 'Apunta seguros, licencias, revisiones técnicas o compromisos de la concesión.' : ''));
+          : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.obligaciones.vacio', 'data-feedback-label': 'Sin obligaciones' }, el('strong', null, 'Todavía no hay obligaciones'), canEdit ? 'Apunta seguros, licencias, revisiones técnicas o compromisos de la concesión.' : ''));
         return;
       }
       const docs = data.documents.filter((d) => !d.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
       const reqName = (id: string | null) => data!.requirements.find((r) => r.id === id)?.name ?? '';
-      replace(host, docs.length ? el('ul', { class: 'accounts', id: 'documentList' }, ...docs.map((d) => el('li', null,
-        el('button', { class: 'personrow', type: 'button', 'data-document': d.id, onclick: () => openDocumentEditor(client, d, data, null) },
+      replace(host, docs.length ? el('ul', { class: 'accounts', id: 'documentList', 'data-feedback-id': 'central.cumplimiento.documentos.lista', 'data-feedback-label': 'Lista de documentos' }, ...docs.map((d) => el('li', null,
+        el('button', { class: 'personrow', type: 'button', 'data-document': d.id, 'data-feedback-id': 'central.cumplimiento.documentos.fila', 'data-feedback-label': 'Documento', onclick: () => openDocumentEditor(client, d, data, null) },
           el('span', { class: 'accountname' }, d.name),
-          el('span', { class: 'muted accountmeta' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), reqName(d.requirement_id), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · ')),
-          el('span', { class: 'chips' }, stateChip(d.expires_on, 30, d.status === 'sustituido', today), d.file_id ? el('span', { class: 'chip' }, icon('attach', 12), 'Archivo') : null)))))
-        : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay documentos clave'), 'Contratos, pólizas, licencias, actas…'));
+          el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), reqName(d.requirement_id), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · ')),
+          el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.documentos.etiquetas', 'data-feedback-label': 'Estado del documento' }, stateChip(d.expires_on, 30, d.status === 'sustituido', today), d.file_id ? el('span', { class: 'chip' }, icon('attach', 12), 'Archivo') : null)))))
+        : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.documentos.vacio', 'data-feedback-label': 'Sin documentos' }, el('strong', null, 'Todavía no hay documentos clave'), 'Contratos, pólizas, licencias, actas…'));
     }
 
     async function load(): Promise<void> { data = await loadAll(client); paint(); }
@@ -152,26 +153,32 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
 // ---------------------------------------------------------------------------
 function personSelect(id: string, data: Data | null, selected: unknown): HTMLSelectElement {
   const people = (data?.people ?? []).filter((p) => p.active || p.id === selected).sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
-  return el('select', { id }, el('option', { value: '', selected: !selected }, 'Sin responsable'),
+  return el('select', { id, 'data-feedback-ignore': '' }, el('option', { value: '', selected: !selected }, 'Sin responsable'),
     ...people.map((p) => el('option', { value: p.id, selected: p.id === selected }, p.display_name))) as HTMLSelectElement;
 }
 
 function sheetEditor(opts: {
   title: string; meta?: string; existing: boolean; form: HTMLFormElement; save: HTMLButtonElement; focus: HTMLElement; onSheet: (s: Sheet) => void;
+  /** Base del id de «Sugerencias y QA» de la hoja (p. ej. `central.obligacion.editar`) y su etiqueta. */
+  fb: string; fbLabel: string;
 }): void {
   const sheet = openSheet({
     title: opts.title, meta: opts.meta, body: opts.form,
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, opts.existing ? 'Cerrar' : 'Cancelar'), opts.save],
+    panelAttrs: { 'data-feedback-id': opts.fb, 'data-feedback-label': opts.fbLabel },
+    closeAttrs: { 'data-feedback-id': `${opts.fb}.cerrar_hoja`, 'data-feedback-label': 'Cerrar' },
+    foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': `${opts.fb}.cancelar`, 'data-feedback-label': opts.existing ? 'Cerrar' : 'Cancelar', onclick: () => void sheet.close() }, opts.existing ? 'Cerrar' : 'Cancelar'), opts.save],
     footHidden: opts.existing, initialFocus: opts.focus,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
   });
+  // El código LEG_… o DOC_… va en la línea secundaria de la hoja.
+  fbIgnoreWithin(sheet.element, '.sheet-body > .meta');
   opts.onSheet(sheet);
 }
 
 function openRequirementEditor(client: SyncClient, req: Requirement | null, data: Data | null, onCreated?: (id: string) => void): void {
   let sheet: Sheet | null = null;
-  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.obligacion.editar.error', 'data-feedback-label': 'Error del formulario' });
   const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), ...attrs }) as HTMLInputElement;
   const area = (id: string, value: unknown, max: string) => { const t = el('textarea', { id, rows: '2', maxlength: max }) as HTMLTextAreaElement; t.value = value == null ? '' : String(value); return t; };
   const name = input('q-name', req?.name, { maxlength: '160' });
@@ -184,7 +191,7 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
   const expires = input('q-expires', req?.expires_on, { type: 'date' });
   const frequency = el('select', { id: 'q-frequency' }, ...options(FREQUENCIES, FREQUENCY_LABELS, req?.frequency ?? 'unica')) as HTMLSelectElement;
   const months = input('q-months', req?.frequency_months, { type: 'number', min: '1', max: '120', inputmode: 'numeric' });
-  const monthsField = el('label', { class: 'field' }, el('span', null, 'Cada cuántos meses'), months);
+  const monthsField = el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_meses', 'data-feedback-label': 'Cada cuántos meses' }, el('span', null, 'Cada cuántos meses'), months);
   const notice = input('q-notice', req?.notice_days ?? 30, { type: 'number', min: '0', max: '365', inputmode: 'numeric' });
   const risk = el('select', { id: 'q-risk' }, ...options(RISKS, RISK_LABELS, req?.risk ?? 'medio')) as HTMLSelectElement;
   const impact = el('select', { id: 'q-impact' }, ...options(IMPACTS, IMPACT_LABELS, req?.impact, 'Sin indicar')) as HTMLSelectElement;
@@ -207,8 +214,8 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
   });
   const changed = () => (req ? Object.fromEntries(Object.entries(values()).filter(([k, v]) => (req[k] ?? null) !== (v ?? null))) : values());
   const refresh = () => { const dirty = Object.keys(changed()).length > 0; guard.dirtyEditor = req ? dirty : name.value.trim() !== ''; sheet?.setFootHidden(req !== null && !dirty); };
-  const save = el('button', { class: 'primary', type: 'submit', id: 'saveRequirement', form: 'requirementForm' }, 'Guardar') as HTMLButtonElement;
-  const form = el('form', { novalidate: true, id: 'requirementForm', oninput: refresh, onchange: refresh, onsubmit: async (event: Event) => {
+  const save = el('button', { class: 'primary', type: 'submit', id: 'saveRequirement', form: 'requirementForm', 'data-feedback-id': 'central.obligacion.editar.guardar', 'data-feedback-label': 'Guardar' }, 'Guardar') as HTMLButtonElement;
+  const form = el('form', { novalidate: true, id: 'requirementForm', 'data-feedback-id': 'central.obligacion.editar.formulario', 'data-feedback-label': 'Formulario de la obligación', oninput: refresh, onchange: refresh, onsubmit: async (event: Event) => {
     event.preventDefault();
     error.textContent = '';
     if (!name.value.trim()) { error.textContent = 'El nombre es obligatorio.'; name.focus(); return; }
@@ -226,44 +233,44 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
     await sheet?.close(true);
     if (!req) onCreated?.(id);
   } },
-  el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Tipo'), type), el('label', { class: 'field' }, el('span', null, 'Estado'), status)),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Vence'), expires), el('label', { class: 'field' }, el('span', null, 'Avisar con (días)'), notice)),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Frecuencia'), frequency), el('label', { class: 'field' }, el('span', null, 'Fecha de referencia'), reference)),
+  el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre'), name),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.tipo_estado', 'data-feedback-label': 'Tipo y estado' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_tipo', 'data-feedback-label': 'Tipo' }, el('span', null, 'Tipo'), type), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_estado', 'data-feedback-label': 'Estado' }, el('span', null, 'Estado'), status)),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.vencimiento', 'data-feedback-label': 'Vencimiento y aviso' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_vence', 'data-feedback-label': 'Vence' }, el('span', null, 'Vence'), expires), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_aviso', 'data-feedback-label': 'Avisar con (días)' }, el('span', null, 'Avisar con (días)'), notice)),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.periodicidad', 'data-feedback-label': 'Frecuencia y referencia' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_frecuencia', 'data-feedback-label': 'Frecuencia' }, el('span', null, 'Frecuencia'), frequency), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_referencia', 'data-feedback-label': 'Fecha de referencia' }, el('span', null, 'Fecha de referencia'), reference)),
   monthsField,
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Riesgo'), risk), el('label', { class: 'field' }, el('span', null, 'Impacto'), impact)),
-  el('label', { class: 'check' }, blocks, el('span', null, 'Bloquea la operación si no se cumple')),
-  el('label', { class: 'check' }, cost, el('span', null, 'Genera coste (el importe se lleva en Finance)')),
-  el('label', { class: 'field' }, el('span', null, 'Responsable'), responsible),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Organismo'), authority), el('label', { class: 'field' }, el('span', null, 'Origen'), source)),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Siguiente acción'), nextAction), el('label', { class: 'field' }, el('span', null, 'Para el'), nextOn)),
-  el('label', { class: 'field' }, el('span', null, 'Descripción'), description),
-  el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.riesgo_impacto', 'data-feedback-label': 'Riesgo e impacto' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_riesgo', 'data-feedback-label': 'Riesgo' }, el('span', null, 'Riesgo'), risk), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_impacto', 'data-feedback-label': 'Impacto' }, el('span', null, 'Impacto'), impact)),
+  el('label', { class: 'check', 'data-feedback-id': 'central.obligacion.editar.campo_bloquea', 'data-feedback-label': 'Bloquea la operación' }, blocks, el('span', null, 'Bloquea la operación si no se cumple')),
+  el('label', { class: 'check', 'data-feedback-id': 'central.obligacion.editar.campo_coste', 'data-feedback-label': 'Genera coste' }, cost, el('span', null, 'Genera coste (el importe se lleva en Finance)')),
+  el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_responsable', 'data-feedback-label': 'Responsable' }, el('span', null, 'Responsable'), responsible),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.origen_organismo', 'data-feedback-label': 'Organismo y origen' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_organismo', 'data-feedback-label': 'Organismo' }, el('span', null, 'Organismo'), authority), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_origen', 'data-feedback-label': 'Origen' }, el('span', null, 'Origen'), source)),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.obligacion.editar.siguiente', 'data-feedback-label': 'Siguiente acción' }, el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_siguiente_accion', 'data-feedback-label': 'Siguiente acción' }, el('span', null, 'Siguiente acción'), nextAction), el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_siguiente_fecha', 'data-feedback-label': 'Para el' }, el('span', null, 'Para el'), nextOn)),
+  el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_descripcion', 'data-feedback-label': 'Descripción' }, el('span', null, 'Descripción'), description),
+  el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_notas', 'data-feedback-label': 'Notas' }, el('span', null, 'Notas'), notes),
   error) as HTMLFormElement;
-  sheetEditor({ title: req ? 'Editar obligación' : 'Nueva obligación', meta: req?.code, existing: req !== null, form, save, focus: name, onSheet: (s) => { sheet = s; } });
+  sheetEditor({ title: req ? 'Editar obligación' : 'Nueva obligación', meta: req?.code, existing: req !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, fb: 'central.obligacion.editar', fbLabel: req ? 'Editar obligación' : 'Nueva obligación' });
 }
 
 function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: Data | null, requirementId: string | null): void {
   let sheet: Sheet | null = null;
   let staged: Blob | null = null;
   let stagedName = '';
-  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+  const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.cumplimiento.documento.error', 'data-feedback-label': 'Error del formulario' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
   const input = (id: string, value: unknown, attrs: Record<string, string> = {}) => el('input', { id, type: 'text', value: value == null ? '' : String(value), ...attrs }) as HTMLInputElement;
   const name = input('d-name', doc?.name, { maxlength: '160' });
   const kind = el('select', { id: 'd-kind' }, ...options(DOCUMENT_KINDS, DOCUMENT_KIND_LABELS, doc?.document_type ?? 'poliza')) as HTMLSelectElement;
   const status = el('select', { id: 'd-status' }, ...options(KEY_DOCUMENT_STATUSES, KEY_DOCUMENT_STATUS_LABELS, doc?.status ?? 'vigente')) as HTMLSelectElement;
   const requirements = (data?.requirements ?? []).filter((r) => !r.deleted_at);
-  const reqSel = el('select', { id: 'd-requirement' }, el('option', { value: '' }, 'Sin obligación'),
+  const reqSel = el('select', { id: 'd-requirement', 'data-feedback-ignore': '' }, el('option', { value: '' }, 'Sin obligación'),
     ...requirements.map((r) => el('option', { value: r.id, selected: (doc?.requirement_id ?? requirementId) === r.id }, `${r.code ?? ''} ${r.name}`.trim()))) as HTMLSelectElement;
   const docDate = input('d-date', doc?.document_date, { type: 'date' });
   const expires = input('d-expires', doc?.expires_on, { type: 'date' });
   const version = input('d-version', doc?.version, { maxlength: '40' });
   const signed = el('input', { type: 'checkbox', id: 'd-signed', checked: doc?.signed === true }) as HTMLInputElement;
-  const url = input('d-url', doc?.external_url, { maxlength: '500', placeholder: 'https://…' });
+  const url = input('d-url', doc?.external_url, { maxlength: '500', placeholder: 'https://…', 'data-feedback-ignore': '' });
   const responsible = personSelect('d-responsible', data, doc?.responsible_person_id);
-  const fileInput = el('input', { id: 'd-file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden' }) as HTMLInputElement;
-  const fileState = el('span', { class: 'muted small', id: 'd-file-state' }, doc?.file_id ? 'Tiene archivo adjunto.' : 'Sin archivo.');
+  const fileInput = el('input', { id: 'd-file', type: 'file', accept: FILE_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.cumplimiento.documento.archivo_adjunto', 'data-feedback-label': 'Archivo adjunto' }) as HTMLInputElement;
+  const fileState = el('span', { class: 'muted small', id: 'd-file-state', 'data-feedback-id': 'central.cumplimiento.documento.estado_archivo', 'data-feedback-label': 'Estado del archivo' }, doc?.file_id ? 'Tiene archivo adjunto.' : 'Sin archivo.');
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
@@ -281,8 +288,8 @@ function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: D
   });
   const changed = () => (doc ? Object.fromEntries(Object.entries(values()).filter(([k, v]) => (doc[k] ?? null) !== (v ?? null))) : values());
   const refresh = () => { const dirty = Object.keys(changed()).length > 0 || staged !== null; guard.dirtyEditor = dirty; sheet?.setFootHidden(doc !== null && !dirty); };
-  const save = el('button', { class: 'primary', type: 'submit', id: 'saveDocument', form: 'documentForm' }, 'Guardar') as HTMLButtonElement;
-  const form = el('form', { novalidate: true, id: 'documentForm', oninput: refresh, onchange: refresh, onsubmit: async (event: Event) => {
+  const save = el('button', { class: 'primary', type: 'submit', id: 'saveDocument', form: 'documentForm', 'data-feedback-id': 'central.cumplimiento.documento.guardar', 'data-feedback-label': 'Guardar' }, 'Guardar') as HTMLButtonElement;
+  const form = el('form', { novalidate: true, id: 'documentForm', 'data-feedback-id': 'central.cumplimiento.documento.formulario', 'data-feedback-label': 'Formulario del documento', oninput: refresh, onchange: refresh, onsubmit: async (event: Event) => {
     event.preventDefault();
     error.textContent = '';
     if (!name.value.trim()) { error.textContent = 'El nombre es obligatorio.'; return; }
@@ -299,25 +306,25 @@ function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: D
       if (await commitSafely(client, build(fileRef), doc ? 'Documento guardado.' : 'Documento creado.')) { guard.dirtyEditor = false; await sheet?.close(true); }
     } finally { save.disabled = false; }
   } },
-  el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Tipo'), kind), el('label', { class: 'field' }, el('span', null, 'Estado'), status)),
-  el('label', { class: 'field' }, el('span', null, 'Obligación que respalda'), reqSel),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Fecha'), docDate), el('label', { class: 'field' }, el('span', null, 'Caduca'), expires)),
-  el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Versión'), version), el('label', { class: 'field' }, el('span', null, 'Responsable'), responsible)),
-  el('label', { class: 'check' }, signed, el('span', null, 'Firmado')),
-  el('div', { class: 'field' }, el('span', null, 'Archivo'), fileState,
-    doc && typeof doc.file_id === 'string' ? el('button', { class: 'linkbtn', type: 'button', onclick: async () => {
+  el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre'), name),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.cumplimiento.documento.tipo_estado', 'data-feedback-label': 'Tipo y estado' }, el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_tipo', 'data-feedback-label': 'Tipo' }, el('span', null, 'Tipo'), kind), el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_estado', 'data-feedback-label': 'Estado' }, el('span', null, 'Estado'), status)),
+  el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_obligacion', 'data-feedback-label': 'Obligación que respalda' }, el('span', null, 'Obligación que respalda'), reqSel),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.cumplimiento.documento.fechas', 'data-feedback-label': 'Fechas' }, el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_fecha', 'data-feedback-label': 'Fecha' }, el('span', null, 'Fecha'), docDate), el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_caduca', 'data-feedback-label': 'Caduca' }, el('span', null, 'Caduca'), expires)),
+  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.cumplimiento.documento.version_responsable', 'data-feedback-label': 'Versión y responsable' }, el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_version', 'data-feedback-label': 'Versión' }, el('span', null, 'Versión'), version), el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_responsable', 'data-feedback-label': 'Responsable' }, el('span', null, 'Responsable'), responsible)),
+  el('label', { class: 'check', 'data-feedback-id': 'central.cumplimiento.documento.campo_firmado', 'data-feedback-label': 'Firmado' }, signed, el('span', null, 'Firmado')),
+  el('div', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_archivo', 'data-feedback-label': 'Archivo' }, el('span', null, 'Archivo'), fileState,
+    doc && typeof doc.file_id === 'string' ? el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.cumplimiento.documento.abrir_archivo', 'data-feedback-label': 'Abrir archivo', onclick: async () => {
       try { window.open(await client.fileUrl(doc.file_id as string), '_blank', 'noopener'); } catch (e) { toast(describeError(e)); }
     } }, icon('attach', 16), 'Abrir archivo') : null,
-    canEdit ? el('label', { class: 'ghost btnlike', for: 'd-file' }, icon('upload', 18), doc?.file_id ? 'Sustituir archivo' : 'Adjuntar PDF o foto') : null, fileInput),
-  el('label', { class: 'field' }, el('span', null, 'Enlace (Drive u otro)'), url),
+    canEdit ? el('label', { class: 'ghost btnlike', for: 'd-file', 'data-feedback-id': 'central.cumplimiento.documento.adjuntar', 'data-feedback-label': 'Adjuntar' }, icon('upload', 18), doc?.file_id ? 'Sustituir archivo' : 'Adjuntar PDF o foto') : null, fileInput),
+  el('label', { class: 'field', 'data-feedback-id': 'central.cumplimiento.documento.campo_enlace', 'data-feedback-label': 'Enlace' }, el('span', null, 'Enlace (Drive u otro)'), url),
   error,
-  doc && canEdit ? el('div', { class: 'zone' }, el('button', { class: 'danger', type: 'button', id: 'deleteDocument', onclick: async () => {
+  doc && canEdit ? el('div', { class: 'zone', 'data-feedback-id': 'central.cumplimiento.documento.zona', 'data-feedback-label': 'Zona de peligro' }, el('button', { class: 'danger', type: 'button', id: 'deleteDocument', 'data-feedback-id': 'central.cumplimiento.documento.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: async () => {
     if (!(await confirmDialog({ title: '¿Enviar el documento a la papelera?', confirmLabel: 'Enviar a papelera', danger: true }))) return;
     if (await commitSafely(client, [{ op: 'delete', table: T.keyDocuments, id: doc.id, expectedRevision: doc.revision }], 'Documento enviado a la papelera.')) { guard.dirtyEditor = false; await sheet?.close(true); }
   } }, icon('trash', 18), 'Enviar a papelera')) : null) as HTMLFormElement;
   if (!canEdit) for (const f of form.querySelectorAll('input,select,textarea')) (f as HTMLInputElement).disabled = true;
-  sheetEditor({ title: doc ? doc.name : 'Nuevo documento', meta: doc?.code, existing: doc !== null, form, save, focus: name, onSheet: (s) => { sheet = s; } });
+  sheetEditor({ title: doc ? doc.name : 'Nuevo documento', meta: doc?.code, existing: doc !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, fb: 'central.cumplimiento.documento', fbLabel: doc ? 'Documento' : 'Nuevo documento' });
 }
 
 // ---------------------------------------------------------------------------
@@ -325,62 +332,64 @@ function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: D
 // ---------------------------------------------------------------------------
 export function mountRequirement(requirementId: string): ViewMount {
   return (ctx) => {
-    const { main, client, navigate } = ctx;
+    const { main, client, navigate, usage } = ctx;
     const canEdit = client.bootstrap()?.membership.role !== 'reader';
     let data: Data | null = null;
     let statuses = new Map<string, TaskStatus>();
     let statusNote = '';
-    const host = el('div', { id: 'requirementView' });
-    replace(main, el('a', { href: '#/cumplimiento/requisitos', class: 'backlink' }, '← Obligaciones'), host);
-    const kv = (k: string, v: unknown) => (v === null || v === undefined || v === '' ? null : el('div', { class: 'kv' }, el('dt', null, k), el('dd', null, String(v))));
+    const host = el('div', { id: 'requirementView', 'data-feedback-id': 'central.obligacion.contenido', 'data-feedback-label': 'Ficha de la obligación' });
+    replace(main, el('a', { href: '#/cumplimiento/requisitos', class: 'backlink', 'data-feedback-id': 'central.obligacion.volver', 'data-feedback-label': 'Volver a Obligaciones' }, '← Obligaciones'), host);
+    const kv = (k: string, v: unknown, personal = false) => (v === null || v === undefined || v === '' ? null : el('div', { class: 'kv' }, el('dt', null, k), el('dd', personal ? { 'data-feedback-ignore': '' } : null, String(v))));
 
     function paint(): void {
       const req = data?.requirements.find((r) => r.id === requirementId);
-      if (!data || !req) { replace(host, el('div', { class: 'empty' }, el('strong', null, 'No se encontró la obligación'), 'Puede que se haya borrado.')); return; }
+      if (!data || !req) { replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.obligacion.no_encontrada', 'data-feedback-label': 'Obligación no encontrada' }, el('strong', null, 'No se encontró la obligación'), 'Puede que se haya borrado.')); return; }
       document.title = `${req.name} · Ikisai Central`;
       const today = todayInMadrid();
       const closed = CLOSED_REQUIREMENT_STATUSES.includes(req.status);
       const docs = data.documents.filter((d) => d.requirement_id === req.id && !d.deleted_at);
       const links = data.links.filter((l) => l.requirement_id === req.id && !l.deleted_at).sort((a, b) => String(b.due_on ?? '').localeCompare(String(a.due_on ?? '')));
       const person = data.people.find((p) => p.id === req.responsible_person_id);
+      /** Clave cerrada de cada bloque de la ficha para su id de «Sugerencias y QA». */
+      const BLOCK_KEYS: Record<string, string> = { blockRequirement: 'ficha', blockTasks: 'tareas', blockDocuments: 'documentos' };
       const block = (title: string, id: string, body: (HTMLElement | null)[], action?: HTMLElement | null) =>
-        el('section', { class: 'card personblock', id }, el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
+        el('section', { class: 'card personblock', id, 'data-feedback-id': `central.obligacion.${BLOCK_KEYS[id] ?? 'bloque'}`, 'data-feedback-label': title }, el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
 
       const taskRow = (l: TaskLink) => {
         const s = statuses.get(l.target_id);
         const state = !s ? (navigator.onLine ? 'Consultando…' : 'Sin conexión')
           : s.deleted ? 'Borrada en Tasks' : s.pending || s.request === 'pending' ? 'En Tasks, por clasificar'
             : s.request === 'dismissed' ? 'Descartada en Tasks' : s.visible === false ? 'En Tasks (no la ves)' : s.done ? 'Hecha' : 'Abierta en Tasks';
-        return el('li', { class: 'recordrow', 'data-task': l.target_id },
+        return el('li', { class: 'recordrow', 'data-task': l.target_id, 'data-feedback-id': 'central.obligacion.tareas.fila', 'data-feedback-label': 'Tarea' },
           el('div', null, el('strong', null, l.target_label ?? 'Tarea'), el('div', { class: 'muted small' }, [l.due_on ? `para el ${day(l.due_on)}` : '', state].filter(Boolean).join(' · '))),
           s?.done ? el('span', { class: 'chip ok' }, icon('check', 12), 'Hecha') : null);
       };
 
       replace(host,
-        el('div', { class: 'pagehead' }, el('div', null,
+        el('div', { class: 'pagehead', 'data-feedback-id': 'central.obligacion.cabecera', 'data-feedback-label': 'Cabecera de la obligación' }, el('div', null,
           el('h2', null, req.name),
-          el('p', null, [req.code, label(REQUIREMENT_TYPE_LABELS, req.requirement_type), label(REQUIREMENT_STATUS_LABELS, req.status)].filter(Boolean).join(' · ')),
-          el('span', { class: 'chips' }, stateChip(req.expires_on, req.notice_days, closed, today), req.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
+          el('p', { 'data-feedback-ignore': '' }, [req.code, label(REQUIREMENT_TYPE_LABELS, req.requirement_type), label(REQUIREMENT_STATUS_LABELS, req.status)].filter(Boolean).join(' · ')),
+          el('span', { class: 'chips', 'data-feedback-id': 'central.obligacion.cabecera.estado', 'data-feedback-label': 'Estado de la obligación' }, stateChip(req.expires_on, req.notice_days, closed, today), req.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
             el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, req.risk).toLowerCase()}`)))),
-        block('Obligación', 'blockRequirement', [el('dl', { class: 'kvlist' },
+        block('Obligación', 'blockRequirement', [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.obligacion.ficha.datos', 'data-feedback-label': 'Datos de la obligación' },
           kv('Vence', req.expires_on ? day(req.expires_on) : 'Sin fecha'), kv('Avisar con', `${req.notice_days} días`),
           kv('Frecuencia', req.frequency === 'otra' ? `Cada ${req.frequency_months} meses` : label(FREQUENCY_LABELS, req.frequency)),
-          kv('Referencia', req.reference_date ? day(req.reference_date) : null), kv('Responsable', person?.display_name),
+          kv('Referencia', req.reference_date ? day(req.reference_date) : null), kv('Responsable', person?.display_name, true),
           kv('Organismo', req.authority), kv('Origen', req.source), kv('Impacto', req.impact ? label(IMPACT_LABELS, req.impact) : null),
           kv('Genera coste', req.generates_cost ? 'Sí (en Finance)' : null),
           kv('Siguiente acción', [req.next_action, req.next_action_on ? `para el ${day(req.next_action_on)}` : ''].filter(Boolean).join(' · ')),
           kv('Descripción', req.description), kv('Notas', req.notes))],
-        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editRequirement', onclick: () => openRequirementEditor(client, req, data) }, icon('edit', 16), 'Editar') : null),
-        canEdit && !closed ? el('div', { class: 'zone' },
-          el('button', { class: 'primary', type: 'button', id: 'markDone', onclick: () => openMarkDone(req) }, icon('check', 18), 'Marcar cumplido'),
-          el('button', { class: 'ghost', type: 'button', id: 'askTask', onclick: () => openAskTask(req) }, icon('tasks', 18), 'Crear tarea en Tasks')) : null,
-        block('Tareas en Tasks', 'blockTasks', [links.length ? el('ul', { class: 'records', id: 'taskList' }, ...links.map(taskRow)) : el('p', { class: 'muted' }, 'Ninguna tarea pedida.'),
-          statusNote ? el('p', { class: 'muted small' }, statusNote) : null]),
-        block('Documentos', 'blockDocuments', [docs.length ? el('ul', { class: 'records' }, ...docs.map((d) => el('li', { class: 'recordrow' },
-          el('div', null, el('strong', null, d.name), el('div', { class: 'muted small' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · '))),
-          el('button', { class: 'linkbtn', type: 'button', onclick: () => openDocumentEditor(client, d, data, req.id) }, 'Abrir')))) : el('p', { class: 'muted' }, 'Sin documentos.')],
-        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'addDocument', onclick: () => openDocumentEditor(client, null, data, req.id) }, icon('plus', 16), 'Añadir') : null),
-        canEdit ? el('div', { class: 'zone' }, el('button', { class: 'danger', type: 'button', id: 'deleteRequirement', onclick: () => void deleteRequirement(req, docs.length + links.length) }, icon('trash', 18), 'Enviar a papelera')) : null,
+        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editRequirement', 'data-feedback-id': 'central.obligacion.ficha.editar', 'data-feedback-label': 'Editar obligación', onclick: () => openRequirementEditor(client, req, data) }, icon('edit', 16), 'Editar') : null),
+        canEdit && !closed ? el('div', { class: 'zone', 'data-feedback-id': 'central.obligacion.acciones', 'data-feedback-label': 'Acciones de la obligación' },
+          el('button', { class: 'primary', type: 'button', id: 'markDone', 'data-feedback-id': 'central.obligacion.acciones.cumplido', 'data-feedback-label': 'Marcar cumplido', onclick: () => openMarkDone(req) }, icon('check', 18), 'Marcar cumplido'),
+          el('button', { class: 'ghost', type: 'button', id: 'askTask', 'data-feedback-id': 'central.obligacion.acciones.crear_tarea', 'data-feedback-label': 'Crear tarea en Tasks', onclick: () => openAskTask(req) }, icon('tasks', 18), 'Crear tarea en Tasks')) : null,
+        block('Tareas en Tasks', 'blockTasks', [links.length ? el('ul', { class: 'records', id: 'taskList', 'data-feedback-id': 'central.obligacion.tareas.lista', 'data-feedback-label': 'Tareas en Tasks' }, ...links.map(taskRow)) : el('p', { class: 'muted' }, 'Ninguna tarea pedida.'),
+          statusNote ? el('p', { class: 'muted small', 'data-feedback-id': 'central.obligacion.tareas.aviso', 'data-feedback-label': 'Aviso de Tasks' }, statusNote) : null]),
+        block('Documentos', 'blockDocuments', [docs.length ? el('ul', { class: 'records', 'data-feedback-id': 'central.obligacion.documentos.lista', 'data-feedback-label': 'Documentos de la obligación' }, ...docs.map((d) => el('li', { class: 'recordrow', 'data-feedback-id': 'central.obligacion.documentos.fila', 'data-feedback-label': 'Documento' },
+          el('div', null, el('strong', null, d.name), el('div', { class: 'muted small', 'data-feedback-ignore': '' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · '))),
+          el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.obligacion.documentos.abrir', 'data-feedback-label': 'Abrir documento', onclick: () => openDocumentEditor(client, d, data, req.id) }, 'Abrir')))) : el('p', { class: 'muted' }, 'Sin documentos.')],
+        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'addDocument', 'data-feedback-id': 'central.obligacion.documentos.anadir', 'data-feedback-label': 'Añadir documento', onclick: () => openDocumentEditor(client, null, data, req.id) }, icon('plus', 16), 'Añadir') : null),
+        canEdit ? el('div', { class: 'zone', 'data-feedback-id': 'central.obligacion.papelera', 'data-feedback-label': 'Zona de peligro' }, el('button', { class: 'danger', type: 'button', id: 'deleteRequirement', 'data-feedback-id': 'central.obligacion.papelera.enviar', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deleteRequirement(req, docs.length + links.length) }, icon('trash', 18), 'Enviar a papelera')) : null,
       );
     }
 
@@ -397,32 +406,36 @@ export function mountRequirement(requirementId: string): ViewMount {
       const proposed = nextExpiry(today, req.frequency, req.frequency_months as number | null);
       const expires = el('input', { id: 'md-expires', type: 'date', value: proposed ?? '' }) as HTMLInputElement;
       reference.addEventListener('change', () => { expires.value = nextExpiry(reference.value || today, req.frequency, req.frequency_months as number | null) ?? ''; });
-      const save = el('button', { class: 'primary', type: 'button', id: 'confirmDone', onclick: async () => {
+      const save = el('button', { class: 'primary', type: 'button', id: 'confirmDone', 'data-feedback-id': 'central.obligacion.cumplido.confirmar', 'data-feedback-label': 'Marcar cumplido', onclick: async () => {
         const fields = { status: 'cumplido', reference_date: reference.value || today, expires_on: expires.value || null };
-        if (await commitSafely(client, [{ op: 'update', table: T.requirements, id: req.id, expectedRevision: req.revision, fields }], 'Obligación marcada como cumplida.')) await sheet?.close(true);
+        const ok = await commitSafely(client, [{ op: 'update', table: T.requirements, id: req.id, expectedRevision: req.revision, fields }], 'Obligación marcada como cumplida.');
+        usage.track('central.obligacion.marcar_cumplido', ok ? 'success' : 'error');
+        if (ok) await sheet?.close(true);
       } }, 'Marcar cumplido');
       sheet = openSheet({ title: 'Marcar cumplido', meta: req.name,
-        body: el('div', null,
-          el('label', { class: 'field' }, el('span', null, 'Cumplido el'), reference),
-          el('label', { class: 'field' }, el('span', null, proposed ? `Siguiente vencimiento (${label(FREQUENCY_LABELS, req.frequency).toLowerCase()})` : 'Siguiente vencimiento (opcional)'), expires),
+        panelAttrs: { 'data-feedback-id': 'central.obligacion.cumplido', 'data-feedback-label': 'Marcar cumplido' },
+        closeAttrs: { 'data-feedback-id': 'central.obligacion.cumplido.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+        body: el('div', { 'data-feedback-id': 'central.obligacion.cumplido.formulario', 'data-feedback-label': 'Formulario de cumplimiento' },
+          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_fecha', 'data-feedback-label': 'Cumplido el' }, el('span', null, 'Cumplido el'), reference),
+          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_siguiente', 'data-feedback-label': 'Siguiente vencimiento' }, el('span', null, proposed ? `Siguiente vencimiento (${label(FREQUENCY_LABELS, req.frequency).toLowerCase()})` : 'Siguiente vencimiento (opcional)'), expires),
           el('p', { class: 'muted small' }, 'Sube antes el documento que lo acredita (póliza, certificado, acta) en «Documentos».')),
-        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save] });
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.obligacion.cumplido.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save] });
     }
 
     function openAskTask(req: Requirement): void {
       if (!navigator.onLine) { toast('Pedir una tarea a Tasks necesita conexión.'); return; }
       let sheet: Sheet | null = null;
       const requestId = crypto.randomUUID();
-      const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
+      const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.obligacion.tarea.error', 'data-feedback-label': 'Error del formulario' });
       const title = el('input', { id: 'at-title', type: 'text', maxlength: '500', value: req.expires_on ? `${req.name} (vence el ${day(req.expires_on)})` : req.name }) as HTMLInputElement;
       const due = el('input', { id: 'at-due', type: 'date', value: String(req.next_action_on ?? req.expires_on ?? '') }) as HTMLInputElement;
-      const note = el('textarea', { id: 'at-note', rows: '3', maxlength: '2000' }) as HTMLTextAreaElement;
+      const note = el('textarea', { id: 'at-note', 'data-feedback-ignore': '', rows: '3', maxlength: '2000' }) as HTMLTextAreaElement;
       note.value = [req.next_action as string | null, req.code ? `Obligación ${req.code} en Central.` : ''].filter(Boolean).join('\n');
-      const submit = el('button', { class: 'primary', type: 'button', id: 'askTaskSubmit', onclick: async () => {
+      const submit = el('button', { class: 'primary', type: 'button', id: 'askTaskSubmit', 'data-feedback-id': 'central.obligacion.tarea.enviar', 'data-feedback-label': 'Pedir a Tasks', onclick: async () => {
         error.textContent = '';
         submit.disabled = true;
         try {
-          const out = await client.api<{ routed: string | null; created: boolean; task: TaskStatus }>(`/requirements/${req.id}/task`, { method: 'POST', json: { requestId, title: title.value.trim(), due: due.value || null, note: note.value.trim() } });
+          const out = await usage.run('central.obligacion.crear_tarea', () => client.api<{ routed: string | null; created: boolean; task: TaskStatus }>(`/requirements/${req.id}/task`, { method: 'POST', json: { requestId, title: title.value.trim(), due: due.value || null, note: note.value.trim() } }));
           toast(out.routed === 'pending' ? 'Tarea pedida: en Tasks queda «Por clasificar».' : out.created ? 'Tarea creada en Tasks.' : 'La tarea ya existía en Tasks.');
           await sheet?.close(true);
           await client.sync().catch(() => {});
@@ -432,12 +445,14 @@ export function mountRequirement(requirementId: string): ViewMount {
         } finally { submit.disabled = false; }
       } }, 'Pedir a Tasks') as HTMLButtonElement;
       sheet = openSheet({ title: 'Crear tarea en Tasks', meta: req.name,
-        body: el('div', null,
+        panelAttrs: { 'data-feedback-id': 'central.obligacion.tarea', 'data-feedback-label': 'Crear tarea en Tasks' },
+        closeAttrs: { 'data-feedback-id': 'central.obligacion.tarea.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+        body: el('div', { 'data-feedback-id': 'central.obligacion.tarea.formulario', 'data-feedback-label': 'Formulario de tarea' },
           el('p', { class: 'muted small' }, 'Tasks decide a qué área va según sus reglas; si no hay regla, queda «Por clasificar».'),
-          el('label', { class: 'field' }, el('span', null, 'Título'), title),
-          el('label', { class: 'field' }, el('span', null, 'Para el'), due),
-          el('label', { class: 'field' }, el('span', null, 'Nota'), note), error),
-        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), submit], initialFocus: title });
+          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.tarea.campo_titulo', 'data-feedback-label': 'Título' }, el('span', null, 'Título'), title),
+          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.tarea.campo_fecha', 'data-feedback-label': 'Para el' }, el('span', null, 'Para el'), due),
+          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.tarea.campo_nota', 'data-feedback-label': 'Nota' }, el('span', null, 'Nota'), note), error),
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.obligacion.tarea.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), submit], initialFocus: title });
     }
 
     async function loadStatuses(): Promise<void> {

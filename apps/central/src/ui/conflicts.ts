@@ -3,6 +3,7 @@ import { confirmDialog, el, formatDate, renderConflicts, renderRejectedList, rep
 import { AVAILABILITY_LABELS, BASE_ROLE_LABELS, ENGAGEMENT_LABELS, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATION_LABELS } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
+import { fbIgnore, fbMark } from './feedback.ts';
 
 const FIELD_LABELS: Record<string, string> = {
   display_name: 'Nombre', relation: 'Relación', base_role: 'Función', coverage: 'Cobertura', availability: 'Disponibilidad',
@@ -28,8 +29,8 @@ function show(field: string, value: unknown): string {
 
 /** Conflictos (§6.3) y lotes rechazados por el servidor, con los componentes del kit. */
 export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
-  const conflictHost = el('div', { id: 'conflictList' });
-  const rejectedHost = el('div', { id: 'rejectedList' });
+  const conflictHost = el('div', { id: 'conflictList', 'data-feedback-id': 'central.conflictos.lista', 'data-feedback-label': 'Conflictos' });
+  const rejectedHost = el('div', { id: 'rejectedList', 'data-feedback-id': 'central.conflictos.rechazados.lista', 'data-feedback-label': 'Lista de rechazados' });
   const names = new Map<string, string>();
   function rowName(table: string, row: SyncedRow | null | undefined): string {
     if (!row) return 'Elemento';
@@ -42,10 +43,10 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
     }
   }
 
-  const rejectedSection = el('section', { hidden: true }, el('div', { class: 'sectionlabel' }, 'Rechazados por el servidor'), rejectedHost);
+  const rejectedSection = el('section', { hidden: true, 'data-feedback-id': 'central.conflictos.rechazados', 'data-feedback-label': 'Rechazados por el servidor' }, el('div', { class: 'sectionlabel' }, 'Rechazados por el servidor'), rejectedHost);
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Conflictos'), el('p', null, 'Otra persona cambió lo mismo que tú. Nada se pierde hasta que decidas.'))),
+    el('div', { class: 'pagehead', 'data-feedback-id': 'central.conflictos.cabecera', 'data-feedback-label': 'Cabecera de Conflictos' }, el('div', null, el('h2', null, 'Conflictos'), el('p', null, 'Otra persona cambió lo mismo que tú. Nada se pierde hasta que decidas.'))),
     conflictHost,
     rejectedSection,
   );
@@ -64,10 +65,11 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
   async function load(): Promise<void> {
     const [conflicts, rejected] = await Promise.all([client.conflicts(), client.rejected()]);
     for (const row of await client.list(T.people, { includeDeleted: true })) names.set(row.id, String(row.display_name ?? ''));
+    // Cada conflicto muestra datos de personas (nombres, contacto, notas): el gesto lo ignora entero.
     replace(conflictHost, ...renderConflicts(conflicts, {
       fieldLabels: FIELD_LABELS, show, onResolve: resolve,
       rowName: (conflict) => rowName(conflict.operation.table, conflict.current ?? conflict.base),
-    }));
+    }).map((node) => fbIgnore(fbMark(node, 'central.conflictos.lista.conflicto', 'Conflicto'))));
     rejectedSection.hidden = rejected.length === 0;
     replace(rejectedHost, ...renderRejectedList(rejected, {
       describeError: (error) => describeError(error),
@@ -87,7 +89,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
         toast('Cambios descartados.');
         await load();
       },
-    }));
+    }).map((node) => fbIgnore(fbMark(node, 'central.conflictos.rechazados.lote', 'Lote rechazado'))));
   }
 
   void load();

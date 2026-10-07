@@ -21,6 +21,8 @@
 
 - 2026-10-07 · Almacenamiento (contrato §3.9): `logo_provider` en `central.common_entity_projection` (migración `0550`) y `central-api` con el mismo `createStorage` que el kit (Supabase o R2).
 
+- 2026-10-07 · **Feedback y uso (fase 4)**: «Sugerencias y QA», revisor y lanzador; unos 400 `data-feedback-id` en todas las pantallas, `data-feedback-ignore` en datos personales; `createUsage` con aviso y 11 operaciones con `usage.run`/`track`. Pruebas `tests/central/feedback-ids.test.ts` y `feedback.spec.ts`; el servidor de pruebas acepta el aviso de uso por defecto.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.

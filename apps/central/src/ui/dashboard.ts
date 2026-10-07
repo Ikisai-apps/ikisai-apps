@@ -1,5 +1,5 @@
 import type { SyncClient } from '@ikisai/sync-client';
-import { el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { el, icon, openSheet, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
 import { formatKpi, formatPeriod, validateOperations, type KpiState } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 
@@ -24,15 +24,15 @@ function writeCache(key: string, d: Dashboard): void {
  * Panel de dirección (C01; API.md §7.2): KPIs que publica cada app, con su estado frente a los objetivos.
  * Solo agregados. Sin red se pinta la última lectura guardada en el dispositivo, con su hora.
  */
-export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: boolean): () => void {
+export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: boolean, usage: Usage): () => void {
   let alive = true;
   // Copia por cuenta: en un dispositivo compartido, nadie ve lo que leyó otra cuenta (p. ej. importes del owner).
   const cacheKey = CACHE_PREFIX + (client.bootstrap()?.profile.userId ?? 'anon');
-  const body = el('div', { class: 'kpigroups' });
-  const meta = el('p', { class: 'muted small', id: 'dashboardMeta' });
-  replace(host, el('section', { class: 'dashboard', id: 'dashboard' },
-    el('div', { class: 'blockhead' }, el('h3', null, 'Dirección'),
-      el('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Actualizar indicadores', title: 'Actualizar', onclick: () => void load() }, icon('sync', 18))),
+  const body = el('div', { class: 'kpigroups', 'data-feedback-id': 'central.direccion.indicadores', 'data-feedback-label': 'Indicadores por app' });
+  const meta = el('p', { class: 'muted small', id: 'dashboardMeta', 'data-feedback-id': 'central.direccion.estado', 'data-feedback-label': 'Estado de actualización' });
+  replace(host, el('section', { class: 'dashboard', id: 'dashboard', 'data-feedback-id': 'central.direccion.panel', 'data-feedback-label': 'Panel de dirección' },
+    el('div', { class: 'blockhead', 'data-feedback-id': 'central.direccion.cabecera', 'data-feedback-label': 'Cabecera del panel' }, el('h3', null, 'Dirección'),
+      el('button', { class: 'iconbtn', type: 'button', 'data-feedback-id': 'central.direccion.actualizar', 'data-feedback-label': 'Actualizar indicadores', 'aria-label': 'Actualizar indicadores', title: 'Actualizar', onclick: () => void load() }, icon('sync', 18))),
     meta, body));
 
   function card(i: DashboardItem): HTMLElement {
@@ -44,8 +44,8 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       el('span', { class: 'muted small' }, [formatPeriod(i.period), i.target !== null ? `objetivo ${formatKpi(i.target, i.unit)}` : ''].filter(Boolean).join(' · ')),
       i.state ? el('span', { class: `chip kpistate ${i.state === 'critico' ? 'alert' : i.state === 'atencion' ? 'warn' : 'ok'}` }, STATE_LABELS[i.state]) : null,
     ];
-    const target = isAdmin ? el('button', { class: 'linkbtn kpitarget', type: 'button', 'aria-label': `Objetivo de ${i.label}`, onclick: (e: Event) => { e.preventDefault(); e.stopPropagation(); openTarget(i); } }, icon('settings', 14), 'Objetivo') : null;
-    const attrs = { class: `kpicard state-${i.state ?? 'none'}`, 'data-kpi': i.kpi };
+    const target = isAdmin ? el('button', { class: 'linkbtn kpitarget', type: 'button', 'aria-label': `Objetivo de ${i.label}`, 'data-feedback-id': 'central.direccion.kpi.objetivo', 'data-feedback-label': 'Objetivo del indicador', onclick: (e: Event) => { e.preventDefault(); e.stopPropagation(); openTarget(i); } }, icon('settings', 14), 'Objetivo') : null;
+    const attrs = { class: `kpicard state-${i.state ?? 'none'}`, 'data-kpi': i.kpi, 'data-feedback-id': 'central.direccion.kpi.tarjeta', 'data-feedback-label': 'Tarjeta de indicador' };
     if (hash) return el('a', { ...attrs, href: hash.startsWith('#') ? hash : `#${hash}` }, ...content, target);
     if (external) return el('a', { ...attrs, href: external, target: '_blank', rel: 'noopener' }, ...content, target);
     return el('div', attrs, ...content, target);
@@ -54,8 +54,8 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
   function paint(d: Dashboard, fromCache: boolean): void {
     const groups = new Map<string, DashboardItem[]>();
     for (const i of d.items) groups.set(i.app, [...(groups.get(i.app) ?? []), i]);
-    replace(body, ...[...groups].map(([app, items]) => el('div', { class: 'kpigroup' },
-      el('div', { class: 'sectionlabel' }, APP_NAMES[app] ?? app), el('div', { class: 'kpigrid' }, ...items.map(card)))));
+    replace(body, ...[...groups].map(([app, items]) => el('div', { class: 'kpigroup', 'data-feedback-id': 'central.direccion.grupo.app', 'data-feedback-label': `Indicadores de ${APP_NAMES[app] ?? app}` },
+      el('div', { class: 'sectionlabel' }, APP_NAMES[app] ?? app), el('div', { class: 'kpigrid', 'data-feedback-id': 'central.direccion.grupo.tarjetas', 'data-feedback-label': 'Rejilla de indicadores' }, ...items.map(card)))));
     const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(d.computedAt));
     const waiting = d.unavailable.filter((a) => a !== 'central').map((a) => APP_NAMES[a] ?? a);
     meta.textContent = [fromCache ? `Sin conexión: datos del ${time}` : `Actualizado ${time}`,
@@ -81,16 +81,16 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       const rows = await client.list(T.kpiTargets);
       const current = rows.find((r) => r.kpi === i.kpi && r.period === '*') as Record<string, any> | undefined;
       let sheet: Sheet | null = null;
-      const num = (id: string, v: unknown) => el('input', { id, type: 'number', step: 'any', inputmode: 'decimal', value: v === null || v === undefined ? '' : String(v) }) as HTMLInputElement;
-      const target = num('k-target', current?.target);
-      const warn = num('k-warn', current?.warn_at);
-      const critical = num('k-critical', current?.critical_at);
-      const direction = el('select', { id: 'k-direction' },
+      const num = (id: string, v: unknown, fb: string, fl: string) => el('input', { id, 'data-feedback-id': `central.direccion.objetivo.${fb}`, 'data-feedback-label': fl, type: 'number', step: 'any', inputmode: 'decimal', value: v === null || v === undefined ? '' : String(v) }) as HTMLInputElement;
+      const target = num('k-target', current?.target, 'objetivo', 'Objetivo');
+      const warn = num('k-warn', current?.warn_at, 'atencion', 'Umbral de atención');
+      const critical = num('k-critical', current?.critical_at, 'critico', 'Umbral crítico');
+      const direction = el('select', { id: 'k-direction', 'data-feedback-id': 'central.direccion.objetivo.sentido', 'data-feedback-label': 'Sentido' },
         el('option', { value: 'up', selected: (current?.direction ?? i.direction ?? 'up') === 'up' }, 'Más es mejor'),
         el('option', { value: 'down', selected: (current?.direction ?? i.direction) === 'down' }, 'Menos es mejor')) as HTMLSelectElement;
-      const error = el('p', { class: 'formerror', role: 'alert' });
+      const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.direccion.objetivo.error', 'data-feedback-label': 'Error del formulario' });
       const value = (input: HTMLInputElement) => (input.value === '' ? null : Number(input.value.replace(',', '.')));
-      const save = el('button', { class: 'primary', type: 'button', id: 'saveTarget', onclick: async () => {
+      const save = el('button', { class: 'primary', type: 'button', id: 'saveTarget', 'data-feedback-id': 'central.direccion.objetivo.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
         const fields = { kpi: i.kpi, period: '*', target: value(target), warn_at: value(warn), critical_at: value(critical), direction: direction.value };
         const operations = current
           ? [{ op: 'update' as const, table: T.kpiTargets, id: String(current.id), expectedRevision: Number(current.revision), fields }]
@@ -98,7 +98,7 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
         const issue = validateOperations(operations, client.bootstrap()?.membership ?? { role: 'reader' });
         if (issue) { error.textContent = issue.message; return; }
         try {
-          await client.commit(operations);
+          await usage.run('central.direccion.objetivo.guardar', () => client.commit(operations));
           await client.sync().catch(() => {});
           toast('Objetivo guardado.');
           await sheet?.close(true);
@@ -106,13 +106,13 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
         } catch (e) { error.textContent = describeError(e); }
       } }, 'Guardar');
       sheet = openSheet({ title: 'Objetivo', meta: i.label,
-        body: el('div', null,
+        body: el('div', { 'data-feedback-id': 'central.direccion.objetivo.formulario', 'data-feedback-label': 'Objetivo del indicador' },
           el('p', { class: 'muted small' }, 'Con «menos es mejor», el estado pasa a atención o crítico por encima del umbral; con «más es mejor», por debajo.'),
           el('label', { class: 'field' }, el('span', null, 'Sentido'), direction),
           el('label', { class: 'field' }, el('span', null, 'Objetivo'), target),
-          el('div', { class: 'fieldrow' }, el('label', { class: 'field' }, el('span', null, 'Umbral de atención'), warn), el('label', { class: 'field' }, el('span', null, 'Umbral crítico'), critical)),
+          el('div', { class: 'fieldrow', 'data-feedback-id': 'central.direccion.objetivo.umbrales', 'data-feedback-label': 'Umbrales' }, el('label', { class: 'field' }, el('span', null, 'Umbral de atención'), warn), el('label', { class: 'field' }, el('span', null, 'Umbral crítico'), critical)),
           error),
-        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save], initialFocus: target });
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.direccion.objetivo.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save], initialFocus: target });
     })();
   }
 
