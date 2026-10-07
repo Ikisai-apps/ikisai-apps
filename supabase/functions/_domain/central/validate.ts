@@ -9,6 +9,7 @@ import {
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
+import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
@@ -181,6 +182,17 @@ const SPECS: Record<string, TableSpec> = {
     required: ['person_id', 'team_id'],
     immutable: ['person_id', 'team_id'],
   },
+  [TEXTS_TABLE]: {
+    fields: {
+      key: { kind: 'text', min: 3, max: 60, pattern: TEXT_KEY, patternText: 'clave como «portal.privacy»: minúsculas, puntos y guiones bajos' },
+      title: { kind: 'text', min: 1, max: 160 },
+      body: { kind: 'text', min: 1, max: 8000 },
+      kind: { kind: 'enum', values: TEXT_KINDS },
+      position: { kind: 'number' },
+    },
+    required: ['key', 'title', 'body', 'kind'],
+    immutable: ['key'],
+  },
   [KPI_TARGETS_TABLE]: {
     fields: {
       kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
@@ -313,6 +325,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       if (replaced && !row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'indica la decisión que la sustituye');
       if (!replaced && row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'solo se indica si está sustituida');
       if (row.superseded_by && row.superseded_by === op.id) return fieldIssue(index, table, 'superseded_by', 'no puede sustituirse a sí misma');
+    }
+    if (table === TEXTS_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra puede cambiar los textos y el contacto.', details: { index, table } };
     }
     if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };

@@ -15,6 +15,7 @@ export const T = {
   decisions: 'central.decisions',
   teams: 'central.teams',
   personTeams: 'central.person_teams',
+  texts: 'central.texts',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */

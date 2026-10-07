@@ -268,6 +268,28 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **Proyección `central.common_team_projection`** (`team_id, name, user_id`): solo personas **activas con cuenta enlazada** en equipos vivos. Registrada con `core.allow_read('central', …, 'view')` y con `select` para `service_role`, para que la Edge del núcleo la lea con la clave de servicio (matriz de uso por equipo). Sin más datos personales que el id de la cuenta.
 - **Interfaz**: en Personas, filtro por equipo, chips de equipo en cada fila y el enlace «Equipos» a su pantalla (orden manual, alta con color, renombrar, papelera). En la ficha, el bloque «Equipos» con chips y «Cambiar».
 
+### 2.12 «Textos y contacto» (`central.texts`; regla del usuario del 7-10-2026)
+
+**Regla de producto:** los textos legales, avisos, declaraciones y datos de contacto que ven las personas y los portales se editan **siempre desde Central**, nunca fijos en el código. Migración `0570_central_texts`.
+
+- **`central.texts`** (sincronizada; escribe solo el owner, leen todos los miembros):
+  - `key` única entre los vivos e inmutable (`portal.privacy`, `organizers.declaration`, `contact.email`, `contact.phone`…).
+  - `title`, `body` (texto o Markdown sencillo, ≤ 8000) y `kind` (`legal | mensaje | contacto`).
+  - `position` y papelera.
+  - `version` la lleva la base: `v1` al crear, y sube (`v2`, `v3`…) cuando cambian el título, el cuerpo o el tipo; reordenar no la cambia. No es escribible.
+- **Versiones** (`central.text_versions`, tabla cerrada que escribe un disparador): guarda cada versión con su cuerpo tal como se escribió y **ya sustituido en ese momento**. Así, una declaración aceptada se muestra exactamente como se aceptó aunque luego cambien la Entidad o el contacto.
+  - Ojo: un cambio en la Entidad o en el contacto **no** crea versión nueva de los textos que los usan; la proyección muestra siempre los datos actuales, y la versión guardada, los de su momento.
+- **Marcadores**, sustituidos al leer (`central.render_text`, y `renderMarkers` en `_domain/central/texts.ts` para la vista previa sin red): `{{entidad.razon_social}}`, `{{entidad.nif}}`, `{{entidad.domicilio}}`, `{{contacto.correo}}` y `{{contacto.telefono}}` (los dos últimos salen de los textos `contact.email` y `contact.phone`). Lo que falta se escribe «—».
+- **Proyección `central.common_texts_projection`** (`key, title, body` ya sustituido, `version, kind, updated_at`): registrada con `core.allow_read` para **organizers, guests, booking y central**. Sin datos personales. Uso: `GET read/central.common_texts_projection?where[key]=portal.privacy`.
+- **Lecturas:**
+  - `central.text_version` (`{key, version?}` → `{key, version, kind, title, body, createdAt}`, con el cuerpo sustituido de esa versión; sin `version`, la vigente), para organizers, guests, booking y central. Una app que guarde una aceptación debe guardar la `version` y mostrarla después con esta lectura.
+  - `central.text_history` (`{key}` → versiones, más reciente primero), solo para central.
+- **Semilla:** `central.seed_texts()`, con `core.apply_migration_operations`. Siembra `contact.email` (organiza@ikisai.com), `contact.phone` (614 76 57 96), `organizers.declaration` (legal) y `portal.privacy` (legal, «Protección de datos»), todos en `v1`. No hace nada con una clave que ya exista, y solo se ejecuta si Central ya tiene miembros (en producción, sí).
+- **Pantalla «Textos y contacto»** (desde Inicio):
+  - Lista por tipo con la versión de cada texto.
+  - Editor (owner) con: ayuda para insertar marcadores, aviso de marcadores desconocidos, vista previa ya sustituida, el aviso «Al guardar se crea la versión vN; las aceptaciones anteriores conservan su versión» y las versiones anteriores.
+  - Los demás miembros lo ven sin poder editar.
+
 ---
 
 ## 3. Procedimientos y lecturas
