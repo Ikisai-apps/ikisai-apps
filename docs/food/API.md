@@ -409,6 +409,17 @@ No se publica nada para Booking en V1. Si Booking quiere derivar su «estado coc
 
 No hay escrituras cruzadas: Invoices no inserta en `food.stock_entries`. Propuesta para G4: Invoices publica `invoices.food_purchase_projection` (líneas validadas asignadas a `food:ingredient`, con cantidad, unidad, fecha, importe, proveedor, evento opcional y revisión de la asignación) y Food la materializa con `POST stock-entries/sync`, idempotente por `(source_app, source_kind, source_id)`. Con eso `stock_quantity` de la lista de compra podrá proponerse en vez de teclearse.
 
+### 7.4 Indicadores para Central
+
+Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Una migración de Food no puede leer `booking.*` (lint de migraciones), así que las fechas del evento son las de `food.menus.source_event_snapshot`: lo que la cocina tenía delante al crear, revisar o validar el menú.
+
+| Clave | Etiqueta | Fórmula | Unidad · sentido | Enlace |
+|---|---|---|---|---|
+| `food.menus_unvalidated_30d` | Menús sin validar en los próximos 30 días | Menús vivos en `borrador` o `revisar` cuyo evento empieza entre hoy y hoy + 30. `period_end` = hoy + 30. | `count` · `down` | `#/menus` |
+| `food.shopping_lists_open` | Listas de la compra abiertas | Listas vivas con estado distinto de `cerrada`, de un menú vivo y no cerrado, cuyo evento termina hoy o después. | `count` · `down` | `#/menus` |
+
+`food.events_without_menu_30d` (propuesta del catálogo de Central) necesita cruzar eventos de Booking con menús de Food y queda pendiente de Core (petición P14).
+
 ---
 
 ## 8. Archivos
