@@ -93,3 +93,18 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .kpivalue{font-family:var(--font-display,inherit);font-size:1.6rem;line-height:1.1}
 .kpitarget{margin-top:4px;font-size:var(--text-sm,.875rem)}
 .chip.ok{border-color:var(--ok,#2f7a4b);color:var(--ok,#2f7a4b)}
+
+/* Decisiones: tres niveles plegables */
+.pre{white-space:pre-wrap}
+.decisions{display:flex;flex-direction:column;gap:8px;max-width:820px}
+.decision{border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.decision[open]{border-color:var(--accent)}
+.decisionname{display:flex;flex-direction:column;gap:4px;padding:12px 14px;cursor:pointer;font-weight:600;list-style:none}
+.decisionname::-webkit-details-marker{display:none}
+.decisionbody{display:flex;flex-direction:column;gap:8px;padding:0 14px 12px}
+.decisionbody > p{margin:0}
+.technical{border-left:3px solid var(--line);padding:2px 0 2px 10px}
+.technical > summary{cursor:pointer;color:var(--muted);font-size:var(--text-sm,.875rem)}
+.technical > p{margin:6px 0 0;font-size:var(--text-sm,.875rem)}
+.scopes{display:flex;flex-wrap:wrap;gap:6px 14px;border:0;padding:0;margin:0}
+.scopes legend{width:100%;margin-bottom:4px}

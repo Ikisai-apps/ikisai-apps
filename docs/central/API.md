@@ -230,6 +230,32 @@ La leen Booking (documento de la propuesta al organizador) y Finance (facturas e
 
 Otros candidatos de configuración común, sin hacer hasta que alguien los pida: textos legales y versiones de consentimiento (fase de portales), plazos de conservación (irán con el registro de tratamientos). Espacios, tipos de evento y categorías de gasto ya tienen dueño.
 
+### 2.10 `central.decisions` — registro de decisiones (C01 «decision_clave», aprobado por el usuario en la ronda 9)
+
+Migración `0530_central_decisions`. Lectura `{reader, editor, owner}`; escritura `{editor, owner}`.
+
+**Tres niveles de lectura** (condición del usuario):
+1. **Nombre**, en lenguaje llano: que lo entienda alguien de 18 años sin contexto técnico. Es lo que se ve en la lista.
+2. **Descripción**, también llana: qué se decidió y por qué, en pocas frases. Se despliega al tocar el nombre.
+3. **Explicación técnica**, sin pasarse: cómo se aplica, qué apps o tablas toca, alternativas descartadas. Plegada dentro de la descripción.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `code` | `text unique` | `DEC_AAAA_NNN` (C01). Por trigger. |
+| `decided_on` | `date not null` | |
+| `name` | `text not null` | Nivel 1, 1–160. |
+| `summary` | `text not null` | Nivel 2, 1–2000. |
+| `technical` | `text null` | Nivel 3, ≤ 8000. |
+| `responsible_person_id` | `uuid null → central.people` | Persona de Central. |
+| `status` | `text not null default 'vigente'` | `vigente`, `sustituida`, `revocada`. |
+| `superseded_by` | `uuid null → central.decisions` | Obligatorio si y solo si `sustituida`; nunca ella misma. |
+| `scopes` | `text[] not null default '{}'` | Apps o áreas afectadas: `ecosistema`, `central`, `tasks`, `invoices`, `booking`, `food`, `guests`, `organizers` (≤ 10). |
+| `link_url`, `link_label` | `text null` | Enlace `https://` a un documento, una tarea o un PR, con su texto. |
+
+Invariantes (`central.check_decisions`): una decisión viva no puede estar sustituida por una que esté en la papelera (`ORPHAN_CHILD`); el responsable no puede estar en la papelera (`PERSON_IN_USE`).
+
+**Pantalla Decisiones** (se abre desde Inicio): lista de nombres, más recientes primero, con código, fecha, estado y apps; cada decisión es un bloque plegable con su descripción, el enlace «Sustituida por», la explicación técnica plegada, el responsable y el enlace. Búsqueda por texto sin acentos (código, nombre, descripción y explicación) y filtros por app y estado (`filterDecisions` en `_domain/central/decisions.ts`). Funciona sin red como el resto de tablas. Las decisiones ya tomadas en V1 y V2 las carga Core desde la app, no por Git.
+
 ---
 
 ## 3. Procedimientos y lecturas
