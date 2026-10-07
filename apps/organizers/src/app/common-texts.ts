@@ -4,12 +4,13 @@
  * Son textos públicos: la última copia se guarda en el dispositivo sin persona, para la pantalla de entrada sin sesión.
  */
 import type { SyncClient } from '@ikisai/sync-client';
+import { i18n, t } from './i18n.ts';
 
 export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null; lang?: string; source_lang?: string }
 
 export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone';
 const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone'];
-const STORE = 'ikisai-organizers-texts';
+const storeKey = () => `ikisai-organizers-texts:${i18n.locale()}`;
 
 const FALLBACK: Record<TextKey, CommonText> = {
   'organizers.declaration': {
@@ -24,18 +25,32 @@ const FALLBACK: Record<TextKey, CommonText> = {
   'contact.phone': { key: 'contact.phone', title: 'Teléfono', version: null, kind: 'contact', body: '614 76 57 96' },
 };
 
+/** Reserva en inglés (solo los textos que cambian de idioma; el contacto es el mismo). */
+const FALLBACK_EN: Partial<Record<TextKey, CommonText>> = {
+  'organizers.declaration': {
+    key: 'organizers.declaration', title: 'Declaration', version: 'v1', kind: 'legal', lang: 'en', source_lang: 'en',
+    body: 'I provide this information with the knowledge of my attendees and only to organise their stay at Ikisai. Each attendee will receive the data protection information when they open their personal link.',
+  },
+  'portal.privacy': {
+    key: 'portal.privacy', title: 'Data protection', version: null, kind: 'legal', lang: 'en',
+    body: 'Ikisai processes this information to manage the stay and, where the law requires it, for the guest register. Each person can access, correct or ask for the deletion of their data by writing to Ikisai.',
+  },
+};
+
 let loaded: Partial<Record<TextKey, CommonText>> = readStored();
+let loadedLang = i18n.locale();
+i18n.onChange(() => { loaded = readStored(); loadedLang = i18n.locale(); });
 
 function readStored(): Partial<Record<TextKey, CommonText>> {
   try {
-    return JSON.parse(localStorage.getItem(STORE) ?? '{}') as Partial<Record<TextKey, CommonText>>;
+    return JSON.parse(localStorage.getItem(storeKey()) ?? '{}') as Partial<Record<TextKey, CommonText>>;
   } catch {
     return {};
   }
 }
 
-/** Idioma del dispositivo: inglés si el navegador está en inglés; si no, español. */
-export const deviceLang = (): 'es' | 'en' => (navigator.language?.toLowerCase().startsWith('en') ? 'en' : 'es');
+/** Idioma de la pantalla (el del navegador o el que se eligió en el selector). */
+export const deviceLang = (): 'es' | 'en' => i18n.locale();
 
 /**
  * Pide los textos a Central (con sesión), en el idioma del dispositivo (la proyección trae una fila por clave e idioma, con
@@ -49,7 +64,7 @@ export async function loadCommonTexts(client: SyncClient): Promise<void> {
     for (const row of rows) if ((KEYS as readonly string[]).includes(row.key) && typeof row.body === 'string' && row.body.trim()) next[row.key as TextKey] = row;
     if (!Object.keys(next).length) return;
     loaded = { ...loaded, ...next };
-    try { localStorage.setItem(STORE, JSON.stringify(loaded)); } catch { /* sin almacenamiento: solo en memoria */ }
+    try { localStorage.setItem(storeKey(), JSON.stringify(loaded)); } catch { /* sin almacenamiento: solo en memoria */ }
   } catch {
     /* sin red, sin acceso aún o Central sin publicar: reserva */
   }
@@ -71,19 +86,20 @@ export async function loadPublicContact(lang = deviceLang()): Promise<void> {
     for (const row of rows) if ((row.key === 'contact.email' || row.key === 'contact.phone') && typeof row.body === 'string' && row.body.trim()) next[row.key] = row;
     if (!Object.keys(next).length) return;
     loaded = { ...loaded, ...next };
-    try { localStorage.setItem(STORE, JSON.stringify(loaded)); } catch { /* solo en memoria */ }
+    try { localStorage.setItem(storeKey(), JSON.stringify(loaded)); } catch { /* solo en memoria */ }
   } catch {
     /* sin red: copia guardada o reserva */
   }
 }
 
 export function commonText(key: TextKey): CommonText {
-  return loaded[key] ?? FALLBACK[key];
+  void loadedLang;
+  return loaded[key] ?? (i18n.locale() === 'en' ? FALLBACK_EN[key] : undefined) ?? FALLBACK[key];
 }
 
 /** «Escríbenos a organiza@ikisai.com o llámanos al 614 76 57 96.» */
 export function contactLine(): string {
-  return `Escríbenos a ${commonText('contact.email').body} o llámanos al ${commonText('contact.phone').body}.`;
+  return t('Escríbenos a {correo} o llámanos al {telefono}.', { correo: commonText('contact.email').body, telefono: commonText('contact.phone').body });
 }
 
 /** Versión de la declaración que se acepta, con el idioma del texto que se vio (`v1/es`); se guarda en Booking con la aceptación. */

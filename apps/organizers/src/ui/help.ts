@@ -3,6 +3,7 @@
  * (la aplicación, mi retiro, un espacio) y debajo «Lo que me has enviado». Los reportes van a Ikisai por `POST feedback`.
  */
 import type { SyncClient } from '@ikisai/sync-client';
+import { L, t } from '../app/i18n.ts';
 import {
   collectFeedbackContext, createFeedbackClient, createFeedbackProgressiveForm, el, openSheet, replace, toast,
   type FeedbackIntent, type FeedbackReport, type FeedbackSubject, type ProgressiveAnswers, type ProgressiveStep,
@@ -18,32 +19,34 @@ export interface HelpOptions {
   reservationId: string | null;
 }
 
-const STEPS: ProgressiveStep[] = [
-  { id: 'about', kind: 'choice', question: '¿Sobre qué quieres comentarnos algo?', options: [
-    { value: 'application', label: 'La aplicación', next: 'appKind' },
-    { value: 'event', label: 'Mi retiro', next: 'retreat' },
-    { value: 'space', label: 'Un espacio de Ikisai', next: 'place' },
+/** Pasos en el idioma actual (se construyen al abrir la ayuda). */
+const STEPS = (): ProgressiveStep[] => [
+  { id: 'about', kind: 'choice', question: t('¿Sobre qué quieres comentarnos algo?'), options: [
+    { value: 'application', label: t('La aplicación'), next: 'appKind' },
+    { value: 'event', label: t('Mi retiro'), next: 'retreat' },
+    { value: 'space', label: t('Un espacio de Ikisai'), next: 'place' },
   ] },
-  { id: 'appKind', kind: 'choice', question: '¿Qué pasa?', options: [{ value: 'bug', label: 'Algo no funciona' }, { value: 'improvement', label: 'Tengo una sugerencia' }], next: 'appWhere' },
-  { id: 'appWhere', kind: 'signal', question: 'Mantén pulsado sobre el lugar de la aplicación al que te refieres.', action: 'Señalar en la pantalla', next: 'message' },
-  { id: 'retreat', kind: 'choice', question: '¿De qué retiro?', options: [], next: 'eventCat' },
-  { id: 'eventCat', kind: 'choice', question: '¿Sobre qué parte del retiro?', options: [
-    { value: 'setup', label: 'Montaje y mobiliario' }, { value: 'accommodation', label: 'Alojamiento' }, { value: 'cleaning', label: 'Limpieza' },
-    { value: 'food', label: 'Cocina' }, { value: 'technical', label: 'Técnico' }, { value: 'operation', label: 'Horarios y operación' }, { value: 'other', label: 'Otra petición' },
+  { id: 'appKind', kind: 'choice', question: t('¿Qué pasa?'), options: [{ value: 'bug', label: t('Algo no funciona') }, { value: 'improvement', label: t('Tengo una sugerencia') }], next: 'appWhere' },
+  { id: 'appWhere', kind: 'signal', question: t('Mantén pulsado sobre el lugar de la aplicación al que te refieres.'), action: t('Señalar en la pantalla'), next: 'message' },
+  { id: 'retreat', kind: 'choice', question: t('¿De qué retiro?'), options: [], next: 'eventCat' },
+  { id: 'eventCat', kind: 'choice', question: t('¿Sobre qué parte del retiro?'), options: [
+    { value: 'setup', label: t('Montaje y mobiliario') }, { value: 'accommodation', label: t('Alojamiento') }, { value: 'cleaning', label: t('Limpieza') },
+    { value: 'food', label: t('Cocina') }, { value: 'technical', label: t('Técnico') }, { value: 'operation', label: t('Horarios y operación') }, { value: 'other', label: t('Otra petición') },
   ], next: 'message' },
-  { id: 'place', kind: 'choice', question: '¿Dónde?', options: [
-    { value: 'habitacion', label: 'Habitación' }, { value: 'comedor', label: 'Comedor' }, { value: 'sala', label: 'Sala' }, { value: 'banos', label: 'Baños' },
-    { value: 'exterior', label: 'Exterior' }, { value: 'piscina', label: 'Piscina' }, { value: 'otro', label: 'Otro sitio' },
+  { id: 'place', kind: 'choice', question: t('¿Dónde?'), options: [
+    { value: 'habitacion', label: t('Habitación') }, { value: 'comedor', label: t('Comedor') }, { value: 'sala', label: t('Sala') }, { value: 'banos', label: t('Baños') },
+    { value: 'exterior', label: t('Exterior') }, { value: 'piscina', label: t('Piscina') }, { value: 'otro', label: t('Otro sitio') },
   ], next: 'spaceKind' },
-  { id: 'spaceKind', kind: 'choice', question: '¿Qué tipo de problema?', options: [
-    { value: 'damage', label: 'Algo está roto' }, { value: 'cleaning', label: 'Limpieza' }, { value: 'missing', label: 'Falta algo' },
-    { value: 'utilities', label: 'Agua o electricidad' }, { value: 'safety', label: 'Seguridad' }, { value: 'other', label: 'Otra cosa' },
+  { id: 'spaceKind', kind: 'choice', question: t('¿Qué tipo de problema?'), options: [
+    { value: 'damage', label: t('Algo está roto') }, { value: 'cleaning', label: t('Limpieza') }, { value: 'missing', label: t('Falta algo') },
+    { value: 'utilities', label: t('Agua o electricidad') }, { value: 'safety', label: t('Seguridad') }, { value: 'other', label: t('Otra cosa') },
   ], next: 'message' },
-  { id: 'message', kind: 'text', question: 'Cuéntanos', placeholder: '¿Qué ha pasado o qué te gustaría?', images: true },
+  { id: 'message', kind: 'text', question: t('Cuéntanos'), placeholder: t('¿Qué ha pasado o qué te gustaría?'), images: true },
 ];
 
+/** El lugar va en el mensaje para el personal de Ikisai: en español, sea cual sea el idioma de la pantalla. */
 const PLACES: Record<string, string> = { habitacion: 'Habitación', comedor: 'Comedor', sala: 'Sala', banos: 'Baños', exterior: 'Exterior', piscina: 'Piscina', otro: 'Otro sitio' };
-const DISPLAY: Record<string, string> = { open: 'Recibido', in_progress: 'En marcha', pending_verify: 'Resuelto', verified: 'Resuelto', dismissed: 'Cerrado' };
+const DISPLAY: Record<string, string> = { open: L('Recibido'), in_progress: L('En marcha'), pending_verify: L('Resuelto'), verified: L('Resuelto'), dismissed: L('Cerrado') };
 
 /** Lo que el servidor necesita de cada rama (FEEDBACK.md §7: subject, intent, category, scope). */
 export function reportShape(answers: ProgressiveAnswers, current: string | null): { subject: FeedbackSubject; intent: FeedbackIntent; category?: string; scope?: Record<string, string>; place?: string } {
@@ -65,7 +68,7 @@ export async function openHelp(options: HelpOptions): Promise<void> {
   const reports = createFeedbackClient({ api, app: 'organizers', userId: () => userId });
   const mine = el('div', { id: 'helpMine', 'data-feedback-id': 'organizers.ayuda.enviados', 'data-feedback-label': 'Lo que me has enviado' });
 
-  const steps = STEPS.map((step) => (step.id === 'retreat' ? { ...step, options: retreats } : step));
+  const steps = STEPS().map((step) => (step.id === 'retreat' ? { ...step, options: retreats } : step));
   const known = reservationId ? { retreat: reservationId } : retreats.length === 1 ? { retreat: retreats[0]!.value } : undefined;
   const form = createFeedbackProgressiveForm({
     config: { start: 'about', steps },
@@ -85,7 +88,7 @@ export async function openHelp(options: HelpOptions): Promise<void> {
       });
       await reports.flush().catch(() => undefined);
       const pending = (await reports.pending()).some((item) => item.id === id);
-      toast(pending ? 'Lo enviaremos en cuanto vuelva la conexión.' : 'Gracias. Lo hemos recibido.');
+      toast(pending ? t('Lo enviaremos en cuanto vuelva la conexión.') : t('Gracias. Lo hemos recibido.'));
       void paintMine();
       return pending ? 'pending' : 'sent';
     },
@@ -97,15 +100,15 @@ export async function openHelp(options: HelpOptions): Promise<void> {
     try {
       const out = await client.api<{ items: FeedbackReport[] }>('/feedback?mine=true&status=all&limit=20');
       if (!out.items.length) { replace(mine); return; }
-      replace(mine, el('h3', null, 'Lo que me has enviado'), el('ul', { class: 'plainlist orgmine' },
-        ...out.items.map((r) => el('li', null, el('span', { class: 'chip small' }, DISPLAY[r.display || r.status] ?? 'Recibido'), ' ', el('span', { 'data-feedback-ignore': '' }, r.message.slice(0, 120))))));
+      replace(mine, el('h3', null, t('Lo que me has enviado')), el('ul', { class: 'plainlist orgmine' },
+        ...out.items.map((r) => el('li', null, el('span', { class: 'chip small' }, t(DISPLAY[r.display || r.status] ?? 'Recibido')), ' ', el('span', { 'data-feedback-ignore': '' }, r.message.slice(0, 120))))));
     } catch (error) {
       replace(mine, el('p', { class: 'muted small' }, describeError(error)));
     }
   }
 
   openSheet({
-    title: 'Ayuda y sugerencias',
+    title: t('Ayuda y sugerencias'),
     body: el('div', { id: 'helpSheet' }, form.element, mine),
     onClose: () => reports.destroy(),
   });

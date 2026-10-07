@@ -12,18 +12,18 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | B4 | Booking | (opcional) restricciones de cocina del grupo sin huésped, para el modo `ninguno` | aplazada |
 | B5 | Booking | Campos booleanos en `portal_guests` (`is_minor`). Hoy `true` significa a la vez «rellenado por otro» y «vale `true`», y el `false` por defecto sale como rellenado. Propuesta: en los booleanos, el valor si lo escribió el organizador y `null` si nunca se escribió | abierta |
 | B11 | Booking | Coorganizadores: lectura `booking.portal_organizers({reservation_id})` con los nombres para mostrar de quienes organizan el retiro, sin correo ni teléfono | hecha (#284; en la ficha del retiro) |
-| C1 | Core | `sync-client`: `loginWithLink(token)` | en #278 |
-| C2 | Core | `portal-links`: reutilizar la cuenta del huésped y `replace: true` al reenviar | en #278 |
-| C3 | Core | `permanentAccount` en `GET auth/config` | en #278 |
+| C1 | Core | `sync-client`: `loginWithLink(token)` | hecha (#278) |
+| C2 | Core | `portal-links`: reutilizar la cuenta del huésped y `replace: true` al reenviar | hecha (#278) |
+| C3 | Core | `permanentAccount` en `GET auth/config` | hecha (#278) |
 | C4 | UI | Entrada «Ayuda y sugerencias» del lanzador en portales y paso `signal` sin el interruptor | hecha (kit 0.18.5, #279) |
-| C5 | Core | Alta de infraestructura con la primera PR de `apps/organizers` | abierta (#282) |
-| C6 | UI | `createAppShell({ nav: [] })` pinta la barra inferior vacía (`.nonav .nav`), que en móvil tapa los botones del pie. Organizers la oculta en su CSS | abierta |
-| C7 | Central | `central.common_texts_projection` legible desde `organizers` (`organizers.declaration`, `portal.privacy`, `contact.email`, `contact.phone`) | en curso |
-| C8 | UI | Icono propio de Organizers para la PWA (hoy usa el de Central) | abierta |
-| U1 | UI | Capa de traducción del kit (español e inglés) con claves por app y textos del kit traducidos | abierta |
-| U2 | UI | Indicador de guardado automático del kit: «Guardando…», «Guardado» y «No se ha guardado · Reintentar», por campo o por formulario | abierta |
-| U3 | UI | Hoja «Instala la app»: `beforeinstallprompt` e instrucciones de iOS, con recuerdo de «ahora no» | abierta |
-| X1 | Central | Textos comunes por idioma (columna `lang` o claves `.es` y `.en`), con el español como reserva | abierta |
+| C5 | Core | Alta de infraestructura con la primera PR de `apps/organizers` | hecha (publicada el 8-10-2026) |
+| C6 | UI | `createAppShell({ nav: [] })` pinta la barra inferior vacía (`.nonav .nav`), que en móvil tapa los botones del pie. Organizers la oculta en su CSS | hecha (kit 0.20) |
+| C7 | Central | `central.common_texts_projection` legible desde `organizers` (`organizers.declaration`, `portal.privacy`, `contact.email`, `contact.phone`) | hecha (#281) |
+| C8 | UI | Icono propio de Organizers para la PWA (hoy usa el de Central) | hecha (icono de UI en `public/icons/`, manifiesto en berenjena; 8-10-2026) |
+| U1 | UI | Capa de traducción del kit (español e inglés) con claves por app y textos del kit traducidos | hecha (kit 0.19, `createI18n`; Organizers en español e inglés) |
+| U2 | UI | Indicador de guardado automático del kit: «Guardando…», «Guardado» y «No se ha guardado · Reintentar», por campo o por formulario | hecha (kit 0.20, `createSaveState`) |
+| U3 | UI | Hoja «Instala la app»: `beforeinstallprompt` e instrucciones de iOS, con recuerdo de «ahora no» | hecha (kit 0.20, `createInstallPrompt`) |
+| X1 | Central | Textos comunes por idioma (columna `lang` o claves `.es` y `.en`), con el español como reserva | hecha (#281: una fila por clave e idioma) |
 
 ## Fase 2 · Diseño desde el interesado
 

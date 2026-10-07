@@ -4,6 +4,7 @@ import { applyTheme } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createPortalApi } from './app/api.ts';
 import { loadPublicContact } from './app/common-texts.ts';
+import { i18n } from './app/i18n.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
 import { initUpdates } from './updates.ts';
@@ -14,6 +15,9 @@ if (!root) throw new Error('Falta el contenedor #app');
 applyTheme();
 const client = createClient();
 let unmount: (() => void) | null = null;
+/** Error de la entrada y si se acaba de entrar por enlace, para repintar igual al cambiar de idioma. */
+let lastError: unknown;
+let fromLink = false;
 
 // Sin cola de cambios ni espejo: actualizar el shell es seguro salvo con un formulario a medias (sus borradores
 // quedan guardados en el dispositivo, así que tampoco se pierde nada).
@@ -29,6 +33,7 @@ async function boot(): Promise<void> {
     history.replaceState(null, '', '/');
     try {
       await client.loginWithLink(match[1] ?? '');
+      fromLink = true;
     } catch (error) {
       show(error);
       return;
@@ -45,8 +50,10 @@ async function boot(): Promise<void> {
 function show(error?: unknown): void {
   unmount?.();
   unmount = null;
+  lastError = error;
   if (!error && client.session()) {
-    unmount = renderShell(root!, { client, onLogout: () => { location.hash = ''; show(); } });
+    unmount = renderShell(root!, { client, fromLink, onLogout: () => { location.hash = ''; show(); } });
+    fromLink = false;
     return;
   }
   unmount = renderEntry(root!, { error });
@@ -55,5 +62,8 @@ function show(error?: unknown): void {
     if (!client.session()) { unmount?.(); unmount = renderEntry(root!, { error, permanentAccount }); }
   });
 }
+
+// Cambio de idioma (selector ES | EN): se repinta lo que haya en pantalla en el idioma nuevo.
+i18n.onChange(() => show(lastError));
 
 void boot();
