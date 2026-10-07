@@ -1,9 +1,10 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { compressImage, compressedFilename, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { compressImage, compressedFilename, confirmDialog, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
+import { PV_IN_PROCESS, fetchSes, guestReports, type SesCommunication } from '../app/ses.ts';
 import { guestReminder, missingLabels, organizerReminder, SOURCE_LABELS, SOURCE_TITLES } from '../app/reminders.ts';
 import { openRowSheet, type FieldMark, type FieldSpec } from './form.ts';
 import { RESTRICTION_SPECS } from './reservation.ts';
@@ -48,6 +49,15 @@ const SENT_SPECS: FieldSpec[] = [
 
 const fullName = (g: Row): string => [g.first_name, g.last_name_1, g.last_name_2].filter(Boolean).join(' ');
 const missingText = (guest: Record<string, unknown>): string => missingLabels(missingForSes(guest)).join(', ');
+const plain = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** Lo que le falta a un huésped para entrar en el parte de viajeros: campos de SES, documento comprobado (adultos) y firma (14 años o más). Igual que `GET /ses/:id/pv`. */
+function arrivalNeeds(guest: Row, onDate: string): string[] {
+  const missing = missingForSes(guest as GuestLike);
+  if (guest.is_minor !== true && !guest.document_checked_at) missing.push('document_checked');
+  if (signsOwnEntry(guest as GuestLike, onDate) && !guest.signed_at) missing.push('signature');
+  return missing;
+}
 
 /** Modo de la reserva para pedir datos: hoy siempre `ses`; cuando llegue el interruptor de SES se cambia solo aquí. */
 
@@ -89,6 +99,13 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     const writable = allowed && canWrite(client);
     let eventId = initialEventId;
     let sheet: Sheet | null = null;
+    /** Partes de viajeros de la reserva del evento abierto (solo con red); lo demás de la llegada sale de las filas locales. */
+    let ses: { eventId: string; reservationId: string; comms: SesCommunication[] } | null = null;
+    let sesSeq = 0;
+    let marking = false;
+    let busyPv = false;
+    let pvResult: { eventId: string; pending: Array<{ id: string; missing: string[] }>; empty: boolean } | null = null;
+    let sesTarget: { eventId: string; reservationId: string } | null = null;
     const selectHost = el('div', { 'data-feedback-id': 'booking.huespedes.evento', 'data-feedback-label': 'Selector de evento' });
     const body = el('div', { 'data-feedback-id': 'booking.huespedes.lista', 'data-feedback-label': 'Huéspedes del evento' });
     const printArea = el('div', { class: 'printarea', 'aria-hidden': 'true', 'data-feedback-ignore': '' });
@@ -353,7 +370,52 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         })));
     }
 
-    async function paint(): Promise<void> {
+    /** Trae los partes de viajeros y marca en Booking a los huéspedes de los aceptados, para que el resto de la app lo vea sin red. */
+    async function refreshSes(): Promise<void> {
+      const target = sesTarget;
+      if (!target || !writable || !navigator.onLine) return;
+      const seq = ++sesSeq;
+      try {
+        const comms = await fetchSes(client, target.reservationId);
+        if (seq !== sesSeq || sesTarget?.eventId !== target.eventId) return;
+        ses = { ...target, comms };
+        await markCommunicated(comms);
+      } catch { /* sin red o sin permiso: la pantalla sigue con lo local */ }
+      if (seq === sesSeq) void paint(false);
+    }
+
+    async function markCommunicated(comms: SesCommunication[]): Promise<void> {
+      if (marking) return;
+      const accepted = new Map<string, string | null>();
+      for (const c of guestReports(comms)) if (c.status === 'aceptada') for (const id of c.guest_ids ?? []) accepted.set(id, c.accepted_at);
+      if (accepted.size === 0) return;
+      const rows = ((await client.list(GUESTS)) as Row[]).filter((g) => !g.deleted_at && accepted.has(g.id) && g.ses_status !== 'enviado_SES');
+      if (rows.length === 0) return;
+      marking = true;
+      try {
+        await client.commit(rows.map((g): RowOperation => ({ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { ses_status: 'enviado_SES', ses_sent_at: accepted.get(g.id) ?? new Date().toISOString() } })));
+      } catch { /* se reintentará en la próxima consulta */ } finally { marking = false; }
+    }
+
+    async function sendPv(ids: string[] | null): Promise<void> {
+      const target = sesTarget;
+      if (!target || busyPv) return;
+      busyPv = true;
+      void paint(false);
+      try {
+        const out = await client.api<{ id: string | null; status: string; pending: Array<{ id: string; missing: string[] }> }>(`/ses/${encodeURIComponent(target.reservationId)}/pv`, { method: 'POST', json: ids ? { guest_ids: ids } : {} });
+        if (!ids) pvResult = { eventId: target.eventId, pending: out.pending ?? [], empty: out.status === 'sin_listos' };
+        toast(out.status === 'sin_listos' ? 'Nadie estaba listo: revisa lo que falta.' : `Parte de viajeros enviado a SES${out.pending?.length && !ids ? `; quedan fuera ${out.pending.length}.` : '.'}`);
+      } catch (error) {
+        toast(describeError(error));
+      } finally {
+        busyPv = false;
+        await refreshSes();
+        void paint(false);
+      }
+    }
+
+    async function paint(fetch = true): Promise<void> {
       const reservations = new Map(((await client.list(RESERVATIONS)) as ReservationRow[]).map((r) => [r.id, r]));
       const now = dayNumber(today())!;
       const events = ((await client.list(EVENTS)) as Row[]).filter((e) => reservations.has(e.reservation_id))
@@ -403,6 +465,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
       const restrictions = everyRestriction.filter((r) => r.deleted_at === null || r.deleted_at === undefined);
       const staff = deletedGuests.length ? await loadStaffIds() : null;
       const totals = reservationCompleteness(guests as GuestLike[], mode);
+      const onDate = current.reservation.start_date ?? today();
       const pendingGuests = guests.filter((g) => guestCompleteness(g as GuestLike, mode).missing.length > 0);
       const reservationTitle = current.reservation.title;
       const context = { reservation: current.reservation, event: current.event, restrictions };
@@ -413,15 +476,84 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         return [c.complete
           ? el('span', { class: 'chip ok', dataset: { chip: 'complete' } }, 'Completo')
           : c.missing.length ? el('span', { class: 'chip missing', dataset: { chip: 'missing' } }, `Falta: ${missingLabels(c.missing).join(', ')}`) : null,
-        c.needsSignature && !c.signed ? el('span', { class: 'chip missing', dataset: { chip: 'unsigned' } }, 'Sin firmar') : null];
+        c.needsSignature && !c.signed
+          ? (sesMode && g.arrived_at && signsOwnEntry(g as GuestLike, onDate) ? el('span', { class: 'chip missing', dataset: { chip: 'signature' } }, 'Firma pendiente') : el('span', { class: 'chip missing', dataset: { chip: 'unsigned' } }, 'Sin firmar'))
+          : null];
       };
       const count = (filter: (g: Row) => boolean) => String(guests.filter(filter).length);
+      // Llegada (solo modo `ses`, editor o propietario): lo que falta de cada huésped sale de las filas locales; los partes, de la API.
+      const arrivalOn = sesMode && writable;
+      sesTarget = arrivalOn ? { eventId: current.event.id, reservationId: current.reservation.id } : null;
+      if (ses && ses.eventId !== eventId) ses = null;
+      const reports = ses ? guestReports(ses.comms) : [];
+      const reportOf = (id: string) => reports.find((c) => (c.guest_ids ?? []).includes(id)) ?? null;
+      const inReport = (g: Row) => { const pv = reportOf(g.id); return !!pv && pv.status !== 'rechazada'; };
+      const hasReport = reports.some((c) => c.status !== 'rechazada');
+      const waiting = guests.filter((g) => g.arrived_at && !inReport(g));
+      const needsOf = (g: Row) => arrivalNeeds(g, onDate);
+      const ready = waiting.filter((g) => needsOf(g).length === 0);
+      const left = waiting.filter((g) => needsOf(g).length > 0);
+      const online = navigator.onLine;
+      const reportChip = (g: Row): Child => {
+        const pv = reportOf(g.id);
+        if (!pv) return g.ses_status === 'enviado_SES' ? el('span', { class: 'chip ok' }, 'Enviado a SES') : null;
+        if (pv.status === 'aceptada') return el('span', { class: 'chip ok', dataset: { chip: 'pv' } }, 'Comunicado');
+        if (pv.status === 'rechazada') { const why = pv.error_text || 'SES rechazó el parte.'; return el('span', { class: 'chip alert', dataset: { chip: 'pv' }, title: why }, `Rechazado: ${why}`); }
+        return el('span', { class: 'chip pending', dataset: { chip: 'pv' } }, 'En proceso en SES');
+      };
+      const arrivalActions = (g: Row): Child[] => {
+        if (!arrivalOn) return [];
+        const name = fullName(g);
+        if (!g.arrived_at) return [el('button', { class: 'primary small', type: 'button', dataset: { act: 'arrived' }, 'aria-label': `Ha llegado: ${name}`, 'data-feedback-id': 'booking.huespedes.llegada.ha_llegado', 'data-feedback-label': 'Ha llegado', onclick: () => void run([{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { arrived_at: new Date().toISOString() } }], 'Llegada anotada.') }, 'Ha llegado')];
+        const out: Child[] = [];
+        if (!inReport(g) && g.ses_status !== 'enviado_SES') {
+          out.push(el('button', { class: 'ghost small', type: 'button', dataset: { act: 'notArrived' }, 'aria-label': `No ha llegado: ${name}`, 'data-feedback-id': 'booking.huespedes.llegada.no_ha_llegado', 'data-feedback-label': 'No ha llegado', onclick: () => void run([{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { arrived_at: null } }], 'Llegada deshecha.') }, 'No ha llegado'));
+        }
+        if (g.is_minor !== true) {
+          const box = el('input', { type: 'checkbox', checked: !!g.document_checked_at, 'aria-label': `Documento comprobado de ${name}`, onchange: async () => {
+            const on = box.checked;
+            const ok = await run([{ op: 'update', table: GUESTS, id: g.id, expectedRevision: g.revision, fields: { document_checked_at: on ? new Date().toISOString() : null, document_checked_by: on ? boot?.profile.userId ?? null : null } }], on ? 'Documento comprobado.' : 'Documento sin comprobar.');
+            if (!ok) void paint(false);
+          } });
+          out.push(el('label', { class: 'check', title: 'Compruébalo a la vista: no se fotografía ni se guarda copia', 'data-feedback-id': 'booking.huespedes.llegada.documento', 'data-feedback-label': 'Documento comprobado' }, box, el('span', null, 'Documento comprobado')));
+        }
+        if (hasReport && ses && online && !inReport(g) && needsOf(g).length === 0) {
+          out.push(el('button', { class: 'primary small', type: 'button', dataset: { act: 'late' }, disabled: busyPv, 'aria-label': `Comunicar su llegada: ${name}`, 'data-feedback-id': 'booking.huespedes.llegada.comunicar_tardio', 'data-feedback-label': 'Comunicar su llegada', onclick: () => void sendPv([g.id]) }, 'Comunicar su llegada'));
+        }
+        return out;
+      };
+      const closeEntry = async (): Promise<void> => {
+        if (ready.length === 0) return void toast(left.length ? 'Nadie está listo todavía: mira lo que falta a cada huésped.' : 'Nadie ha llegado todavía.');
+        const leftText = left.map((g) => `${fullName(g)} (${missingLabels(needsOf(g)).join(', ')})`).join('; ');
+        const text = `Van ${plain(ready.length, 'huésped', 'huéspedes')} en el parte de viajeros.${left.length ? ` Quedan fuera ${left.length} porque les falta algo: ${leftText}. Se podrán comunicar más tarde.` : ''}`;
+        if (await confirmDialog({ title: 'Cerrar la entrada y comunicar', text, confirmLabel: 'Comunicar' })) await sendPv(null);
+      };
+      const result = pvResult && pvResult.eventId === eventId ? pvResult : null;
+      const outside = result ? result.pending.map((p) => guests.find((g) => g.id === p.id)).filter((g): g is Row => !!g && left.includes(g)) : [];
+      const planned = current.event.final_guests ?? current.reservation.expected_guests;
+      const arrivalPanel: Child = !arrivalOn ? null : [
+        el('div', { class: 'sectionlabel' }, 'Llegada'),
+        el('p', { class: 'completeness', id: 'arrivalSummary', 'data-feedback-id': 'booking.huespedes.llegada.resumen', 'data-feedback-label': 'Resumen de llegada' },
+          `${planned ?? '—'} ${planned === 1 ? 'previsto' : 'previstos'} · ${plain(guests.filter((g) => g.arrived_at).length, 'llegado', 'llegados')} · ${guests.filter((g) => missingForSes(g as GuestLike).length === 0).length} con datos completos · ${plain(guests.filter((g) => g.signed_at).length, 'firmado', 'firmados')} · ${plain(guests.filter((g) => reportOf(g.id)?.status === 'aceptada' || g.ses_status === 'enviado_SES').length, 'comunicado', 'comunicados')}`),
+        el('p', { class: 'hint' }, 'Al llegar cada persona, pulsa «Ha llegado» y marca «Documento comprobado» (adultos). Compruébalo a la vista: no se fotografía ni se guarda copia.'),
+        el('div', { class: 'choices' },
+          el('button', { class: 'primary', type: 'button', id: 'closeEntry', disabled: !online || busyPv || !ses || waiting.length === 0, 'data-feedback-id': 'booking.huespedes.llegada.cerrar', 'data-feedback-label': 'Cerrar la entrada y comunicar', onclick: () => void closeEntry() }, 'Cerrar la entrada y comunicar'),
+          reports.some((c) => PV_IN_PROCESS.includes(c.status)) ? el('button', { class: 'ghost small', type: 'button', id: 'refreshSes', disabled: !online, 'data-feedback-id': 'booking.huespedes.llegada.actualizar', 'data-feedback-label': 'Actualizar estado', onclick: () => void refreshSes() }, 'Actualizar estado') : null),
+        online ? null : el('p', { class: 'hint', id: 'arrivalOffline', role: 'status' }, 'Sin conexión: se puede anotar la llegada, pero comunicar a SES necesita red.'),
+        !result ? null : outside.length
+          ? el('div', { class: 'banner warn', id: 'pvResult', role: 'status', 'data-feedback-id': 'booking.huespedes.llegada.fuera', 'data-feedback-label': 'Huéspedes fuera del parte' },
+            el('div', null, result.empty ? 'Nadie estaba listo. Falta algo a cada huésped:' : 'Quedaron fuera del parte, por ahora:'),
+            el('ul', null, outside.map((g) => el('li', { dataset: { guest: g.id } }, `${fullName(g)}: falta ${missingLabels(needsOf(g)).join(', ')}`))))
+          : result.empty ? null : el('p', { class: 'banner ok', id: 'pvResult', role: 'status' }, 'Todos los que han llegado van en el parte.'),
+      ];
+
 
       replace(body,
         el('div', { class: 'card', id: 'guestSummary', 'data-feedback-id': 'booking.huespedes.recuentos', 'data-feedback-label': 'Recuentos' }, el('h3', null, plural(guests.length, 'huésped', 'huéspedes')), el('dl', { class: 'kv' },
           el('dt', null, 'Mujeres'), el('dd', null, count((g) => g.sex === 'M')), el('dt', null, 'Hombres'), el('dd', null, count((g) => g.sex === 'H')),
           el('dt', null, 'Otro o sin indicar'), el('dd', null, count((g) => g.sex !== 'M' && g.sex !== 'H')), el('dt', null, 'Menores'), el('dd', null, count((g) => g.is_minor === true)),
           ...(sesMode ? [el('dt', null, 'Firmados'), el('dd', null, count((g) => !!g.signed_at)), el('dt', null, 'Enviados a SES'), el('dd', null, count((g) => g.ses_status === 'enviado_SES'))] : []))),
+        arrivalPanel,
         !sesMode || queue.length + reviewed.length === 0 ? null : [
           el('div', { class: 'sectionlabel' }, 'Envío a SES.Hospedajes', el('span', { class: 'count' }, String(queue.length))),
           el('p', { class: 'hint' }, 'El plazo es de 24 horas desde la entrada. El envío se hace en la web de SES; aquí se anota.'),
@@ -443,22 +575,31 @@ export function mountGuests(initialEventId: string | null): ViewMount {
               id: g.id, title: fullName(g) || 'Sin nombre',
               meta: [g.code ?? 'código pendiente', g.is_minor && sesMode ? 'menor' : null, sesMode && missingForSes(g as GuestLike).length ? 'faltan datos para SES' : null, !sesMode ? [g.phone, g.email].filter(Boolean).join(' · ') || null : null],
               chips: sesMode ? [el('span', { class: 'chip' }, label(g.data_status)), g.signed_at ? el('span', { class: 'chip ok' }, 'Firmado') : null,
-                g.ses_status === 'enviado_SES' ? el('span', { class: 'chip ok' }, 'Enviado a SES') : null, ...completenessChips(g)] : completenessChips(g),
-              actions: guestCompleteness(g as GuestLike, mode).complete ? [] : [el('button', { class: 'ghost small', type: 'button', dataset: { act: 'copyReminder' }, 'data-feedback-id': 'booking.huespedes.registro.recordatorio', 'data-feedback-label': 'Copiar recordatorio', 'aria-label': `Copiar recordatorio para ${fullName(g)}`, onclick: () => {
+                arrivalOn && g.arrived_at ? el('span', { class: 'chip', dataset: { chip: 'arrived' } }, 'Llegó') : null,
+                reportChip(g), ...completenessChips(g)] : completenessChips(g),
+              actions: [...arrivalActions(g), ...(guestCompleteness(g as GuestLike, mode).complete ? [] : [el('button', { class: 'ghost small', type: 'button', dataset: { act: 'copyReminder' }, 'data-feedback-id': 'booking.huespedes.registro.recordatorio', 'data-feedback-label': 'Copiar recordatorio', 'aria-label': `Copiar recordatorio para ${fullName(g)}`, onclick: () => {
                 const c = guestCompleteness(g as GuestLike, mode);
                 copyText(guestReminder({ guest: g, title: reservationTitle, start: current.reservation.start_date, end: current.reservation.end_date, missing: c.missing, unsigned: c.needsSignature && !c.signed }), 'Recordatorio copiado');
-              } }, 'Copiar recordatorio')],
+              } }, 'Copiar recordatorio')])],
               pending: g._pending === true,
               ...(writable ? { onClick: () => openGuest(g, context), label: `Editar ${fullName(g)}` } : {}),
             }), 'booking.huespedes.registro.fila', 'Huésped'), '.name, .row-meta'))),
         trashBlock(deletedGuests, everyRestriction, staff),
+        writable ? el('div', { class: 'fab-gap', 'aria-hidden': 'true' }) : null,
         writable ? el('button', { class: 'fab', type: 'button', id: 'newGuest', 'data-feedback-id': 'booking.huespedes.nuevo_huesped', 'data-feedback-label': 'Nuevo huésped', onclick: () => openGuest(null, context) }, icon('plus'), 'Nuevo huésped') : null,
       );
+      if (fetch && arrivalOn) void refreshSes();
     }
 
     void paint();
     const offs = [RESERVATIONS, EVENTS, ...(allowed ? [GUESTS, RESTRICTIONS] : [])].map((table) => client.onTable(table, () => void paint()));
+    // Con un parte en proceso se consulta cada 30 s; al volver la red, también.
+    const timer = setInterval(() => { if (navigator.onLine && ses?.comms.some((c) => c.kind === 'PV' && PV_IN_PROCESS.includes(c.status))) void refreshSes(); }, 30_000);
+    const onOnline = () => void refreshSes();
+    window.addEventListener('online', onOnline);
     return () => {
+      clearInterval(timer);
+      window.removeEventListener('online', onOnline);
       offs.forEach((off) => off());
       void sheet?.close(true);
     };

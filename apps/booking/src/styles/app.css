@@ -122,6 +122,10 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .staff-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
 #needList .row-title { flex-wrap: wrap; }
 #needList .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }
+/* Llegada: los botones de cada huésped pasan a una fila propia bajo el nombre */
+#guestList .row-actions { grid-row: auto; grid-column: 1 / -1; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px 10px; }
+#pvResult { display: block; }
+#pvResult ul { margin: 6px 0 0; padding-left: 18px; }
 /* Bloque «Portal del organizador» y hoja con la URL recién emitida */
 #blockPortal .row-title { flex-wrap: wrap; }
 #blockPortal .row-actions { grid-row: auto; grid-column: 1 / -1; justify-content: flex-end; align-items: center; gap: 6px; }

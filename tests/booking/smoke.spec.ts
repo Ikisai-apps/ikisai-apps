@@ -833,6 +833,86 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#guestTrash')).toHaveCount(0);
   });
 
+  await test.step('llegada: «Ha llegado», documento comprobado, firma, cerrar la entrada, aceptación y llegada tardía', async () => {
+    const eventId = api.rows(EVENTS)[0]!.id;
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const guest = (name: string) => api.rows(GUESTS).find((g) => g.first_name === name)!;
+    const row = (name: string) => page.locator('#guestList .row', { hasText: name });
+    const summary = page.locator('#arrivalSummary');
+    const planned = String(api.rows(EVENTS)[0]!.final_guests ?? api.rows(RESERVATIONS)[0]!.expected_guests);
+    // datos que aportarían los portales: Ana y Marta quedan completas salvo firma y documento
+    const complete = { sex: 'M', birth_date: '1980-01-01', residence_address: 'Calle Ficticia 1', residence_postal_code: '00000', residence_city: 'Villaprueba', residence_country: 'ESP', phone: '600000002', document_type: 'Pasaporte' };
+    api.serverUpdate(GUESTS, guest('Persona').id, { ses_status: 'pendiente_envio', ses_sent_at: null }); // el envío manual de antes no cuenta aquí
+    api.serverUpdate(GUESTS, guest('Ana').id, { ...complete, document_number: '00000001R' });
+    api.serverUpdate(GUESTS, guest('Marta').id, { ...complete, document_number: '00000002W', signed_at: new Date().toISOString(), signed_by_name: 'Marta Baja' });
+    await page.goto(`${baseURL}/#/huespedes/${eventId}`);
+    await page.reload();
+    await expect(summary).toHaveText(`${planned} previstos · 0 llegados · 3 con datos completos · 2 firmados · 0 comunicados`);
+
+    // llegada de dos huéspedes; documento comprobado solo de uno
+    await page.getByRole('button', { name: 'Ha llegado: Persona Sintética Ficticia', exact: true }).click();
+    await expect(summary).toContainText('1 llegado ·');
+    await page.getByRole('button', { name: 'Ha llegado: Ana García', exact: true }).click();
+    await expect(summary).toContainText('2 llegados ·');
+    await expect(row('Ana García').locator('[data-chip="arrived"]')).toHaveText('Llegó');
+    await expect(row('Ana García').locator('[data-chip="signature"]')).toHaveText('Firma pendiente');
+    await page.getByLabel('Documento comprobado de Persona Sintética Ficticia').check();
+    await expect.poll(() => guest('Persona')).toMatchObject({ document_checked_by: expect.any(String) });
+    expect(typeof guest('Persona').arrived_at).toBe('string');
+    expect(typeof guest('Persona').document_checked_at).toBe('string');
+    // deshacer la llegada mientras no esté en un parte
+    await page.getByRole('button', { name: 'No ha llegado: Ana García', exact: true }).click();
+    await expect.poll(() => guest('Ana').arrived_at).toBeNull();
+    await page.getByRole('button', { name: 'Ha llegado: Ana García', exact: true }).click();
+    await expect.poll(() => typeof guest('Ana').arrived_at).toBe('string');
+    // firma (en papel) de Ana: desaparece el aviso
+    await row('Ana García').locator('.name').click(); // el centro de la fila ahora cae sobre los botones
+    await page.locator('#signedOnPaper').click();
+    await expect.poll(() => typeof guest('Ana').signed_at).toBe('string');
+    await expect(row('Ana García').locator('[data-chip="signature"]')).toHaveCount(0);
+
+    // cerrar la entrada: va Persona; Ana queda fuera por el documento
+    await page.locator('#closeEntry').click();
+    const confirm = page.getByRole('alertdialog', { name: 'Cerrar la entrada y comunicar' });
+    await expect(confirm).toContainText('Van 1 huésped en el parte de viajeros.');
+    await expect(confirm).toContainText('Quedan fuera 1 porque les falta algo: Ana García (documento comprobado)');
+    await confirm.getByRole('button', { name: 'Comunicar' }).click();
+    await expect(page.locator('#pvResult')).toContainText('Ana García: falta documento comprobado');
+    await expect(row('Persona Sintética').locator('[data-chip="pv"]')).toHaveText('En proceso en SES');
+    expect(api.sesComms(reservationId)[0]).toMatchObject({ kind: 'PV', status: 'en_proceso', guest_ids: [guest('Persona').id] });
+    await expect(page.locator('#refreshSes')).toBeVisible();
+    expect(guest('Persona').ses_status).not.toBe('enviado_SES'); // hasta que SES acepta no se dice «comunicado»
+
+    // SES acepta (simulado): «Comunicado» y el estado de Booking al día
+    api.sesAccept(api.sesComms(reservationId)[0]!.id);
+    await page.locator('#refreshSes').click();
+    await expect(row('Persona Sintética').locator('[data-chip="pv"]')).toHaveText('Comunicado');
+    await expect.poll(() => guest('Persona')).toMatchObject({ ses_status: 'enviado_SES', ses_sent_at: expect.any(String) });
+    await expect(summary).toContainText('1 comunicado');
+    await expect(row('Persona Sintética').getByRole('button', { name: /No ha llegado/ })).toHaveCount(0); // ya está en un parte
+
+    // Marta llega tarde y está lista: se comunica sola
+    await page.getByRole('button', { name: 'Ha llegado: Marta Baja', exact: true }).click();
+    await page.getByLabel('Documento comprobado de Marta Baja').check();
+    await expect.poll(() => typeof guest('Marta').document_checked_at).toBe('string');
+    await page.getByRole('button', { name: 'Comunicar su llegada: Marta Baja', exact: true }).click();
+    await expect(row('Marta Baja').locator('[data-chip="pv"]')).toHaveText('En proceso en SES');
+    expect(api.sesComms(reservationId)[0]).toMatchObject({ kind: 'PV', guest_ids: [guest('Marta').id] });
+    expect(api.sesComms(reservationId).filter((c) => c.kind === 'PV')).toHaveLength(2);
+    api.sesReject(api.sesComms(reservationId)[0]!.id, 'Dato de prueba inválido');
+    await page.locator('#refreshSes').click();
+    await expect(row('Marta Baja').locator('[data-chip="pv"]')).toContainText('Rechazado: Dato de prueba inválido');
+    // el parte de Marta se rechazó: se puede volver a comunicar
+    await page.getByRole('button', { name: 'Comunicar su llegada: Marta Baja', exact: true }).click();
+    await expect.poll(() => api.sesComms(reservationId).filter((c) => c.kind === 'PV')).toHaveLength(3);
+    // la ficha de la reserva resume los partes
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    await expect(page.locator('#sesReports')).toContainText('1 parte aceptado');
+    await expect(page.locator('#sesReports')).toContainText('1 en proceso');
+    await expect(page.locator('#sesReports')).toContainText('1 rechazado');
+    await expect(page.locator('#sesReports a')).toHaveAttribute('href', `#/huespedes/${eventId}`);
+  });
+
   await test.step('Calendario: la reserva aparece y el panel refleja el estado de Google Calendar', async () => {
     const reservationId = api.rows(RESERVATIONS)[0]!.id;
     api.setCalendarStatus({ configured: true, calendarId: 'prueba@group.calendar.example', health: 'calendar_not_shared',

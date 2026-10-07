@@ -11,6 +11,8 @@ export const MISSING_LABELS: Record<string, string> = {
   residence_postal_code: 'código postal', residence_city: 'municipio', residence_country: 'país', contact: 'teléfono o correo', kinship: 'parentesco',
   document_type: 'tipo de documento', document_number: 'número de documento', document_support_number: 'número de soporte',
   sex: 'sexo', nationality: 'nacionalidad', phone: 'teléfono', email: 'correo', guardian_name: 'persona que le acompaña',
+  // Lo que añade el parte de llegada (`GET /ses/:id/pv`): no son campos del huésped.
+  document_checked: 'documento comprobado', signature: 'firma',
 };
 
 export const SOURCE_LABELS: Record<FieldSource, string> = { guest: 'Huésped', organizer: 'Organizador', staff: 'Personal' };

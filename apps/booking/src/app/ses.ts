@@ -9,6 +9,8 @@ export interface SesCommunication {
   status: SesStatus;
   environment: 'pre' | 'prod' | string;
   cancels_id: string | null;
+  /** Solo en los partes de viajeros (`kind: 'PV'`): huéspedes que incluye. */
+  guest_ids?: string[] | null;
   lot_id: string | null;
   ses_code: string | null;
   error_code: string | null;
@@ -80,3 +82,7 @@ export function changedSinceCommunicated(reservation: ReservationShape, finalGue
   return !same(snap.start_date?.slice(0, 10), reservation.start_date?.slice(0, 10)) || !same(snap.end_date?.slice(0, 10), reservation.end_date?.slice(0, 10))
     || !same(snapPersons, persons === null || persons === undefined ? null : Number(persons));
 }
+
+/** Partes de viajeros (PV) de la reserva, el más reciente primero. Los anulados no cuentan. */
+export const guestReports = (items: SesCommunication[]): SesCommunication[] => items.filter((c) => c.kind === 'PV' && c.status !== 'anulada');
+export const PV_IN_PROCESS: readonly SesStatus[] = ['preparada', 'enviando', 'en_proceso', 'error'];
