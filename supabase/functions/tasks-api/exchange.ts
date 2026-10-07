@@ -2,7 +2,7 @@
  * Ikisai Tasks · rutas de consulta e intercambio (docs/tasks/API.md §6): tareas filtradas por REST, CSV, copia
  * portable y respaldo. Todas trabajan sobre el modelo anidado compuesto con lo que el usuario puede ver.
  */
-import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase, type WorkerRoute, createStorage, type StorageAccess } from '../_kit/mod.ts';
 import {
   ATTACHMENT_MIME, DomainError, PORTABLE_FORMAT, TABLES, checkPortableTabs, chunkOperations, collectIds, compose, decompose, emptyDataset, exportCSV, importCSV,
   importRows, isAdministrator, portableSummary, remapTabs, unzipStore, validateOperations, visibleRow, zipStore,
@@ -28,7 +28,7 @@ function domain<T>(run: () => T): T {
 
 const storagePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
-export function exchangeRoutes(supabase: Supabase): AppRoute[] {
+export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = createStorage(supabase)): AppRoute[] {
   /** Confirmaciones internas (importación): mismo `core.commit`, sin el `beforeCommit` que veta los `call` de clientes. */
   const internal = createSync(supabase, 'tasks', {});
 
@@ -50,8 +50,10 @@ export function exchangeRoutes(supabase: Supabase): AppRoute[] {
   const findTab = (tabs: LegacyTab[], id: string | null) => tabs.find((t) => t.id === id) ?? fail(404, 'NOT_FOUND', 'No existe el área solicitada.');
 
   async function readFile(ctx: RequestContext, fileId: string): Promise<Uint8Array> {
-    const file = await supabase.rpc<{ bucket: string; path: string; status: string }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: fileId });
-    const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${storagePath(file.path)}`, { service: true, raw: true });
+    // Archivos de core.files: por el proveedor que diga su fila (contrato §3.9). Los ZIP temporales de importación siguen
+    // en el bucket de Tasks en Supabase Storage: no son archivos de core.files.
+    const file = await supabase.rpc<{ bucket: string; path: string; status: string; storage_provider?: 'supabase' | 'r2' }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: fileId });
+    const response: Response = await storage.download(file);
     if (!response.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo leer un archivo adjunto.');
     return new Uint8Array(await response.arrayBuffer());
   }
