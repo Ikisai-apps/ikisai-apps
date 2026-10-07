@@ -270,7 +270,7 @@ al_dia      el resto
 
 ### 4.2 `validate_hooks` (SQL)
 
-`central.check_invariants` comprueba lo que no puede romperse aunque la Edge falle: unicidad `people.user_id` viva, `person_private` única por persona viva, FK a filas vivas (un requisito no puede apuntar a una persona en la papelera) y las parejas `(kind, record_type)`.
+`central.check_account_link` (migración `0502`): si el lote cambia `people.user_id` (alta con valor o modificación) y quien escribe no es owner de Central → `FORBIDDEN 403`; borrar o restaurar una persona enlazada no cuenta como cambio. `central.check_invariants` comprueba lo que no puede romperse aunque la Edge falle: unicidad `people.user_id` viva, `person_private` única por persona viva, FK a filas vivas (un requisito no puede apuntar a una persona en la papelera) y las parejas `(kind, record_type)`.
 
 ### 4.3 Borrado y papelera
 

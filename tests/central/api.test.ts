@@ -108,6 +108,28 @@ test('personas · enlazar una cuenta: solo el owner, cuenta única y nunca un ag
   assert.equal(asAgent.status, 422); assert.equal(asAgent.data.error.code, 'INVALID_ACCOUNT');
 });
 
+test('personas · enlazar una cuenta lo impone también la base: un editor con ámbito recibe 403 aunque se salte la Edge', async () => {
+  const { id: personId } = await newPerson({ display_name: 'Sin Edge' });
+  const editor = await app.t.db.query<{ user_id: string }>(`select user_id from core.memberships where app = 'central' and role = 'editor' and scopes->>'people' = 'true' limit 1`);
+  const actor = editor.rows[0]!.user_id;
+  const call = (operations: unknown[], requestId: string) => app.t.rpc('core_commit', { p_app: 'central', p_actor: actor, p_request_id: requestId, p_digest: requestId, p_expected_cursor: null, p_operations: operations });
+  await assert.rejects(call([{ op: 'update', table: PEOPLE, id: personId, expectedRevision: 1, fields: { user_id: app.users.reader } }], 'sql-link-1'),
+    (error: any) => error.code === 'FORBIDDEN');
+  await assert.rejects(call([{ op: 'insert', table: PEOPLE, id: uuid(), fields: { display_name: 'Nueva', relation: 'otro', user_id: app.users.reader } }], 'sql-link-2'),
+    (error: any) => error.code === 'FORBIDDEN');
+  // Sin tocar user_id, el mismo editor escribe con normalidad.
+  await call([{ op: 'update', table: PEOPLE, id: personId, expectedRevision: 1, fields: { availability: 'alta' } }], 'sql-link-3');
+  // Y el owner sí enlaza y desenlaza.
+  const owner = (sql: string) => app.t.rpc('core_commit', { p_app: 'central', p_actor: app.users.owner, p_request_id: sql, p_digest: sql, p_expected_cursor: null,
+    p_operations: [{ op: 'update', table: PEOPLE, id: personId, expectedRevision: { 'sql-link-4': 2, 'sql-link-5': 3, 'sql-link-4b': 4 }[sql], fields: { user_id: sql === 'sql-link-5' ? null : app.users.reader } }] });
+  await owner('sql-link-4');
+  await owner('sql-link-5');
+  // Borrar y restaurar una persona enlazada no cambia la cuenta: el editor puede.
+  await owner('sql-link-4b');
+  await call([{ op: 'delete', table: PEOPLE, id: personId, expectedRevision: 5 }], 'sql-link-6');
+  await call([{ op: 'restore', table: PEOPLE, id: personId, expectedRevision: 6 }], 'sql-link-7');
+});
+
 test('archivos · un registro con archivo verificado; la URL solo para quien ve los datos reservados', async () => {
   const { id: personId } = await newPerson({ display_name: 'Con archivo' });
   const bytes = new TextEncoder().encode('%PDF-1.4 certificado');
