@@ -10,8 +10,6 @@ export interface EntryOptions {
   error?: unknown;
   /** Muestra los accesos de la cuenta permanente (Google y código por correo) cuando el núcleo los active. */
   permanentAccount?: boolean;
-  /** Repinta la entrada (al cambiar de idioma). */
-  repaint(): void;
 }
 
 export function renderEntry(root: HTMLElement, options: EntryOptions): () => void {
@@ -34,7 +32,7 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
     el('div', { class: 'login-card' },
       el('div', { class: 'gentry-top' },
         el('div', { class: 'login-brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('home', 22)), el('h1', null, 'Ikisai Guests')),
-        languageSelect(options.repaint)),
+        languageSelect()),
       el('h2', { id: 'entryTitle', 'data-feedback-id': 'guests.entrada.enlace.error', 'data-feedback-label': 'Mensaje de entrada' }, title),
       el('p', { id: 'entryText' }, text),
       code || options.error ? el('p', { id: 'entryContact' }, t('entry.contact', { email: contactEmail(), phone: contactPhone() })) : null,

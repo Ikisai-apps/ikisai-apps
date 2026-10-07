@@ -3,6 +3,7 @@ import './styles/app.css';
 import { applyTheme } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createGuestApi } from './app/api.ts';
+import { onLocaleChange } from './app/i18n.ts';
 import { loadPublicContact } from './app/common-texts.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
@@ -52,14 +53,13 @@ function show(): void {
     unmount = renderShell(root!, {
       client,
       onLogout: () => { location.hash = ''; show(); },
-      repaint: show,
       setBusy: (fn) => { busy = fn; },
     });
     return;
   }
   const paintEntry = (permanentAccount?: boolean) => {
     unmount?.();
-    unmount = renderEntry(root!, { error: entryError, ...(permanentAccount ? { permanentAccount } : {}), repaint: () => paintEntry(permanentAccount) });
+    unmount = renderEntry(root!, { error: entryError, ...(permanentAccount ? { permanentAccount } : {}) });
   };
   paintEntry();
   // Contacto público y cuenta permanente: si llegan, se vuelve a pintar la entrada con ellos.
@@ -67,5 +67,8 @@ function show(): void {
     if (!client.session() || entryError) paintEntry(permanentAccount);
   });
 }
+
+// Cambio de idioma (selector de la cabecera o de la entrada): se repinta todo; la cola de guardado sigue en IndexedDB.
+onLocaleChange(() => show());
 
 void boot();

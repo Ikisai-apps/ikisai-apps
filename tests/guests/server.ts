@@ -22,6 +22,8 @@ export interface GuestsTestServer {
   guestLink(reservationId: string, guestId: string, name: string, email?: string): Promise<string>;
   /** Fila del huésped en Booking (para comprobar lo guardado). */
   row(guestId: string): Promise<Record<string, any>>;
+  /** Siembra los textos de Central (`central.seed_texts`, migración 0570): legales, contacto e información práctica. */
+  seedCentralTexts(): Promise<void>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -98,6 +100,9 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
     },
     async row(guestId) {
       return (await booking.t.db.query<Record<string, any>>('select * from booking.guests where id = $1', [guestId])).rows[0]!;
+    },
+    async seedCentralTexts() {
+      await booking.t.db.query('select central.seed_texts()');
     },
     setOffline(on) { offline = on; },
     close: async () => {

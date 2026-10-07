@@ -35,14 +35,13 @@
   - «Guarda tu acceso», instalación y salir del dispositivo;
   - español e inglés.
 
-  Pruebas: 14 de nodo y 8 de Playwright (3 `@smoke`).
+  Pruebas: 14 de nodo y 9 de Playwright (3 `@smoke`). Idiomas con el kit 0.19; textos de Central de la migración 0570.
 
 ## Pendiente
 
-- Pasar a la capa de idiomas del kit cuando se fusione la #285 (cambiar el import de `app/i18n.ts`).
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 - Fases 4 y 5 (API.md §13) cuando Organizers publique su configuración.
 
 ## Bloqueos
 
-- Ninguno para la fase 1. Textos de Central (#281) y contacto público (C1): mientras no estén, los textos de reserva.
+- Ninguno para la fase 1. Mientras no exista el contacto público (C1), la pantalla de enlace no válido usa el contacto de reserva o la última copia guardada.

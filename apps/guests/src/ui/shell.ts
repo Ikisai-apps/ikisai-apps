@@ -26,8 +26,6 @@ import { mountSign } from './sign.ts';
 export interface ShellContext {
   client: SyncClient;
   onLogout(): void;
-  /** Repinta la app (al cambiar de idioma). */
-  repaint(): void;
   /** Para el aviso de actualización: hay cambios sin confirmar. */
   setBusy(busy: () => boolean): void;
 }
@@ -68,7 +66,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     nav: [],
     navigate,
     launcher,
-    tools: [languageSelect(ctx.repaint), logoutButton],
+    tools: [languageSelect(), logoutButton],
   });
   const { main } = shell;
   shell.header.setAttribute('data-feedback-id', 'guests.cabecera');

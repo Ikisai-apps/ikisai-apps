@@ -1,13 +1,18 @@
 /**
  * Textos legales, de contacto e información práctica: se leen de Central (`central.common_texts_projection`; decisión del
  * usuario del 7-10-2026), nunca fijos en el código. Lo que hay aquí es solo la reserva para cuando la lectura falla.
- * Idioma (API.md §9.10, petición CE1): si una fila trae `lang`, se prefiere la del idioma elegido; si no hay versión en
- * inglés se muestra la española y `spanishOnly` lo dice. Son textos públicos: la última copia se guarda sin persona.
+ * Idioma (API.md §9.10, CE1 en la migración 0570 de Central): la proyección trae una fila por clave e idioma; si falta el
+ * inglés, la fila `en` lleva el español con `fallback = true`, y aquí se muestra el español con `spanishOnly`. La
+ * versión que se guarda al aceptar o firmar es `<idioma de origen>-<versión>` («es-v2»). Son textos públicos: la última
+ * copia se guarda sin persona.
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import { locale, type Locale } from './i18n.ts';
 
-export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null; lang?: string | null }
+export interface CommonText {
+  key: string; title: string | null; body: string; version: string | null; kind: string | null;
+  lang?: string | null; source_lang?: string | null; fallback?: boolean | null;
+}
 export interface ShownText extends CommonText { spanishOnly: boolean }
 
 export const INFO_KEYS = ['info.arrival', 'info.parking', 'info.facilities', 'info.rules', 'info.bring'] as const;
@@ -50,8 +55,9 @@ function store(rows: CommonText[]): void {
   let any = false;
   for (const row of rows) {
     if (!(KEYS as readonly string[]).includes(row.key) || typeof row.body !== 'string' || !row.body.trim()) continue;
+    if (row.lang === 'en' && row.fallback) continue; // el español ya llega en su propia fila
     const lang: Locale = row.lang === 'en' ? 'en' : 'es';
-    next[lang]![row.key as TextKey] = row;
+    next[lang]![row.key as TextKey] = { ...row, source_lang: row.source_lang ?? lang };
     any = true;
   }
   if (!any) return;
@@ -97,7 +103,17 @@ export function commonText(key: TextKey): ShownText | null {
 export function contactEmail(): string { return commonText('contact.email')?.body ?? ''; }
 export function contactPhone(): string { return commonText('contact.phone')?.body ?? ''; }
 
-/** Versión vigente de un texto legal (la de Central; sin Central, `null` y Booking guarda la de reserva). */
+/** Versión del texto que se muestra ahora («es-v2»); `null` si es el texto de reserva del código. */
 export function textVersion(key: TextKey): string | null {
-  return loaded.es?.[key]?.version ?? loaded.en?.[key]?.version ?? null;
+  const shown = commonText(key);
+  if (!shown?.version) return null;
+  return `${shown.source_lang ?? (shown.spanishOnly ? 'es' : locale())}-${shown.version}`;
+}
+
+/** Versiones vigentes de un texto en cualquier idioma: aceptar el aviso en español vale también en inglés. */
+export function textVersions(key: TextKey): string[] {
+  return (['es', 'en'] as const).flatMap((lang) => {
+    const row = loaded[lang]?.[key];
+    return row?.version ? [`${row.source_lang ?? lang}-${row.version}`] : [];
+  });
 }

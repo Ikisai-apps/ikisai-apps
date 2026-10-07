@@ -438,14 +438,17 @@ Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking n
 - offline con cola local (`writer.ts`).
 
 Detalles de la implementación:
-- **Idioma:** propio en `apps/guests/src/app/i18n.ts`, con la misma forma que `createI18n` del kit 0.19 (#285). Se cambia el import cuando se fusione; hasta entonces, los textos del kit (lanzador y formulario de ayuda) salen en español.
+- **Idioma:** `createI18n` y `createLanguageSelect` del kit 0.19 (#285), con los diccionarios de la app en `app/i18n-es.ts` e `i18n-en.ts`. Los textos del kit (lanzador y formulario de ayuda) también cambian de idioma.
 - **Recuadro de firma:** propio en `ui/sign.ts` (U2 sigue abierta por si el kit lo adopta).
-- **Versión del aviso legal:** sin Central, la versión del texto de reserva es `reserva-1`. Al llegar el texto de Central con su versión, el aviso vuelve a salir.
+- **Textos de Central** (migración 0570): una fila por clave e idioma, con `fallback` y `source_lang`, y negritas con `**…**`.
+  - La versión que se guarda al aceptar el aviso (`privacy_ack_version`) o al firmar (`text_version`) es `<idioma de origen>-<versión>` (`es-v1`, `en-v1`).
+  - Aceptar en un idioma vale para el otro mientras las dos versiones sigan vigentes.
+  - Sin Central se usan los textos de reserva del código, con la versión `reserva-1`.
 
 **Pruebas:**
 - `tests/guests/api.test.ts` (8);
 - `tests/guests/static.test.ts` (6): diccionarios iguales, claves usadas y ids de feedback;
-- `tests/guests/portal.spec.ts` (8 de Playwright, 3 de ellas `@smoke`).
+- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`).
 
 
 

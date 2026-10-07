@@ -180,8 +180,8 @@ test('guests · modo operativo en inglés: solo nombre y contacto, sin firma @sm
     await page.locator('#f-email').focus();
     await expect(page.locator('#s-phone')).toHaveText('Saved ✓');
     // Cambio de idioma a mano: se recuerda en el dispositivo.
-    await page.locator('#language').selectOption('es');
-    await expect(page.locator('#retreatTitle, .pagehead h2').first()).toBeVisible();
+    await page.locator('#language button[data-locale="es"]').click();
+    await expect(page.locator('.pagehead h2')).toHaveText('Mis datos');
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   } finally {
@@ -276,4 +276,29 @@ test('guests · ayuda: «Mi retiro» va al organizador con su ámbito y se ve en
   const stored = await api.booking.t.db.query<{ subject: string; category: string; scope: any; destination: string }>(`select subject, category, scope, destination from core.feedback_reports where message like '%cena empieza%'`);
   expect(stored.rows[0]).toMatchObject({ subject: 'event', category: 'schedule', destination: 'organizer' });
   expect(stored.rows[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: eva });
+});
+
+// Último: siembra los textos de Central para el resto del archivo (los anteriores usan los textos de reserva).
+test('guests · textos de Central: aviso en inglés con su versión, vale en los dos idiomas, e información práctica', async ({ browser }) => {
+  await api.seedCentralTexts();
+  const context = await browser.newContext({ locale: 'en-GB', viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  try {
+    const { id: reservation, event } = await api.reservation({ title: 'Retreat with texts' });
+    const zoe = await api.guest(event, { first_name: 'Zoe' });
+    await enter(page, await api.guestLink(reservation, zoe, 'Zoe'));
+    await expect(page.locator('#privacy h2')).toHaveText('Data protection');
+    await expect(page.locator('#privacyText strong').first()).toHaveText('Data protection information');
+    await page.locator('#privacyOk').click();
+    await expect.poll(async () => (await api.row(zoe)).privacy_ack_version).toBe('en-v1');
+    // En español no vuelve a pedirlo: la aceptación vale para las dos versiones vigentes.
+    await page.locator('#language button[data-locale="es"]').click();
+    await expect(page.locator('#hello')).toHaveText('Hola, Zoe');
+    await page.locator('#openInfo').click();
+    await expect(page.locator('#infoSections details[data-key="info.arrival"] summary')).toHaveText('Llegada y salida');
+    await expect(page.locator('#infoSections')).toContainText('Qué traer');
+    await expect(page.locator('#infoContact')).toContainText('614 76 57 96');
+  } finally {
+    await context.close();
+  }
 });

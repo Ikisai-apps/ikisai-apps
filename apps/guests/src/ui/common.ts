@@ -33,9 +33,14 @@ export function card(attrs: Record<string, string>, ...children: Child[]): HTMLE
   return el('section', { class: 'card gcard', ...attrs }, ...children);
 }
 
-/** Texto de Central con su nota si solo existe en español. */
+/** Una línea de Central con sus negritas (`**texto**`), sin HTML. */
+function inline(line: string): Array<string | HTMLElement> {
+  return line.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part) => (part.startsWith('**') && part.endsWith('**') ? el('strong', null, part.slice(2, -2)) : part));
+}
+
+/** Texto de Central (un párrafo por línea, negritas con `**`) con su nota si solo existe en español. */
 export function centralText(body: string, spanishOnly: boolean, attrs: Record<string, string> = {}): HTMLElement {
   return el('div', { class: 'gtext', ...attrs },
     spanishOnly ? el('p', { class: 'muted small gspanish' }, t('common.spanishOnly')) : null,
-    ...body.split(/\n{2,}/).map((p) => el('p', null, p)));
+    ...body.split(/\n+/).map((p) => p.trim()).filter(Boolean).map((p) => el('p', null, ...inline(p))));
 }

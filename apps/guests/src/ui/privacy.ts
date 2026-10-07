@@ -4,7 +4,7 @@
  * Sin él no se abren «Mis datos» ni «Alimentación» (sí la información práctica y la ayuda).
  */
 import { el, replace } from '@ikisai/ui-kit';
-import { commonText, textVersion } from '../app/common-texts.ts';
+import { commonText, textVersion, textVersions } from '../app/common-texts.ts';
 import type { GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import { centralText } from './common.ts';
@@ -15,7 +15,8 @@ export function privacyVersion(): string {
 }
 
 export function needsPrivacy(ctx: GuestContext): boolean {
-  return !ctx.privacyAcked(privacyVersion());
+  const versions = textVersions('portal.privacy');
+  return !(versions.length ? versions : [privacyVersion()]).some((v) => ctx.privacyAcked(v));
 }
 
 export function renderPrivacy(main: HTMLElement, ctx: GuestContext, onDone: () => void): void {

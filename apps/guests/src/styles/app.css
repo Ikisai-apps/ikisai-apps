@@ -21,7 +21,6 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gentry-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .gentry #entryContact{font-weight:600}
 .gentry-foot{margin-top:16px}
-.glang{min-height:36px;padding:4px 8px;border-radius:999px;font-size:var(--text-sm,.875rem)}
 
 /* Estado de guardado global */
 .gsavestate{margin:0;padding:4px 16px;font-size:var(--text-sm,.875rem);text-align:center}
