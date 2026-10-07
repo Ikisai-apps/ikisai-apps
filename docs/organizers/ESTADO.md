@@ -9,9 +9,16 @@
 - 2026-10-07 · Guardado automático en la ficha del asistente (sin botón «Guardar»): por campo, con estado visible, reintento ante `VERSION_CONFLICT` y envío al recuperar la conexión.
 - Pruebas: `tests/organizers/feedback-ids.test.ts` (ids literales y catálogo) y `tests/organizers/portal.spec.ts` (Playwright, 5 recorridos contra las Edge reales sobre PGlite: enlace no válido; recorrido completo; varios retiros y modo operativo; sin red; ayuda).
 
+## Hecho (cierre de la fase 1)
+
+- 2026-10-08 · Publicado en https://organizers.ikisai.com (y `organiza.ikisai.com`).
+- 2026-10-08 · Español e inglés con `createI18n` (kit 0.19): clave = texto en español, diccionario `app/i18n-en.ts`, selector ES | EN en la cabecera y en la entrada, repintado al cambiar, fechas y países con `Intl`; textos de Central en el idioma elegido. Prueba de cobertura `tests/organizers/i18n.test.ts`.
+- 2026-10-08 · Estado de guardado del kit (`createSaveState`) en la ficha del asistente; «Instala la app» (`createInstallPrompt`): hoja al entrar por enlace y tarjeta en Mis retiros.
+
 ## Pendiente
 
-- Fase 1, ajustes V2 aún sin hacer: idiomas (español e inglés; espera la capa de traducción del kit, U1), hoja de instalación (U3), coorganizadores: hecho («Organizáis tú y Pablo» en la ficha, con B11).
+- Fase 1: cerrada salvo el icono propio de la PWA (C8) y la cuenta permanente (Workspace).
+- Fase 2 (diseño): cuando Booking construya B6–B10 y B12.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.
