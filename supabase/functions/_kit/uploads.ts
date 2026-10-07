@@ -26,6 +26,13 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   const hashUpTo = config.hashVerifyUpTo ?? 25 * 1024 * 1024;
   const readSeconds = config.readUrlSeconds ?? 600;
 
+  // Portales (contrato §3.6): ser miembro de la app no basta; cada persona del portal solo ve los archivos que subió ella
+  // (la firma de un huésped no la lee otro huésped aunque conozca el id). Se distingue por su ámbito `scopes.grants`.
+  function ownInPortal(ctx: RequestContext, file: any) {
+    const portal = Array.isArray((ctx.membership as any)?.scopes?.grants);
+    if (portal && file?.created_by !== ctx.user.id) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
+  }
+
   async function create(ctx: RequestContext, body: any) {
     if (ctx.membership.role === 'reader' && !config.allowReaders) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (typeof body?.filename !== 'string' || !body.filename || body.filename.length > 255) fail(422, 'INVALID_OPERATION', 'Nombre de archivo inválido.');
@@ -53,6 +60,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   async function verify(ctx: RequestContext, id: string) {
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
+    ownInPortal(ctx, file);
     if (file.status === 'verified') return { id, sha256: file.sha256, size: file.size, verified: true, hashVerified: file.hash_verified };
     const response: Response = await storage.download(file);
     if (response.status === 404 || response.status === 400) {
@@ -87,6 +95,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   async function readUrl(ctx: RequestContext, id: string) {
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
+    ownInPortal(ctx, file);
     if (file.status !== 'verified') fail(404, 'FILE_NOT_FOUND', 'El archivo no está disponible.');
     const url = await storage.readUrl(file, readSeconds);
     return { id, url, expiresAt: new Date(Date.now() + readSeconds * 1000).toISOString(), filename: file.filename, mime: file.mime, size: file.size };
