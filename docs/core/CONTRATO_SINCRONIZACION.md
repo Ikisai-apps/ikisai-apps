@@ -157,6 +157,12 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - **Worker del feedback:** `central-api` lo monta con `feedbackWorker: true` en `worker/feedback/tick`. pg_cron lo despierta cada 5 minutos, solo si hay reportes por enrutar o tareas abiertas. Llama a `tasks-api` en `worker/requests/task` y `worker/requests/status`, con la clave de worker.
 - **Publicación:** `release.yml` (trabajo `feedback`) busca códigos `FB_…` en los commits publicados y llama a `core.feedback_mark_released`.
 - **Script local:** `scripts/feedback_pull.py` vuelca los reportes internos abiertos en `coordinacion/<app>/QA.md`. Lo lanza Core cuando el usuario lo pide.
+- **Filtro y modo «Revisor de QA» (migración `0069`):**
+  - Los reportes de aplicación entran con `reviewStatus = 'new'` y solo llegan a los agentes cuando el owner de Central los aprueba (`POST feedback/:id/approve`). `feedback_pull.py` vuelca solo los aprobados.
+  - `POST feedback/:id/merge {into: código}` une un duplicado: lo cierra y quien lo informó pasa a apoyar el original. `dismiss` de uno nuevo lo deja como `rejected`.
+  - `GET feedback?review=true&app=all` (solo el owner de Central) devuelve los nuevos y los pendientes de verificar de todas las apps.
+  - `context.routeRaw` (la ruta real sin consulta) se guarda aparte en `route_raw` y solo vuelve, como `routeRaw`, al revisor y a quien informó.
+  - Lo operativo no espera revisión.
 - **`sync-client` 0.4:** `onSessionEnd(userId)` avisa al cerrar sesión o al entrar otra persona. El resumen de sincronización para el contexto es `status()`, con `pendingCommands`, `conflicts`, `lastPullAt` y `cursor`.
 
 

@@ -175,3 +175,28 @@ test('feedback · worker: cuenta de servicio bajo demanda, petición a Tasks sin
   assert.equal(again.routed, 0, 'nada que enrutar dos veces');
   assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.profiles where service_name = 'feedback'`)).rows[0]!.n, 1, 'una sola cuenta de servicio');
 });
+
+test('feedback · revisor: lo de aplicación entra como nuevo; solo el owner del ecosistema lo ve en revisión, aprueba o une; ruta real solo para él y quien informó', async () => {
+  const a = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ message: 'El botón no responde.', context: { routeRaw: '#/reservas/3f2a1b4c-0000-4000-8000-000000000000/huespedes?tab=2', route: '#/reservas/x' } }) });
+  assert.equal(a.status, 200, JSON.stringify(a.data)); assert.equal(a.data.report.reviewStatus, 'new');
+  const b = await app.call('/api/v1/feedback', { token: app.tokens.reader, body: report({ message: 'Lo mismo: no responde.' }) });
+  assert.equal(b.data.report.reviewStatus, 'new');
+  assert.equal((await app.call('/api/v1/feedback?review=true&app=all', { token: app.tokens.editor })).status, 403, 'solo el owner del ecosistema revisa');
+  const queue = await app.call('/api/v1/feedback?review=true&app=all', { token: app.tokens.owner });
+  assert.equal(queue.status, 200); assert.ok(queue.data.items.some((r: any) => r.code === a.data.report.code));
+  const mine = await app.call(`/api/v1/feedback/${a.data.report.code}`, { token: app.tokens.owner });
+  assert.equal(mine.data.report.routeRaw, '#/reservas/3f2a1b4c-0000-4000-8000-000000000000/huespedes', 'la ruta real, sin consulta');
+  assert.equal(JSON.stringify(mine.data.context).includes('routeRaw'), false, 'no se queda en el contexto');
+  const other = await app.call(`/api/v1/feedback/${a.data.report.code}`, { token: app.tokens.editor });
+  assert.equal(other.data.report.routeRaw, null, 'otros no ven la ruta real');
+  assert.equal((await app.call(`/api/v1/feedback/${a.data.report.id}/approve`, { token: app.tokens.editor, body: {} })).status, 403);
+  const approved = await app.call(`/api/v1/feedback/${a.data.report.id}/approve`, { token: app.tokens.owner, body: {} });
+  assert.equal(approved.data.report.reviewStatus, 'approved');
+  const merged = await app.call(`/api/v1/feedback/${b.data.report.id}/merge`, { token: app.tokens.owner, body: { into: a.data.report.code } });
+  assert.equal(merged.status, 200, JSON.stringify(merged.data));
+  assert.equal(merged.data.report.status, 'dismissed'); assert.equal(merged.data.report.mergedInto, a.data.report.code);
+  const target = await app.call(`/api/v1/feedback/${a.data.report.id}`, { token: app.tokens.owner });
+  assert.ok(target.data.report.supportersCount >= 1, 'quien informó el duplicado apoya el original');
+  const space = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ subject: 'space', intent: 'problem', category: 'cleaning', node: undefined }) });
+  assert.equal(space.data.report.reviewStatus, 'approved', 'lo operativo no espera revisión');
+});
