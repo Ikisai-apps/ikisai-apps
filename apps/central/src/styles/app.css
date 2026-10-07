@@ -44,3 +44,16 @@
 /* Agentes */
 .agentrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
 .agentrow > div{min-width:0;overflow-wrap:anywhere}
+
+/* Entidad */
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.entitycard{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);max-width:720px}
+.entitylogo{display:block;max-width:220px;max-height:120px;object-fit:contain}
+.kvlist{display:grid;gap:8px;margin:0}
+.kv{display:grid;grid-template-columns:minmax(0,140px) minmax(0,1fr);gap:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:480px){.kv{grid-template-columns:1fr;gap:2px}}
+.fieldrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.logopreview{display:flex;align-items:center;min-height:48px;margin:6px 0}
+.btnlike{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;cursor:pointer;width:max-content}

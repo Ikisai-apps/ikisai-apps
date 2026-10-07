@@ -23,7 +23,6 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
     el('section', { class: 'card soon' },
       el('h3', null, 'Próximamente en Central'),
       el('ul', { class: 'plainlist' },
-        el('li', null, 'Datos de la entidad (razón social, NIF, domicilio y logotipo) para propuestas y facturas.'),
         el('li', null, 'Personas: ficha, contacto reservado, documentación y formación con caducidad.'),
         el('li', null, 'Cumplimiento: obligaciones legales, seguros y licencias con sus vencimientos.'),
         el('li', null, 'Panel de dirección con los indicadores de cada app.'))),

@@ -7,6 +7,7 @@ export const T = {
   people: 'central.people',
   personPrivate: 'central.person_private',
   personRecords: 'central.person_records',
+  entity: 'central.entity',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */

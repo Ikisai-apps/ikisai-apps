@@ -7,6 +7,7 @@ import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
   recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, type RecordKind,
 } from './people.ts';
+import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
 
 export interface DomainOperation {
   op: string;
@@ -30,10 +31,11 @@ export interface Actor {
 }
 
 type FieldSpec =
-  | { kind: 'text'; max: number; min?: number; nullable?: boolean; email?: boolean }
+  | { kind: 'text'; max: number; min?: number; nullable?: boolean; email?: boolean; pattern?: RegExp; patternText?: string }
   | { kind: 'enum'; values: readonly string[]; nullable?: boolean }
   | { kind: 'boolean' }
-  | { kind: 'uuid'; nullable?: boolean }
+  /** `file`: también admite el marcador `{"$blob": sha}` que sync-client sustituye por el id al subir el archivo. */
+  | { kind: 'uuid'; nullable?: boolean; file?: boolean }
   | { kind: 'date'; nullable?: boolean }
   | { kind: 'number'; nullable?: boolean };
 
@@ -85,12 +87,29 @@ const SPECS: Record<string, TableSpec> = {
       issued_on: { kind: 'date', nullable: true },
       expires_on: { kind: 'date', nullable: true },
       reviewed_on: { kind: 'date', nullable: true },
-      file_id: { kind: 'uuid', nullable: true },
+      file_id: { kind: 'uuid', nullable: true, file: true },
       notes: { kind: 'text', max: 500, nullable: true },
       position: { kind: 'number' },
     },
     required: ['person_id', 'kind', 'record_type'],
     immutable: ['person_id'],
+  },
+  [ENTITY_TABLE]: {
+    fields: {
+      legal_name: { kind: 'text', min: 1, max: 200 },
+      trade_name: { kind: 'text', min: 1, max: 120, nullable: true },
+      tax_id: { kind: 'text', min: 8, max: 15, pattern: /^[A-Z0-9]+$/, patternText: 'solo letras mayúsculas y cifras, sin espacios' },
+      address_line: { kind: 'text', min: 1, max: 200 },
+      postal_code: { kind: 'text', min: 3, max: 12 },
+      city: { kind: 'text', min: 1, max: 80 },
+      province: { kind: 'text', min: 1, max: 80, nullable: true },
+      country: { kind: 'text', min: 2, max: 2, pattern: /^[A-Z]{2}$/, patternText: 'código de país de dos letras' },
+      email: { kind: 'text', max: 320, nullable: true, email: true },
+      phone: { kind: 'text', max: 32, nullable: true },
+      website: { kind: 'text', max: 200, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
+      logo_file_id: { kind: 'uuid', nullable: true, file: true },
+    },
+    required: ['legal_name', 'tax_id', 'address_line', 'postal_code', 'city'],
   },
 };
 
@@ -113,11 +132,14 @@ function checkField(spec: FieldSpec, value: unknown): string | null {
       if (length < (spec.min ?? 0)) return 'no puede estar vacío';
       if (value.length > spec.max) return `admite como mucho ${spec.max} caracteres`;
       if (spec.email && !EMAIL.test(value)) return 'no es un correo válido';
+      if (spec.pattern && !spec.pattern.test(value)) return spec.patternText ?? 'formato no válido';
       return null;
     }
     case 'enum': return typeof value === 'string' && spec.values.includes(value) ? null : 'valor no admitido';
     case 'boolean': return typeof value === 'boolean' ? null : 'debe ser sí o no';
-    case 'uuid': return typeof value === 'string' && UUID.test(value) ? null : 'identificador inválido';
+    case 'uuid':
+      if (spec.file && typeof value === 'object' && typeof (value as { $blob?: unknown }).$blob === 'string') return null;
+      return typeof value === 'string' && UUID.test(value) ? null : 'identificador inválido';
     case 'date': return typeof value === 'string' && isDate(value) ? null : 'fecha inválida';
     case 'number': return typeof value === 'number' && Number.isFinite(value) ? null : 'debe ser un número';
   }
@@ -154,6 +176,14 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       for (const field of spec.immutable ?? []) {
         if (field in fields) return { code: 'IMMUTABLE_FIELD', message: `El campo ${field} no se puede cambiar.`, details: { index, table, field } };
       }
+    }
+    if (table === ENTITY_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra puede cambiar los datos de la entidad.', details: { index, table } };
+    }
+    if (table === ENTITY_TABLE && typeof fields.tax_id === 'string') {
+      const problem = taxIdProblem(fields.tax_id);
+      const country = (op.id && current ? current(table, op.id)?.country : undefined) ?? fields.country ?? 'ES';
+      if (problem && country === 'ES') return fieldIssue(index, table, 'tax_id', problem);
     }
     if (table === TABLES.people && 'user_id' in fields && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede enlazar una cuenta.', details: { index, table, field: 'user_id' } };

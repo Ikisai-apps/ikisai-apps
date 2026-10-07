@@ -1,6 +1,7 @@
 /**
  * Central · servidor HTTP para las pruebas de interfaz: la `central-api` real (núcleo + admin) sobre PGlite con el
  * Supabase simulado del test-kit. Sin API falsa: lo que ve la pantalla es lo que responde la Edge.
+ * La subida directa al bucket (PUT a la URL firmada) se reenvía aquí: `uploadUrl` pasa a `/api/__upload?path=…`.
  */
 import { createServer, type Server } from 'node:http';
 import { createTestApp, TEST_PASSWORD, type TestApp } from '../../packages/test-kit/src/http.ts';
@@ -23,6 +24,13 @@ export async function startCentralServer(): Promise<CentralTestServer> {
     try {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
+      const local = new URL(req.url ?? '/', 'http://local');
+      if (local.pathname === '/api/__upload' && req.method === 'PUT') {
+        app.supabase.storage.set(local.searchParams.get('path') ?? '', new Uint8Array(Buffer.concat(chunks)));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+        return;
+      }
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) if (typeof value === 'string' && key !== 'host' && key !== 'content-length') headers.set(key, value);
       // El proxy de `vite preview` conserva el Origin del navegador: la Edge solo admite el de producción.
@@ -31,8 +39,16 @@ export async function startCentralServer(): Promise<CentralTestServer> {
         method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : Buffer.concat(chunks),
       });
       const response = await app.handler(request);
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      res.end(Buffer.from(await response.arrayBuffer()));
+      let payload = Buffer.from(await response.arrayBuffer());
+      const headersOut = Object.fromEntries(response.headers);
+      if (local.pathname === '/api/v1/uploads' && response.ok) {
+        const ticket = JSON.parse(payload.toString('utf8'));
+        if (typeof ticket.path === 'string') ticket.uploadUrl = `/api/__upload?path=${encodeURIComponent(ticket.path)}`;
+        payload = Buffer.from(JSON.stringify(ticket));
+        delete headersOut['content-length'];
+      }
+      res.writeHead(response.status, headersOut);
+      res.end(payload);
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: { code: 'TEST_SERVER', message: String(error), details: null } }));

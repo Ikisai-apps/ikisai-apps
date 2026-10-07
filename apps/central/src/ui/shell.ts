@@ -5,6 +5,7 @@ import { createAdminApi, type AdminApi } from '../app/admin.ts';
 import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
+import { mountEntity } from './entity.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -27,7 +28,10 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
 
 /** Accesos solo para quien administra el ecosistema (owner de Central). Personas y Cumplimiento llegan en V1-b y V1.1. */
 function navFor(isAdmin: boolean): NavItem[] {
-  const items: NavItem[] = [{ hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] }];
+  const items: NavItem[] = [
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
+    { hash: '#/entidad', label: 'Entidad', icon: 'briefcase' },
+  ];
   if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
   return items;
 }
@@ -35,6 +39,7 @@ function navFor(isAdmin: boolean): NavItem[] {
 const ROUTES: Record<string, { title: string; mount: ViewMount; admin?: boolean }> = {
   '#/': { title: 'Inicio', mount: mountHome },
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
+  '#/entidad': { title: 'Entidad', mount: mountEntity },
   '#/accesos': { title: 'Accesos', mount: mountAccess('cuentas'), admin: true },
   '#/accesos/alta': { title: 'Alta de cuenta', mount: mountAccess('alta'), admin: true },
   '#/accesos/agentes': { title: 'Agentes', mount: mountAccess('agentes'), admin: true },

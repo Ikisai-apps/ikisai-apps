@@ -202,20 +202,33 @@ El estado `ok | atencion | critico` de C01 se calcula al leer; no se guarda.
 
 `PER` (personas), `LEG` (requisitos, como C09), `DOC` (documentos clave). Registro en este documento (contrato §2.3). `EXP` queda reservado para expedientes cuando entren.
 
-### 2.9 Configuración común (bloque 5, por definir)
+### 2.9 Configuración común · Entidad (aprobado por el usuario, ronda 3)
 
-No propongo tabla todavía: no hay un parámetro sin dueño que alguna app esté esperando. Candidatos encontrados al cruzar las hojas, con mi opinión:
+Primer bloque de configuración común: los datos legales de Ikisai. Migración `0501_central_entity`. Los datos reales no van en Git: los escribe el owner en la pantalla **Entidad**.
 
-| Candidato | ¿Sin dueño hoy? | Opinión |
+`central.entity` — una sola fila viva (`unique ((true)) where deleted_at is null`). Lectura `{reader, editor, owner}`; **escritura solo `{owner}`**.
+
+| Columna | Tipo | Notas |
 |---|---|---|
-| Datos de la entidad (razón social, NIF, domicilio, contacto, logotipo) | Finance los necesita para facturas emitidas; los portales, para textos legales | **Sí, buen candidato**: una sola fila `central.organization`, publicada como proyección a las apps que la pidan. |
-| Textos legales y versiones de consentimiento (RGPD, imagen, alergias) | Nadie; los necesitan Guests y Organizers | Candidato para la fase de portales, junto con el registro de tratamientos. |
-| Plazos de conservación por tipo de dato | Booking ya fija 3 años para huéspedes en su dominio | Mejor como parte del registro de tratamientos (cumplimiento), no como parámetro. |
-| Catálogo de espacios y zonas | Ya es de Booking (`booking.spaces`), Tasks lo lee | No: tiene dueño. |
-| Tipos de evento, categorías de gasto | Booking e Invoices, respectivamente | No: tienen dueño. |
-| Zona horaria, moneda | Fijas (Europe/Madrid, EUR) en todas | No hace falta tabla. |
+| `legal_name` | `text not null` | Razón social, 1–200. |
+| `trade_name` | `text null` | Nombre comercial, ≤ 120. |
+| `tax_id` | `text not null` | NIF/CIF normalizado (mayúsculas, sin espacios ni guiones; `^[A-Z0-9]{8,15}$`). Con `country = 'ES'`, `_domain/central` comprueba el control de NIF, NIE o CIF. |
+| `address_line`, `postal_code`, `city` | `text not null` | Domicilio fiscal. |
+| `province` | `text null` | |
+| `country` | `text not null default 'ES'` | ISO de dos letras. |
+| `email`, `phone`, `website` | `text null` | Contacto de la entidad (no personal); la web empieza por `https://`. |
+| `logo_file_id` | `uuid null` | Archivo de Central verificado, PNG, JPEG o WebP. Se sube **sin recomprimir** si pesa hasta 2 MB (un logotipo no es una foto: excepción explícita al contrato §11.3); si pesa más, se reduce en el cliente. |
 
-Si se aprueba, el patrón sería: tablas tipadas en `central.*` (nunca un `settings` clave-valor en `jsonb`, contrato §2.1) y una proyección `central.<app>_organization_projection` registrada para cada app lectora. Pregunta 5 de §15.
+**Proyección `central.common_entity_projection`** (registrada para `booking`, `invoices` y `central`):
+
+```text
+entity_id, legal_name, trade_name, tax_id, address_line, postal_code, city, province, country, email, phone, website,
+entity_revision, updated_at, logo_file_id, logo_bucket, logo_path, logo_mime, logo_sha256
+```
+
+La leen Booking (documento de la propuesta al organizador) y Finance (facturas emitidas) con `GET read/central.common_entity_projection` en su propia API. El **logotipo** va como referencia al archivo verificado (`logo_bucket`, `logo_path`): la Edge lectora firma una URL de lectura con su clave de servicio (`POST /storage/v1/object/sign/<bucket>/<path>`), igual que `files/:id`, o descarga los bytes para incrustarlos. `entity_revision` sirve para saber si un documento ya emitido usó datos anteriores (contrato §8).
+
+Otros candidatos de configuración común, sin hacer hasta que alguien los pida: textos legales y versiones de consentimiento (fase de portales), plazos de conservación (irán con el registro de tratamientos). Espacios, tipos de evento y categorías de gasto ya tienen dueño.
 
 ---
 
@@ -332,6 +345,7 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 |---|---|---|---|
 | `central.booking_person_projection` | booking | `person_id, code, display_name, base_role, active, revision` | Booking ya prevé `staff_assignments.person_ref_*` para elegir a la persona del turno sin copiarla (§15.3 de su `API.md`). Solo el nombre visible y la función, nunca contacto. **Se publica cuando Booking lo pida**; nota: Booking lo apunta como `target_app = 'encarna'` y debería ser `'central'`. |
 | `central.booking_blocking_projection` (V2) | booking, tasks | `requirement_id, code, name, blocks_operation, state, expires_on` de requisitos vencidos que bloquean la operación | C09 «bloquea operación»: aviso en Booking y Tasks. Se propone; no entra en V1. |
+| `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
 | `central.<destino>_kpi_projection` de Central | central | Como §7.2 | Vencimientos y riesgos también son KPIs del panel. |
 
 ### 7.2 Contrato de KPIs (lo que Central pide a cada app)
