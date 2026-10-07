@@ -121,7 +121,8 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
   });
 
   await test.step('«Sugerencias y QA» lista el reporte (Abiertos y Mapa)', async () => {
-    await page.locator('#feedbackCenter').click();
+    await page.locator('#appLauncher').click();
+    await page.locator('.launcher-center').click();
     const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
     await expect(sheet).toBeVisible();
     await sheet.getByRole('tab', { name: 'Abiertos' }).click();
