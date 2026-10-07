@@ -84,6 +84,8 @@ export class TasksCore {
   session(): Session | null { return this.client.session(); }
   bootstrap(): Bootstrap | null { return this.client.bootstrap(); }
   status(): SyncStatus { return this.client.status(); }
+  /** Al cerrar sesión o cambiar de cuenta: el feedback y el uso borran lo local de esa cuenta. */
+  onSessionEnd(listener: (userId: string) => void): () => void { return this.client.onSessionEnd(listener); }
   hasData(): boolean { return this.data['tasks.tabs'].length > 0; }
 
   async login(email: string, password: string): Promise<Bootstrap | null> {

@@ -210,11 +210,11 @@ body{background:var(--bg)}
 @keyframes pop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 /* Selector lista/tablero y tablero por horizonte de fecha. */
-.segmented{display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:rgba(31,42,34,.07);margin-left:8px;text-transform:none;letter-spacing:0}
-.segmented button{border:0;background:transparent;width:32px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);padding:0}
-.segmented button:hover{color:var(--ink)}
-.segmented button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
-.segmented .menuicon{width:16px;height:16px}
+.segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented){display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:rgba(31,42,34,.07);margin-left:8px;text-transform:none;letter-spacing:0}
+.segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented) button{border:0;background:transparent;width:32px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);padding:0}
+.segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented) button:hover{color:var(--ink)}
+.segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented) button.on{background:var(--paper);color:var(--accent-deep);box-shadow:var(--shadow-1)}
+.segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented) .menuicon{width:16px;height:16px}
 .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,1fr);gap:10px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity;scrollbar-width:thin}
 .boardcol{display:flex;flex-direction:column;gap:8px;min-height:140px;padding:10px;border-radius:16px;background:rgba(31,42,34,.04);border:1px dashed transparent;scroll-snap-align:start;transition:background .15s,border-color .15s}
 .boardcol.drop{background:var(--accent-soft);border-color:var(--accent)}
@@ -308,8 +308,8 @@ html.dark .personbar{background:rgba(236,229,216,.1)}
 html.dark .personbar .donepart{background:color-mix(in srgb,var(--accent) 30%,transparent)}
 html.dark .empty{border-color:rgba(236,229,216,.16);color:var(--muted)}
 html.dark .skeleton span{background:linear-gradient(90deg,rgba(236,229,216,.06) 25%,rgba(236,229,216,.14) 50%,rgba(236,229,216,.06) 75%);background-size:200% 100%}
-html.dark .segmented{background:rgba(236,229,216,.08)}
-html.dark .segmented button.on{background:var(--paper);color:var(--accent-deep)}
+html.dark .segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented){background:rgba(236,229,216,.08)}
+html.dark .segmented:where(:not(.ikisai-kit .segmented),.ikisai-legacy .segmented) button.on{background:var(--paper);color:var(--accent-deep)}
 html.dark .boardcol{background:rgba(236,229,216,.04)}
 html.dark .boardcol.drop{background:var(--accent-soft)}
 html.dark .boardhead .count{background:rgba(236,229,216,.1);color:var(--ink)}

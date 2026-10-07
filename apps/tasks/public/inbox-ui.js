@@ -26,10 +26,10 @@ function inboxView(){listenInbox();
   if(!canTriage())return `<main class="screen"><h1 class="title">Por clasificar</h1><div class="notice">Las peticiones de otras apps las clasifica quien tiene acceso a toda la app.</div></main>`;
   const groups=R().requestGroups(Sync.core.data);
   const row=r=>`<div class="pcard" data-request-row="${r.id}"><span class="phead">${originChip(r.source)}<strong>${esc(r.title)}</strong>${r.priority!=='normal'?priorityStar(r.priority):''}</span>
-    <span class="pmeta">${[r.due?'para el '+new Date(r.due+'T00:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'}):'',r.external_ref.slice(r.external_ref.indexOf(':')+1)].filter(Boolean).map(esc).join(' · ')}${r.external_url?` · <a href="${esc(r.external_url)}" target="_blank" rel="noopener">Abrir en ${esc(appName(r.source))}</a>`:''}</span>
-    <div class="pactions"><span class="pgrow"></span><button class="softbtn small" data-request-move="${r.id}" type="button">Mover a…</button><button class="ghost small" data-request-dismiss="${r.id}" type="button">Descartar</button></div></div>`;
-  return `<main class="screen inbox"><div class="screenhead"><div><h1 class="title">Por clasificar</h1><p class="subtitle">Peticiones de otras apps sin regla de entrada</p></div>${canManageRoutes()?'<button class="softbtn" id="manageRoutes" type="button">Gestionar entradas</button>':''}</div>
-    ${groups.length?groups.map(g=>`<section class="inboxgroup"><h2 class="sectionlabel">${esc(appName(g.source))} · ${esc(kindName(g.kind,g.label))} <span class="count">${g.items.length}</span>${canManageRoutes()?` <button class="linkbtn small" data-route-new="${esc(g.kind)}" type="button">Crear regla para este tipo</button>`:''}</h2>${g.items.map(row).join('')}</section>`).join(''):'<div class="empty">Nada por clasificar. Lo que pidan otras apps sin regla de entrada aparecerá aquí.</div>'}</main>`}
+    <span class="pmeta">${[r.due?'para el '+new Date(r.due+'T00:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'}):'',r.external_ref.slice(r.external_ref.indexOf(':')+1)].filter(Boolean).map(esc).join(' · ')}${r.external_url?` · <a href="${esc(r.external_url)}" target="_blank" rel="noopener" data-feedback-id="tasks.por_clasificar.lista.abrir_origen" data-feedback-label="Abrir en la app de origen">Abrir en ${esc(appName(r.source))}</a>`:''}</span>
+    <div class="pactions"><span class="pgrow"></span><button class="softbtn small" data-request-move="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.mover" data-feedback-label="Mover petición a…">Mover a…</button><button class="ghost small" data-request-dismiss="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.descartar" data-feedback-label="Descartar petición">Descartar</button></div></div>`;
+  return `<main class="screen inbox"><div class="screenhead"><div><h1 class="title">Por clasificar</h1><p class="subtitle">Peticiones de otras apps sin regla de entrada</p></div>${canManageRoutes()?'<button class="softbtn" id="manageRoutes" type="button" data-feedback-id="tasks.por_clasificar.gestionar_entradas" data-feedback-label="Gestionar entradas">Gestionar entradas</button>':''}</div>
+    ${groups.length?groups.map(g=>`<section class="inboxgroup"><h2 class="sectionlabel">${esc(appName(g.source))} · ${esc(kindName(g.kind,g.label))} <span class="count">${g.items.length}</span>${canManageRoutes()?` <button class="linkbtn small" data-route-new="${esc(g.kind)}" type="button" data-feedback-id="tasks.por_clasificar.grupo.crear_regla" data-feedback-label="Crear regla para este tipo">Crear regla para este tipo</button>`:''}</h2>${g.items.map(row).join('')}</section>`).join(''):'<div class="empty">Nada por clasificar. Lo que pidan otras apps sin regla de entrada aparecerá aquí.</div>'}</main>`}
 
 const mainBeforeInbox=main;
 main=function(){return state.view==='triage'?inboxView():mainBeforeInbox()};
@@ -40,19 +40,19 @@ function destinationFields(current={}){const data=Sync.core.data,tabs=inboxRows(
   const projects=inboxRows('tasks.projects').filter(p=>p.tab_id===tabId&&p.status!=='archived').sort((a,b)=>(a.system==='inbox'?-1:b.system==='inbox'?1:(a.position||0)-(b.position||0)));
   const people=new Set(inboxRows('tasks.families').filter(f=>f.tab_id===tabId&&f.system_key==='person').map(f=>f.id));
   const owners=inboxRows('tasks.labels').filter(l=>l.tab_id===tabId&&people.has(l.family_id)&&!l.archived);
-  return `<div class="field"><label for="destTab">Área</label><select id="destTab">${tabs.map(t=>`<option value="${t.id}" ${t.id===tabId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
-    <div class="field"><label for="destProject">Proyecto</label><select id="destProject">${projects.map(p=>`<option value="${p.system==='inbox'?'':p.id}" ${(p.system==='inbox'?!current.project_id:p.id===current.project_id)?'selected':''}>${esc(p.system==='inbox'?'Entrada del área':p.title)}</option>`).join('')}</select></div>
-    <div class="field"><label for="destOwner">Responsable</label><select id="destOwner"><option value="">Sin responsable</option>${owners.map(l=>`<option value="${l.id}" ${l.id===current.owner_label_id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div>`}
+  return `<div class="field"><label for="destTab">Área</label><select id="destTab" data-feedback-id="tasks.destino.area" data-feedback-label="Área de destino">${tabs.map(t=>`<option value="${t.id}" ${t.id===tabId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
+    <div class="field"><label for="destProject">Proyecto</label><select id="destProject" data-feedback-id="tasks.destino.proyecto" data-feedback-label="Proyecto de destino">${projects.map(p=>`<option value="${p.system==='inbox'?'':p.id}" ${(p.system==='inbox'?!current.project_id:p.id===current.project_id)?'selected':''}>${esc(p.system==='inbox'?'Entrada del área':p.title)}</option>`).join('')}</select></div>
+    <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${owners.map(l=>`<option value="${l.id}" ${l.id===current.owner_label_id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div>`}
 function destinationValue(){const tab_id=document.getElementById('destTab').value,project=document.getElementById('destProject').value||null;
   const inbox=inboxRows('tasks.projects').find(p=>p.tab_id===tab_id&&p.system==='inbox');
   return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:document.getElementById('destOwner').value||null}}
 function bindDestination(reopen){const t=document.getElementById('destTab');if(t)t.onchange=()=>reopen({tab_id:t.value})}
 
 function moveRequestSheet(id,current={}){const r=inboxRows('tasks.requests').find(x=>x.id===id);if(!r)return;
-  openSheet(`<h2 class="sheettitle">Mover a…</h2><p>${originChip(r.source)} ${esc(r.title)}</p>${destinationFields(current)}<div class="actions"><button class="primary" id="moveRequest" type="button">Crear la tarea aquí</button></div>`);
+  openSheet(`<h2 class="sheettitle">Mover a…</h2><p>${originChip(r.source)} ${esc(r.title)}</p>${destinationFields(current)}<div class="actions"><button class="primary" id="moveRequest" type="button" data-feedback-id="tasks.mover_peticion.crear_tarea" data-feedback-label="Crear la tarea aquí">Crear la tarea aquí</button></div>`);
   bindDestination(c=>moveRequestSheet(id,c));
   document.getElementById('moveRequest').onclick=()=>{const d=destinationValue();if(!d.target_project)return toast('Elige un proyecto.');
-    if(purchaseRun(data=>R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id}),'Tarea creada.'))inboxDone()}}
+    if(purchaseRun(data=>R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id}),'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
 
 function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,routes=inboxRows('tasks.request_routes');
   const kinds=new Map();for(const r of inboxRows('tasks.requests'))kinds.set(r.kind,{kind:r.kind,source:r.source,label:r.kind_label||kinds.get(r.kind)?.label||null});
@@ -61,8 +61,8 @@ function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,ro
     const tabName=inboxRows('tasks.tabs').find(t=>t.id===route.tab_id)?.name||'',p=inboxRows('tasks.projects').find(x=>x.id===project);return esc(tabName+' › '+(p?.system==='inbox'?'Entrada':p?.title||''))};
   const list=[...kinds.values()].sort((a,b)=>a.kind.localeCompare(b.kind));
   openSheet(`<h2 class="sheettitle">Gestionar entradas</h2><p class="small muted">Qué hace Tasks con cada tipo de petición de otras apps. Sin regla, espera en «Por clasificar».</p>
-    ${list.length?list.map(k=>`<button type="button" class="pcard" data-route-edit="${esc(k.kind)}"><span class="phead">${originChip(k.source)}<strong>${esc(kindName(k.kind,k.label))}</strong></span><span class="pmeta">${where(routes.find(r=>r.kind===k.kind))}</span></button>`).join(''):'<div class="empty">Todavía no ha llegado ninguna petición de otras apps.</div>'}
-    <div class="actions"><button class="softbtn" id="routeNew" type="button">Regla para otro tipo</button></div>`);
+    ${list.length?list.map(k=>`<button type="button" class="pcard" data-route-edit="${esc(k.kind)}" data-feedback-id="tasks.entradas.lista.regla" data-feedback-label="Editar regla de entrada"><span class="phead">${originChip(k.source)}<strong>${esc(kindName(k.kind,k.label))}</strong></span><span class="pmeta">${where(routes.find(r=>r.kind===k.kind))}</span></button>`).join(''):'<div class="empty">Todavía no ha llegado ninguna petición de otras apps.</div>'}
+    <div class="actions"><button class="softbtn" id="routeNew" type="button" data-feedback-id="tasks.entradas.nueva_regla" data-feedback-label="Regla para otro tipo">Regla para otro tipo</button></div>`);
   document.querySelectorAll('[data-route-edit]').forEach(b=>b.onclick=()=>routeSheet(b.dataset.routeEdit));
   document.getElementById('routeNew').onclick=()=>routeSheet('')}
 
@@ -70,17 +70,17 @@ function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;
   const label=current?.kind_label??existing?.kind_label??inboxRows('tasks.requests').find(r=>r.kind===kind&&r.kind_label)?.kind_label??'';
   const dest=current||existing||{};
   openSheet(`<h2 class="sheettitle">${existing?'Regla de entrada':'Regla nueva'}</h2>
-    <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'}></div>
-    <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos"></div>
+    <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'} data-feedback-id="tasks.regla_entrada.tipo" data-feedback-label="Tipo de petición"></div>
+    <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos" data-feedback-id="tasks.regla_entrada.nombre" data-feedback-label="Nombre del tipo"></div>
     ${destinationFields(dest)}
-    <div class="actions"><button class="primary" id="routeSave" type="button">Guardar</button>${existing?'<button class="ghost danger-text" id="routeDelete" type="button">Quitar regla</button>':''}</div>`);
+    <div class="actions"><button class="primary" id="routeSave" type="button" data-feedback-id="tasks.regla_entrada.guardar" data-feedback-label="Guardar regla">Guardar</button>${existing?'<button class="ghost danger-text" id="routeDelete" type="button" data-feedback-id="tasks.regla_entrada.quitar" data-feedback-label="Quitar regla">Quitar regla</button>':''}</div>`);
   bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim()},isNew));
   document.getElementById('routeSave').onclick=()=>{const k=document.getElementById('routeKind').value.trim(),d=destinationValue();
     if(!/^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/.test(k))return toast('El tipo va como app.nombre, en minúsculas.');
     if(!purchaseRun(data=>R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,owner_label_id:d.owner_label_id}),'Regla guardada.'))return;
     const waiting=R().pendingRequests(Sync.core.data,k).length;
     if(!waiting)return inboxDone();
-    openSheet(`<h2 class="sheettitle">Regla guardada</h2><p>Hay ${waiting} ${waiting===1?'petición':'peticiones'} de este tipo esperando en «Por clasificar». ¿Las mueves también?</p><div class="actions"><button class="primary" id="routeWaiting" type="button">Mover también ${waiting===1?'la que esperaba':`las ${waiting} que esperaban`}</button><button class="ghost" id="routeLater" type="button">Ahora no</button></div>`);
+    openSheet(`<h2 class="sheettitle">Regla guardada</h2><p>Hay ${waiting} ${waiting===1?'petición':'peticiones'} de este tipo esperando en «Por clasificar». ¿Las mueves también?</p><div class="actions"><button class="primary" id="routeWaiting" type="button" data-feedback-id="tasks.regla_guardada.mover_esperando" data-feedback-label="Mover también las que esperaban">Mover también ${waiting===1?'la que esperaba':`las ${waiting} que esperaban`}</button><button class="ghost" id="routeLater" type="button" data-feedback-id="tasks.regla_guardada.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
     document.getElementById('routeWaiting').onclick=()=>{if(purchaseRun(data=>R().routeWaitingOps(data,k),'Movidas.'))inboxDone()};
     document.getElementById('routeLater').onclick=()=>inboxDone()};
   const del=document.getElementById('routeDelete');if(del)del.onclick=()=>{if(purchaseRun(data=>R().deleteRouteOps(data,kind),'Regla quitada: lo nuevo de este tipo esperará en «Por clasificar».'))inboxDone()}}
@@ -105,7 +105,7 @@ function openHashView(){const view=location.hash.replace(/^#\/?/,'');hashPending
    pintará el componente del kit con la API de Core cuando existan; por ahora, el código y la tarea que lo trabaja. */
 function feedbackView(){const code=state.feedbackCode||'';const task=(Sync.core?.data?.['tasks.tasks']||[]).find(t=>t.external_ref==='feedback:'+code);
   return `<main class="screen"><h1 class="title">Reporte ${esc(code)}</h1><div class="notice">El detalle del reporte se verá aquí cuando esté disponible.</div>
-    ${task?`<button class="pcard" type="button" data-feedback-task="${task.id}"><span class="phead"><strong>${esc(task.title)}</strong>${task.deleted_at?'<span class="pstate trash">En la papelera</span>':''}</span><span class="pmeta">Abrir la tarea</span></button>`:'<p class="small muted">No hay ninguna tarea tuya enlazada a este reporte.</p>'}</main>`}
+    ${task?`<button class="pcard" type="button" data-feedback-task="${task.id}" data-feedback-id="tasks.reporte.abrir_tarea" data-feedback-label="Abrir la tarea del reporte"><span class="phead"><strong>${esc(task.title)}</strong>${task.deleted_at?'<span class="pstate trash">En la papelera</span>':''}</span><span class="pmeta">Abrir la tarea</span></button>`:'<p class="small muted">No hay ninguna tarea tuya enlazada a este reporte.</p>'}</main>`}
 const mainBeforeFeedback=main;
 main=function(){return state.view==='feedback'?feedbackView():mainBeforeFeedback()};
 const bindBeforeFeedback=bind;
