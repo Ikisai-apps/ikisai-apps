@@ -1,14 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4f6f5c"/>
-      <stop offset="1" stop-color="#2f4538"/>
+      <stop offset="0" stop-color="#cf7d3c"/>
+      <stop offset="1" stop-color="#8f4b1f"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <!-- Provisional hasta el icono de UI (U4): una puerta abierta con luz cálida -->
-  <path d="M176 400V152a24 24 0 0 1 24-24h112a24 24 0 0 1 24 24v248" fill="none" stroke="#fffdf8" stroke-width="22" stroke-linejoin="round"/>
-  <path d="M200 400V160l96-20v260z" fill="#c9a24a"/>
-  <circle cx="272" cy="280" r="12" fill="#fffdf8"/>
-  <path d="M140 400h232" stroke="#fffdf8" stroke-width="22" stroke-linecap="round"/>
+  <!-- Guests: la casa en papel crema con un huésped en oliva (el icono `guest` del kit).
+       Reducido al 90 % para caber en la zona segura de los iconos maskable. -->
+  <g transform="translate(25.6 25.6) scale(.9)">
+    <path d="M256 104c6 0 12 2 17 6l122 98c9 7 13 17 13 28v140c0 18-14 32-32 32H136c-18 0-32-14-32-32V236c0-11 4-21 13-28l122-98c5-4 11-6 17-6z" fill="#fffdf8"/>
+    <circle cx="256" cy="262" r="38" fill="#56663f"/>
+    <path d="M182 408c6-58 36-92 74-92s68 34 74 92z" fill="#56663f"/>
+  </g>
 </svg>

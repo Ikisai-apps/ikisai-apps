@@ -31,7 +31,7 @@ export function renderEntry(root: HTMLElement, options: EntryOptions): () => voi
   replace(root, el('main', { class: 'login gentry', id: 'entry', 'data-feedback-id': 'guests.entrada', 'data-feedback-label': 'Entrada' },
     el('div', { class: 'login-card' },
       el('div', { class: 'gentry-top' },
-        el('div', { class: 'login-brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('home', 22)), el('h1', null, 'Ikisai Guests')),
+        el('div', { class: 'login-brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('guest', 22)), el('h1', null, 'Ikisai Guests')),
         languageSelect()),
       el('h2', { id: 'entryTitle', 'data-feedback-id': 'guests.entrada.enlace.error', 'data-feedback-label': 'Mensaje de entrada' }, title),
       el('p', { id: 'entryText' }, text),

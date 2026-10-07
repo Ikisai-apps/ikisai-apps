@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
@@ -35,7 +35,11 @@ function serviceWorkerShell(): Plugin {
       const emitted = Object.keys(bundle).filter((file) => file !== 'sw.js' && !file.endsWith('.map'));
       const shell = ['/', ...emitted.map((file) => `/${file}`), ...publicShellFiles(path.join(root, 'public'))];
       const unique = Array.from(new Set(shell)).sort();
-      const digest = createHash('sha256').update(unique.join('\n')).digest('hex').slice(0, 12);
+      // Lo de Rollup lleva hash en el nombre; lo de `public/` (iconos, fuentes, manifiesto) no: entra también su contenido,
+      // así un icono nuevo con el mismo nombre renueva la caché.
+      const hash = createHash('sha256').update(unique.join('\n'));
+      for (const file of publicShellFiles(path.join(root, 'public'))) hash.update(readFileSync(path.join(root, 'public', file)));
+      const digest = hash.digest('hex').slice(0, 12);
       sw.code = sw.code
         .replace('"__SHELL_ASSETS__"', JSON.stringify(unique))
         .replace("'__SHELL_ASSETS__'", JSON.stringify(unique))

@@ -17,7 +17,7 @@
   Las fases 4 y 5, a grandes rasgos (§13).
 
 - 2026-10-07 · Diseño aprobado por Core. Edge `guests-api` (PR 1 de API.md §12):
-  - `createGuestsApp` con subidas al bucket `guests-documents` (PNG o WebP, ≤ 300 KB) y `GET files/:id` cerrada;
+  - `createGuestsApp` con subidas al bucket `guests-documents` (PNG o WebP, ≤ 300 KB); la lectura de archivos solo del autor la hace el kit (C7);
   - migración `0600_guests_file_gc`;
   - `tests/guests/api.test.ts` (8 pruebas, la última sobre BG1–BG6 de Booking, #284): canje, ámbito por huésped, ficha, datos con procedencia y conflicto, aviso legal, consentimiento, restricciones, firma (propia sí, ajena no), modo operativo.
 
@@ -36,6 +36,8 @@
   - español e inglés.
 
   Pruebas: 14 de nodo y 9 de Playwright (3 `@smoke`). Idiomas con el kit 0.19; textos de Central de la migración 0570.
+
+- 2026-10-08 · Guests en producción en `guests.ikisai.com` (`ven.ikisai.com` redirige). Icono propio de UI y colores terracota; la caché del service worker incluye el contenido de `public/`; sin el filtro de archivos propio (C7 en el kit).
 
 ## Pendiente
 
