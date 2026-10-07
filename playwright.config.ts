@@ -33,6 +33,8 @@ export default defineConfig({
     headless: true,
     viewport: { width: 390, height: 844 },
     locale: 'es-ES',
+    // «Hoy» de las apps es el de Madrid; con el runner en UTC, de 00:00 a 02:00 las fechas no cuadraban.
+    timezoneId: 'Europe/Madrid',
     trace: 'retain-on-failure',
     launchOptions: executablePath ? { executablePath } : {},
   },
