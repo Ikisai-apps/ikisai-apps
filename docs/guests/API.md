@@ -75,7 +75,7 @@ createApp({
 
 **Sin rutas propias en la fase 1:** todo lo que necesita lo monta el kit. Sin `portalIssuer`, porque un huésped no emite enlaces, y sin `workerKey`, porque no tiene trabajos programados.
 
-**`GET files/:id` cerrada.** El kit solo comprueba la pertenencia a la app, así que en un portal cualquier huésped podría pedir el archivo de otro (su firma) si conociera el id. Guests nunca vuelve a leer sus archivos, de modo que `guests-api` responde siempre `404 FILE_NOT_FOUND` en esa ruta (`createGuestsApp` envuelve el manejador del kit). Petición C7 a Core: que el kit lo ofrezca como opción.
+**Archivos solo de quien los subió.** En los portales, el kit solo deja leer (`GET files/:id`) y verificar (`uploads/:id/verify`) un archivo a quien lo subió: la firma de un huésped no la ve otro aunque conozca el id (C7, #288). Guests no vuelve a leer sus archivos.
 
 | Ruta (prefijo `/api/v1/`) | Uso en Guests |
 |---|---|
@@ -565,15 +565,15 @@ Detalle y estado en `docs/guests/PETICIONES.md`.
 - **C5 · Comentarios «Mi retiro» de huéspedes antes de la bandeja de Organizers** (respondida: se ofrece; los ve el personal de Booking). El destino es `organizer`, pero Organizers V1 no tiene aún «Comentarios del retiro». ¿Los ve mientras tanto el personal de Booking (que ya puede ver los reportes de portales) o escondo esa rama hasta que exista la bandeja? Propuesta: ofrecerla, porque Booking los ve.
 - **C6 · Cuentas internas de huésped al caducar** (lo hace Core con Booking). ¿Qué pasa con las cuentas `p-…@portales.ikisai.com` y sus pertenencias cuando vence la conservación de SES-4? Propuesta: el mismo trabajo de anonimización revoca el ámbito y, sin otras entradas, borra la cuenta.
 
-- **C7 · Lectura de archivos solo del autor en el kit.** Una opción de `uploads` (por ejemplo `readOwnOnly: true`) para que `GET files/:id` y `uploads/:id/verify` solo valgan para quien subió el archivo. Hoy `guests-api` cierra la lectura por su cuenta (§6.1).
+- **C7 · Lectura de archivos solo del autor en el kit** (hecha, #288). `GET files/:id` y `uploads/:id/verify` solo valen para quien subió el archivo; `guests-api` ya no necesita su propio filtro.
 
 ### A Organizers (por Core)
 
-- **O1 · URL de los materiales.** `organizers.guest_materials` no puede firmar URL desde SQL, y el `files/:id` de `guests-api` solo ve archivos de Guests (y está cerrado). Una ruta de `organizers-api` no sirve, porque los huéspedes no son miembros de Organizers. Propuesta: una ruta propia de `guests-api`, `GET materials/:fileId`, que compruebe con una lectura de Organizers que el material está publicado para la reserva del huésped y firme la URL con `createStorage`. Organizers lo confirma en su G2 de la fase 4.
+- **O1 · URL de los materiales.** `organizers.guest_materials` no puede firmar URL desde SQL, y el `files/:id` de `guests-api` solo ve archivos de Guests subidos por la propia persona. Una ruta de `organizers-api` no sirve, porque los huéspedes no son miembros de Organizers. Propuesta: una ruta propia de `guests-api`, `GET materials/:fileId`, que compruebe con una lectura de Organizers que el material está publicado para la reserva del huésped y firme la URL con `createStorage`. Organizers lo confirma en su G2 de la fase 4.
 
 ### A UI (por Core)
 
 - **U1 · Capa de traducción** (ya pedida por Core en `ui/RESPUESTAS.md`). Además: que `createFeedbackProgressiveForm` acepte catálogos con etiquetas por idioma.
 - **U2 · Recuadro de firma en el kit** (`createSignaturePad` → `Blob` PNG recortado, con borrar y deshacer, accesible y usable con el dedo). Booking tiene uno propio en `apps/booking`; tenerlo en el kit lo comparten los dos. Si no, lo hago en `apps/guests`.
 - **U3 · Estado de guardado por campo** (`guardando`, `guardado`, `pendiente`, `error` con reintento) y estado global, reutilizable por Organizers.
-- **U4 · Icono propio de Guests** y la barra inferior oculta con `nav: []` (como C6 y C8 de Organizers).
+- **U4 · Icono propio de Guests** (hecho): casa con huésped sobre terracota (`coordinacion/ui/icono-guests/`), marca `guest` del kit. El manifiesto y `theme-color` pasan a `#8f4b1f`, con fondo `#f6efe6`.
