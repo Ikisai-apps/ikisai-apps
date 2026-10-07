@@ -60,7 +60,10 @@ function normalize(spec: FieldSpec, raw: unknown): unknown {
   return text === '' ? null : text;
 }
 
-export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}): BuiltForm {
+/** Marca pequeña junto a la etiqueta de un campo (p. ej. quién lo rellenó); null si no hay. */
+export type FieldMark = (key: string) => Child;
+
+export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark): BuiltForm {
   const listeners: Array<() => void> = [];
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
   const multis = new Map<string, HTMLInputElement[]>();
@@ -111,8 +114,8 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     controls.set(spec.key, control);
     if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
     const wrap = spec.type === 'check'
-      ? el('label', { class: 'check' }, control, el('span', null, spec.label))
-      : el('label', { class: 'field' }, el('span', null, spec.label), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
+      ? el('label', { class: 'check' }, control, el('span', null, spec.label, mark?.(spec.key) ?? null))
+      : el('label', { class: 'field' }, el('span', null, spec.label, mark?.(spec.key) ?? null), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
     if (spec.showWhen) conditional.push({ wrap, spec });
     children.push(wrap);
   }
@@ -164,6 +167,8 @@ export interface RowSheetOptions {
   /** Botón de borrado en el pie: operaciones que mandan la fila a la papelera. */
   remove?: { label: string; operations: () => RowOperation[]; confirm?: string; /** Confirmación con el diálogo del kit (en vez de `confirm` del navegador). */ confirmDialog?: { title: string; text: string; confirmLabel: string } };
   savedMessage?: string;
+  /** Marca junto a la etiqueta de cada campo (origen del dato). */
+  mark?: FieldMark;
   /** Con red, espera a que el servidor resuelva el lote y, si lo rechaza, deja la hoja abierta con el motivo (reglas que solo comprueba el servidor). */
   settle?: boolean;
   submitLabel?: string;
@@ -174,7 +179,7 @@ export interface RowSheetOptions {
 /** Hoja de alta o edición de una fila. Devuelve la hoja; el pie con `Guardar` solo aparece con cambios en una edición. */
 export function openRowSheet(options: RowSheetOptions): Sheet {
   const { client, row, table } = options;
-  const form = buildForm(options.specs, row, options.defaults);
+  const form = buildForm(options.specs, row, options.defaults, options.mark);
   const merged = () => ({ ...(row ?? {}), ...(options.insertFields ?? {}), ...form.values() });
   const extraHost = el('div');
   const paintExtra = () => { extraHost.replaceChildren(); const extra = options.extra?.(merged(), form); if (extra) extraHost.append(...(Array.isArray(extra) ? (extra as Node[]) : [extra as Node])); };
