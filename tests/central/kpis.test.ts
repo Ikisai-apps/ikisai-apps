@@ -60,13 +60,13 @@ test('kpis · proyección de Central: solo recuentos, con los vencimientos de ho
   assert.equal(v('central.people_active'), 1);
   assert.equal(v('central.people_records_expired'), 1);
   assert.equal(JSON.stringify(dash.data).includes('Marga'), false);
-  // Ninguna otra app publica todavía: no rompe el panel.
-  assert.deepEqual(dash.data.unavailable, ['booking', 'invoices', 'tasks', 'food']);
+  // Las apps que aún no publican no rompen el panel (Booking ya publica la suya, migración 0450).
+  assert.deepEqual(dash.data.unavailable, ['invoices', 'tasks', 'food']);
 });
 
 test('kpis · otra app publica su proyección con el contrato y entra en el panel', async () => {
-  // Simula lo que hará Booking en su migración (vista + core.allow_read para central).
-  await app.t.db.query(`create view booking.central_kpi_projection as
+  // Sustituye la vista real de Booking por una de valores fijos con el mismo contrato (vista + core.allow_read para central).
+  await app.t.db.query(`create or replace view booking.central_kpi_projection as
     select 'booking.events_next_30d'::text as kpi, 'Eventos en los próximos 30 días'::text as label, 4::numeric as value, 'count'::text as unit,
            'actual'::text as period, current_date as period_start, current_date + 30 as period_end, 'up'::text as direction,
            'https://booking.ikisai.com/#/'::text as link, now() as computed_at
