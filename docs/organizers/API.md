@@ -292,35 +292,47 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
 
-- **Entrada.** La comercial crea en Booking una reserva «en estudio» y emite el enlace del organizador. **El borrador del retiro es esa reserva**, no un dato de Organizers, así que el personal ve cada cambio al instante.
-- **Pantalla de inicio según el estado.** Con `en_estudio` o `negociacion` muestra **«Diseña tu retiro»**. Desde `pre_reservada` muestra la preparación (fase 1).
-- **Fechas posibles.** Una o varias opciones, cada una con inicio y fin y hora aproximada; el fin de semana es la unidad. Se eligen en un calendario mensual con tres estados por día:
-  - **libre**;
-  - **en opción**: hay una prerreserva, pero no bloquea y se puede pedir igualmente;
-  - **ocupado**: no se puede seleccionar.
+**Principio (decisión del usuario, 7-10-2026): Ikisai fija y el organizador propone.** El organizador nunca fija una fecha ni acepta una propuesta; marca posibilidades, pide y comenta, y el personal decide en Booking.
 
-  El calendario nunca dice quién ocupa una fecha. Al pedir una, avisa: «El bloqueo lo hace efectivo el equipo de Ikisai al confirmarla.»
-- **Personas** previstas, sin nombres. Se pueden añadir asistentes desde ya.
-- **Orientación del menú**, con los valores de Booking (`menu_style`).
-- **Alojamiento:** con o sin pernocta. Con pernocta, las habitaciones de 2–4 plazas con baño se ofrecen como extra.
-- **Extras** del catálogo de Booking, más «Necesito otra cosa» como texto libre.
-- **Calculadora** con el motor de tarifas de Booking (`suggestLines` y `proposalTotals`), en solo lectura:
-  - precios con el **IVA incluido** y su desglose;
-  - noches = salida − llegada; cada noche incluye dos comidas por persona y las comidas extra van aparte;
-  - el **mínimo comercial** (hoy, 2500 €) se lee de los ajustes de Booking;
-  - si no hay tarifas cargadas, dice «Ikisai te enviará el precio» (el usuario las introduce antes de esta fase).
-- **Calculadora privada de margen.** Con el precio de venta, los asistentes y otros gastos calcula ingresos, margen y punto de equilibrio. Vive **solo en el dispositivo** (almacenamiento local por persona, nunca en el servidor) y se borra al cerrar la sesión.
-- **Guardado.** Automático, campo a campo, con las acciones de Booking (B7). «Pedir esta fecha» (B8) avisa al personal, que la confirma desde Booking.
+- La comercial crea el retiro en Booking (una reserva «en estudio») con los datos mínimos que tenga y emite el enlace del organizador. **El borrador del retiro es esa reserva**, no un dato de Organizers, así que el personal ve cada cambio al instante.
+- La pantalla de inicio cambia con el estado de la reserva. Con `en_estudio` o `negociacion` muestra **«Diseña tu retiro»**; desde `pre_reservada`, la preparación (fase 1).
+
+**Fechas.** Lo que ve el organizador depende de lo que haya puesto Ikisai:
+
+| Situación en Booking | Organizers muestra | El organizador puede |
+|---|---|---|
+| **Fecha definitiva** marcada por el personal | La fecha fija, con horas de llegada y salida | Nada sobre las fechas |
+| Sin fecha definitiva, con **fechas posibles propuestas por Ikisai** | Esas opciones, cada una con su estado (libre o en opción) | Marcar una o varias como «me vienen bien» |
+| Sin fecha definitiva y **sin propuestas** | Calendario con todos los fines de semana: **libre**, **en opción** (alguien tiene una prerreserva, que no bloquea) u **ocupado** (no se puede marcar) | Marcar uno o varios fines de semana disponibles como posibles |
+
+- Lo marcado son **posibilidades, nunca la fecha definitiva**. La pantalla lo dice («Ikisai confirmará la fecha definitiva») y el calendario no revela quién ocupa una fecha.
+- Cuando el comercial marca la fecha definitiva en Booking, Organizers la refleja al instante y desaparecen las opciones.
+- Se guarda solo, como el resto del diseño; cada marca avisa al comercial (B8).
+
+**El resto del diseño:**
+- Personas previstas, sin nombres; se pueden añadir asistentes desde ya.
+- Orientación del menú, con los valores de Booking (`menu_style`).
+- Alojamiento, con o sin pernocta; las habitaciones de 2–4 plazas con baño, como extra.
+- Extras del catálogo de Booking, más «Necesito otra cosa» como texto libre.
+- Todo se guarda solo, campo a campo, con las acciones de Booking (B7).
+
+**Calculadora.** Usa el motor de tarifas de Booking (`suggestLines` y `proposalTotals`) en solo lectura, con la fecha definitiva o la opción que elija el organizador:
+- Precios con el **IVA incluido** y desglosado.
+- Noches = salida − llegada. Cada noche incluye dos comidas por persona; las extra van aparte.
+- **Mínimo comercial** en los ajustes de Booking.
+- Sin tarifas cargadas, muestra «Ikisai te enviará el precio».
+
+**Calculadora privada de margen.** Calcula ingresos, margen y punto de equilibrio solo en el dispositivo, nunca en el servidor, y se borra al cerrar la sesión.
 
 ### 13.3 Fase 3 · Formalización (a grandes rasgos)
 
-- **Fecha definitiva:** la que confirma el personal.
-- **Propuesta:** se ve la enviada, con sus líneas, condiciones y tramos de cancelación. El organizador la **acepta** desde el portal si el usuario lo aprueba (pregunta en la salida).
-- **Dinero de Ikisai, en solo lectura** (de Finance):
-  - total contratado, señal requerida y pagada, saldo y vencimientos;
-  - facturas en PDF;
-  - instrucciones de pago: transferencia, Bizum o efectivo, y tarjeta cuando haya pasarela. Ningún dato de tarjeta pasa por Organizers.
-- **Proyecto de Tasks.** Al confirmar, Booking pide a Tasks el proyecto `AAAAMMDD-<título>` y las tareas de los extras contratados. Es idempotente y el proyecto se renombra si cambian la fecha o el título. Organizers no habla con Tasks.
+- **Fecha definitiva:** la que marca el personal en Booking (§13.2).
+- **Propuesta (decisión del usuario, 7-10-2026):** el organizador **no la acepta** desde el portal.
+  - Ve la propuesta enviada, con sus líneas, condiciones, tramos de cancelación y validez.
+  - Puede pulsar **«Quiero confirmar»** o **enviar comentarios**. Las dos cosas avisan al comercial y quedan en la ficha con su estado (enviado, visto, respondido).
+  - La aceptación la hace el personal en Booking: fija importe y señal, y queda registrado quién la aceptó.
+- **Dinero de Ikisai, en solo lectura** (Finance): total contratado, señal requerida y pagada, saldo, vencimientos, facturas en PDF e instrucciones de pago (transferencia, Bizum, efectivo; tarjeta cuando haya pasarela). Ningún dato de tarjeta pasa por Organizers.
+- **Al confirmar,** Booking pide a Tasks el proyecto `AAAAMMDD-<título>` (idempotente; se renombra si cambian la fecha o el título) y las tareas de los extras contratados. Organizers no habla con Tasks.
 
 ### 13.4 Fases 4 y 5 · Datos propios de Organizers (borrador del modelo)
 
