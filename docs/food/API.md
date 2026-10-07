@@ -432,7 +432,7 @@ Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con 
 - La Edge comprueba en `beforeCommit` que el archivo referenciado existe, es de la app `food`, está verificado y es una imagen.
 - Lectura con `GET files/{id}` (URL firmada de 10 minutos). Para offline, §10.2.
 
-Pendiente: política para los archivos que dejan de estar referenciados tras reemplazar una foto (P6).
+- **Campos de archivo** (contrato §3.9, `20261007_0180_food_file_fields.sql`): `recipes.photo_file_id` y `recipes.photo_thumb_file_id` registrados con `core.register_file_field` como `operational`, y recogida de huérfanos activada con `core.enable_file_gc('food')`. Así se resuelve P6: al reemplazar o quitar una foto, el archivo anterior queda huérfano y Core lo borra pasados 30 días. Food no llama nunca a `/storage/v1/object…`: sube y lee con `sync-client` y `GET files/{id}`.
 
 ---
 

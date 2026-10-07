@@ -1,4 +1,4 @@
-/** Food · indicadores para el panel de Dirección de Central (docs/food/API.md §7.4) contra PGlite. */
+/** Food · lo que publica para Core y Central contra PGlite: indicadores del panel de Dirección (API.md §7.4) y campos de archivo (§8). */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
@@ -64,4 +64,10 @@ test('indicadores para Central: menús sin validar en 30 días y listas de la co
   assert.equal(row.link, 'https://food.ikisai.com/#/menus');
   assert.equal(Number((await app.t.db.query<{ n: number }>(
     `select count(*) n from core.allowed_reads where app = 'central' and name = 'food.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
+});
+
+test('campos de archivo (§3.9): foto y miniatura de la receta operativas; recogida de huérfanos activada', async () => {
+  const q = await app.t.db.query<{ t: string; retention: string }>(`select table_name || '.' || column_name t, retention from core.file_fields where schema_name = 'food' order by 1`);
+  assert.deepEqual(q.rows.map((r) => `${r.t}:${r.retention}`), ['recipes.photo_file_id:operational', 'recipes.photo_thumb_file_id:operational']);
+  assert.equal((await app.t.db.query(`select 1 from core.file_gc_apps where app = 'food'`)).rows.length, 1);
 });
