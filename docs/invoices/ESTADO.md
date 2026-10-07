@@ -89,6 +89,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Numeración como dato de la serie (ronda 47, migración 0218): formato con `{aa}`, año de la serie y último número inicial; 2026 continúa la hoja (`F_03_26`), 2027 con serie nueva (`F2027-0001`). Series `F` y `R` de 2026 sembradas (migración 0219).
 
+- Pruebas `@smoke` (norma nueva de la CI por app): entrada y sincronización, PWA y caché, lanzador, y la pantalla de cada sección con sus ids. Las corre la CI cuando cambia algo compartido.
+
 ## En curso
 
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. PR 4 hecho: facturar desde una reserva (borrador relleno desde Booking con IVA incluido exacto, asignado a la reserva, sin duplicar). Directorio de clientes por NIF hecho (ronda 46, migración 0216): búsqueda en el borrador y guardar o actualizar al emitir.
