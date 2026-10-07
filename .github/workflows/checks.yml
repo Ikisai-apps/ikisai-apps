@@ -113,7 +113,7 @@ jobs:
   uikit:
     name: Pruebas del ui-kit
     needs: cambios
-    if: needs.cambios.outputs.uikit == 'true' && hashFiles('packages/ui-kit/tests/playwright.config.ts') != ''
+    if: needs.cambios.outputs.uikit == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
