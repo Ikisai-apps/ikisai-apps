@@ -5,6 +5,43 @@
 import type { Dictionary } from './i18n.ts';
 
 export const KIT_EN: Dictionary = {
+  // Estado de guardado
+  'Guardando…': 'Saving…',
+  'Guardado': 'Saved',
+  'Pendiente: se guardará con conexión': 'Pending: it will be saved when you are online',
+  'No se guardó': 'Not saved',
+  'Hay cambios sin guardar': 'There are unsaved changes',
+
+  // Recuadro de firma
+  'Firma': 'Signature',
+  'Deshacer': 'Undo',
+  'Borrar': 'Clear',
+  'Escribe tu nombre como firma': 'Type your name as your signature',
+  'Escribir mi nombre': 'Type my name',
+  'Firmar a mano': 'Sign by hand',
+  'vacía': 'empty',
+  'firmado': 'signed',
+  'Firmado': 'Signed',
+
+  // Instalar la app
+  'Instala la app': 'Install the app',
+  'Instala {app}': 'Install {app}',
+  'Instalar {app}': 'Install {app}',
+  'Instalar': 'Install',
+  'Seguir en la web': 'Keep using the web',
+  'Ahora no': 'Not now',
+  'Con {app} en tu pantalla de inicio se abre al momento, a pantalla completa, y funciona aunque no haya cobertura.': 'With {app} on your home screen it opens instantly, full screen, and works even without signal.',
+  'Tu navegador no deja instalarla desde aquí. Puedes hacerlo así:': 'Your browser does not allow installing it from here. You can do it like this:',
+  'También puedes seguir usándola en el navegador: es la misma app.': 'You can also keep using it in the browser: it is the same app.',
+  'Se abre al momento y funciona sin cobertura.': 'Opens instantly and works without signal.',
+  'Abre esta página en Safari.': 'Open this page in Safari.',
+  'Toca Compartir (el cuadrado con la flecha).': 'Tap Share (the square with the arrow).',
+  'Elige «Añadir a pantalla de inicio».': 'Choose “Add to Home Screen”.',
+  'Abre el menú del navegador (⋮).': 'Open the browser menu (⋮).',
+  'Elige «Instalar aplicación» o «Añadir a pantalla de inicio».': 'Choose “Install app” or “Add to Home screen”.',
+  'Busca el icono de instalar en la barra de direcciones, o abre el menú del navegador.': 'Look for the install icon in the address bar, or open the browser menu.',
+  'Elige «Instalar {app}».': 'Choose “Install {app}”.',
+
   // Comunes
   'Idioma': 'Language',
   'Cerrar': 'Close',

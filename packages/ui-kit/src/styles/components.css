@@ -902,3 +902,31 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .launcher-review .launcher-active{color:var(--ok)}
 .fb-capture-bar{position:fixed;z-index:98;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top));display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 12px;border-radius:14px;background:#1f2a22;color:#fff;font-size:14px;font-weight:600;box-shadow:var(--shadow-3)}
 .fb-capture-bar .ghost{color:#fff;border-color:rgba(255,255,255,.4)}
+/* Estado de guardado (portales) */
+.save-state{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--muted);min-height:20px}
+.save-state:empty{display:none}
+.save-state svg{width:14px;height:14px;flex:none}
+.save-state[data-status="saving"] svg{animation:spin 1s linear infinite}
+.save-state[data-status="saved"]{color:var(--ok)}
+.save-state[data-status="pending"]{color:var(--warn-ink,#8a5a00)}
+.save-state[data-status="error"]{color:var(--alert);font-weight:700}
+.save-state .save-retry{font-size:12.5px;font-weight:700}
+/* Recuadro de firma */
+.signature-pad{display:grid;gap:6px}
+.signature-label{font-size:13px;font-weight:700;color:var(--muted)}
+.signature-box{position:relative;border:1px dashed var(--line);border-radius:var(--radius-sm);background:var(--paper)}
+.signature-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;border-radius:inherit}
+.signature-line{position:absolute;left:16px;right:16px;bottom:28%;border-bottom:1px solid var(--edge);pointer-events:none}
+.signature-pad[data-empty="false"] .signature-box{border-style:solid}
+.signature-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.signature-actions .spacer{flex:1}
+.signature-actions button{display:inline-flex;align-items:center;gap:4px}
+.signature-typed{border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 12px;background:var(--paper);color:var(--ink);font:inherit}
+/* Instalar la app */
+.install-sheet{display:grid;gap:10px}
+.install-head{display:flex;gap:12px;align-items:flex-start}
+.install-head p{margin:0}
+.install-steps{margin:0;padding-left:20px;display:grid;gap:4px}
+.install-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.install-foot .install-later{margin-right:auto}
+.install-now,.install-open{display:inline-flex;align-items:center;gap:6px}
