@@ -1123,9 +1123,9 @@ Una PR por bloque.
 5. **Extras** con precio (equipo de sonido, camas supletorias, cambios de camas, movimientos de mobiliario…): capa `extra` del tarifario, por evento (`estancia`), por noche, por persona o por unidad. Se añaden a mano a la propuesta; solo el de servicio `cama_supletoria` se sugiere, por cama activada.
 6. **Horas reales del personal:** las apunta el responsable al cerrar el evento.
 
-## 16. Portales Organizers y Guests · datos de huéspedes (propuesta para revisión de Core)
+## 16. Portales Organizers y Guests · datos de huéspedes
 
-Diseño de producto en `coordinacion/ampliacion/PORTALES.md`; núcleo en el contrato §3.6. **Booking es la dueña de los datos**: Organizers y Guests no tocan `booking.*` directamente; leen funciones de Booking filtradas por el ámbito del enlace y escriben con acciones estrechas (`invoke`) que fijan la procedencia. Los enlaces (§16.1) ya están construidos; el resto (§16.2–§16.7) es propuesta.
+Diseño de producto en `coordinacion/ampliacion/PORTALES.md`; núcleo en el contrato §3.6. **Booking es la dueña de los datos**: Organizers y Guests no tocan `booking.*` directamente; leen funciones de Booking filtradas por el ámbito del enlace y escriben con acciones estrechas (`invoke`) que fijan la procedencia. Aprobado por Core (ronda §16) con las respuestas de §16.7; construido en la migración `20261007_0433_booking_portal_guests.sql`.
 
 ### 16.1 Enlaces (hecho)
 
@@ -1141,7 +1141,7 @@ En `booking.guests` (y en `booking.dietary_restrictions`) una columna nueva, no 
 field_sources  jsonb not null default '{}'   {"<campo>": {"by": "guest"|"organizer"|"staff", "at": "<timestamptz>"}, …}
 ```
 
-- La rellena un **trigger** `before insert or update`: para cada campo de datos (identidad, documento, residencia, contacto, tutor) cuyo valor cambia, anota quién lo escribió. Quién es lo marca la transacción: las acciones de portal fijan `set_config('booking.writer', 'organizer'|'guest', true)` antes de escribir con `core.apply_row_op` y lo restauran; sin marca, `staff` (Booking y agentes).
+- La rellena el **trigger** `booking.guest_track_sources` (`before insert or update`): para cada campo de datos (identidad, documento, residencia, contacto, tutor) cuyo valor cambia, anota quién lo escribió. Quién es lo marca la transacción: las acciones de portal fijan `set_config('booking.writer', 'organizer'|'guest', true)` antes de escribir con `core.apply_row_op` y lo restauran; sin marca, `staff` (Booking y agentes).
 - **«Si el huésped cambia un valor, pasa a ser suyo»** sale solo: su escritura deja `by: guest` en ese campo.
 - **El organizador no sobrescribe lo que escribió el huésped**: la acción de organizador rechaza con `422 FIELD_OWNED_BY_GUEST` un campo cuyo origen es `guest` (no ve el valor; pisarlo a ciegas sería peor). El personal sí puede (corrige con el documento delante).
 - `core.changes` sigue guardando quién y cuándo; `field_sources` es la vista rápida por campo que necesitan los portales y la ficha.
@@ -1179,7 +1179,7 @@ privacy_ack_version              text null
 
 ### 16.6 Lo que publica Booking para los portales
 
-Todas las funciones reciben `{app, actor, role, args}` y sacan el ámbito de `core.memberships.scopes.grants` del actor en ese portal; un `reservation_id` o `guest_id` fuera del ámbito → `403 OUT_OF_SCOPE`.
+Todas las funciones reciben `{app, actor, role, args}` y sacan el ámbito de `core.memberships.scopes.grants` del actor en ese portal; un `reservation_id` o `guest_id` fuera del ámbito → `403 OUT_OF_SCOPE` (también si no existe: un portal no averigua qué huéspedes hay). Lo que se pide y la completitud salen de `guestMissing(guest, mode)` del dominio (`_domain/booking/portal.ts`), replicada en `booking.guest_missing(g, mode)` y comprobada por prueba; el modo de la reserva lo da `booking.guest_mode(reservation_id)` (hoy siempre `ses`; `operativo` llegará con la propuesta de SES.HOSPEDAJES).
 
 Lecturas (`core.allow_read('<portal>', 'booking.fn', 'function')`):
 
@@ -1196,7 +1196,7 @@ Acciones (`core.allow_read('<portal>', 'booking.fn', 'action', '{editor}')`), ca
 |---|---|---|
 | `booking.portal_add_guest` | organizers | alta de un huésped de su reserva (`by: organizer`); exige `declaration` |
 | `booking.portal_update_guest` | organizers | rellena campos de datos (`by: organizer`); `FIELD_OWNED_BY_GUEST` si el campo es del huésped |
-| `booking.portal_remove_guest` | organizers | baja (papelera) solo si el huésped no ha escrito nada ni firmado |
+| `booking.portal_remove_guest` | organizers | baja en cualquier momento (decisión del usuario): a la papelera con sus restricciones y asignaciones, con quién y cuándo, y revoca su enlace de Guests; `422 GUEST_CHECKED_IN` si ya firmó con el retiro empezado o su parte se comunicó a SES (lo corrige el personal). Al vaciar la papelera se borra de verdad |
 | `booking.portal_set_restrictions` | organizers, guests | restricciones de un huésped (`by` según portal); el organizador no ve ni pisa las del huésped sin consentimiento |
 | `booking.portal_guest_update` | guests | completa o corrige sus datos (`by: guest`) |
 | `booking.portal_guest_consent` | guests | interruptor de alergias y acuse del aviso legal |
@@ -1204,18 +1204,13 @@ Acciones (`core.allow_read('<portal>', 'booking.fn', 'action', '{editor}')`), ca
 
 Ninguna toca `data_status`, `ses_*`, `notes` ni la papelera del personal. Las escrituras pasan por `core.apply_row_op` con app `booking`, así siguen llegando a Booking por la sincronización normal y quedan en `core.changes`.
 
-### 16.7 Preguntas abiertas
+### 16.7 Respuestas de Core y del usuario
 
-Para Core:
-
-1. **Huéspedes antes de confirmar.** Hoy `booking.guests.event_id` es obligatorio y el evento nace al confirmar la reserva. Propuesta: el portal del organizador permite añadir huéspedes **solo con la reserva confirmada** (antes muestra «podrás añadir a tus huéspedes cuando la reserva esté confirmada»). La alternativa (huéspedes colgando de la reserva) cambia la V1 y la proyección de Food.
-2. **Acciones con actor de portal:** ¿`core.apply_row_op` con `p_app = 'booking'` admite un actor cuya pertenencia es de `organizers`/`guests` (rol `system` dentro de la acción, como el planificador), o prefieres un `core.apply_row_op_as(app, actor_portal, …)`?
-3. **Firma desde Guests:** la imagen la sube el portal. ¿`uploads` en `guests-api` con un bucket propio y Booking guarda el id de `core.files`, o una subida firmada al bucket `booking-documents`?
-4. **Declaración del organizador:** `core.access_log` o tabla en Booking.
-
-Para el usuario:
-
-5. ¿El organizador puede **dar de baja** a un huésped que ya rellenó algo? Propuesta: no; se lo pide al personal.
+1. Huéspedes **solo con la reserva confirmada** (`422 RESERVATION_NOT_CONFIRMED`); antes, el portal muestra «podrás añadir a tus huéspedes cuando la reserva esté confirmada».
+2. Las acciones escriben con el usuario del portal como actor y rol `editor` explícito (`updated_by` = el usuario del portal) y llegan al personal por `changes`. El lote propio de la acción (`booking.portal_apply`) está pendiente de un ayudante de Core (P20).
+3. **Firma desde Guests:** subida con `uploads` en `guests-api` al bucket privado `guests-documents`; `portal_guest_sign` comprueba que el archivo está verificado y es del mismo usuario. El personal la ve con `GET /api/v1/guest-signature/:guestId` (URL firmada 5 min, solo quien puede ver huéspedes).
+4. **Declaración del organizador** en `booking.portal_declarations` (sincronizada para editor y owner; solo la escribe la acción, en el mismo lote que el dato; `422 DECLARATION_REQUIRED` la primera vez si no viene).
+5. **Baja por el organizador:** en cualquier momento (ver §16.6). La revocación del enlace usa un `update` directo de `core.portal_links` pendiente de ayudante de Core (P21).
 
 ## Anexo · Campos de C03 y C04 que no se portan
 
