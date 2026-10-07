@@ -760,7 +760,7 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .launcher-note{margin:0}
 
 /* ---------- Feedback: composer, pines y gesto (createFeedback) ---------- */
-html.fb-pressing,html.fb-pressing *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+/* Las reglas sobre clases de <html> (fb-pressing, fb-mode, fb-reviewing) están en src/feedback/global-style.ts. */
 .fb-layer{position:fixed;inset:0;z-index:95}
 .fb-catcher{position:absolute;inset:0;background:transparent}
 .fb-layer.sheet-mode .fb-catcher{background:rgba(37,38,30,.28)}
@@ -796,8 +796,6 @@ html.fb-pressing,html.fb-pressing *{-webkit-user-select:none;user-select:none;-w
 .fb-blocking{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
 .fb-blocking input{width:18px;height:18px;accent-color:var(--alert)}
 /* Modo «Señalar para comentar»: marca discreta en la cabecera e interruptor al pie del lanzador */
-html.fb-mode #appLauncher{position:relative}
-html.fb-mode #appLauncher::after{content:"";position:absolute;right:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--warn);border:2px solid var(--bg)}
 .launcher-fb{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-top:10px;padding:12px;border-top:1px solid var(--edge);cursor:pointer}
 .launcher-fb input{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:24px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .15s;margin:0}
 .launcher-fb input::before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fffdf8;box-shadow:var(--shadow-1);transition:transform .15s}
@@ -872,8 +870,6 @@ html.fb-mode #appLauncher::after{content:"";position:absolute;right:-2px;top:-2p
 .fb-rv-actions{flex-wrap:wrap}
 .fb-rv-nav{display:flex;justify-content:flex-end}
 .fb-rv-next{display:inline-flex;align-items:center;gap:4px}
-html.fb-reviewing #appLauncher::before{content:"";position:absolute;left:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
-html.fb-reviewing #appLauncher{position:relative}
 /* Revisor › pestañas «Incidencias | Uso» y tarjeta de uso */
 .fb-review-tabs{margin:8px 10px 0;justify-self:start}
 .fb-review-tabs .fb-count{margin-left:2px}
@@ -896,8 +892,6 @@ html.fb-reviewing #appLauncher{position:relative}
 .usage-notice p{margin:0 0 10px}
 .fb-review-card:not(.sheet-mode) .fb-rv-min{display:none}
 .fb-review-card.min>:not(.fb-head){display:none}
-/* Un diálogo abierto desde la tarjeta del revisor va por encima de ella. */
-html.fb-reviewing .dialogback{z-index:97}
 .launcher-center{width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0;font:inherit;color:var(--ink)}
 .launcher-center:hover{background:var(--paper-2)}
 .launcher-center>svg{color:var(--muted);flex:none}

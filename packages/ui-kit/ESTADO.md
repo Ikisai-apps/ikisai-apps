@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.18.2: `container` en hoja, diálogo, centro y aviso; reglas de `<html>` en hoja global inyectada; `data-fb-tab`; catálogo con `fbMark` y ternarios (petición de Tasks y Finance).
 - v0.18.1: pista de ruta (`route`) en `usage/batch` para «Ir al sitio» del Revisor › Uso.
 - v0.18.0 (tanda 30): «Sugerencias y QA» en el panel del lanzador (`center`), `review`/`feedback` aceptan los objetos tal cual y guía de adopción compilable en `demo/adopcion.ts`.
 - v0.17.0 (tanda 29): uso semántico de funcionalidades: generador del catálogo, recolector con totales diarios e IndexedDB, aviso al equipo y Revisor › Uso (pestañas «Incidencias | Uso», tarjeta con matriz y decisiones). Alineado con #223 (rutas `usage*`). Pendiente de Core: lanzar el generador en la publicación antes de `usage_catalog_ingest.py`.
