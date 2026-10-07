@@ -896,3 +896,6 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .launcher-center:hover{background:var(--paper-2)}
 .launcher-center>svg{color:var(--muted);flex:none}
 .launcher-center+.launcher-signal{margin-top:0}
+.fb-pin.mine{background:var(--accent);color:var(--accent-ink,#fffdf8)}
+.launcher-active{color:var(--warn-ink,#8a5a00);font-weight:800}
+.launcher-review .launcher-active{color:var(--ok)}
