@@ -72,6 +72,14 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     method: 'POST', pattern: 'ses/ping',
     handler: () => sesTlsPing(),
   }, {
+    // Conservación del registro de viajeros (API.md §20): anonimiza a los huéspedes vencidos, una vuelta por llamada.
+    method: 'POST', pattern: 'retention/tick',
+    handler: async () => {
+      if (!supabase) return { anonymized: 0 };
+      await ensureServiceActor(supabase, 'booking'); // el lote del sistema lo firma «Booking (sistema)»
+      return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.retention_run', p_args: { limit: 100 } });
+    },
+  }, {
     // Envía lo preparado y consulta los lotes en proceso; si no hay nada pendiente, no llama a SES.
     method: 'POST', pattern: 'ses/tick',
     handler: async ({ json }) => {

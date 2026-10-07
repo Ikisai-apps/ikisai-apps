@@ -1319,7 +1319,7 @@ Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.s
 - `proposal` (`id, version, total`) y `final_amount`, para comprobar.
 - **`invoiced: null`**: Booking no sabe qué se ha facturado; lo une Finance con sus facturas.
 
-## 20. SES-4 · conservación del registro de viajeros (propuesta)
+## 20. SES-4 · conservación del registro de viajeros
 
 Base: RD 933/2021 art. 5.3 y `coordinacion/ampliacion/SES.md` §3.
 
@@ -1335,7 +1335,7 @@ Base: RD 933/2021 art. 5.3 y `coordinacion/ampliacion/SES.md` §3.
 - Se conservan: la fila del huésped (para los recuentos de la reserva), `arrived_at`, estados (`data_status`, `ses_status`, `ses_sent_at`) y las comunicaciones a SES (`booking.ses_communications`, que no llevan datos personales).
 - Declaraciones del organizador de esa reserva (`portal_declarations`): a la papelera con la misma ventana.
 
-**Cómo:** acción del sistema `booking.retention_run({limit})` llamada por `POST /api/v1/worker/retention/tick`, diaria con `core.schedule_tick('booking', 'retention/tick', '30 3 * * *', 'booking.retention_has_work')`. Lotes de como mucho 200 huéspedes por vuelta. Las escrituras deben llegar a los dispositivos por `core.changes` (para que borren su copia local), así que van en un lote propio del sistema: **petición P22 a Core** (`core.apply_system_operations`, como `apply_portal_operations` pero con la cuenta de servicio `booking`).
+**Cómo:** acción del sistema `booking.retention_run({limit})` llamada por `POST /api/v1/worker/retention/tick`, diaria con `core.schedule_tick('booking', 'retention/tick', '30 3 * * *', 'booking.retention_has_work')`. Lotes de como mucho 200 huéspedes por vuelta. Las escrituras deben llegar a los dispositivos por `core.changes` (para que borren su copia local), así que van en un lote propio del sistema con `core.apply_system_operations('booking', ops)` (P22), firmado por «Booking (sistema)». Migración `20261007_0448_booking_retention.sql`.
 
 **Pruebas:** las dos ventanas (justo antes y justo después), que nunca toca una estancia en curso, que los archivos quedan `temporary` y sin referencia, que el cambio llega por `changes`, y que repetir la tarea no hace nada.
 
