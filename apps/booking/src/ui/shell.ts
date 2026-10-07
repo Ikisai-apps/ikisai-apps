@@ -1,5 +1,5 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { icon, confirmDialog, createAppLauncher, createAppShell, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { icon, confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
 import { mountHome } from './home.ts';
@@ -13,6 +13,7 @@ import { mountRates } from './rates.ts';
 import { mountSes } from './ses.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
+import { fbMark } from './feedback.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -37,32 +38,32 @@ const NAV: readonly NavItem[] = [
   { hash: '#/huespedes', label: 'Huéspedes', icon: 'people' },
 ];
 
-const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
-  '#/': { title: 'Inicio', mount: mountHome },
-  '#/reservas': { title: 'Reservas', mount: mountReservations },
-  [PENDING]: { title: 'Por resolver', mount: mountPending },
-  '#/calendario': { title: 'Calendario', mount: mountCalendar },
-  '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
-  '#/espacios': { title: 'Espacios y camas', mount: mountSpaces },
-  '#/tarifas': { title: 'Tarifas y condiciones', mount: mountRates },
-  '#/ses': { title: 'SES.HOSPEDAJES', mount: mountSes },
+const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> = {
+  '#/': { title: 'Inicio', slug: 'inicio', mount: mountHome },
+  '#/reservas': { title: 'Reservas', slug: 'reservas', mount: mountReservations },
+  [PENDING]: { title: 'Por resolver', slug: 'pendientes', mount: mountPending },
+  '#/calendario': { title: 'Calendario', slug: 'calendario', mount: mountCalendar },
+  '#/huespedes': { title: 'Huéspedes', slug: 'huespedes', mount: mountGuests(null) },
+  '#/espacios': { title: 'Espacios y camas', slug: 'espacios', mount: mountSpaces },
+  '#/tarifas': { title: 'Tarifas y condiciones', slug: 'tarifas', mount: mountRates },
+  '#/ses': { title: 'SES.HOSPEDAJES', slug: 'ses', mount: mountSes },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 
 /** Ruta exacta o con identificador: `#/reservas/<id>` (ficha) y `#/huespedes/<id de evento>`. `base` marca la navegación activa. */
-function resolve(hash: string): { title: string; mount: ViewMount; base: string } {
+function resolve(hash: string): { title: string; slug: string; mount: ViewMount; base: string } {
   const exact = ROUTES[hash];
   if (exact) return { ...exact, base: hash };
   const reservation = new RegExp(`^#/reservas/(${UUID})$`, 'i').exec(hash);
-  if (reservation) return { title: 'Reserva', mount: mountReservation(reservation[1]!.toLowerCase()), base: '#/reservas' };
+  if (reservation) return { title: 'Reserva', slug: 'reserva', mount: mountReservation(reservation[1]!.toLowerCase()), base: '#/reservas' };
   const proposal = new RegExp(`^#/propuesta/(${UUID})(/documento)?$`, 'i').exec(hash);
   if (proposal) {
     const id = proposal[1]!.toLowerCase();
-    return proposal[2] ? { title: 'Propuesta', mount: mountProposalDocument(id), base: '#/reservas' } : { title: 'Propuesta', mount: mountProposalEditor(id), base: '#/reservas' };
+    return proposal[2] ? { title: 'Propuesta', slug: 'propuesta', mount: mountProposalDocument(id), base: '#/reservas' } : { title: 'Propuesta', slug: 'propuesta', mount: mountProposalEditor(id), base: '#/reservas' };
   }
   const guests = new RegExp(`^#/huespedes/(${UUID})$`, 'i').exec(hash);
-  if (guests) return { title: 'Huéspedes', mount: mountGuests(guests[1]!.toLowerCase()), base: '#/huespedes' };
+  if (guests) return { title: 'Huéspedes', slug: 'huespedes', mount: mountGuests(guests[1]!.toLowerCase()), base: '#/huespedes' };
   return { ...ROUTES['#/']!, base: '#/' };
 }
 
@@ -73,8 +74,39 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   let lastAutoMerged = client.status().autoMerged;
   let updateApply: (() => void) | null = null;
 
+  // «Sugerencias y QA»: modo «Señalar para comentar» (se enciende desde el lanzador), revisor y centro de reportes.
+  let screen = { id: 'booking.inicio', label: 'Inicio' };
+  const feedback = createFeedback({
+    app: 'booking',
+    api: client.api.bind(client),
+    userId: () => client.bootstrap()?.profile.userId ?? null,
+    role: () => client.bootstrap()?.membership.role ?? null,
+    syncSummary: () => {
+      const status = client.status();
+      return { pending: status.pendingCommands + status.pendingBlobs, conflicts: status.conflicts, lastSyncAt: status.lastPullAt, cursor: status.cursor };
+    },
+    fallbackNode: () => ({ id: screen.id, path: [screen.label] }),
+  });
+  const review = createFeedbackReview({
+    api: client.api.bind(client),
+    app: 'booking',
+    appDomain: (id) => catalog?.items.find((app) => app.id === id)?.domain,
+  });
+  const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); });
+  let catalog: LauncherCatalog | null = null;
+
   // La marca de la cabecera abre el lanzador con las apps de la cuenta (sesión única: no pide contraseña).
-  const launcher = createAppLauncher({ current: 'booking', fetchApps: () => client.api<LauncherCatalog>('/apps') });
+  const launcher = createAppLauncher({
+    current: 'booking',
+    fetchApps: async () => (catalog = await client.api<LauncherCatalog>('/apps')),
+    feedback: feedback.mode,
+    review: { get: () => review.mode.get(), set: (on) => review.mode.set(on), available: () => review.available() },
+  });
+  const feedbackButton = el('button', {
+    class: 'iconbtn', type: 'button', id: 'feedbackCenter', title: 'Sugerencias y QA', 'aria-label': 'Sugerencias y QA',
+    'data-feedback-id': 'booking.cabecera.sugerencias', 'data-feedback-label': 'Sugerencias y QA',
+    onclick: () => { openFeedbackCenter({ api: client.api.bind(client), app: 'booking', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
+  }, icon('help'));
   const shell = createAppShell(root, {
     appName: 'Booking',
     markIcon: 'bed',
@@ -84,18 +116,38 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     onLogout: logout,
     navigate,
     launcher,
+    tools: [feedbackButton],
   });
   const { main } = shell;
+
+  // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
+  fbMark(shell.header, 'booking.cabecera', 'Cabecera');
+  const launcherButton = shell.header.querySelector('#appLauncher');
+  if (launcherButton) fbMark(launcherButton, 'booking.cabecera.lanzador', 'Lanzador de apps');
+  const statusBar = shell.header.querySelector('#syncStatus');
+  if (statusBar) fbMark(statusBar, 'booking.cabecera.estado', 'Estado de sincronización');
+  const logoutButton = shell.header.querySelector('#logoutButton');
+  if (logoutButton) fbMark(logoutButton, 'booking.cabecera.cerrar_sesion', 'Cerrar sesión');
+  fbMark(shell.nav, 'booking.navegacion', 'Navegación');
+  const NAV_IDS: Record<string, [string, string]> = {
+    '#/': ['booking.navegacion.inicio', 'Inicio'], '#/reservas': ['booking.navegacion.reservas', 'Reservas'],
+    '#/calendario': ['booking.navegacion.calendario', 'Calendario'], '#/huespedes': ['booking.navegacion.huespedes', 'Huéspedes'],
+  };
+  for (const link of shell.nav.querySelectorAll<HTMLElement>('a.navbtn')) {
+    const mark = NAV_IDS[link.dataset.hash ?? ''];
+    if (mark) fbMark(link, mark[0], mark[1]);
+  }
+  fbMark(shell.banners, 'booking.avisos', 'Avisos');
 
   function paintBanners(status: SyncStatus): void {
     const here = location.hash === PENDING;
     // Un fallo del dispositivo se avisa con un mensaje claro y el texto técnico plegado (el banner del kit no admite detalle).
     const local = status.network === 'error' && status.lastError && isLocalError(status.lastError) ? status.lastError : null;
-    const extra = local ? [el('div', { class: 'banner warn', id: 'localErrorBanner', role: 'alert' },
+    const extra = local ? [el('div', { class: 'banner warn', id: 'localErrorBanner', role: 'alert', 'data-feedback-id': 'booking.avisos.error_local', 'data-feedback-label': 'Fallo del dispositivo' },
       icon('warn', 18),
       el('div', null, el('span', null, LOCAL_ERROR_MESSAGE),
-        el('details', { class: 'techdetail' }, el('summary', null, 'Detalle técnico'), el('code', null, technicalDetail(local)))),
-      el('button', { class: 'linkbtn', type: 'button', onclick: () => void syncNow() }, 'Reintentar'))] : [];
+        el('details', { class: 'techdetail', 'data-feedback-ignore': '' }, el('summary', null, 'Detalle técnico'), el('code', null, technicalDetail(local)))),
+      el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.avisos.error_local.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => void syncNow() }, 'Reintentar'))] : [];
     shell.setBanners(local ? { ...status, lastError: null } : status, {
       hideConflicts: here,
       hideRejected: here,
@@ -163,6 +215,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(entry.base);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
+    screen = { id: `booking.${entry.slug}`, label: entry.title };
+    // La pantalla es la raíz de la ruta de etiquetas («Reserva › Acciones › Editar») y el nodo de reserva si no hay nada más cerca.
+    fbMark(main, screen.id, screen.label);
     document.title = `${entry.title} · Ikisai Booking`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
@@ -188,6 +243,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   return () => {
     offStatus();
+    offSessionEnd();
+    feedback.destroy();
     unmountView?.();
     window.removeEventListener('hashchange', route);
     window.removeEventListener('ikisai:update-available', onUpdate);

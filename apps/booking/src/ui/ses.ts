@@ -49,8 +49,8 @@ export function createSesBlock(): SesBlock {
   let again = false;
   let busy = false;
   let sheet: Sheet | null = null;
-  const host = el('article', { class: 'card sesblock', id: 'blockSes' });
-  const comms = el('div', { id: 'sesComms' });
+  const host = el('article', { class: 'card sesblock', id: 'blockSes', 'data-feedback-id': 'booking.reserva.ses', 'data-feedback-label': 'Registro de viajeros' });
+  const comms = el('div', { id: 'sesComms', 'data-feedback-id': 'booking.reserva.ses.comunicaciones', 'data-feedback-label': 'Comunicaciones a SES' });
 
   async function refresh(): Promise<void> {
     const o = input;
@@ -119,7 +119,7 @@ export function createSesBlock(): SesBlock {
     const live = liveReservationComm(list);
     const cancelling = accepted ? pendingCancellation(list, accepted.id) : null;
     const changed = !!accepted && changedSinceCommunicated(reservation, event?.final_guests as number | null | undefined, accepted);
-    const canceller = (id: string, label: string): HTMLElement => el('button', { class: 'ghost small', type: 'button', id, disabled: !online || busy || !!cancelling, onclick: () => void cancel(accepted!) }, label);
+    const canceller = (id: string, label: string): HTMLElement => el('button', { class: 'ghost small', type: 'button', id, 'data-feedback-id': 'booking.reserva.ses.anular', 'data-feedback-label': 'Anular en SES', disabled: !online || busy || !!cancelling, onclick: () => void cancel(accepted!) }, label);
 
     const out: Child[] = [];
     if (!online) out.push(el('p', { class: 'hint', id: 'sesOffline', role: 'status' }, 'Sin conexión: el estado de SES y los envíos necesitan red. Se actualizará al reconectar.'));
@@ -127,14 +127,14 @@ export function createSesBlock(): SesBlock {
 
     // Aviso de cambios: la comunicación aceptada ya no refleja la reserva.
     if (accepted && changed) {
-      out.push(el('div', { class: 'banner alert', id: 'sesChanged', role: 'alert' },
+      out.push(el('div', { class: 'banner alert', id: 'sesChanged', role: 'alert', 'data-feedback-id': 'booking.reserva.ses.aviso_cambios', 'data-feedback-label': 'Aviso de cambios' },
         el('span', null, 'La reserva cambió desde que se comunicó: anula y vuelve a comunicar'), canceller('sesCancelChanged', 'Anular en SES')));
     }
 
     // Plazo de 24 h: desde el momento legal de la comunicación o, sin comunicación, desde el registro del pago.
     if (enabled && !accepted && COMMUNICABLE_STATUSES.includes(reservation.status)) {
       const level = deadlineLevel(latest && latest.status !== 'anulada' ? latest.legal_start_at ?? registeredAt : registeredAt);
-      if (level && level !== 'ok') out.push(el('div', { class: `banner ${level === 'warn' ? 'warn' : 'alert'}`, id: 'sesDeadline', role: level === 'warn' ? 'status' : 'alert', dataset: { level } }, el('span', null, DEADLINE_TEXT[level])));
+      if (level && level !== 'ok') out.push(el('div', { class: `banner ${level === 'warn' ? 'warn' : 'alert'}`, id: 'sesDeadline', 'data-feedback-id': 'booking.reserva.ses.plazo', 'data-feedback-label': 'Plazo de 24 horas', role: level === 'warn' ? 'status' : 'alert', dataset: { level } }, el('span', null, DEADLINE_TEXT[level])));
       if (paymentDateIsOld(finance?.payment_date, registeredAt)) {
         out.push(el('p', { class: 'hint', id: 'sesPaymentOld', role: 'status' }, `El pago es del ${fullDay(String(finance!.payment_date))}: el plazo legal puede haber vencido.`));
       }
@@ -147,19 +147,19 @@ export function createSesBlock(): SesBlock {
       if (latest.status === 'rechazada') detail.push(el('span', { class: 'sesreject' }, latest.error_text || 'SES rechazó la comunicación.'), ' Corrige los datos y vuelve a comunicar.');
       if (latest.status === 'error') detail.push(`Se reintentará automáticamente${latest.error_text ? `: ${latest.error_text}` : '.'}`);
       if (latest.status === 'anulada' && latest.cancelled_at) detail.push(`Anulada el ${formatDate(latest.cancelled_at)}`);
-      out.push(el('div', { class: 'sesstatus', id: 'sesStatus', dataset: { status: latest.status } },
+      out.push(el('div', { class: 'sesstatus', id: 'sesStatus', 'data-feedback-id': 'booking.reserva.ses.estado', 'data-feedback-label': 'Estado de la comunicación', dataset: { status: latest.status } },
         el('div', { class: 'chips' },
-          el('span', { class: `chip${latest.status === 'rechazada' || latest.status === 'error' ? ' alert' : latest.status === 'aceptada' ? '' : ' pending'}`, id: 'sesStatusChip' }, STATUS_LABEL[latest.status] ?? latest.status),
+          el('span', { class: `chip${latest.status === 'rechazada' || latest.status === 'error' ? ' alert' : latest.status === 'aceptada' ? '' : ' pending'}`, id: 'sesStatusChip', 'data-feedback-id': 'booking.reserva.ses.estado.chip', 'data-feedback-label': 'Estado' }, STATUS_LABEL[latest.status] ?? latest.status),
           held ? el('span', { class: 'chip pending', id: 'sesHeld' }, held) : null,
           latest.environment === 'pre' ? el('span', { class: 'chip', id: 'sesEnv' }, SES_ENVIRONMENT_LABELS.pre) : null),
-        detail.length ? el('p', { class: 'hint', id: 'sesStatusDetail' }, ...detail) : null));
+        detail.length ? el('p', { class: 'hint', id: 'sesStatusDetail', 'data-feedback-id': 'booking.reserva.ses.estado.detalle', 'data-feedback-label': 'Detalle', 'data-feedback-ignore': '' }, ...detail) : null));
     }
     if (cancelling) out.push(el('p', { class: 'hint', id: 'sesCancelling' }, `Anulación en SES: ${STATUS_LABEL[cancelling.status].toLowerCase()}${cancelling.status === 'error' && cancelling.error_text ? ` (${cancelling.error_text})` : ''}.`));
     if (actionError) out.push(el('p', { class: 'formerror', id: 'sesActionError', role: 'alert' }, actionError));
 
     const buttons: Child[] = [];
     if (enabled && !live && COMMUNICABLE_STATUSES.includes(reservation.status)) {
-      if (registeredAt) buttons.push(el('button', { class: 'primary small', type: 'button', id: 'sesCommunicate', disabled: !online || busy, onclick: () => void communicate() }, 'Comunicar reserva a SES'));
+      if (registeredAt) buttons.push(el('button', { class: 'primary small', type: 'button', id: 'sesCommunicate', 'data-feedback-id': 'booking.reserva.ses.comunicar', 'data-feedback-label': 'Comunicar reserva a SES', disabled: !online || busy, onclick: () => void communicate() }, 'Comunicar reserva a SES'));
       else out.push(el('p', { class: 'hint', id: 'sesNeedsPayment' }, 'Se podrá comunicar cuando se registre el pago.'));
     }
     if (accepted && !changed) buttons.push(canceller('sesCancel', 'Anular en SES'));
@@ -177,12 +177,12 @@ export function createSesBlock(): SesBlock {
 
     function openReason(): void {
       const radios = new Map<string, HTMLInputElement>(SES_DISABLED_REASONS.map((reason) => [reason, el('input', { type: 'radio', name: 'sesReason', value: reason, id: `sesReason-${reason}` })]));
-      const note = el('input', { type: 'text', id: 'sesNote', maxlength: 300, 'aria-label': 'Motivo (texto)', placeholder: 'Escribe el motivo', autocomplete: 'off',
+      const note = el('input', { type: 'text', id: 'sesNote', 'data-feedback-id': 'booking.reserva.ses.motivo.nota', 'data-feedback-label': 'Motivo escrito', maxlength: 300, 'aria-label': 'Motivo (texto)', placeholder: 'Escribe el motivo', autocomplete: 'off',
         oninput: () => { if (note.value) radios.get('otro')!.checked = true; error.hidden = true; } });
       const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
       const chosen = () => [...radios.values()].find((r) => r.checked)?.value ?? null;
       for (const radio of radios.values()) radio.addEventListener('change', () => { error.hidden = true; if (radio.value === 'otro') note.focus(); });
-      const save = el('button', { class: 'primary', type: 'button', id: 'saveSesReason', onclick: async () => {
+      const save = el('button', { class: 'primary', type: 'button', id: 'saveSesReason', 'data-feedback-id': 'booking.reserva.ses.motivo.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
         const reason = chosen();
         const text = note.value.trim();
         const fail = (message: string) => { error.hidden = false; error.textContent = message; };
@@ -198,34 +198,34 @@ export function createSesBlock(): SesBlock {
       } }, 'Guardar');
       sheet = openSheet({
         title: 'Sin comunicar a SES',
-        body: el('div', { class: 'rowform' },
+        body: el('div', { class: 'rowform', 'data-feedback-id': 'booking.reserva.ses.motivo', 'data-feedback-label': 'Sin comunicar a SES' },
           el('p', { class: 'hint' }, 'Indica por qué esta reserva no se comunica al registro de viajeros.'),
-          el('fieldset', { class: 'sesreasons' }, el('legend', null, 'Motivo'),
+          el('fieldset', { class: 'sesreasons', 'data-feedback-id': 'booking.reserva.ses.motivo.opciones', 'data-feedback-label': 'Motivo' }, el('legend', null, 'Motivo'),
             ...(['uso_privado', 'prueba'] as const).map((reason) => el('label', { class: 'check' }, radios.get(reason)!, el('span', null, SES_REASON_LABELS[reason]!))),
             el('div', { class: 'other' }, el('label', { class: 'check' }, radios.get('otro')!, el('span', null, 'Otro:')), note)),
           error),
-        foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close(true) }, 'Cancelar')),
+        foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.ses.motivo.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close(true) }, 'Cancelar')),
         onClose: () => { sheet = null; paintSwitch(); },
       });
     }
 
-    const toggle = el('input', { type: 'checkbox', id: 'sesToggle', checked: enabled, disabled: !editable, onchange: () => {
+    const toggle = el('input', { type: 'checkbox', id: 'sesToggle', 'data-feedback-id': 'booking.reserva.ses.interruptor', 'data-feedback-label': 'Comunicar a SES.HOSPEDAJES', checked: enabled, disabled: !editable, onchange: () => {
       if (!toggle.checked) return openReason();
       // Reactivar es un clic; el aviso dice qué cambia. El motivo anterior se conserva.
       void update({ ses_enabled: true }, 'SES reactivado. Se pedirán los datos legales que falten.').then((ok) => { if (!ok) paintSwitch(); });
     } });
     function paintSwitch(): void { toggle.checked = reservation.ses_enabled !== false; }
 
-    const collect = el('input', { type: 'checkbox', id: 'sesCollect', checked: reservation.collect_guest_data !== false, disabled: !editable, onchange: () => {
+    const collect = el('input', { type: 'checkbox', id: 'sesCollect', 'data-feedback-id': 'booking.reserva.ses.pedir_datos', 'data-feedback-label': 'Pedir datos a los huéspedes', checked: reservation.collect_guest_data !== false, disabled: !editable, onchange: () => {
       void update({ collect_guest_data: collect.checked }, collect.checked ? 'Se pedirán datos a los huéspedes.' : 'Sin lista de huéspedes para esta reserva.').then((ok) => { if (!ok) collect.checked = !collect.checked; });
     } });
 
     replace(host,
       el('div', { class: 'cardhead' }, el('h3', null, 'Registro de viajeros')),
       el('label', { class: 'check' }, toggle, el('span', null, 'Comunicar a SES.HOSPEDAJES')),
-      enabled ? null : el('p', { id: 'sesReason' }, `Sin comunicar a SES: ${sesReasonText(reservation.ses_disabled_reason, reservation.ses_disabled_note)}.`),
+      enabled ? null : el('p', { id: 'sesReason', 'data-feedback-id': 'booking.reserva.ses.motivo.texto', 'data-feedback-label': 'Motivo registrado', 'data-feedback-ignore': '' }, `Sin comunicar a SES: ${sesReasonText(reservation.ses_disabled_reason, reservation.ses_disabled_note)}.`),
       enabled ? null : el('label', { class: 'check' }, collect, el('span', null, 'Pedir datos a los huéspedes')),
-      el('p', { class: 'hint', id: 'sesModeHelp', dataset: { mode } }, `${GUEST_MODE_HELP[mode]}.`),
+      el('p', { class: 'hint', id: 'sesModeHelp', 'data-feedback-id': 'booking.reserva.ses.modo', 'data-feedback-label': 'Modo de huéspedes', dataset: { mode } }, `${GUEST_MODE_HELP[mode]}.`),
       comms,
       editable ? null : el('p', { class: 'hint' }, 'Solo el equipo con permiso de edición puede cambiar estos ajustes.'));
     paintComms();
@@ -262,7 +262,7 @@ export function createSesBlock(): SesBlock {
 
 /** Pantalla `#/ses`: entorno (pruebas o real) y pausa de envíos. Solo el propietario edita. */
 export const mountSes: ViewMount = ({ main, client }) => {
-  const host = el('div');
+  const host = el('div', { 'data-feedback-id': 'booking.ses.ajustes', 'data-feedback-label': 'Ajustes de SES' });
   const owner = client.bootstrap()?.membership.role === 'owner';
   replace(main, el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'SES.HOSPEDAJES'), el('p', null, 'Ajustes de las comunicaciones al registro de viajeros.'))), host);
 
@@ -282,7 +282,7 @@ export const mountSes: ViewMount = ({ main, client }) => {
         return false;
       }
     };
-    const environment = el('select', { id: 'sesEnvironment', 'aria-label': 'Entorno', disabled: !editable, onchange: async () => {
+    const environment = el('select', { id: 'sesEnvironment', 'data-feedback-id': 'booking.ses.ajustes.entorno', 'data-feedback-label': 'Entorno', 'aria-label': 'Entorno', disabled: !editable, onchange: async () => {
       const value = environment.value;
       if (value === 'prod' && !(await confirmDialog({ title: 'Pasar a entorno real', text: 'Desde ahora se enviarán comunicaciones reales a SES.HOSPEDAJES. Confirma solo si las credenciales y los datos son los definitivos.', confirmLabel: 'Pasar a real' }))) {
         environment.value = String(settings.environment);
@@ -291,10 +291,10 @@ export const mountSes: ViewMount = ({ main, client }) => {
       await save({ environment: value }, value === 'prod' ? 'Entorno real activado.' : 'Entorno de pruebas activado.');
     } }, Object.entries(SES_ENVIRONMENT_LABELS).map(([value, text]) => el('option', { value }, text)));
     environment.value = String(settings.environment);
-    const paused = el('input', { type: 'checkbox', id: 'sesPaused', checked: settings.paused === true, disabled: !editable, onchange: () => {
+    const paused = el('input', { type: 'checkbox', id: 'sesPaused', 'data-feedback-id': 'booking.ses.ajustes.pausa', 'data-feedback-label': 'Pausar envíos', checked: settings.paused === true, disabled: !editable, onchange: () => {
       void save({ paused: paused.checked }, paused.checked ? 'Envíos pausados.' : 'Envíos reanudados.').then((ok) => { if (!ok) paused.checked = !paused.checked; });
     } });
-    replace(host, el('article', { class: 'card sessettings', id: 'sesSettings' },
+    replace(host, el('article', { class: 'card sessettings', id: 'sesSettings', 'data-feedback-id': 'booking.ses.ajustes.tarjeta', 'data-feedback-label': 'Entorno y pausa' },
       el('label', { class: 'field' }, el('span', null, 'Entorno'), environment),
       el('label', { class: 'check' }, paused, el('span', null, 'Pausar envíos')),
       el('p', { class: 'hint' }, settings.paused === true ? 'Los envíos están en pausa: no saldrá ninguna comunicación.' : 'Las comunicaciones se envían con normalidad.'),

@@ -22,7 +22,7 @@ const num = (value: unknown): number => Number(value ?? 0);
 export function mountProposalEditor(id: string): ViewMount {
   return ({ main, client, navigate }) => {
     const writable = canWrite(client);
-    const host = el('div');
+    const host = el('div', { 'data-feedback-id': 'booking.propuesta.editor', 'data-feedback-label': 'Editor de propuesta' });
     replace(main, host);
     let destroyed = false;
     const lists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
@@ -33,7 +33,7 @@ export function mountProposalEditor(id: string): ViewMount {
       if (destroyed) return;
       if (!proposal || proposal.deleted_at !== null) {
         replace(host, el('div', { class: 'empty' }, el('strong', null, 'Propuesta no encontrada'), 'Puede que se haya borrado o que aún no se haya sincronizado.'),
-          el('p', null, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
+          el('p', null, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.propuesta.no_encontrada.volver', 'data-feedback-label': 'Volver a Reservas', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
         return;
       }
       const reservation = (await client.get(RESERVATIONS, proposal.reservation_id)) as Row | null;
@@ -59,7 +59,7 @@ export function mountProposalEditor(id: string): ViewMount {
 
       // --- cabecera
       const openHeader = () => openRowSheet({
-        client, title: 'Cabecera de la propuesta', table: PROPOSALS, row: proposal,
+        client, title: 'Cabecera de la propuesta', table: PROPOSALS, row: proposal, feedbackId: 'booking.propuesta.cabecera.hoja', feedbackLabel: 'Editar cabecera',
         specs: [
           { key: 'nature', label: 'Naturaleza', type: 'select', options: RATE_OPTIONS.nature, hint: 'Orientativa: importes que pueden variar. Cerrada: importes cerrados para esas fechas y condiciones.' },
           { key: 'conditions_id', label: 'Condiciones', type: 'select', optional: true, options: conditions.filter((c) => c.active || c.id === proposal.conditions_id).map((c) => [c.id, c.name] as const) },
@@ -73,12 +73,12 @@ export function mountProposalEditor(id: string): ViewMount {
         ],
         savedMessage: 'Cabecera guardada.', settle: true,
       });
-      const openNotes = () => openRowSheet({ client, title: 'Notas de la propuesta', table: PROPOSALS, row: proposal, specs: [{ key: 'notes', label: 'Notas internas', type: 'textarea' }], savedMessage: 'Notas guardadas.' });
+      const openNotes = () => openRowSheet({ client, title: 'Notas de la propuesta', table: PROPOSALS, row: proposal, feedbackId: 'booking.propuesta.cabecera.notas_hoja', feedbackLabel: 'Notas de la propuesta', specs: [{ key: 'notes', label: 'Notas internas', type: 'textarea' }], savedMessage: 'Notas guardadas.' });
 
-      const header = el('article', { class: 'card', id: 'proposalHeader' },
+      const header = el('article', { class: 'card', id: 'proposalHeader', 'data-feedback-id': 'booking.propuesta.cabecera', 'data-feedback-label': 'Cabecera' },
         el('div', { class: 'cardhead' }, el('h3', null, 'Cabecera'),
-          editable ? el('button', { class: 'linkbtn', type: 'button', id: 'editHeader', onclick: openHeader }, 'Editar')
-            : writable && reservation?.deleted_at === null ? el('button', { class: 'linkbtn', type: 'button', id: 'editNotes', onclick: openNotes }, 'Editar notas') : null),
+          editable ? el('button', { class: 'linkbtn', type: 'button', id: 'editHeader', 'data-feedback-id': 'booking.propuesta.cabecera.editar', 'data-feedback-label': 'Editar', onclick: openHeader }, 'Editar')
+            : writable && reservation?.deleted_at === null ? el('button', { class: 'linkbtn', type: 'button', id: 'editNotes', 'data-feedback-id': 'booking.propuesta.cabecera.editar_notas', 'data-feedback-label': 'Editar notas', onclick: openNotes }, 'Editar notas') : null),
         el('dl', { class: 'kv' },
           el('dt', null, 'Naturaleza'), el('dd', null, RATE_LABELS.nature[proposal.nature]),
           el('dt', null, 'Condiciones'), el('dd', null, chosen?.name ?? 'Sin elegir'),
@@ -93,7 +93,7 @@ export function mountProposalEditor(id: string): ViewMount {
       const last = lines.reduce((max, l) => Math.max(max, num(l.position)), 0);
       function openLine(line: Row | null, defaults: Record<string, unknown> = {}): void {
         openRowSheet({
-          client, title: line ? 'Línea de la propuesta' : 'Nueva línea', table: PROPOSAL_LINES, row: line, specs: LINE_SPECS,
+          client, title: line ? 'Línea de la propuesta' : 'Nueva línea', table: PROPOSAL_LINES, row: line, specs: LINE_SPECS, feedbackId: line ? 'booking.propuesta.lineas.hoja' : 'booking.propuesta.lineas.nueva', feedbackLabel: line ? 'Editar línea' : 'Nueva línea',
           defaults: { unit: 'unidad', quantity: 1, unit_amount: 0, discount_pct: 0, ...defaults },
           insertFields: { proposal_id: id, position: positionBetween(last || null, null), ...(defaults.rate_id ? { rate_id: defaults.rate_id } : {}) },
           extra: (merged) => {
@@ -119,16 +119,16 @@ export function mountProposalEditor(id: string): ViewMount {
       function lineItem(line: Row): HTMLElement {
         const percent = line.unit === 'porcentaje';
         const discount = num(line.discount_pct);
-        return el('div', { class: 'space-item line-item', dataset: { pending: String(line._pending === true) } },
+        return el('div', { class: 'space-item line-item', dataset: { pending: String(line._pending === true) }, 'data-feedback-id': 'booking.propuesta.lineas.linea', 'data-feedback-label': 'Línea' },
           el('div', { class: 'space-main' },
             el('div', { class: 'row-title' }, el('span', { class: 'name' }, line.description), el('span', { class: 'line-amount', dataset: { role: 'amount' } }, eur(amounts.get(line.id) ?? 0))),
             el('div', { class: 'row-meta' }, percent ? `${signedPct(line.unit_amount)} sobre el subtotal` : `${qty(line.quantity)} × ${amountText(line.unit, line.unit_amount)}`,
               !percent && discount > 0 ? ` · descuento ${signedPct(-discount)}` : '')),
-          editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${line.description}`, onclick: () => openLine(line) }, icon('edit', 16)) : null);
+          editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${line.description}`, 'data-feedback-id': 'booking.propuesta.lineas.editar', 'data-feedback-label': 'Editar línea', onclick: () => openLine(line) }, icon('edit', 16)) : null);
       }
 
       const lineList = (): HTMLElement => {
-        if (!editable) return el('ul', { class: 'list' }, lines.map((l) => el('li', { class: 'row' }, lineItem(l))));
+        if (!editable) return el('ul', { class: 'list', 'data-feedback-id': 'booking.propuesta.lineas.lista', 'data-feedback-label': 'Lista de líneas' }, lines.map((l) => el('li', { class: 'row' }, lineItem(l))));
         const signature = sig(lines);
         const kept = lists.get('lines');
         if (kept) {
@@ -139,6 +139,8 @@ export function mountProposalEditor(id: string): ViewMount {
           items: lines, key: (l) => l.id, name: (l) => String(l.description), label: 'Líneas de la propuesta', render: lineItem,
           onReorder: (ordered, move) => reorder(ordered, move.item, move.to),
         });
+        sortable.element.setAttribute('data-feedback-id', 'booking.propuesta.lineas.lista');
+        sortable.element.setAttribute('data-feedback-label', 'Lista de líneas');
         lists.set('lines', { sortable, sig: signature });
         return sortable.element;
       };
@@ -175,13 +177,13 @@ export function mountProposalEditor(id: string): ViewMount {
         sheet = openSheet({
           title: 'Añadir extra',
           body: extras.length === 0
-            ? el('p', { class: 'hint', id: 'noExtras' }, 'El catálogo de extras está vacío. El propietario los crea en «Tarifas y condiciones», en la capa «Extras».')
-            : el('ul', { class: 'list', id: 'extraChoices' }, extras.map((r) => el('li', { class: 'row' },
-                el('button', { class: 'linkbtn', type: 'button', dataset: { extra: r.name }, onclick: () => {
+            ? el('p', { class: 'hint', id: 'noExtras', 'data-feedback-id': 'booking.propuesta.extras.vacio', 'data-feedback-label': 'Catálogo de extras vacío' }, 'El catálogo de extras está vacío. El propietario los crea en «Tarifas y condiciones», en la capa «Extras».')
+            : el('ul', { class: 'list', id: 'extraChoices', 'data-feedback-id': 'booking.propuesta.extras.lista', 'data-feedback-label': 'Extras disponibles' }, extras.map((r) => el('li', { class: 'row' },
+                el('button', { class: 'linkbtn', type: 'button', dataset: { extra: r.name }, 'data-feedback-id': 'booking.propuesta.extras.extra', 'data-feedback-label': 'Extra', onclick: () => {
                   void sheet.close(true);
                   openLine(null, { rate_id: r.id, description: r.name, unit: r.unit, unit_amount: num(r.amount), quantity: stay ? quantityFor(r.unit, persons, stay) : 1 });
                 } }, `${r.name} · ${amountText(r.unit, r.amount)}`)))),
-          foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+          foot: el('div', { class: 'choices' }, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.propuesta.extras.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
         });
       }
 
@@ -191,16 +193,16 @@ export function mountProposalEditor(id: string): ViewMount {
       }
 
       const focusedKey = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('#proposalLines .sortable-row')?.dataset.key ?? null;
-      const linesCard = el('article', { class: 'card', id: 'proposalLines' },
+      const linesCard = el('article', { class: 'card', id: 'proposalLines', 'data-feedback-id': 'booking.propuesta.lineas', 'data-feedback-label': 'Líneas' },
         el('div', { class: 'cardhead' }, el('h3', null, 'Líneas'), el('span', { class: 'count' }, String(lines.length))),
         lines.length === 0 ? el('p', { class: 'hint' }, 'Sin líneas todavía.') : lineList(),
         editable ? el('div', { class: 'choices', style: 'margin-top:10px' },
-          el('button', { class: 'primary small', type: 'button', id: 'suggestLines', onclick: () => void suggest() }, 'Sugerir desde el tarifario'),
-          el('button', { class: 'ghost small', type: 'button', id: 'addExtra', onclick: chooseExtra }, 'Añadir extra'),
-          el('button', { class: 'ghost small', type: 'button', id: 'addLine', onclick: () => openLine(null) }, 'Añadir línea')) : null);
+          el('button', { class: 'primary small', type: 'button', id: 'suggestLines', 'data-feedback-id': 'booking.propuesta.lineas.sugerir', 'data-feedback-label': 'Sugerir desde el tarifario', onclick: () => void suggest() }, 'Sugerir desde el tarifario'),
+          el('button', { class: 'ghost small', type: 'button', id: 'addExtra', 'data-feedback-id': 'booking.propuesta.lineas.extra', 'data-feedback-label': 'Añadir extra', onclick: chooseExtra }, 'Añadir extra'),
+          el('button', { class: 'ghost small', type: 'button', id: 'addLine', 'data-feedback-id': 'booking.propuesta.lineas.anadir', 'data-feedback-label': 'Añadir línea', onclick: () => openLine(null) }, 'Añadir línea')) : null);
 
       // --- totales
-      const totals = el('article', { class: 'card', id: 'proposalTotals' },
+      const totals = el('article', { class: 'card', id: 'proposalTotals', 'data-feedback-id': 'booking.propuesta.totales', 'data-feedback-label': 'Totales' },
         el('div', { class: 'cardhead' }, el('h3', null, 'Totales'), el('span', { class: 'chip' }, f.live ? 'En vivo' : 'Fijados al enviar')),
         el('dl', { class: 'kv' },
           el('dt', null, 'Subtotal'), el('dd', { id: 'totalSubtotal' }, eur(f.subtotal)),
@@ -210,16 +212,16 @@ export function mountProposalEditor(id: string): ViewMount {
           el('dt', null, 'Señal'), el('dd', { id: 'proposalDeposit' }, chosen ? eur(f.deposit_amount) : 'Elige unas condiciones')));
 
       replace(host,
-        el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToReservation', onclick: () => navigate(`#/reservas/${proposal.reservation_id}`) }, `← ${reservation?.title ?? 'Reserva'}`)),
+        el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToReservation', 'data-feedback-id': 'booking.propuesta.cabecera_pagina.volver', 'data-feedback-label': 'Volver a la reserva', onclick: () => navigate(`#/reservas/${proposal.reservation_id}`) }, `← ${reservation?.title ?? 'Reserva'}`)),
         el('div', { class: 'pagehead ficha' }, el('div', null,
           el('h2', null, `Propuesta v${proposal.version}`),
           el('p', null, reservation?.title ?? ''),
-          el('div', { class: 'chips' }, el('span', { class: 'chip', id: 'proposalStatus', dataset: { status: proposal.status } }, RATE_LABELS.status[proposal.status]),
+          el('div', { class: 'chips' }, el('span', { class: 'chip', id: 'proposalStatus', 'data-feedback-id': 'booking.propuesta.cabecera_pagina.estado', 'data-feedback-label': 'Estado', dataset: { status: proposal.status } }, RATE_LABELS.status[proposal.status]),
             proposal._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null))),
-        draft ? null : el('div', { class: 'banner', id: 'proposalReadonly' }, el('span', null, `Esta propuesta está ${RATE_LABELS.status[proposal.status]!.toLowerCase()} y ya no se puede editar. Para cambiarla, crea una nueva versión desde la ficha.`)),
-        el('div', { class: 'choices' },
-          el('button', { class: 'ghost small', type: 'button', id: 'viewDocument', onclick: () => navigate(`#/propuesta/${id}/documento`) }, 'Ver documento'),
-          editable ? el('button', { class: 'danger small', type: 'button', id: 'discardDraft', onclick: () => void discard() }, 'Quitar borrador') : null),
+        draft ? null : el('div', { class: 'banner', id: 'proposalReadonly', 'data-feedback-id': 'booking.propuesta.solo_lectura', 'data-feedback-label': 'Aviso de solo lectura' }, el('span', null, `Esta propuesta está ${RATE_LABELS.status[proposal.status]!.toLowerCase()} y ya no se puede editar. Para cambiarla, crea una nueva versión desde la ficha.`)),
+        el('div', { class: 'choices', 'data-feedback-id': 'booking.propuesta.acciones', 'data-feedback-label': 'Acciones' },
+          el('button', { class: 'ghost small', type: 'button', id: 'viewDocument', 'data-feedback-id': 'booking.propuesta.acciones.documento', 'data-feedback-label': 'Ver documento', onclick: () => navigate(`#/propuesta/${id}/documento`) }, 'Ver documento'),
+          editable ? el('button', { class: 'danger small', type: 'button', id: 'discardDraft', 'data-feedback-id': 'booking.propuesta.acciones.quitar_borrador', 'data-feedback-label': 'Quitar borrador', onclick: () => void discard() }, 'Quitar borrador') : null),
         el('div', { class: 'cardgrid ficha-grid' }, header, linesCard, totals));
       if (focusedKey) host.querySelector<HTMLElement>(`#proposalLines .sortable-row[data-key="${focusedKey}"] .sortable-handle`)?.focus({ preventScroll: true });
     }

@@ -27,12 +27,12 @@ type EntityState = { kind: 'loading' } | { kind: 'ok'; entity: Entity; logoUrl: 
 
 function entityHeader(state: EntityState): Child {
   if (state.kind === 'loading') return null;
-  if (state.kind === 'missing') return el('p', { class: 'banner warn noprint', id: 'entityMissing', role: 'status' }, 'Faltan los datos de la entidad en Central: el documento sale sin cabecera.');
-  if (state.kind === 'offline') return el('p', { class: 'banner noprint', id: 'entityOffline', role: 'status' }, 'Sin conexión: la cabecera con los datos de la entidad se añade al volver la red.');
+  if (state.kind === 'missing') return el('p', { class: 'banner warn noprint', id: 'entityMissing', 'data-feedback-id': 'booking.propuesta.documento.entidad_falta', 'data-feedback-label': 'Faltan datos de la entidad', role: 'status' }, 'Faltan los datos de la entidad en Central: el documento sale sin cabecera.');
+  if (state.kind === 'offline') return el('p', { class: 'banner noprint', id: 'entityOffline', 'data-feedback-id': 'booking.propuesta.documento.entidad_sin_red', 'data-feedback-label': 'Entidad sin conexión', role: 'status' }, 'Sin conexión: la cabecera con los datos de la entidad se añade al volver la red.');
   const e = state.entity;
   const place = [e.postal_code, e.city, e.province && e.province !== e.city ? `(${e.province})` : null].filter(Boolean).join(' ');
   const contact = [e.phone, e.email, e.website?.replace(/^https:\/\//, '')].filter(Boolean).join(' · ');
-  return el('div', { class: 'pdoc-entity', id: 'documentEntity' },
+  return el('div', { class: 'pdoc-entity', id: 'documentEntity', 'data-feedback-id': 'booking.propuesta.documento.entidad', 'data-feedback-label': 'Datos de la entidad' },
     state.logoUrl ? el('img', { class: 'pdoc-logo', src: state.logoUrl, alt: e.trade_name ?? e.legal_name }) : null,
     el('div', { class: 'pdoc-entity-text' },
       el('strong', null, e.legal_name),
@@ -44,7 +44,7 @@ function entityHeader(state: EntityState): Child {
 
 export function mountProposalDocument(id: string): ViewMount {
   return ({ main, client, navigate }) => {
-    const host = el('div');
+    const host = el('div', { 'data-feedback-id': 'booking.propuesta.documento', 'data-feedback-label': 'Documento de la propuesta' });
     replace(main, host);
     let destroyed = false;
     let entity: EntityState = { kind: 'loading' };
@@ -59,7 +59,7 @@ export function mountProposalDocument(id: string): ViewMount {
       if (destroyed) return;
       if (!proposal || proposal.deleted_at !== null) {
         replace(host, el('div', { class: 'empty' }, el('strong', null, 'Propuesta no encontrada'), 'Puede que se haya borrado o que aún no se haya sincronizado.'),
-          el('p', null, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
+          el('p', null, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.propuesta.documento.volver_reservas', 'data-feedback-label': 'Volver a Reservas', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
         return;
       }
       const reservation = (await client.get(RESERVATIONS, proposal.reservation_id)) as Row | null;
@@ -75,7 +75,11 @@ export function mountProposalDocument(id: string): ViewMount {
       const n = nights(start, end);
       const draft = proposal.status === 'borrador';
 
-      const section = (title: string, ...children: Child[]) => el('section', { class: 'pdoc-section' }, el('h2', null, title), ...children);
+      const SECTION_IDS: Record<string, string> = {
+        Detalle: 'booking.propuesta.documento.detalle', 'Qué incluye': 'booking.propuesta.documento.incluye', 'Señal y plazos': 'booking.propuesta.documento.senal',
+        Cancelación: 'booking.propuesta.documento.cancelacion', Condiciones: 'booking.propuesta.documento.condiciones',
+      };
+      const section = (title: string, ...children: Child[]) => el('section', { class: 'pdoc-section', 'data-feedback-id': SECTION_IDS[title], 'data-feedback-label': title }, el('h2', null, title), ...children);
       const row = (term: string, value: Child, extra = '') => el('tr', { class: extra }, el('th', { scope: 'row' }, term), el('td', null, value));
 
       const vatRows = f.includesVat
@@ -88,25 +92,25 @@ export function mountProposalDocument(id: string): ViewMount {
         : null;
 
       replace(host,
-        el('div', { class: 'pdoc-actions noprint' },
-          el('button', { class: 'linkbtn', type: 'button', id: 'backFromDocument', onclick: () => navigate(`#/reservas/${proposal.reservation_id}`) }, `← ${reservation?.title ?? 'Reserva'}`),
-          el('button', { class: 'primary', type: 'button', id: 'printDocument', onclick: () => window.print() }, 'Imprimir / Guardar PDF')),
-        el('article', { class: 'pdoc', id: 'proposalDocument' },
+        el('div', { class: 'pdoc-actions noprint', 'data-feedback-id': 'booking.propuesta.documento.acciones', 'data-feedback-label': 'Acciones del documento' },
+          el('button', { class: 'linkbtn', type: 'button', id: 'backFromDocument', 'data-feedback-id': 'booking.propuesta.documento.volver', 'data-feedback-label': 'Volver a la reserva', onclick: () => navigate(`#/reservas/${proposal.reservation_id}`) }, `← ${reservation?.title ?? 'Reserva'}`),
+          el('button', { class: 'primary', type: 'button', id: 'printDocument', 'data-feedback-id': 'booking.propuesta.documento.imprimir', 'data-feedback-label': 'Imprimir o guardar PDF', onclick: () => window.print() }, 'Imprimir / Guardar PDF')),
+        el('article', { class: 'pdoc', id: 'proposalDocument', 'data-feedback-id': 'booking.propuesta.documento.hoja', 'data-feedback-label': 'Hoja A4' },
           entityHeader(entity),
-          el('header', { class: 'pdoc-head' },
+          el('header', { class: 'pdoc-head', 'data-feedback-id': 'booking.propuesta.documento.cabecera', 'data-feedback-label': 'Cabecera del documento' },
             el('p', { class: 'pdoc-kind', id: 'documentNature' }, `Propuesta ${RATE_LABELS.nature[proposal.nature]!.toLowerCase()}`),
             el('h1', null, reservation?.title ?? 'Propuesta'),
             el('p', { class: 'pdoc-sub' }, `Versión ${proposal.version}${proposal.sent_at ? ` · enviada el ${fullDay(String(proposal.sent_at).slice(0, 10))}` : ''}${reservation?.code ? ` · ${reservation.code}` : ''}`),
             draft ? el('p', { class: 'pdoc-draft', id: 'documentDraft' }, 'Borrador: todavía no se ha enviado') : null),
-          el('table', { class: 'pdoc-facts' }, el('tbody', null,
+          el('table', { class: 'pdoc-facts', 'data-feedback-id': 'booking.propuesta.documento.datos', 'data-feedback-label': 'Fechas y personas' }, el('tbody', null,
             row('Fechas', `${fullDay(start)} → ${fullDay(end)}`), n === null ? null : row('Noches', String(n)), row('Personas', persons === null ? '—' : String(persons)))),
           section('Detalle',
-            lines.length === 0 ? el('p', null, 'Sin líneas.') : el('table', { class: 'pdoc-lines' }, el('tbody', null, lines.map((l) => el('tr', null,
+            lines.length === 0 ? el('p', null, 'Sin líneas.') : el('table', { class: 'pdoc-lines', 'data-feedback-id': 'booking.propuesta.documento.lineas', 'data-feedback-label': 'Líneas' }, el('tbody', null, lines.map((l) => el('tr', null,
               el('td', null, el('span', { class: 'pdoc-desc' }, l.description),
                 el('small', null, l.unit === 'porcentaje' ? `${signedPct(l.unit_amount)} sobre el subtotal`
                   : `${qty(l.quantity)} × ${amountText(l.unit, l.unit_amount)}${Number(l.discount_pct) > 0 ? ` · descuento ${signedPct(-Number(l.discount_pct))}` : ''}`)),
               el('td', { class: 'num' }, eur(amounts.get(l.id) ?? 0)))))),
-            el('table', { class: 'pdoc-totals' }, el('tbody', null,
+            el('table', { class: 'pdoc-totals', 'data-feedback-id': 'booking.propuesta.documento.totales', 'data-feedback-label': 'Totales' }, el('tbody', null,
               row('Subtotal', eur(f.subtotal), 'soft'),
               f.adjustments !== 0 ? row('Ajustes', eur(f.adjustments), 'soft') : null,
               ...vatRows,
@@ -124,7 +128,7 @@ export function mountProposalDocument(id: string): ViewMount {
               Number(tiers[tiers.length - 1]!.min_days_before) > 0 ? el('li', null, 'Con menos antelación: no se devuelve la señal.') : null,
             ])) : null,
           conditions?.text ? section('Condiciones', el('p', { class: 'pdoc-text' }, conditions.text)) : null,
-          proposal.valid_until ? el('p', { class: 'pdoc-valid', id: 'documentValidUntil' }, `Propuesta válida hasta el ${fullDay(proposal.valid_until)}.`) : null));
+          proposal.valid_until ? el('p', { class: 'pdoc-valid', id: 'documentValidUntil', 'data-feedback-id': 'booking.propuesta.documento.validez', 'data-feedback-label': 'Validez' }, `Propuesta válida hasta el ${fullDay(proposal.valid_until)}.`) : null));
     }
 
     void paint();

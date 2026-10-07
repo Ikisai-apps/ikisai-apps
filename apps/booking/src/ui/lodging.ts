@@ -139,7 +139,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
   }
 
   const showError = (message: string): void => { error.hidden = false; error.textContent = message; };
-  const save = el('button', { class: 'primary', type: 'button', id: 'saveRow', onclick: () => void submit() }, 'Guardar');
+  const save = el('button', { class: 'primary', type: 'button', id: 'saveRow', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.guardar', 'data-feedback-label': 'Guardar', onclick: () => void submit() }, 'Guardar');
   let sheet: Sheet;
 
   async function finish(operations: RowOperation[], message: string, settle: boolean): Promise<void> {
@@ -183,7 +183,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     await finish([operation], assignment ? 'Asignación guardada.' : 'Alojamiento asignado.', true);
   }
 
-  const field = (text: string, control: Child, hint?: string) => el('label', { class: 'field' }, el('span', null, text), control, hint ? el('small', { class: 'hint' }, hint) : null);
+  const field = (text: string, control: Child, key: string, hint?: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reserva.alojamiento.hoja.${key}`, 'data-feedback-label': text, ...(key === 'huesped' ? { 'data-feedback-ignore': '' } : {}) }, el('span', null, text), control, hint ? el('small', { class: 'hint' }, hint) : null);
   const onEdit = () => { syncGuest(); refresh(); };
   spaceSelect.addEventListener('change', () => { fillBeds(null); refresh(); });
   for (const control of [bedSelect, from, to]) control.addEventListener('change', refresh);
@@ -191,23 +191,23 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
   for (const control of [group, persons, from, to]) control.addEventListener('input', refresh);
 
   const removeButton = assignment
-    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', onclick: () => void finish([{ op: 'delete', table: ASSIGNMENTS, id: assignment.id, expectedRevision: assignment.revision }], 'Asignación quitada.', false) }, 'Quitar')
+    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.quitar', 'data-feedback-label': 'Quitar', onclick: () => void finish([{ op: 'delete', table: ASSIGNMENTS, id: assignment.id, expectedRevision: assignment.revision }], 'Asignación quitada.', false) }, 'Quitar')
     : null;
 
   sheet = openSheet({
     title: assignment ? 'Asignación de alojamiento' : 'Asignar alojamiento',
     ...(assignment ? { meta: `Revisión ${assignment.revision}` } : {}),
-    body: el('form', { onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
+    body: el('form', { 'data-feedback-id': 'booking.reserva.alojamiento.hoja', 'data-feedback-label': 'Asignar alojamiento', onsubmit: (e: Event) => { e.preventDefault(); void submit(); } },
       el('div', { class: 'rowform' },
         spaceOptions.length === 0 ? el('p', { class: 'hint' }, 'No hay espacios activos. Créalos en «Espacios y camas».') : null,
-        field('Espacio', spaceSelect), field('Cama', bedSelect, 'Opcional. Sin cama concreta solo cuenta para la ocupación de la habitación.'),
-        seesGuests ? field('Huésped', guestSelect, 'Para un grupo, déjalo en «Ninguno» y escribe su nombre.') : null,
-        field('Nombre del grupo', group), field('Personas', persons),
+        field('Espacio', spaceSelect, 'espacio'), field('Cama', bedSelect, 'cama', 'Opcional. Sin cama concreta solo cuenta para la ocupación de la habitación.'),
+        seesGuests ? field('Huésped', guestSelect, 'huesped', 'Para un grupo, déjalo en «Ninguno» y escribe su nombre.') : null,
+        field('Nombre del grupo', group, 'grupo'), field('Personas', persons, 'personas'),
         el('div', { class: 'sectionlabel formsection' }, 'Fechas propias (opcional)'),
-        field('Desde', from, 'Si las dejas vacías, valen las de la reserva.'), field('Hasta', to),
+        field('Desde', from, 'desde', 'Si las dejas vacías, valen las de la reserva.'), field('Hasta', to, 'hasta'),
         conflict, error),
       removeButton ? el('p', { style: 'margin-top:18px' }, removeButton) : null),
-    foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+    foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
     footHidden: !!assignment,
     beforeClose: () => !guard.dirtyEditor || confirm('Hay cambios sin guardar. ¿Cerrar sin guardar?'),
     onClose: () => { guard.dirtyEditor = false; },
@@ -244,24 +244,24 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
   const sections = occupancy.sort((a, b) => Number(spaceById.get(a.spaceId)?.position) - Number(spaceById.get(b.spaceId)?.position)).map((occ) => {
     const space = spaceById.get(occ.spaceId)!;
     const own = data.assignments.filter((a) => a.space_id === space.id);
-    return el('section', { class: 'lodging-space', dataset: { space: space.name, over: String(occ.over) } },
+    return el('section', { class: 'lodging-space', dataset: { space: space.name, over: String(occ.over) }, 'data-feedback-id': 'booking.reserva.alojamiento.espacio', 'data-feedback-label': 'Espacio' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, space.name),
         el('span', { class: `chip${occ.over ? ' alert' : ''}`, dataset: { role: 'occupancy' } }, `${occ.persons} / ${occ.capacity} plazas`),
         occ.over ? el('span', { class: 'chip alert', role: 'status' }, 'Sobreocupada') : null),
       occ.over ? el('p', { class: 'hint lodging-over' }, `Hay más personas (${occ.persons}) que plazas (${occ.capacity}). Es un aviso: se puede guardar igualmente.`) : null,
-      el('ul', { class: 'list' }, own.map((a) => {
+      el('ul', { class: 'list', 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones', 'data-feedback-label': 'Asignaciones' }, own.map((a) => {
         const bed = a.bed_id ? bedById.get(a.bed_id) : null;
-        return el('li', { class: 'row', dataset: { pending: String(a._pending === true) } },
-          el('div', { class: 'row-title' }, el('span', { class: 'name' }, who(a))),
+        return el('li', { class: 'row', dataset: { pending: String(a._pending === true) }, 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones.fila', 'data-feedback-label': 'Asignación' },
+          el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, who(a))),
           el('div', { class: 'row-meta' }, [plural(Number(a.persons), 'persona', 'personas'), bed ? `cama ${bed.label}` : null, dates(a)].filter(Boolean).join(' · ')),
-          o.editable ? el('div', { class: 'row-actions' }, el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar asignación de ${who(a)} en ${space.name}`, onclick: () => void openAssignmentSheet(sheetOptions(a)) }, icon('edit', 16))) : null);
+          o.editable ? el('div', { class: 'row-actions' }, el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar asignación de ${who(a)} en ${space.name}`, 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones.editar', 'data-feedback-label': 'Editar asignación', onclick: () => void openAssignmentSheet(sheetOptions(a)) }, icon('edit', 16))) : null);
       })));
   });
 
-  return el('article', { class: 'card', id: 'blockLodging' },
+  return el('article', { class: 'card', id: 'blockLodging', 'data-feedback-id': 'booking.reserva.alojamiento', 'data-feedback-label': 'Alojamiento' },
     el('div', { class: 'cardhead' }, el('h3', null, 'Alojamiento'),
-      el('button', { class: 'linkbtn', type: 'button', id: 'openSpaces', onclick: () => o.navigate('#/espacios') }, 'Espacios y camas')),
+      el('button', { class: 'linkbtn', type: 'button', id: 'openSpaces', 'data-feedback-id': 'booking.reserva.alojamiento.espacios', 'data-feedback-label': 'Espacios y camas', onclick: () => o.navigate('#/espacios') }, 'Espacios y camas')),
     sections.length === 0 ? el('p', { class: 'hint' }, 'Sin asignaciones todavía.') : sections,
     extras > 0 ? el('p', { class: 'hint', id: 'extraBeds' }, plural(extras, 'supletoria activada', 'supletorias activadas')) : null,
-    o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addAssignment', onclick: () => void openAssignmentSheet(sheetOptions(null)) }, 'Asignar')) : null);
+    o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addAssignment', 'data-feedback-id': 'booking.reserva.alojamiento.asignar', 'data-feedback-label': 'Asignar', onclick: () => void openAssignmentSheet(sheetOptions(null)) }, 'Asignar')) : null);
 }

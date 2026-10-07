@@ -35,7 +35,7 @@ const RESERVATION_SPECS: FieldSpec[] = [
   { key: 'end_date', label: 'Fecha de salida', type: 'date' },
   { key: 'expected_guests', label: 'Personas previstas', type: 'number' },
   { key: 'minors_count', label: 'Menores', type: 'number' },
-  { key: 'contact_name', label: 'Nombre', type: 'text', max: 200, section: 'Contacto' },
+  { key: 'contact_name', label: 'Nombre', type: 'text', max: 200, section: 'Contacto', personal: true },
   { key: 'contact_phone', label: 'Teléfono', type: 'tel', max: 40 },
   { key: 'contact_email', label: 'Correo', type: 'email', max: 320 },
   { key: 'customer_type', label: 'Tipo de cliente', type: 'select', options: OPTIONS.customerType, optional: true },
@@ -86,7 +86,7 @@ const FINANCE_SPECS: FieldSpec[] = [
   { key: 'deposit_paid', label: 'Señal pagada (€)', type: 'number', decimal: true },
   { key: 'payment_type', label: 'Tipo de pago', type: 'select', options: OPTIONS.paymentType, optional: true, section: 'Pago del organizador' },
   { key: 'payment_date', label: 'Fecha del pago', type: 'date' },
-  { key: 'payment_holder', label: 'Titular del pago', type: 'text', max: 200 },
+  { key: 'payment_holder', label: 'Titular del pago', type: 'text', max: 200, personal: true },
 ];
 
 export const RESTRICTION_SPECS: FieldSpec[] = [
@@ -155,7 +155,7 @@ export function mountReservation(id: string): ViewMount {
       const reservation = (await client.get(RESERVATIONS, id)) as (ReservationRow & Row) | null;
       if (!reservation) {
         replace(host, el('div', { class: 'empty' }, el('strong', null, 'Reserva no encontrada'), 'Puede que se haya borrado o que aún no se haya sincronizado.'),
-          el('p', null, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
+          el('p', null, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.no_encontrada.volver', 'data-feedback-label': 'Volver a Reservas', onclick: () => navigate('#/reservas') }, 'Volver a Reservas')));
         return;
       }
       const deleted = reservation.deleted_at !== null;
@@ -183,7 +183,7 @@ export function mountReservation(id: string): ViewMount {
 
       // --- acciones de cabecera
       const editReservation = () => openRowSheet({
-        client, title: 'Editar reserva', table: RESERVATIONS, row: reservation,
+        client, title: 'Editar reserva', table: RESERVATIONS, row: reservation, feedbackId: 'booking.reserva.editar', feedbackLabel: 'Editar reserva',
         specs: RESERVATION_SPECS.map((spec) => spec.key !== 'status' ? spec
           : { ...spec, options: OPTIONS.status.filter(([value]) => !requiresEvent(value as ReservationStatus) || liveEvent !== null || value === reservation.status) }),
         check: (merged) => {
@@ -247,18 +247,18 @@ export function mountReservation(id: string): ViewMount {
       }
 
       const archived = reservation.archived_at !== null;
-      const archiveButton = el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', onclick: () => void run(
+      const archiveButton = el('button', { class: 'ghost', type: 'button', id: 'archiveReservation', 'data-feedback-id': 'booking.reserva.acciones.archivar', 'data-feedback-label': 'Archivar', onclick: () => void run(
         [{ op: 'update', table: RESERVATIONS, id, expectedRevision: reservation.revision, fields: { archived_at: archived ? null : new Date().toISOString() } }],
         archived ? 'Reserva desarchivada.' : 'Reserva archivada.') }, archived ? 'Desarchivar' : 'Archivar');
-      const trashButton = el('button', { class: 'ghost', type: 'button', id: 'trashReservation', onclick: () => void trash() }, icon('trash'), 'Papelera');
+      const trashButton = el('button', { class: 'ghost', type: 'button', id: 'trashReservation', 'data-feedback-id': 'booking.reserva.acciones.papelera', 'data-feedback-label': 'Papelera', onclick: () => void trash() }, icon('trash'), 'Papelera');
       const actions = deleted
-        ? [writable ? el('button', { class: 'primary', type: 'button', id: 'restoreReservation', onclick: () => void restore() }, icon('restore'), 'Restaurar') : null]
+        ? [writable ? el('button', { class: 'primary', type: 'button', id: 'restoreReservation', 'data-feedback-id': 'booking.reserva.acciones.restaurar', 'data-feedback-label': 'Restaurar', onclick: () => void restore() }, icon('restore'), 'Restaurar') : null]
         : !writable ? [] : [
-            el('button', { class: 'primary', type: 'button', id: 'editReservation', onclick: editReservation }, icon('edit'), 'Editar'),
+            el('button', { class: 'primary', type: 'button', id: 'editReservation', 'data-feedback-id': 'booking.reserva.acciones.editar', 'data-feedback-label': 'Editar', onclick: editReservation }, icon('edit'), 'Editar'),
             !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)
-              ? el('button', { class: 'ghost', type: 'button', id: 'confirmReservation', onclick: () => void confirmReservation() }, icon('check'), 'Confirmar') : null,
+              ? el('button', { class: 'ghost', type: 'button', id: 'confirmReservation', 'data-feedback-id': 'booking.reserva.acciones.confirmar', 'data-feedback-label': 'Confirmar', onclick: () => void confirmReservation() }, icon('check'), 'Confirmar') : null,
             // En móvil «Archivar» y «Papelera» van a un menú «Más»; en escritorio se ven todas (CSS `.more`).
-            el('details', { class: 'more', id: 'moreActions' }, el('summary', { class: 'ghost' }, 'Más'),
+            el('details', { class: 'more', id: 'moreActions', 'data-feedback-id': 'booking.reserva.acciones.mas', 'data-feedback-label': 'Más acciones' }, el('summary', { class: 'ghost' }, 'Más'),
               el('div', { class: 'more-items' }, archiveButton, trashButton)),
           ];
 
@@ -266,15 +266,20 @@ export function mountReservation(id: string): ViewMount {
       const n = nights(reservation.start_date, reservation.end_date);
       const services = [['uses_accommodation', 'Alojamiento'], ['requires_meals', 'Comidas'], ['uses_interpretation_center', 'Centro de interpretación'], ['uses_outdoors', 'Exteriores'], ['uses_pool', 'Piscina']]
         .filter(([key]) => reservation[key as string] === true).map(([, name]) => name).join(' · ');
+      const BLOCK_IDS: Record<string, string> = {
+        blockSummary: 'booking.reserva.resumen', blockOperation: 'booking.reserva.operacion', blockChecklist: 'booking.reserva.checklist', blockGuests: 'booking.reserva.huespedes',
+        blockMeals: 'booking.reserva.comidas', blockFinance: 'booking.reserva.cobro', blockCosts: 'booking.reserva.coste',
+      };
       const block = (idAttr: string, title: string, body: Child, action?: Child) =>
-        el('article', { class: 'card', id: idAttr }, el('div', { class: 'cardhead' }, el('h3', null, title), action ?? null), body);
-      const editLink = (idAttr: string, textLabel: string, onclick: () => void) => (editable ? el('button', { class: 'linkbtn', type: 'button', id: idAttr, onclick }, textLabel) : null);
+        el('article', { class: 'card', id: idAttr, 'data-feedback-id': BLOCK_IDS[idAttr], 'data-feedback-label': title }, el('div', { class: 'cardhead' }, el('h3', null, title), action ?? null), body);
+      const EDIT_IDS: Record<string, string> = { editOperation: 'booking.reserva.operacion.editar', editFinance: 'booking.reserva.cobro.editar' };
+      const editLink = (idAttr: string, textLabel: string, onclick: () => void) => (editable ? el('button', { class: 'linkbtn', type: 'button', id: idAttr, 'data-feedback-id': EDIT_IDS[idAttr], 'data-feedback-label': textLabel, onclick }, textLabel) : null);
 
       const summary = block('blockSummary', 'Resumen', kv(
         ['Fechas', dateRange(reservation)], ['Noches', n === null ? '—' : String(n)],
         ['Personas', `${text(reservation.expected_guests)} previstas · ${text(liveEvent?.final_guests)} finales`],
         ['Menores', text(reservation.minors_count)], ['Tipo', label(reservation.event_type)],
-        ['Contacto', [reservation.contact_name, reservation.contact_phone, reservation.contact_email].filter(Boolean).join(' · ') || '—'],
+        ['Contacto', el('span', { 'data-feedback-ignore': '' }, [reservation.contact_name, reservation.contact_phone, reservation.contact_email].filter(Boolean).join(' · ') || '—')],
         ['Servicios', services || '—'], ['Prioridad', label(reservation.priority)],
         ['Briefing final', reservation.briefing_received ? 'Recibido' : 'Pendiente'],
         reservation.customer_notes ? ['Observaciones', reservation.customer_notes] : null,
@@ -303,8 +308,8 @@ export function mountReservation(id: string): ViewMount {
               liveEvent.operational_notes ? ['Notas', liveEvent.operational_notes] : null,
               ['Cierre', liveEvent.closed_at ? formatDate(liveEvent.closed_at) : 'Abierto'],
               liveEvent.incidents ? ['Incidencias', liveEvent.incidents] : null),
-            editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
-          ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.' })));
+            editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', 'data-feedback-id': 'booking.reserva.operacion.cierre', 'data-feedback-label': 'Cierre operativo', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
+          ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.', feedbackId: 'booking.reserva.operacion.hoja', feedbackLabel: 'Editar operación' })));
 
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
@@ -312,13 +317,13 @@ export function mountReservation(id: string): ViewMount {
       const staffCard =!liveEvent || !staff ? null : staffBlock.render({ client, reservation, event: liveEvent, data: staff, editable, run });
 
       // Un ítem de la lista: checkbox y botón de editar (el asa y los botones «Subir/Bajar» los pone el kit).
-      const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) } },
-        el('label', { class: 'check' },
+      const checklistItem = (item: Row): HTMLElement => el('div', { class: 'checklist-item', dataset: { status: item.status, pending: String(item._pending === true) }, 'data-feedback-id': 'booking.reserva.checklist.tarea', 'data-feedback-label': 'Tarea' },
+        el('label', { class: 'check', 'data-feedback-id': 'booking.reserva.checklist.tarea.casilla', 'data-feedback-label': 'Marcar como hecha' },
           el('input', { type: 'checkbox', checked: item.status === 'hecho', disabled: !editable || item.status === 'no_aplica', 'aria-label': item.label,
             onchange: () => void run([{ op: 'update', table: CHECKLIST, id: item.id, expectedRevision: item.revision, fields: { status: item.status === 'hecho' ? 'pendiente' : 'hecho' } }], 'Checklist actualizado.') }),
           el('span', null, item.label, item.status === 'no_aplica' ? ' (no aplica)' : '')),
-        editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, onclick: () => openRowSheet({
-          client, title: 'Tarea del checklist', table: CHECKLIST, row: item, specs: CHECKLIST_SPECS,
+        editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar ${item.label}`, 'data-feedback-id': 'booking.reserva.checklist.tarea.editar', 'data-feedback-label': 'Editar tarea', onclick: () => openRowSheet({
+          client, title: 'Tarea del checklist', table: CHECKLIST, row: item, specs: CHECKLIST_SPECS, feedbackId: 'booking.reserva.checklist.hoja', feedbackLabel: 'Editar tarea',
           remove: { label: 'Quitar', operations: () => [del(CHECKLIST, item)] } }) }, icon('edit', 16)) : null);
 
       // Reordenar: un solo `update` del ítem movido con `position` entre sus vecinos; solo si no cabe, se renumera la lista entera en un lote.
@@ -342,7 +347,7 @@ export function mountReservation(id: string): ViewMount {
       onChecklistReorder = reorderChecklist;
       const checklistList = (type: string): HTMLElement => {
         const items = checklist.filter((item) => item.checklist_type === type);
-        if (!editable) return el('ul', { class: 'checklist' }, items.map((item) => el('li', null, checklistItem(item))));
+        if (!editable) return el('ul', { class: 'checklist', 'data-feedback-id': 'booking.reserva.checklist.lista', 'data-feedback-label': 'Lista de tareas' }, items.map((item) => el('li', null, checklistItem(item))));
         const kept = checklistLists.get(type);
         if (kept) {
           const sig = rowSig(items);
@@ -355,6 +360,8 @@ export function mountReservation(id: string): ViewMount {
           onReorder: (ordered, move) => onChecklistReorder(ordered, move.item, move.to),
         });
         sortable.element.querySelector('ul')?.classList.add('checklist');
+        sortable.element.setAttribute('data-feedback-id', 'booking.reserva.checklist.lista');
+        sortable.element.setAttribute('data-feedback-label', 'Lista de tareas');
         checklistLists.set(type, { sortable, sig: rowSig(items) });
         return sortable.element;
       };
@@ -365,13 +372,13 @@ export function mountReservation(id: string): ViewMount {
           checklistList(type),
         ]),
         editable ? el('div', { class: 'choices', style: 'margin-top:10px' },
-          el('button', { class: 'ghost small', type: 'button', id: 'seedChecklist', onclick: () => {
+          el('button', { class: 'ghost small', type: 'button', id: 'seedChecklist', 'data-feedback-id': 'booking.reserva.checklist.base', 'data-feedback-label': 'Añadir checklist base', onclick: () => {
             const operations = checklistSeedOperations(liveEvent.id, () => crypto.randomUUID(), { existing: checklist as any }) as unknown as RowOperation[];
             if (operations.length === 0) return void toast('El checklist base ya está completo.');
             void run(operations, `Añadidas ${operations.length} tareas del checklist base.`);
           } }, 'Añadir checklist base'),
-          el('button', { class: 'ghost small', type: 'button', id: 'addChecklistItem', onclick: () => openRowSheet({
-            client, title: 'Nueva tarea', table: CHECKLIST, row: null, specs: CHECKLIST_SPECS, defaults: { checklist_type: 'preparacion_general', status: 'pendiente' },
+          el('button', { class: 'ghost small', type: 'button', id: 'addChecklistItem', 'data-feedback-id': 'booking.reserva.checklist.anadir', 'data-feedback-label': 'Añadir tarea', onclick: () => openRowSheet({
+            client, title: 'Nueva tarea', table: CHECKLIST, row: null, specs: CHECKLIST_SPECS, feedbackId: 'booking.reserva.checklist.nueva', feedbackLabel: 'Nueva tarea', defaults: { checklist_type: 'preparacion_general', status: 'pendiente' },
             insertFields: { event_id: liveEvent.id, position: checklist.length + 1 } }) }, 'Añadir tarea')) : null,
       ]);
 
@@ -384,7 +391,7 @@ export function mountReservation(id: string): ViewMount {
           ? kv(['Registrados', String(guests.length)], ['Menores', String(guests.filter((g) => g.is_minor).length)],
               ['Firmados', String(guests.filter((g) => g.signed_at).length)], ['Enviados a SES', String(guests.filter((g) => g.ses_status === 'enviado_SES').length)])
           : el('p', { class: 'hint' }, 'El detalle de huéspedes está restringido a los responsables designados.'),
-        guestMode === 'ninguno' ? null : el('button', { class: 'linkbtn', type: 'button', id: 'openGuests', onclick: () => navigate(`#/huespedes/${liveEvent.id}`) }, 'Abrir'));
+        guestMode === 'ninguno' ? null : el('button', { class: 'linkbtn', type: 'button', id: 'openGuests', 'data-feedback-id': 'booking.reserva.huespedes.abrir', 'data-feedback-label': 'Abrir huéspedes', onclick: () => navigate(`#/huespedes/${liveEvent.id}`) }, 'Abrir'));
 
       const restrictionSummary = restrictions.filter((r) => r.active).map((r) => `${r.guest_id ? 1 : r.servings} ${label(r.restriction_type).toLowerCase()}${r.subject ? ` a ${r.subject}` : ''}`).join(' · ');
       const meals = block('blockMeals', 'Comidas', [
@@ -394,16 +401,16 @@ export function mountReservation(id: string): ViewMount {
         liveEvent ? [
           el('div', { class: 'sectionlabel' }, 'Restricciones', el('span', { class: 'count' }, String(restrictions.length))),
           restrictions.length === 0 ? el('p', { class: 'hint' }, 'Ninguna registrada.') : [
-            el('p', { id: 'restrictionSummary' }, restrictionSummary || 'Todas inactivas.'),
-            el('ul', { class: 'list', id: 'restrictionList' }, restrictions.map((r) => el('li', { class: 'row', dataset: { pending: String(r._pending === true) } },
+            el('p', { id: 'restrictionSummary', 'data-feedback-id': 'booking.reserva.comidas.resumen', 'data-feedback-label': 'Resumen de restricciones' }, restrictionSummary || 'Todas inactivas.'),
+            el('ul', { class: 'list', id: 'restrictionList', 'data-feedback-id': 'booking.reserva.comidas.restricciones', 'data-feedback-label': 'Restricciones alimentarias' }, restrictions.map((r) => el('li', { class: 'row', dataset: { pending: String(r._pending === true) }, 'data-feedback-id': 'booking.reserva.comidas.restricciones.fila', 'data-feedback-label': 'Restricción' },
               el('div', { class: 'row-title' }, el('span', { class: 'name' }, `${label(r.restriction_type)}${r.subject ? ` · ${r.subject}` : ''}`),
                 r.severity ? el('span', { class: `chip${r.severity === 'grave' ? ' alert' : ''}` }, label(r.severity)) : null, r.active ? null : el('span', { class: 'chip' }, 'Inactiva')),
               el('div', { class: 'row-meta' }, r.guest_id ? 'De un huésped concreto' : plural(Number(r.servings), 'persona', 'personas'), r.kitchen_notes ? ` · ${r.kitchen_notes}` : ''),
-              editable ? el('div', { class: 'row-actions' }, el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar restricción ${label(r.restriction_type)}`, onclick: () => openRowSheet({
-                client, title: 'Restricción alimentaria', table: RESTRICTIONS, row: r, specs: RESTRICTION_SPECS.filter((s) => s.key !== 'servings' || !r.guest_id),
+              editable ? el('div', { class: 'row-actions' }, el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar restricción ${label(r.restriction_type)}`, 'data-feedback-id': 'booking.reserva.comidas.restricciones.editar', 'data-feedback-label': 'Editar restricción', onclick: () => openRowSheet({
+                client, title: 'Restricción alimentaria', table: RESTRICTIONS, row: r, feedbackId: 'booking.reserva.comidas.restriccion', feedbackLabel: 'Editar restricción', specs: RESTRICTION_SPECS.filter((s) => s.key !== 'servings' || !r.guest_id),
                 remove: { label: 'Quitar', operations: () => [del(RESTRICTIONS, r)] } }) }, icon('edit', 16))) : null)))],
-          editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addRestriction', onclick: () => openRowSheet({
-            client, title: 'Nueva restricción', table: RESTRICTIONS, row: null, specs: RESTRICTION_SPECS, defaults: { restriction_type: 'vegetariano', servings: 1, active: true },
+          editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addRestriction', 'data-feedback-id': 'booking.reserva.comidas.anadir', 'data-feedback-label': 'Añadir restricción', onclick: () => openRowSheet({
+            client, title: 'Nueva restricción', table: RESTRICTIONS, row: null, feedbackId: 'booking.reserva.comidas.nueva', feedbackLabel: 'Nueva restricción', specs: RESTRICTION_SPECS, defaults: { restriction_type: 'vegetariano', servings: 1, active: true },
             insertFields: { event_id: liveEvent.id } }) }, 'Añadir restricción')) : null,
         ] : null,
       ]);
@@ -415,11 +422,11 @@ export function mountReservation(id: string): ViewMount {
         ['Señal', `${money(finance?.deposit_paid)} de ${money(finance?.deposit_required)} · ${DEPOSIT[depositStatus(finance as any)]}`],
         ['Pago', [label(finance?.payment_type), finance?.payment_date, finance?.payment_holder].filter((v) => v && v !== '—').join(' · ') || '—']),
         editLink('editFinance', 'Editar', () => openRowSheet({
-          client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.' })));
+          client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.', feedbackId: 'booking.reserva.cobro.hoja', feedbackLabel: 'Editar cobro' })));
 
       // Coste real: compras de Invoices asignadas a la reserva y su evento. Caché local al instante y refresco con red.
-      const costByCategory = el('div', { id: 'costByCategory' });
-      const costList = el('ul', { class: 'list', id: 'costList' });
+      const costByCategory = el('div', { id: 'costByCategory', 'data-feedback-id': 'booking.reserva.coste.categorias', 'data-feedback-label': 'Coste por categoría' });
+      const costList = el('ul', { class: 'list', id: 'costList', 'data-feedback-id': 'booking.reserva.coste.facturas', 'data-feedback-label': 'Facturas' });
       const costNote = el('p', { class: 'hint', id: 'costNote', role: 'status' });
       const costBody = el('div', { id: 'costBody' }, costByCategory, costList, costNote);
       const costUnavailable = el('p', { class: 'hint', id: 'costUnavailable', role: 'status', hidden: true }, 'Coste real no disponible.');
@@ -445,10 +452,10 @@ export function mountReservation(id: string): ViewMount {
         });
         breakdown.querySelector('.mb-amount')?.setAttribute('id', 'costTotal');
         replace(costByCategory, summary ? breakdown : null);
-        replace(costList, ...(summary?.rows ?? []).map((r) => el('li', { class: 'row' },
+        replace(costList, ...(summary?.rows ?? []).map((r) => el('li', { class: 'row', 'data-feedback-id': 'booking.reserva.coste.facturas.fila', 'data-feedback-label': 'Factura' },
           el('div', { class: 'row-title' }, el('span', { class: 'name' }, r.supplier), el('span', null, money(r.amount))),
           el('div', { class: 'row-meta' }, r.date ? fullDay(r.date) : '—', ' · ',
-            r.code ? el('a', { href: invoiceUrl(r.code), target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
+            r.code ? el('a', { href: invoiceUrl(r.code), 'data-feedback-id': 'booking.reserva.coste.facturas.enlace', 'data-feedback-label': 'Abrir factura', target: '_blank', rel: 'noopener' }, r.code) : 'sin código'))));
         costNote.textContent = !result ? (navigator.onLine ? 'Cargando…' : 'Se actualizará al reconectar.')
           : !navigator.onLine ? 'Se actualizará al reconectar.' : '';
       };
@@ -460,7 +467,7 @@ export function mountReservation(id: string): ViewMount {
 
       // Pastilla de Calendar: lo último que se supo (caché) y, con red, refresco en segundo plano solo de esta reserva.
       const published = toCalendarEvent(reservation) !== null;
-      const calendarChip = el('span', { class: 'chip', id: 'calendarChip', hidden: true });
+      const calendarChip = el('span', { class: 'chip', id: 'calendarChip', hidden: true, 'data-feedback-id': 'booking.reserva.cabecera.calendar', 'data-feedback-label': 'Estado de Calendar' });
       const paintCalendar = (status: CalendarStatus | null): void => {
         const item = status?.items.find((i) => i.reservationId === id);
         const state = !published || !status || status.health === 'not_configured' || item?.syncStatus === 'deleted' ? null
@@ -474,25 +481,25 @@ export function mountReservation(id: string): ViewMount {
       if (published) void fetchCalendarStatus(client, id).then((fresh) => { if (fresh) paintCalendar(fresh); });
 
       replace(host,
-        el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToList', onclick: () => navigate('#/reservas') }, '← Reservas')),
-        el('div', { class: 'pagehead ficha' }, el('div', null,
+        el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToList', 'data-feedback-id': 'booking.reserva.cabecera.volver', 'data-feedback-label': 'Volver a Reservas', onclick: () => navigate('#/reservas') }, '← Reservas')),
+        el('div', { class: 'pagehead ficha', 'data-feedback-id': 'booking.reserva.cabecera', 'data-feedback-label': 'Cabecera' }, el('div', null,
           el('h2', null, reservation.title),
           el('p', null, `${dateRange(reservation)} · ${reservation.expected_guests === null ? 'personas sin definir' : plural(reservation.expected_guests, 'persona', 'personas')} · ${reservation.code ?? 'código pendiente'}`),
           el('div', { class: 'chips' },
-            el('span', { class: 'chip', dataset: { status: reservation.status }, id: 'statusChip' }, statusLabel(reservation.status)),
+            el('span', { class: 'chip', dataset: { status: reservation.status }, id: 'statusChip', 'data-feedback-id': 'booking.reserva.cabecera.estado', 'data-feedback-label': 'Estado' }, statusLabel(reservation.status)),
             calendarChip,
-            confirmPending ? el('span', { class: 'chip pending', id: 'confirmPendingChip' }, 'Confirmación pendiente de enviar') : null,
+            confirmPending ? el('span', { class: 'chip pending', id: 'confirmPendingChip', 'data-feedback-id': 'booking.reserva.cabecera.confirmacion', 'data-feedback-label': 'Confirmación pendiente' }, 'Confirmación pendiente de enviar') : null,
             archived ? el('span', { class: 'chip' }, 'Archivada') : null,
             deleted ? el('span', { class: 'chip trash' }, 'En la papelera') : null,
             reservation._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null))),
-        rejectedBatch ? el('div', { class: 'banner alert', id: 'confirmRejected', role: 'alert' },
+        rejectedBatch ? el('div', { class: 'banner alert', id: 'confirmRejected', role: 'alert', 'data-feedback-id': 'booking.reserva.confirmacion_rechazada', 'data-feedback-label': 'Confirmación rechazada' },
           el('span', null, `No se pudo confirmar la reserva: ${describeError(rejectedBatch.error)}`),
-          el('button', { class: 'ghost small', type: 'button', id: 'dismissConfirmRejected', onclick: async () => {
+          el('button', { class: 'ghost small', type: 'button', id: 'dismissConfirmRejected', 'data-feedback-id': 'booking.reserva.confirmacion_rechazada.entendido', 'data-feedback-label': 'Entendido', onclick: async () => {
             await client.discardRejected(rejectedBatch.requestId);
             clearConfirmMark(id);
             void paint();
           } }, 'Entendido')) : null,
-        el('div', { class: 'choices', id: 'reservationActions' }, actions),
+        el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
         el('div', { class: 'cardgrid ficha-grid' }, summary, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });

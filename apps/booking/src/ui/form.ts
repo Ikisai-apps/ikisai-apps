@@ -30,6 +30,8 @@ export interface FieldSpec {
   local?: boolean;
   /** Solo se muestra cuando otro campo del formulario tiene ese valor (p. ej. camas solo en habitaciones). */
   showWhen?: { key: string; value: unknown };
+  /** Dato personal (contacto, documento…): se marca `data-feedback-ignore`. Teléfonos y correos lo son siempre. */
+  personal?: boolean;
 }
 
 export interface BuiltForm {
@@ -63,7 +65,11 @@ function normalize(spec: FieldSpec, raw: unknown): unknown {
 /** Marca pequeña junto a la etiqueta de un campo (p. ej. quién lo rellenó); null si no hay. */
 export type FieldMark = (key: string) => Child;
 
-export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark): BuiltForm {
+/**
+ * `feedbackBase` (p. ej. `booking.reservas.alta`) da a cada campo el id `<base>.<clave>`; la etiqueta es la del campo.
+ * Sin base no se marca nada (formularios de otras pantallas que ya marcan por su cuenta).
+ */
+export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark, feedbackBase?: string): BuiltForm {
   const listeners: Array<() => void> = [];
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
   const multis = new Map<string, HTMLInputElement[]>();
@@ -77,6 +83,9 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
       wrap.hidden = !!control && control.value !== String(spec.showWhen!.value);
     }
   };
+  const fieldMarks = (spec: FieldSpec): Record<string, string> => feedbackBase
+    ? { 'data-feedback-id': `${feedbackBase}.${spec.key}`, 'data-feedback-label': spec.label.slice(0, 60), ...(spec.personal || spec.type === 'tel' || spec.type === 'email' ? { 'data-feedback-ignore': '' } : {}) }
+    : {};
   const fire = () => { error.hidden = true; syncVisibility(); listeners.forEach((listener) => listener()); };
 
   for (const spec of specs) {
@@ -90,7 +99,7 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
       const boxes = (spec.options ?? []).map(([value]) => el('input', { type: 'checkbox', value, checked: chosen.includes(value), onchange: fire }));
       multis.set(spec.key, boxes);
       if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
-      children.push(el('fieldset', { class: 'field multi', id }, el('legend', null, spec.label),
+      children.push(el('fieldset', { class: 'field multi', id, ...fieldMarks(spec) }, el('legend', null, spec.label),
         (spec.options ?? []).map(([, text], i) => el('label', { class: 'check' }, boxes[i]!, el('span', null, text))),
         spec.hint ? el('small', { class: 'hint' }, spec.hint) : null));
       continue;
@@ -114,8 +123,8 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     controls.set(spec.key, control);
     if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
     const wrap = spec.type === 'check'
-      ? el('label', { class: 'check' }, control, el('span', null, spec.label, mark?.(spec.key) ?? null))
-      : el('label', { class: 'field' }, el('span', null, spec.label, mark?.(spec.key) ?? null), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
+      ? el('label', { class: 'check', ...fieldMarks(spec) }, control, el('span', null, spec.label, mark?.(spec.key) ?? null))
+      : el('label', { class: 'field', ...fieldMarks(spec) }, el('span', null, spec.label, mark?.(spec.key) ?? null), control, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
     if (spec.showWhen) conditional.push({ wrap, spec });
     children.push(wrap);
   }
@@ -169,6 +178,10 @@ export interface RowSheetOptions {
   savedMessage?: string;
   /** Marca junto a la etiqueta de cada campo (origen del dato). */
   mark?: FieldMark;
+  /** Base del id de feedback de la hoja (`booking.reservas.alta`): el formulario, cada campo y los botones cuelgan de ella. */
+  feedbackId?: string;
+  /** Etiqueta corta de la hoja para «Sugerencias y QA»; por defecto, el título. */
+  feedbackLabel?: string;
   /** Con red, espera a que el servidor resuelva el lote y, si lo rechaza, deja la hoja abierta con el motivo (reglas que solo comprueba el servidor). */
   settle?: boolean;
   submitLabel?: string;
@@ -179,11 +192,12 @@ export interface RowSheetOptions {
 /** Hoja de alta o edición de una fila. Devuelve la hoja; el pie con `Guardar` solo aparece con cambios en una edición. */
 export function openRowSheet(options: RowSheetOptions): Sheet {
   const { client, row, table } = options;
-  const form = buildForm(options.specs, row, options.defaults, options.mark);
+  const form = buildForm(options.specs, row, options.defaults, options.mark, options.feedbackId);
+  const fbAttrs = (suffix: string, label: string): Record<string, string> => (options.feedbackId ? { 'data-feedback-id': `${options.feedbackId}.${suffix}`, 'data-feedback-label': label } : {});
   const merged = () => ({ ...(row ?? {}), ...(options.insertFields ?? {}), ...form.values() });
   const extraHost = el('div');
   const paintExtra = () => { extraHost.replaceChildren(); const extra = options.extra?.(merged(), form); if (extra) extraHost.append(...(Array.isArray(extra) ? (extra as Node[]) : [extra as Node])); };
-  const save = el('button', { class: 'primary', type: 'button', id: 'saveRow', onclick: () => void submit() }, options.submitLabel ?? 'Guardar');
+  const save = el('button', { class: 'primary', type: 'button', id: 'saveRow', ...fbAttrs('guardar', 'Guardar'), onclick: () => void submit() }, options.submitLabel ?? 'Guardar');
   let sheet: Sheet;
 
   async function commit(operations: RowOperation[], message: string): Promise<void> {
@@ -235,7 +249,7 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
   }
 
   const removeButton = options.remove && row
-    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', onclick: async () => {
+    ? el('button', { class: 'danger', type: 'button', id: 'removeRow', ...fbAttrs('eliminar', 'Eliminar'), onclick: async () => {
         if (options.remove!.confirm && !confirm(options.remove!.confirm)) return;
         if (options.remove!.confirmDialog && !(await confirmDialog({ ...options.remove!.confirmDialog, danger: true }))) return;
         void commit(options.remove!.operations(), 'Enviado a la papelera.');
@@ -253,9 +267,9 @@ export function openRowSheet(options: RowSheetOptions): Sheet {
   sheet = openSheet({
     title: options.title,
     ...(row ? { meta: `Revisión ${row.revision}` } : {}),
-    body: el('form', { onsubmit: (event: Event) => { event.preventDefault(); void submit(); } }, form.element, extraHost,
+    body: el('form', { ...(options.feedbackId ? { 'data-feedback-id': options.feedbackId, 'data-feedback-label': options.feedbackLabel ?? options.title } : {}), onsubmit: (event: Event) => { event.preventDefault(); void submit(); } }, form.element, extraHost,
       removeButton ? el('p', { style: 'margin-top:18px' }, removeButton) : null),
-    foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', onclick: () => void sheet.close() }, 'Cancelar')),
+    foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', ...fbAttrs('cancelar', 'Cancelar'), onclick: () => void sheet.close() }, 'Cancelar')),
     footHidden: !!row,
     beforeClose: () => !form.dirty() || confirm('Hay cambios sin guardar. ¿Cerrar sin guardar?'),
     onClose: () => { guard.dirtyEditor = false; },

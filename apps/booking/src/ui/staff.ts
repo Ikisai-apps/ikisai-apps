@@ -70,7 +70,7 @@ export function createStaffBlock(): StaffBlock {
 
   function shiftSpecs(o: StaffBlockOptions): FieldSpec[] {
     return [
-      { key: 'person_name', label: 'Persona', type: 'text', max: 120, hint: 'Solo el nombre: sin teléfono ni documento' },
+      { key: 'person_name', label: 'Persona', type: 'text', max: 120, personal: true, hint: 'Solo el nombre: sin teléfono ni documento' },
       { key: 'function', label: 'Función', type: 'select', options: OPTIONS.staffFunction },
       { key: 'work_date', label: 'Día', type: 'date', hint: 'Opcional. Sin día, el turno vale para todo el evento.', dateMin: o.reservation.start_date, dateMax: o.reservation.end_date },
       { key: 'planned_hours', label: 'Horas previstas', type: 'number', decimal: true },
@@ -96,7 +96,7 @@ export function createStaffBlock(): StaffBlock {
   const openShift = (o: StaffBlockOptions, shift: Row | null): void => {
     const position = o.data.shifts.reduce((max, s) => Math.max(max, Number(s.position)), 0) + 1;
     openRowSheet({
-      client: o.client, title: shift ? 'Editar turno' : 'Nuevo turno', table: STAFF, row: shift, specs: shiftSpecs(o),
+      client: o.client, title: shift ? 'Editar turno' : 'Nuevo turno', table: STAFF, row: shift, specs: shiftSpecs(o), feedbackId: shift ? 'booking.reserva.personal.turno' : 'booking.reserva.personal.nuevo_turno', feedbackLabel: shift ? 'Editar turno' : 'Nuevo turno',
       defaults: { function: 'apoyo_logistico', status: 'prevista' }, insertFields: { event_id: o.event.id, position },
       check: shiftCheck(o, shift), savedMessage: shift ? 'Turno guardado.' : 'Turno anotado.',
       remove: shift ? { label: 'Quitar turno', operations: () => [del(STAFF, shift)], confirmDialog: { title: 'Quitar turno', text: `Se quita el turno de ${shift.person_name}. Se puede restaurar desde la papelera de la reserva.`, confirmLabel: 'Quitar' } } : undefined,
@@ -105,7 +105,7 @@ export function createStaffBlock(): StaffBlock {
 
   const openNeed = (o: StaffBlockOptions, need: Row | null): void => {
     openRowSheet({
-      client: o.client, title: need ? 'Editar refuerzo' : 'Nuevo refuerzo', table: NEEDS, row: need,
+      client: o.client, title: need ? 'Editar refuerzo' : 'Nuevo refuerzo', table: NEEDS, row: need, feedbackId: need ? 'booking.reserva.personal.refuerzo' : 'booking.reserva.personal.nuevo_refuerzo', feedbackLabel: need ? 'Editar refuerzo' : 'Nuevo refuerzo',
       specs: [
         { key: 'need_type', label: 'Tipo', type: 'select', options: OPTIONS.needType },
         { key: 'persons', label: 'Personas', type: 'number' },
@@ -122,12 +122,12 @@ export function createStaffBlock(): StaffBlock {
   const shiftItem = (shift: Row): HTMLElement => {
     const o = current!;
     const name = String(shift.person_name);
-    return el('div', { class: 'staff-item', dataset: { status: shift.status, pending: String(shift._pending === true) } },
+    return el('div', { class: 'staff-item', dataset: { status: shift.status, pending: String(shift._pending === true) }, 'data-feedback-id': 'booking.reserva.personal.turnos.fila', 'data-feedback-label': 'Turno' },
       el('div', { class: 'staff-main' },
-        el('div', { class: 'row-title' }, el('span', { class: 'name' }, name),
+        el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, name),
           el('span', { class: `chip${shift.status === 'cancelada' ? ' muted' : ''}`, dataset: { role: 'status' } }, label(shift.status))),
         el('div', { class: 'row-meta' }, `${label(shift.function)} · Previstas ${hoursText(shift.planned_hours)} / reales ${hoursText(shift.actual_hours)}`)),
-      o.editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar turno de ${name}`, onclick: () => openShift(current!, shift) }, icon('edit', 16)) : null);
+      o.editable ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar turno de ${name}`, 'data-feedback-id': 'booking.reserva.personal.turnos.editar', 'data-feedback-label': 'Editar turno', onclick: () => openShift(current!, shift) }, icon('edit', 16)) : null);
   };
 
   /** Un solo `update` del turno movido con `position` entre sus vecinos de la lista; solo si no cabe, se renumera la lista entera. */
@@ -147,7 +147,7 @@ export function createStaffBlock(): StaffBlock {
 
   function shiftList(key: string, items: Row[], title: string): HTMLElement {
     const o = current!;
-    if (!o.editable) return el('ul', { class: 'staff-list' }, items.map((item) => el('li', null, shiftItem(item))));
+    if (!o.editable) return el('ul', { class: 'staff-list', 'data-feedback-id': 'booking.reserva.personal.turnos', 'data-feedback-label': 'Turnos' }, items.map((item) => el('li', null, shiftItem(item))));
     const kept = lists.get(key);
     if (kept) {
       const next = sig(items);
@@ -160,6 +160,8 @@ export function createStaffBlock(): StaffBlock {
       onReorder: (ordered, move) => reorder(ordered, move.item, move.to),
     });
     sortable.element.querySelector('ul')?.classList.add('staff-list');
+    sortable.element.setAttribute('data-feedback-id', 'booking.reserva.personal.turnos');
+    sortable.element.setAttribute('data-feedback-label', 'Turnos');
     lists.set(key, { sortable, sig: sig(items) });
     return sortable.element;
   }
@@ -167,15 +169,15 @@ export function createStaffBlock(): StaffBlock {
   function needRow(o: StaffBlockOptions, need: Row): HTMLElement {
     const hot = need.priority === 'urgente' || need.priority === 'alta';
     const covered = need.status === 'cubierto';
-    return el('li', { class: 'row', dataset: { pending: String(need._pending === true), status: need.status, priority: need.priority } },
+    return el('li', { class: 'row', dataset: { pending: String(need._pending === true), status: need.status, priority: need.priority }, 'data-feedback-id': 'booking.reserva.personal.refuerzos.fila', 'data-feedback-label': 'Refuerzo' },
       el('div', { class: 'row-title' }, el('span', { class: 'name' }, `${label(need.need_type)} · ${plural(Number(need.persons), 'persona', 'personas')}`),
         el('span', { class: `chip${hot && !covered ? ' alert' : ''}`, dataset: { role: 'priority' } }, label(need.priority)),
         el('span', { class: `chip${covered ? ' ok' : ''}`, dataset: { role: 'status' } }, label(need.status))),
       need.notes ? el('div', { class: 'row-meta' }, need.notes) : null,
       o.editable ? el('div', { class: 'row-actions' },
-        covered ? null : el('button', { class: 'ghost small', type: 'button', dataset: { action: 'cover' }, 'aria-label': `Marcar cubierto el refuerzo de ${label(need.need_type)}`,
+        covered ? null : el('button', { class: 'ghost small', type: 'button', dataset: { action: 'cover' }, 'data-feedback-id': 'booking.reserva.personal.refuerzos.cubrir', 'data-feedback-label': 'Marcar cubierto', 'aria-label': `Marcar cubierto el refuerzo de ${label(need.need_type)}`,
           onclick: () => void o.run([{ op: 'update', table: NEEDS, id: need.id, expectedRevision: need.revision, fields: { status: 'cubierto' } }], 'Refuerzo cubierto.') }, 'Cubierto'),
-        el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar refuerzo de ${label(need.need_type)}`, onclick: () => openNeed(o, need) }, icon('edit', 16))) : null);
+        el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar refuerzo de ${label(need.need_type)}`, 'data-feedback-id': 'booking.reserva.personal.refuerzos.editar', 'data-feedback-label': 'Editar refuerzo', onclick: () => openNeed(o, need) }, icon('edit', 16))) : null);
   }
 
   return {
@@ -185,20 +187,20 @@ export function createStaffBlock(): StaffBlock {
       const days = [...new Set(o.data.shifts.map((s) => (s.work_date as string | null) ?? NO_DAY))].sort((a, b) => (a === NO_DAY ? -1 : b === NO_DAY ? 1 : a.localeCompare(b)));
       for (const [key, kept] of lists) if (!days.includes(key)) { kept.sortable.destroy(); lists.delete(key); }
       const summary = staffSummary(o.data);
-      return el('article', { class: 'card', id: 'blockStaff' },
+      return el('article', { class: 'card', id: 'blockStaff', 'data-feedback-id': 'booking.reserva.personal', 'data-feedback-label': 'Personal' },
         el('div', { class: 'cardhead' }, el('h3', null, 'Personal')),
         o.data.shifts.length === 0 ? el('p', { class: 'hint' }, 'Sin turnos todavía.') : [
-          el('p', { id: 'staffTotals', class: 'staff-totals' }, summary),
+          el('p', { id: 'staffTotals', class: 'staff-totals', 'data-feedback-id': 'booking.reserva.personal.totales', 'data-feedback-label': 'Totales de horas' }, summary),
           days.map((day) => {
             const title = day === NO_DAY ? 'Todo el evento' : fullDay(day);
             const items = o.data.shifts.filter((s) => ((s.work_date as string | null) ?? NO_DAY) === day);
-            return el('section', { class: 'staff-day', dataset: { day: day === NO_DAY ? 'all' : day } }, el('div', { class: 'sectionlabel' }, title, el('span', { class: 'count' }, String(items.length))), shiftList(day, items, title));
+            return el('section', { class: 'staff-day', dataset: { day: day === NO_DAY ? 'all' : day }, 'data-feedback-id': 'booking.reserva.personal.dia', 'data-feedback-label': 'Día de turnos' }, el('div', { class: 'sectionlabel' }, title, el('span', { class: 'count' }, String(items.length))), shiftList(day, items, title));
           }),
         ],
-        o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addShift', onclick: () => openShift(current!, null) }, 'Anotar turno')) : null,
+        o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addShift', 'data-feedback-id': 'booking.reserva.personal.anotar_turno', 'data-feedback-label': 'Anotar turno', onclick: () => openShift(current!, null) }, 'Anotar turno')) : null,
         el('div', { class: 'sectionlabel', style: 'margin-top:18px' }, 'Refuerzos', el('span', { class: 'count' }, String(o.data.needs.length))),
-        o.data.needs.length === 0 ? el('p', { class: 'hint' }, 'Sin necesidades de refuerzo.') : el('ul', { class: 'list', id: 'needList' }, o.data.needs.map((need) => needRow(o, need))),
-        o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addNeed', onclick: () => openNeed(current!, null) }, 'Anotar refuerzo')) : null);
+        o.data.needs.length === 0 ? el('p', { class: 'hint' }, 'Sin necesidades de refuerzo.') : el('ul', { class: 'list', id: 'needList', 'data-feedback-id': 'booking.reserva.personal.refuerzos', 'data-feedback-label': 'Refuerzos' }, o.data.needs.map((need) => needRow(o, need))),
+        o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addNeed', 'data-feedback-id': 'booking.reserva.personal.anotar_refuerzo', 'data-feedback-label': 'Anotar refuerzo', onclick: () => openNeed(current!, null) }, 'Anotar refuerzo')) : null);
     },
     destroy() { lists.forEach(({ sortable }) => sortable.destroy()); lists.clear(); },
   };

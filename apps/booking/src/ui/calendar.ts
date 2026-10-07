@@ -34,9 +34,9 @@ export function toCalendarEvent(row: ReservationRow): CalendarEvent | null {
 export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   let titles = new Map<string, string>();
-  const calendarHost = el('div', { id: 'calendarHost' });
+  const calendarHost = el('div', { id: 'calendarHost', 'data-feedback-id': 'booking.calendario.mes', 'data-feedback-label': 'Calendario del mes' });
   const panelBody = el('div', { id: 'calendarSyncBody' }, el('p', { class: 'hint' }, 'Cargando…'));
-  const panel = el('details', { class: 'card more-panel', id: 'calendarSync', open: true },
+  const panel = el('details', { class: 'card more-panel', id: 'calendarSync', open: true, 'data-feedback-id': 'booking.calendario.google', 'data-feedback-label': 'Google Calendar' },
     el('summary', null, 'Google Calendar'), panelBody);
 
   replace(main,
@@ -71,17 +71,17 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
     const errors = status.items.filter((item) => item.syncStatus === 'error').length;
     const linked = status.items.filter((item) => item.htmlLink);
     replace(panelBody,
-      el('p', { id: 'calendarHealth', dataset: { health: status.health }, class: status.health === 'ok' ? 'banner ok' : 'banner warn' }, HEALTH_TEXT[status.health] ?? HEALTH_TEXT.not_configured),
-      el('p', { id: 'calendarCounts' }, `${pending} ${pending === 1 ? 'pendiente' : 'pendientes'} · ${errors} con error`),
+      el('p', { id: 'calendarHealth', 'data-feedback-id': 'booking.calendario.google.estado', 'data-feedback-label': 'Estado de la sincronización', dataset: { health: status.health }, class: status.health === 'ok' ? 'banner ok' : 'banner warn' }, HEALTH_TEXT[status.health] ?? HEALTH_TEXT.not_configured),
+      el('p', { id: 'calendarCounts', 'data-feedback-id': 'booking.calendario.google.recuento', 'data-feedback-label': 'Recuento' }, `${pending} ${pending === 1 ? 'pendiente' : 'pendientes'} · ${errors} con error`),
       stale ? el('p', { class: 'hint', id: 'calendarStale' }, 'Se actualizará al reconectar.') : null,
-      failing.length === 0 ? null : el('ul', { class: 'list', id: 'calendarFailing' }, failing.map((item) => el('li', { class: 'row', dataset: { reservationId: item.reservationId } },
+      failing.length === 0 ? null : el('ul', { class: 'list', id: 'calendarFailing', 'data-feedback-id': 'booking.calendario.google.fallos', 'data-feedback-label': 'Reservas con fallo' }, failing.map((item) => el('li', { class: 'row', dataset: { reservationId: item.reservationId }, 'data-feedback-id': 'booking.calendario.google.fallos.fila', 'data-feedback-label': 'Reserva con fallo' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, titles.get(item.reservationId) ?? 'Reserva'),
           el('span', { class: `chip${item.syncStatus === 'error' ? ' alert' : ''}` }, item.syncStatus === 'error' ? 'Con error' : 'Pendiente')),
         item.lastError ? el('div', { class: 'row-meta' }, item.lastError) : null,
-        writable && !stale ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', onclick: () => void retry(item.reservationId),
+        writable && !stale ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.calendario.google.fallos.reintentar', 'data-feedback-label': 'Reintentar', onclick: () => void retry(item.reservationId),
           'aria-label': `Reintentar sincronizar ${titles.get(item.reservationId) ?? 'la reserva'}` }, 'Reintentar')) : null))),
       linked.length === 0 ? null : el('p', null, linked.map((item, index) => [index ? ' · ' : '',
-        el('a', { href: item.htmlLink!, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `Abrir en Google Calendar: ${titles.get(item.reservationId) ?? 'reserva'}` },
+        el('a', { href: item.htmlLink!, 'data-feedback-id': 'booking.calendario.google.abrir', 'data-feedback-label': 'Abrir en Google Calendar', target: '_blank', rel: 'noopener noreferrer', 'aria-label': `Abrir en Google Calendar: ${titles.get(item.reservationId) ?? 'reserva'}` },
           linked.length > 1 ? `Abrir en Google Calendar (${titles.get(item.reservationId) ?? 'reserva'})` : 'Abrir en Google Calendar')])));
   }
 
