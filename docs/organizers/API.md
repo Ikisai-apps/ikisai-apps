@@ -1,14 +1,16 @@
-# Ikisai Organizers · API y pantallas de la V1 (puerta G2, borrador para Core)
+# Ikisai Organizers · API y pantallas (puerta G2)
 
 Portal externo de los organizadores de retiros: `organizers.ikisai.com` (alias `organiza.ikisai.com`, redirige). Especificación de partida: `coordinacion/ampliacion/PORTALES.md`; núcleo en el contrato §3.3, §3.4, §3.6 y §3.7; datos en `docs/booking/API.md` §16 y §17.1. Sigue la plantilla `docs/core/PLANTILLA_API_APP.md`.
 
-**Alcance de esta versión** (respuesta de Core del 7-10-2026): entrada por enlace, mis retiros, ficha del retiro, asistentes, resumen de cocina, «Ayuda y sugerencias» y el hueco de «Guarda tu acceso». **Quedan abiertos, sin diseñar, hasta que decida el usuario** (§13): importes, pagos y facturas; habitaciones; programa u horario; varios organizadores por reserva; idioma; información práctica.
+**Producto:** manda el diseño conjunto Organizers + Guests (`coordinacion/ampliacion/PORTALES_V2.md` y `portales_v2/02_AGENTE_ORGANIZERS.md`), que el usuario aprobó el 7-10-2026. El ciclo del retiro va en seis fases (§13).
+
+**Lo que describen §1 a §12** es la **fase 1, preparación**: entrada por enlace, mis retiros, ficha del retiro, asistentes, cocina, «Ayuda y sugerencias» y el hueco de «Guarda tu acceso». Se suman los ajustes de V2 que entran ya en esta fase (§13.1). Las fases 2 a 6 están en §13 a grandes rasgos, y cada una tendrá su G2 antes del código.
 
 ## 1. Dominio y límites
 
 Organizers deja al organizador de un retiro consultar su reserva y gestionar la lista de sus asistentes desde el móvil, sin cuenta ni contraseña: entra con el enlace personal que le manda Ikisai.
 
-| Hace | Lee o escribe en otra app | No hace (V1) |
+| Hace | Lee o escribe en otra app | No hace en la fase 1 |
 |---|---|---|
 | lista de sus retiros y ficha de cada uno; alta, datos y baja de asistentes; enlaces personales de sus huéspedes (emitir, reenviar, revocar); recordatorios para copiar; resumen de cocina; ayuda y sugerencias | **Booking** es dueña de reservas, huéspedes y restricciones: lecturas `booking.portal_*` y acciones `booking.portal_*` (§16.6). **Núcleo**: enlaces (`portal-links`, `auth/link`), catálogo, feedback y uso | importes, pagos, facturas, habitaciones, programa, menú de Food, firma del parte (solo el huésped), envío de correos o mensajes desde el servidor, comentarios de los huéspedes sobre el retiro (fase posterior), cuenta permanente (la prepara Core) |
 
@@ -179,7 +181,7 @@ En modo `ses` añade: «Son los datos que exige el registro de viajeros.»
 
 ### 9.8 «Guarda tu acceso» (hueco)
 
-Botón flotante discreto en Mis retiros y Retiro (no en las fichas de asistente, donde taparía «Guardar»). Hasta que Core active la cuenta permanente (Google y código por correo, con Workspace), abre una hoja: «Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo. Mientras tanto, guarda el enlace que te enviamos.» El indicador es `GET auth/config → permanentAccount` (C3, hoy `false`). El componente queda listo para conectarle las dos acciones.
+Botón flotante discreto en Mis retiros y Retiro (no en las fichas de asistente, donde taparía el estado del guardado). Hasta que Core active la cuenta permanente (Google y código por correo, con Workspace), abre una hoja: «Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo. Mientras tanto, guarda el enlace que te enviamos.» El indicador es `GET auth/config → permanentAccount` (C3, hoy `false`). El componente queda listo para conectarle las dos acciones.
 
 ### 9.9 Ayuda y sugerencias
 
@@ -224,7 +226,7 @@ Organizers **no tiene espejo** (sin tablas propias) y las acciones de Booking no
 
 - `sync-client` 0.4 con `tables: []`: sesión, renovación, sesión única, `api()` y `onSessionEnd`.
 - **Lecturas con caché** en IndexedDB por persona (`organizers-cache`: clave = lectura + `args`, con la hora). Sin red se pinta lo último con el aviso «Sin conexión · datos de las 18:40». Se borra en `onSessionEnd`.
-- **Escrituras solo con red.** Sin red, los botones de guardar quedan desactivados con «Necesitas conexión para guardar». Lo tecleado en un formulario se conserva como borrador local por persona hasta que se guarda o se descarta, para no perderlo al quedarse sin cobertura.
+- **Escrituras solo con red.** Las acciones explícitas (añadir, enviar el enlace, dar de baja) se desactivan sin red. Los campos de la ficha se guardan solos (§13.1): sin red, lo tecleado queda como borrador local por persona y se envía al volver la conexión, con el aviso «Sin conexión · se guardará al recuperar la conexión».
 - Sin conflictos que resolver: `VERSION_CONFLICT` recarga y conserva el borrador (§6.3).
 
 ## 11. Aceptación
@@ -243,27 +245,115 @@ Organizers **no tiene espejo** (sin tablas propias) y las acciones de Booking no
 10. Con una reserva en modo `operativo`, la ficha solo pide nombre, apellido y contacto; en `ninguno` no hay apartado de asistentes.
 11. Enlace revocado o caducado: pantalla con el motivo y el contacto.
 12. Ayuda y sugerencias: un comentario de «Mi retiro · Limpieza» llega a Ikisai y se ve en «Lo que me has enviado».
-13. Sin red: se ven Mis retiros y la última lista de asistentes con el aviso; guardar está desactivado y lo tecleado se conserva.
+13. Sin red: se ven Mis retiros y la última lista de asistentes con el aviso; las acciones están desactivadas; lo que se escribe en la ficha se guarda solo al volver la conexión.
 
 ### 11.2 Pruebas automáticas
 
 - `tests/organizers/*.test.ts` (PGlite, como Booking): conformidad de `organizers-api` con `packages/test-kit`; canje del enlace; lecturas y acciones de Booking por `organizers-api` dentro y fuera de ámbito; emisión, lista y revocación de enlaces de huésped; un organizador no emite enlaces de organizador ni de reservas ajenas; un organizador de otra reserva recibe `OUT_OF_SCOPE`.
-- Playwright (`tests/organizers/*.spec.ts`, API simulada como las demás apps): recorrido 1–4 y 6–9 en móvil; token fuera de la URL; lista sin red con caché y guardar desactivado; `VERSION_CONFLICT` conserva el borrador; `FIELD_OWNED_BY_GUEST`; textos de compartir (Web Share simulado y enlace de WhatsApp); ningún valor de huésped en el DOM cuando llega `true`.
+- Playwright (`tests/organizers/portal.spec.ts`, contra las Edge reales sobre PGlite, como Central): enlace no válido; recorrido 1–9 en móvil con el token fuera de la URL, guardado automático, enlace por WhatsApp, ningún valor del huésped en la página, cocina, recordatorio sin nombres y baja; varios retiros y modo operativo; sin red, con caché y guardado al volver la conexión; ayuda y sugerencias.
 
 ## 12. Reparto entre agentes
 
 Lo hago yo entero (es pequeño): `supabase/functions/organizers-api` (índice y conformidad), `apps/organizers`, `tests/organizers`, `docs/organizers`. Con subagente (`sonnet`), solo lo mecánico: escenarios de Playwright a partir de uno aprobado y los textos de las tablas de etiquetas. Orden: (1) Edge y pruebas de conformidad y de ámbito; (2) entrada, Mis retiros y ficha; (3) asistentes, enlaces y recordatorios; (4) cocina, ayuda, «Guarda tu acceso» y offline.
 
-## 13. Abierto, pendiente del usuario (no diseñado)
+## 13. Fases (PORTALES_V2)
 
-1. Ver importes, pagos y facturas.
-2. Habitaciones: preferencias o distribución.
-3. Programa u horario del retiro.
-4. Varios organizadores por reserva.
-5. Idioma (¿también inglés?).
-6. Información práctica general o por retiro.
+| Fase | Organizers | Dueño de los datos |
+|---|---|---|
+| **1 · Preparación** (§1–§12, en construcción) | Asistentes, enlaces, completitud, cocina agregada, ficha, ayuda | Booking (hecho), Central (textos) |
+| **2 · Diseño desde el interesado** | Fechas posibles en un calendario con los estados libre, en opción y ocupado; personas, orientación del menú, alojamiento, extras, calculadora con el motor de tarifas de Booking y calculadora privada de margen | Booking (el borrador es una reserva «en estudio») |
+| **3 · Formalización** | Fecha definitiva, propuesta aceptada, señal, saldo y facturas en solo lectura | Booking, Finance, Tasks (proyecto `AAAAMMDD-`) |
+| **4 · Experiencia de Guests** | Qué ve, hace y contrata el huésped (módulos y acciones fijos, con vista previa), programa, materiales propios, preguntas propias, menú de Food con comentarios | Organizers (configuración, materiales, preguntas), Booking (programa), Food (menú) |
+| **5 · Decisiones del huésped** | Alojamiento delegable (las habitaciones de 2–4 plazas con baño son un extra que Ikisai factura al organizador), ofertas del organizador y cartel en PDF o JPG | Booking (camas, reserva atómica), Organizers (ofertas) |
+| **6 · Pagos en línea** | Señal y saldo a Ikisai en línea | Finance y pasarela |
 
-Fuera de la V1 sin ser punto abierto: menú de Food para el organizador y restricciones de cocina del grupo sin huésped (§14, B4).
+PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versión de este documento:
+- importes y facturas: fases 3 y 6;
+- habitaciones: fases 2 y 5;
+- programa e información práctica (materiales): fase 4;
+- coorganizadores e idiomas: §13.1.
+
+### 13.1 Ajustes de V2 que entran en la fase 1
+
+- **Guardado automático, sin botón «Guardar».**
+  - Cada campo de la ficha del asistente se guarda solo al dejar de escribir (800 ms) o al salir del campo, con `portal_update_guest` y la `revision` vigente.
+  - La ficha muestra el estado: «Guardando…», «Guardado» o «No se ha guardado · Reintentar».
+  - Ante un `VERSION_CONFLICT`, recarga y reintenta una vez con la revisión nueva; solo avisa si el campo ha pasado a ser del huésped.
+  - La alimentación se guarda al completar o quitar cada requisito.
+  - Siguen siendo acciones explícitas las que crean, borran o comprometen: «Añadir asistente» (crea la fila y pide la declaración), enviar el enlace y dar de baja.
+  - Sin red, lo tecleado queda en el borrador local y se envía al volver la conexión, con el aviso «Se guardará al recuperar la conexión». La app no finge haber guardado.
+- **Coorganizadores.** Booking emite un enlace por persona y cada una tiene su cuenta. Todas ven lo mismo, y la declaración es por persona (`booking.portal_declarations` ya va por `reservation_id` y `user_id`). La ficha mostrará «Organizáis: Marta y Pablo» cuando Booking lo publique (B11).
+- **Idiomas: español e inglés.**
+  - Los textos de la interfaz van por clave en `apps/organizers/src/app/i18n.ts`, para pasarlos a la capa de traducción del kit cuando UI la publique.
+  - Los textos de Central se leen en el idioma del dispositivo, con el español como reserva.
+  - El idioma se elige en el lanzador o en el menú.
+- **Instalación.** La primera vez aparece la hoja «Instala Organizers»: `beforeinstallprompt` en Android y escritorio, e instrucciones de «Añadir a pantalla de inicio» en iOS. Se puede cerrar y vuelve una sola vez, a los 7 días.
+- **Cuenta permanente.** Sigue el hueco de §9.8 hasta que Core la active con Workspace.
+
+### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
+
+- **Entrada.** La comercial crea en Booking una reserva «en estudio» y emite el enlace del organizador. **El borrador del retiro es esa reserva**, no un dato de Organizers, así que el personal ve cada cambio al instante.
+- **Pantalla de inicio según el estado.** Con `en_estudio` o `negociacion` muestra **«Diseña tu retiro»**. Desde `pre_reservada` muestra la preparación (fase 1).
+- **Fechas posibles.** Una o varias opciones, cada una con inicio y fin y hora aproximada; el fin de semana es la unidad. Se eligen en un calendario mensual con tres estados por día:
+  - **libre**;
+  - **en opción**: hay una prerreserva, pero no bloquea y se puede pedir igualmente;
+  - **ocupado**: no se puede seleccionar.
+
+  El calendario nunca dice quién ocupa una fecha. Al pedir una, avisa: «El bloqueo lo hace efectivo el equipo de Ikisai al confirmarla.»
+- **Personas** previstas, sin nombres. Se pueden añadir asistentes desde ya.
+- **Orientación del menú**, con los valores de Booking (`menu_style`).
+- **Alojamiento:** con o sin pernocta. Con pernocta, las habitaciones de 2–4 plazas con baño se ofrecen como extra.
+- **Extras** del catálogo de Booking, más «Necesito otra cosa» como texto libre.
+- **Calculadora** con el motor de tarifas de Booking (`suggestLines` y `proposalTotals`), en solo lectura:
+  - precios con el **IVA incluido** y su desglose;
+  - noches = salida − llegada; cada noche incluye dos comidas por persona y las comidas extra van aparte;
+  - el **mínimo comercial** (hoy, 2500 €) se lee de los ajustes de Booking;
+  - si no hay tarifas cargadas, dice «Ikisai te enviará el precio» (el usuario las introduce antes de esta fase).
+- **Calculadora privada de margen.** Con el precio de venta, los asistentes y otros gastos calcula ingresos, margen y punto de equilibrio. Vive **solo en el dispositivo** (almacenamiento local por persona, nunca en el servidor) y se borra al cerrar la sesión.
+- **Guardado.** Automático, campo a campo, con las acciones de Booking (B7). «Pedir esta fecha» (B8) avisa al personal, que la confirma desde Booking.
+
+### 13.3 Fase 3 · Formalización (a grandes rasgos)
+
+- **Fecha definitiva:** la que confirma el personal.
+- **Propuesta:** se ve la enviada, con sus líneas, condiciones y tramos de cancelación. El organizador la **acepta** desde el portal si el usuario lo aprueba (pregunta en la salida).
+- **Dinero de Ikisai, en solo lectura** (de Finance):
+  - total contratado, señal requerida y pagada, saldo y vencimientos;
+  - facturas en PDF;
+  - instrucciones de pago: transferencia, Bizum o efectivo, y tarjeta cuando haya pasarela. Ningún dato de tarjeta pasa por Organizers.
+- **Proyecto de Tasks.** Al confirmar, Booking pide a Tasks el proyecto `AAAAMMDD-<título>` y las tareas de los extras contratados. Es idempotente y el proyecto se renombra si cambian la fecha o el título. Organizers no habla con Tasks.
+
+### 13.4 Fases 4 y 5 · Datos propios de Organizers (borrador del modelo)
+
+Lo que sí es del organizador vive en el schema `organizers` (migraciones `0700–0799`), en tablas sincronizables con ámbito por reserva (`visible()` por `reservation_id`). Es un borrador: el modelo exacto irá en el G2 de cada fase.
+
+```text
+organizers.guest_experience   una por reserva: módulos visibles (programa, alojamiento, menú, mapa, información práctica,
+                              materiales, actividades, extras, comentarios) y acción permitida en cada módulo
+                              (ver | preferencia | solicitar | elegir | reservar | apuntarse | responder)
+organizers.questions          preguntas propias: tipo (texto, opción, sí/no, número, fecha), opciones, obligatoria,
+                              ventana (desde/hasta), posición
+organizers.answers            respuestas de cada huésped; las escribe Guests con una acción de Organizers
+organizers.materials          logo, PDF, imágenes, enlaces y textos; privado o publicado, y cuándo (antes, durante,
+                              después); el archivo va en core.files, declarado con core.register_file_field
+organizers.offers             ofertas del organizador a sus asistentes: nombre, descripción, precio, qué incluye,
+                              límite, periodo, compatibilidad, recurso de Booking vinculado, visibilidad, formas de pago
+                              e instrucciones; son informativas, sin cobro de Ikisai
+organizers.offer_payments     estado de pago que marca el organizador por asistente y oferta (pendiente, pagado, devuelto)
+```
+
+- **Cartel** (PDF o JPG con el logotipo, los precios, los días, el lugar y una imagen de fondo): se genera en el dispositivo con los datos de `offers` y `materials`, sin servidor.
+- **Programa:** es de Booking (con su petición en esa fase). Organizers lo edita con acciones de Booking y Guests lo lee de Booking.
+
+### 13.5 Contrato con Guests (propuesta para el agente de Guests)
+
+- **Lecturas de Guests en Organizers**, registradas para `guests` y filtradas por el ámbito del huésped (`{reservation_id, guest_id}`):
+  - `organizers.guest_experience_for(p)`: módulos y acciones;
+  - `organizers.guest_questions(p)`: preguntas vigentes y sus respuestas;
+  - `organizers.guest_materials(p)`: materiales publicados para la fase actual, con URL firmada por `files`;
+  - `organizers.guest_offers(p)`: ofertas visibles, sin coste interno ni margen.
+- **Única escritura de Guests en Organizers:** la acción `organizers.guest_answer(p)`, con procedencia «huésped».
+- **Lo de Ikisai no se configura.** Lo legal y operativo (datos de registro, alergias, firma) no depende del organizador y sigue en Booking §16.
+- **Vista previa.** Organizers pinta la experiencia de Guests con esas mismas lecturas sobre un huésped ficticio, sin datos reales.
 
 ## 14. Peticiones
 

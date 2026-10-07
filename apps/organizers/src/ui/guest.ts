@@ -67,16 +67,24 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     try { return await work(); } finally { button.dataset.busy = ''; paintNet(); }
   }
 
-  function declarationBox(declared: boolean | undefined): { element: HTMLElement | null; checked(): boolean; show(): void } {
-    if (declared) return { element: null, checked: () => false, show: () => undefined };
-    const input = el('input', { type: 'checkbox', id: 'declaration' }) as HTMLInputElement;
+  interface Declaration { element: HTMLElement | null; needed(): boolean; checked(): boolean; show(focus?: boolean): void; hide(): void }
+  function declarationBox(declared: boolean | undefined, onChecked?: () => void): Declaration {
+    if (declared) return { element: null, needed: () => false, checked: () => false, show: () => undefined, hide: () => undefined };
+    let needed = true;
+    const input = el('input', { type: 'checkbox', id: 'declaration', onchange: () => { if (input.checked) onChecked?.(); } }) as HTMLInputElement;
     // Textos de Central (declaración y protección de datos); la versión aceptada viaja con la acción.
     const privacy = commonText('portal.privacy');
     const element = el('div', { class: 'card orgdeclaration', id: 'declarationBox', 'data-feedback-id': 'organizers.asistentes.declaracion.aceptar', 'data-feedback-label': 'Declaración' },
       el('label', { class: 'field check' }, input, el('span', { id: 'declarationText' }, commonText('organizers.declaration').body)),
       el('details', null, el('summary', null, 'Más información'),
         ...privacy.body.split(/\n{2,}/).map((p) => el('p', { class: 'small' }, p))));
-    return { element, checked: () => input.checked, show: () => { element.classList.add('attention'); element.scrollIntoView({ block: 'center' }); input.focus(); } };
+    return {
+      element,
+      needed: () => needed,
+      checked: () => input.checked,
+      show: (focus = true) => { element.classList.add('attention'); if (focus) { element.scrollIntoView({ block: 'center' }); input.focus(); } },
+      hide: () => { needed = false; element.remove(); },
+    };
   }
 
   // --- Alta -----------------------------------------------------------------------------------------------------------
@@ -104,7 +112,7 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
         toast('Asistente añadido. Ahora puedes enviarle su enlace.');
         ctx.navigate(`#/retiro/${reservationId}/asistentes/${current.guestId}`, true);
       } catch (e) {
-        if (errorCode(e) === 'DECLARATION_REQUIRED') declaration.show();
+        if (errorCode(e) === 'DECLARATION_REQUIRED') declaration.show(true);
         error.textContent = describeError(e);
       }
     });
@@ -117,30 +125,125 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
   }
 
   // --- Ficha ----------------------------------------------------------------------------------------------------------
+  /**
+   * Guardado automático (API.md §13.1): cada campo se envía al dejar de escribir (800 ms) o al salir de él, en un solo
+   * envío a la vez que junta lo pendiente. Lo tecleado vive en el borrador local hasta que el servidor lo confirma.
+   */
   function paintGuest(detail: ReservationDetail, list: GuestList, guest: PortalGuest, link: PortalLink | undefined, draft: Draft | null, staleAt: string | null): void {
     document.title = `${guest.display_name} · ${detail.title}`;
-    const state = guestState(guest, list.mode);
+    detach?.();
     const specs = fieldsFor(list.mode);
     // Lo que escribió otra persona no se toca: si el borrador lo traía, se descarta (FIELD_OWNED_BY_GUEST).
     const pending: Draft = { fields: {}, restrictions: draft?.restrictions };
     for (const [key, value] of Object.entries(draft?.fields ?? {})) if (guest.fields[key] !== true) pending.fields[key] = value;
-    const original = (key: string) => (typeof guest.fields[key] === 'string' ? (guest.fields[key] as string) : '');
+    const saved: Record<string, string> = {};
+    for (const spec of specs) saved[spec.key] = typeof guest.fields[spec.key] === 'string' ? (guest.fields[spec.key] as string) : '';
+    let revision = guest.revision;
     const ownRestrictions = guest.restrictions.filter((r) => r.source === 'organizer');
     const otherRestrictions = guest.restrictions.filter((r) => r.source !== 'organizer');
     let restrictions: PortalRestriction[] = pending.restrictions ?? ownRestrictions.map(({ restriction_type, subject, severity, kitchen_notes }) => ({ restriction_type, subject, severity, kitchen_notes }));
-    const dirty = () => Object.keys(pending.fields).some((k) => pending.fields[k] !== original(k)) || pending.restrictions !== undefined;
-    const declaration = declarationBox(list.declared);
-    const error = el('p', { class: 'formerror', role: 'alert', id: 'guestError' });
-    const save = netButton({ class: 'primary', id: 'saveGuest', 'data-feedback-id': 'organizers.asistente.ficha.guardar', 'data-feedback-label': 'Guardar cambios' }, 'Guardar cambios');
-    const discard = el('button', { type: 'button', class: 'ghost', id: 'discardGuest', hidden: true, onclick: async () => { await dropDraft(); void load(); } }, 'Descartar cambios');
-    const touched = () => { saveDraft(pending); save.hidden = !dirty(); discard.hidden = !dirty(); };
+    let restrictionsDirty = pending.restrictions !== undefined;
+
+    const stateHost = el('p', { class: 'orgsavestate', id: 'saveState', role: 'status', 'aria-live': 'polite' });
+    function setState(kind: 'idle' | 'saving' | 'saved' | 'offline' | 'declaration' | 'error', message = ''): void {
+      stateHost.dataset.state = kind;
+      if (kind === 'idle') replace(stateHost);
+      else if (kind === 'saving') replace(stateHost, 'Guardando…');
+      else if (kind === 'saved') replace(stateHost, icon('check', 16), ' Guardado');
+      else if (kind === 'offline') replace(stateHost, icon('offline', 16), ' Sin conexión · se guardará al recuperar la conexión');
+      else if (kind === 'declaration') replace(stateHost, 'Marca la casilla de conformidad para guardar.');
+      else replace(stateHost, `${message} `, el('button', { type: 'button', class: 'linkbtn', id: 'retrySave', onclick: () => void flush() }, 'Reintentar'));
+    }
+
+    const changedFields = (): Record<string, string | null> => {
+      const out: Record<string, string | null> = {};
+      for (const [key, value] of Object.entries(pending.fields)) if (value.trim() !== (saved[key] ?? '').trim()) out[key] = value.trim() || null;
+      return out;
+    };
+    const complete = (r: PortalRestriction) => !!r.restriction_type && (!RESTRICTION_NEEDS_SUBJECT.has(r.restriction_type) || !!(r.subject ?? '').trim());
+    const cleanRestrictions = () => restrictions.filter(complete).map((r) => ({
+      restriction_type: r.restriction_type, subject: (r.subject ?? '').trim() || null,
+      severity: RESTRICTION_HAS_SEVERITY.has(r.restriction_type) ? r.severity : null, kitchen_notes: (r.kitchen_notes ?? '').trim() || null,
+    }));
+    const persist = () => {
+      const hasFields = Object.keys(changedFields()).length > 0;
+      if (!hasFields && !restrictionsDirty) void dropDraft();
+      else saveDraft({ fields: pending.fields, ...(restrictionsDirty ? { restrictions } : {}) });
+    };
+
+    const declaration = declarationBox(list.declared, () => void flush());
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inflight: Promise<void> | null = null;
+    let again = false;
+    const schedule = (delay = 800) => { if (timer) clearTimeout(timer); timer = setTimeout(() => void flush(), delay); };
+
+    function flush(): Promise<void> {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (inflight) { again = true; return inflight; }
+      inflight = (async () => {
+        do { again = false; await saveOnce(true); } while (again && alive);
+      })().finally(() => { inflight = null; });
+      return inflight;
+    }
+
+    /** Relee el asistente: revisión nueva, estado y lo que ya es de otra persona. */
+    async function refresh(): Promise<void> {
+      const fresh = (await ctx.api.guests(reservationId)).value;
+      const row = fresh.items.find((g) => g.id === guest.id);
+      if (!row) return;
+      revision = row.revision;
+      Object.assign(guest, row);
+      if (fresh.declared) declaration.hide();
+      for (const key of Object.keys(pending.fields)) if (row.fields[key] === true) delete pending.fields[key];
+      paintHeader();
+    }
+
+    async function saveOnce(retry: boolean): Promise<void> {
+      const fields = changedFields();
+      const items = restrictionsDirty ? cleanRestrictions() : null;
+      if (!Object.keys(fields).length && !items) return;
+      if (!online()) { setState('offline'); return; }
+      if (declaration.needed() && !declaration.checked()) { setState('declaration'); declaration.show(false); return; }
+      const decl = declaration.checked() ? { declaration: true } : {};
+      setState('saving');
+      try {
+        if (Object.keys(fields).length) {
+          await ctx.usage.run('organizers.asistente.ficha.guardar', () => ctx.api.updateGuest({ guest_id: guest.id, expectedRevision: revision, fields, ...decl }));
+          for (const [key, value] of Object.entries(fields)) saved[key] = value ?? '';
+        }
+        if (items) {
+          await ctx.usage.run('organizers.asistente.alimentacion.guardar', () => ctx.api.setRestrictions({ guest_id: guest.id, items, ...decl }));
+          restrictionsDirty = false;
+        }
+        persist();
+        await refresh().catch(() => undefined);
+        setState(Object.keys(changedFields()).length || restrictionsDirty ? 'saving' : 'saved');
+      } catch (e) {
+        const code = errorCode(e);
+        if (code === 'NETWORK' || code === 'BACKEND_UNAVAILABLE') { setState('offline'); return; }
+        if (code === 'DECLARATION_REQUIRED') { setState('declaration'); declaration.show(true); return; }
+        if (code === 'VERSION_CONFLICT' && retry) {
+          // Otra persona (el huésped, Ikisai u otra pestaña) guardó antes: con la revisión nueva se reintenta una vez.
+          await refresh().catch(() => undefined);
+          return saveOnce(false);
+        }
+        if (code === 'FIELD_OWNED_BY_GUEST' || code === 'VERSION_CONFLICT') {
+          toast(describeError(e, guest.display_name));
+          await refresh().catch(() => undefined);
+          persist();
+          void load();
+          return;
+        }
+        setState('error', describeError(e, guest.display_name));
+      }
+    }
 
     const groups = new Map<string, HTMLElement[]>();
     for (const spec of specs) {
       const value = guest.fields[spec.key];
       const row = value === true
         ? el('div', { class: 'field orgfilled', 'data-field': spec.key }, el('span', null, spec.label), el('p', null, icon('check', 16), ' Rellenado'))
-        : fieldInput(spec, pending.fields[spec.key] ?? original(spec.key), (v) => { pending.fields[spec.key] = v; touched(); });
+        : fieldInput(spec, pending.fields[spec.key] ?? saved[spec.key] ?? '', (v) => { pending.fields[spec.key] = v; persist(); schedule(); });
       groups.set(spec.group, [...(groups.get(spec.group) ?? []), row]);
     }
 
@@ -150,47 +253,23 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
         otherRestrictions.length ? el('ul', { class: 'plainlist' }, ...otherRestrictions.map((r) => el('li', null, restrictionText(r), el('span', { class: 'muted small' }, r.source === 'guest' ? ` · indicado por ${guest.display_name}` : ' · indicado por Ikisai')))) : null,
         ...restrictions.map((r, index) => restrictionRow(r, (next) => {
           restrictions = next ? restrictions.map((x, i) => (i === index ? next : x)) : restrictions.filter((_, i) => i !== index);
-          pending.restrictions = restrictions; touched();
-          if (!next) paintRestrictions();
+          restrictionsDirty = true; persist();
+          // Se guarda al quitar un requisito o cuando todos están completos (uno a medias no borra nada).
+          if (!next) { paintRestrictions(); void flush(); } else if (restrictions.every(complete)) schedule();
         })),
         el('button', { type: 'button', class: 'ghost small', id: 'addRestriction', 'data-feedback-id': 'organizers.asistente.alimentacion.anadir', 'data-feedback-label': 'Añadir requisito', onclick: () => {
           restrictions = [...restrictions, { restriction_type: 'alergia', subject: '', severity: null, kitchen_notes: null }];
-          pending.restrictions = restrictions; touched(); paintRestrictions();
+          paintRestrictions();
         } }, '+ Añadir alergia, intolerancia o dieta'),
         !guest.allergies_shared ? el('p', { class: 'muted small' }, `Si ${guest.display_name} indica sus propias alergias en su enlace, solo las verás si decide compartirlas contigo.`) : null);
     }
     paintRestrictions();
 
-    save.onclick = () => void busy(save, async () => {
-      error.textContent = '';
-      const changed: Record<string, string | null> = {};
-      for (const [key, value] of Object.entries(pending.fields)) if (value !== original(key)) changed[key] = value.trim() || null;
-      const decl = declaration.checked() ? { declaration: true } : {};
-      try {
-        await ctx.usage.run('organizers.asistente.ficha.guardar', async () => {
-          if (Object.keys(changed).length) await ctx.api.updateGuest({ guest_id: guest.id, expectedRevision: guest.revision, fields: changed, ...decl });
-          if (pending.restrictions) {
-            const items = pending.restrictions.filter((r) => r.restriction_type && (!RESTRICTION_NEEDS_SUBJECT.has(r.restriction_type) || (r.subject ?? '').trim()))
-              .map((r) => ({ restriction_type: r.restriction_type, subject: (r.subject ?? '').trim() || null, severity: RESTRICTION_HAS_SEVERITY.has(r.restriction_type) ? r.severity : null, kitchen_notes: (r.kitchen_notes ?? '').trim() || null }));
-            await ctx.api.setRestrictions({ guest_id: guest.id, items, ...decl });
-          }
-        });
-        await dropDraft();
-        toast('Cambios guardados.');
-        void load();
-      } catch (e) {
-        const code = errorCode(e);
-        if (code === 'DECLARATION_REQUIRED') { declaration.show(); error.textContent = describeError(e); return; }
-        toast(describeError(e, guest.display_name));
-        if (code === 'VERSION_CONFLICT' || code === 'FIELD_OWNED_BY_GUEST') void load();
-        else error.textContent = describeError(e, guest.display_name);
-      }
-    });
-
     const sendLink = netButton({ class: 'primary', id: 'sendLink', 'data-feedback-id': link ? 'organizers.asistente.ficha.reenviar_enlace' : 'organizers.asistente.ficha.enviar_enlace', 'data-feedback-label': link ? 'Reenviar enlace' : 'Enviar su enlace' }, link ? 'Reenviar enlace' : 'Enviar su enlace');
     sendLink.onclick = () => void busy(sendLink, async () => {
       if (link && !(await confirmDialog({ title: 'Reenviar enlace', text: `Se creará un enlace nuevo para ${guest.display_name} y el anterior dejará de funcionar.`, confirmLabel: 'Crear enlace nuevo' }))) return;
       try {
+        await flush();
         const email = typeof guest.fields.email === 'string' ? guest.fields.email : null;
         const issue = () => ctx.api.issueGuestLink({ reservationId, guestId: guest.id, name: guest.display_name, email, replace: true });
         const out = link ? await ctx.usage.run('organizers.asistente.ficha.reenviar_enlace', issue) : await ctx.usage.run('organizers.asistente.ficha.enviar_enlace', issue);
@@ -206,7 +285,8 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
     remove.onclick = () => void busy(remove, async () => {
       if (!(await confirmDialog({ title: `¿Dar de baja a ${guest.display_name}?`, text: 'Se quitará de este retiro y su enlace dejará de funcionar.', confirmLabel: 'Dar de baja', danger: true }))) return;
       try {
-        await ctx.usage.run('organizers.asistente.ficha.baja', () => ctx.api.removeGuest({ guest_id: guest.id, expectedRevision: guest.revision }));
+        if (timer) clearTimeout(timer);
+        await ctx.usage.run('organizers.asistente.ficha.baja', () => ctx.api.removeGuest({ guest_id: guest.id, expectedRevision: revision }));
         await dropDraft();
         toast(`${guest.display_name} ya no está en la lista.`);
         ctx.navigate(`#/retiro/${reservationId}/asistentes`, true);
@@ -221,34 +301,53 @@ export const mountGuest = (reservationId: string, guestId: string): ViewMount =>
       onclick: () => void ctx.usage.run('organizers.asistente.ficha.recordatorio', () => copyText(personReminder(guest.display_name, detail, guest.missing, list.mode === 'ses' && !guest.signed, issued.get(guest.id)), 'Recordatorio copiado.')),
     }, 'Copiar recordatorio');
 
+    const header = el('div', { class: 'pagehead', 'data-feedback-id': 'organizers.asistente.cabecera', 'data-feedback-label': 'Cabecera del asistente' });
+    function paintHeader(): void {
+      const state = guestState(guest, list.mode);
+      replace(header, el('div', null,
+        el('h2', { id: 'guestName' }, guest.display_name),
+        el('p', { class: 'chips' }, el('span', { class: `chip status ${state.tone}`, id: 'guestState' }, state.label), el('span', { class: 'muted small', id: 'guestStateDetail' }, ` ${state.detail}`)),
+        el('p', { class: 'muted small', id: 'linkState' }, linkText(link))));
+    }
+    paintHeader();
+
+    const form = el('form', { id: 'guestForm', onsubmit: (e: Event) => { e.preventDefault(); void flush(); } },
+      ...[...groups].map(([group, rows], i) => {
+        // Solo el primer bloque abierto; en los demás, el resumen dice si falta algo.
+        const lacking = specs.some((s) => s.group === group && guest.missing.some((m) => m === s.key || (m === 'contact' && (s.key === 'phone' || s.key === 'email'))));
+        return el('details', { class: 'card orggroup', open: i === 0 ? '' : null, 'data-group': group },
+          el('summary', null, group, lacking ? el('span', { class: 'chip small warn' }, 'Falta algo') : el('span', { class: 'muted small' }, ' · completo')), ...rows);
+      }),
+      el('details', { class: 'card orggroup', open: '', 'data-group': 'Alimentación', 'data-feedback-id': 'organizers.asistente.alimentacion', 'data-feedback-label': 'Alimentación' },
+        el('summary', null, 'Alimentación'), restrictionsHost));
+    // Al salir de un campo con cambios se guarda ya, sin esperar.
+    form.addEventListener('focusout', () => { if (timer) void flush(); });
+
     replace(host,
       staleAt ? staleNote(staleAt) : null,
-      draft && dirty() ? el('p', { class: 'banner info', id: 'draftNote' }, 'Tienes cambios sin guardar de la última vez.') : null,
-      fbIgnore(el('div', { class: 'pagehead', 'data-feedback-id': 'organizers.asistente.cabecera', 'data-feedback-label': 'Cabecera del asistente' }, el('div', null,
-        el('h2', { id: 'guestName' }, guest.display_name),
-        el('p', { class: 'chips' }, el('span', { class: `chip status ${state.tone}`, id: 'guestState' }, state.label), el('span', { class: 'muted small' }, ` ${state.detail}`)),
-        el('p', { class: 'muted small', id: 'linkState' }, linkText(link))))),
+      fbIgnore(header),
       el('div', { class: 'btnrow orgtools' }, sendLink, reminder),
-      fbIgnore(el('form', { id: 'guestForm', onsubmit: (e: Event) => { e.preventDefault(); save.click(); } },
-        ...[...groups].map(([group, rows], i) => {
-          // Solo el primer bloque abierto; en los demás, el resumen dice si falta algo.
-          const lacking = specs.some((s) => s.group === group && guest.missing.some((m) => m === s.key || (m === 'contact' && (s.key === 'phone' || s.key === 'email'))));
-          return el('details', { class: 'card orggroup', open: i === 0 ? '' : null, 'data-group': group },
-            el('summary', null, group, lacking ? el('span', { class: 'chip small warn' }, 'Falta algo') : el('span', { class: 'muted small' }, ' · completo')), ...rows);
-        }),
-        el('details', { class: 'card orggroup', open: '', 'data-group': 'Alimentación', 'data-feedback-id': 'organizers.asistente.alimentacion', 'data-feedback-label': 'Alimentación' },
-          el('summary', null, 'Alimentación'), restrictionsHost))),
+      declaration.element,
+      fbIgnore(form),
       list.mode === 'ses' ? el('p', { class: 'muted small', id: 'signatureNote' }, guest.signed ? `${guest.display_name} ya ha firmado el registro de viajeros.` : `La firma del registro de viajeros la hace ${guest.display_name} en su enlace o al llegar.`) : null,
-      declaration.element, error,
-      el('div', { class: 'btnrow orgsave' }, save, discard),
+      el('div', { class: 'orgsave' }, stateHost),
       el('div', { class: 'orgdanger' }, remove));
-    save.hidden = !dirty();
-    discard.hidden = !dirty();
     paintNet();
+
+    // Lo pendiente de la vez anterior (o de antes de perder la red) se envía solo.
+    const resume = () => { if (Object.keys(changedFields()).length || restrictionsDirty) void flush(); };
+    window.addEventListener('online', resume);
+    detach = () => { window.removeEventListener('online', resume); if (timer) clearTimeout(timer); };
+    leave = () => { window.removeEventListener('online', resume); if (timer) void flush(); };
+    if (draft && (Object.keys(changedFields()).length || restrictionsDirty)) { setState('saving'); resume(); }
   }
 
+  /** Al salir de la pantalla: enviar lo pendiente. `detach` solo suelta las escuchas al repintar la ficha. */
+  let leave: (() => void) | null = null;
+  let detach: (() => void) | null = null;
   void load();
   return () => {
+    leave?.();
     alive = false;
     window.removeEventListener('online', paintNet);
     window.removeEventListener('offline', paintNet);

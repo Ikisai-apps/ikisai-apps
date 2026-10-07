@@ -80,9 +80,13 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
 
   // Datos que escribe quien organiza.
   await openGroup(page, 'Contacto');
+  // Guardado automático: sin botón; al salir del campo se guarda y la ficha lo dice.
+  await expect(page.locator('#saveGuest')).toHaveCount(0);
   await page.locator('#f-phone').fill('600 000 000');
-  await page.locator('#saveGuest').click();
-  await expect(page.getByText('Cambios guardados.')).toBeVisible();
+  await page.locator('#f-email').focus();
+  await expect(page.locator('#saveState')).toContainText('Guardado');
+  await page.reload();
+  await openGroup(page, 'Contacto');
   await expect(page.locator('#f-phone')).toHaveValue('600 000 000');
 
   // Enlace personal: hoja de compartir con WhatsApp a su número.
@@ -107,8 +111,7 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await page.locator('#addRestriction').click();
   await page.locator('.orgrestriction .r-subject').fill('frutos secos');
   await page.locator('.orgrestriction .r-severity').selectOption('grave');
-  await page.locator('#saveGuest').click();
-  await expect(page.getByText('Cambios guardados.')).toBeVisible();
+  await expect(page.locator('#saveState')).toContainText('Guardado');
   await page.locator('#backToGuests').click();
   await page.locator('#tab-cocina').click();
   await expect(page.locator('#kitchenTotals')).toContainText('Alergia a frutos secos');
@@ -157,7 +160,7 @@ test('organizers · varios retiros: sin confirmar no se añaden asistentes; sin 
   await expect(page.locator('#guestState')).toHaveText('Faltan datos');
 });
 
-test('organizers · sin red: se ve la última copia con aviso y no se puede guardar', async ({ page, context }) => {
+test('organizers · sin red: última copia con aviso; lo escrito se guarda solo al volver la conexión', async ({ page, context }) => {
   const reservation = await api.reservation({ title: 'Retiro sin cobertura', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'pablo@example.invalid'));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro sin cobertura');
@@ -177,7 +180,17 @@ test('organizers · sin red: se ve la última copia con aviso y no se puede guar
   await page.evaluate(() => { location.hash = location.hash; });
   await expect(page.locator('#staleNote')).toBeVisible();
   await expect(page.locator('#sendLink')).toBeDisabled();
+
+  // Lo que se escribe sin red no se pierde: aviso, borrador local y envío solo al volver la conexión.
+  await openGroup(page, 'Contacto');
+  await page.locator('#f-email').fill('rosa@example.invalid');
+  await page.locator('#f-phone').focus();
+  await expect(page.locator('#saveState')).toContainText('se guardará al recuperar la conexión');
   await context.setOffline(false);
+  await expect(page.locator('#saveState')).toContainText('Guardado');
+  await page.reload();
+  await openGroup(page, 'Contacto');
+  await expect(page.locator('#f-email')).toHaveValue('rosa@example.invalid');
 });
 
 test('organizers · ayuda y sugerencias: un comentario sobre «Mi retiro» llega y se ve en lo enviado', async ({ page }) => {
