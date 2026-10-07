@@ -226,6 +226,13 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       if (op.op === 'call') {
         if (op.procedure === 'invoices.import_v1') await checkImport(supabase, ctx, op.args ?? {}, index);
         // Completar el emisor (ronda 38): la copia la pone la Edge desde Central; lo que mande el cliente se descarta.
+        // Emitir (§14.3): el emisor también lo pone la Edge desde Central.
+        if (op.procedure === 'invoices.issue') {
+          entityRow ??= { row: await readEntity(supabase, ctx) };
+          const snap = issuerSnapshot(entityRow.row);
+          if (!snap) fail(422, 'ENTITY_MISSING', domainMessage('ENTITY_MISSING'), { index });
+          op.args = { id: op.args?.id, expectedRevision: op.args?.expectedRevision, issuer: snap };
+        }
         if (op.procedure === 'invoices.take_issuer') {
           entityRow ??= { row: await readEntity(supabase, ctx) };
           const snap = issuerSnapshot(entityRow.row);
@@ -236,6 +243,7 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       if (!op.table?.startsWith('invoices.')) continue;
       if (op.table === DOCUMENT_TEXTS) fail(422, 'DOCUMENT_TEXT_EDGE_ONLY', domainMessage('DOCUMENT_TEXT_EDGE_ONLY'), { index });
+      if (op.table.startsWith('invoices.vf_')) fail(422, 'VF_SERVER_ONLY', domainMessage('VF_SERVER_ONLY'), { index });
       if (op.table === EXTRACTIONS) {
         // Solo la petición de repetir una extracción (un agente la propone; la aprueba un owner humano). El resto lo escribe la Edge.
         const keys = Object.keys(op.fields ?? {});
@@ -274,7 +282,7 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
         const snap = issuerSnapshot(entityRow.row);
         if (snap) Object.assign(fields, { issuer_tax_id: snap.tax_id, issuer_name: snap.legal_name, issuer: snap });
       }
-      if (ISSUED_NO_DELETE.includes(op.table) && op.op === 'delete') fail(422, 'ISSUED_NOT_DELETABLE', domainMessage('ISSUED_NOT_DELETABLE'), { index, table: op.table, id: op.id });
+      // Borrar: solo borradores (y lo que cuelga de ellos); lo decide el disparador de la base (ISSUED_NOT_DELETABLE).
       if (op.table === TABLES.issuedFiles && op.op === 'insert') {
         Object.assign(fields, await verifiedFile(supabase, ctx, fields.file_id, index));
       }
@@ -350,8 +358,6 @@ const EXTRACTIONS = 'invoices.extractions';
 /** Texto de los documentos (API.md §6.9): solo lo escribe la Edge, nunca el cliente. */
 const DOCUMENT_TEXTS = 'invoices.document_texts';
 const MAX_TEXT_ITEMS = 20_000;
-/** Emitidas sin papelera (revisión de Core, ronda 22): se anulan con `invoices.annul_issued`. */
-const ISSUED_NO_DELETE: string[] = [TABLES.issuedInvoices, TABLES.issuedLines, TABLES.issuedTaxLines, TABLES.issuedFiles];
 
 interface ExtractionStatus { file_id: string; done: number; invoice_id: string | null; code: string | null; status: string | null }
 interface ApprovedExtraction { rows: Array<{ id: string; file_id: string; revision: number }> }

@@ -94,7 +94,7 @@ export async function loadIssued(client: SyncClient): Promise<IssuedData> {
   return { series, invoices, linesBy, taxesBy: by(taxes, (t) => t.issued_invoice_id), filesBy: by(files, (f) => f.issued_invoice_id), allocationsBy: by(allocations, (a) => a.issued_invoice_id) };
 }
 
-const numberOf = (i: LocalIssuedInvoice) => i.full_number || fullNumber(i.series_code, i.number);
+const numberOf = (i: LocalIssuedInvoice) => i.full_number || (i.number ? fullNumber(i.series_code, i.number) : `Borrador ${i.series_code}`);
 const recipientOf = (i: LocalIssuedInvoice) => i.recipient_name || 'Sin destinatario';
 
 // ---------------------------------------------------------------------------
@@ -439,7 +439,7 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
   const error = el('p', { class: 'formerror', role: 'alert' });
   const confirm = el('button', { class: 'primary', type: 'button', id: 'confirmIssuedCsv', disabled: true, onclick: () => void submit() }, 'Importar');
   let header: string[] = []; let body: string[][] = []; let mapping: IssuedCsvMapping = {}; let plan: IssuedImportInvoice[] = [];
-  const existing = new Set(data.invoices.map((i) => `${i.series_code.toUpperCase()}|${i.number.trim().toUpperCase()}`));
+  const existing = new Set(data.invoices.map((i) => `${i.series_code.toUpperCase()}|${(i.number ?? '').trim().toUpperCase()}`));
   const isRegistered = (inv: IssuedImportInvoice) => existing.has(`${inv.series_code.toUpperCase()}|${inv.number.trim().toUpperCase()}`);
 
   function load(text: string): void {
@@ -614,7 +614,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     const seriesCode = series.value === NEW_SERIES ? newSeries.value.trim() : series.value;
     if (!seriesCode) { error.textContent = 'Indica la serie (o crea una nueva).'; newSeries.focus(); return; }
     if (!number.value.trim()) { error.textContent = 'Indica el número de la factura.'; number.focus(); return; }
-    if (data.invoices.some((i) => i.series_code.toUpperCase() === seriesCode.toUpperCase() && i.number.trim().toUpperCase() === number.value.trim().toUpperCase())) {
+    if (data.invoices.some((i) => i.series_code.toUpperCase() === seriesCode.toUpperCase() && (i.number ?? '').trim().toUpperCase() === number.value.trim().toUpperCase())) {
       error.textContent = `Ya está registrada la ${fullNumber(seriesCode, number.value)}. Un número no se repite, ni anulado.`; number.focus(); return;
     }
     if (!issueDate.value) { error.textContent = 'Indica la fecha de expedición.'; issueDate.focus(); return; }
