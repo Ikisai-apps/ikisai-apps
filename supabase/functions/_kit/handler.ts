@@ -179,6 +179,8 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'feedback/:id/verify', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'verify', await json()) },
     { method: 'POST', pattern: 'feedback/:id/reopen', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'reopen', await json()) },
     { method: 'POST', pattern: 'feedback/:id/dismiss', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'dismiss', await json()) },
+    { method: 'POST', pattern: 'feedback/:id/approve', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'approve', {}) },
+    { method: 'POST', pattern: 'feedback/:id/merge', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'merge', await json()) },
   );
   if (config.admin) {
     const admin = createAdmin(supabase);

@@ -1,7 +1,7 @@
 """Vuelca los reportes de feedback abiertos en el buzón de cada agente: coordinacion/<app>/QA.md.
 
 Lo lanza Core cuando el usuario lo pide en el chat («trae los reportes de QA»). Usa las credenciales de private/ (token de
-gestión de Supabase): sin claves de IA ni API de pago. Solo reportes internos de aplicación; los de huéspedes y organizadores
+gestión de Supabase): sin claves de IA ni API de pago. Solo reportes internos de aplicación aprobados por el usuario (modo revisor, FEEDBACK.md §9); los de huéspedes y organizadores
 no salen de la base (datos personales). Cada reporte va con el bloque para agente (FEEDBACK.md §8.2).
 
 Uso: python scripts/feedback_pull.py [--app booking] [--out ../coordinacion]
@@ -51,7 +51,7 @@ def main():
   parser.add_argument('--app', choices=sorted(APP_DIRS), help='solo esta app (por defecto, todas)')
   parser.add_argument('--out', default=str(ROOT.parent / 'coordinacion'), help='carpeta de coordinación')
   args = parser.parse_args()
-  where = "r.reporter_kind = 'internal' and r.subject = 'application' and r.status = 'open'"
+  where = "r.reporter_kind = 'internal' and r.subject = 'application' and r.status = 'open' and r.review_status = 'approved'"
   if args.app:
     where += ' and r.origin_app = ' + sql_literal(args.app)
   rows = SupabaseManagement().query(f"""
