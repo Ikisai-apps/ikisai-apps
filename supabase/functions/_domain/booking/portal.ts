@@ -6,10 +6,22 @@
 import { missingForSes, type GuestLike } from './guests.ts';
 
 /**
- * Modo de la reserva: `ses` pide todo lo del registro de viajeros (y la firma); `operativo` (sin comunicar a SES) solo
- * nombre y contacto, además de alergias y dieta. Hoy todas van en `ses`; el interruptor llega con la propuesta de SES.
+ * Modo de la reserva (API.md §17.1): `ses` pide todo lo del registro de viajeros (y la firma); `operativo` (sin comunicar a
+ * SES, pidiendo datos) solo nombre y contacto, además de alergias y dieta; `ninguno`, sin lista de huéspedes.
  */
-export type GuestMode = 'ses' | 'operativo';
+export type GuestMode = 'ses' | 'operativo' | 'ninguno';
+
+/** Modo según los interruptores de la reserva (igual que `booking.guest_mode`). */
+export function guestModeOf(reservation: { ses_enabled?: boolean | null; collect_guest_data?: boolean | null } | null | undefined): GuestMode {
+  if (!reservation || reservation.ses_enabled !== false) return 'ses';
+  return reservation.collect_guest_data === false ? 'ninguno' : 'operativo';
+}
+
+/** Campos que se piden sin SES (minimización: ni documento, ni dirección, ni fecha de nacimiento, ni firma). */
+export const OPERATIVE_GUEST_FIELDS = ['first_name', 'last_name_1', 'phone', 'email'] as const;
+
+/** Motivos para no comunicar una reserva a SES. */
+export const SES_DISABLED_REASONS = ['uso_privado', 'prueba', 'otro'] as const;
 
 /** Campos de datos que se pueden rellenar desde los portales (igual que `booking.portal_guest_fields()`). */
 export const PORTAL_GUEST_FIELDS = [
@@ -27,6 +39,7 @@ const filled = (value: unknown): boolean => value !== null && value !== undefine
 
 /** Lo que falta para dar al huésped por completo en ese modo (`contact` = teléfono o correo). */
 export function guestMissing(guest: GuestLike, mode: GuestMode = 'ses'): string[] {
+  if (mode === 'ninguno') return [];
   if (mode === 'operativo') {
     const missing: string[] = [];
     if (!filled(guest.first_name)) missing.push('first_name');

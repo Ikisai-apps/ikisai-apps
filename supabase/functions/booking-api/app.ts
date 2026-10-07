@@ -2,6 +2,7 @@
 import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
+import { sesTlsPing } from './ses/transport.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
@@ -37,6 +38,10 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}): Worke
       const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 50) : 10;
       return runCalendarTick({ invoke: (name, args) => invoke(name, args), adapter: calendar.adapter ?? null, limit });
     },
+  }, {
+    // Prueba de TLS contra SES PRE sin credenciales (API.md §17.3): dice qué vía del runtime acepta el intermedio de la FNMT.
+    method: 'POST', pattern: 'ses/ping',
+    handler: () => sesTlsPing(),
   }];
 }
 

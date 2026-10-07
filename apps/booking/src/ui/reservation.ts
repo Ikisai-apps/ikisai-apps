@@ -2,7 +2,7 @@
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type Sortable } from '@ikisai/ui-kit';
 import {
-  CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus,
+  CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
@@ -14,6 +14,7 @@ import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirm
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
 import { createPortalBlock } from './portal.ts';
+import { renderSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
 import type { ViewMount } from './shell.ts';
@@ -373,12 +374,16 @@ export function mountReservation(id: string): ViewMount {
             insertFields: { event_id: liveEvent.id, position: checklist.length + 1 } }) }, 'Añadir tarea')) : null,
       ]);
 
+      const sesCard = renderSesBlock({ client, reservation, finance, editable, run });
+      const guestMode = guestModeOf(reservation);
       const guestsBlock = !liveEvent ? null : block('blockGuests', 'Huéspedes',
-        seesGuests
+        guestMode === 'ninguno' ? el('p', { class: 'hint', id: 'guestsNone' }, 'Esta reserva no pide datos de huéspedes.')
+        : seesGuests && guestMode === 'operativo' ? kv(['Registrados', String(guests.length)], ['Menores', String(guests.filter((g) => g.is_minor).length)])
+        : seesGuests
           ? kv(['Registrados', String(guests.length)], ['Menores', String(guests.filter((g) => g.is_minor).length)],
               ['Firmados', String(guests.filter((g) => g.signed_at).length)], ['Enviados a SES', String(guests.filter((g) => g.ses_status === 'enviado_SES').length)])
           : el('p', { class: 'hint' }, 'El detalle de huéspedes está restringido a los responsables designados.'),
-        el('button', { class: 'linkbtn', type: 'button', id: 'openGuests', onclick: () => navigate(`#/huespedes/${liveEvent.id}`) }, 'Abrir'));
+        guestMode === 'ninguno' ? null : el('button', { class: 'linkbtn', type: 'button', id: 'openGuests', onclick: () => navigate(`#/huespedes/${liveEvent.id}`) }, 'Abrir'));
 
       const restrictionSummary = restrictions.filter((r) => r.active).map((r) => `${r.guest_id ? 1 : r.servings} ${label(r.restriction_type).toLowerCase()}${r.subject ? ` a ${r.subject}` : ''}`).join(' · ');
       const meals = block('blockMeals', 'Comidas', [
@@ -487,7 +492,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();

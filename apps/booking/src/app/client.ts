@@ -16,6 +16,7 @@ export const CONDITIONS: TableName = TABLES.conditions;
 export const TIERS: TableName = TABLES.cancellationTiers;
 export const PROPOSALS: TableName = TABLES.proposals;
 export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
+export const SES_SETTINGS: TableName = TABLES.sesSettings;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -30,6 +31,11 @@ export interface ReservationRow extends SyncedRow {
   contact_phone: string | null;
   briefing_received: boolean;
   archived_at: string | null;
+  /** Interruptores de SES (API §17.1): ausentes en filas antiguas, que cuentan como «con SES». */
+  ses_enabled?: boolean;
+  ses_disabled_reason?: string | null;
+  ses_disabled_note?: string | null;
+  collect_guest_data?: boolean;
   _pending?: boolean;
 }
 
@@ -97,6 +103,8 @@ export function technicalDetail(error: unknown): string {
 }
 
 /** Mensaje legible en español para un error de la API o de red. */
+const SES_REASON_MESSAGE = 'Si no se comunica a SES hay que indicar el motivo; con «Otro», además, escribirlo.';
+
 export function describeError(error: unknown): string {
   const e = error as Partial<ApiError> & { message?: string };
   const code = typeof e?.code === 'string' ? e.code : '';
@@ -140,7 +148,10 @@ export function describeError(error: unknown): string {
       return 'El total de la propuesta sería negativo: revisa los descuentos.';
     case 'CONDITIONS_IN_USE':
       return 'Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.';
+    case 'reservations_ses_reason':
+      return SES_REASON_MESSAGE;
     case 'CONSTRAINT_VIOLATION':
+      if (JSON.stringify(e?.details ?? '').includes('reservations_ses_reason') || /reservations_ses_reason/.test(String(e?.message ?? ''))) return SES_REASON_MESSAGE;
       return 'Los datos no cumplen una regla de la reserva (por ejemplo, fechas obligatorias desde la pre-reserva).';
     case 'ORPHAN_CHILD': {
       const table = (e?.details as { table?: unknown } | null | undefined)?.table;

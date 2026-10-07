@@ -497,6 +497,97 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     expect(api.rows(GUESTS)[0]).toMatchObject({ ses_status: 'enviado_SES' });
   });
 
+  await test.step('SES: interruptor con motivo, modo operativo y sin lista de huéspedes, reactivar y ajuste global', async () => {
+    const reservationId = api.rows(RESERVATIONS)[0]!.id;
+    const eventId = api.rows(EVENTS)[0]!.id;
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    const block = page.locator('#blockSes');
+    await expect(block).toContainText('Registro de viajeros');
+    await expect(block.getByLabel('Comunicar a SES.HOSPEDAJES')).toBeChecked();
+    await expect(block.locator('#sesModeHelp')).toHaveText('Se piden los datos del registro de viajeros y la firma.');
+    await expect(block.getByLabel('Pedir datos a los huéspedes')).toHaveCount(0);
+
+    // «Otro» sin texto: no guarda
+    await block.getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    let sheet = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await sheet.getByLabel('Otro:').check();
+    await sheet.locator('#saveSesReason').click();
+    await expect(sheet.locator('.formerror')).toContainText('es obligatorio con «Otro»');
+    expect(api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: true });
+
+    // «Uso privado» con importe: aviso, y guarda los tres campos en un solo update
+    await sheet.getByLabel('Uso privado sin contraprestación').check();
+    const before = api.changeLog().length;
+    await sheet.locator('#saveSesReason').click();
+    await expect(page.getByRole('alertdialog', { name: 'Reserva con importe' })).toContainText('Esta reserva tiene importe. ¿Seguro que es sin contraprestación?');
+    await page.getByRole('button', { name: 'Sí, es sin contraprestación' }).click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'uso_privado', ses_disabled_note: null, collect_guest_data: true });
+    expect(api.changeLog().slice(before).filter((c) => c.table === RESERVATIONS)).toHaveLength(1);
+    await expect(block.locator('#sesReason')).toHaveText('Sin comunicar a SES: uso privado sin contraprestación.');
+    await expect(block.locator('#sesModeHelp')).toHaveText('Solo nombre, contacto, alergias y dieta.');
+    await expect(block.getByLabel('Pedir datos a los huéspedes')).toBeChecked();
+
+    // modo operativo en la pantalla de huéspedes: sin documento, dirección, nacimiento ni firma
+    await page.goto(`${baseURL}/#/huespedes/${eventId}`);
+    await expect(page.locator('#sesQueue')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    sheet = page.getByRole('dialog', { name: 'Persona Sintética' });
+    for (const name of ['Nombre', 'Primer apellido', 'Teléfono', 'Correo']) await expect(sheet.getByLabel(name, { exact: true })).toBeVisible();
+    for (const name of ['Número de documento', 'Dirección', 'Fecha de nacimiento']) await expect(sheet.getByLabel(name, { exact: true })).toHaveCount(0);
+    await expect(sheet.locator('#signOnScreen, #sesMissing')).toHaveCount(0);
+    await expect(sheet.locator('#guestRestrictions')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+
+    // sin «Pedir datos»: aviso en lugar de la lista
+    await page.goto(`${baseURL}/#/reservas/${reservationId}`);
+    await page.locator('#blockSes').getByLabel('Pedir datos a los huéspedes').uncheck();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.collect_guest_data).toBe(false);
+    await expect(page.locator('#sesModeHelp')).toHaveText('Sin lista de huéspedes ni enlaces de huésped.');
+    await page.goto(`${baseURL}/#/huespedes/${eventId}`);
+    await expect(page.getByText('Esta reserva no pide datos de huéspedes')).toBeVisible();
+    await expect(page.locator('#guestList')).toHaveCount(0);
+    await page.locator('#goSesBlock').click();
+    await expect(page.locator('#blockSes')).toBeVisible();
+
+    // reactivar con un clic (el motivo anterior no se borra) y motivo «Otro» con texto
+    await page.locator('#blockSes').getByLabel('Pedir datos a los huéspedes').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.collect_guest_data).toBe(true);
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: true, ses_disabled_reason: 'uso_privado' });
+    await expect(page.getByText('Se pedirán los datos legales que falten')).toBeVisible();
+    await expect(page.locator('#sesModeHelp')).toHaveText('Se piden los datos del registro de viajeros y la firma.');
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').uncheck();
+    sheet = page.getByRole('dialog', { name: 'Sin comunicar a SES' });
+    await sheet.getByPlaceholder('Escribe el motivo').fill('Prueba de formación interna');
+    await sheet.locator('#saveSesReason').click();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]).toMatchObject({ ses_enabled: false, ses_disabled_reason: 'otro', ses_disabled_note: 'Prueba de formación interna' });
+    await expect(page.locator('#sesReason')).toContainText('Otro: Prueba de formación interna');
+    await page.locator('#blockSes').getByLabel('Comunicar a SES.HOSPEDAJES').check();
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.ses_enabled).toBe(true);
+
+    // ajuste global: pruebas por defecto, PROD pide confirmación, pausar envíos
+    await page.goto(`${baseURL}/#/`);
+    await page.locator('#openSesHome').click();
+    await expect(page.getByRole('heading', { name: 'SES.HOSPEDAJES', level: 2 })).toBeVisible();
+    await expect(page.locator('#sesEnvironment')).toHaveValue('pre');
+    await page.locator('#sesEnvironment').selectOption('prod');
+    await expect(page.getByRole('alertdialog', { name: 'Pasar a entorno real' })).toContainText('comunicaciones reales');
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.locator('#sesEnvironment')).toHaveValue('pre');
+    expect(api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'pre', paused: false });
+    await page.locator('#sesPaused').check();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'pre', paused: true });
+    await page.locator('#sesEnvironment').selectOption('prod');
+    await page.getByRole('button', { name: 'Pasar a real' }).click();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]).toMatchObject({ environment: 'prod', paused: true });
+    await page.locator('#sesPaused').uncheck();
+    await expect.poll(() => api.rows('booking.ses_settings')[0]!.paused).toBe(false);
+    await page.locator('#sesEnvironment').selectOption('pre');
+    await expect.poll(() => api.rows('booking.ses_settings')[0]!.environment).toBe('pre');
+  });
+
   await test.step('Calendario: la reserva aparece y el panel refleja el estado de Google Calendar', async () => {
     const reservationId = api.rows(RESERVATIONS)[0]!.id;
     api.setCalendarStatus({ configured: true, calendarId: 'prueba@group.calendar.example', health: 'calendar_not_shared',

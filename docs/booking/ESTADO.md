@@ -57,6 +57,8 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 
 - **Portales, parte 2 · datos de huéspedes (§16, migración 0433):** procedencia por campo, consentimiento, aviso legal y firma solo del huésped, declaración del organizador, lecturas y acciones para Organizers y Guests (con `core.apply_portal_operations` y `core.portal_revoke_scope`), baja por el organizador en cualquier momento salvo entrada o SES, y `GET /api/v1/guest-signature/:guestId`. Pendiente: interfaz del personal (completitud, origen por campo, «Copiar recordatorio»).
 
+- **SES.HOSPEDAJES, paso 1 (§17):** interruptores por reserva (migración 0440; bloque «Registro de viajeros» en la ficha, modos `ses`/`operativo`/`ninguno` en huéspedes y portales), ajuste global PRE/PROD y «Pausar envíos» (`#/ses`, solo owner), y cliente SES-1 (`_domain/booking/ses/`, validado contra los XSD oficiales; transporte con el intermedio de la FNMT; `POST /api/v1/worker/ses/ping` para comprobar TLS en la Edge). Siguiente: SES-2 (reserva con botón tras el pago, anulación, estados, avisos de plazo y petición a Tasks).
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
