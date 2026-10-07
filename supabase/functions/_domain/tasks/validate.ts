@@ -98,6 +98,11 @@ const priority = oneOf(PRIORITIES, 'INVALID_PRIORITY', 'Prioridad inválida.');
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
+const KIND = /^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/;
+const URL_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ikisai\.com(\/|$)/;
+const requestKind = (v: unknown, f: string) => { if (typeof v !== 'string' || v.length > 100 || !KIND.test(v)) reject(422, 'INVALID_FIELDS', 'El tipo va como <app>.<nombre>, en minúsculas.', { field: f }); };
+const externalUrl = (v: unknown, f: string) => { if (typeof v !== 'string' || v.length > 500 || !URL_ORIGIN.test(v)) reject(422, 'INVALID_FIELDS', 'El enlace de origen debe ser https en ikisai.com.', { field: f }); };
+
 const RULES: Record<TableName, TableRules> = {
   'tasks.tabs': {
     fields: { name: name(200), color: nullable(color), position, purchase_approver_id: nullable(uuid()) },
@@ -130,8 +135,9 @@ const RULES: Record<TableName, TableRules> = {
     fields: {
       tab_id: uuid(), project_id: uuid(), parent_id: nullable(uuid('INVALID_PARENT')), title: text(1, 1000, 'REQUIRED_TEXT', 'La tarea necesita texto.'), note,
       done: flag('INVALID_DONE'), priority, due: nullable(date), owner_label_id: nullable(uuid('INVALID_OWNER')), cost: nullable(amount), position,
-      // Escribible en el registro para que la fije `tasks.request_task`; por `commands` nunca (§19).
-      external_ref: (_v, f) => reject(422, 'INVALID_FIELDS', 'La procedencia de una tarea solo la fija la ruta requests/task.', { field: f }),
+      // Origen (§19, §20): solo en el insert de la tarea de una petición que se clasifica en el mismo lote (ver abajo).
+      external_ref: text(3, 182, 'INVALID_FIELDS', 'Referencia de origen inválida.'), external_kind: nullable(text(3, 100, 'INVALID_FIELDS', 'Tipo de origen inválido.')),
+      external_url: nullable(externalUrl),
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
   },
@@ -190,6 +196,24 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['tab_id', 'title'],
   },
+  'tasks.request_routes': {
+    fields: {
+      kind: requestKind, kind_label: nullable(text(1, 100, 'INVALID_FIELDS', 'El nombre del tipo va de 1 a 100 caracteres.')),
+      tab_id: uuid(), project_id: nullable(uuid()), owner_label_id: nullable(uuid('INVALID_OWNER')), position,
+    },
+    required: ['kind', 'tab_id'],
+  },
+  'tasks.requests': {
+    fields: {
+      source: (_v, f) => reject(422, 'INVALID_REQUEST', 'Las peticiones solo llegan por requests/task.', { field: f }),
+      kind: requestKind, kind_label: nullable(text(1, 100, 'INVALID_FIELDS', 'Nombre de tipo inválido.')), external_ref: text(3, 182, 'INVALID_FIELDS', 'Referencia inválida.'),
+      external_url: nullable(externalUrl), title: text(1, 500, 'REQUIRED_TEXT', 'La petición necesita texto.'), note, due: nullable(date), priority,
+      suggested_tab_id: nullable(uuid()), suggested_project_id: nullable(uuid()), requested_by: nullable(uuid()),
+      status: oneOf(['pending', 'routed', 'dismissed'], 'INVALID_STATUS', 'Estado de la petición desconocido.'),
+      routed_by: nullable(oneOf(['rule', 'hint', 'manual'], 'INVALID_STATUS', 'Origen del enrutado desconocido.')),
+    },
+    required: [],
+  },
   'tasks.supply_movements': {
     fields: {
       tab_id: uuid(), supply_item_id: uuid(), kind: oneOf(['in', 'out', 'adjust'], 'INVALID_FIELDS', 'Tipo de movimiento desconocido.'), delta,
@@ -220,9 +244,12 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
     if (op.op === 'insert' || !fullTab(scopes, op.id!)) forbidden('No puedes administrar esta área.');
     return;
   }
+  if (table === 'tasks.requests') forbidden('Las peticiones de otras apps son de quien tiene acceso a toda la app.');
   if (op.op !== 'insert' || !tab) return;
   if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views') {
     if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
+  } else if (table === 'tasks.request_routes') {
+    if (!fullTab(scopes, tab)) forbidden('Las reglas de entrada son del área entera.');
   } else if (['tasks.supply_items', 'tasks.supply_movements', 'tasks.purchase_plans', 'tasks.purchase_plan_stops'].includes(table)) {
     if (!fullTab(scopes, tab)) forbidden('El almacén y los planes de compra son del área entera.');
   } else if (table === 'tasks.purchase_requests' && typeof f.project_id !== 'string') {
@@ -290,5 +317,14 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
       }
     }
     precheckScope(op, table, ctx);
+  });
+  // El origen de una tarea (§19, §20) solo se fija al clasificar su petición en el mismo lote: la petición pasa a
+  // `routed` y la tarea nace con su mismo id. Lo de `tasks.request_task` no pasa por aquí (es un `call`).
+  operations.forEach((op, index) => {
+    if (op.op !== 'insert' || op.table !== 'tasks.tasks') return;
+    const f = op.fields ?? {};
+    if (f.external_ref === undefined && f.external_kind === undefined && f.external_url === undefined) return;
+    const routed = operations.some((o) => o.table === 'tasks.requests' && o.op === 'update' && o.id === op.id && o.fields?.status === 'routed');
+    if (!routed) reject(422, 'INVALID_FIELDS', 'El origen de una tarea solo se fija al clasificar su petición.', { index, field: 'external_ref' });
   });
 }

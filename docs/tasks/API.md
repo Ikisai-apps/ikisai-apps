@@ -1005,7 +1005,7 @@ Errores:
 Estado de varias: `POST /api/v1/read/tasks.targets` con `{"kind": "task", "ids": ["…", "…"]}` → `{"items": [...], "missing": [...]}`.
 
 
-## 20. Enrutado de las peticiones de otras apps (ronda 38, decisión del usuario; propuesta para revisión de Core, 7 de octubre de 2026)
+## 20. Enrutado de las peticiones de otras apps (ronda 38, decisión del usuario; visto bueno de Core en la ronda 39, 7 de octubre de 2026)
 
 Hoy `POST requests/task` (§19) obliga a quien pide a decir `project_id | tab_id`. Central, Booking o Food tendrían que conocer la organización de Tasks, y la integración se rompería al reorganizarla. Con este cambio, **la petición dice qué es y Tasks decide dónde va**, con reglas que configura el usuario. Lo que no tiene regla espera en **«Por clasificar»**.
 
@@ -1121,3 +1121,31 @@ Una PR por paso.
 2. Destino que quien pide no ve: ¿buzón, como en §20.4, o a «Por clasificar»?
 3. ¿Puede clasificar un `editor` con acceso completo, o solo el `owner`?
 4. Precedencia: ¿la regla del usuario por encima de la sugerencia de la otra app, como propongo?
+
+### 20.9 Respuestas de Core (ronda 39) y construcción
+
+**Respuestas:**
+1. Peticiones pendientes en `tasks.requests`, sí.
+2. Buzón, sí: quien pide recibe solo el estado.
+3. Clasifican el `owner` y el `editor` con acceso completo.
+4. La regla del usuario manda sobre la sugerencia.
+
+**Una precisión mía:** una **sugerencia** solo vale si quien pide ve ese destino; si no, la petición queda por clasificar. El buzón es solo para lo que decide una regla del usuario, para que una app no pueda meter trabajo donde quien llama no alcanza.
+
+**Paso 1, construido (migración `20261007_0308_tasks_request_routing.sql`):**
+- Tablas `tasks.requests` y `tasks.request_routes`, y en `tasks.tasks` las columnas `external_kind` y `external_url`, inmutables.
+- `tasks.request_task` aplica este orden: regla, sugerencia visible, pendiente. Siempre deja registrada la petición.
+- **Hook:**
+  - buzón para el insert de `tasks.request_task`;
+  - el origen de una tarea solo se fija por el procedimiento o al clasificar su petición en el mismo lote;
+  - una petición solo cambia de estado: `routed` si tiene su tarea viva, y `pending` o `dismissed` si no;
+  - en las reglas, destino coherente, sin proyecto archivado, y como responsable una etiqueta Persona de esa área.
+- **`tasks.targets` con `ids`:**
+  - quien tiene acceso completo ve también las pendientes y descartadas, con sus datos (`pending`, `request`);
+  - quien las pidió recibe `{kind: 'task', id, visible: false, request: 'pending' | 'created' | 'dismissed'}`;
+  - las tareas traen `externalKind`, `externalUrl`, `visible` y, si vienen de una petición, `request: 'created'`.
+- **Dominio** (`_domain/tasks/requests.ts`): `pendingRequests`, `requestGroups`, `routeFor`, `routeTarget`, `classifyRequestOps`, `dismissRequestOps`, `reopenRequestOps`, `saveRouteOps`, `deleteRouteOps` y `routeWaitingOps`.
+- **Ruta:** campos `kind` (por defecto `<source>.general`), `kind_label` y `external_url`. `project_id | tab_id` son opcionales. La respuesta incluye `routed: 'rule' | 'hint' | 'pending'`.
+- **Purga:** no hay purga automática de las peticiones enrutadas o descartadas. Son pocas, y la app que pidió necesita seguir leyendo su estado.
+
+**Paso 2:** la interfaz («Por clasificar», «Gestionar entradas» y el origen en el editor).

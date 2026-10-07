@@ -5,6 +5,10 @@
  *
  * Idempotencia: el id de la tarea se deriva de `<source>:<external_ref>`. Si ya existe se devuelve tal cual
  * (`created: false`), también si está en la papelera (`deleted: true`): otra app no resucita lo que alguien borró.
+ *
+ * Enrutado (§20): la petición dice qué es (`kind`) y Tasks decide dónde va: la regla del usuario para ese tipo, la
+ * sugerencia `project_id | tab_id` si quien pide la ve, o «Por clasificar». Lo que una regla manda a un área que quien
+ * pide no ve entra igualmente (buzón) y quien pide solo recibe su estado (`request`: pending, created o dismissed).
  */
 import { createSync, fail, sha256Hex, type AppRoute, type Supabase } from '../_kit/mod.ts';
 
@@ -12,6 +16,8 @@ const SOURCE = /^[a-z][a-z0-9_-]{1,30}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PRIORITIES = ['normal', 'high', 'critical'];
+const KIND_NAME = /^[a-z0-9][a-z0-9_.-]{0,60}$/;
+const ORIGIN_URL = /^https:\/\/([a-z0-9-]+\.)*ikisai\.com(\/|$)/;
 
 /** Uuid v4 derivado de un texto (mismo esquema que los ids deterministas de `mcp.ts`). */
 export async function requestTaskId(externalRef: string): Promise<string> {
@@ -20,7 +26,7 @@ export async function requestTaskId(externalRef: string): Promise<string> {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-type TaskTarget = { id: string; deleted: boolean; [key: string]: unknown };
+type TaskTarget = { id: string; visible?: boolean; request?: string; [key: string]: unknown };
 
 export function requestRoutes(supabase: Supabase): AppRoute[] {
   const internal = createSync(supabase, 'tasks', {});
@@ -44,9 +50,15 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
       if (due !== undefined && (!DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
       const priority = text('priority', 10);
       if (priority !== undefined && !PRIORITIES.includes(priority)) invalid('priority', 'priority es normal, high o critical.');
+      // Qué es: `<source>.<nombre>`. Sin él (peticiones de §19), `<source>.general`.
+      const kind = text('kind', 100) ?? `${source}.general`;
+      if (!kind.startsWith(source + '.') || !KIND_NAME.test(kind.slice(source.length + 1))) invalid('kind', `kind va como ${source}.<nombre>, en minúsculas.`);
+      const kindLabel = text('kind_label', 100)?.trim() || undefined;
+      const externalUrl = text('external_url', 500);
+      if (externalUrl !== undefined && !ORIGIN_URL.test(externalUrl)) invalid('external_url', 'external_url debe ser https en ikisai.com.');
+      // Dónde, solo como sugerencia: manda la regla del usuario; sin regla ni sugerencia válida, «Por clasificar».
       const projectId = text('project_id', 36), tabId = text('tab_id', 36);
       for (const [field, value] of [['project_id', projectId], ['tab_id', tabId]] as const) if (value !== undefined && !UUID.test(value)) invalid(field, `${field} debe ser un uuid.`);
-      if (!projectId && !tabId) invalid('project_id', 'Indica project_id o tab_id (la tarea irá a la Entrada del área).');
 
       const externalRef = `${source}:${reference}`;
       const id = await requestTaskId(externalRef);
@@ -55,24 +67,26 @@ export function requestRoutes(supabase: Supabase): AppRoute[] {
         return out.items[0] ?? null;
       };
       const existing = await read();
-      if (existing) return { created: false, task: existing };
+      if (existing) return { created: false, routed: null, task: existing };
 
-      let created = false;
+      let created = false, routed: string | null = null;
       try {
         const result = await internal.commit(ctx, {
           requestId: `request-task-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_task', args: { id, externalRef, title, note, due, priority, projectId: projectId?.toLowerCase(), tabId: tabId?.toLowerCase() } }],
+          operations: [{ op: 'call', procedure: 'tasks.request_task', args: { id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, projectId: projectId?.toLowerCase(), tabId: tabId?.toLowerCase() } }],
         });
-        created = !!(result.results[0] as { result?: { created?: boolean } })?.result?.created;
+        const outcome = (result.results[0] as { result?: { created?: boolean; routed?: string } })?.result;
+        created = !!outcome?.created;
+        routed = outcome?.routed ?? null;
       } catch (error) {
         // Dos peticiones a la vez: la segunda choca con la tarea que acaba de crear la primera, que es la que se devuelve.
         const raced = await read();
-        if (raced) return { created: false, task: raced };
+        if (raced) return { created: false, routed: null, task: raced };
         throw error;
       }
       const task = await read();
       if (!task) fail(409, 'EXTERNAL_REF_IN_USE', 'Esa referencia ya la usa una tarea que no puedes ver.');
-      return { created, task };
+      return { created, routed, task };
     },
   }];
 }
