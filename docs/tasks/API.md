@@ -903,3 +903,69 @@ Invoices ya asigna líneas a destinos de Tasks (`target_app = 'tasks'`, `target_
    - Plan y hoja de ruta, con lista reordenable e imprimible;
    - responsable de compras en el gestor de áreas.
 4. Integración con Invoices cuando existan sus tres piezas: destino `purchase_request`, `invoices.allocations_by_target` e `invoices.supplier_options`.
+
+
+## 19. Trabajo pedido desde otras apps (petición P5 de Central; propuesta para revisión de Core, 7 de octubre de 2026)
+
+Central quiere crear tareas en Tasks desde su módulo de cumplimiento, sin duplicarlas al reintentar, y leer el estado de varias a la vez. Lo hace con el token de la persona, como Invoices con `tasks.targets`.
+
+### 19.1 Por qué una ruta y no una acción registrada
+
+Una acción registrada (`invoke/:name`, `kind = 'action'`) corre **fuera de `core.commit`** (`docs/core/CONTRATO_SINCRONIZACION.md`, `POST invoke/:name`). Una tarea creada así no llegaría a `core.changes`, y por tanto tampoco a los espejos offline, al historial ni a «deshacer». Por eso la propuesta es una **ruta de `tasks-api`** que construye el lote con el dominio (`createTaskOps`) y lo envía por el camino de siempre: `beforeCommit`, hook SQL y `core.commit`.
+
+### 19.2 `POST /api/v1/requests/task`
+
+Rol `editor` u `owner`, con alcance sobre el destino (las reglas de siempre del hook). Cuerpo:
+
+| Campo | Obligatorio | Notas |
+|---|---|---|
+| `source` | sí | App que pide: `[a-z][a-z0-9_-]{1,30}`, por ejemplo `central`. Es un espacio de nombres para `external_ref`, no una credencial. |
+| `external_ref` | sí | Referencia de la app que pide, de 1 a 150 caracteres. Por ejemplo, el id de la obligación de cumplimiento. |
+| `title` | sí | Hasta 500 caracteres. |
+| `note` | no | La «notes» de la petición. Hasta 20 000 caracteres. |
+| `due` | no | `AAAA-MM-DD`. |
+| `priority` | no | `normal`, `high` o `critical`. |
+| `project_id` | uno de los dos | Proyecto destino. |
+| `tab_id` | uno de los dos | Área destino. La tarea va a su **Entrada** (proyecto de sistema `inbox`). Si vienen los dos, deben ser coherentes. |
+
+**Idempotencia:**
+- El id de la tarea es **determinista**, un uuid derivado por SHA-256 de `ikisai-tasks-request:<source>:<external_ref>`, igual que los ids de las herramientas MCP (`tasks-api/mcp.ts`).
+- El `requestId` del lote también se deriva de él.
+- Repetir la petición, aunque sea a la vez desde dos sitios, nunca crea dos tareas: el núcleo devuelve el recibo del lote ya aplicado, o el id choca.
+
+**Respuesta:** `{ created, task }`.
+- `task` tiene la forma de `tasks.targets` para una tarea: `{kind: 'task', id, tabId, projectId, title, done, revision, deleted, archived}`, más `externalRef`.
+- `created: false` si ya existía. **No se modifica nada**: ni el título, ni la fecha, ni el destino.
+- Si está en la papelera, se devuelve con `deleted: true` y no se recrea. Sacarla de la papelera es cosa de una persona en Tasks; Central decide si pide otra con otra referencia.
+- Si existe pero no es visible para quien llama: `409 EXTERNAL_REF_IN_USE`, sin datos de la tarea.
+
+**Procedencia visible:** columna nueva `tasks.tasks.external_ref text` (migración `0307`).
+- Contenido: `<source>:<external_ref>`, inmutable, con índice único entre las filas que la tienen.
+- Así la tarjeta muestra «Pedida desde Central» y la idempotencia no depende solo de cómo se deriva el id.
+- No es escribible desde la interfaz ni desde `commands`: solo la rellena esta ruta. El hook rechaza fijarla o cambiarla por otro camino.
+
+**Alternativa sin migración:** solo el id determinista. Funciona, pero la tarea no diría de dónde viene. Recomiendo la columna.
+
+### 19.3 `tasks.targets` con lista de ids
+
+- `{kind: 'task', ids: [uuid, …]}`, con 200 como máximo, devuelve `{items: [ … ]}`.
+- Cada elemento tiene la forma de una tarea por id (§19.2), con `done` calculado (una tarea padre está hecha si lo están sus hijas) y `externalRef`.
+- Las que no existen o no son visibles se omiten y se listan en `missing`, para que Central distinga «borrada» (viene con `deleted: true`) de «no la ves».
+- El modo por un `id` y el árbol no cambian.
+
+Central puede guardar el `id` que le devuelve §19.2 o recalcularlo. No hace falta buscar por `external_ref`; si lo prefiere, `{kind: 'task', externalRefs: […]}` sale casi gratis con la columna.
+
+### 19.4 Fuera de alcance
+
+- **Avisos a Central cuando una tarea se completa:** no hay webhooks entre apps. Central consulta `tasks.targets` con su lista cuando lo necesita, por ejemplo al abrir su panel.
+- **Herramienta MCP equivalente:** los agentes ya tienen `tasks_create_task`.
+
+### 19.5 Construcción (una PR, tras el visto bueno)
+
+1. Migración `0307`:
+   - `external_ref`, con índice y regla en `tasks.validate_batch`;
+   - `tasks.targets` copiada entera, con `ids` y `externalRef`;
+   - pruebas SQL.
+2. Ruta `requests/task` en `tasks-api`, con las pruebas de idempotencia, papelera, alcance y concurrencia.
+3. La tarjeta muestra «Pedida desde Central», con el nombre de la app sacado del catálogo `GET /api/v1/apps`.
+4. Ejemplo de llamada en este apartado, para Central.
