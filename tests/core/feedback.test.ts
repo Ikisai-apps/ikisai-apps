@@ -141,3 +141,37 @@ test('feedback · límite diario por persona', async () => {
   const res = await app.call('/api/v1/feedback', { token: app.tokens.editor, body: report() });
   assert.equal(res.status, 429); assert.equal(res.data.error.code, 'FEEDBACK_RATE_LIMITED');
 });
+
+test('feedback · worker: cuenta de servicio bajo demanda, petición a Tasks sin datos personales y estado copiado', async () => {
+  const calls: Array<{ route: string; body: any }> = [];
+  const tasksFetch: typeof fetch = async (input, init) => {
+    const url = String(input);
+    if (!url.includes('/functions/v1/tasks-api/api/v1/worker/')) return app.supabase.fetch(input, init);
+    const route = url.split('/api/v1/worker/')[1]!; const body = JSON.parse(String(init?.body));
+    assert.equal(new Headers(init?.headers).get('X-Ikisai-Worker-Key'), 'clave-worker');
+    calls.push({ route, body });
+    if (route === 'requests/task') return Response.json({ taskId: '00000000-0000-4000-8000-000000000001', status: 'open' });
+    return Response.json({ items: body.externalRefs.map((externalRef: string) => ({ externalRef, status: 'done' })) });
+  };
+  const central = createApp({ url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: tasksFetch,
+    app: 'central', slug: 'central-api', origins: ['https://central.ikisai.com'], workerKey: 'clave-worker', feedbackWorker: true });
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('central', $1, 'editor') on conflict do nothing`, [app.users.editor]);
+  // Un reporte de espacio interno pendiente de enrutar.
+  // (el editor agotó su cupo diario en la prueba anterior: informa el owner)
+  const res = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ subject: 'space', intent: 'problem', category: 'utilities', node: undefined, message: 'No hay agua caliente en el baño común.' }) });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  await app.t.db.query(`update core.feedback_reports set next_routing_at = now() where routing_status in ('pending','error')`);
+  const tick = async () => (await central(new Request(app.supabase.url + '/functions/v1/central-api/api/v1/worker/feedback/tick', { method: 'POST', headers: { 'X-Ikisai-Worker-Key': 'clave-worker' } }))).json();
+  const out = await tick();
+  assert.ok(out.routed >= 1, JSON.stringify(out));
+  const task = calls.find((c) => c.route === 'requests/task' && c.body.kind === 'feedback.space.utilities');
+  assert.ok(task, JSON.stringify(calls.map((c) => c.body.kind)));
+  assert.equal(task!.body.on_behalf_of.kind, 'internal'); assert.match(task!.body.external_url, /^https:\/\/tasks\.ikisai\.com\/#\/feedback\/FB_/);
+  const service = await app.t.db.query<{ kind: string; display_name: string; role: string }>(
+    `select p.kind, p.display_name, m.role from core.profiles p join core.memberships m on m.user_id = p.user_id and m.app = 'tasks' where p.service_name = 'feedback'`);
+  assert.deepEqual(service.rows[0], { kind: 'service', display_name: 'Feedback (sistema)', role: 'editor' });
+  assert.ok(out.statusUpdates >= 1, 'el estado «hecha» se copia');
+  const again = await tick();
+  assert.equal(again.routed, 0, 'nada que enrutar dos veces');
+  assert.equal((await app.t.db.query<{ n: number }>(`select count(*)::int n from core.profiles where service_name = 'feedback'`)).rows[0]!.n, 1, 'una sola cuenta de servicio');
+});
