@@ -30,6 +30,32 @@ async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot
 
 const MISSING_ENTITY = 'Faltan los datos de la entidad en Central';
 
+/** Emitidas registradas sin emisor que se pueden completar (las anuladas no se editan). */
+function withoutIssuer(invoices: LocalIssuedInvoice[]): LocalIssuedInvoice[] {
+  return invoices.filter((i) => !i.deleted_at && i.status !== 'anulada' && !i.issuer && !i.issuer_tax_id);
+}
+
+/**
+ * «Tomar el emisor actual» (ronda 38): `invoices.take_issuer` copia la entidad de Central en las emitidas sin emisor.
+ * El servidor pone los datos y nunca sobrescribe un emisor existente; queda en el historial quién lo hizo.
+ */
+async function fillIssuers(client: SyncClient, invoices: LocalIssuedInvoice[]): Promise<void> {
+  if (!invoices.length) return;
+  const { entity } = await fetchEntity(client);
+  if (!entity && navigator.onLine) { toast(`${MISSING_ENTITY}: complétalos allí y vuelve a intentarlo.`); return; }
+  const who = entity ? `${entity.legal_name} · NIF ${entity.tax_id}` : 'la entidad de Central';
+  const ok = await confirmDialog({
+    title: invoices.length === 1 ? `Tomar el emisor actual en ${numberOf(invoices[0]!)}` : `Completar el emisor de ${invoices.length} emitidas`,
+    text: `Se copiarán los datos de ${who}. Solo en las que no tienen emisor; las demás no se tocan.`,
+    confirmLabel: 'Completar',
+  });
+  if (!ok) return;
+  const ids = invoices.map((i) => i.id);
+  const operations = [];
+  for (let k = 0; k < ids.length; k += 500) operations.push({ op: 'call' as const, procedure: 'invoices.take_issuer', args: { ids: ids.slice(k, k + 500) } });
+  await commitSafely(client, operations, invoices.length === 1 ? 'Emisor completado.' : 'Emisores completados.');
+}
+
 function issuerLines(e: IssuerSnapshot): string[] {
   return [e.trade_name && e.trade_name !== e.legal_name ? `${e.legal_name} (${e.trade_name})` : e.legal_name, `NIF ${e.tax_id}`,
     [e.address_line, [e.postal_code, e.city].filter(Boolean).join(' '), e.province, e.country !== 'ES' ? e.country : null].filter(Boolean).join(', '),
@@ -86,12 +112,13 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   const statusSelect = select('issuedFilter', [['activas', 'Registradas'], ['anulada', 'Anuladas'], ['pendientes', 'Sin cobrar'], ['revisar', 'Revisar importes']], filter,
     { 'aria-label': 'Filtrar emitidas', onchange: () => { filter = statusSelect.value; paint(); } });
   const list = el('div', { id: 'issuedList' });
+  const issuerBanner = el('div', { id: 'issuersMissing', hidden: true });
   const newButton = el('button', { class: 'fab', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus'), 'Nueva emitida');
   const importButton = el('button', { class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
   const element = el('div', { id: 'issuedPanel' },
     el('p', { class: 'hint' }, 'Registro de las facturas que emites con otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
-    el('div', { class: 'toolbar' }, importButton), list, newButton);
+    el('div', { class: 'toolbar' }, importButton), issuerBanner, list, newButton);
 
   function visible(i: LocalIssuedInvoice): boolean {
     if (i.deleted_at) return false;
@@ -105,8 +132,18 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     }
   }
 
+  function paintIssuerBanner(): void {
+    const missing = data ? withoutIssuer(data.invoices) : [];
+    issuerBanner.hidden = !canEdit || missing.length === 0;
+    if (issuerBanner.hidden) { replace(issuerBanner); return; }
+    issuerBanner.className = 'banner warn';
+    replace(issuerBanner, icon('warn', 18), el('span', null, `${missing.length === 1 ? '1 emitida' : `${missing.length} emitidas`} sin emisor`),
+      el('button', { class: 'softbtn small', type: 'button', id: 'fillIssuers', onclick: () => void fillIssuers(client, missing) }, 'Completar con los datos de Central'));
+  }
+
   function paint(): void {
     if (!data) return;
+    paintIssuerBanner();
     const rows = data.invoices.filter(visible).sort((a, b) => b.issue_date.localeCompare(a.issue_date) || numberOf(b).localeCompare(numberOf(a)));
     if (!rows.length) {
       replace(list, el('div', { class: 'empty' }, el('strong', null, data.invoices.length ? 'Ninguna emitida coincide' : 'Todavía no hay facturas emitidas'),
@@ -193,7 +230,8 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
     actions.length ? el('div', { class: 'btnrow' }, ...actions) : null,
     issuer
       ? el('div', { class: 'issuer', id: 'issuedIssuer' }, el('span', { class: 'hint' }, 'Emisor'), ...issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('span', null, l))))
-      : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`)),
+      : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`),
+        canEdit ? el('button', { class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
     invoice.status === 'anulada' ? el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `Anulada: ${invoice.annulled_reason ?? ''}`)) : null,
     invoice.review_reason === 'REVISAR IMPORTES' ? el('div', { class: 'banner warn', id: 'issuedReview' }, icon('warn', 18), el('span', null, `El total del documento no cuadra con el desglose (diferencia ${eur(Number(invoice.totals_delta ?? 0))}).`)) : null,
     el('div', { class: 'inv-totals' },

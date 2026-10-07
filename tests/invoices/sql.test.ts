@@ -621,3 +621,33 @@ test('emisor de las emitidas: sin datos en Central queda vacío; con la entidad,
   // El cliente no puede escribir el emisor
   await rejected([update('invoices.issued_invoices', b, rb.revision, { issuer_name: 'Falso' })], 'INVALID_FIELDS');
 });
+
+test('tomar el emisor actual: solo las emitidas sin emisor, nunca sobrescribe ni toca anuladas; lo pone el servidor; queda en el historial', async () => {
+  // Sin entidad viva: se registran sin emisor y la acción falla con ENTITY_MISSING
+  await app.t.db.query(`update central.entity set deleted_at = now()`);
+  const c = uuid(); const d = uuid();
+  await ok([
+    insert('invoices.issued_invoices', c, { series_code: 'E', number: '2026-0101', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Sin emisor 1' }),
+    insert('invoices.issued_invoices', d, { series_code: 'E', number: '2026-0102', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Sin emisor 2' }),
+  ]);
+  await rejected([call('invoices.take_issuer', { ids: [c] })], 'ENTITY_MISSING');
+  const rd = await row('invoices.issued_invoices', d);
+  await ok([call('invoices.annul_issued', { issued_invoice_id: d, expectedRevision: rd.revision, reason: 'Prueba' })]);
+  await app.t.db.query(`update central.entity set deleted_at = null, legal_name = 'Ikisai Retiros SL'`);
+  // Una con emisor ya copiado (no se sobrescribe)
+  const e = uuid();
+  await ok([insert('invoices.issued_invoices', e, { series_code: 'E', number: '2026-0103', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Con emisor' })]);
+  await app.t.db.query(`update central.entity set legal_name = 'Nombre nuevo SL'`);
+  // El lector no puede
+  await rejected([call('invoices.take_issuer', { ids: [c] })], 'FORBIDDEN', 403, app.tokens.reader);
+  // El cliente intenta poner su propio emisor: se descarta y se usa el de Central
+  const out = await ok([call('invoices.take_issuer', { ids: [c, d, e], issuer: { tax_id: 'X0000000T', legal_name: 'Falso' } })]);
+  assert.deepEqual(out.results[0].result.filled, [c], JSON.stringify(out));
+  assert.deepEqual(out.results[0].result.skipped.map((s: { reason: string }) => s.reason).sort(), ['annulled', 'has_issuer']);
+  const rc = await row('invoices.issued_invoices', c);
+  assert.equal(rc.issuer_name, 'Nombre nuevo SL'); assert.equal(rc.issuer_tax_id, 'B12345674'); assert.equal(rc.issuer.city, 'Madrid');
+  assert.equal((await row('invoices.issued_invoices', e)).issuer_name, 'Ikisai Retiros SL');
+  assert.equal((await row('invoices.issued_invoices', d)).issuer_tax_id, null);
+  const hist = await app.t.db.query<{ actor_id: string | null }>(`select actor_id from core.changes where row_id = $1 and op = 'update' order by cursor desc limit 1`, [c]);
+  assert.ok(hist.rows[0]?.actor_id, 'el historial guarda quién lo hizo');
+});

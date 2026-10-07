@@ -437,6 +437,7 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
   DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',
   ISSUED_ANNULLED: 'Esta factura emitida está anulada.',
+  ENTITY_MISSING: 'Faltan los datos de la entidad en Central: complétalos allí y vuelve a intentarlo.',
   ALLOCATIONS_EXCEED_INVOICE: 'Lo asignado supera la base de la factura.',
   INVOICE_NOT_IMPORTABLE: 'Esta factura ya tiene datos; importa sobre una factura vacía.',
   SUPPLIER_TAX_ID_EXISTS: 'Ya existe un proveedor con ese NIF.',
