@@ -303,6 +303,26 @@ export function validateIssuedSeriesFields(fields: Fields, op: 'insert' | 'updat
   }
 }
 
+/** Directorio de clientes (ronda 46): solo datos fiscales; el NIF va normalizado (mayúsculas, sin espacios ni puntos). */
+export function validateCustomerFields(fields: Fields, op: 'insert' | 'update'): void {
+  onlyWritable(TABLES.customers, fields);
+  if (op === 'insert') required(fields, ['name', 'tax_id']);
+  text(fields, 'name', { required: op === 'insert', max: 200 });
+  if (has(fields, 'tax_id') && (typeof fields.tax_id !== 'string' || !/^[A-Z0-9][A-Z0-9-]{1,39}$/.test(fields.tax_id))) {
+    domainFail('INVALID_FIELDS', 'El NIF va en mayúsculas, sin espacios ni puntos.', { field: 'tax_id' });
+  }
+  oneOf(fields, 'id_type', RECIPIENT_ID_TYPES, { nullable: false });
+  if (has(fields, 'country') && (typeof fields.country !== 'string' || !/^[A-Z]{2}$/.test(fields.country))) domainFail('INVALID_FIELDS', 'El país va en dos letras (ES, FR…).', { field: 'country' });
+  oneOf(fields, 'kind', RECIPIENT_KINDS);
+  if (has(fields, 'address') && fields.address !== null) {
+    const addr = fields.address as Record<string, unknown>;
+    if (typeof addr !== 'object' || Array.isArray(addr) || Object.keys(addr).some((k) => !['line', 'postal_code', 'city', 'province', 'country'].includes(k))
+      || Object.values(addr).some((x) => x !== null && (typeof x !== 'string' || x.length > 200))) {
+      domainFail('INVALID_FIELDS', 'El domicilio lleva línea, código postal, ciudad, provincia y país.', { field: 'address' });
+    }
+  }
+}
+
 export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'update'): void {
   onlyWritable(TABLES.issuedInvoices, fields);
   const draft = fields.status === 'borrador';
@@ -444,6 +464,7 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
     case TABLES.issuedFiles: return validateIssuedFileFields(fields, op);
     case TABLES.issuedAllocations: return validateIssuedAllocationFields(fields, op);
     case TABLES.supplierTemplates: return validateSupplierTemplateFields(fields, op);
+    case TABLES.customers: return validateCustomerFields(fields, op);
     default: return;
   }
 }

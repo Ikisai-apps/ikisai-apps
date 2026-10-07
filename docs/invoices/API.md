@@ -1062,7 +1062,12 @@ Propongo una **lectura** y no una escritura entre funciones. Booking no crea fil
 - **Datos fiscales:** Booking no guarda el NIF ni el domicilio fiscal. Los escribe el usuario en el borrador, y el aviso de la hoja se lo pide.
 - **Asignación:** al guardar, el borrador queda asignado a la reserva (`issued_allocations`, destino `booking/reservation`) por su base.
 - **`invoiced`:** Booking lo devuelve `null`. Finance lo calcula con sus propias asignaciones.
-- **Directorio de clientes (pendiente de decisión del usuario):** el borrador ya recibe `recipient_tax_id` y `recipient_address` en `DraftPrefill`. Recordarlos por NIF o por nombre sería una tabla y una búsqueda en `startFromReservation` que rellene esos dos campos; el editor no cambia.
+- **Directorio de clientes (hecho, ronda 46, migración 0216):** tabla sincronizada `invoices.customers`, con un NIF por país.
+  - **Datos:** `name`, `tax_id` normalizado (mayúsculas, sin espacios, puntos ni barras), `id_type`, `country`, `kind` y `address`, que es el domicilio fiscal. Ningún otro dato personal.
+  - **Permisos:** escriben el editor y el owner.
+  - **En el borrador:** «Cliente guardado» busca por nombre, sin acentos, o por NIF. Al elegir un cliente rellena el NIF, el tipo y el domicilio. Al escribir un NIF guardado se completa lo que falte sin pisar lo escrito. Desde una reserva, si el nombre casa con un cliente guardado, se sugiere al abrir.
+  - **Al emitir:** si el NIF es nuevo, se ofrece guardar el cliente. Si ya existe pero cambiaron el nombre, el tipo o el domicilio, se ofrece actualizarlo (`customerOffer`).
+  - **Booking** no guarda datos fiscales. Más adelante podría enlazar el cliente.
 
 La alternativa sería que Booking cree el borrador llamando a la Edge de Finance. La descarto porque añade escrituras entre funciones y deja un borrador sin revisar en otra app.
 

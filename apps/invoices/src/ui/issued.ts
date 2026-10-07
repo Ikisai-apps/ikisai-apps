@@ -12,8 +12,8 @@ import {
   type IncomeCategory, type IssuedCsvField, type IssuedCsvMapping, type IssuedImportInvoice,
 } from '@ikisai/domain-invoices';
 import {
-  ISSUED_ALLOCATIONS, ISSUED_FILES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, ISSUED_TAX_LINES,
-  type LocalIssuedAllocation, type LocalIssuedFile, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries, type LocalIssuedTaxLine,
+  CUSTOMERS, ISSUED_ALLOCATIONS, ISSUED_FILES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, ISSUED_TAX_LINES,
+  type LocalCustomer, type LocalIssuedAllocation, type LocalIssuedFile, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries, type LocalIssuedTaxLine,
 } from '../app/client.ts';
 import { eur, monthKey, monthLabel, onAnyTable, parseAmount, shortDate, todayIso } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
@@ -71,6 +71,8 @@ export interface IssuedData {
   taxesBy: Map<string, LocalIssuedTaxLine[]>;
   filesBy: Map<string, LocalIssuedFile[]>;
   allocationsBy: Map<string, LocalIssuedAllocation[]>;
+  /** Directorio de clientes por NIF (ronda 46). */
+  customers: LocalCustomer[];
 }
 
 const NEW_SERIES = '__new__';
@@ -82,17 +84,18 @@ function by<T extends { deleted_at: string | null }>(rows: T[], key: (row: T) =>
 }
 
 export async function loadIssued(client: SyncClient): Promise<IssuedData> {
-  const [series, invoices, lines, taxes, files, allocations] = await Promise.all([
+  const [series, invoices, lines, taxes, files, allocations, customers] = await Promise.all([
     client.list(ISSUED_SERIES) as Promise<LocalIssuedSeries[]>,
     client.list(ISSUED_INVOICES, { includeDeleted: true }) as Promise<LocalIssuedInvoice[]>,
     client.list(ISSUED_LINES) as Promise<LocalIssuedLine[]>,
     client.list(ISSUED_TAX_LINES) as Promise<LocalIssuedTaxLine[]>,
     client.list(ISSUED_FILES) as Promise<LocalIssuedFile[]>,
     client.list(ISSUED_ALLOCATIONS) as Promise<LocalIssuedAllocation[]>,
+    client.list(CUSTOMERS) as Promise<LocalCustomer[]>,
   ]);
   const linesBy = by(lines, (l) => l.issued_invoice_id);
   for (const list of linesBy.values()) list.sort((a, b) => a.position - b.position);
-  return { series, invoices, linesBy, taxesBy: by(taxes, (t) => t.issued_invoice_id), filesBy: by(files, (f) => f.issued_invoice_id), allocationsBy: by(allocations, (a) => a.issued_invoice_id) };
+  return { series, invoices, linesBy, taxesBy: by(taxes, (t) => t.issued_invoice_id), filesBy: by(files, (f) => f.issued_invoice_id), allocationsBy: by(allocations, (a) => a.issued_invoice_id), customers };
 }
 
 export const numberOf = (i: LocalIssuedInvoice) => i.full_number || (i.number ? fullNumber(i.series_code, i.number) : `Borrador ${i.series_code}`);

@@ -9,10 +9,10 @@ import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUE_MISSING_LABELS, ISSUED_TYPE_LABELS,
-  displayPrice, draftLineFromPrice, formatIssuedNumber, issueMissing, reservationPrefill,
+  customerOffer, customerTaxId, displayPrice, draftLineFromPrice, findCustomerByTaxId, formatIssuedNumber, issueMissing, reservationPrefill, searchCustomers,
   type DraftLineValues, type DraftPrefill, type IncomeCategory, type IssuedAddress, type IssuedDocument, type IssuerSnapshot, type PricedLine, type ReservationInvoiceSource,
 } from '@ikisai/domain-invoices';
-import { ISSUED_ALLOCATIONS, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, describeError, type LocalIssuedInvoice, type LocalIssuedSeries } from '../app/client.ts';
+import { CUSTOMERS, ISSUED_ALLOCATIONS, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, describeError, type LocalCustomer, type LocalIssuedInvoice, type LocalIssuedSeries } from '../app/client.ts';
 import { eur, parseAmount, shortDate, todayIso } from '../app/data.ts';
 import { guard } from '../app/guard.ts';
 import { commitSafely, field, select } from './common.ts';
@@ -61,6 +61,31 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   const province = el('input', { type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
   const country = el('input', { type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
   const addressNote = el('span', { class: 'hint', id: 'draftAddressNote' });
+  // Directorio de clientes (ronda 46): buscar por nombre o NIF rellena NIF, tipo, país y domicilio fiscal.
+  const customerSearch = el('input', { type: 'search', id: 'draftCustomerSearch', maxlength: '200', autocomplete: 'off', placeholder: 'Buscar cliente guardado (nombre o NIF)' });
+  const customerResults = el('div', { class: 'customer-results', id: 'draftCustomerResults' });
+  function useCustomer(c: LocalCustomer): void {
+    name.value = c.name; taxId.value = c.tax_id; if (c.kind) kind.value = c.kind;
+    const ad = c.address ?? {};
+    line.value = ad.line ?? ''; postal.value = ad.postal_code ?? ''; city.value = ad.city ?? ''; province.value = ad.province ?? ''; country.value = ad.country ?? c.country ?? 'ES';
+    replace(customerResults); customerSearch.value = '';
+    syncKind(); guard.dirtyEditor = true;
+  }
+  function paintCustomers(query: string): void {
+    const found = searchCustomers(data.customers, query);
+    replace(customerResults, ...found.map((c) => el('button', { type: 'button', class: 'softbtn small', dataset: { customer: c.tax_id }, onclick: () => useCustomer(c) },
+      `${c.name} · ${c.tax_id}`)));
+  }
+  customerSearch.addEventListener('input', () => paintCustomers(customerSearch.value));
+  // Con un NIF guardado, completar lo que falte sin pisar lo escrito.
+  taxId.addEventListener('change', () => {
+    const c = findCustomerByTaxId(data.customers, taxId.value, (country.value || 'ES').toUpperCase());
+    if (!c) return;
+    const ad = c.address ?? {};
+    if (!name.value.trim()) name.value = c.name;
+    if (!line.value.trim() && !postal.value.trim() && !city.value.trim()) { line.value = ad.line ?? ''; postal.value = ad.postal_code ?? ''; city.value = ad.city ?? ''; province.value = ad.province ?? ''; }
+    taxId.value = c.tax_id;
+  });
   const description = el('input', { type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
   const operationDate = el('input', { type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
   const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null);
@@ -160,7 +185,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     const id = draft?.id ?? crypto.randomUUID();
     const fields = {
       series_code: series.value, invoice_type: rectificative ? draft!.invoice_type : 'F1', recipient_kind: kind.value,
-      recipient_name: name.value.trim() || null, recipient_tax_id: taxId.value.trim().toUpperCase() || null,
+      recipient_name: name.value.trim() || null, recipient_tax_id: customerTaxId(taxId.value) || null,
       recipient_id_type: taxId.value.trim() ? (recipientCountry === 'ES' ? 'NIF' : '02') : null, recipient_country: recipientCountry,
       recipient_address: hasAddress ? address : null, description: description.value.trim(), operation_date: operationDate.value || null,
       income_category: category.value || null, prices_include_vat: includeVat.checked,
@@ -187,6 +212,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     rectInfo,
     sourceInfo,
     field('Serie', series, 'El número se asigna al emitir, nunca antes.'),
+    data.customers.some((c) => !c.deleted_at) ? el('div', { class: 'field' }, el('span', null, 'Cliente guardado'), customerSearch, customerResults) : null,
     field('Destinatario', kind),
     el('div', { class: 'row2' }, field('Nombre o razón social', name), field('NIF', taxId)),
     el('div', { class: 'field' }, el('span', null, 'Domicilio'), line, el('div', { class: 'row3' }, postal, city, province), country, addressNote),
@@ -209,6 +235,8 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   } else if (prefill?.lines.length) {
     for (const l of prefill.lines) addLine(l);
   } else addLine();
+  // Desde una reserva: si el nombre casa con un cliente guardado, se ofrece al momento.
+  if (prefill?.recipient_name && !prefill.recipient_tax_id) paintCustomers(prefill.recipient_name);
   openSheet({
     title: draft ? 'Editar borrador' : 'Nueva factura',
     meta: 'Borrador: se guarda sin número y se puede cambiar hasta que lo emitas.',
@@ -287,7 +315,25 @@ export async function issueDraft(ctx: ViewContext, invoice: LocalIssuedInvoice, 
     toast(client.status().network === 'offline' ? 'Se emitirá al conectar.' : 'Factura emitida.');
   } catch (error) {
     toast(issueErrorText(error));
+    return;
   }
+  await offerCustomer(client, invoice, data);
+}
+
+/** Tras emitir: guardar el cliente si su NIF es nuevo, o actualizar los datos guardados si cambiaron (ronda 46). */
+async function offerCustomer(client: SyncClient, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
+  if (client.bootstrap()?.membership.role === 'reader') return;
+  const offer = customerOffer(data.customers, invoice);
+  if (!offer) return;
+  const who = `${invoice.recipient_name} · ${customerTaxId(invoice.recipient_tax_id)}`;
+  const ok = await confirmDialog(offer.action === 'create'
+    ? { title: '¿Guardar el cliente?', text: `${who}. La próxima factura lo rellenará buscando por nombre o NIF. Solo se guardan los datos fiscales.`, confirmLabel: 'Guardar cliente', cancelLabel: 'Ahora no' }
+    : { title: '¿Actualizar el cliente guardado?', text: `${who}: el nombre, el tipo o el domicilio de esta factura no coinciden con los guardados.`, confirmLabel: 'Actualizar', cancelLabel: 'Dejarlo como está' });
+  if (!ok) return;
+  await commitSafely(client, [offer.action === 'create'
+    ? { op: 'insert', table: CUSTOMERS, id: crypto.randomUUID(), fields: offer.fields }
+    : { op: 'update', table: CUSTOMERS, id: offer.customer.id, expectedRevision: (offer.customer as LocalCustomer).revision, fields: offer.fields }],
+  offer.action === 'create' ? 'Cliente guardado.' : 'Cliente actualizado.');
 }
 
 // ---------------------------------------------------------------------------

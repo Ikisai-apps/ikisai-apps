@@ -1,7 +1,7 @@
 import { createSyncClient, type ApiError, type SyncClient, type SyncedRow, type TableName } from '@ikisai/sync-client';
 import {
   EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS, TABLES, domainMessage,
-  type AllocationRow, type ExpenseCategory, type IssuedAllocationRow, type IssuedFileRow, type TemplateLike, type IssuedInvoiceRow, type IssuedLineRow, type IssuedSeriesRow, type IssuedTaxLineRow, type ExportItemRow, type ExportRow, type InvoiceFileRow, type InvoiceLineRow, type InvoiceRow, type SupplierRow as DomainSupplierRow, type TaxLineRow,
+  type AllocationRow, type CustomerRow, type ExpenseCategory, type IssuedAllocationRow, type IssuedFileRow, type TemplateLike, type IssuedInvoiceRow, type IssuedLineRow, type IssuedSeriesRow, type IssuedTaxLineRow, type ExportItemRow, type ExportRow, type InvoiceFileRow, type InvoiceLineRow, type InvoiceRow, type SupplierRow as DomainSupplierRow, type TaxLineRow,
 } from '@ikisai/domain-invoices';
 
 export const APP = 'invoices';
@@ -21,8 +21,10 @@ export const ISSUED_FILES: TableName = TABLES.issuedFiles;
 export const ISSUED_ALLOCATIONS: TableName = TABLES.issuedAllocations;
 /** Plantillas por proveedor (API.md §6.9): en el dispositivo para que «Leer PDF» funcione sin red. */
 export const SUPPLIER_TEMPLATES: TableName = TABLES.supplierTemplates;
+/** Directorio de clientes por NIF (ronda 46): en el dispositivo para buscar sin red. */
+export const CUSTOMERS: TableName = TABLES.customers;
 export const ALL_TABLES: TableName[] = [SUPPLIERS, INVOICES, INVOICE_FILES, INVOICE_LINES, TAX_LINES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS,
-  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES];
+  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS];
 
 /** Categorías de gasto (lista cerrada del dominio) y sus etiquetas. */
 export const CATEGORIES = EXPENSE_CATEGORIES;
@@ -46,6 +48,7 @@ export type LocalExportItem = Local<ExportItemRow>;
 export type LocalIssuedSeries = Local<IssuedSeriesRow>;
 export type LocalSupplierTemplate = Local<TemplateLike & { created_at: string; updated_at: string; updated_by: string | null; deleted_at: string | null; revision: number; last_confirmed_invoice_id: string | null }>;
 export type LocalIssuedInvoice = Local<IssuedInvoiceRow>;
+export type LocalCustomer = Local<CustomerRow>;
 export type LocalIssuedLine = Local<IssuedLineRow>;
 export type LocalIssuedTaxLine = Local<IssuedTaxLineRow>;
 export type LocalIssuedFile = Local<IssuedFileRow>;
