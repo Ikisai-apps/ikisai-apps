@@ -1,5 +1,12 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.0 · 7 de octubre de 2026
+
+- `createAppLauncher({ center })`: entrada **«Sugerencias y QA»** en el panel del lanzador, encima de los interruptores. Cierra el lanzador y llama a `center()` (normalmente `openFeedbackCenter(...)`). Las apps ya no necesitan botón propio en la cabecera, que a 390 px no cabía (nota de Booking).
+- `createAppLauncher({ feedback, review })` acepta los objetos de `createFeedback(...)` y `createFeedbackReview(...)` tal cual (o sus `mode`, o `{ get, set, available }` como hasta ahora). Tipo `LauncherMode`.
+- **Guía de adopción que compila**: `packages/ui-kit/demo/adopcion.ts` monta feedback, revisor, uso, lanzador y shell sobre un `SyncClient` real; `tsc` del kit la comprueba, así que no puede quedarse atrás de las firmas.
+- Prueba `v22`.
+
 ## 0.17.0 · 7 de octubre de 2026
 
 - **Uso semántico de funcionalidades** (coordinacion/ampliacion/USO.md; rutas de Core #223, contrato §3.8).

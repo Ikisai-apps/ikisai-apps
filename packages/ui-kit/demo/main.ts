@@ -682,7 +682,7 @@ const LAUNCHER_CATALOG = { current: 'tasks', items: [
   { id: 'guests', name: 'Guests', domain: 'guests.ikisai.com', kind: 'portal', description: 'Portal de huéspedes', role: 'owner' },
 ] };
 let launcherOnline = true;
-const launcher = createAppLauncher({ storageKey: 'demo-launcher', feedback: { get: () => feedback.mode.get(), set: (on) => feedback.mode.set(on) }, review: { get: () => review.mode.get(), set: (on) => review.mode.set(on), available: () => review.available() }, fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
+const launcher = createAppLauncher({ storageKey: 'demo-launcher', feedback: { get: () => feedback.mode.get(), set: (on) => feedback.mode.set(on) }, review: { get mode() { return review.mode; }, available: () => review.available() }, center: () => { openFeedbackCenter({ api: fbApi, app: 'demo', canEdit: () => true, feedback }); }, fetchApps: async () => { await new Promise((r) => setTimeout(r, 120)); if (!launcherOnline) throw Object.assign(new Error('Sin red'), { code: 'NETWORK' }); return LAUNCHER_CATALOG; } });
 const launcherMark = el('button', { type: 'button', class: 'mark markbtn', id: 'demoLauncher' }, icon('tasks', 20));
 launcher.attach(launcherMark);
 const launcherSection = section('launcher', 'Lanzador de apps', 'La marca de la cabecera abre la hoja con las apps de la cuenta (GET /api/v1/apps): internas arriba, portales debajo, la actual marcada; sin red, la última lista guardada.',

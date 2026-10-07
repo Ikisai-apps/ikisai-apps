@@ -898,3 +898,7 @@ html.fb-reviewing #appLauncher{position:relative}
 .fb-review-card.min>:not(.fb-head){display:none}
 /* Un diálogo abierto desde la tarjeta del revisor va por encima de ella. */
 html.fb-reviewing .dialogback{z-index:97}
+.launcher-center{width:100%;text-align:left;background:none;border-left:0;border-right:0;border-bottom:0;font:inherit;color:var(--ink)}
+.launcher-center:hover{background:var(--paper-2)}
+.launcher-center>svg{color:var(--muted);flex:none}
+.launcher-center+.launcher-signal{margin-top:0}
