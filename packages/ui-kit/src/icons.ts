@@ -2,6 +2,10 @@
 
 const ICONS: Record<string, string> = {
   // Marca y navegación
+  /** Guests (huéspedes): casa con persona. */
+  guest: '<path d="M4 20V10l8-6 8 6v10"/><circle cx="12" cy="12.3" r="2.4"/><path d="M8.3 20c.5-2.5 1.9-3.9 3.7-3.9s3.2 1.4 3.7 3.9"/>',
+  /** Organizers (organizadores de retiros): calendario con estrella. */
+  organizer: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M12 12.3l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z"/>',
   mark: '<path d="M7 3h7l4 4v14H7z" fill="rgba(255,255,255,.18)"/><path d="M14 3v4h4"/><path d="M9.5 12h5M9.5 16h3"/>',
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
