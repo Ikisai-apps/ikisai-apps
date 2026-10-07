@@ -133,6 +133,39 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
 - **Escrituras de un portal en la app dueña.** Una acción de la app dueña registrada para el portal (`core.allow_read('<portal>', '<app>.fn', 'action', '{editor}')`) comprueba el ámbito del actor (`scopes.grants`) y escribe con `core.apply_portal_operations('<app>', ops)`. Es un lote propio de la app dueña, con cursor, hooks de validación y `core.changes`, así que el personal lo recibe por la sincronización normal. Solo funciona dentro de una acción invocada desde un portal por un miembro editor de ese portal. Admite operaciones de fila, no `call`, con un máximo de 100. `updated_by` es el usuario del portal. No genera recibo: la idempotencia la da `expectedRevision`. Al volver, el contexto (`core.app`, `core.role`) es otra vez el del portal.
 - **Revocar por ámbito.** `core.portal_revoke_scope('<portal>', 'guest_id' | 'reservation_id', valor)` revoca los enlaces con ese ámbito y quita el permiso de las pertenencias, de modo que una sesión ya abierta también lo pierde. Devuelve cuántos enlaces revocó.
 
+### 3.7 Feedback y QA transversal (migración `0066`, diseño en `coordinacion/ampliacion/FEEDBACK.md`)
+
+- **Rutas en todas las apps y portales** (las monta el kit): `feedback/uploads` (+ `verify`, bucket privado `feedback-media`, solo imágenes de hasta 2 MB, también para lectores), `POST feedback`, `GET feedback` (`status=open|pending_verify|verified|dismissed|all`, `node`, `app`, `mine`, `pin`), `GET feedback/tree`, `GET feedback/:id` (uuid o código `FB_AAAA_NNN`) y `POST feedback/:id/support|verify|reopen|dismiss`. Forma y límites en FEEDBACK.md §7.
+- **Idempotencia:** `id` lo genera el cliente; la huella cubre lo que escribe el usuario, no el contexto, de modo que un reintento sin red devuelve el mismo reporte (`replayed: true`) y un id reutilizado con otro texto da `409 IDEMPOTENCY_REUSE`.
+- **Contexto con lista blanca** en la Edge (`cleanContext`): versión, ruta saneada, dispositivo, en línea, rol, estado de sincronización, últimos 5 errores, últimos 5 fallos HTTP y últimos 10 pasos como nodo. Se descarta todo lo demás. Máximo 8 KB.
+- **Destino determinista:** aplicación → `qa` (sin tarea); espacio → `operations` (tarea en Tasks); evento de huésped → `organizer`; evento de organizador → `operations`.
+- **Visibilidad:**
+  - Los reportes internos los ve cualquier miembro de una app interna.
+  - Los de portales los ven quien informa, el editor u owner de Booking, quien trabaja la tarea enlazada y, en los de evento, el organizador de esa reserva.
+  - Gestionan el editor u owner de la app de origen y el owner de Central. Verifica además quien lo informó.
+  - Fuera de ámbito: `404 OUT_OF_SCOPE`.
+- **Ciclo:**
+  - Un reporte pasa a `pending_verify` cuando su código aparece en una versión publicada (`core.feedback_mark_released`) o cuando su última tarea está hecha.
+  - El pin (`pin=true`) lo ven quien lo informó y el owner de Central.
+  - «Sigue fallando» (`reopen`) vuelve a `open` y, si había tarea, pide otra con `sequence + 1`.
+- **Enrutado:**
+  - `core.feedback_routing_claim` y `core.feedback_routing_result` para el worker. La petición a Tasks no lleva datos personales.
+  - `core.feedback_task_status` copia el estado de las tareas.
+- **Límites:** 30 reportes al día por persona (`429 FEEDBACK_RATE_LIMITED`), 3 imágenes, 4000 caracteres.
+- **Conservación:** los reportes de portales se borran 12 meses después de cerrarse (pg_cron diario).
+- **Identidades de servicio (migración `0067`):** perfil `kind = 'service'` con `service_name`. La cuenta de Auth la crea el kit bajo demanda, sin contraseña utilizable. Sus accesos los fija `core.service_grants`; hoy solo existe `feedback`, con rol `editor` en `tasks`. `core.service_actor('feedback')` devuelve su id, y Tasks escribe con `core.commit` como ese actor.
+- **Worker del feedback:** `central-api` lo monta con `feedbackWorker: true` en `worker/feedback/tick`. pg_cron lo despierta cada 5 minutos, solo si hay reportes por enrutar o tareas abiertas. Llama a `tasks-api` en `worker/requests/task` y `worker/requests/status`, con la clave de worker.
+- **Publicación:** `release.yml` (trabajo `feedback`) busca códigos `FB_…` en los commits publicados y llama a `core.feedback_mark_released`.
+- **Script local:** `scripts/feedback_pull.py` vuelca los reportes internos abiertos en `coordinacion/<app>/QA.md`. Lo lanza Core cuando el usuario lo pide.
+- **Filtro y modo «Revisor de QA» (migración `0069`):**
+  - Los reportes de aplicación entran con `reviewStatus = 'new'` y solo llegan a los agentes cuando el owner de Central los aprueba (`POST feedback/:id/approve`). `feedback_pull.py` vuelca solo los aprobados.
+  - `POST feedback/:id/merge {into: código}` une un duplicado: lo cierra y quien lo informó pasa a apoyar el original. `dismiss` de uno nuevo lo deja como `rejected`.
+  - `GET feedback?review=true&app=all` (solo el owner de Central) devuelve los nuevos y los pendientes de verificar de todas las apps.
+  - `context.routeRaw` (la ruta real sin consulta) se guarda aparte en `route_raw` y solo vuelve, como `routeRaw`, al revisor y a quien informó.
+  - Lo operativo no espera revisión.
+- **`sync-client` 0.4:** `onSessionEnd(userId)` avisa al cerrar sesión o al entrar otra persona. El resumen de sincronización para el contexto es `status()`, con `pendingCommands`, `conflicts`, `lastPullAt` y `cursor`.
+
+
 ## 4. Commit
 
 ### 4.1 Firma

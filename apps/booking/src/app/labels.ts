@@ -97,3 +97,20 @@ export const RATE_OPTIONS = {
   status: rateOptions(PROPOSAL_STATUSES, RATE_LABELS.status),
   nature: rateOptions(PROPOSAL_NATURES, RATE_LABELS.nature),
 } as const;
+
+/** Registro de viajeros (API §17.1): motivos para no comunicar una reserva a SES y ayuda según el modo de datos de huéspedes. */
+export const SES_REASON_LABELS: Record<string, string> = {
+  uso_privado: 'Uso privado sin contraprestación', prueba: 'Prueba', otro: 'Otro',
+};
+export const GUEST_MODE_HELP: Record<'ses' | 'operativo' | 'ninguno', string> = {
+  ses: 'Se piden los datos del registro de viajeros y la firma',
+  operativo: 'Solo nombre, contacto, alergias y dieta',
+  ninguno: 'Sin lista de huéspedes ni enlaces de huésped',
+};
+export const SES_ENVIRONMENT_LABELS: Record<string, string> = { pre: 'Pruebas (PRE)', prod: 'Real (PROD)' };
+/** «Sin comunicar a SES: uso privado sin contraprestación» (con «Otro», la nota escrita). */
+export function sesReasonText(reason: unknown, note: unknown): string {
+  if (reason === 'otro') return `Otro: ${typeof note === 'string' && note ? note : '—'}`;
+  const text = SES_REASON_LABELS[String(reason)] ?? 'sin motivo';
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}

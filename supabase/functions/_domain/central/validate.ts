@@ -9,6 +9,7 @@ import {
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
+import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -41,7 +42,8 @@ type FieldSpec =
   /** `file`: también admite el marcador `{"$blob": sha}` que sync-client sustituye por el id al subir el archivo. */
   | { kind: 'uuid'; nullable?: boolean; file?: boolean }
   | { kind: 'date'; nullable?: boolean }
-  | { kind: 'number'; nullable?: boolean };
+  | { kind: 'number'; nullable?: boolean }
+  | { kind: 'tags'; values: readonly string[]; max: number };
 
 interface TableSpec {
   fields: Record<string, FieldSpec>;
@@ -151,6 +153,21 @@ const SPECS: Record<string, TableSpec> = {
     required: [],
     immutable: ['requirement_id', 'target_app', 'target_kind', 'target_id', 'external_ref'],
   },
+  [DECISIONS_TABLE]: {
+    fields: {
+      decided_on: { kind: 'date' },
+      name: { kind: 'text', min: 1, max: 160 },
+      summary: { kind: 'text', min: 1, max: 2000 },
+      technical: { kind: 'text', max: 8000, nullable: true },
+      responsible_person_id: { kind: 'uuid', nullable: true },
+      status: { kind: 'enum', values: DECISION_STATUSES },
+      superseded_by: { kind: 'uuid', nullable: true },
+      scopes: { kind: 'tags', values: DECISION_SCOPES, max: 10 },
+      link_url: { kind: 'text', max: 500, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
+      link_label: { kind: 'text', min: 1, max: 120, nullable: true },
+    },
+    required: ['decided_on', 'name', 'summary'],
+  },
   [KPI_TARGETS_TABLE]: {
     fields: {
       kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
@@ -211,6 +228,10 @@ function checkField(spec: FieldSpec, value: unknown): string | null {
       return typeof value === 'string' && UUID.test(value) ? null : 'identificador inválido';
     case 'date': return typeof value === 'string' && isDate(value) ? null : 'fecha inválida';
     case 'number': return typeof value === 'number' && Number.isFinite(value) ? null : 'debe ser un número';
+    case 'tags':
+      if (!Array.isArray(value) || value.some((v) => typeof v !== 'string' || !spec.values.includes(v))) return 'valor no admitido';
+      if (value.length > spec.max || new Set(value).size !== value.length) return `como mucho ${spec.max}, sin repetir`;
+      return null;
   }
 }
 
@@ -269,6 +290,13 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       if (typeof row.document_date === 'string' && typeof row.expires_on === 'string' && row.expires_on < row.document_date) {
         return fieldIssue(index, table, 'expires_on', 'no puede ser anterior a la fecha del documento');
       }
+    }
+    if (table === DECISIONS_TABLE) {
+      const row = { ...(op.id && current ? current(table, op.id) ?? {} : {}), ...fields } as Record<string, unknown>;
+      const replaced = (row.status ?? 'vigente') === 'sustituida';
+      if (replaced && !row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'indica la decisión que la sustituye');
+      if (!replaced && row.superseded_by) return fieldIssue(index, table, 'superseded_by', 'solo se indica si está sustituida');
+      if (row.superseded_by && row.superseded_by === op.id) return fieldIssue(index, table, 'superseded_by', 'no puede sustituirse a sí misma');
     }
     if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };

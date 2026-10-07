@@ -6,6 +6,7 @@ import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
+import { mountDecisions } from './decisions.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
 
@@ -32,7 +33,7 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
 function navFor(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad'] },
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones'] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people' },
   ];
@@ -44,6 +45,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount; admin?: boolean 
   '#/': { title: 'Inicio', mount: mountHome },
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
   '#/entidad': { title: 'Entidad', mount: mountEntity },
+  '#/decisiones': { title: 'Decisiones', mount: mountDecisions },
   '#/personas': { title: 'Personas', mount: mountPeople },
   '#/cumplimiento': { title: 'Vencimientos', mount: mountCompliance('vencimientos') },
   '#/cumplimiento/requisitos': { title: 'Obligaciones', mount: mountCompliance('requisitos') },

@@ -30,8 +30,12 @@ export const RECIPIENT_ID_TYPE_LABELS: Record<string, string> = {
   NIF: 'NIF español', '02': 'NIF-IVA (UE)', '03': 'Pasaporte', '04': 'Documento oficial del país', '05': 'Certificado de residencia', '06': 'Otro',
 };
 
-export const ISSUED_STATUSES = ['registrada', 'anulada'] as const;
+export const ISSUED_STATUSES = ['registrada', 'anulada', 'borrador', 'emitida', 'rectificada'] as const;
 export type IssuedStatus = (typeof ISSUED_STATUSES)[number];
+/** Estados que cuentan en resúmenes y entregas: registradas de otra herramienta, emitidas y rectificadas (§14.3). */
+export const ISSUED_COUNTED_STATUSES: readonly IssuedStatus[] = ['registrada', 'emitida', 'rectificada'];
+export const SERIES_MODES = ['registro', 'emision'] as const;
+export const RECIPIENT_KINDS = ['empresa', 'profesional', 'particular'] as const;
 export const ISSUED_ORIGINS = ['manual', 'importada', 'app'] as const;
 export type IssuedOrigin = (typeof ISSUED_ORIGINS)[number];
 export const ISSUED_ORIGIN_LABELS: Record<IssuedOrigin, string> = { manual: 'Registrada a mano', importada: 'Importada de otra herramienta', app: 'Emitida desde la app' };
@@ -52,6 +56,65 @@ export const EXEMPTIONS = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'] as const;
 export const SERIES_KINDS = ['ordinaria', 'rectificativa', 'simplificada'] as const;
 export const ISSUED_TARGET_KINDS: Record<string, readonly string[]> = { booking: ['reservation', 'event'], general: ['general'] };
 
+export interface IssuedAddress {
+  line?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  province?: string | null;
+  country?: string | null;
+}
+
+/** Copia congelada de una factura emitida desde Finance (`document`, §14.4): todo lo que se imprime. */
+export interface IssuedDocument {
+  full_number: string;
+  series: string;
+  number: string;
+  issue_date: string;
+  operation_date: string | null;
+  invoice_type: string;
+  issuer: IssuerSnapshot;
+  recipient: { name: string | null; tax_id: string | null; id_type: string | null; country: string | null; address: IssuedAddress | null; kind: string | null };
+  description: string;
+  lines: Array<{ position: number; description: string; quantity: number | null; unit: string | null; unit_price: number | null; discount_amount: number | null;
+    net_amount: number; tax: string; vat_rate: number | null; vat_amount: number | null }>;
+  breakdown: Array<{ tax: string; rate: number | null; base: number; quota: number; exemption: string | null; surcharge_rate: number | null; surcharge_quota: number | null }>;
+  withholdings: Array<{ tax: string; rate: number | null; base: number | null; amount: number }>;
+  prices_include_vat: boolean;
+  totals: { base: number; quota: number; surcharge: number; withholding: number; total: number; vf_amount: number };
+  rectification: { kind: string | null; rectified: unknown[]; reason: string | null; base: number | null; quota: number | null } | null;
+  currency: string;
+  issued_at: string;
+}
+
+/** Datos obligatorios que faltan para emitir (misma regla que invoices.issue en SQL, art. 6 del RD 1619/2012). */
+export const ISSUE_MISSING_LABELS: Record<string, string> = {
+  lines: 'al menos una línea',
+  recipient_name: 'el nombre o razón social del destinatario',
+  recipient_tax_id: 'el NIF del destinatario',
+  recipient_address: 'el domicilio del destinatario',
+  rectified: 'la factura que se rectifica',
+  rectification_kind: 'el tipo de rectificación',
+  rectification_reason: 'el motivo de la rectificación',
+};
+
+export function issueMissing(invoice: Pick<IssuedInvoiceRow, 'invoice_type' | 'recipient_name' | 'recipient_tax_id' | 'recipient_kind' | 'recipient_address' | 'rectified' | 'rectification_kind' | 'rectification_reason'>, lineCount: number): string[] {
+  const missing: string[] = [];
+  const blank = (v: string | null | undefined) => !(v ?? '').trim();
+  if (lineCount < 1) missing.push('lines');
+  if (!['F2', 'R5'].includes(invoice.invoice_type)) {
+    if (blank(invoice.recipient_name)) missing.push('recipient_name');
+    if (blank(invoice.recipient_tax_id)) missing.push('recipient_tax_id');
+    const a = invoice.recipient_address;
+    if ((invoice.recipient_kind ?? 'empresa') !== 'particular' && (!a || blank(a.line) || blank(a.postal_code) || blank(a.city))) missing.push('recipient_address');
+  }
+  if (/^R[1-5]$/.test(invoice.invoice_type)) {
+    if (!invoice.rectified?.length) missing.push('rectified');
+    if (!invoice.rectification_kind) missing.push('rectification_kind');
+    if (blank(invoice.rectification_reason)) missing.push('rectification_reason');
+  }
+  return missing;
+}
+
 export interface IssuedSeriesRow extends SyncedColumns {
   code: string;
   description: string | null;
@@ -59,12 +122,20 @@ export interface IssuedSeriesRow extends SyncedColumns {
   yearly: boolean;
   format: string;
   active: boolean;
+  /** `registro` (otra herramienta) o `emision` (Finance asigna el número al emitir, §14.2). */
+  mode: (typeof SERIES_MODES)[number];
+  closed_at: string | null;
+  closed_last_number: string | null;
+  counter_year: number | null;
+  counter_last: number;
+  counter_last_date: string | null;
 }
 
 export interface IssuedInvoiceRow extends SyncedColumns {
   series_code: string;
-  number: string;
-  full_number: string;
+  /** `null` solo en borrador: el número lo asigna el servidor al emitir. */
+  number: string | null;
+  full_number: string | null;
   issue_date: string;
   operation_date: string | null;
   fiscal_year: number;
@@ -103,6 +174,19 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   external_qr_url: string | null;
   external_csv: string | null;
   vf_status: string | null;
+  vf_hash: string | null;
+  vf_previous_hash: string | null;
+  vf_first_record: boolean | null;
+  vf_generated_at: string | null;
+  vf_qr_url: string | null;
+  /** Emisión desde Finance (§14): domicilio y tipo del destinatario, precios con IVA y la copia congelada al emitir. */
+  recipient_address: IssuedAddress | null;
+  recipient_kind: (typeof RECIPIENT_KINDS)[number] | null;
+  prices_include_vat: boolean;
+  issued_at: string | null;
+  issued_by: string | null;
+  document: IssuedDocument | null;
+  rectified_by: unknown[];
   /** Emisor (la entidad de Central) copiado al registrar: NIF y nombre para Verifactu, y el resto en `issuer`. */
   issuer_tax_id: string | null;
   issuer_name: string | null;
@@ -268,8 +352,8 @@ export interface IssuedSummaryInput {
 }
 
 export function issuedSummary(input: IssuedSummaryInput, range: { from: string; to: string }): IssuedSummary {
-  const live = input.invoices.filter((i) => !i.deleted_at && i.issue_date >= range.from && i.issue_date <= range.to);
-  const summed = live.filter((i) => i.status === 'registrada');
+  const live = input.invoices.filter((i) => !i.deleted_at && i.status !== 'borrador' && i.issue_date >= range.from && i.issue_date <= range.to);
+  const summed = live.filter((i) => ISSUED_COUNTED_STATUSES.includes(i.status));
   const ids = new Set(summed.map((i) => i.id));
   const sum = (values: Array<number | null | undefined>) => fromCents(values.reduce<number>((acc, v) => acc + toCents(Number(v ?? 0)), 0));
   const breakdown = input.taxLines.filter((t) => !t.deleted_at && ids.has(t.issued_invoice_id) && !(WITHHOLDING_TAXES as readonly string[]).includes(t.tax));
@@ -309,8 +393,8 @@ export function issuedSummary(input: IssuedSummaryInput, range: { from: string; 
       .map((c) => ({ income_category: c.income_category, base: sum(c.base), total: sum(c.total), count: c.count })),
     alerts: {
       unpaid: summed.filter((i) => i.payment_status !== 'cobrada').length,
-      discrepancies: summed.filter((i) => i.review_reason === 'REVISAR IMPORTES').sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.full_number.localeCompare(b.full_number))
-        .map((i) => ({ id: i.id, full_number: i.full_number, totals_delta: i.totals_delta === null ? null : Number(i.totals_delta) })),
+      discrepancies: summed.filter((i) => i.review_reason === 'REVISAR IMPORTES').sort((a, b) => a.issue_date.localeCompare(b.issue_date) || (a.full_number ?? '').localeCompare(b.full_number ?? ''))
+        .map((i) => ({ id: i.id, full_number: i.full_number ?? '', totals_delta: i.totals_delta === null ? null : Number(i.totals_delta) })),
       missing_file: input.withFile ? summed.filter((i) => !input.withFile!.has(i.id)).length : 0,
     },
   };

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { issuedCsv, issuedSummary, recalculate, slugify, normalizedFilename, taxesCsv, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
+import { issuedCsv, issuedSummary, recalculate, slugify, normalizedFilename, taxesCsv, vfAltaHash, vfAnulacionHash, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLE: ImportDocument = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
@@ -97,9 +97,11 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('bootstrap registra las diecisiete tablas (extracciones, emitidas, plantillas y texto de documentos); proveedores con slug derivado y alias', async () => {
+test('bootstrap registra las veinte tablas (extracciones, emitidas, plantillas, texto de documentos y registro VERI*FACTU); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.document_texts', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.document_texts', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines', 'invoices.vf_events', 'invoices.vf_records', 'invoices.vf_state']);
+  // Las tablas VERI*FACTU están registradas pero nadie las lee ni las escribe por sincronización
+  for (const t of boot.data.tables.filter((x: any) => x.table.startsWith('invoices.vf_'))) assert.deepEqual([t.readable, t.writable], [false, false]);
   const id = await newSupplier('Makro España S.A.', { tax_id: 'A28647451', aliases: ['MAKRO'] });
   const s = await row('invoices.suppliers', id);
   assert.equal(s.slug, 'makro_espana_s_a'); assert.deepEqual(s.aliases, ['MAKRO']); assert.equal(s.default_is_investment, false);
@@ -683,4 +685,120 @@ test('indicadores para Central (§7.5): columnas del contrato, 29 filas, solo ag
   // Registrada para Central
   const reg = await app.t.db.query(`select kind from core.allowed_reads where app = 'central' and name = 'invoices.central_kpi_projection'`);
   assert.deepEqual(reg.rows, [{ kind: 'view' }]);
+});
+
+test('huella VERI*FACTU en SQL: los tres ejemplos oficiales de la AEAT (v0.1.2)', async () => {
+  const q = await app.t.db.query<{ a: string; b: string; c: string }>(`select
+    invoices.vf_hash(invoices.vf_alta_input('89890001K', '12345678/G33', '01-01-2024', 'F1', 12.35, 123.45, null, '2024-01-01T19:20:30+01:00')) a,
+    invoices.vf_hash(invoices.vf_alta_input('89890001K', '12345679/G34', '01-01-2024', 'F1', 12.35, 123.45, '3C464DAF61ACB827C65FDA19F352A4E3BDC2C640E9E9FC4CC058073F38F12F60', '2024-01-01T19:20:35+01:00')) b,
+    invoices.vf_hash(invoices.vf_anulacion_input('89890001K', '12345679/G34', '01-01-2024', 'F7B94CFD8924EDFF273501B01EE5153E4CE8F259766F88CF6ACB8935802A2B97', '2024-01-01T19:20:40+01:00')) c`);
+  assert.equal(q.rows[0]!.a, '3C464DAF61ACB827C65FDA19F352A4E3BDC2C640E9E9FC4CC058073F38F12F60');
+  assert.equal(q.rows[0]!.b, 'F7B94CFD8924EDFF273501B01EE5153E4CE8F259766F88CF6ACB8935802A2B97');
+  assert.equal(q.rows[0]!.c, '177547C0D57AC74748561D054A9CEC14B4C4EA23D1BEFD6F2E69E3A388F90C68');
+  const qr = await app.t.db.query<{ u: string; t: string }>(`select invoices.vf_qr_url('pruebas', '89890001K', '12345678&G33', '01-01-2024', 241.4) u,
+    invoices.vf_time_text('2026-07-01T10:00:00Z'::timestamptz) || ' ' || invoices.vf_time_text('2026-12-01T10:00:00Z'::timestamptz) t`);
+  assert.equal(qr.rows[0]!.u, 'https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?nif=89890001K&numserie=12345678%26G33&fecha=01-01-2024&importe=241.40');
+  assert.equal(qr.rows[0]!.t, '2026-07-01T12:00:00+02:00 2026-12-01T11:00:00+01:00');
+});
+
+test('emisión (§14): borrador sin número, datos obligatorios, número correlativo en el servidor, cadena de huellas, congelada, anulación del owner', async () => {
+  const today = (await app.t.db.query<{ d: string; y: number }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d, extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!;
+  const fmt = (d: string) => d.split('-').reverse().join('-');
+  // Series de emisión
+  const sf = uuid(); const sr = uuid();
+  await rejected([insert('invoices.issued_series', uuid(), { code: 'X', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}' })], 'INVALID_FIELDS');
+  await ok([
+    insert('invoices.issued_series', sf, { code: 'F', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', yearly: true }),
+    insert('invoices.issued_series', sr, { code: 'R', kind: 'rectificativa', mode: 'emision', format: '{serie}{año}-{n:4}', yearly: true }),
+  ]);
+  // Borrador: sin número; con número o como registrada se rechaza
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'F', status: 'borrador', number: '1', issue_date: today.d, description: 'x' })], 'INVALID_FIELDS');
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'F', number: '1', issue_date: today.d, description: 'x' })], 'ISSUE_REQUIRES_PROCEDURE');
+  const d1 = uuid(); const l1 = uuid();
+  await ok([
+    insert('invoices.issued_invoices', d1, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Estancia de grupo', recipient_name: 'Cliente Emisión SL', recipient_tax_id: 'B55555555', recipient_kind: 'empresa', income_category: 'alojamiento' }),
+    insert('invoices.issued_invoice_lines', l1, { issued_invoice_id: d1, description: 'Alojamiento 2 noches', quantity: 2, unit_price: 50, net_amount: 100, vat_rate: 10 }),
+  ]);
+  let draft = await row('invoices.issued_invoices', d1);
+  assert.equal(draft.status, 'borrador'); assert.equal(draft.number, null); assert.equal(draft.origin, 'app');
+  // Faltan datos: el domicilio del destinatario (empresa)
+  const missing = await rejected([call('invoices.issue', { id: d1, expectedRevision: draft.revision })], 'ISSUE_MISSING_DATA');
+  assert.deepEqual(missing.details.missing, ['recipient_address']);
+  // El lector no emite
+  await rejected([call('invoices.issue', { id: d1 })], 'FORBIDDEN', 403, app.tokens.reader);
+  await ok([update('invoices.issued_invoices', d1, draft.revision, { recipient_address: { line: 'Calle Cliente 2', postal_code: '28002', city: 'Madrid', country: 'ES' } })]);
+  draft = await row('invoices.issued_invoices', d1);
+  const out1 = await ok([call('invoices.issue', { id: d1, expectedRevision: draft.revision, issuer: { tax_id: 'X0000000T', legal_name: 'Falso' } })], app.tokens.editor);
+  const r1 = out1.results[0].result;
+  assert.equal(r1.full_number, `F${today.y}-0001`);
+  const e1 = await row('invoices.issued_invoices', d1);
+  assert.equal(e1.status, 'emitida'); assert.equal(e1.number, `F${today.y}-0001`); assert.equal(e1.full_number, `F${today.y}-0001`); assert.equal(e1.issue_date, today.d);
+  assert.equal(e1.issuer_tax_id, 'B12345674', 'el emisor lo pone el servidor desde Central');
+  assert.equal(e1.base_total, 100); assert.equal(e1.quota_total, 10); assert.equal(e1.total, 110);
+  assert.equal(e1.vf_status, 'no_enviar'); assert.match(e1.vf_hash, /^[0-9A-F]{64}$/);
+  assert.equal(e1.vf_qr_url, `https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=B12345674&numserie=F${today.y}-0001&fecha=${fmt(today.d)}&importe=110.00`);
+  assert.equal(e1.document.recipient.address.city, 'Madrid'); assert.equal(e1.document.lines.length, 1); assert.equal(e1.document.totals.total, 110);
+  assert.equal(e1.issued_by !== null, true);
+  // La huella se puede recalcular con el dominio TypeScript
+  const rec1 = (await app.t.db.query<Record<string, any>>(`select * from invoices.vf_records where issued_invoice_id = $1`, [d1])).rows[0]!;
+  assert.equal(rec1.hash, e1.vf_hash);
+  assert.equal(rec1.hash, await vfAltaHash({ issuerTaxId: 'B12345674', numSerie: `F${today.y}-0001`, issueDate: fmt(today.d), invoiceType: 'F1', quotaTotal: 10, amountTotal: 110, previousHash: rec1.previous_hash, generatedAt: rec1.generated_at_text }));
+  assert.equal(rec1.payload.IDFactura.NumSerieFactura, `F${today.y}-0001`); assert.equal(rec1.payload.Desglose[0].CuotaRepercutida, '10.00');
+  assert.equal(rec1.payload.Destinatarios[0].NIF, 'B55555555'); assert.equal(rec1.payload.SistemaInformatico.NombreSistemaInformatico, 'Ikisai Finance');
+  // Emitir otra vez: no
+  await rejected([call('invoices.issue', { id: d1 })], 'ISSUED_NOT_DRAFT', 409);
+  // Segunda: número siguiente y encadenada a la primera
+  const d2 = uuid();
+  await ok([
+    insert('invoices.issued_invoices', d2, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Cena', recipient_name: 'Particular', recipient_tax_id: '00000000T', recipient_kind: 'particular' }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: d2, description: 'Cena', net_amount: 20, vat_rate: 10 }),
+  ]);
+  const out2 = await ok([call('invoices.issue', { id: d2 })]);
+  assert.equal(out2.results[0].result.full_number, `F${today.y}-0002`);
+  const rec2 = (await app.t.db.query<Record<string, any>>(`select * from invoices.vf_records where issued_invoice_id = $1`, [d2])).rows[0]!;
+  assert.equal(rec2.previous_hash, rec1.hash); assert.equal(rec2.seq, Number(rec1.seq) + 1); assert.equal(rec2.payload.Encadenamiento.RegistroAnterior.Huella, rec1.hash);
+  // Congelada: ni datos ni líneas; cobro sí; no se borra
+  await rejected([update('invoices.issued_invoices', d1, e1.revision, { description: 'Otra cosa' })], 'ISSUED_FROZEN', 409);
+  await rejected([insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: d1, description: 'Extra', net_amount: 5 })], 'ISSUED_FROZEN', 409);
+  await rejected([remove('invoices.issued_invoices', d1, e1.revision)], 'ISSUED_NOT_DELETABLE');
+  await ok([update('invoices.issued_invoices', d1, e1.revision, { payment_status: 'cobrada', paid_at: today.d })]);
+  // La serie ya no cambia de formato
+  const series = await row('invoices.issued_series', sf);
+  assert.equal(series.counter_last, 2); assert.equal(series.counter_year, today.y);
+  await rejected([update('invoices.issued_series', sf, series.revision, { format: '{serie}-{n}' })], 'SERIES_IN_USE', 409);
+  // Un borrador se borra
+  const d3 = uuid();
+  await ok([insert('invoices.issued_invoices', d3, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Se borra' })]);
+  await ok([remove('invoices.issued_invoices', d3, (await row('invoices.issued_invoices', d3)).revision)]);
+  // El registro no lo escribe el cliente ni se altera
+  await rejected([insert('invoices.vf_records', uuid(), { hash: 'x' })], 'VF_SERVER_ONLY');
+  await assert.rejects(app.t.db.query(`update invoices.vf_records set hash = 'AA' where id = $1`, [rec1.id]), /VF_IMMUTABLE/);
+  await assert.rejects(app.t.db.query(`delete from invoices.vf_records where id = $1`, [rec1.id]), /VF_IMMUTABLE/);
+  // Lectura para la ficha
+  const vr = await read('invoices.vf_records_of', { issued_invoice_id: d1 }, app.tokens.reader);
+  assert.equal(vr.status, 200, JSON.stringify(vr.data));
+  assert.equal(vr.data.records.length, 1); assert.equal(vr.data.settings.sending, 'apagado');
+  // Anular una emitida: solo el owner, con registro de anulación encadenado
+  const e2 = await row('invoices.issued_invoices', d2);
+  await rejected([call('invoices.annul_issued', { issued_invoice_id: d2, expectedRevision: e2.revision, reason: 'No llegó al cliente' })], 'FORBIDDEN', 403, app.tokens.editor);
+  await ok([call('invoices.annul_issued', { issued_invoice_id: d2, expectedRevision: e2.revision, reason: 'No llegó al cliente' })]);
+  assert.equal((await row('invoices.issued_invoices', d2)).status, 'anulada');
+  const an = (await app.t.db.query<Record<string, any>>(`select * from invoices.vf_records where issued_invoice_id = $1 and record_kind = 'anulacion'`, [d2])).rows[0]!;
+  assert.equal(an.previous_hash, rec2.hash);
+  assert.equal(an.hash, await vfAnulacionHash({ issuerTaxId: 'B12345674', numSerie: `F${today.y}-0002`, issueDate: fmt(today.d), previousHash: rec2.hash, generatedAt: an.generated_at_text }));
+  // Resumen: la emitida cuenta, el borrador no
+  const d4 = uuid();
+  await ok([insert('invoices.issued_invoices', d4, { series_code: 'F', status: 'borrador', issue_date: today.d, description: 'Borrador vivo' }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: d4, description: 'x', net_amount: 1000, vat_rate: 21 })]);
+  const sum = await read('invoices.issued_summary', { from: today.d, to: today.d });
+  assert.equal(sum.status, 200, JSON.stringify(sum.data));
+  const counted = await app.t.db.query<{ n: string; b: string }>(`select count(*) n, coalesce(sum(base_total), 0) b from invoices.issued_invoices
+    where deleted_at is null and status in ('registrada', 'emitida', 'rectificada') and issue_date = $1`, [today.d]);
+  assert.equal(sum.data.invoices.registrada, Number(counted.rows[0]!.n));
+  assert.equal(sum.data.base, Number(counted.rows[0]!.b));
+  // Cerrar una serie de registro (la de la hoja, owner): ya no admite más
+  await ok([insert('invoices.issued_series', uuid(), { code: 'H', kind: 'ordinaria' })]);
+  await rejected([call('invoices.close_series', { code: 'H', last_number: '2026-0103' })], 'FORBIDDEN', 403, app.tokens.editor);
+  await ok([call('invoices.close_series', { code: 'H', last_number: '2026-0103' })]);
+  await rejected([insert('invoices.issued_invoices', uuid(), { series_code: 'H', number: '2026-0999', issue_date: today.d, invoice_type: 'F2', description: 'Tarde' })], 'SERIES_CLOSED', 409);
 });

@@ -91,3 +91,12 @@ bind=function(){bindBeforeInbox();
   document.querySelectorAll('[data-request-move]').forEach(b=>b.onclick=()=>moveRequestSheet(b.dataset.requestMove));
   document.querySelectorAll('[data-request-dismiss]').forEach(b=>b.onclick=()=>purchaseRun(data=>R().dismissRequestOps(data,b.dataset.requestDismiss),'Descartada: la app que la pidió lo verá.'));
   document.querySelectorAll('[data-route-new]').forEach(b=>b.onclick=()=>routeSheet(b.dataset.routeNew))};
+
+/* Enlaces directos `https://tasks.ikisai.com/#/<vista>` (los usa el panel de Dirección de Central, API.md §21): se abre
+   la vista en cuanto hay modelo y se limpia el hash, para que recargar no vuelva a saltar. */
+const HASH_VIEWS=['home','projects','tasks','triage','purchases','supplies','plans'];
+let hashPending=true;
+function openHashView(){const view=location.hash.replace(/^#\/?/,'');hashPending=false;if(!HASH_VIEWS.includes(view))return;history.replaceState(null,'',location.pathname+location.search);navigateView(view)}
+const renderBeforeHash=render;
+render=function(...args){renderBeforeHash(...args);if(hashPending&&state.tabs.length&&Sync.ready)openHashView()};
+window.addEventListener('hashchange',()=>{if(state.tabs.length)openHashView()});

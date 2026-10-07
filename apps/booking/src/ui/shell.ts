@@ -10,6 +10,7 @@ import { mountPending } from './pending.ts';
 import { mountCalendar } from './calendar.ts';
 import { mountSpaces } from './spaces.ts';
 import { mountRates } from './rates.ts';
+import { mountSes } from './ses.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
 
@@ -44,6 +45,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount }> = {
   '#/huespedes': { title: 'Huéspedes', mount: mountGuests(null) },
   '#/espacios': { title: 'Espacios y camas', mount: mountSpaces },
   '#/tarifas': { title: 'Tarifas y condiciones', mount: mountRates },
+  '#/ses': { title: 'SES.HOSPEDAJES', mount: mountSes },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';

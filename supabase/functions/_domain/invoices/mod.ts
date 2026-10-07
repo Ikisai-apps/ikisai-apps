@@ -2,6 +2,7 @@
 export * from './types.ts';
 export * from './issued.ts';
 export * from './issued-csv.ts';
+export * from './verifactu.ts';
 export * from './money.ts';
 export * from './filename.ts';
 export * from './import-v1.schema.ts';

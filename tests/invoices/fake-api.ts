@@ -5,7 +5,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
-import { TABLES, WRITABLE, normalizedFilename, proposeImport, recalculate, slugify, validateImportDocument, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
+import { TABLES, WRITABLE, formatIssuedNumber, issueMissing, normalizedFilename, proposeImport, recalculate, slugify, validateImportDocument, vfAltaString, vfQrUrl, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 export interface FakeRow {
   id: string;
@@ -107,6 +107,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
   let entity: Record<string, unknown> | null = null;
+  // Registro VERI*FACTU del simulado (§14.6): solo lo que la app consulta con invoices.vf_records_of.
+  const vfRecords: Array<Record<string, unknown>> = [];
+  let vfLastHash: string | null = null;
   const documentTexts = new Map<string, { items: unknown[]; source: string }>();
   let extractor: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null = null;
   const requests: Array<{ method: string; path: string }> = [];
@@ -313,7 +316,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     if (table === 'invoices.issued_invoices') {
       if (entity) { row.issuer_tax_id = entity.tax_id; row.issuer_name = entity.legal_name; row.issuer = { ...entity }; }
       const s = String(row.series_code ?? '').trim(); const n = String(row.number ?? '').trim();
-      row.full_number = n.toUpperCase().startsWith(s.toUpperCase()) ? n : `${s}-${n}`;
+      // Series de emisión (§14): nace como borrador sin número, como hace el disparador en SQL.
+      const series = [...lookup('invoices.issued_series').values()].find((x) => !x.deleted_at && String(x.code).toUpperCase() === s.toUpperCase());
+      if (series?.mode === 'emision') {
+        if (row.status !== 'borrador' || row.number) throw new Fault(422, 'ISSUE_REQUIRES_PROCEDURE', 'En una serie de emisión la factura nace como borrador sin número.');
+        row.origin = 'app';
+      }
+      row.full_number = row.status === 'borrador' ? null : n.toUpperCase().startsWith(s.toUpperCase()) ? n : `${s}-${n}`;
       row.invoice_type = row.invoice_type ?? 'F1';
       row.status = row.status ?? 'registrada';
       row.origin = row.origin ?? 'manual';
@@ -326,10 +335,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       row.fiscal_year = Number(date.slice(0, 4));
       row.fiscal_quarter = Math.ceil(Number(date.slice(5, 7)) / 3);
       row.vf_status = null;
-      const clash = [...lookup('invoices.issued_invoices').values()].some((o) => o.id !== row.id && String(o.series_code).toUpperCase() === s.toUpperCase() && String(o.number).trim().toUpperCase() === n.toUpperCase());
+      row.prices_include_vat = row.prices_include_vat ?? false;
+      row.rectified_by = [];
+      const clash = !!n && [...lookup('invoices.issued_invoices').values()].some((o) => o.id !== row.id && String(o.series_code).toUpperCase() === s.toUpperCase() && String(o.number ?? '').trim().toUpperCase() === n.toUpperCase());
       if (clash) throw new Fault(422, 'CONSTRAINT_VIOLATION', 'Ese número ya está registrado en la serie.');
     }
-    if (table === 'invoices.issued_series') { row.kind = row.kind ?? 'ordinaria'; row.yearly = row.yearly ?? true; row.active = row.active ?? true; row.format = row.format ?? '{serie}-{año}-{n:4}'; }
+    if (table === 'invoices.issued_series') {
+      row.kind = row.kind ?? 'ordinaria'; row.yearly = row.yearly ?? true; row.active = row.active ?? true; row.format = row.format ?? '{serie}-{año}-{n:4}';
+      row.mode = row.mode ?? 'registro'; row.counter_year = null; row.counter_last = 0; row.counter_last_date = null; row.closed_at = null; row.closed_last_number = null;
+    }
     if (table === 'invoices.issued_invoice_lines') { row.discount_amount = row.discount_amount ?? 0; row.tax = row.tax ?? 'iva'; row.position = row.position ?? 0; }
     if (table === 'invoices.issued_tax_lines') { row.regime_key = row.regime_key ?? '01'; row.position = row.position ?? 0; }
     if (table === 'invoices.issued_invoice_files') {
@@ -464,6 +478,56 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         filled.push(issued.id as string);
       }
       return { filled, skipped: [] };
+    }
+    // Emitir (§14.3): número de la serie, congelado, emisor de Central y registro de alta encadenado (huella real).
+    if (op.procedure === 'invoices.issue') {
+      if (!entity) throw new Fault(422, 'ENTITY_MISSING', 'Faltan los datos de la entidad en Central.', { index });
+      const inv = stagedTable('invoices.issued_invoices').get(String(args.id));
+      if (!inv || inv.deleted_at) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
+      if (inv.status !== 'borrador') throw new Fault(409, 'ISSUED_NOT_DRAFT', 'Esta factura ya está emitida.', { index });
+      const series = [...stagedTable('invoices.issued_series').values()].find((x) => !x.deleted_at && String(x.code).toUpperCase() === String(inv.series_code).toUpperCase());
+      if (!series || series.mode !== 'emision') throw new Fault(422, 'SERIES_NOT_ISSUING', 'Esa serie es de registro de otra herramienta.', { index });
+      const lines = [...stagedTable('invoices.issued_invoice_lines').values()].filter((l) => l.issued_invoice_id === inv.id && !l.deleted_at)
+        .sort((a, b) => Number(a.position) - Number(b.position));
+      const missing = issueMissing(inv as never, lines.length);
+      if (missing.length) throw new Fault(422, 'ISSUE_MISSING_DATA', 'Faltan datos obligatorios para emitir la factura.', { index, id: inv.id, missing });
+      const today = new Date().toLocaleDateString('sv-SE'); const year = Number(today.slice(0, 4));
+      const n = series.yearly && series.counter_year !== year ? 1 : Number(series.counter_last ?? 0) + 1;
+      const number = formatIssuedNumber(String(series.format), String(series.code), year, n);
+      Object.assign(series, { counter_year: series.yearly ? year : null, counter_last: n, counter_last_date: today, revision: series.revision + 1, updated_at: nowIso() });
+      batchChanges.push(record('invoices.issued_series', 'update', series, nextCursor, batchChanges.length + 1, requestId, actorId));
+      const byRate = new Map<number | null, number>();
+      for (const l of lines) { const r = l.vat_rate === null ? null : Number(l.vat_rate); byRate.set(r, Math.round(((byRate.get(r) ?? 0) + Number(l.net_amount)) * 100) / 100); }
+      const breakdown = [...byRate.entries()].map(([rate, base]) => ({ tax: 'iva', regime_key: '01', qualification: 'S1', exemption: null, rate, base, quota: Math.round(base * (rate ?? 0)) / 100, surcharge_rate: null, surcharge_quota: 0 }));
+      const base = Math.round(breakdown.reduce((a, b) => a + b.base, 0) * 100) / 100;
+      const quota = Math.round(breakdown.reduce((a, b) => a + b.quota, 0) * 100) / 100;
+      const fullNumber = number.toUpperCase().startsWith(String(inv.series_code).toUpperCase()) ? number : `${inv.series_code}-${number}`;
+      const dateText = today.split('-').reverse().join('-');
+      const genAt = new Date().toISOString().slice(0, 19) + '+00:00';
+      const hash = createHash('sha256').update(vfAltaString({ issuerTaxId: String(entity.tax_id), numSerie: fullNumber, issueDate: dateText, invoiceType: String(inv.invoice_type),
+        quotaTotal: quota, amountTotal: base + quota, previousHash: vfLastHash, generatedAt: genAt })).digest('hex').toUpperCase();
+      const document = {
+        full_number: fullNumber, series: inv.series_code, number, issue_date: today, operation_date: inv.operation_date ?? null, invoice_type: inv.invoice_type, issuer: { ...entity },
+        recipient: { name: inv.recipient_name, tax_id: inv.recipient_tax_id, id_type: inv.recipient_id_type, country: inv.recipient_country, address: inv.recipient_address, kind: inv.recipient_kind },
+        description: inv.description,
+        lines: lines.map((l) => ({ position: l.position, description: l.description, quantity: l.quantity ?? null, unit: l.unit ?? null, unit_price: l.unit_price ?? null,
+          discount_amount: l.discount_amount ?? 0, net_amount: Number(l.net_amount), tax: l.tax ?? 'iva', vat_rate: l.vat_rate, vat_amount: l.vat_amount ?? null })),
+        breakdown, withholdings: [], prices_include_vat: !!inv.prices_include_vat,
+        totals: { base, quota, surcharge: 0, withholding: 0, total: Math.round((base + quota) * 100) / 100, vf_amount: Math.round((base + quota) * 100) / 100 },
+        rectification: null, currency: inv.currency ?? 'EUR', issued_at: nowIso(),
+      };
+      vfRecords.push({ issued_invoice_id: inv.id, record_kind: 'alta', hash, previous_hash: vfLastHash, generated_at_text: genAt, send_status: 'no_enviar', seq: vfRecords.length + 1 });
+      Object.assign(inv, {
+        status: 'emitida', number, full_number: fullNumber, issue_date: today, origin: 'app', issued_at: nowIso(), issued_by: actorId,
+        issuer_tax_id: entity.tax_id, issuer_name: entity.legal_name, issuer: { ...entity },
+        base_total: base, quota_total: quota, surcharge_total: 0, withholding_total: 0, total: document.totals.total, document,
+        vf_record_kind: 'alta', vf_hash: hash, vf_previous_hash: vfLastHash, vf_first_record: vfLastHash === null, vf_generated_at: nowIso(), vf_status: 'no_enviar',
+        vf_qr_url: vfQrUrl('produccion', String(entity.tax_id), fullNumber, dateText, base + quota),
+        revision: inv.revision + 1, updated_at: nowIso(),
+      });
+      vfLastHash = hash;
+      batchChanges.push(record('invoices.issued_invoices', 'update', inv, nextCursor, batchChanges.length + 1, requestId, actorId));
+      return { id: inv.id, full_number: fullNumber, issue_date: today, vf_hash: hash, vf_status: 'no_enviar' };
     }
     if (op.procedure === 'invoices.annul_issued') {
       const issued = stagedTable('invoices.issued_invoices').get(String(args.issued_invoice_id));
@@ -604,6 +668,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const body = await readJson(req);
         documentTexts.set(docText[1]!, { items: Array.isArray(body.items) ? body.items : [], source: body.source ?? 'pdf_text' });
         return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length });
+      }
+      if (path === 'read/invoices.vf_records_of' && method === 'POST') {
+        const body = await readJson(req);
+        return json(res, 200, { records: vfRecords.filter((r) => r.issued_invoice_id === body.issued_invoice_id), settings: { sending: 'apagado', locked_until: null } });
       }
       if (path === 'read/invoices.document_text' && method === 'POST') {
         const body = await readJson(req);

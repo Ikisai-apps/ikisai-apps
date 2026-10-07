@@ -1293,6 +1293,21 @@ Los avisos de plazo (12 h y 18 h desde el pago o el primer día) salen de `legal
 2. ¿Valido los XSD en las pruebas con `xmllint` (no está en la CI de Windows/Ubuntu por defecto) o con una dependencia de desarrollo en Node? Propuesta: dependencia de desarrollo (`xmllint-wasm`), sin tocar la CI.
 3. Secretos `SES_*` por entorno: ¿los nombras tú o uso los de §17.1?
 
+## 18. Indicadores para Central
+
+Vista `booking.central_kpi_projection` (migración `20261007_0450_booking_kpis.sql`), contrato en `docs/central/API.md` §7.2. Solo agregados; «hoy» en hora de Madrid. «Reservas vivas» = no borradas, no archivadas, ni canceladas ni perdidas.
+
+| Clave | Unidad | Periodo | Sentido | Fórmula |
+|---|---|---|---|---|
+| `booking.reservations_confirmed_90d` | count | actual (hoy → +90) | up | reservas vivas confirmadas o en ejecución con entrada entre hoy y dentro de 90 días |
+| `booking.guests_expected_90d` | persons | actual (hoy → +90) | up | suma de personas finales del evento o, si no hay, previstas de esas mismas reservas |
+| `booking.events_next_30d` | count | actual (hoy → +30) | up | eventos vivos de reservas vivas con entrada entre hoy y dentro de 30 días |
+| `booking.deposits_pending` | count | actual | down | reservas vivas pre-reservadas o confirmadas con señal pedida mayor que la cobrada |
+| `booking.staff_needs_open` | count | actual | down | refuerzos sin cubrir de eventos que no han terminado |
+| `booking.occupancy_rate` | pct | mensual (12 meses anteriores, el actual y 3 siguientes) | up | personas-noche asignadas en el mes (asignaciones de alojamiento de reservas vivas, noches [entrada, salida)) / (plazas base × días del mes) × 100; plazas base = camas activas no supletorias de habitaciones activas y reservables; `null` si no hay plazas |
+
+`booking.leads_new` y `booking.leads_converted` llegarán con el CRM.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
