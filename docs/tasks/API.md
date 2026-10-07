@@ -1149,3 +1149,23 @@ Una PR por paso.
 - **Purga:** no hay purga automática de las peticiones enrutadas o descartadas. Son pocas, y la app que pidió necesita seguir leyendo su estado.
 
 **Paso 2:** la interfaz («Por clasificar», «Gestionar entradas» y el origen en el editor).
+
+## 21. Indicadores para el panel de Dirección de Central (contrato `docs/central/API.md` §7.2)
+
+La vista `tasks.central_kpi_projection` se crea en la migración `20261007_0309_tasks_central_kpis.sql` y se registra con `core.allow_read('central', 'tasks.central_kpi_projection', 'view')`.
+- Solo publica agregados: ningún título, nombre ni importe.
+- Todas las filas son la foto de hoy en hora de Madrid (`period = 'actual'`).
+- Solo cuenta lo vivo: sin papelera, sin áreas borradas y, en tareas, sin proyectos archivados.
+- Todos los indicadores son recuentos (`unit = 'count'`).
+
+| Clave | Etiqueta | Fórmula | Sentido | Enlace |
+|---|---|---|---|---|
+| `tasks.open` | Tareas pendientes | Tareas vivas **sin hijas vivas** y sin completar, en proyectos vivos y no archivados de áreas vivas. Un padre no cuenta aparte: se calcula por sus hijas. | — | `#/tasks` |
+| `tasks.overdue` | Tareas vencidas | Las de `tasks.open` con `due` anterior a hoy. | menos es mejor | `#/tasks` |
+| `tasks.purchase_requests_open` | Compras pedidas sin recibir | Solicitudes de compra vivas en estado `requested`, `approved` o `purchased`. | menos es mejor | `#/purchases` |
+| `tasks.supplies_below_min` | Suministros bajo mínimo | Suministros vivos y no archivados cuyo stock (la suma de los movimientos vivos) es menor que su mínimo. | menos es mejor | `#/supplies` |
+| `tasks.requests_pending` | Peticiones por clasificar | Peticiones de otras apps en «Por clasificar» (`tasks.requests` vivas en estado `pending`, §20). | menos es mejor | `#/triage` |
+
+**Enlaces directos.** `https://tasks.ikisai.com/#/<vista>` abre la vista en cuanto hay modelo y limpia el hash. Vistas admitidas: `home`, `projects`, `tasks`, `triage`, `purchases`, `supplies` y `plans`.
+
+Cambiar el significado de una clave es crear otra (regla del contrato).
