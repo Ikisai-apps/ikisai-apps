@@ -19,6 +19,8 @@ import { mountPreparation } from './menu-preparation.ts';
 import { mountShopping } from './menu-shopping.ts';
 import { MENU_STATUS_LABELS, SERVICE_LABELS, menuChip } from './events.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
+import { usage } from '../app/usage.ts';
+import { fb, fbRows, type FbMark } from './feedback.ts';
 
 type MenuRow = Mirror<Menu>;
 type ServiceRow = Mirror<MenuService>;
@@ -26,6 +28,13 @@ type ItemRow = Mirror<MenuItem>;
 
 export type MenuTab = 'menu' | 'compra' | 'preparacion' | 'organizador' | 'cierre';
 const TABS: Array<[MenuTab, string]> = [['menu', 'Menú'], ['compra', 'Compra'], ['preparacion', 'Preparación'], ['organizador', 'Organizador'], ['cierre', 'Cierre']];
+const TAB_MARKS: Record<MenuTab, FbMark> = {
+  menu: { feedbackId: 'food.menu.pestanas.menu', feedbackLabel: 'Menú' },
+  compra: { feedbackId: 'food.menu.pestanas.compra', feedbackLabel: 'Compra' },
+  preparacion: { feedbackId: 'food.menu.pestanas.preparacion', feedbackLabel: 'Preparación' },
+  organizador: { feedbackId: 'food.menu.pestanas.organizador', feedbackLabel: 'Organizador' },
+  cierre: { feedbackId: 'food.menu.pestanas.cierre', feedbackLabel: 'Cierre' },
+};
 
 const removeOp = (table: (typeof T)[keyof typeof T], row: SyncedRow): RowOperation => ({ op: 'delete', table, id: row.id, expectedRevision: row.revision });
 
@@ -55,8 +64,9 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       label: `Abrir el menú de ${event?.title ?? 'este evento'}`,
       onClick: () => navigate(`#/menus/${menu.id}`),
     })));
+    fbRows(list, { feedbackId: 'food.menus.lista', feedbackLabel: 'Menús' }, { feedbackId: 'food.menus.lista.menu', feedbackLabel: 'Menú' });
     replace(host, rows.length ? list : el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay menús'),
-      'Abre un evento en Eventos y pulsa «Crear menú» en su ficha.', el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/eventos') }, 'Ir a Eventos'))));
+      'Abre un evento en Eventos y pulsa «Crear menú» en su ficha.', el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'food.menus.ir_eventos', 'data-feedback-label': 'Ir a Eventos', class: 'ghost', type: 'button', onclick: () => navigate('#/eventos') }, 'Ir a Eventos'))));
   }
 
   async function load(): Promise<void> {
@@ -108,18 +118,18 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const event = () => snapshot.events.find((e) => e.event_id === menu?.event_id) ?? null;
     const locked = () => !menu || LOCKED_MENU_STATUSES.includes(menu.status) || !canWrite();
 
-    const head = el('div', { class: 'pagehead' });
+    const head = el('div', { 'data-feedback-id': 'food.menu.cabecera', 'data-feedback-label': 'Cabecera del menú', class: 'pagehead' });
     const banner = el('div', { id: 'menuStale' });
-    const restrictionsHost = el('section', { class: 'restrictions card', id: 'menuRestrictions' });
-    const builder = el('div', { class: 'menubuilder', id: 'menuBuilder' });
-    const costHost = el('section', { class: 'card menucost', id: 'menuCost', hidden: true });
+    const restrictionsHost = el('section', { 'data-feedback-id': 'food.menu.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions card', id: 'menuRestrictions' });
+    const builder = el('div', { 'data-feedback-id': 'food.menu.constructor', 'data-feedback-label': 'Constructor del menú', class: 'menubuilder', id: 'menuBuilder' });
+    const costHost = el('section', { 'data-feedback-id': 'food.menu.coste', 'data-feedback-label': 'Coste estimado', class: 'card menucost', id: 'menuCost', hidden: true });
     let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
-    const actions = el('div', { class: 'btnrow menuactions', id: 'menuActions' });
-    const cookToggle = el('button', { class: 'linkbtn', type: 'button', id: 'cookView', 'aria-pressed': 'false',
+    const actions = el('div', { 'data-feedback-id': 'food.menu.estado', 'data-feedback-label': 'Estado del menú', class: 'btnrow menuactions', id: 'menuActions' });
+    const cookToggle = el('button', { 'data-feedback-id': 'food.menu.vista_cocinero', 'data-feedback-label': 'Vista de cocinero', class: 'linkbtn', type: 'button', id: 'cookView', 'aria-pressed': 'false',
       onclick: () => { cook = !cook; cookToggle.setAttribute('aria-pressed', String(cook)); cookToggle.textContent = cook ? 'Volver al constructor' : 'Vista de cocinero'; paintBuilder(); } }, 'Vista de cocinero');
-    const tabs = el('nav', { class: 'segmented menutabs', 'aria-label': 'Secciones del menú' }, ...TABS.map(([value, label]) => {
+    const tabs = el('nav', { 'data-feedback-id': 'food.menu.pestanas', 'data-feedback-label': 'Secciones del menú', class: 'segmented menutabs', 'aria-label': 'Secciones del menú' }, ...TABS.map(([value, label]) => {
       const hash = `#/menus/${menuId}${value === 'menu' ? '' : `/${value}`}`;
-      return el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label);
+      return fb(el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label), TAB_MARKS[value]);
     }));
     const tabHost = el('div', { id: 'menuTab' });
     replace(main, head, banner, restrictionsHost, tabs, tab === 'menu' ? el('div', null, actions, el('div', { class: 'btnrow' }, cookToggle), costHost, builder) : tabHost);
@@ -163,8 +173,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     function paintHead(): void {
       const e = event();
       replace(head, el('div', null,
-        el('p', { class: 'crumb' }, el('a', { href: '#/menus', onclick: (ev: Event) => { ev.preventDefault(); navigate('#/menus'); } }, '← Menús')),
-        el('h2', null, e?.title ?? 'Menú'),
+        el('p', { class: 'crumb' }, el('a', { 'data-feedback-id': 'food.menu.cabecera.volver', 'data-feedback-label': 'Volver a Menús', href: '#/menus', onclick: (ev: Event) => { ev.preventDefault(); navigate('#/menus'); } }, '← Menús')),
+        el('h2', { 'data-feedback-ignore': '' }, e?.title ?? 'Menú'),
         el('p', null, e ? `${dateRange(e)} · ${guestsLabel(e)} · ${mealPlanLabel(e.meal_plan)}` : 'Los datos del evento no están en este dispositivo todavía.'),
         el('div', { class: 'chips', style: 'margin-top:8px' },
           menu ? el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip', id: 'menuStatus' }, MENU_STATUS_LABELS[menu.status]) : null,
@@ -177,17 +187,17 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (!menu || !e || !isMenuStale(menu, e)) { replace(banner); return; }
       const changes = eventChanges(menu.source_event_snapshot, e).map(changeText);
       const isLocked = LOCKED_MENU_STATUSES.includes(menu.status);
-      replace(banner, el('div', { class: 'banner warn notice', role: 'status' },
+      replace(banner, el('div', { 'data-feedback-id': 'food.menu.aviso_evento', 'data-feedback-label': 'Aviso de evento cambiado', class: 'banner warn notice', role: 'status' },
         el('div', null,
           el('strong', null, 'La información del evento ha cambiado.'), ' Revisar antes de validar.',
-          changes.length ? el('ul', { class: 'plainlist' }, ...changes.map((c) => el('li', null, c))) : null),
+          changes.length ? el('ul', { class: 'plainlist', 'data-feedback-ignore': '' }, ...changes.map((c) => el('li', null, c))) : null),
         canWrite() ? el('div', { class: 'btnrow' },
           isLocked
-            ? el('button', { class: 'ghost', type: 'button', id: 'revalidate', disabled: busy, onclick: () => void validate() }, 'Sigue siendo válido')
-            : el('button', { class: 'ghost', type: 'button', id: 'acknowledgeEvent', disabled: busy,
+            ? el('button', { 'data-feedback-id': 'food.menu.aviso_evento.sigue_valido', 'data-feedback-label': 'Sigue siendo válido', class: 'ghost', type: 'button', id: 'revalidate', disabled: busy, onclick: () => void validate() }, 'Sigue siendo válido')
+            : el('button', { 'data-feedback-id': 'food.menu.aviso_evento.revisado', 'data-feedback-label': 'He revisado los cambios', class: 'ghost', type: 'button', id: 'acknowledgeEvent', disabled: busy,
                 onclick: () => void call(FOOD_PROCEDURES.acknowledgeEvent, { menu_id: menu!.id, expectedRevision: menu!.revision, event_revision: e.event_revision, event_snapshot: eventSnapshot(e) }, 'Cambios del evento revisados.') },
                 'He revisado los cambios'),
-          menu.status === 'validado' ? el('button', { class: 'ghost', type: 'button', id: 'reopenStale', disabled: busy, onclick: () => void setStatus('revisar', 'Menú reabierto.') }, 'Reabrir para cambiar') : null,
+          menu.status === 'validado' ? el('button', { 'data-feedback-id': 'food.menu.aviso_evento.reabrir', 'data-feedback-label': 'Reabrir para cambiar', class: 'ghost', type: 'button', id: 'reopenStale', disabled: busy, onclick: () => void setStatus('revisar', 'Menú reabierto.') }, 'Reabrir para cambiar') : null,
         ) : null,
       ));
     }
@@ -211,16 +221,17 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     function paintActions(): void {
       if (!menu || !canWrite()) { replace(actions); return; }
-      const button = (id: string, label: string, kind: 'primary' | 'ghost', onclick: () => void) => el('button', { class: kind, type: 'button', id, disabled: busy, onclick }, label);
-      const validateButton = button('validateMenu', 'Validar', 'primary', () => void validate());
+      const button = (id: string, label: string, kind: 'primary' | 'ghost', onclick: () => void, mark: FbMark) => fb(el('button', { class: kind, type: 'button', id, disabled: busy, onclick }, label), mark);
+      const validateButton = button('validateMenu', 'Validar', 'primary', () => void validate(), { feedbackId: 'food.menu.estado.validar', feedbackLabel: 'Validar' });
       const byStatus: Record<Menu['status'], HTMLElement[]> = {
-        borrador: [button('toReview', 'Pasar a revisar', 'ghost', () => void setStatus('revisar', 'Menú listo para revisar.')), validateButton],
-        revisar: [button('toDraft', 'Volver a borrador', 'ghost', () => void setStatus('borrador', 'Menú de nuevo en borrador.')), validateButton],
-        validado: [button('reopenMenu', 'Reabrir para cambiar', 'ghost', () => void setStatus('revisar', 'Menú reabierto.')), button('closeMenu', 'Cerrar menú', 'ghost', () => void setStatus('cerrado', 'Menú cerrado.'))],
-        cerrado: [button('uncloseMenu', 'Volver a validado', 'ghost', () => void setStatus('validado', 'Menú de nuevo en validado.'))],
+        borrador: [button('toReview', 'Pasar a revisar', 'ghost', () => void setStatus('revisar', 'Menú listo para revisar.'), { feedbackId: 'food.menu.estado.pasar_revisar', feedbackLabel: 'Pasar a revisar' }), validateButton],
+        revisar: [button('toDraft', 'Volver a borrador', 'ghost', () => void setStatus('borrador', 'Menú de nuevo en borrador.'), { feedbackId: 'food.menu.estado.volver_borrador', feedbackLabel: 'Volver a borrador' }), validateButton],
+        validado: [button('reopenMenu', 'Reabrir para cambiar', 'ghost', () => void setStatus('revisar', 'Menú reabierto.'), { feedbackId: 'food.menu.estado.reabrir', feedbackLabel: 'Reabrir para cambiar' }),
+          button('closeMenu', 'Cerrar menú', 'ghost', () => void setStatus('cerrado', 'Menú cerrado.').then((ok) => usage.track('food.cierre.cerrar', ok ? 'success' : 'error')), { feedbackId: 'food.menu.estado.cerrar', feedbackLabel: 'Cerrar menú' })],
+        cerrado: [button('uncloseMenu', 'Volver a validado', 'ghost', () => void setStatus('validado', 'Menú de nuevo en validado.'), { feedbackId: 'food.menu.estado.volver_validado', feedbackLabel: 'Volver a validado' })],
       };
       replace(actions, ...byStatus[menu.status],
-        menu.status === 'borrador' || menu.status === 'revisar' ? el('button', { class: 'linkbtn', type: 'button', id: 'deleteMenu', disabled: busy, onclick: () => void deleteMenu() }, 'Borrar menú') : null,
+        menu.status === 'borrador' || menu.status === 'revisar' ? el('button', { 'data-feedback-id': 'food.menu.estado.borrar', 'data-feedback-label': 'Borrar menú', class: 'linkbtn', type: 'button', id: 'deleteMenu', disabled: busy, onclick: () => void deleteMenu() }, 'Borrar menú') : null,
         el('span', { class: 'hint' }, 'Validar y cambiar de estado necesitan conexión.'));
     }
 
@@ -233,24 +244,28 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       if (!e) { toast(describeError({ code: 'EVENT_NOT_FOUND' })); return; }
       paintBanner(); paintRestrictions();
       const required = menuWarnings(e, graph()).filter((w) => w.requiresAck);
-      const send = () => call(FOOD_PROCEDURES.validateMenu, {
-        menu_id: menu!.id, expectedRevision: menu!.revision, event_revision: e.event_revision, event_snapshot: eventSnapshot(e),
-        acknowledged: required.map((w) => ({ key: w.key, kind: w.kind, text: w.text })),
-      }, 'Menú validado.');
+      const send = async () => {
+        const ok = await call(FOOD_PROCEDURES.validateMenu, {
+          menu_id: menu!.id, expectedRevision: menu!.revision, event_revision: e.event_revision, event_snapshot: eventSnapshot(e),
+          acknowledged: required.map((w) => ({ key: w.key, kind: w.kind, text: w.text })),
+        }, 'Menú validado.');
+        usage.track('food.menu.validar', ok ? 'success' : 'error');
+        return ok;
+      };
       if (required.length === 0) { await send(); return; }
 
       const boxes = required.map((w, index) => {
-        const box = el('input', { type: 'checkbox', id: `ack-${index}`, onchange: () => { confirm.disabled = !boxes.every((b) => b.box.checked); } });
-        return { box, node: el('label', { class: 'checkline ackline', for: box.id }, box, el('span', null, w.text)) };
+        const box = el('input', { 'data-feedback-id': 'food.menu.validar.aviso', 'data-feedback-label': 'Aviso tenido en cuenta', type: 'checkbox', id: `ack-${index}`, onchange: () => { confirm.disabled = !boxes.every((b) => b.box.checked); } });
+        return { box, node: el('label', { class: 'checkline ackline', for: box.id }, box, el('span', { 'data-feedback-ignore': '' }, w.text)) };
       });
-      const confirm = el('button', { class: 'primary', type: 'button', id: 'confirmValidate', disabled: true,
+      const confirm = el('button', { 'data-feedback-id': 'food.menu.validar.confirmar', 'data-feedback-label': 'Validar menú', class: 'primary', type: 'button', id: 'confirmValidate', disabled: true,
         onclick: async () => { await sheet?.close(true); await send(); } }, 'Validar menú');
       sheet = openSheet({
         title: 'Antes de validar',
-        body: el('div', null,
+        body: el('div', { 'data-feedback-id': 'food.menu.validar', 'data-feedback-label': 'Antes de validar' },
           el('p', null, 'Hay avisos de restricciones. Marca cada uno para confirmar que lo has tenido en cuenta; quedará anotado en el menú.'),
           el('div', { id: 'ackList' }, ...boxes.map((b) => b.node))),
-        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), confirm],
+        foot: [el('button', { 'data-feedback-id': 'food.menu.validar.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), confirm],
         onClose: () => { sheet = null; },
       });
     }
@@ -264,6 +279,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         ...services.map((s) => removeOp(T.menuServices, s)),
         removeOp(T.menus, menu),
       ]);
+      usage.track('food.menu.borrar', ok ? 'success' : 'error');
       if (ok) navigate('#/menus');
     }
 
@@ -357,25 +373,25 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const canEdit = editable();
       const img = el('img', { alt: '', hidden: true });
       if (recipe) showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
-      const servings = el('input', { type: 'text', inputmode: 'decimal', class: 'servings compact', value: formatQuantity(item.servings), 'aria-label': `Raciones de ${recipe?.name ?? 'plato'}`, disabled: !canEdit,
+      const servings = el('input', { 'data-feedback-id': 'food.menu.platos.raciones', 'data-feedback-label': 'Raciones', type: 'text', inputmode: 'decimal', class: 'servings compact', value: formatQuantity(item.servings), 'aria-label': `Raciones de ${recipe?.name ?? 'plato'}`, disabled: !canEdit,
         onchange: async () => {
           const value = parseQuantity(servings.value);
           if (value === null || value <= 0) { toast('Las raciones deben ser un número mayor que cero.'); servings.value = formatQuantity(item.servings); return; }
           if (value !== Number(item.servings)) await commitSafely([{ op: 'update', table: T.menuItems, id: item.id, expectedRevision: item.revision, fields: { servings: value } }]);
         } });
-      return el('div', { class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
+      return el('div', { 'data-feedback-id': 'food.menu.platos.plato', 'data-feedback-label': 'Plato', class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
         el('span', { class: 'dishphoto' }, icon('chef', 20), img),
         el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
           recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null),
         el('span', { class: 'dishside' }, servings, el('span', { class: 'muted' }, 'rac.'),
-          canEdit ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18)) : null),
+          canEdit ? el('button', { 'data-feedback-id': 'food.menu.platos.quitar', 'data-feedback-label': 'Quitar plato', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18)) : null),
         cook ? cookDetails(item) : null,
       );
     }
 
     /** Platos de un servicio. Con el constructor abierto y más de uno: lista del kit con arrastre, teclado y subir/bajar. */
     function dishList(service: ServiceRow, dishes: ItemRow[]): HTMLElement {
-      if (!editable() || dishes.length < 2) return el('ul', { class: 'dishes' }, ...dishes.map((dish) => el('li', null, dishRow(dish))));
+      if (!editable() || dishes.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.platos.lista', 'data-feedback-label': 'Platos del servicio', class: 'dishes' }, ...dishes.map((dish) => el('li', null, dishRow(dish))));
       const key = `s:${service.id}`;
       let list = dishLists.get(service.id);
       if (!list) {
@@ -388,6 +404,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           render: (dish) => dishRow(dish),
           onReorder: (ordered) => reorder(T.menuItems, ordered),
         });
+        fb(list.element, { feedbackId: 'food.menu.platos.lista', feedbackLabel: 'Platos del servicio' });
         dishLists.set(service.id, list);
       } else if (listSigs.get(key) !== rowSig(dishes)) {
         list.setItems(dishes);
@@ -400,24 +417,24 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const canEdit = editable();
       const label = SERVICE_LABELS[service.service_type];
       const dishes = dishesOf(service);
-      const time = el('input', { type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
+      const time = el('input', { 'data-feedback-id': 'food.menu.servicios.hora', 'data-feedback-label': 'Hora del servicio', type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
         onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
-      return el('section', { class: 'service', 'data-id': service.id, 'data-type': service.service_type },
+      return el('section', { 'data-feedback-id': 'food.menu.servicios.servicio', 'data-feedback-label': 'Servicio', class: 'service', 'data-id': service.id, 'data-type': service.service_type },
         el('header', null, el('h4', null, label), time,
-          canEdit ? el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${label}`,
+          canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.quitar', 'data-feedback-label': 'Quitar servicio', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${label}`,
             onclick: async () => {
               if (dishes.length && !(await confirmDialog({ title: `¿Quitar ${label.toLowerCase()}?`, text: `Se quitan también sus ${dishes.length} platos.`, confirmLabel: 'Quitar', danger: true }))) return;
               await commitSafely([...dishes.map((d) => removeOp(T.menuItems, d)), removeOp(T.menuServices, service)]);
             } }, icon('trash', 18)) : null),
         dishes.length ? dishList(service, dishes) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
-        canEdit ? el('button', { class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishesOf(service).map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato') : null,
+        canEdit ? el('button', { 'data-feedback-id': 'food.menu.platos.anadir', 'data-feedback-label': 'Añadir plato', class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishesOf(service).map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato') : null,
       );
     }
 
     /** Servicios de un día. Con más de uno y el constructor abierto: lista del kit (los platos van anidados dentro). */
     function serviceList(day: string, ofDay: ServiceRow[]): HTMLElement | null {
       if (ofDay.length === 0) return el('p', { class: 'muted' }, 'Sin servicios este día.');
-      if (!editable() || ofDay.length < 2) return el('div', null, ...ofDay.map(serviceBlock));
+      if (!editable() || ofDay.length < 2) return el('div', { 'data-feedback-id': 'food.menu.servicios.lista', 'data-feedback-label': 'Servicios del día' }, ...ofDay.map(serviceBlock));
       const list = createSortableList<ServiceRow>({
         items: ofDay,
         key: (service) => service.id,
@@ -427,6 +444,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         render: (service) => serviceBlock(service),
         onReorder: (ordered) => reorder(T.menuServices, ordered),
       });
+      fb(list.element, { feedbackId: 'food.menu.servicios.lista', feedbackLabel: 'Servicios del día' });
       dayLists.set(day, list);
       listSigs.set(`d:${day}`, rowSig(ofDay));
       return list.element;
@@ -469,24 +487,25 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       builderShape = shape;
       replace(builder, ...days.map((day) => {
         const ofDay = sorted.filter((s) => s.service_date === day);
-        return el('section', { class: 'menuday', 'data-day': day },
+        return el('section', { 'data-feedback-id': 'food.menu.dia', 'data-feedback-label': 'Día', class: 'menuday', 'data-day': day },
           el('h3', null, longDay(day)),
           serviceList(day, ofDay),
-          canEdit ? el('button', { class: 'linkbtn addService', type: 'button', onclick: () => addService(day, Math.max(0, ...services.filter((sv) => sv.service_date === day).map((sv) => Number(sv.position)))) }, icon('plus', 18), 'Añadir servicio') : null,
+          canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.anadir', 'data-feedback-label': 'Añadir servicio', class: 'linkbtn addService', type: 'button', onclick: () => addService(day, Math.max(0, ...services.filter((sv) => sv.service_date === day).map((sv) => Number(sv.position)))) }, icon('plus', 18), 'Añadir servicio') : null,
         );
       }));
     }
 
     function addService(day: string, count: number): void {
-      const type = el('select', { id: 's-type' }, ...SERVICE_TYPES.map((t) => el('option', { value: t }, SERVICE_LABELS[t])));
-      const time = el('input', { id: 's-time', type: 'time' });
+      const type = el('select', { 'data-feedback-id': 'food.menu.servicios.nuevo.tipo', 'data-feedback-label': 'Tipo de servicio', id: 's-type' }, ...SERVICE_TYPES.map((t) => el('option', { value: t }, SERVICE_LABELS[t])));
+      const time = el('input', { 'data-feedback-id': 'food.menu.servicios.nuevo.hora', 'data-feedback-label': 'Hora', id: 's-time', type: 'time' });
       sheet = openSheet({
         title: `Nuevo servicio · ${longDay(day)}`,
-        body: el('div', null, el('label', { class: 'field' }, el('span', null, 'Servicio'), type), el('label', { class: 'field' }, el('span', null, 'Hora'), time)),
-        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'),
-          el('button', { class: 'primary', type: 'button', id: 'saveService', onclick: async () => {
+        body: el('div', { 'data-feedback-id': 'food.menu.servicios.nuevo', 'data-feedback-label': 'Nuevo servicio' }, el('label', { class: 'field' }, el('span', null, 'Servicio'), type), el('label', { class: 'field' }, el('span', null, 'Hora'), time)),
+        foot: [el('button', { 'data-feedback-id': 'food.menu.servicios.nuevo.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'),
+          el('button', { 'data-feedback-id': 'food.menu.servicios.nuevo.anadir', 'data-feedback-label': 'Añadir servicio', class: 'primary', type: 'button', id: 'saveService', onclick: async () => {
             const ok = await commitSafely([{ op: 'insert', table: T.menuServices, id: crypto.randomUUID(),
               fields: { menu_id: menuId, service_date: day, service_type: type.value, service_time: time.value || null, position: count + 1 } }]);
+            usage.track('food.menu.anadir_servicio', ok ? 'success' : 'error');
             if (ok) await sheet?.close(true);
           } }, 'Añadir')],
         onClose: () => { sheet = null; },
@@ -495,8 +514,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     /** Selector de plato: el recetario visual, con las raciones del evento por defecto. */
     function pickRecipe(service: ServiceRow, count: number): void {
-      const search = el('input', { type: 'search', placeholder: 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill() });
-      const grid = el('ul', { class: 'recipegrid picker', id: 'recipePicker' });
+      const search = el('input', { 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill() });
+      const grid = el('ul', { 'data-feedback-id': 'food.menu.platos.selector', 'data-feedback-label': 'Selector de recetas', class: 'recipegrid picker', id: 'recipePicker' });
       const servings = event()?.guest_count ?? 1;
       function fill(): void {
         const query = search.value.trim().toLowerCase();
@@ -504,9 +523,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         replace(grid, ...options.map((recipe) => {
           const img = el('img', { alt: '', loading: 'lazy', hidden: true });
           showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
-          return el('li', null, el('button', { class: 'recipecard', type: 'button', 'aria-label': `Añadir ${recipe.name}`,
+          return el('li', null, el('button', { 'data-feedback-id': 'food.menu.platos.selector.receta', 'data-feedback-label': 'Receta', class: 'recipecard', type: 'button', 'aria-label': `Añadir ${recipe.name}`,
             onclick: async () => {
               const ok = await commitSafely([{ op: 'insert', table: T.menuItems, id: crypto.randomUUID(), fields: { service_id: service.id, recipe_id: recipe.id, servings, position: count + 1 } }]);
+              usage.track('food.menu.anadir_plato', ok ? 'success' : 'error');
               if (ok) await sheet?.close(true);
             } },
             el('span', { class: 'recipephoto' }, icon('chef', 30), img),
@@ -542,7 +562,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         unmountTab?.();
         unmountTab = null;
         replace(main, el('div', { class: 'empty' }, el('strong', null, 'Este menú no existe o está en la papelera'),
-          el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', onclick: () => navigate('#/menus') }, 'Volver a Menús'))));
+          el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'food.menu.volver_menus', 'data-feedback-label': 'Volver a Menús', class: 'ghost', type: 'button', onclick: () => navigate('#/menus') }, 'Volver a Menús'))));
         return;
       }
       menu = data.menu;

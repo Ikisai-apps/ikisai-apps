@@ -9,11 +9,19 @@ import {
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
+import { fb, fbIgnore, fbRows, type FbMark } from './feedback.ts';
+import { usage } from '../app/usage.ts';
 
 export const MENU_STATUS_LABELS: Record<Menu['status'], string> = { borrador: 'Borrador', revisar: 'Por revisar', validado: 'Validado', cerrado: 'Cerrado' };
 export const SERVICE_LABELS: Record<ServiceType, string> = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', picnic: 'Picnic', merienda: 'Merienda', otro: 'Otro' };
 
 type Filter = 'proximos' | 'sin_menu' | 'pasados';
+
+const FILTER_MARKS: Record<Filter, FbMark> = {
+  proximos: { feedbackId: 'food.eventos.filtros.proximos', feedbackLabel: 'Próximos' },
+  sin_menu: { feedbackId: 'food.eventos.filtros.sin_menu', feedbackLabel: 'Sin menú' },
+  pasados: { feedbackId: 'food.eventos.filtros.pasados', feedbackLabel: 'Pasados' },
+};
 
 /** Chip con el estado del menú de un evento, o «sin menú». */
 export function menuChip(event: FoodEvent, menu: Mirror<Menu> | undefined): HTMLElement | null {
@@ -35,9 +43,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   let sheet: Sheet | null = null;
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
 
-  const tab = (value: Filter, label: string) => el('button', { type: 'button', 'data-filter': value, 'aria-pressed': String(filter === value),
-    onclick: () => { filter = value; for (const b of tabs.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === value)); paint(); } }, label);
-  const tabs = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Filtro de eventos' }, tab('proximos', 'Próximos'), tab('sin_menu', 'Sin menú'), tab('pasados', 'Pasados'));
+  const tab = (value: Filter, label: string) => fb(el('button', { type: 'button', 'data-filter': value, 'aria-pressed': String(filter === value),
+    onclick: () => { filter = value; for (const b of tabs.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === value)); paint(); } }, label), FILTER_MARKS[value]);
+  const tabs = el('div', { 'data-feedback-id': 'food.eventos.filtros', 'data-feedback-label': 'Filtro de eventos', class: 'segmented', role: 'group', 'aria-label': 'Filtro de eventos' }, tab('proximos', 'Próximos'), tab('sin_menu', 'Sin menú'), tab('pasados', 'Pasados'));
   const list = el('ul', { class: 'list', id: 'eventList', 'aria-label': 'Eventos' });
   const host = el('div');
   const stamp = el('p', { class: 'muted stamp', id: 'eventsStamp' });
@@ -79,6 +87,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const empty = snapshot.fetchedAt === null
       ? el('div', { class: 'empty' }, el('strong', null, 'Todavía no se han podido leer los eventos'), 'Hace falta conexión la primera vez. Después se pueden consultar sin red.')
       : el('div', { class: 'empty plain' }, filter === 'sin_menu' ? 'Todos los eventos próximos con comidas tienen ya su menú.' : filter === 'pasados' ? 'No hay eventos pasados.' : 'No hay eventos próximos confirmados en Booking.');
+    fbRows(list, { feedbackId: 'food.eventos.lista', feedbackLabel: 'Eventos' }, { feedbackId: 'food.eventos.lista.evento', feedbackLabel: 'Evento' });
     replace(host, events.length ? list : empty);
     stamp.textContent = snapshot.fetchedAt ? `Datos de los eventos a fecha de ${formatDate(snapshot.fetchedAt)}.` : '';
   }
@@ -89,45 +98,45 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const restrictions = sortedRestrictions(event.dietary_restrictions);
     // Régimen con el que proponer servicios: el de Booking si lo hay; si no, lo elige la cocina (o ninguno).
     const gap = mealsGap(event);
-    const plan = el('select', { id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
+    const plan = el('select', { 'data-feedback-id': 'food.eventos.ficha.regimen', 'data-feedback-label': 'Régimen de la propuesta', id: 'proposalPlan', 'aria-label': 'Proponer servicios como', onchange: () => paintPicks() },
       el('option', { value: '' }, 'Ninguno: añadiré los servicios a mano'),
       ...['pension_completa', 'media_pension', 'desayuno'].map((value) => el('option', { value, selected: event.meal_plan === value }, MEAL_PLAN_LABELS[value]!)));
     if (!gap && event.meal_plan && !['pension_completa', 'media_pension', 'desayuno'].includes(event.meal_plan)) plan.value = '';
     let picks: Array<{ service: ProposedService; box: HTMLInputElement }> = [];
-    const picksHost = el('div', { id: 'proposedServices' });
+    const picksHost = el('div', { 'data-feedback-id': 'food.eventos.ficha.servicios', 'data-feedback-label': 'Servicios propuestos', id: 'proposedServices' });
     function paintPicks(): void {
       const proposal = plan.value ? proposeServices({ ...event, meal_plan: plan.value }) : [];
-      picks = proposal.map((service, index) => ({ service, box: el('input', { type: 'checkbox', checked: true, id: `propose-${index}` }) }));
+      picks = proposal.map((service, index) => ({ service, box: el('input', { 'data-feedback-id': 'food.eventos.ficha.servicio_propuesto', 'data-feedback-label': 'Servicio propuesto', type: 'checkbox', checked: true, id: `propose-${index}` }) }));
       replace(picksHost, ...(picks.length
         ? picks.map((p) => el('label', { class: 'checkline', for: p.box.id }, p.box, el('span', null, `${longDay(p.service.service_date)} · ${SERVICE_LABELS[p.service.service_type]} · ${shortTime(p.service.service_time)}`)))
         : [el('p', { class: 'muted' }, 'Sin servicios propuestos: el menú se crea vacío y los servicios se añaden después.')]));
     }
     paintPicks();
-    const create = el('button', { class: 'primary', type: 'button', id: 'createMenu', onclick: () => void createMenu(event, picks.filter((p) => p.box.checked).map((p) => p.service)) }, 'Crear menú');
-    const open = el('button', { class: 'primary', type: 'button', id: 'openMenu', onclick: () => { void sheet?.close(true); navigate(`#/menus/${menu!.id}`); } }, 'Abrir menú');
-    const close = el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar');
+    const create = el('button', { 'data-feedback-id': 'food.eventos.ficha.crear_menu', 'data-feedback-label': 'Crear menú', class: 'primary', type: 'button', id: 'createMenu', onclick: () => void createMenu(event, picks.filter((p) => p.box.checked).map((p) => p.service)) }, 'Crear menú');
+    const open = el('button', { 'data-feedback-id': 'food.eventos.ficha.abrir_menu', 'data-feedback-label': 'Abrir menú', class: 'primary', type: 'button', id: 'openMenu', onclick: () => { void sheet?.close(true); navigate(`#/menus/${menu!.id}`); } }, 'Abrir menú');
+    const close = el('button', { 'data-feedback-id': 'food.eventos.ficha.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cerrar');
     const cancelled = isCancelled(event);
     const canCreate = !menu && !cancelled && canWrite();
 
-    const body = el('div', { class: 'ficha' },
-      el('dl', { class: 'kv' },
+    const body = el('div', { 'data-feedback-id': 'food.eventos.ficha', 'data-feedback-label': 'Ficha del evento', class: 'ficha' },
+      el('dl', { 'data-feedback-id': 'food.eventos.ficha.datos', 'data-feedback-label': 'Datos del evento', class: 'kv' },
         el('dt', null, 'Fechas'), el('dd', null, dateRange(event)),
         el('dt', null, 'Personas'), el('dd', null, guestsLabel(event) + (event.minors_count ? ` · ${event.minors_count} menores` : '')),
         el('dt', null, 'Régimen'), el('dd', null, mealPlanLabel(event.meal_plan)),
         el('dt', null, 'Tipo de menú'), el('dd', null, event.menu_style ?? '—'),
         el('dt', null, 'Llegada y salida'), el('dd', null, `${shortTime(event.arrival_time) || '—'} · ${shortTime(event.departure_time) || '—'}`),
-        el('dt', null, 'Códigos'), el('dd', null, [event.event_code, event.reservation_code].filter(Boolean).join(' · ') || '—'),
+        el('dt', null, 'Códigos'), el('dd', { 'data-feedback-ignore': '' }, [event.event_code, event.reservation_code].filter(Boolean).join(' · ') || '—'),
       ),
-      event.meal_notes ? el('p', null, el('strong', null, 'Notas de alimentación: '), event.meal_notes) : null,
-      el('section', { class: 'restrictions' }, el('h4', null, 'Restricciones'),
+      event.meal_notes ? el('p', { 'data-feedback-ignore': '' }, el('strong', null, 'Notas de alimentación: '), event.meal_notes) : null,
+      el('section', { 'data-feedback-id': 'food.eventos.ficha.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions' }, el('h4', null, 'Restricciones'),
         restrictions.length ? el('ul', { class: 'plainlist' }, ...restrictions.map((r) => el('li', { class: r.type === 'alergia' || r.type === 'intolerancia' ? 'warnline' : '' }, restrictionLabel(r)))) : el('p', { class: 'muted' }, 'Ninguna comunicada.')),
       cancelled ? el('p', null, el('span', { class: 'chip trash' }, 'La reserva está cancelada en Booking: no hace falta menú.')) : null,
       !menu && !cancelled && !canWrite() ? el('p', { class: 'muted' }, 'Tu cuenta es de solo lectura: el menú lo crea alguien de cocina.') : null,
-      canCreate && gap ? el('div', { class: 'banner warn notice', id: 'mealsGap', role: 'note' },
-        el('div', null, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
+      canCreate && gap ? el('div', { 'data-feedback-id': 'food.eventos.ficha.aviso_comidas', 'data-feedback-label': 'Aviso de comidas', class: 'banner warn notice', id: 'mealsGap', role: 'note' },
+        el('div', { 'data-feedback-ignore': '' }, el('strong', null, gap), ' Puedes crear el menú igualmente. Si este grupo come aquí, corrígelo también en Booking',
           event.reservation_code ? ` (reserva ${event.reservation_code})` : '', ' para que los datos coincidan.'),
-        el('div', { class: 'btnrow' }, el('a', { class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
-      canCreate ? el('fieldset', { class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
+        el('div', { class: 'btnrow' }, el('a', { 'data-feedback-id': 'food.eventos.ficha.abrir_booking', 'data-feedback-label': 'Abrir en Booking', class: 'ghost', href: bookingReservationUrl(event), target: '_blank', rel: 'noopener', id: 'openBooking' }, event.reservation_id ? 'Abrir la reserva en Booking' : 'Abrir Booking'))) : null,
+      canCreate ? el('fieldset', { 'data-feedback-id': 'food.eventos.ficha.propuesta', 'data-feedback-label': 'Propuesta de servicios', class: 'formblock' }, el('legend', null, 'Servicios propuestos'),
         el('label', { class: 'field' }, el('span', null, gap ? 'Proponer servicios como' : 'Régimen de la propuesta'), plan),
         picksHost,
         el('span', { class: 'hint' }, 'Es solo una propuesta. Después se pueden añadir, quitar, ordenar y cambiar de hora.')) : null,
@@ -140,6 +149,9 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
       foot: menu ? [close, open] : canCreate ? [close, create] : [close],
       onClose: () => { sheet = null; },
     });
+    // El título del evento viene de Booking (nombre del grupo).
+    const sheetTitle = sheet.panel.querySelector('.sheet-head h2');
+    if (sheetTitle) fbIgnore(sheetTitle);
   }
 
   async function createMenu(event: FoodEvent, services: ProposedService[]): Promise<void> {
@@ -152,7 +164,7 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     const issue = validateOperations(operations);
     if (issue) { toast(issue.message); return; }
     try {
-      await client.commit(operations);
+      await usage.run('food.eventos.crear_menu', () => client.commit(operations));
       await sheet?.close(true);
       navigate(`#/menus/${menuId}`);
     } catch (error) {
