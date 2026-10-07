@@ -12,7 +12,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.reservations': {
     event_type: 'retiro', status: 'en_estudio', priority: 'media', minors_count: 0, uses_accommodation: true, requires_meals: false,
     uses_interpretation_center: false, uses_outdoors: false, uses_pool: false, special_setup: false, technical_support: false, briefing_received: false,
-    ses_enabled: true, collect_guest_data: true,
+    ses_enabled: true, collect_guest_data: true, dates_definitive: false,
   },
   'booking.events': {
     reinforced_cleaning: false, extra_support: false, preparation_status: 'pendiente', accommodation_status: 'pendiente', kitchen_status: 'pendiente',
@@ -32,6 +32,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.cancellation_tiers': { extra_costs: false, position: 0 },
   'booking.proposals': { status: 'borrador', nature: 'orientativa' },
   'booking.proposal_lines': { quantity: 1, discount_pct: 0, position: 0 },
+  'booking.reservation_date_options': { proposed_by: 'ikisai', organizer_ok: false, position: 0 },
 };
 
 /** Columnas que fija el servidor en las propuestas (no son escribibles desde el cliente). */
@@ -203,6 +204,8 @@ export interface FakeApi {
   sesPatch(id: string, fields: Partial<FakeSesCommunication>): void;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
+  /** Simula una alta hecha en el servidor por otra vía (p. ej. la fecha que propone el organizador desde su portal). */
+  serverInsert(table: string, fields: Record<string, unknown>): FakeRow;
   /** Reportes de «Sugerencias y QA» recibidos en `POST /feedback` (en memoria, tal como los guardó el cliente). */
   feedbackReports(): FakeFeedbackReport[];
   requests: Array<{ method: string; path: string }>;
@@ -853,6 +856,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       row.updated_at = nowIso();
       cursor += 1;
       changes.push(record(table, 'update', row, cursor, 1, `server-${cursor}`, 'server'));
+      return row;
+    },
+    serverInsert(table, fields) {
+      const stamp = nowIso();
+      const row: FakeRow = { id: randomUUID(), revision: 1, created_at: stamp, updated_at: stamp, updated_by: null, deleted_at: null };
+      for (const column of tables[table] ?? []) row[column] = fields[column] ?? COLUMN_DEFAULTS[table]?.[column] ?? null;
+      data.get(table)!.set(row.id, row);
+      cursor += 1;
+      changes.push(record(table, 'insert', row, cursor, 1, `server-${cursor}`, 'server'));
       return row;
     },
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),

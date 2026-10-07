@@ -1,8 +1,19 @@
 /** Calendario (API §9.3): ocupación mensual de días completos y estado de la sincronización con Google Calendar. */
-import { createCalendar, el, replace, toast, type CalendarEvent } from '@ikisai/ui-kit';
-import { RESERVATIONS, canWrite, describeError, type ReservationRow } from '../app/client.ts';
+import { confirmDialog, createCalendar, el, replace, toast, type CalendarEvent } from '@ikisai/ui-kit';
+import type { SyncedRow } from '@ikisai/sync-client';
+import { DATE_BLOCKS, RESERVATIONS, canRead, canWrite, dateRange, describeError, type ReservationRow } from '../app/client.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarHealth as Health, type CalendarStatus } from '../app/calendarStatus.ts';
+import { openRowSheet, type FieldSpec } from './form.ts';
+import { checkDateRange } from './dates.ts';
 import type { ViewMount } from './shell.ts';
+
+type Block = SyncedRow & { start_date: string; end_date: string; reason: string | null };
+
+const BLOCK_SPECS: FieldSpec[] = [
+  { key: 'start_date', label: 'Inicio', type: 'date' },
+  { key: 'end_date', label: 'Fin', type: 'date' },
+  { key: 'reason', label: 'Motivo interno', type: 'text', max: 300, optional: true, personal: true, hint: 'Solo lo ve el personal.' },
+];
 
 /** Colores como en Google Calendar; en estudio y negociación se pintan atenuadas por CSS (`data-status`). */
 const COLORS: Record<string, string> = {
@@ -31,9 +42,19 @@ export function toCalendarEvent(row: ReservationRow): CalendarEvent | null {
   return { id: row.id, title: pre ? `[PRE] ${row.title}` : row.title, start: row.start_date, end: row.end_date, color, status: row.status };
 }
 
+/** Tramo bloqueado como evento de día completo; el estado `bloqueo` lo distingue de las reservas (rayado por CSS). */
+export function blockToCalendarEvent(row: Block): CalendarEvent | null {
+  if (row.deleted_at !== null || !row.start_date || !row.end_date) return null;
+  return { id: row.id, title: 'Bloqueado', start: row.start_date, end: row.end_date, color: '#6b7280', status: 'bloqueo' };
+}
+
 export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const writable = canWrite(client);
   let titles = new Map<string, string>();
+  const showBlocks = writable && canRead(client, DATE_BLOCKS);
+  const blocksBody = el('div', { id: 'dateBlocksBody' });
+  const blocksCard = showBlocks ? el('article', { class: 'card', id: 'blockDateBlocks', style: 'margin-top:16px', 'data-feedback-id': 'booking.calendario.bloqueos', 'data-feedback-label': 'Fechas bloqueadas' },
+    el('div', { class: 'cardhead' }, el('h3', null, 'Fechas bloqueadas')), blocksBody) : null;
   const calendarHost = el('div', { id: 'calendarHost', 'data-feedback-id': 'booking.calendario.mes', 'data-feedback-label': 'Calendario del mes' });
   const panelBody = el('div', { id: 'calendarSyncBody' }, el('p', { class: 'hint' }, 'Cargando…'));
   const panel = el('details', { class: 'card more-panel', id: 'calendarSync', open: true, 'data-feedback-id': 'booking.calendario.google', 'data-feedback-label': 'Google Calendar' },
@@ -41,7 +62,7 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
 
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Calendario'), el('p', null, 'Ocupación por meses y estado de la sincronización con Google Calendar.'))),
-    calendarHost, panel);
+    calendarHost, blocksCard, panel);
 
   const calendar = createCalendar({
     view: 'month',
@@ -49,11 +70,38 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
     events: async () => {
       const rows = (await client.list(RESERVATIONS)) as ReservationRow[];
       titles = new Map(rows.map((row) => [row.id, row.title]));
-      return rows.map(toCalendarEvent).filter((event): event is CalendarEvent => event !== null);
+      const blocks = showBlocks ? ((await client.list(DATE_BLOCKS)) as Block[]).map(blockToCalendarEvent) : [];
+      return [...rows.map(toCalendarEvent), ...blocks].filter((event): event is CalendarEvent => event !== null);
     },
-    onSelectEvent: (event) => navigate(`#/reservas/${event.id}`),
+    onSelectEvent: (event) => event.status === 'bloqueo' ? undefined : navigate(`#/reservas/${event.id}`),
   });
   calendarHost.append(calendar.element);
+
+  async function removeBlock(row: Block): Promise<void> {
+    const go = await confirmDialog({ title: 'Quitar bloqueo', text: `Se desbloquea ${dateRange(row)}. El organizador volverá a ver esos días como libres.`, confirmLabel: 'Quitar bloqueo', danger: true });
+    if (!go) return;
+    try {
+      await client.commit([{ op: 'delete', table: DATE_BLOCKS, id: row.id, expectedRevision: row.revision }]);
+      toast(navigator.onLine ? 'Bloqueo quitado.' : 'Bloqueo quitado. Se enviará al reconectar.');
+    } catch (error) {
+      toast(describeError(error));
+    }
+  }
+
+  async function paintBlocks(): Promise<void> {
+    if (!showBlocks) return;
+    const rows = ((await client.list(DATE_BLOCKS)) as Block[]).sort((a, b) => a.start_date.localeCompare(b.start_date) || a.id.localeCompare(b.id));
+    replace(blocksBody,
+      el('p', { class: 'hint' }, 'Días en los que Ikisai no admite reservas. El organizador solo verá «ocupado».'),
+      rows.length === 0 ? el('p', { class: 'hint', id: 'dateBlocksEmpty' }, 'No hay fechas bloqueadas.')
+        : el('ul', { class: 'list', id: 'dateBlockList', 'data-feedback-id': 'booking.calendario.bloqueos.lista', 'data-feedback-label': 'Lista de bloqueos' }, rows.map((row) => el('li', { class: 'row', dataset: { pending: String(row._pending === true) }, 'data-feedback-id': 'booking.calendario.bloqueos.fila', 'data-feedback-label': 'Bloqueo' },
+          el('div', { class: 'row-title' }, el('span', { class: 'name' }, dateRange(row)), row._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
+          row.reason ? el('div', { class: 'row-meta', 'data-feedback-ignore': '' }, row.reason) : null,
+          el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'aria-label': `Quitar el bloqueo ${dateRange(row)}`, 'data-feedback-id': 'booking.calendario.bloqueos.quitar', 'data-feedback-label': 'Quitar bloqueo', onclick: () => void removeBlock(row) }, 'Quitar'))))),
+      el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addDateBlock', 'data-feedback-id': 'booking.calendario.bloqueos.anadir', 'data-feedback-label': 'Bloquear fechas', onclick: () => openRowSheet({
+        client, title: 'Bloquear fechas', table: DATE_BLOCKS, row: null, specs: BLOCK_SPECS, check: checkDateRange, savedMessage: 'Fechas bloqueadas.',
+        feedbackId: 'booking.calendario.bloqueos.nuevo', feedbackLabel: 'Bloquear fechas' }) }, 'Bloquear fechas')));
+  }
 
   async function retry(reservationId: string): Promise<void> {
     try {
@@ -97,9 +145,12 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const onOnline = () => void loadStatus();
   window.addEventListener('online', onOnline);
   const off = client.onTable(RESERVATIONS, () => void calendar.refresh().then(loadStatus));
+  const offBlocks = showBlocks ? client.onTable(DATE_BLOCKS, () => void calendar.refresh().then(paintBlocks)) : () => undefined;
+  void paintBlocks();
   void loadStatus();
   return () => {
     off();
+    offBlocks();
     window.removeEventListener('online', onOnline);
     calendar.destroy();
   };

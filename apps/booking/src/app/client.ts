@@ -17,6 +17,8 @@ export const TIERS: TableName = TABLES.cancellationTiers;
 export const PROPOSALS: TableName = TABLES.proposals;
 export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
 export const SES_SETTINGS: TableName = TABLES.sesSettings;
+export const DATE_OPTIONS: TableName = TABLES.dateOptions;
+export const DATE_BLOCKS: TableName = TABLES.dateBlocks;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -36,6 +38,8 @@ export interface ReservationRow extends SyncedRow {
   ses_disabled_reason?: string | null;
   ses_disabled_note?: string | null;
   collect_guest_data?: boolean;
+  /** Fecha fija: el organizador la ve cerrada y no propone otras (ausente en filas antiguas = provisional). */
+  dates_definitive?: boolean;
   _pending?: boolean;
 }
 

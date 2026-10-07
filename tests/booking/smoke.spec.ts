@@ -1327,7 +1327,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
   });
 });
 
-test('lanzador: la marca de la cabecera abre las apps de la cuenta con Booking marcada', async ({ page }) => {
+test('@smoke lanzador: la marca de la cabecera abre las apps de la cuenta con Booking marcada', async ({ page }) => {
   await login(page);
   await page.locator('#appLauncher').click();
   const sheet = page.getByRole('dialog', { name: 'Apps de Ikisai' });
@@ -1339,7 +1339,7 @@ test('lanzador: la marca de la cabecera abre las apps de la cuenta con Booking m
   await expect(sheet).toBeHidden();
 });
 
-test('PWA: manifest, service worker y shell en caché', async ({ page }) => {
+test('@smoke PWA: manifest, service worker y shell en caché', async ({ page }) => {
   await login(page);
   const manifest = await page.request.get(`${baseURL}/manifest.webmanifest`);
   expect(manifest.ok()).toBeTruthy();

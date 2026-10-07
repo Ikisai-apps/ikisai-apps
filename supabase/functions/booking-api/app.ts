@@ -3,6 +3,7 @@ import { createApp, createStorage, createSupabase, ensureServiceActor, fail, mes
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
+import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
 import { createTasksNotifier, sesCancel, sesCommunicateGuestReport, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
@@ -78,6 +79,14 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
       if (!supabase) return { anonymized: 0 };
       await ensureServiceActor(supabase, 'booking'); // el lote del sistema lo firma «Booking (sistema)»
       return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.retention_run', p_args: { limit: 100 } });
+    },
+  }, {
+    // Avisos del portal al comercial (fechas, «Quiero confirmar», comentarios) como peticiones a Tasks.
+    method: 'POST', pattern: 'portal/tick',
+    handler: async () => {
+      if (!supabase) return { notified: 0, pending: 0 };
+      const deps = sesDeps(supabase, ses); // misma cuenta de servicio y mismo notificador de Tasks que SES
+      return portalTick({ invoke: deps.invoke, notifyTasks: deps.notifyTasks as unknown as ((r: PortalTasksRequest) => Promise<boolean>) | undefined });
     },
   }, {
     // Envía lo preparado y consulta los lotes en proceso; si no hay nada pendiente, no llama a SES.

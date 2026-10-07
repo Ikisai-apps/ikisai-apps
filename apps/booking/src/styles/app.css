@@ -68,6 +68,17 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .more-panel > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 #calendarHost { overflow-x: auto; }
 
+/* Fechas posibles de la ficha y fechas bloqueadas del calendario. */
+.date-option { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.date-option .date-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.date-option .date-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.date-option[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
+.date-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.date-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; }
+.date-check input { flex: 0 0 auto; margin-top: 3px; }
+.date-check .hint { margin: 2px 0 0; }
+#calendarHost [data-status='bloqueo'] { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255, 255, 255, .35) 5px 10px); cursor: default; }
+
 
 /* Acciones de la ficha: «Más» plegado en móvil, todo visible desde 1024 px. */
 .more { position: relative; }
