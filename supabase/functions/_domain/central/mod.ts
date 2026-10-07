@@ -3,5 +3,6 @@ export * from './compliance.ts';
 export * from './decisions.ts';
 export * from './entity.ts';
 export * from './kpis.ts';
+export * from './texts.ts';
 export * from './people.ts';
 export * from './validate.ts';

@@ -268,6 +268,29 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **Proyección `central.common_team_projection`** (`team_id, name, user_id`): solo personas **activas con cuenta enlazada** en equipos vivos. Registrada con `core.allow_read('central', …, 'view')` y con `select` para `service_role`, para que la Edge del núcleo la lea con la clave de servicio (matriz de uso por equipo). Sin más datos personales que el id de la cuenta.
 - **Interfaz**: en Personas, filtro por equipo, chips de equipo en cada fila y el enlace «Equipos» a su pantalla (orden manual, alta con color, renombrar, papelera). En la ficha, el bloque «Equipos» con chips y «Cambiar».
 
+### 2.12 «Textos y contacto» (`central.texts`; regla del usuario del 7-10-2026)
+
+**Regla de producto:** los textos legales, avisos, declaraciones y datos de contacto que ven las personas y los portales se editan **siempre desde Central**, nunca fijos en el código. Migración `0570_central_texts`.
+
+- **`central.texts`** (sincronizada; escribe solo el owner, leen todos los miembros):
+  - `key` única entre los vivos e inmutable (`portal.privacy`, `organizers.declaration`, `contact.email`, `contact.phone`…).
+  - `title`, `body` (texto o Markdown sencillo, ≤ 8000) y `kind` (`legal | mensaje | info | contacto`; `info` es la información práctica de los portales).
+  - **`lang`** (`es | en`, inmutable; portales bilingües, PORTALES_V2.md): la clave es única **por idioma**. `es` es obligatorio; `en` es opcional y, si falta, se usa el español. Una traducción necesita su texto en español vivo y del mismo tipo (`MISSING_BASE_LANGUAGE`, `KIND_MISMATCH`). Cada idioma lleva su propia versión.
+  - `position` y papelera.
+  - `version` la lleva la base: `v1` al crear, y sube (`v2`, `v3`…) cuando cambian el título, el cuerpo o el tipo; reordenar no la cambia. No es escribible.
+- **Versiones** (`central.text_versions`, tabla cerrada que escribe un disparador): guarda cada versión con su cuerpo tal como se escribió y **ya sustituido en ese momento**. Así, una declaración aceptada se muestra exactamente como se aceptó aunque luego cambien la Entidad o el contacto.
+  - Ojo: un cambio en la Entidad o en el contacto **no** crea versión nueva de los textos que los usan; la proyección muestra siempre los datos actuales, y la versión guardada, los de su momento.
+- **Marcadores**, sustituidos al leer (`central.render_text`, y `renderMarkers` en `_domain/central/texts.ts` para la vista previa sin red): `{{entidad.razon_social}}`, `{{entidad.nif}}`, `{{entidad.domicilio}}`, `{{contacto.correo}}` y `{{contacto.telefono}}` (los dos últimos salen de los textos `contact.email` y `contact.phone`). Lo que falta se escribe «—».
+- **Proyección `central.common_texts_projection`** (`key, lang, title, body` ya sustituido, `version, kind, updated_at, source_lang, fallback`): una fila por clave y por idioma (`es`, `en`). Si falta el inglés, la fila `en` trae el español con `fallback = true` y `source_lang = 'es'`. Registrada con `core.allow_read` para **organizers, guests, booking y central**. Sin datos personales. Uso: `GET read/central.common_texts_projection?where[key]=portal.privacy&where[lang]=en`. Una aceptación guarda `source_lang` y `version`.
+- **Lecturas:**
+  - `central.text_version` (`{key, lang?, version?}` → `{key, lang, version, kind, title, body, createdAt}`, con el cuerpo sustituido de esa versión; `lang` por defecto `es`; sin `version`, la vigente de ese idioma o, si no hay traducción, la del español), para organizers, guests, booking y central. Una app que guarde una aceptación debe guardar `source_lang` y `version` y mostrarla después con esta lectura.
+  - `central.text_history` (`{key, lang?}` → versiones de ese idioma, más reciente primero), solo para central.
+- **Semilla:** `central.seed_texts()`, con `core.apply_migration_operations`. Siembra `contact.email` (organiza@ikisai.com), `contact.phone` (614 76 57 96), `organizers.declaration` (legal) y `portal.privacy` (legal, «Protección de datos»), todos en `v1` y en español, más la **versión inglesa de `organizers.declaration` y `portal.privacy`** (borrador de Central, para que la revise el usuario). **CE2** (portal de huéspedes), en español e inglés y también como borrador de Central: `guests.data_why` (por qué pedimos los datos), `guests.signature_statement` (`legal`, declaración al firmar), `guests.allergies_notice` (aviso sobre alergias, sin promesas) e información práctica `info.arrival`, `info.parking`, `info.facilities`, `info.rules` e `info.bring` (tipo `info`). No inventan datos del lugar (horarios, aparcamiento): remiten a quien organiza o al contacto, y la dirección sale de `{{entidad.domicilio}}`. No hace nada con una clave e idioma que ya existan, y solo se ejecuta si Central ya tiene miembros (en producción, sí).
+- **Pantalla «Textos y contacto»** (desde Inicio):
+  - Lista por tipo con la versión de cada idioma («ES v2 · EN v1» o «EN usa el español»), con «Traducir al inglés» (parte del español) o «Inglés» para editar la traducción. Enviar el español a la papelera se lleva su traducción.
+  - Editor (owner) con: ayuda para insertar marcadores, aviso de marcadores desconocidos, vista previa ya sustituida, el aviso «Al guardar se crea la versión vN; las aceptaciones anteriores conservan su versión» y las versiones anteriores.
+  - Los demás miembros lo ven sin poder editar.
+
 ---
 
 ## 3. Procedimientos y lecturas

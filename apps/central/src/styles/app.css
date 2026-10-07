@@ -114,3 +114,16 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .teamchip::before{content:'';display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:var(--team,var(--muted))}
 .teamrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
 .teamrow input[type=color]{width:36px;height:28px;padding:0;border:0;background:none}
+
+/* Textos y contacto */
+.textgroup{display:flex;flex-direction:column;gap:8px;margin:0 0 16px;max-width:820px}
+.textcard{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.textcard h3{margin:0;font-size:1rem}
+.textvalue{margin:0;font-weight:600;overflow-wrap:anywhere}
+.textbody > summary{cursor:pointer;color:var(--muted);font-size:var(--text-sm,.875rem)}
+.textpreview p{margin:0 0 8px;overflow-wrap:anywhere}
+.textpreviewbox{padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:var(--paper-2);max-height:320px;overflow:auto}
+.markers{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.markerbtn{cursor:pointer;font:inherit}
+.textversion{margin:6px 0;padding-left:10px;border-left:3px solid var(--line)}
+.textversion > summary{cursor:pointer}
