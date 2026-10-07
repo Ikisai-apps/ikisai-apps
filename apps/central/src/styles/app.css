@@ -77,3 +77,19 @@
 
 .homelink{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);text-decoration:none;font-weight:600;max-width:720px}
 .homelink .muted{font-weight:400}
+
+/* Dirección */
+.dashboard{margin:0 0 18px}
+.dashboard .blockhead h3{margin:0;font-size:1.05rem}
+.kpigroup{margin:8px 0 12px}
+.kpigrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:720px){.kpigrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (min-width:1100px){.kpigrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpicard{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);color:var(--ink);text-decoration:none;min-width:0}
+a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
+.kpicard.state-critico{border-color:var(--alert,#b4232c)}
+.kpicard.state-atencion{border-color:var(--warn,#b7791f)}
+.kpilabel{font-size:var(--text-sm,.875rem);color:var(--muted);overflow-wrap:anywhere}
+.kpivalue{font-family:var(--font-display,inherit);font-size:1.6rem;line-height:1.1}
+.kpitarget{margin-top:4px;font-size:var(--text-sm,.875rem)}
+.chip.ok{border-color:var(--ok,#2f7a4b);color:var(--ok,#2f7a4b)}

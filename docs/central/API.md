@@ -185,7 +185,7 @@ Columnas además de las de la tabla: `external_ref` (`<código>:<requestId>`, la
 
 ### 2.7 `central.kpi_targets` — objetivos y umbrales (C01 `indicadores.objetivo_referencia`)
 
-Lectura `{reader, editor, owner}`; escritura `{owner}`. Solo para el bloque 4.
+Lectura `{reader, editor, owner}`; escritura `{owner}`. Migración `0520_central_kpis`, que también crea `central.central_kpi_projection` (los KPIs de Central con el contrato de §7.2). Lleva además `notes text null` (≤ 300).
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -333,7 +333,7 @@ function visible(table, row, ctx) {
 | `POST requirements/:id/task` | editor | `{requestId, title?, due?, note?}` → `{requirementTaskId, created, routed, task}`. Pide la tarea a Tasks (`POST /api/v1/requests/task`) con el token de la persona: `source: 'central'`, `external_ref: '<LEG_…>:<requestId>'`, `kind: 'central.compliance_due'` con `kind_label`, `external_url` a la ficha (`https://central.ikisai.com/#/cumplimiento/<id>`), prioridad por el riesgo (crítico → `critical`, alto → `high`); **sin área ni proyecto** (las reglas de Tasks deciden o queda «Por clasificar»). Después inserta el enlace en `requirement_tasks`. Idempotente: el mismo `requestId` da la misma tarea y el mismo enlace. | `NOT_FOUND`, `TASKS_FORBIDDEN 403`, `EXTERNAL_REF_IN_USE 409`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` |
 | `POST requirements/tasks-status` | reader | `{ids: [id de tarea]}` (hasta 200) → `{items, missing}` de `tasks.targets` con el token de quien mira (`pending`, `request`, `visible`, `done`, `deleted`). | `TASKS_*` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
-| `GET dashboard` | reader | `{computedAt, kpis: [{kpi, app, label, unit, period, value, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 con la service key y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
+| `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
 
 No hay rutas propias de escritura para personas, requisitos ni documentos: todo va por `commands`, para que funcione sin red.
@@ -353,29 +353,52 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 
 ### 7.2 Contrato de KPIs (lo que Central pide a cada app)
 
-Cada app que quiera aparecer en el panel publica **una** vista `<schema>.central_kpi_projection` y la registra con `core.allow_read('central', '<schema>.central_kpi_projection', 'view')`:
+Propuesta para que Core la reparta (ronda 6). Cada app que quiera aparecer en el panel de dirección publica **una** vista `<schema>.central_kpi_projection` en una migración suya y la registra con `select core.allow_read('central', '<schema>.central_kpi_projection', 'view');`. Central la lee con su clave de servicio al abrir el panel (`GET /api/v1/dashboard`); no copia nada.
 
-```text
-kpi          text         clave '<app>.<nombre>', estable (p. ej. 'booking.occupancy_rate')
-period       text         'actual' | 'AAAA-MM' | 'AAAAT1'..'T4' | 'AAAA'
-period_start date null
-period_end   date null
-value        numeric      siempre numérico; null si no hay dato
-unit         text         'count' | 'pct' | 'eur' | 'nights' | 'persons' | 'days'
-computed_at  timestamptz  now() en la vista
+| Columna | Tipo | Contenido |
+|---|---|---|
+| `kpi` | `text` | Clave estable `<app>.<nombre>` en minúsculas (`booking.events_next_30d`). Es la que usan los objetivos. |
+| `label` | `text` | Etiqueta en español para la tarjeta (≤ 60 caracteres): «Eventos en los próximos 30 días». |
+| `value` | `numeric` | El valor; `null` si no hay dato. |
+| `unit` | `text` | `count`, `pct` (0–100), `eur`, `days`, `persons` o `nights`. |
+| `period` | `text` | `actual` (foto de hoy), `AAAA-MM`, `AAAAT1`…`T4` o `AAAA`. |
+| `period_start`, `period_end` | `date` | Límites del periodo (para `actual`, hoy o la ventana que mide). |
+| `direction` | `text` | `up` (más es mejor), `down` (menos es mejor) o `null`. Es el sentido por defecto de los umbrales. |
+| `link` | `text` | URL absoluta a la pantalla de la app donde se ve el detalle (`https://booking.ikisai.com/#/…`), o `null`. |
+| `computed_at` | `timestamptz` | `now()` en la vista. |
+
+**Reglas.**
+- **Solo agregados**: ningún nombre, contacto ni importe de una persona. Todo miembro de Central (también un lector) ve el panel; no publiquéis nada que un lector de Central no deba ver.
+- Horizonte fijo, porque las vistas no reciben parámetros: lo actual y, en mensuales, los 12 meses anteriores y los 3 siguientes como mucho (≤ 500 filas).
+- Fechas de «hoy» en hora de Madrid: `(now() at time zone 'Europe/Madrid')::date`.
+- La clave y su fórmula se documentan en el `API.md` de la app dueña. Cambiar el significado de una clave es crear otra.
+- Una app sin vista o con error no rompe el panel: aparece en «Aún sin indicadores».
+
+Ejemplo (Booking):
+
+```sql
+create view booking.central_kpi_projection as
+select 'booking.events_next_30d'::text as kpi, 'Eventos en los próximos 30 días'::text as label,
+       count(*)::numeric as value, 'count'::text as unit, 'actual'::text as period,
+       (now() at time zone 'Europe/Madrid')::date as period_start, (now() at time zone 'Europe/Madrid')::date + 30 as period_end,
+       'up'::text as direction, 'https://booking.ikisai.com/#/calendario'::text as link, now() as computed_at
+  from booking.events e where e.deleted_at is null and e.start_date between current_date and current_date + 30;
+revoke all on booking.central_kpi_projection from public, anon, authenticated;
+grant select on booking.central_kpi_projection to service_role;
+select core.allow_read('central', 'booking.central_kpi_projection', 'view');
 ```
 
-Reglas: solo agregados, ningún dato personal ni importe por persona; horizonte fijo (los 12 meses anteriores, el actual y los 3 siguientes) porque las vistas no reciben parámetros; la clave y su significado se documentan en el `API.md` de la app dueña, y Central mantiene en `_domain/central/kpis.ts` el catálogo con etiqueta, unidad y sentido. **Nada se copia**: el panel se calcula al abrirlo y se guarda en el dispositivo solo como caché con su hora.
+**Catálogo inicial que propongo** (de los 20 KPIs base de C01; cada equipo decide la fórmula exacta):
 
-Catálogo inicial que propongo a cada equipo (de los 20 KPIs base de C01, los que tienen dato en las apps actuales):
-
-| App | Claves propuestas |
+| App | Claves |
 |---|---|
-| Booking | `reservations_confirmed_90d`, `guests_expected_90d`, `events_next_30d`, `deposits_pending`, `occupancy_rate` (mensual, cuando haya espacios), `staff_needs_open`, `leads_new` y `leads_converted` (cuando exista el CRM) |
-| Invoices/Finance | `expenses_month` (total de facturas validadas por mes), `invoices_pending_review`, `invoices_unpaid` (recuento) y `invoices_unpaid_amount`, `income_issued_month` (emitidas) |
-| Tasks | `tasks_open`, `tasks_overdue`, `purchase_requests_open`, `supplies_below_min`, `preventive_overdue` (cuando haya recurrencias) |
-| Food | `events_without_menu_30d`, `shopping_lists_open` |
-| Central | `legal_due_30d`, `legal_overdue`, `risks_critical_open`, `people_records_expired` |
+| Central (hecho, `0520`) | `central.legal_overdue`, `central.legal_due_soon`, `central.blocking_overdue`, `central.risks_high_open`, `central.documents_expired`, `central.people_active`, `central.people_records_expired` |
+| Booking | `booking.reservations_confirmed_90d`, `booking.guests_expected_90d`, `booking.events_next_30d`, `booking.deposits_pending`, `booking.occupancy_rate` (mensual), `booking.staff_needs_open`; `booking.leads_new` y `booking.leads_converted` cuando exista el CRM |
+| Finance | `invoices.expenses_month` (mensual), `invoices.pending_review`, `invoices.unpaid`, `invoices.unpaid_amount`, `invoices.income_issued_month` (mensual) |
+| Tasks | `tasks.open`, `tasks.overdue`, `tasks.purchase_requests_open`, `tasks.supplies_below_min`, `tasks.requests_pending` (por clasificar) |
+| Food | `food.events_without_menu_30d`, `food.shopping_lists_open` |
+
+**Objetivos y estado.** `central.kpi_targets` (§2.7) guarda objetivo, umbral de atención, umbral crítico y sentido por clave y periodo (`*`, `AAAA`, `AAAA-MM`, `AAAAT1`): se aplica el del periodo exacto, si no el del año y si no el general. El estado `ok | atencion | critico` de C01 lo calcula `GET dashboard` (`kpiState` de `_domain/central/kpis.ts`); solo el owner fija objetivos.
 
 ### 7.3 Trabajo en Tasks
 
@@ -409,7 +432,7 @@ Cuatro entradas en la barra (Inicio, Cumplimiento, Personas y, para el owner, Ac
 
 ### 9.1 Inicio (dirección)
 
-Lectura: tarjetas de KPIs por app con estado (`ok`, `atencion`, `critico`) cuando haya proyecciones; mientras tanto, los de Central (vencimientos, riesgos, documentación de personas caducada) y accesos rápidos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
+Lectura: panel **Dirección** con tarjetas de KPIs agrupadas por app, estado (`ok`, `atencion`, `critico`) y objetivo; cada tarjeta enlaza con su `link`. El owner fija el objetivo desde la tarjeta. Sin red se pinta la última lectura guardada en el dispositivo (solo agregados), con su hora. Debajo, «Vence pronto», el enlace a Entidad y, para el owner, el resumen de accesos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
 
 ### 9.2 Personas
 
