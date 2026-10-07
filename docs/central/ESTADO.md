@@ -11,13 +11,14 @@
 
 - 2026-10-07 · **Entidad** (configuración común, ronda 3): migración `0501_central_entity` (fila única, solo owner escribe, NIF/NIE/CIF con control), proyección `central.common_entity_projection` para Booking y Finance (con bucket y ruta del logotipo para firmar), pantalla Entidad con subida del logotipo sin red; pruebas `tests/central/entity.test.ts` y `entity.spec.ts`.
 
+- 2026-10-07 · **V1-b (personas)**, pantallas: lista con búsqueda, filtro y orden manual; ficha con Ficha, Contacto y vinculación (reservado), Documentación y formación (reservado; estado derivado, archivo PDF o foto recomprimida, apertura con `people/records/:id/file`), Cuenta (solo owner: dar cuenta, enlazar o desenlazar), inactiva y papelera con restauración en un lote; aviso de caducidades en Inicio. Prueba `tests/central/people.spec.ts` (incluye edición sin red).
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
-- V1-b · pantallas de Personas (ficha, datos reservados, documentación con archivos, «Dar cuenta»).
-- V1.1 · Cumplimiento: migración `0510_central_compliance`; tareas en Tasks con `POST tasks/api/v1/requests/task` (con `kind`, sin área).
+- V1.1 · Cumplimiento: migración `0510_central_compliance`; tareas en Tasks con `POST /api/v1/requests/task` de Tasks (con `kind` `central.<tipo>`, `kind_label` y `external_url`; sin área ni proyecto; `docs/tasks/API.md` §19.6 y §20.9).
 - V2 · Dirección: contrato de KPIs y panel.
 
 ## Bloqueos
 
-- La fusión de mis PR la ha denegado el control de permisos de la sesión: la decide el usuario.
+- La fusión de mis PR la ha denegado el control de permisos de la sesión; la #180 la fusionó Core.

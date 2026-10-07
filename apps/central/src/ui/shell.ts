@@ -6,6 +6,7 @@ import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
+import { mountPeople, mountPerson } from './people.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -30,6 +31,7 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
 function navFor(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
+    { hash: '#/personas', label: 'Personas', icon: 'people' },
     { hash: '#/entidad', label: 'Entidad', icon: 'briefcase' },
   ];
   if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
@@ -40,6 +42,7 @@ const ROUTES: Record<string, { title: string; mount: ViewMount; admin?: boolean 
   '#/': { title: 'Inicio', mount: mountHome },
   '#/conflictos': { title: 'Conflictos', mount: mountConflicts },
   '#/entidad': { title: 'Entidad', mount: mountEntity },
+  '#/personas': { title: 'Personas', mount: mountPeople },
   '#/accesos': { title: 'Accesos', mount: mountAccess('cuentas'), admin: true },
   '#/accesos/alta': { title: 'Alta de cuenta', mount: mountAccess('alta'), admin: true },
   '#/accesos/agentes': { title: 'Agentes', mount: mountAccess('agentes'), admin: true },
@@ -123,15 +126,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   function route(): void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
-    const found = ROUTES[hash];
-    const allowed = found && (!found.admin || isAdmin);
+    // `#/personas/<id>` es la ficha de una persona; el resto son rutas fijas.
+    const [, personId] = hash.match(/^#\/personas\/([0-9a-f-]{36})$/i) ?? [];
+    const found = personId ? { title: 'Persona', mount: mountPerson(personId) } : ROUTES[hash];
+    const allowed = found && (!('admin' in found && found.admin) || isAdmin);
     const entry = allowed ? found : ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(allowed ? hash : '#/');
+    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin });
-    document.title = `${entry.title} · Ikisai Central`;
+    if (!personId) document.title = `${entry.title} · Ikisai Central`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
