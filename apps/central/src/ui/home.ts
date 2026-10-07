@@ -1,6 +1,7 @@
 import { el, icon, plural, replace } from '@ikisai/ui-kit';
 import { canSeeReserved, todayInMadrid } from '@ikisai/domain-central';
 import { computeDue } from './compliance.ts';
+import { mountDashboard } from './dashboard.ts';
 import { T } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -18,6 +19,7 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
   const boot = client.bootstrap();
   const summary = el('div', { class: 'homecards', id: 'homeSummary' });
   const docs = el('div', { id: 'homeDocs' });
+  const dashboardHost = el('div');
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null,
@@ -26,10 +28,7 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
     docs,
     summary,
     el('a', { class: 'homelink', href: '#/entidad', id: 'homeEntity' }, icon('briefcase', 18), 'Datos de la entidad', el('span', { class: 'muted small' }, 'razón social, NIF/CIF, domicilio y logotipo')),
-    el('section', { class: 'card soon' },
-      el('h3', null, 'Próximamente en Central'),
-      el('ul', { class: 'plainlist' },
-        el('li', null, 'Panel de dirección con los indicadores de cada app.'))),
+    dashboardHost,
   );
 
   // Lo que vence (obligaciones, documentos clave y, para quien la ve, documentación de personas), calculado en el dispositivo.
@@ -50,8 +49,9 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
       due.length > 5 ? el('a', { href: '#/cumplimiento' }, 'Ver todos los vencimientos') : null));
   }
   void paintDocs();
+  const unmountDashboard = mountDashboard(dashboardHost, client, isAdmin);
 
-  if (!isAdmin) return () => {};
+  if (!isAdmin) return () => unmountDashboard();
 
   function card(id: string, title: string, value: string, hint: string, hash: string): HTMLElement {
     return el('button', { class: 'homecard', type: 'button', id, onclick: () => navigate(hash) },
@@ -79,5 +79,5 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate })
     }
   }
   void load();
-  return () => { alive = false; };
+  return () => { alive = false; unmountDashboard(); };
 };

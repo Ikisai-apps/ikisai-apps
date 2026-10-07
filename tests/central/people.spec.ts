@@ -46,7 +46,7 @@ const synced = (page: Page) => expect(page.getByText(/pendiente/i)).toHaveCount(
 
 test('personas · ficha, datos reservados, documentación, cuenta, lector, sin red y papelera', async ({ page, browser, context }) => {
   await login(page, 'owner@example.invalid', 'Owner');
-  await page.getByRole('link', { name: 'Personas' }).click();
+  await page.getByRole('link', { name: 'Personas', exact: true }).click();
   await expect(page.getByText('Todavía no hay personas')).toBeVisible();
 
   // Alta: lleva a la ficha.
@@ -94,14 +94,14 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await expect.poll(async () => (await api.app.t.db.query(`select user_id is not null as ok from central.people`)).rows[0]).toEqual({ ok: true });
 
   // Inicio avisa de la caducidad.
-  await page.getByRole('link', { name: 'Inicio' }).click();
+  await page.getByRole('link', { name: 'Inicio', exact: true }).click();
   await expect(page.locator('#homeDocs')).toContainText('Marga');
 
   // Un lector ve el directorio, no los datos reservados ni la documentación.
   const other = await browser.newContext();
   const reader = await other.newPage();
   await login(reader, 'reader@example.invalid', 'Reader');
-  await reader.getByRole('link', { name: 'Personas' }).click();
+  await reader.getByRole('link', { name: 'Personas', exact: true }).click();
   await reader.locator('.personrow', { hasText: 'Marga' }).click();
   await expect(reader.locator('#blockBasic')).toContainText('Cocina');
   await expect(reader.locator('#personView')).not.toContainText('600 000 000');
@@ -111,7 +111,7 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await other.close();
 
   // Sin red: editar la ficha queda pendiente y se envía al volver la conexión.
-  await page.getByRole('link', { name: 'Personas' }).click();
+  await page.getByRole('link', { name: 'Personas', exact: true }).click();
   await page.locator('.personrow', { hasText: 'Marga' }).click();
   await context.setOffline(true);
   await page.locator('#editPerson').click();

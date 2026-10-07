@@ -48,7 +48,7 @@ async function login(page: Page, email: string, name: string): Promise<void> {
 test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y lector', async ({ page, browser }) => {
   const due = madrid(20);
   await login(page, 'owner@example.invalid', 'Owner');
-  await page.getByRole('link', { name: 'Cumplimiento' }).click();
+  await page.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
   await expect(page.getByText('Nada vencido ni por vencer')).toBeVisible();
 
   // Nueva obligación anual que vence en 20 días (aviso con 30): entra en «Vence pronto».
@@ -77,9 +77,9 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   expect('tab_id' in sent || 'project_id' in sent).toBe(false);
 
   // Vencimientos e Inicio la muestran.
-  await page.getByRole('link', { name: 'Cumplimiento' }).click();
+  await page.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
   await expect(page.locator('#dueList')).toContainText('Póliza de responsabilidad civil');
-  await page.getByRole('link', { name: 'Inicio' }).click();
+  await page.getByRole('link', { name: 'Inicio', exact: true }).click();
   await expect(page.locator('#homeDocs')).toContainText('Póliza de responsabilidad civil');
 
   // Documento clave con PDF, enlazado a la obligación.
@@ -105,7 +105,7 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   const other = await browser.newContext();
   const reader = await other.newPage();
   await login(reader, 'reader@example.invalid', 'Reader');
-  await reader.getByRole('link', { name: 'Cumplimiento' }).click();
+  await reader.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
   await reader.locator('#ctab-requisitos').click();
   await reader.locator('.personrow', { hasText: 'Póliza de responsabilidad civil' }).click();
   await expect(reader.locator('#blockDocuments')).toContainText('Póliza 2026');

@@ -14,11 +14,12 @@
 - 2026-10-07 · **V1-b (personas)**, pantallas: lista con búsqueda, filtro y orden manual; ficha con Ficha, Contacto y vinculación (reservado), Documentación y formación (reservado; estado derivado, archivo PDF o foto recomprimida, apertura con `people/records/:id/file`), Cuenta (solo owner: dar cuenta, enlazar o desenlazar), inactiva y papelera con restauración en un lote; aviso de caducidades en Inicio. Prueba `tests/central/people.spec.ts` (incluye edición sin red).
 - 2026-10-07 · Revisión de Core (ronda 5): migración `0502` (solo el owner enlaza cuentas, también en la base).
 - 2026-10-07 · **V1.1 (cumplimiento)**: migración `0510_central_compliance` (`requirements` LEG, `key_documents` DOC, `requirement_tasks`; invariantes `ORPHAN_CHILD` y `PERSON_IN_USE`; lectura `central.requirement_brief`); rutas `requirements/:id/task` y `requirements/tasks-status` hacia Tasks (`kind` `central.compliance_due`, sin área); pantallas Vencimientos, Obligaciones (ficha con «Marcar cumplido», que propone el siguiente vencimiento, y «Crear tarea en Tasks») y Documentos; aviso «Vence pronto» en Inicio; Entidad pasa a abrirse desde Inicio. Pruebas `tests/central/compliance.test.ts` y `compliance.spec.ts` (Tasks simulado).
+- 2026-10-07 · **V2 (dirección), primer paso**: migración `0520_central_kpis` (`central.kpi_targets`, solo owner; `central.central_kpi_projection` con 7 KPIs de Central), contrato `<schema>.central_kpi_projection` propuesto en `API.md` §7.2 para que Core lo reparta, ruta `GET dashboard` (lee todas las fuentes, una caída no rompe el panel), panel en Inicio con objetivos y lectura sin red. Pruebas `tests/central/kpis.test.ts` y `dashboard.spec.ts`.
 
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
-- V2 · Dirección: contrato de KPIs y panel.
+- V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.
 
 ## Bloqueos
 

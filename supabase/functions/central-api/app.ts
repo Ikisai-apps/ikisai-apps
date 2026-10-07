@@ -1,6 +1,9 @@
 /** Ikisai Central · API. Administración común (`admin/*` del kit) y personas sobre el núcleo (docs/central/API.md). */
 import { createApp, createSupabase, createUploads, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
-import { COMPLIANCE_TABLES, ENTITY_TABLE, LOGO_MIME, TABLES, TASK_KIND, TASK_KIND_LABEL, taskExternalRef, validateOperations, visibleRow } from '../_domain/central/mod.ts';
+import {
+  COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
+  type KpiRow, type KpiTarget,
+} from '../_domain/central/mod.ts';
 
 export const CENTRAL_ORIGINS = ['https://central.ikisai.com', 'https://ikisai-central.pages.dev'];
 export const DEFAULT_TASKS_API_BASE = 'https://tasks.ikisai.com';
@@ -12,6 +15,7 @@ export interface CentralAppOptions {
   tasksFetch?: typeof fetch;
 }
 
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PRIORITY_BY_RISK: Record<string, string> = { critico: 'critical', alto: 'high' };
@@ -123,6 +127,33 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
           if (!(isFault(error) && error.code === 'CONSTRAINT_VIOLATION')) throw error;
         }
         return { requirementTaskId: linkId, created: out.created, routed: out.routed ?? null, task: out.task };
+      },
+    },
+    // Panel de dirección (API.md §7.2): lee la proyección de KPIs de cada app con la clave de servicio y la registración
+    // `core.allow_read('central', …)` de la app dueña. Una app sin proyección o con error va en `unavailable`.
+    {
+      method: 'GET', pattern: 'dashboard', handler: async ({ ctx }) => {
+        const snapshot = await supabase.rpc<{ rows: KpiTarget[] }>('core_snapshot_table', { p_app: ctx.app, p_role: ctx.membership.role, p_table: 'central.kpi_targets', p_include_deleted: false, p_limit: 1000, p_offset: 0 });
+        const targets = (snapshot?.rows ?? []).map((t) => ({ ...t, target: num(t.target), warn_at: num(t.warn_at), critical_at: num(t.critical_at) })) as KpiTarget[];
+        const items: unknown[] = [];
+        const unavailable: string[] = [];
+        await Promise.all(KPI_SOURCES.map(async (source) => {
+          try {
+            const out = await read<{ rows: KpiRow[] }>(ctx, source.projection, { limit: 500 });
+            for (const row of out.rows) {
+              const value = row.value === null || row.value === undefined ? null : Number(row.value);
+              const target = targetFor(targets, row.kpi, row.period);
+              items.push({ app: source.app, kpi: row.kpi, label: row.label, value, unit: row.unit, period: row.period,
+                periodStart: row.period_start, periodEnd: row.period_end, direction: row.direction, link: row.link, computedAt: row.computed_at,
+                target: target?.target ?? null, state: kpiState(value, target) });
+            }
+          } catch {
+            unavailable.push(source.app);
+          }
+        }));
+        const order = new Map(KPI_SOURCES.map((s, i) => [s.app, i]));
+        items.sort((x: any, y: any) => (order.get(x.app)! - order.get(y.app)!) || String(x.kpi).localeCompare(String(y.kpi)) || String(x.period).localeCompare(String(y.period)));
+        return { computedAt: new Date().toISOString(), items, unavailable: unavailable.sort((x, y) => order.get(x)! - order.get(y)!) };
       },
     },
     // Estado en Tasks de las tareas pedidas: `tasks.targets` con lista de ids y el token de la persona (solo lo que ve).

@@ -8,6 +8,7 @@ import {
   recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, type RecordKind,
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
+import { KPI_TARGETS_TABLE } from './kpis.ts';
 import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
@@ -150,6 +151,18 @@ const SPECS: Record<string, TableSpec> = {
     required: [],
     immutable: ['requirement_id', 'target_app', 'target_kind', 'target_id', 'external_ref'],
   },
+  [KPI_TARGETS_TABLE]: {
+    fields: {
+      kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
+      period: { kind: 'text', min: 1, max: 7, pattern: /^(\*|\d{4}|\d{4}-\d{2}|\d{4}T[1-4])$/, patternText: '«*», «AAAA», «AAAA-MM» o «AAAAT1»…«T4»' },
+      target: { kind: 'number', nullable: true },
+      warn_at: { kind: 'number', nullable: true },
+      critical_at: { kind: 'number', nullable: true },
+      direction: { kind: 'enum', values: ['up', 'down'] },
+      notes: { kind: 'text', max: 300, nullable: true },
+    },
+    required: ['kpi'],
+  },
   [ENTITY_TABLE]: {
     fields: {
       legal_name: { kind: 'text', min: 1, max: 200 },
@@ -256,6 +269,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       if (typeof row.document_date === 'string' && typeof row.expires_on === 'string' && row.expires_on < row.document_date) {
         return fieldIssue(index, table, 'expires_on', 'no puede ser anterior a la fecha del documento');
       }
+    }
+    if (table === KPI_TARGETS_TABLE && actor.role !== 'owner') {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra puede fijar objetivos.', details: { index, table } };
     }
     if (table === ENTITY_TABLE && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede cambiar los datos de la entidad.', details: { index, table } };
