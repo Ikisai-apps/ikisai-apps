@@ -35,15 +35,26 @@ function roleSelect(id: string, value: Role | null, options: { agent: boolean; a
 export function mountAccess(tab: AccessTab): ViewMount {
   return (ctx) => {
     const { main, admin, client } = ctx;
-    const body = el('div', { id: `access-${tab}`, 'data-feedback-id': `central.accesos.${tab}`, 'data-feedback-label': `Accesos: ${TABS.find((t) => t.id === tab)?.label ?? ''}` });
+    const body = el('div', { id: `access-${tab}` });
+    // Ids fijos (el catálogo de la publicación solo recoge literales: kit 0.18.2).
+    switch (tab) {
+      case 'cuentas': fbMark(body, 'central.accesos.cuentas', 'Cuentas'); break;
+      case 'alta': fbMark(body, 'central.accesos.alta', 'Alta'); break;
+      case 'agentes': fbMark(body, 'central.accesos.agentes', 'Agentes'); break;
+      case 'registro': fbMark(body, 'central.accesos.registro', 'Registro'); break;
+    }
     replace(
       main,
       el('div', { class: 'pagehead', 'data-feedback-id': 'central.accesos.cabecera', 'data-feedback-label': 'Cabecera de Accesos' }, el('div', null, el('h2', null, 'Accesos'),
         el('p', null, 'Quién entra en cada app de Ikisai y con qué permiso.'))),
       el('nav', { class: 'segmented', 'aria-label': 'Secciones de accesos', 'data-feedback-id': 'central.accesos.pestanas', 'data-feedback-label': 'Pestañas de Accesos' },
-        ...TABS.map((t) => el('a', { href: t.hash, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null, id: `tab-${t.id}`, 'data-feedback-id': `central.accesos.pestanas.${t.id}`, 'data-feedback-label': `Pestaña ${t.label}` }, t.label))),
+        ...TABS.map((t) => el('a', { href: t.hash, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null, id: `tab-${t.id}` }, t.label))),
       body,
     );
+    fbMark(main.querySelector('#tab-cuentas'), 'central.accesos.pestanas.cuentas', 'Pestaña Cuentas');
+    fbMark(main.querySelector('#tab-alta'), 'central.accesos.pestanas.alta', 'Pestaña Alta');
+    fbMark(main.querySelector('#tab-agentes'), 'central.accesos.pestanas.agentes', 'Pestaña Agentes');
+    fbMark(main.querySelector('#tab-registro'), 'central.accesos.pestanas.registro', 'Pestaña Registro');
     const me = client.bootstrap()?.profile.userId ?? '';
     const state = { alive: true };
     const stop = () => { state.alive = false; };
@@ -187,7 +198,8 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
       const rows = catalog.map((app) => {
         const m = current(app.id);
         const select = roleSelect(`role-${app.id}`, m?.role ?? null, { agent, app: app.id });
-        fbMark(select, `central.accesos.cuenta.rol_${app.id}`, `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
+        // Id fijo (la lista de apps cambia); la etiqueta, con la app, solo en la pantalla.
+        fbMark(select, 'central.accesos.cuenta.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
         select.addEventListener('change', () => void change(app, select));
         if (isMe && app.id === 'central') select.disabled = true;
         const scopes = m ? describeScopes(app.id, m.scopes) : null;
@@ -300,7 +312,7 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
     replace(appsHost, ...catalog.map((app) => {
       const select = roleSelect(`invite-${app.id}`, null, { agent: false, app: app.id });
       selects.set(app.id, select);
-      fbMark(select, `central.accesos.alta.rol_${app.id}`, `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
+      fbMark(select, 'central.accesos.alta.rol', 'Acceso a una app').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
       return el('label', { class: 'approw', 'data-feedback-id': 'central.accesos.alta.app', 'data-feedback-label': 'Acceso a una app' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, '')), el('span', { class: 'muted small' }, app.description ?? '')), select);
     }));
   }).catch((e) => replace(appsHost, navigator.onLine ? el('p', { class: 'formerror', 'data-feedback-id': 'central.accesos.alta.error_apps', 'data-feedback-label': 'Error al cargar las apps' }, describeError(e)) : offlineNote()));

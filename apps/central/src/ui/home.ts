@@ -3,6 +3,7 @@ import { canSeeReserved, todayInMadrid } from '@ikisai/domain-central';
 import { computeDue } from './compliance.ts';
 import { mountDashboard } from './dashboard.ts';
 import { T } from '../app/client.ts';
+import { fbMark } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
 
 const ROLE_TEXT: Record<string, string> = {
@@ -54,8 +55,8 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate, u
 
   if (!isAdmin) return () => unmountDashboard();
 
-  function card(id: string, title: string, value: string, hint: string, hash: string, slug: string): HTMLElement {
-    return el('button', { class: 'homecard', type: 'button', id, 'data-feedback-id': `central.inicio.resumen.${slug}`, 'data-feedback-label': title, onclick: () => navigate(hash) },
+  function card(id: string, title: string, value: string, hint: string, hash: string): HTMLElement {
+    return el('button', { class: 'homecard', type: 'button', id, onclick: () => navigate(hash) },
       el('span', { class: 'homecard-title' }, title), el('strong', null, value), el('span', { class: 'muted' }, hint));
   }
 
@@ -69,10 +70,10 @@ export const mountHome: ViewMount = ({ main, client, admin, isAdmin, navigate, u
       const disabled = humans.filter((a) => a.disabled).length;
       const activeKeys = agents.filter((k) => !k.revokedAt).length;
       replace(summary,
-        card('homeAccounts', 'Cuentas', String(humans.length), disabled ? `${plural(disabled, 'desactivada', 'desactivadas')}` : 'personas con acceso', '#/accesos', 'cuentas'),
-        card('homeAgents', 'Agentes', String(activeKeys), plural(activeKeys, 'clave activa', 'claves activas'), '#/accesos/agentes', 'agentes'),
-        card('homeInvite', 'Alta', '+', 'dar acceso a una persona nueva', '#/accesos/alta', 'alta'),
-        card('homeLog', 'Registro', '', 'quién cambió qué y cuándo', '#/accesos/registro', 'registro'),
+        fbMark(card('homeAccounts', 'Cuentas', String(humans.length), disabled ? `${plural(disabled, 'desactivada', 'desactivadas')}` : 'personas con acceso', '#/accesos'), 'central.inicio.resumen.cuentas', 'Cuentas'),
+        fbMark(card('homeAgents', 'Agentes', String(activeKeys), plural(activeKeys, 'clave activa', 'claves activas'), '#/accesos/agentes'), 'central.inicio.resumen.agentes', 'Agentes'),
+        fbMark(card('homeInvite', 'Alta', '+', 'dar acceso a una persona nueva', '#/accesos/alta'), 'central.inicio.resumen.alta', 'Alta'),
+        fbMark(card('homeLog', 'Registro', '', 'quién cambió qué y cuándo', '#/accesos/registro'), 'central.inicio.resumen.registro', 'Registro'),
       );
     } catch {
       if (!alive) return;

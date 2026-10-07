@@ -83,3 +83,21 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   ]);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
+
+test('el catálogo de la publicación recoge todos los ids: ninguno se construye en ejecución (kit 0.18.2)', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const os = await import('node:os');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'central-catalog-'));
+  try {
+    const out = path.join(dir, 'feature-catalog.json');
+    const repo = path.resolve(here, '../..');
+    execFileSync(process.execPath, [path.join(repo, 'packages/ui-kit/scripts/feature-catalog.mjs'), '--app', 'central', '--root', repo, '--out', out], { cwd: repo, stdio: 'pipe' });
+    const catalog = JSON.parse(readFileSync(out, 'utf8')) as { features: Array<{ id: string; label: string | null }>; dynamic: unknown[] };
+    assert.deepEqual(catalog.dynamic, []);
+    assert.ok(catalog.features.length >= 400, `hay ${catalog.features.length} funciones`);
+    assert.deepEqual(catalog.features.filter((f) => !f.label).map((f) => f.id), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

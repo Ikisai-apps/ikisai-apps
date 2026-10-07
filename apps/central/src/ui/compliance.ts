@@ -9,7 +9,7 @@ import {
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
-import { fbIgnoreWithin } from './feedback.ts';
+import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null; code?: string };
 type Requirement = Mirror<Base & Record<string, unknown> & { name: string; requirement_type: string; status: string; risk: string; frequency: string; notice_days: number; expires_on: string | null }>;
@@ -75,8 +75,13 @@ function stateChip(expires: string | null, notice: number, closed: boolean, toda
 }
 
 function tabsNav(tab: ComplianceTab): HTMLElement {
-  return el('nav', { class: 'segmented', 'aria-label': 'Secciones de cumplimiento', 'data-feedback-id': 'central.cumplimiento.pestanas', 'data-feedback-label': 'Pestañas de Cumplimiento' },
-    ...TABS.map((t) => el('a', { href: t.hash, id: `ctab-${t.id}`, 'data-feedback-id': `central.cumplimiento.pestanas.${t.id}`, 'data-feedback-label': `Pestaña ${t.label}`, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null }, t.label)));
+  const nav = el('nav', { class: 'segmented', 'aria-label': 'Secciones de cumplimiento', 'data-feedback-id': 'central.cumplimiento.pestanas', 'data-feedback-label': 'Pestañas de Cumplimiento' },
+    ...TABS.map((t) => el('a', { href: t.hash, id: `ctab-${t.id}`, class: t.id === tab ? 'active' : '', 'aria-current': t.id === tab ? 'page' : null }, t.label)));
+  // Ids fijos (el catálogo de la publicación solo recoge literales: kit 0.18.2).
+  fbMark(nav.querySelector('#ctab-vencimientos'), 'central.cumplimiento.pestanas.vencimientos', 'Pestaña Vencimientos');
+  fbMark(nav.querySelector('#ctab-requisitos'), 'central.cumplimiento.pestanas.requisitos', 'Pestaña Obligaciones');
+  fbMark(nav.querySelector('#ctab-documentos'), 'central.cumplimiento.pestanas.documentos', 'Pestaña Documentos');
+  return nav;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +93,12 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
     const canEdit = client.bootstrap()?.membership.role !== 'reader';
     let data: Data | null = null;
     let typeFilter = '';
-    const host = el('div', { id: `compliance-${tab}`, 'data-feedback-id': `central.cumplimiento.${tab}`, 'data-feedback-label': `Cumplimiento: ${TABS.find((t) => t.id === tab)?.label ?? ''}` });
+    const host = el('div', { id: `compliance-${tab}` });
+    switch (tab) {
+      case 'vencimientos': fbMark(host, 'central.cumplimiento.vencimientos', 'Vencimientos'); break;
+      case 'requisitos': fbMark(host, 'central.cumplimiento.requisitos', 'Obligaciones'); break;
+      case 'documentos': fbMark(host, 'central.cumplimiento.documentos', 'Documentos'); break;
+    }
     const fab = canEdit && tab === 'requisitos' ? el('button', { class: 'fab', type: 'button', id: 'newRequirement', 'data-feedback-id': 'central.cumplimiento.obligaciones.nueva', 'data-feedback-label': 'Nueva obligación', onclick: () => openRequirementEditor(ctx.client, null, data, (id) => navigate(`#/cumplimiento/${id}`)) }, icon('plus'), 'Nueva obligación')
       : canEdit && tab === 'documentos' ? el('button', { class: 'fab', type: 'button', id: 'newDocument', 'data-feedback-id': 'central.cumplimiento.documentos.nuevo', 'data-feedback-label': 'Nuevo documento', onclick: () => openDocumentEditor(ctx.client, null, data, null) }, icon('plus'), 'Nuevo documento') : null;
     replace(main,
@@ -159,14 +169,14 @@ function personSelect(id: string, data: Data | null, selected: unknown): HTMLSel
 
 function sheetEditor(opts: {
   title: string; meta?: string; existing: boolean; form: HTMLFormElement; save: HTMLButtonElement; focus: HTMLElement; onSheet: (s: Sheet) => void;
-  /** Base del id de «Sugerencias y QA» de la hoja (p. ej. `central.obligacion.editar`) y su etiqueta. */
-  fb: string; fbLabel: string;
+  /** Atributos de «Sugerencias y QA» de la hoja, su botón de cierre y «Cancelar», con ids literales desde cada llamada. */
+  panel: Record<string, string>; close: Record<string, string>; cancel: Record<string, string>;
 }): void {
   const sheet = openSheet({
     title: opts.title, meta: opts.meta, body: opts.form,
-    panelAttrs: { 'data-feedback-id': opts.fb, 'data-feedback-label': opts.fbLabel },
-    closeAttrs: { 'data-feedback-id': `${opts.fb}.cerrar_hoja`, 'data-feedback-label': 'Cerrar' },
-    foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': `${opts.fb}.cancelar`, 'data-feedback-label': opts.existing ? 'Cerrar' : 'Cancelar', onclick: () => void sheet.close() }, opts.existing ? 'Cerrar' : 'Cancelar'), opts.save],
+    panelAttrs: opts.panel,
+    closeAttrs: opts.close,
+    foot: [el('button', { class: 'ghost', type: 'button', ...opts.cancel, onclick: () => void sheet.close() }, opts.existing ? 'Cerrar' : 'Cancelar'), opts.save],
     footHidden: opts.existing, initialFocus: opts.focus,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
@@ -247,7 +257,10 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
   el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_descripcion', 'data-feedback-label': 'Descripción' }, el('span', null, 'Descripción'), description),
   el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.editar.campo_notas', 'data-feedback-label': 'Notas' }, el('span', null, 'Notas'), notes),
   error) as HTMLFormElement;
-  sheetEditor({ title: req ? 'Editar obligación' : 'Nueva obligación', meta: req?.code, existing: req !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, fb: 'central.obligacion.editar', fbLabel: req ? 'Editar obligación' : 'Nueva obligación' });
+  sheetEditor({ title: req ? 'Editar obligación' : 'Nueva obligación', meta: req?.code, existing: req !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, 
+    panel: { 'data-feedback-id': 'central.obligacion.editar', 'data-feedback-label': 'Editar obligación' },
+    close: { 'data-feedback-id': 'central.obligacion.editar.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+    cancel: { 'data-feedback-id': 'central.obligacion.editar.cancelar', 'data-feedback-label': 'Cancelar' } });
 }
 
 function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: Data | null, requirementId: string | null): void {
@@ -324,7 +337,10 @@ function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: D
     if (await commitSafely(client, [{ op: 'delete', table: T.keyDocuments, id: doc.id, expectedRevision: doc.revision }], 'Documento enviado a la papelera.')) { guard.dirtyEditor = false; await sheet?.close(true); }
   } }, icon('trash', 18), 'Enviar a papelera')) : null) as HTMLFormElement;
   if (!canEdit) for (const f of form.querySelectorAll('input,select,textarea')) (f as HTMLInputElement).disabled = true;
-  sheetEditor({ title: doc ? doc.name : 'Nuevo documento', meta: doc?.code, existing: doc !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, fb: 'central.cumplimiento.documento', fbLabel: doc ? 'Documento' : 'Nuevo documento' });
+  sheetEditor({ title: doc ? doc.name : 'Nuevo documento', meta: doc?.code, existing: doc !== null, form, save, focus: name, onSheet: (s) => { sheet = s; }, 
+    panel: { 'data-feedback-id': 'central.cumplimiento.documento', 'data-feedback-label': 'Documento' },
+    close: { 'data-feedback-id': 'central.cumplimiento.documento.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+    cancel: { 'data-feedback-id': 'central.cumplimiento.documento.cancelar', 'data-feedback-label': 'Cancelar' } });
 }
 
 // ---------------------------------------------------------------------------
@@ -351,9 +367,8 @@ export function mountRequirement(requirementId: string): ViewMount {
       const links = data.links.filter((l) => l.requirement_id === req.id && !l.deleted_at).sort((a, b) => String(b.due_on ?? '').localeCompare(String(a.due_on ?? '')));
       const person = data.people.find((p) => p.id === req.responsible_person_id);
       /** Clave cerrada de cada bloque de la ficha para su id de «Sugerencias y QA». */
-      const BLOCK_KEYS: Record<string, string> = { blockRequirement: 'ficha', blockTasks: 'tareas', blockDocuments: 'documentos' };
       const block = (title: string, id: string, body: (HTMLElement | null)[], action?: HTMLElement | null) =>
-        el('section', { class: 'card personblock', id, 'data-feedback-id': `central.obligacion.${BLOCK_KEYS[id] ?? 'bloque'}`, 'data-feedback-label': title }, el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
+        el('section', { class: 'card personblock', id }, el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
 
       const taskRow = (l: TaskLink) => {
         const s = statuses.get(l.target_id);
@@ -391,6 +406,9 @@ export function mountRequirement(requirementId: string): ViewMount {
         canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'addDocument', 'data-feedback-id': 'central.obligacion.documentos.anadir', 'data-feedback-label': 'Añadir documento', onclick: () => openDocumentEditor(client, null, data, req.id) }, icon('plus', 16), 'Añadir') : null),
         canEdit ? el('div', { class: 'zone', 'data-feedback-id': 'central.obligacion.papelera', 'data-feedback-label': 'Zona de peligro' }, el('button', { class: 'danger', type: 'button', id: 'deleteRequirement', 'data-feedback-id': 'central.obligacion.papelera.enviar', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deleteRequirement(req, docs.length + links.length) }, icon('trash', 18), 'Enviar a papelera')) : null,
       );
+      fbMark(host.querySelector('#blockRequirement'), 'central.obligacion.ficha', 'Obligación');
+      fbMark(host.querySelector('#blockTasks'), 'central.obligacion.tareas', 'Tareas en Tasks');
+      fbMark(host.querySelector('#blockDocuments'), 'central.obligacion.documentos', 'Documentos');
     }
 
     async function deleteRequirement(req: Requirement, children: number): Promise<void> {
