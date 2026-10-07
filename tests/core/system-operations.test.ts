@@ -29,3 +29,24 @@ test('sistema · el worker escribe en su app como «Booking (sistema)» y llega 
     await app.close();
   }
 });
+
+test('migración · siembra datos sincronizados con un lote propio que llega por changes', async () => {
+  const app = await createTestApp({ app: 'booking', slug: 'booking-api', origin: 'https://booking.ikisai.com', createHandler: (config) =>
+    createApp({ ...config, app: 'booking', slug: 'booking-api', origins: ['https://booking.ikisai.com'] }) });
+  try {
+    const db = app.t.db;
+    await db.exec(`create table booking.test_seed (id uuid primary key, body text, revision bigint not null default 1, created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(), updated_by uuid, deleted_at timestamptz);
+      select core.register_table('booking', 'booking', 'test_seed', array['body']);`);
+    const before = Number((await db.query<{ c: string }>(`select cursor::text c from core.app_state where app = 'booking'`)).rows[0]!.c);
+    const id = crypto.randomUUID();
+    await db.query(`select core.apply_migration_operations('booking', 'migration:test-seed', $1::jsonb)`, [JSON.stringify([{ op: 'insert', table: 'booking.test_seed', id, fields: { body: 'sembrado' } }])]);
+    const change = await db.query<{ cursor: string; actor_id: string | null }>(`select cursor::text, actor_id from core.changes where row_id = $1`, [id]);
+    assert.equal(Number(change.rows[0]!.cursor), before + 1); assert.equal(change.rows[0]!.actor_id, null);
+    const sync = await app.call(`/api/v1/changes?after=${before}`, { token: app.tokens.reader });
+    assert.ok(sync.data.items.some((c: any) => c.id === id), 'llega a los dispositivos');
+    await assert.rejects(db.query(`select core.apply_migration_operations('booking', 'sin-prefijo', '[]'::jsonb)`));
+  } finally {
+    await app.close();
+  }
+});
