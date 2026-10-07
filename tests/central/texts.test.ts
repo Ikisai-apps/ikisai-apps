@@ -172,3 +172,23 @@ test('textos · contacto público sin sesión (C1): solo los textos de contacto,
       where exists (select 1 from pg_roles where rolname = r)`);
   for (const g of grants.rows) assert.equal(g.ok, g.role === 'service_role', g.role);
 });
+
+test('textos · X2: tres textos de Organizers en español e inglés, de tipo mensaje, sin duplicar', async () => {
+  const first = await app.t.db.query<{ n: number }>(`select central.seed_texts_organizers() as n`);
+  assert.equal(first.rows[0]!.n, 6);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_organizers() as n`)).rows[0]!.n, 0);
+  const rows = (await app.t.db.query<{ key: string; lang: string; kind: string; version: string; body: string }>(
+    `select key, lang, kind, version, body from central.texts where key in ('organizers.dates_note', 'organizers.quote_note', 'organizers.proposal_note') order by key, lang desc`)).rows;
+  assert.deepEqual(rows.map((r) => [r.key, r.lang, r.kind, r.version]), [
+    ['organizers.dates_note', 'es', 'mensaje', 'v1'], ['organizers.dates_note', 'en', 'mensaje', 'v1'],
+    ['organizers.proposal_note', 'es', 'mensaje', 'v1'], ['organizers.proposal_note', 'en', 'mensaje', 'v1'],
+    ['organizers.quote_note', 'es', 'mensaje', 'v1'], ['organizers.quote_note', 'en', 'mensaje', 'v1'],
+  ]);
+  assert.match(rows.find((r) => r.key === 'organizers.quote_note' && r.lang === 'es')!.body, /IVA/);
+  // Organizers los lee por la proyección, en su idioma.
+  const organizer = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('organizers', $1, 'reader')`, [organizer]);
+  const out = await app.t.rpc('core_read', { p_app: 'organizers', p_actor: organizer, p_name: TEXTS_PROJECTION, p_args: { where: { key: 'organizers.dates_note', lang: 'en' } } }) as { rows: any[] };
+  assert.equal(out.rows[0].body, 'Ikisai will confirm the final date; the dates you mark are only possibilities.');
+  assert.equal(out.rows[0].fallback, false);
+});
