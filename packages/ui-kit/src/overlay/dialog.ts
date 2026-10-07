@@ -11,6 +11,8 @@ export interface DialogOptions {
   danger?: boolean;
   /** Sin botón de cancelar (aviso con un solo botón). */
   noCancel?: boolean;
+  /** Dónde montarlo; por defecto `document.body`. */
+  container?: HTMLElement;
 }
 
 /** Diálogo de confirmación modal: resuelve `true` al confirmar; Escape, fondo o «Cancelar» resuelven `false`. */
@@ -45,7 +47,7 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
     cancel?.addEventListener('click', () => finish(false));
     back.addEventListener('click', (e) => { if (e.target === back) finish(false); });
     document.addEventListener('keydown', onKey);
-    document.body.appendChild(back);
+    (options.container ?? document.body).appendChild(back);
     focusFirst(panel, options.danger && cancel ? cancel : confirm);
   });
 }

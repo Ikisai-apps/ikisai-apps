@@ -77,6 +77,61 @@ function labelNear(before, after) {
   return /(?:data-feedback-label|feedbackLabel)['"]?\s*[:=]\s*(['"`])([^'"`$]{1,80})\1/.exec(own)?.[2]?.trim() ?? null;
 }
 
+/**
+ * Argumentos de primer nivel de una llamada que empieza en `open` (índice del `(`): respeta paréntesis, corchetes,
+ * llaves, comillas y plantillas. Devuelve `null` si la llamada no se cierra.
+ */
+export function splitArgs(text, open) {
+  const args = [];
+  let depth = 0;
+  let start = open + 1;
+  for (let i = open + 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'" || c === '`') {
+      for (i++; i < text.length && text[i] !== c; i++) if (text[i] === '\\') i++;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      if (depth === 0) { args.push(text.slice(start, i).trim()); return args; }
+      depth--;
+    } else if (c === ',' && depth === 0) { args.push(text.slice(start, i).trim()); start = i + 1; }
+  }
+  return null;
+}
+
+const literal = (arg) => /^(['"])([^'"]*)\1$/.exec(arg ?? '')?.[2] ?? /^`([^`$]*)`$/.exec(arg ?? '')?.[1] ?? null;
+
+/** Tipo a partir del nodo que se marca: `el('button', …)`, `listRow(…)`, `shell.header`… */
+function kindOfNode(arg) {
+  const tag = /^el\(\s*['"]([a-z][a-z0-9-]*)['"]/.exec(arg)?.[1];
+  if (tag) return kindNear(`el('${tag}'`, '');
+  if (/^listRow\(/.test(arg)) return 'item';
+  if (/header|topbar/i.test(arg)) return 'section';
+  return 'element';
+}
+
+/** Expresión desde `at` hasta la primera `,`, `}`, `)` o `]` de primer nivel (respeta anidación y cadenas). */
+function exprAt(text, at) {
+  let depth = 0;
+  for (let i = at; i < Math.min(text.length, at + 600); i++) {
+    const c = text[i];
+    if (c === '"' || c === "'" || c === '`') { for (i++; i < text.length && text[i] !== c; i++) if (text[i] === '\\') i++; continue; }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') { if (depth === 0) return text.slice(at, i).trim(); depth--; }
+    else if (c === ',' && depth === 0) return text.slice(at, i).trim();
+  }
+  return '';
+}
+
+/** Literales de un ternario `c ? 'x' : 'y'` que empieza en `at` (hasta `,` o `}` de primer nivel); si no lo es, `null`. */
+function ternaryLiterals(text, at) {
+  const expr = exprAt(text, at);
+  if (!/\?/.test(expr) || !/:/.test(expr) || expr.includes('${')) return null;
+  const parts = expr.slice(expr.indexOf('?') + 1).split(/\s:\s|\s:(?=\s*['"`])/).map((x) => literal(x.trim()));
+  return parts.length === 2 && parts.every((x) => x && (ID.test(x) || !x.includes('.'))) ? parts : null;
+}
+
 /** Extrae funciones de un texto. Exportada para las pruebas. */
 export function extractFeatures(text, file = '') {
   const features = [];
@@ -87,6 +142,15 @@ export function extractFeatures(text, file = '') {
     const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 3);
     const concatenated = /^\s*\+/.test(tail);
     if (raw === undefined || (m[3] && raw.includes('${')) || concatenated || !ID.test(raw)) {
+      // `cond ? 'a.b' : 'a.c'`: cada rama es una función fija (con su etiqueta si la etiqueta es otro ternario igual).
+      const branches = ternaryLiterals(text, m.index + m[0].length - (m[5]?.length ?? 0));
+      if (branches) {
+        const labelAt = /(?:data-feedback-label|feedbackLabel)['"]?\s*[:=]\s*/.exec(text.slice(m.index, m.index + 600));
+        const labels = labelAt ? ternaryLiterals(text, m.index + labelAt.index + labelAt[0].length) : null;
+        const before = text.slice(0, m.index);
+        branches.forEach((id, k) => features.push({ id, label: labels?.length === branches.length ? labels[k] : null, kind: kindNear(before, ''), file, line: lineOf(text, m.index) }));
+        continue;
+      }
       dynamic.push({ file, line: lineOf(text, m.index), expr: m[0].slice(0, 120) });
       continue;
     }
@@ -102,6 +166,15 @@ export function extractFeatures(text, file = '') {
       continue;
     }
     features.push({ id: raw, label: null, kind: 'operation', file, line: lineOf(text, m.index) });
+  }
+  // Ayudantes de las apps: `fbMark(nodo, 'id', 'etiqueta')` (Booking, Tasks, Finance).
+  const marks = /\bfbMark\s*\(/g;
+  for (const m of text.matchAll(marks)) {
+    if (/function\s+$/.test(text.slice(Math.max(0, m.index - 12), m.index))) continue;
+    const args = splitArgs(text, m.index + m[0].length - 1);
+    const id = literal(args?.[1]);
+    if (!args || !id || !ID.test(id)) { dynamic.push({ file, line: lineOf(text, m.index), expr: text.slice(m.index, m.index + 120).split('\n')[0] }); continue; }
+    features.push({ id, label: literal(args[2]), kind: kindOfNode(args[0] ?? ''), file, line: lineOf(text, m.index) });
   }
   return { features, dynamic };
 }

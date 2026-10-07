@@ -212,7 +212,7 @@ export function createUsageReviewTab(host: ReviewHost): ReviewTab & { goTo(item:
         el('button', { type: 'button', class: 'primary usage-keep', onclick: () => decide('keep', 'Se mantiene.') }, 'Mantener')),
       el('div', { class: 'fb-foot fb-rv-actions' },
         el('button', { type: 'button', class: 'linkbtn usage-new-generation', onclick: async () => {
-          if (await confirmDialog({ title: 'Nueva generación', text: `A partir de ahora, «${c.label}» se mide como una función nueva (generación ${(c.generation ?? 1) + 1}). Lo anterior se conserva aparte.`, confirmLabel: 'Empezar generación nueva' })) void post('settings', { newGeneration: true }, 'Generación nueva.', true);
+          if (await confirmDialog({ title: 'Nueva generación', text: `A partir de ahora, «${c.label}» se mide como una función nueva (generación ${(c.generation ?? 1) + 1}). Lo anterior se conserva aparte.`, confirmLabel: 'Empezar generación nueva', container: host.container() })) void post('settings', { newGeneration: true }, 'Generación nueva.', true);
         } }, 'Nueva generación desde esta versión'),
         el('button', { type: 'button', class: 'ghost usage-review-utility', onclick: () => void reviewUtility() }, 'Revisar utilidad')),
       el('div', { class: 'fb-rv-nav' },
