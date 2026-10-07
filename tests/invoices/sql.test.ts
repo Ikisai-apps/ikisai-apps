@@ -877,3 +877,13 @@ test('directorio de clientes (ronda 46): un NIF por país, NIF normalizado, solo
   await ok([update('invoices.customers', c, row1.revision, { address: { line: 'Calle Nueva 1', postal_code: '48002', city: 'Bilbao' } })], app.tokens.editor);
   assert.equal((await row('invoices.customers', c)).address.line, 'Calle Nueva 1');
 });
+
+test('campos de archivo (§3.9): documentos de facturas legales, extracciones y texto operativos, ZIP temporal; recogida activada', async () => {
+  const q = await app.t.db.query<{ t: string; retention: string }>(`select table_name || '.' || column_name t, retention from core.file_fields where schema_name = 'invoices' order by 1`);
+  assert.deepEqual(q.rows.map((r) => `${r.t}:${r.retention}`), [
+    'document_texts.file_id:operational', 'exports.zip_file_id:temporary', 'extractions.file_id:operational',
+    'invoice_files.file_id:legal', 'issued_invoice_files.file_id:legal',
+  ]);
+  const gc = await app.t.db.query(`select 1 from core.file_gc_apps where app = 'invoices'`);
+  assert.equal(gc.rows.length, 1);
+});

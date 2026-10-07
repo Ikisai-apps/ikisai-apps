@@ -638,6 +638,8 @@ Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `
 
 ## 8. Archivos
 
+**Campos de archivo y recogida de huérfanos (contrato §3.9, migración 0217):** cada columna con `file_id` está declarada con su retención. Los documentos de facturas recibidas y emitidas son `legal` y nunca se borran solos. Las extracciones y el texto leído son `operational`, porque apuntan al mismo documento, que ya es `legal`. El ZIP de la gestoría es `temporary`, porque se regenera. La recogida está activada para Invoices: un huérfano espera 30 días.
+
 **Almacenamiento por proveedor (contrato §3.9, migración 0215):** la Edge nunca llama a `/storage/v1/object…`. El ZIP de la gestoría descarga cada documento con `createStorage` del kit, usando el `storage_provider` de `core.files` que ahora devuelve `invoices.export_bundle`. El logotipo de Central se firma igual (`readUrl`, 10 minutos); su proveedor viene en `logo_provider` de la proyección de Central (#232).
 
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.
