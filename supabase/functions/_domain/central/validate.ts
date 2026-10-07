@@ -5,7 +5,7 @@
  */
 import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
-  recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, type RecordKind,
+  recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
 } from './people.ts';
 import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
@@ -168,6 +168,19 @@ const SPECS: Record<string, TableSpec> = {
     },
     required: ['decided_on', 'name', 'summary'],
   },
+  [TABLES.teams]: {
+    fields: {
+      name: { kind: 'text', min: 1, max: 60 },
+      color: { kind: 'text', max: 7, nullable: true, pattern: /^#[0-9a-fA-F]{6}$/, patternText: 'color #rrggbb' },
+      position: { kind: 'number' },
+    },
+    required: ['name'],
+  },
+  [TABLES.personTeams]: {
+    fields: { person_id: { kind: 'uuid' }, team_id: { kind: 'uuid' } },
+    required: ['person_id', 'team_id'],
+    immutable: ['person_id', 'team_id'],
+  },
   [KPI_TARGETS_TABLE]: {
     fields: {
       kpi: { kind: 'text', min: 3, max: 80, pattern: /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/, patternText: 'clave «app.nombre»' },
@@ -251,6 +264,9 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     if (!spec) continue; // tabla desconocida: la rechaza el núcleo
     if (RESERVED_TABLES.includes(table) && !canSeeReserved(actor)) {
       return { code: 'FORBIDDEN', message: 'No tienes acceso a los datos reservados de personas.', details: { index, table } };
+    }
+    if (TEAM_TABLES.includes(table) && !canSeeReserved(actor)) {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra o gestiona personas puede cambiar los equipos.', details: { index, table } };
     }
     if (op.op !== 'insert' && op.op !== 'update' && op.op !== 'restore') continue;
     const fields = op.fields ?? {};

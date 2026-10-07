@@ -256,6 +256,18 @@ Invariantes (`central.check_decisions`): una decisión viva no puede estar susti
 
 **Pantalla Decisiones** (se abre desde Inicio): lista de nombres, más recientes primero, con código, fecha, estado y apps; cada decisión es un bloque plegable con su descripción, el enlace «Sustituida por», la explicación técnica plegada, el responsable y el enlace. Búsqueda por texto sin acentos (código, nombre, descripción y explicación) y filtros por app y estado (`filterDecisions` en `_domain/central/decisions.ts`). Funciona sin red como el resto de tablas. Las decisiones ya tomadas en V1 y V2 las carga Core desde la app, no por Git.
 
+### 2.11 Equipos (`central.teams`, `central.person_teams`; aprobado por el usuario el 7-10-2026)
+
+Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/USO.md` §2.3). Migración `0540_central_teams`.
+
+- **`central.teams`**: `name` (1–60, único entre los vivos sin distinguir mayúsculas), `color` (`#rrggbb`, opcional), `position` (orden manual). Papelera.
+- **`central.person_teams`**: `person_id → central.people`, `team_id → central.teams`, únicos entre los vivos; ambos inmutables. Una persona puede estar en varios equipos. Quitar a alguien de un equipo es borrar la fila.
+- **Permisos**: todos los miembros de Central leen; escriben el owner y el editor con ámbito `people`. Lo comprueban la Edge (`beforeCommit`) y la base (`central.check_teams`, con el actor del lote).
+- **Invariantes**: ninguna pertenencia viva con la persona o el equipo en la papelera (`ORPHAN_CHILD`). La interfaz borra y restaura la persona o el equipo junto con sus pertenencias en el mismo lote.
+- **Semilla**: sin datos en Git. Si no hay equipos, la pantalla propone crear los habituales (Cocina, Mantenimiento, Limpieza, Dirección, Administración, Recepción) en un solo lote.
+- **Proyección `central.common_team_projection`** (`team_id, name, user_id`): solo personas **activas con cuenta enlazada** en equipos vivos. Registrada con `core.allow_read('central', …, 'view')` y con `select` para `service_role`, para que la Edge del núcleo la lea con la clave de servicio (matriz de uso por equipo). Sin más datos personales que el id de la cuenta.
+- **Interfaz**: en Personas, filtro por equipo, chips de equipo en cada fila y el enlace «Equipos» a su pantalla (orden manual, alta con color, renombrar, papelera). En la ficha, el bloque «Equipos» con chips y «Cambiar».
+
 ---
 
 ## 3. Procedimientos y lecturas

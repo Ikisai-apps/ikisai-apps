@@ -108,3 +108,9 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .technical > p{margin:6px 0 0;font-size:var(--text-sm,.875rem)}
 .scopes{display:flex;flex-wrap:wrap;gap:6px 14px;border:0;padding:0;margin:0}
 .scopes legend{width:100%;margin-bottom:4px}
+
+/* Equipos */
+.teamchip{border-color:var(--team,var(--line));color:var(--ink)}
+.teamchip::before{content:'';display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:var(--team,var(--muted))}
+.teamrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.teamrow input[type=color]{width:36px;height:28px;padding:0;border:0;background:none}
