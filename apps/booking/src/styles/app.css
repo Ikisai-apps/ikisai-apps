@@ -194,3 +194,10 @@ fieldset.multi .check { display: flex; align-items: center; gap: 10px; padding: 
 .pdoc-logo { max-height: 56px; max-width: 160px; object-fit: contain; }
 .pdoc-entity-text { display: grid; gap: 2px; font-size: 13px; color: var(--muted); }
 .pdoc-entity-text strong { color: inherit; font-size: 15px; }
+
+/* Registro de viajeros (SES): interruptores de la ficha, hoja del motivo y ajuste global. */
+.sesblock .check, .sesreasons .check, .sessettings .check { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.sesreasons { display: grid; gap: 2px; margin: 0; padding: 0; border: 0; }
+.sesreasons legend { padding: 0; margin-bottom: 6px; font-weight: 600; }
+.sesreasons .other { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; padding: 6px 0; }
+.sesreasons .other input[type="text"] { min-width: 0; }

@@ -12,6 +12,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.reservations': {
     event_type: 'retiro', status: 'en_estudio', priority: 'media', minors_count: 0, uses_accommodation: true, requires_meals: false,
     uses_interpretation_center: false, uses_outdoors: false, uses_pool: false, special_setup: false, technical_support: false, briefing_received: false,
+    ses_enabled: true, collect_guest_data: true,
   },
   'booking.events': {
     reinforced_cleaning: false, extra_support: false, preparation_status: 'pendiente', accommodation_status: 'pendiente', kitchen_status: 'pendiente',
@@ -26,6 +27,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.staff_assignments': { status: 'prevista', position: 0 },
   'booking.staff_needs': { persons: 1, priority: 'media', status: 'detectado' },
   'booking.rates': { active: true, position: 0 },
+  'booking.ses_settings': { environment: 'pre', paused: false },
   'booking.conditions': { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, prices_include_vat: true, vat_rate: 10, is_default: false, active: true },
   'booking.cancellation_tiers': { extra_costs: false, position: 0 },
   'booking.proposals': { status: 'borrador', nature: 'orientativa' },
@@ -164,6 +166,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const tables = options.tables ?? DEFAULT_TABLES;
   const data = new Map<string, Map<string, FakeRow>>(Object.keys(tables).map((t) => [t, new Map()]));
   const changes: FakeChange[] = [];
+  // Ajuste global de SES: la migración deja una fila en `pre` y sin pausa.
+  if (data.has('booking.ses_settings')) {
+    const stamp = new Date().toISOString();
+    data.get('booking.ses_settings')!.set(randomUUID(), { id: '', revision: 1, created_at: stamp, updated_at: stamp, updated_by: null, deleted_at: null, ...COLUMN_DEFAULTS['booking.ses_settings'] });
+    for (const [key, row] of data.get('booking.ses_settings')!) row.id = key;
+  }
   const receipts = new Map<string, { digest: string; result: unknown }>();
   const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string }>();
   const requests: Array<{ method: string; path: string }> = [];

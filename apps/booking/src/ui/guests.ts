@@ -1,7 +1,7 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
 import { compressImage, compressedFilename, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
-import { READS, TABLES, canSeeGuests, dayNumber, missingForSes, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
+import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, guestModeOf, missingForSes, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
@@ -35,6 +35,9 @@ const GUEST_SPECS: FieldSpec[] = [
   { key: 'data_status', label: 'Estado de los datos', type: 'select', options: OPTIONS.dataStatus, section: 'Estado' },
   { key: 'notes', label: 'Notas', type: 'textarea' },
 ];
+
+/** Sin SES solo se piden nombre, primer apellido, teléfono y correo (minimización: nada de documento, dirección, nacimiento ni firma). */
+const OPERATIVE_SPECS: FieldSpec[] = GUEST_SPECS.filter((spec) => (OPERATIVE_GUEST_FIELDS as readonly string[]).includes(spec.key)).map((spec) => { const { section: _omit, ...rest } = spec; return spec.key === 'first_name' ? { ...rest, section: 'Contacto' } : rest; });
 
 const SENT_SPECS: FieldSpec[] = [
   { key: 'ses_sent_by', label: 'Quién lo envió', type: 'text', max: 200 },
@@ -177,11 +180,13 @@ export function mountGuests(initialEventId: string | null): ViewMount {
 
     function openGuest(guest: Row | null, context: { reservation: ReservationRow; event: Row; restrictions: Row[] }): void {
       const onDate = context.reservation.start_date ?? today();
+      const operative = guestModeOf(context.reservation) === 'operativo';
       sheet = openRowSheet({
-        client, title: guest ? fullName(guest) || 'Huésped' : 'Nuevo huésped', table: GUESTS, row: guest, specs: GUEST_SPECS,
-        defaults: { data_status: 'pendiente_datos', residence_country: 'ESP', nationality: 'ESP' }, insertFields: { event_id: context.event.id },
-        check: (merged) => (merged.data_status === 'datos_revisados' && missingForSes(merged).length ? `Para dar los datos por revisados falta: ${missingText(merged)}.` : null),
+        client, title: guest ? fullName(guest) || 'Huésped' : 'Nuevo huésped', table: GUESTS, row: guest, specs: operative ? OPERATIVE_SPECS : GUEST_SPECS,
+        defaults: operative ? {} : { data_status: 'pendiente_datos', residence_country: 'ESP', nationality: 'ESP' }, insertFields: { event_id: context.event.id },
+        check: (merged) => operative ? null : (merged.data_status === 'datos_revisados' && missingForSes(merged).length ? `Para dar los datos por revisados falta: ${missingText(merged)}.` : null),
         extra: (merged) => {
+          if (operative) return (guest ? restrictionsBlock(guest, context) : el('p', { class: 'hint' }, 'Guarda al huésped para añadirle restricciones alimentarias.')) as Child;
           const missing = missingText(merged);
           return [
             el('p', { class: missing ? 'banner warn' : 'banner ok', id: 'sesMissing' }, missing ? `Falta para SES: ${missing}.` : 'Datos completos para SES.Hospedajes.'),
@@ -306,6 +311,14 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         return;
       }
 
+      const mode = guestModeOf(current.reservation);
+      if (mode === 'ninguno') {
+        replace(body, el('div', { class: 'empty', id: 'guestsNone' }, el('strong', null, 'Esta reserva no pide datos de huéspedes'),
+          'No hay lista de huéspedes ni enlaces de huésped. Se cambia en el bloque «Registro de viajeros» de la ficha.',
+          el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'goSesBlock', onclick: () => navigate(`#/reservas/${current.reservation.id}`) }, 'Ir al registro de viajeros de la ficha'))));
+        return;
+      }
+      const sesMode = mode === 'ses';
       const guests = ((await client.list(GUESTS)) as Row[]).filter((g) => g.event_id === eventId).sort((a, b) => fullName(a).localeCompare(fullName(b), 'es'));
       const restrictions = ((await client.list(RESTRICTIONS)) as Row[]).filter((r) => r.event_id === eventId);
       const context = { reservation: current.reservation, event: current.event, restrictions };
@@ -317,8 +330,8 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         el('div', { class: 'card', id: 'guestSummary' }, el('h3', null, plural(guests.length, 'huésped', 'huéspedes')), el('dl', { class: 'kv' },
           el('dt', null, 'Mujeres'), el('dd', null, count((g) => g.sex === 'M')), el('dt', null, 'Hombres'), el('dd', null, count((g) => g.sex === 'H')),
           el('dt', null, 'Otro o sin indicar'), el('dd', null, count((g) => g.sex !== 'M' && g.sex !== 'H')), el('dt', null, 'Menores'), el('dd', null, count((g) => g.is_minor === true)),
-          el('dt', null, 'Firmados'), el('dd', null, count((g) => !!g.signed_at)), el('dt', null, 'Enviados a SES'), el('dd', null, count((g) => g.ses_status === 'enviado_SES')))),
-        queue.length + reviewed.length === 0 ? null : [
+          ...(sesMode ? [el('dt', null, 'Firmados'), el('dd', null, count((g) => !!g.signed_at)), el('dt', null, 'Enviados a SES'), el('dd', null, count((g) => g.ses_status === 'enviado_SES'))] : []))),
+        !sesMode || queue.length + reviewed.length === 0 ? null : [
           el('div', { class: 'sectionlabel' }, 'Envío a SES.Hospedajes', el('span', { class: 'count' }, String(queue.length))),
           el('p', { class: 'hint' }, 'El plazo es de 24 horas desde la entrada. El envío se hace en la web de SES; aquí se anota.'),
           el('ul', { class: 'list', id: 'sesQueue' }, [...queue, ...reviewed].map((g) => listRow({
@@ -330,12 +343,12 @@ export function mountGuests(initialEventId: string | null): ViewMount {
           })))],
         el('div', { class: 'sectionlabel' }, 'Registro', el('span', { class: 'count', id: 'guestCount' }, String(guests.length))),
         guests.length === 0
-          ? el('div', { class: 'empty' }, el('strong', null, 'Nadie registrado todavía'), 'Añade a cada persona alojada con los datos de su documento. No se guardan copias ni fotos.')
+          ? el('div', { class: 'empty' }, el('strong', null, 'Nadie registrado todavía'), sesMode ? 'Añade a cada persona alojada con los datos de su documento. No se guardan copias ni fotos.' : 'Añade a cada persona con su nombre y contacto. Esta reserva no se comunica a SES.')
           : el('ul', { class: 'list', id: 'guestList', 'aria-label': 'Huéspedes' }, guests.map((g) => listRow({
               id: g.id, title: fullName(g) || 'Sin nombre',
-              meta: [g.code ?? 'código pendiente', g.is_minor ? 'menor' : null, missingForSes(g as GuestLike).length ? 'faltan datos para SES' : null],
-              chips: [el('span', { class: 'chip' }, label(g.data_status)), g.signed_at ? el('span', { class: 'chip ok' }, 'Firmado') : null,
-                g.ses_status === 'enviado_SES' ? el('span', { class: 'chip ok' }, 'Enviado a SES') : null],
+              meta: [g.code ?? 'código pendiente', g.is_minor && sesMode ? 'menor' : null, sesMode && missingForSes(g as GuestLike).length ? 'faltan datos para SES' : null, !sesMode ? [g.phone, g.email].filter(Boolean).join(' · ') || null : null],
+              chips: sesMode ? [el('span', { class: 'chip' }, label(g.data_status)), g.signed_at ? el('span', { class: 'chip ok' }, 'Firmado') : null,
+                g.ses_status === 'enviado_SES' ? el('span', { class: 'chip ok' }, 'Enviado a SES') : null] : [],
               pending: g._pending === true,
               ...(writable ? { onClick: () => openGuest(g, context), label: `Editar ${fullName(g)}` } : {}),
             }))),

@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
-import { canSeeGuests, dayNumber, depositStatus, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
+import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -72,7 +72,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     // Huéspedes sin comunicar a SES (plazo de 24 h desde la entrada): reservas que empiezan mañana como mucho o ya en curso.
     const boot = client.bootstrap();
     if (boot && canSeeGuests(boot.membership)) {
-      const urgent = new Set(reservations.filter((r) => ['confirmada', 'en_ejecucion'].includes(r.status)
+      // Solo cuentan las reservas que se comunican a SES: sin SES no hay nada que comunicar.
+      const urgent = new Set(reservations.filter((r) => guestModeOf(r) === 'ses' && ['confirmada', 'en_ejecucion'].includes(r.status)
         && (dayNumber(r.start_date) ?? Infinity) <= now + 1 && (dayNumber(r.end_date) ?? -Infinity) >= now).map((r) => r.id));
       const urgentEvents = new Set(events.filter((e) => urgent.has(e.reservation_id)).map((e) => e.id));
       const unsent = ((await client.list(GUESTS)) as unknown as Array<{ event_id: string; ses_status: string }>)
@@ -119,6 +120,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('h3', null, 'Tarifas y condiciones'),
         el('p', null, 'Tarifario, condiciones comerciales y tramos de cancelación para preparar las propuestas.'),
         el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openRatesHome', onclick: () => navigate('#/tarifas') }, 'Tarifas y condiciones')),
+      ) : null,
+      canRead(client, SES_SETTINGS) ? el('article', { class: 'card' },
+        el('h3', null, 'SES.HOSPEDAJES'),
+        el('p', null, 'Entorno de las comunicaciones (pruebas o real) y pausa de envíos.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSesHome', onclick: () => navigate('#/ses') }, 'SES.HOSPEDAJES')),
       ) : null,
       el('article', { class: 'card' },
         el('h3', null, 'Instalar en este dispositivo'),
