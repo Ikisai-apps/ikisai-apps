@@ -11,7 +11,7 @@ import sys
 
 ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
-# Esquemas propios de cada app (y reservados para los portales que vendrán: guests, organizers).
+# Esquemas propios de cada app (los portales guests y organizers incluidos).
 ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers')
 
 # Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Los alias que solo
@@ -21,7 +21,9 @@ EXTRA_DOMAINS = {}
 # invoices.ikisai.com y tramita.ikisai.com redirigen (reglas de Cloudflare).
 PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 
-_BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents'}
+# Organizers aún no sube archivos propios (sus materiales llegan en la fase 4); Guests usa el compartido de firmas.
+_BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents',
+  'guests': 'guests-documents', 'organizers': None}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
 BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152}
@@ -57,10 +59,11 @@ def _entry(name):
   }
 
 
-APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central')}
+# Se publica solo la app «publicable» (con su Edge y su PWA, ver release_matrix): registrar un portal antes es inocuo.
+APPS = {name: _entry(name) for name in ('tasks', 'invoices', 'booking', 'food', 'central', 'organizers', 'guests')}
 APP_NAMES = tuple(APPS)
 SHARED_BUCKETS = ('feedback-media', 'guests-documents')
-BUCKETS = tuple(dict.fromkeys([app['bucket'] for app in APPS.values()] + list(SHARED_BUCKETS)))
+BUCKETS = tuple(dict.fromkeys([app['bucket'] for app in APPS.values() if app['bucket']] + list(SHARED_BUCKETS)))
 
 
 def get_app(name):
