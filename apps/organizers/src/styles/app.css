@@ -10,9 +10,6 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
 .backlink:hover{color:var(--ink)}
 
-/* Sin navegación (dos niveles): el kit pinta la barra vacía y taparía los botones del pie. */
-.nonav>.nav{display:none}
-
 /* Sitio para el botón «Guarda tu acceso» al final de la página. */
 .nonav .main{padding-bottom:104px}
 
@@ -53,7 +50,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgdeclaration.attention{border-color:var(--warn,var(--accent));box-shadow:0 0 0 3px var(--accent-soft)}
 .orgsave{position:sticky;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2;display:flex;justify-content:center}
 .orgsavestate{margin:0;padding:6px 14px;border-radius:999px;background:var(--paper);box-shadow:var(--shadow-1);font-size:var(--text-sm,.875rem);display:inline-flex;align-items:center;gap:6px}
-.orgsavestate:empty{display:none}
+.orgsavestate:has(.save-state[data-status="idle"]){display:none}
 .orgsavestate[data-state="saved"]{color:var(--ok,var(--ink))}
 .orgsavestate[data-state="error"],.orgsavestate[data-state="declaration"]{color:var(--alert,var(--ink))}
 .orgdanger{margin:24px 0 96px;text-align:center}

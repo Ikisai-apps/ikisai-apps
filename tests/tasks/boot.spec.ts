@@ -15,7 +15,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.close(); });
 
-test('arranque: un fallo recuperable muestra el motivo y «Reintentar» arranca la app', async ({ browser }) => {
+test('arranque: un fallo recuperable muestra el motivo y «Reintentar» arranca la app @smoke', async ({ browser }) => {
   const context = await browser.newContext({ serviceWorkers: 'block' });
   const page = await context.newPage();
   // La primera apertura de la base local falla como cuando la PWA vuelve de estar congelada.

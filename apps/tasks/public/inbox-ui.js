@@ -10,6 +10,14 @@ const inboxRows=table=>(Sync.core?.data?.[table]||[]).filter(r=>!r.deleted_at);
 function canTriage(){const a=Sync.actor;return !!a&&!Sync.secondary&&a.kind!=='agent'&&['editor','owner'].includes(a.role)&&(a.scopes==='*'||a.scopes==null)}
 function canManageRoutes(){return canTriage()&&Sync.actor.role==='owner'}
 function pendingCount(){return Sync.core&&canTriage()?R().pendingRequests(Sync.core.data).length:0}
+/* Tipos que pueden llegar desde los workers de otras apps (§22.2): «Gestionar entradas» los enseña aunque aún no haya
+   llegado ninguno, para que la regla se pueda preparar antes. Los de los portales de organizadores van al área comercial. */
+const KNOWN_KINDS=[
+  {kind:'booking.ses_deadline',label:'SES · Plazo legal'},
+  {kind:'booking.organizer_dates',label:'Organizador · Fechas posibles',commercial:true},
+  {kind:'booking.organizer_confirm',label:'Organizador · Quiere confirmar',commercial:true},
+  {kind:'booking.proposal_comment',label:'Organizador · Comentario a la propuesta',commercial:true},
+];
 function kindName(kind,label){return label||kind.slice(kind.indexOf('.')+1).replace(/[_.-]+/g,' ')}
 function originChip(source){return `<span class="pstate">${esc(appName(source))}</span>`}
 
@@ -55,7 +63,7 @@ function moveRequestSheet(id,current={}){const r=inboxRows('tasks.requests').fin
     if(purchaseRun(data=>R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id}),'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
 
 function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,routes=inboxRows('tasks.request_routes');
-  const kinds=new Map();for(const r of inboxRows('tasks.requests'))kinds.set(r.kind,{kind:r.kind,source:r.source,label:r.kind_label||kinds.get(r.kind)?.label||null});
+  const kinds=new Map(KNOWN_KINDS.map(k=>[k.kind,{kind:k.kind,source:k.kind.slice(0,k.kind.indexOf('.')),label:k.label}]));for(const r of inboxRows('tasks.requests'))kinds.set(r.kind,{kind:r.kind,source:r.source,label:r.kind_label||kinds.get(r.kind)?.label||null});
   for(const r of routes)kinds.set(r.kind,{kind:r.kind,source:r.kind.slice(0,r.kind.indexOf('.')),label:r.kind_label||kinds.get(r.kind)?.label||null});
   const where=route=>{if(!route)return '<span class="pstate pending">Por clasificar</span>';const project=R().routeTarget(data,route);if(!project)return '<span class="pstate alert">El destino ya no existe</span>';
     const tabName=inboxRows('tasks.tabs').find(t=>t.id===route.tab_id)?.name||'',p=inboxRows('tasks.projects').find(x=>x.id===project);return esc(tabName+' › '+(p?.system==='inbox'?'Entrada':p?.title||''))};
@@ -67,8 +75,10 @@ function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,ro
   document.getElementById('routeNew').onclick=()=>routeSheet('')}
 
 function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;const existing=kind?R().routeFor(Sync.core.data,kind):null;
-  const label=current?.kind_label??existing?.kind_label??inboxRows('tasks.requests').find(r=>r.kind===kind&&r.kind_label)?.kind_label??'';
-  const dest=current||existing||{};
+  const label=current?.kind_label??existing?.kind_label??inboxRows('tasks.requests').find(r=>r.kind===kind&&r.kind_label)?.kind_label??KNOWN_KINDS.find(k=>k.kind===kind)?.label??'';
+  // Regla nueva de un tipo de los portales: se propone el área comercial (la que lleve «comercial» en el nombre), sin ids fijos.
+  const commercial=KNOWN_KINDS.find(k=>k.kind===kind)?.commercial?inboxRows('tasks.tabs').find(t=>/comercial/i.test(t.name)):null;
+  const dest=current||existing||(commercial?{tab_id:commercial.id}:{});
   openSheet(`<h2 class="sheettitle">${existing?'Regla de entrada':'Regla nueva'}</h2>
     <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'} data-feedback-id="tasks.regla_entrada.tipo" data-feedback-label="Tipo de petición"></div>
     <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos" data-feedback-id="tasks.regla_entrada.nombre" data-feedback-label="Nombre del tipo"></div>

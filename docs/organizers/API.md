@@ -275,6 +275,8 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 ### 13.1 Ajustes de V2 que entran en la fase 1
 
+**Estado (8-10-2026):** hechos el guardado automático, los coorganizadores, los idiomas y la instalación; la cuenta permanente sigue esperando a Workspace.
+
 - **Guardado automático, sin botón «Guardar».**
   - Cada campo de la ficha del asistente se guarda solo al dejar de escribir (800 ms) o al salir del campo, con `portal_update_guest` y la `revision` vigente.
   - La ficha muestra el estado: «Guardando…», «Guardado» o «No se ha guardado · Reintentar».
@@ -284,10 +286,10 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - Sin red, lo tecleado queda en el borrador local y se envía al volver la conexión, con el aviso «Se guardará al recuperar la conexión». La app no finge haber guardado.
 - **Coorganizadores.** Booking emite un enlace por persona y cada una tiene su cuenta. Todas ven lo mismo, y la declaración es por persona (`booking.portal_declarations` ya va por `reservation_id` y `user_id`). La ficha mostrará «Organizáis: Marta y Pablo» cuando Booking lo publique (B11).
 - **Idiomas: español e inglés.**
-  - Los textos de la interfaz van por clave en `apps/organizers/src/app/i18n.ts`, para pasarlos a la capa de traducción del kit cuando UI la publique.
+  - Los textos de la interfaz usan `createI18n` del kit (0.19) con la convención del kit: la clave es el propio texto en español (`t('Mis retiros')`) y `apps/organizers/src/app/i18n-en.ts` lo traduce. Una prueba comprueba que no falta ninguno y que se conservan las `{variables}`.
   - Los textos de Central se leen en el idioma del dispositivo, con el español como reserva.
-  - El idioma se elige en el lanzador o en el menú.
-- **Instalación.** La primera vez aparece la hoja «Instala Organizers»: `beforeinstallprompt` en Android y escritorio, e instrucciones de «Añadir a pantalla de inicio» en iOS. Se puede cerrar y vuelve una sola vez, a los 7 días.
+  - El idioma se elige con el selector ES | EN de la cabecera (y de la pantalla de entrada) y se recuerda en el dispositivo; por defecto, el del navegador.
+- **Instalación.** Con `createInstallPrompt` del kit (0.20): la hoja «Instala la app» al entrar por enlace (`beforeinstallprompt` en Android y escritorio, instrucciones en iOS) y una tarjeta en Mis retiros. «Ahora no» se recuerda 7 días.
 - **Cuenta permanente.** Sigue el hueco de §9.8 hasta que Core la active con Workspace.
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)

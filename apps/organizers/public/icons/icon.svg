@@ -1,19 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3d4f6e"/>
-      <stop offset="1" stop-color="#232e42"/>
+      <stop offset="0" stop-color="#5d4664"/>
+      <stop offset="1" stop-color="#33263a"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <!-- Centro del ecosistema: un nodo con cuatro apps alrededor, en papel crema y acento dorado -->
-  <g stroke="#e2dbcd" stroke-width="18" stroke-linecap="round">
-    <path d="M256 256L256 140M256 256L372 256M256 256L256 372M256 256L140 256"/>
+  <!-- Organizers: calendario del retiro en papel crema con una estrella terracota (el icono `organizer` del kit).
+       Reducido al 90 % para caber en la zona segura de los iconos maskable. -->
+  <g transform="translate(25.6 25.6) scale(.9)">
+    <rect x="116" y="124" width="280" height="272" rx="32" fill="#fffdf8"/>
+    <path d="M116 156a32 32 0 0 1 32-32h216a32 32 0 0 1 32 32v42H116z" fill="#c4712f"/>
+    <rect x="172" y="96" width="24" height="64" rx="12" fill="#e2dbcd"/>
+    <rect x="316" y="96" width="24" height="64" rx="12" fill="#e2dbcd"/>
+    <path d="M256 228l22 44 48 7-35 34 8 48-43-23-43 23 8-48-35-34 48-7z" fill="#5d4664" stroke="#5d4664" stroke-width="10" stroke-linejoin="round"/>
   </g>
-  <circle cx="256" cy="140" r="40" fill="#fffdf8"/>
-  <circle cx="372" cy="256" r="40" fill="#fffdf8"/>
-  <circle cx="256" cy="372" r="40" fill="#fffdf8"/>
-  <circle cx="140" cy="256" r="40" fill="#fffdf8"/>
-  <circle cx="256" cy="256" r="58" fill="#c9a24a"/>
-  <circle cx="256" cy="256" r="26" fill="#fffdf8"/>
 </svg>

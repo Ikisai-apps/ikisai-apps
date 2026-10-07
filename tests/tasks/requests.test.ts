@@ -281,6 +281,13 @@ test('puente con Feedback (§22.2): worker/requests/task escribe como la identid
   for (const bad of [{ ...ses, priority: 'urgente' }, { ...ses, due: '2026-10-13T10:00:00Z' }]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
   for (const bad of [{ ...ses, kind: 'booking.otra' }, { ...ses, external_url: 'https://tasks.ikisai.com/#/x' }, { ...ses, source: 'central' }]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
   assert.equal((await status({ externalRefs: ['booking:SES-2026-10-12-RES42'] })).status, 200);
+  // Portales de organizadores (T3): fechas posibles, «quiere confirmar» y comentarios a la propuesta, en nombre del organizador.
+  for (const [kind, ref] of [['booking.organizer_dates', 'RES42-FECHAS-1'], ['booking.organizer_confirm', 'RES42-CONFIRMAR'], ['booking.proposal_comment', 'PROP42-COMENTARIO-3']]) {
+    const res = await post({ source: 'booking', kind, external_ref: ref, title: 'Petición del organizador', external_url: 'https://booking.ikisai.com/#/reservas/42', on_behalf_of: { kind: 'organizer', report_code: 'RES42' } });
+    assert.equal(res.status, 200, kind);
+    assert.equal(((await res.json()) as any).status, 'pending', `${kind}: sin regla, por clasificar`);
+  }
+  assert.equal((await rows('tasks.requests')).find((x) => x.external_ref === 'booking:PROP42-COMENTARIO-3').on_behalf_of.kind, 'organizer');
   assert.equal((await post(report('FB_1'), null)).status, 401);
   assert.equal((await post(report('FB_1'), 'otra')).status, 401);
   // Nadie más fija quién informó: ni por commands en una tarea, ni cambiándolo después.

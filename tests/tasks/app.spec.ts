@@ -91,7 +91,7 @@ const serverTask = async (taskId: string) => (await server.rows('tasks.tasks')).
 
 test.describe.configure({ mode: 'serial' });
 
-test('arranque, edición, sin red, fusión y conflicto', async ({ browser }) => {
+test('arranque, edición, sin red, fusión y conflicto @smoke', async ({ browser }) => {
   test.setTimeout(240_000);
   const contextA = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const a = await open(contextA);
