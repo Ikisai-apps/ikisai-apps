@@ -67,7 +67,9 @@ export function createUsage(supabase: Supabase, app: string) {
         successes: people.reduce((n: number, p: any) => n + Number(p.successes), 0),
       };
     }).filter((t) => t.people > 0 || (detail.audience?.teams ?? []).includes(t.teamId));
-    return { ...detail, byTeam };
+    // Todos los equipos de Central, para elegir la audiencia en la tarjeta.
+    const teamsList = Object.entries(map).map(([teamId, x]) => ({ teamId, name: x.name }));
+    return { ...detail, byTeam, teams: teamsList };
   }
 
   async function decide(ctx: RequestContext, id: string, body: any) {

@@ -18,7 +18,7 @@ test.after(async () => { await app.close(); });
 
 test('uso · totales del día: el reintento no cuenta dos veces; sin aviso aceptado no hay persona', async () => {
   const send = (token: string, items: unknown[]) => app.call('/api/v1/usage/batch', { token, body: { deviceId: DEV, items } });
-  assert.equal((await send(app.tokens.editor, [item('booking.reserva.guardar')])).data.accepted, 1);
+  assert.equal((await send(app.tokens.editor, [item('booking.reserva.guardar', { route: 'reservas/3f2a/ficha?x=1' })])).data.accepted, 1);
   assert.equal((await send(app.tokens.editor, [item('booking.reserva.guardar')])).data.accepted, 1);
   let rows = await app.t.db.query<{ activations: number; user_key: string }>(`select activations, user_key::text from core.usage_daily where feature_id = 'booking.reserva.guardar'`);
   assert.equal(rows.rows.length, 1); assert.equal(rows.rows[0]!.activations, 2, 'máximo, no suma');
@@ -54,6 +54,7 @@ test('uso · catálogo de la publicación, insights y tarjeta solo para el owner
   assert.equal(kept.data.items.find((i: any) => i.featureId === 'booking.reserva.nunca_vista').insight, 'KEPT', 'una decisión evita alertas repetidas');
   const card = await app.call('/api/v1/usage/features/booking.reserva.guardar', { token: app.tokens.owner });
   assert.equal(card.status, 200); assert.equal(card.data.byPerson[0].userId, app.users.editor); assert.equal(card.data.byContext.qa, 40);
+  assert.equal(card.data.routeRaw, 'reservas/3f2a/ficha', 'pista de ruta sin consulta'); assert.ok(Array.isArray(card.data.teams));
   // Retirada: la siguiente versión ya no declara una función.
   await app.t.db.query(`select core.usage_catalog_ingest('booking', 'v2', $1::jsonb)`, [JSON.stringify([{ id: 'booking.reserva.guardar', label: 'Guardar reserva' }, { id: 'booking.ses.anular', label: 'Anular en SES' }])]);
   const removed = await app.t.db.query<{ active: boolean; removed_release: string }>(`select active, removed_release from core.usage_features where feature_id = 'booking.reserva.nunca_vista'`);
