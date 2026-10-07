@@ -8,7 +8,8 @@ import {
   DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, ITEM_TYPES, PAYMENT_METHODS,
   PAYMENT_STATUSES, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
 } from './types.ts';
-import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS } from './issued.ts';
+import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS, ISSUED_STATUSES, RECIPIENT_KINDS, SERIES_MODES } from './issued.ts';
+import { validIssuedNumberFormat } from './verifactu.ts';
 
 /** Error de dominio: se convierte en `Fault(422, code, message, details)` en la Edge y en mensaje en el cliente. */
 export class DomainError extends Error {
@@ -296,13 +297,19 @@ export function validateIssuedSeriesFields(fields: Fields, op: 'insert' | 'updat
   bool(fields, 'yearly');
   bool(fields, 'active');
   text(fields, 'format', { max: 60 });
+  oneOf(fields, 'mode', SERIES_MODES, { nullable: false });
+  if (fields.mode === 'emision' && typeof fields.format === 'string' && typeof fields.code === 'string' && !validIssuedNumberFormat(fields.format, fields.code)) {
+    domainFail('INVALID_FIELDS', 'El formato del número debe llevar {n} o {n:4} y caber en 60 caracteres.', { field: 'format' });
+  }
 }
 
 export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'update'): void {
   onlyWritable(TABLES.issuedInvoices, fields);
-  if (op === 'insert') required(fields, ['series_code', 'number', 'issue_date', 'description']);
+  const draft = fields.status === 'borrador';
+  if (op === 'insert') required(fields, draft ? ['series_code', 'issue_date', 'description'] : ['series_code', 'number', 'issue_date', 'description']);
   text(fields, 'series_code', { required: op === 'insert', max: 20 });
-  text(fields, 'number', { required: op === 'insert', max: 40 });
+  if (draft && has(fields, 'number') && fields.number !== null) domainFail('INVALID_FIELDS', 'Un borrador no lleva número: lo asigna el servidor al emitir.', { field: 'number' });
+  text(fields, 'number', { required: op === 'insert' && !draft, max: 40 });
   date(fields, 'issue_date', { nullable: false });
   date(fields, 'operation_date');
   date(fields, 'paid_at');
@@ -322,12 +329,23 @@ export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'upda
   for (const key of ['base_total', 'quota_total', 'surcharge_total', 'withholding_total', 'total']) money(fields, key, { nullable: false });
   money(fields, 'source_total');
   money(fields, 'totals_delta');
-  oneOf(fields, 'status', ['registrada', 'anulada'], { nullable: false });
+  oneOf(fields, 'status', ISSUED_STATUSES, { nullable: false });
   if (fields.status === 'anulada') domainFail('INVALID_TRANSITION', 'Para anular una emitida usa invoices.annul_issued.', { field: 'status' });
+  if (fields.status === 'emitida' || fields.status === 'rectificada') domainFail('INVALID_TRANSITION', 'Para emitir una factura usa invoices.issue.', { field: 'status' });
+  oneOf(fields, 'recipient_kind', RECIPIENT_KINDS);
+  bool(fields, 'prices_include_vat');
+  if (has(fields, 'recipient_address') && fields.recipient_address !== null) {
+    const addr = fields.recipient_address as Record<string, unknown>;
+    if (typeof addr !== 'object' || Array.isArray(addr) || Object.keys(addr).some((k) => !['line', 'postal_code', 'city', 'province', 'country'].includes(k))
+      || Object.values(addr).some((x) => x !== null && (typeof x !== 'string' || x.length > 200))) {
+      domainFail('INVALID_FIELDS', 'El domicilio del destinatario lleva línea, código postal, ciudad, provincia y país.', { field: 'recipient_address' });
+    }
+  }
   oneOf(fields, 'origin', ['manual', 'importada', 'app'], { nullable: false });
   // El emisor lo pone la Edge al registrar, desde Central; el cliente no lo escribe.
   for (const key of ['issuer_tax_id', 'issuer_name', 'issuer']) if (has(fields, key)) domainFail('INVALID_FIELDS', 'El emisor lo pone el servidor con los datos de la entidad en Central.', { field: key });
-  if (fields.origin === 'app') domainFail('UNSUPPORTED_IN_V1', 'La emisión desde la app (Verifactu) aún no está disponible: registra la factura emitida con otra herramienta.', { field: 'origin' });
+  // origin = 'app' lo pone el servidor en las series de emisión; el cliente no lo marca.
+  if (fields.origin === 'app') domainFail('UNSUPPORTED_IN_V1', 'Las facturas de la app nacen como borrador en una serie de emisión y se emiten con «Emitir».', { field: 'origin' });
   oneOf(fields, 'income_category', INCOME_CATEGORIES);
   oneOf(fields, 'payment_status', ['pendiente', 'cobrada'], { nullable: false });
   for (const key of ['external_tool', 'external_id', 'external_qr_url', 'external_csv', 'review_reason', 'annulled_reason', 'currency']) text(fields, key, { max: 500 });
@@ -433,7 +451,20 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
 /** Mensajes en español por código de error del dominio (cliente y Edge). */
 export const DOMAIN_MESSAGES: Record<string, string> = {
   IMPORT_INVALID: 'El JSON no cumple el formato ikisai.invoice.v1.',
-  ISSUED_NOT_DELETABLE: 'Una factura emitida no se borra: anúlala con un motivo.',
+  ISSUED_NOT_DELETABLE: 'Una factura emitida no se borra: anúlala con un motivo. Solo los borradores se borran.',
+  ISSUED_FROZEN: 'Una factura emitida no se edita: para corregirla, haz una rectificativa.',
+  ISSUED_NOT_DRAFT: 'Esta factura ya está emitida.',
+  ISSUED_IS_DRAFT: 'Un borrador no se anula: bórralo.',
+  ISSUE_MISSING_DATA: 'Faltan datos obligatorios para emitir la factura.',
+  ISSUE_REQUIRES_PROCEDURE: 'En una serie de emisión la factura nace como borrador sin número y se emite con «Emitir».',
+  ISSUE_DATE_ORDER: 'La serie ya tiene una factura con fecha posterior a hoy: la numeración y las fechas deben ir en orden.',
+  SERIES_NOT_ISSUING: 'Esa serie es de registro de otra herramienta: elige una serie de emisión.',
+  SERIES_CLOSED: 'La serie está cerrada: elige otra.',
+  SERIES_IN_USE: 'La serie ya tiene facturas emitidas: no se cambian su código, modo ni formato.',
+  SERIES_KIND_MISMATCH: 'El tipo de factura no corresponde a esa serie (ordinarias, rectificativas o simplificadas).',
+  INVALID_NUMBER_FORMAT: 'El número de la serie no cabe en 60 caracteres o lleva caracteres no admitidos.',
+  VF_SERVER_ONLY: 'El registro VERI*FACTU solo lo escribe el servidor.',
+  VF_IMMUTABLE: 'El registro VERI*FACTU no se modifica ni se borra.',
   TEMPLATE_REQUIRES_CONFIRMATION: 'Las plantillas solo se aprenden al validar una factura de ese proveedor.',
   DOCUMENT_TEXT_EDGE_ONLY: 'El texto de los documentos lo guarda el servidor.',
   ISSUED_ANNULLED: 'Esta factura emitida está anulada.',

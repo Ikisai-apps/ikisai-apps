@@ -883,7 +883,7 @@ Huella y encadenado, firma, registros de alta y de anulación de Verifactu, env�
 3. **Core:** visto bueno a `core.next_number` (§13.3) y a la proyección de ingresos para Booking.
 4. **Core y usuario:** si las emitidas van como pestaña dentro de Facturas (propuesta) o como entrada propia en la navegación.
 
-## 14. Emitir facturas desde Finance (propuesta, ronda 40 · pendiente de revisión de Core)
+## 14. Emitir facturas desde Finance (aprobada por Core en la ronda 41 · PR 1 y PR 2 hechos)
 
 Base: `coordinacion/ampliacion/FACTURACION.md`, aprobado por el usuario el 7-10-2026. Ikisai factura como autónomo, con una serie nueva desde la primera factura de la app. La hoja de Google deja de emitir y su serie se cierra.
 
@@ -911,7 +911,7 @@ Normas: Reglamento de facturación (RD 1619/2012) y Reglamento de sistemas de fa
 `invoices.issued_series` gana `mode` (`registro` · `emision`), `closed_at` y `closed_last_number`. Las series que ya existen pasan a `registro`.
 
 - **Series de emisión propuestas:** `F` para las ordinarias y `R` para las rectificativas, con reinicio anual. Formato `{serie}{año}-{n:4}`, que da `F2026-0001` y `R2026-0001`. Si el usuario quiere tiques, se añade `T` para las simplificadas (§14.9, pregunta 1). El código y el formato los elige el usuario en Ajustes antes de la primera emisión, y después no se cambian.
-- **Contador:** `invoices.series_counters (series_code, year, last_number, last_issue_date)`. Solo lo escribe el procedimiento de emisión, que bloquea la fila con `for update`. Así dos emisiones a la vez nunca reciben el mismo número ni dejan hueco. No hace falta `core.next_number` (§13.3): el contador queda en el schema `invoices`.
+- **Contador** (hecho así en el PR 1): columnas `counter_year`, `counter_last` y `counter_last_date` de la propia serie. Solo las escribe el procedimiento de emisión, que bloquea la fila de la serie con `for update`. Así dos emisiones a la vez nunca reciben el mismo número ni dejan hueco. El contador se sincroniza, así que la app puede mostrar el próximo número. No hace falta `core.next_number` (§13.3).
 - **Orden de fechas:** la fecha de expedición es la de hoy en hora de Madrid, y nunca anterior a la última emitida de la serie. Así número y fecha van siempre en el mismo orden. La fecha de la operación puede ser otra, por ejemplo la salida de una reserva.
 - **Cierre de la serie de la hoja:** `invoices.close_series {code, last_number}` (owner) marca la serie como cerrada en ese número. Desde entonces no admite más emitidas, ni registradas ni importadas.
 - **Formato del número:** solo caracteres ASCII imprimibles y como mucho 60, como piden el XSD y el QR.
@@ -990,9 +990,11 @@ alta      F7B94CFD8924EDFF273501B01EE5153E4CE8F259766F88CF6ACB8935802A2B97
 anulación 177547C0D57AC74748561D054A9CEC14B4C4EA23D1BEFD6F2E69E3A388F90C68
 ```
 
+**Cómo quedó en el PR 1:** las tablas `vf_records`, `vf_events` y `vf_state` están registradas en el núcleo **sin roles de lectura ni escritura**, así que no llegan al dispositivo ni se escriben con operaciones de fila. La Edge rechaza cualquier operación sobre ellas (`VF_SERVER_ONLY`) y un disparador impide cambiarlas fuera de los procedimientos (`VF_IMMUTABLE`). La cabeza de la cadena, el interruptor y la identificación del sistema van juntos en `vf_state`, una sola fila. La app consulta el registro de una emitida con la lectura `invoices.vf_records_of {issued_invoice_id}`, que devuelve `{records: [{seq, record_kind, hash, previous_hash, generated_at_text, send_status, csv}], settings: {sending, locked_until}}`.
+
 **`invoices.vf_events`** es el registro de eventos con su propia cadena (`HuellaEvento`). Guarda el arranque del sistema, el cambio del interruptor, las exportaciones y las incidencias. En la modalidad VERI*FACTU no es obligatorio, pero cuesta poco y deja traza del interruptor.
 
-**`invoices.vf_system`**, con una fila, guarda la identificación del sistema informático (`SistemaInformatico` del XSD):
+La identificación del sistema informático (`SistemaInformatico` del XSD) va en `vf_state`:
 - El productor, que es el propio autónomo (nombre y NIF, tomados de Central).
 - `NombreSistemaInformatico = "Ikisai Finance"` e `IdSistemaInformatico = "IF"`.
 - La versión, que es la de la publicación de la app.
@@ -1005,7 +1007,7 @@ La **declaración responsable** va dentro de la app (Ajustes › Acerca de), red
 
 ### 14.7 Interruptor del owner (Ajustes)
 
-`invoices.vf_settings`, con una fila, guarda:
+`invoices.vf_state` guarda:
 - `sending` (`apagado` · `pruebas` · `produccion`).
 - `enabled_at` y `enabled_by`.
 - `locked_until`, el 31-12 del año en que se encendió producción.
@@ -1045,9 +1047,30 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
 5. **Core y Booking:** la lectura `booking.reservation_invoice_source` (§14.8), con precios con o sin IVA y la categoría de ingreso por línea.
 6. **Core:** el envío real (XML, firma y certificado) queda para cuando se acerque la fecha. ¿De acuerdo?
 
-### 14.10 Plan de PR (tras el visto bueno)
+### 14.10 Errores del PR 1
 
-1. **Modelo y emisión:** migración `0212` (series de emisión, contador, estados y borradores) y `0213` (`vf_records`, `vf_events`, `vf_system`, `vf_settings` y huella en SQL), `invoices.issue`, `invoices.close_series` y pruebas con los ejemplos oficiales.
-2. **App:** borrador, «Emitir», documento imprimible con los datos obligatorios, Ajustes de series y el interruptor.
+| Código | Cuándo |
+|---|---|
+| `ISSUE_REQUIRES_PROCEDURE` | Se crea una factura con número, o como registrada, en una serie de emisión; o se le pone número a un borrador. |
+| `SERIES_NOT_ISSUING` | Se emite, o se crea un borrador, en una serie de registro. |
+| `SERIES_KIND_MISMATCH` | El tipo de factura no corresponde a la serie: ordinarias, rectificativas o simplificadas. |
+| `SERIES_CLOSED` · `SERIES_IN_USE` | La serie está cerrada, o ya ha emitido y se intenta cambiar su código, modo, formato o reinicio. |
+| `ISSUE_MISSING_DATA` | Faltan datos obligatorios. `details.missing` los lista: `lines`, `recipient_name`, `recipient_tax_id`, `recipient_address`, `rectified`, `rectification_kind` o `rectification_reason`. |
+| `ENTITY_MISSING` | Central no tiene los datos del emisor, o le falta el domicilio. |
+| `ISSUED_NOT_DRAFT` · `ISSUED_IS_DRAFT` | Se emite algo que no es borrador, o se anula un borrador, que se borra. |
+| `ISSUED_FROZEN` | Se cambia una emitida o sus líneas o su desglose. Solo cambian el cobro, las notas y la categoría. |
+| `ISSUE_DATE_ORDER` | La serie ya tiene una factura con fecha posterior a hoy. |
+| `VF_SERVER_ONLY` · `VF_IMMUTABLE` | Alguien intenta escribir o cambiar el registro VERI*FACTU. |
+
+### 14.11 Plan de PR
+
+1. **Modelo y emisión (hecho):** migración `0212` (series de emisión con su contador, estados, borradores, congelado, y resúmenes y entregas que cuentan las emitidas y no los borradores) y `0213` (`vf_records`, `vf_events`, `vf_state`, huella y QR en SQL), `invoices.issue`, `invoices.close_series`, la anulación de una emitida con su registro y pruebas con los ejemplos oficiales en SQL y en TypeScript (`_domain/invoices/verifactu.ts`).
+2. **App (hecho, `apps/invoices/src/ui/issuing.ts`):**
+   - «Nueva factura» crea un borrador. Lleva el destinatario con su tipo, el NIF y el domicilio, el concepto, la fecha de la operación, la categoría y líneas con cantidad, precio sin IVA y tipo.
+   - La ficha del borrador permite editar, ver la vista previa marcada «BORRADOR · SIN VALOR», borrar y «Emitir». Antes de emitir avisa de los datos que faltan y dice qué número recibirá.
+   - La emitida se ve congelada. «Factura (PDF)» pinta la factura desde `document`, sin QR ni leyenda, porque el envío está apagado.
+   - «Series» crea las series de emisión `F` y `R` con el formato `{serie}{año}-{n:4}`. El owner puede cerrar las series de registro. También muestra el estado del registro VERI*FACTU.
+   - «Registrar emitida» solo ofrece series de registro abiertas.
+   - **El interruptor no se ha construido.** Encender «producción» obliga a enviar hasta el 31-12, y el envío (XML, firma y certificado) aún no existe. La pantalla muestra el estado, apagado, y se activará junto con el envío.
 3. **Rectificativas y anulación** con su registro.
 4. **Desde Booking,** cuando Booking publique la lectura.

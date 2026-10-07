@@ -197,6 +197,9 @@ fieldset.multi .check { display: flex; align-items: center; gap: 10px; padding: 
 
 /* Registro de viajeros (SES): interruptores de la ficha, hoja del motivo y ajuste global. */
 .sesblock .check, .sesreasons .check, .sessettings .check { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.sesblock .banner { margin-top: 10px; }
+.sesstatus { margin: 10px 0 4px; }
+.sesstatus .hint { margin-top: 6px; }
 .sesreasons { display: grid; gap: 2px; margin: 0; padding: 0; border: 0; }
 .sesreasons legend { padding: 0; margin-bottom: 6px; font-weight: 600; }
 .sesreasons .other { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; padding: 6px 0; }

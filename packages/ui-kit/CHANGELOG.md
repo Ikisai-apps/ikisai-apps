@@ -1,5 +1,19 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.15.0 · 7 de octubre de 2026
+
+- **Feedback y QA transversal, fase 2** (`coordinacion/ampliacion/FEEDBACK.md` §2, §6–§8; rutas de Core #212, contrato §3.7). Todo en `src/feedback/`, sin dominio de ninguna app.
+  - `createFeedback({ app, api, userId, role, syncSummary, fallbackNode, intents, container, fetchImpl, onSent })` → `{ mode, signal, open, openDraft, drafts, pending, flush, refreshVerify, clear, refreshPins, destroy }`.
+  - **Modo «Señalar para comentar»** (`mode.get/set/onChange`), por persona, app y dispositivo, **apagado por defecto**. Apagado: ni gesto ni pines, la app se comporta como siempre. Encendido: pulsación mantenida de 600 ms (tolerancia de 8 px; suprime selección, menú y arrastre nativos desde `pointerdown` y anula el clic de después), Mayúsculas+F10 o la tecla de menú; pines de borrador; `html.fb-mode` pone un punto discreto en la marca de la cabecera. Ignora `[data-feedback-ignore]`, asas de arrastre y campos editables.
+  - `createAppLauncher({ feedback })`: interruptor al pie del lanzador (normalmente `feedback.mode`).
+  - **Composer** en capa propia (popover en escritorio, hoja inferior en móvil que sigue a `visualViewport`): tipo, comentario (4000), hasta 3 imágenes comprimidas, «Me bloquea» (`blocking`), aviso «Ya hay N reportes abiertos aquí» con «También me pasa». Vacío se descarta; con contenido queda borrador en IndexedDB con pin.
+  - **Bandeja sin red** idempotente (mismo `id` y `requestId` en cada intento; subida firmada con `sha256`; reintentos con espera creciente y al volver la red). Un rechazo definitivo vuelve a borrador con el motivo. `clear(userId)` para `onSessionEnd`.
+  - **Contexto con lista blanca** con los nombres de `cleanContext` de la Edge: `release`, `commit`, ruta saneada (sin `#`), dispositivo, viewport, en línea, rol, idioma, `sync` (`pending`, `conflicts`, `lastSyncAt`, `cursor`), `errors`, `http` y los **últimos 10 pasos** (`abrió` ruta / `tocó` nodo, nunca valores). Como mucho 8 KB.
+  - **Pin verde** «Esto ya está corregido. ¿Lo compruebas?» (`GET feedback?status=pending_verify&pin=true`) con «Funciona» (`verify` con la versión de `version.json`) y «Sigue fallando» (`reopen` con nota opcional).
+  - **«Sugerencias y QA»**: `openFeedbackCenter` / `renderFeedbackCenter({ api, app, canEdit, feedback, tab, reportId })` con Mapa (árbol plegado de `GET feedback/tree`, recuentos y búsqueda), Abiertos, Pendientes de verificar y Mis borradores; `feedbackReportCard`; detalle con imágenes, tareas, **«Copiar para Claude»** y **«Descargar .md»** (`agentBlock`), y verificar, reabrir y descartar con motivo.
+  - **Formulario progresivo** para portales: `createFeedbackProgressiveForm({ config: { start, steps }, known, onSubmit, onSignal })`. Pasos `choice` (con ramas por opción), `text` (con imágenes) y `signal`; una pregunta cada vez, cambiar una respuesta borra las de después, `known` no se pregunta y `suggest` ofrece primero lo probable («¿Es sobre Habitación 3?»).
+  - Demo `#feedback` con servidor simulado; pruebas `v18` (composer, borradores, bandeja, contexto) y `v18-qa` (modo, gesto, pin verde, pasos, «Me bloquea», centro, formulario progresivo).
+
 ## 0.14.0 · 7 de octubre de 2026
 
 - **Lanzador de apps** `createAppLauncher({ fetchApps, current, storageKey, appIcon, title })` → `{ open, attach(trigger) }` (contrato §3.3). Hoja con las apps de `GET /api/v1/apps`, en el orden del catálogo: internas arriba y portales debajo con su título. Muestra icono, nombre, descripción y el rol si no es propietaria; la actual va marcada «Aquí» y no es enlace; las demás enlazan a `https://<domain>/` en la misma pestaña. Sin red, enseña la última lista guardada en el dispositivo, con aviso. Iconos del kit por id de app (se ven sin red) o los de la app con `appIcon`.

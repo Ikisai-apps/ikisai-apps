@@ -487,3 +487,33 @@ test('aceptación V1 · etiquetas padre e hija: dos niveles como máximo y en la
   await db.commit([update('tasks.labels', hija, 1, { parent_id: otroPadre })]);
   void ajena;
 });
+
+test('indicadores para Central (§21): agregados de hoy, solo lo vivo, y registrados como lectura de Central', async () => {
+  const kpis = async () => Object.fromEntries((await db.t.db.query<{ kpi: string; value: string }>(`select kpi, value from tasks.central_kpi_projection`)).rows.map((r) => [r.kpi, Number(r.value)]));
+  const before = await kpis();
+  assert.deepEqual(Object.keys(before).sort(), ['tasks.open', 'tasks.overdue', 'tasks.purchase_requests_open', 'tasks.requests_pending', 'tasks.supplies_below_min']);
+  const { tab, inbox } = await db.area('Indicadores');
+  const archivedProject = newId(), parent = newId(), item = newId();
+  await db.commit([
+    insert('tasks.tasks', newId(), { tab_id: tab, project_id: inbox, title: 'Vencida', position: 1, due: '2020-01-01' }),
+    insert('tasks.tasks', newId(), { tab_id: tab, project_id: inbox, title: 'Hecha', position: 2, done: true, due: '2020-01-01' }),
+    insert('tasks.tasks', parent, { tab_id: tab, project_id: inbox, title: 'Padre', position: 3 }),
+    insert('tasks.projects', archivedProject, { tab_id: tab, title: 'Viejo', position: 9 }),
+    insert('tasks.supply_items', item, { tab_id: tab, name: 'Cloro', min_quantity: 5, position: 1 }),
+    insert('tasks.purchase_requests', newId(), { tab_id: tab, title: 'Lejía' }),
+  ]);
+  await db.commit([
+    insert('tasks.tasks', newId(), { tab_id: tab, project_id: inbox, parent_id: parent, title: 'Hija', position: 1 }),
+    insert('tasks.tasks', newId(), { tab_id: tab, project_id: archivedProject, title: 'En archivado', position: 1 }),
+    insert('tasks.supply_movements', newId(), { tab_id: tab, supply_item_id: item, kind: 'in', delta: 2 }),
+  ]);
+  await db.commit([update('tasks.projects', archivedProject, 1, { status: 'archived' })]);
+  const after = await kpis();
+  assert.equal(after['tasks.open']! - before['tasks.open']!, 2, 'la vencida y la hija (el padre se calcula; lo archivado no cuenta)');
+  assert.equal(after['tasks.overdue']! - before['tasks.overdue']!, 1);
+  assert.equal(after['tasks.supplies_below_min']! - before['tasks.supplies_below_min']!, 1);
+  assert.equal(after['tasks.purchase_requests_open']! - before['tasks.purchase_requests_open']!, 1);
+  const row = (await db.t.db.query<Record<string, unknown>>(`select * from tasks.central_kpi_projection where kpi = 'tasks.overdue'`)).rows[0]!;
+  assert.deepEqual([row.unit, row.period, row.direction, row.link], ['count', 'actual', 'down', 'https://tasks.ikisai.com/#/tasks']);
+  assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.allowed_reads where app = 'central' and name = 'tasks.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
+});

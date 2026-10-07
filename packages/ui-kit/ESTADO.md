@@ -1,9 +1,10 @@
 # UI kit · estado
 
-Actualizado: 6 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `packages/ui-kit`.
+Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `packages/ui-kit`.
 
 ## Hecho
 
+- v0.15.0 (tanda 27): feedback y QA transversal, fase 2: modo «Señalar para comentar» con interruptor en el lanzador, gesto y teclado, composer, borradores con pin, bandeja sin red, contexto con pasos, «Me bloquea», pin verde de verificación, centro «Sugerencias y QA» con «Copiar para Claude» y «Descargar .md», y formulario progresivo de portales.
 - v0.14.0 (tanda 25): lanzador de apps (catálogo §3.3), enganchado a la marca de `createAppShell` y `renderWorkspaceBar`.
 - v0.13.0 (tanda 21): campo de color propio con tres degradados (aceptación del usuario).
 - v0.12.0 (tanda 20): `renderProposalReview` y atributos de hoja en `openProposalReview`; `limitWhenEmpty` y `container` en la paleta.
