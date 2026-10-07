@@ -150,3 +150,13 @@ export function refundFor(depositAmount: number, startDate: string, cancelledOn:
   const percent = tier ? num(tier.deposit_refund_pct) : 0;
   return { daysBefore, percent, amount: round2(depositAmount * percent / 100), extraCosts: tier?.extra_costs ?? false };
 }
+
+/**
+ * Mínimo comercial por retiro (`conditions.minimum_total`): si el total de la propuesta o de la calculadora no llega, se
+ * cobra el mínimo. Devuelve el total que se aplica y si se ha aplicado el mínimo (para decirlo en la calculadora).
+ */
+export function applyMinimum(total: number, minimum: number | string | null | undefined): { total: number; minimumApplied: boolean; minimum: number | null } {
+  const min = minimum === null || minimum === undefined || minimum === '' ? null : Number(minimum);
+  if (min === null || !Number.isFinite(min) || total >= min) return { total, minimumApplied: false, minimum: min };
+  return { total: round2(min), minimumApplied: true, minimum: min };
+}

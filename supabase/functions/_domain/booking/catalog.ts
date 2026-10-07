@@ -20,6 +20,8 @@ export const TABLES = {
   sesSettings: 'booking.ses_settings',
   dateOptions: 'booking.reservation_date_options',
   dateBlocks: 'booking.date_blocks',
+  extraRequests: 'booking.reservation_extra_requests',
+  portalRequests: 'booking.portal_requests',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */

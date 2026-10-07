@@ -1351,6 +1351,27 @@ Base: RD 933/2021 art. 5.3 y `coordinacion/ampliacion/SES.md` §3.
 
 **Pruebas:** las dos ventanas (justo antes y justo después), que nunca toca una estancia en curso, que los archivos quedan `temporary` y sin referencia, que el cambio llega por `changes`, y que repetir la tarea no hace nada.
 
+## 21. Fase 2 de los portales · el organizador diseña y propone
+
+Regla del usuario: **Ikisai fija y el organizador propone**. Migraciones `20261008_0452_booking_portal_dates.sql` y `20261008_0453_booking_portal_design.sql`.
+
+**Fechas (B6–B8):**
+- `reservations.dates_definitive` (solo el personal): con ella, `start_date`/`end_date` son la fecha fija.
+- `booking.reservation_date_options`: propuestas de Ikisai (personal) o del organizador (solo desde su portal), con `organizer_ok`. Nunca bloquean.
+- `booking.date_blocks`: bloqueos manuales con motivo interno.
+- Disponibilidad (`booking.range_availability`, noches [entrada, salida)): `ocupado` = bloqueo, o reserva viva confirmada, en ejecución, cerrada o pre-reservada con fecha definitiva; `en_opcion` = estudio, negociación o pre-reserva con fecha definitiva o con opciones de Ikisai; `libre` el resto. La propia reserva no cuenta.
+- `portal_availability({reservation_id, from, to})`: fines de semana (viernes a domingo), como mucho 18 meses, sin decir quién.
+- `portal_dates({reservation_id})`: `mode` `fixed` | `ikisai_options` | `calendar`, la fecha definitiva y las opciones con su disponibilidad.
+- `portal_set_date_preferences({reservation_id, options})`: con opciones de Ikisai, `[{option_id, ok}]`; sin ellas, `[{start, end}]` sustituye las del organizador. Errores `DATES_FIXED`, `DATE_UNAVAILABLE`, `DATE_NOT_OFFERED`. Nunca fija la fecha.
+
+**Diseño, extras, tarifas y propuesta (B7d, B9, B10, B12):**
+- `portal_update_draft({reservation_id, expectedRevision?, fields, extras?})`: solo en `en_estudio` o `negociacion` (si no, `DRAFT_LOCKED`) y solo campos de diseño (personas, menores, régimen y menú pedidos, servicios y `organizer_notes`); `extras` sustituye los extras pedidos (`booking.reservation_extra_requests`), solo de tarifas `portal_visible` (si no, `EXTRA_NOT_OFFERED`).
+- `portal_rates({reservation_id})`: tarifas activas visibles en el portal (con `public_name` y `public_description`) y las condiciones por defecto con `minimum_total`; `available: false` sin tarifas. **La calculadora la hace Organizers** con `suggestLines`, `proposalTotals` y `applyMinimum` de `@ikisai/domain-booking`.
+- `portal_proposals({reservation_id})`: propuestas `enviada` y `aceptada` con líneas, condiciones, tramos y validez (nunca borradores ni sustituidas).
+- `portal_request({reservation_id, kind: 'quiere_confirmar'|'comentario', proposal_id?, message?})` → `booking.portal_requests` (estado `enviada`/`vista`/`respondida`, que cambia el personal). `portal_my_requests` las lista. **La aceptación sigue siendo del personal** (`accept_proposal`).
+
+**Avisos al comercial:** las acciones del portal dejan un aviso en `booking.portal_notices` (tabla cerrada) y `POST /api/v1/worker/portal/tick` (sonda `booking.portal_has_work`) crea las peticiones a Tasks con la cuenta de servicio: `booking.portal_dates`, `booking.portal_wants_confirm` (prioridad alta) y `booking.portal_comment`, con `external_ref` = `<código>:<tipo>:<aviso>`.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

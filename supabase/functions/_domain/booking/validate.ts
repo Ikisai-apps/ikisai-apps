@@ -83,6 +83,7 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
     ses_disabled_note: text(300),
     collect_guest_data: { kind: 'bool' },
     dates_definitive: { kind: 'bool' },
+    organizer_notes: text(2000),
   },
   [TABLES.finance]: {
     budget_amount: { kind: 'money' },
@@ -243,6 +244,9 @@ FIELDS[TABLES.rates] = {
   excludes: text(LONG),
   active: { kind: 'bool' },
   position: { kind: 'number' },
+  portal_visible: { kind: 'bool' },
+  public_name: text(120),
+  public_description: text(1000),
 };
 FIELDS[TABLES.conditions] = {
   name: text(120, false),
@@ -256,6 +260,7 @@ FIELDS[TABLES.conditions] = {
   text: text(LONG),
   is_default: { kind: 'bool' },
   active: { kind: 'bool' },
+  minimum_total: { kind: 'money' },
 };
 FIELDS[TABLES.cancellationTiers] = {
   conditions_id: { kind: 'uuid' },
@@ -303,6 +308,20 @@ FIELDS[TABLES.dateOptions] = {
   proposed_by: choice(['ikisai', 'organizer'], false),
   organizer_ok: { kind: 'bool' },
   position: { kind: 'number' },
+};
+FIELDS[TABLES.extraRequests] = {
+  reservation_id: { kind: 'uuid' },
+  rate_id: { kind: 'uuid' },
+  quantity: { kind: 'number' },
+  note: text(500),
+};
+FIELDS[TABLES.portalRequests] = {
+  reservation_id: { kind: 'uuid' },
+  kind: choice(['quiere_confirmar', 'comentario'], false),
+  proposal_id: { kind: 'uuid', nullable: true },
+  message: text(2000),
+  requested_by: { kind: 'uuid', nullable: true },
+  status: choice(['enviada', 'vista', 'respondida'], false),
 };
 FIELDS[TABLES.dateBlocks] = {
   start_date: { kind: 'date' },
@@ -577,6 +596,10 @@ export function validateOperations(operations: readonly OperationLike[], actor: 
         issues.push(at({ status: 403, code: 'FORBIDDEN', message: 'Solo un propietario puede borrar o restaurar un evento operativo.', details: { table } }));
         return;
       }
+    }
+    if (table === TABLES.portalRequests && (op.op === 'insert' || (op.fields && Object.keys(op.fields).some((f) => f !== 'status')))) {
+      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'Las peticiones las envía el organizador desde su portal; aquí solo se marca su estado.', details: { table } }));
+      return;
     }
     if (table === 'booking.portal_declarations') {
       issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'La declaración del organizador solo la registra su portal.', details: { table } }));
