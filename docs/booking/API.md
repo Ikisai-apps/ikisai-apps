@@ -1207,10 +1207,10 @@ Ninguna toca `data_status`, `ses_*`, `notes` ni la papelera del personal. Las es
 ### 16.7 Respuestas de Core y del usuario
 
 1. Huéspedes **solo con la reserva confirmada** (`422 RESERVATION_NOT_CONFIRMED`); antes, el portal muestra «podrás añadir a tus huéspedes cuando la reserva esté confirmada».
-2. Las acciones escriben con el usuario del portal como actor y rol `editor` explícito (`updated_by` = el usuario del portal) y llegan al personal por `changes`. El lote propio de la acción (`booking.portal_apply`) está pendiente de un ayudante de Core (P20).
+2. Las acciones escriben con el usuario del portal como actor y rol `editor` explícito (`updated_by` = el usuario del portal) y llegan al personal por `changes`. Cada acción escribe en un lote propio de Booking con `core.apply_portal_operations` (P20), que toma actor y rol del contexto de `invoke`.
 3. **Firma desde Guests:** subida con `uploads` en `guests-api` al bucket privado `guests-documents`; `portal_guest_sign` comprueba que el archivo está verificado y es del mismo usuario. El personal la ve con `GET /api/v1/guest-signature/:guestId` (URL firmada 5 min, solo quien puede ver huéspedes).
 4. **Declaración del organizador** en `booking.portal_declarations` (sincronizada para editor y owner; solo la escribe la acción, en el mismo lote que el dato; `422 DECLARATION_REQUIRED` la primera vez si no viene).
-5. **Baja por el organizador:** en cualquier momento (ver §16.6). La revocación del enlace usa un `update` directo de `core.portal_links` pendiente de ayudante de Core (P21).
+5. **Baja por el organizador:** en cualquier momento (ver §16.6). La revocación usa `core.portal_revoke_scope('guests', 'guest_id', id)` (P21), que además quita el permiso a la sesión abierta del huésped.
 
 ## Anexo · Campos de C03 y C04 que no se portan
 

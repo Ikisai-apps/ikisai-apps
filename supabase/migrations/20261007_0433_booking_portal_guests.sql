@@ -184,19 +184,16 @@ end $$;
 create or replace function booking.portal_reservation_of(p_guest booking.guests)
 returns uuid language sql stable as $$ select reservation_id from booking.events where id = p_guest.event_id $$;
 
--- Aplica operaciones en un lote de Booking con el usuario del portal como actor (rol `editor` explícito, Core ronda §16),
--- marcando quién escribe para la procedencia. Pasa por los hooks de validación como cualquier lote.
-create or replace function booking.portal_apply(p_writer text, p_actor uuid, p_ops jsonb)
+-- Aplica operaciones en un lote propio de Booking desde una acción de portal (`core.apply_portal_operations`, P20: actor y
+-- rol del contexto de `invoke`, cursor, hooks y `core.changes`), marcando quién escribe para la procedencia.
+create or replace function booking.portal_apply(p_writer text, p_ops jsonb)
 returns jsonb language plpgsql as $$
-declare v_cursor bigint; v_next bigint; v_results jsonb;
+declare v_out jsonb;
 begin
-  select cursor into v_cursor from core.app_state where app = 'booking' for update;
-  v_next := v_cursor + 1;
   perform set_config('booking.writer', p_writer, true);
-  v_results := core.apply_operations('booking', p_actor, 'editor', 'portal-' || p_writer || '-' || gen_random_uuid(), v_next, p_ops);
+  v_out := core.apply_portal_operations('booking', p_ops);
   perform set_config('booking.writer', '', true);
-  update core.app_state set cursor = v_next where app = 'booking';
-  return jsonb_build_object('cursor', v_next, 'results', v_results);
+  return v_out;
 end $$;
 
 -- Solo los campos de datos que un portal puede escribir.
@@ -328,7 +325,7 @@ begin
    where e.reservation_id = v_res and e.deleted_at is null and r.deleted_at is null and r.status not in ('cancelada','perdida');
   if v_event is null then perform core.fail('RESERVATION_NOT_CONFIRMED', 422, jsonb_build_object('reservation_id', v_res)); end if;
   if coalesce(btrim(v_fields->>'first_name'), '') = '' then perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('table', 'booking.guests', 'field', 'first_name')); end if;
-  v_out := booking.portal_apply('organizer', (p->>'actor')::uuid, booking.portal_declaration_ops(p, v_res) || jsonb_build_array(
+  v_out := booking.portal_apply('organizer', booking.portal_declaration_ops(p, v_res) || jsonb_build_array(
     jsonb_build_object('op', 'insert', 'table', 'booking.guests', 'id', v_id, 'fields', v_fields || jsonb_build_object('event_id', v_event))));
   return jsonb_build_object('guest_id', v_id, 'cursor', v_out->'cursor');
 end $$;
@@ -339,7 +336,7 @@ declare v_g booking.guests; v_fields jsonb := booking.portal_clean_fields(p->'ar
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
   if v_fields = '{}'::jsonb then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'no fields')); end if;
-  v_out := booking.portal_apply('organizer', (p->>'actor')::uuid, booking.portal_declaration_ops(p, booking.portal_reservation_of(v_g)) || jsonb_build_array(
+  v_out := booking.portal_apply('organizer', booking.portal_declaration_ops(p, booking.portal_reservation_of(v_g)) || jsonb_build_array(
     jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
       'expectedRevision', coalesce((p->'args'->>'expectedRevision')::bigint, v_g.revision), 'fields', v_fields)));
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');
@@ -366,10 +363,9 @@ begin
   end loop;
   v_ops := v_ops || jsonb_build_object('op', 'delete', 'table', 'booking.guests', 'id', v_g.id,
     'expectedRevision', coalesce((p->'args'->>'expectedRevision')::bigint, v_g.revision));
-  v_out := booking.portal_apply('organizer', (p->>'actor')::uuid, v_ops);
-  -- su enlace de Guests deja de valer en la misma acción (Core, ronda §16)
-  update core.portal_links set revoked_at = now()
-   where app = 'guests' and revoked_at is null and scope ->> 'guest_id' = v_g.id::text;
+  v_out := booking.portal_apply('organizer', v_ops);
+  -- su enlace de Guests deja de valer y su sesión pierde el permiso, en la misma acción (P21)
+  perform core.portal_revoke_scope('guests', 'guest_id', v_g.id::text);
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');
 end $$;
 
@@ -395,7 +391,7 @@ begin
         'subject', v_item->>'subject', 'severity', v_item->>'severity', 'kitchen_notes', v_item->>'kitchen_notes')));
   end loop;
   if v_ops = '[]'::jsonb then return jsonb_build_object('guest_id', v_g.id, 'cursor', null); end if;
-  v_out := booking.portal_apply(v_writer, (p->>'actor')::uuid, v_ops);
+  v_out := booking.portal_apply(v_writer, v_ops);
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');
 end $$;
 
@@ -405,7 +401,7 @@ declare v_g booking.guests; v_fields jsonb := booking.portal_clean_fields(p->'ar
 begin
   v_g := booking.portal_guest_row(p, (p->'args'->>'guest_id')::uuid);
   if v_fields = '{}'::jsonb then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'no fields')); end if;
-  v_out := booking.portal_apply('guest', (p->>'actor')::uuid, jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
+  v_out := booking.portal_apply('guest', jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
     'expectedRevision', coalesce((p->'args'->>'expectedRevision')::bigint, v_g.revision), 'fields', v_fields)));
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');
 end $$;
@@ -422,7 +418,7 @@ begin
     v_fields := v_fields || jsonb_build_object('privacy_ack_at', now(), 'privacy_ack_version', left(p->'args'->>'privacy_ack_version', 40));
   end if;
   if v_fields = '{}'::jsonb then perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'nothing to change')); end if;
-  v_out := booking.portal_apply('guest', (p->>'actor')::uuid, jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
+  v_out := booking.portal_apply('guest', jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
     'expectedRevision', coalesce((p->'args'->>'expectedRevision')::bigint, v_g.revision), 'fields', v_fields)));
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');
 end $$;
@@ -438,7 +434,7 @@ begin
     perform core.fail('INVALID_OPERATION', 422, jsonb_build_object('reason', 'file must be a verified upload of this guest'));
   end if;
   if v_name = '' or length(v_name) > 200 then perform core.fail('INVALID_FIELDS', 422, jsonb_build_object('table', 'booking.guests', 'field', 'signed_by_name')); end if;
-  v_out := booking.portal_apply('guest', (p->>'actor')::uuid, jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
+  v_out := booking.portal_apply('guest', jsonb_build_array(jsonb_build_object('op', 'update', 'table', 'booking.guests', 'id', v_g.id,
     'expectedRevision', coalesce((p->'args'->>'expectedRevision')::bigint, v_g.revision),
     'fields', jsonb_build_object('signature_file_id', v_file, 'signed_at', now(), 'signed_by_name', v_name))));
   return jsonb_build_object('guest_id', v_g.id, 'cursor', v_out->'cursor');

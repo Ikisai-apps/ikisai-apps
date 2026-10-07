@@ -55,6 +55,8 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - **Portales, parte 1 (#191):** caducidad de los enlaces ligada a la reserva (`booking.portal_link_valid_until`, migración 0432), `portalIssuer` en `booking-api` y bloque «Portal del organizador» en la ficha. Parte 2 (datos de huéspedes) en propuesta: `API.md` §16 (PR #188).
 - **Entidad en la propuesta:** `GET /api/v1/entity` lee `central.common_entity_projection` y firma el logotipo (bucket privado de Central, 10 min, sin guardarlo); el documento para el organizador lleva cabecera con logotipo, razón social, NIF/CIF y domicilio, o el aviso «Faltan los datos de la entidad en Central».
 
+- **Portales, parte 2 · datos de huéspedes (§16, migración 0433):** procedencia por campo, consentimiento, aviso legal y firma solo del huésped, declaración del organizador, lecturas y acciones para Organizers y Guests (con `core.apply_portal_operations` y `core.portal_revoke_scope`), baja por el organizador en cualquier momento salvo entrada o SES, y `GET /api/v1/guest-signature/:guestId`. Pendiente: interfaz del personal (completitud, origen por campo, «Copiar recordatorio»).
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
