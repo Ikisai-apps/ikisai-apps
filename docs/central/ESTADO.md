@@ -27,6 +27,8 @@
 
 - 2026-10-07 · Campos de archivo declarados (migración `0560`): `entity.logo_file_id` permanente; `person_records.file_id` y `key_documents.file_id` legales; recogida de huérfanos activada para Central.
 
+- 2026-10-07 · **Textos y contacto** (regla del usuario): migración `0570_central_texts` (textos con versión de servidor, versiones guardadas ya sustituidas, marcadores, proyección `central.common_texts_projection` y lecturas `text_version`/`text_history` para organizers, guests, booking y central, semilla de los cuatro textos), pantalla desde Inicio. Pruebas `tests/central/texts.test.ts` y `texts.spec.ts`.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.

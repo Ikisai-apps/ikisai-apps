@@ -12,6 +12,7 @@ import { mountEntity } from './entity.ts';
 import { mountDecisions } from './decisions.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountTeams } from './teams.ts';
+import { mountTexts } from './texts.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
 import { fbMark } from './feedback.ts';
 
@@ -40,7 +41,7 @@ const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/ac
 function navFor(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones'] },
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos'] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos'] },
   ];
@@ -51,6 +52,7 @@ function navFor(isAdmin: boolean): NavItem[] {
 const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; admin?: boolean }> = {
   '#/': { title: 'Inicio', slug: 'inicio', mount: mountHome },
   '#/conflictos': { title: 'Conflictos', slug: 'conflictos', mount: mountConflicts },
+  '#/textos': { title: 'Textos y contacto', slug: 'textos', mount: mountTexts },
   '#/entidad': { title: 'Entidad', slug: 'entidad', mount: mountEntity },
   '#/decisiones': { title: 'Decisiones', slug: 'decisiones', mount: mountDecisions },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
@@ -70,6 +72,7 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'inicio': fbMark(main, 'central.inicio', 'Inicio'); break;
     case 'conflictos': fbMark(main, 'central.conflictos', 'Conflictos'); break;
     case 'entidad': fbMark(main, 'central.entidad', 'Entidad'); break;
+    case 'textos': fbMark(main, 'central.textos', 'Textos y contacto'); break;
     case 'decisiones': fbMark(main, 'central.decisiones', 'Decisiones'); break;
     case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
     case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
