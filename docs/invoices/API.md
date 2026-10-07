@@ -883,7 +883,7 @@ Huella y encadenado, firma, registros de alta y de anulación de Verifactu, env�
 3. **Core:** visto bueno a `core.next_number` (§13.3) y a la proyección de ingresos para Booking.
 4. **Core y usuario:** si las emitidas van como pestaña dentro de Facturas (propuesta) o como entrada propia en la navegación.
 
-## 14. Emitir facturas desde Finance (aprobada por Core en la ronda 41 · PR 1 hecho, migraciones 0212 y 0213)
+## 14. Emitir facturas desde Finance (aprobada por Core en la ronda 41 · PR 1 y PR 2 hechos)
 
 Base: `coordinacion/ampliacion/FACTURACION.md`, aprobado por el usuario el 7-10-2026. Ikisai factura como autónomo, con una serie nueva desde la primera factura de la app. La hoja de Google deja de emitir y su serie se cierra.
 
@@ -1065,6 +1065,12 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
 ### 14.11 Plan de PR
 
 1. **Modelo y emisión (hecho):** migración `0212` (series de emisión con su contador, estados, borradores, congelado, y resúmenes y entregas que cuentan las emitidas y no los borradores) y `0213` (`vf_records`, `vf_events`, `vf_state`, huella y QR en SQL), `invoices.issue`, `invoices.close_series`, la anulación de una emitida con su registro y pruebas con los ejemplos oficiales en SQL y en TypeScript (`_domain/invoices/verifactu.ts`).
-2. **App:** borrador, «Emitir», documento imprimible con los datos obligatorios, Ajustes de series y el interruptor.
+2. **App (hecho, `apps/invoices/src/ui/issuing.ts`):**
+   - «Nueva factura» crea un borrador. Lleva el destinatario con su tipo, el NIF y el domicilio, el concepto, la fecha de la operación, la categoría y líneas con cantidad, precio sin IVA y tipo.
+   - La ficha del borrador permite editar, ver la vista previa marcada «BORRADOR · SIN VALOR», borrar y «Emitir». Antes de emitir avisa de los datos que faltan y dice qué número recibirá.
+   - La emitida se ve congelada. «Factura (PDF)» pinta la factura desde `document`, sin QR ni leyenda, porque el envío está apagado.
+   - «Series» crea las series de emisión `F` y `R` con el formato `{serie}{año}-{n:4}`. El owner puede cerrar las series de registro. También muestra el estado del registro VERI*FACTU.
+   - «Registrar emitida» solo ofrece series de registro abiertas.
+   - **El interruptor no se ha construido.** Encender «producción» obliga a enviar hasta el 31-12, y el envío (XML, firma y certificado) aún no existe. La pantalla muestra el estado, apagado, y se activará junto con el envío.
 3. **Rectificativas y anulación** con su registro.
 4. **Desde Booking,** cuando Booking publique la lectura.
