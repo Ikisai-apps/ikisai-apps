@@ -182,6 +182,14 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - `POST usage/features/:id/decision|settings` fija la decisión, la frecuencia, la audiencia o una nueva generación.
 - **Retención:** el detalle por persona dura 180 días; después se agrega sin persona ni dispositivo (pg_cron mensual).
 
+### 3.9 Proveedores de almacenamiento (migración `0072`, ALMACENAMIENTO.md fase 1)
+
+- `core.files.storage_provider` (`supabase | r2`) dice dónde vive el objeto, y `bucket` pasa a ser lógico. En R2 hay un bucket físico, y el lógico va como prefijo: `<bucket>/<path>`.
+- El kit (`_kit/storage.ts`, `createStorage`) ofrece `uploadUrl`, `readUrl`, `download` y `remove` para los dos proveedores. Las URL de R2 se prefirman con SigV4, comprobado con el ejemplo oficial de AWS.
+- `uploads`, `files/:id` y el feedback ya usan la abstracción. El contrato del frontend no cambia.
+- **Activación:** secretos `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`, más `IKISAI_STORAGE_PROVIDER=r2` para que los archivos nuevos vayan a R2. Lo que ya está en Supabase sigue sirviéndose de allí.
+- **Regla para las apps:** nunca llamar a `/storage/v1/object…` directamente. Hay que usar `createStorage(supabase).readUrl(fila)` o `.download(fila)`, con la fila de `core.files` (que lleva `storage_provider`).
+
 ## 4. Commit
 
 ### 4.1 Firma

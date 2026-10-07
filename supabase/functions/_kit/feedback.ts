@@ -7,6 +7,7 @@ import { fail, messageFor } from './errors.ts';
 import { sha256Hex, type Supabase } from './supabase.ts';
 import type { RequestContext } from './sync.ts';
 import { createUploads } from './uploads.ts';
+import { createStorage, type StorageAccess } from './storage.ts';
 import { ensureServiceActor as ensureServiceActorFor } from './service.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,10 +87,10 @@ export function agentBlock(detail: any): string {
   return lines.join('\n');
 }
 
-export function createFeedback(supabase: Supabase, app: string) {
+export function createFeedback(supabase: Supabase, app: string, storage: StorageAccess = createStorage(supabase)) {
   const uploads = createUploads(supabase, app, {
     bucket: 'feedback-media', maxBytes: FEEDBACK_LIMITS.imageBytes, allowedMime: ['image/webp', 'image/jpeg', 'image/png'], allowReaders: true,
-  });
+  }, storage);
 
   function human(ctx: RequestContext) {
     if (ctx.user.kind === 'agent') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
@@ -155,10 +156,8 @@ export function createFeedback(supabase: Supabase, app: string) {
     else fail(404, 'OUT_OF_SCOPE', messageFor('OUT_OF_SCOPE'));
     const attachments = [];
     for (const a of detail.attachments ?? []) {
-      const signed = await supabase.remote('/storage/v1/object/sign/' + a.bucket + '/' + String(a.path).split('/').map(encodeURIComponent).join('/'), {
-        service: true, method: 'POST', body: { expiresIn: 600 },
-      });
-      attachments.push({ id: a.id, mime: a.mime, url: typeof signed?.signedURL === 'string' ? supabase.base + '/storage/v1' + signed.signedURL : null });
+      const url = await storage.readUrl({ bucket: a.bucket, path: a.path, storage_provider: a.provider }, 600).catch(() => null);
+      attachments.push({ id: a.id, mime: a.mime, url });
     }
     // Un portal ve su reporte, no el diagnóstico técnico ni las tareas internas.
     if (PORTALS.includes(app)) return { report: detail.report, attachments, tasks: [] };
