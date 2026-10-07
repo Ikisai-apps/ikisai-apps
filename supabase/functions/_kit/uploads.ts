@@ -2,6 +2,7 @@
 import { fail, messageFor } from './errors.ts';
 import { sha256Hex, type Supabase } from './supabase.ts';
 import type { RequestContext } from './sync.ts';
+import { createStorage, type StorageAccess } from './storage.ts';
 
 export interface UploadsConfig {
   bucket: string;
@@ -20,7 +21,7 @@ export interface UploadsConfig {
 const SHA = /^[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createUploads(supabase: Supabase, app: string, config: UploadsConfig) {
+export function createUploads(supabase: Supabase, app: string, config: UploadsConfig, storage: StorageAccess = createStorage(supabase)) {
   const maxBytes = config.maxBytes ?? 50 * 1024 * 1024;
   const hashUpTo = config.hashVerifyUpTo ?? 25 * 1024 * 1024;
   const readSeconds = config.readUrlSeconds ?? 600;
@@ -35,16 +36,15 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
     if (typeof body?.sha256 !== 'string' || !SHA.test(body.sha256)) fail(422, 'INVALID_OPERATION', 'sha256 inválido.');
     const file = await supabase.rpc<any>('core_file_create', {
       p_app: app, p_actor: ctx.user.id, p_bucket: config.bucket, p_filename: body.filename, p_mime: body.mime.toLowerCase(), p_size: body.size, p_sha256: body.sha256.toLowerCase(),
+      p_provider: storage.defaultProvider,
     });
-    const signed = await supabase.remote(`/storage/v1/object/upload/sign/${config.bucket}/${encodePath(file.path)}`, { service: true, method: 'POST', body: {} });
-    const url = typeof signed?.url === 'string' ? signed.url : null;
-    if (!url) fail(503, 'STORAGE_UNAVAILABLE', messageFor('STORAGE_UNAVAILABLE'));
+    const upload = await storage.uploadUrl({ bucket: config.bucket, path: file.path, storage_provider: file.storageProvider }, body.mime.toLowerCase());
     return {
       id: file.id,
       path: file.path,
-      uploadUrl: supabase.base + '/storage/v1' + url,
+      uploadUrl: upload.url,
       method: 'PUT',
-      headers: { 'Content-Type': body.mime.toLowerCase(), 'x-upsert': 'false' },
+      headers: upload.headers,
       expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       duplicateOf: file.duplicateOf ?? null,
     };
@@ -54,7 +54,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
     if (file.status === 'verified') return { id, sha256: file.sha256, size: file.size, verified: true, hashVerified: file.hash_verified };
-    const response: Response = await supabase.remote(`/storage/v1/object/${file.bucket}/${encodePath(file.path)}`, { service: true, raw: true });
+    const response: Response = await storage.download(file);
     if (response.status === 404 || response.status === 400) {
       await supabase.rpc('core_file_mark', { p_id: id, p_status: 'missing', p_size: null, p_hash_verified: false });
       fail(404, 'FILE_NOT_FOUND', 'El archivo no se ha subido todavía.');
@@ -88,15 +88,9 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
     if (file.status !== 'verified') fail(404, 'FILE_NOT_FOUND', 'El archivo no está disponible.');
-    const signed = await supabase.remote(`/storage/v1/object/sign/${file.bucket}/${encodePath(file.path)}`, { service: true, method: 'POST', body: { expiresIn: readSeconds } });
-    const url = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
-    if (!url) fail(503, 'STORAGE_UNAVAILABLE', messageFor('STORAGE_UNAVAILABLE'));
-    return { id, url: supabase.base + '/storage/v1' + url, expiresAt: new Date(Date.now() + readSeconds * 1000).toISOString(), filename: file.filename, mime: file.mime, size: file.size };
+    const url = await storage.readUrl(file, readSeconds);
+    return { id, url, expiresAt: new Date(Date.now() + readSeconds * 1000).toISOString(), filename: file.filename, mime: file.mime, size: file.size };
   }
 
   return { create, verify, readUrl };
-}
-
-function encodePath(path: string): string {
-  return path.split('/').map(encodeURIComponent).join('/');
 }

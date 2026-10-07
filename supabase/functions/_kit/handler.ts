@@ -11,6 +11,7 @@ import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
 import { createFeedback, createFeedbackWorker } from './feedback.ts';
 import { createUsage } from './usage.ts';
+import { createStorage, r2ConfigFromEnv, type ProviderName, type R2Config } from './storage.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -33,6 +34,8 @@ export interface AppConfig extends SupabaseConfig {
   mcpTools?: McpTool[];
   /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
   admin?: boolean;
+  /** Almacenamiento: R2 y proveedor por defecto. Sin indicarlo, se lee de los secretos R2_* e IKISAI_STORAGE_PROVIDER. */
+  storage?: { r2?: R2Config | null; defaultProvider?: ProviderName };
   /** Solo central-api: worker del feedback (`worker/feedback/tick`), que envía a Tasks lo operativo y copia el estado de las tareas. */
   feedbackWorker?: boolean;
   /** Booking y Organizers: montan `portal-links` para emitir y gestionar enlaces de los portales (contrato §3.6). */
@@ -95,7 +98,13 @@ export function createApp(config: AppConfig): AppHandler {
   const supabase = createSupabase(config);
   const auth = createAuth(supabase);
   const sync = createSync(supabase, config.app, config.hooks ?? {});
-  const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads) : null;
+  const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
+  const storage = createStorage(supabase, {
+    r2: config.storage?.r2 !== undefined ? config.storage.r2 : r2ConfigFromEnv(env),
+    defaultProvider: config.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
+    fetch: config.fetch,
+  });
+  const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads, storage) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
@@ -168,7 +177,7 @@ export function createApp(config: AppConfig): AppHandler {
     );
   }
   // Feedback y QA (contrato §3.7): en todas las apps y portales.
-  const feedback = createFeedback(supabase, config.app);
+  const feedback = createFeedback(supabase, config.app, storage);
   routes.push(
     { method: 'POST', pattern: 'feedback/uploads', handler: async ({ ctx, json }) => feedback.uploads.create(ctx, await json()) },
     { method: 'POST', pattern: 'feedback/uploads/:id/verify', handler: ({ ctx, params }) => feedback.uploads.verify(ctx, params.id ?? '') },
