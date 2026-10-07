@@ -1060,8 +1060,8 @@ booking.staff_assignments           C05 «asignaciones»
   event_id        uuid → booking.events        (inmutable)
   person_name     text not null                «Marga»: solo el nombre, sin teléfono ni documento
   member_user_id  uuid null → auth.users       si la persona es miembro de Booking
-  person_ref_app  text null                    enlace tipado futuro a la ficha de personal (Encarna):
-  person_ref_id   text null                    target_app = 'encarna', target_kind = 'person'
+  person_ref_app  text null                    enlace tipado futuro a la ficha de personal (Central; `encarna` es solo su alias de dominio):
+  person_ref_id   text null                    target_app = 'central', target_kind = 'person'
   function        text not null    coordinacion_general | acogida_grupo | cocina | apoyo_cocina | limpieza_previa |
                                    limpieza_rotacion | mantenimiento_guardia | soporte_tecnico | apoyo_logistico |
                                    cierre_evento | otra                                           (C05 §5)

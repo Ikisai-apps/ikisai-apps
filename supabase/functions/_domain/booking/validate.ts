@@ -200,7 +200,7 @@ FIELDS[TABLES.staffAssignments] = {
   event_id: { kind: 'uuid' },
   person_name: text(120, false),
   member_user_id: { kind: 'uuid', nullable: true },
-  person_ref_app: choice(['encarna']),
+  person_ref_app: choice(['central']),
   person_ref_id: text(120),
   function: choice(STAFF_FUNCTIONS, false),
   work_date: { kind: 'date' },
