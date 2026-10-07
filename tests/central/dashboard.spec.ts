@@ -52,7 +52,10 @@ test('dirección · KPIs de Central, objetivo con umbrales y lectura sin red', a
   const overdue = page.locator('.kpicard[data-kpi="central.legal_overdue"]');
   await expect(overdue).toContainText('Obligaciones vencidas');
   await expect(overdue.locator('.kpivalue')).toHaveText('1');
-  await expect(page.locator('#dashboardMeta')).toContainText('Aún sin indicadores: Booking, Finance, Tasks, Food');
+  // Las apps sin vista salen en «Aún sin indicadores»; Finance ya publica (migración 0211) y sus tarjetas entran en el panel.
+  await expect(page.locator('#dashboardMeta')).toContainText('Aún sin indicadores:');
+  await expect(page.locator('#dashboardMeta')).not.toContainText('Finance');
+  await expect(page.locator('.kpicard[data-kpi="invoices.pending_review"]')).toContainText('Facturas recibidas por revisar');
 
   // Objetivo: ninguna vencida; atención desde 0, crítico desde 2 (menos es mejor).
   await overdue.getByRole('button', { name: /Objetivo/ }).click();
