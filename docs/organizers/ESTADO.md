@@ -17,7 +17,7 @@
 
 ## Pendiente
 
-- Fase 1: cerrada salvo el icono propio de la PWA (C8) y la cuenta permanente (Workspace).
+- Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2 (diseño): cuando Booking construya B6–B10 y B12.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.

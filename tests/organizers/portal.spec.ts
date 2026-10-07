@@ -236,7 +236,8 @@ test('organizers · en inglés: navegador en inglés, selector ES | EN y textos 
   await enter(page, await api.organizerLink([reservation], 'emma@example.invalid', 'Emma'));
   await expect(page.locator('#retreatTitle')).toHaveText('Spring retreat');
   await expect(page.locator('#retreatStatus')).toHaveText('Confirmed');
-  await expect(page.locator('#retreatHead')).toContainText('12–15 March 2027');
+  // ICU escribe el rango con o sin espacios finos según la plataforma (Windows «12–15», Linux «12 – 15»).
+  await expect(page.locator('#retreatHead')).toContainText(/12\s?–\s?15 March 2027/);
   await expect(page.locator('#tab-asistentes')).toHaveText('Attendees');
 
   // Cambio manual a español: se repinta y se recuerda en el dispositivo.

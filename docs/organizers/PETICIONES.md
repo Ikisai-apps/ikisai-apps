@@ -19,7 +19,7 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | C5 | Core | Alta de infraestructura con la primera PR de `apps/organizers` | hecha (publicada el 8-10-2026) |
 | C6 | UI | `createAppShell({ nav: [] })` pinta la barra inferior vacía (`.nonav .nav`), que en móvil tapa los botones del pie. Organizers la oculta en su CSS | hecha (kit 0.20) |
 | C7 | Central | `central.common_texts_projection` legible desde `organizers` (`organizers.declaration`, `portal.privacy`, `contact.email`, `contact.phone`) | hecha (#281) |
-| C8 | UI | Icono propio de Organizers para la PWA (hoy usa el de Central) | en parte: icono `organizer` del kit en la cabecera, la entrada y el lanzador; falta el icono de la PWA (hoy, una copia del de Central) |
+| C8 | UI | Icono propio de Organizers para la PWA (hoy usa el de Central) | hecha (icono de UI en `public/icons/`, manifiesto en berenjena; 8-10-2026) |
 | U1 | UI | Capa de traducción del kit (español e inglés) con claves por app y textos del kit traducidos | hecha (kit 0.19, `createI18n`; Organizers en español e inglés) |
 | U2 | UI | Indicador de guardado automático del kit: «Guardando…», «Guardado» y «No se ha guardado · Reintentar», por campo o por formulario | hecha (kit 0.20, `createSaveState`) |
 | U3 | UI | Hoja «Instala la app»: `beforeinstallprompt` e instrucciones de iOS, con recuerdo de «ahora no» | hecha (kit 0.20, `createInstallPrompt`) |
