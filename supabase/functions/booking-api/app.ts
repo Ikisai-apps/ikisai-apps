@@ -70,6 +70,7 @@ function requireEditor(ctx: RequestContext): void {
  * `claim` y `report` se ejecutan como sistema (actor null); el permiso del usuario se comprueba aquí.
  */
 const ENTITY_PROJECTION = 'central.common_entity_projection';
+const GUEST_SIGNATURE = 'booking.guest_signature_file';
 const ENTITY_LOGO_BUCKET = 'central-documents';
 
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}): AppRoute[] {
@@ -115,6 +116,21 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
         let health: CalendarHealth = adapter ? 'ok' : 'not_configured';
         if (adapter) for (const item of out.items) health = healthForCode(item.lastError) ?? health;
         return { configured: !!adapter, calendarId: adapter?.calendarId ?? null, health, items: out.items };
+      },
+    },
+    {
+      // Firma del parte de un huésped (subida desde Guests o desde Booking): URL firmada de corta duración, solo para quien
+      // puede ver huéspedes. No se guarda ni se devuelven bucket ni ruta.
+      method: 'GET', pattern: 'guest-signature/:guestId',
+      handler: async ({ ctx, params }) => {
+        if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', 'Los datos de huéspedes están restringidos a los responsables designados.');
+        const file = await supabase.rpc<{ bucket: string; path: string; mime: string } | null>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: GUEST_SIGNATURE, p_args: { guest_id: params.guestId } });
+        if (!file) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
+        const path = file.path.split('/').map(encodeURIComponent).join('/');
+        const signed = await supabase.remote(`/storage/v1/object/sign/${encodeURIComponent(file.bucket)}/${path}`, { service: true, method: 'POST', body: { expiresIn: 300 } });
+        const rel = typeof signed?.signedURL === 'string' ? signed.signedURL : typeof signed?.signedUrl === 'string' ? signed.signedUrl : null;
+        if (!rel) fail(503, 'STORAGE_UNAVAILABLE', messageFor('STORAGE_UNAVAILABLE'));
+        return { url: supabase.base + '/storage/v1' + rel, mime: file.mime, expiresAt: new Date(Date.now() + 300_000).toISOString() };
       },
     },
     {

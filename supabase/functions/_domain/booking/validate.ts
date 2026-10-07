@@ -538,6 +538,14 @@ export function validateOperations(operations: readonly OperationLike[], actor: 
         return;
       }
     }
+    if (table === 'booking.portal_declarations') {
+      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'La declaración del organizador solo la registra su portal.', details: { table } }));
+      return;
+    }
+    if (table === TABLES.guests && op.fields && ['allergies_visible_to_organizer', 'privacy_ack_at', 'privacy_ack_version'].some((f) => f in op.fields!)) {
+      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'El consentimiento y el aviso legal solo los marca el propio huésped desde su enlace.', details: { table } }));
+      return;
+    }
     if (table === TABLES.guests && !(actor.canSeeGuests ?? actor.role === 'owner')) {
       issues.push(at({ status: 403, code: 'FORBIDDEN', message: 'Los datos de huéspedes están restringidos a los responsables designados.', details: { table } }));
       return;

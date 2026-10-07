@@ -9,3 +9,4 @@ export * from './agents.ts';
 export * from './spaces.ts';
 export * from './staff.ts';
 export * from './rates.ts';
+export * from './portal.ts';
