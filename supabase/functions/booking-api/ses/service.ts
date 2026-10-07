@@ -30,7 +30,7 @@ export interface TasksRequest {
   title: string;
   note: string;
   due: string;
-  priority: 'urgente';
+  priority: 'critical';
   external_url: string;
 }
 
@@ -57,13 +57,16 @@ async function deadlineNotices(deps: SesDeps): Promise<number> {
   const { items } = (await deps.invoke('booking.ses_deadlines', {})) as { items: Array<{ reservation_id: string; code: string | null; title: string; legal_start_at: string }> };
   let sent = 0;
   for (const r of items) {
-    const due = new Date(Date.parse(r.legal_start_at) + 24 * 3_600_000).toISOString();
+    const deadline = new Date(Date.parse(r.legal_start_at) + 24 * 3_600_000);
+    // Tasks quiere el día (AAAA-MM-DD) en hora de Madrid
+    const due = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(deadline);
+    const at = new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(deadline);
     const ok = await deps.notifyTasks({
       source: 'booking', kind: 'booking.ses_deadline', kind_label: 'Comunicación a SES pendiente',
       external_ref: `${r.code ?? r.reservation_id}:deadline`,
       title: `Comunicar a SES la reserva ${r.code ?? ''}`.trim(),
-      note: `Pago registrado hace más de 12 h sin comunicación aceptada. El plazo legal de 24 h vence el ${due.slice(0, 16).replace('T', ' ')} (UTC).`,
-      due, priority: 'urgente', external_url: `${BOOKING_URL}/#/reservas/${r.reservation_id}`,
+      note: `Pago registrado hace más de 12 h sin comunicación aceptada. El plazo legal de 24 h vence el ${at} (hora de Madrid).`,
+      due, priority: 'critical', external_url: `${BOOKING_URL}/#/reservas/${r.reservation_id}`,
     });
     if (ok) { await deps.invoke('booking.ses_deadline_mark', { reservation_id: r.reservation_id, legal_start_at: r.legal_start_at }); sent++; }
   }

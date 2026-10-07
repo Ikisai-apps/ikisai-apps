@@ -149,7 +149,9 @@ test('ses · aviso a Tasks a las 12 h del pago sin comunicar: una vez, idempoten
   assert.equal(mine.length, 2, 'un intento fallido y uno bueno');
   assert.ok(!tasks.some((r) => r.external_url.endsWith(onTime)));
   assert.equal(t.notices >= 1, true);
-  assert.deepEqual([mine[1]!.source, mine[1]!.kind, mine[1]!.priority], ['booking', 'booking.ses_deadline', 'urgente']);
+  assert.deepEqual([mine[1]!.source, mine[1]!.kind, mine[1]!.priority], ['booking', 'booking.ses_deadline', 'critical']);
+  assert.match(mine[1]!.due, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(mine[1]!.title.length <= 120 && mine[1]!.note.length <= 1000);
   assert.match(mine[1]!.external_ref, /:deadline$/);
   const before = tasks.length;
   await tick();
