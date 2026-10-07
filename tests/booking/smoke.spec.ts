@@ -337,6 +337,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     // Ratón: arrastrar el asa del último ítem por encima del primero.
     const now = await order();
     const last = now[now.length - 1]!;
+    await expect(handleOf(last)).toBeVisible();
     const from = (await handleOf(last).boundingBox())!;
     const to = (await list().locator('.sortable-row').first().boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
@@ -588,6 +589,114 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.rows('booking.ses_settings')[0]!.environment).toBe('pre');
   });
 
+  await test.step('huéspedes: completitud, origen de cada dato, recordatorios, firma desde Guests y papelera del organizador', async () => {
+    await page.goto(`${baseURL}/#/huespedes/${api.rows(EVENTS)[0]!.id}`);
+    await expect(page.locator('#newGuest')).toBeVisible();
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const commands: string[] = [];
+    page.on('request', (request) => { if (request.method() === 'POST' && request.url().endsWith('/api/v1/commands')) commands.push(request.postData() ?? ''); });
+    const addGuest = async (first: string, last: string) => {
+      await page.locator('#newGuest').click();
+      const dialog = page.getByRole('dialog', { name: 'Nuevo huésped' });
+      await dialog.getByLabel('Nombre', { exact: true }).fill(first);
+      await dialog.getByLabel('Primer apellido').fill(last);
+      await page.locator('#saveRow').click();
+      await expect(dialog).toBeHidden();
+    };
+    await addGuest('Ana', 'García');
+    await addGuest('Luis', 'Pérez');
+    await addGuest('Marta', 'Baja');
+    await expect.poll(() => api.rows(GUESTS).length).toBe(4); // los altas llegan al servidor antes de simular al portal
+    const byName = (name: string) => api.rows(GUESTS).find((g) => g.first_name === name)!;
+    const persona = byName('Persona');
+    const organizerUser = crypto.randomUUID();
+    const at = new Date().toISOString();
+    // lo que escribirían los portales (el trigger de la migración 0433 lo deja en `field_sources`)
+    api.serverUpdate(RESERVATIONS, api.rows(RESERVATIONS)[0]!.id, { contact_name: 'Organizadora Sintética' });
+    api.serverUpdate(GUESTS, persona.id, {
+      field_sources: { first_name: { by: 'staff', at }, document_number: { by: 'guest', at }, phone: { by: 'organizer', at } },
+      allergies_visible_to_organizer: true, privacy_ack_at: '2026-10-01T10:00:00.000Z', privacy_ack_version: 'v1',
+    });
+    api.serverUpdate(GUESTS, byName('Ana').id, { phone: '600000001', field_sources: { phone: { by: 'guest', at } } });
+    const gluten = api.rows(RESTRICTIONS).find((r) => r.guest_id === persona.id)!;
+    api.serverUpdate(RESTRICTIONS, gluten.id, { source: 'organizer' });
+    api.serverUpdate(GUESTS, byName('Marta').id, { deleted_at: at, updated_by: organizerUser });
+    await page.reload();
+
+    // completitud por reserva y por huésped
+    await expect(page.locator('#completeness')).toHaveText('1 de 3 completos · 2 con datos pendientes · 2 sin firmar');
+    const row = (name: string) => page.locator('#guestList .row', { hasText: name });
+    await expect(row('Persona Sintética').locator('[data-chip="complete"]')).toHaveText('Completo');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).toContainText('Falta: ');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).toContainText('fecha de nacimiento');
+    await expect(row('Ana García').locator('[data-chip="missing"]')).not.toContainText('teléfono o correo');
+    await expect(row('Luis Pérez').locator('[data-chip="missing"]')).toContainText('teléfono o correo');
+    await expect(row('Ana García').locator('[data-chip="unsigned"]')).toHaveText('Sin firmar');
+    await expect(row('Persona Sintética').locator('[data-act="copyReminder"]')).toHaveCount(0);
+
+    // recordatorios al portapapeles
+    await row('Ana García').getByRole('button', { name: /Copiar recordatorio/ }).click();
+    await expect(page.getByText('Recordatorio copiado')).toBeVisible();
+    const reminder = await page.evaluate(() => navigator.clipboard.readText());
+    expect(reminder).toMatch(/^Hola, Ana: para tu estancia en Retiro Test del \d{2}\/\d{2}\/\d{4} al \d{2}\/\d{2}\/\d{4} nos falta: /);
+    expect(reminder).toContain('fecha de nacimiento');
+    expect(reminder).toContain('la firma del parte de entrada');
+    expect(reminder).not.toContain('teléfono');
+    await page.locator('#copyOrganizerReminder').click();
+    const toOrganizer = await page.evaluate(() => navigator.clipboard.readText());
+    expect(toOrganizer).toMatch(/^Hola, Organizadora Sintética: de Retiro Test, 2 huéspedes tienen datos pendientes: Ana G\., Luis P\./);
+    expect(toOrganizer).not.toMatch(/García|Pérez/);
+
+    // origen de cada dato en la ficha, consentimientos y firma subida desde Guests
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Persona Sintética' });
+    await expect(sheet.locator('label:has(#f-first_name) .src')).toHaveText('Personal');
+    await expect(sheet.locator('label:has(#f-document_number) .src')).toHaveText('Huésped');
+    await expect(sheet.locator('label:has(#f-document_number) .src')).toHaveAttribute('title', /propio huésped/);
+    await expect(sheet.locator('label:has(#f-phone) .src')).toHaveText('Organizador');
+    await expect(sheet.locator('label:has(#f-email) .src')).toHaveCount(0);
+    await expect(sheet.locator('#guestConsent')).toContainText('Alergias visibles para el organizador: sí');
+    await expect(sheet.locator('#guestConsent')).toContainText('Aviso legal visto el');
+    await expect(sheet.locator('#guestRestrictions .src')).toHaveText('Organizador');
+    // el formulario del personal no envía lo que solo cambia el huésped ni el origen
+    await sheet.getByLabel('Notas').fill('Nota sintética del personal');
+    await page.locator('#saveRow').click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => api.rows(GUESTS).find((g) => g.id === persona.id)!.notes).toBe('Nota sintética del personal');
+    const written = commands.filter((body) => body.includes(persona.id)).join('\n');
+    expect(written).toContain('Nota sintética del personal');
+    for (const forbidden of ['allergies_visible_to_organizer', 'privacy_ack_at', 'privacy_ack_version', 'field_sources']) expect(written).not.toContain(forbidden);
+    expect(api.rows(GUESTS).find((g) => g.id === persona.id)).toMatchObject({ allergies_visible_to_organizer: true, privacy_ack_at: '2026-10-01T10:00:00.000Z' });
+
+    await page.getByRole('button', { name: 'Editar Persona Sintética' }).click();
+    await page.locator('#viewSignature').click();
+    const signature = page.getByRole('dialog', { name: /Firma · Persona Sintética/ });
+    await expect(signature.locator('img.sigimg')).toBeVisible();
+    await expect.poll(() => signature.locator('img.sigimg').evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    expect(api.requests.some((r) => r.path === `/api/v1/guest-signature/${persona.id}`)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(signature).toBeHidden();
+
+    // papelera: «Dado de baja por el organizador» solo si quien lo quitó no es del personal
+    await page.getByRole('button', { name: 'Editar Luis Pérez' }).click();
+    page.once('dialog', (confirmation) => void confirmation.accept()); // «El huésped va a la papelera»
+    await page.locator('#removeRow').click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(page.locator('#guestTrash')).toBeVisible();
+    await page.locator('#guestTrash summary').click({ position: { x: 20, y: 10 } });
+    await expect(page.locator('#guestTrashCount')).toHaveText('2');
+    const trashed = (name: string) => page.locator('#guestTrash .row', { hasText: name });
+    await expect(trashed('Marta Baja')).toContainText('Dado de baja por el organizador');
+    await expect(trashed('Luis Pérez')).not.toContainText('Dado de baja por el organizador');
+    await trashed('Marta Baja').getByRole('button', { name: /Restaurar a Marta Baja/ }).click();
+    await expect(page.locator('#guestList .row', { hasText: 'Marta Baja' })).toBeVisible();
+    await expect.poll(() => byName('Marta').deleted_at).toBeNull();
+    await expect(page.locator('#guestTrashCount')).toHaveText('1');
+    await trashed('Luis Pérez').getByRole('button', { name: /Restaurar a Luis Pérez/ }).click();
+    await expect(page.locator('#guestList .row', { hasText: 'Luis Pérez' })).toBeVisible();
+    await expect(page.locator('#guestTrash')).toHaveCount(0);
+  });
+
   await test.step('Calendario: la reserva aparece y el panel refleja el estado de Google Calendar', async () => {
     const reservationId = api.rows(RESERVATIONS)[0]!.id;
     api.setCalendarStatus({ configured: true, calendarId: 'prueba@group.calendar.example', health: 'calendar_not_shared',
@@ -613,7 +722,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#trashReservation')).toBeHidden();
     await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('25 elementos asociados'); // 20 tareas, 2 restricciones, 1 huésped, 2 asignaciones
+    await expect(page.locator('.dialog')).toContainText('28 elementos asociados'); // 20 tareas, 2 restricciones, 4 huéspedes, 2 asignaciones
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');

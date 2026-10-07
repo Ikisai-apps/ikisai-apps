@@ -36,6 +36,13 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
 
 /** Columnas que fija el servidor en las propuestas (no son escribibles desde el cliente). */
 const PROPOSAL_SERVER_COLUMNS = ['version', 'subtotal', 'adjustments', 'vat_amount', 'total', 'deposit_amount', 'sent_at'];
+/** Columnas que fija el servidor (trigger o portal) y los clientes no escriben: huéspedes y restricciones (migración 0433). */
+const SERVER_COLUMNS: Record<string, Record<string, unknown>> = {
+  'booking.guests': { field_sources: {}, allergies_visible_to_organizer: false, privacy_ack_at: null, privacy_ack_version: null },
+  'booking.dietary_restrictions': { source: 'staff' },
+};
+/** PNG de 1x1 que sirve de firma en `GET /guest-signature/:id`. */
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const PROPOSAL_PROCEDURES = ['booking.new_proposal_version', 'booking.send_proposal', 'booking.accept_proposal'];
 
 export interface FakeRow {
@@ -367,6 +374,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (op.table === 'booking.reservations' && (typeof fields.title !== 'string' || !fields.title.trim())) throw new Fault(422, 'INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? COLUMN_DEFAULTS[op.table]?.[column] ?? null;
+        for (const [column, value] of Object.entries(SERVER_COLUMNS[op.table!] ?? {})) row[column] = structuredClone(value);
         if (op.table === 'booking.proposals') {
           for (const column of PROPOSAL_SERVER_COLUMNS) row[column] = null;
           row.version = Math.max(0, ...Array.from(store.values()).filter((x) => x.reservation_id === fields.reservation_id).map((x) => Number(x.version))) + 1;
@@ -445,6 +453,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         upload.size = Buffer.concat(chunks).byteLength;
         return json(res, 200, { Key: stored[1] });
       }
+      if (path.startsWith('_sig/') && method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+        return void res.end(TINY_PNG);
+      }
       if (path === 'auth/login' && method === 'POST') {
         const body = await readJson(req);
         const email = String(body.username ?? body.email ?? '').trim().toLowerCase();
@@ -466,6 +478,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       // catálogo del lanzador (contrato §3.3): apps con acceso de la cuenta, internas y portales
+      if (path === 'members') return json(res, 200, users.map((u) => ({ userId: userIds.get(u.email), role: 'owner', displayName: u.displayName ?? u.email })));
+      const signature = /^guest-signature\/([0-9a-f-]+)$/.exec(path);
+      if (signature && method === 'GET') {
+        const guest = data.get('booking.guests')?.get(signature[1]!);
+        if (!guest || guest.deleted_at || typeof guest.signature_file_id !== 'string' || !uploads.has(guest.signature_file_id)) throw new Fault(404, 'FILE_NOT_FOUND', 'No hay firma de ese huésped.');
+        return json(res, 200, { url: `/api/v1/_sig/${guest.signature_file_id}`, mime: 'image/png', expiresAt: new Date(Date.now() + 300_000).toISOString() });
+      }
       if (path === 'entity') return json(res, 200, entityData);
       if (path === 'apps') return json(res, 200, {
         current: 'booking',
