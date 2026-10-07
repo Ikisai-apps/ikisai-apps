@@ -14,6 +14,7 @@ const text = (value: string) => value.trim() || null;
 /** Maquinaria: lista sencilla en lectura, hoja de edición y papelera. Sin fotos ni optimizador (docs/food/API.md §9). */
 export const mountEquipment: ViewMount = ({ main, client }) => {
   let rows: Row[] = [];
+  const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
 
   const list = el('ul', { 'data-feedback-id': 'food.maquinaria.lista', 'data-feedback-label': 'Lista de maquinaria', class: 'list', id: 'equipmentList', 'aria-label': 'Maquinaria' });
@@ -133,6 +134,10 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
         el('button', { 'data-feedback-id': 'food.maquinaria.formulario.papelera', 'data-feedback-label': 'Enviar máquina a papelera', class: 'danger', type: 'button', id: 'deleteEquipment', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
         el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Si alguna receta la necesita, márcala fuera de servicio en lugar de borrarla.'),
       ) : null,
+      row && row.status !== 'operativo' && !row.deleted_at && canWrite() ? el('div', { 'data-feedback-id': 'food.maquinaria.formulario.aviso_tasks', 'data-feedback-label': 'Avisar a Tasks', class: 'zone', id: 'faultZone' },
+        el('button', { 'data-feedback-id': 'food.maquinaria.formulario.avisar_averia', 'data-feedback-label': 'Avisar a Tasks', class: 'ghost', type: 'button', id: 'reportFault', onclick: (event: Event) => void reportFault(row, event.currentTarget as HTMLButtonElement, notes.value) }, 'Avisar a Tasks para repararla'),
+        el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Crea una petición en Tasks con el nombre, el estado y las notas. Necesita conexión.'),
+      ) : null,
     );
 
     sheet = openSheet({
@@ -146,6 +151,24 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
     });
     refreshDirty();
+  }
+
+  /** Petición a Tasks (API.md §6.1): una por máquina y día; Tasks la enruta con las reglas del usuario o la deja en «Por clasificar». */
+  async function reportFault(row: Row, button: HTMLButtonElement, note: string): Promise<void> {
+    if (!navigator.onLine) { toast('Sin conexión: avisa a Tasks cuando vuelva la red.'); return; }
+    button.disabled = true;
+    try {
+      const out = await usage.run('food.maquinaria.avisar_averia', () => client.api<{ created: boolean; routed: string | null }>(`/equipment/${row.id}/fault`, {
+        method: 'POST',
+        json: { name: row.name, status: row.status, location: row.location ?? '', note: note.trim() },
+      }));
+      toast(!out.created ? 'Ya se había avisado hoy a Tasks de esta máquina.'
+        : out.routed === 'pending' ? 'Aviso enviado a Tasks: queda en «Por clasificar».' : 'Aviso enviado a Tasks.');
+    } catch (error) {
+      toast(describeError(error));
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function deleteRow(row: Row): Promise<void> {
