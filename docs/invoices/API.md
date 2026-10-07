@@ -622,6 +622,20 @@ Construido: el par `tasks` / `purchase_request` (lista y resolución por `tasks.
 
 Cuando Booking fusione su PR #146 existirá `booking.invoices_staff_hours_projection`, legible por Invoices con `GET /api/v1/read/booking.invoices_staff_hours_projection?where[event_id]=…`. Columnas: `assignment_id, event_id, event_code, reservation_id, reservation_code, function, staff_ref, work_date, planned_hours, actual_hours, status, revision`, sin nombres de personas. El **coste por hora por función** sería de Invoices: una tabla de tarifas por función y fecha de vigencia, y un coste de personal por evento o reserva junto al coste de compras. Se diseña y se construye cuando Core lo pida.
 
+### 7.6 Indicadores para el panel de Dirección de Central (ronda 40, migración 0211)
+
+Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md` §7.2. Está registrada con `core.allow_read('central', …, 'view')` y solo la lee la clave de servicio. Publica solo agregados: ningún proveedor, cliente ni importe de una factura concreta. «Hoy» es la fecha en hora de Madrid. Las claves mensuales cubren el mes en curso y los 12 anteriores, así que la vista tiene 29 filas.
+
+| Clave | Etiqueta | Unidad · periodo · sentido | Fórmula |
+|---|---|---|---|
+| `invoices.pending_review` | Facturas recibidas por revisar | `count` · `actual` · `down` | Recibidas no borradas en `pendiente_datos` o `pendiente_revision`. |
+| `invoices.unpaid` | Facturas recibidas sin pagar | `count` · `actual` · `down` | Recibidas no borradas ni anuladas con `payment_status = 'pendiente'`. |
+| `invoices.unpaid_amount` | Importe recibido sin pagar | `eur` · `actual` · `down` | Suma de `calculated_total` (IVA incluido) de las mismas facturas que `invoices.unpaid`. |
+| `invoices.expenses_month` | Gasto del mes (facturas validadas) | `eur` · `AAAA-MM` · `down` | Suma de `calculated_total` (IVA incluido) de las recibidas `validada` o `archivada`, por mes de `invoice_date`. Las que están por revisar no cuentan hasta validarlas. |
+| `invoices.income_issued_month` | Ingresos facturados del mes (base) | `eur` · `AAAA-MM` · `up` | Suma de `base_total` (sin IVA) de las emitidas no borradas ni anuladas, y sin borradores cuando exista la emisión (§14), por mes de `issue_date`. |
+
+Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `?vista=emitidas`) y el gasto a `#/gestoria`. Cambiar el significado de una clave es crear otra.
+
 ## 8. Archivos
 
 - **Bucket** `purchase-documents` (privado; 52 428 800 bytes). MIME: PDF, WebP, JPEG, PNG.

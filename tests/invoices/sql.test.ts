@@ -651,3 +651,36 @@ test('tomar el emisor actual: solo las emitidas sin emisor, nunca sobrescribe ni
   const hist = await app.t.db.query<{ actor_id: string | null }>(`select actor_id from core.changes where row_id = $1 and op = 'update' order by cursor desc limit 1`, [c]);
   assert.ok(hist.rows[0]?.actor_id, 'el historial guarda quién lo hizo');
 });
+
+
+test('indicadores para Central (§7.5): columnas del contrato, 29 filas, solo agregados y valores que cuadran', async () => {
+  const q = await app.t.db.query<Record<string, any>>(`select * from invoices.central_kpi_projection order by kpi, period`);
+  const rowsKpi = q.rows;
+  assert.equal(rowsKpi.length, 29);
+  assert.deepEqual(Object.keys(rowsKpi[0]!).sort(), ['computed_at', 'direction', 'kpi', 'label', 'link', 'period', 'period_end', 'period_start', 'unit', 'value'].sort());
+  const keys = [...new Set(rowsKpi.map((r) => r.kpi))].sort();
+  assert.deepEqual(keys, ['invoices.expenses_month', 'invoices.income_issued_month', 'invoices.pending_review', 'invoices.unpaid', 'invoices.unpaid_amount']);
+  for (const r of rowsKpi) {
+    assert.ok(r.label.length <= 60 && ['count', 'eur'].includes(r.unit) && ['up', 'down'].includes(r.direction) && r.link.startsWith('https://finance.ikisai.com/#/'));
+  }
+  const months = rowsKpi.filter((r) => r.kpi === 'invoices.income_issued_month').map((r) => r.period);
+  assert.equal(months.length, 13); assert.match(months[0], /^\d{4}-\d{2}$/);
+  const madrid = await app.t.db.query<{ m: string }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM') as m`);
+  assert.equal(months[12], madrid.rows[0]!.m);
+  // Los valores cuadran con los cálculos directos
+  const direct = await app.t.db.query<Record<string, string>>(`select
+    (select count(*) from invoices.invoices where deleted_at is null and status in ('pendiente_datos','pendiente_revision')) as pending,
+    (select count(*) from invoices.invoices where deleted_at is null and status <> 'anulada' and payment_status = 'pendiente') as unpaid,
+    (select coalesce(sum(base_total), 0) from invoices.issued_invoices where deleted_at is null and status <> 'anulada'
+      and issue_date between (date_trunc('month', (now() at time zone 'Europe/Madrid')::date) - interval '12 months')::date
+      and (date_trunc('month', (now() at time zone 'Europe/Madrid')::date) + interval '1 month' - interval '1 day')::date) as income_window`);
+  const val = (k: string) => Number(rowsKpi.find((r) => r.kpi === k)!.value);
+  assert.equal(val('invoices.pending_review'), Number(direct.rows[0]!.pending));
+  assert.equal(val('invoices.unpaid'), Number(direct.rows[0]!.unpaid));
+  // La suma de los 13 meses es la base de las emitidas no anuladas de esa ventana
+  const incomeWindow = rowsKpi.filter((r) => r.kpi === 'invoices.income_issued_month').reduce((n, r) => n + Number(r.value), 0);
+  assert.equal(Math.round(incomeWindow * 100), Math.round(Number(direct.rows[0]!.income_window) * 100));
+  // Registrada para Central
+  const reg = await app.t.db.query(`select kind from core.allowed_reads where app = 'central' and name = 'invoices.central_kpi_projection'`);
+  assert.deepEqual(reg.rows, [{ kind: 'view' }]);
+});

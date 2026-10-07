@@ -79,6 +79,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Completar el emisor de las emitidas registradas sin él (ronda 38, migración 0210): procedimiento `invoices.take_issuer`, en la ficha («Tomar el emisor actual») y en lote desde el aviso de la lista; nunca sobrescribe ni toca anuladas.
 
+- Indicadores para el panel de Dirección de Central (ronda 40, migración 0211): vista `invoices.central_kpi_projection` con cinco claves (API.md §7.6).
+
 ## En curso
 
 - Emitir facturas desde Finance (ronda 40): propuesta en API.md §14, pendiente de revisión de Core. Huella comprobada con los tres ejemplos oficiales de la AEAT.
