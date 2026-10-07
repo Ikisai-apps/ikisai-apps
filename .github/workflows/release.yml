@@ -115,7 +115,9 @@ jobs:
           if [ "${{ github.event_name == 'workflow_dispatch' && inputs.bind_domain }}" = "true" ]; then EXTRA="--bind-domain"; fi
           python scripts/release_cloud.py --app "$APP" --version "$IKISAI_RELEASE" --apply --skip-schema $EXTRA
       - name: Subir el catálogo de funcionalidades (perspectiva «Uso» del Revisor)
-        run: python scripts/usage_catalog_ingest.py --app "$APP" --release "$IKISAI_RELEASE" --apply
+        run: |
+          node packages/ui-kit/scripts/feature-catalog.mjs --app "$APP" --release "$IKISAI_RELEASE" --commit "$GITHUB_SHA" || echo "sin catálogo para $APP"
+          python scripts/usage_catalog_ingest.py --app "$APP" --release "$IKISAI_RELEASE" --apply
       - uses: actions/upload-artifact@v4
         if: always()
         with:
