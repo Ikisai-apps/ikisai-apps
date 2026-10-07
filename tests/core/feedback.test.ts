@@ -200,3 +200,13 @@ test('feedback · revisor: lo de aplicación entra como nuevo; solo el owner del
   const space = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ subject: 'space', intent: 'problem', category: 'cleaning', node: undefined }) });
   assert.equal(space.data.report.reviewStatus, 'approved', 'lo operativo no espera revisión');
 });
+
+test('planificador · una app programa su tick con sonda; la sonda vive en su schema', async () => {
+  await app.t.db.exec(`create function booking.test_has_work() returns boolean language sql stable as $$ select false $$;
+    select core.schedule_tick('booking', 'test/tick', '*/5 * * * *', 'booking.test_has_work');`);
+  const row = await app.t.db.query<{ probe: string }>(`select probe from core.scheduled_ticks where app = 'booking' and route = 'test/tick'`);
+  assert.equal(row.rows[0]!.probe, 'booking.test_has_work');
+  const idle = await app.t.db.query<{ r: string | null }>(`select core.worker_tick_probe('booking', 'test/tick')::text r`);
+  assert.equal(idle.rows[0]!.r, null, 'sin trabajo no despierta la Edge');
+  await assert.rejects(app.t.db.query(`select core.schedule_tick('booking', 'otro/tick', '*/5 * * * *', 'tasks.algo')`));
+});
