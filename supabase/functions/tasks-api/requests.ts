@@ -117,7 +117,8 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     url: (reference, url) => url === `https://tasks.ikisai.com/#/feedback/${reference}`,
   },
   booking: {
-    service: 'booking', kinds: new Set(['booking.ses_deadline']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    // Plazo legal de SES y, desde los portales de organizadores (T3), fechas posibles, «quiere confirmar» y comentarios a la propuesta.
+    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
 };

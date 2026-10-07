@@ -1218,9 +1218,13 @@ Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de s
 | `source` | `kind` | Servicio (Core) | `external_url` | `on_behalf_of` |
 |---|---|---|---|---|
 | `feedback` | `feedback.space.*`, `feedback.event.*` | `feedback` (`0067`) | `https://tasks.ikisai.com/#/feedback/<código>` | obligatorio |
-| `booking` | `booking.ses_deadline` | `booking` (`0068`) | `https://booking.ikisai.com/#/…` | opcional |
+| `booking` | `booking.ses_deadline` y, desde los portales de organizadores (T3), `booking.organizer_dates`, `booking.organizer_confirm` y `booking.proposal_comment` | `booking` (`0068`) | `https://booking.ikisai.com/#/…` | opcional (para los de organizadores, `{kind: 'organizer', report_code}`) |
 
 Los dos orígenes admiten además `due` (`AAAA-MM-DD`) y `priority` (`normal`, `high` o `critical`), opcionales y con la misma validación que `requests/task`.
+
+**Enrutado de los portales (T3):** «Gestionar entradas» enseña los tipos de Booking aunque aún no haya llegado ninguno.
+- Al crear la regla de uno de organizadores, propone el área cuyo nombre contiene «Comercial», sin ids fijos en el código. La propietaria la confirma en un toque.
+- La regla no se crea por migración: un id de área no se escribe en el código, ni se crean datos en producción.
 
 La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los servicios de la lista, busca la identidad. Añadir un origen es una fila más en `SYSTEM_SOURCES` (`tasks-api/requests.ts`) y en esa acción.
 
