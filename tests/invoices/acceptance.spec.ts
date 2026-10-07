@@ -943,6 +943,56 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
       await expect(doc).not.toContainText('COPIA DE REGISTRO');
     });
 
+    await test.step('rectificar (§14.3): borrador por diferencias en la serie R, emitirlo y la original queda rectificada', async () => {
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: `F${year}-0001` }).click();
+      let ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#rectifyIssued').click();
+      // Sin serie de rectificativas: lleva a crearla
+      const settings = page.getByRole('dialog', { name: 'Series y VERI*FACTU' });
+      await settings.locator('#createSeries-rectificativa').click();
+      await expect(settings).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      await page.locator('#issuedList .row', { hasText: `F${year}-0001` }).click();
+      ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#rectifyIssued').click();
+      const dialog = page.getByRole('alertdialog');
+      await dialog.locator('#rectifyReason').fill('Devolución de la estancia');
+      await dialog.getByRole('button', { name: 'Crear rectificativa' }).click();
+      await expect(page.locator('#issuedList')).toContainText('Borrador R', { timeout: 20_000 });
+      await synced(page);
+      const draft = api.rows('invoices.issued_invoices').find((i) => i.series_code === 'R' && i.status === 'borrador')!;
+      expect(draft).toMatchObject({ invoice_type: 'R4', rectification_kind: 'I', recipient_tax_id: 'B55555555' });
+      expect(api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id).map((l) => l.net_amount)).toEqual([-100]);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: 'Borrador R' }).click();
+      ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#editDraft').click();
+      const edit = page.getByRole('dialog', { name: 'Editar borrador' });
+      await expect(edit.locator('#draftRectInfo')).toContainText(`Rectifica a F${year}-0001 · por diferencias`);
+      await edit.locator('.sheet-foot').getByRole('button', { name: 'Cancelar' }).click();
+      await page.locator('#issuedList .row', { hasText: 'Borrador R' }).click();
+      ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#issueDraft').click();
+      await expect(page.getByRole('alertdialog')).toContainText(`R${year}-0001`);
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Emitir' }).click();
+      await expect(page.locator('#issuedList')).toContainText(`R${year}-0001`, { timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.full_number === `F${year}-0001`)).toMatchObject({ status: 'rectificada' });
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: `R${year}-0001` }).click();
+      ficha = page.locator('.sheet[role="dialog"]');
+      await ficha.locator('#printInvoice').click();
+      const doc = page.locator('#issuedDocumentView');
+      await expect(doc.locator('#docRectification')).toContainText(`Factura rectificativa por diferencias de F${year}-0001`);
+      await expect(doc.locator('#docTotals')).toContainText('-110,00 €');
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.keyboard.press('Escape').catch(() => undefined);
+      await page.locator('#issuedList .row', { hasText: `F${year}-0001 · Cliente Emisión SL` }).click();
+      await expect(page.locator('.sheet[role="dialog"]').locator('#issuedRectifiedBy')).toContainText(`R${year}-0001`);
+    });
+
     await test.step('un borrador se borra sin dejar número', async () => {
       await page.keyboard.press('Escape').catch(() => undefined);
       await page.keyboard.press('Escape').catch(() => undefined);

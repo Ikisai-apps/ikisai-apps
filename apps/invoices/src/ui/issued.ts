@@ -21,7 +21,7 @@ import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import type { IssuerSnapshot } from '@ikisai/domain-invoices';
-import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, verifactuSummary } from './issuing.ts';
+import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, rectifyIssued, verifactuSummary } from './issuing.ts';
 
 /** Entidad emisora de Central (ronda 37), leída de la Edge; sin red o sin datos, `null`. */
 export async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot | null; logo_url: string | null }> {
@@ -222,6 +222,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   } else {
     if (canEdit) {
       actions.push(el('button', { class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
+      if (fromApp) actions.push(el('button', { class: 'softbtn', type: 'button', id: 'rectifyIssued', onclick: () => void rectifyIssued(ctx, invoice, data) }, icon('undo', 18), 'Rectificar'));
       // Una emitida desde Finance solo la anula el owner (genera el registro de anulación).
       if (!fromApp || role === 'owner') actions.push(el('button', { class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
     }
@@ -269,10 +270,12 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         el('dt', null, 'Número'), el('dd', null, numberOf(invoice)),
         el('dt', null, 'Tipo'), el('dd', null, ISSUED_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type),
         isRectificative(invoice.invoice_type) ? el('dt', null, 'Rectifica') : null,
-        isRectificative(invoice.invoice_type) ? el('dd', null, `${invoice.rectified.map((r) => fullNumber(r.series ?? '', r.number)).join(', ')} · ${RECTIFICATION_KIND_LABELS[invoice.rectification_kind ?? ''] ?? ''} · ${invoice.rectification_reason ?? ''}`) : null,
+        isRectificative(invoice.invoice_type) ? el('dd', null, `${invoice.rectified.map((r) => (r as { full_number?: string }).full_number ?? fullNumber(r.series ?? '', r.number)).join(', ')} · ${RECTIFICATION_KIND_LABELS[invoice.rectification_kind ?? ''] ?? ''} · ${invoice.rectification_reason ?? ''}`) : null,
         el('dt', null, 'Fecha'), el('dd', null, shortDate(invoice.issue_date) + (invoice.operation_date && invoice.operation_date !== invoice.issue_date ? ` (operación ${shortDate(invoice.operation_date)})` : '')),
         el('dt', null, 'Destinatario'), el('dd', null, recipient),
         address ? el('dt', null, 'Domicilio') : null, address ? el('dd', null, address) : null,
+        invoice.rectified_by?.length ? el('dt', null, 'Rectificada por') : null,
+        invoice.rectified_by?.length ? el('dd', { id: 'issuedRectifiedBy' }, (invoice.rectified_by as Array<{ full_number?: string }>).map((r) => r.full_number ?? '').join(', ')) : null,
         el('dt', null, 'Concepto'), el('dd', null, invoice.description),
         el('dt', null, 'Ingreso'), el('dd', null, invoice.income_category ? INCOME_CATEGORY_LABELS[invoice.income_category] : 'Sin categoría'),
         el('dt', null, 'Cobro'), el('dd', null, invoice.payment_status === 'cobrada' ? `Cobrada${invoice.paid_at ? ` el ${shortDate(invoice.paid_at)}` : ''}` : 'Sin cobrar'),

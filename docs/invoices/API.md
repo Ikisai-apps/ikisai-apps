@@ -897,7 +897,7 @@ Huella y encadenado, firma, registros de alta y de anulación de Verifactu, env�
 3. **Core:** visto bueno a `core.next_number` (§13.3) y a la proyección de ingresos para Booking.
 4. **Core y usuario:** si las emitidas van como pestaña dentro de Facturas (propuesta) o como entrada propia en la navegación.
 
-## 14. Emitir facturas desde Finance (aprobada por Core en la ronda 41 · PR 1 y PR 2 hechos)
+## 14. Emitir facturas desde Finance (aprobada por Core en la ronda 41 · PR 1, 2 y 3 hechos)
 
 Base: `coordinacion/ampliacion/FACTURACION.md`, aprobado por el usuario el 7-10-2026. Ikisai factura como autónomo, con una serie nueva desde la primera factura de la app. La hoja de Google deja de emitir y su serie se cierra.
 
@@ -1086,5 +1086,14 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
    - «Series» crea las series de emisión `F` y `R` con el formato `{serie}{año}-{n:4}`. El owner puede cerrar las series de registro. También muestra el estado del registro VERI*FACTU.
    - «Registrar emitida» solo ofrece series de registro abiertas.
    - **El interruptor no se ha construido.** Encender «producción» obliga a enviar hasta el 31-12, y el envío (XML, firma y certificado) aún no existe. La pantalla muestra el estado, apagado, y se activará junto con el envío.
-3. **Rectificativas y anulación** con su registro.
+3. **Rectificativas (hecho, migración `0214`):**
+   - `invoices.rectify {id, kind = I | S, reason_code = R1–R4, reason}` (editor y owner) crea un **borrador** en la serie de rectificativas. Solo vale para una emitida o rectificada desde Finance; si no, devuelve `RECTIFY_NOT_ISSUED`. Si no hay serie de rectificativas devuelve `SERIES_MISSING`. Una simplificada se rectifica con `R5`.
+   - **Por diferencias:** copia las líneas en negativo.
+   - **Por sustitución:** las copia en positivo para corregirlas y guarda la base y la cuota rectificadas.
+   - En `rectified` queda la original con su id, número y fecha. El destinatario se copia.
+   - **Al emitir la rectificativa,** la original pasa a `rectificada` y anota la rectificativa en `rectified_by`. Sigue congelada y se puede volver a rectificar.
+   - El registro de alta lleva `TipoRectificativa`, las facturas rectificadas y, si es por sustitución, `ImporteRectificacion`.
+   - **Base negativa:** la regla del ingreso asignado ahora solo aplica si hay algo asignado, porque una rectificativa por diferencias tiene base negativa.
+   - **En la app:** «Rectificar» en la ficha de una emitida pide el tipo, la causa y el motivo. El borrador conserva su tipo y su serie y explica qué rectifica. La factura impresa dice de qué factura es rectificativa, con el motivo.
+   - **Anulación:** la anulación del owner con su registro ya estaba en el PR 1.
 4. **Desde Booking,** cuando Booking publique la lectura.
