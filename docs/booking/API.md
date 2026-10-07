@@ -1212,6 +1212,87 @@ Ninguna toca `data_status`, `ses_*`, `notes` ni la papelera del personal. Las es
 4. **Declaración del organizador** en `booking.portal_declarations` (sincronizada para editor y owner; solo la escribe la acción, en el mismo lote que el dato; `422 DECLARATION_REQUIRED` la primera vez si no viene).
 5. **Baja por el organizador:** en cualquier momento (ver §16.6). La revocación usa `core.portal_revoke_scope('guests', 'guest_id', id)` (P21), que además quita el permiso a la sesión abierta del huésped.
 
+## 17. SES.HOSPEDAJES · propuesta para revisión de Core
+
+Diseño de producto aprobado por el usuario en `coordinacion/ampliacion/SES.md` (su §0 manda). Referencia técnica: especificación v3.1.3 y XSD oficiales (copiados a `integrations/ses/`, documentación pública sin datos personales). Orden: §17.1 interruptores → §17.3 cliente (SES-1) → reserva con botón (SES-2) → llegada (SES-3) → conservación (SES-4).
+
+### 17.1 Interruptores por reserva y ajuste global
+
+Columnas nuevas en `booking.reservations` (migración `0440_booking_ses`):
+
+```text
+ses_enabled          boolean not null default true    «Comunicar a SES.HOSPEDAJES»
+ses_disabled_reason  text null    uso_privado | prueba | otro          obligatorio si ses_enabled = false
+ses_disabled_note    text null    texto libre con «otro»
+collect_guest_data   boolean not null default true    «Pedir datos a los huéspedes»; solo cuenta con SES desactivado
+```
+
+- `booking.guest_mode(reservation_id)` pasa a leerlas: `ses` si SES está activo; `operativo` si está desactivado y se piden datos; `ninguno` si no. En `ninguno`, `portal_add_guest` responde `422 GUEST_DATA_OFF` y las lecturas del organizador devuelven la reserva sin apartado de huéspedes. El dominio (`guestMissing`, `GuestMode`) gana el modo `ninguno`.
+- Reglas en el hook SQL: con SES desactivado hace falta motivo (`SES_REASON_REQUIRED`); no se puede desactivar si ya hay un parte de viajeros aceptado de alguien alojado (`SES_ALREADY_REGISTERED`, cuando exista SES-3). En modo `operativo` el portal no pide ni guarda documento, dirección, fecha de nacimiento ni firma: las acciones de portal filtran esos campos (`portal_clean_fields` según el modo).
+- Desactivar con la reserva ya comunicada: la ficha ofrece «Anular la comunicación en SES» (SES-2). Reactivar: pide los datos que falten y avisa del plazo.
+- Aviso de coherencia en la interfaz (no bloquea): «Esta reserva tiene importe. ¿Seguro que es sin contraprestación?».
+- El historial (`core.changes`) ya guarda quién, cuándo y el motivo.
+
+Ajuste global, `booking.ses_settings` (una fila; lee editor/owner, escribe owner):
+
+```text
+environment   pre | prod          por defecto pre; prod solo con credenciales reales cargadas
+paused        boolean             «Pausar envíos»: los botones preparan pero no envían
+```
+
+Los códigos de arrendador y de establecimiento y el usuario y contraseña del servicio web son **secretos de la Edge** (`SES_LANDLORD_CODE`, `SES_ESTABLISHMENT_CODE`, `SES_USER`, `SES_PASSWORD`, uno por entorno), nunca columnas.
+
+### 17.2 Comunicaciones y estados
+
+```text
+booking.ses_communications          una por alta (RH o PV) o anulación; lee editor/owner; solo la escriben los procedimientos
+  reservation_id   uuid → booking.reservations
+  kind             RH | PV | anulacion
+  guest_ids        uuid[] null        PV: huéspedes incluidos
+  cancels_id       uuid null          anulacion: la comunicación que anula
+  environment      pre | prod
+  status           preparada | enviando | en_proceso | aceptada | rechazada | anulada | error
+  content_sha256   text               huella del contenido enviado (nunca el XML ni el SOAP)
+  lot_id           text null          número de lote devuelto por SES
+  ses_code         text null          código de comunicación asignado por SES
+  error_code       text null          código de error de SES (tabla del §5 de la spec)
+  error_text       text null          descripción en claro
+  legal_start_at   timestamptz        momento legal del plazo de 24 h (pago para RH; primer día para PV)
+  sent_at, accepted_at, cancelled_at   timestamptz null
+
+booking.ses_attempts                tabla cerrada (readable_roles '{}'): una fila por llamada al servicio
+  communication_id, at, operation (comunicacion | consultaLote | anulacion), http_status, outcome, lot_id, error_code
+```
+
+Estados visibles: Preparada → Enviando → En proceso en SES → **Aceptada** (solo entonces «enviada») / Rechazada (con el error en claro y qué corregir) / Anulada / Error (de red o de servicio; se reintenta).
+
+### 17.3 Dónde vive el cliente (SES-1)
+
+- **Dominio puro**, `supabase/functions/_domain/booking/ses/`: construcción de la solicitud RH, PV y anulación siguiendo los XSD, catálogos oficiales (documento, sexo, pago, parentesco), ZIP (sin compresión adicional: la spec solo exige ZIP) y Base64, sobre SOAP de las operaciones `comunicacion`, `consultaLote` y `anulacionLote`, y lectura de las respuestas (lote, resultado por comunicación, códigos de error). Sin red ni secretos: se prueba entero en Node.
+- **Validación contra los XSD oficiales en las pruebas** con `xmllint` (o una biblioteca de validación en Node como dependencia de desarrollo), sobre los XSD copiados a `integrations/ses/`.
+- **Transporte**, `supabase/functions/booking-api/ses/transport.ts`: `POST` al endpoint de PRE o PROD con `Authorization: Basic` y `SOAPAction` vacío.
+- **Certificado (comprobado el 7-10-2026):** los dos servidores (`hospedajes.pre-ses.mir.es` y `hospedajes.ses.mir.es`) presentan un certificado emitido por **«AC Componentes Informáticos»** de la FNMT **sin enviar ese intermedio**; la raíz «AC RAIZ FNMT-RCM» sí está en los almacenes habituales. Un cliente estándar falla (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`); con el intermedio público (`http://www.cert.fnmt.es/certs/ACCOMP.crt`, válido hasta 2028) añadido a la confianza, PRE responde `401` sin credenciales, que es lo esperado. El intermedio va en el repo (`integrations/ses/fnmt-ac-componentes.pem`, es público). En la Edge: `Deno.createHttpClient({ caCerts })` y, si el runtime de Supabase no lo ofrece, `Deno.connectTls({ caCerts })` con una petición HTTP/1.1 mínima. **Para despejarlo en la Edge real:** ruta `POST /api/v1/worker/ses/ping` (clave de worker) que solo hace el saludo TLS contra PRE y devuelve el estado HTTP; Core la llama una vez desplegada. Si ninguna de las dos vías funciona en Supabase, el transporte pasa a un Worker de Cloudflare con el mismo contrato.
+- **SES simulado en las pruebas:** un servidor SOAP falso que valida la cabecera, descomprime y comprueba la solicitud, y responde lotes aceptados, rechazados (con códigos reales) y en proceso.
+
+### 17.4 Rutas
+
+| Ruta | Quién | Hace |
+|---|---|---|
+| `POST /api/v1/ses/:reservationId/rh` | editor/owner | prepara y envía la reserva (solo con pago registrado y SES activo; no envía si `paused`) |
+| `POST /api/v1/ses/:communicationId/cancel` | editor/owner | anula una comunicación aceptada |
+| `POST /api/v1/ses/:reservationId/pv` | editor/owner | «Cerrar la entrada y comunicar» (SES-3) |
+| `GET /api/v1/ses/:reservationId` | editor/owner | estado de sus comunicaciones |
+| `POST /api/v1/worker/ses/tick` | planificador | consulta lotes en proceso y reintenta errores; solo trabaja si hay pendientes |
+| `POST /api/v1/worker/ses/ping` | Core | prueba de TLS contra PRE (§17.3) |
+
+Los avisos de plazo (12 h y 18 h desde el pago o el primer día) salen de `legal_start_at` en Inicio y en la ficha, y como petición a Tasks (`booking.ses_deadline`, §20 de Tasks) cuando Core lo confirme.
+
+### 17.5 Preguntas para Core
+
+1. ¿Ofrece el runtime de Supabase `Deno.createHttpClient` con `caCerts`, o `Deno.connectTls`? Si lo sabes, me ahorro la ruta de prueba; si no, la llamas tú tras desplegar.
+2. ¿Valido los XSD en las pruebas con `xmllint` (no está en la CI de Windows/Ubuntu por defecto) o con una dependencia de desarrollo en Node? Propuesta: dependencia de desarrollo (`xmllint-wasm`), sin tocar la CI.
+3. Secretos `SES_*` por entorno: ¿los nombras tú o uso los de §17.1?
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
