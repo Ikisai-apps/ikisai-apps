@@ -104,6 +104,8 @@ test.describe('ui-kit v0.17 · uso de funcionalidades: recolector', () => {
     const key = Object.keys(st.usage).find((k) => k.includes('|demo.reservation.guests.add|production'))!;
     expect(key.split('|')[1]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(st.usage[key].activations).toBe(1);
+    // La pista de ruta para «Ir al sitio»: ruta real, sin consulta.
+    expect(st.usage[key].route).toBe('/#feedback');
     // Reenviar lo mismo no suma.
     await page.evaluate(async () => { const u = (window as any).ikisaiFeedback.usage; await u.flush(); });
     st = await server(page);
