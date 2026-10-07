@@ -21,7 +21,7 @@ import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
 import { block, commitSafely, field, select } from './common.ts';
 import type { IssuerSnapshot } from '@ikisai/domain-invoices';
-import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, rectifyIssued, verifactuSummary } from './issuing.ts';
+import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, rectifyIssued, startFromReservation, verifactuSummary } from './issuing.ts';
 
 /** Entidad emisora de Central (ronda 37), leída de la Edge; sin red o sin datos, `null`. */
 export async function fetchEntity(client: SyncClient): Promise<{ entity: IssuerSnapshot | null; logo_url: string | null }> {
@@ -194,7 +194,14 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     }
   }
   const off = onAnyTable(client, () => void load());
-  void load();
+  void load().then(() => {
+    // «Emitir factura» desde Booking (§14.8): #/facturas?vista=emitidas&desde=booking:reservation:<id>
+    const from = location.hash.match(/[?&]desde=booking:reservation:([0-9a-f-]{36})/i);
+    if (!from || !data) return;
+    history.replaceState(null, '', '#/facturas?vista=emitidas');
+    if (!canEdit) { toast('Tu cuenta no puede crear facturas.'); return; }
+    void startFromReservation(ctx, data, from[1]!.toLowerCase(), (id) => void open(id));
+  });
   return { element, destroy: off };
 }
 

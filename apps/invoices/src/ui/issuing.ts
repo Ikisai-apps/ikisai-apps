@@ -9,9 +9,10 @@ import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUE_MISSING_LABELS, ISSUED_TYPE_LABELS,
-  formatIssuedNumber, issueMissing, type IncomeCategory, type IssuedAddress, type IssuedDocument, type IssuerSnapshot,
+  displayPrice, draftLineFromPrice, formatIssuedNumber, issueMissing, reservationPrefill,
+  type DraftLineValues, type DraftPrefill, type IncomeCategory, type IssuedAddress, type IssuedDocument, type IssuerSnapshot, type PricedLine, type ReservationInvoiceSource,
 } from '@ikisai/domain-invoices';
-import { ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, describeError, type LocalIssuedInvoice, type LocalIssuedLine, type LocalIssuedSeries } from '../app/client.ts';
+import { ISSUED_ALLOCATIONS, ISSUED_INVOICES, ISSUED_LINES, ISSUED_SERIES, describeError, type LocalIssuedInvoice, type LocalIssuedSeries } from '../app/client.ts';
 import { eur, parseAmount, shortDate, todayIso } from '../app/data.ts';
 import { guard } from '../app/guard.ts';
 import { commitSafely, field, select } from './common.ts';
@@ -37,9 +38,9 @@ const isOwner = (client: SyncClient) => client.bootstrap()?.membership.role === 
 // ---------------------------------------------------------------------------
 // Borrador
 // ---------------------------------------------------------------------------
-interface DraftLineInputs { row: HTMLElement; description: HTMLInputElement; quantity: HTMLInputElement; price: HTMLInputElement; rate: HTMLSelectElement }
+interface DraftLineInputs { row: HTMLElement; description: HTMLInputElement; quantity: HTMLInputElement; price: HTMLInputElement; discount: HTMLInputElement; rate: HTMLSelectElement }
 
-export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: LocalIssuedInvoice): void {
+export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: LocalIssuedInvoice, prefill?: DraftPrefill): void {
   const { client } = ctx;
   // Un borrador de rectificativa conserva su tipo, su serie y lo que rectifica (lo crea invoices.rectify).
   const rectificative = !!draft && /^R[1-5]$/.test(draft.invoice_type);
@@ -49,20 +50,22 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     openIssuingSettings(ctx, data);
     return;
   }
-  const a: IssuedAddress = draft?.recipient_address ?? {};
+  const a: IssuedAddress = draft?.recipient_address ?? prefill?.recipient_address ?? {};
   const series = select('draftSeries', seriesList.map((s) => [s.code, `${s.code} · siguiente ${nextNumber(s)}`] as [string, string]), draft?.series_code ?? seriesList[0]!.code);
-  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? 'empresa');
-  const name = el('input', { type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? '' });
-  const taxId = el('input', { type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? '' });
+  const kind = select('draftRecipientKind', Object.entries(RECIPIENT_KIND_LABELS), draft?.recipient_kind ?? prefill?.recipient_kind ?? 'empresa');
+  const name = el('input', { type: 'text', id: 'draftRecipientName', maxlength: '200', autocomplete: 'organization', value: draft?.recipient_name ?? prefill?.recipient_name ?? '' });
+  const taxId = el('input', { type: 'text', id: 'draftRecipientTaxId', maxlength: '40', autocapitalize: 'characters', value: draft?.recipient_tax_id ?? prefill?.recipient_tax_id ?? '' });
   const line = el('input', { type: 'text', id: 'draftAddressLine', maxlength: '200', autocomplete: 'street-address', value: a.line ?? '' });
   const postal = el('input', { type: 'text', id: 'draftPostalCode', maxlength: '12', autocomplete: 'postal-code', value: a.postal_code ?? '' });
   const city = el('input', { type: 'text', id: 'draftCity', maxlength: '80', value: a.city ?? '' });
   const province = el('input', { type: 'text', id: 'draftProvince', maxlength: '80', value: a.province ?? '' });
   const country = el('input', { type: 'text', id: 'draftCountry', maxlength: '2', autocapitalize: 'characters', value: a.country ?? draft?.recipient_country ?? 'ES' });
   const addressNote = el('span', { class: 'hint', id: 'draftAddressNote' });
-  const description = el('input', { type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? '' });
-  const operationDate = el('input', { type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? '' });
-  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? null);
+  const description = el('input', { type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
+  const operationDate = el('input', { type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
+  const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null);
+  // Precios con IVA incluido (las tarifas de Booking lo están): base y cuota se guardan exactas por línea.
+  const includeVat = el('input', { type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
   const totals = el('p', { class: 'hint', id: 'draftTotals' });
   const error = el('p', { class: 'formerror', role: 'alert' });
   const linesHost = el('div', { id: 'draftLineInputs' });
@@ -72,6 +75,8 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     addressNote.textContent = kind.value === 'particular' ? 'Opcional para un particular.' : 'Obligatorio: la factura lleva el domicilio del destinatario.';
   };
   kind.addEventListener('change', syncKind); syncKind();
+  const syncPrices = () => { for (const l of lineInputs) l.price.placeholder = includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA'; preview(); };
+  includeVat.addEventListener('change', syncPrices);
   category.addEventListener('change', () => {
     const suggested = category.value ? INCOME_CATEGORY_VAT[category.value as IncomeCategory] : null;
     if (suggested === null || suggested === undefined) return;
@@ -79,51 +84,76 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     preview();
   });
 
-  function addLine(initial?: LocalIssuedLine): void {
+  const text = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
+  function addLine(initial?: PricedLine): void {
     const n = lineInputs.length + 1;
     const d = el('input', { type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, value: initial?.description ?? '' });
-    const q = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : String(initial.quantity).replace('.', ',') });
-    const p = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`,
-      value: initial ? String(initial.unit_price ?? initial.net_amount).replace('.', ',') : '' });
-    const suggested = initial ? (initial.vat_rate === null ? '' : String(Number(initial.vat_rate))) : category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
-    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']], suggested, { 'aria-label': `IVA de la línea ${n}` });
+    const q = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Cant.', 'aria-label': `Cantidad de la línea ${n}`, value: initial?.quantity === null || initial?.quantity === undefined ? '1' : text(initial.quantity) });
+    const p = el('input', { type: 'text', inputmode: 'decimal', placeholder: includeVat.checked ? 'Precio con IVA' : 'Precio sin IVA', 'aria-label': `Precio de la línea ${n}`, value: initial ? text(initial.unit_price) : '' });
+    const dto = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Dto.', 'aria-label': `Descuento de la línea ${n}`, value: initial?.discount_amount ? text(initial.discount_amount) : '' });
+    const suggested = initial ? (initial.vat_rate === null ? '0' : String(Number(initial.vat_rate))) : category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
+    const options: Array<[string, string]> = [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']];
+    if (!options.some(([v]) => v === suggested)) options.push([suggested, `IVA ${suggested.replace('.', ',')} %`]);
+    const rate = select('', options, suggested, { 'aria-label': `IVA de la línea ${n}` });
     rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     if (initial) rate.dataset.touched = '1';
-    const row = el('div', { class: 'draft-line' }, d, q, p, rate);
-    lineInputs.push({ row, description: d, quantity: q, price: p, rate });
+    const row = el('div', { class: 'draft-line' }, d, q, p, dto, rate);
+    lineInputs.push({ row, description: d, quantity: q, price: p, discount: dto, rate });
     linesHost.append(row);
     preview();
   }
 
-  function lines() {
-    return lineInputs.map((l, position) => {
-      const quantity = parseAmount(l.quantity.value) ?? 1;
+  function lines(): Array<DraftLineValues & { position: number }> | null {
+    const out: Array<DraftLineValues & { position: number }> = [];
+    for (const [position, l] of lineInputs.entries()) {
       const price = parseAmount(l.price.value);
-      return { position, description: l.description.value.trim(), quantity, unit_price: price, net_amount: price === null ? null : Math.round(quantity * price * 100) / 100, vat_rate: Number(l.rate.value) };
-    }).filter((l) => l.description || l.unit_price !== null);
+      if (!l.description.value.trim() && price === null) continue;
+      if (!l.description.value.trim() || price === null) return null;
+      out.push({ position, ...draftLineFromPrice({ description: l.description.value.trim(), quantity: parseAmount(l.quantity.value) ?? 1, unit_price: price,
+        discount_amount: parseAmount(l.discount.value) ?? 0, vat_rate: Number(l.rate.value) }, includeVat.checked) });
+    }
+    return out;
+  }
+
+  function sums(ls: DraftLineValues[]): { base: number; quota: number } {
+    let base = 0; const byRate = new Map<number, { net: number; vat: number; exact: boolean }>();
+    for (const l of ls) {
+      base += l.net_amount;
+      const g = byRate.get(l.vat_rate ?? 0) ?? { net: 0, vat: 0, exact: true };
+      g.net += l.net_amount; g.vat += l.vat_amount ?? 0; g.exact = g.exact && l.vat_amount !== null;
+      byRate.set(l.vat_rate ?? 0, g);
+    }
+    const quota = [...byRate.entries()].reduce((acc, [rate, g]) => acc + (g.exact ? g.vat : Math.round(g.net * rate) / 100), 0);
+    return { base: Math.round(base * 100) / 100, quota: Math.round(quota * 100) / 100 };
   }
 
   function preview(): void {
-    let base = 0; const byRate = new Map<number, number>();
-    for (const l of lines()) { if (l.net_amount === null) continue; base += l.net_amount; byRate.set(l.vat_rate, (byRate.get(l.vat_rate) ?? 0) + l.net_amount); }
-    const quota = [...byRate.entries()].reduce((acc, [rate, net]) => acc + Math.round(net * rate) / 100, 0);
+    const ls = lines() ?? [];
+    const { base, quota } = sums(ls);
     totals.textContent = `Base ${eur(base)} · IVA ${eur(quota)} · TOTAL ${eur(base + quota)}`;
-    return;
   }
 
-  const save = el('button', { class: 'primary', type: 'submit', id: 'saveDraft', form: 'draftForm' }, draft ? 'Guardar borrador' : 'Crear borrador');
   const rectInfo = rectificative
     ? el('div', { class: 'banner info', id: 'draftRectInfo' }, icon('info', 18), el('span', null,
       `Rectifica a ${draft!.rectified.map((r) => (r as { full_number?: string }).full_number ?? r.number).join(', ')} · ${draft!.rectification_kind === 'S' ? 'por sustitución' : 'por diferencias'} · ${draft!.rectification_reason ?? ''}. `
       + (draft!.rectification_kind === 'S' ? 'Escribe las líneas correctas.' : 'Las líneas van en negativo: deja solo lo que se devuelve o corrige.')))
     : null;
+  const sourceInfo = prefill
+    ? el('div', { class: 'banner info', id: 'draftSource' }, icon('info', 18), el('span', null,
+      `Desde la reserva ${[prefill.source.code, prefill.source.label].filter(Boolean).join(' · ')}: líneas de la propuesta aceptada${prefill.prices_include_vat ? ', con IVA incluido' : ''}. `
+      + 'Completa el NIF y el domicilio fiscal del cliente. La factura quedará asignada a la reserva.'))
+    : null;
+
+  const save = el('button', { class: 'primary', type: 'submit', id: 'saveDraft', form: 'draftForm' }, draft ? 'Guardar borrador' : 'Crear borrador');
   const form = el('form', { id: 'draftForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
     if (!description.value.trim()) { error.textContent = 'Indica el concepto de la factura.'; description.focus(); return; }
     const ls = lines();
-    if (!ls.length || ls.some((l) => !l.description || l.net_amount === null)) { error.textContent = 'Cada línea lleva concepto y precio.'; return; }
+    if (!ls || !ls.length) { error.textContent = 'Cada línea lleva concepto y precio.'; return; }
     if (country.value.trim() && !/^[A-Za-z]{2}$/.test(country.value.trim())) { error.textContent = 'El país va en dos letras (ES, FR…).'; country.focus(); return; }
+    const { base, quota } = sums(ls);
+    if (prefill && base <= 0) { error.textContent = 'La factura de una reserva tiene que tener importe positivo.'; return; }
     const address = { line: line.value.trim() || null, postal_code: postal.value.trim() || null, city: city.value.trim() || null, province: province.value.trim() || null, country: country.value.trim().toUpperCase() || null };
     const hasAddress = Object.values(address).some((v) => v && v !== 'ES');
     const recipientCountry = address.country ?? 'ES';
@@ -133,7 +163,8 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
       recipient_name: name.value.trim() || null, recipient_tax_id: taxId.value.trim().toUpperCase() || null,
       recipient_id_type: taxId.value.trim() ? (recipientCountry === 'ES' ? 'NIF' : '02') : null, recipient_country: recipientCountry,
       recipient_address: hasAddress ? address : null, description: description.value.trim(), operation_date: operationDate.value || null,
-      income_category: category.value || null,
+      income_category: category.value || null, prices_include_vat: includeVat.checked,
+      base_total: base, quota_total: quota, total: Math.round((base + quota) * 100) / 100,
     };
     const ops: RowOperation[] = draft
       ? [
@@ -142,34 +173,76 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
       ]
       : [{ op: 'insert', table: ISSUED_INVOICES, id, fields: { ...fields, status: 'borrador', issue_date: todayIso() } }];
     ops.push(...ls.map((l): RowOperation => ({ op: 'insert', table: ISSUED_LINES, id: crypto.randomUUID(), fields: {
-      issued_invoice_id: id, position: l.position, description: l.description, quantity: l.quantity, unit_price: l.unit_price, net_amount: l.net_amount, vat_rate: l.vat_rate } })));
+      issued_invoice_id: id, position: l.position, description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount_amount: l.discount_amount,
+      net_amount: l.net_amount, vat_rate: l.vat_rate, vat_amount: l.vat_amount } })));
+    // Desde una reserva: el ingreso queda asignado a ella (destino de Booking, resuelto por la Edge con tu sesión).
+    if (prefill && !draft) {
+      ops.push({ op: 'insert', table: ISSUED_ALLOCATIONS, id: crypto.randomUUID(), fields: {
+        issued_invoice_id: id, target_app: 'booking', target_kind: 'reservation', target_id: prefill.source.reservationId, allocated_amount: base } });
+    }
     save.disabled = true;
     if (await commitSafely(client, ops, draft ? 'Borrador guardado.' : 'Borrador creado. Revísalo y pulsa «Emitir».')) { guard.dirtyEditor = false; await closeSheet(true); }
     save.disabled = false;
   } },
     rectInfo,
+    sourceInfo,
     field('Serie', series, 'El número se asigna al emitir, nunca antes.'),
     field('Destinatario', kind),
     el('div', { class: 'row2' }, field('Nombre o razón social', name), field('NIF', taxId)),
     el('div', { class: 'field' }, el('span', null, 'Domicilio'), line, el('div', { class: 'row3' }, postal, city, province), country, addressNote),
     field('Concepto', description),
     el('div', { class: 'row2' }, field('Fecha de la operación', operationDate, 'Solo si no es la de hoy (por ejemplo, la salida).'), field('Categoría de ingreso', category)),
-    el('div', { class: 'field' }, el('span', null, 'Líneas (precio sin IVA)'), linesHost, el('button', { class: 'linkbtn', type: 'button', id: 'addDraftLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
+    el('label', { class: 'check' }, includeVat, el('span', null, 'Precios con IVA incluido')),
+    el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { class: 'linkbtn', type: 'button', id: 'addDraftLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
     totals,
     error,
   );
   postal.placeholder = 'C. P.'; city.placeholder = 'Ciudad'; province.placeholder = 'Provincia'; line.placeholder = 'Calle y número'; country.placeholder = 'País (ES)';
   const existing = draft ? data.linesBy.get(draft.id) ?? [] : [];
-  if (existing.length) for (const l of existing) addLine(l); else addLine();
+  if (existing.length) {
+    const incl = draft?.prices_include_vat ?? false;
+    for (const l of existing) {
+      const rate = l.vat_rate === null ? null : Number(l.vat_rate);
+      addLine({ description: l.description, quantity: l.quantity, unit_price: displayPrice(l.unit_price ?? l.net_amount, rate, incl) ?? 0,
+        discount_amount: displayPrice(l.discount_amount, rate, incl), vat_rate: rate });
+    }
+  } else if (prefill?.lines.length) {
+    for (const l of prefill.lines) addLine(l);
+  } else addLine();
   openSheet({
     title: draft ? 'Editar borrador' : 'Nueva factura',
     meta: 'Borrador: se guarda sin número y se puede cambiar hasta que lo emitas.',
     body: form,
     foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
-    initialFocus: name,
+    initialFocus: prefill ? taxId : name,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
   });
+}
+
+/**
+ * «Emitir factura» desde Booking (§14.8): `#/facturas?vista=emitidas&desde=booking:reservation:<id>`. Si la reserva ya tiene
+ * un borrador o una factura viva asignada, se abre esa; si no, se leen los datos actuales de la reserva y se abre el
+ * borrador relleno. Los datos fiscales del cliente (NIF y domicilio) los completa el usuario: Booking no los guarda.
+ */
+export async function startFromReservation(ctx: ViewContext, data: IssuedData, reservationId: string, open: (id: string) => void): Promise<void> {
+  const existing = data.invoices.find((i) => !i.deleted_at && ['borrador', 'emitida', 'registrada'].includes(i.status)
+    && (data.allocationsBy.get(i.id) ?? []).some((al) => al.target_app === 'booking' && al.target_kind === 'reservation' && al.target_id === reservationId));
+  if (existing) {
+    toast(existing.status === 'borrador' ? 'Esta reserva ya tiene un borrador de factura.' : `Esta reserva ya está facturada: ${numberOf(existing)}.`);
+    open(existing.id);
+    return;
+  }
+  if (!navigator.onLine) { toast('Sin conexión: para facturar una reserva hacen falta sus datos actuales.'); return; }
+  let src: ReservationInvoiceSource;
+  try {
+    src = await ctx.client.api<ReservationInvoiceSource>('/read/booking.reservation_invoice_source', { json: { reservation_id: reservationId } });
+  } catch (error) {
+    toast(describeError(error));
+    return;
+  }
+  if (!src.lines.length) { toast('La reserva no tiene propuesta aceptada ni importe final: no hay nada que facturar.'); return; }
+  openInvoiceDraft(ctx, data, undefined, reservationPrefill(src));
 }
 
 export async function deleteDraft(client: SyncClient, invoice: LocalIssuedInvoice, data: IssuedData): Promise<void> {
