@@ -3,7 +3,7 @@
  * login/refresh/logout, bootstrap, snapshot, changes, commands con revisiones, recibos idempotentes y conflictos 409.
  * Solo para pruebas de extremo a extremo del frontend; no sustituye a la suite de conformidad de packages/test-kit.
  */
-import { FIELDS, proposalTotals, round2 } from '../../supabase/functions/_domain/booking/mod.ts';
+import { FIELDS, guestMissing, proposalTotals, round2, signsOwnEntry } from '../../supabase/functions/_domain/booking/mod.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomBytes, randomUUID } from 'node:crypto';
 
@@ -135,6 +135,8 @@ export interface FakeSesCommunication {
   id: string;
   reservation_id: string;
   kind: 'RH' | 'PV' | 'anulacion';
+  /** Solo en los partes de viajeros (`PV`): huéspedes incluidos. */
+  guest_ids: string[] | null;
   status: FakeSesStatus;
   environment: string;
   cancels_id: string | null;
@@ -214,7 +216,9 @@ class Fault extends Error {
 }
 
 /** Columnas escribibles de cada tabla, tomadas del dominio (las mismas que valida la Edge). */
-const DEFAULT_TABLES: Record<string, string[]> = Object.fromEntries(Object.entries(FIELDS).map(([table, specs]) => [table, Object.keys(specs)]));
+/** Columnas de la migración 0446 que el personal escribe (llegada y documento comprobado); el dominio aún no las valida. */
+const EXTRA_WRITABLE: Record<string, string[]> = { 'booking.guests': ['arrived_at', 'document_checked_at', 'document_checked_by'] };
+const DEFAULT_TABLES: Record<string, string[]> = Object.fromEntries(Object.entries(FIELDS).map(([table, specs]) => [table, [...Object.keys(specs), ...(EXTRA_WRITABLE[table] ?? [])]]));
 
 export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeApi> {
   const users = options.users ?? [{ email: 'owner@example.invalid', password: 'secreta-123', displayName: 'Prueba' }];
@@ -475,14 +479,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const sesPublic = ({ reservation_id: _reservationId, ...rest }: FakeSesCommunication) => rest;
   const sesList = (reservationId: string) => Array.from(sesStore.values()).filter((c) => c.reservation_id === reservationId).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
   const SES_LIVE = ['preparada', 'enviando', 'en_proceso', 'aceptada', 'error'];
-  function sesCreate(reservationId: string, kind: 'RH' | 'anulacion', fields: Partial<FakeSesCommunication>): FakeSesCommunication {
+  function sesCreate(reservationId: string, kind: 'RH' | 'PV' | 'anulacion', fields: Partial<FakeSesCommunication>): FakeSesCommunication {
     const reservation = data.get('booking.reservations')!.get(reservationId)!;
     const event = Array.from(data.get('booking.events')?.values() ?? []).find((e) => e.reservation_id === reservationId && e.deleted_at === null);
     const settings = Array.from(data.get('booking.ses_settings')?.values() ?? [])[0];
     const stamp = nowIso();
     sesSeq += 1;
     const comm: FakeSesCommunication = {
-      id: randomUUID(), reservation_id: reservationId, kind, status: 'en_proceso', environment: String(settings?.environment ?? 'pre'), cancels_id: null, lot_id: null, ses_code: null,
+      id: randomUUID(), reservation_id: reservationId, kind, guest_ids: null, status: 'en_proceso', environment: String(settings?.environment ?? 'pre'), cancels_id: null, lot_id: null, ses_code: null,
       error_code: null, error_text: null, legal_start_at: String(data.get('booking.reservation_finance')?.get(reservationId)?.payment_registered_at ?? stamp),
       snapshot: { start_date: reservation.start_date, end_date: reservation.end_date, persons: event?.final_guests ?? reservation.expected_guests ?? null },
       attempts: 1, sent_at: stamp, accepted_at: null, cancelled_at: null,
@@ -491,6 +495,25 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     };
     sesStore.set(comm.id, comm);
     return comm;
+  }
+  /** `GET /ses/:id/pv`: huéspedes que han llegado y aún no están en un parte vivo, con lo que les falta (la regla de la migración 0446, con el dominio). */
+  function pvSource(reservationId: string, only?: string[]): { reservation: Record<string, unknown>; guests: Array<Record<string, any> & { id: string; ready: boolean; missing: string[] }> } {
+    const reservation = data.get('booking.reservations')?.get(reservationId);
+    if (!reservation || reservation.deleted_at) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+    if (reservation.ses_enabled === false) throw new Fault(422, 'SES_DISABLED', 'SES está desactivado para esta reserva.');
+    const event = Array.from(data.get('booking.events')?.values() ?? []).find((e) => e.reservation_id === reservationId && e.deleted_at === null);
+    if (!event) throw new Fault(422, 'SES_NOT_CONFIRMED', 'La reserva no está confirmada.');
+    const inReport = new Set(sesList(reservationId).filter((c) => c.kind === 'PV' && SES_LIVE.includes(c.status)).flatMap((c) => c.guest_ids ?? []));
+    const guests = Array.from(data.get('booking.guests')?.values() ?? [])
+      .filter((g) => g.event_id === event.id && g.deleted_at === null && g.arrived_at && !inReport.has(g.id) && (!only || only.includes(g.id)))
+      .sort((a, b) => String(a.arrived_at).localeCompare(String(b.arrived_at)))
+      .map((g) => {
+        const missing = guestMissing(g as never, 'ses');
+        if (!g.is_minor && !g.document_checked_at) missing.push('document_checked');
+        if (signsOwnEntry(g as never, String(reservation.start_date)) && !g.signed_at) missing.push('signature');
+        return { ...g, ready: missing.length === 0, missing };
+      });
+    return { reservation: { id: reservationId, start_date: reservation.start_date, end_date: reservation.end_date }, guests };
   }
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
   const calendarRetries: string[] = [];
@@ -637,10 +660,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           return json(res, 200, { linkId: link.linkId, revokedAt: link.revokedAt, validUntil: linkValidUntil(link) });
         }
       }
-      const sesPath = /^ses\/([0-9a-f-]+)(?:\/(rh)|\/cancel\/([0-9a-f-]+))?$/.exec(path);
+      const sesPath = /^ses\/([0-9a-f-]+)(?:\/(rh|pv)|\/cancel\/([0-9a-f-]+))?$/.exec(path);
       if (sesPath) {
         const reservationId = sesPath[1]!;
         if (sesPath[2] === undefined && sesPath[3] === undefined && method === 'GET') return json(res, 200, { items: sesList(reservationId).map(sesPublic) });
+        if (sesPath[2] === 'pv' && method === 'GET') return json(res, 200, pvSource(reservationId));
         if (method === 'POST') {
           if (sesFailure) {
             const failure = sesFailure;
@@ -649,6 +673,20 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           }
           const reservation = data.get('booking.reservations')?.get(reservationId);
           if (!reservation || reservation.deleted_at) throw new Fault(404, 'NOT_FOUND', 'La reserva no existe.');
+          if (sesPath[2] === 'pv') {
+            const body = await readJson(req);
+            const source = pvSource(reservationId, Array.isArray(body.guest_ids) ? body.guest_ids.filter((id: unknown) => typeof id === 'string') : undefined);
+            const ready = source.guests.filter((g) => g.ready);
+            const pending = source.guests.filter((g) => !g.ready).map((g) => ({ id: g.id, missing: g.missing }));
+            if (ready.length === 0) return json(res, 200, { id: null, status: 'sin_listos', pending });
+            const scripted = sesNext;
+            sesNext = { status: 'en_proceso' };
+            const accepted = scripted.status === 'aceptada';
+            const comm = sesCreate(reservationId, 'PV', { guest_ids: ready.map((g) => g.id), status: scripted.status, error_text: scripted.errorText ?? null, error_code: scripted.errorCode ?? null,
+              legal_start_at: ready.map((g) => String(g.arrived_at)).sort()[0]!, snapshot: { start_date: reservation.start_date, end_date: reservation.end_date, persons: ready.length },
+              accepted_at: accepted ? nowIso() : null, ses_code: accepted ? `SYN-${String(sesSeq).padStart(4, '0')}` : null });
+            return json(res, 200, { id: comm.id, status: comm.status, pending });
+          }
           if (sesPath[2] === 'rh') {
             if (reservation.ses_enabled === false) throw new Fault(422, 'SES_DISABLED', 'SES está desactivado para esta reserva.');
             if (!['confirmada', 'en_ejecucion', 'cerrada'].includes(String(reservation.status))) throw new Fault(422, 'SES_NOT_CONFIRMED', 'La reserva no está confirmada.');

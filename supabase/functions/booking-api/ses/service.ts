@@ -4,7 +4,7 @@
  * Nunca guarda el XML ni el SOAP: solo la huella del contenido, el lote, el código y el error.
  */
 import {
-  batchOutcome, batchQueryEnvelope, buildCancellationRequest, buildReservationRequest, communicationEnvelope,
+  batchOutcome, batchQueryEnvelope, buildCancellationRequest, buildGuestReportRequest, buildReservationRequest, communicationEnvelope,
   parseBatchResponse, parseCommunicationResponse, SesDataError, type SesContract, type SesPerson,
 } from '../../_domain/booking/ses/mod.ts';
 import { sesCredentials, type SesCredentials, type SesEnvironment, type SesTransport } from './transport.ts';
@@ -105,9 +105,62 @@ function buildRh(source: Source, establishmentCode: string): string {
 
 const snapshotOf = (s: Source) => ({ start_date: s.reservation.start_date, end_date: s.reservation.end_date, persons: s.reservation.persons });
 
+export interface GuestReportSource extends Omit<Source, 'payment' | 'reservation'> {
+  reservation: Omit<Source['reservation'], 'contact_name' | 'contact_phone' | 'contact_email'>;
+  payment: { type: string; date: string | null; holder: string | null; contract_date: string };
+  guests: Array<Record<string, any> & { id: string; ready: boolean; missing: string[] }>;
+}
+
+/** Huésped de Booking → persona del parte. */
+export function guestPerson(g: Record<string, any>): SesPerson {
+  return {
+    role: 'VI', firstName: g.first_name, lastName1: g.last_name_1, lastName2: g.last_name_2, documentType: g.document_type,
+    documentNumber: g.document_number, documentSupport: g.document_support_number, birthDate: g.birth_date, nationality: g.nationality,
+    sex: g.sex, address: { address: g.residence_address, postalCode: g.residence_postal_code, country: g.residence_country, municipalityName: g.residence_city },
+    phone: g.phone, email: g.email, kinship: g.is_minor ? g.kinship : null,
+  };
+}
+
+function buildPv(source: GuestReportSource, guests: Array<Record<string, any>>, establishmentCode: string): string {
+  const r = source.reservation;
+  if (!r.start_date || !r.end_date) throw new SesDataError('fechas', 'La reserva necesita fechas de entrada y salida.');
+  return buildGuestReportRequest({
+    establishmentCode,
+    contract: { reference: r.code ?? r.id.slice(0, 50), contractDate: source.payment.contract_date, startDate: r.start_date, endDate: r.end_date,
+      arrivalTime: r.arrival_time, departureTime: r.departure_time, persons: guests.length, rooms: r.rooms,
+      payment: { type: source.payment.type, date: source.payment.date, holder: source.payment.holder } },
+    guests: guests.map(guestPerson),
+  });
+}
+
+/**
+ * «Cerrar la entrada y comunicar»: parte de viajeros con los huéspedes que han llegado y están listos; los incompletos no
+ * bloquean a los demás y se devuelven con lo que les falta. El momento legal es la primera llegada incluida.
+ */
+export async function sesCommunicateGuestReport(deps: SesDeps, source: GuestReportSource, requestedBy: string | null) {
+  const ready = source.guests.filter((g) => g.ready);
+  const pending = source.guests.filter((g) => !g.ready).map((g) => ({ id: g.id, missing: g.missing }));
+  if (ready.length === 0) return { id: null, status: 'sin_listos', pending };
+  const environment = source.settings.environment;
+  const creds = sesCredentials(deps.env, environment);
+  const solicitud = buildPv(source, ready, creds?.establishmentCode ?? '0000000000');
+  const legal = ready.map((g) => String(g.arrived_at)).sort()[0];
+  const prepared = await deps.invoke('booking.ses_prepare_guest_report', {
+    reservation_id: source.reservation.id, guest_ids: ready.map((g) => g.id), environment, legal_start_at: legal, requested_by: requestedBy,
+    snapshot: { guests: ready.length },
+  });
+  const id = prepared.id as string;
+  if (source.settings.paused || !creds) {
+    await deps.invoke('booking.ses_report', { id, outcome: 'held', error_code: source.settings.paused ? 'PAUSED' : 'NOT_CONFIGURED' });
+    return { id, status: 'preparada', pending };
+  }
+  if (!(await deps.invoke('booking.ses_claim', { id }))) return { id, status: 'enviando', pending };
+  return { id, status: await send(deps, id, environment, creds, 'PV', solicitud), pending };
+}
+
 /** Envía una comunicación ya reclamada y deja el resultado. */
-async function send(deps: SesDeps, id: string, environment: SesEnvironment, creds: SesCredentials, kind: 'RH' | 'anulacion', solicitud: string): Promise<string> {
-  const { xml } = await communicationEnvelope({ landlordCode: creds.landlordCode, application: SES_APPLICATION, operation: kind === 'RH' ? 'A' : 'B', kind: kind === 'RH' ? 'RH' : undefined, solicitud });
+async function send(deps: SesDeps, id: string, environment: SesEnvironment, creds: SesCredentials, kind: 'RH' | 'PV' | 'anulacion', solicitud: string): Promise<string> {
+  const { xml } = await communicationEnvelope({ landlordCode: creds.landlordCode, application: SES_APPLICATION, operation: kind === 'anulacion' ? 'B' : 'A', kind: kind === 'anulacion' ? undefined : kind, solicitud });
   let response;
   try {
     response = await deps.transport.post(environment, xml, { user: creds.user, password: creds.password });
@@ -182,6 +235,13 @@ export async function sesTick(deps: SesDeps, limit = 10): Promise<{ sent: number
         const source = (await deps.invoke('booking.ses_reservation_source_system', { reservation_id: c.reservation_id })) as Source;
         if (source.settings.paused || !creds) { await deps.invoke('booking.ses_report', { id: c.id, outcome: 'held', error_code: source.settings.paused ? 'PAUSED' : 'NOT_CONFIGURED' }); skipped++; continue; }
         solicitud = buildRh(source, creds.establishmentCode);
+      } else if (c.kind === 'PV') {
+        const source = (await deps.invoke('booking.ses_guest_report_source_system', { reservation_id: c.reservation_id, guest_ids: c.guest_ids, communication_id: c.id })) as GuestReportSource;
+        if (source.settings.paused || !creds) { await deps.invoke('booking.ses_report', { id: c.id, outcome: 'held', error_code: source.settings.paused ? 'PAUSED' : 'NOT_CONFIGURED' }); skipped++; continue; }
+        const guests = source.guests.filter((g) => (c.guest_ids as string[]).includes(g.id));
+        const notReady = guests.filter((g) => !g.ready);
+        if (guests.length === 0 || notReady.length) throw new SesDataError('persona', 'Algún huésped del parte ya no está listo: corrige sus datos y vuelve a comunicar.');
+        solicitud = buildPv(source, guests, creds.establishmentCode);
       } else if (c.kind === 'anulacion' && c.cancels_code) {
         if (!creds) { await deps.invoke('booking.ses_report', { id: c.id, outcome: 'held', error_code: 'NOT_CONFIGURED' }); skipped++; continue; }
         solicitud = buildCancellationRequest([c.cancels_code]);
@@ -192,7 +252,7 @@ export async function sesTick(deps: SesDeps, limit = 10): Promise<{ sent: number
       continue;
     }
     if (!(await deps.invoke('booking.ses_claim', { id: c.id }))) continue;
-    await send(deps, c.id, environment, creds!, c.kind === 'RH' ? 'RH' : 'anulacion', solicitud);
+    await send(deps, c.id, environment, creds!, c.kind, solicitud);
     sent++;
   }
   for (const environment of ['pre', 'prod'] as const) {

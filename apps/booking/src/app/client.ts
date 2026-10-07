@@ -163,6 +163,10 @@ export function describeError(error: unknown): string {
       return 'Esta reserva ya tiene una comunicación a SES en curso o aceptada.';
     case 'SES_NOT_CANCELLABLE':
       return 'Esa comunicación ya no se puede anular: solo se anulan las aceptadas que no estén ya anuladas.';
+    case 'SES_ALREADY_REGISTERED':
+      return 'Ya hay partes de viajeros comunicados: es registro legal y no se puede desactivar.';
+    case 'SES_NO_GUESTS':
+      return 'No hay huéspedes que hayan llegado para comunicar.';
     case 'SES_DATA': {
       const field = (e?.details as { field?: unknown } | null | undefined)?.field;
       return typeof e?.message === 'string' && e.message ? e.message : `Faltan datos para comunicar la reserva a SES${typeof field === 'string' ? ` (${field})` : ''}.`;

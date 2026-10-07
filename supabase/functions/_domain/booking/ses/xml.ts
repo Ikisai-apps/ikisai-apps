@@ -19,6 +19,19 @@ export const SES_SEX: Record<string, string> = { H: 'H', M: 'M', X: 'O' };
 export const SES_PAYMENT: Record<string, string> = { efectivo: 'EFECT', tarjeta: 'TARJT', transferencia: 'TRANS', plataforma_pago: 'PLATF', otro: 'OTRO' };
 export const SES_KINSHIP = ['AB', 'BA', 'BN', 'CD', 'CY', 'HJ', 'HR', 'NI', 'PM', 'SB', 'SG', 'TI', 'YN', 'TU', 'OT'] as const;
 
+/** Parentesco escrito a mano («madre», «abuela», «tutor legal») → código del catálogo; `OT` si no se reconoce. */
+export function kinshipCode(text: string | null | undefined): string | null {
+  const t = (text ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!t) return null;
+  if ((SES_KINSHIP as readonly string[]).includes(t.toUpperCase())) return t.toUpperCase();
+  const rules: Array<[RegExp, string]> = [
+    [/^(madre|padre|mama|papa|progenitor)/, 'PM'], [/^bisabuel/, 'BA'], [/^abuel/, 'AB'], [/^bisniet/, 'BN'], [/^niet/, 'NI'],
+    [/^(conyuge|espos|marido|mujer|pareja)/, 'CY'], [/^cunad/, 'CD'], [/^(hijo|hija)/, 'HJ'], [/^herman/, 'HR'], [/^sobrin/, 'SB'],
+    [/^suegr/, 'SG'], [/^ti[oa]\b/, 'TI'], [/^(yerno|nuera)/, 'YN'], [/^tutor/, 'TU'],
+  ];
+  return rules.find(([re]) => re.test(t))?.[1] ?? 'OT';
+}
+
 export class SesDataError extends Error {
   constructor(readonly field: string, message: string) { super(message); this.name = 'SesDataError'; }
 }
@@ -120,7 +133,7 @@ export interface SesPerson {
 function person(p: SesPerson, kind: 'reserva' | 'parte'): string {
   const docType = p.documentType ? SES_DOCUMENT[p.documentType] ?? null : null;
   const email = p.email && /^[^@]+@[^.]+\..+$/.test(p.email.trim()) ? p.email.trim().slice(0, 250) : null;
-  const kin = p.kinship && (SES_KINSHIP as readonly string[]).includes(p.kinship.trim().toUpperCase()) ? p.kinship.trim().toUpperCase() : null;
+  const kin = kinshipCode(p.kinship);
   if (kind === 'parte' && !p.birthDate) throw new SesDataError('fechaNacimiento', 'Falta la fecha de nacimiento.');
   return el('persona', [
     el('rol', p.role),

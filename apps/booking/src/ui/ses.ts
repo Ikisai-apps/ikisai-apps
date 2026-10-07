@@ -6,7 +6,7 @@ import { RESERVATIONS, SES_SETTINGS, canRead, canWrite, describeError, fullDay, 
 import { GUEST_MODE_HELP, SES_ENVIRONMENT_LABELS, SES_REASON_LABELS, sesReasonText } from '../app/labels.ts';
 import {
   COMMUNICABLE_STATUSES, DEADLINE_TEXT, acceptedReservationComm, changedSinceCommunicated, deadlineLevel, fetchSes, liveReservationComm, paymentDateIsOld,
-  pendingCancellation, reservationComms, type SesCommunication, type SesStatus,
+  guestReports, PV_IN_PROCESS, pendingCancellation, reservationComms, type SesCommunication, type SesStatus,
 } from '../app/ses.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -154,6 +154,16 @@ export function createSesBlock(): SesBlock {
           latest.environment === 'pre' ? el('span', { class: 'chip', id: 'sesEnv' }, SES_ENVIRONMENT_LABELS.pre) : null),
         detail.length ? el('p', { class: 'hint', id: 'sesStatusDetail', 'data-feedback-id': 'booking.reserva.ses.estado.detalle', 'data-feedback-label': 'Detalle', 'data-feedback-ignore': '' }, ...detail) : null));
     }
+    // Partes de viajeros (llegada): resumen y enlace a la pantalla de huéspedes, donde se cierra la entrada.
+    const reports = guestReports(list);
+    if (reports.length) {
+      const done = reports.filter((c) => c.status === 'aceptada').length;
+      const going = reports.filter((c) => PV_IN_PROCESS.includes(c.status)).length;
+      const refused = reports.filter((c) => c.status === 'rechazada').length;
+      const parts = [done ? `${done} ${done === 1 ? 'parte aceptado' : 'partes aceptados'}` : null, going ? `${going} en proceso` : null, refused ? `${refused} ${refused === 1 ? 'rechazado' : 'rechazados'}` : null].filter(Boolean);
+      out.push(el('p', { class: 'hint', id: 'sesReports', 'data-feedback-id': 'booking.reserva.ses.partes', 'data-feedback-label': 'Partes de viajeros' },
+        `Partes de viajeros: ${parts.join(' · ')}. `, event ? el('a', { class: 'noticelink', href: `#/huespedes/${event.id}` }, 'Ver huéspedes') : null));
+    }
     if (cancelling) out.push(el('p', { class: 'hint', id: 'sesCancelling' }, `Anulación en SES: ${STATUS_LABEL[cancelling.status].toLowerCase()}${cancelling.status === 'error' && cancelling.error_text ? ` (${cancelling.error_text})` : ''}.`));
     if (actionError) out.push(el('p', { class: 'formerror', id: 'sesActionError', role: 'alert' }, actionError));
 
@@ -186,6 +196,8 @@ export function createSesBlock(): SesBlock {
         const reason = chosen();
         const text = note.value.trim();
         const fail = (message: string) => { error.hidden = false; error.textContent = message; };
+        // Con un parte de viajeros aceptado el servidor lo impediría (`SES_ALREADY_REGISTERED`): se avisa antes, con el mismo texto.
+        if (guestReports(items ?? []).some((c) => c.status === 'aceptada')) return fail(describeError({ code: 'SES_ALREADY_REGISTERED' }));
         if (!reason) return fail('Elige el motivo.');
         if (reason === 'otro' && !text) return fail('Escribe el motivo: es obligatorio con «Otro».');
         // Aviso, no bloqueo: una reserva con importe suele ser una prestación de servicios.
