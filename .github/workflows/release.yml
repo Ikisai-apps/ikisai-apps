@@ -8,7 +8,7 @@ on:
         description: App a publicar
         required: true
         type: choice
-        options: [tasks, invoices, booking, food, central]
+        options: [tasks, invoices, booking, food, central, organizers, guests]
       version:
         description: 'Versión vX.Y.Z[-sufijo] (vacío: v0.1.0-build.<run_number>)'
         required: false
