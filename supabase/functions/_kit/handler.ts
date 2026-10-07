@@ -301,6 +301,13 @@ export function createApp(config: AppConfig): AppHandler {
       // permanentAccount: «Guarda tu acceso» de los portales (Google y código por correo), cuando haya Workspace.
       const permanentOn = (globalThis as any).Deno?.env?.get?.('IKISAI_PORTAL_ACCOUNTS') === '1';
       if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn, permanentAccount: permanentOn });
+      // Contacto público (portales, C1): sin sesión, para las pantallas de enlace no válido o caducado. Los textos de tipo
+      // `contacto` de Central («Textos y contacto», editables por el owner); cacheable 5 minutos. Sin datos personales.
+      if (path === '/api/v1/public/contact' && request.method === 'GET') {
+        const lang = url.searchParams.get('lang') === 'en' ? 'en' : 'es';
+        const items = await supabase.rpc<unknown[] | null>('central_public_contact', { p_lang: lang });
+        return json(withHeaders({ lang, items: Array.isArray(items) ? items : [] }, { 'Cache-Control': 'public, max-age=300' }));
+      }
       if (path === '/api/v1/auth/recover' && request.method === 'POST') {
         if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
         // El correo vuelve a la propia app: https://<app>/?token_hash=…&type=recovery (plantilla de Auth).

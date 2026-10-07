@@ -65,20 +65,24 @@ export async function createTestDatabase(options: { migrations?: string[] } = {}
   const rows = (await db.query<{ proname: string; args: string }>(
     `select p.proname, pg_get_function_identity_arguments(p.oid) args from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'`,
   )).rows;
-  for (const row of rows) {
-    const args = row.args
-      ? row.args.split(',').map((part) => {
-          const [name, ...type] = part.trim().split(/\s+/);
-          return { name: name as string, type: type.join(' ') };
-        })
-      : [];
-    signatures.set(row.proname, args);
-  }
+  const parseArgs = (text: string) => text
+    ? text.split(',').map((part) => {
+        const [name, ...type] = part.trim().split(/\s+/);
+        return { name: name as string, type: type.join(' ') };
+      })
+    : [];
+  for (const row of rows) signatures.set(row.proname, parseArgs(row.args));
   return {
     db,
     async rpc(name, args) {
-      const signature = signatures.get(name);
-      if (!signature) throw new Error(`RPC desconocida: ${name}`);
+      let signature = signatures.get(name);
+      if (!signature) {
+        // Función creada por la propia prueba después de arrancar (simulados de otras apps).
+        const found = (await db.query<{ args: string }>(
+          `select pg_get_function_identity_arguments(p.oid) args from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = $1`, [name])).rows[0];
+        if (!found) throw new Error(`RPC desconocida: ${name}`);
+        signature = parseArgs(found.args); signatures.set(name, signature);
+      }
       const placeholders = signature.map((arg, i) => `$${i + 1}::${arg.type}`).join(',');
       const values = signature.map((arg) => {
         const value = args[arg.name];
