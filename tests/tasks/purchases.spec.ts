@@ -8,6 +8,7 @@ import { build } from 'vite';
 import { E2E_WORKER_KEY, EDITOR, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
+import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
 declare const navigateView: any, manageTab: any, Sync: any;
 
@@ -233,10 +234,21 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   await settled(owner);
   expect((await server.rows('tasks.requests')).find((r) => r.external_ref === 'booking:INC_1').status).toBe('dismissed');
 
+  // Un área «Comercial» para las peticiones de los portales de organizadores (T3).
+  const commercial = crypto.randomUUID();
+  await server.commit(createTabOps({ id: commercial, name: 'Comercial', position: 99_000, inboxId: crypto.randomUUID() }), server.app.tokens.owner);
+  await sync();
   // «Gestionar entradas» lista los tipos conocidos con su destino.
   await owner.locator('#manageRoutes').click();
   await expect(owner.locator('[data-route-edit="central.compliance_due"]')).toContainText('Vencimientos');
   await expect(owner.locator('[data-route-edit="booking.space_incident"]')).toContainText('Por clasificar');
+  // Los tipos de los portales salen aunque aún no haya llegado ninguno, y su regla propone el área comercial.
+  await expect(owner.locator('[data-route-edit="booking.organizer_dates"]')).toContainText('Organizador · Fechas posibles');
+  await owner.locator('[data-route-edit="booking.organizer_confirm"]').click();
+  await expect(owner.locator('#routeLabel')).toHaveValue('Organizador · Quiere confirmar');
+  await expect(owner.locator('#destTab')).toHaveValue(commercial);
+  await owner.locator('#routeSave').click();
+  await expect.poll(async () => (await server.rows('tasks.request_routes')).find((r) => r.kind === 'booking.organizer_confirm')?.tab_id).toBe(commercial);
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
