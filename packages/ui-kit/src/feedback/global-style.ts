@@ -13,6 +13,8 @@ const CSS = [
   'html.fb-reviewing #appLauncher::before{content:"";position:absolute;left:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--ok,#4f7a4a);border:2px solid var(--bg,#f6f1e7)}',
   /* Un diálogo abierto desde la tarjeta del revisor va por encima de ella. */
   'html.fb-reviewing .dialogback{z-index:97}',
+  /* Señalar una vez (portales): las hojas se apartan para ver la pantalla y vuelven al terminar. */
+  'html.fb-capturing .sheetback,html.fb-capturing .dialogback{visibility:hidden;pointer-events:none}',
 ].join('\n');
 
 export function ensureFeedbackGlobalStyles(): void {
