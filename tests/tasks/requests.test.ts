@@ -273,10 +273,12 @@ test('puente con Feedback (§22.2): worker/requests/task escribe como la identid
     external_url: 'https://booking.ikisai.com/#/reservas/42/ses' };
   assert.equal((await post(ses)).status, 503, 'sin la identidad de Booking');
   await simulateServiceIdentity(app.t.db, uuid(), 'booking');
-  const booked = await post(ses);
+  const booked = await post({ ...ses, due: '2026-10-13', priority: 'critical' });
   assert.equal(booked.status, 200);
   assert.equal(((await booked.json()) as any).status, 'pending');
-  assert.equal((await rows('tasks.requests')).find((x) => x.external_ref === 'booking:SES-2026-10-12-RES42').on_behalf_of, null);
+  const sesRequest = (await rows('tasks.requests')).find((x) => x.external_ref === 'booking:SES-2026-10-12-RES42');
+  assert.deepEqual([sesRequest.on_behalf_of, sesRequest.due, sesRequest.priority], [null, '2026-10-13', 'critical']);
+  for (const bad of [{ ...ses, priority: 'urgente' }, { ...ses, due: '2026-10-13T10:00:00Z' }]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
   for (const bad of [{ ...ses, kind: 'booking.otra' }, { ...ses, external_url: 'https://tasks.ikisai.com/#/x' }, { ...ses, source: 'central' }]) assert.equal((await post(bad)).status, 422, JSON.stringify(bad));
   assert.equal((await status({ externalRefs: ['booking:SES-2026-10-12-RES42'] })).status, 200);
   assert.equal((await post(report('FB_1'), null)).status, 401);

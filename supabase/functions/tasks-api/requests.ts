@@ -144,7 +144,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         return (value as string).trim();
       };
       // Solo los campos del contrato: el destino lo deciden las reglas del usuario, nunca quien pide.
-      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
       const sourceName = String(body?.source ?? '');
       const source = Object.hasOwn(SYSTEM_SOURCES, sourceName) ? SYSTEM_SOURCES[sourceName]! : invalid('source', `source debe ser ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`);
       const kind = text('kind', 100, true)!;
@@ -152,6 +152,11 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const reference = text('external_ref', 150, true)!;
       if (!source.reference.test(reference)) invalid('external_ref', 'external_ref no es una referencia válida.');
       const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || undefined;
+      // Fecha objetivo y urgencia, opcionales, con la misma validación que `requests/task` (Booking: plazo legal de SES).
+      const due = text('due', 10);
+      if (due !== undefined && (!DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
+      const priority = text('priority', 10);
+      if (priority !== undefined && !PRIORITIES.includes(priority)) invalid('priority', 'priority es normal, high o critical.');
       const externalUrl = text('external_url', 200);
       if (externalUrl !== undefined && !source.url(reference, externalUrl)) invalid('external_url', `external_url no es un enlace válido para ${sourceName}.`);
       const behalf = body?.on_behalf_of as { kind?: unknown; report_code?: unknown } | undefined;
@@ -176,7 +181,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         await internal.commit(ctx, {
           requestId: `${sourceName}-${crypto.randomUUID()}`,
           operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
-            id, externalRef, kind, kindLabel, externalUrl, title, note, ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
+            id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
           } }],
         });
       } catch (error) {

@@ -1220,6 +1220,8 @@ Si Core prefiere otra forma (por ejemplo, que `core.commit` admita un actor de s
 | `feedback` | `feedback.space.*`, `feedback.event.*` | `feedback` (`0067`) | `https://tasks.ikisai.com/#/feedback/<código>` | obligatorio |
 | `booking` | `booking.ses_deadline` | `booking` (`0068`) | `https://booking.ikisai.com/#/…` | opcional |
 
+Los dos orígenes admiten además `due` (`AAAA-MM-DD`) y `priority` (`normal`, `high` o `critical`), opcionales y con la misma validación que `requests/task`.
+
 La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los servicios de la lista, busca la identidad. Añadir un origen es una fila más en `SYSTEM_SOURCES` (`tasks-api/requests.ts`) y en esa acción.
 
 ### 22.3 `POST /api/v1/worker/requests/status {externalRefs}` (construido)
