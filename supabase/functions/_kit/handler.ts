@@ -10,6 +10,7 @@ import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
 import { createFeedback, createFeedbackWorker } from './feedback.ts';
+import { createUsage } from './usage.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -181,6 +182,17 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'POST', pattern: 'feedback/:id/dismiss', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'dismiss', await json()) },
     { method: 'POST', pattern: 'feedback/:id/approve', handler: ({ ctx, params }) => feedback.act(ctx, params.id ?? '', 'approve', {}) },
     { method: 'POST', pattern: 'feedback/:id/merge', handler: async ({ ctx, params, json }) => feedback.act(ctx, params.id ?? '', 'merge', await json()) },
+  );
+  // Uso semántico (contrato §3.8): totales diarios y perspectiva «Uso» del Revisor.
+  const usage = createUsage(supabase, config.app);
+  routes.push(
+    { method: 'POST', pattern: 'usage/batch', handler: async ({ ctx, json }) => usage.batch(ctx, await json()) },
+    { method: 'GET', pattern: 'usage/consent', handler: ({ ctx }) => usage.consent(ctx, false) },
+    { method: 'POST', pattern: 'usage/consent', handler: ({ ctx }) => usage.consent(ctx, true) },
+    { method: 'GET', pattern: 'usage/review', handler: ({ ctx, url }) => usage.review(ctx, url.searchParams) },
+    { method: 'GET', pattern: 'usage/features/:id', handler: ({ ctx, params }) => usage.feature(ctx, params.id ?? '') },
+    { method: 'POST', pattern: 'usage/features/:id/decision', handler: async ({ ctx, params, json }) => usage.decide(ctx, params.id ?? '', await json()) },
+    { method: 'POST', pattern: 'usage/features/:id/settings', handler: async ({ ctx, params, json }) => usage.decide(ctx, params.id ?? '', await json()) },
   );
   if (config.admin) {
     const admin = createAdmin(supabase);
