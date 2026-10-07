@@ -1003,3 +1003,121 @@ Errores:
 - `409 EXTERNAL_REF_IN_USE` si la referencia es de una tarea que no ve.
 
 Estado de varias: `POST /api/v1/read/tasks.targets` con `{"kind": "task", "ids": ["…", "…"]}` → `{"items": [...], "missing": [...]}`.
+
+
+## 20. Enrutado de las peticiones de otras apps (ronda 38, decisión del usuario; propuesta para revisión de Core, 7 de octubre de 2026)
+
+Hoy `POST requests/task` (§19) obliga a quien pide a decir `project_id | tab_id`. Central, Booking o Food tendrían que conocer la organización de Tasks, y la integración se rompería al reorganizarla. Con este cambio, **la petición dice qué es y Tasks decide dónde va**, con reglas que configura el usuario. Lo que no tiene regla espera en **«Por clasificar»**.
+
+### 20.1 Una decisión de modelo: «Por clasificar» guarda peticiones, no tareas
+
+Core sugería un contenedor de sistema que no aparezca como área. Propongo otra cosa con el mismo resultado para quien lo usa, por una restricción de Tasks: **una tarea no cambia de área**.
+- `tab_id` es inmutable, y las etiquetas, las dependencias y el responsable (familia Persona) son de cada área.
+- Un contenedor que fuera un área obligaría a permitir mover tareas entre áreas, solo para este caso, en el trigger, el hook, el deshacer y la cascada.
+- Además habría que esconder ese área en la tira, el modelo heredado, la exportación portable, la papelera y los contadores.
+
+Lo que propongo:
+- Lo que llega sin regla se guarda como **petición pendiente** en una tabla propia.
+- **«Mover a…»** crea la tarea en el área y el proyecto elegidos, con el **mismo id** (el que se deriva de la referencia, §19.2), y marca la petición como clasificada.
+- Para quien mira es igual: una lista agrupada con chips de origen, «Mover a…» y «Crear regla para este tipo». Por dentro no hay áreas falsas ni movimientos entre áreas.
+- Lo que no se puede hacer con una pendiente es trabajarla (completarla, comentarla) antes de clasificarla, que es lo esperable en una bandeja de entrada.
+
+### 20.2 Tablas nuevas (`tasks.*`, migración `0308`)
+
+**`tasks.requests`**: peticiones que esperan clasificación. Es una tabla sincronizada.
+
+| Columna | Notas |
+|---|---|
+| `id` | El id derivado de `source:external_ref` (§19.2). Será el de la tarea. |
+| `source`, `kind`, `kind_label` | `kind` = `<source>.<nombre>` (`central.compliance_due`). `kind_label` es el nombre legible que manda quien pide («Vencimientos»), opcional. |
+| `external_ref` | `<source>:<referencia>`, única entre las pendientes. |
+| `external_url` | Opcional: enlace al elemento que la generó. Solo `https://` en `*.ikisai.com`. |
+| `title`, `note`, `due`, `priority`, `suggested_project_id`, `suggested_tab_id` | Lo que traía la petición. |
+| `requested_by` | Quien pidió (lo rellena el procedimiento). |
+| `status`, `task_id` | `status`: `pending`, `routed` o `dismissed`. `task_id` es la tarea creada al clasificar. |
+
+**`tasks.request_routes`**: reglas de entrada, una por `kind` viva.
+
+| Columna | Notas |
+|---|---|
+| `kind`, `kind_label` | El tipo, y su nombre para la pantalla. |
+| `tab_id`, `project_id` | Destino. Sin proyecto, la Entrada del área. |
+| `owner_label_id` | Responsable opcional: una etiqueta de la familia Persona de esa área. |
+| `position` | Orden en la pantalla. |
+
+**Columnas nuevas en `tasks.tasks`:**
+- `external_kind`: inmutable; solo la fijan el procedimiento y la clasificación.
+- `external_url`.
+
+La tarea **conserva siempre su origen**: `external_ref`, tipo y enlace. Se mueva de proyecto o no, el editor sigue diciendo «Pedida desde Central · Vencimientos · LEG_2026_004», con enlace.
+
+### 20.3 `POST requests/task` (compatible con §19)
+
+Campos nuevos:
+- **`kind`**: obligatorio en las peticiones nuevas. Si falta, vale `<source>.general`, para no romper a quien ya llama.
+- `kind_label` y `external_url`, opcionales.
+- `project_id | tab_id` pasan a ser **opcionales**: son una sugerencia.
+
+**Destino, en este orden:**
+1. **La regla** del `kind`, si hay una viva y su destino existe. La configuración del usuario manda sobre lo que sugiere la otra app.
+2. **La sugerencia** `project_id | tab_id`, si la trae y es válida. Así siguen valiendo las peticiones de §19.
+3. **«Por clasificar»**: se crea una petición pendiente.
+
+**Respuesta:** `{created, routed: 'rule' | 'hint' | 'pending', task}`.
+- Una pendiente se devuelve con la forma de una tarea y `pending: true`.
+- La idempotencia de §19 no cambia: la misma referencia devuelve lo que haya, sea tarea o pendiente.
+
+**`tasks.targets` con `ids`:**
+- También devuelve las pendientes, con `pending: true`, a quien tenga acceso completo y **a quien las pidió**.
+- Así Central puede mostrar «en Tasks, por clasificar».
+
+### 20.4 Permisos
+
+- **Pedir:** cualquier `editor` u `owner` de Tasks, como en §19.
+- **Destino que quien pide no ve:** una regla puede llevar la tarea a un área que quien pide no ve, y una pendiente solo la ve quien tiene acceso completo. Propongo que **la petición entre igualmente**, como en un buzón. El procedimiento escribe esa única tarea, o esa pendiente, aunque el área quede fuera del alcance de quien pide.
+  - La respuesta, en ese caso, no trae datos: `{created, routed, task: {id, visible: false}}`.
+  - Es una excepción acotada, porque solo la hace `tasks.request_task`, que no se puede lanzar desde `commands`. Si Core prefiere no hacerla, la alternativa es: «si no ve el destino de la regla, va a Por clasificar».
+- **Ver y gestionar «Por clasificar» y las reglas:** `owner` con acceso completo, como pide la ronda 38. Las pendientes no tienen área, así que el hook las trata como «toda la app» (`scope_all`).
+- **Clasificar («Mover a…»):** `owner` con acceso completo, o un `editor` con acceso completo. Pregunta para Core: ¿basta con el `owner`?
+
+### 20.5 Interfaz
+
+- **Menú:** «Por clasificar», con contador. Desaparece si está a cero. Solo lo ven quienes tienen acceso completo.
+- **Vista «Por clasificar»**, como la de un proyecto:
+  - grupos por origen y tipo («Central · Vencimientos (3)»);
+  - en cada fila, el chip de origen, el título, la fecha y el enlace «Abrir en Central» (`external_url`);
+  - **«Mover a…»** por fila: elegir área, proyecto y responsable; crea la tarea y marca la petición como clasificada, en un solo lote;
+  - **«Crear regla para este tipo»** por grupo: abre «Gestionar entradas» rellena. Al guardar, ofrece **«Mover también las N que esperaban»**, que clasifica en un lote todas las pendientes de ese tipo;
+  - «Descartar» por fila, con `status = 'dismissed'`: para lo que no es trabajo. Central lo ve como «descartada en Tasks» mediante `targets`;
+  - arriba, el enlace «Gestionar entradas».
+- **«Gestionar entradas»** (hoja; `owner` con acceso completo):
+  - una lista de tipos conocidos: los que han llegado alguna vez y los que ya tienen regla;
+  - por cada tipo, su destino o «Por clasificar»;
+  - alta, edición y papelera de reglas.
+  - Si se borra el área o el proyecto de una regla, la regla deja de aplicarse: lo nuevo de ese tipo vuelve a «Por clasificar» y la pantalla lo marca.
+- **Editor de tarea:** el aviso de §19.6 suma el tipo y el enlace.
+
+### 20.6 Hook y dominio
+
+- **Reglas:** el `tab_id` y el `project_id` deben ser coherentes, y el responsable, una etiqueta Persona de esa área.
+- **Clasificar:** un lote que pasa la petición a `routed` debe insertar la tarea con el mismo id, en un área viva, con `external_ref` y `external_kind` iguales a los de la petición.
+  - Es la única forma, además de `tasks.request_task`, de fijar esas columnas: la regla de §19 se amplía a «insert de la tarea de una petición pendiente en el mismo lote».
+- **Dominio:** `classifyRequestOps(data, requestId, {project_id, owner_label_id?})` y `routeKindOps(data, kind, rule)`, usados por la interfaz y probados contra el hook.
+- **Vaciar papelera:**
+  - una regla cuyo destino está borrado no se purga sola: se ve marcada;
+  - las peticiones `routed` o `dismissed` con más de 90 días se purgan con la papelera;
+  - las pendientes, nunca.
+
+### 20.7 Construcción (tras el visto bueno)
+
+1. Migración `0308` y dominio, con pruebas SQL y de la ruta (destino por regla, por sugerencia y pendiente; buzón; idempotencia con pendientes).
+2. Interfaz: «Por clasificar», «Gestionar entradas» y el editor, con Playwright.
+
+Una PR por paso.
+
+### 20.8 Preguntas para Core
+
+1. ¿Vale el modelo de §20.1, con peticiones pendientes en vez de un área de sistema?
+2. Destino que quien pide no ve: ¿buzón, como en §20.4, o a «Por clasificar»?
+3. ¿Puede clasificar un `editor` con acceso completo, o solo el `owner`?
+4. Precedencia: ¿la regla del usuario por encima de la sugerencia de la otra app, como propongo?
