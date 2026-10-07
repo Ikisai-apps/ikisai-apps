@@ -3,6 +3,7 @@ import './styles/app.css';
 import { applyTheme } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createPortalApi } from './app/api.ts';
+import { loadPublicContact } from './app/common-texts.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
 import { initUpdates } from './updates.ts';
@@ -49,8 +50,9 @@ function show(error?: unknown): void {
     return;
   }
   unmount = renderEntry(root!, { error });
-  void createPortalApi(client).permanentAccount().then((on) => {
-    if (on && !client.session()) { unmount?.(); unmount = renderEntry(root!, { error, permanentAccount: true }); }
+  // Contacto público y cuenta permanente: si llegan, se vuelve a pintar la entrada con ellos.
+  void Promise.all([loadPublicContact(), createPortalApi(client).permanentAccount()]).then(([, permanentAccount]) => {
+    if (!client.session()) { unmount?.(); unmount = renderEntry(root!, { error, permanentAccount }); }
   });
 }
 

@@ -49,6 +49,28 @@ export async function loadCommonTexts(client: SyncClient): Promise<void> {
   }
 }
 
+/**
+ * Contacto sin sesión (pantallas de enlace no válido o caducado): `GET /api/v1/public/contact?lang=`, cacheable, solo
+ * textos de tipo contacto. Admite lista (`items` o `rows`) u objeto por clave; si la ruta aún no existe, queda la reserva.
+ */
+export async function loadPublicContact(lang = navigator.language?.slice(0, 2) === 'en' ? 'en' : 'es'): Promise<void> {
+  try {
+    const res = await fetch(`/api/v1/public/contact?lang=${lang}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return;
+    const out = (await res.json()) as { items?: CommonText[]; rows?: CommonText[] } & Record<string, unknown>;
+    const rows: CommonText[] = out.items ?? out.rows ?? Object.entries(out)
+      .filter(([, v]) => typeof v === 'string' || (v && typeof (v as CommonText).body === 'string'))
+      .map(([key, v]) => (typeof v === 'string' ? { key, body: v, title: null, version: null, kind: 'contact' } : { ...(v as CommonText), key }));
+    const next: Partial<Record<TextKey, CommonText>> = {};
+    for (const row of rows) if ((row.key === 'contact.email' || row.key === 'contact.phone') && typeof row.body === 'string' && row.body.trim()) next[row.key] = row;
+    if (!Object.keys(next).length) return;
+    loaded = { ...loaded, ...next };
+    try { localStorage.setItem(STORE, JSON.stringify(loaded)); } catch { /* solo en memoria */ }
+  } catch {
+    /* sin red: copia guardada o reserva */
+  }
+}
+
 export function commonText(key: TextKey): CommonText {
   return loaded[key] ?? FALLBACK[key];
 }
