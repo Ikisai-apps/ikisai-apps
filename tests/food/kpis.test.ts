@@ -33,37 +33,35 @@ test.before(async () => {
   });
 });
 
-test('indicadores para Central: eventos sin menú en 30 días y listas de la compra abiertas, solo agregados', async () => {
+test('indicadores para Central: menús sin validar en 30 días y listas de la compra abiertas, solo agregados', async () => {
   const before = await kpis();
-  assert.deepEqual(Object.keys(before).sort(), ['food.events_without_menu_30d', 'food.shopping_lists_open']);
+  assert.deepEqual(Object.keys(before).sort(), ['food.menus_unvalidated_30d', 'food.shopping_lists_open']);
+  const unvalidated = () => kpis().then((k) => k['food.menus_unvalidated_30d']! - before['food.menus_unvalidated_30d']!);
+  const openLists = () => kpis().then((k) => k['food.shopping_lists_open']! - before['food.shopping_lists_open']!);
 
-  const soon = await seedBookingEvent(app, { title: 'Retiro cercano', start: day(5), end: day(7) });
-  const today = await seedBookingEvent(app, { title: 'Empieza hoy', start: day(0), end: day(2) });
-  await seedBookingEvent(app, { title: 'Retiro lejano', start: day(45), end: day(47) });
-  const cancelled = await seedBookingEvent(app, { title: 'Cancelado', start: day(10), end: day(11) });
-  await app.t.db.query(`update booking.reservations set status = 'cancelada' where id = (select reservation_id from booking.events where id = $1)`, [cancelled]);
-  const noMeals = await seedBookingEvent(app, { title: 'Sin comidas', start: day(12), end: day(13) });
-  await app.t.db.query(`update booking.reservations set requires_meals = false where id = (select reservation_id from booking.events where id = $1)`, [noMeals]);
+  const soon = await createMenu(await seedBookingEvent(app, { title: 'Retiro cercano', start: day(5), end: day(7) }));
+  const today = await createMenu(await seedBookingEvent(app, { title: 'Empieza hoy', start: day(0), end: day(2) }));
+  await createMenu(await seedBookingEvent(app, { title: 'Retiro lejano', start: day(45), end: day(47) }));
+  const past = await createMenu(await seedBookingEvent(app, { title: 'Retiro de la semana pasada', start: day(7), end: day(9) }));
+  // Lo que la cocina tenía delante: este evento ya pasó.
+  await app.t.db.query(`update food.menus set source_event_snapshot = jsonb_set(jsonb_set(source_event_snapshot, '{start_date}', to_jsonb($2::text)), '{end_date}', to_jsonb($3::text)) where id = $1`, [past, day(-9), day(-7)]);
 
-  // Cuentan el cercano y el que empieza hoy; ni el lejano, ni el cancelado, ni el que no lleva comidas.
-  assert.equal((await kpis())['food.events_without_menu_30d'], before['food.events_without_menu_30d']! + 2);
-
-  const menu = await createMenu(soon);
-  assert.equal((await kpis())['food.events_without_menu_30d'], before['food.events_without_menu_30d']! + 1);
-  await createMenu(today);
-  assert.equal((await kpis())['food.events_without_menu_30d'], before['food.events_without_menu_30d']);
+  // Cuentan el cercano y el que empieza hoy; ni el lejano ni el pasado.
+  assert.equal(await unvalidated(), 2);
+  await app.t.db.query(`update food.menus set status = 'validado', validated_at = now() where id = $1`, [today]);
+  assert.equal(await unvalidated(), 1);
 
   // La lista de la compra cuenta mientras no esté cerrada, ni su menú cerrado, ni el evento terminado.
-  await ok([{ op: 'call', procedure: 'food.regenerate_shopping', args: { menu_id: menu, list_id: uuid() } }]);
-  assert.equal((await kpis())['food.shopping_lists_open'], before['food.shopping_lists_open']! + 1);
-  await app.t.db.query(`update food.shopping_lists set status = 'cerrada' where menu_id = $1`, [menu]);
-  assert.equal((await kpis())['food.shopping_lists_open'], before['food.shopping_lists_open']);
+  for (const menu of [soon, past]) await ok([{ op: 'call', procedure: 'food.regenerate_shopping', args: { menu_id: menu, list_id: uuid() } }]);
+  assert.equal(await openLists(), 1);
+  await app.t.db.query(`update food.shopping_lists set status = 'cerrada' where menu_id = $1`, [soon]);
+  assert.equal(await openLists(), 0);
 
-  const row = (await app.t.db.query<Record<string, unknown>>(`select * from food.central_kpi_projection where kpi = 'food.events_without_menu_30d'`)).rows[0]!;
+  const row = (await app.t.db.query<Record<string, unknown>>(`select * from food.central_kpi_projection where kpi = 'food.menus_unvalidated_30d'`)).rows[0]!;
   assert.equal(row.unit, 'count');
   assert.equal(row.period, 'actual');
   assert.equal(row.direction, 'down');
-  assert.equal(row.link, 'https://food.ikisai.com/#/eventos');
+  assert.equal(row.link, 'https://food.ikisai.com/#/menus');
   assert.equal(Number((await app.t.db.query<{ n: number }>(
     `select count(*) n from core.allowed_reads where app = 'central' and name = 'food.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
 });

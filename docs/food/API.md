@@ -411,14 +411,14 @@ No hay escrituras cruzadas: Invoices no inserta en `food.stock_entries`. Propues
 
 ### 7.4 Indicadores para Central
 
-Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Lee los eventos de `booking.food_event_projection` con la misma regla de «pide menú» que la app (`needsMenu`): reserva no cancelada ni perdida, `requires_meals` distinto de `false` y régimen distinto de `no_aplica`.
+Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con el contrato de `docs/central/API.md` §7.2, registrada con `core.allow_read('central', 'food.central_kpi_projection', 'view')`. Solo agregados; `period = 'actual'` y «hoy» en hora de Madrid. Una migración de Food no puede leer `booking.*` (lint de migraciones), así que las fechas del evento son las de `food.menus.source_event_snapshot`: lo que la cocina tenía delante al crear, revisar o validar el menú.
 
 | Clave | Etiqueta | Fórmula | Unidad · sentido | Enlace |
 |---|---|---|---|---|
-| `food.events_without_menu_30d` | Eventos sin menú en los próximos 30 días | Eventos que piden menú, empiezan entre hoy y hoy + 30 y no tienen menú vivo. `period_end` = hoy + 30. | `count` · `down` | `#/eventos` |
+| `food.menus_unvalidated_30d` | Menús sin validar en los próximos 30 días | Menús vivos en `borrador` o `revisar` cuyo evento empieza entre hoy y hoy + 30. `period_end` = hoy + 30. | `count` · `down` | `#/menus` |
 | `food.shopping_lists_open` | Listas de la compra abiertas | Listas vivas con estado distinto de `cerrada`, de un menú vivo y no cerrado, cuyo evento termina hoy o después. | `count` · `down` | `#/menus` |
 
-Como la vista depende de `booking.food_event_projection`, si Booking necesita recrear esa proyección (no un `create or replace` compatible) tendrá que recrear también esta en la misma migración, o pedírselo a Food.
+`food.events_without_menu_30d` (propuesta del catálogo de Central) necesita cruzar eventos de Booking con menús de Food y queda pendiente de Core (petición P14).
 
 ---
 
