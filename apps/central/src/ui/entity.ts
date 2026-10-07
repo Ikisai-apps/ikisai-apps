@@ -3,6 +3,7 @@ import { compressImage, confirmDialog, el, formatDate, icon, openSheet, replace,
 import { LOGO_MAX_BYTES, LOGO_MIME, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
+import { fbMark } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
 
 type Row = Mirror<EntityRow & { id: string; revision: number; updated_at: string; deleted_at: string | null }>;
@@ -51,8 +52,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     }
   }
 
-  function line(label: string, value: string | null | undefined, key: string, personal = false): HTMLElement | null {
-    return value ? el('div', { class: 'kv', 'data-feedback-id': `central.entidad.ficha.${key}`, 'data-feedback-label': label }, el('dt', null, label), el('dd', personal ? { 'data-feedback-ignore': '' } : null, value)) : null;
+  function line(label: string, value: string | null | undefined, personal = false): HTMLElement | null {
+    return value ? el('div', { class: 'kv' }, el('dt', null, label), el('dd', personal ? { 'data-feedback-ignore': '' } : null, value)) : null;
   }
 
   async function paint(): Promise<void> {
@@ -68,13 +69,13 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     replace(host, el('section', { class: 'card entitycard', 'data-feedback-id': 'central.entidad.ficha', 'data-feedback-label': 'Ficha de la entidad' },
       (await logoNode(r.logo_file_id as LogoRef, `Logotipo de ${r.legal_name}`)) ?? el('p', { class: 'muted' }, 'Sin logotipo.'),
       el('dl', { class: 'kvlist', 'data-feedback-id': 'central.entidad.ficha.datos', 'data-feedback-label': 'Datos legales' },
-        line('Razón social', r.legal_name, 'razon_social'),
-        line('Nombre comercial', r.trade_name, 'nombre_comercial'),
-        line('NIF/CIF', r.tax_id, 'nif', true),
-        line('Domicilio fiscal', address, 'domicilio', true),
-        line('Correo', r.email, 'correo', true),
-        line('Teléfono', r.phone, 'telefono', true),
-        line('Web', r.website, 'web')),
+        fbMark(line('Razón social', r.legal_name), 'central.entidad.ficha.razon_social', 'Razón social'),
+        fbMark(line('Nombre comercial', r.trade_name), 'central.entidad.ficha.nombre_comercial', 'Nombre comercial'),
+        fbMark(line('NIF/CIF', r.tax_id, true), 'central.entidad.ficha.nif', 'NIF/CIF'),
+        fbMark(line('Domicilio fiscal', address, true), 'central.entidad.ficha.domicilio', 'Domicilio fiscal'),
+        fbMark(line('Correo', r.email, true), 'central.entidad.ficha.correo', 'Correo'),
+        fbMark(line('Teléfono', r.phone, true), 'central.entidad.ficha.telefono', 'Teléfono'),
+        fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web')),
       el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
       isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
   }
