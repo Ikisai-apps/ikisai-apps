@@ -847,3 +847,30 @@ html.fb-mode #appLauncher::after{content:"";position:absolute;right:-2px;top:-2p
 .fb-choice:hover{background:var(--paper-2)}
 .fb-choice small{color:var(--muted);font-weight:500;font-size:12px}
 .fb-signal{justify-self:start;display:inline-flex;align-items:center;gap:6px}
+/* Modo «Revisor de QA»: lista lateral, elemento iluminado y tarjeta anclada */
+.fb-review{position:fixed;z-index:93;right:12px;top:72px;width:min(320px,calc(100vw - 24px));max-height:calc(100dvh - 96px);display:grid;grid-template-rows:auto 1fr;background:var(--paper);border:1px solid var(--edge);border-radius:16px;box-shadow:var(--shadow-3);overflow:hidden}
+.fb-review.collapsed{max-height:none}
+.fb-review-head{display:flex;align-items:center;gap:6px;padding:8px 8px 8px 12px;border-bottom:1px solid var(--edge)}
+.fb-review-head strong{flex:1;font-size:14px}
+.fb-review-body{overflow:auto;padding:8px 10px 12px;display:grid;gap:6px;align-content:start}
+.fb-review-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.fb-review-row{display:grid;gap:4px;width:100%;text-align:left;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--radius-sm);background:var(--paper);color:var(--ink);font:inherit;cursor:pointer}
+.fb-review-row:hover{background:var(--paper-2)}
+.fb-review-row.on{border-color:var(--accent);background:var(--accent-soft)}
+.fb-review-row .fb-card-msg{-webkit-line-clamp:2;font-size:13px}
+.fb-review-sup{color:var(--muted);font-weight:700}
+@media (max-width:719px){.fb-review{top:auto;bottom:12px;right:12px;left:12px;width:auto;max-height:45dvh}.fb-review.under-card{display:none}}
+.fb-spot{outline:3px solid var(--warn)!important;outline-offset:3px;border-radius:6px;animation:fbspot 1.2s ease-out 2}
+@keyframes fbspot{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+.fb-review-card{position:fixed;z-index:96;width:min(380px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;display:grid;gap:10px;padding:14px;background:var(--paper);border:1px solid var(--edge);border-radius:18px;box-shadow:var(--shadow-3)}
+.fb-review-card.sheet-mode{left:0!important;right:0;bottom:0;top:auto!important;width:100%;max-height:70dvh;border-radius:22px 22px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.fb-review-card .fb-where strong{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.fb-rv-approx{margin:0;font-size:13px}
+.fb-rv-steps{font-size:13px;color:var(--muted)}
+.fb-rv-steps ol{margin:6px 0 0;padding-left:20px}
+.fb-merge-into{border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 12px;background:var(--paper);color:var(--ink);font:inherit;text-transform:uppercase}
+.fb-rv-actions{flex-wrap:wrap}
+.fb-rv-nav{display:flex;justify-content:flex-end}
+.fb-rv-next{display:inline-flex;align-items:center;gap:4px}
+html.fb-reviewing #appLauncher::before{content:"";position:absolute;left:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+html.fb-reviewing #appLauncher{position:relative}

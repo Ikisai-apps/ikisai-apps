@@ -1,5 +1,15 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.16.0 · 7 de octubre de 2026
+
+- **Modo «Revisor de QA»** (FEEDBACK.md §9), solo para el dueño del ecosistema: `createFeedbackReview({ api, app, appDomain, navigate, openUrl, waitMs, container })` → `{ mode, available, refresh, goTo, show, destroy }`.
+  - Segundo interruptor al pie del lanzador (`createAppLauncher({ review })`), debajo de «Señalar para comentar» (que ahora lleva la clase `.launcher-signal`). Solo aparece si `GET feedback?review=true` responde (403 para cualquier otra cuenta); se pregunta al abrir el lanzador. `html.fb-reviewing` marca la cabecera.
+  - **Lista lateral** de todas las apps (`GET feedback?review=true&app=all`): «Por revisar» (`reviewStatus = 'new'`) y «Por comprobar» (`display = 'pending_verify'`), con app, código, primera línea, «Me bloquea» y apoyos. Plegable; en móvil va abajo y se aparta mientras hay tarjeta.
+  - **Ir al sitio**: en esta app navega a `report.routeRaw` sin recargar (hash o `pushState`), espera al `[data-feedback-id]` (6 s como mucho; si no aparece, la sección o la pantalla más cercana, con aviso), lo ilumina (`.fb-spot`) y ancla la tarjeta. En otra app abre `https://<dominio>/?fb=<código>&qa=1`; al arrancar con `?fb=` el kit enciende el modo, enseña el reporte y limpia la URL.
+  - **Tarjeta del revisor**: comentario, imágenes, últimos pasos y, según el caso, «Aprobar para arreglar» (`approve`), «Descartar» con motivo, «Unir a…» (`merge { into }`), o «Funciona» y «Sigue fallando». «Siguiente» sigue la cola (primero por revisar, luego por comprobar).
+- Contexto: `routeRaw` (ruta real con el hash de la app, sin consultas) además de la saneada; `rawRoute()` exportada. `FeedbackReport` gana `reviewStatus` y `routeRaw`.
+- Demo `#feedback`: «Ejemplos del revisor» y servidor simulado con `review=true`, `approve` y `merge`. Prueba `v19`.
+
 ## 0.15.0 · 7 de octubre de 2026
 
 - **Feedback y QA transversal, fase 2** (`coordinacion/ampliacion/FEEDBACK.md` §2, §6–§8; rutas de Core #212, contrato §3.7). Todo en `src/feedback/`, sin dominio de ninguna app.

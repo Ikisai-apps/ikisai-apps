@@ -32,6 +32,15 @@ export function sanitizePath(raw: string): string {
   }).join('/').slice(0, 160);
 }
 
+/**
+ * Ruta real para «Ir al sitio» del revisor (FEEDBACK.md §9.4): `pathname` y el hash de la app, sin consulta (`?`) ni la
+ * consulta del hash. Lleva ids técnicos, nunca datos de formularios. El servidor la guarda aparte (`route_raw`).
+ */
+export function rawRoute(): string {
+  const hash = location.hash.split('?')[0]!;
+  return `${location.pathname}${hash.length > 1 ? hash : ''}`.slice(0, 300);
+}
+
 /** Ruta de la app saneada: la del hash si la app navega por hash (sin `#`: la Edge corta en `#`), si no la del `pathname`. */
 export function sanitizedRoute(): string {
   const hash = location.hash.replace(/^#/, '').split('?')[0]!;
@@ -103,6 +112,7 @@ export async function collectFeedbackContext(input: FeedbackContextInput): Promi
     release: version?.release,
     commit: version?.commit,
     route: sanitizedRoute(),
+    routeRaw: rawRoute(),
     deviceClass: matchMedia('(pointer: coarse)').matches ? (innerWidth < 768 ? 'mobile' : 'tablet') : 'desktop',
     viewport: { width: innerWidth, height: innerHeight },
     online: navigator.onLine,

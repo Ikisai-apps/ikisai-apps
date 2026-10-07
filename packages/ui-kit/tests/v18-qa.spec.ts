@@ -94,17 +94,17 @@ test.describe('ui-kit v0.15 · feedback: modo «Señalar para comentar» y gesto
   test('el interruptor del lanzador enciende y apaga el modo, y se recuerda al recargar', async ({ page }) => {
     await fresh(page);
     await page.locator('#demoLauncher').click();
-    const sw = page.locator('.launcher-fb input');
+    const sw = page.locator('.launcher-signal input');
     await expect(sw).not.toBeChecked();
-    await page.locator('.launcher-fb').click();
+    await page.locator('.launcher-signal').click();
     await expect(sw).toBeChecked();
     await expect(page.locator('#fbMode')).toBeChecked();
     await page.reload();
     await page.locator('#fbOpen').waitFor();
     expect(await page.evaluate(() => document.documentElement.classList.contains('fb-mode'))).toBe(true);
     await page.locator('#demoLauncher').click();
-    await page.locator('.launcher-fb').click();
-    await expect(page.locator('.launcher-fb input')).not.toBeChecked();
+    await page.locator('.launcher-signal').click();
+    await expect(page.locator('.launcher-signal input')).not.toBeChecked();
     expect(await page.evaluate(() => document.documentElement.classList.contains('fb-mode'))).toBe(false);
   });
 });

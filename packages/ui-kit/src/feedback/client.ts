@@ -18,6 +18,10 @@ export interface FeedbackReport {
   id: string; code: string; originApp: string; subject: string; intent: string; message: string;
   node: { id: string; path: string[] } | null; status: string; display: string; supportersCount: number; mine: boolean;
   createdAt: string; verifiedAt?: string | null; verifiedBuild?: string | null; releasedBuild?: string | null;
+  /** Revisión del dueño (FEEDBACK.md §9): `new | approved | rejected`. */
+  reviewStatus?: string;
+  /** Ruta real (solo para el revisor y quien informó). */
+  routeRaw?: string | null;
   /** «Me bloquea» (FEEDBACK.md §8.6). */
   blocking?: boolean;
 }
