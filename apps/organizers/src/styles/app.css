@@ -1,0 +1,62 @@
+/* Ikisai Organizers · estilos propios sobre @ikisai/ui-kit (tokens, base y componentes vienen del kit).
+   Público externo, móvil primero (390 px): una columna cómoda de leer, botones grandes. */
+
+.muted{color:var(--muted)}
+.small{font-size:var(--text-sm,.875rem)}
+.plainlist{margin:0;padding-left:18px}
+.plainlist li{margin:4px 0}
+.chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
+.backlink:hover{color:var(--ink)}
+
+/* Sin navegación (dos niveles): el kit pinta la barra vacía y taparía los botones del pie. */
+.nonav>.nav{display:none}
+
+/* Sitio para el botón «Guarda tu acceso» al final de la página. */
+.nonav .main{padding-bottom:104px}
+
+@media (min-width:1024px){
+  .main{max-width:760px;margin-inline:auto}
+}
+
+/* Entrada */
+.orgentry .login-card h2{margin:18px 0 6px;font-size:1.2rem}
+.orgentry #entryContact{font-weight:600}
+.orgentry-foot{margin-top:16px}
+
+/* Mis retiros */
+.orgcards{display:grid;gap:12px}
+.orgretreat{display:flex;flex-direction:column;gap:6px;padding:14px 16px;color:var(--ink);text-decoration:none}
+.orgretreat.muted{opacity:.65}
+.orgretreat-title{font-family:var(--font-display,inherit);font-size:1.15rem}
+
+/* Ficha del retiro */
+.orghead h2{margin-bottom:4px}
+.orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto}
+.orgtabs a{flex:1 0 auto;padding:8px 14px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
+.orgtabs a.on{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
+.orgcard{padding:14px 16px;margin:0 0 12px}
+.orgcard h3{margin:0 0 8px;font-size:1rem}
+.orgcard .ghost{margin-top:8px}
+.orgtools{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+
+/* Ficha del asistente */
+.orggroup{padding:4px 16px;margin:0 0 12px}
+.orggroup>summary{display:flex;align-items:center;gap:8px;padding:12px 0;font-weight:700;cursor:pointer}
+.orgfilled p{display:flex;align-items:center;gap:6px;margin:0;color:var(--ok,var(--ink));font-weight:600}
+.orgcountry{display:grid;gap:8px}
+.orgrestriction{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.orgrestriction>select,.orgrestriction>input{grid-column:1}
+.orgrestriction>.iconbtn{grid-column:2;grid-row:1}
+.orgdeclaration{padding:12px 16px;margin:0 0 12px}
+.orgdeclaration.attention{border-color:var(--warn,var(--accent));box-shadow:0 0 0 3px var(--accent-soft)}
+.orgsave{position:sticky;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2}
+.orgdanger{margin:24px 0 96px;text-align:center}
+
+/* Ayuda */
+.orgmine{list-style:none;padding:0}
+.orgmine li{padding:6px 0;border-bottom:1px solid var(--line)}
+
+/* «Guarda tu acceso» */
+.orgaccess{display:inline-flex;align-items:center;gap:8px}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d4f6e"/>
+      <stop offset="1" stop-color="#232e42"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <!-- Centro del ecosistema: un nodo con cuatro apps alrededor, en papel crema y acento dorado -->
+  <g stroke="#e2dbcd" stroke-width="18" stroke-linecap="round">
+    <path d="M256 256L256 140M256 256L372 256M256 256L256 372M256 256L140 256"/>
+  </g>
+  <circle cx="256" cy="140" r="40" fill="#fffdf8"/>
+  <circle cx="372" cy="256" r="40" fill="#fffdf8"/>
+  <circle cx="256" cy="372" r="40" fill="#fffdf8"/>
+  <circle cx="140" cy="256" r="40" fill="#fffdf8"/>
+  <circle cx="256" cy="256" r="58" fill="#c9a24a"/>
+  <circle cx="256" cy="256" r="26" fill="#fffdf8"/>
+</svg>

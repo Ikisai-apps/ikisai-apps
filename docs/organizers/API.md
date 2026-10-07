@@ -51,6 +51,7 @@ Privacidad de los huéspedes (Booking §16.3, ya aplicada por `booking.portal_gu
 | `GET me`, `GET bootstrap` | nombre de la persona y sus ámbitos |
 | `GET apps` | lanzador del kit (catálogo) |
 | `POST read/booking.portal_reservations {}` | Mis retiros (las lecturas con argumentos van por `POST read/:name` con los `args` en el cuerpo; `GET read` solo admite filtros `where[…]` de vistas) |
+| `POST read/booking.portal_reservation_detail {reservation_id}` | ficha del retiro: horas, plazas, régimen, servicios (B1) |
 | `POST read/booking.portal_guests {reservation_id}` | asistentes de un retiro |
 | `POST read/booking.portal_kitchen_summary {reservation_id}` | resumen de cocina |
 | `POST invoke/booking.portal_add_guest` · `portal_update_guest` · `portal_remove_guest` · `portal_set_restrictions` | escrituras (§6.2) |
@@ -59,6 +60,8 @@ Privacidad de los huéspedes (Booking §16.3, ya aplicada por `booking.portal_gu
 | `POST portal-links/:id/revoke` | anular un enlace de huésped (ampliar es solo del personal) |
 | `POST feedback`, `feedback/uploads` (+ `verify`), `GET feedback?mine=true` | «Ayuda y sugerencias» |
 | `POST usage/batch` | uso sin persona (`createUsage({ notice: false })`) |
+| `GET read/central.common_texts_projection` | textos legales y de contacto (§9.11) |
+| `GET auth/config` | `permanentAccount` para «Guarda tu acceso» (§9.8) |
 
 Si Core prefiere menos viajes en la ficha (tres lecturas en paralelo), se puede añadir una ruta compuesta `GET retreat/:reservationId` que junte reserva, asistentes y cocina; no la propongo de entrada porque las tres lecturas ya van en paralelo y con caché (§10).
 
@@ -111,7 +114,7 @@ PWA `apps/organizers` sobre `createAppShell` del kit 0.18.x: marca «Organizers�
 ### 9.1 Entrada (`/i/<token>` y `/`)
 
 - **`/i/<token>`**: llama a `POST auth/link`, guarda la sesión, **quita el token de la URL** (`history.replaceState` a `/`) antes de pintar nada y va a Mis retiros. Si en el dispositivo había otra persona con sesión, se cierra la suya primero (`onSessionEnd`, limpia la caché local).
-- `LINK_INVALID` y `LINK_EXPIRED`: pantalla con el texto de §6.3 y el teléfono o correo de contacto de Ikisai (texto fijo de la app).
+- `LINK_INVALID` y `LINK_EXPIRED`: pantalla con el texto de §6.3 y el correo y el teléfono de contacto, que salen de los textos comunes de Central (§9.11).
 - **`/` sin sesión** (ni pase de sesión única): «Para entrar, abre el enlace que te enviamos por correo o WhatsApp.» Debajo, el hueco de la cuenta permanente («Entrar con Google», «Recibir un código por correo») oculto hasta que Core lo active (§9.8).
 
 ### 9.2 Mis retiros (`#/`)
@@ -145,7 +148,7 @@ Lista con `display_name` y una etiqueta de estado: **Completo**, **Faltan datos*
 
 - **Añadir asistente:** hoja con nombre (obligatorio) y apellido; el resto es opcional y se puede rellenar después. La primera vez en esa reserva pide la **declaración** (§9.5). El `guest_id` lo genera el cliente.
 - **Ficha del asistente** (`#/retiro/<id>/asistentes/<guestId>`), en bloques plegables según el modo:
-  - `ses`: Identidad (nombre, apellidos, sexo, fecha de nacimiento, nacionalidad, menor de edad → tutor y parentesco) · Documento (tipo, número, número de soporte) · Residencia (dirección, código postal, ciudad, país) · Contacto (teléfono, correo) · Alimentación.
+  - `ses`: Identidad (nombre, apellidos, sexo, fecha de nacimiento, nacionalidad y, si es menor, persona responsable y parentesco) · Documento (tipo, número, número de soporte) · Residencia (dirección, código postal, ciudad, país) · Contacto (teléfono, correo) · Alimentación.
   - `operativo`: nombre, primer apellido, teléfono, correo · Alimentación. Nunca documento, dirección, nacimiento ni firma.
   - Cada campo: si llega su valor (lo escribió el organizador), se edita; si llega `true`, «Rellenado ✓» **sin edición** (lo escribió el huésped o Ikisai); si llega `null`, vacío y editable. Se guarda con `portal_update_guest` y la `revision` que se cargó.
   - **Alimentación:** lista de restricciones del organizador para ese huésped (tipo, qué, gravedad para alergias e intolerancias, nota para cocina) que se guarda entera con `portal_set_restrictions`; las del huésped, solo si consintió, en solo lectura con «Indicado por {nombre}».
@@ -156,11 +159,11 @@ Lista con `display_name` y una etiqueta de estado: **Completo**, **Faltan datos*
 
 ### 9.5 Declaración del organizador
 
-Casilla obligatoria la primera vez que el organizador escribe datos de otros en una reserva (Booking la guarda en `booking.portal_declarations`, versión `org-v1`):
+Casilla obligatoria la primera vez que el organizador escribe datos de otros en una reserva. Booking la guarda en `booking.portal_declarations` con la **versión aceptada** (`declaration_version`). El texto es `organizers.declaration` de los textos comunes de Central (§9.11), versión `v1`:
 
 > ☐ Facilito estos datos con conocimiento de mis asistentes y solo para organizar su estancia en Ikisai. Cada asistente recibirá la información sobre protección de datos al abrir su enlace personal.
 
-Enlace «Más información» con el texto legal breve (quién trata los datos, para qué, cuánto tiempo y cómo ejercer los derechos). El texto definitivo lo valida el usuario (pregunta 1 de la salida). Como `portal_guests` aún no dice si la declaración ya consta, la interfaz la pide cuando la acción responde `DECLARATION_REQUIRED` y la recuerda en el dispositivo; con la petición B2 la pedirá antes.
+«Más información» muestra `portal.privacy`. La casilla aparece cuando `portal_guests.declared` es `false` (B2); si aun así la acción responde `DECLARATION_REQUIRED`, se resalta y se pide.
 
 ### 9.6 Textos para compartir el enlace
 
@@ -176,7 +179,7 @@ En modo `ses` añade: «Son los datos que exige el registro de viajeros.»
 
 ### 9.8 «Guarda tu acceso» (hueco)
 
-Botón flotante discreto en Mis retiros y Retiro para quien entró por enlace. Hasta que Core active la cuenta permanente (Google y código por correo, con Workspace), abre una hoja: «Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo. Mientras tanto, guarda el enlace que te enviamos.» Se activa con un indicador de configuración que dé el núcleo (petición C3). El componente queda listo para conectarle las dos acciones.
+Botón flotante discreto en Mis retiros y Retiro (no en las fichas de asistente, donde taparía «Guardar»). Hasta que Core active la cuenta permanente (Google y código por correo, con Workspace), abre una hoja: «Pronto podrás guardar tu acceso con tu cuenta de Google o con un código por correo. Mientras tanto, guarda el enlace que te enviamos.» El indicador es `GET auth/config → permanentAccount` (C3, hoy `false`). El componente queda listo para conectarle las dos acciones.
 
 ### 9.9 Ayuda y sugerencias
 
@@ -195,17 +198,25 @@ Debajo, «Lo que me has enviado» (`GET feedback?mine=true`) con el estado en cl
 
 ```text
 organizers.entrada.enlace.error            organizers.retiros.lista.abrir
-organizers.retiro.resumen.ver-asistentes   organizers.retiro.resumen.ver-cocina
-organizers.asistentes.lista.anadir         organizers.asistentes.lista.recordatorio-grupo
-organizers.asistentes.lista.filtro         organizers.asistente.ficha.guardar
-organizers.asistente.ficha.enviar-enlace   organizers.asistente.ficha.reenviar-enlace
+organizers.retiro.pestanas.asistentes      organizers.retiro.resumen.ver_asistentes
+organizers.asistentes.lista.anadir         organizers.asistentes.lista.recordatorio_grupo
+organizers.asistentes.alta.guardar         organizers.asistente.ficha.guardar
+organizers.asistente.ficha.enviar_enlace   organizers.asistente.ficha.reenviar_enlace
 organizers.asistente.ficha.recordatorio    organizers.asistente.ficha.baja
-organizers.asistente.alimentacion.guardar  organizers.asistentes.declaracion.aceptar
-organizers.cocina.resumen.ver              organizers.acceso.guardar.abrir
-organizers.ayuda.formulario.enviar
+organizers.asistente.enlace.whatsapp       organizers.asistentes.declaracion.aceptar
+organizers.cocina.resumen                  organizers.acceso.guardar.abrir
+organizers.ayuda.formulario
 ```
 
-`usage.run` en: alta, guardar ficha, guardar alimentación, enviar enlace, reenviar, baja, copiar recordatorio y enviar sugerencia.
+`usage.run` en: alta, guardar ficha (datos y alimentación), enviar enlace, reenviar, baja y los dos recordatorios. Todos los ids son literales (el catálogo de la publicación no recoge los construidos en ejecución); `tests/organizers/feedback-ids.test.ts` lo comprueba.
+
+### 9.11 Textos legales y de contacto (decisión del usuario, 7-10-2026)
+
+Ningún texto legal ni de contacto va fijo en el código: se leen de Central (`GET read/central.common_texts_projection`, columnas `key, title, body, version, kind`) al abrir la sesión. Claves: `organizers.declaration`, `portal.privacy`, `contact.email` y `contact.phone`. Son públicos: la última copia se guarda en el dispositivo sin persona, para la pantalla de entrada sin sesión. En el código solo hay un texto de reserva por si la lectura falla sin red y sin copia (`apps/organizers/src/app/common-texts.ts`).
+
+### 9.12 Campos booleanos
+
+`is_minor` no se ofrece al organizador: `booking.portal_guests` devuelve `true` tanto si otra persona lo rellenó como si vale `true`, y un booleano por defecto (`false`) sale siempre como «rellenado». Los campos de persona responsable y parentesco se piden como texto «si es menor» (petición B5).
 
 ## 10. Offline
 
@@ -255,6 +266,8 @@ Lo hago yo entero (es pequeño): `supabase/functions/organizers-api` (índice y 
 Fuera de la V1 sin ser punto abierto: menú de Food para el organizador y restricciones de cocina del grupo sin huésped (§14, B4).
 
 ## 14. Peticiones
+
+Estado de cada una en `docs/organizers/PETICIONES.md`.
 
 ### A Booking (por Core)
 
