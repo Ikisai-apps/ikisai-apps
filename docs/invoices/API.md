@@ -874,7 +874,7 @@ Al **registrar**, el número viene del documento y solo se comprueba que no est�
 
 ### 13.6 Qué queda fuera ahora (preparado, sin desarrollar)
 
-Huella y encadenado, firma, registros de alta y de anulación de Verifactu, envío y respuesta de la AEAT, QR, declaración responsable del sistema informático y modalidad «no Verifactu». Los campos `vf_*`, `origin = 'app'`, `issued_series.format` y `core.next_number` quedan listos para que la emisión sea un procedimiento nuevo y no una migración del modelo.
+Huella y encadenado, firma, registros de alta y de anulación de Verifactu, envío y respuesta de la AEAT, QR, declaración responsable del sistema informático y modalidad «no Verifactu». Los campos `vf_*`, `origin = 'app'`, `issued_series.format` y `core.next_number` quedan listos para que la emisión sea un procedimiento nuevo y no una migración del modelo. **Actualización (ronda 40):** la emisión desde Finance está aprobada por el usuario; la propuesta está en §14.
 
 ### 13.7 Preguntas abiertas
 
@@ -882,3 +882,172 @@ Huella y encadenado, firma, registros de alta y de anulación de Verifactu, env�
 2. **Usuario:** si la lista de categorías de ingreso (`alojamiento`, `restauracion`, `actividades`, `eventos`, `otros`) le sirve.
 3. **Core:** visto bueno a `core.next_number` (§13.3) y a la proyección de ingresos para Booking.
 4. **Core y usuario:** si las emitidas van como pestaña dentro de Facturas (propuesta) o como entrada propia en la navegación.
+
+## 14. Emitir facturas desde Finance (propuesta, ronda 40 · pendiente de revisión de Core)
+
+Base: `coordinacion/ampliacion/FACTURACION.md`, aprobado por el usuario el 7-10-2026. Ikisai factura como autónomo, con una serie nueva desde la primera factura de la app. La hoja de Google deja de emitir y su serie se cierra.
+
+Documentación oficial usada, descargada el 7-10-2026 de la sede de la AEAT (portal de desarrolladores, «Sistemas Informáticos de Facturación y Sistemas VERI*FACTU»):
+
+| Documento | Versión | Para qué |
+|---|---|---|
+| Especificaciones de la huella o «hash» de los registros | 0.1.2 | Cadena de entrada, SHA-256 y ejemplos oficiales (§14.6) |
+| Especificaciones técnicas del código QR de la factura | 0.5.0 | URL de cotejo, parámetros, tamaño y posición (§14.5) |
+| Descripción de los servicios web | 1.0.3 | Envío y respuesta (fuera de esta fase) |
+| Esquemas `SuministroLR.xsd`, `SuministroInformacion.xsd`, `RespuestaSuministro.xsd`, `EventosSIF.xsd` | tikeV1.0 | Campos de los registros de alta, anulación y evento |
+
+Normas: Reglamento de facturación (RD 1619/2012) y Reglamento de sistemas de facturación (RD 1007/2023, con el RDL 15/2025).
+
+### 14.1 Principios
+
+- **El número lo pone el servidor al emitir, nunca el dispositivo.** Una factura nace como **borrador** sin número, que se edita y sincroniza sin red como cualquier fila. «Emitir» es un procedimiento que, en una sola transacción, asigna el número, fija la fecha de expedición, congela los datos, copia el emisor de Central y genera el registro de alta con su huella. Si algo falla no se emite nada, así que no quedan huecos.
+- **Sin red**, «Emitir» se encola como cualquier `call`. La app muestra «Se emitirá al conectar» y el número aparece al sincronizar. Si el servidor la rechaza (por ejemplo, porque falta el NIF del destinatario), sigue en borrador con el motivo.
+- **Una emitida no se edita.** Solo cambian el cobro, las notas internas, los documentos adjuntos y el destino del ingreso. Para corregirla se hace una **rectificativa**.
+- **Registro VERI*FACTU desde la primera factura, sin enviar.** Se guarda cada registro de alta y de anulación con la huella encadenada. El envío lo enciende solo el owner (§14.7).
+- **Registro y emisión no se mezclan.** Las emitidas registradas de otra herramienta (§13) siguen como histórico, en sus series. Una serie es o de registro o de emisión.
+
+### 14.2 Series y numeración
+
+`invoices.issued_series` gana `mode` (`registro` · `emision`), `closed_at` y `closed_last_number`. Las series que ya existen pasan a `registro`.
+
+- **Series de emisión propuestas:** `F` para las ordinarias y `R` para las rectificativas, con reinicio anual. Formato `{serie}{año}-{n:4}`, que da `F2026-0001` y `R2026-0001`. Si el usuario quiere tiques, se añade `T` para las simplificadas (§14.9, pregunta 1). El código y el formato los elige el usuario en Ajustes antes de la primera emisión, y después no se cambian.
+- **Contador:** `invoices.series_counters (series_code, year, last_number, last_issue_date)`. Solo lo escribe el procedimiento de emisión, que bloquea la fila con `for update`. Así dos emisiones a la vez nunca reciben el mismo número ni dejan hueco. No hace falta `core.next_number` (§13.3): el contador queda en el schema `invoices`.
+- **Orden de fechas:** la fecha de expedición es la de hoy en hora de Madrid, y nunca anterior a la última emitida de la serie. Así número y fecha van siempre en el mismo orden. La fecha de la operación puede ser otra, por ejemplo la salida de una reserva.
+- **Cierre de la serie de la hoja:** `invoices.close_series {code, last_number}` (owner) marca la serie como cerrada en ese número. Desde entonces no admite más emitidas, ni registradas ni importadas.
+- **Formato del número:** solo caracteres ASCII imprimibles y como mucho 60, como piden el XSD y el QR.
+
+### 14.3 Estados y procedimientos
+
+`issued_invoices.status` añade `borrador`, `emitida` y `rectificada` a los actuales `registrada` y `anulada`. `number` admite `null` solo en borrador.
+
+| Paso | Procedimiento | Quién | Qué hace |
+|---|---|---|---|
+| Borrador | filas normales | editor, owner | Cabecera, destinatario, líneas y destino. Sin número. Se puede borrar. |
+| Emitir | `invoices.issue {id, expectedRevision}` | editor, owner; agentes con aprobación | Comprueba los datos obligatorios (§14.4), recalcula importes y desglose, asigna número y fecha, copia el emisor, congela y genera el registro de alta. Devuelve `{full_number, issue_date, vf_hash}`. |
+| Rectificar | `invoices.rectify {id, kind, reason_code, reason, lines?}` | editor, owner | Crea un **borrador** de rectificativa en la serie `R` que apunta a la original. Se emite con `invoices.issue`. Al emitirse, la original pasa a `rectificada`. |
+| Anular | `invoices.annul_issued {id, reason}` | **solo owner** | Solo para una factura que no debió emitirse y no llegó al cliente. Genera el registro de anulación. El número queda ocupado. Si la factura ya se entregó, lo correcto es rectificar. |
+
+- **Rectificativas:** códigos `R1`–`R4` según el motivo (art. 80 de la Ley del IVA) y `R5` para simplificadas. **Por sustitución (`S`)** repite la factura completa con los datos correctos y guarda la base y la cuota rectificadas. **Por diferencias (`I`)** lleva solo la diferencia, que puede ser negativa. Propongo «por diferencias» por defecto, con las líneas de la original en negativo, para que una devolución total quede en un toque.
+- **Borrar borradores:** los borradores sí se borran (`delete`). Las emitidas siguen sin papelera, como en §13.
+- **Agentes:** emitir, rectificar y anular exigen siempre aprobación.
+
+### 14.4 Datos y documento
+
+Campos nuevos en la cabecera:
+- `recipient_address jsonb`: `{line, postal_code, city, province, country}`. Es obligatoria salvo para un particular.
+- `recipient_kind`: `empresa` · `profesional` · `particular`.
+- `prices_include_vat boolean`, para tarifas con IVA incluido.
+- `issued_at timestamptz` y `issued_by`.
+- `document jsonb`: la copia congelada de todo lo que se imprime.
+- `rectified_by jsonb`: las rectificativas emitidas sobre esta factura.
+
+Las líneas ya tienen cantidad, unidad, precio unitario, descuento y tipo (§13.1). El desglose añade `exemption_note` para la mención de exención.
+
+**El documento** se pinta con la página imprimible del kit a partir de `document`, así que siempre sale igual. «Descargar PDF» usa la impresión del navegador.
+
+- **Datos obligatorios** (art. 6 del RD 1619/2012), comprobados al emitir:
+  1. Serie y número, y fecha de expedición.
+  2. Fecha de la operación, si es distinta.
+  3. Emisor con nombre y apellidos, NIF y domicilio, tomados de Central.
+  4. Destinatario con nombre o razón social, NIF y domicilio. El domicilio no hace falta para un particular.
+  5. Descripción de las operaciones, con base, precio unitario sin impuesto y descuentos.
+  6. Tipo de IVA y cuota de cada tipo, por separado.
+  7. Menciones de exención o de inversión del sujeto pasivo, cuando proceda.
+- **Simplificadas** (art. 7): no exigen los datos del destinatario. El límite es de 400 €, o de 3.000 € en hostelería y restauración (art. 4).
+- **PDF en el servidor:** fuera de esta fase. Hará falta para enviar la factura por correo, con una biblioteca de PDF en la Edge.
+
+### 14.5 Código QR y leyenda
+
+- **URL de cotejo:** se calcula y se guarda al emitir, aunque el envío esté apagado. En producción es `https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?nif=…&numserie=…&fecha=DD-MM-AAAA&importe=N.NN`, con los parámetros codificados en UTF-8 como URL. En pruebas, `https://prewww2.aeat.es/…`.
+- **Mientras el envío esté apagado** no se imprime ni el QR ni la leyenda «VERI*FACTU». La AEAT no tendría el registro y el cotejo diría «no encontrada».
+- **Con el envío encendido**, se imprimen:
+  1. El texto «QR tributario:» encima del código.
+  2. Un QR de 30 a 40 mm con corrección de errores de nivel M y al menos 2 mm de margen, arriba en la primera página.
+  3. La leyenda «Factura verificable en la sede electrónica de la AEAT» o «VERI*FACTU» debajo.
+- **Generación del QR:** en el dispositivo, con una biblioteca pequeña cargada bajo demanda, igual que PDF.js.
+
+### 14.6 Registro VERI*FACTU (tablas)
+
+**`invoices.vf_records`** guarda una fila por registro de alta o de anulación. Solo la escriben los procedimientos de emisión y anulación. No se edita ni se borra (`never_purge`). Todos los roles la leen.
+
+| Grupo | Campos |
+|---|---|
+| Identidad | `id`, `seq bigint` (orden en la cadena, único), `record_kind` (`alta` · `anulacion`), `issued_invoice_id` |
+| Datos de la huella | `issuer_tax_id`, `num_serie`, `issue_date_text` (`DD-MM-AAAA`), `invoice_type` (solo alta), `quota_total`, `amount_total` (solo alta) |
+| Cadena | `first_record boolean`, `previous_hash`, `previous_ref jsonb` (NIF, número y fecha del anterior), `generated_at_text` (`FechaHoraHusoGenRegistro`: `AAAA-MM-DDThh:mm:ss+01:00` en hora de Madrid), `hash` (64 caracteres hexadecimales en mayúsculas) |
+| Contenido | `payload jsonb`: el registro completo con la forma de `RegistroAlta` o `RegistroAnulacion` del XSD (desglose, destinatarios, rectificación, sistema informático), listo para el XML |
+| Envío | `send_status` (`no_enviar` · `pendiente` · `enviado` · `aceptado` · `aceptado_con_errores` · `rechazado`), `sent_at`, `csv`, `errors jsonb` |
+
+- Un disparador impide cualquier cambio salvo en los campos de envío.
+- **Huella de alta:** se concatena `IDEmisorFactura=…&NumSerieFactura=…&FechaExpedicionFactura=…&TipoFactura=…&CuotaTotal=…&ImporteTotal=…&Huella=<anterior>&FechaHoraHusoGenRegistro=…`. Los valores van sin espacios al principio ni al final, y un campo vacío queda como `Nombre=`. Se aplica SHA-256 sobre UTF-8, con salida en hexadecimal y en mayúsculas.
+- **Huella de anulación:** la misma cadena con `IDEmisorFacturaAnulada`, `NumSerieFacturaAnulada`, `FechaExpedicionFacturaAnulada`, `Huella` y `FechaHoraHusoGenRegistro`.
+- **Dónde se calcula:** en SQL con `pgcrypto`, dentro de la transacción de la emisión. La cabeza de la cadena se bloquea, así que dos emisiones a la vez se encadenan en orden. Hay también una versión en el dominio TypeScript para comprobar y para generar el XML.
+- **Pruebas:** las dos implementaciones se prueban con los **tres ejemplos oficiales** de la especificación 0.1.2, que ya he comprobado:
+
+```
+alta      3C464DAF61ACB827C65FDA19F352A4E3BDC2C640E9E9FC4CC058073F38F12F60
+alta      F7B94CFD8924EDFF273501B01EE5153E4CE8F259766F88CF6ACB8935802A2B97
+anulación 177547C0D57AC74748561D054A9CEC14B4C4EA23D1BEFD6F2E69E3A388F90C68
+```
+
+**`invoices.vf_events`** es el registro de eventos con su propia cadena (`HuellaEvento`). Guarda el arranque del sistema, el cambio del interruptor, las exportaciones y las incidencias. En la modalidad VERI*FACTU no es obligatorio, pero cuesta poco y deja traza del interruptor.
+
+**`invoices.vf_system`**, con una fila, guarda la identificación del sistema informático (`SistemaInformatico` del XSD):
+- El productor, que es el propio autónomo (nombre y NIF, tomados de Central).
+- `NombreSistemaInformatico = "Ikisai Finance"` e `IdSistemaInformatico = "IF"`.
+- La versión, que es la de la publicación de la app.
+- `NumeroInstalacion`, un uuid fijo de esta instalación.
+- `TipoUsoPosibleSoloVerifactu = S`, `TipoUsoPosibleMultiOT = N` e `IndicadorMultiplesOT = N`.
+
+La **declaración responsable** va dentro de la app (Ajustes › Acerca de), redactada con los ejemplos de la AEAT, y no se presenta.
+
+**Fuera de esta fase:** el XML, la firma, el envío por servicio web con certificado y la consulta. Todo eso parte de `payload` y de `send_status`.
+
+### 14.7 Interruptor del owner (Ajustes)
+
+`invoices.vf_settings`, con una fila, guarda:
+- `sending` (`apagado` · `pruebas` · `produccion`).
+- `enabled_at` y `enabled_by`.
+- `locked_until`, el 31-12 del año en que se encendió producción.
+
+Lo cambia `invoices.vf_set_sending {mode, confirmation}`. **Solo el owner** puede llamarlo, y **ningún agente**, ni con aprobación.
+
+- **`pruebas`:** envía al portal de pruebas externas de la AEAT. Sirve para ensayar cuando se acerque la fecha y se apaga cuando se quiera.
+- **`produccion`:** la app pide escribir la frase «Entiendo que debo seguir enviando hasta el 31 de diciembre». Desde ese momento no se puede apagar hasta `locked_until`. Los registros con `no_enviar` del año en curso pasan a `pendiente`.
+- **Apagado** (hoy): los registros nacen como `no_enviar`, y la factura no lleva ni QR ni leyenda.
+- **Eventos:** cada cambio del interruptor genera un evento en `vf_events`.
+
+### 14.8 Facturar desde una reserva (contrato con Booking, por medio de Core)
+
+Propongo una **lectura** y no una escritura entre funciones. Booking no crea filas en Finance; Finance lee de Booking lo que necesita para el borrador.
+
+1. **En Booking**, «Emitir factura» en la reserva abre `https://finance.ikisai.com/#/facturas?vista=emitidas&desde=booking:reservation:<id>`. Con la sesión única no pide contraseña.
+2. **Finance** llama a `core.read('invoices', …, 'booking.reservation_invoice_source', {reservation_id})`, que Booking registra para `invoices`. La lectura devuelve:
+   ```
+   { reservation: {id, code, label, revision, check_in, check_out},
+     customer: {name, tax_id, id_type, country, address: {line, postal_code, city, province, country}, kind},
+     prices_include_vat: boolean,
+     lines: [{ kind: 'tarifa' | 'extra', description, quantity, unit, unit_price, discount_amount, vat_rate, income_category }],
+     invoiced: [{ issued_invoice_id, full_number, status, total }] }
+   ```
+   El campo `invoiced` sale de la proyección de ingresos que Booking ya lee (§13.4).
+3. **Finance** crea un **borrador** con esas líneas y lo asigna a la reserva. Si la reserva ya tiene un borrador o una emitida no rectificada, la abre en lugar de duplicarla. El usuario revisa el borrador y lo emite.
+4. **Sin red**, Finance pide conexión, porque necesita los datos actuales de la reserva.
+
+La alternativa sería que Booking cree el borrador llamando a la Edge de Finance. La descarto porque añade escrituras entre funciones y deja un borrador sin revisar en otra app.
+
+### 14.9 Preguntas
+
+1. **Usuario (gestoría, pregunta 3):** ¿habrá facturas simplificadas (tiques)? Si las hay, se añade la serie `T` con sus límites.
+2. **Usuario:** ¿le valen las series `F` y `R` con el formato `F2026-0001`? Antes de emitir hace falta el último número de la serie de la hoja, para cerrarla.
+3. **Core:** visto bueno a que el QR y la leyenda **no se impriman** mientras el envío esté apagado (§14.5).
+4. **Core:** visto bueno al documento con la impresión del navegador ahora, y el PDF del servidor después (§14.4).
+5. **Core y Booking:** la lectura `booking.reservation_invoice_source` (§14.8), con precios con o sin IVA y la categoría de ingreso por línea.
+6. **Core:** el envío real (XML, firma y certificado) queda para cuando se acerque la fecha. ¿De acuerdo?
+
+### 14.10 Plan de PR (tras el visto bueno)
+
+1. **Modelo y emisión:** migración `0212` (series de emisión, contador, estados y borradores) y `0213` (`vf_records`, `vf_events`, `vf_system`, `vf_settings` y huella en SQL), `invoices.issue`, `invoices.close_series` y pruebas con los ejemplos oficiales.
+2. **App:** borrador, «Emitir», documento imprimible con los datos obligatorios, Ajustes de series y el interruptor.
+3. **Rectificativas y anulación** con su registro.
+4. **Desde Booking,** cuando Booking publique la lectura.
