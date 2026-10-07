@@ -1,5 +1,5 @@
 // Punto de entrada Deno de la Edge Function `central-api`.
-import { createCentralApp } from './app.ts';
+import { createCentralApp, DEFAULT_TASKS_API_BASE } from './app.ts';
 
 declare const Deno: { serve: (handler: (request: Request) => Promise<Response>) => void; env: { get: (name: string) => string | undefined } };
 
@@ -9,4 +9,4 @@ Deno.serve(createCentralApp({
   serviceKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   release: Deno.env.get('IKISAI_RELEASE') ?? 'development',
   stage: 'beta',
-}));
+}, { tasksApiBase: Deno.env.get('IKISAI_TASKS_API_BASE') ?? DEFAULT_TASKS_API_BASE }));

@@ -45,7 +45,7 @@ async function login(page: Page, email: string, name: string): Promise<void> {
 
 test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin editar', async ({ page, browser }) => {
   await login(page, 'owner@example.invalid', 'Owner');
-  await page.getByRole('link', { name: 'Entidad' }).click();
+  await page.locator('#homeEntity').click();
   await expect(page.getByText('Todavía no hay datos de la entidad')).toBeVisible();
   await page.locator('#editEntity').click();
 
@@ -76,7 +76,7 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   const other = await browser.newContext();
   const readerPage = await other.newPage();
   await login(readerPage, 'reader@example.invalid', 'Reader');
-  await readerPage.getByRole('link', { name: 'Entidad' }).click();
+  await readerPage.locator('#homeEntity').click();
   await expect(readerPage.locator('#entityView')).toContainText('Entidad de Prueba S.L.');
   await expect(readerPage.locator('#editEntity')).toHaveCount(0);
   await other.close();

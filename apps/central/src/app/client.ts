@@ -8,6 +8,9 @@ export const T = {
   personPrivate: 'central.person_private',
   personRecords: 'central.person_records',
   entity: 'central.entity',
+  requirements: 'central.requirements',
+  keyDocuments: 'central.key_documents',
+  requirementTasks: 'central.requirement_tasks',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
@@ -44,6 +47,11 @@ export function describeError(error: unknown): string {
     case 'USER_EXISTS': return 'Ya existe una cuenta con ese correo.';
     case 'INVALID_ACCOUNT': return 'Esa cuenta no puede enlazarse a una persona.';
     case 'ORPHAN_CHILD': return 'Antes hay que enviar a la papelera lo que depende de esta ficha.';
+    case 'PERSON_IN_USE': return 'Es responsable de alguna obligación o documento: cambia el responsable o márcala inactiva.';
+    case 'TASKS_FORBIDDEN': return 'Tu cuenta no puede crear tareas en Tasks. Pide acceso de editor en Tasks.';
+    case 'TASKS_UNAVAILABLE': return 'Tasks no responde ahora mismo. Inténtalo más tarde.';
+    case 'TASKS_REJECTED': return e.message || 'Tasks no ha aceptado la petición.';
+    case 'EXTERNAL_REF_IN_USE': return 'Esa tarea ya existe en Tasks y no la ves.';
     case 'IMMUTABLE_FIELD': return 'Ese dato no se puede cambiar.';
     case 'INVALID_FILE': return 'El archivo no se pudo enlazar. Vuelve a elegirlo.';
     case 'OFFLINE': return 'Esta acción necesita conexión.';

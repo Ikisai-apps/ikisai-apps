@@ -12,11 +12,12 @@
 - 2026-10-07 · **Entidad** (configuración común, ronda 3): migración `0501_central_entity` (fila única, solo owner escribe, NIF/NIE/CIF con control), proyección `central.common_entity_projection` para Booking y Finance (con bucket y ruta del logotipo para firmar), pantalla Entidad con subida del logotipo sin red; pruebas `tests/central/entity.test.ts` y `entity.spec.ts`.
 
 - 2026-10-07 · **V1-b (personas)**, pantallas: lista con búsqueda, filtro y orden manual; ficha con Ficha, Contacto y vinculación (reservado), Documentación y formación (reservado; estado derivado, archivo PDF o foto recomprimida, apertura con `people/records/:id/file`), Cuenta (solo owner: dar cuenta, enlazar o desenlazar), inactiva y papelera con restauración en un lote; aviso de caducidades en Inicio. Prueba `tests/central/people.spec.ts` (incluye edición sin red).
+- 2026-10-07 · Revisión de Core (ronda 5): migración `0502` (solo el owner enlaza cuentas, también en la base).
+- 2026-10-07 · **V1.1 (cumplimiento)**: migración `0510_central_compliance` (`requirements` LEG, `key_documents` DOC, `requirement_tasks`; invariantes `ORPHAN_CHILD` y `PERSON_IN_USE`; lectura `central.requirement_brief`); rutas `requirements/:id/task` y `requirements/tasks-status` hacia Tasks (`kind` `central.compliance_due`, sin área); pantallas Vencimientos, Obligaciones (ficha con «Marcar cumplido», que propone el siguiente vencimiento, y «Crear tarea en Tasks») y Documentos; aviso «Vence pronto» en Inicio; Entidad pasa a abrirse desde Inicio. Pruebas `tests/central/compliance.test.ts` y `compliance.spec.ts` (Tasks simulado).
 
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
-- V1.1 · Cumplimiento: migración `0510_central_compliance`; tareas en Tasks con `POST /api/v1/requests/task` de Tasks (con `kind` `central.<tipo>`, `kind_label` y `external_url`; sin área ni proyecto; `docs/tasks/API.md` §19.6 y §20.9).
 - V2 · Dirección: contrato de KPIs y panel.
 
 ## Bloqueos

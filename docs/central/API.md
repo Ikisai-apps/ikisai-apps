@@ -181,7 +181,7 @@ Lectura `{reader, editor, owner}`. Una fila por tarea creada en Tasks a partir d
 | `target_revision` | `bigint null` | Revisión al enlazar (obsolescencia por comparación). |
 | `due_on` | `date null` | Fecha pedida. |
 
-`writable_columns`: `target_label, target_revision, due_on`. Las filas las inserta la Edge dentro de la ruta de §6 (no el cliente): `insert` directo desde el cliente → `INVALID_OPERATION`. El estado de la tarea (hecha o no) **no se guarda**: se lee de Tasks (§7.3).
+Columnas además de las de la tabla: `external_ref` (`<código>:<requestId>`, la referencia enviada a Tasks). Las filas las inserta la ruta de §6 con `core.commit` directo (id derivado del `requestId`, reintento idempotente); `insert` desde el cliente → `INVALID_OPERATION`. El cliente solo puede cambiar `target_label`, `target_revision` y `due_on`. El estado de la tarea (hecha, por clasificar, borrada) **no se guarda**: se lee de Tasks (§7.3). Migración `0510_central_compliance`.
 
 ### 2.7 `central.kpi_targets` — objetivos y umbrales (C01 `indicadores.objetivo_referencia`)
 
@@ -238,13 +238,18 @@ Otros candidatos de configuración común, sin hacer hasta que alguien los pida:
 
 Ninguno en V1. Todo cabe en operaciones de fila con validación en `beforeCommit` y en `validate_hooks`. La creación de tareas en Tasks no es un `call` (sale fuera de la base y necesita red): es una ruta de §6.
 
-### 3.2 Lecturas registradas (`core.allow_read('central', …, 'function')`)
+### 3.2 Lecturas registradas y vencimientos
 
-| Nombre | Rol | Qué devuelve |
+**Vencimientos sin lectura del servidor (cambio respecto a la propuesta).** Los vencimientos unificados (C09 `vencimientos` + C05 documentación) se calculan **en el dispositivo** con `dueItems` de `_domain/central/compliance.ts`, sobre el espejo local: funcionan sin red y solo incluyen la documentación de personas si quien mira la recibe (§5). El estado documental de una persona es `personStatus` (`people.ts`). Las lecturas `central.due_items`, `central.people_status` y `central.compliance_summary` no se construyen: harán falta en V2, cuando Central publique sus KPIs, y entonces irán como proyección `central.central_kpi_projection`.
+
+Lecturas registradas que sí existen:
+
+| Nombre | Rol | Para qué |
 |---|---|---|
-| `central.due_items` | reader | Vencimientos unificados (C09 `vencimientos` + C05 documentación): `{items: [{source: requirement\|key_document\|person_record, id, code, title, kind, dueOn, daysLeft, state: vencido\|por_vencer\|al_dia, risk, blocksOperation, responsibleName, personId?}]}`. `args`: `{withinDays?=60, includeOverdue?=true}`. Las filas de `person_records` solo salen si el actor las puede ver (owner o editor con ámbito `people`); para el resto, solo un recuento sin nombres. |
-| `central.people_status` | editor | Por persona, el estado documental y de formación derivado: `{items: [{personId, documents: completo\|pendiente\|caducado, training: ok\|pendiente\|caducado\|no_aplica, nextExpiry}]}`. Mismo filtro de visibilidad. |
-| `central.compliance_summary` | reader | Recuentos para el panel: requisitos abiertos, vencidos, por vencer en 30 días, riesgos alto/crítico abiertos, que bloquean operación (C09 `panel`, sin expedientes). |
+| `central.app_catalog` | owner | Catálogo completo de apps (Accesos). |
+| `central.record_file` | editor | Archivo de un registro de documentación, si se ve la fila (§8). |
+| `central.requirement_brief` | editor | Código, nombre, vencimiento y riesgo de una obligación, para pedir su tarea a Tasks. |
+| `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
 
 La **regla de estado derivado** vive en `_domain/central` (la usa el cliente sin red) y se repite en SQL para las lecturas:
 
@@ -325,8 +330,8 @@ function visible(table, row, ctx) {
 
 | Método y ruta | Rol | Entrada → salida | Errores |
 |---|---|---|---|
-| `POST requirements/:id/task` | editor | `{requestId, title?, dueOn?, projectId?, notes?}` → `{requirementTaskId, target: {app, kind, id, revision, label}}`. Pide la tarea a Tasks con el token del usuario (§7.3) y luego inserta `requirement_tasks` por `core.commit` con un `requestId` derivado. Idempotente: el mismo `requestId` devuelve la misma tarea. | `NOT_FOUND`, `TASKS_UNAVAILABLE 503`, `TASKS_FORBIDDEN 403` (sin acceso de editor en Tasks), `TASKS_REJECTED 422` (con el error de Tasks) |
-| `GET requirements/tasks-status?ids=` | reader | Ids de `requirement_tasks` → `{items: [{id, done, deleted, title, revision, stale}]}` leyendo `tasks.targets` con el token del usuario. Sin acceso a Tasks: `unknown`. | — |
+| `POST requirements/:id/task` | editor | `{requestId, title?, due?, note?}` → `{requirementTaskId, created, routed, task}`. Pide la tarea a Tasks (`POST /api/v1/requests/task`) con el token de la persona: `source: 'central'`, `external_ref: '<LEG_…>:<requestId>'`, `kind: 'central.compliance_due'` con `kind_label`, `external_url` a la ficha (`https://central.ikisai.com/#/cumplimiento/<id>`), prioridad por el riesgo (crítico → `critical`, alto → `high`); **sin área ni proyecto** (las reglas de Tasks deciden o queda «Por clasificar»). Después inserta el enlace en `requirement_tasks`. Idempotente: el mismo `requestId` da la misma tarea y el mismo enlace. | `NOT_FOUND`, `TASKS_FORBIDDEN 403`, `EXTERNAL_REF_IN_USE 409`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` |
+| `POST requirements/tasks-status` | reader | `{ids: [id de tarea]}` (hasta 200) → `{items, missing}` de `tasks.targets` con el token de quien mira (`pending`, `request`, `visible`, `done`, `deleted`). | `TASKS_*` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, kpis: [{kpi, app, label, unit, period, value, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 con la service key y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
@@ -400,7 +405,7 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 
 ## 9. Pantallas y navegación
 
-Cuatro entradas en la barra, con el lanzador del kit en el icono de la cabecera:
+Cuatro entradas en la barra (Inicio, Cumplimiento, Personas y, para el owner, Accesos), con el lanzador del kit en el icono de la cabecera. **Entidad** se abre desde Inicio: con cinco entradas, los nombres se cortaban en el móvil.
 
 ### 9.1 Inicio (dirección)
 
