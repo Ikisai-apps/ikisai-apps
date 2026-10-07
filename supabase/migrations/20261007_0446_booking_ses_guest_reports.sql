@@ -50,7 +50,9 @@ begin
     select array_agg(x::uuid) into v_only from jsonb_array_elements_text(p->'args'->'guest_ids') x;
   end if;
 
+  -- quien ya consta como enviado a SES (también a mano, con «Registrar envío») no se vuelve a ofrecer
   for g in select gg.* from booking.guests gg where gg.event_id = v_e.id and gg.deleted_at is null and gg.arrived_at is not null
+            and gg.ses_status <> 'enviado_SES'
             and (v_only is null or gg.id = any(v_only))
             and not exists (select 1 from booking.ses_communications c where c.reservation_id = v_id and c.kind = 'PV'
                              and c.status in ('preparada','enviando','en_proceso','aceptada','error') and gg.id = any(c.guest_ids)

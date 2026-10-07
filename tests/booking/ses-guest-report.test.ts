@@ -64,6 +64,9 @@ test('ses · parte de viajeros: solo los listos, los incompletos no bloquean; ta
     { op: 'insert', table: TABLES.guests, id: sin, fields: { event_id: event, ...adult({ first_name: 'Sin', document_number: '22222222J' }) } },
   ]);
 
+  // quien ya consta enviado a mano no se vuelve a ofrecer
+  const manual = uuid();
+  await ok([{ op: 'insert', table: TABLES.guests, id: manual, fields: { event_id: event, ...adult({ first_name: 'Manual', document_number: '33333333P' }), arrived_at: now, document_checked_at: now, signed_at: now, signed_by_name: 'Manual', ses_status: 'enviado_SES', ses_sent_at: now } }]);
   const preview = await app.call(`/api/v1/ses/${res}/pv`);
   assert.equal(preview.status, 200, JSON.stringify(preview.data));
   assert.deepEqual(preview.data.guests.map((g: any) => [g.first_name, g.ready, g.missing]).sort(), [

@@ -146,6 +146,9 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
     ses_receipt_ref: text(500),
     ses_receipt_file_id: { kind: 'file' },
     notes: text(LONG),
+    arrived_at: { kind: 'timestamp' },
+    document_checked_at: { kind: 'timestamp' },
+    document_checked_by: { kind: 'uuid', nullable: true },
   },
   [TABLES.restrictions]: {
     event_id: { kind: 'uuid' },
