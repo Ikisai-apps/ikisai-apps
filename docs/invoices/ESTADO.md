@@ -75,6 +75,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Fecha y objeto del documento frente a lo escrito al subir (ronda 35): discrepancia visible con «Usar la del documento»; preselección solo si la escrita era la de hoy por defecto (en hora local); la plantilla no cuenta como fallo un valor que no está en el documento.
 
+- Emisor de las emitidas (ronda 37, migración 0209): copia de `central.common_entity_projection` al registrar (`issuer_tax_id`, `issuer_name`, `issuer`), ruta `GET entity` con el logotipo firmado sin guardarlo, bloque «Emisor» y aviso «Faltan los datos de la entidad en Central» en la ficha y en «Nueva emitida», y «Imprimir copia» marcada «COPIA DE REGISTRO» (API.md §13).
+
 ## En curso
 
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.

@@ -595,3 +595,29 @@ test('plantillas: solo se escriben al validar una factura de ese proveedor; el o
   text = await read('invoices.document_text', { file_id: doc.file_id });
   assert.equal(text.data, null);
 });
+
+test('emisor de las emitidas: sin datos en Central queda vacío; con la entidad, se copia al registrar; GET entity; el cliente no lo escribe', async () => {
+  // Sin entidad
+  const noEntity = await app.call('/api/v1/entity');
+  assert.equal(noEntity.status, 200); assert.equal(noEntity.data.entity, null);
+  const a = uuid();
+  await ok([insert('invoices.issued_invoices', a, { series_code: 'E', number: '2026-0001', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Sin emisor' })]);
+  assert.equal((await row('invoices.issued_invoices', a)).issuer_tax_id, null);
+  // Con la entidad de Central
+  await app.t.db.query(`insert into central.entity (legal_name, trade_name, tax_id, address_line, postal_code, city, province, country, email)
+    values ('Ikisai Retiros SL', 'Ikisai', 'B12345674', 'Calle Prueba 1', '28001', 'Madrid', 'Madrid', 'ES', 'hola@example.invalid')`);
+  const withEntity = await app.call('/api/v1/entity', { token: app.tokens.reader });
+  assert.equal(withEntity.status, 200, JSON.stringify(withEntity.data));
+  assert.equal(withEntity.data.entity.legal_name, 'Ikisai Retiros SL'); assert.equal(withEntity.data.logo_url, null);
+  assert.equal('logo_path' in withEntity.data.entity, false);
+  const b = uuid();
+  await ok([insert('invoices.issued_invoices', b, { series_code: 'E', number: '2026-0002', issue_date: '2026-10-07', invoice_type: 'F2', description: 'Con emisor' })]);
+  const rb = await row('invoices.issued_invoices', b);
+  assert.equal(rb.issuer_tax_id, 'B12345674'); assert.equal(rb.issuer_name, 'Ikisai Retiros SL');
+  assert.equal(rb.issuer.trade_name, 'Ikisai'); assert.equal(rb.issuer.city, 'Madrid'); assert.ok(rb.issuer.entity_revision >= 1);
+  // Copia del momento: si la entidad cambia, la emitida ya registrada no cambia
+  await app.t.db.query(`update central.entity set legal_name = 'Otro nombre SL', revision = revision + 1`);
+  assert.equal((await row('invoices.issued_invoices', b)).issuer_name, 'Ikisai Retiros SL');
+  // El cliente no puede escribir el emisor
+  await rejected([update('invoices.issued_invoices', b, rb.revision, { issuer_name: 'Falso' })], 'INVALID_FIELDS');
+});

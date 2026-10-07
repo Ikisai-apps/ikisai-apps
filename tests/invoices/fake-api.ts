@@ -80,6 +80,8 @@ export interface FakeApi {
   /** Siembra filas directamente en el servidor (datos sintéticos para medir rendimiento). Avanza el cursor una vez. */
   seed(table: string, rows: Array<Record<string, unknown>>): void;
   /** Extractor simulado para `POST imports/extract`; sin él la ruta responde EXTRACTION_UNAVAILABLE 503. */
+  /** Entidad de Central (ronda 37) que sirve `GET entity` y se copia como emisor de las emitidas. */
+  setEntity(entity: Record<string, unknown> | null): void;
   setExtractor(fn: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null): void;
   close(): Promise<void>;
 }
@@ -104,6 +106,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const uploads = new Map<string, FakeUpload>();
   const targets: FakeTarget[] = [...(options.targets ?? [])];
   let failVerify = false;
+  let entity: Record<string, unknown> | null = null;
   const documentTexts = new Map<string, { items: unknown[]; source: string }>();
   let extractor: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null = null;
   const requests: Array<{ method: string; path: string }> = [];
@@ -308,6 +311,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     if (table === 'invoices.invoice_lines') row.discount_amount = row.discount_amount ?? 0;
     // Emitidas (API.md §13): lo que en SQL ponen los valores por defecto y las columnas generadas.
     if (table === 'invoices.issued_invoices') {
+      if (entity) { row.issuer_tax_id = entity.tax_id; row.issuer_name = entity.legal_name; row.issuer = { ...entity }; }
       const s = String(row.series_code ?? '').trim(); const n = String(row.number ?? '').trim();
       row.full_number = n.toUpperCase().startsWith(s.toUpperCase()) ? n : `${s}-${n}`;
       row.invoice_type = row.invoice_type ?? 'F1';
@@ -580,6 +584,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (!up || up.status !== 'verified') throw new Fault(404, 'FILE_NOT_FOUND', 'Archivo no encontrado.');
         return json(res, 200, { id: up.id, url: `/api/v1/_file/${up.id}`, expiresAt: new Date(Date.now() + 600_000).toISOString(), filename: up.filename, mime: up.mime, size: up.size });
       }
+      if (path === 'entity' && method === 'GET') return json(res, 200, { entity, logo_url: null, logo_mime: null });
       const docText = path.match(/^documents\/([^/]+)\/text$/);
       if (docText && method === 'POST') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
@@ -664,6 +669,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       });
     },
     setExtractor(fn) { extractor = fn; },
+    setEntity(e) { entity = e; },
     failNextVerify: () => { failVerify = true; },
     targets,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),

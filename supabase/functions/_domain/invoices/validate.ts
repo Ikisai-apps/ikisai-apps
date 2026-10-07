@@ -325,6 +325,8 @@ export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'upda
   oneOf(fields, 'status', ['registrada', 'anulada'], { nullable: false });
   if (fields.status === 'anulada') domainFail('INVALID_TRANSITION', 'Para anular una emitida usa invoices.annul_issued.', { field: 'status' });
   oneOf(fields, 'origin', ['manual', 'importada', 'app'], { nullable: false });
+  // El emisor lo pone la Edge al registrar, desde Central; el cliente no lo escribe.
+  for (const key of ['issuer_tax_id', 'issuer_name', 'issuer']) if (has(fields, key)) domainFail('INVALID_FIELDS', 'El emisor lo pone el servidor con los datos de la entidad en Central.', { field: key });
   if (fields.origin === 'app') domainFail('UNSUPPORTED_IN_V1', 'La emisión desde la app (Verifactu) aún no está disponible: registra la factura emitida con otra herramienta.', { field: 'origin' });
   oneOf(fields, 'income_category', INCOME_CATEGORIES);
   oneOf(fields, 'payment_status', ['pendiente', 'cobrada'], { nullable: false });

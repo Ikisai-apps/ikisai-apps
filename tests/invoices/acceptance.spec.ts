@@ -661,6 +661,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await page.locator('#newIssued').click();
     const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
     await expect(sheet.locator('#issuedSeries')).toHaveValue('__new__');
+    await expect(sheet.locator('#newIssuedIssuer')).toContainText('Faltan los datos de la entidad en Central');
     await sheet.locator('#issuedNewSeries').fill('A');
     await sheet.locator('#issuedNumber').fill('2026-0001');
     await sheet.locator('#issuedDate').fill('2026-10-06');
@@ -795,6 +796,41 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await expect(page.locator('#issuedList')).toContainText('A-2026-0010 · Cliente CSV', { timeout: 20_000 });
     await synced(page);
     expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0010')).toMatchObject({ series_code: 'A', origin: 'importada', external_tool: 'google_sheet', income_category: 'restauracion', base_total: 1000, quota_total: 100, total: 1100, payment_status: 'cobrada' });
+  });
+
+  await test.step('emisor (ronda 37): sin entidad en Central se avisa; con ella se copia al registrar y sale en la copia imprimible', async () => {
+    await page.locator('#issuedList .row', { hasText: 'A-2026-0010' }).click();
+    let sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#issuerMissing')).toContainText('Faltan los datos de la entidad en Central');
+    await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
+    api.setEntity({ entity_id: '44444444-4444-4444-8444-444444444444', entity_revision: 2, legal_name: 'Ikisai Retiros SL', trade_name: 'Ikisai', tax_id: 'B12345674',
+      address_line: 'Calle Prueba 1', postal_code: '28001', city: 'Madrid', province: 'Madrid', country: 'ES', email: 'hola@example.invalid', phone: null, website: null, logo_file_id: null });
+    try {
+      await page.locator('#newIssued').click();
+      sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+      await expect(sheet.locator('#newIssuedIssuer')).toContainText('Emisor: Ikisai Retiros SL · NIF B12345674');
+      await sheet.locator('#issuedNumber').fill('2026-0020');
+      await sheet.locator('#issuedType').selectOption('F2');
+      await sheet.locator('#issuedDescription').fill('Ticket con emisor');
+      await sheet.getByLabel('Concepto de la línea 1').fill('Café');
+      await sheet.getByLabel('Base de la línea 1').fill('10');
+      await sheet.locator('#saveIssued').click();
+      await expect(sheet).toBeHidden({ timeout: 20_000 });
+      await synced(page);
+      expect(api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0020')).toMatchObject({ issuer_tax_id: 'B12345674', issuer_name: 'Ikisai Retiros SL' });
+      await page.locator('#issuedList .row', { hasText: 'A-2026-0020' }).click();
+      sheet = page.locator('.sheet[role="dialog"]');
+      await expect(sheet.locator('#issuedIssuer')).toContainText('Ikisai Retiros SL (Ikisai)', { timeout: 20_000 });
+      await expect(sheet.locator('#issuedIssuer')).toContainText('Calle Prueba 1, 28001 Madrid, Madrid');
+      await sheet.locator('#printIssued').click();
+      const copy = page.locator('#issuedPrintView');
+      await expect(copy).toContainText('COPIA DE REGISTRO');
+      await expect(copy).toContainText('Factura A-2026-0020');
+      await expect(copy.locator('#printIssuer')).toContainText('NIF B12345674');
+      await expect(copy).toContainText('no es una factura');
+    } finally {
+      api.setEntity(null);
+    }
   });
 
   await context.close();
