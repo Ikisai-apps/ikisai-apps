@@ -65,12 +65,19 @@ def json_literal(value):
 
 
 class SupabaseManagement:
-  def __init__(self, file=None):
-    if os.environ.get('SUPABASE_ACCESS_TOKEN'):
+  def __init__(self, file=None, restore_target=None):
+    if restore_target is not None:
+      # Proyecto de ensayo para restauraciones: nunca el de producción.
+      config = restore_target
+      if not isinstance(config.get('projectRef'), str) or not re.fullmatch(r'[a-z]{20}', config['projectRef']) or config['projectRef'] == PROJECT_REF:
+        raise ValueError('Restore target must be a different, valid project')
+      if not isinstance(config.get('accessToken'), str) or not config['accessToken'].startswith('sbp_'):
+        raise ValueError('Invalid administrative token for the restore target')
+    elif os.environ.get('SUPABASE_ACCESS_TOKEN'):
       config = {'projectRef': PROJECT_REF, 'accessToken': os.environ['SUPABASE_ACCESS_TOKEN']}
     else:
       config = load_credentials(file)['supabase']
-    if config.get('projectRef') != PROJECT_REF or not isinstance(config.get('accessToken'), str) or not config['accessToken'].startswith('sbp_'):
+    if restore_target is None and (config.get('projectRef') != PROJECT_REF or not isinstance(config.get('accessToken'), str) or not config['accessToken'].startswith('sbp_')):
       raise ValueError('Invalid authorized project or administrative token')
     self.ref = config['projectRef']
     self.token = config['accessToken']
