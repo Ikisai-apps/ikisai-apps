@@ -19,16 +19,16 @@ test.describe('ui-kit v0.17 · Revisor › Uso', () => {
   test('pestañas «Incidencias | Uso»; la lista agrupa por insight con lo más grave arriba', async ({ page }) => {
     await fresh(page);
     const panel = page.locator('.fb-review');
-    await expect(panel.locator('[data-tab="usage"][aria-selected="true"]')).toBeVisible();
+    await expect(panel.locator('[data-fb-tab="usage"][aria-selected="true"]')).toBeVisible();
     await expect(panel.locator('.fb-review-list[data-insight]')).toHaveCount(4);
     await expect(panel.locator('.fb-review-list[data-insight]').first()).toHaveAttribute('data-insight', 'HIGH_ERROR');
     await expect(panel.locator('[data-insight="TARGET_NOT_ADOPTING"] .usage-row')).toContainText('Añadir huésped');
     await expect(panel.locator('[data-insight="HIGH_ACTIVITY"]')).toBeVisible();
-    await panel.locator('[data-tab="feedback"]').click();
+    await panel.locator('[data-fb-tab="feedback"]').click();
     await expect(panel.locator('.fb-review-body')).toContainText('Por revisar · 0');
     // Se recuerda en el dispositivo.
     await page.reload();
-    await expect(page.locator('.fb-review [data-tab="feedback"][aria-selected="true"]')).toBeVisible();
+    await expect(page.locator('.fb-review [data-fb-tab="feedback"][aria-selected="true"]')).toBeVisible();
   });
 
   test('ir al sitio ilumina la función; tarjeta con estado, 30 días, matriz por equipo y persona', async ({ page }) => {

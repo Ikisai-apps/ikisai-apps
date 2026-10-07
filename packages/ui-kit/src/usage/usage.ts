@@ -46,6 +46,8 @@ export interface UsageOptions {
   notice?: boolean;
   /** Dónde observar; por defecto `document`. */
   root?: Document | HTMLElement;
+  /** Dónde montar el aviso; por defecto `document.body`. */
+  container?: () => HTMLElement;
 }
 
 export interface Usage {
@@ -311,7 +313,7 @@ export function createUsage(options: UsageOptions): Usage {
   mo.observe(body, { childList: true, subtree: true });
   const user = options.userId();
   if (user) void load(user).then(() => flush());
-  if (options.notice !== false) void showUsageNotice({ api: options.api, userId: options.userId });
+  if (options.notice !== false) void showUsageNotice({ api: options.api, userId: options.userId, container: options.container });
 
   return {
     async run(featureId, fn) {

@@ -1,5 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { fbRows } from './feedback.ts';
 import { guard } from '../app/guard.ts';
 import { CATEGORIES, CATEGORY_LABELS, SUPPLIERS, SUPPLIER_TEMPLATES, categoryLabel, describeError, type LocalSupplierTemplate, type SupplierRow } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
@@ -46,18 +47,18 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   let query = '';
   let sheet: Sheet | null = null;
 
-  const search = el('input', { type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
+  const search = el('input', { 'data-feedback-id': 'invoices.proveedores.buscar', 'data-feedback-label': 'Buscar proveedores', type: 'search', id: 'supplierSearch', placeholder: 'Buscar por nombre o NIF', 'aria-label': 'Buscar proveedores', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   const list = el('ul', { class: 'list', id: 'supplierList', 'aria-label': 'Proveedores' });
   const activeLabel = el('div', { class: 'sectionlabel' }, 'Activos', el('span', { class: 'count', id: 'supplierCount' }, '0'));
   const trashLabel = el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', el('span', { class: 'count', id: 'trashCount' }, '0'));
   const trashList = el('ul', { class: 'list', 'aria-label': 'Proveedores en la papelera' });
-  const trash = el('details', { id: 'trash' }, trashLabel, trashList);
+  const trash = el('details', { 'data-feedback-id': 'invoices.proveedores.papelera', 'data-feedback-label': 'Papelera', id: 'trash' }, trashLabel, trashList);
   const emptyActive = el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay proveedores'), 'Crea el primero con «Nuevo proveedor». Funciona también sin conexión.');
   const emptyFiltered = el('div', { class: 'empty plain' }, 'Ningún proveedor coincide con la búsqueda.');
   const listHost = el('div');
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newSupplier', hidden: !canEdit, onclick: () => openEditor(null) }, icon('plus'), 'Nuevo proveedor');
+  const newButton = el('button', { 'data-feedback-id': 'invoices.proveedores.nuevo', 'data-feedback-label': 'Nuevo proveedor', class: 'fab', type: 'button', id: 'newSupplier', hidden: !canEdit, onclick: () => openEditor(null) }, icon('plus'), 'Nuevo proveedor');
 
   replace(
     main,
@@ -75,8 +76,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   }
 
   function rowItem(row: SupplierRow, deleted: boolean): HTMLElement {
-    const edit = canEdit ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar') : null;
-    const restore = el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
+    const edit = canEdit ? el('button', { 'data-feedback-id': 'invoices.proveedores.lista.fila.editar', 'data-feedback-label': 'Editar', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar') : null;
+    const restore = el('button', { 'data-feedback-id': 'invoices.proveedores.papelera.restaurar', 'data-feedback-label': 'Restaurar', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
     return listRow({
       id: row.id,
       title: row.name,
@@ -95,8 +96,10 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     activeLabel.querySelector('.count')!.textContent = String(active.length);
     trashLabel.querySelector('.count')!.textContent = String(deleted.length);
     replace(list, ...visible.map((r) => rowItem(r, false)));
+    fbRows(list, { feedbackId: 'invoices.proveedores.lista', feedbackLabel: 'Proveedores' }, { feedbackId: 'invoices.proveedores.lista.fila', feedbackLabel: 'Proveedor' });
     replace(listHost, active.length === 0 ? emptyActive : visible.length === 0 ? emptyFiltered : list);
     replace(trashList, ...deleted.filter(matches).map((r) => rowItem(r, true)));
+    fbRows(trashList, { feedbackId: 'invoices.proveedores.papelera.lista', feedbackLabel: 'Proveedores en la papelera' }, { feedbackId: 'invoices.proveedores.papelera.fila', feedbackLabel: 'Proveedor' });
     trash.hidden = deleted.length === 0;
   }
 
@@ -129,16 +132,16 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     const expectedRevision = row?.revision ?? null;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
 
-    const name = el('input', { id: 'f-name', name: 'name', type: 'text', required: true, maxlength: '200', autocomplete: 'organization', value: initial.name });
-    const taxId = el('input', { id: 'f-tax', name: 'tax_id', type: 'text', maxlength: '32', autocomplete: 'off', spellcheck: 'false', value: initial.tax_id, style: 'text-transform:uppercase' });
-    const category = el('select', { id: 'f-category', name: 'default_category' },
+    const name = el('input', { 'data-feedback-ignore': '', id: 'f-name', name: 'name', type: 'text', required: true, maxlength: '200', autocomplete: 'organization', value: initial.name });
+    const taxId = el('input', { 'data-feedback-ignore': '', id: 'f-tax', name: 'tax_id', type: 'text', maxlength: '32', autocomplete: 'off', spellcheck: 'false', value: initial.tax_id, style: 'text-transform:uppercase' });
+    const category = el('select', { 'data-feedback-id': 'invoices.proveedores.ficha.categoria', 'data-feedback-label': 'Categoría por defecto', id: 'f-category', name: 'default_category' },
       el('option', { value: '' }, 'Sin categoría'),
       ...CATEGORIES.map((c) => el('option', { value: c, selected: initial.default_category === c }, CATEGORY_LABELS[c])),
     );
-    const notes = el('textarea', { id: 'f-notes', name: 'notes', rows: '3' });
+    const notes = el('textarea', { 'data-feedback-ignore': '', id: 'f-notes', name: 'notes', rows: '3' });
     notes.value = initial.notes;
-    const aliases = el('input', { id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
-    const investment = el('input', { id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
+    const aliases = el('input', { 'data-feedback-ignore': '', id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
+    const investment = el('input', { 'data-feedback-id': 'invoices.proveedores.ficha.inversion', 'data-feedback-label': 'Suelen ser inversión', id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
 
     const current = (): FormValues => ({ name: name.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, default_is_investment: investment.checked, aliases: aliases.value, notes: notes.value });
     const isDirty = () => !sameValues(current(), initial);
@@ -148,10 +151,10 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       guard.dirtyEditor = dirty;
     };
 
-    const save = el('button', { class: 'primary', type: 'submit', id: 'saveSupplier', form: 'supplierForm' }, 'Guardar');
-    const cancel = el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, row ? 'Cerrar' : 'Cancelar');
+    const save = el('button', { 'data-feedback-id': 'invoices.proveedores.ficha.guardar', 'data-feedback-label': 'Guardar', class: 'primary', type: 'submit', id: 'saveSupplier', form: 'supplierForm' }, 'Guardar');
+    const cancel = el('button', { 'data-feedback-id': 'invoices.proveedores.ficha.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, row ? 'Cerrar' : 'Cancelar');
 
-    const form = el('form', { novalidate: true, id: 'supplierForm',
+    const form = el('form', { 'data-feedback-id': 'invoices.proveedores.ficha', 'data-feedback-label': 'Ficha de proveedor', novalidate: true, id: 'supplierForm',
       oninput: refreshDirty,
       onchange: refreshDirty,
       onsubmit: async (event: Event) => {
@@ -182,7 +185,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
       error,
       row ? templatesBlock(row) : null,
       row ? el('div', { class: 'zone' },
-        el('button', { class: 'danger', type: 'button', id: 'deleteSupplier', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
+        el('button', { 'data-feedback-id': 'invoices.proveedores.ficha.papelera', 'data-feedback-label': 'Enviar a papelera', class: 'danger', type: 'button', id: 'deleteSupplier', onclick: () => void deleteRow(row) }, icon('trash', 18), 'Enviar a papelera'),
         el('span', { class: 'hint', style: 'color:var(--muted);font-size:12.5px' }, 'Se puede restaurar desde la papelera.'),
       ) : null,
     );
@@ -203,17 +206,17 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   /** Plantillas aprendidas de sus facturas confirmadas (API.md §6.9): versión, estado, evidencia y qué lee. */
   function templatesBlock(row: SupplierRow): HTMLElement | null {
     const mine = templates.filter((t) => t.supplier_id === row.id).sort((a, b) => b.version - a.version);
-    if (!mine.length) return el('p', { class: 'hint', id: 'supplierTemplates' }, 'Sin plantillas todavía: se aprenden al validar sus facturas con PDF.');
+    if (!mine.length) return el('p', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'hint', id: 'supplierTemplates' }, 'Sin plantillas todavía: se aprenden al validar sus facturas con PDF.');
     const isOwner = client.bootstrap()?.membership.role === 'owner';
     const STATUS: Record<string, string> = { aprendiendo: 'Aprendiendo', activa: 'Activa', retirada: 'Retirada' };
     const FIELD: Record<string, string> = { invoice_number: 'número', invoice_date: 'fecha', supplier_tax_id: 'NIF', base: 'base', total: 'total', withholding: 'retención' };
-    return el('div', { class: 'field', id: 'supplierTemplates' }, el('span', null, 'Plantillas de lectura'),
+    return el('div', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'field', id: 'supplierTemplates' }, el('span', null, 'Plantillas de lectura'),
       el('ul', { class: 'list plain' }, ...mine.map((t) => {
         const reads = Object.entries(t.fields).filter(([, r]) => !r.retired).map(([k]) => (k.startsWith('vat:') ? `IVA ${k.slice(4)} %` : FIELD[k] ?? k));
         return el('li', { class: 'tpl-row', dataset: { version: String(t.version) } },
           el('strong', null, `v${t.version} · ${STATUS[t.status] ?? t.status}`),
           el('span', { class: 'hint' }, ` ${t.confirmations} factura${t.confirmations === 1 ? '' : 's'} confirmada${t.confirmations === 1 ? '' : 's'} · ${t.full_hits} sin correcciones · lee ${reads.join(', ') || 'nada todavía'}`),
-          isOwner && t.status !== 'retirada' ? el('button', { class: 'linkbtn', type: 'button', 'aria-label': `Retirar plantilla v${t.version}`, onclick: async () => {
+          isOwner && t.status !== 'retirada' ? el('button', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas.retirar', 'data-feedback-label': 'Retirar plantilla', class: 'linkbtn', type: 'button', 'aria-label': `Retirar plantilla v${t.version}`, onclick: async () => {
             const ok = await confirmDialog({ title: `¿Retirar la plantilla v${t.version}?`, text: 'Deja de usarse al leer sus PDF. Se conserva y las siguientes confirmaciones pueden crear otra.', confirmLabel: 'Retirar', danger: true });
             if (ok) await commitSafely([{ op: 'update', table: SUPPLIER_TEMPLATES, id: t.id, expectedRevision: t.revision, fields: { status: 'retirada' } }], 'Plantilla retirada.');
           } }, 'Retirar') : null);

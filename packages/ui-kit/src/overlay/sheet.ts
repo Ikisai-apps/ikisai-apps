@@ -29,6 +29,8 @@ export interface SheetOptions {
   hideTitle?: boolean;
   panelAttrs?: Record<string, string | null | undefined>;
   closeAttrs?: Record<string, string | null | undefined>;
+  /** Dónde montar la hoja; por defecto `document.body`. En apps con el CSS del kit acotado, su capa `.ikisai-kit`. */
+  container?: HTMLElement;
 }
 
 export interface Sheet {
@@ -75,7 +77,7 @@ export function openSheet(options: SheetOptions): Sheet {
   let open = true;
   const unlock = lockScroll();
   document.addEventListener('keydown', onKey);
-  document.body.appendChild(element);
+  (options.container ?? document.body).appendChild(element);
   focusFirst(body, options.initialFocus ?? null);
 
   function release(): void {

@@ -15,6 +15,7 @@ import { icon } from '../icons.ts';
 import { toast } from '../toast.ts';
 import type { FeedbackApi, FeedbackReport } from './client.ts';
 import type { FeedbackMode } from './feedback.ts';
+import { ensureFeedbackGlobalStyles } from './global-style.ts';
 import { createFeedbackReviewTab } from './review-feedback.ts';
 import { createUsageReviewTab, type UsageReviewItem } from './review-usage.ts';
 
@@ -67,6 +68,8 @@ export interface ReviewHost {
   openApp(app: string, params: Record<string, string>): void;
   repaint(): void;
   refresh(): Promise<void>;
+  /** Contenedor de la app (para diálogos abiertos desde la tarjeta). */
+  container(): HTMLElement;
 }
 
 /** Una pestaña de la lista lateral. */
@@ -119,6 +122,7 @@ async function waitForNode(nodeId: string | null | undefined, waitMs: number): P
 }
 
 export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackReview {
+  ensureFeedbackGlobalStyles();
   const key = options.storageKey ?? 'ikisai-feedback-review';
   const tabKey = `${key}-tab`;
   const host = () => options.container?.() ?? document.body;
@@ -237,6 +241,7 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
       openUrl(`https://${domain}/?${query.toString()}`);
     },
     repaint: () => { if (isOn()) paintPanel(); },
+    container: host,
     refresh: () => refresh(),
   };
 
@@ -255,10 +260,10 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
         el('button', { type: 'button', class: 'iconbtn small fb-review-collapse', 'aria-expanded': String(!collapsed), 'aria-label': collapsed ? 'Desplegar la lista' : 'Plegar la lista', onclick: () => { collapsed = !collapsed; paintPanel(); } }, icon(collapsed ? 'chevronUp' : 'chevronDown', 16))),
       collapsed ? null : el('div', { class: 'segmented fb-review-tabs', role: 'tablist', 'aria-label': 'Qué revisar' },
         ...(['feedback', 'usage'] as const).map((id) => el('button', {
-          type: 'button', role: 'tab', 'aria-selected': String(id === active.id), class: id === active.id ? 'on' : '', dataset: { tab: id },
+          type: 'button', role: 'tab', 'aria-selected': String(id === active.id), class: id === active.id ? 'on' : '', dataset: { fbTab: id },
           onclick: () => setTab(id),
         }, tabs[id].label, ' ', el('span', { class: 'fb-count' }, String(tabs[id].count()))))),
-      collapsed ? null : el('div', { class: 'fb-review-body', role: 'tabpanel', dataset: { tab: active.id } }, ...active.list(state[active.id])));
+      collapsed ? null : el('div', { class: 'fb-review-body', role: 'tabpanel', dataset: { fbTab: active.id } }, ...active.list(state[active.id])));
     panel.classList.toggle('collapsed', collapsed);
   }
 

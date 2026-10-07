@@ -14,6 +14,8 @@ export interface UsageNoticeOptions {
   userId: () => string | null;
   /** Retraso antes de mostrarlo (ms), para no salir encima del arranque; por defecto 1500. */
   delayMs?: number;
+  /** Dónde montar la hoja; por defecto `document.body`. */
+  container?: () => HTMLElement;
 }
 
 export const USAGE_NOTICE_TEXT = 'Ikisai mide qué funciones se usan para mejorar las herramientas. Lo ve solo Víctor; no se usa para evaluar a nadie.';
@@ -42,6 +44,7 @@ export async function showUsageNotice(options: UsageNoticeOptions): Promise<Shee
       el('p', { class: 'hint' }, 'Se cuenta qué botones y pantallas se usan y cuántas veces, por día. Nunca lo que escribes, ni los datos de clientes o huéspedes, ni la hora exacta.'),
       status),
     foot: ok,
+    container: options.container?.(),
   });
   ok.addEventListener('click', async () => {
     ok.disabled = true;

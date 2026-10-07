@@ -20,7 +20,7 @@ function boardColumnOf(p,t,cols){
 }
 function boardCard(p,t){
   const shown=typeof effectivePriority==='function'?effectivePriority(p,t):(t.priority||'normal'),done=status(p,t)==='done',info=t.due&&typeof dueInfo==='function'?dueInfo(t.due,done):null;
-  return `<article class="boardcard ${done?'done':''} ${shown!=='normal'?'prio-'+shown:''}" data-board-task="${t.id}" tabindex="0" role="button" aria-label="${esc(t.text)}"><span class="boardtext">${shown!=='normal'?priorityStar(shown):''}${esc(t.text)}</span>${(t.labels||[]).length?`<span class="chips">${chips(t.labels)}</span>`:''}<span class="boardmeta">${info?`<span class="due ${info.cls}">${esc(info.label)}</span>`:''}${t.cost?`<span class="cost">${esc(String(t.cost))} €</span>`:''}${t.note?`<span class="muted">${esc(t.note.length>40?t.note.slice(0,40)+'…':t.note)}</span>`:''}</span></article>`;
+  return `<article class="boardcard ${done?'done':''} ${shown!=='normal'?'prio-'+shown:''}" data-board-task="${t.id}" data-feedback-id="tasks.tablero.tarjeta" data-feedback-label="Abrir tarea" tabindex="0" role="button" aria-label="${esc(t.text)}"><span class="boardtext">${shown!=='normal'?priorityStar(shown):''}${esc(t.text)}</span>${(t.labels||[]).length?`<span class="chips">${chips(t.labels)}</span>`:''}<span class="boardmeta">${info?`<span class="due ${info.cls}">${esc(info.label)}</span>`:''}${t.cost?`<span class="cost">${esc(String(t.cost))} €</span>`:''}${t.note?`<span class="muted">${esc(t.note.length>40?t.note.slice(0,40)+'…':t.note)}</span>`:''}</span></article>`;
 }
 function boardView(p){
   const cols=boardColumns(),tasks=filteredTasks(p).filter(t=>!children(p,t.id).length),groups={};
@@ -28,7 +28,7 @@ function boardView(p){
   const show=cols.filter(c=>c.id!=='overdue'||(groups.overdue||[]).length);
   return `<div class="board" aria-label="Tablero por fechas">${show.map(c=>{const list=(groups[c.id]||[]).sort((a,b)=>(a.due||'9')<(b.due||'9')?-1:(a.due||'9')>(b.due||'9')?1:a.order-b.order);return `<section class="boardcol ${c.id} ${c.drop===null?'locked':''}" data-board-col="${c.id}" data-board-drop="${c.drop===null?'':esc(c.drop)}" ${c.drop===null?'data-board-locked="1"':''}><div class="boardhead">${esc(c.name)}<span class="count">${list.length}</span></div>${list.map(t=>boardCard(p,t)).join('')||'<div class="boardempty">Nada aquí</div>'}</section>`}).join('')}</div>`;
 }
-function boardToggle(){const on=boardOn();return `<div class="segmented" role="group" aria-label="Modo de vista"><button type="button" class="${on?'':'on'}" data-board-mode="list" aria-pressed="${!on}" data-tip="Lista">${menuIcon('list')}</button><button type="button" class="${on?'on':''}" data-board-mode="board" aria-pressed="${on}" data-tip="Tablero">${menuIcon('board')}</button></div>`}
+function boardToggle(){const on=boardOn();return `<div class="segmented" role="group" aria-label="Modo de vista"><button type="button" class="${on?'':'on'}" data-board-mode="list" data-feedback-id="tasks.tablero.modo.lista" data-feedback-label="Vista de lista" aria-pressed="${!on}" data-tip="Lista">${menuIcon('list')}</button><button type="button" class="${on?'on':''}" data-board-mode="board" data-feedback-id="tasks.tablero.modo.tablero" data-feedback-label="Vista de tablero" aria-pressed="${on}" data-tip="Tablero">${menuIcon('board')}</button></div>`}
 const projectViewBeforeBoard=projectView;
 projectView=function(){
   let html=projectViewBeforeBoard();const p=project();if(!p)return html;

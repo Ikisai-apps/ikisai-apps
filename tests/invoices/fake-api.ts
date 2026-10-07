@@ -64,10 +64,21 @@ export interface FakeApiOptions {
   targets?: FakeTarget[];
 }
 
+/** Reporte de feedback tal como lo manda el kit (`POST /feedback`), más lo que el servidor le añade. */
+export interface FakeFeedbackReport {
+  id: string; code: string; originApp: string; subject: string; intent: string; message: string;
+  node: { id: string; path: string[] } | null; status: string; display: string; supportersCount: number; mine: boolean;
+  createdAt: string; blocking: boolean; context: Record<string, unknown> | null; requestId: string;
+}
+
 export interface FakeApi {
   url: string;
   cursor(): number;
   rows(table: string): FakeRow[];
+  /** Reportes de «Sugerencias y QA» recibidos en `POST /feedback`. */
+  feedbackReports(): FakeFeedbackReport[];
+  /** Lotes de uso recibidos en `POST /usage/batch` (USO.md). */
+  usageBatches(): Array<{ deviceId: string; items: Array<Record<string, unknown>> }>;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
   serverUpdate(table: string, id: string, fields: Record<string, unknown>): FakeRow;
   requests: Array<{ method: string; path: string }>;
@@ -110,6 +121,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let failVerify = false;
   let entity: Record<string, unknown> | null = null;
   const reservationSources = new Map<string, Record<string, unknown>>();
+  // «Sugerencias y QA» y uso de funcionalidades (kit 0.18): en memoria, como en el simulado de Booking.
+  const feedbackStore = new Map<string, FakeFeedbackReport>();
+  const feedbackByRequest = new Map<string, string>();
+  let feedbackSeq = 0;
+  const usageBatches: Array<{ deviceId: string; items: Array<Record<string, unknown>> }> = [];
   // Registro VERI*FACTU del simulado (§14.6): solo lo que la app consulta con invoices.vf_records_of.
   const vfRecords: Array<Record<string, unknown>> = [];
   let vfLastHash: string | null = null;
@@ -698,6 +714,59 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { id: up.id, url: `/api/v1/_file/${up.id}`, expiresAt: new Date(Date.now() + 600_000).toISOString(), filename: up.filename, mime: up.mime, size: up.size });
       }
       if (path === 'entity' && method === 'GET') return json(res, 200, { entity, logo_url: null, logo_mime: null });
+      // Uso: el aviso al equipo ya está aceptado en el simulado (no tapa las demás pruebas); los lotes se guardan.
+      if (path === 'usage/consent') return json(res, 200, { consentedAt: '2026-10-01T09:00:00.000Z' });
+      if (path === 'usage/batch' && method === 'POST') {
+        const body = await readJson(req);
+        usageBatches.push({ deviceId: String(body.deviceId ?? ''), items: Array.isArray(body.items) ? body.items : [] });
+        return json(res, 200, { accepted: Array.isArray(body.items) ? body.items.length : 0 });
+      }
+      if (path === 'usage/review' || path.startsWith('usage/features')) throw new Fault(403, 'FORBIDDEN', 'Sin acceso al revisor.');
+      if (path === 'feedback' || path.startsWith('feedback/')) {
+        const reports = Array.from(feedbackStore.values());
+        if (path === 'feedback' && method === 'POST') {
+          const body = await readJson(req);
+          const known = feedbackByRequest.get(String(body.requestId));
+          if (known) return json(res, 200, { report: feedbackStore.get(known) });
+          feedbackSeq += 1;
+          const report: FakeFeedbackReport = {
+            id: String(body.id), code: `FB-${String(feedbackSeq).padStart(4, '0')}`, originApp: 'invoices', subject: String(body.subject ?? 'application'), intent: String(body.intent ?? 'bug'),
+            message: String(body.message ?? ''), node: body.node ?? null, status: 'open', display: 'open', supportersCount: 1, mine: true, createdAt: nowIso(),
+            blocking: !!body.blocking, context: body.context ?? null, requestId: String(body.requestId),
+          };
+          feedbackStore.set(report.id, report);
+          feedbackByRequest.set(report.requestId, report.id);
+          return json(res, 200, { report });
+        }
+        if (path === 'feedback' && method === 'GET') {
+          const q = url.searchParams;
+          if (q.get('review') === 'true') throw new Fault(403, 'FORBIDDEN', 'Sin acceso al revisor.');
+          let items = reports;
+          if (q.get('node')) items = items.filter((r) => r.node?.id === q.get('node'));
+          const status = q.get('status');
+          if (status === 'open') items = items.filter((r) => r.status === 'open');
+          else if (status === 'pending_verify') items = items.filter((r) => r.status === 'pending_verify');
+          return json(res, 200, { items });
+        }
+        if (path === 'feedback/tree' && method === 'GET') {
+          const byNode = new Map<string, { id: string; path: string[]; open: number; pendingVerify: number; verified: number; total: number }>();
+          for (const r of reports) {
+            if (!r.node) continue;
+            const e = byNode.get(r.node.id) ?? { id: r.node.id, path: r.node.path, open: 0, pendingVerify: 0, verified: 0, total: 0 };
+            e.total += 1;
+            if (r.status === 'open') e.open += 1;
+            byNode.set(r.node.id, e);
+          }
+          return json(res, 200, { nodes: Array.from(byNode.values()) });
+        }
+        const one = /^feedback\/([^/]+)$/.exec(path);
+        if (one && method === 'GET') {
+          const report = reports.find((r) => r.id === one[1] || r.code === one[1]);
+          if (!report) throw new Fault(404, 'NOT_FOUND', 'Reporte desconocido.');
+          return json(res, 200, { report, attachments: [], tasks: [], agentBlock: `Reporte ${report.code}` });
+        }
+        throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
+      }
       const docText = path.match(/^documents\/([^/]+)\/text$/);
       if (docText && method === 'POST') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
@@ -794,6 +863,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     setExtractor(fn) { extractor = fn; },
     setEntity(e) { entity = e; },
     setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
+    feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
+    usageBatches: () => usageBatches.map((b) => ({ ...b })),
     failNextVerify: () => { failVerify = true; },
     targets,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),

@@ -41,6 +41,8 @@ export interface FeedbackCenterOptions {
   reportId?: string;
   /** Se llama al reabrir un borrador (para cerrar la hoja que contiene el centro). */
   onLeave?: () => void;
+  /** Dónde montar la hoja de `openFeedbackCenter`; por defecto `document.body` (en Tasks, `#kitLayer`). */
+  container?: () => HTMLElement;
 }
 
 export interface FeedbackCenter {
@@ -130,7 +132,7 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
 
   function paintTabs(): void {
     replace(tabsRow, ...TABS.map(([id, label]) => el('button', {
-      type: 'button', role: 'tab', 'aria-selected': String(id === tab), class: id === tab ? 'on' : '', dataset: { tab: id },
+      type: 'button', role: 'tab', 'aria-selected': String(id === tab), class: id === tab ? 'on' : '', dataset: { fbTab: id },
       onclick: () => void show(id),
     }, label)));
   }
@@ -275,6 +277,6 @@ export function renderFeedbackCenter(options: FeedbackCenterOptions): FeedbackCe
 export function openFeedbackCenter(options: FeedbackCenterOptions): Sheet {
   let sheet: Sheet | null = null;
   const center = renderFeedbackCenter({ ...options, onLeave: () => { void sheet?.close(true); options.onLeave?.(); } });
-  sheet = openSheet({ title: 'Sugerencias y QA', body: center.element });
+  sheet = openSheet({ title: 'Sugerencias y QA', body: center.element, container: options.container?.() });
   return sheet;
 }

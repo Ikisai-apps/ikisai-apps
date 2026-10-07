@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.18.2 · 7 de octubre de 2026
+
+Ajustes que piden Tasks y Finance al adoptar (apps con el CSS del kit acotado a `.ikisai-kit`):
+- **`container`** en `openSheet`, `confirmDialog`, `openFeedbackCenter`, `showUsageNotice` y `createUsage` (para el aviso), como ya tenían `createFeedback` y `createFeedbackReview`. Los diálogos que abre la tarjeta del revisor van a su contenedor.
+- **Reglas sobre `html.fb-pressing`, `html.fb-mode` y `html.fb-reviewing`** fuera de `components.css`: el kit las inyecta una vez en `<style id="ikisai-kit-feedback-global">` (`src/feedback/global-style.ts`) al crear el feedback, el gesto o el revisor, así que sobreviven al acotado. Colores con valor de reserva.
+- **Pestañas del centro y del revisor con `data-fb-tab`** en lugar de `data-tab` (chocaban con apps que enganchan `[data-tab]`).
+- **Catálogo:** `feature-catalog.mjs` reconoce también `fbMark(nodo, 'id', 'etiqueta')` (aunque el nodo ocupe varias líneas) y los ternarios entre dos ids fijos (`feedbackId: x ? 'a.b' : 'a.c'`, con sus etiquetas). Booking pasa de 263 a 296 funciones.
+
 ## 0.18.1 · 7 de octubre de 2026
 
 - `createUsage`: cada elemento de `POST usage/batch` lleva `route`, la ruta real (sin consulta) donde la función se vio o usó por última vez. Core la guarda como pista (#238) y la devuelve en la tarjeta como `routeRaw`, así «Ir al sitio» de «Revisor › Uso» abre la pantalla exacta. El servidor anterior la ignora.

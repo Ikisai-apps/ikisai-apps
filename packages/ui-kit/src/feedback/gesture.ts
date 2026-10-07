@@ -7,6 +7,7 @@
  * - No se dispara en campos editables ni en zonas de arrastre o marcadas con `data-feedback-ignore`.
  * - Teclado: Mayúsculas+F10 o la tecla de menú sobre el elemento con foco.
  */
+import { ensureFeedbackGlobalStyles } from './global-style.ts';
 import { FEEDBACK_EDITABLE_SELECTOR, FEEDBACK_IGNORE_SELECTOR, FEEDBACK_LONG_PRESS_MS, FEEDBACK_MOVE_TOLERANCE_PX } from './constants.ts';
 
 export interface FeedbackGestureOptions {
@@ -32,6 +33,7 @@ export function isFeedbackExcluded(target: Element | null): boolean {
 }
 
 export function installFeedbackGesture(options: FeedbackGestureOptions): FeedbackGesture {
+  ensureFeedbackGlobalStyles();
   const root = options.root ?? document;
   const delay = options.delay ?? FEEDBACK_LONG_PRESS_MS;
   const tolerance = options.tolerance ?? FEEDBACK_MOVE_TOLERANCE_PX;

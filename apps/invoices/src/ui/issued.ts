@@ -5,6 +5,8 @@
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, renderList, replace, toast, type ListRowSpec, type Sheet } from '@ikisai/ui-kit';
+import { fbRows } from './feedback.ts';
+import { usage } from '../app/usage.ts';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUED_CSV_FIELDS, ISSUED_CSV_FIELD_LABELS, ISSUED_CSV_REQUIRED, ISSUED_CSV_TEMPLATE_HEADER,
   ISSUED_EXTRACTION_PROMPT, ISSUED_ORIGIN_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
@@ -19,7 +21,7 @@ import { eur, monthKey, monthLabel, onAnyTable, parseAmount, shortDate, todayIso
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, type StagedDocument } from '../app/files.ts';
 import { guard } from '../app/guard.ts';
 import { searchTargets, targetLabel, type TargetChoice } from '../app/targets.ts';
-import { block, commitSafely, field, select } from './common.ts';
+import { block, commitSafely, fbBlock, field, select } from './common.ts';
 import type { IssuerSnapshot } from '@ikisai/domain-invoices';
 import { deleteDraft, issueDraft, openInvoiceDocument, openInvoiceDraft, openIssuingSettings, rectifyIssued, startFromReservation, verifactuSummary } from './issuing.ts';
 
@@ -104,6 +106,13 @@ const recipientOf = (i: LocalIssuedInvoice) => i.recipient_name || 'Sin destinat
 // ---------------------------------------------------------------------------
 // Lista (pestaña «Emitidas» de Facturas)
 // ---------------------------------------------------------------------------
+/** Tipo de destino del ingreso: ids literales para el catálogo de «Uso». */
+const ISSUED_KIND_MARKS: Record<string, Record<string, string>> = {
+  reservation: { 'data-feedback-id': 'invoices.emitidas.asignar.reserva', 'data-feedback-label': 'Reserva' },
+  event: { 'data-feedback-id': 'invoices.emitidas.asignar.evento', 'data-feedback-label': 'Evento' },
+  general: { 'data-feedback-id': 'invoices.emitidas.asignar.general', 'data-feedback-label': 'General' },
+};
+
 export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; destroy: () => void } {
   const { client } = ctx;
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
@@ -111,16 +120,16 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
   let query = '';
   let filter = 'activas';
   let opened: { id: string; sheet: Sheet } | null = null;
-  const search = el('input', { type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente o concepto', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
+  const search = el('input', { 'data-feedback-id': 'invoices.emitidas.buscar', 'data-feedback-label': 'Buscar emitidas', type: 'search', id: 'issuedSearch', placeholder: 'Número, cliente o concepto', 'aria-label': 'Buscar emitidas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
   const statusSelect = select('issuedFilter', [['activas', 'Activas'], ['borradores', 'Borradores'], ['anulada', 'Anuladas'], ['pendientes', 'Sin cobrar'], ['revisar', 'Revisar importes']], filter,
-    { 'aria-label': 'Filtrar emitidas', onchange: () => { filter = statusSelect.value; paint(); } });
-  const list = el('div', { id: 'issuedList' });
-  const issuerBanner = el('div', { id: 'issuersMissing', hidden: true });
-  const newButton = el('button', { class: 'fab', type: 'button', id: 'newIssuedInvoice', hidden: !canEdit, onclick: () => data && openInvoiceDraft(ctx, data) }, icon('plus'), 'Nueva factura');
-  const registerButton = el('button', { class: 'softbtn small', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus', 16), 'Registrar emitida');
-  const settingsButton = el('button', { class: 'softbtn small', type: 'button', id: 'issuingSettings', onclick: () => data && openIssuingSettings(ctx, data) }, icon('settings', 16), 'Series');
-  const importButton = el('button', { class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
+    { 'data-feedback-id': 'invoices.emitidas.filtro', 'data-feedback-label': 'Filtrar emitidas', 'aria-label': 'Filtrar emitidas', onchange: () => { filter = statusSelect.value; paint(); } });
+  const list = el('div', { 'data-feedback-id': 'invoices.emitidas.lista', 'data-feedback-label': 'Facturas emitidas', id: 'issuedList' });
+  const issuerBanner = el('div', { 'data-feedback-id': 'invoices.emitidas.aviso_emisor', 'data-feedback-label': 'Emitidas sin emisor', id: 'issuersMissing', hidden: true });
+  const newButton = el('button', { 'data-feedback-id': 'invoices.emitidas.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newIssuedInvoice', hidden: !canEdit, onclick: () => data && openInvoiceDraft(ctx, data) }, icon('plus'), 'Nueva factura');
+  const registerButton = el('button', { 'data-feedback-id': 'invoices.emitidas.registrar', 'data-feedback-label': 'Registrar emitida', class: 'softbtn small', type: 'button', id: 'newIssued', hidden: !canEdit, onclick: () => data && openNewIssued(ctx, data) }, icon('plus', 16), 'Registrar emitida');
+  const settingsButton = el('button', { 'data-feedback-id': 'invoices.emitidas.series', 'data-feedback-label': 'Series', class: 'softbtn small', type: 'button', id: 'issuingSettings', onclick: () => data && openIssuingSettings(ctx, data) }, icon('settings', 16), 'Series');
+  const importButton = el('button', { 'data-feedback-id': 'invoices.emitidas.importar_csv', 'data-feedback-label': 'Importar CSV', class: 'softbtn small', type: 'button', id: 'importIssuedCsv', hidden: !canEdit, onclick: () => data && openIssuedCsvImport(ctx, data) }, icon('upload', 16), 'Importar CSV');
   const element = el('div', { id: 'issuedPanel' },
     el('p', { class: 'hint' }, 'Las facturas que emites desde Finance y las que registras de otra herramienta: IVA repercutido, gestoría e ingreso por reserva.'),
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
@@ -145,7 +154,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     if (issuerBanner.hidden) { replace(issuerBanner); return; }
     issuerBanner.className = 'banner warn';
     replace(issuerBanner, icon('warn', 18), el('span', null, `${missing.length === 1 ? '1 emitida' : `${missing.length} emitidas`} sin emisor`),
-      el('button', { class: 'softbtn small', type: 'button', id: 'fillIssuers', onclick: () => void fillIssuers(client, missing) }, 'Completar con los datos de Central'));
+      el('button', { 'data-feedback-id': 'invoices.emitidas.aviso_emisor.completar', 'data-feedback-label': 'Completar con los datos de Central', class: 'softbtn small', type: 'button', id: 'fillIssuers', onclick: () => void fillIssuers(client, missing) }, 'Completar con los datos de Central'));
   }
 
   function paint(): void {
@@ -161,7 +170,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     for (const i of rows) { const k = monthKey(i.issue_date); groups.set(k, [...(groups.get(k) ?? []), i]); }
     replace(list, ...[...groups.entries()].map(([key, items]) => el('section', null,
       el('div', { class: 'sectionlabel' }, monthLabel(key), el('span', { class: 'count' }, String(items.length))),
-      renderList({ label: `Emitidas de ${monthLabel(key)}`, rows: items.map((i): ListRowSpec => {
+      fbRows(renderList({ label: `Emitidas de ${monthLabel(key)}`, rows: items.map((i): ListRowSpec => {
         const chips = [el('span', { class: 'chip' }, i.invoice_type)];
         if (i.status === 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Anulada'));
         if (i.status === 'borrador') chips.push(el('span', { class: 'chip warn' }, 'Borrador'));
@@ -170,7 +179,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
         if (i.payment_status === 'cobrada') chips.push(el('span', { class: 'chip ok' }, 'Cobrada'));
         return { id: i.id, title: `${numberOf(i)} · ${recipientOf(i)}`, meta: [shortDate(i.issue_date), i.description, eur(i.total)], chips, pending: i._pending === true,
           onClick: () => void open(i.id), label: `Abrir ${numberOf(i)}` };
-      }) }),
+      }) }), { feedbackId: 'invoices.emitidas.lista.mes', feedbackLabel: 'Emitidas del mes' }, { feedbackId: 'invoices.emitidas.lista.fila', feedbackLabel: 'Factura emitida' }),
     )));
   }
 
@@ -181,8 +190,8 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     const sheet = openSheet({
       title: `${numberOf(invoice)} · ${recipientOf(invoice)}`,
       meta: `${ISSUED_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type} · revisión ${invoice.revision}${invoice._pending ? ' · pendiente de sincronizar' : ''}`,
-      body: el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))),
-      foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
+      body: el('div', { 'data-feedback-id': 'invoices.emitidas.ficha', 'data-feedback-label': 'Ficha de emitida', id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))),
+      foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
       onClose: () => { if (opened?.id === id) opened = null; },
     });
     opened = { id, sheet };
@@ -193,7 +202,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
     paint();
     if (opened) {
       const invoice = data.invoices.find((i) => i.id === opened!.id);
-      if (invoice) replace(opened.sheet.body, el('div', { id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))));
+      if (invoice) replace(opened.sheet.body, el('div', { 'data-feedback-id': 'invoices.emitidas.ficha', 'data-feedback-label': 'Ficha de emitida', id: 'issuedSheet' }, renderIssued(ctx, invoice, data, (reopen) => void open(reopen))));
     }
   }
   const off = onAnyTable(client, () => void load());
@@ -224,21 +233,21 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   const actions: HTMLElement[] = [];
   if (isDraft) {
     if (canEdit) {
-      actions.push(el('button', { class: 'primary', type: 'button', id: 'issueDraft', onclick: () => void issueDraft(ctx, invoice, data) }, icon('check', 18), 'Emitir'));
-      actions.push(el('button', { class: 'softbtn', type: 'button', id: 'editDraft', onclick: () => openInvoiceDraft(ctx, data, invoice) }, icon('edit', 18), 'Editar'));
+      actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.emitir', 'data-feedback-label': 'Emitir', class: 'primary', type: 'button', id: 'issueDraft', onclick: () => void issueDraft(ctx, invoice, data) }, icon('check', 18), 'Emitir'));
+      actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.editar', 'data-feedback-label': 'Editar', class: 'softbtn', type: 'button', id: 'editDraft', onclick: () => openInvoiceDraft(ctx, data, invoice) }, icon('edit', 18), 'Editar'));
     }
-    actions.push(el('button', { class: 'softbtn', type: 'button', id: 'previewDraft', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('eye', 18), 'Vista previa'));
-    if (canEdit) actions.push(el('button', { class: 'danger', type: 'button', id: 'deleteDraft', onclick: () => void deleteDraft(client, invoice, data) }, icon('trash', 18), 'Borrar'));
+    actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.vista_previa', 'data-feedback-label': 'Vista previa', class: 'softbtn', type: 'button', id: 'previewDraft', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('eye', 18), 'Vista previa'));
+    if (canEdit) actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.borrar', 'data-feedback-label': 'Borrar', class: 'danger', type: 'button', id: 'deleteDraft', onclick: () => void deleteDraft(client, invoice, data) }, icon('trash', 18), 'Borrar'));
   } else {
     if (canEdit) {
-      actions.push(el('button', { class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
-      if (fromApp) actions.push(el('button', { class: 'softbtn', type: 'button', id: 'rectifyIssued', onclick: () => void rectifyIssued(ctx, invoice, data) }, icon('undo', 18), 'Rectificar'));
+      actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.cobro', 'data-feedback-label': 'Cobro', class: 'softbtn', type: 'button', id: 'toggleCollected', onclick: () => void toggleCollected() }, icon('check', 18), invoice.payment_status === 'cobrada' ? 'Marcar sin cobrar' : 'Marcar cobrada'));
+      if (fromApp) actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.rectificar', 'data-feedback-label': 'Rectificar', class: 'softbtn', type: 'button', id: 'rectifyIssued', onclick: () => void rectifyIssued(ctx, invoice, data) }, icon('undo', 18), 'Rectificar'));
       // Una emitida desde Finance solo la anula el owner (genera el registro de anulación).
-      if (!fromApp || role === 'owner') actions.push(el('button', { class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
+      if (!fromApp || role === 'owner') actions.push(el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.anular', 'data-feedback-label': 'Anular', class: 'danger', type: 'button', id: 'annulIssued', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
     }
     actions.push(fromApp
-      ? el('button', { class: 'softbtn', type: 'button', id: 'printInvoice', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('download', 18), 'Factura (PDF)')
-      : el('button', { class: 'softbtn', type: 'button', id: 'printIssued', onclick: () => void openIssuedPrint(ctx, invoice, data) }, icon('download', 18), 'Imprimir copia'));
+      ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.factura_pdf', 'data-feedback-label': 'Factura (PDF)', class: 'softbtn', type: 'button', id: 'printInvoice', onclick: () => void openInvoiceDocument(ctx, invoice, data) }, icon('download', 18), 'Factura (PDF)')
+      : el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.copia', 'data-feedback-label': 'Imprimir copia', class: 'softbtn', type: 'button', id: 'printIssued', onclick: () => void openIssuedPrint(ctx, invoice, data) }, icon('download', 18), 'Imprimir copia'));
   }
 
   async function toggleCollected(): Promise<void> {
@@ -247,7 +256,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   }
 
   async function annul(): Promise<void> {
-    const reason = el('input', { type: 'text', id: 'annulIssuedReason', maxlength: '500', placeholder: 'Emitida por error, sustituida…' });
+    const reason = el('input', { 'data-feedback-id': 'invoices.emitidas.ficha.anular.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'annulIssuedReason', maxlength: '500', placeholder: 'Emitida por error, sustituida…' });
     const ok = await confirmDialog({ title: `¿Anular ${numberOf(invoice)}?`, text: el('div', null,
       el('p', null, fromApp
         ? 'Solo si la factura no debió emitirse y no llegó al cliente: se genera el registro de anulación y su número sigue ocupado. Si el cliente ya la tiene, lo correcto es una rectificativa.'
@@ -263,20 +272,20 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
   const issuer = invoice.issuer;
   return el('div', null,
     actions.length ? el('div', { class: 'btnrow' }, ...actions) : null,
-    isDraft ? el('div', { class: 'banner info', id: 'draftBanner' }, icon('info', 18), el('span', null, 'Borrador sin número: se numera al emitir. Hasta entonces se puede editar o borrar.')) : null,
+    isDraft ? el('div', { 'data-feedback-id': 'invoices.emitidas.ficha.aviso_borrador', 'data-feedback-label': 'Aviso de borrador', class: 'banner info', id: 'draftBanner' }, icon('info', 18), el('span', null, 'Borrador sin número: se numera al emitir. Hasta entonces se puede editar o borrar.')) : null,
     isDraft ? null : issuer
-      ? el('div', { class: 'issuer', id: 'issuedIssuer' }, el('span', { class: 'hint' }, 'Emisor'), ...issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('span', null, l))))
+      ? el('div', { 'data-feedback-id': 'invoices.emitidas.ficha.emisor', 'data-feedback-label': 'Emisor', 'data-feedback-ignore': '', class: 'issuer', id: 'issuedIssuer' }, el('span', { class: 'hint' }, 'Emisor'), ...issuerLines(issuer).map((l, i) => (i === 0 ? el('strong', null, l) : el('span', null, l))))
       : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`),
-        canEdit ? el('button', { class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
+        canEdit ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.tomar_emisor', 'data-feedback-label': 'Tomar el emisor actual', class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
     invoice.status === 'anulada' ? el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `Anulada: ${invoice.annulled_reason ?? ''}`)) : null,
     invoice.review_reason === 'REVISAR IMPORTES' ? el('div', { class: 'banner warn', id: 'issuedReview' }, icon('warn', 18), el('span', null, `El total del documento no cuadra con el desglose (diferencia ${eur(Number(invoice.totals_delta ?? 0))}).`)) : null,
-    el('div', { class: 'inv-totals' },
+    el('div', { 'data-feedback-id': 'invoices.emitidas.ficha.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '', class: 'inv-totals' },
       el('div', null, el('span', null, 'Base'), el('strong', null, eur(invoice.base_total))),
       el('div', null, el('span', null, 'Cuotas'), el('strong', null, eur(Number(invoice.quota_total) + Number(invoice.surcharge_total)))),
       el('div', null, el('span', null, 'Retenciones'), el('strong', null, eur(invoice.withholding_total))),
       el('div', { class: 'total' }, el('span', null, 'TOTAL'), el('strong', { id: 'issuedTotal' }, eur(invoice.total)))),
-    block('Datos', shortDate(invoice.issue_date), true,
-      el('dl', { class: 'inv-dl' },
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.datos', feedbackLabel: 'Datos' }, 'Datos', shortDate(invoice.issue_date), true,
+      el('dl', { class: 'inv-dl', 'data-feedback-ignore': '' },
         el('dt', null, 'Número'), el('dd', null, numberOf(invoice)),
         el('dt', null, 'Tipo'), el('dd', null, ISSUED_TYPE_LABELS[invoice.invoice_type] ?? invoice.invoice_type),
         isRectificative(invoice.invoice_type) ? el('dt', null, 'Rectifica') : null,
@@ -290,25 +299,25 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         el('dt', null, 'Ingreso'), el('dd', null, invoice.income_category ? INCOME_CATEGORY_LABELS[invoice.income_category] : 'Sin categoría'),
         el('dt', null, 'Cobro'), el('dd', null, invoice.payment_status === 'cobrada' ? `Cobrada${invoice.paid_at ? ` el ${shortDate(invoice.paid_at)}` : ''}` : 'Sin cobrar'),
       )),
-    block('Líneas', String(lines.length), true, lines.length
-      ? el('div', { class: 'list plain-lines', id: 'issuedLines' }, ...lines.map((l) => el('div', { class: 'line-row' },
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.lineas', feedbackLabel: 'Líneas' }, 'Líneas', String(lines.length), true, lines.length
+      ? el('div', { class: 'list plain-lines', id: 'issuedLines', 'data-feedback-ignore': '' }, ...lines.map((l) => el('div', { class: 'line-row' },
         el('div', { class: 'line-main' }, el('span', { class: 'line-desc' }, l.description)),
         el('div', { class: 'line-nums' }, el('strong', null, eur(l.net_amount)), el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`)))))
       : el('p', { class: 'hint' }, 'Sin líneas.')),
-    block('Desglose', String(taxes.length), false, taxes.length
-      ? el('table', { class: 'inv-table' }, el('tbody', null, ...taxes.map((t) => el('tr', null, el('td', null, `${t.tax.toUpperCase()} ${t.rate === null ? '' : `${Number(t.rate)} %`}`), el('td', { class: 'num' }, eur(Number(t.taxable_base ?? 0))), el('td', { class: 'num' }, eur(t.quota))))))
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.desglose', feedbackLabel: 'Desglose' }, 'Desglose', String(taxes.length), false, taxes.length
+      ? el('table', { class: 'inv-table', 'data-feedback-ignore': '' }, el('tbody', null, ...taxes.map((t) => el('tr', null, el('td', null, `${t.tax.toUpperCase()} ${t.rate === null ? '' : `${Number(t.rate)} %`}`), el('td', { class: 'num' }, eur(Number(t.taxable_base ?? 0))), el('td', { class: 'num' }, eur(t.quota))))))
       : el('p', { class: 'hint' }, 'Calculado desde las líneas.')),
-    block('Documento', files.length ? String(files.length) : 'ninguno', true, files.length
-      ? renderList({ label: 'Documentos', rows: files.map((f) => ({ id: f.id, title: f.normalized_filename ?? f.original_filename, meta: [formatBytes(Number(f.size_bytes)), f.original_filename], pending: f._pending === true,
-        actions: [el('button', { class: 'linkbtn', type: 'button', onclick: () => openFile(client, f.file_id).catch(() => toast('No se pudo abrir el documento.')) }, icon('eye', 16), 'Ver')] })) })
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.documento', feedbackLabel: 'Documento' }, 'Documento', files.length ? String(files.length) : 'ninguno', true, files.length
+      ? fbRows(renderList({ label: 'Documentos', rows: files.map((f) => ({ id: f.id, title: f.normalized_filename ?? f.original_filename, meta: [formatBytes(Number(f.size_bytes)), f.original_filename], pending: f._pending === true,
+        actions: [el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.documento.ver', 'data-feedback-label': 'Ver', class: 'linkbtn', type: 'button', onclick: () => openFile(client, f.file_id).catch(() => toast('No se pudo abrir el documento.')) }, icon('eye', 16), 'Ver')] })) }), { feedbackId: 'invoices.emitidas.ficha.documento.lista', feedbackLabel: 'Documentos' }, { feedbackId: 'invoices.emitidas.ficha.documento.fila', feedbackLabel: 'Documento' })
       : el('p', { class: 'hint' }, 'Sin documento.')),
-    block('Destino del ingreso', allocations.length ? String(allocations.length) : 'sin asignar', allocations.length > 0 || canEdit,
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.destino', feedbackLabel: 'Destino del ingreso' }, 'Destino del ingreso', allocations.length ? String(allocations.length) : 'sin asignar', allocations.length > 0 || canEdit,
       allocations.length
-        ? el('ul', { class: 'alloc-list', id: 'issuedAllocations' }, ...allocations.map((a) => el('li', null, el('span', null, `${a.target_label} · ${eur(a.allocated_amount)}`),
-          canEdit ? el('button', { class: 'x', type: 'button', 'aria-label': `Quitar ${a.target_label}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ISSUED_ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación quitada.') }, '×') : null)))
+        ? el('ul', { class: 'alloc-list', id: 'issuedAllocations', 'data-feedback-ignore': '' }, ...allocations.map((a) => el('li', null, el('span', null, `${a.target_label} · ${eur(a.allocated_amount)}`),
+          canEdit ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.quitar', 'data-feedback-label': 'Quitar asignación', class: 'x', type: 'button', 'aria-label': `Quitar ${a.target_label}`, onclick: () => void commitSafely(client, [{ op: 'delete', table: ISSUED_ALLOCATIONS, id: a.id, expectedRevision: a.revision }], 'Asignación quitada.') }, '×') : null)))
         : el('p', { class: 'hint' }, 'Sin reserva ni evento asignado.'),
-      canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, el('button', { class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento')) : null),
-    block('Verifactu', invoice.origin === 'app' ? (isDraft ? 'borrador' : invoice.vf_status === 'no_enviar' ? 'guardado, sin enviar' : (invoice.vf_status ?? 'pendiente')) : 'otra herramienta', false,
+      canEdit && remaining(invoice, allocations) > 0 ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.destino.asignar', 'data-feedback-label': 'Asignar a reserva o evento', class: 'softbtn', type: 'button', id: 'assignIssued', onclick: () => openIssuedAllocation(ctx, invoice, allocations, () => reopen(invoice.id)) }, icon('plus', 18), 'Asignar a reserva o evento')) : null),
+    fbBlock({ feedbackId: 'invoices.emitidas.ficha.verifactu', feedbackLabel: 'Verifactu' }, 'Verifactu', invoice.origin === 'app' ? (isDraft ? 'borrador' : invoice.vf_status === 'no_enviar' ? 'guardado, sin enviar' : (invoice.vf_status ?? 'pendiente')) : 'otra herramienta', false,
       el('p', { class: 'hint', id: 'issuedVerifactu' }, invoice.origin === 'app'
         ? verifactuSummary(invoice)
         : `${ISSUED_ORIGIN_LABELS[invoice.origin] ?? invoice.origin}. El registro Verifactu lo hace la herramienta que la expidió; aquí queda en el libro registro de expedidas.`)),
@@ -335,7 +344,7 @@ async function openIssuedPrint(ctx: ViewContext, invoice: LocalIssuedInvoice, da
       el('thead', null, el('tr', null, el('th', null, 'Concepto'), el('th', { class: 'num' }, 'Base'), el('th', { class: 'num' }, 'IVA'))),
       el('tbody', null, ...lines.map((l) => el('tr', null, el('td', null, l.description), el('td', { class: 'num' }, eur(l.net_amount)), el('td', { class: 'num' }, l.vat_rate === null ? '—' : `${Number(l.vat_rate)} %`))))),
     taxes.length ? el('table', { class: 'inv-table' }, el('tbody', null, ...taxes.map((t) => el('tr', null, el('td', null, `${t.tax.toUpperCase()} ${t.rate === null ? '' : `${Number(t.rate)} %`}`), el('td', { class: 'num' }, eur(Number(t.taxable_base ?? 0))), el('td', { class: 'num' }, eur(t.quota)))))) : null,
-    el('div', { class: 'inv-totals' },
+    el('div', { class: 'inv-totals', 'data-feedback-ignore': '' },
       el('div', null, el('span', null, 'Base'), el('strong', null, eur(invoice.base_total))),
       el('div', null, el('span', null, 'Cuotas'), el('strong', null, eur(Number(invoice.quota_total) + Number(invoice.surcharge_total)))),
       el('div', null, el('span', null, 'Retenciones'), el('strong', null, eur(invoice.withholding_total))),
@@ -351,7 +360,7 @@ async function openIssuedPrint(ctx: ViewContext, invoice: LocalIssuedInvoice, da
     notes: `Copia de registro de Ikisai Finance: no es una factura. La factura original se expidió con ${invoice.external_tool === 'google_sheet' ? 'la hoja de cálculo de facturación' : invoice.external_tool ?? 'otra herramienta'}${invoice.status === 'anulada' ? ' y está ANULADA' : ''}.`,
     runningFoot: `Ikisai Finance · copia de registro ${numberOf(invoice)}`,
   }, { printLabel: 'Imprimir / Guardar PDF' });
-  openSheet({ title: `Copia de ${numberOf(invoice)}`, body: el('div', { id: 'issuedPrintView' }, view.element), foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
+  openSheet({ title: `Copia de ${numberOf(invoice)}`, body: el('div', { 'data-feedback-id': 'invoices.emitidas.copia', 'data-feedback-label': 'Copia de registro', 'data-feedback-ignore': '', id: 'issuedPrintView' }, view.element), foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.copia.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
 }
 
 // ---------------------------------------------------------------------------
@@ -367,12 +376,12 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
   const rest = remaining(invoice, allocations);
   let kind: 'reservation' | 'event' | 'general' = 'reservation';
   let choice: TargetChoice | null = null;
-  const kinds = el('div', { class: 'segmented', role: 'tablist' }, ...([['reservation', 'Reserva'], ['event', 'Evento'], ['general', 'General']] as Array<[typeof kind, string]>).map(([value, label]) =>
-    el('button', { type: 'button', role: 'tab', class: value === kind ? 'on' : '', dataset: { kind: value }, onclick: () => { kind = value; choice = null; paintKind(); } }, label)));
-  const query = el('input', { type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
+  const kinds = el('div', { 'data-feedback-id': 'invoices.emitidas.asignar.tipo', 'data-feedback-label': 'Tipo de destino', class: 'segmented', role: 'tablist' }, ...([['reservation', 'Reserva'], ['event', 'Evento'], ['general', 'General']] as Array<[typeof kind, string]>).map(([value, label]) =>
+    el('button', { ...ISSUED_KIND_MARKS[value], type: 'button', role: 'tab', class: value === kind ? 'on' : '', dataset: { kind: value }, onclick: () => { kind = value; choice = null; paintKind(); } }, label)));
+  const query = el('input', { 'data-feedback-id': 'invoices.emitidas.asignar.buscar', 'data-feedback-label': 'Buscar', type: 'search', id: 'issuedTargetSearch', placeholder: 'Buscar por huésped, código o fecha…', autocomplete: 'off' });
   const results = el('div', { id: 'issuedTargetResults' });
   const chosen = el('p', { class: 'hint', id: 'issuedChosenTarget' });
-  const amount = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
+  const amount = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedAllocAmount', value: String(rest).replace('.', ',') });
   const error = el('p', { class: 'formerror', role: 'alert' });
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -387,14 +396,14 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
     if (!navigator.onLine) { replace(results, el('p', { class: 'hint' }, 'Buscar reservas necesita conexión.')); return; }
     try {
       const items = await searchTargets(client, 'booking', query.value.trim(), kind);
-      replace(results, items.length ? renderList({ label: 'Destinos', rows: items.map((t) => ({ id: t.id, title: targetLabel(t), meta: [t.code ?? ''], label: `Elegir ${t.label}`,
-        onClick: () => { choice = t; chosen.textContent = `Elegido: ${targetLabel(t)}`; } })) }) : el('p', { class: 'hint' }, 'Sin resultados.'));
+      replace(results, items.length ? fbRows(renderList({ label: 'Destinos', rows: items.map((t) => ({ id: t.id, title: targetLabel(t), meta: [t.code ?? ''], label: `Elegir ${t.label}`,
+        onClick: () => { choice = t; chosen.textContent = `Elegido: ${targetLabel(t)}`; } })) }), { feedbackId: 'invoices.emitidas.asignar.destinos', feedbackLabel: 'Destinos' }, { feedbackId: 'invoices.emitidas.asignar.destino', feedbackLabel: 'Destino' }) : el('p', { class: 'hint' }, 'Sin resultados.'));
     } catch (e) {
       replace(results, el('p', { class: 'hint' }, (e as { message?: string })?.message ?? 'No se pudo buscar en Reservas.'));
     }
   }
   query.addEventListener('input', () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void search(), 250); });
-  const save = el('button', { class: 'primary', type: 'button', id: 'saveIssuedAllocation', onclick: async () => {
+  const save = el('button', { 'data-feedback-id': 'invoices.emitidas.asignar.guardar', 'data-feedback-label': 'Asignar', class: 'primary', type: 'button', id: 'saveIssuedAllocation', onclick: async () => {
     error.textContent = '';
     const value = parseAmount(amount.value);
     if (value === null || value <= 0) { error.textContent = 'Indica un importe mayor que cero.'; return; }
@@ -403,13 +412,15 @@ function openIssuedAllocation(ctx: ViewContext, invoice: LocalIssuedInvoice, all
     const fields = kind === 'general'
       ? { issued_invoice_id: invoice.id, target_app: 'general', target_kind: 'general', target_label: 'Ingreso general', allocated_amount: value }
       : { issued_invoice_id: invoice.id, target_app: 'booking', target_kind: kind, target_id: choice!.id, target_label: targetLabel(choice!), target_code: choice!.code, allocated_amount: value };
-    if (await commitSafely(client, [{ op: 'insert', table: ISSUED_ALLOCATIONS, id: crypto.randomUUID(), fields }], 'Ingreso asignado.')) { await closeSheet(true); done(); }
+    const assigned = await commitSafely(client, [{ op: 'insert', table: ISSUED_ALLOCATIONS, id: crypto.randomUUID(), fields }], 'Ingreso asignado.');
+    usage.track('invoices.emitidas.asignar', assigned ? 'success' : 'error');
+    if (assigned) { await closeSheet(true); done(); }
   } }, 'Asignar');
   openSheet({
     title: `Asignar ${numberOf(invoice)}`,
     meta: `Base ${eur(invoice.base_total)} · quedan ${eur(rest)}`,
     body: el('div', null, kinds, field('Buscar', query), results, chosen, field('Importe (base)', amount), error),
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: async () => { await closeSheet(true); done(); } }, 'Cancelar'), save],
+    foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.asignar.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: async () => { await closeSheet(true); done(); } }, 'Cancelar'), save],
     initialFocus: query,
   });
   paintKind();
@@ -450,12 +461,12 @@ function issuedChatgptSteps(onPaste: () => void): HTMLElement {
     try { await navigator.clipboard.writeText(ISSUED_EXTRACTION_PROMPT); toast('Prompt copiado. Pégalo en ChatGPT junto con el PDF de la factura.'); }
     catch { promptText.hidden = false; promptText.focus(); promptText.select(); toast('Selecciona el texto y cópialo.'); }
   };
-  return el('div', { class: 'chatgpt-steps', id: 'chatgptIssued' },
+  return el('div', { 'data-feedback-id': 'invoices.emitidas.ia', 'data-feedback-label': 'Extraer con ChatGPT', class: 'chatgpt-steps', id: 'chatgptIssued' },
     el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea PDF')),
     el('ol', { class: 'steps' },
-      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copy() }, icon('attach', 16), '1) Copiar prompt'),
+      el('li', null, el('button', { 'data-feedback-id': 'invoices.emitidas.ia.copiar_prompt', 'data-feedback-label': 'Copiar prompt', class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copy() }, icon('attach', 16), '1) Copiar prompt'),
         el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta este mismo PDF.')),
-      el('li', null, el('button', { class: 'softbtn small', type: 'button', dataset: { step: 'paste' }, onclick: onPaste }, icon('upload', 16), '2) Pegar CSV'),
+      el('li', null, el('button', { 'data-feedback-id': 'invoices.emitidas.ia.pegar_csv', 'data-feedback-label': 'Pegar CSV', class: 'softbtn small', type: 'button', dataset: { step: 'paste' }, onclick: onPaste }, icon('upload', 16), '2) Pegar CSV'),
         el('span', { class: 'hint' }, ' Pega la respuesta (una línea por factura) para importarla con el PDF.'))),
     promptText);
 }
@@ -470,13 +481,13 @@ function defaultSeriesCode(data: IssuedData): string {
 
 export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options: { text?: string; files?: File[]; fromChatgpt?: boolean } = {}): void {
   const { client } = ctx;
-  const textarea = el('textarea', { id: 'issuedCsvText', rows: '6', spellcheck: 'false', placeholder: options.fromChatgpt ? 'Pega aquí el CSV que devolvió ChatGPT…' : 'Pega aquí las filas copiadas del Sheet (con la cabecera)…' });
-  const fileInput = el('input', { type: 'file', id: 'issuedCsvFile', accept: '.csv,text/csv,text/plain,.tsv' });
-  const defaultSeries = el('input', { type: 'text', id: 'issuedCsvSeries', maxlength: '20', value: defaultSeriesCode(data), placeholder: 'A' });
-  const mappingHost = el('div', { id: 'issuedCsvMapping' });
-  const previewHost = el('div', { id: 'issuedCsvPreview' });
+  const textarea = el('textarea', { 'data-feedback-ignore': '', id: 'issuedCsvText', rows: '6', spellcheck: 'false', placeholder: options.fromChatgpt ? 'Pega aquí el CSV que devolvió ChatGPT…' : 'Pega aquí las filas copiadas del Sheet (con la cabecera)…' });
+  const fileInput = el('input', { 'data-feedback-id': 'invoices.emitidas.csv.archivo', 'data-feedback-label': 'Archivo CSV', type: 'file', id: 'issuedCsvFile', accept: '.csv,text/csv,text/plain,.tsv' });
+  const defaultSeries = el('input', { 'data-feedback-id': 'invoices.emitidas.csv.serie', 'data-feedback-label': 'Serie por defecto', type: 'text', id: 'issuedCsvSeries', maxlength: '20', value: defaultSeriesCode(data), placeholder: 'A' });
+  const mappingHost = el('div', { 'data-feedback-id': 'invoices.emitidas.csv.columnas', 'data-feedback-label': 'Columnas', id: 'issuedCsvMapping' });
+  const previewHost = el('div', { 'data-feedback-id': 'invoices.emitidas.csv.vista_previa', 'data-feedback-label': 'Vista previa', id: 'issuedCsvPreview' });
   const error = el('p', { class: 'formerror', role: 'alert' });
-  const confirm = el('button', { class: 'primary', type: 'button', id: 'confirmIssuedCsv', disabled: true, onclick: () => void submit() }, 'Importar');
+  const confirm = el('button', { 'data-feedback-id': 'invoices.emitidas.csv.importar', 'data-feedback-label': 'Importar', class: 'primary', type: 'button', id: 'confirmIssuedCsv', disabled: true, onclick: () => void submit() }, 'Importar');
   let header: string[] = []; let body: string[][] = []; let mapping: IssuedCsvMapping = {}; let plan: IssuedImportInvoice[] = [];
   const existing = new Set(data.invoices.map((i) => `${i.series_code.toUpperCase()}|${(i.number ?? '').trim().toUpperCase()}`));
   const isRegistered = (inv: IssuedImportInvoice) => existing.has(`${inv.series_code.toUpperCase()}|${inv.number.trim().toUpperCase()}`);
@@ -494,7 +505,7 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
     replace(mappingHost, el('details', { class: 'inv-block', open: ISSUED_CSV_REQUIRED.some((f) => mapping[f] === undefined) },
       el('summary', null, el('span', null, 'Columnas'), el('span', { class: 'hint' }, `${Object.keys(mapping).length} de ${ISSUED_CSV_FIELDS.length} reconocidas`)),
       el('div', { class: 'csv-mapping' }, ...ISSUED_CSV_FIELDS.map((f) => {
-        const s = select(`csvMap_${f}`, columns, mapping[f] === undefined ? '' : String(mapping[f]), { 'aria-label': `Columna de ${ISSUED_CSV_FIELD_LABELS[f]}`,
+        const s = select(`csvMap_${f}`, columns, mapping[f] === undefined ? '' : String(mapping[f]), { 'data-feedback-id': 'invoices.emitidas.csv.columna', 'data-feedback-label': 'Columna', 'aria-label': `Columna de ${ISSUED_CSV_FIELD_LABELS[f]}`,
           onchange: () => { if (s.value === '') delete mapping[f]; else mapping[f] = Number(s.value); storeMapping(header, mapping); paintPreview(); } });
         return field(`${ISSUED_CSV_FIELD_LABELS[f]}${ISSUED_CSV_REQUIRED.includes(f) ? ' *' : ''}`, s);
       }))));
@@ -509,12 +520,12 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
     const withErrors = plan.filter((p) => p.errors.length).length; const already = plan.filter(isRegistered).length;
     replace(previewHost,
       el('p', { class: 'hint', id: 'issuedCsvSummary' }, `${fresh.length} nueva${fresh.length === 1 ? '' : 's'} · ${withErrors} con errores · ${already} ya registrada${already === 1 ? '' : 's'}`),
-      renderList({ label: 'Facturas del CSV', rows: plan.slice(0, 200).map((p) => ({
+      fbRows(renderList({ label: 'Facturas del CSV', rows: plan.slice(0, 200).map((p) => ({
         id: p.key, title: `${p.full_number || '(sin número)'} · ${p.recipient_name ?? 'Sin destinatario'}`,
         meta: [p.issue_date ? shortDate(p.issue_date) : 'sin fecha', `${p.invoice_type}`, eur(p.totals.total), ...p.errors, ...p.warnings],
         chips: [isRegistered(p) ? el('span', { class: 'chip' }, 'Ya registrada') : p.errors.length ? el('span', { class: 'chip alert' }, 'Con errores') : el('span', { class: 'chip ok' }, 'Nueva'),
           p.warnings.length ? el('span', { class: 'chip warn' }, 'Avisos') : null].filter(Boolean) as HTMLElement[],
-      })) }));
+      })) }), { feedbackId: 'invoices.emitidas.csv.facturas', feedbackLabel: 'Facturas del CSV' }, { feedbackId: 'invoices.emitidas.csv.factura', feedbackLabel: 'Factura del CSV' }));
   }
 
   async function submit(): Promise<void> {
@@ -536,9 +547,10 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
           ...chunk.flatMap((p) => issuedImportOperations(p, { id: crypto.randomUUID(), uuid: () => crypto.randomUUID(), tool: options.fromChatgpt ? 'chatgpt_pdf' : 'google_sheet',
             files: staged.map((s) => ({ file_id: s.marker, original_filename: s.filename, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 })) }) as RowOperation[]),
         ];
-        if (!(await commitSafely(client, ops, `${done + chunk.length} de ${fresh.length} importadas.`))) { error.textContent = `Se importaron ${done} de ${fresh.length}. Revisa el aviso y vuelve a intentarlo: las ya importadas no se repiten.`; confirm.disabled = false; return; }
+        if (!(await commitSafely(client, ops, `${done + chunk.length} de ${fresh.length} importadas.`))) { usage.track('invoices.emitidas.importar_csv', 'error'); error.textContent = `Se importaron ${done} de ${fresh.length}. Revisa el aviso y vuelve a intentarlo: las ya importadas no se repiten.`; confirm.disabled = false; return; }
         done += chunk.length;
       }
+      usage.track('invoices.emitidas.importar_csv', 'success');
       guard.dirtyEditor = false;
       await closeSheet(true);
     } catch (err) { error.textContent = err instanceof Error ? err.message : String(err); confirm.disabled = false; }
@@ -547,7 +559,7 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
   textarea.addEventListener('input', () => { guard.dirtyEditor = true; load(textarea.value); });
   fileInput.addEventListener('change', async () => { const f = fileInput.files?.[0]; if (!f) return; textarea.value = await f.text(); load(textarea.value); });
   defaultSeries.addEventListener('input', () => paintPreview());
-  const template = el('button', { class: 'linkbtn', type: 'button', onclick: () => { textarea.value = ISSUED_CSV_TEMPLATE_HEADER.join(';') + '\n'; load(textarea.value); textarea.focus(); } }, 'Usar la plantilla');
+  const template = el('button', { 'data-feedback-id': 'invoices.emitidas.csv.plantilla', 'data-feedback-label': 'Usar la plantilla', class: 'linkbtn', type: 'button', onclick: () => { textarea.value = ISSUED_CSV_TEMPLATE_HEADER.join(';') + '\n'; load(textarea.value); textarea.focus(); } }, 'Usar la plantilla');
   openSheet({
     title: options.fromChatgpt ? 'Importar emitida desde ChatGPT' : 'Importar emitidas (CSV)',
     meta: 'Exporta tu Google Sheet como CSV, o copia las filas con la cabecera. Elige qué columna es cada dato: se recuerda para la próxima vez.',
@@ -556,7 +568,7 @@ export function openIssuedCsvImport(ctx: ViewContext, data: IssuedData, options:
       field('CSV', textarea), el('div', { class: 'btnrow' }, field('…o archivo .csv', fileInput), template),
       field('Serie por defecto', defaultSeries, 'Para las filas sin columna de serie. Si la serie no existe, se crea.'),
       mappingHost, previewHost, error),
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
+    foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.csv.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
     initialFocus: textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
@@ -572,23 +584,23 @@ interface LineInputs { row: HTMLElement; description: HTMLInputElement; net: HTM
 export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
   const { client } = ctx;
   const liveSeries = data.series.filter((s) => s.active && s.mode !== 'emision' && !s.closed_at).sort((a, b) => a.code.localeCompare(b.code));
-  const series = select('issuedSeries', [...liveSeries.map((s) => [s.code, s.description ? `${s.code} · ${s.description}` : s.code] as [string, string]), [NEW_SERIES, '+ Nueva serie…']], liveSeries[0]?.code ?? NEW_SERIES);
-  const newSeries = el('input', { type: 'text', id: 'issuedNewSeries', maxlength: '20', placeholder: 'A, R, 2026-A…' });
+  const series = select('issuedSeries', [...liveSeries.map((s) => [s.code, s.description ? `${s.code} · ${s.description}` : s.code] as [string, string]), [NEW_SERIES, '+ Nueva serie…']], liveSeries[0]?.code ?? NEW_SERIES, { 'data-feedback-id': 'invoices.emitidas.registrar.serie', 'data-feedback-label': 'Serie' });
+  const newSeries = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.serie_nueva', 'data-feedback-label': 'Serie nueva', type: 'text', id: 'issuedNewSeries', maxlength: '20', placeholder: 'A, R, 2026-A…' });
   const newSeriesField = field('Código de la serie nueva', newSeries);
   const syncSeries = () => { newSeriesField.hidden = series.value !== NEW_SERIES; };
   series.addEventListener('change', syncSeries); syncSeries();
-  const number = el('input', { type: 'text', id: 'issuedNumber', maxlength: '40', placeholder: '2026-0001' });
-  const issueDate = el('input', { type: 'date', id: 'issuedDate', value: todayIso() });
-  const operationDate = el('input', { type: 'date', id: 'issuedOperationDate' });
-  const type = select('issuedType', ISSUED_TYPES.map((t) => [t, `${t} · ${ISSUED_TYPE_LABELS[t]}`] as [string, string]), 'F1');
-  const rectKind = select('issuedRectKind', [['I', RECTIFICATION_KIND_LABELS.I!], ['S', RECTIFICATION_KIND_LABELS.S!]], 'I');
-  const rectNumber = el('input', { type: 'text', id: 'issuedRectified', placeholder: 'Número de la factura que rectifica' });
-  const rectReason = el('input', { type: 'text', id: 'issuedRectReason', maxlength: '500', placeholder: 'Motivo' });
+  const number = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.numero', 'data-feedback-label': 'Número', type: 'text', id: 'issuedNumber', maxlength: '40', placeholder: '2026-0001' });
+  const issueDate = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.fecha', 'data-feedback-label': 'Fecha de expedición', type: 'date', id: 'issuedDate', value: todayIso() });
+  const operationDate = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.fecha_operacion', 'data-feedback-label': 'Fecha de operación', type: 'date', id: 'issuedOperationDate' });
+  const type = select('issuedType', ISSUED_TYPES.map((t) => [t, `${t} · ${ISSUED_TYPE_LABELS[t]}`] as [string, string]), 'F1', { 'data-feedback-id': 'invoices.emitidas.registrar.tipo', 'data-feedback-label': 'Tipo' });
+  const rectKind = select('issuedRectKind', [['I', RECTIFICATION_KIND_LABELS.I!], ['S', RECTIFICATION_KIND_LABELS.S!]], 'I', { 'data-feedback-id': 'invoices.emitidas.registrar.tipo_rectificacion', 'data-feedback-label': 'Tipo de rectificación' });
+  const rectNumber = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.rectifica', 'data-feedback-label': 'Rectifica a', type: 'text', id: 'issuedRectified', placeholder: 'Número de la factura que rectifica' });
+  const rectReason = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.motivo', 'data-feedback-label': 'Motivo', type: 'text', id: 'issuedRectReason', maxlength: '500', placeholder: 'Motivo' });
   const rectFields = el('div', { id: 'issuedRectFields' }, el('div', { class: 'row2' }, field('Rectifica a', rectNumber), field('Tipo de rectificación', rectKind)), field('Motivo', rectReason));
-  const recipientName = el('input', { type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
-  const recipientTaxId = el('input', { type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
-  const description = el('input', { type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
-  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null);
+  const recipientName = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
+  const recipientTaxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
+  const description = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
+  const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null, { 'data-feedback-id': 'invoices.emitidas.registrar.categoria', 'data-feedback-label': 'Categoría de ingreso' });
   // IVA sugerido por categoría (ronda 26): valor de partida editable; solo cambia las líneas cuyo IVA no se ha tocado a mano.
   category.addEventListener('change', () => {
     const suggested = category.value ? INCOME_CATEGORY_VAT[category.value as IncomeCategory] : null;
@@ -596,9 +608,9 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     for (const l of lineInputs) if (!l.rate.dataset.touched) l.rate.value = String(suggested);
     preview();
   });
-  const withholding = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedWithholding', placeholder: '0' });
-  const sourceTotal = el('input', { type: 'text', inputmode: 'decimal', id: 'issuedSourceTotal', placeholder: 'Opcional: el total que figura en el documento' });
-  const files = el('input', { type: 'file', id: 'issuedFiles', accept: ACCEPT_ATTR, multiple: true });
+  const withholding = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedWithholding', placeholder: '0' });
+  const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'issuedSourceTotal', placeholder: 'Opcional: el total que figura en el documento' });
+  const files = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.documento', 'data-feedback-label': 'PDF de la factura', type: 'file', id: 'issuedFiles', accept: ACCEPT_ATTR, multiple: true });
   const totals = el('p', { class: 'hint', id: 'issuedPreviewTotals' });
   // «Extraer con ChatGPT» para emitidas: el prompt pide una fila CSV de la plantilla, que se pega en la importación con este PDF.
   const chatgpt = issuedChatgptSteps(async () => {
@@ -622,10 +634,10 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
 
   function addLine(): void {
     const n = lineInputs.length + 1;
-    const d = el('input', { type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, dataset: { line: 'description' } });
-    const net = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base de la línea ${n}`, dataset: { line: 'net' } });
+    const d = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.linea_concepto', 'data-feedback-label': 'Concepto de la línea', type: 'text', maxlength: '500', placeholder: 'Concepto', 'aria-label': `Concepto de la línea ${n}`, dataset: { line: 'description' } });
+    const net = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base de la línea ${n}`, dataset: { line: 'net' } });
     const suggested = category.value ? String(INCOME_CATEGORY_VAT[category.value as IncomeCategory]) : '10';
-    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], suggested, { 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
+    const rate = select('', [['10', 'IVA 10 %'], ['21', 'IVA 21 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %'], ['', 'Sin IVA']], suggested, { 'data-feedback-id': 'invoices.emitidas.registrar.linea_iva', 'data-feedback-label': 'IVA de la línea', 'aria-label': `IVA de la línea ${n}`, dataset: { line: 'rate' } });
     rate.addEventListener('change', () => { rate.dataset.touched = '1'; });
     const row = el('div', { class: 'row2 issued-line' }, d, net, rate);
     lineInputs.push({ row, description: d, net, rate });
@@ -646,8 +658,8 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     totals.textContent = `Base ${eur(t.base)} · IVA ${eur(t.quota)}${t.withholding ? ` · retenciones ${eur(t.withholding)}` : ''} · TOTAL ${eur(t.total)}`;
   }
 
-  const save = el('button', { class: 'primary', type: 'submit', id: 'saveIssued', form: 'newIssuedForm' }, 'Registrar factura');
-  const form = el('form', { id: 'newIssuedForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
+  const save = el('button', { 'data-feedback-id': 'invoices.emitidas.registrar.guardar', 'data-feedback-label': 'Registrar factura', class: 'primary', type: 'submit', id: 'saveIssued', form: 'newIssuedForm' }, 'Registrar factura');
+  const form = el('form', { 'data-feedback-id': 'invoices.emitidas.registrar.formulario', 'data-feedback-label': 'Datos de la emitida', id: 'newIssuedForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; preview(); }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
     const seriesCode = series.value === NEW_SERIES ? newSeries.value.trim() : series.value;
@@ -690,7 +702,9 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
         ...taxRows.map((r, position): RowOperation => ({ op: 'insert', table: ISSUED_TAX_LINES, id: crypto.randomUUID(), fields: { issued_invoice_id: id, position, tax: r.tax, rate: r.tax === 'iva' ? breakdown[position]?.rate ?? null : null, taxable_base: r.taxable_base, quota: r.quota, ...(r.tax === 'iva' ? { qualification: 'S1' } : {}) } })),
         ...staged.map((s, i): RowOperation => ({ op: 'insert', table: ISSUED_FILES, id: crypto.randomUUID(), fields: { issued_invoice_id: id, file_id: s.marker, original_filename: s.filename, page_order: i + 1, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 } })),
       ];
-      if (await commitSafely(client, ops, 'Factura emitida registrada.')) { guard.dirtyEditor = false; await closeSheet(true); }
+      const registered = await commitSafely(client, ops, 'Factura emitida registrada.');
+      usage.track('invoices.emitidas.registrar', registered ? 'success' : 'error');
+      if (registered) { guard.dirtyEditor = false; await closeSheet(true); }
     } catch (err) { error.textContent = err instanceof Error ? err.message : String(err); }
     save.disabled = false;
   } },
@@ -702,7 +716,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     el('div', { class: 'row2' }, field('Destinatario', recipientName), field('NIF', recipientTaxId)),
     field('Concepto', description),
     field('Categoría de ingreso', category),
-    el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { class: 'linkbtn', type: 'button', id: 'addIssuedLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
+    el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { 'data-feedback-id': 'invoices.emitidas.registrar.anadir_linea', 'data-feedback-label': 'Añadir línea', class: 'linkbtn', type: 'button', id: 'addIssuedLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
     el('div', { class: 'row2' }, field('Retención IRPF (importe)', withholding), field('Total del documento', sourceTotal)),
     totals,
     field('PDF de la factura', files, 'El documento que generó tu herramienta de facturación.'),
@@ -721,7 +735,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     title: 'Nueva emitida',
     meta: 'Registro de una factura expedida con otra herramienta. No se envía nada a la AEAT desde aquí.',
     body: form,
-    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
+    foot: [el('button', { 'data-feedback-id': 'invoices.emitidas.registrar.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
     initialFocus: number,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },

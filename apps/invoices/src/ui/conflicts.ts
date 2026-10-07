@@ -14,8 +14,8 @@ function show(field: string, value: unknown): string {
 
 /** Conflictos (§6.3) y lotes rechazados por el servidor, con los componentes del kit. */
 export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
-  const conflictHost = el('div', { id: 'conflictList' });
-  const rejectedHost = el('div', { id: 'rejectedList' });
+  const conflictHost = el('div', { 'data-feedback-id': 'invoices.conflictos.lista', 'data-feedback-label': 'Conflictos', 'data-feedback-ignore': '', id: 'conflictList' });
+  const rejectedHost = el('div', { 'data-feedback-id': 'invoices.conflictos.rechazados', 'data-feedback-label': 'Rechazados por el servidor', 'data-feedback-ignore': '', id: 'rejectedList' });
   const rejectedSection = el('section', { hidden: true }, el('div', { class: 'sectionlabel' }, 'Rechazados por el servidor'), rejectedHost);
   replace(
     main,

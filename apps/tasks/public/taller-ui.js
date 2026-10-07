@@ -36,7 +36,7 @@ if(typeof homeTaskRow==='function'){
 // Anillo de progreso en la esquina de cada tarjeta de proyecto.
 // Atajo a la paleta dentro del buscador.
 const searchbarBeforeTaller=searchbar;
-searchbar=function(){return searchbarBeforeTaller().replace(/(<input id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
+searchbar=function(){return searchbarBeforeTaller().replace(/(<input id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette data-feedback-id="tasks.paleta.abrir" data-feedback-label="Abrir la paleta de comandos" aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
 // Entrada de vista animada solo cuando cambia la pantalla, no en cada repintado; y marca de solo lectura.
 let tallerViewKey='';
 const renderBeforeTaller=render;

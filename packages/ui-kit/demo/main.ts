@@ -892,7 +892,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'card' }, fbPortal.element),
   fbPortalOut,
 );
-(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage };
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter };
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),

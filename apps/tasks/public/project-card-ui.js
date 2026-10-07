@@ -11,10 +11,10 @@ projectCard=function(p){
   // Mismo orden que antes: asa, fijar y el control invisible de ordenar por menú.
   const actions=[];
   if(!p.system){
-    actions.push(K.el('button',{class:'draghandle',type:'button',dataset:{projectDrag:p.id},'aria-label':`Arrastrar proyecto ${p.title}`,style:'touch-action:none'},'⠿'));
-    actions.push(K.el('button',{class:`iconbtn small pinbtn${pinned?' pinned':''}`,type:'button',dataset:{projectPin:p.id,tip:pinned?'Fijado arriba':'Fijar arriba'},'aria-pressed':String(pinned),'aria-label':pinned?`${p.title} está fijado en primera posición`:`Fijar ${p.title} en primera posición`},K.icon('pin',16)));
+    actions.push(K.el('button',{class:'draghandle',type:'button',dataset:{projectDrag:p.id},'aria-label':`Arrastrar proyecto ${p.title}`,style:'touch-action:none','data-feedback-id':'tasks.tarjeta_proyecto.arrastrar','data-feedback-label':'Arrastrar proyecto'},'⠿'));
+    actions.push(K.el('button',{class:`iconbtn small pinbtn${pinned?' pinned':''}`,type:'button',dataset:{projectPin:p.id,tip:pinned?'Fijado arriba':'Fijar arriba'},'aria-pressed':String(pinned),'data-feedback-id':'tasks.tarjeta_proyecto.fijar','data-feedback-label':'Fijar arriba','aria-label':pinned?`${p.title} está fijado en primera posición`:`Fijar ${p.title} en primera posición`},K.icon('pin',16)));
   }
-  actions.push(K.el('button',{class:'ghostcontrol',type:'button',dataset:{projectOrder:p.id},'aria-label':`Ordenar proyecto ${p.title}`,tabindex:'-1'},'↕'));
+  actions.push(K.el('button',{class:'ghostcontrol',type:'button',dataset:{projectOrder:p.id},'aria-label':`Ordenar proyecto ${p.title}`,tabindex:'-1','data-feedback-id':'tasks.tarjeta_proyecto.ordenar','data-feedback-label':'Ordenar proyecto'},'↕'));
   const card=K.renderProjectCard({
     id:p.id,title:p.title,
     meta:`${count} pendientes · ${pr}%${p.status==='paused'?' · pausado':''}`,
@@ -23,7 +23,7 @@ projectCard=function(p){
     urgency:urgency==='normal'?undefined:urgency,
     chips,
     budget:cost||budget?{spent:cost,total:budget,format:money}:null,
-    attrs:{'data-drop-project':p.id},
+    attrs:{'data-drop-project':p.id,'data-feedback-id':'tasks.tarjeta_proyecto.abrir','data-feedback-label':'Abrir proyecto'},
     actions,
   });
   // El CSS del kit está acotado a `.ikisai-kit`; el envoltorio es el elemento de la rejilla y la tarjeta lo llena (misma altura por fila).
