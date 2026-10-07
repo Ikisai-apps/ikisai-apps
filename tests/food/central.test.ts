@@ -35,7 +35,7 @@ test.before(async () => {
 
 test('indicadores para Central: menús sin validar en 30 días y listas de la compra abiertas, solo agregados', async () => {
   const before = await kpis();
-  assert.deepEqual(Object.keys(before).sort(), ['food.menus_unvalidated_30d', 'food.shopping_lists_open']);
+  assert.deepEqual(Object.keys(before).sort(), ['food.events_without_menu_30d', 'food.menus_unvalidated_30d', 'food.shopping_lists_open']);
   const unvalidated = () => kpis().then((k) => k['food.menus_unvalidated_30d']! - before['food.menus_unvalidated_30d']!);
   const openLists = () => kpis().then((k) => k['food.shopping_lists_open']! - before['food.shopping_lists_open']!);
 
@@ -64,6 +64,30 @@ test('indicadores para Central: menús sin validar en 30 días y listas de la co
   assert.equal(row.link, 'https://food.ikisai.com/#/menus');
   assert.equal(Number((await app.t.db.query<{ n: number }>(
     `select count(*) n from core.allowed_reads where app = 'central' and name = 'food.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
+});
+
+test('indicadores para Central: eventos sin menú en los próximos 30 días, con la regla de «pide menú» de la app', async () => {
+  const base = (await kpis())['food.events_without_menu_30d']!;
+  const without = async () => (await kpis())['food.events_without_menu_30d']! - base;
+  const reservation = (event: string) => `(select reservation_id from booking.events where id = '${event}')`;
+
+  const soon = await seedBookingEvent(app, { title: 'Retiro sin menú', start: day(3), end: day(5) });
+  const today = await seedBookingEvent(app, { title: 'Empieza hoy sin menú', start: day(0), end: day(1) });
+  await seedBookingEvent(app, { title: 'Retiro lejano sin menú', start: day(40), end: day(42) });
+  const cancelled = await seedBookingEvent(app, { title: 'Cancelado', start: day(8), end: day(9) });
+  await app.t.db.query(`update booking.reservations set status = 'cancelada' where id = ${reservation(cancelled)}`);
+  const noMeals = await seedBookingEvent(app, { title: 'Sin comidas', start: day(9), end: day(10) });
+  await app.t.db.query(`update booking.reservations set requires_meals = false where id = ${reservation(noMeals)}`);
+
+  // Cuentan el cercano y el que empieza hoy; ni el lejano, ni el cancelado, ni el que no lleva comidas.
+  assert.equal(await without(), 2);
+  await createMenu(soon);
+  assert.equal(await without(), 1);
+  await createMenu(today);
+  assert.equal(await without(), 0);
+  const row = (await app.t.db.query<Record<string, unknown>>(`select * from food.central_kpi_projection where kpi = 'food.events_without_menu_30d'`)).rows[0]!;
+  assert.equal(row.link, 'https://food.ikisai.com/#/eventos');
+  assert.equal(row.direction, 'down');
 });
 
 test('campos de archivo (§3.9): foto y miniatura de la receta operativas; recogida de huérfanos activada', async () => {
