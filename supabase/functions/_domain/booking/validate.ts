@@ -78,6 +78,10 @@ export const FIELDS: Record<string, Record<string, Spec>> = {
     briefing_received: { kind: 'bool' },
     internal_notes: text(LONG),
     archived_at: { kind: 'timestamp' },
+    ses_enabled: { kind: 'bool' },
+    ses_disabled_reason: choice(['uso_privado', 'prueba', 'otro']),
+    ses_disabled_note: text(300),
+    collect_guest_data: { kind: 'bool' },
   },
   [TABLES.finance]: {
     budget_amount: { kind: 'money' },
@@ -278,6 +282,11 @@ FIELDS[TABLES.proposalLines] = {
   unit_amount: { kind: 'number' },
   discount_pct: { kind: 'number' },
   position: { kind: 'number' },
+};
+
+FIELDS[TABLES.sesSettings] = {
+  environment: choice(['pre', 'prod'], false),
+  paused: { kind: 'bool' },
 };
 
 /** Columna de enlace con el padre: se escribe en el alta y no se puede cambiar después. */
