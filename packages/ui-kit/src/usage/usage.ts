@@ -13,6 +13,7 @@
  * Nunca bloquea ni lanza: si algo falla, se reintenta más tarde. `clear(userId)` al cerrar sesión (`onSessionEnd`).
  */
 import type { FeedbackApi } from '../feedback/client.ts';
+import { rawRoute } from '../feedback/context.ts';
 import { showUsageNotice } from './notice.ts';
 
 export type UsageContext = 'production' | 'qa' | 'reviewer';
@@ -22,7 +23,11 @@ export interface UsageTotals {
   sessionsExposed: number; sessionsActivated: number; sessionsSucceeded: number; repeatedAttempts: number;
 }
 
-export interface UsageItem extends UsageTotals { day: string; featureId: string; generation: number; context: UsageContext }
+export interface UsageItem extends UsageTotals {
+  day: string; featureId: string; generation: number; context: UsageContext;
+  /** Ruta real (sin consulta) donde se vio o usó por última vez: el revisor la usa para «Ir al sitio» (#238). */
+  route?: string;
+}
 
 interface UsageRecord extends UsageItem { key: string; userId: string; app: string; dirty: boolean }
 
@@ -179,6 +184,7 @@ export function createUsage(options: UsageOptions): Usage {
       const key = `${user}|${day}|${featureId}|${ctx}`;
       const r = records.get(key) ?? { key, userId: user, app: options.app, day, featureId, generation: options.generation?.(featureId) ?? 1, context: ctx, ...ZERO, dirty: true };
       for (const [k, v] of Object.entries(change) as [keyof UsageTotals, number][]) r[k] = Math.min(MAX, r[k] + v);
+      r.route = rawRoute();
       r.dirty = true;
       records.set(key, r);
       scheduleSave();
@@ -272,8 +278,8 @@ export function createUsage(options: UsageOptions): Usage {
       if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await save(); }
       const dirty = [...records.values()].filter((r) => r.dirty && r.userId === user);
       if (!dirty.length) return;
-      const items: UsageItem[] = dirty.map(({ day, featureId, generation, context: ctx, exposures, activations, successes, errors, sessionsExposed, sessionsActivated, sessionsSucceeded, repeatedAttempts }) =>
-        ({ day, featureId, generation, context: ctx, exposures, activations, successes, errors, sessionsExposed, sessionsActivated, sessionsSucceeded, repeatedAttempts }));
+      const items: UsageItem[] = dirty.map(({ day, featureId, generation, context: ctx, exposures, activations, successes, errors, sessionsExposed, sessionsActivated, sessionsSucceeded, repeatedAttempts, route }) =>
+        ({ day, featureId, generation, context: ctx, exposures, activations, successes, errors, sessionsExposed, sessionsActivated, sessionsSucceeded, repeatedAttempts, ...(route ? { route } : {}) }));
       try {
         await options.api('/usage/batch', { method: 'POST', json: { deviceId: usageDeviceId(), items } });
       } catch { return; /* sin red o servidor caído: se reintenta con el próximo disparador */ }

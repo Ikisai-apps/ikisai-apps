@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.18.1: pista de ruta (`route`) en `usage/batch` para «Ir al sitio» del Revisor › Uso.
 - v0.18.0 (tanda 30): «Sugerencias y QA» en el panel del lanzador (`center`), `review`/`feedback` aceptan los objetos tal cual y guía de adopción compilable en `demo/adopcion.ts`.
 - v0.17.0 (tanda 29): uso semántico de funcionalidades: generador del catálogo, recolector con totales diarios e IndexedDB, aviso al equipo y Revisor › Uso (pestañas «Incidencias | Uso», tarjeta con matriz y decisiones). Alineado con #223 (rutas `usage*`). Pendiente de Core: lanzar el generador en la publicación antes de `usage_catalog_ingest.py`.
 - v0.16.0 (tanda 28): modo «Revisor de QA» (interruptor del dueño en el lanzador, lista lateral de todas las apps, ir al sitio con `?fb=` y tarjeta con aprobar, descartar, unir, funciona y sigue fallando) y `routeRaw` en el contexto. Pendiente de que Core publique `review=true`, `approve`, `merge` y `routeRaw` en la Edge.
