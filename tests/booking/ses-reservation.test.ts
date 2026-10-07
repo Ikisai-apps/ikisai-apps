@@ -153,8 +153,24 @@ test('ses · aviso a Tasks a las 12 h del pago sin comunicar: una vez, idempoten
   assert.match(mine[1]!.due, /^\d{4}-\d{2}-\d{2}$/);
   assert.ok(mine[1]!.title.length <= 120 && mine[1]!.note.length <= 1000);
   assert.match(mine[1]!.external_ref, /:deadline$/);
+  assert.ok((await app.t.rpc('core_service_actor', { p_name: 'booking' })), 'la cuenta de servicio existe antes de pedir a Tasks');
   const before = tasks.length;
   await tick();
   assert.equal(tasks.filter((r) => r.external_url.endsWith(late)).length, 2, 'una sola vez por reserva y momento legal');
   assert.ok(tasks.length >= before);
+});
+
+test('planificador · sondas: SES y Calendar solo despiertan la Edge si hay trabajo', async () => {
+  const ticks = (await app.t.db.query<{ route: string; probe: string }>(`select route, probe from core.scheduled_ticks where app = 'booking' order by route`)).rows;
+  assert.deepEqual(ticks, [{ route: 'calendar/tick', probe: 'booking.calendar_has_work' }, { route: 'ses/tick', probe: 'booking.ses_has_work' }]);
+  const has = async (fn: string) => (await app.t.db.query<{ v: boolean }>(`select ${fn}() v`)).rows[0]!.v;
+  await app.t.db.query(`update booking.ses_communications set next_attempt_at = now() + interval '1 hour' where status in ('preparada','en_proceso','error')`);
+  await app.t.db.query(`insert into booking.ses_deadline_notices (reservation_id, legal_start_at) select f.id, f.payment_registered_at from booking.reservation_finance f where f.payment_registered_at is not null on conflict do nothing`);
+  assert.equal(await has('booking.ses_has_work'), false);
+  await app.t.db.query(`update booking.ses_communications set next_attempt_at = now() - interval '1 second' where id = (select id from booking.ses_communications where status in ('preparada','en_proceso','error') limit 1)`);
+  assert.equal(await has('booking.ses_has_work'), true);
+  await app.t.db.query(`update booking.calendar_sync_jobs set status = 'done'`);
+  assert.equal(await has('booking.calendar_has_work'), false);
+  await confirmed('Persona Calendario');
+  assert.equal(await has('booking.calendar_has_work'), true, 'confirmar una reserva encola su trabajo de calendario');
 });

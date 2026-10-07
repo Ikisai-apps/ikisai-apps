@@ -1,5 +1,5 @@
 /** Ikisai Booking · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
-import { createApp, createSupabase, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { createApp, createSupabase, ensureServiceActor, fail, messageFor, type AppConfig, type AppRoute, type CommitResult, type Operation, type RequestContext, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_domain/booking/mod.ts';
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
@@ -33,8 +33,19 @@ const sesDeps = (supabase: Supabase, ses: BookingSesConfig): SesDeps => ({
   invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args }),
   transport: ses.transport ?? createSesTransport(),
   env: ses.env ?? denoEnv,
-  notifyTasks: ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv),
+  notifyTasks: withServiceActor(supabase, ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv)),
 });
+
+/** Antes de pedir nada a Tasks, la cuenta de servicio `booking` debe existir (Tasks escribe como `core.service_actor('booking')`). */
+function withServiceActor(supabase: Supabase, notify: SesDeps['notifyTasks']): SesDeps['notifyTasks'] {
+  if (!notify) return undefined;
+  let ready: Promise<unknown> | null = null;
+  return async (request) => {
+    ready ??= ensureServiceActor(supabase, 'booking').catch((error) => { ready = null; throw error; });
+    try { await ready; } catch { return false; }
+    return notify(request);
+  };
+}
 
 export interface BookingCalendarConfig {
   /** Adaptador de calendario. Sin él la integración está apagada (`health: 'not_configured'`) y nada se marca como sincronizado. */
