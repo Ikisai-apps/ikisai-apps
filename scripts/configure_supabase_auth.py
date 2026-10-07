@@ -9,6 +9,13 @@ FIELDS = {
   'site_url': 'https://' + APPS['tasks']['domain'],
   'uri_allow_list': ','.join(f"https://{host}/**" for app in APPS.values() for host in [app['domain'], *app.get('extra_domains', [])]),
   'disable_signup': True,
+  # «¿Has olvidado tu contraseña?»: el enlace vuelve a la app con token_hash (la app usa rutas con # y no puede recibir el fragmento de Auth).
+  'mailer_subjects_recovery': 'Cambia tu contraseña de Ikisai',
+  'mailer_templates_recovery_content': (
+    '<p>Hola:</p><p>Alguien ha pedido cambiar la contraseña de tu cuenta de Ikisai. Si has sido tú, pulsa el enlace (vale una hora y una sola vez):</p>'
+    '<p><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">Elegir una contraseña nueva</a></p>'
+    '<p>Si no lo has pedido tú, ignora este correo: tu contraseña no cambia.</p>'),
+  'mailer_otp_exp': 3600,
 }
 
 

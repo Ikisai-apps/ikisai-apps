@@ -11,6 +11,8 @@ export interface FakeSupabase {
   loseNextCommitReply(): void;
   storageOffline(value: boolean): void;
   storage: Map<string, Uint8Array>;
+  /** Último enlace de recuperación «enviado» por correo: {email, tokenHash, redirectTo}. */
+  lastRecovery(): { email: string; tokenHash: string; redirectTo: string } | null;
   anonKey: string;
   serviceKey: string;
   url: string;
@@ -25,6 +27,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
   const tokens = new Map<string, string>(); // token -> userId
   const refreshTokens = new Map<string, string>(); // refresh -> userId
   const magicLinks = new Map<string, string>(); // hashed_token -> userId
+  let recovery: { email: string; tokenHash: string; redirectTo: string } | null = null;
   const storage = new Map<string, Uint8Array>();
   let loseReply = false;
   let storageDown = false;
@@ -85,6 +88,11 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
       if (!userId) return Response.json({ message: 'not found' }, { status: 404 });
       const hashed = `hash-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId);
       return Response.json({ id: userId, email: body.email, hashed_token: hashed });
+    }
+    if (route.pathname === '/auth/v1/recover' && method === 'POST') {
+      const userId = [...users.entries()].find(([, email]) => email === String(body.email ?? '').toLowerCase())?.[0];
+      if (userId) { const hashed = `rec-${Math.random().toString(36).slice(2)}`; magicLinks.set(hashed, userId); recovery = { email: body.email, tokenHash: hashed, redirectTo: route.searchParams.get('redirect_to') ?? '' }; }
+      return Response.json({});
     }
     if (route.pathname === '/auth/v1/verify' && method === 'POST') {
       const userId = magicLinks.get(body.token_hash);
@@ -157,6 +165,7 @@ export function createFakeSupabase(t: TestDatabase, users: Map<string, string> =
     tokenFor: mockToken,
     loseNextCommitReply: () => { loseReply = true; },
     storageOffline: (value) => { storageDown = value; },
+    lastRecovery: () => recovery,
     storage, anonKey, serviceKey, url,
   };
 }

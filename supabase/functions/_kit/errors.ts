@@ -54,6 +54,8 @@ export const MESSAGES: Record<string, string> = {
   FEEDBACK_CONTEXT_TOO_LARGE: 'El contexto técnico es demasiado grande.',
   FEEDBACK_ATTACHMENT_INVALID: 'Alguna imagen no se ha subido bien. Quítala y vuelve a añadirla.',
   OUT_OF_SCOPE: 'No se encontró el elemento.',
+  RECOVERY_INVALID: 'El enlace para cambiar la contraseña no es válido o ha caducado. Pide otro.',
+  RECOVERY_DISABLED: 'La recuperación por correo aún no está disponible. Pide una contraseña temporal a quien administra Ikisai.',
   LINK_EXPIRED: 'El enlace ha caducado. Pide que te lo amplíen o te envíen uno nuevo.',
   NO_SSO: 'No hay una sesión de Ikisai abierta en este dispositivo.',
   CONFIRMATION_REQUIRED: 'Esta operación de un agente necesita la aprobación de una persona.',

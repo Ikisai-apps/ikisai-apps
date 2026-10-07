@@ -22,6 +22,10 @@ export interface AuthService {
   refresh(body: unknown): Promise<SessionTokens>;
   logout(token: string, everywhere?: boolean): Promise<void>;
   changePassword(token: string, identity: Identity, body: unknown): Promise<{ changed: true }>;
+  /** «¿Has olvidado tu contraseña?»: pide el correo de recuperación. Responde igual exista o no la cuenta. */
+  recover(body: unknown, redirectTo: string): Promise<{ sent: true }>;
+  /** Canjea el enlace del correo (token_hash de un solo uso) y fija la contraseña nueva; devuelve una sesión. */
+  resetPassword(body: unknown): Promise<SessionTokens & { userId: string }>;
 }
 
 export interface SessionTokens {
@@ -124,5 +128,37 @@ export function createAuth(supabase: Supabase): AuthService {
     return { changed: true };
   }
 
-  return { identity, login, refresh, logout, changePassword };
+  async function recover(body: any, redirectTo: string): Promise<{ sent: true }> {
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
+    // Nunca se revela si la cuenta existe: cualquier respuesta de Auth (salvo la red caída) termina en «enviado».
+    try {
+      await supabase.remote('/auth/v1/recover?redirect_to=' + encodeURIComponent(redirectTo), { method: 'POST', body: { email } });
+    } catch (error: any) {
+      if (error?.code === 'BACKEND_UNAVAILABLE') throw error;
+    }
+    return { sent: true };
+  }
+
+  async function resetPassword(body: any): Promise<SessionTokens & { userId: string }> {
+    const tokenHash = typeof body?.tokenHash === 'string' ? body.tokenHash : '';
+    if (!tokenHash || tokenHash.length > 512) fail(400, 'RECOVERY_INVALID', messageFor('RECOVERY_INVALID'));
+    if (typeof body?.password !== 'string' || body.password.length < 10 || body.password.length > 256) {
+      fail(422, 'INVALID_PASSWORD', 'La nueva contraseña debe tener al menos 10 caracteres.');
+    }
+    let result: any;
+    try {
+      result = await supabase.remote('/auth/v1/verify', { method: 'POST', body: { type: 'recovery', token_hash: tokenHash } });
+    } catch {
+      fail(400, 'RECOVERY_INVALID', messageFor('RECOVERY_INVALID'));
+    }
+    const session = tokens(result);
+    await supabase.remote('/auth/v1/user', { method: 'PUT', bearer: session.token, body: { password: body.password } });
+    // Fuera las demás sesiones: quien tuviera la contraseña antigua deja de estar dentro.
+    await supabase.remote('/auth/v1/logout?scope=others', { method: 'POST', bearer: session.token, raw: true });
+    const who = await identity(session.token);
+    return { ...session, userId: who.id };
+  }
+
+  return { identity, login, refresh, logout, changePassword, recover, resetPassword };
 }

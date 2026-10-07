@@ -35,6 +35,8 @@ export interface AppConfig extends SupabaseConfig {
   mcpTools?: McpTool[];
   /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
   admin?: boolean;
+  /** Recuperación de contraseña por correo; sin indicarlo, IKISAI_PASSWORD_RECOVERY=1. */
+  passwordRecovery?: boolean;
   /** Almacenamiento: R2 y proveedor por defecto. Sin indicarlo, se lee de los secretos R2_* e IKISAI_STORAGE_PROVIDER. */
   storage?: { r2?: R2Config | null; defaultProvider?: ProviderName };
   /** Solo central-api: worker del feedback (`worker/feedback/tick`), que envía a Tasks lo operativo y copia el estado de las tareas. */
@@ -294,6 +296,23 @@ export function createApp(config: AppConfig): AppHandler {
         }
       }
       if (path === '/api/v1/auth/refresh' && request.method === 'POST') return json(await auth.refresh(await readJson()));
+      // «¿Has olvidado tu contraseña?» (contrato §3.4): se enciende con IKISAI_PASSWORD_RECOVERY=1 cuando haya correo propio.
+      const recoveryOn = config.passwordRecovery ?? ((globalThis as any).Deno?.env?.get?.('IKISAI_PASSWORD_RECOVERY') === '1');
+      if (path === '/api/v1/auth/config' && request.method === 'GET') return json({ passwordRecovery: recoveryOn });
+      if (path === '/api/v1/auth/recover' && request.method === 'POST') {
+        if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
+        // El correo vuelve a la propia app: https://<app>/?token_hash=…&type=recovery (plantilla de Auth).
+        const target = origin && config.origins.includes(origin) ? origin : config.origins[0]!;
+        return json(await auth.recover(await readJson(), target + '/'));
+      }
+      if (path === '/api/v1/auth/reset' && request.method === 'POST') {
+        if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
+        const out = await auth.resetPassword(await readJson());
+        await sso.revokeUser(out.userId).catch(() => undefined);
+        const pass = await sso.issueForUser(out.userId).catch(() => null);
+        const { userId: _ignored, ...tokens } = out;
+        return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
+      }
       // Rutas de sistema para workers (planificador externo): clave compartida en IKISAI_WORKER_KEY, sin sesión de usuario.
       if (path.startsWith('/api/v1/worker/')) {
         const provided = request.headers.get('x-ikisai-worker-key');
