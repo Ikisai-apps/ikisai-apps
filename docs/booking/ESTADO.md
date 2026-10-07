@@ -59,6 +59,9 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 
 - **SES.HOSPEDAJES, paso 1 (§17):** interruptores por reserva (migración 0440; bloque «Registro de viajeros» en la ficha, modos `ses`/`operativo`/`ninguno` en huéspedes y portales), ajuste global PRE/PROD y «Pausar envíos» (`#/ses`, solo owner), y cliente SES-1 (`_domain/booking/ses/`, validado contra los XSD oficiales; transporte con el intermedio de la FNMT; `POST /api/v1/worker/ses/ping` para comprobar TLS en la Edge). **SES-2 (migración 0441):** «Comunicar reserva a SES» con botón cuando hay pago registrado (`payment_registered_at` = momento legal), estados (preparada, en proceso, aceptada con código, rechazada con el texto de SES, anulada, error con reintento), pausa, anulación, aviso de cambio de fechas o personas, avisos de 12/18/24 h en la ficha y en Inicio, y aviso a Tasks (`booking.ses_deadline`, prioridad `critical`) a las 12 h; `POST /api/v1/worker/ses/tick` para el planificador. Pendiente: crear la cuenta de servicio con `ensureServiceActor` cuando esté en el kit; SES-3 (llegada y parte de viajeros).
 
+- **Piloto del feedback (fase 3):** kit 0.16 adoptado en la cáscara (formulario, revisor, «Señalar para comentar» en el lanzador, «Sugerencias y QA» en la cabecera, borrado al cerrar sesión); 335 `data-feedback-id` estables (`booking.<pantalla>.<sección>.<elemento>`) con su etiqueta en todos los controles con significado, `data-feedback-ignore` en contactos, documentos, firmas y códigos; prueba del recorrido del §27 y prueba estática de ids.
+- **Facturar desde una reserva:** lectura `booking.reservation_invoice_source` para Finance (§19).
+
 ## Pendiente
 
 - **Recorrido de aceptación en producción** por el usuario, en PC y Android (`docs/booking/ACEPTACION.md`).
