@@ -59,7 +59,7 @@ test('el menú abierto y sus grupos plegados sobreviven a una sincronización y 
   await expect(a.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('un área creada en otro dispositivo aparece en la tira sin recargar', async () => {
+test('un área creada en otro dispositivo aparece en la tira sin recargar @smoke', async () => {
   await a.evaluate(() => { (window as any).__sinRecargar = true; });
   const tabs = () => a.locator('.tabstrip .tabpill[data-tab]');
   const count = await tabs().count();
@@ -77,7 +77,7 @@ test('un área creada en otro dispositivo aparece en la tira sin recargar', asyn
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 
-test('la marca de la cabecera abre el lanzador de apps con Tasks marcada como «Aquí»', async () => {
+test('la marca de la cabecera abre el lanzador de apps con Tasks marcada como «Aquí» @smoke', async () => {
   await a.locator('#appLauncher').click();
   await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toHaveCount(1);
   await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toContainText(/Tasks/);
