@@ -1,5 +1,6 @@
 /** Compras (API.md §6.3, §9.3): las líneas como artículos comprados, por categoría, destino, proveedor o lista; todo calculado en local. */
 import { el, icon, renderList, replace, type ListRowSpec } from '@ikisai/ui-kit';
+import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
 import { categoryLabel } from '../app/client.ts';
 import { currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, statusChipClass, statusText, type Mirror, type RangeKind } from '../app/data.ts';
@@ -10,6 +11,14 @@ import type { ViewMount } from './shell.ts';
 
 type Tab = 'category' | 'target' | 'supplier' | 'items';
 
+/** Pestañas de la vista: ids literales para el catálogo de «Uso». */
+const TAB_MARKS: Record<string, Record<string, string>> = {
+  category: { 'data-feedback-id': 'invoices.compras.vista.categoria', 'data-feedback-label': 'Categoría' },
+  target: { 'data-feedback-id': 'invoices.compras.vista.destino', 'data-feedback-label': 'Destino' },
+  supplier: { 'data-feedback-id': 'invoices.compras.vista.proveedor', 'data-feedback-label': 'Proveedor' },
+  items: { 'data-feedback-id': 'invoices.compras.vista.articulos', 'data-feedback-label': 'Artículos' },
+};
+
 export const mountPurchases: ViewMount = (ctx) => {
   const { main, client } = ctx;
   let mirror: Mirror | null = null;
@@ -19,24 +28,24 @@ export const mountPurchases: ViewMount = (ctx) => {
   let query = '';
   let groupFilter: Partial<PurchaseFilters> = {};
 
-  const rangeKind = el('select', { 'aria-label': 'Tipo de periodo', onchange: () => { setRange(); } }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'month' }, 'Mes'), el('option', { value: 'year' }, 'Año'));
-  const year = el('input', { type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
-  const part = el('select', { 'aria-label': 'Periodo', onchange: () => setRange() });
-  const validatedToggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: true, id: 'onlyValidated', onchange: (e: Event) => { validatedOnly = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo validadas'));
-  const search = el('input', { type: 'search', placeholder: 'Artículo, proveedor, código', 'aria-label': 'Buscar compras', oninput: () => { query = search.value; paint(); } });
+  const rangeKind = el('select', { 'data-feedback-id': 'invoices.compras.periodo.tipo', 'data-feedback-label': 'Tipo de periodo', 'aria-label': 'Tipo de periodo', onchange: () => { setRange(); } }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'month' }, 'Mes'), el('option', { value: 'year' }, 'Año'));
+  const year = el('input', { 'data-feedback-id': 'invoices.compras.periodo.ano', 'data-feedback-label': 'Año', type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
+  const part = el('select', { 'data-feedback-id': 'invoices.compras.periodo.parte', 'data-feedback-label': 'Periodo', 'aria-label': 'Periodo', onchange: () => setRange() });
+  const validatedToggle = el('label', { class: 'check' }, el('input', { 'data-feedback-id': 'invoices.compras.filtros.solo_validadas', 'data-feedback-label': 'Solo validadas', type: 'checkbox', checked: true, id: 'onlyValidated', onchange: (e: Event) => { validatedOnly = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo validadas'));
+  const search = el('input', { 'data-feedback-id': 'invoices.compras.filtros.buscar', 'data-feedback-label': 'Buscar compras', type: 'search', placeholder: 'Artículo, proveedor, código', 'aria-label': 'Buscar compras', oninput: () => { query = search.value; paint(); } });
   // Filtros del handoff: destino (retiro = booking/event, ingrediente = food/ingredient, …), tipo de artículo y «sin asignar».
   let targetFilter = '';
   let itemTypeFilter = '';
   let unassignedFilter = false;
   const TARGET_OPTIONS: Array<[string, string]> = [['', 'Cualquier destino'], ['booking:event', 'Retiro (evento de Reservas)'], ['booking:reservation', 'Reserva'], ['food:ingredient', 'Ingrediente'], ['food:equipment', 'Maquinaria'], ['tasks:project', 'Proyecto de Tareas'], ['tasks:task', 'Tarea'], ['tasks:area', 'Área de Tareas'], ['general:investment', 'Inversión (general)'], ['general:operating_expense', 'Gasto de explotación (general)']];
-  const targetSelect = el('select', { id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
-  const itemTypeSelect = el('select', { id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
+  const targetSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.destino', 'data-feedback-label': 'Filtrar por destino', id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
+  const itemTypeSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.tipo_articulo', 'data-feedback-label': 'Filtrar por tipo de artículo', id: 'purchaseItemType', 'aria-label': 'Filtrar por tipo de artículo', onchange: () => { itemTypeFilter = itemTypeSelect.value; paint(); } },
     el('option', { value: '' }, 'Cualquier artículo'), ...Object.entries(ITEM_TYPE_LABELS).map(([v, l]) => el('option', { value: v }, l)));
-  const unassignedToggle = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
-  const tabs = el('div', { class: 'segmented', role: 'tablist' }, ...([['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
-    el('button', { type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; paint(); } }, label)));
-  const host = el('div', { id: 'purchases' });
-  const footer = el('div', { class: 'totals-foot', id: 'purchaseTotals' });
+  const unassignedToggle = el('label', { class: 'check' }, el('input', { 'data-feedback-id': 'invoices.compras.filtros.sin_asignar', 'data-feedback-label': 'Solo sin asignar', type: 'checkbox', id: 'onlyUnassigned', onchange: (e: Event) => { unassignedFilter = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo sin asignar'));
+  const tabs = el('div', { 'data-feedback-id': 'invoices.compras.vista', 'data-feedback-label': 'Vista', class: 'segmented', role: 'tablist' }, ...([['category', 'Categoría'], ['target', 'Destino'], ['supplier', 'Proveedor'], ['items', 'Artículos']] as Array<[Tab, string]>).map(([value, label]) =>
+    el('button', { ...TAB_MARKS[value], type: 'button', role: 'tab', class: value === tab ? 'on' : '', dataset: { tab: value }, onclick: () => { tab = value; groupFilter = {}; paint(); } }, label)));
+  const host = el('div', { id: 'purchases', 'data-feedback-id': 'invoices.compras.resultados', 'data-feedback-label': 'Resultados' });
+  const footer = el('div', { 'data-feedback-id': 'invoices.compras.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '', class: 'totals-foot', id: 'purchaseTotals' });
 
   function fillParts(): void {
     const kind = rangeKind.value as RangeKind;
@@ -71,7 +80,7 @@ export const mountPurchases: ViewMount = (ctx) => {
       { range, validatedOnly, query, ...(targetApp ? { targetApp, targetKind } : {}), ...(itemTypeFilter ? { itemType: itemTypeFilter } : {}), ...(unassignedFilter ? { unassignedOnly: true } : {}), ...groupFilter });
     replace(footer, el('span', null, rangeLabel(range)), el('strong', null, `Base ${eur(result.total_base)}`), el('span', null, `asignado ${eur(result.total_allocated)}`), el('span', { class: result.total_unallocated > 0 ? 'alert' : '' }, `sin asignar ${eur(result.total_unallocated)}`));
     if (Object.keys(groupFilter).length) {
-      replace(host, el('div', { class: 'banner info' }, el('span', null, 'Filtro aplicado desde la agrupación.'), el('button', { class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));
+      replace(host, el('div', { class: 'banner info' }, el('span', null, 'Filtro aplicado desde la agrupación.'), el('button', { 'data-feedback-id': 'invoices.compras.filtros.quitar_agrupacion', 'data-feedback-label': 'Quitar filtro', class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));
       return;
     }
     if (tab === 'items') { replace(host, renderItems(result)); return; }
@@ -81,14 +90,14 @@ export const mountPurchases: ViewMount = (ctx) => {
 
   function renderGroups(groups: PurchaseGroup[], kind: Tab, result: PurchaseItemsResult): HTMLElement {
     if (!result.items.length) return el('div', { class: 'empty' }, el('strong', null, 'Nada que mostrar'), validatedOnly ? 'No hay facturas validadas en este periodo. Quita «Solo validadas» para ver también las pendientes.' : 'No hay compras en este periodo.');
-    return renderList({ label: 'Agrupación', rows: groups.map((g): ListRowSpec => ({
+    return fbRows(renderList({ label: 'Agrupación', rows: groups.map((g): ListRowSpec => ({
       id: g.key,
       title: kind === 'category' ? (g.key === 'sin_categoria' ? 'Sin categoría' : categoryLabel(g.key.split(':')[0]) + (g.key.endsWith(':inv') ? ' (inversión)' : '')) : g.label,
       meta: [`${g.count} ${g.count === 1 ? 'artículo' : 'artículos'}`],
       chips: [el('span', { class: g.key === 'unassigned' ? 'chip alert' : 'chip' }, eur(g.base))],
       onClick: () => { groupFilter = filterFor(kind, g); tab = 'items'; paint(); },
       label: `Ver ${g.label}`,
-    })) });
+    })) }), { feedbackId: 'invoices.compras.resultados.grupos', feedbackLabel: 'Agrupación' }, { feedbackId: 'invoices.compras.resultados.grupo', feedbackLabel: 'Grupo' });
   }
 
   function filterFor(kind: Tab, g: PurchaseGroup): Partial<PurchaseFilters> {
@@ -100,7 +109,7 @@ export const mountPurchases: ViewMount = (ctx) => {
   }
 
   function renderItems(result: PurchaseItemsResult): HTMLElement {
-    return renderList({ label: 'Artículos comprados', empty: { title: 'Sin artículos', text: 'Ajusta el periodo o los filtros.' }, rows: result.items.map((item): ListRowSpec => ({
+    return fbRows(renderList({ label: 'Artículos comprados', empty: { title: 'Sin artículos', text: 'Ajusta el periodo o los filtros.' }, rows: result.items.map((item): ListRowSpec => ({
       id: item.line.id,
       title: item.line.description,
       meta: [item.supplier?.name ?? '—', shortDate(item.invoice.invoice_date), item.invoice.code ?? 'código pendiente', item.line.quantity === null ? '' : `${Number(item.line.quantity)} ${item.line.unit ?? ''}`.trim(), item.line.item_type ? ITEM_TYPE_LABELS[item.line.item_type] ?? item.line.item_type : ''].filter(Boolean),
@@ -117,8 +126,8 @@ export const mountPurchases: ViewMount = (ctx) => {
       pending: (item.line as { _pending?: boolean })._pending === true || (item.invoice as { _pending?: boolean })._pending === true,
       onClick: () => void openInvoice(ctx, item.invoice.id),
       label: `Abrir la factura de ${item.line.description}`,
-      actions: [el('button', { class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, item.invoice.id) }, icon('invoice', 16), 'Factura')],
-    })) });
+      actions: [el('button', { 'data-feedback-id': 'invoices.compras.resultados.articulo.factura', 'data-feedback-label': 'Factura', class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, item.invoice.id) }, icon('invoice', 16), 'Factura')],
+    })) }), { feedbackId: 'invoices.compras.resultados.articulos', feedbackLabel: 'Artículos comprados' }, { feedbackId: 'invoices.compras.resultados.articulo', feedbackLabel: 'Artículo' });
   }
 
   async function load(): Promise<void> { mirror = await loadMirror(client); paint(); }

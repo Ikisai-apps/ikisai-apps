@@ -1356,3 +1356,125 @@ test('IA sin API de pago (fase 3): la plantilla se aprende al validar, lee lo qu
   });
   await context.close();
 });
+
+// ---------------------------------------------------------------------------
+// «Sugerencias y QA» y uso (kit 0.18, ronda 46): recorrido de feedback en PC y forma de los ids en todas las pantallas.
+// ---------------------------------------------------------------------------
+const FB_PATTERN = /^invoices(\.[a-z0-9_]+){1,4}$/;
+
+/** Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). */
+async function hold(page: Page, selector: string, ms = 900): Promise<void> {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`Sin caja para ${selector}`);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(ms);
+  await page.mouse.up();
+}
+
+/** Abre el panel de la marca y cambia «Señalar para comentar». */
+async function setSignal(page: Page, on: boolean): Promise<void> {
+  await page.locator('#appLauncher').click();
+  const dialog = page.getByRole('dialog');
+  const toggle = dialog.getByRole('switch', { name: /Señalar para comentar/ });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.isChecked()) !== on) await toggle.setChecked(on);
+  await expect(toggle).toBeChecked({ checked: on });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+}
+
+test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excluida, envío y «Sugerencias y QA»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    const target = '[data-feedback-id="invoices.inicio.trimestre.ir_gestoria"]';
+    await expect(page.locator(target)).toBeVisible();
+
+    await test.step('apagado por defecto: la pulsación larga no cambia nada y el clic sigue funcionando', async () => {
+      await page.locator('#appLauncher').click();
+      await expect(page.getByRole('dialog').getByRole('switch', { name: /Señalar para comentar/ })).not.toBeChecked();
+      await expect(page.getByRole('dialog').locator('.launcher-center')).toContainText('Sugerencias y QA');
+      await page.keyboard.press('Escape');
+      await hold(page, '[data-feedback-id="invoices.inicio.trimestre"] h3');
+      await expect(page.locator('.fb-composer')).toHaveCount(0);
+      await expect(page.locator('html.fb-mode')).toHaveCount(0);
+    });
+
+    await test.step('encendido: sobre los importes (zona excluida) no se abre nada', async () => {
+      await setSignal(page, true);
+      await expect(page.locator('html.fb-mode')).toHaveCount(1);
+      await hold(page, '[data-feedback-id="invoices.inicio.trimestre"] dl[data-feedback-ignore]');
+      await expect(page.locator('.fb-composer')).toHaveCount(0);
+    });
+
+    await test.step('sobre «Ir a Gestoría» se abre el formulario con la ruta de etiquetas y el clic no navega', async () => {
+      await hold(page, target);
+      const composer = page.locator('.fb-composer');
+      await expect(composer).toBeVisible();
+      await expect(composer.locator('.fb-where strong')).toHaveText('Inicio › Trimestre › Ir a Gestoría');
+      expect(page.url()).not.toContain('#/gestoria');
+      await composer.getByRole('textbox', { name: 'Comentario' }).fill('El resumen del trimestre debería enlazar al detalle del IVA.');
+      await composer.getByRole('button', { name: 'Enviar' }).click();
+      await expect.poll(() => api.feedbackReports().length).toBe(1);
+      const report = api.feedbackReports()[0]!;
+      expect(report.originApp).toBe('invoices');
+      expect(report.node?.id).toBe('invoices.inicio.trimestre.ir_gestoria');
+      expect(report.node?.path).toEqual(['Inicio', 'Trimestre', 'Ir a Gestoría']);
+      await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 5_000 });
+    });
+
+    await test.step('«Sugerencias y QA» desde el panel de la marca lista el reporte', async () => {
+      await page.locator('#appLauncher').click();
+      await page.getByRole('dialog').locator('.launcher-center').click();
+      const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
+      await expect(sheet).toBeVisible();
+      await sheet.getByRole('tab', { name: 'Abiertos' }).click();
+      await expect(sheet.locator('.fb-card')).toContainText('FB-0001');
+      await expect(sheet.locator('.fb-card')).toContainText('Inicio › Trimestre › Ir a Gestoría');
+      await page.keyboard.press('Escape');
+      await expect(sheet).toBeHidden();
+    });
+
+    await test.step('apagar el modo devuelve la app a su estado normal', async () => {
+      await setSignal(page, false);
+      await expect(page.locator('html.fb-mode')).toHaveCount(0);
+      await page.locator(target).click();
+      await expect(page).toHaveURL(/#\/gestoria/);
+    });
+  } finally {
+    await context.close();
+  }
+});
+
+test('todas las pantallas de Finance llevan ids con la forma estable, con etiqueta y sin ids de negocio', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    const screens: Array<[string, string]> = [
+      ['#/', 'invoices.inicio'], ['#/facturas', 'invoices.facturas'], ['#/facturas?vista=emitidas', 'invoices.facturas'], ['#/compras', 'invoices.compras'],
+      ['#/gestoria', 'invoices.gestoria'], ['#/proveedores', 'invoices.proveedores'], ['#/conflictos', 'invoices.conflictos'],
+    ];
+    for (const [hash, root] of screens) {
+      await page.goto(`${baseURL}/${hash}`);
+      await expect(page.locator(`main[data-feedback-id="${root}"]`)).toBeVisible();
+      if (hash.includes('emitidas')) await expect(page.locator('[data-feedback-id="invoices.emitidas.lista"]')).toBeVisible();
+      const ids = await page.evaluate(() => Array.from(document.querySelectorAll('[data-feedback-id]')).map((n) => n.getAttribute('data-feedback-id') ?? ''));
+      expect(ids.length, hash).toBeGreaterThan(8);
+      for (const id of ids) {
+        expect(id, `${hash} ${id}`).toMatch(FB_PATTERN);
+        expect(id, id).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+      }
+      const unlabeled = await page.evaluate(() => Array.from(document.querySelectorAll('[data-feedback-id]:not([data-feedback-label])')).map((n) => n.getAttribute('data-feedback-id')));
+      expect(unlabeled, hash).toEqual([]);
+    }
+  } finally {
+    await context.close();
+  }
+});

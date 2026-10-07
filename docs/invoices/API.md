@@ -705,6 +705,38 @@ Se añaden `aliases`, `slug`, `default_is_investment`; en el detalle, total fact
 
 ---
 
+### 9.7 «Sugerencias y QA» y uso de funcionalidades (ronda 46, kit 0.18)
+
+**Cáscara (`ui/shell.ts`):** monta `createFeedback`, `createFeedbackReview` y `createUsage` como en `packages/ui-kit/demo/adopcion.ts`. El panel de la marca de la cabecera lleva los interruptores «Señalar para comentar» y «Revisor de QA», este solo en la cuenta del dueño, y la entrada «Sugerencias y QA». No hay botón propio. Al cerrar sesión, `client.onSessionEnd` borra los borradores de feedback y el uso del dispositivo. El `<main>` lleva la pantalla actual como raíz de la ruta de etiquetas.
+
+**Ids** (`data-feedback-id` y `data-feedback-label`): siguen la forma `invoices.<pantalla>.<sección>.<elemento>`, en minúsculas, sin acentos, con uno a cuatro niveles y sin ids de negocio. Siempre van en literal, así que el catálogo (`packages/ui-kit/scripts/feature-catalog.mjs --app invoices`) los recoge todos: 300 funciones y ningún id dinámico.
+- **Pantallas:** `inicio`, `facturas` (recibidas y sus hojas), `emitidas` (lista, ficha, borrador, documento, series, asignar, CSV y registrar), `compras`, `gestoria`, `proveedores` y `conflictos`.
+- **Cáscara:** `cabecera`, `navegacion` y `avisos`.
+- **Cómo se marcan:** los controles propios llevan los atributos en su `el(...)`. Los bloques plegables usan `fbBlock`. Las filas de las listas del kit usan `fbRows`, que marca cada fila y excluye su nombre y su detalle. Los demás nodos del kit usan `fb(node, { feedbackId, feedbackLabel })`.
+
+**Excluido** (`data-feedback-ignore`): ahí el gesto no se dispara y nada viaja en el reporte. Se excluyen:
+- Los importes: totales, desgloses, líneas, campos de importe y resúmenes de Gestoría.
+- Los NIF y los nombres de proveedores y clientes, en campos, filas y cabeceras de ficha.
+- Los domicilios, las notas y los textos pegados (JSON y CSV).
+- La procedencia de los datos leídos, la copia imprimible, la factura y los conflictos.
+
+**Operaciones medidas** (`usage.run` o `usage.track`, en `app/usage.ts`):
+
+| Pantalla | Operaciones |
+|---|---|
+| Facturas | `subir`, `leer_pdf`, `extraer`, `importar`, `validar`, `asignar`, `anular` |
+| Emitidas | `guardar_borrador`, `emitir`, `rectificar`, `desde_reserva`, `guardar_cliente`, `registrar`, `importar_csv`, `asignar` |
+| Gestoría | `generar_entrega`, `descargar`, `archivar_periodo` |
+
+**Pruebas:**
+- `tests/invoices/feedback-ids.test.ts`, estática: patrón, sin uuids ni partes dinámicas, cada id con su etiqueta, raíces conocidas y operaciones medidas.
+- Recorrido en PC, en la prueba de aceptación:
+  1. Interruptor del panel.
+  2. Pulsación larga sin efecto con el modo apagado y sobre los importes excluidos.
+  3. Formulario con la ruta «Inicio › Trimestre › Ir a Gestoría» y envío con el nodo estable.
+  4. «Sugerencias y QA» con el reporte.
+- Forma de los ids en todas las pantallas.
+
 ## 10. Offline
 
 El handoff no exigía offline; el plan de Core sí (todas las apps). **Espejo local:** todas las tablas `invoices.*`.

@@ -7,6 +7,8 @@ import { downloadWithSession } from '../app/files.ts';
 import { openInvoice } from './invoices.ts';
 import { loadIssued } from './issued.ts';
 import type { ViewMount } from './shell.ts';
+import { fbRows } from './feedback.ts';
+import { usage } from '../app/usage.ts';
 
 export const mountAccounting: ViewMount = (ctx) => {
   const { main, client } = ctx;
@@ -16,19 +18,19 @@ export const mountAccounting: ViewMount = (ctx) => {
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
 
-  const rangeKind = el('select', { 'aria-label': 'Tipo de periodo', onchange: () => setRange() }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'year' }, 'Año'));
-  const year = el('input', { type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
-  const part = el('select', { 'aria-label': 'Trimestre', onchange: () => setRange() }, ...[1, 2, 3, 4].map((q) => el('option', { value: String(q), selected: q === range.quarter }, `${q}.º trimestre`)));
+  const rangeKind = el('select', { 'data-feedback-id': 'invoices.gestoria.periodo.tipo', 'data-feedback-label': 'Tipo de periodo', 'aria-label': 'Tipo de periodo', onchange: () => setRange() }, el('option', { value: 'quarter', selected: true }, 'Trimestre'), el('option', { value: 'year' }, 'Año'));
+  const year = el('input', { 'data-feedback-id': 'invoices.gestoria.periodo.ano', 'data-feedback-label': 'Año', type: 'number', 'aria-label': 'Año', min: '2020', max: '2100', value: String(range.year), style: 'width:5.5em', onchange: () => setRange() });
+  const part = el('select', { 'data-feedback-id': 'invoices.gestoria.periodo.trimestre', 'data-feedback-label': 'Trimestre', 'aria-label': 'Trimestre', onchange: () => setRange() }, ...[1, 2, 3, 4].map((q) => el('option', { value: String(q), selected: q === range.quarter }, `${q}.º trimestre`)));
   function setRange(): void {
     const kind = rangeKind.value as RangeKind;
     range = rangeFor(kind, Number(year.value) || range.year, Number(part.value) || 1);
     part.hidden = kind === 'year';
     paint();
   }
-  const summaryHost = el('div', { id: 'fiscalSummary' });
-  const alertsHost = el('div', { id: 'fiscalAlerts' });
-  const exportsHost = el('div', { id: 'exportsList' });
-  const prepare = el('button', { class: 'primary', type: 'button', id: 'prepareExport', hidden: !canEdit, onclick: () => void prepareExport() }, icon('download', 18), 'Preparar entrega');
+  const summaryHost = el('div', { 'data-feedback-id': 'invoices.gestoria.resumen', 'data-feedback-label': 'Resumen del periodo', id: 'fiscalSummary' });
+  const alertsHost = el('div', { 'data-feedback-id': 'invoices.gestoria.alertas', 'data-feedback-label': 'Alertas', id: 'fiscalAlerts' });
+  const exportsHost = el('div', { 'data-feedback-id': 'invoices.gestoria.entregas', 'data-feedback-label': 'Entregas', id: 'exportsList' });
+  const prepare = el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.preparar', 'data-feedback-label': 'Preparar entrega', class: 'primary', type: 'button', id: 'prepareExport', hidden: !canEdit, onclick: () => void prepareExport() }, icon('download', 18), 'Preparar entrega');
 
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Gestoría'), el('p', null, 'Resumen documental del periodo y entregas con originales, CSV y manifest con hashes. El ZIP no cierra registros.'))),
@@ -41,7 +43,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   );
 
   function summaryBlock(title: string, rows: Array<[string, string]>): HTMLElement {
-    return el('article', { class: 'card' }, el('h3', null, title), el('dl', { class: 'kv' }, ...rows.flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)])));
+    return el('article', { class: 'card' }, el('h3', null, title), el('dl', { class: 'kv', 'data-feedback-ignore': '' }, ...rows.flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)])));
   }
 
   /** Emitidas del periodo (API.md §13.4): IVA repercutido y diferencia orientativa con el soportado. */
@@ -54,13 +56,13 @@ export const mountAccounting: ViewMount = (ctx) => {
     if (!t.invoices.registrada && !t.invoices.anulada) return [];
     const balance = Math.round((t.quota - received.vat) * 100) / 100;
     return [
-      el('article', { class: 'card', id: 'issuedSummary' }, el('h3', null, 'Emitidas · IVA repercutido'), el('dl', { class: 'kv' },
+      el('article', { class: 'card', id: 'issuedSummary' }, el('h3', null, 'Emitidas · IVA repercutido'), el('dl', { class: 'kv', 'data-feedback-ignore': '' },
         ...([['Base', eur(t.base)], ['IVA repercutido', eur(t.quota)], ...(t.surcharge ? [['Recargo de equivalencia', eur(t.surcharge)] as [string, string]] : []),
           ...(t.withholding ? [['Retenciones', eur(t.withholding)] as [string, string]] : []), ['Total', eur(t.total)],
           ['Facturas registradas', String(t.invoices.registrada)], ...(t.invoices.anulada ? [['Anuladas', String(t.invoices.anulada)] as [string, string]] : []),
           ...t.quota_by_rate.map((g) => [`${g.tax.toUpperCase()} ${g.rate ?? 0} %`, `${eur(g.base)} → ${eur(g.quota)}`] as [string, string]),
         ] as Array<[string, string]>).flatMap(([k, v]) => [el('dt', null, k), el('dd', null, v)]))),
-      el('article', { class: 'card', id: 'vatBalance' }, el('h3', null, 'IVA del periodo'), el('dl', { class: 'kv' },
+      el('article', { class: 'card', id: 'vatBalance' }, el('h3', null, 'IVA del periodo'), el('dl', { class: 'kv', 'data-feedback-ignore': '' },
         el('dt', null, 'Repercutido'), el('dd', null, eur(t.quota)),
         el('dt', null, 'Soportado (validadas)'), el('dd', null, eur(received.vat)),
         el('dt', null, balance >= 0 ? 'A ingresar (orientativo)' : 'A compensar (orientativo)'), el('dd', null, eur(Math.abs(balance)))),
@@ -85,7 +87,7 @@ export const mountAccounting: ViewMount = (ctx) => {
       ),
     );
     const alerts: HTMLElement[] = [];
-    if (s.alerts.pending_invoices.length) alerts.push(el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, `${s.alerts.pending_invoices.length} factura${s.alerts.pending_invoices.length === 1 ? '' : 's'} pendiente${s.alerts.pending_invoices.length === 1 ? '' : 's'} de revisión en el periodo: no entrarán en la entrega.`), el('button', { class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, s.alerts.pending_invoices[0]!.id) }, 'Abrir la primera')));
+    if (s.alerts.pending_invoices.length) alerts.push(el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, `${s.alerts.pending_invoices.length} factura${s.alerts.pending_invoices.length === 1 ? '' : 's'} pendiente${s.alerts.pending_invoices.length === 1 ? '' : 's'} de revisión en el periodo: no entrarán en la entrega.`), el('button', { 'data-feedback-id': 'invoices.gestoria.alertas.abrir_primera', 'data-feedback-label': 'Abrir la primera', class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, s.alerts.pending_invoices[0]!.id) }, 'Abrir la primera')));
     if (s.alerts.discrepancies.length) alerts.push(el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `${s.alerts.discrepancies.length} con REVISAR IMPORTES.`)));
     if (s.alerts.deductibility_unreviewed) alerts.push(el('div', { class: 'banner info' }, icon('info', 18), el('span', null, `${s.alerts.deductibility_unreviewed} validada${s.alerts.deductibility_unreviewed === 1 ? '' : 's'} con deducibilidad sin revisar.`)));
     if (s.alerts.missing_file) alerts.push(el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `${s.alerts.missing_file} sin documento original.`)));
@@ -94,7 +96,7 @@ export const mountAccounting: ViewMount = (ctx) => {
 
     const exports = mirror.exports.filter((e) => !e.deleted_at && e.fiscal_year === range.year).sort((a, b) => b.created_at.localeCompare(a.created_at));
     main.querySelector('#exportCount')!.textContent = String(exports.length);
-    replace(exportsHost, renderList({ label: 'Entregas', empty: { title: 'Sin entregas este año', text: canEdit ? 'Cuando el periodo esté validado, pulsa «Preparar entrega».' : 'Todavía no hay entregas.' }, rows: exports.map((e): ListRowSpec => {
+    replace(exportsHost, fbRows(renderList({ label: 'Entregas', empty: { title: 'Sin entregas este año', text: canEdit ? 'Cuando el periodo esté validado, pulsa «Preparar entrega».' : 'Todavía no hay entregas.' }, rows: exports.map((e): ListRowSpec => {
       const stale = isStale(e, mirror!);
       return {
         id: e.id,
@@ -103,14 +105,14 @@ export const mountAccounting: ViewMount = (ctx) => {
         chips: [el('span', { class: e.status === 'entregada' ? 'chip ok' : 'chip' }, e.status === 'entregada' ? 'Entregada' : 'Generada'), stale ? el('span', { class: 'chip alert' }, 'Desfasada') : null],
         pending: e._pending === true,
         actions: [
-          el('button', { class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/download`, `${e.folder_name}.zip`) }, icon('download', 16), 'ZIP'),
-          el('button', { class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/manifest.json`, `${e.folder_name}_manifest.json`) }, 'Manifest'),
-          el('button', { class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/facturas_recibidas.csv`, `${e.folder_name}_facturas_recibidas.csv`) }, 'CSV'),
-          canEdit && e.status !== 'entregada' ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void markDelivered(e) }, 'Marcar entregada') : null,
-          role === 'owner' && e.status === 'entregada' ? el('button', { class: 'linkbtn', type: 'button', onclick: () => void archivePeriod(e) }, 'Archivar periodo') : null,
+          el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.zip', 'data-feedback-label': 'ZIP', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/download`, `${e.folder_name}.zip`) }, icon('download', 16), 'ZIP'),
+          el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.manifest', 'data-feedback-label': 'Manifest', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/manifest.json`, `${e.folder_name}_manifest.json`) }, 'Manifest'),
+          el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.csv', 'data-feedback-label': 'CSV', class: 'linkbtn', type: 'button', onclick: () => void download(`/exports/${e.id}/facturas_recibidas.csv`, `${e.folder_name}_facturas_recibidas.csv`) }, 'CSV'),
+          canEdit && e.status !== 'entregada' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.marcar_entregada', 'data-feedback-label': 'Marcar entregada', class: 'linkbtn', type: 'button', onclick: () => void markDelivered(e) }, 'Marcar entregada') : null,
+          role === 'owner' && e.status === 'entregada' ? el('button', { 'data-feedback-id': 'invoices.gestoria.entregas.archivar', 'data-feedback-label': 'Archivar periodo', class: 'linkbtn', type: 'button', onclick: () => void archivePeriod(e) }, 'Archivar periodo') : null,
         ],
       };
-    }) }));
+    }) }), { feedbackId: 'invoices.gestoria.entregas.lista', feedbackLabel: 'Lista de entregas' }, { feedbackId: 'invoices.gestoria.entregas.fila', feedbackLabel: 'Entrega' }));
   }
 
   function isStale(e: LocalExport, m: Mirror): boolean {
@@ -123,7 +125,7 @@ export const mountAccounting: ViewMount = (ctx) => {
 
   async function download(path: string, filename: string): Promise<void> {
     if (!navigator.onLine) { toast('La descarga necesita conexión.'); return; }
-    try { await downloadWithSession(client, path, filename); } catch (error) { toast(describeError(error)); }
+    try { await usage.run('invoices.gestoria.descargar', () => downloadWithSession(client, path, filename)); } catch (error) { toast(describeError(error)); }
   }
 
   async function prepareExport(): Promise<void> {
@@ -145,13 +147,13 @@ export const mountAccounting: ViewMount = (ctx) => {
     });
     if (!ok) return;
     try {
-      await client.commit([{ op: 'call', procedure: 'invoices.create_export', args: { export_id: crypto.randomUUID(), period_kind: kind, fiscal_year: range.year, fiscal_quarter: range.quarter } }]);
+      await usage.run('invoices.gestoria.generar_entrega', () => client.commit([{ op: 'call', procedure: 'invoices.create_export', args: { export_id: crypto.randomUUID(), period_kind: kind, fiscal_year: range.year, fiscal_quarter: range.quarter } }]));
       toast('Entrega generada. Descarga el ZIP cuando se confirme.');
     } catch (error) { toast(describeError(error)); }
   }
 
   async function markDelivered(e: LocalExport): Promise<void> {
-    const to = el('input', { type: 'text', maxlength: '300', placeholder: 'Correo a la gestoría el 7 de abril' });
+    const to = el('input', { 'data-feedback-id': 'invoices.gestoria.entregas.como_se_entrego', 'data-feedback-label': 'Cómo se entregó', type: 'text', maxlength: '300', placeholder: 'Correo a la gestoría el 7 de abril' });
     const ok = await confirmDialog({ title: `Marcar ${e.code} como entregada`, text: el('label', { class: 'field' }, el('span', null, 'Cómo se entregó'), to), confirmLabel: 'Entregada' });
     if (!ok) return;
     try { await client.commit([{ op: 'call', procedure: 'invoices.mark_delivered', args: { export_id: e.id, expectedRevision: e.revision, delivered_to: to.value.trim() || null } }]); toast('Entrega marcada como entregada.'); } catch (error) { toast(describeError(error)); }
@@ -160,7 +162,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   async function archivePeriod(e: LocalExport): Promise<void> {
     const ok = await confirmDialog({ title: `Archivar las facturas de ${e.folder_name}`, text: 'Las facturas validadas incluidas en la entrega pasan a archivadas: solo se podrán tocar pago y notas.', confirmLabel: 'Archivar', danger: true });
     if (!ok) return;
-    try { await client.commit([{ op: 'call', procedure: 'invoices.archive_period', args: { export_id: e.id } }]); toast('Periodo archivado.'); } catch (error) { toast(describeError(error)); }
+    try { await usage.run('invoices.gestoria.archivar_periodo', () => client.commit([{ op: 'call', procedure: 'invoices.archive_period', args: { export_id: e.id } }])); toast('Periodo archivado.'); } catch (error) { toast(describeError(error)); }
   }
 
   async function load(): Promise<void> { [mirror, issued] = await Promise.all([loadMirror(client), loadIssued(client)]); paint(); }
