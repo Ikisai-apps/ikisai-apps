@@ -170,3 +170,83 @@ export function createFeedback(supabase: Supabase, app: string) {
 
   return { uploads, create, list, tree, get, act };
 }
+
+// ---------------------------------------------------------------------------
+// Worker (lo monta central-api con `feedbackWorker: true`; pg_cron lo despierta solo si hay trabajo)
+// ---------------------------------------------------------------------------
+
+const SPACE_KINDS = ['damage', 'cleaning', 'missing', 'utilities', 'safety', 'other'];
+const EVENT_KINDS = ['setup', 'accommodation', 'cleaning', 'food', 'technical', 'operation', 'other'];
+const KIND_LABELS: Record<string, string> = {
+  damage: 'Avería', cleaning: 'Limpieza', missing: 'Falta algo', utilities: 'Agua o electricidad', safety: 'Seguridad', other: 'Otra cosa',
+  setup: 'Montaje', accommodation: 'Alojamiento', food: 'Cocina', technical: 'Técnico', operation: 'Horarios y operación',
+};
+const WHO: Record<string, string> = { guest: 'Reporte de huésped', organizer: 'Petición del organizador', internal: 'Reporte del equipo' };
+
+/** Petición a Tasks para un reporte operativo (FEEDBACK.md §4): dice qué es, no dónde va; sin datos personales añadidos. */
+export function taskRequestFor(item: any) {
+  const space = item.subject === 'space';
+  const category = (space ? SPACE_KINDS : EVENT_KINDS).includes(item.category) ? item.category : 'other';
+  const message = String(item.message ?? '').replace(/\s+/g, ' ').trim();
+  return {
+    source: 'feedback',
+    kind: (space ? 'feedback.space.' : 'feedback.event.') + category,
+    kind_label: (space ? 'Espacio · ' : 'Retiro · ') + KIND_LABELS[category],
+    external_ref: item.externalRef,
+    title: (message.length > 100 ? message.slice(0, 99) + '…' : message) || (space ? 'Incidencia en el espacio' : 'Petición del retiro'),
+    note: (WHO[item.reporterKind] ?? 'Reporte') + ' · ' + item.code + (item.blocking ? ' · urgente' : '') + '\n\n' + message.slice(0, 800),
+    external_url: 'https://tasks.ikisai.com/#/feedback/' + item.code,
+    on_behalf_of: { kind: item.reporterKind, report_code: item.code },
+  };
+}
+
+export function createFeedbackWorker(supabase: Supabase, options: { workerKey?: string; fetch?: typeof fetch }) {
+  const transport = options.fetch ?? fetch;
+  const tasksWorker = (route: string, body: unknown) => transport(supabase.base + '/functions/v1/tasks-api/api/v1/worker/' + route, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': options.workerKey ?? '' }, body: JSON.stringify(body),
+  });
+
+  /** Cuenta de servicio «Feedback (sistema)»: la crea en Auth la primera vez, sin contraseña utilizable, y la registra. */
+  async function ensureServiceActor(): Promise<string> {
+    const existing = await supabase.rpc<string | null>('core_service_actor', { p_name: 'feedback' });
+    if (existing) return existing;
+    const bytes = new Uint8Array(32); crypto.getRandomValues(bytes);
+    const user = await supabase.remote('/auth/v1/admin/users', {
+      service: true, method: 'POST',
+      body: { email: 'svc-feedback-' + crypto.randomUUID().slice(0, 8) + '@sistema.ikisai.com', password: btoa(String.fromCharCode(...bytes)), email_confirm: true, user_metadata: { service: 'feedback' } },
+    });
+    if (typeof user?.id !== 'string') fail(502, 'AUTH_ADMIN_FAILED', messageFor('AUTH_ADMIN_FAILED'));
+    return supabase.rpc<string>('core_register_service_actor', { p_user: user.id, p_name: 'feedback' });
+  }
+
+  async function tick() {
+    const out = { routed: 0, errors: 0, statusUpdates: 0 };
+    const claims = await supabase.rpc<any[]>('core_feedback_routing_claim', { p_limit: 20 });
+    if (claims.length) await ensureServiceActor();
+    for (const item of claims) {
+      try {
+        const res = await tasksWorker('requests/task', taskRequestFor(item));
+        const data = await res.json().catch(() => null);
+        if (!res.ok || typeof data?.taskId !== 'string') throw new Error('tasks_' + res.status + (data?.error?.code ? '_' + data.error.code : ''));
+        await supabase.rpc('core_feedback_routing_result', { p_external_ref: item.externalRef, p_task_id: data.taskId, p_error: null });
+        out.routed++;
+      } catch (error) {
+        await supabase.rpc('core_feedback_routing_result', { p_external_ref: item.externalRef, p_task_id: null, p_error: String((error as Error)?.message ?? error).slice(0, 200) });
+        out.errors++;
+      }
+    }
+    const refs = await supabase.rpc<string[]>('core_feedback_open_task_refs', { p_limit: 200 });
+    if (refs.length) {
+      const res = await tasksWorker('requests/status', { externalRefs: refs });
+      const data = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(data?.items)) {
+        out.statusUpdates = await supabase.rpc<number>('core_feedback_task_status', {
+          p_updates: data.items.filter((i: any) => typeof i?.externalRef === 'string' && typeof i?.status === 'string').map((i: any) => ({ externalRef: i.externalRef, status: i.status })),
+        });
+      }
+    }
+    return out;
+  }
+
+  return { tick, ensureServiceActor };
+}

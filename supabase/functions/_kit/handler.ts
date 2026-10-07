@@ -9,7 +9,7 @@ import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
 import { createAdmin } from './admin.ts';
 import { createPortalLinks, resolvePortalLink } from './portal.ts';
-import { createFeedback } from './feedback.ts';
+import { createFeedback, createFeedbackWorker } from './feedback.ts';
 
 export interface AppConfig extends SupabaseConfig {
   /** Identificador de la app en core.apps (tasks, invoices, booking, food). */
@@ -32,6 +32,8 @@ export interface AppConfig extends SupabaseConfig {
   mcpTools?: McpTool[];
   /** Solo la función de Central: monta las rutas `admin/*` de administración común (contrato §3.5). */
   admin?: boolean;
+  /** Solo central-api: worker del feedback (`worker/feedback/tick`), que envía a Tasks lo operativo y copia el estado de las tareas. */
+  feedbackWorker?: boolean;
   /** Booking y Organizers: montan `portal-links` para emitir y gestionar enlaces de los portales (contrato §3.6). */
   portalIssuer?: boolean;
 }
@@ -203,7 +205,12 @@ export function createApp(config: AppConfig): AppHandler {
   }
   routes.push(...(config.routes ?? []));
   const compiled = routes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
-  const compiledWorkers = (config.workerRoutes ?? []).map((route) => ({ ...route, matcher: compile(route.pattern) }));
+  const workerRoutes = [...(config.workerRoutes ?? [])];
+  if (config.feedbackWorker) {
+    const feedbackWorker = createFeedbackWorker(supabase, { workerKey: config.workerKey, fetch: config.fetch });
+    workerRoutes.push({ method: 'POST', pattern: 'feedback/tick', handler: () => feedbackWorker.tick() });
+  }
+  const compiledWorkers = workerRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
 
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');

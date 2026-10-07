@@ -153,6 +153,12 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - `core.feedback_task_status` copia el estado de las tareas.
 - **Límites:** 30 reportes al día por persona (`429 FEEDBACK_RATE_LIMITED`), 3 imágenes, 4000 caracteres.
 - **Conservación:** los reportes de portales se borran 12 meses después de cerrarse (pg_cron diario).
+- **Identidades de servicio (migración `0067`):** perfil `kind = 'service'` con `service_name`. La cuenta de Auth la crea el kit bajo demanda, sin contraseña utilizable. Sus accesos los fija `core.service_grants`; hoy solo existe `feedback`, con rol `editor` en `tasks`. `core.service_actor('feedback')` devuelve su id, y Tasks escribe con `core.commit` como ese actor.
+- **Worker del feedback:** `central-api` lo monta con `feedbackWorker: true` en `worker/feedback/tick`. pg_cron lo despierta cada 5 minutos, solo si hay reportes por enrutar o tareas abiertas. Llama a `tasks-api` en `worker/requests/task` y `worker/requests/status`, con la clave de worker.
+- **Publicación:** `release.yml` (trabajo `feedback`) busca códigos `FB_…` en los commits publicados y llama a `core.feedback_mark_released`.
+- **Script local:** `scripts/feedback_pull.py` vuelca los reportes internos abiertos en `coordinacion/<app>/QA.md`. Lo lanza Core cuando el usuario lo pide.
+- **`sync-client` 0.4:** `onSessionEnd(userId)` avisa al cerrar sesión o al entrar otra persona. El resumen de sincronización para el contexto es `status()`, con `pendingCommands`, `conflicts`, `lastPullAt` y `cursor`.
+
 
 ## 4. Commit
 

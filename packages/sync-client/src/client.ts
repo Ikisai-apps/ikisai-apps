@@ -279,6 +279,7 @@ export class SyncClientImpl implements SyncClient {
 
   private state: SyncStatus;
   private readonly statusListeners = new Set<(status: SyncStatus) => void>();
+  private readonly sessionEndListeners = new Set<(userId: string) => void | Promise<void>>();
   private readonly tableListeners = new Map<TableName, Set<(rows: SyncedRow[]) => void>>();
 
   private ready: Promise<void> | null = null;
@@ -364,6 +365,24 @@ export class SyncClientImpl implements SyncClient {
     return () => {
       this.statusListeners.delete(listener);
     };
+  }
+
+  onSessionEnd(listener: (userId: string) => void): () => void {
+    this.sessionEndListeners.add(listener);
+    return () => {
+      this.sessionEndListeners.delete(listener);
+    };
+  }
+
+  private async emitSessionEnd(userId: string | null): Promise<void> {
+    if (!userId) return;
+    for (const listener of this.sessionEndListeners) {
+      try {
+        await listener(userId);
+      } catch {
+        // un oyente no debe impedir el cierre de sesión
+      }
+    }
   }
 
   onTable(table: TableName, listener: (rows: SyncedRow[]) => void): () => void {
@@ -622,6 +641,7 @@ export class SyncClientImpl implements SyncClient {
 
   async logout(): Promise<void> {
     await this.ensureReady();
+    const endingUserId = (await this.db.get<MetaRecord<string>>(META_STORE, 'userId'))?.value ?? this.boot?.profile.userId ?? null;
     if (this.sess && this.hasNetwork()) {
       try {
         await this.api('/auth/logout', { method: 'POST' });
@@ -636,6 +656,7 @@ export class SyncClientImpl implements SyncClient {
     const clear = this.options.clearOnLogout ?? false;
     if (clear === true) await this.clearLocalData();
     else if (Array.isArray(clear) && clear.length > 0) await this.clearTables(clear);
+    await this.emitSessionEnd(endingUserId);
   }
 
   async api<T = unknown>(path: string, init: ApiInit = {}): Promise<T> {
@@ -775,6 +796,7 @@ export class SyncClientImpl implements SyncClient {
 
         if (previousUserId !== null && previousUserId !== boot.profile.userId) {
           // Otra persona ha entrado en este dispositivo: nada de lo local le pertenece.
+          await this.emitSessionEnd(previousUserId);
           await this.clearLocalData();
           await this.db.dropStores(this.db.tableStores());
           this.setStatus({
