@@ -1217,6 +1217,8 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     const reservationId = api.rows(RESERVATIONS)[0]!.id;
     expect(api.rows(FINANCE).find((f) => f.id === reservationId)).toMatchObject({ final_amount: t2.total, deposit_required: t2.deposit_amount });
     await shows(page.locator('#blockFinance'), t2.total);
+    // con la propuesta aceptada, «Emitir factura» abre Finance con la reserva
+    await expect(page.locator('#issueInvoice')).toHaveAttribute('href', `https://finance.ikisai.com/#/facturas?vista=emitidas&desde=booking:reservation:${api.rows(RESERVATIONS)[0]!.id}`);
     await expect(page.locator('#proposalStatus')).toHaveText('v2 · Aceptada');
     await page.locator('#proposalHistory summary').click();
     await expect(page.locator('#proposalHistory [data-version="1"]')).toContainText('Sustituida');

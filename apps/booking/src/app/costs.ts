@@ -63,6 +63,8 @@ export function clearCostCache(): void {
 /** Enlaces a Invoices (`docs/invoices/API.md` §9.6). */
 export const INVOICES_URL = 'https://invoices.ikisai.com';
 export const invoiceUrl = (code: string): string => `${INVOICES_URL}/#/facturas/${encodeURIComponent(code)}`;
+/** Emitir la factura de una reserva en Finance (docs/invoices/API.md §14.8): Finance lee la reserva y abre su borrador. */
+export const issueInvoiceUrl = (reservationId: string): string => `https://finance.ikisai.com/#/facturas?vista=emitidas&desde=booking:reservation:${encodeURIComponent(reservationId)}`;
 export const purchasesUrl = (kind: 'reservation' | 'event', id: string): string => `${INVOICES_URL}/#/compras?destino=booking:${kind}:${id}`;
 
 /** Agrega las filas de la proyección: total, suma por categoría y lista por fecha (más reciente primero). */

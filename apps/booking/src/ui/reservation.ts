@@ -9,7 +9,7 @@ import { ASSIGNMENTS, BEDS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
-import { fetchCosts, invoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
+import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
 import { clearConfirmMark, getConfirmMark, setConfirmMark } from '../app/confirmMark.ts';
 import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
@@ -417,10 +417,14 @@ export function mountReservation(id: string): ViewMount {
 
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
-      const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', kv(
+      // Factura: la prepara Finance leyendo booking.reservation_invoice_source (API.md §19); si ya hay una, Finance lo avisa.
+      const canInvoice = writable && (!!proposalData?.proposals.some((pr) => pr.status === 'aceptada' && !pr.deleted_at) || Number(finance?.final_amount) > 0);
+      const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', el('div', null, kv(
         ['Presupuesto', money(finance?.budget_amount)], ['Importe final', money(finance?.final_amount)],
         ['Señal', `${money(finance?.deposit_paid)} de ${money(finance?.deposit_required)} · ${DEPOSIT[depositStatus(finance as any)]}`],
         ['Pago', [label(finance?.payment_type), finance?.payment_date, finance?.payment_holder].filter((v) => v && v !== '—').join(' · ') || '—']),
+        canInvoice ? el('p', null, el('a', { class: 'ghost small', id: 'issueInvoice', href: issueInvoiceUrl(id), target: '_self', rel: 'noopener',
+          'data-feedback-id': 'booking.reserva.cobro.factura', 'data-feedback-label': 'Emitir factura' }, 'Emitir factura')) : null),
         editLink('editFinance', 'Editar', () => openRowSheet({
           client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.', feedbackId: 'booking.reserva.cobro.hoja', feedbackLabel: 'Editar cobro' })));
 
