@@ -463,7 +463,7 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 - Fotos de certificados o carnés: recompresión en cliente (1600 px, WebP) según el contrato §11.3; PDF tal cual.
 - Referencias: `person_records.file_id` y `key_documents.file_id`. Subida sin red con el marcador `{"$blob": sha}` de `sync-client`.
 - **Riesgo:** `GET files/:id` comprueba hoy solo la pertenencia a la app; un `reader` que conociera el id de un documento de una persona obtendría la URL. Los ids no se exponen a quien no ve la fila, pero no basta para documentación laboral. Petición P1: hook de visibilidad de archivos en el kit. Mientras no exista: las rutas del kit se resuelven antes que las de la app, así que `files/:id` no se puede sustituir. La interfaz de Central pedirá los documentos reservados por una ruta propia, `GET people/records/:id/file` (comprueba la visibilidad de la fila y firma la URL con la service key), y los ids de esos archivos solo llegan a quien ve la fila. El hueco que queda (alguien sin permiso que obtenga un id por otra vía) lo cierra P1.
-- Borrado de archivos (Booking P6): al sustituir un documento, el anterior queda en el bucket. Aceptable en V1.
+- **Retención** (contrato §3.9, migración `0560`): `entity.logo_file_id` es `permanent`; `person_records.file_id` y `key_documents.file_id` son `legal`. La recogida de huérfanos del núcleo está activada para Central: un archivo que alguna vez fue `legal` o `permanent` nunca se borra solo, y un huérfano espera 30 días.
 
 ---
 

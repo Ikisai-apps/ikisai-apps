@@ -25,6 +25,8 @@
 
 - 2026-10-07 · Kit 0.18.2: ids de feedback fijos (el catálogo de la publicación los recoge todos: 471 funciones, 0 dinámicas), comprobado en `tests/central/feedback-ids.test.ts`.
 
+- 2026-10-07 · Campos de archivo declarados (migración `0560`): `entity.logo_file_id` permanente; `person_records.file_id` y `key_documents.file_id` legales; recogida de huérfanos activada para Central.
+
 ## Pendiente
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.

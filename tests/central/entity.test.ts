@@ -86,3 +86,13 @@ test('entidad · proyección de solo lectura para Booking y Finance, con el logo
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('food', $1, 'reader')`, [foodUser]);
   await assert.rejects(app.t.rpc('core_read', { p_app: 'food', p_actor: foodUser, p_name: ENTITY_PROJECTION, p_args: {} }));
 });
+
+test('archivos · Central declara sus campos de archivo con su retención y activa la recogida de huérfanos', async () => {
+  const fields = (await app.t.db.query<{ col: string; retention: string }>(
+    `select table_name || '.' || column_name as col, retention from core.file_fields where app = 'central' order by 1`)).rows;
+  assert.deepEqual(fields.map((f) => [f.col, f.retention]), [
+    ['entity.logo_file_id', 'permanent'], ['key_documents.file_id', 'legal'], ['person_records.file_id', 'legal'],
+  ]);
+  const gc = await app.t.db.query(`select 1 from core.file_gc_apps where app = 'central'`);
+  assert.equal(gc.rows.length, 1);
+});
