@@ -20,7 +20,7 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | C6 | Core | cuentas internas de huésped al vencer la conservación | la hace Core con Booking |
 | C7 | Core | `uploads`: lectura y verificación solo del autor (hoy `guests-api` cierra `files/:id`) | abierta |
 | O1 | Organizers | URL firmadas de los materiales publicados para el huésped | abierta |
-| U1 | UI | capa de traducción y catálogos del feedback por idioma | abierta |
-| U2 | UI | recuadro de firma en el kit | abierta |
-| U3 | UI | estado de guardado por campo y global | abierta |
+| U1 | UI | capa de traducción y catálogos del feedback por idioma | en la #285; Guests ya usa la misma forma |
+| U2 | UI | recuadro de firma en el kit | opcional: Guests tiene el suyo en `ui/sign.ts` |
+| U3 | UI | estado de guardado por campo y global | opcional: Guests tiene el suyo (`writer.ts`) |
 | U4 | UI | icono de Guests y `nav: []` sin barra | abierta |
