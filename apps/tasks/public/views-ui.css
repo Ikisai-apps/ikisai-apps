@@ -343,3 +343,14 @@ html{overflow-x:hidden}
 .inlinesave{position:absolute;z-index:2;display:grid;place-items:center;padding:0;border:0;border-radius:10px;background:var(--accent,#46513b);color:var(--accent-ink,#fff);font-weight:800;font-size:17px;line-height:1;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 /* La fila de tarea tiene un solo botón, «Editar» (aceptación V1, 6): lápiz en lugar de los tres puntos. */
 .taskmenu.editbtn::before{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4z'/%3E%3Cpath d='M13.5 6.5l4 4'/%3E%3C/svg%3E")}
+/* Terminadas en un plegable al final de la lista, como Google Keep (8-10-2026). */
+.donefold{border-top:1px solid var(--line)}
+.donefold>summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:600;user-select:none}
+.donefold>summary::-webkit-details-marker{display:none}
+.donefoldarrow{width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;margin-right:4px}
+.donefold[open]>summary .donefoldarrow{transform:rotate(45deg)}
+.donefold.grew>summary [data-done-count]{animation:donebump .45s ease-out}
+@keyframes donebump{0%{transform:scale(1)}35%{transform:scale(1.12);color:var(--accent)}100%{transform:scale(1)}}
+.doneghost{background:var(--paper);border-radius:12px;box-shadow:var(--shadow-1)}
+@media (prefers-reduced-motion:reduce){.donefold.grew>summary [data-done-count]{animation:none}.donefoldarrow{transition:none}}
+

@@ -72,9 +72,30 @@ function mountInlineNew(){if(!inlineNew)return;const {pid,parentId}=inlineNew;le
   row.querySelector('.newcancel').onclick=()=>{inlineNew=null;render()};
   input.focus();row.scrollIntoView({block:'nearest'});
 }
-// Completadas al final de cada lista: cada tarea principal viaja con sus hijas.
+/* Terminadas en un plegable al final de cada lista, como Google Keep (petición del usuario, 8-10-2026): una fila «N tareas
+   terminadas» con flecha agrupa las hechas (cada principal con sus hijas), plegada por defecto y recordada por dispositivo
+   y lista. Desplegada, se ven tachadas y con su casilla: desmarcar una la devuelve a su sitio. Al marcar una, su fila vuela
+   hacia el plegable y el contador late; «Deshacer» del aviso la devuelve. */
+const DONE_FOLD_KEY='tasks.doneFold.open';
+function doneFoldOpen(){try{return new Set(JSON.parse(localStorage.getItem(DONE_FOLD_KEY)||'[]'))}catch{return new Set()}}
+function setDoneFoldOpen(key,open){const set=doneFoldOpen();if(open)set.add(key);else set.delete(key);try{localStorage.setItem(DONE_FOLD_KEY,JSON.stringify([...set].slice(-200)))}catch{}}
+const doneFoldCounts=new Map();
 const treeRowsBeforeOrder=treeRows;
-treeRows=function(p){const html=treeRowsBeforeOrder(p);if(!html.includes('class="task'))return html;const holder=document.createElement('template');holder.innerHTML=html;const blocks=[];for(const node of holder.content.children){if(node.classList?.contains('child')&&blocks.length)blocks[blocks.length-1].push(node);else blocks.push([node])}const finished=b=>b[0].classList?.contains('done')&&!b[0].classList.contains('context');return [...blocks.filter(b=>!finished(b)),...blocks.filter(finished)].flat().map(n=>n.outerHTML).join('')};
+treeRows=function(p){const html=treeRowsBeforeOrder(p);if(!html.includes('class="task'))return html;const holder=document.createElement('template');holder.innerHTML=html;const blocks=[];for(const node of holder.content.children){if(node.classList?.contains('child')&&blocks.length)blocks[blocks.length-1].push(node);else blocks.push([node])}const finished=b=>b[0].classList?.contains('done')&&!b[0].classList.contains('context');
+  const pending=blocks.filter(b=>!finished(b)),done=blocks.filter(finished),rows=pending.flat().map(n=>n.outerHTML).join('');
+  if(!done.length)return rows;
+  const key=`${state.view}:${p.id}`,n=done.length,grew=(doneFoldCounts.get(key)??n)<n;doneFoldCounts.set(key,n);
+  return `${rows}<details class="donefold${grew?' grew':''}" data-done-fold="${esc(key)}" ${doneFoldOpen().has(key)?'open':''}><summary data-feedback-id="tasks.proyecto.tareas.terminadas" data-feedback-label="Tareas terminadas"><span class="donefoldarrow" aria-hidden="true"></span><span data-done-count>${n} ${n===1?'tarea terminada':'tareas terminadas'}</span></summary>${done.flat().map(x=>x.outerHTML).join('')}</details>`};
+// La fila que se marca vuela hasta el plegable de su lista (sin retrasar el guardado: el clon se anima tras el render).
+document.addEventListener('click',e=>{const box=e.target.closest?.('[data-toggle-task]');const row=box?.closest('.task');
+  if(!row||row.classList.contains('done')||row.closest('.donefold')||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const list=row.closest('.tasklist'),from=row.getBoundingClientRect(),ghost=row.cloneNode(true);
+  setTimeout(()=>{const fold=list?.isConnected?list.querySelector('.donefold > summary'):null;if(!fold)return;const to=fold.getBoundingClientRect();
+    Object.assign(ghost.style,{position:'fixed',left:from.left+'px',top:from.top+'px',width:from.width+'px',margin:'0',zIndex:'60',pointerEvents:'none'});ghost.classList.add('doneghost','done');ghost.removeAttribute('data-feedback-id');
+    document.body.appendChild(ghost);const dy=to.top-from.top;
+    ghost.animate([{transform:'translateY(0)',opacity:1},{transform:`translateY(${dy}px) scale(.96)`,opacity:0}],{duration:320,easing:'cubic-bezier(.4,0,.2,1)'}).finished.finally(()=>ghost.remove())},0)},true);
+const bindBeforeDoneFold=bind;
+bind=function(){bindBeforeDoneFold();document.querySelectorAll('[data-done-fold]').forEach(d=>d.ontoggle=()=>setDoneFoldOpen(d.dataset.doneFold,d.open))};
 // En la página de proyecto, «+ Añadir tarea» abre la fila en línea; el botón original sigue en el DOM para los flujos que lo usan. «Cómo mover» pasa a icono.
 Object.assign(menuPaths,{help:'M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7 M12 17h.01'});
 const projectViewBeforeInline=projectView;
