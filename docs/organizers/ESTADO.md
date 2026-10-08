@@ -29,11 +29,14 @@
 
 - 2026-10-08 · Lo contratado y el saldo en «Pagos» (Booking #312): total, pagado según Finance, saldo pendiente, forma de pago y vencimientos con su estado.
 
+- 2026-10-08 · G2 de las fases 4 y 5 en `API.md` §15 y §16 (solo diseño): experiencia de Guests, materiales, preguntas y respuestas, programa (Booking), menú (Food), alojamiento delegable, ofertas y cartel. Peticiones B16, B17, Fd2, Fd3, X3 y K3–K5; respuesta a O1 de Guests.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
-- Fase 3: abrir el PDF de una factura registrada, cuando exista `portal-files` (K2).
+- Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
+- Fases 4 y 5: construir cuando Core cruce las peticiones de los dos portales.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.

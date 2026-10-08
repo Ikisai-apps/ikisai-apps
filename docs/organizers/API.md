@@ -365,38 +365,11 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 - **Dinero de Ikisai, en solo lectura** (Finance): total contratado, señal requerida y pagada, saldo, vencimientos, facturas en PDF e instrucciones de pago (transferencia, Bizum, efectivo; tarjeta cuando haya pasarela). Ningún dato de tarjeta pasa por Organizers.
 - **Al confirmar,** Booking pide a Tasks el proyecto `AAAAMMDD-<título>` (idempotente; se renombra si cambian la fecha o el título) y las tareas de los extras contratados. Organizers no habla con Tasks.
 
-### 13.4 Fases 4 y 5 · Datos propios de Organizers (borrador del modelo)
+### 13.4 Fases 4 y 5
 
-Lo que sí es del organizador vive en el schema `organizers` (migraciones `0700–0799`), en tablas sincronizables con ámbito por reserva (`visible()` por `reservation_id`). Es un borrador: el modelo exacto irá en el G2 de cada fase.
-
-```text
-organizers.guest_experience   una por reserva: módulos visibles (programa, alojamiento, menú, mapa, información práctica,
-                              materiales, actividades, extras, comentarios) y acción permitida en cada módulo
-                              (ver | preferencia | solicitar | elegir | reservar | apuntarse | responder)
-organizers.questions          preguntas propias: tipo (texto, opción, sí/no, número, fecha), opciones, obligatoria,
-                              ventana (desde/hasta), posición
-organizers.answers            respuestas de cada huésped; las escribe Guests con una acción de Organizers
-organizers.materials          logo, PDF, imágenes, enlaces y textos; privado o publicado, y cuándo (antes, durante,
-                              después); el archivo va en core.files, declarado con core.register_file_field
-organizers.offers             ofertas del organizador a sus asistentes: nombre, descripción, precio, qué incluye,
-                              límite, periodo, compatibilidad, recurso de Booking vinculado, visibilidad, formas de pago
-                              e instrucciones; son informativas, sin cobro de Ikisai
-organizers.offer_payments     estado de pago que marca el organizador por asistente y oferta (pendiente, pagado, devuelto)
-```
-
-- **Cartel** (PDF o JPG con el logotipo, los precios, los días, el lugar y una imagen de fondo): se genera en el dispositivo con los datos de `offers` y `materials`, sin servidor.
-- **Programa:** es de Booking (con su petición en esa fase). Organizers lo edita con acciones de Booking y Guests lo lee de Booking.
-
-### 13.5 Contrato con Guests (propuesta para el agente de Guests)
-
-- **Lecturas de Guests en Organizers**, registradas para `guests` y filtradas por el ámbito del huésped (`{reservation_id, guest_id}`):
-  - `organizers.guest_experience_for(p)`: módulos y acciones;
-  - `organizers.guest_questions(p)`: preguntas vigentes y sus respuestas;
-  - `organizers.guest_materials(p)`: materiales publicados para la fase actual, con URL firmada por `files`;
-  - `organizers.guest_offers(p)`: ofertas visibles, sin coste interno ni margen.
-- **Única escritura de Guests en Organizers:** la acción `organizers.guest_answer(p)`, con procedencia «huésped».
-- **Lo de Ikisai no se configura.** Lo legal y operativo (datos de registro, alergias, firma) no depende del organizador y sigue en Booking §16.
-- **Vista previa.** Organizers pinta la experiencia de Guests con esas mismas lecturas sobre un huésped ficticio, sin datos reales.
+Su G2 detallado está en §15 (experiencia de Guests) y §16 (decisiones del huésped). El borrador que había aquí queda sustituido. Cambios respecto a él:
+- las ofertas no se muestran en Guests y desaparece `organizers.offer_payments`;
+- el contrato con Guests queda en tres lecturas, más la de archivos para O1, y una escritura.
 
 ## 14. Peticiones
 
@@ -416,3 +389,160 @@ Estado de cada una en `docs/organizers/PETICIONES.md`.
 - **C3 · Indicador de la cuenta permanente** (p. ej. `GET auth/config → {portalAccount: false}`) para mostrar u ocultar «Guarda tu acceso» sin publicar una versión nueva.
 - **C4 · (UI) entrada de ayuda del lanzador configurable en portales:** etiqueta «Ayuda y sugerencias» y su descripción, y el paso `signal` del formulario por pasos sin el interruptor «Señalar para comentar» (activar el gesto solo para ese paso).
 - **C5 · Alta de infraestructura** cuando abra la PR con `apps/organizers`: `scripts/apps.py`, Pages, `organizers.ikisai.com` y la redirección de `organiza.ikisai.com`.
+
+## 15. Fase 4 · Experiencia de Guests (G2, propuesta para Core)
+
+Qué ve, hace y contrata el huésped en Guests, decidido por el organizador. Son **módulos y acciones fijos**, no un editor libre, con vista previa. Lo que es de otra app sigue siendo suyo:
+- **el programa**, de Booking;
+- **el menú**, de Food;
+- **lo legal y operativo de Ikisai** (datos de registro, firma, alimentación y aviso legal), que no se puede desactivar.
+
+Organizers guarda solo lo suyo:
+- la configuración de la experiencia;
+- sus materiales;
+- sus preguntas, y las respuestas a ellas.
+
+### 15.1 Datos propios (schema `organizers`, migraciones `0700–0799`)
+
+Son las primeras tablas sincronizables de Organizers (contrato §2: `id`, `revision`, fechas, `updated_by`, `deleted_at`, registradas en `core.synced_tables`). La PWA las tendrá en el espejo de `sync-client`, así que se podrán editar sin red y la cola las enviará al volver.
+
+**Visibilidad:** `visible(row, membership)` deja ver una fila si su `reservation_id` está en `scopes.grants` del organizador. Todas las tablas llevan `reservation_id`, y las respuestas también, para no depender de un join.
+
+```text
+organizers.experience_modules        un módulo de la experiencia de un retiro; único por (reservation_id, module)
+  reservation_id   uuid                       reserva de Booking (sin FK entre schemas; se comprueba el ámbito)
+  module           text   programa | menu | materiales | preguntas | alojamiento | info_practica | comentarios
+  visible          boolean                    se ve en Guests
+  capability       text   ver | preferencia | elegir | responder      (la que tenga sentido en cada módulo, §15.2)
+  window           text   antes | durante | despues | siempre         cuándo se ve (por las fechas de la reserva)
+  params           jsonb  null                opciones del módulo (p. ej. alojamiento, §16.1), con forma cerrada por módulo
+  position         numeric                    orden en la barra y en Inicio de Guests
+
+organizers.materials                 materiales del organizador para un retiro
+  reservation_id   uuid
+  kind             text   archivo | enlace | texto
+  title            text   (1–160)
+  description      text   null (≤ 1000)
+  file_id          uuid   null → core.files   (archivo: PDF ≤ 15 MB o imagen recomprimida en cliente, lado mayor 1600 px)
+  url              text   null                (enlace: grupo de WhatsApp o Telegram, web…; solo https)
+  body             text   null (≤ 4000)       (texto breve)
+  is_logo          boolean                    el logotipo del organizador (para el cartel, §16.3); uno por reserva
+  published        boolean                    lo ve el huésped (si el módulo «materiales» está visible)
+  window           text   antes | durante | despues | siempre
+  position         numeric
+
+organizers.questions                 preguntas propias del organizador a sus asistentes
+  reservation_id   uuid
+  kind             text   texto | opcion | varias | si_no | numero | fecha
+  prompt           text   (1–300)
+  options          jsonb  null                 opciones de `opcion` y `varias` (2–12 textos)
+  required         boolean
+  opens_at         date   null                 ventana para responder (por defecto, hasta el día de entrada)
+  closes_at        date   null
+  published        boolean
+  position         numeric
+
+organizers.answers                   respuestas de los huéspedes (datos del huésped que pertenecen a Organizers)
+  reservation_id   uuid
+  question_id      uuid → organizers.questions
+  guest_id         uuid                         huésped de Booking (sin FK entre schemas); única por (question_id, guest_id)
+  value            jsonb                        según el tipo de pregunta
+```
+
+- **Archivos:** bucket propio `organizers-materials`, con `uploads` del kit en `organizers-api`, y `core.register_file_field('organizers', 'organizers', 'materials', 'file_id', 'operational')`. En la misma migración, `core.enable_file_gc('organizers')`.
+- **Conservación:** propongo borrar materiales, preguntas y respuestas de un retiro **12 meses después de su fin**, igual que los reportes de los portales, con una acción de sistema y `apply_system_operations`. Es la pregunta 1 de la salida.
+- **Escrituras del organizador:** `core.commit` normal, con `beforeCommit` en `organizers-api` para comprobar el ámbito (`reservation_id` en los grants) y la forma de `params` y `options`. Las respuestas no las escribe el organizador.
+- **Escrituras del huésped:** solo `organizers.guest_answer`, una acción de Organizers registrada para `guests` (§15.4).
+
+### 15.2 Módulos y capacidades de la V1
+
+| Módulo | Dueño del dato | Capacidades | En Organizers |
+|---|---|---|---|
+| Programa | Booking (B16) | ver | El organizador lo edita (día, inicio, fin, título, espacio, nota pública), con guardado automático |
+| Menú | Food (Fd2, Fd3) | ver | Ve la propuesta de Food con la marca «provisional» y deja comentarios o «prefiero que no» por plato; no edita recetas |
+| Materiales | Organizers | ver | Sube archivos, enlaces y textos; elige qué publica y cuándo |
+| Preguntas | Organizers | responder | Crea preguntas (texto, opción, varias, sí/no, número, fecha) y ve las respuestas con el nombre visible de cada asistente |
+| Alojamiento | Booking (B17) | ver · preferencia · elegir | Fase 5 (§16.1) |
+| Información práctica | Central (texto común) y materiales | ver | Elige si se ve; el texto es de Ikisai |
+| Comentarios del retiro | Núcleo (feedback, destino `organizer`) | — | Bandeja de los comentarios de sus huéspedes (pendiente de la fase posterior del feedback) |
+
+Lo obligatorio de Ikisai (datos del registro, firma, alimentación y aviso legal) no aparece en esta tabla: Guests lo muestra siempre.
+
+### 15.3 Pantallas (pestaña «Experiencia» del retiro)
+
+- **Módulos:** la lista con un interruptor «Se ve», la capacidad (si hay más de una), la ventana y el orden (`createSortableList` del kit). Se guarda solo.
+- **Programa:** por días del retiro, con filas que se añaden, editan y reordenan. Lo publica Booking (B16).
+- **Menú:** la propuesta de Food por días y servicios, con un aviso fijo de Central («El menú puede cambiar para adaptarse a alergias e intolerancias»). En cada plato, «Prefiero que no» y «Comentar» (Fd3).
+- **Materiales:** subir (fotos recomprimidas en el dispositivo, PDF), enlace o texto, con «Publicado» y la ventana. Uno puede marcarse como logotipo.
+- **Preguntas:** crear y editar; ver las respuestas por pregunta (recuento y, por asistente, con su `display_name`) y descargarlas en CSV.
+- **Vista previa:** muestra cómo lo verá un asistente. Usa las mismas lecturas que Guests sobre un huésped ficticio, sin datos reales, en un marco de móvil, para antes, durante y después.
+
+### 15.4 Contrato con Guests (cruzado con `docs/guests/API.md` §13)
+
+Lecturas de Organizers registradas para `guests` (`core.allow_read('guests', 'organizers.…', 'function', '{editor,owner}')`), filtradas por `{reservation_id, guest_id}` del ámbito del huésped:
+- `organizers.guest_experience_for(p)`: módulos visibles en la ventana actual, con su capacidad, sus `params` públicos y su orden;
+- `organizers.guest_questions(p)`: preguntas publicadas y abiertas, con la respuesta propia;
+- `organizers.guest_materials(p)`: materiales publicados en la ventana actual (título, tipo, descripción, enlace o texto, y `file_id` sin URL);
+- `organizers.guest_material_file(p)` `{file_id}`: devuelve la fila de `core.files` solo si ese archivo es de un material publicado y en ventana del retiro del huésped. **Respuesta a O1:** de acuerdo con la propuesta de Guests. `guests-api` sirve `GET materials/:fileId`, llama a esta lectura y firma con `createStorage`.
+
+Escritura:
+- `organizers.guest_answer(p)` `{question_id, value}`: valida el tipo y la ventana, y escribe la respuesta propia con procedencia «huésped» mediante un lote de Organizers. Necesita que el núcleo admita que una acción de Organizers invocada desde el portal Guests escriba en `organizers.*` (K4).
+
+**Sin `organizers.guest_offers`:** las ofertas no se muestran en Guests (decisión del usuario, confirmada por Core). Los nombres de los asistentes en las respuestas los toma el organizador de `booking.portal_guests`; Organizers no los copia.
+
+## 16. Fase 5 · Decisiones del huésped (G2, propuesta para Core)
+
+### 16.1 Alojamiento delegable
+
+El inventario, la disponibilidad y las asignaciones son de **Booking**: Organizers no copia nada y solo configura qué se delega. Ajustes del módulo `alojamiento` (`params`):
+
+```text
+mode              asigna_organizador | preferencia | elegir
+rooms_open        [space_id]          habitaciones que el huésped puede elegir (con `elegir`)
+supplement_rooms  [space_id]          habitaciones con suplemento (las de 2–4 plazas con baño)
+supplement_payer  organizador | huesped | aprobacion
+guest_price_text  text null           lo que verá el huésped, p. ej. «+60 € a pagar a tu organizador» (nunca el coste de Ikisai)
+```
+
+- **Con `asigna_organizador`:** el organizador reparte camas en una vista por habitaciones de Booking (B17: lectura del inventario del evento y acción de asignar).
+- **Con `preferencia`:** el huésped indica con quién le gustaría compartir (lo guarda Booking como nota de asignación) y el organizador lo ve al repartir.
+- **Con `elegir`:** el huésped reserva una plaza de las habitaciones abiertas con `booking.portal_choose_bed`, que es atómica, de Booking y la pide Guests. Si la habitación lleva suplemento:
+  - con `organizador`, el suplemento lo asume él;
+  - con `huesped`, se lo paga el huésped al organizador;
+  - con `aprobacion`, la plaza queda pendiente hasta que el organizador la apruebe.
+
+  En todos los casos **Ikisai factura el suplemento al organizador**, como un extra de su reserva (decisión del usuario).
+- **Dónde vive la configuración:** la que necesita la reserva atómica (habitaciones abiertas, con suplemento y modo de aprobación) tiene que vivir en **Booking**, porque su acción no puede leer `organizers.*`. Propuesta B17: `booking.portal_room_settings`, que escribe el organizador con una acción de portal. En `params` de Organizers queda solo lo de presentación (`guest_price_text`).
+
+### 16.2 Ofertas del organizador a sus asistentes
+
+Solo para el organizador: le sirven para sus cálculos y para el cartel. **Nunca en Guests y sin cobro de Ikisai.**
+
+```text
+organizers.offers
+  reservation_id   uuid
+  name             text   (1–120)      «Estándar», «Habitación doble con baño», «Early bird»…
+  description      text   null (≤ 600)
+  price            numeric(10,2)        precio para el asistente (lo fija el organizador; no se deriva del coste de Ikisai)
+  includes         text   null (≤ 600)
+  capacity         integer null          plazas de esa opción
+  expected         integer null          cuántas espera vender (para la calculadora de margen)
+  available_from   date   null
+  available_until  date   null
+  on_poster        boolean              sale en el cartel
+  position         numeric
+```
+
+La calculadora privada de margen (§13.2) pasa a sumar los ingresos por oferta (precio × esperados) cuando las hay. Sigue sin guardarse nada del margen en el servidor; las ofertas sí se guardan, porque son datos del organizador.
+
+### 16.3 Cartel en PDF o JPG
+
+Se genera **en el dispositivo**, sin servidor:
+- **Contenido:** título del retiro, fechas, lugar (Ikisai, con la dirección de Central), las ofertas marcadas con su precio, el logotipo y una imagen de fondo elegida entre sus materiales.
+- **Formatos:** vertical A4, para imprimir o guardar en PDF con la página imprimible del kit, y cuadrado o vertical para redes en JPG, con `canvas.toBlob`.
+- **Diseño:** dos o tres plantillas fijas, con contraste comprobado sobre la imagen y tipografía del kit. No es un editor libre.
+
+### 16.4 Lo que se reutiliza de Booking
+
+- **Habitaciones de 2–4 plazas con baño:** ya son un extra en las tarifas (`portal_visible`, B10).
+- **Suplemento:** al elegir con suplemento, Booking añade la línea al pedido de extras de la reserva o a la propuesta. Lo decide Booking, que factura Finance.
