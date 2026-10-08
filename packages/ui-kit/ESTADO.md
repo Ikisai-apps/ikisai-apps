@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.22.0: teclado virtual en hojas y formularios, Revisor entre apps sin catálogo previo y `container` en el lanzador (QA del usuario en Android).
 - v0.21.0: arreglo de la barra del Revisor sobre la hoja del lanzador (fallo del usuario), barra de portal con «Más» y lista de días (U5 de Guests).
 - v0.20.0 (tanda 32): estado de guardado, recuadro de firma, «Instala la app», `nav: []` sin barra e iconos de Guests y Organizers (peticiones de los portales).
 - v0.19.0 (tanda 31): capa de idiomas (es, en) para los portales: `createI18n`, `createLanguageSelect`, textos del kit con `kt()` y `KIT_EN`, formulario progresivo con textos por idioma.

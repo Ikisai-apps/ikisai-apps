@@ -1,5 +1,16 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.22.0 · 8 de octubre de 2026
+
+Fallos del QA del usuario en Android:
+- **El teclado tapaba los campos** (todas las apps). `installKeyboardInsets()` se instala solo al crear la cáscara, una hoja o un diálogo:
+  - pide `interactive-widget=resizes-content` en la meta `viewport` (Chrome Android encoge el contenido y las hojas quedan por encima del teclado);
+  - como red de seguridad, publica `--kb` y `--vvh` desde `visualViewport`: hojas y diálogos se apoyan encima del teclado y caben en lo visible;
+  - el campo enfocado se desplaza a la vista, centrado, cuando se abre el teclado.
+- **El Revisor de QA de Central no abría reportes de Booking:** solo conocía el dominio de otra app después de abrir el lanzador. Ahora, si `appDomain` no lo da, usa la lista guardada por el lanzador en el dispositivo y, si no, `GET /apps`.
+- **El lanzador en Tasks no se veía:** `createAppLauncher({ container })`. Las apps con el CSS acotado pasan su capa (`#kitLayer`); fuera de ella la hoja salía sin estilos.
+- Prueba `v28` (con `@smoke`).
+
 ## 0.21.0 · 8 de octubre de 2026
 
 - **Arreglo (fallo del usuario en Central, Android):** con el Revisor de QA activo, su barra plegada tapaba el final de la hoja del lanzador, así que el interruptor «Revisor de QA» se podía encender pero no apagar.
