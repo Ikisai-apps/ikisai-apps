@@ -201,7 +201,7 @@
 .sheet-head{padding:16px 18px 6px;display:flex;align-items:center;gap:8px}
 .sheet-head h2{font-size:23px;flex:1;min-width:0}
 .handle{position:absolute;top:7px;left:50%;transform:translateX(-50%);width:42px;height:5px;background:var(--line);border-radius:999px}
-.sheet-body{overflow:auto;padding:10px 18px 18px;overscroll-behavior:contain}
+.sheet-body{overflow:auto;min-height:0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));overscroll-behavior:contain}
 .sheet-foot{display:flex;gap:10px;padding:12px 18px calc(16px + env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:var(--paper)}
 .sheet-foot .primary{flex:1}
 .sheet-foot[hidden]{display:none}

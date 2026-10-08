@@ -27,6 +27,9 @@ test.describe('ui-kit v0.16 · feedback: modo «Revisor de QA»', () => {
     await page.locator('#demoLauncher').click();
     await page.locator('.launcher-review').click();
     await expect(page.locator('.launcher-review input')).toBeChecked();
+    // Con la hoja abierta la barra se aparta; al cerrarla, aparece.
+    await expect(page.locator('.fb-review')).toBeHidden();
+    await page.keyboard.press('Escape');
     await expect(page.locator('.fb-review')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.classList.contains('fb-reviewing'))).toBe(true);
   });

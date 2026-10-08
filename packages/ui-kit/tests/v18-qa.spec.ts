@@ -21,11 +21,12 @@ async function longPress(page: Page, selector: string, ms = 750, drift = 0): Pro
   const target = page.locator(selector).first();
   const box = (await target.boundingBox())!;
   await target.hover({ position: { x: Math.min(box.width / 2, 20), y: box.height / 2 } });
+  // Movimiento directo y seguido a la pulsación: con la máquina cargada, cualquier espera de Playwright entre medias puede
+  // pasar de los 600 ms del gesto. Basta con que se mueva más de 8 px (si la vista visual está desplazada, el salto es
+  // aún mayor y también cancela).
+  const after = drift ? (await target.boundingBox())! : null;
   await page.mouse.down();
-  if (drift) {
-    await page.waitForTimeout(200);
-    await target.hover({ position: { x: Math.min(box.width / 2, 20) + drift, y: box.height / 2 }, force: true });
-  }
+  if (after) await page.mouse.move(after.x + Math.min(after.width / 2, 20) + drift, after.y + after.height / 2);
   await page.waitForTimeout(ms);
   await page.mouse.up();
 }
