@@ -2,11 +2,23 @@
    El bundle no lleva ninguna credencial privada; solo reenvía /api/v1/* y rechaza orígenes cruzados. */
 const BACKEND = 'https://ctytaorylbninfyupfsn.supabase.co/functions/v1/tasks-api';
 const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'accept'];
+/* Recursos de la cáscara con nombre fijo (sin huella): `no-cache`, para que el navegador los revalide siempre (ETag y 304)
+   en vez de servir durante horas una copia vieja de su caché HTTP. Sin esto, la primera carga sin service worker (tras
+   borrar los datos del sitio, o en una instalación nueva) seguía pintando la cáscara anterior. Fuentes e imágenes, con su
+   caché de siempre. */
+const FRESH = /(?:^\/$|\.(?:js|css|html|webmanifest|json)$)/;
+async function asset(request, env, url) {
+  const response = await env.ASSETS.fetch(request);
+  if (!FRESH.test(url.pathname)) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-cache');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/v1/')) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith('/api/v1/')) return asset(request, env, url);
 
     const origin = request.headers.get('origin');
     if (origin && origin !== url.origin) {

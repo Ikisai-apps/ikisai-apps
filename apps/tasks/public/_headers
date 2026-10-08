@@ -1,0 +1,13 @@
+# Recursos de la cáscara con nombre fijo: revalidar siempre (también lo pone _worker.js en las respuestas que sirve).
+/
+  Cache-Control: no-cache
+/*.js
+  Cache-Control: no-cache
+/*.css
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache
+/*.webmanifest
+  Cache-Control: no-cache
+/*.json
+  Cache-Control: no-cache
