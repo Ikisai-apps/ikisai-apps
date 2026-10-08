@@ -43,6 +43,28 @@ export function taxIdProblem(raw: string): string | null {
   return 'no tiene forma de NIF, NIE ni CIF';
 }
 
+/** IBAN tal como se guarda: sin espacios ni guiones y en mayúsculas. */
+export function normalizeIban(value: string): string {
+  return value.toUpperCase().replace(/[\s-]/g, '');
+}
+
+/** IBAN legible, en grupos de cuatro («ES12 3456 …»), como `central.format_iban`. */
+export function formatIban(value: string | null | undefined): string | null {
+  const iban = value ? normalizeIban(value) : '';
+  return iban ? iban.replace(/(.{4})/g, '$1 ').trim() : null;
+}
+
+/** Comprueba un IBAN: forma, longitud española (24) y dígito de control (módulo 97). Devuelve null si es válido o el motivo. */
+export function ibanProblem(raw: string): string | null {
+  const iban = normalizeIban(raw);
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(iban)) return 'no tiene forma de IBAN';
+  if (iban.startsWith('ES') && iban.length !== 24) return 'un IBAN español tiene 24 caracteres';
+  const digits = (iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const d of digits) rest = (rest * 10 + Number(d)) % 97;
+  return rest === 1 ? null : 'el dígito de control del IBAN no corresponde';
+}
+
 export interface EntityRow {
   legal_name: string;
   trade_name: string | null;
@@ -56,6 +78,8 @@ export interface EntityRow {
   phone: string | null;
   website: string | null;
   logo_file_id: string | null;
+  iban: string | null;
+  bizum: string | null;
 }
 
 /** Fila de la proyección `central.common_entity_projection` que leen Booking y Finance. */
