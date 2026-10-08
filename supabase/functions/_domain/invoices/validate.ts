@@ -5,7 +5,7 @@
  */
 import { decimalsOf, isFiniteNumber } from './money.ts';
 import {
-  DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, ITEM_TYPES, PAYMENT_METHODS,
+  DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, INVOICE_KINDS, ITEM_TYPES, PAYMENT_METHODS,
   PAYMENT_STATUSES, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
 } from './types.ts';
 import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS, ISSUED_STATUSES, RECIPIENT_KINDS, SERIES_MODES, ISSUED_PURPOSES } from './issued.ts';
@@ -156,6 +156,10 @@ export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', {
   oneOf(fields, 'payment_status', PAYMENT_STATUSES, { nullable: false });
   oneOf(fields, 'payment_method', PAYMENT_METHODS);
   oneOf(fields, 'source', INVOICE_SOURCES, { nullable: false });
+  oneOf(fields, 'invoice_kind', INVOICE_KINDS, { nullable: false });
+  uuid(fields, 'rectifies_invoice_id');
+  text(fields, 'rectifies_number', { max: 64 });
+  bool(fields, 'rectification_without_original');
   money(fields, 'source_total');
   for (const key of ['calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total']) money(fields, key, { nullable: false });
   money(fields, 'totals_delta');
@@ -197,6 +201,7 @@ export function validateInvoiceLineFields(fields: Fields, op: 'insert' | 'update
     }
   }
   uuid(fields, 'invoice_id');
+  uuid(fields, 'rectifies_line_id');
   integer(fields, 'position', { min: 0 });
   text(fields, 'description', { required: true, max: 500 });
   text(fields, 'unit', { max: 16 });
@@ -231,7 +236,8 @@ export function validateTaxLineFields(fields: Fields, op: 'insert' | 'update'): 
   oneOf(fields, 'tax_type', TAX_TYPES, { nullable: false });
   if (has(fields, 'rate') && fields.rate !== null && (!isFiniteNumber(fields.rate) || fields.rate < 0 || fields.rate > 100)) domainFail('INVALID_FIELDS', 'El tipo debe estar entre 0 y 100.', { field: 'rate' });
   money(fields, 'taxable_base');
-  money(fields, 'amount', { nullable: false, min: 0 });
+  // Con signo (0227): una rectificativa lleva impuestos negativos; el hook impide que los tenga una ordinaria.
+  money(fields, 'amount', { nullable: false });
   text(fields, 'notes', { max: 2000 });
 }
 
@@ -266,7 +272,8 @@ export function validateAllocationFields(fields: Fields, op: 'insert' | 'update'
   money(fields, 'allocated_quantity', { decimals: 3 });
   if (has(fields, 'allocated_quantity') && fields.allocated_quantity !== null && (fields.allocated_quantity as number) <= 0) domainFail('INVALID_FIELDS', 'La cantidad asignada debe ser mayor que cero.', { field: 'allocated_quantity' });
   money(fields, 'allocated_amount', { nullable: false });
-  if (has(fields, 'allocated_amount') && (fields.allocated_amount as number) <= 0) domainFail('INVALID_FIELDS', 'El importe asignado debe ser mayor que cero.', { field: 'allocated_amount' });
+  // Con signo (0227): el de su línea (negativo en una rectificativa); el hook comprueba el signo y el límite.
+  if (has(fields, 'allocated_amount') && (fields.allocated_amount as number) === 0) domainFail('INVALID_FIELDS', 'El importe asignado no puede ser cero.', { field: 'allocated_amount' });
   text(fields, 'notes', { max: 2000 });
 }
 

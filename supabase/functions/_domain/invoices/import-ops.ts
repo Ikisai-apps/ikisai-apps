@@ -74,6 +74,8 @@ export function importOperations(input: ImportOperationsInput): { operations: Im
     calculated_withholding: r.calculated_withholding,
     calculated_total: r.calculated_total,
     totals_delta: r.totals_delta,
+    invoice_kind: input.overrides?.invoice_kind === 'rectificativa' ? 'rectificativa' : 'ordinaria',
+    rectifies_number: input.overrides?.invoice_kind === 'rectificativa' ? input.overrides.rectifies_number?.trim() || null : null,
   };
   if (input.existing) ops.push({ op: 'update', table: 'invoices.invoices', id: input.invoiceId, expectedRevision: input.existing.revision, fields: invoiceFields });
   else ops.push({ op: 'insert', table: 'invoices.invoices', id: input.invoiceId, fields: invoiceFields });
