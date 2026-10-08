@@ -22,6 +22,7 @@ export const TABLES = {
   dateBlocks: 'booking.date_blocks',
   extraRequests: 'booking.reservation_extra_requests',
   portalRequests: 'booking.portal_requests',
+  programItems: 'booking.program_items',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
@@ -71,6 +72,7 @@ export const CHECKLIST_TYPES = ['preparacion_general', 'alojamiento', 'cocina_co
 export const CHECKLIST_STATUSES = ['pendiente', 'hecho', 'no_aplica'] as const;
 
 export const SPACE_KINDS = ['habitacion', 'sala', 'zona_exterior', 'otro'] as const;
+export const PROGRAM_KINDS = ['actividad', 'comida', 'descanso', 'otro'] as const;
 export const BED_KINDS = ['individual', 'doble', 'litera', 'sofa_cama', 'supletoria'] as const;
 export type SpaceKind = (typeof SPACE_KINDS)[number];
 export type BedKind = (typeof BED_KINDS)[number];

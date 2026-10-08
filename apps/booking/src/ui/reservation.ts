@@ -8,6 +8,8 @@ import {
 import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
+import { PROGRAM, loadProgram, renderProgram } from './program.ts';
+import { balanceState, cachedCollected, fetchCollected } from '../app/collected.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
 import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
@@ -152,6 +154,7 @@ export function mountReservation(id: string): ViewMount {
     const datesBlock = createDatesBlock();
     const sesBlock = createSesBlock();
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
+    let collectedTried = false;
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
     const rowSig = (rows: Row[]) => rows.map((r) => `${r.id}:${r.revision}:${r.status}:${r.label}:${r._pending === true}`).join('|');
@@ -171,7 +174,9 @@ export function mountReservation(id: string): ViewMount {
       // Orden estable (por alta): el espejo local no garantiza ninguno.
       const restrictions = ofEvent(await client.list(RESTRICTIONS)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id));
       const checklist = ofEvent(await client.list(CHECKLIST)).sort((a, b) => Number(a.position) - Number(b.position));
-      const guests = seesGuests ? ofEvent(await client.list(GUESTS)) : [];
+      // el huésped de muestra (vista previa del organizador) no cuenta
+      const guests = seesGuests ? ofEvent(await client.list(GUESTS)).filter((g) => !g.preview) : [];
+      const program = liveEvent ? await loadProgram(client, liveEvent.id) : null;
       const lodging = liveEvent ? await loadLodging(client, liveEvent.id) : null;
       const staff = liveEvent ? await loadStaff(client, liveEvent.id) : null;
       const editable = writable && !deleted;
@@ -405,6 +410,7 @@ export function mountReservation(id: string): ViewMount {
             insertFields: { event_id: liveEvent.id, position: checklist.length + 1 } }) }, 'Añadir tarea')) : null,
       ]);
 
+      const programBlock = !liveEvent || !program ? null : renderProgram({ client, reservation, eventId: liveEvent.id, data: program, editable, block });
       const sesCard = sesBlock.render({ client, reservation, event: liveEvent, finance, editable, run });
       const guestMode = guestModeOf(reservation);
       const guestsBlock = !liveEvent ? null : block('blockGuests', 'Huéspedes',
@@ -449,9 +455,18 @@ export function mountReservation(id: string): ViewMount {
       const deadline = accepted ? balanceDeadline(reservation.end_date, liveEvent?.departure_time ?? null, balanceDeadlineHours(acceptedConditions)) : null;
       const deadlineRow: [string, Child] | null = deadline ? ['Plazo máximo del saldo', `${deadline.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (interno)`] : null;
       // Lo cobrado lo registra Finance (aún sin lectura desde Booking): el aviso no afirma que falte, remite a Finance.
-      const deadlineAlert = deadline && deadline.getTime() < Date.now()
-        ? el('p', { class: 'banner warn', id: 'balanceDeadlinePassed', role: 'status', 'data-feedback-id': 'booking.reserva.cobro.saldo_vencido', 'data-feedback-label': 'Plazo máximo del saldo vencido' }, 'Plazo máximo del saldo vencido: revisa en Finance si está cobrado.')
-        : null;
+      // Pasado el plazo, se compara lo contratado con lo cobrado de Finance (#324); sin esa lectura, solo remite a Finance.
+      const deadlinePassed = !!deadline && deadline.getTime() < Date.now() && seesFinance;
+      const contracted = Number(accepted?.total ?? finance?.final_amount ?? 0);
+      const collected = deadlinePassed ? cachedCollected(id) : null;
+      if (deadlinePassed && !collected && !collectedTried) {
+        collectedTried = true;
+        void fetchCollected(client, id).then((value) => { if (value) void paint(); });
+      }
+      const balance = balanceState(contracted, collected);
+      const deadlineAlert = !deadlinePassed || balance.kind === 'paid' ? null
+        : el('p', { class: 'banner warn', id: 'balanceDeadlinePassed', role: 'status', 'data-feedback-id': 'booking.reserva.cobro.saldo_vencido', 'data-feedback-label': 'Plazo máximo del saldo vencido' },
+          balance.kind === 'pending' ? `Saldo pendiente: plazo máximo vencido. Falta cobrar ${money(balance.missing)}.` : 'Plazo máximo del saldo vencido: revisa en Finance si está cobrado.');
       const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', el('div', null, deadlineAlert, kv(
         ['Presupuesto', money(finance?.budget_amount)], ['Importe final', money(finance?.final_amount)],
         ['Señal', `${money(finance?.deposit_paid)} de ${money(finance?.deposit_required)} · ${DEPOSIT[depositStatus(finance as any)]}`],
@@ -539,14 +554,14 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, STAFF, NEEDS].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));

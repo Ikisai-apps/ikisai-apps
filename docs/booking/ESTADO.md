@@ -61,6 +61,7 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 
 - **Piloto del feedback (fase 3):** kit 0.16 adoptado en la cáscara (formulario, revisor, «Señalar para comentar» en el lanzador, «Sugerencias y QA» en la cabecera, borrado al cerrar sesión); 335 `data-feedback-id` estables (`booking.<pantalla>.<sección>.<elemento>`) con su etiqueta en todos los controles con significado, `data-feedback-ignore` en contactos, documentos, firmas y códigos; prueba del recorrido del §27 y prueba estática de ids.
 - **Facturar desde una reserva:** lectura `booking.reservation_invoice_source` para Finance (§19).
+- **Fase 4 de los portales (§23, migración 0459):** programa del retiro (`program_items`, lectura `portal_program` para Organizers y Guests, acciones del organizador para guardar, quitar y ordenar; bloque «Programa» en la ficha) y huésped de muestra para la vista previa (`portal_preview_guest`, fuera de totales, cocina y SES; `PREVIEW_READ_ONLY`). El aviso del plazo interno del saldo compara con lo cobrado de Finance (`invoices.reservation_collected`).
 
 ## Pendiente
 

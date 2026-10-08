@@ -272,7 +272,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
     async function openSesData(guest: Row, context: { reservation: ReservationRow; event: Row }): Promise<void> {
       const { reservation, event } = context;
       const finance = canRead(client, FINANCE) ? ((await client.get(FINANCE, reservation.id)) as Row | null) : null;
-      const alive = ((await client.list(GUESTS)) as Row[]).filter((g) => g.event_id === event.id).length;
+      const alive = ((await client.list(GUESTS)) as Row[]).filter((g) => g.event_id === event.id && !g.preview).length;
       const joined = (date: unknown, hour: unknown) => [date, typeof hour === 'string' ? hour.slice(0, 5) : hour].filter((v) => v !== null && v !== undefined && v !== '').join(' ');
       const traveler: Array<[string, unknown]> = [
         ['Nombre', guest.first_name], ['Apellidos', [guest.last_name_1, guest.last_name_2].filter(Boolean).join(' ')], ['Sexo', guest.sex ? label(guest.sex) : null],
@@ -458,7 +458,7 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         return;
       }
       const sesMode = mode === 'ses';
-      const everyGuest = ((await client.list(GUESTS, { includeDeleted: true })) as Row[]).filter((g) => g.event_id === eventId);
+      const everyGuest = ((await client.list(GUESTS, { includeDeleted: true })) as Row[]).filter((g) => g.event_id === eventId && !g.preview);
       const guests = everyGuest.filter((g) => g.deleted_at === null || g.deleted_at === undefined).sort((a, b) => fullName(a).localeCompare(fullName(b), 'es'));
       const deletedGuests = everyGuest.filter((g) => g.deleted_at !== null && g.deleted_at !== undefined).sort((a, b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
       const everyRestriction = ((await client.list(RESTRICTIONS, { includeDeleted: true })) as Row[]).filter((r) => r.event_id === eventId);
