@@ -95,6 +95,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Lectura para Booking `invoices.reservation_collected` (migración 0222): facturado, cobrado y último cobro por reserva, la misma suma que F1 (API.md §7.8).
 - Versiones nuevas con el kit 0.23 (`initAppUpdates`): al abrir la app, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro; si no, sale el banner «Nueva versión disponible». Se ha borrado la copia propia `src/updates.ts`.
 - Capa del kit 0.24 (`setKitLayer`): Finance carga el CSS del kit sin acotar a `.ikisai-kit`, así que lo flotante va a `document.body`, la capa por defecto, con sus estilos. No hace falta llamarla. La prueba de feedback en escritorio (1280×800) envía un reporte desde una hoja abierta y comprueba que el aviso «Enviado» es fijo y compacto.
+- QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
+- Pruebas de Playwright con un solo `vite build` compartido entre specs (`tests/invoices/e2e-build.ts`): huella de las fuentes en `dist/.e2e-stamp` y cerrojo entre procesos, para que `--workers=2` no vacíe `dist` a medias (mismo fallo que Tasks).
 
 ## En curso
 
@@ -107,7 +109,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
-- QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
+- **Mejora (nota de Core, 8-10-2026):** Compras no será un área de Tasks; las facturas se asignan a la **solicitud de compra** (destino `tasks/purchase_request`, 0208), que ya sabe su área y su proyecto. Al asignar una línea, proponer de forma automática la solicitud abierta de ese mismo proveedor (si hay una sola). Haría falta que Tasks publique, o que la lectura `invoices.supplier_options` complemente, las solicitudes abiertas por proveedor preferente.
 
 ## Bloqueos
 
