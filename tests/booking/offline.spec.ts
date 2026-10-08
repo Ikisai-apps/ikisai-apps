@@ -6,7 +6,6 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { ASSIGNMENTS, BEDS, EVENTS, GUESTS, PROPOSALS, PROPOSAL_LINES, RESERVATIONS, STAFF, buildApp, inDays, login, startHarness, type Harness } from './harness.ts';
-import { startFakeApi } from './fake-api.ts';
 
 test.use({ viewport: { width: 390, height: 844 } });
 test.setTimeout(120_000);
@@ -14,9 +13,7 @@ test.setTimeout(120_000);
 let harness: Harness;
 
 test.beforeAll(async () => {
-  const probe = await startFakeApi();
-  await buildApp(probe.url);
-  await probe.close();
+  await buildApp();
 });
 
 test.beforeEach(async () => {

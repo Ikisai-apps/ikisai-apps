@@ -5,6 +5,9 @@
 import { expect, type Page } from 'playwright/test';
 import { build, preview, type PreviewServer } from 'vite';
 import { createServer } from 'node:net';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
@@ -37,10 +40,49 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-/** Compila la app (una vez por archivo de tests basta). */
-export async function buildApp(apiUrl: string): Promise<void> {
-  process.env.VITE_API_PROXY = apiUrl;
-  await build({ configFile, logLevel: 'silent' });
+const DIST = path.resolve(here, '../../apps/booking/dist');
+const BUILD_SOURCES = ['../../apps/booking/public', '../../apps/booking/src', '../../apps/booking/index.html', '../../apps/booking/vite.config.ts',
+  '../../packages/ui-kit/src', '../../packages/sync-client/src', '../../packages/domain-booking/src', '../../supabase/functions/_domain'].map((p) => path.resolve(here, p));
+
+function sourceStamp(): string {
+  const hash = createHash('sha256');
+  const walk = (p: string) => {
+    if (!existsSync(p)) return;
+    const st = statSync(p);
+    if (st.isDirectory()) { for (const name of readdirSync(p).sort()) walk(path.join(p, name)); return; }
+    hash.update(`${p}|${st.size}|${st.mtimeMs};`);
+  };
+  for (const p of BUILD_SOURCES) walk(p);
+  return hash.digest('hex');
+}
+
+/**
+ * Compila la app para las pruebas **una sola vez** aunque haya varios workers (patrón de `tests/tasks/e2e-server.ts`,
+ * 8-10-2026). Antes cada spec hacía su `vite build`, que vacía `dist/`: con `--workers=2`, una página podía cargar a medias.
+ * Ahora se compila solo si las fuentes cambiaron (huella en `dist/.e2e-stamp`) y con un cerrojo entre procesos; quien llega
+ * mientras otro compila, espera. La URL de la API no entra en la compilación (`VITE_API_PROXY` solo sirve al servidor de
+ * desarrollo; `vite preview` recibe su proxy en cada arranque), así que todos comparten el mismo `dist`.
+ */
+export async function buildApp(_apiUrl?: string): Promise<void> {
+  const stampFile = path.join(DIST, '.e2e-stamp'), stamp = sourceStamp();
+  const fresh = () => existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stamp;
+  const lock = path.join(tmpdir(), `ikisai-booking-e2e-build-${createHash('sha256').update(DIST).digest('hex').slice(0, 12)}`);
+  for (const started = Date.now(); ;) {
+    if (fresh()) return;
+    let mine = false;
+    try { mkdirSync(lock); mine = true; } catch {
+      // Un cerrojo de un proceso que murió a medias no bloquea para siempre.
+      try { if (Date.now() - statSync(lock).mtimeMs > 180_000) rmSync(lock, { recursive: true, force: true }); } catch { /* ya no está */ }
+    }
+    if (mine) {
+      try {
+        if (!fresh()) { await build({ configFile, logLevel: 'silent' }); writeFileSync(stampFile, stamp); }
+      } finally { rmSync(lock, { recursive: true, force: true }); }
+      return;
+    }
+    if (Date.now() - started > 240_000) throw new Error('Esperando el build de Booking de otro worker más de 4 minutos.');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
 /** API falsa nueva + servidor de previsualización que le reenvía /api. Con `compile: false` reutiliza la compilación anterior. */
@@ -62,7 +104,7 @@ function freePort(): Promise<number> {
 
 export async function startHarness(options: { compile?: boolean } = {}): Promise<Harness> {
   const api = await startFakeApi({ users: [USER] });
-  if (options.compile !== false) await buildApp(api.url);
+  if (options.compile !== false) await buildApp();
   const server = await preview({
     configFile,
     logLevel: 'silent',

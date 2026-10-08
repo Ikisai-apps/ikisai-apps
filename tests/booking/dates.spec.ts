@@ -148,7 +148,8 @@ test('fechas posibles: dos opciones, orden, chip del organizador, fijar una; y u
     await page.getByRole('button', { name: /^Quitar el bloqueo/ }).click();
     await page.getByRole('alertdialog', { name: 'Quitar bloqueo' }).getByRole('button', { name: 'Quitar bloqueo' }).click();
     await expect(page.locator('#dateBlocksEmpty')).toBeVisible();
-    expect(api.rows(BLOCKS).filter((r) => r.deleted_at === null)).toHaveLength(0);
+    // la lista se vacía al instante (espejo local); el borrado llega al servidor con la sincronización
+    await expect.poll(() => api.rows(BLOCKS).filter((r) => r.deleted_at === null).length).toBe(0);
     await expect(page.locator('#calendarHost [data-status="bloqueo"]')).toHaveCount(0);
   });
 });
