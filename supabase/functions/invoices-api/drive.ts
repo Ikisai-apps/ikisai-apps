@@ -32,8 +32,13 @@ export interface DriveFile { id: string; name: string; mimeType: string; size: n
 
 /** Lo que el tick necesita de Drive (real con la cuenta de servicio o simulado en las pruebas). */
 export interface DriveApi {
-  /** Id de una carpeta de la raíz de la unidad; la crea si no existe. */
-  folder(name: DriveFolder): Promise<string>;
+  /**
+   * Id de una subcarpeta de la raíz. En una unidad compartida la crea si falta; en una carpeta de un usuario no puede
+   * (la cuenta de servicio no tiene cuota de almacenamiento) y devuelve null.
+   */
+  folder(name: DriveFolder): Promise<string | null>;
+  /** Id de la raíz (`INVOICES_DRIVE_ID`): sin «Entrada», los PDF sueltos en ella cuentan como entrada. */
+  root(): string;
   /** Archivos de una carpeta, los más antiguos primero. */
   list(folderId: string, limit: number): Promise<DriveFile[]>;
   download(fileId: string): Promise<Uint8Array>;
@@ -77,21 +82,34 @@ export function createGoogleDriveApi(config: { driveId: string; accessToken: () 
   }
   const q = (s: string) => encodeURIComponent(s);
   const quote = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  // `INVOICES_DRIVE_ID` puede ser una unidad compartida o una carpeta compartida con la cuenta de servicio (9-10-2026):
+  // buscar y listar con `corpora=allDrives` vale para las dos sin gastar llamadas en averiguarlo.
+  const scope = `corpora=allDrives&includeItemsFromAllDrives=true&${all}`;
+  let shared: Promise<boolean> | null = null;
+  /** ¿Es una unidad compartida? Solo hace falta para decidir si se puede crear una subcarpeta que falta. */
+  const isSharedDrive = () => (shared ??= (async () => {
+    try { await (await call(`${API}/drives/${q(config.driveId)}?fields=id`)).body?.cancel(); return true; } catch (error) {
+      if (error instanceof DriveError && error.kind === 'gone') return false;
+      throw error;
+    }
+  })().catch((error) => { shared = null; throw error; }));
 
   return {
     calls: () => calls,
+    root: () => config.driveId,
     async folder(name) {
       const query = `${quote(config.driveId)} in parents and name = ${quote(name)} and mimeType = ${quote(FOLDER_MIME)} and trashed = false`;
-      const found = await (await call(`${API}/files?q=${q(query)}&corpora=drive&driveId=${q(config.driveId)}&includeItemsFromAllDrives=true&${all}&fields=files(id)&pageSize=1`)).json();
+      const found = await (await call(`${API}/files?q=${q(query)}&${scope}&fields=files(id)&pageSize=1`)).json();
       if (found?.files?.[0]?.id) return String(found.files[0].id);
+      if (!(await isSharedDrive())) return null; // carpeta de un usuario: la crea él
       const created = await (await call(`${API}/files?${all}&fields=id`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [config.driveId] }),
       })).json();
       return String(created.id);
     },
     async list(folderId, limit) {
-      const query = `${quote(folderId)} in parents and trashed = false`;
-      const body = await (await call(`${API}/files?q=${q(query)}&corpora=drive&driveId=${q(config.driveId)}&includeItemsFromAllDrives=true&${all}&orderBy=createdTime&pageSize=${limit}&fields=files(id,name,mimeType,size,webViewLink)`)).json();
+      const query = `${quote(folderId)} in parents and trashed = false and mimeType != ${quote(FOLDER_MIME)}`;
+      const body = await (await call(`${API}/files?q=${q(query)}&${scope}&orderBy=createdTime&pageSize=${limit}&fields=files(id,name,mimeType,size,webViewLink)`)).json();
       return (body?.files ?? []).map((f: Record<string, unknown>) => ({
         id: String(f.id), name: String(f.name ?? 'documento'), mimeType: String(f.mimeType ?? ''), size: f.size === undefined ? null : Number(f.size), webViewLink: typeof f.webViewLink === 'string' ? f.webViewLink : null,
       }));
@@ -184,8 +202,19 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
   try {
     // Las carpetas se buscan (o crean) una vez y sus ids quedan en el estado: un tick sin archivos es una sola llamada.
     const cached = ((await deps.invoke('invoices.drive_seen', { drive_file_ids: [] }))?.state?.folders ?? {}) as Record<string, string>;
-    const lookup = async () => { folders = {}; for (const name of DRIVE_FOLDERS) folders[name] = await drive.folder(name); };
-    if (DRIVE_FOLDERS.every((name) => typeof cached[name] === 'string' && cached[name])) folders = { ...cached }; else await lookup();
+    const lookup = async () => {
+      folders = {};
+      for (const name of DRIVE_FOLDERS) { const id = await drive.folder(name); if (id) folders[name] = id; }
+      if (!folders.Entrada) folders.Entrada = drive.root(); // sin «Entrada», los PDF sueltos en la raíz
+    };
+    // Con la raíz haciendo de «Entrada» se vuelve a buscar cada vez, por si el usuario la crea después.
+    if (DRIVE_FOLDERS.every((name) => typeof cached[name] === 'string' && cached[name]) && cached.Entrada !== drive.root()) folders = { ...cached }; else await lookup();
+    const missing = DRIVE_FOLDERS.filter((name) => name !== 'Entrada' && !folders[name]);
+    if (missing.length) {
+      result.outcome = 'blocked';
+      result.detail = `Crea en tu carpeta de Drive estas subcarpetas: ${missing.join(', ')}. La cuenta de servicio no puede crearlas.`;
+      return finish();
+    }
     let listed: DriveFile[];
     try { listed = await drive.list(folders.Entrada!, limit + 1); } catch (error) {
       if (!(error instanceof DriveError && error.kind === 'gone')) throw error;
