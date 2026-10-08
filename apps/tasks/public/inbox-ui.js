@@ -10,15 +10,27 @@ const inboxRows=table=>(Sync.core?.data?.[table]||[]).filter(r=>!r.deleted_at);
 function canTriage(){const a=Sync.actor;return !!a&&!Sync.secondary&&a.kind!=='agent'&&['editor','owner'].includes(a.role)&&(a.scopes==='*'||a.scopes==null)}
 function canManageRoutes(){return canTriage()&&Sync.actor.role==='owner'}
 function pendingCount(){return Sync.core&&canTriage()?R().pendingRequests(Sync.core.data).length:0}
-/* Tipos que pueden llegar desde los workers de otras apps (§22.2): «Gestionar entradas» los enseña aunque aún no haya
-   llegado ninguno, para que la regla se pueda preparar antes. Los de los portales de organizadores van al área comercial. */
+/* Tipos que pueden llegar desde otras apps (§20, §22.2): «Gestionar entradas» los enseña aunque aún no haya llegado ninguno,
+   para preparar la regla antes. `suggest` propone el destino de la estructura acordada con el usuario (8-10-2026): primero
+   un proyecto cuyo nombre case y, si no hay, un área; sin ids fijos, solo por nombre. */
+const SPACE_KINDS={damage:'Avería',cleaning:'Limpieza',missing:'Falta algo',utilities:'Suministros',safety:'Seguridad',other:'Otros'};
+const EVENT_KINDS={setup:'Montaje',accommodation:'Alojamiento',cleaning:'Limpieza',food:'Cocina',technical:'Técnico',operation:'Horarios y operación',other:'Otros'};
 const KNOWN_KINDS=[
-  {kind:'booking.ses_deadline',label:'SES · Plazo legal'},
-  {kind:'booking.retreat_project',label:'Retiro · Proyecto',areaOnly:true},
-  {kind:'booking.organizer_dates',label:'Organizador · Fechas posibles',commercial:true},
-  {kind:'booking.organizer_confirm',label:'Organizador · Quiere confirmar',commercial:true},
-  {kind:'booking.proposal_comment',label:'Organizador · Comentario a la propuesta',commercial:true},
+  {kind:'booking.retreat_project',label:'Retiro · Proyecto',areaOnly:true,suggest:{area:/retiro/i}},
+  {kind:'booking.organizer_dates',label:'Organizador · Fechas posibles',suggest:{project:/comercial/i,area:/comercial|gesti/i}},
+  {kind:'booking.organizer_confirm',label:'Organizador · Quiere confirmar',suggest:{project:/comercial/i,area:/comercial|gesti/i}},
+  {kind:'booking.proposal_comment',label:'Organizador · Comentario a la propuesta',suggest:{project:/comercial/i,area:/comercial|gesti/i}},
+  {kind:'booking.ses_deadline',label:'SES · Plazo legal',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
+  {kind:'central.compliance_due',label:'Central · Vencimientos',suggest:{project:/cumplimiento/i,area:/gesti/i}},
+  ...Object.entries(SPACE_KINDS).map(([k,v])=>({kind:'feedback.space.'+k,label:'Espacio · '+v,suggest:{project:/reparaci/i,area:/mantenimiento/i}})),
+  // Lo del retiro va al proyecto de su reserva cuando el reporte la trae (§22.2); la regla es para lo que no.
+  ...Object.entries(EVENT_KINDS).map(([k,v])=>({kind:'feedback.event.'+k,label:'Retiro · '+v,suggest:{area:/retiro/i}})),
 ];
+/* Destino propuesto para una regla nueva: un proyecto vivo y no archivado cuyo nombre case; si no, un área. */
+function suggestedDestination(kind){const want=KNOWN_KINDS.find(k=>k.kind===kind)?.suggest;if(!want)return null;
+  const tabs=inboxRows('tasks.tabs');
+  if(want.project){const project=inboxRows('tasks.projects').find(p=>p.status!=='archived'&&!p.system&&want.project.test(p.title)&&tabs.some(t=>t.id===p.tab_id));if(project)return {tab_id:project.tab_id,project_id:project.id}}
+  const tab=want.area?tabs.find(t=>want.area.test(t.name)):null;return tab?{tab_id:tab.id}:null}
 function kindName(kind,label){return label||kind.slice(kind.indexOf('.')+1).replace(/[_.-]+/g,' ')}
 function originChip(source){return `<span class="pstate">${esc(appName(source))}</span>`}
 
@@ -79,9 +91,8 @@ function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,ro
 
 function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;const existing=kind?R().routeFor(Sync.core.data,kind):null;
   const label=current?.kind_label??existing?.kind_label??inboxRows('tasks.requests').find(r=>r.kind===kind&&r.kind_label)?.kind_label??KNOWN_KINDS.find(k=>k.kind===kind)?.label??'';
-  // Regla nueva de un tipo de los portales: se propone el área comercial (la que lleve «comercial» en el nombre), sin ids fijos.
-  const commercial=KNOWN_KINDS.find(k=>k.kind===kind)?.commercial?inboxRows('tasks.tabs').find(t=>/comercial/i.test(t.name)):null;
-  const dest=current||existing||(commercial?{tab_id:commercial.id}:{});
+  // Regla nueva: se propone el destino de la estructura acordada (proyecto por nombre y, si no, área), sin ids fijos.
+  const dest=current||existing||suggestedDestination(kind)||{};
   openSheet(`<h2 class="sheettitle">${existing?'Regla de entrada':'Regla nueva'}</h2>
     <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'} data-feedback-id="tasks.regla_entrada.tipo" data-feedback-label="Tipo de petición"></div>
     <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos" data-feedback-id="tasks.regla_entrada.nombre" data-feedback-label="Nombre del tipo"></div>
