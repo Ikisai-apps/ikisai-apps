@@ -57,6 +57,10 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
   // Textos legales y de contacto de Central (#281): en producción los siembra la migración; aquí, a mano.
   await booking.t.db.query('select central.seed_texts()');
   await booking.t.db.query('select central.seed_texts_payment()');
+  // Un correo por público (Central #341): `contact.email` pasa a `contact.organizers.email`. Se cambia por uno distinto del
+  // de reserva para que las pruebas vean que el portal lee la clave nueva.
+  await booking.t.db.query('select central.seed_contact_audiences()');
+  await booking.t.db.query(`update central.texts set body = 'hola-organizadores@ikisai.com' where key = 'contact.' || 'organizers.email'`);
   let seq = 0;
   let offline = false;
   let seeded: { extraId: string } | null = null;

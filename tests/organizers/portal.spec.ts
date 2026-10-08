@@ -373,7 +373,8 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
 
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
   await page.locator('#moneyInvoices .orginvoice').first().click();
-  await expect(page.locator('#askInvoice')).toContainText('organiza@ikisai.com');
+  // El correo de organizadores de Central (`contact.organizers.email`), no el de reserva.
+  await expect(page.locator('#askInvoice')).toContainText('hola-organizadores@ikisai.com');
 });
 
 test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {

@@ -12,6 +12,18 @@ export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.ema
 const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone', 'payment.instructions', 'portal.menu_note'];
 const storeKey = () => `ikisai-organizers-texts:${i18n.locale()}`;
 
+/**
+ * Correo del público de este portal (Central #341): `contact.organizers.email`. El antiguo `contact.email` vale mientras la
+ * semilla no lo mueva; si llegan los dos, manda el nuevo. Dentro de la app se guarda como `contact.email`.
+ */
+const ORGANIZERS_EMAIL = 'contact.organizers.email';
+function normalized(rows: CommonText[]): CommonText[] {
+  const hasNew = rows.some((r) => r.key === ORGANIZERS_EMAIL && typeof r.body === 'string' && r.body.trim());
+  return rows
+    .filter((r) => !(hasNew && r.key === 'contact.email'))
+    .map((r) => (r.key === ORGANIZERS_EMAIL ? { ...r, key: 'contact.email' } : r));
+}
+
 const FALLBACK: Record<TextKey, CommonText> = {
   'organizers.declaration': {
     key: 'organizers.declaration', title: 'Declaración', version: 'v1', kind: 'legal',
@@ -69,7 +81,7 @@ export const deviceLang = (): 'es' | 'en' => i18n.locale();
 export async function loadCommonTexts(client: SyncClient): Promise<void> {
   try {
     const out = await client.api<{ rows?: CommonText[]; items?: CommonText[] }>(`/read/central.common_texts_projection?where[lang]=${deviceLang()}&limit=200`);
-    const rows = out.rows ?? out.items ?? [];
+    const rows = normalized(out.rows ?? out.items ?? []);
     const next: Partial<Record<TextKey, CommonText>> = {};
     for (const row of rows) if ((KEYS as readonly string[]).includes(row.key) && typeof row.body === 'string' && row.body.trim()) next[row.key as TextKey] = row;
     if (!Object.keys(next).length) return;
@@ -89,9 +101,9 @@ export async function loadPublicContact(lang = deviceLang()): Promise<void> {
     const res = await fetch(`/api/v1/public/contact?lang=${lang}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return;
     const out = (await res.json()) as { items?: CommonText[]; rows?: CommonText[] } & Record<string, unknown>;
-    const rows: CommonText[] = out.items ?? out.rows ?? Object.entries(out)
+    const rows: CommonText[] = normalized(out.items ?? out.rows ?? Object.entries(out)
       .filter(([, v]) => typeof v === 'string' || (v && typeof (v as CommonText).body === 'string'))
-      .map(([key, v]) => (typeof v === 'string' ? { key, body: v, title: null, version: null, kind: 'contact' } : { ...(v as CommonText), key }));
+      .map(([key, v]) => (typeof v === 'string' ? { key, body: v, title: null, version: null, kind: 'contact' } : { ...(v as CommonText), key })));
     const next: Partial<Record<TextKey, CommonText>> = {};
     for (const row of rows) if ((row.key === 'contact.email' || row.key === 'contact.phone') && typeof row.body === 'string' && row.body.trim()) next[row.key] = row;
     if (!Object.keys(next).length) return;
