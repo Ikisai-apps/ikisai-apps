@@ -345,6 +345,7 @@ Lecturas registradas que sí existen:
 | `central.record_file` | editor | Archivo de un registro de documentación, si se ve la fila (§8). |
 | `central.requirement_brief` | editor | Código, nombre, vencimiento y riesgo de una obligación, para pedir su tarea a Tasks. |
 | `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
+| `central.people_options` | todos | Personas vivas y activas, con o sin cuenta, para elegir responsable (§7.1). |
 | `central.portal_place_projection` | todos | El lugar para los portales: nombre, dirección, mapa y plano (§2.9). |
 
 La **regla de estado derivado** vive en `_domain/central` (la usa el cliente sin red) y se repite en SQL para las lecturas:
@@ -445,6 +446,7 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 | `central.booking_person_projection` | booking | `person_id, code, display_name, base_role, active, revision` | Booking ya prevé `staff_assignments.person_ref_*` para elegir a la persona del turno sin copiarla (§15.3 de su `API.md`). Solo el nombre visible y la función, nunca contacto. **Se publica cuando Booking lo pida**; nota: Booking lo apunta como `target_app = 'encarna'` y debería ser `'central'`. |
 | `central.booking_blocking_projection` (V2) | booking, tasks | `requirement_id, code, name, blocks_operation, state, expires_on` de requisitos vencidos que bloquean la operación | C09 «bloquea operación»: aviso en Booking y Tasks. Se propone; no entra en V1. |
 | `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
+| `central.people_options` | tasks, central | `person_id, name, user_id, active` | Personas del equipo vivas y activas, **también sin cuenta** (`user_id` null), para elegir responsable en Tasks (FB_2026_015, migración `1502`). El nombre es el de la ficha. Sin datos reservados. |
 | `central.portal_place_projection` | organizers, guests, central | §2.9 | Nombre, dirección, enlace del mapa y plano del lugar (cartel de Organizers, portal de huéspedes). |
 | `central.<destino>_kpi_projection` de Central | central | Como §7.2 | Vencimientos y riesgos también son KPIs del panel. |
 
