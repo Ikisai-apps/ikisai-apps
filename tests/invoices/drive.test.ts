@@ -86,6 +86,8 @@ test('Drive: PDF con texto → factura leída (pendiente de revisión) con su do
   assert.equal(invoice.invoice_date, '2026-10-06');
   assert.equal(Number(invoice.source_total), 159);
   assert.equal(invoice.drive_url, `https://drive.google.com/file/d/${leida}/view`);
+  assert.equal(invoice.import_meta.origin, 'pdf_text');
+  assert.ok(Object.keys(invoice.import_meta.provenance ?? {}).length >= 3, 'procedencia por campo de la lectura');
   const supplier = (await rows('invoices.suppliers')).find((s) => s.id === invoice.supplier_id)!;
   assert.equal(supplier.tax_id, 'B12345674');
   const files = (await rows('invoices.invoice_files')).filter((f) => f.invoice_id === invoice.id);

@@ -371,6 +371,45 @@ test('MCP: importar desde JSON (idempotente, duplicados, JSON inválido), compra
   assert.equal(fiscal.isError, undefined, JSON.stringify(fiscal));
 });
 
+test('MCP §15.1: la sesión de Claude lista los borradores de Drive con su PDF y los completa (origen «ia» y procedencia), sin crear otra factura', async () => {
+  let seq = 0;
+  const rpc = (method: string, params: unknown, token?: string) => app.call('/api/v1/mcp', { ...(token ? { token } : {}), body: { jsonrpc: '2.0', id: ++seq, method, params } });
+  const tool = async (name: string, args: Record<string, unknown>, token?: string) => (await rpc('tools/call', { name, arguments: args }, token)).data.result;
+  const agent = (await app.call('/api/v1/agents', { body: { name: 'Claude · facturas', role: 'editor' } })).data.token as string;
+  // Borrador como los que deja Drive: pendiente de datos, sin fecha, proveedor provisional y su PDF
+  const placeholder = uuid(); const draft = uuid();
+  const file = await uploadFile('%PDF borrador de drive', 'Factura escaneada.pdf');
+  await ok([
+    insert('invoices.suppliers', placeholder, { name: 'Sin identificar (Drive)', slug: 'sin_identificar_mcp' }),
+    insert('invoices.invoices', draft, { supplier_id: placeholder, invoice_date: null, object: 'Factura escaneada', drive_file_id: 'drv-mcp-1', drive_url: 'https://drive.google.com/file/d/drv-mcp-1/view' }),
+    insert('invoices.invoice_files', uuid(), { invoice_id: draft, original_filename: 'Factura escaneada.pdf', page_order: 1, kind: 'original', file_id: file.id, mime_type: 'application/pdf', size_bytes: file.size, sha256: file.sha }),
+  ]);
+  const listed = await tool('invoices_pending_drafts', {}, agent);
+  assert.equal(listed.isError, undefined, JSON.stringify(listed));
+  const item = listed.structuredContent.items.find((i: any) => i.invoice_id === draft);
+  assert.ok(item, 'el borrador de Drive aparece');
+  assert.equal(item.drive_url, 'https://drive.google.com/file/d/drv-mcp-1/view');
+  assert.equal(item.documents.length, 1); assert.ok(item.documents[0].url, 'URL firmada del PDF'); assert.equal(item.documents[0].expires_in_seconds, 600);
+  assert.ok(listed.structuredContent.json_schema, 'lleva el esquema ikisai.invoice.v1');
+  const asReader = (await rpc('tools/call', { name: 'invoices_pending_drafts', arguments: {} }, app.tokens.reader)).data;
+  assert.ok(asReader.error || asReader.result?.isError, 'el lector no la tiene');
+
+  // Claude lee el PDF y completa ese mismo borrador
+  const doc = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_number: 'IA-77', supplier_tax_id: 'B76543213', supplier_name: 'Ferretería IA SL' } };
+  const done = await tool('invoices_import_json', { invoice_id: draft, document: doc, provenance: { 'invoice.invoice_number': { confidence: 0.97, text: 'Factura nº IA-77', page: 1 }, 'document_totals.total': { confidence: 0.9 } } }, agent);
+  assert.equal(done.isError, undefined, JSON.stringify(done));
+  assert.equal(done.structuredContent.invoice_id, draft);
+  const inv = await row('invoices.invoices', draft);
+  assert.equal(inv.status, 'pendiente_revision'); assert.equal(inv.invoice_number, 'IA-77'); assert.notEqual(inv.supplier_id, placeholder);
+  assert.equal(inv.drive_file_id, 'drv-mcp-1', 'sigue marcada como llegada por Drive');
+  assert.equal(inv.import_meta.origin, 'ia');
+  assert.deepEqual(inv.import_meta.provenance['invoice.invoice_number'], { method: 'external_ai', text: 'Factura nº IA-77', page: 1, confidence: 0.97 });
+  // Ya no aparece en la lista; procedencia mal formada se rechaza
+  assert.ok(!(await tool('invoices_pending_drafts', {}, agent)).structuredContent.items.some((i: any) => i.invoice_id === draft));
+  const bad = await tool('invoices_import_json', { document: { ...doc, invoice: { ...doc.invoice, invoice_number: 'IA-78' } }, provenance: { total: { confidence: 7 } } }, agent);
+  assert.equal(bad.isError, true);
+});
+
 test('zip: escritor en streaming produce entradas legibles y CRC correcto', async () => {
   const bytes = await collectStream(zipStream([
     { name: 'a/hola.txt', data: new TextEncoder().encode('123456789'), modified: new Date('2026-10-06T10:00:00Z') },
