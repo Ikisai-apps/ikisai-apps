@@ -107,7 +107,7 @@ export function createApp(config: AppConfig): AppHandler {
     defaultProvider: config.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
     fetch: config.fetch,
   });
-  const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads, storage) : null;
+  const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads, storage, config.hooks?.visible) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);

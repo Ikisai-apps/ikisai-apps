@@ -200,3 +200,26 @@ test('portales · core.portal_in_scope (K1): reserva del organizador; reserva y 
   assert.equal(await q('guests', R, crypto.randomUUID()), false, 'otro huésped de la misma reserva');
   assert.equal(await q('organizers', null, null), false);
 });
+
+test('portales · K3: un organizador abre un archivo de su retiro subido por otro, no el de otro retiro', async () => {
+  const base = { url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch };
+  await app.t.db.exec(`create table public.test_materials (id uuid primary key, reservation_id uuid not null, file_id uuid, deleted_at timestamptz);
+    select core.register_file_field('organizers', 'public', 'test_materials', 'file_id', 'operational');`);
+  const inScope = (row: Record<string, unknown>, ctx: any) => ((ctx.membership?.scopes?.grants ?? []) as any[]).some((g) => g.reservation_id === row.reservation_id);
+  const org = createApp({ ...base, app: 'organizers', slug: 'organizers-api', origins: ['https://organizers.ikisai.com'], portalIssuer: true,
+    uploads: { bucket: 'organizers-materials', allowedMime: ['application/pdf'] }, hooks: { visible: (_t, row, ctx) => inScope(row, ctx) } });
+  const enter = async (reservation: string, name: string) => {
+    const link = await app.call('/api/v1/portal-links', { token: app.tokens.editor, body: { app: 'organizers', scope: { reservation_id: reservation }, person: { name } } });
+    assert.equal(link.status, 200, JSON.stringify(link.data));
+    return (await callPortal(org, 'organizers', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } })).data.token as string;
+  };
+  const R3 = crypto.randomUUID(); const R4 = crypto.randomUUID(); await setUntil(R3, 30); await setUntil(R4, 30);
+  const ana = await enter(R3, 'Ana Coorganiza'); const pepe = await enter(R3, 'Pepe Coorganiza'); const otro = await enter(R4, 'Otro Retiro');
+  const ticket = await callPortal(org, 'organizers', '/api/v1/uploads', { token: ana, body: { filename: 'programa.pdf', mime: 'application/pdf', size: 10, sha256: 'b'.repeat(64) } });
+  assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+  await app.t.db.query(`update core.files set status = 'verified' where id = $1`, [ticket.data.id]);
+  assert.equal((await callPortal(org, 'organizers', `/api/v1/files/${ticket.data.id}`, { token: pepe })).status, 404, 'sin fila que lo referencie, solo la autora');
+  await app.t.db.query('insert into public.test_materials (id, reservation_id, file_id) values ($1, $2, $3)', [crypto.randomUUID(), R3, ticket.data.id]);
+  assert.notEqual((await callPortal(org, 'organizers', `/api/v1/files/${ticket.data.id}`, { token: pepe })).status, 404, 'coorganizador del mismo retiro');
+  assert.equal((await callPortal(org, 'organizers', `/api/v1/files/${ticket.data.id}`, { token: otro })).status, 404, 'organizador de otro retiro');
+});

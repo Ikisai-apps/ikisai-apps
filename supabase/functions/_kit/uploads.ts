@@ -21,16 +21,24 @@ export interface UploadsConfig {
 const SHA = /^[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function createUploads(supabase: Supabase, app: string, config: UploadsConfig, storage: StorageAccess = createStorage(supabase)) {
+export function createUploads(supabase: Supabase, app: string, config: UploadsConfig, storage: StorageAccess = createStorage(supabase),
+  visible?: (table: string, row: Record<string, unknown>, ctx: RequestContext) => boolean) {
   const maxBytes = config.maxBytes ?? 50 * 1024 * 1024;
   const hashUpTo = config.hashVerifyUpTo ?? 25 * 1024 * 1024;
   const readSeconds = config.readUrlSeconds ?? 600;
 
   // Portales (contrato §3.6): ser miembro de la app no basta; cada persona del portal solo ve los archivos que subió ella
   // (la firma de un huésped no la lee otro huésped aunque conozca el id). Se distingue por su ámbito `scopes.grants`.
-  function ownInPortal(ctx: RequestContext, file: any) {
+  // K3: un archivo ajeno se puede leer si alguna fila de la app que lo referencia (campos de `register_file_field`) es
+  // visible para el miembro con el hook `visible` de la app; sin hook, solo los propios.
+  async function ownInPortal(ctx: RequestContext, file: any) {
     const portal = Array.isArray((ctx.membership as any)?.scopes?.grants);
-    if (portal && file?.created_by !== ctx.user.id) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
+    if (!portal || file?.created_by === ctx.user.id) return;
+    if (visible) {
+      const refs = await supabase.rpc<Array<{ table: string; row: Record<string, unknown> }>>('core_file_referencing_rows', { p_app: app, p_file: file.id });
+      if ((refs ?? []).some((r) => visible(r.table, r.row, ctx))) return;
+    }
+    fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
   }
 
   async function create(ctx: RequestContext, body: any) {
@@ -60,7 +68,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   async function verify(ctx: RequestContext, id: string) {
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
-    ownInPortal(ctx, file);
+    await ownInPortal(ctx, file);
     if (file.status === 'verified') return { id, sha256: file.sha256, size: file.size, verified: true, hashVerified: file.hash_verified };
     const response: Response = await storage.download(file);
     if (response.status === 404 || response.status === 400) {
@@ -95,7 +103,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   async function readUrl(ctx: RequestContext, id: string) {
     if (!UUID.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
     const file = await supabase.rpc<any>('core_file_get', { p_app: app, p_actor: ctx.user.id, p_id: id });
-    ownInPortal(ctx, file);
+    await ownInPortal(ctx, file);
     if (file.status !== 'verified') fail(404, 'FILE_NOT_FOUND', 'El archivo no está disponible.');
     const url = await storage.readUrl(file, readSeconds);
     return { id, url, expiresAt: new Date(Date.now() + readSeconds * 1000).toISOString(), filename: file.filename, mime: file.mime, size: file.size };
