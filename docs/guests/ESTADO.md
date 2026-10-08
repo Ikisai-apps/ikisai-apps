@@ -61,6 +61,8 @@
 
 - 2026-10-08 · K6 en main (#334): las respuestas a las preguntas del organizador se guardan; la prueba las comprueba siempre.
 
+- 2026-10-08 · «Ayuda y sugerencias» con `id` y `requestId` estables del formulario (kit 0.25.2): el doble toque no duplica y la hoja la cierra el kit con su aviso. Prueba común `portalHelpRoundTrip` en `@smoke`, también con el teclado abierto en el móvil.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.

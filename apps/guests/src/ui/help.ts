@@ -6,7 +6,7 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import {
-  collectFeedbackContext, createFeedbackClient, createFeedbackProgressiveForm, el, icon, openSheet, replace, toast,
+  collectFeedbackContext, createFeedbackClient, createFeedbackProgressiveForm, el, icon, openSheet, replace,
   type FeedbackIntent, type FeedbackReport, type FeedbackSubject, type ProgressiveAnswers, type ProgressiveStep,
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
@@ -66,9 +66,10 @@ export function openHelp(options: HelpOptions): void {
     onSubmit: async (result) => {
       const shape = reportShape(result.answers, grant);
       const node = result.node ?? { id: 'guests.inicio', path: ['Inicio'] };
-      const id = crypto.randomUUID();
+      // `id` y `requestId` estables por formulario (kit 0.25.2): un doble toque o un reintento no crean otro reporte.
+      const id = result.id;
       await reports.enqueue({
-        id, requestId: crypto.randomUUID(), userId, app: 'guests', nodeId: node.id, nodePath: node.path,
+        id, requestId: result.requestId, userId, app: 'guests', nodeId: node.id, nodePath: node.path,
         message: shape.place ? `[${shape.place}] ${result.message}` : result.message,
         intent: shape.intent, subject: shape.subject, images: result.images, updatedAt: new Date().toISOString(),
         context: await collectFeedbackContext({ app: 'guests', node: { id: node.id, path: node.path, element: null }, role: 'editor' }),
@@ -76,9 +77,8 @@ export function openHelp(options: HelpOptions): void {
         attempts: 0,
       });
       await reports.flush().catch(() => undefined);
+      // El aviso y el cierre de la hoja los hace el formulario del kit.
       const pending = (await reports.pending()).some((item) => item.id === id);
-      toast(pending ? t('help.queued') : t('help.sent'));
-      void paintMine();
       return pending ? 'pending' : 'sent';
     },
   });
