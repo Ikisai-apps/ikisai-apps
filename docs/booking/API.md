@@ -1413,6 +1413,10 @@ Decisiones del usuario (8-10-2026): el huésped **solo elige entre las camas con
   - `booking.portal_approve_bed({reservation_id, assignment_id, approve})`: confirma o quita una plaza pendiente.
 - **Personal:** en «Alojamiento» de la ficha, cada asignación dice si está pendiente y quién la hizo, con la preferencia del huésped.
 
+### 23.2 B18 · `booking.reservation_end_dates` (migración 0461)
+
+Vista para la conservación de Organizers (borra las respuestas de los huéspedes a los 6 meses del fin del retiro): `reservation_id`, `end_date` y `status` (el de la reserva, o `borrada` si se borró, para que lo suyo también caduque). Sin datos personales. Se lee por SQL desde el schema `organizers` (lint, #334); no es una lectura de portal.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
