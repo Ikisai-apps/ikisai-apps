@@ -35,6 +35,7 @@
 - 2026-10-08 · **Un correo por público** (`0598`): `contact.<público>.email` (organizadores, huéspedes, equipo y proveedores) en la sección «Correos por público», marcadores por público, `contact.email` pasado a organizadores, `portal.privacy` con el correo de huéspedes y contacto público filtrado por `audience`.
 - 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (se aplican solas al abrir si es seguro); fuera la copia local `src/updates.ts`.
 - 2026-10-08 · **Textos en español v2** revisados por el usuario (`0599`): 18 claves, sin pisar las editadas a mano; `payment.instructions` sin Bizum.
+- 2026-10-08 · **Bloque condicional de Bizum** (`1500`, primer número del segundo bloque de Central) con el Bizum de vuelta en `payment.instructions`, y **protección de datos de los huéspedes sin NIF ni domicilio fiscal** (`1501`).
 
 ## Pendiente
 

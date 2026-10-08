@@ -71,6 +71,13 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await page.locator('#tx-body').pressSequentially('\n\nEscríbenos a ');
   await page.locator('.markerbtn', { hasText: 'Correo para organizadores' }).click();
   await expect(page.locator('#tx-preview')).toContainText('Escríbenos a organiza@ikisai.com');
+  // Bloque condicional de Bizum: rodea lo escrito; sin Bizum en la Entidad, la vista previa no lo muestra.
+  await page.locator('#tx-body').pressSequentially(' Bizum de prueba');
+  await page.locator('#tx-body').evaluate((t: HTMLTextAreaElement) => { t.setSelectionRange(t.value.length - ' Bizum de prueba'.length, t.value.length); });
+  await page.locator('.blockbtn', { hasText: 'Solo si hay Bizum' }).click();
+  await expect(page.locator('#tx-body')).toHaveValue(/\{\{#entidad\.bizum\}\} Bizum de prueba\{\{\/entidad\.bizum\}\}$/);
+  await expect(page.locator('#tx-markers')).toHaveText('');
+  await expect(page.locator('#tx-preview')).not.toContainText('Bizum de prueba');
   await expect(page.locator('#tx-version')).toContainText('Al guardar se crea la versión v3; las aceptaciones anteriores conservan su versión');
   await page.locator('#saveText').click();
   await expect(page.getByText('Texto guardado.')).toBeVisible();

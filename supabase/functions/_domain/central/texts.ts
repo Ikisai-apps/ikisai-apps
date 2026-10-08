@@ -41,6 +41,23 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
   { marker: '{{contacto.telefono}}', label: 'Teléfono de contacto' },
 ];
 
+/**
+ * Bloques condicionales: lo de dentro solo se ve si la Entidad tiene ese dato; si no, el bloque desaparece entero (como
+ * `central.render_blocks`). Por ahora, solo el Bizum.
+ */
+export const TEXT_BLOCKS: ReadonlyArray<{ open: string; close: string; label: string; help: string }> = [
+  { open: '{{#entidad.bizum}}', close: '{{/entidad.bizum}}', label: 'Solo si hay Bizum',
+    help: 'Lo que escribas entre {{#entidad.bizum}} y {{/entidad.bizum}} solo se ve si la Entidad tiene Bizum; si no, desaparece entero.' },
+];
+
+/** Aplica los bloques condicionales; sin el dato, quita el bloque y los saltos de línea que lo separaban, como en SQL. */
+export function renderBlocks(body: string, hasBizum: boolean): string {
+  if (!body.includes('{{#entidad.bizum}}')) return body;
+  const block = /\{\{#entidad\.bizum\}\}([\s\S]*?)\{\{\/entidad\.bizum\}\}/g;
+  if (hasBizum) return body.replace(block, '$1');
+  return body.replace(block, '\u0001').replace(/\n*\u0001/g, '').replace(/^\n+/, '');
+}
+
 export interface MarkerSource {
   entity?: { legal_name?: string | null; tax_id?: string | null; address_line?: string | null; postal_code?: string | null; city?: string | null; province?: string | null; country?: string | null; iban?: string | null; bizum?: string | null; venue_address?: string | null; venue_map_url?: string | null } | null;
   /** Correo de organizadores (y de {{contacto.correo}}); `emails` lo sustituye si trae `organizers`. */
@@ -76,12 +93,12 @@ export function renderMarkers(body: string, source: MarkerSource): string {
     '{{contacto.proveedores}}': source.emails?.suppliers?.trim() || '—',
     '{{contacto.telefono}}': source.phone?.trim() || '—',
   };
-  return Object.entries(values).reduce((text, [marker, value]) => text.split(marker).join(value), body);
+  return Object.entries(values).reduce((text, [marker, value]) => text.split(marker).join(value), renderBlocks(body, !!e?.bizum?.trim()));
 }
 
 /** Marcadores escritos que no existen (`{{entidad.cif}}`): la interfaz los avisa antes de guardar. */
 export function unknownMarkers(body: string): string[] {
-  const known = new Set(TEXT_MARKERS.map((m) => m.marker));
+  const known = new Set([...TEXT_MARKERS.map((m) => m.marker), ...TEXT_BLOCKS.flatMap((b) => [b.open, b.close])]);
   return [...new Set(body.match(/\{\{[^}]*\}\}/g) ?? [])].filter((m) => !known.has(m));
 }
 

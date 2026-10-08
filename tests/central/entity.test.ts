@@ -225,3 +225,63 @@ test('entidad · enlace exacto del mapa (FB_2026_010): solo mapas conocidos; man
   assert.equal(none.status, 200, JSON.stringify(none.data));
   assert.deepEqual((await app.t.db.query(`select address, map_url from central.portal_place_projection`)).rows[0], { address: null, map_url: null });
 });
+
+test('textos · bloque condicional de Bizum: con Bizum se ve, sin Bizum desaparece entero; igual en SQL y en el dominio', async () => {
+  const { renderBlocks, renderMarkers, unknownMarkers } = await import('../../supabase/functions/_domain/central/mod.ts');
+  const q = async <T = any>(sql: string, args: unknown[] = []) => (await app.t.db.query<T>(sql, args)).rows;
+  const B = (s: string) => `{{#entidad.bizum}}${s}{{/entidad.bizum}}`;
+  const cases: Array<[string, string, string]> = [
+    [`A\n\n${B('Por Bizum: {{entidad.bizum}}')}\n\nC`, 'A\n\nPor Bizum: {{entidad.bizum}}\n\nC', 'A\n\nC'],
+    [`${B('Primero')}\n\nC`, 'Primero\n\nC', 'C'],
+    [`A\n\n${B('Último')}`, 'A\n\nÚltimo', 'A'],
+    [`Paga${B(' o por Bizum')}.`, 'Paga o por Bizum.', 'Paga.'],
+    [`${B('uno')} y ${B('dos')}`, 'uno y dos', ' y '],
+    ['Sin bloque', 'Sin bloque', 'Sin bloque'],
+  ];
+  for (const [body, withIt, without] of cases) {
+    assert.equal(renderBlocks(body, true), withIt, body); assert.equal(renderBlocks(body, false), without, body);
+    const sql = (await q<{ y: string; n: string }>(`select central.render_blocks($1, true) as y, central.render_blocks($1, false) as n`, [body]))[0]!;
+    assert.deepEqual([sql.y, sql.n], [withIt, without], `SQL: ${body}`);
+  }
+  assert.deepEqual(unknownMarkers(B('x')), []);
+  assert.equal(renderMarkers(B('Bizum {{entidad.bizum}}'), { entity: { bizum: '600 000 000' } }), 'Bizum 600 000 000');
+  assert.equal(renderMarkers(`A\n\n${B('Bizum {{entidad.bizum}}')}`, { entity: {} }), 'A');
+
+  // `payment.instructions` vuelve a llevar el Bizum, dentro del bloque (después de los textos v2), una sola vez.
+  await q(`select central.seed_contact_audiences()`);
+  await q(`select central.apply_texts_es_v2()`);
+  const out = (await q<{ r: { applied: number; skipped: string[] } }>(`select central.apply_payment_bizum_block() as r`))[0]!.r;
+  assert.deepEqual(out, { applied: 2, skipped: [] });
+  assert.equal((await q<{ r: { applied: number } }>(`select central.apply_payment_bizum_block() as r`))[0]!.r.applied, 0);
+  const pay = async () => Object.fromEntries((await q<{ lang: string; body: string }>(`select lang, body from central.common_texts_projection where key = 'payment.instructions'`)).map((r) => [r.lang, r.body]));
+  let p = await pay();
+  assert.match(p.es!, /\*\*Por Bizum:\*\* al 600 000 000, con el mismo concepto\.\n\nSi tienes cualquier duda/);
+  assert.match(p.en!, /\*\*By Bizum\*\* \(Spanish mobile payments\) to 600 000 000/);
+  // Sin Bizum en la Entidad, el bloque desaparece sin dejar líneas vacías.
+  const [row] = (await app.call(`/api/v1/snapshot?tables=${ENTITY_TABLE}`)).data.tables[0].rows;
+  assert.equal((await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { bizum: null } }])).status, 200);
+  p = await pay();
+  for (const lang of ['es', 'en']) { assert.doesNotMatch(p[lang]!, /Bizum|—|\{\{|\n\n\n/, lang); }
+  assert.match(p.es!, /«RSV_2026_012 Ana López»\.\n\nSi tienes cualquier duda/);
+});
+
+test('textos · protección de datos de los huéspedes sin NIF ni domicilio fiscal (decisión del usuario)', async () => {
+  const q = async <T = any>(sql: string, args: unknown[] = []) => (await app.t.db.query<T>(sql, args)).rows;
+  const before = Object.fromEntries((await q<{ lang: string; version: string }>(`select lang, version from central.texts where key = 'portal.privacy' and deleted_at is null`)).map((r) => [r.lang, r.version]));
+  const out = (await q<{ r: { applied: number; skipped: string[]; others: string[] } }>(`select central.apply_privacy_controller() as r`))[0]!.r;
+  assert.deepEqual(out, { applied: 2, skipped: [], others: [] });
+  assert.equal((await q<{ r: { applied: number } }>(`select central.apply_privacy_controller() as r`))[0]!.r.applied, 0);
+  const rows = await q<{ lang: string; version: string; body: string; rendered: string }>(
+    `select t.lang, t.version, t.body, p.body as rendered from central.texts t join central.common_texts_projection p on p.key = t.key and p.lang = t.lang
+      where t.key = 'portal.privacy' and t.deleted_at is null order by t.lang desc`);
+  assert.match(rows[0]!.body, /^\*\*Responsable:\*\* \{\{entidad\.razon_social\}\}\. Contacto: \{\{contacto\.huespedes\}\} · \{\{contacto\.telefono\}\}\.$/m);
+  assert.match(rows[1]!.body, /^\*\*Controller:\*\* \{\{entidad\.razon_social\}\}\. Contact: \{\{contacto\.huespedes\}\} · \{\{contacto\.telefono\}\}\.$/m);
+  for (const r of rows) {
+    assert.notEqual(r.version, before[r.lang], `${r.lang} sube de versión`);
+    assert.doesNotMatch(r.body, /entidad\.(nif|domicilio)/);
+    assert.doesNotMatch(r.rendered, new RegExp(`${ENTITY.tax_id}|${ENTITY.address_line}`));
+  }
+  // Ningún texto vivo lleva ya NIF ni domicilio fiscal; los marcadores siguen existiendo para los documentos fiscales.
+  assert.equal((await q(`select 1 from central.texts where deleted_at is null and (body like '%{{entidad.nif}}%' or body like '%{{entidad.domicilio}}%')`)).length, 0);
+  assert.equal((await q<{ b: string }>(`select central.render_text('{{entidad.nif}}') as b`))[0]!.b, ENTITY.tax_id);
+});

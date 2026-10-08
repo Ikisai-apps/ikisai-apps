@@ -1,7 +1,7 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  CONTACT_AUDIENCES, CONTACT_KEYS, TEXT_KINDS, contactEmailKey, isContactEmailKey, TEXT_KIND_LABELS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
+  CONTACT_AUDIENCES, CONTACT_KEYS, TEXT_KINDS, contactEmailKey, isContactEmailKey, TEXT_KIND_LABELS, TEXT_BLOCKS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
   type MarkerSource, type TextKind, type TextLang,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
@@ -102,6 +102,15 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       guard.dirtyEditor = !readOnly && (t ? changed() : title.value.trim() !== '' || body.value.trim() !== '');
       sheet?.setFootHidden(readOnly || (t !== null && !changed()));
     };
+    /** Rodea la selección (o el cursor) con las marcas de un bloque condicional. */
+    const wrapBlock = (open: string, close: string) => {
+      const start = body.selectionStart ?? body.value.length;
+      const end = body.selectionEnd ?? start;
+      body.setRangeText(open + body.value.slice(start, end) + close, start, end, 'end');
+      body.setSelectionRange(start + open.length, start + open.length + (end - start));
+      body.focus();
+      refresh();
+    };
     const insertMarker = (marker: string) => {
       const start = body.selectionStart ?? body.value.length;
       body.setRangeText(marker, start, body.selectionEnd ?? start, 'end');
@@ -137,7 +146,9 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       el('span', { class: 'muted small' }, 'Párrafos separados por una línea en blanco; **negrita** entre dobles asteriscos.')),
     readOnly ? null : el('div', { class: 'markers', 'data-feedback-id': 'central.textos.editar.marcadores', 'data-feedback-label': 'Marcadores' },
       el('span', { class: 'muted small' }, 'Insertar:'),
-      ...TEXT_MARKERS.map((m) => el('button', { type: 'button', class: 'chip markerbtn', title: m.marker, onclick: () => insertMarker(m.marker) }, m.label))),
+      ...TEXT_MARKERS.map((m) => el('button', { type: 'button', class: 'chip markerbtn', title: m.marker, onclick: () => insertMarker(m.marker) }, m.label)),
+      ...TEXT_BLOCKS.map((b) => el('button', { type: 'button', class: 'chip markerbtn blockbtn', title: `${b.open}…${b.close}`, onclick: () => wrapBlock(b.open, b.close) }, b.label)),
+      ...TEXT_BLOCKS.map((b) => el('span', { class: 'muted small blockhelp' }, b.help))),
     markerWarn,
     el('div', { class: 'sectionlabel' }, 'Vista previa'),
     preview,
