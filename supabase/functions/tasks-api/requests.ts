@@ -169,10 +169,14 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         invalid('on_behalf_of', 'on_behalf_of es {kind: internal|organizer|guest, report_code}.');
       }
 
-      // Un extra de un retiro va al proyecto de su reserva: `project_ref` es obligatorio para ese tipo y solo para él.
+      // Al proyecto del retiro: un extra (obligatorio) o un reporte de Feedback sobre un retiro (opcional, `feedback.event.*`).
+      // `project_ref` es la referencia de la reserva en Booking (`RES<código>`), la misma con la que se creó el proyecto (§23).
       const projectRef = text('project_ref', 150);
+      const eventReport = sourceName === 'feedback' && kind.startsWith('feedback.event.');
       if (kind === 'booking.retreat_extra' && !projectRef) invalid('project_ref', 'Un extra necesita project_ref (la referencia de su reserva).');
-      if (projectRef !== undefined && (kind !== 'booking.retreat_extra' || !source.reference.test(projectRef))) invalid('project_ref', 'project_ref solo vale para booking.retreat_extra y es una referencia de reserva.');
+      if (projectRef !== undefined && ((kind !== 'booking.retreat_extra' && !eventReport) || !SYSTEM_SOURCES.booking!.reference.test(projectRef))) {
+        invalid('project_ref', 'project_ref solo vale para booking.retreat_extra y feedback.event.*, y es una referencia de reserva.');
+      }
 
       const externalRef = `${sourceName}:${reference}`;
       const id = await requestTaskId(externalRef);
@@ -184,15 +188,18 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
       if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
       const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
+      const send = (toProject: boolean) => internal.commit(ctx, {
+        requestId: `${sourceName}-${crypto.randomUUID()}`,
+        operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
+          id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(toProject && projectRef ? { projectRef: `booking:${projectRef}` } : {}), ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
+        } }],
+      });
       try {
-        const committed = await internal.commit(ctx, {
-          requestId: `${sourceName}-${crypto.randomUUID()}`,
-          operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
-            id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(projectRef ? { projectRef: `${sourceName}:${projectRef}` } : {}), ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
-          } }],
-        });
+        let committed = await send(true);
         if ((committed.results[0] as { result?: { routed?: string } })?.result?.routed === 'no_project') {
-          fail(409, 'PROJECT_NOT_READY', 'El proyecto de esa reserva aún no existe: pide antes el proyecto (requests/project).', { project_ref: projectRef });
+          // Un reporte de Feedback no espera al proyecto: sin él, va por la regla de su tipo (o a «Por clasificar»).
+          if (eventReport) committed = await send(false);
+          else fail(409, 'PROJECT_NOT_READY', 'El proyecto de esa reserva aún no existe: pide antes el proyecto (requests/project).', { project_ref: projectRef });
         }
       } catch (error) {
         if ((error as { code?: string })?.code === 'PROJECT_NOT_READY') throw error;
