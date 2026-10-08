@@ -24,3 +24,18 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | U2 | UI | recuadro de firma en el kit | opcional: Guests tiene el suyo en `ui/sign.ts` |
 | U3 | UI | estado de guardado por campo y global | opcional: Guests tiene el suyo (`writer.ts`) |
 | U4 | UI | icono de Guests y `nav: []` sin barra | hecha |
+| BG9 | Booking | programa del retiro: `program_items`, acciones para el organizador y `portal_program` | abierta (fase 4) |
+| BG10 | Booking | alojamiento: `portal_lodging`, `portal_choose_bed` atómica, `portal_release_bed`, `portal_room_preference` y columnas nuevas | abierta (fase 5) |
+| BG11 | Booking | huésped de muestra para la vista previa (`preview`, `PREVIEW_READ_ONLY`) | abierta (si se elige, O6) |
+| BG12 | Booking | `reservation_id` en `food_event_projection` | abierta (fase 4) |
+| FD1 | Food | `food.portal_menu` para `guests` y `organizers` | abierta (fase 4) |
+| O1 | Organizers | resolutor `guest_material_file` y lectura `guest_materials` | abierta (fase 4) |
+| O2 | Organizers | forma de `guest_experience_for`, `guest_questions` y `guest_answer` | abierta (fase 4) |
+| O3 | Organizers | configuración del alojamiento y aprobación de peticiones | abierta (fase 5) |
+| O5 | Organizers | quitar `guest_offers` del contrato | abierta |
+| O6 | Organizers | vista previa: huésped de muestra en Guests o pintada en Organizers | abierta (decide Core) |
+| O7 | Organizers | preguntas sin salud, alergias ni documentos | abierta |
+| CE3 | Central | `info.map_link`, `guests.menu_notice` y plano del centro | abierta (fase 4) |
+| C8 | Core | archivos publicados a un portal: `core.allow_portal_file` y `GET portal-files/:fileId` | abierta (decide Core) |
+| C9 | Core | enlace de Guests al huésped de muestra para el organizador | abierta (si se elige, O6) |
+| U5 | UI | barra inferior con «Más» y lista de días para el programa | abierta (opcional) |
