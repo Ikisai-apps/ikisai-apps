@@ -1,4 +1,5 @@
 import { el, replace } from './dom.ts';
+import { kitLayer } from './layer.ts';
 
 let node: HTMLDivElement | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -10,13 +11,18 @@ function overlayOpen(): boolean {
 
 function host(): HTMLDivElement {
   if (!node) {
-    node = el('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
-    document.body.appendChild(node);
+    node = el('div', { class: 'toast ikisai-toast', role: 'status', 'aria-live': 'polite' });
   }
+  // En la capa del kit (apps con el CSS acotado): fuera de ella el aviso se quedaba sin sus estilos.
+  const layer = kitLayer();
+  if (node.parentElement !== layer) layer.appendChild(node);
   node.classList.toggle('top', overlayOpen());
   // Con una hoja abierta, el aviso se coloca justo bajo su cabecera para no taparle el título ni el botón de cerrar.
+  // `bottom: auto` en línea también: con solo `top`, una regla `.toast { bottom: … }` de la app lo estiraba en columna.
   const head = document.querySelector<HTMLElement>('.sheetback.show .sheet-head');
   node.style.top = head ? `${Math.round(head.getBoundingClientRect().bottom) + 6}px` : '';
+  node.style.bottom = head ? 'auto' : '';
+  node.style.height = 'auto';
   return node;
 }
 

@@ -3,6 +3,7 @@ import { icon } from '../icons.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
 import { installKeyboardInsets } from './keyboard.ts';
 import { kt } from '../i18n/i18n.ts';
+import { kitLayer } from '../layer.ts';
 
 export interface SheetOptions {
   title: string;
@@ -80,7 +81,7 @@ export function openSheet(options: SheetOptions): Sheet {
   let open = true;
   const unlock = lockScroll();
   document.addEventListener('keydown', onKey);
-  (options.container ?? document.body).appendChild(element);
+  kitLayer(options.container).appendChild(element);
   focusFirst(body, options.initialFocus ?? null);
 
   function release(): void {

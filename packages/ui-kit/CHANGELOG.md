@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.24.0 · 8 de octubre de 2026
+
+- **Fallo del usuario en PC (Tasks):** el aviso «Enviado · FB_2026_015» salía como una columna crema enorme.
+  - **Causa:** el aviso del kit se montaba en `body`, fuera de la capa `.ikisai-kit`, así que le aplicaba la regla heredada de la app `.toast { bottom: 85px }`. Con una hoja abierta, el kit le ponía además un `top` en línea, y con `top` y `bottom` a la vez se estiraba.
+  - **Capa global del kit para todo lo flotante:** `setKitLayer(() => capa)`, que se fija una vez al arrancar, y `kitLayer()`. La usan por defecto avisos, hojas, diálogos, paleta, composer y pines del feedback, barra y tarjeta del Revisor, barra de señalar y fantasma de arrastre. El `container` de cada pieza sigue mandando.
+  - El aviso fija en línea `bottom: auto` y `height: auto` cuando sube, para que ninguna regla de la app lo estire.
+- Prueba `v30`, a 1280×800 y 390×844: app normal y app con CSS heredado y capa (como Tasks).
+
 ## 0.23.0 · 8 de octubre de 2026
 
 - **Versiones nuevas automáticas al abrir**, para todas las apps: `initAppUpdates({ isSafe, enabled, swUrl, autoApply, autoWindowMs, resumeAfterMs })` → `{ apply, check, available }`.

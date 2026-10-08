@@ -9,6 +9,7 @@ import { ensureFeedbackGlobalStyles } from './global-style.ts';
 import { installFeedbackGesture } from './gesture.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
 import { kt } from '../i18n/i18n.ts';
+import { kitLayer } from '../layer.ts';
 
 export interface CaptureOptions {
   /** Texto de la barra; por defecto «Mantén pulsado sobre el lugar al que te refieres». */
@@ -44,7 +45,7 @@ export function captureFeedbackTarget(options: CaptureOptions = {}): Promise<Fee
     cancel.addEventListener('click', () => finish(null));
     document.addEventListener('keydown', onKey, true);
     html.classList.add('fb-capturing');
-    (options.container?.() ?? document.body).appendChild(bar);
+    kitLayer(options.container?.()).appendChild(bar);
     cancel.focus({ preventScroll: true });
   });
 }

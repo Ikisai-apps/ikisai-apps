@@ -10,6 +10,7 @@
  */
 import { el, replace } from './dom.ts';
 import { icon } from './icons.ts';
+import { kitLayer } from './layer.ts';
 
 export interface SortableOptions<T> {
   items: T[];
@@ -138,7 +139,7 @@ export function createSortableList<T>(options: SortableOptions<T>): Sortable<T> 
       g.style.width = `${rowEl.offsetWidth}px`;
       g.style.left = `${rowEl.getBoundingClientRect().left}px`;
       g.style.top = `${d.y - 20}px`;
-      document.body.append(g);
+      kitLayer().append(g);
       d.ghost = g;
       document.body.classList.add('dragging');
     };

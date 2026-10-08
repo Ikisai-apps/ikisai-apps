@@ -12,6 +12,7 @@ import {
   createSaveState,
   createDayTabs,
   initAppUpdates,
+  setKitLayer,
   createSignaturePad,
   createInstallPrompt,
   createLanguageSelect,
@@ -1002,7 +1003,7 @@ const moneySection = section('money', 'Desglose de importes', 'Total frente a un
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { initAppUpdates, compressImage, renderLogin, toast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { setKitLayer, initAppUpdates, compressImage, renderLogin, toast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

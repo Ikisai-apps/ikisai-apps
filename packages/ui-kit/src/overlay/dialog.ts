@@ -2,6 +2,7 @@ import { el, type Child } from '../dom.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
 import { kt } from '../i18n/i18n.ts';
 import { installKeyboardInsets } from './keyboard.ts';
+import { kitLayer } from '../layer.ts';
 
 export interface DialogOptions {
   title: string;
@@ -50,7 +51,7 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
     cancel?.addEventListener('click', () => finish(false));
     back.addEventListener('click', (e) => { if (e.target === back) finish(false); });
     document.addEventListener('keydown', onKey);
-    (options.container ?? document.body).appendChild(back);
+    kitLayer(options.container).appendChild(back);
     focusFirst(panel, options.danger && cancel ? cancel : confirm);
   });
 }

@@ -13,6 +13,7 @@ import type { FeedbackReport } from './client.ts';
 import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
 import { kt } from '../i18n/i18n.ts';
+import { kitLayer } from '../layer.ts';
 
 export type ComposerState = 'empty' | 'draft' | 'sending' | 'pending' | 'sent' | 'error';
 
@@ -142,7 +143,7 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
   );
   const catcher = el('div', { class: 'fb-catcher', onclick: () => leave() });
   const layer = el('div', { class: 'ikisai-fb-layer fb-layer' }, catcher, panel);
-  (options.container ?? document.body).appendChild(layer);
+  kitLayer(options.container).appendChild(layer);
 
   /** La capa sigue a la parte visible (`visualViewport`): con el teclado de Android abierto o la página ampliada, la hoja
    *  inferior y «Enviar» quedan a la vista en vez de debajo del teclado. */
