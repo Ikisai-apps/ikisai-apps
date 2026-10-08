@@ -15,7 +15,9 @@ export type Op =
   | { kind: 'fields'; fields: Record<string, unknown>; base: Record<string, unknown> }
   | { kind: 'consent'; args: { allergies_visible_to_organizer?: boolean; privacy_ack_version?: string } }
   | { kind: 'restrictions'; items: Restriction[] }
-  | { kind: 'sign'; image: Blob; name: string; textVersion: string | null };
+  | { kind: 'sign'; image: Blob; name: string; textVersion: string | null }
+  /** Respuesta a una pregunta del organizador (Organizers, §13.6): no cambia la revisión de la ficha de Booking. */
+  | { kind: 'answer'; questionId: string; value: unknown };
 
 export type WriterState = 'idle' | 'saving' | 'saved' | 'offline' | 'error';
 export type FieldState = 'saving' | 'saved' | 'pending' | 'error';
@@ -35,6 +37,10 @@ export interface WriterOptions {
   onRejected(op: Op, error: unknown): void;
   /** La firma dejó de valer porque cambió un dato del registro (BG5). */
   onSignatureReset(): void;
+  /** Envía una respuesta al organizador (`organizers.guest_answer`). */
+  answer?(questionId: string, value: unknown): Promise<unknown>;
+  /** Vista previa del organizador (huésped de muestra, BG11): nada se encola ni se envía. */
+  readOnly?(): boolean;
 }
 
 export interface Writer {
@@ -73,6 +79,7 @@ export function createWriter(options: WriterOptions): Writer {
   };
 
   function enqueue(op: Op): void {
+    if (options.readOnly?.()) { options.onRejected(op, Object.assign(new Error('preview'), { code: 'PREVIEW_READ_ONLY' })); return; }
     const last = queue[queue.length - 1];
     if (op.kind === 'fields' && last?.kind === 'fields') {
       last.fields = { ...last.fields, ...op.fields };
@@ -81,6 +88,8 @@ export function createWriter(options: WriterOptions): Writer {
       last.items = op.items;
     } else if (op.kind === 'consent' && last?.kind === 'consent') {
       last.args = { ...last.args, ...op.args };
+    } else if (op.kind === 'answer' && last?.kind === 'answer' && last.questionId === op.questionId) {
+      last.value = op.value;
     } else {
       queue.push(op);
     }
@@ -106,6 +115,10 @@ export function createWriter(options: WriterOptions): Writer {
       case 'consent': return api.consent(guestId, revision, op.args);
       case 'restrictions': return api.restrictions(guestId, op.items);
       case 'sign': return api.sign(guestId, revision, op.image, op.name, op.textVersion);
+      case 'answer':
+        if (!options.answer) throw Object.assign(new Error('answer'), { code: 'NOT_AVAILABLE' });
+        await options.answer(op.questionId, op.value);
+        return { guest_id: guestId, revision, cursor: null };
     }
   }
 

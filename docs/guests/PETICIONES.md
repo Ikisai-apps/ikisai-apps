@@ -33,9 +33,9 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | O2 | Organizers | forma de `guest_experience_for`, `guest_questions` y `guest_answer` | abierta (fase 4) |
 | O3 | Organizers | configuración del alojamiento y aprobación de peticiones | abierta (fase 5) |
 | O5 | Organizers | quitar `guest_offers` del contrato | abierta |
-| O6 | Organizers | vista previa: huésped de muestra en Guests o pintada en Organizers | abierta (decide Core) |
+| O6 | Organizers | vista previa: huésped de muestra en Guests o pintada en Organizers | decidida: huésped de muestra en Guests |
 | O7 | Organizers | preguntas sin salud, alergias ni documentos | abierta |
 | CE3 | Central | `info.map_link`, `guests.menu_notice` y plano del centro | abierta (fase 4) |
-| C8 | Core | archivos publicados a un portal: `core.allow_portal_file` y `GET portal-files/:fileId` | abierta (decide Core) |
-| C9 | Core | enlace de Guests al huésped de muestra para el organizador | abierta (si se elige, O6) |
+| C8 | Core | archivos publicados a un portal: `core.allow_portal_file` y `GET portal-files/:fileId` | hecha (#325) |
+| C9 | Core | enlace de Guests al huésped de muestra para el organizador | hecha (#325, `preview: true`) |
 | U5 | UI | barra inferior con «Más» y lista de días para el programa | abierta (opcional) |

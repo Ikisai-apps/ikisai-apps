@@ -16,7 +16,7 @@ export interface CommonText {
 export interface ShownText extends CommonText { spanishOnly: boolean }
 
 export const INFO_KEYS = ['info.arrival', 'info.parking', 'info.facilities', 'info.rules', 'info.bring'] as const;
-const KEYS = ['portal.privacy', 'contact.email', 'contact.phone', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', ...INFO_KEYS] as const;
+const KEYS = ['portal.privacy', 'contact.email', 'contact.phone', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice', 'info.map_link', ...INFO_KEYS] as const;
 export type TextKey = (typeof KEYS)[number];
 const STORE = 'ikisai-guests-texts';
 
@@ -31,12 +31,14 @@ const FALLBACK: ByLang = {
     'guests.data_why': text('guests.data_why', 'mensaje', 'La ley obliga a los alojamientos a registrar a cada viajero y comunicarlo al Ministerio del Interior (Real Decreto 933/2021). Solo pedimos lo que exige ese registro.', '¿Por qué te lo pedimos?'),
     'guests.signature_statement': text('guests.signature_statement', 'legal', 'Declaro que estos datos son ciertos. Se incorporan al registro de viajeros de Ikisai, que la ley obliga a conservar tres años.', 'Declaración'),
     'guests.allergies_notice': text('guests.allergies_notice', 'mensaje', 'La cocina de Ikisai tendrá en cuenta lo que indiques. Si tu alergia es grave, recuérdalo también al llegar.'),
+    'guests.menu_notice': text('guests.menu_notice', 'mensaje', 'El menú puede cambiar para adaptarse a alergias e intolerancias.'),
   },
   en: {
     'portal.privacy': text('portal.privacy', 'legal', 'Ikisai processes your data to manage your stay and, where the law requires it, for the guest register, which is kept for three years. You can access, correct or ask us to delete it by writing to Ikisai.', 'Data protection'),
     'guests.data_why': text('guests.data_why', 'mensaje', 'Spanish law requires accommodation providers to register every guest and report it to the Ministry of the Interior (Royal Decree 933/2021). We only ask for what that register needs.', 'Why do we ask?'),
     'guests.signature_statement': text('guests.signature_statement', 'legal', 'I declare that this information is true. It becomes part of Ikisai\'s guest register, which the law requires us to keep for three years.', 'Declaration'),
     'guests.allergies_notice': text('guests.allergies_notice', 'mensaje', 'Ikisai\'s kitchen will take what you tell us into account. If your allergy is severe, please remind us when you arrive too.'),
+    'guests.menu_notice': text('guests.menu_notice', 'mensaje', 'The menu may change to accommodate allergies and intolerances.'),
   },
 };
 
