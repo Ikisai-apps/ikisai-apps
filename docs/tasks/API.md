@@ -1255,3 +1255,37 @@ La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los
 - Sin ids escritos en el código: busca por nombre y deja elegir.
 - Es un lote del dominio: área, proyectos y reglas con `saveRouteOps`.
 - Las reglas `feedback.space.*` y `feedback.event.*` las configura el usuario cuando sepa adónde quiere mandarlas (operaciones). La pantalla las lista como tipos conocidos en cuanto llega el primero.
+
+## 23. Proyecto por retiro y tareas de sus extras (fase 3 de los portales; peticiones T1 y T2 de `docs/organizers/PETICIONES.md`, para B13 de Booking)
+
+Booking, con su identidad de servicio y la clave de worker, pide a Tasks el proyecto de cada retiro confirmado y una tarea por cada extra contratado. El área la fija la regla del usuario. Lo construye la migración `20261008_0313_tasks_retreat_projects.sql`.
+
+### 23.1 `POST /api/v1/worker/requests/project`
+
+- **Cuerpo:** `{source: 'booking', kind: 'booking.retreat_project', external_ref: 'RES<código>', date: 'AAAA-MM-DD', title (1–280), note? (≤ 1000), state?: 'confirmed' | 'cancelled'}`.
+- **Nombre:** lo compone Tasks como `AAAAMMDD-<título>`, con `date` como día de entrada.
+- **Idempotente por `external_ref`, en la misma llamada.** El id del proyecto se deriva de la referencia. Según cómo esté el proyecto:
+  - no existe: se crea en el área de la regla del usuario para `booking.retreat_project` (de la regla solo cuenta el área) → `created`. Sin regla → `no_route`, sin crear nada; Booking reintenta;
+  - existe y cambian la fecha o el título: se renombra → `renamed`; si no cambia nada → `unchanged`;
+  - llega `state: 'cancelled'` (reserva cancelada o perdida): se **archiva** y sus tareas quedan como están → `archived`;
+  - se vuelve a confirmar: se desarchiva → `restored`;
+  - está en la papelera: no se resucita → `deleted`.
+- **Respuesta:** `{projectId, status}`. `projectId` es el id del proyecto, para que Booking lo guarde.
+- Si el usuario renombra el proyecto a mano, la siguiente llamada de Booking le devuelve su nombre. El nombre del retiro lo manda Booking.
+
+### 23.2 Extras: `POST /api/v1/worker/requests/task` con `booking.retreat_extra`
+
+- **Cuerpo:** el de §22.2, más `project_ref: 'RES<código>'`. Es obligatorio en este tipo y no vale en ningún otro.
+  - `external_ref` = `RES<código>-EXTRA-<línea>`.
+  - `due` = día de entrada.
+- **Destino:** la tarea va al proyecto de esa reserva (con las etiquetas del proyecto), sea cual sea la regla. Si el proyecto aún no existe → `409 PROJECT_NOT_READY`, sin dar de alta nada: primero el proyecto.
+- **Idempotente por línea.** Un reenvío no toca la tarea, así que quien la trabaja puede cambiar la fecha o cualquier otra cosa.
+- **Respuesta:** `{taskId, status}`. El estado posterior se consulta con `worker/requests/status` (`booking:RES…-EXTRA-…`).
+
+### 23.3 Datos y reglas
+
+- `tasks.projects.external_ref` (`booking:RES<código>`): inmutable y única entre los proyectos vivos.
+  - Solo la fija el procedimiento `tasks.request_project`: el hook la rechaza por cualquier otro camino.
+  - `tasks.request_task` acepta `projectRef`.
+- **«Gestionar entradas»** enseña `booking.retreat_project` («Retiro · Proyecto») como tipo conocido, con la nota de que solo cuenta el área. La regla la confirma la propietaria.
+
