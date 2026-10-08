@@ -39,10 +39,12 @@
 
 - 2026-10-08 · Guests en producción en `guests.ikisai.com` (`ven.ikisai.com` redirige). Icono propio de UI y colores terracota; la caché del service worker incluye el contenido de `public/`; sin el filtro de archivos propio (C7 en el kit).
 
+- 2026-10-08 · Diseño de las fases 4 y 5 (API.md §13): experiencia configurable con barra inferior, programa (Booking), menú (Food), plano e información (Central), materiales con `portal-files` (propuesta C8 para O1), preguntas del organizador y elección de habitación atómica (Booking). Peticiones BG9–BG12, FD1, O1–O7, CE3, C8, C9 y U5.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
-- Fases 4 y 5 (API.md §13) cuando Organizers publique su configuración.
+- Construir las fases 4 y 5 cuando estén cruzadas las peticiones de los dos portales (Core).
 
 ## Bloqueos
 

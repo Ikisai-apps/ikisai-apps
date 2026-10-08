@@ -1,4 +1,4 @@
-# Ikisai Guests · API y pantallas (puerta G2, fase 1 · preparación, borrador para Core)
+# Ikisai Guests · API y pantallas (puerta G2: fase 1 construida; fases 4 y 5 en diseño)
 
 Portal externo de los huéspedes de los retiros: `guests.ikisai.com` (alias `ven.ikisai.com`, redirige). Diseño de producto en `coordinacion/ampliacion/PORTALES_V2.md` (aprobado por el usuario el 7-10-2026; manda sobre lo anterior), `PORTALES.md`, `FEEDBACK.md` (§4 y la especificación §3.2 y §4) y `USO.md`. Núcleo en el contrato §3.3 a §3.9. Datos en `docs/booking/API.md` §16 y §17.1. Pareja: `docs/organizers/API.md`. Sigue la plantilla `docs/core/PLANTILLA_API_APP.md`.
 
@@ -12,7 +12,7 @@ Portal externo de los huéspedes de los retiros: `guests.ikisai.com` (alias `ven
 - «Ayuda y sugerencias»;
 - el hueco de «Guarda tu acceso».
 
-Las fases 4 y 5 (experiencia configurable, programa, menú, materiales, preguntas y elección de habitación) van solo a grandes rasgos en el §13.
+Las fases 4 y 5 (experiencia configurable, programa, menú, materiales, preguntas y elección de habitación) están diseñadas en el §13 (8-10-2026), con sus peticiones al final del §14.
 
 ## 1. Dominio y límites
 
@@ -462,69 +462,283 @@ Lo hago yo: `supabase/functions/guests-api` (índice y conformidad), `apps/guest
 3. Alimentación y firma.
 4. Información práctica, ayuda, «Guarda tu acceso», idioma y offline.
 
-## 13. Fases siguientes (a grandes rasgos)
+## 13. Fases 4 y 5 · experiencia configurable y decisiones del huésped (G2, diseño)
 
-Fases de `PORTALES_V2.md` §4: 4 (experiencia configurable) y 5 (decisiones del huésped). La 2 y la 3 no tocan Guests. Principio: cada dato tiene un dueño, y Guests lee y pide.
+Base:
+- `PORTALES_V2.md` §4 y §6 (decisiones del usuario del 7-10-2026);
+- la propuesta original (`portales_v2/03_AGENTE_GUESTS.md` §5 a §12);
+- el contrato con Organizers (`docs/organizers/API.md` §13.4 y §13.5).
 
-### 13.1 Experiencia configurable por el organizador (fase 4)
+Reparto: **Organizers configura y Guests pinta**. Cada dato tiene un solo dueño y Guests no guarda copias:
 
-- **Dueño de la configuración: Organizers.** Por retiro guarda:
-  - qué **módulos** ve el huésped: programa, alojamiento, menú, mapa, información práctica, materiales, actividades, extras y feedback;
-  - qué **capacidad** tiene en cada uno: ver, indicar preferencia, solicitar, elegir, reservar, apuntarse o responder;
-  - en qué **ventana** se ve: antes, durante o después.
-- **Lectura desde Guests:** `organizers.guest_experience_projection`, filtrada por la reserva del ámbito. No es un editor libre, son módulos y acciones fijos. Lo obligatorio por Ikisai (datos legales, firma, alimentación y aviso legal) no se puede desactivar.
-- **Navegación:** Guests construye la barra inferior y las tarjetas de Inicio a partir de esa configuración. Sin configuración, se queda como la fase 1.
-- **Patrón de «capacidad delegada»:** `{module, capability, window, params}`. Cada capacidad que escribe se resuelve con **una acción del dueño del dato** (Booking para el alojamiento, Organizers para sus preguntas), nunca con tablas de Guests. Se empieza por el alojamiento (§13.4) y no se implementan veinte tipos a la vez.
+| Dato | Dueño | Guests |
+|---|---|---|
+| Qué módulos ve el huésped y qué puede hacer en cada uno | Organizers (`organizers.guest_experience`) | lee `organizers.guest_experience_for` |
+| Programa del retiro | Booking (lo edita el organizador con acciones de Booking) | lee `booking.portal_program` |
+| Menú publicado | Food | lee `food.portal_menu` |
+| Materiales del organizador | Organizers (`organizers.materials`, archivos en `core.files`) | lee `organizers.guest_materials`; el archivo, por `portal-files` (§13.5) |
+| Preguntas del organizador y respuestas | Organizers | lee `organizers.guest_questions` y escribe `organizers.guest_answer` |
+| Habitaciones, camas y quién duerme dónde | Booking | lee `booking.portal_lodging` y escribe `booking.portal_choose_bed` y `portal_room_preference` |
+| Mapa, plano e información de Ikisai | Central | textos `info.*` y plano público (§13.4) |
 
-### 13.2 Programa y «Hoy en Ikisai»
+**Lo de Ikisai no se configura.** Los datos del registro, la alimentación, la firma, el aviso legal, la información práctica y la ayuda están siempre, con independencia de lo que elija el organizador.
 
-- **Dueño:** el programa es del dominio operativo del retiro (Booking). Lo define el organizador y lo publica Booking por `booking.portal_program`: día, inicio, fin, título, espacio y observación pública.
-- **En Guests:** el programa por días y, durante la estancia, «Ahora» y «Lo siguiente» en Inicio.
-- **Más adelante:** las actividades opcionales a elegir serán otra capacidad delegada.
+**Ofertas del organizador:** no se muestran en Guests (decisión del usuario confirmada por Core el 7-10-2026). Sobra `organizers.guest_offers`.
 
-### 13.3 Menú y materiales
+### 13.1 Configuración de la experiencia y navegación
 
-- **Menú** (dueño Food):
-  - lectura `food.portal_menu_projection` por evento: desayuno, comida y cena por día, platos publicados y la marca «provisional»;
-  - texto fijo de Central: «El menú puede cambiar para adaptarse a alergias e intolerancias»;
-  - sin promesas clínicas: basta con «Cocina tiene registrada tu restricción».
-- **Materiales del organizador** (dueño Organizers):
-  - archivos (con `createStorage` y su retención) y enlaces (grupo de WhatsApp o Telegram);
-  - con ventana antes, durante o después;
-  - lectura por proyección, y los archivos con URL firmada desde la Edge de Organizers.
+**Lectura** `organizers.guest_experience_for({reservation_id})` (de Organizers, registrada para `guests`, con el ámbito del huésped):
 
-### 13.4 Alojamiento (fase 5, primer caso fuerte)
+```text
+{ revision,
+  modules: {
+    program:       { visible, window },
+    menu:          { visible, window },
+    materials:     { visible },                       la ventana va en cada material
+    questions:     { visible },
+    lodging:       { visible, capability, choose_until, options[] },
+    map:           { visible },
+  },
+  organizer_message: { text, lang } | null           bienvenida del organizador para Inicio (opcional) }
 
-- **Según la configuración**, el huésped:
-  - ve su cama asignada;
-  - indica preferencias («con quién me gustaría compartir»);
-  - o **elige** una plaza, incluidas las habitaciones de **2–4 plazas con baño**.
-- **Disponibilidad real de Booking,** sin copia.
-- **Reserva atómica en servidor:** `booking.portal_choose_bed`, con bloqueo de la fila de la cama y una restricción única por noche. Ante una carrera, Guests muestra el estado actualizado y conserva la elección como intención, sin fingir éxito. Solo con red.
-- **Suplemento:** decisión del usuario del 7-10-2026, que lo factura Ikisai al organizador. Guests muestra lo que el organizador haya configurado («Incluido» o «+X € a pagar a tu organizador»), sin el coste interno de Ikisai.
+window      = 'before' | 'during' | 'after' | 'always'    (por defecto 'always')
+capability  = 'view' | 'prefer' | 'choose' | 'request'     (solo alojamiento, fase 5)
+options[]   = [{ key, label, guest_note }]                   tipos de habitación que ofrece (§13.7)
+```
 
-### 13.5 Ofertas, pagos y preguntas del organizador
+- **Sin configuración**, Guests se queda como la fase 1: Inicio, Mis datos, Alimentación, Firma, Información y Ayuda.
+- **Ventanas:** se calculan con las fechas de la reserva en hora de Madrid (`momentOf` de Inicio): antes, durante y después del retiro.
+- **Navegación:** con algún módulo visible aparece una barra inferior con como mucho cinco entradas: **Inicio** · **Programa** · **Menú** · **Alojamiento** · **Más**.
+  - Lo que no está activo no aparece.
+  - «Más» agrupa Información, Materiales, Preguntas, Mis datos, Alimentación, Firma y Ayuda.
+  - En escritorio, la barra pasa a lateral (`createAppShell` con `nav`).
+- **Inicio según el momento:**
+  - **Antes:** la lista de lo que falta, más «Preguntas de tu organizador» si hay preguntas obligatorias sin responder y «Elige tu habitación» si hay elección abierta. Debajo, «Tu retiro» con lo que esté publicado.
+  - **Durante:** «Hoy en Ikisai» con lo que está pasando y lo siguiente del programa, la próxima comida, mi habitación y «Necesito ayuda».
+  - **Después:** «Gracias por venir», los materiales de después y «Cuéntanos qué tal».
+- **Vista previa para el organizador** (propuesta): un **huésped de muestra** por reserva, que crea Booking.
+  - Lleva `preview = true`, no cuenta en la completitud ni va a SES, y se borra con la reserva.
+  - El organizador lo abre en Guests con un enlace que emite Organizers (`portal-links` con ese `guest_id`).
+  - Ve exactamente lo que verá un huésped, sin duplicar pantallas en Organizers.
+  - Las escrituras de ese huésped se rechazan con `PREVIEW_READ_ONLY`, y Guests muestra una franja «Vista previa: no se guarda nada».
+  - Alternativa, si Organizers prefiere pintarla él: las mismas lecturas sobre datos ficticios. Lo deciden Core y Organizers (petición O6).
 
-- **Ofertas del organizador: no se muestran en Guests** (decisión del usuario, confirmada por Core el 7-10-2026). Le sirven para sus cálculos y para su cartel en PDF o JPG, que difunde por su cuenta.
-- **Contrato con Organizers** (`docs/organizers/API.md` §13.5). Guests usa cuatro lecturas registradas para `guests` y filtradas por `{reservation_id, guest_id}`:
-  - `organizers.guest_experience_for` (módulos y acciones);
-  - `organizers.guest_questions` (preguntas vigentes y sus respuestas);
-  - `organizers.guest_materials` (materiales publicados para el momento actual).
+### 13.2 Programa (fase 4)
 
-  Escribe solo con `organizers.guest_answer`. Sobra `organizers.guest_offers`, por la decisión anterior. Falta precisar quién firma las URL de los materiales (petición O1).
-- **Pagos a Ikisai** (extras de Ikisai) llegarán con la fase 6, de Finance y la pasarela. Guests nunca guarda datos de tarjeta.
-- **Preguntas propias del organizador:**
-  - las define Organizers;
-  - las respuestas son datos del huésped que pertenecen a Organizers (`organizers.*`) y se escriben con una acción de Organizers invocada desde Guests, con la misma pauta de ámbito que Booking;
-  - no contaminan `booking.guests` salvo que sean datos operativos reales.
+**Dueño: Booking.** Petición BG9. El organizador lo edita desde Organizers con acciones de Booking; el personal, desde Booking.
 
-### 13.6 Después del retiro
+```text
+booking.program_items        sincronizable, ámbito por evento
+  event_id      uuid → booking.events (inmutable)
+  day           date not null                  dentro de las fechas de la reserva
+  starts_at     time null                      sin hora = «durante el día»
+  ends_at       time null
+  title         text not null (≤ 120)
+  space_id      uuid null → booking.spaces     espacio de Ikisai (se muestra su nombre público)
+  place_text    text null (≤ 80)               lugar libre si no es un espacio («Excursión al pinar»)
+  public_note   text null (≤ 500)              lo que ve el huésped
+  internal_note text null                      solo personal y organizador
+  kind          text default 'actividad'       actividad | comida | descanso | otro
+  optional      boolean default false          reservado para elegir entre talleres (más adelante)
+  position      numeric
+```
 
-- **Valoración estructurada**, con destinos separados:
-  - lo del retiro va al organizador;
-  - lo de Ikisai va a Ikisai.
-- **Materiales posteriores** del organizador.
-- **Base para «Mis estancias»** si la persona guardó su acceso. Sin tienda ni puntos en la V1.
+- **Lectura** `booking.portal_program({reservation_id})` para `guests` y `organizers`: `{revision, items: [{id, day, starts_at, ends_at, title, place, public_note, kind}]}`.
+  - Sin `internal_note`.
+  - `place` es el nombre público del espacio o `place_text`.
+  - Los huéspedes solo la ven si el módulo está visible: Booking no lo comprueba, porque no es un dato sensible, y lo filtra la interfaz.
+- **Comidas en el programa:** el horario de las comidas lo pone el menú de Food (`service_time`). El programa puede llevar `kind = 'comida'` sin duplicar los platos; Guests junta las dos fuentes en «Hoy».
+- **En Guests:**
+  - pestaña Programa con los días como pestañas horizontales (el de hoy, seleccionado durante el retiro) y las actividades en lista por hora;
+  - en «Hoy», «Ahora» y «Lo siguiente»;
+  - en caché para verlo sin cobertura.
+
+### 13.3 Menú (fase 4)
+
+**Dueño: Food.** Petición FD1. Guests no se convierte en Food: solo enseña lo publicado.
+
+- **Lectura** `food.portal_menu({reservation_id})` para `guests` y `organizers`:
+
+  ```text
+  { status: 'provisional' | 'confirmado',
+    services: [{ date, type, time, dishes: [{ name }] }] }
+  ```
+
+  - Es `provisional` con el menú en `borrador` o `revisar`, y `confirmado` con `validado` o `cerrado`.
+  - Sin raciones, recetas, ingredientes, avisos ni notas internas.
+  - Sin menú, `{status: null, services: []}`.
+  - Para comprobar el ámbito, Food necesita saber a qué reserva pertenece el evento: `reservation_id` en `booking.food_event_projection` (petición BG12 a Booking).
+- **Ámbito:** el `reservation_id` está en las entradas del actor (`scopes.grants`). Si no, `OUT_OF_SCOPE`.
+- **Nombre del plato:** es el nombre de la receta (`food.recipes.name`). Si Food quiere un nombre «para el público» distinto del interno («Curry adaptado 2»), un campo `public_name`, opcional en FD1.
+- **En Guests:**
+  - pestaña Menú por días, con desayuno, comida y cena y la hora;
+  - la marca «Provisional» mientras no esté confirmado;
+  - el texto de Central «El menú puede cambiar para adaptarse a alergias e intolerancias» (clave nueva `guests.menu_notice`, petición CE3);
+  - **sin promesas clínicas:** si el huésped tiene restricciones, «Cocina tiene registrada tu alergia a frutos secos», nunca «este plato es apto».
+- **Comentarios del organizador sobre el menú:** son de Organizers con Food y no se muestran a los huéspedes.
+
+### 13.4 Mapa, plano e información (fase 4)
+
+**Dueño: Central** (información de Ikisai). Petición CE3:
+- **Clave `info.map_link`:** enlace a la ubicación en un mapa externo. Se abre fuera de la app.
+- **Plano del centro:** una imagen de Central (por ejemplo `central.entity.site_plan_file_id`), servida con `portal-files` (§13.5) o sin sesión, como el contacto público. Guests la guarda en caché para verla sin cobertura.
+- **Espacios en el plano** (más adelante): si Booking da a cada espacio una posición en el plano, el programa puede señalar dónde es cada actividad. No entra en esta fase.
+
+**Información práctica:** ya existe (§9.7). Con el módulo «Mapa» visible, la pantalla de Información añade arriba el plano y el enlace.
+
+### 13.5 Materiales del organizador (fase 4) y cómo se sirven sus archivos (O1)
+
+**Dueño: Organizers.**
+
+- **Lectura** `organizers.guest_materials({reservation_id})`:
+
+  ```text
+  items: [{ id, kind: 'file' | 'link' | 'text', title, description, window,
+            file?: { id, name, mime, size }, url?, body? }]
+  ```
+
+  Solo los publicados, en la ventana actual.
+- **Problema (O1):** el archivo vive en `core.files` con `app = 'organizers'`. Desde SQL no se puede firmar una URL de R2 ni de Supabase. Y el `files/:id` de `guests-api` solo ve archivos de Guests subidos por la propia persona (C7).
+- **Propuesta de diseño (para que decida Core):** **archivos publicados a un portal**, un mecanismo genérico del núcleo y del kit:
+  1. La app dueña registra un **resolutor**: `core.allow_portal_file('guests', 'organizers.guest_material_file')`. Es una función `fn(p jsonb) returns boolean` que recibe `{app, actor, args: {file_id}}` y dice si ese actor puede ver ese archivo. En Organizers: el material está publicado, en ventana y es de una reserva de su ámbito.
+  2. El kit monta en cada portal `GET /api/v1/portal-files/:fileId`. Prueba los resolutores registrados para ese portal y, si alguno dice que sí, firma una URL de 5 minutos con `createStorage(supabase).readUrl(fila)`. Así funciona igual con R2 y con Supabase.
+  3. **Respuesta:** `{url, expiresAt, name, mime, size}`. Fuera de ámbito, o no publicado: `404 FILE_NOT_FOUND`, como si no existiera.
+  4. Lo mismo sirve después para el plano de Central (§13.4) o para un documento de Booking.
+
+  **Por qué así y no una lectura que devuelva URL firmadas:** la lectura (`read/…`) es SQL y no puede firmar. Firmar todas las URL al listar haría caducar enseguida las que no se abren. Y un resolutor por app mantiene la regla «la app dueña decide quién ve su dato».
+- **En Guests:**
+  - pestaña o entrada «Materiales» con lista por tipo (documento, enlace o texto) y el título y la descripción del organizador;
+  - al abrir un archivo, `portal-files` y se abre la URL;
+  - **«Guardar para verlo sin conexión»** en los PDF y las imágenes (como mucho 20 MB por huésped): se descarga y se guarda en la caché del navegador, por persona, y se borra en `onSessionEnd`;
+  - los enlaces de grupos (WhatsApp o Telegram) son un `link` más.
+
+### 13.6 Preguntas del organizador (fase 4)
+
+**Dueño: Organizers** (`organizers.questions` y `organizers.answers`). Las respuestas son datos que el huésped da a su organizador: no van a Booking salvo que sean operativas, y ese caso ya lo cubren los campos de Booking.
+
+- **Lectura** `organizers.guest_questions({reservation_id, guest_id})`:
+
+  ```text
+  items: [{ id, revision, type: 'text' | 'choice' | 'multi' | 'yes_no' | 'number' | 'date',
+            label, help, options: [{ value, label }], required, open: boolean,
+            answer: { value, revision, updated_at } | null }]
+  ```
+
+  `open` es `false` fuera de la ventana de respuesta: entonces la respuesta se ve, pero no se cambia.
+- **Escritura** `organizers.guest_answer({guest_id, question_id, value, expectedRevision?})`:
+  - crea o actualiza la respuesta, con procedencia «huésped» y el usuario del portal como actor;
+  - devuelve `{revision}` (como BG2);
+  - errores:
+    - `QUESTION_CLOSED` (fuera de ventana);
+    - `INVALID_ANSWER` (tipo u opción no válidos);
+    - `VERSION_CONFLICT`;
+    - `OUT_OF_SCOPE`.
+- **En Guests:**
+  - pantalla «Preguntas de tu organizador», con autoguardado por respuesta en la misma cola local (`writer.ts`, operación nueva `answer` hacia otra app);
+  - aviso fijo: «Tu organizador verá tus respuestas»;
+  - las obligatorias sin responder entran en «Lo que te falta» de Inicio.
+- **Límites recomendados a Organizers:**
+  - no preguntar por salud, alergias ni documentos, porque ya lo cubre Ikisai con su consentimiento;
+  - un aviso en su editor si el texto de una pregunta parece pedirlos.
+
+### 13.7 Alojamiento: ver, preferir o elegir habitación (fase 5)
+
+**Dueño: Booking** (camas y asignaciones, §15.1). Decisiones del usuario:
+- las habitaciones de 2–4 plazas con baño son extras que **Ikisai factura al organizador**;
+- el organizador decide si se ofrecen a los huéspedes y qué les dice del precio.
+
+**Lo que ve y hace el huésped** según `modules.lodging.capability`:
+
+| Capacidad | Guests |
+|---|---|
+| `view` | «Tu habitación»: nombre público, zona y cama, si está asignada; si no, «Te diremos tu habitación antes de llegar» |
+| `prefer` | además, «¿Con quién te gustaría compartir habitación?» (texto, ≤ 200) y «Necesito planta baja o accesible» (sí/no); lo ven el organizador y el personal al asignar |
+| `choose` | elige cama entre las habitaciones de su retiro que el organizador ha abierto a elección; se confirma en el momento |
+| `request` | como `choose`, pero queda «Pendiente de que tu organizador lo apruebe» hasta que lo aprueba desde Organizers |
+
+**Lecturas y acciones de Booking** (petición BG10):
+- **`booking.portal_lodging({reservation_id, guest_id})`** para `guests`:
+
+  ```text
+  { mine: { space_name, zone, bed_label, status: 'confirmed' | 'requested' } | null,
+    preference: { text, ground_floor } | null,
+    rooms: [ { space_id, name, zone, kind, en_suite, beds_total, beds_free,
+               option_key,                       tipo de habitación del organizador (§13.1 options)
+               beds: [{ bed_id, label, kind, free }] } ] }
+  ```
+
+  - `rooms` solo con `choose` o `request`, y solo las habitaciones que el organizador ha abierto a elección en esa reserva.
+  - Nunca nombres de otros huéspedes: solo libre u ocupada.
+- **`booking.portal_choose_bed({guest_id, bed_id, expectedRevision?})`**, reserva atómica:
+  1. bloquea la fila de la cama (`select … for update`);
+  2. comprueba que está libre en todas las noches de la reserva (la invariante `BED_OVERBOOKED` ya existe y se mantiene);
+  3. sustituye en el mismo lote la asignación anterior del huésped en ese evento;
+  4. escribe `source = 'guest'` y `status = 'confirmed'`, o `'requested'` con `request`.
+  - Responde `{revision, status}`.
+  - Errores:
+    - `BED_TAKEN` (otro la cogió antes; Guests recarga y lo dice);
+    - `CHOICE_CLOSED` (pasado `choose_until`);
+    - `NOT_OFFERED` (cama de una habitación no abierta a elección);
+    - `OUT_OF_SCOPE`.
+- **`booking.portal_release_bed({guest_id})`:** suelta su elección mientras la elección siga abierta.
+- **`booking.portal_room_preference({guest_id, text, ground_floor})`**, con `prefer`. Columnas nuevas en `booking.guests`: `room_preference` y `needs_ground_floor`, escribibles solo por las acciones de portal y visibles para el organizador, porque son para organizar el alojamiento.
+- **Para Organizers** (no lo usa Guests): abrir habitaciones a elección con su `option_key`, y aprobar o rechazar las peticiones.
+
+**Columnas nuevas** que propongo a Booking:
+- **`booking.spaces`:** `en_suite boolean` (baño propio) y `public_name text` (el nombre que ve el huésped, si no es el interno).
+- **`booking.room_assignments`:** `source` (`guest` | `organizer` | `staff`) y `status` (`confirmed` | `requested`).
+- **`booking.event_open_rooms`** (o lo que Booking prefiera): qué habitaciones de la reserva están abiertas a elección y con qué `option_key`.
+
+**Suplemento:** Guests nunca muestra el coste de Ikisai.
+- Muestra el `guest_note` que escribe el organizador para cada tipo de habitación: «Incluido», «+40 € por persona, a pagar a tu organizador» o «Consulta con tu organizador».
+- Lo que Ikisai factura al organizador por esas habitaciones va por la propuesta y Finance (fase 3) y no pasa por Guests.
+- **Recomendación:** las habitaciones con baño abiertas a elección son las que el organizador ya contrató como extra. Así la elección del huésped no cambia el importe de Ikisai: solo reparte camas ya contratadas. Si el usuario quiere que la elección sume extras sobre la marcha, es otra decisión (pregunta 1 de la salida).
+
+**En Guests:**
+- pestaña Alojamiento con «Tu habitación»;
+- con `choose` o `request`, las habitaciones disponibles por tipo, con la nota del organizador, «2 de 4 camas libres» y la elección de cama;
+- un botón «Elegir esta cama» con confirmación; **solo con red** («Necesitas conexión para elegir habitación»);
+- tras `BED_TAKEN`: «Alguien acaba de elegir esa cama. Te enseñamos las que quedan.», conservando el tipo elegido;
+- pasado `choose_until`, solo lectura: «La elección de habitación se cerró el {fecha}».
+
+### 13.8 Offline, caché y rendimiento
+
+- **Lecturas nuevas en la caché por persona:** programa, menú, materiales (la lista), preguntas, experiencia y alojamiento.
+- **Precarga:** se hace al abrir Inicio con red y vale para todo el retiro; durante la estancia, también al volver a primer plano.
+- **Sin red:**
+  - las respuestas a las preguntas van en la cola local, como los datos;
+  - la elección de habitación nunca: necesita confirmación del servidor.
+- **Lecturas en paralelo:** Inicio pide `experience`, `my_guest`, `program`, `menu` y `lodging`. Si Core prefiere menos viajes, se puede valorar una ruta compuesta en `guests-api`, que no propongo de entrada.
+
+### 13.9 Después del retiro
+
+Sin cambios respecto a lo anterior:
+- valoración del retiro para el organizador y de Ikisai para Ikisai;
+- materiales de «después»;
+- base para «Mis estancias» si la persona guardó su acceso.
+
+Sin tienda ni puntos en esta versión.
+
+### 13.10 Aceptación (fases 4 y 5)
+
+1. **Sin configuración:** Guests se ve como la fase 1.
+2. **Con módulos activados:**
+   - el organizador activa programa, menú y materiales: aparecen la barra inferior y las pestañas, y solo esas;
+   - un material de «después» no aparece antes del retiro.
+3. **Programa y menú:**
+   - durante el retiro, «Hoy» enseña la actividad en curso, la siguiente y la próxima comida;
+   - sin cobertura, programa, menú y materiales guardados se ven con el aviso de la hora.
+   - El menú en borrador sale como «Provisional». Con una alergia registrada, sale «Cocina tiene registrada tu alergia…», sin calificar los platos.
+4. **Materiales:**
+   - un PDF del organizador se abre con una URL de 5 minutos y se puede guardar para verlo sin conexión;
+   - otro huésped de otra reserva recibe `FILE_NOT_FOUND` con el mismo id.
+5. **Preguntas:** una pregunta obligatoria aparece en «Lo que te falta». Se responde sin pulsar «Guardar» y el organizador la ve. Cerrada la ventana, se ve y no se cambia.
+6. **Alojamiento:**
+   - con `prefer`, la preferencia llega a Organizers y a Booking;
+   - con `choose`, dos huéspedes eligen la misma cama a la vez: uno la consigue y el otro ve «Alguien acaba de elegir esa cama» y las que quedan;
+   - nunca hay dos personas en la misma cama ni se ven los nombres de otros;
+   - con `request`, la elección queda pendiente hasta que el organizador la aprueba.
+7. **Vista previa:** el organizador abre la vista previa y ve lo mismo que un huésped, sin poder guardar nada.
 
 ## 14. Peticiones
 
@@ -569,7 +783,7 @@ Detalle y estado en `docs/guests/PETICIONES.md`.
 
 ### A Organizers (por Core)
 
-- **O1 · URL de los materiales.** `organizers.guest_materials` no puede firmar URL desde SQL, y el `files/:id` de `guests-api` solo ve archivos de Guests subidos por la propia persona. Una ruta de `organizers-api` no sirve, porque los huéspedes no son miembros de Organizers. Propuesta: una ruta propia de `guests-api`, `GET materials/:fileId`, que compruebe con una lectura de Organizers que el material está publicado para la reserva del huésped y firme la URL con `createStorage`. Organizers lo confirma en su G2 de la fase 4.
+- **O1 · URL de los materiales.** `organizers.guest_materials` no puede firmar URL desde SQL, y el `files/:id` de `guests-api` solo ve archivos de Guests subidos por la propia persona. Una ruta de `organizers-api` no sirve, porque los huéspedes no son miembros de Organizers. Sustituida por la propuesta genérica del §13.5 (C8: `core.allow_portal_file` y `GET portal-files/:fileId`).
 
 ### A UI (por Core)
 
@@ -577,3 +791,47 @@ Detalle y estado en `docs/guests/PETICIONES.md`.
 - **U2 · Recuadro de firma en el kit** (`createSignaturePad` → `Blob` PNG recortado, con borrar y deshacer, accesible y usable con el dedo). Booking tiene uno propio en `apps/booking`; tenerlo en el kit lo comparten los dos. Si no, lo hago en `apps/guests`.
 - **U3 · Estado de guardado por campo** (`guardando`, `guardado`, `pendiente`, `error` con reintento) y estado global, reutilizable por Organizers.
 - **U4 · Icono propio de Guests** (hecho): casa con huésped sobre terracota (`coordinacion/ui/icono-guests/`), marca `guest` del kit. El manifiesto y `theme-color` pasan a `#8f4b1f`, con fondo `#f6efe6`.
+
+### Fases 4 y 5 (diseño del 8-10-2026, §13)
+
+**A Booking:**
+- **BG9 · Programa del retiro:**
+  - tabla `booking.program_items` (§13.2);
+  - acciones de portal para que el organizador lo edite (alta, cambio, baja y orden);
+  - lectura `booking.portal_program({reservation_id})` para `guests` y `organizers`, sin notas internas.
+- **BG10 · Alojamiento para el huésped** (§13.7):
+  - `portal_lodging`;
+  - `portal_choose_bed`, atómica, con `BED_TAKEN`, `CHOICE_CLOSED` y `NOT_OFFERED`;
+  - `portal_release_bed`;
+  - `portal_room_preference`.
+  - Columnas `spaces.en_suite` y `spaces.public_name`, `room_assignments.source` y `status`, y `guests.room_preference` y `needs_ground_floor`.
+  - Habitaciones abiertas a elección por reserva, con `option_key`.
+  - Para Organizers: abrir habitaciones y aprobar peticiones.
+- **BG11 · Huésped de muestra para la vista previa** (si se elige esa opción, O6): `guests.preview`, que no cuenta en la completitud ni va a SES, y `PREVIEW_READ_ONLY` en las acciones del huésped.
+- **BG12 · `reservation_id` en `booking.food_event_projection`:** para que Food compruebe el ámbito de `food.portal_menu`.
+
+**A Food:**
+- **FD1 · Menú para los portales:** `food.portal_menu({reservation_id})` para `guests` y `organizers` (§13.3), con el estado `provisional` o `confirmado`, los servicios y los nombres de los platos, sin raciones ni notas. Opcional: `recipes.public_name`.
+
+**A Organizers:**
+- **O1 · Materiales:** el resolutor `organizers.guest_material_file` para `portal-files` (C8), y la lectura `guest_materials` con la forma de §13.5.
+- **O2 · Forma de las lecturas y de la acción:** `guest_experience_for` (§13.1), `guest_questions` y `guest_answer` (§13.6), con `revision` en la respuesta y los errores `QUESTION_CLOSED` e `INVALID_ANSWER`.
+- **O3 · Configuración del alojamiento:** `capability`, `choose_until` y `options[]` con `guest_note` (lo que el organizador dice al huésped del precio), y la aprobación de las peticiones con `request`.
+- **O5 · Quitar `organizers.guest_offers`** del contrato con Guests (decisión del usuario).
+- **O6 · Vista previa:** huésped de muestra abierto en Guests (propuesta, con BG11) o pintada en Organizers.
+- **O7 · Límite de las preguntas:** sin salud, alergias ni documentos (§13.6).
+
+**A Central:**
+- **CE3 · Mapa y avisos:**
+  - claves `info.map_link` y `guests.menu_notice` (en los dos idiomas);
+  - plano del centro como imagen, servida con `portal-files` o sin sesión.
+
+**A Core:**
+- **C8 · Archivos publicados a un portal** (§13.5, propuesta para O1):
+  - registro `core.allow_portal_file(portal, 'schema.fn')` (resolutor que dice si el actor puede ver un archivo);
+  - ruta del kit `GET /api/v1/portal-files/:fileId` en los portales, con URL de 5 minutos por `createStorage`;
+  - `404 FILE_NOT_FOUND` fuera de ámbito.
+- **C9 · Enlace del huésped de muestra** (con BG11 y O6): que Organizers pueda emitir un enlace de Guests al huésped de muestra de sus reservas.
+
+**A UI:**
+- **U5 · Barra inferior de los portales con «Más»**, como mucho cinco entradas, y lista de días deslizable para el programa. Si el kit no lo tiene, lo hago en `apps/guests`.
