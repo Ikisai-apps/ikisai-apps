@@ -430,7 +430,11 @@ organizers.offers           §16.2
 - **Archivos:** bucket `organizers-materials` (K5) con `uploads`: PDF ≤ 15 MB e imágenes PNG, JPG o WebP recomprimidas en el dispositivo; **sin SVG**. `register_file_field(…, 'materials', 'file_id', 'operational')` y `enable_file_gc('organizers')`. El organizador abre sus archivos con `files/:id` (K3).
 - **Conservación (decisión del usuario):**
   - el logotipo, los materiales y las preguntas se conservan para sus próximos retiros;
-  - **las respuestas se borran a los 6 meses del fin del retiro**. Falta saber esa fecha desde Organizers (petición B18).
+  - **las respuestas se borran a los 6 meses del fin del retiro** (migración `0701`):
+    - el fin lo da `booking.reservation_end_dates` (B18, #335);
+    - el tick diario `worker/retention/tick` (sonda `organizers.retention_has_work`) vacía el valor y borra cada respuesta vencida en un lote del sistema (`apply_system_operations`), para que también desaparezca de los dispositivos;
+    - una reserva borrada, cancelada o perdida sin fecha de fin caduca ya;
+    - necesita la cuenta de servicio `organizers` en el núcleo (K7).
 
 ### 15.2 Módulos y capacidades de la V1
 
@@ -446,14 +450,27 @@ organizers.offers           §16.2
 
 Lo obligatorio de Ikisai (datos del registro, firma, alimentación y aviso legal) no aparece en esta tabla: Guests lo muestra siempre.
 
-### 15.3 Pantallas (pestaña «Experiencia» del retiro)
+### 15.3 Pantallas (pestaña «Experiencia» del retiro) · construido
 
-- **Módulos:** la lista con un interruptor «Se ve», la capacidad (si hay más de una), la ventana y el orden (`createSortableList` del kit). Se guarda solo.
-- **Programa:** por días del retiro, con filas que se añaden, editan y reordenan. Lo publica Booking (B16).
-- **Menú:** la propuesta de Food por días y servicios, con un aviso fijo de Central («El menú puede cambiar para adaptarse a alergias e intolerancias»). En cada plato, «Prefiero que no» y «Comentar» (Fd3).
-- **Materiales:** subir (fotos recomprimidas en el dispositivo, PDF), enlace o texto, con «Publicado» y la ventana. Uno puede marcarse como logotipo.
-- **Preguntas:** crear y editar; ver las respuestas por pregunta (recuento y, por asistente, con su `display_name`) y descargarlas en CSV.
-- **Vista previa:** muestra cómo lo verá un asistente. Usa las mismas lecturas que Guests sobre un huésped ficticio, sin datos reales, en un marco de móvil, para antes, durante y después.
+Desde la prerreserva, con seis apartados en una tira desplazable. Se recuerda el último abierto en la sesión.
+
+- **Qué ven:**
+  - los módulos con su interruptor y, en programa y menú, la ventana;
+  - el mensaje de bienvenida y su idioma;
+  - **«Ver como un asistente»** (O6): `booking.portal_preview_guest` y un enlace de Guests con `preview: true` y `replace: true`, abierto en otra pestaña. Guests rechaza las escrituras con `PREVIEW_READ_ONLY`.
+- **Programa** (Booking #328): por días del retiro, con hora de inicio y fin, espacio de Ikisai u otro lugar, nota para los asistentes y nota interna. Se guarda con `portal_program_save`, se quita con `portal_program_remove` y se ordena con `portal_program_reorder`.
+- **Menú** (Food #327 y #332):
+  - solo cuando cocina lo comparte, con «Provisional» o «Confirmado» y el aviso `portal.menu_note` de Central;
+  - por plato, la miniatura (`portal-files`), «Prefiero que no» y «Comentar», más un comentario general;
+  - cada comentario muestra su estado y la respuesta de cocina (`portal_my_menu_comments`).
+- **Alojamiento** (Booking #328):
+  - «Qué pueden hacer»: se guarda en la experiencia (lo que lee Guests) y en `portal_room_settings`. La correspondencia es `view` → `off`; `prefer` → `off` con preferencias; `choose` y `request` → igual, con preferencias;
+  - tipos de habitación con la nota de precio para el huésped (`lodging_options`), y las habitaciones con baño que se pueden elegir, con su tipo (`option_key`);
+  - reparto de camas (`portal_assign_bed`), plazas pendientes de aprobar (`portal_approve_bed`) y preferencias de compañeros.
+- **Materiales:** archivos, enlaces y textos, con «Publicado», la ventana, el logotipo y «De otros retiros».
+- **Preguntas:** seis tipos, aviso de datos sensibles (O7), respuestas con el `display_name` de cada asistente y CSV.
+
+El **cartel** («Ofertas») toma el lugar de `central.portal_place_projection` (nombre y dirección del lugar, nunca el domicilio fiscal).
 
 ### 15.4 Contrato con Guests (cruzado con `docs/guests/API.md` §13)
 
@@ -470,7 +487,7 @@ Escritura:
 - las tres lecturas y la acción, con las formas de Guests §13.1, §13.5 y §13.6;
 - el resolutor, registrado con `core.allow_portal_file('guests', 'organizers.guest_material_file')` (C8). Guests abre el archivo con `GET portal-files/:fileId`;
 - **ventanas:** las fechas son de Booking. Organizers devuelve `window` en cada módulo y material, y Guests filtra con las fechas de la reserva. El resolutor exige el material publicado, el módulo visible y la reserva del huésped;
-- **pendiente de K6:** `guest_answer` valida y devuelve `QUESTION_CLOSED`, `INVALID_ANSWER` y `OUT_OF_SCOPE`. Pero `core.apply_portal_operations` aún rechaza como destino una app de tipo portal, y `organizers` lo es.
+- `guest_answer` escribe con `core.apply_portal_operations('organizers', …)` desde Guests (K6, #334). Devuelve `{revision}` y los errores `QUESTION_CLOSED`, `INVALID_ANSWER`, `VERSION_CONFLICT` y `OUT_OF_SCOPE`; con `value: null` borra la respuesta. El huésped de muestra recibe `PREVIEW_READ_ONLY`.
 
 **Sin `organizers.guest_offers`:** las ofertas no se muestran en Guests (decisión del usuario, confirmada por Core). Los nombres de los asistentes en las respuestas los toma el organizador de `booking.portal_guests`; Organizers no los copia.
 

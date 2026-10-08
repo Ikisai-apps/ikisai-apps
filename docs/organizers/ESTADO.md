@@ -39,14 +39,20 @@
 
   Pruebas en `experience.test.ts`, `quote.test.ts` y `portal.spec.ts`.
 
+- 2026-10-08 · Fases 4 y 5, segunda parte, con Booking #328, Food #327 y #332 y Central #326:
+  - apartados de «Experiencia»: programa por días, menú con fotos y comentarios, alojamiento (ajustes en los dos lados, habitaciones abiertas, reparto de camas, aprobaciones y preferencias) y vista previa de solo lectura;
+  - lugar de Central en el cartel;
+  - escritura de las respuestas desde Guests (K6) y su borrado a los 6 meses del fin (B18).
+
+  Pruebas en `experience.test.ts` y `portal.spec.ts`.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
-- Fases 4 y 5, segunda parte: programa (Booking #328), menú y comentarios (Food #327), habitaciones y aprobación (Booking #328), vista previa con el huésped de muestra y lugar o plano (Central #326).
-- Escritura de las respuestas desde Guests: espera a K6 (núcleo).
-- Borrado de las respuestas a los 6 meses del fin del retiro: espera a B18.
+- Borrado de las respuestas a los 6 meses: construido (0701 y `worker/retention/tick`); en producción necesita la cuenta de servicio `organizers` (K7).
+- Correo de contacto por público: pasar de `contact.email` a `contact.organizers.email` cuando Central lo publique.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.
