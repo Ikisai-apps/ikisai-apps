@@ -177,10 +177,16 @@ test('feedback · worker: cuenta de servicio bajo demanda, petición a Tasks sin
 });
 
 test('feedback · revisor: lo de aplicación entra como nuevo; solo el owner del ecosistema lo ve en revisión, aprueba o une; ruta real solo para él y quien informó', async () => {
-  const a = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ message: 'El botón no responde.', context: { routeRaw: '#/reservas/3f2a1b4c-0000-4000-8000-000000000000/huespedes?tab=2', route: '#/reservas/x' } }) });
+  const a = await app.call('/api/v1/feedback', { token: app.tokens.reader, body: report({ message: 'El botón no responde.', context: { routeRaw: '#/reservas/3f2a1b4c-0000-4000-8000-000000000000/huespedes?tab=2', route: '#/reservas/x' } }) });
   assert.equal(a.status, 200, JSON.stringify(a.data)); assert.equal(a.data.report.reviewStatus, 'new');
-  const b = await app.call('/api/v1/feedback', { token: app.tokens.reader, body: report({ message: 'Lo mismo: no responde.' }) });
-  assert.equal(b.data.report.reviewStatus, 'new');
+  // Otro miembro, con su cupo diario intacto (el editor de prueba lo gasta en pruebas anteriores).
+  const second = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('booking', $1, 'editor') on conflict do nothing`, [second]);
+  const b = await app.call('/api/v1/feedback', { token: app.supabase.tokenFor(second), body: report({ message: 'Lo mismo: no responde.' }) });
+  assert.equal(b.status, 200, JSON.stringify(b.data)); assert.equal(b.data.report.reviewStatus, 'new');
+  // Lo que envía el administrador entra ya aprobado (decisión del usuario, 0088): no se revisa a sí mismo.
+  const own = await app.call('/api/v1/feedback', { token: app.tokens.owner, body: report({ message: 'Mío: falta un botón.' }) });
+  assert.equal(own.data.report.reviewStatus, 'approved');
   assert.equal((await app.call('/api/v1/feedback?review=true&app=all', { token: app.tokens.editor })).status, 403, 'solo el owner del ecosistema revisa');
   const queue = await app.call('/api/v1/feedback?review=true&app=all', { token: app.tokens.owner });
   assert.equal(queue.status, 200); assert.ok(queue.data.items.some((r: any) => r.code === a.data.report.code));
