@@ -71,8 +71,13 @@ test('recorrido de feedback en Tasks: interruptor, pulsación larga, envío, «S
     await composer.getByRole('button', { name: 'Enviar' }).click();
     await expect.poll(async () => (await reports()).length).toBe(1);
     // El aviso «Enviado» del kit va dentro de #kitLayer (CSS del kit acotado), no suelto en body.
-    await expect(page.locator('#kitLayer .toast[role="status"]')).toHaveCount(1);
+    // El aviso «Enviado» va a la capa del kit (setKitLayer) y tiene tamaño de aviso, no una columna (escritorio).
+    const notice = page.locator('#kitLayer .toast[role="status"]');
+    await expect(notice).toHaveCount(1);
     await expect(page.locator('body > .toast[role="status"]')).toHaveCount(0);
+    const box = (await notice.boundingBox())!;
+    expect(box.height).toBeLessThan(90);
+    expect(box.width).toBeLessThan(640);
     const report = (await reports())[0]!;
     expect(report.node?.id ?? report.node_id).toBe('tasks.cabecera.areas.general');
     await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 5_000 });

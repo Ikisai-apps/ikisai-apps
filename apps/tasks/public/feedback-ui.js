@@ -8,18 +8,18 @@
      También son el catálogo de «Uso»: por eso los ids van escritos tal cual en los mapas, nunca construidos.
    - `usage.run` / `usage.track` en las operaciones importantes (crear, completar y borrar tareas; compras; entradas;
      importar y exportar). */
+/* Capa del kit (0.24): todo lo flotante (avisos, hojas, diálogos, paleta, pines, Revisor y lanzador) va a #kitLayer, que
+   lleva .ikisai-kit: con el CSS del kit acotado (vite.config.ts), fuera de ahí sale sin estilo y debajo de la cáscara. */
+IkisaiKit.setKitLayer(sheetKitLayer);
 let tasksFeedbackParts=null;
 function tasksFeedback(){
   if(tasksFeedbackParts||!Sync.core)return tasksFeedbackParts;
   const K=IkisaiKit,api=(path,init)=>Sync.core.api(path,init),userId=()=>Sync.core.bootstrap()?.profile.userId??null;
-  // La hoja del kit va acotada a .ikisai-kit (vite.config.ts): sus capas (formulario, marcas) cuelgan de un contenedor
-  // con esa clase en lugar de body, o quedarían sin estilo y debajo del menú heredado.
-  const container=()=>document.getElementById('feedbackHost')||document.body.appendChild(K.el('div',{class:'ikisai-kit',id:'feedbackHost',style:'display:contents'}));
-  const feedback=K.createFeedback({app:'tasks',api,userId,container,role:()=>Sync.core.bootstrap()?.membership.role??null,
+  const feedback=K.createFeedback({app:'tasks',api,userId,role:()=>Sync.core.bootstrap()?.membership.role??null,
     syncSummary:()=>{const s=Sync.core.status();return {pending:s.pendingCommands+s.pendingBlobs,conflicts:s.conflicts,lastSyncAt:s.lastPullAt,cursor:s.cursor}},
     fallbackNode:()=>{const s=screenMark();return {id:s.feedbackId,path:[s.label]}}});
   let catalog=null;
-  const review=K.createFeedbackReview({api,app:'tasks',container,appDomain:id=>catalog?.items?.find(a=>a.id===id)?.domain});
+  const review=K.createFeedbackReview({api,app:'tasks',appDomain:id=>catalog?.items?.find(a=>a.id===id)?.domain});
   const tracker=K.createUsage({app:'tasks',api,userId});
   Sync.core.onSessionEnd(id=>{void feedback.clear(id);void tracker.clear(id)});
   return tasksFeedbackParts={feedback,review,usage:tracker,setCatalog:c=>{catalog=c}};
@@ -35,7 +35,7 @@ const usage={
    del kit se crea al primer toque, ya con el feedback; así nunca queda guardado uno sin interruptores. */
 function tasksRealLauncher(){
   if(tasksLauncher)return tasksLauncher;const p=tasksFeedback();
-  const launcher=IkisaiKit.createAppLauncher({current:'tasks',container:sheetKitLayer,fetchApps:async()=>{const c=await Sync.core.api('/apps');p?.setCatalog(c);return c},
+  const launcher=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:async()=>{const c=await Sync.core.api('/apps');p?.setCatalog(c);return c},
     ...(p?{feedback:p.feedback.mode,review:{get:()=>p.review.mode.get(),set:on=>p.review.mode.set(on),available:()=>p.review.available()},center:openTasksFeedbackCenter}:{})});
   if(p)tasksLauncher=launcher;return launcher}
 shellLauncher=function(){return {attach(trigger){if(!trigger)return;trigger.setAttribute('aria-haspopup','dialog');trigger.onclick=()=>{void tasksRealLauncher().open()}}}};
@@ -46,8 +46,7 @@ const navigationBeforeFeedback=navigationGroups;
 navigationGroups=function(){const groups=navigationBeforeFeedback(),system=groups.find(g=>g.id==='system');
   if(system&&Sync.core)system.items.unshift(['feedbackCenter','Sugerencias y QA','help','action']);return groups};
 function openTasksFeedbackCenter(){const p=tasksFeedback();if(!p)return toast('Aún no hay conexión con la cuenta.');
-  // Como las hojas heredadas (index.html): dentro de #kitLayer, que lleva .ikisai-kit, para que el CSS acotado del kit la pinte.
-  closeNavigation?.();IkisaiKit.openFeedbackCenter({api:(path,init)=>Sync.core.api(path,init),app:'tasks',canEdit:()=>canEdit(),feedback:p.feedback,container:sheetKitLayer})}
+  closeNavigation?.();IkisaiKit.openFeedbackCenter({api:(path,init)=>Sync.core.api(path,init),app:'tasks',canEdit:()=>canEdit(),feedback:p.feedback})}
 const actionBeforeFeedback=handleTopAction;
 handleTopAction=function(action){if(action==='feedbackCenter')return openTasksFeedbackCenter();return actionBeforeFeedback(action)};
 
@@ -116,9 +115,3 @@ const portableExportBeforeUsage=portableExport;
 portableExport=function(...args){return usage.run('tasks.datos.exportar_portable',()=>portableExportBeforeUsage(...args))};
 const backupBeforeUsage=downloadServerBackup;
 downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',()=>backupBeforeUsage(...args))};
-
-/* Red de seguridad: las hojas y diálogos del kit que aún se monten en body sin contenedor se pasan a #kitLayer,
-   que lleva .ikisai-kit: con el CSS del kit acotado (vite.config.ts), fuera de ahí salen sin estilo y debajo de la cáscara. */
-new MutationObserver(changes=>{for(const change of changes)for(const node of change.addedNodes){
-  if(node.nodeType===1&&node.parentNode===document.body&&node.matches('.sheetback,.dialogback,.toast[role="status"]:not(#toast)'))sheetKitLayer().appendChild(node)}})
-  .observe(document.body,{childList:true});
