@@ -91,11 +91,15 @@ export function isPast(date: unknown, today: string): boolean {
   return typeof date === 'string' && date.slice(0, 10) < today;
 }
 
-/** Plazo del saldo de unas condiciones, en una frase («El saldo se paga en las 24 horas siguientes al final del evento.»). */
-export function balanceDueText(conditions: Record<string, unknown> | null | undefined): string {
-  const hours = Number(conditions?.balance_due_hours_after_end ?? 24);
-  if (!Number.isFinite(hours) || hours <= 0) return 'El saldo se paga al final del evento.';
-  return hours % 24 === 0 && hours > 24
-    ? `El saldo se paga en los ${hours / 24} días siguientes al final del evento.`
-    : `El saldo se paga en las ${hours} horas siguientes al final del evento.`;
+/** Plazo máximo interno para exigir el saldo (horas tras el final del evento). Solo para el personal: nunca en el portal. */
+export function balanceDeadlineHours(conditions: Record<string, unknown> | null | undefined): number {
+  const hours = Number(conditions?.balance_deadline_hours_after_end ?? 24);
+  return Number.isFinite(hours) && hours >= 0 ? hours : 24;
+}
+
+/** Momento del plazo máximo del saldo: hora de salida (o final del día de salida) más las horas internas. */
+export function balanceDeadline(endDate: string | null | undefined, departureTime: string | null | undefined, hours: number): Date | null {
+  if (!endDate) return null;
+  const base = new Date(`${endDate}T${departureTime && /^\d{2}:\d{2}/.test(departureTime) ? departureTime.slice(0, 5) : '23:59'}:00`);
+  return Number.isNaN(base.getTime()) ? null : new Date(base.getTime() + hours * 3_600_000);
 }

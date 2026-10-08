@@ -4,7 +4,7 @@ import { RATE_LAYERS } from '@ikisai/domain-booking';
 import { createSortableList, el, icon, plural, positionBetween, renumber, replace, toast, type Sortable } from '@ikisai/ui-kit';
 import { CONDITIONS, PROPOSALS, RATES, TIERS, canRead, describeError, fullDay } from '../app/client.ts';
 import { OPTIONS, RATE_LABELS, RATE_OPTIONS, label } from '../app/labels.ts';
-import { amountText, byPosition, eur, pct, tierText, tiersOf, type Row, balanceDueText } from '../app/rates.ts';
+import { amountText, byPosition, eur, pct, tierText, tiersOf, type Row, balanceDeadlineHours } from '../app/rates.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -33,7 +33,7 @@ const CONDITION_SPECS: FieldSpec[] = [
   { key: 'deposit_minimum', label: 'Señal mínima (€)', type: 'number', decimal: true },
   { key: 'deposit_days', label: 'Plazo para pagar la señal (días)', type: 'number' },
   { key: 'deposit_days_short', label: 'Plazo con poca antelación (días)', type: 'number' },
-  { key: 'balance_due_hours_after_end', label: 'Plazo del saldo (horas tras el final del evento)', type: 'number', hint: 'El saldo se paga en las horas siguientes al final del evento (24 por defecto).' },
+  { key: 'balance_deadline_hours_after_end', label: 'Plazo máximo del saldo, interno (horas tras el final)', type: 'number', hint: 'Dato interno: a partir de aquí Ikisai exige el pago. El organizador no lo ve.' },
   { key: 'short_notice_days', label: 'Poca antelación: faltan menos de (días)', type: 'number' },
   { key: 'prices_include_vat', label: 'Precios con IVA incluido', type: 'check', section: 'IVA' },
   { key: 'vat_rate', label: 'Tipo de IVA (%)', type: 'number', decimal: true },
@@ -170,7 +170,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
   function openConditions(row: Row | null): void {
     openRowSheet({
       client, title: row ? 'Condiciones' : 'Nuevas condiciones', table: CONDITIONS, row, specs: CONDITION_SPECS, feedbackId: row ? 'booking.tarifas.condiciones_hoja' : 'booking.tarifas.nuevas_condiciones', feedbackLabel: row ? 'Editar condiciones' : 'Nuevas condiciones',
-      defaults: { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, balance_due_hours_after_end: 24, prices_include_vat: true, vat_rate: 10, active: true, is_default: conditions.every((c) => c.is_default !== true) },
+      defaults: { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, balance_deadline_hours_after_end: 24, prices_include_vat: true, vat_rate: 10, active: true, is_default: conditions.every((c) => c.is_default !== true) },
       check: (merged) => (num(merged.deposit_percent) > 100 || num(merged.vat_rate) > 100 ? 'Los porcentajes van de 0 a 100.' : null),
       extra: () => (row && inUse(row)
         ? el('p', { class: 'hint', id: 'conditionsInUse' }, 'Ya se usaron en una propuesta enviada: solo puedes cambiar si están activas o por defecto. Para otros cambios, crea unas nuevas (botón «Duplicar»).') : null),
@@ -183,7 +183,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
 
   async function duplicate(row: Row): Promise<void> {
     const id = crypto.randomUUID();
-    const copy = Object.fromEntries(['deposit_percent', 'deposit_minimum', 'deposit_days', 'deposit_days_short', 'short_notice_days', 'balance_due_hours_after_end', 'prices_include_vat', 'vat_rate', 'text']
+    const copy = Object.fromEntries(['deposit_percent', 'deposit_minimum', 'deposit_days', 'deposit_days_short', 'short_notice_days', 'balance_deadline_hours_after_end', 'prices_include_vat', 'vat_rate', 'text']
       .map((key) => [key, key.startsWith('deposit_') || key === 'vat_rate' || key === 'short_notice_days' ? Number(row[key]) : row[key]]).filter(([, value]) => value !== null));
     const operations: RowOperation[] = [
       { op: 'insert', table: CONDITIONS, id, fields: { ...copy, name: `${row.name} (copia)` } },
@@ -233,7 +233,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
       el('dl', { class: 'kv' },
         el('dt', null, 'Señal'), el('dd', null, `${pct(c.deposit_percent)} del total, mínimo ${eur(c.deposit_minimum)}`),
         el('dt', null, 'Plazo'), el('dd', null, `${plural(Number(c.deposit_days), 'día', 'días')} (${plural(Number(c.deposit_days_short), 'día', 'días')} si faltan menos de ${plural(Number(c.short_notice_days), 'día', 'días')})`),
-        el('dt', null, 'Saldo'), el('dd', null, balanceDueText(c)),
+        el('dt', null, 'Saldo (interno)'), el('dd', null, `Plazo máximo: ${balanceDeadlineHours(c)} h tras el final del evento`),
         el('dt', null, 'IVA'), el('dd', null, c.prices_include_vat ? `Incluido (${pct(c.vat_rate)})` : `No incluido: se suma el ${pct(c.vat_rate)}`),
         c.minimum_total !== null && c.minimum_total !== undefined ? el('dt', null, 'Mínimo por retiro') : null, c.minimum_total !== null && c.minimum_total !== undefined ? el('dd', null, eur(c.minimum_total)) : null,
         c.text ? el('dt', null, 'Texto') : null, c.text ? el('dd', null, c.text) : null),

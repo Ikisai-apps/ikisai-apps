@@ -7,6 +7,7 @@ import {
 } from '@ikisai/domain-booking';
 import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
+import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
 import { fetchCosts, invoiceUrl, issueInvoiceUrl, purchasesUrl, readCostCache, type CostResult } from '../app/costs.ts';
@@ -442,10 +443,20 @@ export function mountReservation(id: string): ViewMount {
 
       // Factura: la prepara Finance leyendo booking.reservation_invoice_source (API.md §19); si ya hay una, Finance lo avisa.
       const canInvoice = writable && (!!proposalData?.proposals.some((pr) => pr.status === 'aceptada' && !pr.deleted_at) || Number(finance?.final_amount) > 0);
-      const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', el('div', null, kv(
+      // Plazo máximo interno del saldo (horas tras el final del evento, según las condiciones de la propuesta aceptada).
+      const accepted = proposalData?.proposals.find((pr) => pr.status === 'aceptada' && !pr.deleted_at) ?? null;
+      const acceptedConditions = accepted ? proposalData!.conditions.find((c) => c.id === accepted.conditions_id) ?? null : null;
+      const deadline = accepted ? balanceDeadline(reservation.end_date, liveEvent?.departure_time ?? null, balanceDeadlineHours(acceptedConditions)) : null;
+      const balancePending = Number(finance?.final_amount ?? 0) - Number(finance?.deposit_paid ?? 0) > 0.005;
+      const deadlineRow: [string, Child] | null = deadline ? ['Plazo máximo del saldo', `${deadline.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (interno)`] : null;
+      const deadlineAlert = deadline && balancePending && deadline.getTime() < Date.now()
+        ? el('p', { class: 'banner warn', id: 'balanceDeadlinePassed', role: 'status', 'data-feedback-id': 'booking.reserva.cobro.saldo_vencido', 'data-feedback-label': 'Saldo pendiente: plazo máximo vencido' }, 'Saldo pendiente: plazo máximo vencido.')
+        : null;
+      const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', el('div', null, deadlineAlert, kv(
         ['Presupuesto', money(finance?.budget_amount)], ['Importe final', money(finance?.final_amount)],
         ['Señal', `${money(finance?.deposit_paid)} de ${money(finance?.deposit_required)} · ${DEPOSIT[depositStatus(finance as any)]}`],
-        ['Pago', [label(finance?.payment_type), finance?.payment_date, finance?.payment_holder].filter((v) => v && v !== '—').join(' · ') || '—']),
+        ['Pago', [label(finance?.payment_type), finance?.payment_date, finance?.payment_holder].filter((v) => v && v !== '—').join(' · ') || '—'],
+        ...(deadlineRow ? [deadlineRow] : [])),
         canInvoice ? el('p', null, el('a', { class: 'ghost small', id: 'issueInvoice', href: issueInvoiceUrl(id), target: '_self', rel: 'noopener',
           'data-feedback-id': 'booking.reserva.cobro.factura', 'data-feedback-label': 'Emitir factura' }, 'Emitir factura')) : null),
         editLink('editFinance', 'Editar', () => openRowSheet({
