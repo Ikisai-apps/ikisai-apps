@@ -1215,7 +1215,12 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
 - Un tick sin archivos hace **una sola llamada** a Drive: los ids de las carpetas se guardan en `drive_state`.
 - `drive_runs.api_calls` registra las llamadas de cada ejecución.
 
-**Carpetas** (en la raíz de la unidad; las crea si faltan): «Entrada», «Importadas», «Duplicadas» y «Con errores». Mover es cambiar el padre. **Nunca se borra ni se manda a la papelera nada.**
+**Carpetas:** «Entrada», «Importadas», «Duplicadas» y «Con errores», dentro de `INVOICES_DRIVE_ID`. Mover es cambiar el padre. **Nunca se borra ni se manda a la papelera nada.**
+- `INVOICES_DRIVE_ID` puede ser una **unidad compartida** o una **carpeta de un usuario compartida con la cuenta de servicio** (así está en producción desde el 9-10-2026).
+- Se busca y se lista con `corpora=allDrives`, que vale para las dos.
+- En una unidad compartida, las subcarpetas que falten se crean.
+- En la carpeta de un usuario **no se pueden crear**: la cuenta de servicio no tiene cuota de almacenamiento. Si falta «Importadas», «Duplicadas» o «Con errores», el tick termina en `blocked` con el aviso «Crea en tu carpeta de Drive estas subcarpetas: …», visible en Inicio para el owner.
+- Sin «Entrada», los PDF sueltos en la raíz cuentan como entrada (las subcarpetas nunca se listan como archivos).
 
 **Por cada archivo de «Entrada»:**
 1. **Ya registrado** (`drive_imports.drive_file_id`, un tick que murió antes de moverlo): solo se mueve.
