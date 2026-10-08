@@ -253,7 +253,12 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
         const bed = a.bed_id ? bedById.get(a.bed_id) : null;
         return el('li', { class: 'row', dataset: { pending: String(a._pending === true) }, 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones.fila', 'data-feedback-label': 'Asignación' },
           el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, who(a))),
-          el('div', { class: 'row-meta' }, [plural(Number(a.persons), 'persona', 'personas'), bed ? `cama ${bed.label}` : null, dates(a)].filter(Boolean).join(' · ')),
+          el('div', { class: 'row-meta' }, [plural(Number(a.persons), 'persona', 'personas'), bed ? `cama ${bed.label}` : null, dates(a),
+            a.status === 'requested' ? 'pendiente de que la apruebe el organizador' : null, a.source === 'guest' ? 'elegida por el huésped' : a.source === 'organizer' ? 'asignada por el organizador' : null].filter(Boolean).join(' · ')),
+          // preferencia de compañeros que dejó el huésped en Guests (la ven el personal y el organizador)
+          a.guest_id && o.seesGuests && (guestById.get(a.guest_id)?.room_preference || guestById.get(a.guest_id)?.needs_ground_floor)
+            ? el('div', { class: 'row-meta', 'data-feedback-ignore': '' }, [guestById.get(a.guest_id)?.room_preference ? `Prefiere: ${guestById.get(a.guest_id)!.room_preference}` : null, guestById.get(a.guest_id)?.needs_ground_floor ? 'Necesita planta baja o accesible' : null].filter(Boolean).join(' · '))
+            : null,
           o.editable ? el('div', { class: 'row-actions' }, el('button', { class: 'iconbtn', type: 'button', 'aria-label': `Editar asignación de ${who(a)} en ${space.name}`, 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones.editar', 'data-feedback-label': 'Editar asignación', onclick: () => void openAssignmentSheet(sheetOptions(a)) }, icon('edit', 16))) : null);
       })));
   });

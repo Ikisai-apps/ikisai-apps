@@ -95,8 +95,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       const urgent = new Set(reservations.filter((r) => guestModeOf(r) === 'ses' && ['confirmada', 'en_ejecucion'].includes(r.status)
         && (dayNumber(r.start_date) ?? Infinity) <= now + 1 && (dayNumber(r.end_date) ?? -Infinity) >= now).map((r) => r.id));
       const urgentEvents = new Set(events.filter((e) => urgent.has(e.reservation_id)).map((e) => e.id));
-      const unsent = ((await client.list(GUESTS)) as unknown as Array<{ event_id: string; ses_status: string }>)
-        .filter((g) => urgentEvents.has(g.event_id) && g.ses_status !== 'enviado_SES' && g.ses_status !== 'no_aplica').length;
+      const unsent = ((await client.list(GUESTS)) as unknown as Array<{ event_id: string; ses_status: string; preview?: boolean }>)
+        .filter((g) => !g.preview && urgentEvents.has(g.event_id) && g.ses_status !== 'enviado_SES' && g.ses_status !== 'no_aplica').length;
       notices.push([unsent, 'huésped sin comunicar a SES', 'huéspedes sin comunicar a SES']);
     }
     // Reservas con SES sin comunicar pasadas 12 h desde el pago (el plazo legal es de 24 h): se pregunta a la API solo por las candidatas.

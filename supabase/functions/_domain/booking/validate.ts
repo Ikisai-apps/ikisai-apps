@@ -3,7 +3,7 @@
  * Es pura: no conoce `_kit` ni el navegador. Los campos desconocidos no se juzgan aquí; los rechaza el núcleo.
  */
 import {
-  BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
+  BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, PROGRAM_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
   RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
@@ -185,6 +185,8 @@ FIELDS[TABLES.spaces] = {
   bookable: { kind: 'bool' },
   position: { kind: 'number' },
   notes: text(LONG),
+  public_name: text(120),
+  en_suite: { kind: 'bool' },
 };
 FIELDS[TABLES.beds] = {
   space_id: { kind: 'uuid' },
@@ -204,6 +206,7 @@ FIELDS[TABLES.roomAssignments] = {
   from_date: { kind: 'date' },
   to_date: { kind: 'date' },
   notes: text(LONG),
+  status: choice(['confirmed', 'requested'], false),
 };
 
 FIELDS[TABLES.staffAssignments] = {
@@ -324,6 +327,32 @@ FIELDS[TABLES.portalRequests] = {
   requested_by: { kind: 'uuid', nullable: true },
   status: choice(['enviada', 'vista', 'respondida'], false),
 };
+FIELDS[TABLES.programItems] = {
+  event_id: { kind: 'uuid' },
+  day: { kind: 'date' },
+  starts_at: { kind: 'time' },
+  ends_at: { kind: 'time' },
+  title: text(120, false),
+  space_id: { kind: 'uuid', nullable: true },
+  place_text: text(80),
+  public_note: text(500),
+  internal_note: text(2000),
+  kind: choice(PROGRAM_KINDS, false),
+  optional: { kind: 'bool' },
+  position: { kind: 'number' },
+};
+FIELDS[TABLES.lodgingSettings] = {
+  event_id: { kind: 'uuid' },
+  choice: choice(['off', 'choose', 'request'], false),
+  choose_until: { kind: 'date' },
+  preferences: { kind: 'bool' },
+};
+FIELDS[TABLES.openRooms] = {
+  event_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid' },
+  option_key: text(40),
+  supplement: { kind: 'bool' },
+};
 FIELDS[TABLES.dateBlocks] = {
   start_date: { kind: 'date' },
   end_date: { kind: 'date' },
@@ -344,6 +373,9 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.proposals]: 'reservation_id',
   [TABLES.proposalLines]: 'proposal_id',
   [TABLES.dateOptions]: 'reservation_id',
+  [TABLES.programItems]: 'event_id',
+  [TABLES.lodgingSettings]: 'event_id',
+  [TABLES.openRooms]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -365,6 +397,9 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.proposalLines]: ['proposal_id', 'description', 'unit', 'unit_amount'],
   [TABLES.dateOptions]: ['reservation_id', 'start_date', 'end_date'],
   [TABLES.dateBlocks]: ['start_date', 'end_date'],
+  [TABLES.programItems]: ['event_id', 'day', 'title'],
+  [TABLES.lodgingSettings]: ['event_id'],
+  [TABLES.openRooms]: ['event_id', 'space_id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
