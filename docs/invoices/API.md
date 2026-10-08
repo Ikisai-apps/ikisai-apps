@@ -645,11 +645,12 @@ Dos lecturas registradas para la app `organizers` (`core.allow_read('organizers'
 **F1 · `invoices.portal_reservation_money {reservation_id}`:**
 ```
 { reservation_id, currency: 'EUR',
-  invoices: [{ id, number, issue_date, type, rectifies: [número] | null, base, tax, withholding, total, status, collected, collected_at, has_document }],
+  invoices: [{ id, number, issue_date, type, purpose, rectifies: [número] | null, base, tax, withholding, total, status, collected, collected_at, has_document }],
   totals: { invoiced, collected, pending } }
 ```
 - `status` puede ser `emitida`, `rectificada` o `registrada`.
 - `collected` indica si la factura está cobrada.
+- `purpose` es el concepto del cobro (migración 0221): `senal`, `saldo`, `extras`, `general` o `null` si no se indicó. El portal rotula así la factura («Señal», «Saldo», «Extras»). Es solo una etiqueta: no cambia importes ni totales.
 - `totals` suma las no anuladas: facturado, cobrado y pendiente de cobro.
 
 **F2 · `invoices.portal_invoice_document {reservation_id, issued_invoice_id}`:** devuelve `{ id, number, issue_date, status, document, files: [{ file_id, filename, mime, size }] }`.
@@ -658,9 +659,10 @@ Dos lecturas registradas para la app `organizers` (`core.allow_read('organizers'
 
 **Sin datos internos:** ni notas, ni revisión de importes, ni categoría de ingreso, ni herramienta de origen, ni registro VERI*FACTU, ni facturas de otras reservas.
 
-**Pendiente fuera de Invoices** (pedido a Core en la ronda 51):
-1. **URL firmada de un PDF guardado:** una Edge con la clave de servicio tiene que firmarla con `createStorage`. La de Organizers es hoy genérica (`read/:name`). Propuesta: una ruta `portal-files` en `organizers-api` que repita la lectura F2 con la sesión del portal y firme solo un `file_id` que esa lectura devuelva. Las facturas emitidas desde Finance no la necesitan, porque el portal pinta su `document`.
-2. **Total contratado, señal requerida y pagada, forma de pago y vencimientos:** hoy los guarda Booking (`booking.reservation_finance`, propuesta aceptada), y Finance no puede leerlos desde SQL. Propuesta: que Booking los añada a su lectura de portal y que el portal calcule el saldo con el `collected` de F1, o que se decida un único dueño de los cobros. Si no, la señal cobrada podría contarse dos veces: en Booking y en la factura de la señal.
+**Lo contratado y lo cobrado** (decisión de Core, ronda 52): Booking publica lo contratado (total de la propuesta aceptada, señal requerida y vencimientos). Finance publica lo facturado y lo cobrado (F1); «pagado» sale solo de Finance. El portal calcula el saldo como contratado (Booking) − `totals.collected` (Finance).
+
+**Pendiente fuera de Invoices:**
+1. **URL firmada de un PDF guardado** (aplazada por Core en la ronda 52): una Edge con la clave de servicio tiene que firmarla con `createStorage`. La de Organizers es hoy genérica (`read/:name`). Propuesta: una ruta `portal-files` en `organizers-api` que repita la lectura F2 con la sesión del portal y firme solo un `file_id` que esa lectura devuelva. Las facturas emitidas desde Finance no la necesitan, porque el portal pinta su `document`.
 
 ## 8. Archivos
 
@@ -1024,6 +1026,7 @@ Campos nuevos en la cabecera:
 - `issued_at timestamptz` y `issued_by`.
 - `document jsonb`: la copia congelada de todo lo que se imprime.
 - `rectified_by jsonb`: las rectificativas emitidas sobre esta factura.
+- `purpose`: concepto del cobro (`senal` · `saldo` · `extras` · `general`; migración 0221). Se elige en el borrador o al registrar, y se puede cambiar en una emitida, porque no se imprime ni forma parte del registro. La lista muestra una etiqueta («Señal») y el portal de organizadores la usa para rotular la factura (§7.7).
 
 Las líneas ya tienen cantidad, unidad, precio unitario, descuento y tipo (§13.1). El desglose añade `exemption_note` para la mención de exención.
 
