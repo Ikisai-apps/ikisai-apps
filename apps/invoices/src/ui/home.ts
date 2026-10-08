@@ -81,7 +81,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('dl', { class: 'kv' }, el('dt', null, 'Por revisar'), fromDrive),
         el('p', { style: 'margin-top:10px', class: 'btnrow' },
           el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => navigate('#/facturas?filtro=drive') }, 'Ver las de Drive'),
-          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null),
+          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null,
+          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.releer', 'data-feedback-label': 'Volver a leer las pendientes', class: 'ghost', type: 'button', id: 'driveReread', onclick: (e: Event) => void rereadDrive(e.currentTarget as HTMLButtonElement) }, 'Volver a leer las pendientes') : null),
         isOwner ? driveState : null,
       ), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
       isOwner ?       fb(el('article', { class: 'card' },
@@ -150,6 +151,23 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       const list = skipped.map((f) => `${f.name} (${f.status === 'duplicada' ? 'duplicada' : f.reason ?? 'error'})`).join(' · ');
       replace(driveState, `${last}${problem}`, ...(skipped.length ? [el('br'), `Últimos sin importar: ${list}`] : []));
     } catch { replace(driveState, ''); }
+  }
+  /** Vuelve a leer en el servidor los borradores de Drive que siguen sin datos, con el lector actual (owner). */
+  async function rereadDrive(button: HTMLButtonElement): Promise<void> {
+    if (!navigator.onLine) { toast('Volver a leer necesita conexión.'); return; }
+    button.disabled = true;
+    try {
+      const r = await client.api<{ checked: number; read: number; items: Array<{ code: string | null; read: boolean; detail: string }> }>('/drive/reread', { json: {} });
+      if (!r.checked) toast('No hay facturas de Drive pendientes de datos.');
+      else openSheet({
+        title: 'Volver a leer',
+        meta: `${r.read} de ${r.checked} leída${r.read === 1 ? '' : 's'}. Las demás se completan con Claude o la IA.`,
+        body: el('ul', { id: 'rereadResult', 'data-feedback-ignore': '' }, ...r.items.map((i) => el('li', null, el('strong', null, i.code ?? 'factura'), ` · ${i.detail}`))),
+        foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Hecho')],
+      });
+      void client.sync().catch(() => undefined);
+    } catch (error) { toast(describeError(error)); }
+    button.disabled = false;
   }
   async function runDrive(button: HTMLButtonElement): Promise<void> {
     if (!navigator.onLine) { toast('Buscar en Drive necesita conexión.'); return; }

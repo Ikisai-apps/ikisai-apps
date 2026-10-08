@@ -7,7 +7,7 @@ import {
   type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
-import { createGoogleDriveApi, readPdfItemsServer, runDriveTick, type DriveApi, type DriveTickResult } from './drive.ts';
+import { createGoogleDriveApi, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
 // Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
@@ -724,7 +724,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   });
   const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) };
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
-  const runDrive = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload });
+  const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload });
   return createApp({
     ...base,
     app: 'invoices',
@@ -738,6 +738,12 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
       method: 'POST', pattern: 'drive/run', handler: async ({ ctx }) => {
         if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede buscar en Drive.');
         return runDrive();
+      },
+    }, {
+      // «Volver a leer las pendientes» (owner): los borradores de Drive en «Pendiente de datos», con el lector actual.
+      method: 'POST', pattern: 'drive/reread', handler: async ({ ctx }) => {
+        if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede volver a leer.');
+        return rereadDrive();
       },
     }],
     workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
@@ -766,7 +772,7 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
     return sync.context({ id, email: null, sessionId: 'service:drive', kind: 'human', name: 'Drive (sistema)' }, '');
   })().catch((error) => { actor = null; throw error; }));
   let running: Promise<DriveTickResult> | null = null;
-  const tick = () => runDriveTick({
+  const tickDeps = (): DriveTickDeps => ({
     drive,
     limit: options.limit,
     invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'invoices', p_actor: null, p_name: name, p_args: args }),
@@ -801,8 +807,20 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
     readPdf: options.readPdf ?? readPdfItemsServer,
     uuid: stableUuid,
   });
+  const tick = () => runDriveTick(tickDeps());
+  // Bytes de un documento ya guardado (para volver a leerlo), con la cuenta de servicio.
+  const fileBytes = async (fileId: string) => {
+    const c = await ctx();
+    const file = await supabase.rpc<any>('core_file_get', { p_app: 'invoices', p_actor: c.user.id, p_id: fileId });
+    const response = await storage.download(file);
+    if (!response.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo leer el documento guardado.');
+    return new Uint8Array(await response.arrayBuffer());
+  };
   // Un tick a la vez por instancia: «Buscar ahora» mientras corre el del planificador espera al mismo.
-  return () => (running ??= tick().finally(() => { running = null; }));
+  return {
+    run: () => (running ??= tick().finally(() => { running = null; })),
+    reread: () => { const d = tickDeps(); return rereadDriveDrafts({ rows: d.rows, commit: d.commit, readPdf: d.readPdf, saveText: d.saveText, fileBytes }); },
+  };
 }
 
 // ---------------------------------------------------------------------------

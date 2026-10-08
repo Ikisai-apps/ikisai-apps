@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { createGoogleDriveApi, DriveError, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
+import { createGoogleDriveApi, DriveError, readPdfItemsServer, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
 import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
 
 const WORKER_KEY = 'clave-de-worker-de-prueba';
@@ -241,4 +241,32 @@ test('Cliente de Drive: carpeta de un usuario (allDrives, sin crear subcarpetas)
   const sharedDrive = createGoogleDriveApi({ driveId: 'unidad', accessToken: async () => 'token', fetch: fakeFetch(true) });
   assert.equal(await sharedDrive.folder('Importadas'), 'nueva');
   assert.ok(calls.some((c) => c.method === 'POST'));
+});
+
+test('«Volver a leer las pendientes» (owner): un borrador de Drive que no se leyó se completa en su sitio con el lector actual', async () => {
+  const d = new FakeDrive();
+  let oldReader = true; // la primera lectura simula el lector antiguo: no saca texto
+  const own = await createTestApp({
+    app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
+      drive: { api: d, readPdf: async (bytes) => { if (oldReader) { oldReader = false; return []; } return readPdfItemsServer(bytes); },
+        upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); } } }),
+  });
+  const id = d.add('Factura real.pdf', invoiceTextPdf('RE-2026/0001'));
+  const first = await own.call('/api/v1/worker/drive/tick', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
+  assert.deepEqual([first.data.imported, first.data.read], [1, 0]);
+  const snap = async () => ((await own.call('/api/v1/snapshot?tables=invoices.invoices')).data.tables[0].rows as Array<Record<string, any>>);
+  const draft = (await snap()).find((i) => i.drive_file_id === id)!;
+  assert.equal(draft.status, 'pendiente_datos');
+  assert.equal((await own.call('/api/v1/drive/reread', { body: {}, token: own.tokens.editor })).status, 403);
+  const res = await own.call('/api/v1/drive/reread', { body: {} });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.deepEqual([res.data.checked, res.data.read], [1, 1]);
+  assert.match(res.data.items[0].detail, /Leída: .* RE-2026\/0001 .* total 159,00 €/);
+  const after = (await snap()).filter((i) => i.drive_file_id === id);
+  assert.equal(after.length, 1, 'la misma factura, sin crear otra');
+  assert.equal(after[0]!.id, draft.id);
+  assert.equal(after[0]!.status, 'pendiente_revision');
+  assert.equal(after[0]!.invoice_number, 'RE-2026/0001');
+  assert.equal(after[0]!.import_meta.origin, 'pdf_text');
 });
