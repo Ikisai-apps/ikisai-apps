@@ -128,7 +128,7 @@ test('recorrido de feedback en PC: interruptor, pulsación larga, formulario, en
     await sheet.getByRole('tab', { name: 'Abiertos' }).click();
     const card = sheet.locator('.fb-card');
     await expect(card).toHaveCount(1);
-    await expect(card).toContainText('FB-0001');
+    await expect(card).toContainText('FB_2026_001');
     await expect(card).toContainText('El botón Editar debería decir');
     await expect(card).toContainText('Reserva › Acciones › Editar');
     await sheet.getByRole('tab', { name: 'Mapa' }).click();
