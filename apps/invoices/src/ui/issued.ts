@@ -9,7 +9,7 @@ import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
   INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUED_CSV_FIELDS, ISSUED_CSV_FIELD_LABELS, ISSUED_CSV_REQUIRED, ISSUED_CSV_TEMPLATE_HEADER,
-  ISSUED_EXTRACTION_PROMPT, ISSUED_ORIGIN_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
+  ISSUED_EXTRACTION_PROMPT, ISSUED_ORIGIN_LABELS, ISSUED_PURPOSES, ISSUED_PURPOSE_LABELS, ISSUED_TYPES, ISSUED_TYPE_LABELS, RECTIFICATION_KIND_LABELS,
   breakdownFromLines, fullNumber, guessMapping, isRectificative, issuedDrafts, issuedImportOperations, issuedImportPlan, normalizeHeader, parseCsv, recalculateIssued, recipientOptional,
   type IncomeCategory, type IssuedCsvField, type IssuedCsvMapping, type IssuedImportInvoice,
 } from '@ikisai/domain-invoices';
@@ -175,6 +175,7 @@ export function renderIssuedPanel(ctx: ViewContext): { element: HTMLElement; des
         if (i.status === 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Anulada'));
         if (i.status === 'borrador') chips.push(el('span', { class: 'chip warn' }, 'Borrador'));
         if (i.status === 'rectificada') chips.push(el('span', { class: 'chip' }, 'Rectificada'));
+        if (i.purpose && i.purpose !== 'general') chips.push(el('span', { class: 'chip' }, ISSUED_PURPOSE_LABELS[i.purpose]));
         if (i.review_reason === 'REVISAR IMPORTES') chips.push(el('span', { class: 'chip alert' }, 'Revisar importes'));
         if (i.payment_status === 'cobrada') chips.push(el('span', { class: 'chip ok' }, 'Cobrada'));
         return { id: i.id, title: `${numberOf(i)} · ${recipientOf(i)}`, meta: [shortDate(i.issue_date), i.description, eur(i.total)], chips, pending: i._pending === true,
@@ -278,6 +279,9 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
       : el('div', { class: 'banner warn', id: 'issuerMissing' }, icon('warn', 18), el('span', null, `${MISSING_ENTITY}: esta emitida se registró sin los datos del emisor.`),
         canEdit ? el('button', { 'data-feedback-id': 'invoices.emitidas.ficha.tomar_emisor', 'data-feedback-label': 'Tomar el emisor actual', class: 'softbtn small', type: 'button', id: 'takeIssuer', onclick: () => void fillIssuers(client, [invoice]) }, 'Tomar el emisor actual') : null),
     invoice.status === 'anulada' ? el('div', { class: 'banner alert' }, icon('warn', 18), el('span', null, `Anulada: ${invoice.annulled_reason ?? ''}`)) : null,
+    canEdit && !isDraft ? el('div', { class: 'row2' }, field('Concepto del cobro', select('issuedPurposeSelect', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], invoice.purpose ?? null,
+      { 'data-feedback-id': 'invoices.emitidas.ficha.concepto_cobro', 'data-feedback-label': 'Concepto del cobro', onchange: (e: Event) => void commitSafely(client, [{ op: 'update', table: ISSUED_INVOICES, id: invoice.id, expectedRevision: invoice.revision,
+        fields: { purpose: (e.target as HTMLSelectElement).value || null } }], 'Concepto del cobro guardado.') }))) : null,
     invoice.review_reason === 'REVISAR IMPORTES' ? el('div', { class: 'banner warn', id: 'issuedReview' }, icon('warn', 18), el('span', null, `El total del documento no cuadra con el desglose (diferencia ${eur(Number(invoice.totals_delta ?? 0))}).`)) : null,
     el('div', { 'data-feedback-id': 'invoices.emitidas.ficha.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '', class: 'inv-totals' },
       el('div', null, el('span', null, 'Base'), el('strong', null, eur(invoice.base_total))),
@@ -297,6 +301,7 @@ function renderIssued(ctx: ViewContext, invoice: LocalIssuedInvoice, data: Issue
         invoice.rectified_by?.length ? el('dd', { id: 'issuedRectifiedBy' }, (invoice.rectified_by as Array<{ full_number?: string }>).map((r) => r.full_number ?? '').join(', ')) : null,
         el('dt', null, 'Concepto'), el('dd', null, invoice.description),
         el('dt', null, 'Ingreso'), el('dd', null, invoice.income_category ? INCOME_CATEGORY_LABELS[invoice.income_category] : 'Sin categoría'),
+        el('dt', null, 'Concepto del cobro'), el('dd', { id: 'issuedPurpose' }, invoice.purpose ? ISSUED_PURPOSE_LABELS[invoice.purpose] : 'Sin indicar'),
         el('dt', null, 'Cobro'), el('dd', null, invoice.payment_status === 'cobrada' ? `Cobrada${invoice.paid_at ? ` el ${shortDate(invoice.paid_at)}` : ''}` : 'Sin cobrar'),
       )),
     fbBlock({ feedbackId: 'invoices.emitidas.ficha.lineas', feedbackLabel: 'Líneas' }, 'Líneas', String(lines.length), true, lines.length
@@ -600,6 +605,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
   const recipientName = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientName', maxlength: '200', autocomplete: 'organization' });
   const recipientTaxId = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'issuedRecipientTaxId', maxlength: '40', autocapitalize: 'characters' });
   const description = el('input', { 'data-feedback-id': 'invoices.emitidas.registrar.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'issuedDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches' });
+  const purpose = select('issuedPurposeNew', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], null, { 'data-feedback-id': 'invoices.emitidas.registrar.concepto_cobro', 'data-feedback-label': 'Concepto del cobro' });
   const category = select('issuedCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], null, { 'data-feedback-id': 'invoices.emitidas.registrar.categoria', 'data-feedback-label': 'Categoría de ingreso' });
   // IVA sugerido por categoría (ronda 26): valor de partida editable; solo cambia las líneas cuyo IVA no se ha tocado a mano.
   category.addEventListener('change', () => {
@@ -693,7 +699,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
           series_code: seriesCode, number: number.value.trim(), issue_date: issueDate.value, operation_date: operationDate.value || null, invoice_type: type.value,
           ...(isRectificative(type.value) ? { rectification_kind: rectKind.value, rectified: [{ number: rectNumber.value.trim() }], rectification_reason: rectReason.value.trim() } : {}),
           recipient_name: recipientName.value.trim() || null, recipient_tax_id: recipientTaxId.value.trim() || null, recipient_id_type: recipientTaxId.value.trim() ? 'NIF' : null,
-          description: description.value.trim(), income_category: category.value || null, source_total: source, origin: 'manual',
+          description: description.value.trim(), income_category: category.value || null, purpose: purpose.value || null, source_total: source, origin: 'manual',
           base_total: t.base, quota_total: t.quota, surcharge_total: t.surcharge, withholding_total: t.withholding, total: t.total,
           totals_delta: source === null ? null : Math.round((source - t.total) * 100) / 100,
           review_reason: source !== null && Math.abs(source - t.total) > 0.02 ? 'REVISAR IMPORTES' : null,
@@ -716,6 +722,7 @@ export function openNewIssued(ctx: ViewContext, data: IssuedData): void {
     el('div', { class: 'row2' }, field('Destinatario', recipientName), field('NIF', recipientTaxId)),
     field('Concepto', description),
     field('Categoría de ingreso', category),
+    field('Concepto del cobro', purpose, 'Señal, saldo o extras: así lo ve rotulado el organizador en su portal.'),
     el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { 'data-feedback-id': 'invoices.emitidas.registrar.anadir_linea', 'data-feedback-label': 'Añadir línea', class: 'linkbtn', type: 'button', id: 'addIssuedLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
     el('div', { class: 'row2' }, field('Retención IRPF (importe)', withholding), field('Total del documento', sourceTotal)),
     totals,

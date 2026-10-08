@@ -34,6 +34,10 @@ export const ISSUED_STATUSES = ['registrada', 'anulada', 'borrador', 'emitida', 
 export type IssuedStatus = (typeof ISSUED_STATUSES)[number];
 /** Estados que cuentan en resúmenes y entregas: registradas de otra herramienta, emitidas y rectificadas (§14.3). */
 export const ISSUED_COUNTED_STATUSES: readonly IssuedStatus[] = ['registrada', 'emitida', 'rectificada'];
+/** Concepto del cobro (ronda 52): rotula la factura en el portal de organizadores; no cambia importes ni se imprime. */
+export const ISSUED_PURPOSES = ['senal', 'saldo', 'extras', 'general'] as const;
+export type IssuedPurpose = (typeof ISSUED_PURPOSES)[number];
+export const ISSUED_PURPOSE_LABELS: Record<IssuedPurpose, string> = { senal: 'Señal', saldo: 'Saldo', extras: 'Extras', general: 'General' };
 export const SERIES_MODES = ['registro', 'emision'] as const;
 export const RECIPIENT_KINDS = ['empresa', 'profesional', 'particular'] as const;
 export const ISSUED_ORIGINS = ['manual', 'importada', 'app'] as const;
@@ -189,6 +193,7 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   issued_by: string | null;
   document: IssuedDocument | null;
   rectified_by: unknown[];
+  purpose: IssuedPurpose | null;
   /** Emisor (la entidad de Central) copiado al registrar: NIF y nombre para Verifactu, y el resto en `issuer`. */
   issuer_tax_id: string | null;
   issuer_name: string | null;

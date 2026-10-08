@@ -128,7 +128,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'base_total', 'quota_total', 'surcharge_total', 'withholding_total', 'total', 'source_total', 'totals_delta', 'status', 'review_reason', 'annulled_reason',
     'origin', 'external_tool', 'external_id', 'import_sha256', 'income_category', 'payment_status', 'paid_at', 'external_qr_url', 'external_csv',
     'issuer_tax_id', 'issuer_name', 'issuer',
-    'recipient_address', 'recipient_kind', 'prices_include_vat',
+    'recipient_address', 'recipient_kind', 'prices_include_vat', 'purpose',
   ],
   'invoices.issued_invoice_lines': [
     'issued_invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'tax', 'vat_rate', 'vat_amount',
