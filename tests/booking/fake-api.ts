@@ -26,7 +26,10 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.room_assignments': { persons: 1 },
   'booking.staff_assignments': { status: 'prevista', position: 0 },
   'booking.staff_needs': { persons: 1, priority: 'media', status: 'detectado' },
-  'booking.rates': { active: true, position: 0 },
+  'booking.rates': { active: true, position: 0, portal_visible: false },
+  // Lo que manda el organizador desde su portal (API §21): llega con `serverInsert`; el personal solo cambia `status`.
+  'booking.portal_requests': { kind: 'comentario', status: 'enviada' },
+  'booking.reservation_extra_requests': { quantity: 1 },
   'booking.ses_settings': { environment: 'pre', paused: false },
   'booking.conditions': { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, prices_include_vat: true, vat_rate: 10, is_default: false, active: true },
   'booking.cancellation_tiers': { extra_costs: false, position: 0 },
@@ -407,6 +410,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       const store = stagedTable(op.table);
       const allowed = tables[op.table]!;
       const fields = op.fields ?? {};
+      // La Edge rechaza altas de peticiones del portal y cualquier campo que no sea `status`.
+      if (op.table === 'booking.portal_requests' && (op.op === 'insert' || Object.keys(fields).some((key) => key !== 'status'))) throw new Fault(403, 'FORBIDDEN', 'El personal solo cambia el estado de una petición del portal.', { index });
       for (const key of Object.keys(fields)) if (!allowed.includes(key)) throw new Fault(422, 'INVALID_FIELDS', `Campo no permitido: ${key}`, { index, field: key });
       const now = nowIso();
       let row = store.get(op.id);

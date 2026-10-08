@@ -22,6 +22,9 @@ const RATE_SPECS: FieldSpec[] = [
   { key: 'includes', label: 'Qué incluye', type: 'textarea', section: 'Texto para el organizador' },
   { key: 'excludes', label: 'Qué no incluye', type: 'textarea' },
   { key: 'active', label: 'Activa (se sugiere en las propuestas)', type: 'check' },
+  { key: 'portal_visible', label: 'Visible en el portal del organizador', type: 'check', section: 'Portal del organizador' },
+  { key: 'public_name', label: 'Nombre público', type: 'text', max: 120, hint: 'Lo ve el organizador en su calculadora.' },
+  { key: 'public_description', label: 'Descripción pública', type: 'textarea', max: 1000, hint: 'Lo ve el organizador en su calculadora.' },
 ];
 
 const CONDITION_SPECS: FieldSpec[] = [
@@ -33,6 +36,7 @@ const CONDITION_SPECS: FieldSpec[] = [
   { key: 'short_notice_days', label: 'Poca antelación: faltan menos de (días)', type: 'number' },
   { key: 'prices_include_vat', label: 'Precios con IVA incluido', type: 'check', section: 'IVA' },
   { key: 'vat_rate', label: 'Tipo de IVA (%)', type: 'number', decimal: true },
+  { key: 'minimum_total', label: 'Mínimo por retiro (€)', type: 'number', decimal: true, section: 'Mínimo comercial', hint: 'Si el total no llega, se cobra el mínimo.' },
   { key: 'text', label: 'Texto de las condiciones', type: 'textarea', section: 'Texto para el organizador', hint: 'Sale tal cual en el documento de la propuesta.' },
   { key: 'is_default', label: 'Condiciones por defecto (las usan las propuestas nuevas)', type: 'check', section: 'Uso' },
   { key: 'active', label: 'Activas', type: 'check' },
@@ -112,7 +116,8 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
     return el('div', { class: 'space-item rate-item', dataset: { pending: String(rate._pending === true), rate: rate.name }, 'data-feedback-id': 'booking.tarifas.tarifario.tarifa', 'data-feedback-label': 'Tarifa' },
       el('div', { class: 'space-main' },
         el('div', { class: 'row-title' }, el('span', { class: 'name' }, rate.name),
-          rate.service ? el('span', { class: 'chip' }, RATE_LABELS.service[rate.service] ?? rate.service) : null, rate.active ? null : el('span', { class: 'chip' }, 'Inactiva')),
+          rate.service ? el('span', { class: 'chip' }, RATE_LABELS.service[rate.service] ?? rate.service) : null, rate.active ? null : el('span', { class: 'chip' }, 'Inactiva'),
+          rate.portal_visible === true ? el('span', { class: 'chip ok', dataset: { role: 'portal' }, 'data-feedback-id': 'booking.tarifas.tarifario.portal', 'data-feedback-label': 'Tarifa en el portal' }, 'En el portal') : null),
         el('div', { class: 'rate-amount', dataset: { role: 'amount' } }, amountText(rate.unit, rate.amount)),
         el('div', { class: 'row-meta' }, details),
         rate.includes ? el('div', { class: 'row-meta' }, `Incluye: ${rate.includes}`) : null,
@@ -228,6 +233,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
         el('dt', null, 'Señal'), el('dd', null, `${pct(c.deposit_percent)} del total, mínimo ${eur(c.deposit_minimum)}`),
         el('dt', null, 'Plazo'), el('dd', null, `${plural(Number(c.deposit_days), 'día', 'días')} (${plural(Number(c.deposit_days_short), 'día', 'días')} si faltan menos de ${plural(Number(c.short_notice_days), 'día', 'días')})`),
         el('dt', null, 'IVA'), el('dd', null, c.prices_include_vat ? `Incluido (${pct(c.vat_rate)})` : `No incluido: se suma el ${pct(c.vat_rate)}`),
+        c.minimum_total !== null && c.minimum_total !== undefined ? el('dt', null, 'Mínimo por retiro') : null, c.minimum_total !== null && c.minimum_total !== undefined ? el('dd', null, eur(c.minimum_total)) : null,
         c.text ? el('dt', null, 'Texto') : null, c.text ? el('dd', null, c.text) : null),
       el('div', { class: 'sectionlabel' }, 'Cancelación', el('span', { class: 'count' }, String(own.length))),
       own.length === 0 ? el('p', { class: 'hint' }, 'Sin tramos: no se devuelve nada de la señal.')

@@ -160,6 +160,11 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .line-item { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .line-item .space-main { flex: 1; width: 100%; }
 .line-item .row-title { display: flex; justify-content: space-between; gap: 10px; }
+/* Peticiones del portal y extras pedidos: contenido apilado en la fila; un mensaje largo se parte. */
+.portal-item { display: block; }
+.portal-item > * + * { margin-top: 6px; }
+.portal-item .row-title { flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+.portal-message { margin-bottom: 0; overflow-wrap: anywhere; }
 .line-amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
 .line-item[data-pending='true'] { border-left: 3px solid var(--accent); padding-left: 8px; }
 #proposalTotal { font-variant-numeric: tabular-nums; }

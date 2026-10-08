@@ -1,7 +1,7 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
 import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, NEEDS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { EVENTS, FINANCE, GUESTS, NEEDS, PORTAL_REQUESTS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import { COMMUNICABLE_STATUSES, HOUR, acceptedReservationComm, fetchSes } from '../app/ses.ts';
 import type { ViewMount } from './shell.ts';
 import { fbMark } from './feedback.ts';
@@ -77,6 +77,14 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       [upcoming.filter((r) => soon(r, 30) && r.status !== 'pre_reservada' && (eventByReservation.get(r.id)?.final_guests ?? null) === null).length, 'evento próximo sin número final de personas', 'eventos próximos sin número final de personas'],
       [upcoming.filter((r) => soon(r, 30) && !r.briefing_received).length, 'reserva próxima sin briefing final', 'reservas próximas sin briefing final'],
     ];
+    // Peticiones del organizador desde su portal que nadie ha visto aún (solo editor y owner).
+    if (canWrite(client) && canRead(client, PORTAL_REQUESTS)) {
+      const live = new Set(reservations.filter((r) => !r.deleted_at).map((r) => r.id));
+      const unseen = ((await client.list(PORTAL_REQUESTS)) as unknown as Array<{ reservation_id: string; status: string; deleted_at: string | null }>)
+        .filter((p) => p.deleted_at === null && p.status === 'enviada' && live.has(p.reservation_id));
+      const targets = new Set(unseen.map((p) => p.reservation_id));
+      notices.unshift([unseen.length, 'petición del portal sin ver', 'peticiones del portal sin ver', targets.size === 1 ? `#/reservas/${[...targets][0]}` : '#/reservas', 'portal']);
+    }
     if (finance) {
       notices.push([upcoming.filter((r) => ['pendiente', 'parcial'].includes(depositStatus(finance.get(r.id)))).length, 'señal pendiente', 'señales pendientes']);
     }
@@ -183,6 +191,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     client.onTable(EVENTS, () => void paintData()),
     client.onTable(GUESTS, () => void paintData()),
     ...(canRead(client, NEEDS) ? [client.onTable(NEEDS, () => void paintData())] : []),
+    ...(canWrite(client) && canRead(client, PORTAL_REQUESTS) ? [client.onTable(PORTAL_REQUESTS, () => void paintData())] : []),
   ];
   return () => { disposed = true; offs.forEach((off) => off()); };
 };
