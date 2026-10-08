@@ -74,7 +74,7 @@ async function draw(page: Page): Promise<void> {
 test('guests · enlace no válido: pantalla clara, sin sesión @smoke', async ({ page }) => {
   await page.goto(`${baseURL}/i/${'A'.repeat(43)}`);
   await expect(page.locator('#entryTitle')).toHaveText('Este enlace no funciona');
-  await expect(page.locator('#entryContact')).toContainText('@');
+  await expect(page.locator('#entryContact')).toContainText('ven@ikisai.com'); // correo de los huéspedes, nunca organiza@
   await expect(page).not.toHaveURL(/\/i\//);
   await page.goto(`${baseURL}/`);
   await expect(page.locator('#entryTitle')).toHaveText('Entra con tu enlace');
@@ -290,7 +290,8 @@ test('guests · textos de Central: aviso en inglés con su versión, vale en los
     await expect(page.locator('#privacy h2')).toHaveText('Data protection');
     await expect(page.locator('#privacyText strong').first()).toHaveText('Data protection information');
     await page.locator('#privacyOk').click();
-    await expect.poll(async () => (await api.row(zoe)).privacy_ack_version).toBe('en-v1');
+    // La versión vigente del aviso en inglés (Central la sube al cambiar el texto; la semilla de contactos lo cambia).
+    await expect.poll(async () => (await api.row(zoe)).privacy_ack_version).toMatch(/^en-v\d+$/);
     // En español no vuelve a pedirlo: la aceptación vale para las dos versiones vigentes.
     await page.locator('#language button[data-locale="es"]').click();
     await expect(page.locator('#hello')).toHaveText('Hola, Zoe');
@@ -298,6 +299,8 @@ test('guests · textos de Central: aviso en inglés con su versión, vale en los
     await expect(page.locator('#infoSections details[data-key="info.arrival"] summary')).toHaveText('Llegada y salida');
     await expect(page.locator('#infoSections')).toContainText('Qué traer');
     await expect(page.locator('#infoContact')).toContainText('614 76 57 96');
+    await expect(page.locator('#infoContact')).toContainText('ven@ikisai.com');
+    await expect(page.locator('#infoContact')).not.toContainText('organiza@');
   } finally {
     await context.close();
   }
