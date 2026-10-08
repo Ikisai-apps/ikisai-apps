@@ -1624,6 +1624,41 @@ test('Rectificativa recibida (0227): el abono se reconoce al importar, se import
   }
 });
 
+test('Subir varias (auditoría del 3T): cada archivo es una factura; los PDF con texto se leen solos, los duplicados no se suben y las fotos quedan sin leer', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  // PNG de 1×1 válido (la app la recomprime a WebP)
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    const before = api.rows('invoices.invoices').length;
+    await page.locator('#batchUpload').click();
+    const sheet = page.getByRole('dialog', { name: 'Subir varias facturas' });
+    await expect(sheet).toBeVisible();
+    const leida = invoiceTextPdf('LOTE-0001');
+    await sheet.locator('#batchFiles').setInputFiles([
+      { name: 'lote leida.pdf', mimeType: 'application/pdf', buffer: leida },
+      { name: 'lote repetida.pdf', mimeType: 'application/pdf', buffer: leida },
+      { name: 'lote escaneada.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([textPdf([]), Buffer.from('% lote escaneada ' + 'x')]) },
+      { name: 'lote foto.png', mimeType: 'image/png', buffer: PNG },
+    ]);
+    await sheet.locator('#batchStart').click();
+    await expect(sheet.locator('#batchSummary')).toContainText('1 leída, 2 sin leer, 1 duplicada', { timeout: 60_000 });
+    await expect(sheet.locator('#batchList')).toContainText('Duplicada');
+    await synced(page);
+    await expect.poll(() => api.rows('invoices.invoices').length, { timeout: 20_000 }).toBe(before + 3);
+    const read = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'LOTE-0001'));
+    expect(read.status).toBe('pendiente_revision');
+    const unread = api.rows('invoices.invoices').filter((i) => i.object === 'lote escaneada' || i.object === 'lote foto');
+    expect(unread.map((i) => i.status).sort()).toEqual(['pendiente_datos', 'pendiente_datos']);
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);
