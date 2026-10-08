@@ -447,10 +447,10 @@ export function mountReservation(id: string): ViewMount {
       const accepted = proposalData?.proposals.find((pr) => pr.status === 'aceptada' && !pr.deleted_at) ?? null;
       const acceptedConditions = accepted ? proposalData!.conditions.find((c) => c.id === accepted.conditions_id) ?? null : null;
       const deadline = accepted ? balanceDeadline(reservation.end_date, liveEvent?.departure_time ?? null, balanceDeadlineHours(acceptedConditions)) : null;
-      const balancePending = Number(finance?.final_amount ?? 0) - Number(finance?.deposit_paid ?? 0) > 0.005;
       const deadlineRow: [string, Child] | null = deadline ? ['Plazo máximo del saldo', `${deadline.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (interno)`] : null;
-      const deadlineAlert = deadline && balancePending && deadline.getTime() < Date.now()
-        ? el('p', { class: 'banner warn', id: 'balanceDeadlinePassed', role: 'status', 'data-feedback-id': 'booking.reserva.cobro.saldo_vencido', 'data-feedback-label': 'Saldo pendiente: plazo máximo vencido' }, 'Saldo pendiente: plazo máximo vencido.')
+      // Lo cobrado lo registra Finance (aún sin lectura desde Booking): el aviso no afirma que falte, remite a Finance.
+      const deadlineAlert = deadline && deadline.getTime() < Date.now()
+        ? el('p', { class: 'banner warn', id: 'balanceDeadlinePassed', role: 'status', 'data-feedback-id': 'booking.reserva.cobro.saldo_vencido', 'data-feedback-label': 'Plazo máximo del saldo vencido' }, 'Plazo máximo del saldo vencido: revisa en Finance si está cobrado.')
         : null;
       const cobro = !seesFinance ? null : block('blockFinance', 'Cobro', el('div', null, deadlineAlert, kv(
         ['Presupuesto', money(finance?.budget_amount)], ['Importe final', money(finance?.final_amount)],
