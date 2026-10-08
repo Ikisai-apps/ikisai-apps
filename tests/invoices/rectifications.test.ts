@@ -140,8 +140,8 @@ test('rectificativa de otro trimestre: cuenta en el de su fecha; el de la origin
   assert.equal(item.kind, 'rectificativa');
   assert.deepEqual({ number: item.rectifies.invoice_number, date: item.rectifies.invoice_date, other: item.rectifies.other_period }, { number: 'T-1', date: '2025-08-10', other: true });
   const csv = invoicesCsv(manifest);
-  assert.ok(csv.split(String.fromCharCode(13, 10))[0]!.endsWith(';tipo;rectifica;fecha_original;original_otro_periodo'));
-  assert.ok(csv.includes(';R;T-1;2025-08-10;si'), csv);
+  assert.ok(csv.split(String.fromCharCode(13, 10))[0]!.endsWith(';tipo;rectifica;fecha_original;original_otro_periodo;periodo_declaracion;atrasada'));
+  assert.ok(csv.includes(';R;T-1;2025-08-10;si;2025T4;no'), csv);
 });
 
 test('dominio: detección, documento en negativo y reparto proporcional como la original', () => {
