@@ -287,6 +287,26 @@ Abonos y devoluciones de proveedores. Por ejemplo, una compra en Obramat (factur
 
 **En la lista:** etiqueta «Rectificativa» (o «Rectificativa sin enlazar») y filtro «Rectificativas sin enlazar».
 
+### 2.2 Periodo de declaración (migración 0228, aprobado por Core el 9-10-2026)
+
+La fecha de la factura no cambia; el trimestre en que se declara puede ser posterior (una factura del 2T que llega tarde).
+
+**Modelo:**
+- `invoices.invoices.declared_period` (`AAAATn`; nulo, el trimestre de su fecha), escribible.
+- `declaration_date`, generada: el primer día del periodo declarado, o la fecha de la factura.
+
+**Qué va por cada fecha:**
+- Por `declaration_date`: el resumen fiscal (`fiscal_summary_for`), la entrega (`export_manifest`) y su aviso de «desactualizada» (`export_bundle`). En el dispositivo, `fiscalSummary` usa `declarationDate()`.
+- Por la fecha real: Compras y los indicadores de Central.
+- Un resumen por meses pone una factura atrasada en el primer mes del trimestre en que se declara.
+
+**Asignación:**
+- Hook `invoices.assign_declared_period`: una factura pendiente que se crea, o cuya fecha cambia, y cae en un trimestre **con entrega ya preparada** pasa sola al siguiente sin entrega («Atrasada (2T)»).
+- Si el trimestre de su fecha ya terminó pero **no tiene entrega en la app** (lo normal: se declaró fuera), la ficha pregunta «Es del 2T: ¿la declaras en el 3T?» con un botón. Nada cambia sin confirmarlo.
+- Siempre editable en «Fiscal y pago › Se declara en».
+
+**En la entrega:** cada factura lleva `declared_period` y `late` en el manifest. El CSV de recibidas añade al final `periodo_declaracion` y `atrasada`, y conserva la fecha real.
+
 ## 3. Procedimientos (`call`)
 
 `security definer`, solo `service_role`, registrados con `core.allow_procedure('invoices', …)`, y escriben **solo** vía `core.apply_row_op(app, actor, role, requestId, cursor, op)`. Reciben `{app, actor, role, requestId, cursor, args}`.
