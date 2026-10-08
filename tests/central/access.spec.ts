@@ -6,10 +6,11 @@
  * Compila la app con Vite, la sirve con `vite preview` y reenvía /api a la central-api real sobre PGlite (server.ts).
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
+import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -29,7 +30,7 @@ test.beforeAll(async () => {
   const agent = await t.createUser();
   await t.rpc('core_agent_key_issue', { p_app: 'tasks', p_actor: api.app.users.owner, p_user: agent, p_name: 'Asistente de obra', p_role: 'editor', p_scopes: null, p_digest: 'c'.repeat(64), p_hint: 'cccc', p_expires_at: null });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildCentralApp(); // un solo build aunque haya varios workers
   server = await preview({
     configFile,
     logLevel: 'silent',

@@ -3,10 +3,11 @@
  * sin red se ve la última lectura. Contra la central-api real sobre PGlite (server.ts).
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
+import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +28,7 @@ test.beforeAll(async () => {
   ] } });
   expect(res.status).toBe(200);
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildCentralApp(); // un solo build aunque haya varios workers
   server = await preview({
     configFile,
     logLevel: 'silent',
