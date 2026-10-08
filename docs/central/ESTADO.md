@@ -39,6 +39,7 @@
 - 2026-10-08 · Primera prueba de **envío de feedback** (prueba común del kit 0.25.1, `feedback.spec.ts`): en Inicio (`@smoke`) y con la hoja de Entidad abierta y el teclado en pantalla; con doble toque llega un solo reporte.
 - 2026-10-08 · **La ficha manda sobre el nombre de la cuenta** (FB_2026_013, opción A del usuario): alta desde la ficha, renombrado sincronizado con el núcleo (con reintento sin red), cuentas del equipo sin ficha o con otro nombre señaladas en Accesos.
 - 2026-10-08 · Proyección `central.people_options` para Tasks (FB_2026_015, `1502`): personas activas, también sin cuenta, para ser responsables.
+- 2026-10-08 · Playwright: un solo `vite build` para todos los specs (`tests/central/e2e-build.ts`, huella y cerrojo entre workers, patrón de Tasks).
 
 ## Pendiente
 

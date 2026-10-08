@@ -4,10 +4,11 @@
  * sin el consentimiento previo de las cuentas de prueba para ver el aviso.
  */
 import { expect, test } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
+import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
 import { feedbackRoundTrip, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
@@ -23,7 +24,7 @@ test.beforeAll(async () => {
   test.setTimeout(180_000);
   api = await startCentralServer({ consent: false });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildCentralApp(); // un solo build aunque haya varios workers
   server = await preview({
     configFile,
     logLevel: 'silent',
