@@ -5,8 +5,7 @@
  * `convert.test.ts`.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
-import { EDITOR, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, EDITOR, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
@@ -23,7 +22,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
   const ok = async (operations: any[]) => { const res = await server.commit(operations); expect(res.status, JSON.stringify(res.data)).toBe(200); };

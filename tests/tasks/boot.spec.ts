@@ -4,13 +4,12 @@
  * la PWA minimizada, y no había forma de salir sin cerrar la app).
  */
 import { expect, test } from 'playwright/test';
-import { build } from 'vite';
-import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
 
 let server: E2EServer;
 test.beforeAll(async () => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
 });
 test.afterAll(async () => { await server?.close(); });
