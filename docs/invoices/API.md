@@ -636,6 +636,32 @@ Vista `invoices.central_kpi_projection`, con el contrato de `docs/central/API.md
 
 Los enlaces llevan a `https://finance.ikisai.com/#/facturas` (las emitidas con `?vista=emitidas`) y el gasto a `#/gestoria`. Cambiar el significado de una clave es crear otra.
 
+### 7.7 Portal de organizadores: el dinero del retiro (fase 3, F1 y F2; migración 0220)
+
+Dos lecturas registradas para la app `organizers` (`core.allow_read('organizers', …, 'function', '{editor,owner}')`). El portal las llama con `read/invoices.…` y las filtra el ámbito del enlace (`core.portal_in_scope`, K1). Fuera de ámbito, con un id inválido o con una factura que no es del retiro, la respuesta es siempre `OUT_OF_SCOPE` (403).
+
+**Facturas del retiro:** las que tienen su ingreso asignado a esa reserva de Booking (`issued_allocations`, destino `booking/reservation`), más las rectificativas emitidas de cualquiera de ellas. Nunca salen los borradores. Una anulada pierde su asignación al anularse, así que deja de salir.
+
+**F1 · `invoices.portal_reservation_money {reservation_id}`:**
+```
+{ reservation_id, currency: 'EUR',
+  invoices: [{ id, number, issue_date, type, rectifies: [número] | null, base, tax, withholding, total, status, collected, collected_at, has_document }],
+  totals: { invoiced, collected, pending } }
+```
+- `status` puede ser `emitida`, `rectificada` o `registrada`.
+- `collected` indica si la factura está cobrada.
+- `totals` suma las no anuladas: facturado, cobrado y pendiente de cobro.
+
+**F2 · `invoices.portal_invoice_document {reservation_id, issued_invoice_id}`:** devuelve `{ id, number, issue_date, status, document, files: [{ file_id, filename, mime, size }] }`.
+- `document` es la copia congelada de una factura emitida desde Finance (§14.4). El portal la pinta e imprime, o la guarda en PDF, con la misma página imprimible del kit.
+- `files` son los PDF guardados de una factura registrada de otra herramienta.
+
+**Sin datos internos:** ni notas, ni revisión de importes, ni categoría de ingreso, ni herramienta de origen, ni registro VERI*FACTU, ni facturas de otras reservas.
+
+**Pendiente fuera de Invoices** (pedido a Core en la ronda 51):
+1. **URL firmada de un PDF guardado:** una Edge con la clave de servicio tiene que firmarla con `createStorage`. La de Organizers es hoy genérica (`read/:name`). Propuesta: una ruta `portal-files` en `organizers-api` que repita la lectura F2 con la sesión del portal y firme solo un `file_id` que esa lectura devuelva. Las facturas emitidas desde Finance no la necesitan, porque el portal pinta su `document`.
+2. **Total contratado, señal requerida y pagada, forma de pago y vencimientos:** hoy los guarda Booking (`booking.reservation_finance`, propuesta aceptada), y Finance no puede leerlos desde SQL. Propuesta: que Booking los añada a su lectura de portal y que el portal calcule el saldo con el `collected` de F1, o que se decida un único dueño de los cobros. Si no, la señal cobrada podría contarse dos veces: en Booking y en la factura de la señal.
+
 ## 8. Archivos
 
 **Campos de archivo y recogida de huérfanos (contrato §3.9, migración 0217):** cada columna con `file_id` está declarada con su retención. Los documentos de facturas recibidas y emitidas son `legal` y nunca se borran solos. Las extracciones y el texto leído son `operational`, porque apuntan al mismo documento, que ya es `legal`. El ZIP de la gestoría es `temporary`, porque se regenera. La recogida está activada para Invoices: un huérfano espera 30 días.
