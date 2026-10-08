@@ -54,6 +54,8 @@
 
 - 2026-10-08 · «Ayuda y sugerencias» con `result.id` y `result.requestId` estables del formulario progresivo (kit 0.25.2): un doble toque no duplica el reporte; el aviso y el cierre los pone el kit. Prueba común `portalHelpRoundTrip` en `@smoke`, también con el teclado del móvil.
 
+- 2026-10-08 · Playwright: un solo `vite build` aunque haya varios workers (`buildOrganizersApp()` en `tests/organizers/server.ts`, con huella en `dist/.e2e-stamp` y cerrojo entre procesos, como Tasks); solo se recompila si cambian las fuentes.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
