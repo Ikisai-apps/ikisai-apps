@@ -38,7 +38,7 @@ export function extensionFor(mime: string): string {
 
 export interface NormalizedFilenameInput {
   /** `AAAA-MM-DD` (ISO). */
-  invoiceDate: string;
+  invoiceDate: string | null;
   supplierSlug: string;
   object: string;
   mime: string;
@@ -51,8 +51,8 @@ export interface NormalizedFilenameInput {
 }
 
 /** Base sin extensión ni sufijos: `2026_10_05_(makro)_alimentos_retiro_yoga`. */
-export function normalizedBase(invoiceDate: string, supplierSlug: string, object: string): string {
-  const date = invoiceDate.slice(0, 10).replace(/-/g, '_');
+export function normalizedBase(invoiceDate: string | null, supplierSlug: string, object: string): string {
+  const date = invoiceDate ? invoiceDate.slice(0, 10).replace(/-/g, '_') : 'sin_fecha';
   const supplier = slugify(supplierSlug) || 'sin_proveedor';
   const subject = slugify(object) || 'sin_objeto';
   return `${date}_(${supplier})_${subject}`;

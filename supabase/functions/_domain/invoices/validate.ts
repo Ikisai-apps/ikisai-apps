@@ -133,12 +133,12 @@ export function validateSupplierFields(fields: Fields, op: 'insert' | 'update'):
 export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', { allowImportMeta = false }: { allowImportMeta?: boolean } = {}): void {
   onlyWritable(TABLES.invoices, fields);
   if (op === 'insert') {
-    for (const key of ['supplier_id', 'invoice_date', 'object']) {
+    for (const key of ['supplier_id', 'object']) {
       if (!has(fields, key)) domainFail('INVALID_FIELDS', `El campo ${key} es obligatorio.`, { field: key });
     }
   }
   uuid(fields, 'supplier_id');
-  date(fields, 'invoice_date', { nullable: false });
+  date(fields, 'invoice_date');
   date(fields, 'due_date');
   date(fields, 'paid_at');
   text(fields, 'object', { required: true, max: 120 });

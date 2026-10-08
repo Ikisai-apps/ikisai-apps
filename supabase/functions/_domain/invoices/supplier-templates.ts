@@ -315,7 +315,7 @@ export function templateOperation(learning: TemplateLearning, current: { revisio
 }
 
 /** Valores confirmados de una factura validada: lo que hay en la ficha (cabecera, impuestos y totales recalculados). */
-export function confirmedFromInvoice(invoice: { invoice_number: string | null; invoice_date: string; calculated_base: number; calculated_total: number; calculated_withholding: number; source_total: number | null },
+export function confirmedFromInvoice(invoice: { invoice_number: string | null; invoice_date: string | null; calculated_base: number; calculated_total: number; calculated_withholding: number; source_total: number | null },
   supplierTaxId: string | null, taxes: Array<{ tax_type: string; rate: number | null; amount: number; deleted_at?: string | null }>): ConfirmedValues {
   const vat: Record<string, number> = {};
   for (const t of taxes) if (!t.deleted_at && t.tax_type === 'iva' && t.rate !== null) vat[String(Number(t.rate))] = fromCents(toCents(Number(vat[String(Number(t.rate))] ?? 0)) + toCents(Number(t.amount)));

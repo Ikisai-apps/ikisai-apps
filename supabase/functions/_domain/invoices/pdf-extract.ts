@@ -290,7 +290,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
 }
 
 /** Duplicado blando: misma fecha y total (y mismo proveedor si se conoce) que otra factura no anulada. */
-export function softDuplicate<T extends { id: string; supplier_id: string; invoice_date: string; calculated_total: number; source_total: number | null; status: string; deleted_at: string | null }>(
+export function softDuplicate<T extends { id: string; supplier_id: string; invoice_date: string | null; calculated_total: number; source_total: number | null; status: string; deleted_at: string | null }>(
   invoices: T[], candidate: { supplier_id: string | null; invoice_date: string; total: number }, excludeId?: string | null,
 ): T | null {
   return invoices.find((i) => !i.deleted_at && i.status !== 'anulada' && i.id !== excludeId && i.invoice_date === candidate.invoice_date
