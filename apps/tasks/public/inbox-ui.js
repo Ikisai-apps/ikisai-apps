@@ -76,8 +76,8 @@ function destinationFields(current={}){const data=Sync.core.data,tabs=inboxRows(
     <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${teamOptions.length?`<optgroup label="Equipo">${teamOptions.map(o=>option(o.value,o.name)).join('')}</optgroup>`:''}${others.length?`<optgroup label="${teamOptions.length?'Otras etiquetas Persona del área':'Etiquetas Persona del área'}">${others.map(l=>option(l.id,l.name)).join('')}</optgroup>`:''}</select></div>`}
 /* Personas del equipo con cuenta (sin agentes ni servicios). La lista la da el núcleo a la propietaria; se pide una vez. */
 /* El equipo: las personas activas de Central (`central.people_options`, con su nombre de ficha, que manda) y las cuentas
-   de Ikisai con acceso a Tasks; una sola vez quien tiene cuenta y ficha. Sin la lectura de Central (aún no publicada, sin
-   red o sin acceso), solo las cuentas. `names`: los nombres con los que se reconoce su etiqueta Persona del área. */
+   de Ikisai con acceso a Tasks; una sola vez quien tiene cuenta y ficha. Sin la lectura de Central (Central #394; sin red o
+   sin acceso), solo las cuentas. `names`: los nombres con los que se reconoce su etiqueta Persona del área. */
 function teamPeople(){
   const members=(Sync.members||[]).filter(m=>(m.kind||'human')==='human'&&m.displayName?.trim()),out=[],byUser=new Map(members.map(m=>[m.userId,m]));
   for(const p of centralPeople||[]){if(p.active===false||!p.name?.trim())continue;const m=p.user_id?byUser.get(p.user_id):null;if(m)byUser.delete(m.userId);
@@ -86,7 +86,7 @@ function teamPeople(){
   return out.sort((a,b)=>a.name.localeCompare(b.name,'es'))}
 let teamAsked=false,centralPeople=null;
 function loadTeam(reopen){if((Sync.members&&centralPeople)||teamAsked||!Sync.core||!navigator.onLine||Sync.actor?.role!=='owner')return;teamAsked=true;
-  const people=Sync.core.api('/read/central.people_options',{method:'POST',json:{}}).then(out=>{const rows=Array.isArray(out)?out:out?.rows||out?.items||[];centralPeople=rows}).catch(()=>{centralPeople=[]});
+  const people=Sync.core.api('/read/central.people_options',{method:'POST',json:{limit:2000}}).then(out=>{const rows=Array.isArray(out)?out:out?.rows||out?.items||[];centralPeople=rows}).catch(()=>{centralPeople=[]});
   const members=Sync.members?Promise.resolve():Sync.core.api('/members').then(items=>{Sync.members=items}).catch(()=>{});
   Promise.all([people,members]).then(()=>{if(document.getElementById('destOwner'))reopen()})}
 /* La etiqueta Persona de una persona del equipo que aún no la tiene en el área: la operación que la crea y su id. */
