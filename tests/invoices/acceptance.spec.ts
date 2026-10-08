@@ -1082,11 +1082,13 @@ test('Facturar desde una reserva (API.md §14.8): borrador relleno desde Booking
     await sheet.locator('#draftAddressLine').fill('Calle del Norte 5');
     await sheet.locator('#draftPostalCode').fill('48001');
     await sheet.locator('#draftCity').fill('Bilbao');
+    // Concepto del cobro: la factura de la señal sale rotulada así en el portal del organizador
+    await sheet.locator('#draftPurpose').selectOption('senal');
     await sheet.locator('#saveDraft').click();
     await expect(sheet).toBeHidden({ timeout: 20_000 });
     await synced(page);
     const draft = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.recipient_name === 'Asociación Yoga Norte'));
-    expect(draft).toMatchObject({ status: 'borrador', prices_include_vat: true, recipient_kind: 'empresa', income_category: 'alojamiento', operation_date: '2026-11-08' });
+    expect(draft).toMatchObject({ status: 'borrador', prices_include_vat: true, recipient_kind: 'empresa', income_category: 'alojamiento', operation_date: '2026-11-08', purpose: 'senal' });
     await expect.poll(() => api.rows('invoices.issued_invoice_lines').filter((l) => l.issued_invoice_id === draft.id && !l.deleted_at)
       .sort((x, y) => Number(x.position) - Number(y.position)).map((l) => [l.net_amount, l.vat_amount]), { timeout: 20_000 }).toEqual([[1000, 100], [100, 21]]);
     await expect.poll(() => api.rows('invoices.issued_allocations').filter((al) => al.issued_invoice_id === draft.id), { timeout: 20_000 }).toEqual([
@@ -1095,6 +1097,7 @@ test('Facturar desde una reserva (API.md §14.8): borrador relleno desde Booking
     await page.goto(`${baseURL}/#/facturas?vista=emitidas&desde=booking:reservation:${RES}`);
     await expect(page.getByText('Esta reserva ya tiene un borrador de factura.')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.sheet[role="dialog"]').locator('#draftBanner')).toBeVisible();
+    await expect(page.locator('.sheet[role="dialog"]').locator('#issuedPurpose')).toHaveText('Señal');
     await expect.poll(() => api.rows('invoices.issued_invoices').filter((i) => i.recipient_name === 'Asociación Yoga Norte'), { timeout: 20_000 }).toHaveLength(1);
   } finally {
     api.targets.splice(api.targets.findIndex((t) => t.id === RES), 1);
