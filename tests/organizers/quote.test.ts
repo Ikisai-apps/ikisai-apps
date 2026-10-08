@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { marginOf, quote, type QuoteInput } from '../../apps/organizers/src/app/quote.ts';
+import { marginOf, offersMargin, quote, type QuoteInput } from '../../apps/organizers/src/app/quote.ts';
 import type { PortalRate } from '../../apps/organizers/src/app/api.ts';
 
 const rate = (fields: Partial<PortalRate> & Pick<PortalRate, 'id' | 'name' | 'layer' | 'unit' | 'amount'>): PortalRate => ({
@@ -70,4 +70,14 @@ test('organizers · saldo: contratado (Booking) menos cobrado (Finance); cada ve
   const all = balanceOf(contract, 2800);
   assert.deepEqual([all.balance, all.due.map((d) => d.paid)], [0, [true, true]]);
   assert.equal(balanceOf(contract, 3000).balance, 0, 'si se cobra de más, el saldo no es negativo');
+});
+
+test('organizers · ofertas: ingresos por oferta, asistentes previstos, margen y punto de equilibrio', () => {
+  const r = offersMargin([{ price: 450, expected: 10 }, { price: '600', expected: '4' }, { price: 300, expected: null }], 4000, 500);
+  assert.equal(r.revenue, 6900);
+  assert.equal(r.attendees, 14);
+  assert.equal(r.cost, 4500);
+  assert.equal(r.margin, 2400);
+  assert.equal(r.breakEven, 10, 'precio medio 492,86 €: 10 asistentes cubren 4500 €');
+  assert.equal(offersMargin([], 1000, 0).breakEven, null);
 });

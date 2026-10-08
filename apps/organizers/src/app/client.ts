@@ -1,14 +1,16 @@
 import { createSyncClient, type ApiError, type SyncClient } from '@ikisai/sync-client';
+import { ALL_TABLES } from '../../../../supabase/functions/_domain/organizers/mod.ts';
 import { t } from './i18n.ts';
 
 export const APP = 'organizers';
 
 /**
- * Organizers no tiene tablas propias (API.md §2): el cliente solo lleva la sesión (enlace personal y sesión única),
- * la renovación, `api()` y `onSessionEnd`. Los datos son de Booking y se leen con `read/booking.portal_*`.
+ * El cliente lleva la sesión (enlace personal y sesión única), la renovación, `api()` y `onSessionEnd`. Los datos del
+ * retiro son de Booking y se leen con `read/booking.portal_*`; los propios de la fase 4 (experiencia, materiales,
+ * preguntas, respuestas y ofertas, API.md §15) van en el espejo local, filtrados por el ámbito en la Edge.
  */
 export function createClient(): SyncClient {
-  return createSyncClient({ app: APP, apiBase: '/api/v1', tables: [], pullIntervalMs: 300_000 });
+  return createSyncClient({ app: APP, apiBase: '/api/v1', tables: [...ALL_TABLES], pullIntervalMs: 300_000 });
 }
 
 /** Mensaje claro, sin jerga, para quien organiza el retiro (API.md §6.3). `name` es el asistente afectado, si lo hay. */

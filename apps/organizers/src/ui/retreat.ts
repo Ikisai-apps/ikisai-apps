@@ -13,9 +13,11 @@ import { renderDates } from './dates.ts';
 import { renderDesign } from './design.ts';
 import { renderProposal } from './proposal.ts';
 import { renderPayments } from './payments.ts';
+import { renderExperience } from './experience.ts';
+import { renderOffers } from './offers.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
-export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'pagos' | 'asistentes' | 'cocina';
+export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'pagos' | 'experiencia' | 'ofertas' | 'asistentes' | 'cocina';
 
 /** Estados en que el retiro se está diseñando: las fechas aún se pueden proponer (fase 2). */
 export const DESIGN_STATUSES = new Set(['en_estudio', 'negociacion', 'pre_reservada']);
@@ -86,6 +88,9 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     // Pagos y facturas (fase 3): desde la prerreserva, cuando ya puede haber señal y facturas.
     const showPayments = !isCancelled(d.status) && !DRAFT_STATUSES.has(d.status);
     const showKitchen = data.guests.value.confirmed;
+    // Experiencia de Guests (fase 4): desde la prerreserva, como los pagos. Ofertas y cartel (fase 5): en cualquier momento.
+    const showExperience = showPayments;
+    const showOffers = !isCancelled(d.status);
     const tabButton = (id: RetreatTab, label: string) => el('a', {
       href: id === 'resumen' ? `#/retiro/${reservationId}` : `#/retiro/${reservationId}/${id}`, role: 'tab', id: `tab-${id}`,
       class: tab === id ? 'on' : '', 'aria-selected': tab === id ? 'true' : 'false',
@@ -96,6 +101,8 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
       showDesign ? fbMark(tabButton('diseno', t('Diseño')), 'organizers.retiro.pestanas.diseno', 'Diseño') : null,
       showProposal ? fbMark(tabButton('propuesta', t('Propuesta')), 'organizers.retiro.pestanas.propuesta', 'Propuesta') : null,
       showPayments ? fbMark(tabButton('pagos', t('Pagos')), 'organizers.retiro.pestanas.pagos', 'Pagos') : null,
+      showExperience ? fbMark(tabButton('experiencia', t('Experiencia')), 'organizers.retiro.pestanas.experiencia', 'Experiencia') : null,
+      showOffers ? fbMark(tabButton('ofertas', t('Ofertas')), 'organizers.retiro.pestanas.ofertas', 'Ofertas') : null,
       showGuests ? fbMark(tabButton('asistentes', t('Asistentes')), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
       showKitchen ? fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina') : null));
 
@@ -110,6 +117,8 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
     else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
     else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId, d.contract ?? null));
+    else if (tab === 'experiencia' && showExperience) sub(renderExperience(ctx, reservationId));
+    else if (tab === 'ofertas' && showOffers) sub(renderOffers(ctx, reservationId, d));
     else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
     else if (tab === 'cocina' && showKitchen) content.push(renderKitchen(data.kitchen.value));
     else content.push(...renderSummary(ctx, reservationId, data, showGuests, showDates, showDesign));

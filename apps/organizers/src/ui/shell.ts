@@ -34,7 +34,7 @@ export interface ViewContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(fechas|diseno|propuesta|pagos|asistentes|cocina))?$`, 'i');
+const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(fechas|diseno|propuesta|pagos|experiencia|ofertas|asistentes|cocina))?$`, 'i');
 const GUEST = new RegExp(`^#/retiro/(${UUID})/asistentes/(${UUID}|nuevo)$`, 'i');
 
 export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
@@ -119,7 +119,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       document.title = t('Mis retiros · Ikisai Organizers');
     }
     // En Mis retiros y en la ficha del retiro; en los formularios y en las fechas taparía el estado del guardado.
-    access.setVisible(!guest && !['fechas', 'diseno', 'propuesta', 'pagos'].includes(retreat?.[2]?.toLowerCase() ?? ''));
+    access.setVisible(!guest && !['fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas'].includes(retreat?.[2]?.toLowerCase() ?? ''));
     if (firstRoute && ctx.fromLink && install.shouldPromote()) setTimeout(() => { if (install.shouldPromote()) install.openSheet(); }, 800);
     firstRoute = false;
     main.focus({ preventScroll: true });
