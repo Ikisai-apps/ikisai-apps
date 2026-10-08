@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { day, freePort, TIME_ZONE } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
+import { feedbackRoundTrip, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/food/vite.config.ts');
@@ -147,7 +148,7 @@ test('feedback · aviso de uso, marcas de pantalla, señalar y comentar, «Suger
     const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
     await expect(sheet).toBeVisible();
     await sheet.getByRole('tab', { name: 'Abiertos' }).click();
-    await expect(sheet.locator('.fb-card')).toContainText('FB-0001');
+    await expect(sheet.locator('.fb-card')).toContainText(`FB_${new Date().getFullYear()}_0001`);
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
     await setSignal(page, false);
@@ -163,5 +164,64 @@ test('feedback · aviso de uso, marcas de pantalla, señalar y comentar, «Suger
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect.poll(() => api.usageItems().filter((u) => u.featureId === 'food.eventos.crear_menu').reduce((n, u) => n + u.successes, 0), { timeout: 20_000 }).toBeGreaterThan(0);
+  });
+});
+
+test('feedback · prueba común del kit: enviar con doble toque, se cierra, se ve el aviso y llega un solo reporte @smoke', async ({ page }) => {
+  test.setTimeout(90_000);
+  // El aviso de medición se abriría al cerrarse el formulario y taparía el lanzador: aquí la cuenta ya lo aceptó.
+  api.setUsageConsent(true);
+  await page.goto(`${baseURL}/`);
+  await page.getByLabel('Correo electrónico').fill(USER.email);
+  await page.getByLabel('Contraseña').fill(USER.password);
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page.getByRole('heading', { name: `Hola, ${USER.displayName}` })).toBeVisible();
+
+  await test.step('en una pantalla: «Nueva receta» del Recetario', async () => {
+    await page.goto(`${baseURL}/#/recetario`);
+    const before = api.feedbackReports().length;
+    const { code } = await feedbackRoundTrip(page, { target: '#newRecipe' });
+    expect(code).toMatch(/^FB_\d{4}_\d+$/);
+    await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
+    await page.waitForTimeout(1000);
+    expect(api.feedbackReports().length, 'el doble toque no envía dos reportes').toBe(before + 1);
+  });
+
+  await test.step('con una hoja abierta y el teclado del móvil: el aviso se ve dentro de lo visible', async () => {
+    // `feedbackRoundTrip` empieza pulsando el lanzador, y con una hoja abierta el fondo de la hoja lo tapa. Los mismos pasos
+    // a mano: el modo se enciende antes de abrir la hoja y se apaga después de cerrarla.
+    await page.goto(`${baseURL}/#/maquinaria`);
+    await setSignal(page, true);
+    await page.locator('#newEquipment').click();
+    const dialog = page.getByRole('dialog', { name: 'Nueva máquina' });
+    await expect(dialog).toBeVisible();
+    const before = api.feedbackReports().length;
+    await hold(page, '#equipmentForm label.field > span');
+    const composer = page.locator('.fb-composer');
+    await expect(composer).toBeVisible();
+    await composer.locator('.fb-message').fill('Prueba con la hoja abierta y el teclado');
+    await simulateKeyboard(page, 686);
+    await composer.locator('.fb-send').focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter').catch(() => undefined);
+    await expect(composer).toHaveCount(0, { timeout: 8000 });
+    const toast = page.locator('.toast.show').filter({ hasText: /Enviado · FB_/ });
+    await expect(toast).toBeVisible({ timeout: 8000 });
+    const fit = await toast.evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const top = vv ? vv.offsetTop : 0;
+      const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+      return { h: r.height, inside: r.top >= top && r.bottom <= bottom && r.left >= 0 && r.right <= innerWidth };
+    });
+    expect(fit.inside, 'el aviso tiene que verse dentro de lo visible con el teclado abierto').toBe(true);
+    expect(fit.h, 'el aviso no puede estirarse en columna').toBeLessThan(90);
+    await simulateKeyboard(page, null);
+    await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
+    await page.waitForTimeout(1000);
+    expect(api.feedbackReports().length, 'el doble toque no envía dos reportes').toBe(before + 1);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await setSignal(page, false);
   });
 });

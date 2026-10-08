@@ -100,6 +100,8 @@ export interface FakeApi {
   faults(): Array<{ id: string; body: Record<string, unknown> }>;
   /** Totales de uso recibidos en `POST /usage/batch`. */
   usageItems(): FakeUsageItem[];
+  /** Da por aceptado (o no) el aviso de medición de uso. */
+  setUsageConsent(consented: boolean): void;
   close(): Promise<void>;
 }
 
@@ -459,7 +461,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const known = feedbackByRequest.get(String(body.requestId));
         if (known) return json(res, 200, { report: feedbackStore.get(known) });
         const report: FakeFeedbackReport = {
-          id: String(body.id), code: `FB-${String(feedbackStore.size + 1).padStart(4, '0')}`, originApp: 'food', subject: String(body.subject ?? 'application'),
+          id: String(body.id), code: `FB_${new Date().getFullYear()}_${String(feedbackStore.size + 1).padStart(4, '0')}`, originApp: 'food', subject: String(body.subject ?? 'application'),
           intent: String(body.intent ?? 'bug'), message: String(body.message ?? ''), node: body.node ?? null, status: 'open', display: 'open',
           supportersCount: 1, mine: true, createdAt: nowIso(), context: body.context ?? null, requestId: String(body.requestId),
         };
@@ -588,6 +590,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     cursor: () => cursor,
     faults: () => faults.map((f) => ({ ...f, body: { ...f.body } })),
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
+    setUsageConsent: (consented) => { consentedAt = consented ? new Date().toISOString() : null; },
     usageItems: () => Array.from(usage.values()).map((u) => ({ ...u })),
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     serverUpdate(table, id, fields) {
