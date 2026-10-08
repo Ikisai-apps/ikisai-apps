@@ -4,15 +4,12 @@
  * huésped, cocina, recordatorio del grupo, baja, modo sin registro de viajeros y lectura sin red.
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { preview, type PreviewServer } from 'vite';
 import { freePort } from '../food/helpers.ts';
-import { startOrganizersServer, type OrganizersTestServer } from './server.ts';
+import { buildOrganizersApp, ORGANIZERS_VITE_CONFIG, startOrganizersServer, type OrganizersTestServer } from './server.ts';
 import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const configFile = path.resolve(here, '../../apps/organizers/vite.config.ts');
+const configFile = ORGANIZERS_VITE_CONFIG;
 
 let api: OrganizersTestServer;
 let server: PreviewServer;
@@ -21,7 +18,7 @@ let baseURL: string;
 test.beforeAll(async () => {
   api = await startOrganizersServer();
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildOrganizersApp();
   server = await preview({
     configFile,
     logLevel: 'silent',

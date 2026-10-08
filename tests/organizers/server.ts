@@ -4,6 +4,12 @@
  * lo que ve la pantalla es lo que responden las Edge.
  */
 import { createServer, type Server } from 'node:http';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createOrganizersApp, ORGANIZERS_ORIGINS } from '../../supabase/functions/organizers-api/app.ts';
@@ -46,6 +52,53 @@ export interface OrganizersTestServer {
 }
 
 const uuid = () => crypto.randomUUID();
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const ORGANIZERS_VITE_CONFIG = path.resolve(here, '../../apps/organizers/vite.config.ts');
+const DIST = path.resolve(here, '../../apps/organizers/dist');
+const BUILD_SOURCES = ['../../apps/organizers/public', '../../apps/organizers/src', '../../apps/organizers/index.html', '../../apps/organizers/vite.config.ts',
+  '../../packages/ui-kit/src', '../../packages/sync-client/src', '../../supabase/functions/_domain'].map((p) => path.resolve(here, p));
+
+/** Huella de las fuentes que entran en el build (rutas, tamaños y fechas). */
+function sourceStamp(): string {
+  const hash = createHash('sha256');
+  const walk = (p: string) => {
+    if (!existsSync(p)) return;
+    const st = statSync(p);
+    if (st.isDirectory()) { for (const name of readdirSync(p).sort()) walk(path.join(p, name)); return; }
+    hash.update(`${p}|${st.size}|${st.mtimeMs};`);
+  };
+  for (const p of BUILD_SOURCES) walk(p);
+  return hash.digest('hex');
+}
+
+/**
+ * Build de la PWA para Playwright, **uno solo** aunque haya varios workers (patrón de `tests/tasks/e2e-server.ts`): `vite
+ * build` vacía `dist/`, y si dos se cruzaran una página cargaría a medias. Solo se construye si las fuentes cambiaron desde
+ * el último build (huella en `dist/.e2e-stamp`), con un cerrojo entre procesos; quien llega mientras otro construye, espera.
+ */
+export async function buildOrganizersApp(): Promise<void> {
+  const stampFile = path.join(DIST, '.e2e-stamp');
+  const stamp = sourceStamp();
+  const fresh = () => existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stamp;
+  const lock = path.join(tmpdir(), `ikisai-organizers-e2e-build-${createHash('sha256').update(DIST).digest('hex').slice(0, 12)}`);
+  for (const started = Date.now(); ;) {
+    if (fresh()) return;
+    let mine = false;
+    try { mkdirSync(lock); mine = true; } catch {
+      // Un cerrojo de un proceso que murió a medias no bloquea para siempre.
+      try { if (Date.now() - statSync(lock).mtimeMs > 180_000) rmSync(lock, { recursive: true, force: true }); } catch { /* ya no está */ }
+    }
+    if (mine) {
+      try {
+        if (!fresh()) { await build({ configFile: ORGANIZERS_VITE_CONFIG, logLevel: 'silent' }); writeFileSync(stampFile, stamp); }
+      } finally { rmSync(lock, { recursive: true, force: true }); }
+      return;
+    }
+    if (Date.now() - started > 240_000) throw new Error('Esperando el build de Organizers de otro worker más de 4 minutos.');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
 
 export async function startOrganizersServer(): Promise<OrganizersTestServer> {
   const origin = ORGANIZERS_ORIGINS[0]!;
