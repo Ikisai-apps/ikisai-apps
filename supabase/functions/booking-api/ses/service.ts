@@ -8,6 +8,7 @@ import {
   parseBatchResponse, parseCommunicationResponse, SesDataError, type SesContract, type SesPerson,
 } from '../../_domain/booking/ses/mod.ts';
 import { sesCredentials, type SesCredentials, type SesEnvironment, type SesTransport } from './transport.ts';
+import { tasksWorkerBase } from '../tasks/sync.ts';
 
 export const SES_APPLICATION = 'Ikisai Booking';
 
@@ -35,10 +36,12 @@ export interface TasksRequest {
 }
 
 /** Notificador real: la ruta de worker de Tasks con la clave de sistema. Devuelve si Tasks aceptó la petición. */
-export function createTasksNotifier(env: (name: string) => string | undefined, fetchImpl: typeof fetch = fetch): ((request: TasksRequest) => Promise<boolean>) | undefined {
+export function createTasksNotifier(env: (name: string) => string | undefined, fetchImpl: typeof fetch = fetch, supabaseBase?: string): ((request: TasksRequest) => Promise<boolean>) | undefined {
   const key = env('IKISAI_WORKER_KEY');
-  if (!key) return undefined;
-  const url = env('TASKS_WORKER_REQUEST_URL') ?? 'https://tasks.ikisai.com/api/v1/worker/requests/task';
+  // la Edge directa de Tasks (nunca el proxy de Pages, que pierde la cabecera de la clave)
+  const base = tasksWorkerBase(env, supabaseBase);
+  if (!key || !base) return undefined;
+  const url = `${base}/requests/task`;
   return async (request) => {
     try {
       const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ikisai-worker-key': key }, body: JSON.stringify(request) });

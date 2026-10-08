@@ -37,7 +37,7 @@ const sesDeps = (supabase: Supabase, ses: BookingSesConfig): SesDeps => ({
   invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: name, p_args: args }),
   transport: ses.transport ?? createSesTransport(),
   env: ses.env ?? denoEnv,
-  notifyTasks: withServiceActor(supabase, ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv)),
+  notifyTasks: withServiceActor(supabase, ses.notifyTasks === null ? undefined : ses.notifyTasks ?? createTasksNotifier(ses.env ?? denoEnv, fetch, supabase.base)),
 });
 
 /** Antes de pedir nada a Tasks, la cuenta de servicio `booking` debe existir (Tasks escribe como `core.service_actor('booking')`). */
@@ -88,7 +88,7 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     method: 'POST', pattern: 'tasks/tick',
     handler: async () => {
       if (!supabase) return { projects: 0, extras: 0, waiting: 0 };
-      const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv);
+      const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv, fetch, supabase.base);
       if (post) await ensureServiceActor(supabase, 'booking');
       return tasksTick({ invoke: sesDeps(supabase, ses).invoke, post });
     },
