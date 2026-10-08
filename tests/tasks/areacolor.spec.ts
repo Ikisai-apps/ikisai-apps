@@ -4,8 +4,7 @@
  * colores siguen en el modelo, en el servidor y en las pestañas.
  */
 import { expect, test, type BrowserContext } from 'playwright/test';
-import { build } from 'vite';
-import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 declare const Sync: any;
@@ -19,7 +18,7 @@ const errors: string[] = [];
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
 });

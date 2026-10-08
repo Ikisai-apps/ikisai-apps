@@ -5,8 +5,7 @@
  * (`p1`, `t1`, `trade`…) a los uuid de la semilla, también dentro de la página.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
-import { OWNER, READER, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, routeStorage, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
@@ -26,7 +25,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
   contextA = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

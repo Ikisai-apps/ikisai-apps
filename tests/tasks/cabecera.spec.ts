@@ -5,9 +5,8 @@
  * lleva el punto amarillo. Las capturas quedan en `test-results/cabecera-*.png` (o en CABECERA_CAPTURAS si se indica).
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
 import path from 'node:path';
-import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
@@ -20,7 +19,7 @@ const shots = process.env.CABECERA_CAPTURAS ?? 'test-results';
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
   // El «Revisor de QA» es del dueño del ecosistema (owner de Central): como el usuario real.

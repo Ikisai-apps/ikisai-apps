@@ -6,9 +6,8 @@
  *   npx playwright test tests/tasks
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
-import { EDITOR, OWNER, READER, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, EDITOR, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 
 // Globales de la interfaz heredada (ligaduras léxicas de sus scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -57,7 +56,7 @@ async function seed(): Promise<void> {
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   await seed();
 });
@@ -394,23 +393,31 @@ test('jerarquía, papelera, áreas, dependencias, rechazos y permisos', async ({
   });
 });
 
-test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y catálogo', async ({ browser }) => {
-  test.setTimeout(240_000);
+/* «Gestos reales», partida en pruebas cortas (8-10-2026): era una sola de 4 minutos que, con la máquina cargada, se cortaba
+   por tiempo, y en la CI, con reintentos, sumaba 12 minutos. Comparten la siembra y la página, en serie. */
+test.describe('gestos reales', () => {
+  test.describe.configure({ mode: 'serial' });
   const G = { project: id(100), parent: id(101), child: id(102), single: id(103), label: id(104) };
-  const seeded = await server.commit([
-    insert('tasks.projects', G.project, { tab_id: S.obra, title: 'Gestos', position: 9000 }),
-    insert('tasks.tasks', G.parent, { tab_id: S.obra, project_id: G.project, title: 'Montar el andamio', position: 1024 }),
-    insert('tasks.tasks', G.child, { tab_id: S.obra, project_id: G.project, title: 'Revisar anclajes', position: 2048, parent_id: G.parent }),
-    insert('tasks.tasks', G.single, { tab_id: S.obra, project_id: G.project, title: 'Barrer', position: 3072 }),
-    insert('tasks.labels', G.label, { tab_id: S.obra, family_id: families.phase, name: 'Acabados' }),
-  ], server.app.tokens.editor);
-  expect(seeded.status).toBe(200);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  const a = await open(context);
-  await a.evaluate((obra) => { state.activeTab = obra; state.view = 'projects'; render(); }, S.obra);
-  await a.locator(`[data-open-project="${G.project}"]`).first().click();
+  let context: BrowserContext;
+  let a: Page;
 
-  await test.step('[58] la fila de alta escribe la tarea en el sitio y la guarda', async () => {
+  test.beforeAll(async ({ browser }) => {
+    const seeded = await server.commit([
+      insert('tasks.projects', G.project, { tab_id: S.obra, title: 'Gestos', position: 9000 }),
+      insert('tasks.tasks', G.parent, { tab_id: S.obra, project_id: G.project, title: 'Montar el andamio', position: 1024 }),
+      insert('tasks.tasks', G.child, { tab_id: S.obra, project_id: G.project, title: 'Revisar anclajes', position: 2048, parent_id: G.parent }),
+      insert('tasks.tasks', G.single, { tab_id: S.obra, project_id: G.project, title: 'Barrer', position: 3072 }),
+      insert('tasks.labels', G.label, { tab_id: S.obra, family_id: families.phase, name: 'Acabados' }),
+    ], server.app.tokens.editor);
+    expect(seeded.status).toBe(200);
+    context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    a = await open(context);
+    await a.evaluate((obra) => { state.activeTab = obra; state.view = 'projects'; render(); }, S.obra);
+    await a.locator(`[data-open-project="${G.project}"]`).first().click();
+  });
+  test.afterAll(async () => { await context?.close(); });
+
+  test('[58] la fila de alta escribe la tarea en el sitio y la guarda', async () => {
     await a.locator('[data-add-task]').first().click();
     await a.keyboard.type('Alicatar la ducha');
     await a.keyboard.press('Enter');
@@ -419,7 +426,7 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
     expect((await server.rows('tasks.tasks')).filter((r) => r.title === 'Alicatar la ducha' && r.project_id === G.project)).toHaveLength(1);
   });
 
-  await test.step('[68] completar con la casilla ofrece Deshacer, y deshacer restaura el estado en el servidor', async () => {
+  test('[68] completar con la casilla ofrece Deshacer, y deshacer restaura el estado en el servidor', async () => {
     await a.locator(`[data-toggle-task="${G.single}"]`).click();
     await settled(a);
     expect((await serverTask(G.single)).done).toBe(true);
@@ -430,7 +437,7 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
     await a.evaluate(() => (window as any).closeSheet());
   });
 
-  await test.step('[14] enviar a la papelera un padre con su hija y restaurarlo desde la papelera', async () => {
+  test('[14] enviar a la papelera un padre con su hija y restaurarlo desde la papelera', async () => {
     await a.locator(`[data-task-menu="${G.parent}"]`).click();
     await a.locator('#deleteTaskBtn').click();
     await settled(a);
@@ -444,14 +451,14 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
     await a.evaluate(() => (window as any).closeSheet());
   });
 
-  await test.step('[31] el historial muestra los cambios con su autor', async () => {
+  test('[31] el historial muestra los cambios con su autor', async () => {
     await a.evaluate(() => (window as any).handleTopAction('history'));
     await expect(a.locator('#sheet')).toContainText('Historial');
     await expect(a.locator('#sheet')).toContainText('Owner');
     await a.evaluate(() => (window as any).closeSheet());
   });
 
-  await test.step('archivar una familia desde Etiquetas archiva sus etiquetas, y reactivarla las devuelve', async () => {
+  test('archivar una familia desde Etiquetas archiva sus etiquetas, y reactivarla las devuelve', async () => {
     await a.evaluate(() => { state.view = 'labels'; render(); });
     await a.locator(`[data-toggle-family="${families.phase}"]`).click();
     await settled(a);
@@ -469,9 +476,8 @@ test('gestos reales: alta en línea, casilla, deshacer, papelera, historial y ca
     await a.locator('#toggleArchivedCatalog').click();
   });
 
-  await test.step('[26] sin errores de JavaScript y sin desbordes horizontales en móvil', async () => {
+  test('[26] sin errores de JavaScript y sin desbordes horizontales en móvil', async () => {
     await a.evaluate(() => { state.view = 'projects'; render(); });
     expect(await a.evaluate(() => document.documentElement.scrollWidth <= 390)).toBeTruthy();
   });
-  await context.close();
 });

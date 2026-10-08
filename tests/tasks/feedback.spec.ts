@@ -4,8 +4,7 @@
  * estables, sin datos ignorados), el centro de reportes desde el menú, el uso de funciones y la pantalla marcada.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
-import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
@@ -19,7 +18,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
   context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

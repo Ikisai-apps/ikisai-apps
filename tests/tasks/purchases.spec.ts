@@ -4,8 +4,7 @@
  * plan por proveedor con hoja de ruta reordenable y casillas, y recepción que suma al almacén.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build } from 'vite';
-import { E2E_WORKER_KEY, EDITOR, VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { buildTasksApp, E2E_WORKER_KEY, EDITOR, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
@@ -22,7 +21,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(180_000);
-  await build({ configFile: VITE_CONFIG, logLevel: 'silent' });
+  await buildTasksApp();
   server = await startE2EServer();
   ID = await seedDemo(server);
   contextA = await browser.newContext({ viewport: { width: 390, height: 844 } });
