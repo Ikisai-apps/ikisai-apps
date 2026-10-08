@@ -3,6 +3,9 @@ import type { SyncedColumns } from './catalog.ts';
 
 export const MENU_STATUSES = ['borrador', 'revisar', 'validado', 'cerrado'] as const;
 export const SERVICE_TYPES = ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'] as const;
+/** Comentarios del organizador desde su portal (API.md §7.5): «Prefiero que no» sobre un plato o un comentario libre. */
+export const MENU_COMMENT_KINDS = ['prefiero_que_no', 'comentario'] as const;
+export const MENU_COMMENT_STATUSES = ['nuevo', 'visto', 'resuelto'] as const;
 export type MenuStatus = (typeof MENU_STATUSES)[number];
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
@@ -65,6 +68,19 @@ export interface Menu extends SyncedColumns {
   preparation_source_revisions: Record<string, number> | null;
   notes: string | null;
   closing_notes: string | null;
+  /** Cocina lo comparte con el organizador: desde entonces lo ve en su portal (decisión del usuario, 8-10-2026). */
+  organizer_shared?: boolean;
+}
+
+export interface MenuComment extends SyncedColumns {
+  menu_id: string;
+  service_id: string | null;
+  menu_item_id: string | null;
+  kind: (typeof MENU_COMMENT_KINDS)[number];
+  message: string | null;
+  author_id: string | null;
+  status: (typeof MENU_COMMENT_STATUSES)[number];
+  reply: string | null;
 }
 
 export interface MenuService extends SyncedColumns {

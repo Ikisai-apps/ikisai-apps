@@ -4,7 +4,7 @@
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
-import { MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
+import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
 import { invalidCallArgument } from './procedures.ts';
 import { UNITS } from './units.ts';
@@ -136,6 +136,23 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       preparation_source_revisions: { kind: 'json', nullable: true },
       notes: freeText,
       closing_notes: freeText,
+      organizer_shared: { kind: 'boolean' },
+    },
+  },
+  // Los comentarios del organizador los crea solo la acción de portal (food.portal_menu_comment); en Food se marcan
+  // como vistos o resueltos y se responden. Lo que escribió el organizador es de solo lectura.
+  'food.menu_comments': {
+    required: ['menu_id', 'kind'],
+    reserved: ['menu_id', 'service_id', 'menu_item_id', 'kind', 'message', 'author_id'],
+    fields: {
+      menu_id: { kind: 'uuid' },
+      service_id: { kind: 'uuid', nullable: true },
+      menu_item_id: { kind: 'uuid', nullable: true },
+      kind: { kind: 'enum', values: MENU_COMMENT_KINDS },
+      message: { kind: 'text', max: 1000, nullable: true },
+      author_id: { kind: 'uuid', nullable: true },
+      status: { kind: 'enum', values: MENU_COMMENT_STATUSES },
+      reply: { kind: 'text', max: 1000, nullable: true },
     },
   },
   'food.menu_services': {

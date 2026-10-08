@@ -16,6 +16,8 @@ export const T = {
   menus: 'food.menus',
   menuServices: 'food.menu_services',
   menuItems: 'food.menu_items',
+  /** Comentarios del organizador desde su portal: en Food solo cambian `status` y `reply`. */
+  menuComments: 'food.menu_comments',
   shoppingLists: 'food.shopping_lists',
   shoppingItems: 'food.shopping_list_items',
   preparation: 'food.preparation_items',

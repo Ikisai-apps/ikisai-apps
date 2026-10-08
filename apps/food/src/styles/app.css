@@ -145,3 +145,18 @@
 .dishcost{margin-top:6px}
 .recipecost{margin-top:8px}
 .menucost>p.warnline{color:var(--alert)}
+
+/* Compartir con el organizador y sus comentarios */
+.menushare,.menucomments{margin:12px 0}
+.menushare h3,.menucomments h3{margin:0 0 6px;font-size:1rem}
+.menushare .btnrow{flex-wrap:wrap;align-items:center}
+.menushare .hint,.menucomment .hint{color:var(--muted);font-size:var(--text-xs,.75rem);margin:6px 0 0}
+.commentlist{list-style:none;margin:0;padding:0}
+.menucomment{padding:10px 0;border-top:1px solid var(--line)}
+.menucomment:first-child{border-top:0}
+.menucomment .commenthead{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.menucomment .commentmeta{color:var(--muted);font-size:var(--text-sm,.875rem)}
+.menucomment .commentmsg{margin:6px 0;white-space:pre-wrap}
+.menucomment .commentreply{margin:6px 0;padding-left:10px;border-left:3px solid var(--line);white-space:pre-wrap}
+.menucomment textarea{width:100%;min-height:64px;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:8px 10px}
+.menucomment .btnrow{flex-wrap:wrap;margin-top:6px}
