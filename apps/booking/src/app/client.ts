@@ -155,6 +155,8 @@ export function describeError(error: unknown): string {
     }
     case 'PROPOSAL_NEGATIVE':
       return 'El total de la propuesta sería negativo: revisa los descuentos.';
+    case 'BELOW_MINIMUM':
+      return 'La propuesta está por debajo del mínimo por retiro: para enviarla como excepción hay que indicar el motivo.';
     case 'CONDITIONS_IN_USE':
       return 'Estas condiciones ya se usaron en una propuesta enviada: crea unas nuevas.';
     case 'reservations_ses_reason':
