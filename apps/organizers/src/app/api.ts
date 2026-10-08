@@ -149,6 +149,13 @@ export interface PortalApi {
   issueGuestLink(args: { reservationId: string; guestId: string; name: string; email?: string | null; replace: boolean }): Promise<IssuedLink>;
   revokeLink(linkId: string): Promise<unknown>;
   permanentAccount(): Promise<boolean>;
+  /** Fases 4 y 5: lectura y acción de otra app con caché (programa y alojamiento de Booking, menú de Food, lugar de Central). */
+  readAny<T>(name: string, args?: Record<string, unknown>): Promise<Loaded<T>>;
+  invokeAny<T = unknown>(name: string, args: Record<string, unknown>): Promise<T>;
+  /** Enlace de Guests de solo lectura al huésped de muestra (O6, C9): `preview: true`. */
+  previewLink(reservationId: string, guestId: string, name: string): Promise<IssuedLink>;
+  /** URL firmada corta de un archivo publicado a este portal por otra app (C8: fotos de Food, plano de Central). */
+  portalFile(fileId: string): Promise<{ url: string; mime: string; name?: string }>;
 }
 
 export function createPortalApi(client: SyncClient): PortalApi {
@@ -202,6 +209,13 @@ export function createPortalApi(client: SyncClient): PortalApi {
       json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name, ...(email ? { email } : {}) }, label: name, replace },
     }),
     revokeLink: (linkId) => client.api(`/portal-links/${encodeURIComponent(linkId)}/revoke`, { method: 'POST', json: {} }),
+    readAny: (name, args = {}) => read(name, args),
+    invokeAny: (name, args) => invoke(name, args) as Promise<never>,
+    previewLink: (reservationId, guestId, name) => client.api<IssuedLink>('/portal-links', {
+      method: 'POST',
+      json: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name }, label: name, preview: true, replace: true },
+    }),
+    portalFile: (fileId) => client.api(`/portal-files/${encodeURIComponent(fileId)}`),
     async permanentAccount() {
       try {
         return (await client.api<{ permanentAccount?: boolean }>('/auth/config')).permanentAccount === true;

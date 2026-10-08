@@ -116,3 +116,27 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .organswers h4{margin:0 0 6px}
 .orgposter{margin-top:12px;display:flex;justify-content:center}
 .orgposter-canvas{width:100%;max-width:420px;height:auto;border-radius:8px;box-shadow:var(--shadow-1)}
+
+/* Fases 4 y 5, segunda parte: apartados de la experiencia, programa, menú y alojamiento */
+.orgsubnav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 12px;padding-bottom:2px}
+.orgsubnav::-webkit-scrollbar{display:none}
+.orgsubnav button{flex:0 0 auto;border:1px solid var(--line,rgb(0 0 0 / 12%));background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
+.orgsubnav button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.orgday{margin:0 0 16px}
+.orgday h4{margin:0 0 6px;text-transform:capitalize}
+.orgtime{min-width:88px;font-variant-numeric:tabular-nums;color:var(--muted,inherit)}
+.orgnote{display:block}
+.orgservice{margin:6px 0 10px}
+.orgservice h5{margin:0 0 4px}
+.orgdish{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line,rgb(0 0 0 / 8%))}
+.orgdish-photo{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:0 0 auto}
+.orgdish-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.orgdish-actions{display:flex;flex-direction:column;gap:4px}
+.orgcomment{color:var(--accent,inherit)}
+.orgrooms{display:flex;flex-direction:column;gap:10px}
+.orgroom h5{margin:0 0 6px}
+.orgbeds{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
+.orgbed{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px;border:1px dashed var(--line,rgb(0 0 0 / 20%));border-radius:10px;background:var(--paper);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.orgbed.taken{border-style:solid}
+.orgbed.pending{border-color:var(--warn,#b7791f)}
+.orgbed-label{font-weight:700}

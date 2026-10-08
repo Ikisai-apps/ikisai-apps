@@ -13,6 +13,7 @@ import { TABLES as BOOKING } from '../../supabase/functions/_domain/booking/mod.
 import { TABLES, visibleRow } from '../../supabase/functions/_domain/organizers/mod.ts';
 
 const uuid = () => crypto.randomUUID();
+const WORKER_KEY = 'organizers-worker-key-de-prueba';
 let booking: TestApp;
 let organizers: (r: Request) => Promise<Response>;
 let guests: (r: Request) => Promise<Response>;
@@ -74,7 +75,7 @@ test.before(async () => {
     createHandler: (config) => createBookingApp({ ...config, origins: [BOOKING_ORIGINS[0]!] }),
   });
   const base = { url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, release: 'test' };
-  organizers = createOrganizersApp({ ...base, origins: [ORGANIZERS_ORIGINS[0]!] });
+  organizers = createOrganizersApp({ ...base, origins: [ORGANIZERS_ORIGINS[0]!], workerKey: WORKER_KEY });
   guests = createGuestsApp({ ...base, origins: [GUESTS_ORIGINS[0]!] });
   R1 = await reservation('Retiro de primavera');
   R3 = await reservation('Retiro ajeno');
@@ -190,9 +191,8 @@ test('organizers · Guests lee la experiencia y las preguntas; guest_answer vali
   assert.equal(code(await answer(eva.token, { question_id: open, value: 'm' })), 'OUT_OF_SCOPE');
 });
 
-// K4 (aprobado por Core): `apply_portal_operations('organizers', …)` desde una acción del portal Guests. Hoy el núcleo solo
-// admite como destino una app interna y Organizers es un portal; queda pendiente de que Core lo amplíe (K6 en PETICIONES).
-test('organizers · guest_answer guarda, cambia y borra la respuesta propia; la organizadora la ve', { skip: 'K6: el núcleo aún no deja escribir en un portal desde otro' }, async () => {
+// K4 y K6 (#334): `apply_portal_operations('organizers', …)` desde una acción de Organizers invocada por el portal Guests.
+test('organizers · guest_answer guarda, cambia y borra la respuesta propia; la organizadora la ve', async () => {
   const questions = await gst('/api/v1/read/organizers.guest_questions', { token: leo.token, body: { reservation_id: R1, guest_id: leo.id } });
   const open = questions.data.items[0].id;
   const saved = await gst('/api/v1/invoke/organizers.guest_answer', { token: leo.token, body: { question_id: open, value: 'm' } });
@@ -205,4 +205,83 @@ test('organizers · guest_answer guarda, cambia y borra la respuesta propia; la 
   assert.deepEqual(seen.data.tables[0].rows.map((r: any) => [r.guest_id, r.value]), [[leo.id, 't']]);
   const removed = await gst('/api/v1/invoke/organizers.guest_answer', { token: leo.token, body: { question_id: open, value: null } });
   assert.equal(removed.data.revision, null);
+});
+
+test('organizers · fase 4 y 5 con Booking, Food y Central: programa, alojamiento, menú, lugar y vista previa de solo lectura', async () => {
+  // Programa (B16): se guarda, se lee con su lugar y fuera de las fechas no vale.
+  const item = uuid();
+  const saved = await org('/api/v1/invoke/booking.portal_program_save', { token: ana, body: { reservation_id: R1, item: { id: item, day: '2027-09-11', starts_at: '09:00', ends_at: '10:30', title: 'Yoga', place_text: 'Junto al río', kind: 'actividad' } } });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(code(await org('/api/v1/invoke/booking.portal_program_save', { token: ana, body: { reservation_id: R1, item: { id: uuid(), day: '2027-10-01', title: 'Fuera' } } })), 'PROGRAM_DAY_OUT_OF_RANGE');
+  const program = await org('/api/v1/read/booking.portal_program', { token: ana, body: { reservation_id: R1 } });
+  assert.deepEqual(program.data.items.map((i: any) => [i.title, i.starts_at, i.place]), [['Yoga', '09:00', 'Junto al río']]);
+  assert.equal(code(await org('/api/v1/read/booking.portal_program', { token: otra, body: { reservation_id: R1 } })), 'OUT_OF_SCOPE');
+
+  // Alojamiento (B17): los ajustes que corresponden a «piden su cama y tú la apruebas».
+  const settings = await org('/api/v1/invoke/booking.portal_room_settings', { token: ana, body: { reservation_id: R1, choice: 'request', preferences: true, choose_until: '2027-09-01' } });
+  assert.equal(settings.status, 200, JSON.stringify(settings.data));
+  const rooms = await org('/api/v1/read/booking.portal_rooms', { token: ana, body: { reservation_id: R1 } });
+  assert.equal(rooms.data.settings.choice, 'request');
+  assert.equal(rooms.data.settings.preferences, true);
+
+  // Menú (Fd2): sin menú compartido por cocina, nada que ver.
+  const menu = await org('/api/v1/read/food.portal_menu', { token: ana, body: { reservation_id: R1 } });
+  assert.equal(menu.status, 200, JSON.stringify(menu.data));
+  assert.equal(menu.data.available, false);
+
+  // Lugar (X3): proyección de Central legible por el portal.
+  assert.equal((await org('/api/v1/read/central.portal_place_projection', { token: ana, body: {} })).status, 200);
+
+  // Vista previa (O6): huésped de muestra y enlace de Guests de solo lectura.
+  const sample = await org('/api/v1/invoke/booking.portal_preview_guest', { token: ana, body: { reservation_id: R1 } });
+  assert.equal(sample.status, 200, JSON.stringify(sample.data));
+  const link = await org('/api/v1/portal-links', { token: ana, body: { app: 'guests', scope: { reservation_id: R1, guest_id: sample.data.guest_id }, person: { name: 'Vista previa' }, label: 'Vista previa', preview: true, replace: true } });
+  assert.equal(link.status, 200, JSON.stringify(link.data));
+  const preview = await gst('/api/v1/auth/link', { body: { token: link.data.url.split('/i/')[1] } });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  const experience = await gst('/api/v1/read/organizers.guest_experience_for', { token: preview.data.token, body: { reservation_id: R1, guest_id: sample.data.guest_id } });
+  assert.equal(experience.status, 200, JSON.stringify(experience.data));
+  const questions = await gst('/api/v1/read/organizers.guest_questions', { token: preview.data.token, body: { reservation_id: R1, guest_id: sample.data.guest_id } });
+  const open = questions.data.items.find((q: any) => q.open);
+  assert.equal(code(await gst('/api/v1/invoke/organizers.guest_answer', { token: preview.data.token, body: { question_id: open.id, value: 'm' } })), 'PREVIEW_READ_ONLY');
+});
+
+test('organizers · conservación (B18): las respuestas se borran a los 6 meses del fin del retiro; las preguntas se quedan', async () => {
+  const R = await reservation('Retiro antiguo', '2027-03-05', '2027-03-07');
+  const token = await organizerSession(R, 'antigua-org@example.invalid');
+  const userId = (await org('/api/v1/me', { token })).data.userId;
+  const guest = await guestSession(token, R, 'Noa');
+  const question = uuid();
+  assert.equal((await commit(token, [{ op: 'insert', table: TABLES.questions, id: question, fields: { reservation_id: R, owner_id: userId, type: 'yes_no', label: '¿Vienes en coche?', published: true } }])).status, 200);
+  await commit(token, [{ op: 'insert', table: TABLES.experiences, id: uuid(), fields: { reservation_id: R, questions_visible: true } }]);
+  const answered = await gst('/api/v1/invoke/organizers.guest_answer', { token: guest.token, body: { question_id: question, value: true } });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+
+  const tick = async () => (await organizers(new Request(`${booking.supabase.url}/functions/v1/organizers-api/api/v1/worker/retention/tick`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: '{}' }))).json();
+  const has = async () => (await booking.t.db.query<{ v: boolean }>('select organizers.retention_has_work() v')).rows[0]!.v;
+  assert.equal(await has(), false, 'el retiro aún no ha terminado');
+
+  // K7 (pendiente de Core): la cuenta de servicio `organizers`. Hasta que esté en main, la prueba la da de alta en su base.
+  const known = (await booking.t.db.query<{ g: unknown }>(`select core.service_grants('organizers') g`)).rows[0]!.g;
+  if (!known) {
+    await booking.t.db.query(`create or replace function core.service_grants(p_name text) returns jsonb language sql immutable as $f$
+      select case p_name
+        when 'feedback' then jsonb_build_object('displayName', 'Feedback (sistema)', 'memberships', jsonb_build_array(jsonb_build_object('app', 'tasks', 'role', 'editor')))
+        when 'booking' then jsonb_build_object('displayName', 'Booking (sistema)', 'memberships', jsonb_build_array(jsonb_build_object('app', 'tasks', 'role', 'editor')))
+        when 'organizers' then jsonb_build_object('displayName', 'Organizers (sistema)', 'memberships', '[]'::jsonb)
+        else null end $f$`);
+  }
+
+  // El retiro terminó hace más de seis meses.
+  await booking.t.db.query(`update booking.reservations set start_date = date '2025-01-10', end_date = date '2025-01-12' where id = $1`, [R]);
+  assert.equal(await has(), true);
+  const run = await tick();
+  assert.ok(run.purged >= 1, JSON.stringify(run));
+  const left = (await booking.t.db.query<{ value: unknown; deleted_at: string | null }>('select value, deleted_at from organizers.answers where question_id = $1', [question])).rows;
+  assert.equal(left.length, 1);
+  assert.equal(left[0]!.value, null, 'sin el valor');
+  assert.ok(left[0]!.deleted_at, 'y borrada');
+  assert.equal((await booking.t.db.query('select 1 from organizers.questions where id = $1 and deleted_at is null', [question])).rows.length, 1, 'la pregunta se conserva');
+  assert.equal(await has(), false);
 });

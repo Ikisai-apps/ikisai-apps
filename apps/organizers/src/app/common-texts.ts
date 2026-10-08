@@ -8,8 +8,8 @@ import { i18n, t } from './i18n.ts';
 
 export interface CommonText { key: string; title: string | null; body: string; version: string | null; kind: string | null; lang?: string; source_lang?: string }
 
-export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone' | 'payment.instructions';
-const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone', 'payment.instructions'];
+export type TextKey = 'organizers.declaration' | 'portal.privacy' | 'contact.email' | 'contact.phone' | 'payment.instructions' | 'portal.menu_note';
+const KEYS: readonly TextKey[] = ['organizers.declaration', 'portal.privacy', 'contact.email', 'contact.phone', 'payment.instructions', 'portal.menu_note'];
 const storeKey = () => `ikisai-organizers-texts:${i18n.locale()}`;
 
 const FALLBACK: Record<TextKey, CommonText> = {
@@ -24,6 +24,7 @@ const FALLBACK: Record<TextKey, CommonText> = {
   'contact.email': { key: 'contact.email', title: 'Correo', version: null, kind: 'contact', body: 'organiza@ikisai.com' },
   'contact.phone': { key: 'contact.phone', title: 'Teléfono', version: null, kind: 'contact', body: '614 76 57 96' },
   'payment.instructions': { key: 'payment.instructions', title: 'Cómo pagar', version: null, kind: 'mensaje', body: 'Te enviaremos los datos para pagar junto con la factura. Si tienes cualquier duda, escríbenos.' },
+  'portal.menu_note': { key: 'portal.menu_note', title: 'El menú', version: null, kind: 'mensaje', body: 'El menú puede cambiar para adaptarse a las alergias e intolerancias de tus asistentes.' },
 };
 
 /** Reserva en inglés (solo los textos que cambian de idioma; el contacto es el mismo). */
@@ -35,6 +36,10 @@ const FALLBACK_EN: Partial<Record<TextKey, CommonText>> = {
   'payment.instructions': {
     key: 'payment.instructions', title: 'How to pay', version: null, kind: 'mensaje', lang: 'en',
     body: 'We will send you the payment details together with the invoice. If you have any questions, please write to us.',
+  },
+  'portal.menu_note': {
+    key: 'portal.menu_note', title: 'The menu', version: null, kind: 'mensaje', lang: 'en',
+    body: 'The menu may change to suit your attendees\' allergies and intolerances.',
   },
   'portal.privacy': {
     key: 'portal.privacy', title: 'Data protection', version: null, kind: 'legal', lang: 'en',

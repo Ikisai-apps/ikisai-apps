@@ -1,9 +1,10 @@
 /**
- * Pestaña «Experiencia» (fase 4, API.md §15.3): lo que ven y hacen tus asistentes en su enlace personal de Ikisai Guests.
- * - Módulos visibles y su ventana (antes, durante, después o siempre), el mensaje de bienvenida y el alojamiento (fase 5).
- * - Materiales: archivos (PDF o imágenes recomprimidas en el dispositivo), enlaces y textos, publicados o no.
- * - Preguntas propias y sus respuestas, con descarga en CSV.
- * Todo vive en el espejo local (`app/own.ts`): se guarda solo, también sin red, y la cola lo envía al volver.
+ * Pestaña «Experiencia» (fases 4 y 5, API.md §15.3): lo que ven y hacen tus asistentes en su enlace personal de Ikisai
+ * Guests, en seis apartados:
+ * - «Qué ven»: módulos visibles y su ventana, mensaje de bienvenida y vista previa con el huésped de muestra (O6);
+ * - «Programa» (Booking), «Menú» (Food) y «Alojamiento» (Booking y la configuración propia);
+ * - «Materiales» (archivos, enlaces y textos) y «Preguntas» con sus respuestas y CSV.
+ * Lo propio vive en el espejo local (`app/own.ts`): se guarda solo, también sin red, y la cola lo envía al volver.
  */
 import { compressImage, confirmDialog, createSaveState, el, icon, openSheet, replace, toast, type Child } from '@ikisai/ui-kit';
 import type { RowOperation } from '@ikisai/sync-client';
@@ -12,31 +13,36 @@ import { describeError } from '../app/client.ts';
 import { L, t } from '../app/i18n.ts';
 import { fileIdOf, libraryOf, nextPosition, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
 import { fbIgnore, fbMark, loading, section } from './common.ts';
+import { renderLodging } from './lodging.ts';
+import { renderMenu } from './menu.ts';
+import { renderProgram } from './program.ts';
 import { typing } from './offers.ts';
 import type { ViewContext } from './shell.ts';
 
 const WINDOWS: Array<[string, string]> = [['always', L('Siempre')], ['before', L('Antes del retiro')], ['during', L('Durante el retiro')], ['after', L('Después del retiro')]];
-const CAPABILITIES: Array<[string, string]> = [
-  ['view', L('Ven la habitación que les asignes')],
-  ['prefer', L('Además, dicen con quién quieren compartir')],
-  ['choose', L('Eligen su cama entre las habitaciones que abras')],
-  ['request', L('Piden su cama y tú la apruebas')],
-];
 const TYPES: Array<[string, string]> = [['text', L('Texto libre')], ['choice', L('Una opción')], ['multi', L('Varias opciones')], ['yes_no', L('Sí o no')], ['number', L('Número')], ['date', L('Fecha')]];
 const KINDS: Record<string, string> = { file: L('Archivo'), link: L('Enlace'), text: L('Texto') };
 const KIND_ICON: Record<string, string> = { file: 'attach', link: 'copy', text: 'list' };
 const label = (pairs: Array<[string, string]>, key: unknown) => t(pairs.find(([k]) => k === key)?.[1] ?? '');
 const options = (pairs: Array<[string, string]>, current: unknown) => pairs.map(([v, l]) => el('option', { value: v, selected: v === current ? '' : null }, t(l)));
-const slug = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'opcion';
+const slug = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'opcion';
+
+export type ExperienceSection = 'ven' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas';
+const SECTIONS: Array<[ExperienceSection, string]> = [['ven', L('Qué ven')], ['programa', L('Programa')], ['menu', L('Menú')], ['alojamiento', L('Alojamiento')], ['materiales', L('Materiales')], ['preguntas', L('Preguntas')]];
+const SECTION_KEY = 'ikisai-organizers-experience-section';
 
 interface ChoiceOption { value: string; label: string }
-interface LodgingOption { key: string; label: string; guest_note?: string | null }
 
 export function renderExperience(ctx: ViewContext, reservationId: string): HTMLElement {
   const saves = createSaveState({ savedMs: 4000 });
   const modulesHost = el('div', { id: 'expModulesHost' });
   const materialsHost = el('div', { id: 'expMaterialsHost' });
   const questionsHost = el('div', { id: 'expQuestionsHost' });
+  const otherHost = el('div', { id: 'expOtherHost' });
+  const nav = el('nav', { class: 'orgsubnav', 'aria-label': t('Apartados de la experiencia') });
+  let current: ExperienceSection = (() => { try { return (sessionStorage.getItem(SECTION_KEY) as ExperienceSection) || 'ven'; } catch { return 'ven'; } })();
+  if (!SECTIONS.some(([k]) => k === current)) current = 'ven';
+  let other: (HTMLElement & { destroy?: () => void }) | null = null;
   const host = el('div', { id: 'experience', 'data-feedback-id': 'organizers.experiencia', 'data-feedback-label': 'Experiencia' }, loading());
   let alive = true;
   let exp: Row | null = null;
@@ -85,9 +91,6 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
           el('span', null, el('strong', null, t(title)), el('span', { class: 'muted small' }, ` · ${t(help)}`))),
         on && windowKey ? el('label', { class: 'field orgmodule-window' }, el('span', null, t('Cuándo lo ven')), windowSelect(windowKey)) : null);
     };
-    const lodgingOn = value('lodging_visible', false) === true;
-    const capability = String(value('lodging_capability', 'view'));
-    const lodgingOptions = (value('lodging_options', []) as LodgingOption[]) ?? [];
     const message = el('textarea', { id: 'exp-message', rows: '3', maxlength: '1000', placeholder: t('Os esperamos en Ikisai…'),
       oninput: (e: Event) => {
         const text = (e.target as HTMLTextAreaElement).value;
@@ -104,8 +107,10 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
         moduleRow('program_visible', L('Programa'), L('el horario del retiro'), 'program_window'),
         moduleRow('menu_visible', L('Menú'), L('la propuesta de la cocina de Ikisai'), 'menu_window'),
         moduleRow('map_visible', L('Plano de Ikisai'), L('cómo llegar y moverse por el centro')),
-        moduleRow('lodging_visible', L('Alojamiento'), L('su habitación en Ikisai')),
-        lodgingOn ? renderLodging(capability, String(value('lodging_choose_until', '') ?? ''), lodgingOptions) : null), 'organizers.experiencia.modulos', 'Qué ven tus asistentes'),
+        moduleRow('lodging_visible', L('Alojamiento'), L('su habitación en Ikisai'))), 'organizers.experiencia.modulos', 'Qué ven tus asistentes'),
+      fbMark(section(t('Vista previa'), { id: 'expPreview' },
+        el('p', { class: 'muted small' }, t('Abre el enlace de un asistente de muestra para ver exactamente lo que verán. No se guarda nada de lo que hagas ahí.')),
+        el('button', { type: 'button', class: 'ghost', id: 'expPreviewOpen', onclick: () => void openPreview() }, icon('eye', 16), ' ', t('Ver como un asistente'))), 'organizers.experiencia.vista_previa', 'Vista previa'),
       fbMark(section(t('Mensaje de bienvenida'), { id: 'expMessage' },
         el('p', { class: 'muted small' }, t('Lo verán al abrir su enlace. Opcional.')),
         fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), message)),
@@ -115,28 +120,18 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
             el('option', { value: 'en', selected: value('message_lang', 'es') === 'en' ? '' : null }, 'English')))), 'organizers.experiencia.mensaje', 'Mensaje de bienvenida'));
   }
 
-  function renderLodging(capability: string, chooseUntil: string, current: LodgingOption[]): HTMLElement {
-    let list = current.map((o) => ({ ...o }));
-    const rows = el('div', { class: 'orgoptions', id: 'expLodgingOptions' });
-    const commitOptions = () => void setExperience({ lodging_options: list.filter((o) => o.label.trim()).map((o) => ({ key: o.key || slug(o.label), label: o.label.trim(), guest_note: o.guest_note?.trim() || null })) });
-    function paintRows(): void {
-      replace(rows, ...list.map((o, i) => el('div', { class: 'orgoption' },
-        el('input', { type: 'text', maxlength: '120', value: o.label, placeholder: t('Habitación doble con baño'), 'aria-label': t('Tipo de habitación'),
-          onchange: (e: Event) => { const v = (e.target as HTMLInputElement).value; list[i] = { ...o, label: v, key: o.key || slug(v) }; commitOptions(); } }),
-        el('input', { type: 'text', maxlength: '200', value: o.guest_note ?? '', placeholder: t('+60 € a pagar a tu organizador'), 'aria-label': t('Lo que ve tu asistente del precio'),
-          onchange: (e: Event) => { list[i] = { ...list[i]!, guest_note: (e.target as HTMLInputElement).value }; commitOptions(); } }),
-        el('button', { type: 'button', class: 'ghost icon', 'aria-label': t('Quitar'), onclick: () => { list = list.filter((_, j) => j !== i); paintRows(); commitOptions(); } }, icon('trash', 16)))));
+  /** O6: enlace de Guests de solo lectura al huésped de muestra de la reserva (Booking BG11, núcleo C9). */
+  async function openPreview(): Promise<void> {
+    // La ventana se abre antes de esperar a la red: si no, el navegador la bloquea por no venir de un toque.
+    const win = window.open('', '_blank');
+    try {
+      const sample = await ctx.api.invokeAny<{ guest_id: string }>('booking.portal_preview_guest', { reservation_id: reservationId });
+      const link = await ctx.usage.run('organizers.experiencia.vista_previa', () => ctx.api.previewLink(reservationId, sample.guest_id, t('Vista previa')));
+      if (win) win.location.href = link.url; else window.open(link.url, '_blank', 'noopener');
+    } catch (error) {
+      win?.close();
+      toast(describeError(error));
     }
-    paintRows();
-    return el('div', { class: 'orglodging', id: 'expLodging' },
-      el('label', { class: 'field' }, el('span', null, t('Qué pueden hacer')),
-        el('select', { id: 'exp-lodging_capability', onchange: (e: Event) => { void setExperience({ lodging_capability: (e.target as HTMLSelectElement).value }).then(paintModules); } }, ...options(CAPABILITIES, capability))),
-      capability === 'choose' || capability === 'request' ? el('label', { class: 'field' }, el('span', null, t('Pueden elegir hasta el')),
-        el('input', { type: 'date', id: 'exp-lodging_choose_until', value: chooseUntil, onchange: (e: Event) => void setExperience({ lodging_choose_until: (e.target as HTMLInputElement).value || null }) })) : null,
-      el('p', { class: 'muted small' }, t('Tipos de habitación que ofreces y lo que les dices del precio. Nunca ven lo que te cobra Ikisai.')),
-      rows,
-      el('button', { type: 'button', class: 'ghost', id: 'expLodgingAdd', onclick: () => { list.push({ key: '', label: '', guest_note: '' }); paintRows(); rows.querySelector<HTMLInputElement>('.orgoption:last-child input')?.focus(); } }, icon('plus', 16), ' ', t('Añadir tipo de habitación')),
-      el('p', { class: 'muted small' }, t('Solo eligen entre las camas que ya has contratado con Ikisai; elegir no cambia lo que te factura. Se activará cuando Ikisai abra las habitaciones de tu retiro.')));
   }
 
   // --- Materiales -----------------------------------------------------------------------------------------------------
@@ -439,8 +434,30 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
     });
   }
 
+  function paintNav(): void {
+    replace(nav, ...SECTIONS.map(([key, text]) => el('button', { type: 'button', id: `expnav-${key}`, class: key === current ? 'on' : '', 'aria-pressed': key === current ? 'true' : 'false',
+      onclick: () => { current = key; try { sessionStorage.setItem(SECTION_KEY, key); } catch { /* */ } showSection(); } }, t(text))));
+  }
+
+  function showSection(): void {
+    paintNav();
+    other?.destroy?.();
+    other = null;
+    modulesHost.hidden = current !== 'ven';
+    materialsHost.hidden = current !== 'materiales';
+    questionsHost.hidden = current !== 'preguntas';
+    if (current === 'programa') other = renderProgram(ctx, reservationId);
+    else if (current === 'menu') other = renderMenu(ctx, reservationId);
+    else if (current === 'alojamiento') other = renderLodging(ctx, reservationId, () => exp, setExperience);
+    replace(otherHost, other);
+  }
+
   function paint(): void {
-    if (!painted) { replace(host, modulesHost, materialsHost, questionsHost, el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'experienceSaveState' }, saves.field('experiencia').element))); painted = true; }
+    if (!painted) {
+      replace(host, nav, modulesHost, materialsHost, questionsHost, otherHost, el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'experienceSaveState' }, saves.field('experiencia').element)));
+      painted = true;
+      showSection();
+    }
     // Mientras se escribe en el mensaje o en el alojamiento no se repinta esa parte (perdería el foco).
     if (!(modulesHost.contains(document.activeElement) && typing())) paintModules();
     paintMaterials();
@@ -461,6 +478,7 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
   (host as HTMLElement & { destroy?: () => void }).destroy = () => {
     alive = false;
     off();
+    other?.destroy?.();
     if (messageTimer) { clearTimeout(messageTimer); const text = (document.getElementById('exp-message') as HTMLTextAreaElement | null)?.value ?? ''; void setExperience({ organizer_message: text.trim() ? text : null }); }
   };
   return host;

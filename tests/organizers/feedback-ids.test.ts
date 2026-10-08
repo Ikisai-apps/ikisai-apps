@@ -61,7 +61,7 @@ test('organizers · cada data-feedback-id escrito en un el(...) lleva su data-fe
 
 test('organizers · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collect().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['entrada', 'retiros', 'retiro', 'fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas', 'asistentes', 'asistente', 'cocina', 'ayuda', 'acceso', 'cabecera']);
+  const allowed = new Set(['entrada', 'retiros', 'retiro', 'fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'programa', 'menu', 'alojamiento', 'ofertas', 'asistentes', 'asistente', 'cocina', 'ayuda', 'acceso', 'cabecera']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 
