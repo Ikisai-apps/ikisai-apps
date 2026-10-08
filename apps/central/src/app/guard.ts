@@ -1,6 +1,6 @@
 import type { SyncClient } from '@ikisai/sync-client';
 
-/** Estado compartido para decidir si es seguro actualizar el shell (contrato §6.4 y updates.ts). */
+/** Estado compartido para decidir si es seguro actualizar el shell (contrato §6.4 e `initAppUpdates` del kit). */
 export const guard = {
   /** Hay un formulario abierto con cambios sin guardar. */
   dirtyEditor: false,
