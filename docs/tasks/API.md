@@ -1289,3 +1289,71 @@ Booking, con su identidad de servicio y la clave de worker, pide a Tasks el proy
   - `tasks.request_task` acepta `projectRef`.
 - **«Gestionar entradas»** enseña `booking.retreat_project` («Retiro · Proyecto») como tipo conocido, con la nota de que solo cuenta el área. La regla la confirma la propietaria.
 
+
+
+## 24. Estructura definitiva de áreas y proyectos (decisión del usuario, 8-10-2026)
+
+| Área | Proyectos |
+|---|---|
+| Obras y mejoras | uno por intervención o zona |
+| Mantenimiento | Jardinería, Piscina, Instalaciones, Anti-incendios, Reparaciones |
+| Retiros | uno por retiro confirmado (los crea Booking, §23) |
+| Gestiones | Comercial, Administración y fiscal, Cumplimiento |
+| Aplicaciones | uno por app (Tasks, Booking, Food, Finance, Central, Organizers, Guests) |
+| *Compras* | no es un área: el módulo de Compras (§18) |
+
+### 24.1 Reglas de entrada propuestas (hecho)
+
+«Gestionar entradas» enseña como tipos conocidos los que pueden llegar de otras apps. Al crear la regla de cada uno, propone el destino de esta estructura: primero un proyecto cuyo nombre case y, si no hay, un área. Siempre por nombre, sin ids fijos.
+
+| Tipo | Destino propuesto |
+|---|---|
+| Organizador · Fechas posibles, Quiere confirmar y Comentario a la propuesta | proyecto «Comercial» (o área «Comercial» o «Gestiones») |
+| SES · Plazo legal (`booking.ses_deadline`) | proyecto «Administración y fiscal» (o área «Gestiones») |
+| Central · Vencimientos (`central.compliance_due`) | proyecto «Cumplimiento» (o área «Gestiones») |
+| Espacio · … (`feedback.space.*`) | proyecto «Reparaciones» (o área «Mantenimiento») |
+| Retiro · … (`feedback.event.*`) | área «Retiros» (lo que no traiga su reserva; ver 24.3) |
+| Retiro · Proyecto (`booking.retreat_project`) | área «Retiros» (ya puesta) |
+
+### 24.2 Compras por proveedor (hecho)
+
+«Solicitudes de compra» se puede ver **por proveedor**, además de por estado: lo pendiente (pedido, aprobado o comprado sin recibir) de cada proveedor, esté o no en un plan.
+- Se agrupa por el proveedor del catálogo de Finance o por su nombre libre; lo que no tiene proveedor va al final.
+- La elección se recuerda por dispositivo.
+
+### 24.3 Feedback de un retiro, al proyecto del retiro (hecho en Tasks; falta el kit)
+
+`worker/requests/task` acepta `project_ref: 'RES<código>'` opcional en `feedback.event.*`.
+- Si el proyecto de esa reserva existe, la tarea va ahí.
+- Si no, el reporte no se bloquea: va por su regla o a «Por clasificar».
+- **Petición a Core o UI:** que `taskRequestFor` (`_kit/feedback.ts`) añada `project_ref` con el código de la reserva cuando el reporte de evento lo tenga en su ámbito.
+
+### 24.4 «Jardinería» y «Anti-incendios», de áreas a proyectos de Mantenimiento (propuesta; no construido, a la espera del visto bueno)
+
+Hoy no existe una acción así: un proyecto y sus tareas no cambian de área (`tab_id` es inmutable, y las etiquetas, las dependencias y los adjuntos son de cada área). Las dos vías:
+
+1. **(Recomendada) Mover conservando los ids:** procedimiento `tasks.merge_tab_into_project`, acción de la propietaria con vista previa y confirmación. Hace, en un solo lote y con historial:
+   - crea en Mantenimiento el proyecto «Jardinería» (o «Anti-incendios»);
+   - mueve a ese proyecto todas las tareas de todos los proyectos del área de origen (incluida su Entrada), **con los mismos ids**. Así se conservan el historial, las fotos y adjuntos, las notas, las dependencias y los enlaces de Finance a esas tareas, porque apuntan al id;
+   - convierte las etiquetas de cada tarea a las de Mantenimiento con el mismo nombre (y la misma familia), y crea las que falten;
+   - mueve los adjuntos de los proyectos de origen al proyecto nuevo, y las solicitudes de compra y los suministros del área, si los hay, a Mantenimiento;
+   - redirige a Mantenimiento las reglas de entrada que apunten al área de origen;
+   - envía el área de origen, ya vacía, a la papelera, de donde se puede restaurar.
+
+   La vista previa enseña los recuentos (proyectos, tareas abiertas y hechas, etiquetas que se crean, adjuntos, compras y enlaces de Finance al área o a sus proyectos) antes de confirmar.
+   - Lo único que no se conserva tal cual: lo que en Finance esté asignado **al área o a sus proyectos** (no a una tarea), que seguiría apuntando al área en la papelera. La vista previa lo cuenta; si hay algo, se reasigna a mano en Finance.
+   - Necesita la migración `0314`: el procedimiento y el permiso de cambiar `tab_id` solo dentro de él.
+2. **Copiar y archivar:** crear las tareas de nuevo en Mantenimiento y archivar el área antigua. No necesita migración, pero pierde el historial y rompe los enlaces de Finance a esas tareas. No la recomiendo.
+
+**Nadie toca datos de producción:** construyo la acción y la prueba. Cuando se apruebe, la ejecuta la propietaria desde la app (Área › «Convertir en proyecto de…»), viendo antes la vista previa.
+
+### 24.5 Pasos para el usuario (crear la estructura)
+
+Hoy se crea desde la app, en pocos minutos: no hace falta un asistente.
+1. Menú › «Áreas de trabajo» › nueva área. Crear **Obras y mejoras**, **Mantenimiento**, **Gestiones** y **Aplicaciones**. «Retiros» y «General» ya están.
+2. En cada área, «+ Proyecto»:
+   - Mantenimiento: Piscina, Instalaciones, Reparaciones. Jardinería y Anti-incendios llegarán con la conversión (24.4);
+   - Gestiones: Comercial, Administración y fiscal, Cumplimiento;
+   - Aplicaciones: Tasks, Booking, Food, Finance, Central, Organizers, Guests;
+   - Obras y mejoras: uno por obra cuando empiece.
+3. Menú › Trabajo › «Por clasificar» › «Gestionar entradas»: abrir cada tipo y **Guardar**. El destino de 24.1 sale ya propuesto.
