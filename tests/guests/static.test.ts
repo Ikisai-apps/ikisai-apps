@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(here, '../../apps/guests/src');
 const PATTERN = /^guests(\.[a-z0-9_]+){1,4}$/;
 /** Cadenas `guests.…` que no son ids de feedback: claves de los textos de Central. */
-const NOT_IDS = new Set(['guests.data_why', 'guests.signature_statement', 'guests.allergies_notice']);
+const NOT_IDS = new Set(['guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice']);
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -59,7 +59,9 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     kinship: Object.keys(KINSHIP_CODES),
     sex: ['H', 'M', 'X'], doc: ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'],
     diet: ['alergia', 'intolerancia', 'vegetariano', 'vegano', 'sin_gluten', 'sin_lactosa', 'preferencia', 'otra'], severity: ['leve', 'moderada', 'grave'],
-    group: ['identity', 'document', 'residence', 'contact', 'minor'], page: ['inicio', 'datos', 'alimentacion', 'firma', 'info'],
+    group: ['identity', 'document', 'residence', 'contact', 'minor'],
+    page: ['inicio', 'datos', 'alimentacion', 'firma', 'info', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas'],
+    menu: ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'],
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],
     'help.place': ['habitacion', 'comedor', 'sala', 'banos', 'exterior', 'piscina', 'otro'],
     'help.kind': ['damage', 'cleaning', 'missing', 'utilities', 'safety', 'other'],
@@ -108,7 +110,8 @@ test('guests · cada data-feedback-id escrito en un el(...) lleva su data-feedba
 
 test('guests · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collectIds().map((f) => f.id.split('.')[1]));
-  const allowed = new Set(['entrada', 'aviso', 'inicio', 'datos', 'alimentacion', 'firma', 'info', 'ayuda', 'acceso', 'app', 'cuenta', 'cabecera']);
+  const allowed = new Set(['entrada', 'aviso', 'inicio', 'datos', 'alimentacion', 'firma', 'info', 'ayuda', 'acceso', 'app', 'cuenta', 'cabecera',
+    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 

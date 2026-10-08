@@ -445,10 +445,21 @@ Detalles de la implementación:
   - Aceptar en un idioma vale para el otro mientras las dos versiones sigan vigentes.
   - Sin Central se usan los textos de reserva del código, con la versión `reserva-1`.
 
+**Fases 4 y 5 (8-10-2026), construidas con lecturas simuladas** (respuesta de Core: construir lo que depende de Guests y conectar cada pieza cuando llegue):
+- `app/portal.ts`: lecturas y acciones con la forma de §13, en caché por persona. Una lectura que aún no existe en el servidor devuelve `null` y Guests sigue como en la fase 1.
+- **Barra inferior propia** según los módulos visibles y su ventana (`ui/nav.ts`), y pantalla «Más».
+- **Programa y menú** con «Hoy en Ikisai» (`ui/program.ts`).
+- **Materiales** con `portal-files` y «Guardar para verlo sin conexión» en la caché del navegador, como mucho 20 MB por persona y borrados al salir (`ui/materials.ts`).
+- **Preguntas** con autoguardado en la cola (`ui/questions.ts`; operación `answer` de `writer.ts`, que no toca la revisión de la ficha de Booking).
+- **Alojamiento** (`ui/lodging.ts`): ver, preferir, elegir o pedir, con confirmación, `BED_TAKEN` y solo con red.
+- **Vista previa:** con `preview` en la ficha, franja y solo lectura (la cola no encola nada).
+- **Inicio:** mensaje del organizador, preguntas pendientes y «Elige tu habitación».
+- **Pruebas:** `tests/guests/modules.spec.ts`, 5 de Playwright con las lecturas simuladas por `page.route` y el reloj fijo (`page.clock`), para no depender de la hora.
+
 **Pruebas:**
 - `tests/guests/api.test.ts` (8);
 - `tests/guests/static.test.ts` (6): diccionarios iguales, claves usadas y ids de feedback;
-- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`).
+- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`) y `modules.spec.ts` (5, 1 de ellas `@smoke`).
 
 
 

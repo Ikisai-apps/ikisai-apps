@@ -41,10 +41,20 @@
 
 - 2026-10-08 · Diseño de las fases 4 y 5 (API.md §13): experiencia configurable con barra inferior, programa (Booking), menú (Food), plano e información (Central), materiales con `portal-files` (propuesta C8 para O1), preguntas del organizador y elección de habitación atómica (Booking). Peticiones BG9–BG12, FD1, O1–O7, CE3, C8, C9 y U5.
 
+- 2026-10-08 · Fases 4 y 5 construidas con lecturas simuladas (API.md §12):
+  - barra inferior por módulos;
+  - programa, menú y «Hoy»;
+  - materiales con `portal-files` y guardado sin conexión;
+  - preguntas con autoguardado;
+  - alojamiento (ver, preferir, elegir o pedir, atómico);
+  - vista previa de solo lectura.
+
+  Se conectan a la API real según publiquen Booking (BG9–BG12), Food (FD1), Organizers (O1–O3), Central (CE3) y Core (C8 y C9).
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
-- Construir las fases 4 y 5 cuando estén cruzadas las peticiones de los dos portales (Core).
+- Conectar cada pieza de las fases 4 y 5 a la API real cuando la publique su dueño, y cambiar la prueba simulada por la real.
 
 ## Bloqueos
 

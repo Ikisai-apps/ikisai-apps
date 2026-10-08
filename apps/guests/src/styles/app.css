@@ -100,3 +100,36 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gprivacy h2{margin-top:0}
 .gprivacy>*+*{margin-top:12px}
 .gtext p:last-child{margin-bottom:0}
+
+/* Fases 4 y 5 · barra inferior propia (los módulos cambian por persona y retiro) */
+.gnav{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-nav,20);display:flex;justify-content:space-around;gap:2px;
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:var(--paper);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgb(0 0 0 / 6%)}
+.gnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px;border-radius:12px;color:var(--muted);text-decoration:none;font-size:var(--text-xs,.75rem);font-weight:600}
+.gnav a.on{color:var(--accent-deep,var(--ink));background:var(--accent-soft,var(--paper-2))}
+body.has-gnav .nonav .main{padding-bottom:96px}
+@media (min-width:1024px){ .gnav{left:50%;right:auto;transform:translateX(-50%);width:min(720px,100%);border-radius:16px 16px 0 0} }
+.gpreview{text-align:center;font-weight:600}
+
+/* Días del programa y del menú */
+.gdays{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding:2px}
+.gdays button{flex:none;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:600;text-transform:capitalize}
+.gdays button.on{background:var(--accent-deep,var(--ink));border-color:transparent;color:var(--paper)}
+.gprogram{list-style:none;margin:0;padding:0}
+.gslot{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.gslot-time{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:64px}
+.gslot-body{display:flex;flex-direction:column;gap:2px}
+.gslot.kind-comida .gslot-time{color:var(--accent-deep,var(--ink))}
+.gservice h3{display:flex;align-items:baseline;gap:4px}
+
+/* Materiales, preguntas y alojamiento */
+.gmaterial{display:flex;flex-direction:column;gap:8px}
+.gmaterial>.glink{background:none;border:0;padding:0}
+.gquestion-label{display:block;font-weight:700;margin-bottom:6px}
+.gchoices{display:grid;gap:4px}
+.glodging-option{margin:0 0 16px}
+.glodging-head{display:flex;flex-direction:column;gap:2px;margin:0 0 8px}
+.glodging-card h4{margin:0 0 4px}
+.glodging-beds{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.glodging-beds .taken{opacity:.55;text-decoration:line-through}
+.glodging-room{display:flex;align-items:center;gap:6px;margin:0}
+

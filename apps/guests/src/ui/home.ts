@@ -7,9 +7,13 @@ import { signsOwnEntry } from '@ikisai/domain-booking';
 import type { MyGuest } from '../app/api.ts';
 import { contactPhone } from '../app/common-texts.ts';
 import type { GuestContext } from '../app/context.ts';
-import { t } from '../app/i18n.ts';
+import { formatDate, t } from '../app/i18n.ts';
 import { dateRange, hhmm, missingText } from '../app/labels.ts';
 import { card, fbIgnore, staleNote } from './common.ts';
+import { choiceOpen } from './lodging.ts';
+import type { Modules } from './nav.ts';
+import { todayCard } from './program.ts';
+import { answered } from './questions.ts';
 
 export type Moment = 'before' | 'during' | 'after';
 
@@ -27,19 +31,43 @@ export function momentOf(guest: MyGuest, today = todayMadrid()): Moment {
 
 export interface HomeActions {
   base: string;
+  /** Módulos del organizador visibles ahora (fases 4 y 5); sin ellos, Inicio de la fase 1. */
+  modules?: Modules;
   openHelp(start?: 'place' | 'event'): void;
   openAccess(): void;
   openInstall(): void;
 }
 
 export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeActions): () => void {
+  const mods = actions.modules;
+  /** Lo que llega de otras apps (preguntas sin responder, elección de habitación, «Hoy»): se pinta cuando llega. */
+  const extras: Extras = { questionsPending: 0, chooseRoom: null, today: [] };
+  let alive = true;
+
+  async function loadExtras(): Promise<void> {
+    const guest = ctx.guest();
+    const lodging = ctx.experience()?.modules.lodging;
+    const [questions, room, today] = await Promise.all([
+      mods?.questions ? ctx.reads.questions(ctx.grant.reservation_id, ctx.grant.guest_id).catch(() => null) : null,
+      mods?.lodging && (lodging?.capability === 'choose' || lodging?.capability === 'request') && choiceOpen(lodging.choose_until)
+        ? ctx.reads.lodging(ctx.grant.reservation_id, ctx.grant.guest_id).catch(() => null) : null,
+      momentOf(guest) === 'during' && mods ? todayCard(ctx, mods.program, mods.menu).catch(() => []) : [],
+    ]);
+    if (!alive) return;
+    extras.questionsPending = questions ? questions.value.items.filter((q) => q.required && q.open && !answered(q)).length : 0;
+    extras.chooseRoom = room ? { chosen: Boolean(room.value.mine), until: lodging?.choose_until ?? null } : null;
+    extras.today = today;
+    paint();
+  }
+
   function paint(): void {
     const guest = ctx.guest();
     const moment = momentOf(guest);
     const { reservation } = guest;
     const arrival = hhmm(reservation.arrival_time);
     const departure = hhmm(reservation.departure_time);
-    const tasks = pending(guest);
+    const tasks = pending(guest, extras);
+    const message = ctx.experience()?.organizer_message;
     const allDone = tasks.every((task) => task.done);
     const phone = contactPhone();
 
@@ -50,8 +78,11 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
         el('h2', { id: 'retreatTitle' }, reservation.title),
         el('p', { id: 'retreatDates' }, dateRange(reservation.start_date, reservation.end_date)),
         arrival || departure ? el('p', { class: 'muted', id: 'retreatTimes' }, [arrival ? t('home.arrival', { time: arrival }) : null, departure ? t('home.departure', { time: departure }) : null].filter(Boolean).join(' · ')) : null),
+      message?.text ? card({ id: 'organizerMessage', 'data-feedback-id': 'guests.inicio.mensaje', 'data-feedback-label': 'Mensaje del organizador' },
+        el('h3', null, t('home.organizerMessage')), el('p', { class: 'gtext' }, message.text)) : null,
       moment === 'during' ? card({ id: 'today', 'data-feedback-id': 'guests.inicio.hoy', 'data-feedback-label': 'Hoy en Ikisai' },
         el('h3', null, t('home.today')),
+        ...extras.today,
         el('div', { class: 'btnrow' },
           el('button', { type: 'button', class: 'primary', id: 'urgentHelp', 'data-feedback-id': 'guests.inicio.ayuda.urgente', 'data-feedback-label': 'Necesito ayuda', onclick: () => actions.openHelp('place') }, icon('help', 18), t('home.needHelp')),
           phone ? el('a', { class: 'ghost', href: `tel:${phone.replace(/\s+/g, '')}`, id: 'callIkisai', 'data-feedback-id': 'guests.inicio.contacto.llamar', 'data-feedback-label': 'Llamar a Ikisai' }, t('home.call', { phone })) : null)) : null,
@@ -73,6 +104,8 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
       el('div', { class: 'gcards' },
         el('a', { class: 'card gcard glink', href: `${actions.base}/info`, id: 'openInfo', 'data-feedback-id': 'guests.inicio.info.abrir', 'data-feedback-label': 'Información práctica' },
           icon('info', 20), el('span', null, el('strong', null, t('home.info')), el('span', { class: 'muted small' }, t('home.infoText')))),
+        mods?.materials ? el('a', { class: 'card gcard glink', href: `${actions.base}/materiales`, id: 'openMaterials', 'data-feedback-id': 'guests.inicio.materiales.abrir', 'data-feedback-label': 'Materiales' },
+          icon('attach', 20), el('span', null, el('strong', null, t('materials.title')), el('span', { class: 'muted small' }, t('materials.intro')))) : null,
         el('button', { type: 'button', class: 'card gcard glink', id: 'openHelp', 'data-feedback-id': 'guests.inicio.ayuda.abrir', 'data-feedback-label': 'Ayuda y sugerencias', onclick: () => actions.openHelp() },
           icon('help', 20), el('span', null, el('strong', null, t('home.help')), el('span', { class: 'muted small' }, t('home.helpText'))))),
       allDone ? el('div', { class: 'gsuggest', id: 'suggest' },
@@ -82,14 +115,19 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
   }
 
   paint();
+  if (mods) void loadExtras();
   const off = ctx.onChange((reason) => { if (reason === 'guest') paint(); });
-  return off;
+  return () => { alive = false; off(); };
 }
 
-interface Task { id: string; route: string; icon: 'user' | 'chef' | 'edit' | 'lock'; title: string; status: string; done: boolean }
+interface Extras { questionsPending: number; chooseRoom: { chosen: boolean; until: string | null } | null; today: HTMLElement[] }
+interface Task { id: string; route: string; icon: 'user' | 'chef' | 'edit' | 'lock' | 'help' | 'bed'; title: string; status: string; done: boolean }
 
-/** Pendientes según el modo (API.md §9.3): datos (salvo `ninguno`), alimentación y, en `ses`, la firma. */
-function pending(guest: MyGuest): Task[] {
+/**
+ * Pendientes según el modo (API.md §9.3): datos (salvo `ninguno`), alimentación y, en `ses`, la firma. Con los módulos del
+ * organizador (§13): sus preguntas obligatorias sin responder y la elección de habitación abierta.
+ */
+function pending(guest: MyGuest, extras: Extras): Task[] {
   const tasks: Task[] = [];
   if (guest.mode !== 'ninguno') {
     const missing = guest.missing;
@@ -102,6 +140,13 @@ function pending(guest: MyGuest): Task[] {
     const own = guest.reservation.start_date ? signsOwnEntry({ birth_date: guest.fields.birth_date as string | null, is_minor: guest.fields.is_minor === true }, guest.reservation.start_date) : true;
     tasks.push({ id: 'sign', route: 'firma', icon: 'edit', title: own ? t('home.sign') : t('home.signCompanion'), done: guest.signed,
       status: guest.signed ? t('home.signDone') : guest.missing.length ? t('home.signAfterData') : t('home.signTodo') });
+  }
+  if (extras.questionsPending > 0) {
+    tasks.push({ id: 'questions', route: 'preguntas', icon: 'help', title: t('questions.title'), done: false, status: t('home.questionsPending', { count: extras.questionsPending }) });
+  }
+  if (extras.chooseRoom) {
+    tasks.push({ id: 'room', route: 'alojamiento', icon: 'bed', title: t('home.room'), done: extras.chooseRoom.chosen,
+      status: extras.chooseRoom.chosen ? t('home.roomDone') : extras.chooseRoom.until ? t('home.roomUntil', { date: formatDate(extras.chooseRoom.until) }) : t('home.roomTodo') });
   }
   return tasks;
 }

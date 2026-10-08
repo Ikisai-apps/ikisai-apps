@@ -7,8 +7,10 @@ import { commonText, contactEmail, contactPhone, INFO_KEYS } from '../app/common
 import { t } from '../app/i18n.ts';
 import { backLink, centralText } from './common.ts';
 
-export function mountInfo(main: HTMLElement, base: string, during: boolean): () => void {
+export function mountInfo(main: HTMLElement, base: string, during: boolean, map = false): () => void {
   const phone = contactPhone();
+  // Módulo «Mapa» del organizador (API.md §13.4): enlace a la ubicación (texto de Central `info.map_link`).
+  const mapLink = map ? commonText('info.map_link')?.body.trim() ?? null : null;
   const email = contactEmail();
   const sections = INFO_KEYS.map((key) => ({ key, text: commonText(key) })).filter((s) => s.text);
   const contact = el('section', { class: 'card gcard', id: 'infoContact', 'data-feedback-id': 'guests.info.contacto', 'data-feedback-label': 'Contacto de Ikisai' },
@@ -19,6 +21,7 @@ export function mountInfo(main: HTMLElement, base: string, during: boolean): () 
   replace(main,
     backLink(base),
     el('div', { class: 'pagehead' }, el('h2', null, t('info.title')), el('p', { class: 'muted' }, t('info.intro'))),
+    mapLink && /^https:\/\//.test(mapLink) ? el('a', { class: 'primary', href: mapLink, target: '_blank', rel: 'noopener', id: 'infoMap', 'data-feedback-id': 'guests.info.mapa.abrir', 'data-feedback-label': 'Ver en el mapa' }, icon('pin', 16), t('info.map')) : null,
     during ? contact : null,
     sections.length
       ? el('div', { id: 'infoSections' }, ...sections.map(({ key, text }, index) => el('details', { class: 'card ggroup', 'data-key': key, open: index === 0 ? '' : null,

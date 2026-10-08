@@ -17,6 +17,8 @@ export interface MyGuest {
   id: string; revision: number; mode: GuestMode; fields: Record<string, string | boolean | null>; missing: string[]; signed: boolean;
   sources: Record<string, Source>; allergies_visible_to_organizer: boolean; privacy_ack_at: string | null; privacy_ack_version: string | null;
   diet_reviewed_at: string | null; signature_text_version: string | null;
+  /** Huésped de muestra para la vista previa del organizador (BG11): solo lectura. */
+  preview?: boolean;
   reservation: { title: string; start_date: string | null; end_date: string | null; status: string; arrival_time: string | null; departure_time: string | null };
   restrictions: Restriction[];
 }

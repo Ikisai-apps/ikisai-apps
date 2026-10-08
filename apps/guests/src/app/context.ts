@@ -2,11 +2,18 @@
  * Estado de la persona en pantalla (una entrada del ámbito): su ficha de Booking y su cola de guardado (`writer.ts`).
  * Las vistas se suscriben con `onChange` y se repintan por partes, sin perder el foco de lo que se está escribiendo.
  */
-import type { GuestApi, MyGuest } from './api.ts';
+import type { Grant, GuestApi, MyGuest } from './api.ts';
+import type { Experience, PortalReads } from './portal.ts';
 import { createWriter, type Conflict, type Op, type Writer } from './writer.ts';
 
 export interface GuestContext {
+  grant: Grant;
+  reads: PortalReads;
   guest(): MyGuest;
+  /** Lo que configuró el organizador (§13.1); null sin configuración o si Organizers aún no la publica. */
+  experience(): Experience | null;
+  /** Vista previa del organizador (huésped de muestra, BG11): solo lectura. */
+  readOnly(): boolean;
   /** Hora de la copia local si la ficha viene de la caché sin red; null si es del servidor. */
   staleAt(): string | null;
   writer: Writer;
@@ -23,8 +30,10 @@ export interface GuestContext {
   destroy(): void;
 }
 
-export async function openGuest(api: GuestApi, userId: string, guestId: string): Promise<GuestContext> {
-  const loaded = await api.myGuest(guestId);
+export async function openGuest(api: GuestApi, reads: PortalReads, userId: string, grant: Grant): Promise<GuestContext> {
+  const guestId = grant.guest_id;
+  const [loaded, experienced] = await Promise.all([api.myGuest(guestId), reads.experience(grant.reservation_id).catch(() => null)]);
+  const experience = experienced?.value ?? null;
   let guest = loaded.value;
   let staleAt: string | null = loaded.stale ? loaded.at : null;
   let conflicts: Conflict[] = [];
@@ -36,6 +45,8 @@ export async function openGuest(api: GuestApi, userId: string, guestId: string):
 
   const writer: Writer = createWriter({
     api, userId, guest,
+    answer: (questionId, value) => reads.answer(guestId, questionId, value),
+    readOnly: () => guest.preview === true,
     onGuest(fresh) { guest = fresh; staleAt = null; emit('guest'); },
     onState() { emit('state'); },
     onConflict(found) { conflicts = [...conflicts.filter((c) => !found.some((f) => f.field === c.field)), ...found]; emit('conflict'); },
@@ -44,7 +55,11 @@ export async function openGuest(api: GuestApi, userId: string, guestId: string):
   });
 
   return {
+    grant,
+    reads,
     guest: () => guest,
+    experience: () => experience,
+    readOnly: () => guest.preview === true,
     staleAt: () => staleAt,
     writer,
     conflicts: () => conflicts,
