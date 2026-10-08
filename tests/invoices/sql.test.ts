@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { issuedCsv, issuedSummary, recalculate, slugify, normalizedFilename, taxesCsv, vfAltaHash, vfAnulacionHash, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
+import { buildImportArgs, extractFromPdfText, importDocumentSha256, issuedCsv, issuedSummary, recalculate, slugify, normalizedFilename, taxesCsv, vfAltaHash, vfAnulacionHash, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLE: ImportDocument = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
@@ -180,6 +180,33 @@ test('nombre canónico: páginas _pNN al añadir imágenes y colisión _NN entre
   // normalized_filename no se escribe desde fuera (la Edge lo rechaza antes de llegar al trigger IMMUTABLE_FIELD)
   const fr = await row('invoices.invoice_files', fa);
   await rejected([update('invoices.invoice_files', fa, fr.revision, { normalized_filename: 'otro.pdf' })], 'INVALID_FIELDS');
+});
+
+test('import_v1 con lo que da «Leer PDF» (líneas con discount_amount null, 0225): se importa y el descuento queda en 0', async () => {
+  // Los mismos fragmentos que imprime invoiceTextPdf(): proveedor con CIF, número, fecha, dos IVA, IRPF y total.
+  const lines: Array<[string, number, number]> = [
+    ['FRUTAS PEPE S.L.', 40, 800], ['C/ Mayor 1, Madrid', 40, 786], ['CIF: B12345674', 300, 786],
+    ['Factura nº: L-2026/0001', 40, 760], ['Fecha factura: 06/10/2026', 300, 760],
+    ['Base imponible', 40, 690], ['140,00 €', 450, 690],
+    ['IVA 10%', 40, 676], ['40,00', 300, 676], ['4,00', 450, 676],
+    ['IVA 21%', 40, 662], ['100,00', 300, 662], ['21,00', 450, 662],
+    ['Retención IRPF 15%', 40, 648], ['6,00', 450, 648],
+    ['TOTAL FACTURA', 40, 620], ['159,00 €', 450, 620],
+  ];
+  const extraction = extractFromPdfText(lines.map(([str, x, y]) => ({ str, page: 1, x, y, w: str.length * 5, h: 10 })));
+  assert.ok(extraction.ok && extraction.document, JSON.stringify(extraction.missing));
+  const document = extraction.document!;
+  assert.ok(document.lines.every((l) => l.discount_amount === null), 'la lectura deja el descuento en null');
+  const file = await uploadFile('%PDF leer-pdf-0225');
+  const invoiceId = uuid(); let n = 0;
+  const args = buildImportArgs({ document, documentSha256: await importDocumentSha256(document), invoiceId, supplier: { mode: 'create', id: uuid() },
+    files: [{ file_id: file.file_id, original_filename: 'leido.pdf', page_order: 1 }], uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
+  const res = await ok([call('invoices.import_v1', args)]);
+  assert.equal(res.results[0].result.status, 'pendiente_revision');
+  const lineRows = await rows('invoices.invoice_lines', (l) => l.invoice_id === invoiceId);
+  assert.equal(lineRows.length, document.lines.length);
+  assert.ok(lineRows.every((l) => Number(l.discount_amount) === 0));
+  assert.equal(Number((await row('invoices.invoices', invoiceId)).calculated_total), 159);
 });
 
 test('import_v1: el ejemplo del handoff crea proveedor, factura, líneas, impuestos y documento; duplicados; REVISAR IMPORTES', async () => {
