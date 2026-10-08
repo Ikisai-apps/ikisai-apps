@@ -192,3 +192,29 @@ test('organizers · fechas (fase 2): calendario por fines de semana, marcar posi
   assert.equal(code(await call('/api/v1/read/booking.portal_dates', { token: other, body: { reservation_id: id } })), 'OUT_OF_SCOPE');
   assert.equal(code(await call('/api/v1/invoke/booking.portal_set_date_preferences', { token: other, body: { reservation_id: id, options: [] } })), 'OUT_OF_SCOPE');
 });
+
+test('organizers · diseño (fase 2): borrador con extras solo en estudio o negociación; peticiones sobre la propuesta', async () => {
+  const id = uuid();
+  await commit([{ op: 'insert', table: TABLES.reservations, id, fields: { title: 'Retiro a diseñar', status: 'negociacion' } }]);
+  const token = await organizerSession([id], 'borrador@example.invalid');
+
+  const rates = await call('/api/v1/read/booking.portal_rates', { token, body: { reservation_id: id } });
+  assert.equal(rates.status, 200, JSON.stringify(rates.data));
+  const draft = await call('/api/v1/invoke/booking.portal_update_draft', { token, body: { reservation_id: id, fields: { expected_guests: 18, requires_meals: true, organizer_notes: 'Necesitamos proyector', internal_notes: 'no se cuela' } } });
+  assert.equal(draft.status, 200, JSON.stringify(draft.data));
+  const stored = (await booking.t.db.query<Record<string, any>>('select expected_guests, requires_meals, organizer_notes, internal_notes from booking.reservations where id = $1', [id])).rows[0]!;
+  assert.deepEqual([stored.expected_guests, stored.requires_meals, stored.organizer_notes, stored.internal_notes], [18, true, 'Necesitamos proyector', null]);
+  assert.equal(code(await call('/api/v1/invoke/booking.portal_update_draft', { token, body: { reservation_id: id, extras: [{ rate_id: uuid(), quantity: 1 }] } })), 'EXTRA_NOT_OFFERED');
+
+  assert.deepEqual((await call('/api/v1/read/booking.portal_proposals', { token, body: { reservation_id: id } })).data.items, []);
+  assert.equal(code(await call('/api/v1/invoke/booking.portal_request', { token, body: { reservation_id: id, kind: 'comentario' } })), 'INVALID_FIELDS');
+  const asked = await call('/api/v1/invoke/booking.portal_request', { token, body: { reservation_id: id, kind: 'quiere_confirmar' } });
+  assert.equal(asked.status, 200, JSON.stringify(asked.data));
+  const mine = await call('/api/v1/read/booking.portal_my_requests', { token, body: { reservation_id: id } });
+  assert.deepEqual(mine.data.items.map((r: any) => [r.kind, r.status, r.mine]), [['quiere_confirmar', 'enviada', true]]);
+
+  assert.equal(code(await call('/api/v1/invoke/booking.portal_update_draft', { token: other, body: { reservation_id: id, fields: { expected_guests: 1 } } })), 'OUT_OF_SCOPE');
+  // En prerreserva el diseño queda cerrado: los cambios se hablan con el personal.
+  const pending = await call('/api/v1/invoke/booking.portal_update_draft', { token: org, body: { reservation_id: R2, fields: { expected_guests: 3 } } });
+  assert.equal(code(pending), 'DRAFT_LOCKED');
+});

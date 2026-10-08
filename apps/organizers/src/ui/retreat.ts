@@ -10,12 +10,16 @@ import { dateRange, hourLabel, isCancelled, mealPlanLabel, menuStyleLabel, restr
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import { renderGuestList } from './guests.ts';
 import { renderDates } from './dates.ts';
+import { renderDesign } from './design.ts';
+import { renderProposal } from './proposal.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
-export type RetreatTab = 'resumen' | 'fechas' | 'asistentes' | 'cocina';
+export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'asistentes' | 'cocina';
 
 /** Estados en que el retiro se está diseñando: las fechas aún se pueden proponer (fase 2). */
 export const DESIGN_STATUSES = new Set(['en_estudio', 'negociacion', 'pre_reservada']);
+/** Estados en que el borrador se puede editar desde el portal (Booking B7d; si no, `DRAFT_LOCKED`). */
+export const DRAFT_STATUSES = new Set(['en_estudio', 'negociacion']);
 
 
 export interface RetreatData {
@@ -35,7 +39,8 @@ export const guestComplete = (g: { missing: string[]; signed: boolean }, mode: s
 export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount => (ctx) => {
   const { api, main } = ctx;
   let alive = true;
-  let destroyDates: (() => void) | null = null;
+  /** Pestañas con estado propio (fechas, diseño, propuesta): se sueltan al salir o repintar. */
+  let destroySub: (() => void) | null = null;
   const head = el('div', { id: 'retreatHead' });
   const tabs = el('div', { id: 'retreatTabs' });
   const body = el('div', { id: 'retreatBody' }, loading());
@@ -75,6 +80,9 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
 
     const showGuests = data.guests.value.mode !== 'ninguno' && !isCancelled(d.status);
     const showDates = DESIGN_STATUSES.has(d.status);
+    const showDesign = DRAFT_STATUSES.has(d.status);
+    const showProposal = !isCancelled(d.status);
+    const showKitchen = data.guests.value.confirmed;
     const tabButton = (id: RetreatTab, label: string) => el('a', {
       href: id === 'resumen' ? `#/retiro/${reservationId}` : `#/retiro/${reservationId}/${id}`, role: 'tab', id: `tab-${id}`,
       class: tab === id ? 'on' : '', 'aria-selected': tab === id ? 'true' : 'false',
@@ -82,28 +90,32 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     replace(tabs, el('nav', { class: 'segmented orgtabs', role: 'tablist', 'aria-label': t('Secciones del retiro') },
       fbMark(tabButton('resumen', t('Resumen')), 'organizers.retiro.pestanas.resumen', 'Resumen'),
       showDates ? fbMark(tabButton('fechas', t('Fechas')), 'organizers.retiro.pestanas.fechas', 'Fechas') : null,
+      showDesign ? fbMark(tabButton('diseno', t('Diseño')), 'organizers.retiro.pestanas.diseno', 'Diseño') : null,
+      showProposal ? fbMark(tabButton('propuesta', t('Propuesta')), 'organizers.retiro.pestanas.propuesta', 'Propuesta') : null,
       showGuests ? fbMark(tabButton('asistentes', t('Asistentes')), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
-      fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina')));
+      showKitchen ? fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina') : null));
 
+    // Con cinco pestañas en un móvil, la activa se centra en la tira desplazable.
+    tabs.querySelector<HTMLElement>('a.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
     const stale = [data.detail, data.guests, data.kitchen].find((x) => x.stale);
     const content: Child[] = [stale ? staleNote(stale.at) : null];
-    destroyDates?.();
-    destroyDates = null;
-    if (tab === 'fechas' && showDates) {
-      const dates = renderDates(ctx, reservationId);
-      destroyDates = () => (dates as HTMLElement & { destroy?: () => void }).destroy?.();
-      content.push(dates);
-    } else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
-    else if (tab === 'cocina') content.push(renderKitchen(data.kitchen.value));
-    else content.push(...renderSummary(ctx, reservationId, data, showGuests, showDates));
+    destroySub?.();
+    destroySub = null;
+    const sub = (node: HTMLElement) => { destroySub = () => (node as HTMLElement & { destroy?: () => void }).destroy?.(); content.push(node); };
+    if (tab === 'fechas' && showDates) sub(renderDates(ctx, reservationId));
+    else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
+    else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
+    else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
+    else if (tab === 'cocina' && showKitchen) content.push(renderKitchen(data.kitchen.value));
+    else content.push(...renderSummary(ctx, reservationId, data, showGuests, showDates, showDesign));
     replace(body, ...content);
   }
 
   void load();
-  return () => { alive = false; destroyDates?.(); };
+  return () => { alive = false; destroySub?.(); };
 };
 
-function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatData, showGuests: boolean, showDates: boolean): Child[] {
+function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatData, showGuests: boolean, showDates: boolean, showDesign: boolean): Child[] {
   const d = data.detail.value;
   const people: Child[] = [];
   if (d.final_guests != null) people.push(el('li', null, d.final_guests === 1 ? t('1 persona confirmada') : t('{n} personas confirmadas', { n: d.final_guests })));
@@ -121,6 +133,9 @@ function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatDat
   if (d.uses_pool) includes.push(t('Piscina'));
 
   const out: Child[] = [
+    showDesign ? section(t('Diseña tu retiro'), { id: 'summaryDesign', 'data-feedback-id': 'organizers.retiro.resumen.diseno', 'data-feedback-label': 'Diseña tu retiro' },
+      el('p', null, t('Personas, comidas, alojamiento y extras, con el precio orientativo al momento.')),
+      el('button', { type: 'button', class: 'primary', id: 'goDesign', 'data-feedback-id': 'organizers.retiro.resumen.ver_diseno', 'data-feedback-label': 'Diseñar', onclick: () => ctx.navigate(`#/retiro/${reservationId}/diseno`) }, t('Diseñar'))) : null,
     showDates ? section(t('Fechas'), { id: 'summaryDates', 'data-feedback-id': 'organizers.retiro.resumen.fechas', 'data-feedback-label': 'Fechas' },
       el('p', null, data.dates?.mode === 'fixed' && data.dates.definitive ? t('Fecha definitiva: {fechas}', { fechas: dateRange(data.dates.definitive.start, data.dates.definitive.end) }) : t('Marca las fechas que te vienen bien; Ikisai confirmará la definitiva.')),
       el('button', { type: 'button', class: 'ghost', id: 'goDates', 'data-feedback-id': 'organizers.retiro.resumen.ver_fechas', 'data-feedback-label': 'Ver fechas', onclick: () => ctx.navigate(`#/retiro/${reservationId}/fechas`) }, data.dates?.mode === 'fixed' ? t('Ver fechas') : t('Elegir fechas posibles'))) : null,

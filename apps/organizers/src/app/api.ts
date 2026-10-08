@@ -3,7 +3,7 @@
  * Las lecturas guardan su última respuesta en la caché local para verlas sin red; las escrituras necesitan red.
  */
 import type { SyncClient } from '@ikisai/sync-client';
-import type { GuestMode } from '@ikisai/domain-booking';
+import type { GuestMode } from '../../../../supabase/functions/_domain/booking/mod.ts';
 import { cache } from './cache.ts';
 import { declarationVersion } from './common-texts.ts';
 
@@ -63,6 +63,37 @@ export interface Weekend { start: string; end: string; status: Availability }
 
 export type DatePreference = { option_id: string; ok: boolean } | { start: string; end: string };
 
+/** Campos de diseño que el organizador puede cambiar (Booking B7d: solo en estudio o negociación). */
+export interface DraftFields {
+  expected_guests?: number | null; minors_count?: number; meal_plan_requested?: string | null; menu_style_requested?: string | null;
+  uses_accommodation?: boolean; requires_meals?: boolean; uses_interpretation_center?: boolean; uses_outdoors?: boolean; uses_pool?: boolean;
+  special_setup?: boolean; technical_support?: boolean; organizer_notes?: string | null;
+}
+export interface ExtraRequest { rate_id: string; quantity: number; note?: string | null; name?: string }
+
+/** Tarifa visible en el portal (Booking B9/B10), con su nombre y descripción públicos. */
+export interface PortalRate {
+  id: string; name: string; description: string | null; layer: string; unit: string; amount: number | string; service: string | null;
+  min_persons: number | null; max_persons: number | null; event_types: string[] | null; valid_from: string | null; valid_to: string | null;
+  active: boolean; position?: number | string;
+}
+export interface PortalConditions { prices_include_vat: boolean; vat_rate: number | string; deposit_percent: number | string; deposit_minimum: number | string; minimum_total: number | string | null }
+export interface PortalRates { available: boolean; rates: PortalRate[]; conditions: PortalConditions | null }
+
+export interface ProposalLine { description: string; unit: string; quantity: number | string; unit_amount: number | string; discount_pct: number | string | null; amount: number | string | null }
+export interface PortalProposal {
+  id: string; version: number; status: 'enviada' | 'aceptada'; nature: 'orientativa' | 'cerrada'; start_date: string | null; end_date: string | null;
+  persons: number | null; subtotal: number | string; adjustments: number | string; vat_amount: number | string; total: number | string; deposit_amount: number | string;
+  valid_until: string | null; includes: string | null; excludes: string | null; sent_at: string | null; decided_at: string | null;
+  conditions: {
+    name: string; text: string | null; prices_include_vat: boolean; vat_rate: number | string; deposit_percent: number | string; deposit_minimum: number | string;
+    deposit_days: number | null; deposit_days_short: number | null; short_notice_days: number | null;
+    tiers: Array<{ min_days_before: number; deposit_refund_pct: number | string; extra_costs: boolean }>;
+  } | null;
+  lines: ProposalLine[];
+}
+export interface PortalRequest { id: string; kind: 'quiere_confirmar' | 'comentario'; proposal_id: string | null; message: string | null; status: 'enviada' | 'vista' | 'respondida'; created_at: string; mine: boolean }
+
 export interface IssuedLink { linkId: string; url: string; validUntil: string | null }
 
 /** Resultado de una lectura: `at` es la hora de los datos y `stale` dice si vienen de la caché por falta de red. */
@@ -78,6 +109,12 @@ export interface PortalApi {
   dates(reservationId: string): Promise<Loaded<PortalDates>>;
   availability(reservationId: string, from?: string, to?: string): Promise<Loaded<{ from: string; to: string; weekends: Weekend[] }>>;
   setDatePreferences(reservationId: string, options: DatePreference[]): Promise<unknown>;
+  updateDraft(reservationId: string, change: { fields?: DraftFields; extras?: ExtraRequest[] }): Promise<{ reservation_id: string; revision: number }>;
+  extraRequests(reservationId: string): Promise<Loaded<{ items: ExtraRequest[] }>>;
+  rates(reservationId: string): Promise<Loaded<PortalRates>>;
+  proposals(reservationId: string): Promise<Loaded<{ items: PortalProposal[] }>>;
+  request(reservationId: string, request: { kind: 'quiere_confirmar' | 'comentario'; proposal_id?: string | null; message?: string | null }): Promise<{ id: string; status: string }>;
+  myRequests(reservationId: string): Promise<Loaded<{ items: PortalRequest[] }>>;
   addGuest(args: { reservation_id: string; guest_id: string; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   updateGuest(args: { guest_id: string; expectedRevision: number; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   removeGuest(args: { guest_id: string; expectedRevision: number }): Promise<unknown>;
@@ -120,6 +157,12 @@ export function createPortalApi(client: SyncClient): PortalApi {
     dates: (reservationId) => read('booking.portal_dates', { reservation_id: reservationId }),
     availability: (reservationId, from, to) => read('booking.portal_availability', { reservation_id: reservationId, ...(from ? { from } : {}), ...(to ? { to } : {}) }),
     setDatePreferences: (reservationId, options) => invoke('booking.portal_set_date_preferences', { reservation_id: reservationId, options }),
+    updateDraft: (reservationId, change) => invoke('booking.portal_update_draft', { reservation_id: reservationId, ...change }) as Promise<{ reservation_id: string; revision: number }>,
+    extraRequests: (reservationId) => read('booking.portal_extra_requests', { reservation_id: reservationId }),
+    rates: (reservationId) => read('booking.portal_rates', { reservation_id: reservationId }),
+    proposals: (reservationId) => read('booking.portal_proposals', { reservation_id: reservationId }),
+    request: (reservationId, request) => invoke('booking.portal_request', { reservation_id: reservationId, ...request }) as Promise<{ id: string; status: string }>,
+    myRequests: (reservationId) => read('booking.portal_my_requests', { reservation_id: reservationId }),
     links: (reservationId) => load('portal-links', { reservation: reservationId }, () => client.api(`/portal-links?reservation=${encodeURIComponent(reservationId)}`)),
     addGuest: (args) => invoke('booking.portal_add_guest', { ...args, declaration_version: declarationVersion() }),
     updateGuest: (args) => invoke('booking.portal_update_guest', { ...args, declaration_version: declarationVersion() }),

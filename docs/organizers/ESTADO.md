@@ -19,10 +19,17 @@
 
 - 2026-10-08 · Fechas (Booking B6–B8): pestaña «Fechas» con fecha definitiva (solo lectura), fechas que propone Ikisai (marcar las que vienen bien) o calendario de fines de semana libre / en opción / ocupado; guardado automático con `createSaveState`; tarjeta en el resumen. Pruebas en `api.test.ts` y `portal.spec.ts`.
 
+- 2026-10-08 · Diseño y propuesta (Booking B7d, B9, B10 y B12):
+  - pestaña «Diseño» con guardado automático, extras, precio orientativo con el dominio de Booking (`app/quote.ts`) y calculadora privada de margen;
+  - pestaña «Propuesta» con «Quiero confirmar», comentarios y su estado.
+
+  Pruebas: `quote.test.ts`, `api.test.ts` y `portal.spec.ts`.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
-- Fase 2 (diseño): borrador, extras, calculadora y propuesta, cuando Booking publique B7d, B9, B10 y B12.
+- Fase 2: cerrada a falta de B14 (Booking: tipo de reserva y campos de diseño en el detalle).
+- Fase 3 (formalización): espera a Finance (F1–F3) y Tasks (T1, T2).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.
