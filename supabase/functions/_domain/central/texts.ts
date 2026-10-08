@@ -3,7 +3,7 @@
  * que ven las personas y los portales, editados siempre desde Central. Marcadores, versión y Markdown sencillo.
  * La sustitución de marcadores es la misma que hace `central.render_text` en SQL (vista previa sin red en la app).
  */
-import { formatIban, mapUrl } from './entity.ts';
+import { formatIban, venueMap } from './entity.ts';
 
 export const TEXTS_TABLE = 'central.texts';
 export const TEXTS_PROJECTION = 'central.common_texts_projection';
@@ -23,7 +23,7 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
   { marker: '{{entidad.nif}}', label: 'NIF/CIF' },
   { marker: '{{entidad.domicilio}}', label: 'Domicilio fiscal' },
   { marker: '{{entidad.lugar}}', label: 'Dirección del lugar de los retiros' },
-  { marker: '{{entidad.mapa}}', label: 'Enlace del mapa (dirección del lugar)' },
+  { marker: '{{entidad.mapa}}', label: 'Enlace del mapa del lugar' },
   { marker: '{{entidad.iban}}', label: 'IBAN' },
   { marker: '{{entidad.bizum}}', label: 'Bizum' },
   { marker: '{{contacto.correo}}', label: 'Correo de contacto' },
@@ -31,7 +31,7 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
 ];
 
 export interface MarkerSource {
-  entity?: { legal_name?: string | null; tax_id?: string | null; address_line?: string | null; postal_code?: string | null; city?: string | null; province?: string | null; country?: string | null; iban?: string | null; bizum?: string | null; venue_address?: string | null } | null;
+  entity?: { legal_name?: string | null; tax_id?: string | null; address_line?: string | null; postal_code?: string | null; city?: string | null; province?: string | null; country?: string | null; iban?: string | null; bizum?: string | null; venue_address?: string | null; venue_map_url?: string | null } | null;
   email?: string | null;
   phone?: string | null;
 }
@@ -52,7 +52,7 @@ export function renderMarkers(body: string, source: MarkerSource): string {
     '{{entidad.nif}}': e?.tax_id || '—',
     '{{entidad.domicilio}}': entityAddress(e) || '—',
     '{{entidad.lugar}}': e?.venue_address?.trim() || '—',
-    '{{entidad.mapa}}': mapUrl(e?.venue_address) || '—',
+    '{{entidad.mapa}}': venueMap(e) || '—',
     '{{entidad.iban}}': formatIban(e?.iban) || '—',
     '{{entidad.bizum}}': e?.bizum?.trim() || '—',
     '{{contacto.correo}}': source.email?.trim() || '—',

@@ -82,13 +82,19 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   // El lugar de los retiros y su plano (X3 y CE3): un PDF que llega verificado y lo publica la proyección del lugar para los portales.
   await page.locator('#editEntity').click();
   await page.locator('#en-venue').fill('Camino del Retiro 5, 28400 Collado'); // lugar ficticio, distinto del domicilio fiscal
+  // El enlace exacto del mapa solo admite mapas conocidos (FB_2026_010).
+  await page.locator('#en-venue-map').fill('https://example.com/maps');
+  await page.locator('#saveEntity').click();
+  await expect(page.locator('.formerror')).toContainText('Enlace exacto del mapa');
+  await page.locator('#en-venue-map').fill('https://maps.app.goo.gl/AbCdEf123');
   await page.locator('#en-plan').setInputFiles({ name: 'plano.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 plano de prueba') });
   await expect(page.locator('.planpreview')).toContainText('plano.pdf');
   await page.locator('#saveEntity').click();
   await expect(page.getByText('Datos de la entidad guardados.')).toBeVisible();
-  await expect.poll(async () => (await api.app.t.db.query(`select site_plan_mime, address from central.portal_place_projection`)).rows[0])
-    .toEqual({ site_plan_mime: 'application/pdf', address: 'Camino del Retiro 5, 28400 Collado' });
+  await expect.poll(async () => (await api.app.t.db.query(`select site_plan_mime, address, map_url from central.portal_place_projection`)).rows[0])
+    .toEqual({ site_plan_mime: 'application/pdf', address: 'Camino del Retiro 5, 28400 Collado', map_url: 'https://maps.app.goo.gl/AbCdEf123' });
   await expect(page.locator('#entityView')).toContainText('Ver plano');
+  await expect(page.locator('#entityView a[href="https://maps.app.goo.gl/AbCdEf123"]')).toContainText('Abrir el mapa');
 
   // Otra persona, en su propio navegador: lectora de Central.
   const other = await browser.newContext();

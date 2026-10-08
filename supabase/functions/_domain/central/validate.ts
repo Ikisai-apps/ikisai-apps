@@ -7,7 +7,7 @@ import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
   recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
 } from './people.ts';
-import { ENTITY_TABLE, ibanProblem, taxIdProblem } from './entity.ts';
+import { ENTITY_TABLE, VENUE_MAP_URL, ibanProblem, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
 import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
@@ -222,6 +222,7 @@ const SPECS: Record<string, TableSpec> = {
       logo_file_id: { kind: 'uuid', nullable: true, file: true },
       iban: { kind: 'text', min: 15, max: 34, nullable: true, pattern: /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/, patternText: 'IBAN sin espacios y en mayúsculas' },
       venue_address: { kind: 'text', min: 3, max: 300, nullable: true },
+      venue_map_url: { kind: 'text', max: 500, nullable: true, pattern: VENUE_MAP_URL, patternText: 'debe ser un enlace https de Google Maps, OpenStreetMap o Apple Maps' },
       site_plan_file_id: { kind: 'uuid', nullable: true, file: true },
       bizum: { kind: 'text', min: 3, max: 20, nullable: true, pattern: /^[0-9 +]{3,20}$/, patternText: 'número de teléfono o código Bizum' },
     },
