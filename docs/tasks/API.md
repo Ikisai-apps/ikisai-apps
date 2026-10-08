@@ -1328,31 +1328,34 @@ Booking, con su identidad de servicio y la clave de worker, pide a Tasks el proy
 - Si no, el reporte no se bloquea: va por su regla o a «Por clasificar».
 - **Petición a Core o UI:** que `taskRequestFor` (`_kit/feedback.ts`) añada `project_ref` con el código de la reserva cuando el reporte de evento lo tenga en su ámbito.
 
-### 24.4 «Jardinería» y «Anti-incendios», de áreas a proyectos de Mantenimiento (propuesta; no construido, a la espera del visto bueno)
+### 24.4 Convertir un área en proyecto de otra (hecho; aprobado por el usuario el 8-10-2026)
 
-Hoy no existe una acción así: un proyecto y sus tareas no cambian de área (`tab_id` es inmutable, y las etiquetas, las dependencias y los adjuntos son de cada área). Las dos vías:
+Para «Jardinería» y «Anti-incendios», que pasan a ser proyectos de Mantenimiento. **Acción de la propietaria con acceso completo, desde la app:** «Editar área» › «Convertir en proyecto de…». Nadie la ejecuta en producción por otra vía.
 
-1. **(Recomendada) Mover conservando los ids:** procedimiento `tasks.merge_tab_into_project`, acción de la propietaria con vista previa y confirmación. Hace, en un solo lote y con historial:
-   - crea en Mantenimiento el proyecto «Jardinería» (o «Anti-incendios»);
-   - mueve a ese proyecto todas las tareas de todos los proyectos del área de origen (incluida su Entrada), **con los mismos ids**. Así se conservan el historial, las fotos y adjuntos, las notas, las dependencias y los enlaces de Finance a esas tareas, porque apuntan al id;
-   - convierte las etiquetas de cada tarea a las de Mantenimiento con el mismo nombre (y la misma familia), y crea las que falten;
-   - mueve los adjuntos de los proyectos de origen al proyecto nuevo, y las solicitudes de compra y los suministros del área, si los hay, a Mantenimiento;
-   - redirige a Mantenimiento las reglas de entrada que apunten al área de origen;
-   - envía el área de origen, ya vacía, a la papelera, de donde se puede restaurar.
+**Vista previa** (antes de confirmar): área de destino (propone «Mantenimiento»), nombre del proyecto (el del área) y recuentos:
+- proyectos que se reúnen, tareas pendientes y hechas, etiquetas nuevas que se crearán en el destino;
+- fotos y adjuntos, solicitudes de compra, suministros (y los que se renombran por repetidos), reglas de entrada;
+- **Finance:** cuántas asignaciones a tareas se conservan y la **lista de las líneas asignadas al área o a sus proyectos** (factura, fecha, importe y a qué estaban asignadas), con enlace a cada factura. Esas hay que reasignarlas a mano en Finance. Si no se puede consultar Finance (sin red o sin acceso), lo dice.
 
-   La vista previa enseña los recuentos (proyectos, tareas abiertas y hechas, etiquetas que se crean, adjuntos, compras y enlaces de Finance al área o a sus proyectos) antes de confirmar.
-   - Lo único que no se conserva tal cual: lo que en Finance esté asignado **al área o a sus proyectos** (no a una tarea), que seguiría apuntando al área en la papelera. La vista previa lo cuenta; si hay algo, se reasigna a mano en Finance.
-   - Necesita la migración `0314`: el procedimiento y el permiso de cambiar `tab_id` solo dentro de él.
-2. **Copiar y archivar:** crear las tareas de nuevo en Mantenimiento y archivar el área antigua. No necesita migración, pero pierde el historial y rompe los enlaces de Finance a esas tareas. No la recomiendo.
+**Qué hace** `POST tabs/:tabId/convert {targetTabId, title, requestId, projectId?}` → `{projectId, counts, cursor}` (procedimiento `tasks.convert_tab_into_project`, migración `0314`), en un solo lote y con historial:
+- crea el proyecto al final del área de destino;
+- pasa a él las tareas vivas de todos los proyectos del área de origen (incluida su Entrada) **con los mismos ids**: historial, notas, subtareas, fotos y enlaces de Finance a tareas siguen;
+- etiquetas por nombre: la del destino con el mismo nombre en la misma familia (por su clave de sistema, como Persona o Fase, o por el nombre de la familia); las que faltan, se crean. La responsable pasa a la «Ana» del destino;
+- dependencias y adjuntos (de las tareas y de los proyectos) al proyecto nuevo;
+- suministros, movimientos, planes, paradas y solicitudes de compra vivos al destino (lo que era de un proyecto del origen, al proyecto nuevo). Un suministro con el nombre de uno del destino se renombra «<nombre> · <área de origen>»;
+- las reglas de entrada que apuntaban al origen pasan al proyecto nuevo;
+- el área de origen, vacía, va a la papelera con sus proyectos. **Restaurarla no deshace la conversión:** vuelve vacía (con su Entrada) y lo convertido sigue en el destino.
 
-**Nadie toca datos de producción:** construyo la acción y la prueba. Cuando se apruebe, la ejecuta la propietaria desde la app (Área › «Convertir en proyecto de…»), viendo antes la vista previa.
+Lo que estaba en la papelera se queda con el área antigua. Si una tarea viva dependía de una en la papelera, esa dependencia se retira; un enlace de una compra a una tarea o a un suministro en la papelera se suelta.
+
+`tab_id` sigue siendo inmutable fuera de este procedimiento (`tasks.guard_immutable` solo lo permite en su modo conversión). Prueba fuerte en PGlite: `tests/tasks/convert.test.ts`; interfaz: `tests/tasks/convert.spec.ts`.
 
 ### 24.5 Pasos para el usuario (crear la estructura)
 
 Hoy se crea desde la app, en pocos minutos: no hace falta un asistente.
 1. Menú › «Áreas de trabajo» › nueva área. Crear **Obras y mejoras**, **Mantenimiento**, **Gestiones** y **Aplicaciones**. «Retiros» y «General» ya están.
 2. En cada área, «+ Proyecto»:
-   - Mantenimiento: Piscina, Instalaciones, Reparaciones. Jardinería y Anti-incendios llegarán con la conversión (24.4);
+   - Mantenimiento: Piscina, Instalaciones, Reparaciones. Jardinería y Anti-incendios llegan con la conversión (24.4): «Editar área» de cada una › «Convertir en proyecto de…» › Mantenimiento;
    - Gestiones: Comercial, Administración y fiscal, Cumplimiento;
    - Aplicaciones: Tasks, Booking, Food, Finance, Central, Organizers, Guests;
    - Obras y mejoras: uno por obra cuando empiece.

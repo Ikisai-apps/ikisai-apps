@@ -79,6 +79,12 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - `tasks.ikisai.com` sirve la app nueva; `/version.json` y `/api/v1/health` coinciden en la versión. Comprobado sin iniciar sesión (solo lectura): carga en móvil y escritorio sin errores de JavaScript ni recursos fallidos, pide la cuenta, registra el service worker y no desborda.
 - **Recorrido manual de aceptación: hecho por el usuario** («Tareas ok», ronda 8 de Core). El repo antiguo está archivado y el esquema `ikisai.*` retirado.
 
+## Convertir un área en proyecto (8-10-2026)
+
+- Migración `0314` (`tasks.convert_tab_into_project` y `tasks.guard_immutable` con modo conversión), ruta `tabs/:tabId/convert` y acción «Convertir en proyecto de…» en «Editar área», con vista previa y la lista de líneas de Finance asignadas al área o a sus proyectos. Detalle en `API.md` §24.4.
+- Pendiente del usuario: ejecutarla desde la app para «Jardinería» y «Anti-incendios» (§24.5).
+- Después: `reservation_id` en `requests/project` para colocar el feedback de un retiro en su proyecto (§24.3; coordinar con Booking y Core).
+
 ## Siguiente tanda
 
 1. Adopción del `ui-kit` (la hace el agente de UI; Tasks revisa y fusiona): tarjeta de proyecto, después la cáscara en dos pasos. Ver `docs/tasks/UI_KIT.md`.
