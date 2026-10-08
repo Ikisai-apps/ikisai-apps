@@ -931,3 +931,63 @@ test('numeración como dato de la serie (ronda 47): continuar F_02_26 con F_03_2
   await rejected([call('invoices.issue', { id: old })], 'SERIES_YEAR_MISMATCH');
   await rejected([insert('invoices.issued_series', uuid(), { code: 'GX', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', valid_year: 1999 })], 'INVALID_FIELDS');
 });
+
+
+test('portal de organizadores (F1 y F2): dinero del retiro y documento de la factura, solo dentro del ámbito y sin datos internos', async () => {
+  const today = (await app.t.db.query<{ d: string; y: number }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d, extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!;
+  const R = '77777777-7777-4777-8777-777777777777';
+  const R2 = '88888888-8888-4888-8888-888888888888';
+  // Organizador con enlace a la reserva R (ámbito K1)
+  const uid = (await app.t.db.query<{ u: string }>(`select user_id u from core.memberships where app = 'invoices' and role = 'reader' limit 1`)).rows[0]!.u;
+  await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('organizers', $1, 'editor', $2)
+    on conflict (app, user_id) do update set scopes = excluded.scopes`, [uid, JSON.stringify({ grants: [{ reservation_id: R }] })]);
+  const portal = (name: string, args: Record<string, unknown>) => app.t.db.query<{ r: any }>(`select core.read('organizers', $1, $2, $3) r`, [uid, name, JSON.stringify(args)]);
+  // Facturas: una emitida desde Finance, una registrada de la hoja, un borrador y otra de otra reserva
+  await ok([insert('invoices.issued_series', uuid(), { code: 'PZ', kind: 'ordinaria', mode: 'emision', format: '{serie}{año}-{n:4}', valid_year: today.y })]);
+  const addr = { line: 'Calle Retiro 1', postal_code: '28001', city: 'Madrid' };
+  const e1 = uuid();
+  await ok([
+    insert('invoices.issued_invoices', e1, { series_code: 'PZ', status: 'borrador', issue_date: today.d, description: 'Retiro de otoño', recipient_name: 'Asociación Organiza', recipient_tax_id: 'G87654321', recipient_address: addr, notes: 'Nota interna: llamar a Juan' }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: e1, description: 'Alojamiento', net_amount: 1000, vat_rate: 10 }),
+  ]);
+  const issued = (await ok([call('invoices.issue', { id: e1 })])).results[0].result;
+  const reg = uuid();
+  await ok([insert('invoices.issued_invoices', reg, { series_code: 'PA', number: '2026-0007', issue_date: today.d, invoice_type: 'F2', description: 'Señal del retiro' }),
+    insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: reg, description: 'Señal', net_amount: 300, vat_rate: 0 })]);
+  const draft = uuid();
+  await ok([insert('invoices.issued_invoices', draft, { series_code: 'PZ', status: 'borrador', issue_date: today.d, description: 'Borrador del retiro' })]);
+  const other = uuid();
+  await ok([insert('invoices.issued_invoices', other, { series_code: 'PA', number: '2026-0008', issue_date: today.d, invoice_type: 'F2', description: 'Otro retiro', total: 50 })]);
+  const allocate = (invoice: string, reservation: string, amount: number) => app.t.db.query(`insert into invoices.issued_allocations (issued_invoice_id, target_app, target_kind, target_id, target_label, allocated_amount)
+    values ($1, 'booking', 'reservation', $2, 'Reservas › Retiro', $3)`, [invoice, reservation, amount]);
+  await allocate(e1, R, 1000); await allocate(reg, R, 300); await allocate(draft, R, 10); await allocate(other, R2, 50);
+  // Cobrada la registrada (señal); rectificativa por diferencias de la emitida, que se ve por su original
+  const regRow = await row('invoices.issued_invoices', reg);
+  await ok([update('invoices.issued_invoices', reg, regRow.revision, { payment_status: 'cobrada', paid_at: today.d })]);
+  const rect = (await ok([call('invoices.rectify', { id: e1, kind: 'I', reason_code: 'R4', reason: 'Una noche menos' })])).results[0].result.id as string;
+  const rectLines = await rows('invoices.issued_invoice_lines', (l) => l.issued_invoice_id === rect);
+  await ok([update('invoices.issued_invoice_lines', rectLines[0]!.id, rectLines[0]!.revision, { net_amount: -100, unit_price: null })]);
+  const rectIssued = (await ok([call('invoices.issue', { id: rect })])).results[0].result;
+
+  // F1
+  const money = (await portal('invoices.portal_reservation_money', { reservation_id: R })).rows[0]!.r;
+  assert.deepEqual(money.invoices.map((i: any) => i.number).sort(), [issued.full_number, rectIssued.full_number, '2026-0007'].map((n) => (n === '2026-0007' ? 'PA-2026-0007' : n)).sort());
+  const e1Row = money.invoices.find((i: any) => i.id === e1);
+  assert.equal(e1Row.status, 'rectificada'); assert.equal(e1Row.total, 1100); assert.equal(e1Row.has_document, true); assert.equal(e1Row.collected, false);
+  const rectRow = money.invoices.find((i: any) => i.id === rect);
+  assert.deepEqual(rectRow.rectifies, [issued.full_number]); assert.equal(rectRow.total, -110);
+  assert.equal(money.invoices.find((i: any) => i.id === reg).collected, true);
+  assert.deepEqual(money.totals, { invoiced: 1290, collected: 300, pending: 990 });
+  const flat = JSON.stringify(money);
+  for (const internal of ['Nota interna', 'notes', 'review_reason', 'income_category', 'external_tool', 'vf_hash', 'Otro retiro', 'Borrador del retiro']) assert.equal(flat.includes(internal), false, internal);
+  // Fuera de ámbito: la otra reserva, un id inválido o sin enlace
+  await assert.rejects(portal('invoices.portal_reservation_money', { reservation_id: R2 }), /OUT_OF_SCOPE/);
+  await assert.rejects(portal('invoices.portal_reservation_money', { reservation_id: 'x' }), /OUT_OF_SCOPE/);
+  // F2: la copia congelada de la emitida; la de otra reserva o un borrador, fuera de ámbito
+  const doc = (await portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: e1 })).rows[0]!.r;
+  assert.equal(doc.number, issued.full_number); assert.equal(doc.document.full_number, issued.full_number); assert.equal(doc.document.recipient.name, 'Asociación Organiza');
+  assert.deepEqual(doc.files, []);
+  await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: other }), /OUT_OF_SCOPE/);
+  await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: draft }), /OUT_OF_SCOPE/);
+  await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R2, issued_invoice_id: other }), /OUT_OF_SCOPE/);
+});
