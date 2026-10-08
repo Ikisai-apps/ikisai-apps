@@ -92,6 +92,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Pruebas `@smoke` (norma nueva de la CI por app): entrada y sincronización, PWA y caché, lanzador, y la pantalla de cada sección con sus ids. Las corre la CI cuando cambia algo compartido.
 
 - Portal de organizadores, fase 3 (F1 y F2, migración 0220): dinero del retiro y documento de la factura, filtrados por ámbito y sin datos internos (API.md §7.7). Concepto del cobro (`purpose`, migración 0221): la factura de la señal queda marcada como «Señal» y F1 lo devuelve; lo contratado lo publica Booking y lo cobrado, Finance (ronda 52). Aplazada: firma de PDF guardados en la Edge del portal.
+- Lectura para Booking `invoices.reservation_collected` (migración 0222): facturado, cobrado y último cobro por reserva, la misma suma que F1 (API.md §7.8).
 
 ## En curso
 
