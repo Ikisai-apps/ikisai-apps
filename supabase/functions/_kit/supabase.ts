@@ -78,8 +78,15 @@ export function createSupabase(config: SupabaseConfig): Supabase {
       if (/^(42|2[0-9A-F]|0[0-9A-Z]|P0)[0-9A-Z]{3}$/.test(sqlstate)) fail(422, 'SQL_ERROR', 'La operación no se pudo ejecutar en la base de datos.', info);
     }
     if (path.startsWith('/auth/v1/admin/')) {
-      if (['email_exists', 'user_already_exists'].includes(out?.code ?? out?.error_code)) fail(409, 'USER_EXISTS', 'Ya existe una cuenta con ese correo.');
-      fail(502, 'AUTH_ADMIN_FAILED', 'No se pudo completar la operación de cuentas.');
+      const authCode: string | null = typeof (out?.error_code ?? out?.code) === 'string' ? (out.error_code ?? out.code) : null;
+      if (['email_exists', 'user_already_exists'].includes(authCode ?? '')) fail(409, 'USER_EXISTS', 'Ya existe una cuenta con ese correo.');
+      // El motivo de Auth llega a quien da el alta: un 502 genérico no deja saber qué falló (8-10-2026).
+      const authInfo = { authStatus: status, authCode, authMessage: typeof (out?.msg ?? out?.message) === 'string' ? String(out.msg ?? out.message).slice(0, 300) : null };
+      if (authCode === 'email_address_invalid' || authCode === 'validation_failed') fail(422, 'INVALID_EMAIL', 'Ese correo no se acepta para crear una cuenta. Revísalo.', authInfo);
+      if (authCode === 'weak_password') fail(422, 'WEAK_PASSWORD', 'La contraseña no cumple los requisitos de seguridad.', authInfo);
+      if (status === 429 || authCode === 'over_request_rate_limit' || authCode === 'over_email_send_rate_limit') fail(429, 'RATE_LIMITED', messageFor('RATE_LIMITED'), authInfo);
+      console.error('[ikisai] auth admin', path.split('?')[0], JSON.stringify(authInfo));
+      fail(502, 'AUTH_ADMIN_FAILED', 'No se pudo completar la operación de cuentas.', authInfo);
     }
     if (path.startsWith('/auth/')) {
       if (status === 429) fail(429, 'RATE_LIMITED', messageFor('RATE_LIMITED'));
