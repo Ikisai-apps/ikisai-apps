@@ -14,6 +14,7 @@ function pendingCount(){return Sync.core&&canTriage()?R().pendingRequests(Sync.c
    llegado ninguno, para que la regla se pueda preparar antes. Los de los portales de organizadores van al área comercial. */
 const KNOWN_KINDS=[
   {kind:'booking.ses_deadline',label:'SES · Plazo legal'},
+  {kind:'booking.retreat_project',label:'Retiro · Proyecto',areaOnly:true},
   {kind:'booking.organizer_dates',label:'Organizador · Fechas posibles',commercial:true},
   {kind:'booking.organizer_confirm',label:'Organizador · Quiere confirmar',commercial:true},
   {kind:'booking.proposal_comment',label:'Organizador · Comentario a la propuesta',commercial:true},
@@ -83,6 +84,7 @@ function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;
     <div class="field"><label for="routeKind">Tipo</label><input id="routeKind" value="${esc(kind)}" placeholder="central.compliance_due" ${isNew?'':'disabled'} data-feedback-id="tasks.regla_entrada.tipo" data-feedback-label="Tipo de petición"></div>
     <div class="field"><label for="routeLabel">Nombre</label><input id="routeLabel" maxlength="100" value="${esc(label)}" placeholder="Vencimientos" data-feedback-id="tasks.regla_entrada.nombre" data-feedback-label="Nombre del tipo"></div>
     ${destinationFields(dest)}
+    ${KNOWN_KINDS.find(k=>k.kind===kind)?.areaOnly?'<p class="small muted" id="routeAreaOnly">Cada retiro confirmado crea aquí su propio proyecto (AAAAMMDD-título): de esta regla solo cuenta el área.</p>':''}
     <div class="actions"><button class="primary" id="routeSave" type="button" data-feedback-id="tasks.regla_entrada.guardar" data-feedback-label="Guardar regla">Guardar</button>${existing?'<button class="ghost danger-text" id="routeDelete" type="button" data-feedback-id="tasks.regla_entrada.quitar" data-feedback-label="Quitar regla">Quitar regla</button>':''}</div>`);
   bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim()},isNew));
   document.getElementById('routeSave').onclick=()=>{const k=document.getElementById('routeKind').value.trim(),d=destinationValue();

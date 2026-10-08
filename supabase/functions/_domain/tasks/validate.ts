@@ -128,6 +128,8 @@ const RULES: Record<TableName, TableRules> = {
       tab_id: uuid(), title: name(300), note, status: oneOf(STATUSES, 'INVALID_STATUS', 'Estado de proyecto inválido.'), priority, due: nullable(date),
       owner_label_id: nullable(uuid('INVALID_OWNER')), color: nullable(color), budget: nullable(amount), position,
       system: nullable(oneOf(['inbox'], 'INVALID_FIELDS', 'Proyecto de sistema desconocido.')),
+      // Escribible en el registro para que la fije `tasks.request_project`; por `commands`, nunca (§23).
+      external_ref: (_v, f) => reject(422, 'INVALID_FIELDS', 'El origen de un proyecto solo lo fija Booking por su ruta de sistema.', { field: f }),
     },
     required: ['tab_id', 'title', 'position'],
   },

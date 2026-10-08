@@ -244,6 +244,7 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   await expect(owner.locator('[data-route-edit="booking.space_incident"]')).toContainText('Por clasificar');
   // Los tipos de los portales salen aunque aún no haya llegado ninguno, y su regla propone el área comercial.
   await expect(owner.locator('[data-route-edit="booking.organizer_dates"]')).toContainText('Organizador · Fechas posibles');
+  await expect(owner.locator('[data-route-edit="booking.retreat_project"]')).toContainText('Retiro · Proyecto');
   await owner.locator('[data-route-edit="booking.organizer_confirm"]').click();
   await expect(owner.locator('#routeLabel')).toHaveValue('Organizador · Quiere confirmar');
   await expect(owner.locator('#destTab')).toHaveValue(commercial);
