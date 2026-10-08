@@ -13,7 +13,7 @@ export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 export const SITE_PLAN_MIME = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'] as const;
 export const PORTAL_PLACE_PROJECTION = 'central.portal_place_projection';
 
-/** Enlace de búsqueda en un mapa externo por la dirección, con la misma codificación que `central.map_url`. */
+/** Enlace de búsqueda en un mapa externo por la dirección (la del lugar, nunca la fiscal), con la misma codificación que `central.map_url`. */
 export function mapUrl(address: string | null | undefined): string | null {
   const a = address?.trim();
   if (!a) return null;
@@ -92,6 +92,7 @@ export interface EntityRow {
   logo_file_id: string | null;
   iban: string | null;
   bizum: string | null;
+  venue_address: string | null;
   site_plan_file_id: string | null;
 }
 

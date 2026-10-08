@@ -98,6 +98,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web'),
         fbMark(line('IBAN', formatIban(r.iban), true), 'central.entidad.ficha.iban', 'IBAN'),
         fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum'),
+        fbMark(line('Lugar de los retiros', r.venue_address), 'central.entidad.ficha.lugar', 'Lugar de los retiros'),
         el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.plano', 'data-feedback-label': 'Plano del centro' }, el('dt', null, 'Plano del centro'),
           el('dd', null, (await planNode(r.site_plan_file_id as LogoRef)) ?? el('span', { class: 'muted' }, 'Sin plano')))),
       el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
@@ -128,6 +129,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     const web = input('en-web', current?.website, { maxlength: '200', placeholder: 'https://' });
     const iban = input('en-iban', formatIban(current?.iban), { maxlength: '42', placeholder: 'ES00 0000 0000 0000 0000 0000', autocomplete: 'off', 'data-feedback-ignore': '' });
     const bizum = input('en-bizum', current?.bizum, { maxlength: '20', inputmode: 'tel', autocomplete: 'off', 'data-feedback-ignore': '' });
+    const venue = input('en-venue', current?.venue_address, { maxlength: '300', autocomplete: 'off' });
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
     const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
@@ -181,7 +183,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       legal_name: legal.value.trim(), trade_name: text(trade.value), tax_id: normalizeTaxId(taxId.value), address_line: street.value.trim(),
       postal_code: postal.value.trim(), city: city.value.trim(), province: text(province.value), country: country.value.trim().toUpperCase() || 'ES',
       email: text(email.value), phone: text(phone.value), website: text(web.value),
-      iban: iban.value.trim() ? normalizeIban(iban.value) : null, bizum: text(bizum.value),
+      iban: iban.value.trim() ? normalizeIban(iban.value) : null, bizum: text(bizum.value), venue_address: text(venue.value),
     });
     const changed = (): Record<string, unknown> => {
       const all = values();
@@ -269,9 +271,11 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         el('label', { class: 'ghost btnlike', for: 'en-logo', 'data-feedback-id': 'central.entidad.editar.elegir_imagen', 'data-feedback-label': 'Elegir imagen' }, icon('upload', 18), 'Elegir imagen'), logoInput,
         el('span', { class: 'muted small' }, 'PNG, JPEG o WebP. Si pesa más de 2 MB se reduce al subirlo.')),
       el('div', { class: 'sectionlabel' }, 'Para los portales'),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_lugar', 'data-feedback-label': 'Dirección del lugar de los retiros' }, el('span', null, 'Dirección del lugar de los retiros (opcional)'), venue,
+        el('span', { class: 'muted small' }, 'La ven los portales, con el enlace del mapa ({{entidad.lugar}}, {{entidad.mapa}}). Nunca se usa el domicilio fiscal; si la dejas vacía, los portales no muestran dirección ni mapa.')),
       el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_plano', 'data-feedback-label': 'Plano del centro' }, el('span', null, 'Plano del centro (opcional)'), planPreview,
         el('label', { class: 'ghost btnlike', for: 'en-plan', 'data-feedback-id': 'central.entidad.editar.elegir_plano', 'data-feedback-label': 'Elegir plano' }, icon('upload', 18), 'Elegir plano'), planInput,
-        el('span', { class: 'muted small' }, 'Imagen o PDF. Lo ven los asistentes en su portal. La dirección y el mapa salen del domicilio fiscal; si el retiro es en otro sitio, cambia el texto «info.map_link» en Textos.')),
+        el('span', { class: 'muted small' }, 'Imagen o PDF. Lo ven los asistentes y quien organiza, en su portal.')),
       error,
     );
 
@@ -300,5 +304,5 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
 const LABELS: Record<string, string> = {
   legal_name: 'Razón social', trade_name: 'Nombre comercial', tax_id: 'NIF/CIF', address_line: 'Domicilio fiscal', postal_code: 'Código postal',
   city: 'Municipio', province: 'Provincia', country: 'País', email: 'Correo', phone: 'Teléfono', website: 'Web', logo_file_id: 'Logotipo',
-  iban: 'IBAN', bizum: 'Bizum', site_plan_file_id: 'Plano del centro',
+  iban: 'IBAN', bizum: 'Bizum', venue_address: 'Dirección del lugar de los retiros', site_plan_file_id: 'Plano del centro',
 };

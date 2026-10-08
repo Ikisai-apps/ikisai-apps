@@ -22,7 +22,8 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
   { marker: '{{entidad.razon_social}}', label: 'Razón social' },
   { marker: '{{entidad.nif}}', label: 'NIF/CIF' },
   { marker: '{{entidad.domicilio}}', label: 'Domicilio fiscal' },
-  { marker: '{{entidad.mapa}}', label: 'Enlace del mapa' },
+  { marker: '{{entidad.lugar}}', label: 'Dirección del lugar de los retiros' },
+  { marker: '{{entidad.mapa}}', label: 'Enlace del mapa (dirección del lugar)' },
   { marker: '{{entidad.iban}}', label: 'IBAN' },
   { marker: '{{entidad.bizum}}', label: 'Bizum' },
   { marker: '{{contacto.correo}}', label: 'Correo de contacto' },
@@ -30,7 +31,7 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
 ];
 
 export interface MarkerSource {
-  entity?: { legal_name?: string | null; tax_id?: string | null; address_line?: string | null; postal_code?: string | null; city?: string | null; province?: string | null; country?: string | null; iban?: string | null; bizum?: string | null } | null;
+  entity?: { legal_name?: string | null; tax_id?: string | null; address_line?: string | null; postal_code?: string | null; city?: string | null; province?: string | null; country?: string | null; iban?: string | null; bizum?: string | null; venue_address?: string | null } | null;
   email?: string | null;
   phone?: string | null;
 }
@@ -50,7 +51,8 @@ export function renderMarkers(body: string, source: MarkerSource): string {
     '{{entidad.razon_social}}': e?.legal_name || '—',
     '{{entidad.nif}}': e?.tax_id || '—',
     '{{entidad.domicilio}}': entityAddress(e) || '—',
-    '{{entidad.mapa}}': mapUrl(entityAddress(e)) || '—',
+    '{{entidad.lugar}}': e?.venue_address?.trim() || '—',
+    '{{entidad.mapa}}': mapUrl(e?.venue_address) || '—',
     '{{entidad.iban}}': formatIban(e?.iban) || '—',
     '{{entidad.bizum}}': e?.bizum?.trim() || '—',
     '{{contacto.correo}}': source.email?.trim() || '—',

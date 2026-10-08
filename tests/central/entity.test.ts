@@ -130,41 +130,59 @@ test('entidad · IBAN y Bizum (F3): dígito de control, formato, proyección y l
   assert.match(texts[1]!.body, /account ES91 2100 0418 4502 0005 1332/);
 });
 
-test('entidad · el lugar para los portales (X3 y CE3): dirección, mapa, plano y textos', async () => {
+test('entidad · el lugar para los portales (X3 y CE3): dirección del lugar (nunca la fiscal), mapa, plano y textos', async () => {
   const { mapUrl, renderMarkers, PORTAL_PLACE_PROJECTION } = await import('../../supabase/functions/_domain/central/mod.ts');
-  const MAP = 'https://www.google.com/maps/search/?api=1&query=Calle+Falsa+1%2C+28000+Madrid';
-  assert.equal(mapUrl('Calle Falsa 1, 28000 Madrid'), MAP);
+  // Lugar ficticio, distinto del domicilio fiscal de ENTITY.
+  const VENUE = 'Camino del Retiro 5, 28400 Collado';
+  const MAP = 'https://www.google.com/maps/search/?api=1&query=Camino+del+Retiro+5%2C+28400+Collado';
+  assert.equal(mapUrl(VENUE), MAP);
   assert.equal(mapUrl('  '), null);
   assert.equal(mapUrl('C/ Sol 3 #2 & 50%'), 'https://www.google.com/maps/search/?api=1&query=C%2F+Sol+3+%232+%26+50%25');
-  assert.equal(renderMarkers('{{entidad.mapa}}', { entity: ENTITY }), MAP);
+  assert.equal(renderMarkers('{{entidad.lugar}} {{entidad.mapa}}', { entity: { ...ENTITY, venue_address: VENUE } }), `${VENUE} ${MAP}`);
+  assert.equal(renderMarkers('{{entidad.lugar}} {{entidad.mapa}}', { entity: ENTITY }), '— —'); // sin lugar, nunca la fiscal
   assert.equal((await app.t.db.query<{ u: string }>(`select central.map_url('C/ Sol 3 #2 & 50%') as u`)).rows[0]!.u, mapUrl('C/ Sol 3 #2 & 50%'));
 
-  // El plano: imagen o PDF verificado de Central (el bucket ya no admite otros tipos); un id que no existe no vale.
+  // Textos: siete borradores, y `info.arrival` (0570) pasa del domicilio fiscal al lugar; una sola vez.
+  await app.t.db.query(`select central.seed_texts()`);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 9);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 0);
+  const keys = (await app.t.db.query<{ k: string }>(`select key || ':' || lang as k from central.texts where position in (36, 37, 75, 99) and deleted_at is null order by 1`)).rows.map((r) => r.k);
+  assert.deepEqual(keys, ['guests.menu_notice:en', 'guests.menu_notice:es', 'info.map_link:es', 'portal.menu_note:en', 'portal.menu_note:es', 'portal.practical:en', 'portal.practical:es']);
+  const arrival = (await app.t.db.query<{ body: string }>(`select body from central.texts where key = 'info.arrival' order by lang`)).rows;
+  assert.equal(arrival.length, 2);
+  for (const a of arrival) { assert.match(a.body, /\{\{entidad\.lugar\}\}/); assert.doesNotMatch(a.body, /entidad\.domicilio/); }
+
+  // Sin dirección del lugar: ni dirección ni mapa en los portales ni en los textos, aunque haya domicilio fiscal.
+  const portalTexts = `select string_agg(body, ' ') as b from central.common_texts_projection where key in ('portal.practical', 'info.arrival', 'info.map_link')`;
+  let place = (await app.t.db.query<any>(`select address, map_url from central.portal_place_projection`)).rows[0];
+  assert.deepEqual(place, { address: null, map_url: null });
+  assert.doesNotMatch((await app.t.db.query<{ b: string }>(portalTexts)).rows[0]!.b, /Calle Falsa/);
+
+  // El owner escribe el lugar y sube el plano (imagen o PDF verificado de Central; un id que no existe no vale).
   const [row] = (await app.call(`/api/v1/snapshot?tables=${ENTITY_TABLE}`)).data.tables[0].rows;
   const rejected = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { site_plan_file_id: uuid() } }]);
   assert.equal(rejected.status, 422); assert.equal(rejected.data.error.details.field, 'site_plan_file_id');
   const plan = await upload('application/pdf', '%PDF-1.4 plano de prueba');
-  const ok = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { site_plan_file_id: plan } }]);
+  const ok = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { site_plan_file_id: plan, venue_address: VENUE } }]);
   assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const body = (await app.t.db.query<{ b: string }>(portalTexts)).rows[0]!.b;
+  assert.match(body, /Camino del Retiro 5/); assert.doesNotMatch(body, /Calle Falsa/);
 
-  // Textos: siete borradores, una sola vez.
-  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 7);
-  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 0);
-  const keys = (await app.t.db.query<{ k: string }>(`select key || ':' || lang as k from central.texts where position in (36, 37, 75, 99) and deleted_at is null order by 1`)).rows.map((r) => r.k);
-  assert.deepEqual(keys, ['guests.menu_notice:en', 'guests.menu_notice:es', 'info.map_link:es', 'portal.menu_note:en', 'portal.menu_note:es', 'portal.practical:en', 'portal.practical:es']);
-  const practical = (await app.t.db.query<{ body: string }>(`select body from central.common_texts_projection where key = 'portal.practical' and lang = 'es'`)).rows[0]!;
-  assert.match(practical.body, /\*\*Dónde:\*\* Calle Falsa 1, 28000 Madrid\./);
-
-  // Organizers y Guests leen el lugar (sin datos fiscales ni bancarios); otra app no.
+  // Organizers y Guests leen el lugar (sin domicilio fiscal ni datos bancarios) y abren el plano con C8; otra app no.
   for (const reader of ['organizers', 'guests']) {
     const user = await app.t.createUser();
     await app.t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'reader')`, [reader, user]);
     const out = await app.t.rpc('core_read', { p_app: reader, p_actor: user, p_name: PORTAL_PLACE_PROJECTION, p_args: {} }) as { rows: any[] };
     assert.equal(out.rows.length, 1, reader);
     const p = out.rows[0];
-    assert.equal(p.name, ENTITY.legal_name); assert.equal(p.address, 'Calle Falsa 1, 28000 Madrid'); assert.equal(p.map_url, MAP);
+    assert.equal(p.name, ENTITY.legal_name); assert.equal(p.address, VENUE); assert.equal(p.map_url, MAP);
     assert.equal(p.site_plan_file_id, plan); assert.equal(p.site_plan_mime, 'application/pdf');
-    assert.equal(p.tax_id, undefined); assert.equal(p.iban, undefined);
+    assert.equal(p.tax_id, undefined); assert.equal(p.iban, undefined); assert.equal(p.address_line, undefined);
+    const file = await app.t.rpc('core_portal_file_get', { p_portal: reader, p_actor: user, p_file: plan }) as { id: string; mime: string };
+    assert.equal(file.id, plan); assert.equal(file.mime, 'application/pdf');
+    // Otro archivo de Central (el logotipo) no se publica al portal.
+    const logo = (await app.t.db.query<{ id: string }>(`select logo_file_id as id from central.entity`)).rows[0]!.id;
+    await assert.rejects(app.t.rpc('core_portal_file_get', { p_portal: reader, p_actor: user, p_file: logo }), /FILE_NOT_FOUND/);
   }
   const foodUser = await app.t.createUser();
   await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('food', $1, 'reader')`, [foodUser]);
@@ -173,5 +191,6 @@ test('entidad · el lugar para los portales (X3 y CE3): dirección, mapa, plano 
   // El owner puede poner el enlace exacto en `info.map_link`.
   const exact = 'https://maps.example/ikisai';
   await app.t.db.query(`update central.texts set body = $1 where key = 'info.map_link' and lang = 'es'`, [exact]);
-  assert.equal((await app.t.db.query<{ u: string }>(`select map_url as u from central.portal_place_projection`)).rows[0]!.u, exact);
+  place = (await app.t.db.query<any>(`select map_url from central.portal_place_projection`)).rows[0];
+  assert.equal(place.map_url, exact);
 });
