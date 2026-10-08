@@ -315,7 +315,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       row.default_is_investment = row.default_is_investment ?? false;
     }
     if (table === 'invoices.invoices') {
-      const date = String(row.invoice_date ?? '2026-01-01');
+      const date = String(row.invoice_date ?? new Date().toISOString());
       row.code = `FVR_${date.slice(0, 4)}_${String(++invoiceSeq).padStart(3, '0')}`;
       row.currency = row.currency ?? 'EUR';
       row.status = row.status ?? 'pendiente_datos';
@@ -377,7 +377,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       const supplier = inv ? lookup('invoices.suppliers').get(String(inv.supplier_id)) : null;
       row.kind = row.kind ?? 'original';
       row.page_order = row.page_order ?? 1;
-      row.normalized_filename = normalizedFilename({ invoiceDate: String(inv?.invoice_date ?? '2026-01-01'), supplierSlug: String(supplier?.slug ?? 'proveedor'), object: String(inv?.object ?? ''), mime: String(row.mime_type ?? 'application/pdf') });
+      row.normalized_filename = normalizedFilename({ invoiceDate: (inv?.invoice_date as string | null | undefined) ?? null, supplierSlug: String(supplier?.slug ?? 'proveedor'), object: String(inv?.object ?? ''), mime: String(row.mime_type ?? 'application/pdf') });
     }
     if (table === 'invoices.allocations') {
       const line = lookup('invoices.invoice_lines').get(String(row.invoice_line_id));
@@ -458,6 +458,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (!inv) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
       if (inv.totals_delta !== null && Math.abs(Number(inv.totals_delta)) > 0.02) throw new Fault(422, 'INVOICE_TOTALS_MISMATCH', 'Los importes no cuadran con el total del documento.', { delta: inv.totals_delta });
       const missing: string[] = [];
+      if (!inv.invoice_date) missing.push('invoice_date');
       if (!inv.expense_category) missing.push('expense_category');
       if (!Array.from(stagedTable('invoices.invoice_files').values()).some((f) => f.invoice_id === inv.id && !f.deleted_at && f.kind === 'original')) missing.push('original_file');
       if (missing.length) throw new Fault(422, 'INVOICE_INCOMPLETE', 'Faltan datos para validar la factura.', { missing });

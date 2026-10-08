@@ -72,11 +72,11 @@ async function newSupplier(name: string, extra: Record<string, unknown> = {}) {
 }
 
 /** Factura manual lista para validar: proveedor, fecha, objeto, documento, una línea y su IVA. */
-async function manualInvoice(opts: { supplier: string; date?: string; object?: string; net?: number; rate?: number; sourceTotal?: number | null; category?: string | null; withFile?: boolean } ) {
+async function manualInvoice(opts: { supplier: string; date?: string | null; object?: string; net?: number; rate?: number; sourceTotal?: number | null; category?: string | null; withFile?: boolean } ) {
   const id = uuid(); const line = uuid(); const tax = uuid();
   const net = opts.net ?? 100; const rate = opts.rate ?? 21; const vat = Math.round(net * rate) / 100;
   const ops: unknown[] = [
-    insert('invoices.invoices', id, { supplier_id: opts.supplier, invoice_date: opts.date ?? '2026-10-05', object: opts.object ?? 'alimentos retiro yoga', invoice_number: `N-${id.slice(0, 8)}`,
+    insert('invoices.invoices', id, { supplier_id: opts.supplier, invoice_date: opts.date === undefined ? '2026-10-05' : opts.date, object: opts.object ?? 'alimentos retiro yoga', invoice_number: `N-${id.slice(0, 8)}`,
       expense_category: opts.category === undefined ? 'compras' : opts.category, source_total: opts.sourceTotal === undefined ? Math.round((net + vat) * 100) / 100 : opts.sourceTotal }),
     insert('invoices.invoice_lines', line, { invoice_id: id, position: 0, description: 'Artículo', quantity: 1, unit_price: net, net_amount: net, vat_rate: rate, vat_amount: vat }),
     insert('invoices.tax_lines', tax, { invoice_id: id, position: 0, tax_type: 'iva', rate, taxable_base: net, amount: vat }),
@@ -245,6 +245,28 @@ test('import_v1: el ejemplo del handoff crea proveedor, factura, líneas, impues
   assert.equal((await row('invoices.invoices', fourth)).object, 'alimentos_retiro_ejemplo');
   const again = await commit([call('invoices.import_v1', { document: { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_number: 'F-2026-401' } }, document_sha256: '2'.repeat(64), invoice_id: fourth, ids: { lines: [uuid()], tax_lines: [], supplier: null, files: [] }, supplier: { mode: 'existing', id: supplierId }, invoice: {}, files: [] })]);
   assert.equal(again.status, 409); assert.equal(again.data.error.code, 'INVOICE_NOT_IMPORTABLE');
+});
+
+test('factura sin fecha (QA FB_2026_016, 0223): se crea, código del año en curso, sin periodo, «sin_fecha» en el nombre y no se valida hasta tenerla', async () => {
+  const supplier = await newSupplier('Sin Fecha SL', { slug: 'sin_fecha_sl' });
+  const year = (await app.t.db.query<{ y: number }>(`select extract(year from (now() at time zone 'Europe/Madrid'))::int y`)).rows[0]!.y;
+  const undated = await manualInvoice({ supplier, date: null, object: 'Material oficina' });
+  let inv = await row('invoices.invoices', undated.id);
+  assert.equal(inv.invoice_date, null); assert.match(inv.code, new RegExp(`^FVR_${year}_[0-9]{3}$`));
+  assert.equal(inv.fiscal_period, null); assert.equal(inv.fiscal_quarter, null);
+  assert.equal(inv.status, 'pendiente_revision');
+  const files = await rows('invoices.invoice_files', (f) => f.invoice_id === undated.id);
+  assert.equal(files[0]!.normalized_filename, 'sin_fecha_(sin_fecha_sl)_material_oficina.pdf');
+  assert.equal(files[0]!.normalized_filename, normalizedFilename({ invoiceDate: null, supplierSlug: 'sin_fecha_sl', object: 'Material oficina', mime: 'application/pdf' }));
+  const e = await rejected([call('invoices.validate', { invoice_id: undated.id })], 'INVOICE_INCOMPLETE');
+  assert.deepEqual(e.details.missing, ['invoice_date']);
+  // Al ponerle fecha, el documento se renombra y ya se valida
+  await ok([update('invoices.invoices', undated.id, inv.revision, { invoice_date: '2026-10-07' })]);
+  assert.equal((await row('invoices.invoice_files', files[0]!.id)).normalized_filename, '2026_10_07_(sin_fecha_sl)_material_oficina.pdf');
+  inv = await row('invoices.invoices', undated.id);
+  assert.equal(inv.fiscal_period, '2026T4');
+  await ok([call('invoices.validate', { invoice_id: undated.id, expectedRevision: inv.revision })]);
+  assert.equal((await row('invoices.invoices', undated.id)).status, 'validada');
 });
 
 test('validate: incompleta, descuadrada, correcta; editar tras validar la devuelve a revisión; anular', async () => {

@@ -1542,6 +1542,40 @@ test('feedback en Finance en móvil: tras enviar se cierra el formulario y se ve
   }
 });
 
+test('QA FB_2026_016: nueva factura sin fecha (opcional, sin rellenar con hoy); en la ficha se pone después', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.locator('#newInvoice').click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await expect(sheet.locator('#newDate')).toHaveValue('');
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    await sheet.getByLabel('Objeto').fill('papeleria sin fecha');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'ticket.pdf', mimeType: 'application/pdf', buffer: PDF });
+    await expect(sheet.locator('#namePreview')).toHaveText('sin_fecha_(proveedor_ejemplo_s_l)_papeleria_sin_fecha.pdf');
+    await page.locator('#saveInvoice').click();
+    await expect(sheet).toBeHidden();
+    const f = ficha(page);
+    await expect(f).toContainText('Sin fecha: léela del PDF o escríbela para poder validar');
+    await synced(page);
+    const created = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'papeleria sin fecha'));
+    expect(created.invoice_date).toBeNull();
+    // La fecha se escribe después en «Fiscal y pago»
+    const date = f.locator('#invDate');
+    if (!(await date.isVisible())) await f.getByText('Fiscal y pago', { exact: true }).first().click();
+    await expect(date).toHaveValue('');
+    await date.fill('2026-10-06');
+    await date.dispatchEvent('change');
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === created.id)?.invoice_date, { timeout: 20_000 }).toBe('2026-10-06');
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);
