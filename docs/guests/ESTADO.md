@@ -53,10 +53,12 @@
 
 - 2026-10-08 · Fases 4 y 5 conectadas a Booking (programa y alojamiento), Food (menú) y Central (lugar y plano). Organizers sigue simulado, con normalizadores de su forma de datos.
 
+- 2026-10-08 · Organizers conectado (#333): experiencia, materiales con `portal-files` y preguntas. Barra y días del kit 0.21, y fotos de los platos (Food #332). Pruebas de las fases 4 y 5 contra la API real.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
-- Conectar Organizers (experiencia, materiales y su resolutor de `portal-files`, preguntas y respuestas) cuando lo publique, y cambiar sus pruebas simuladas por las reales.
+- Guardar las respuestas a las preguntas del organizador en cuanto entre K6 del núcleo (#334). La prueba se activa sola.
 
 ## Bloqueos
 

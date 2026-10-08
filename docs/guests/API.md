@@ -463,14 +463,16 @@ Detalles de la implementación:
 - **El lugar:** `central.portal_place_projection` (Central #326, §2.9): dirección del lugar (nunca la fiscal), enlace del mapa y plano (imagen o PDF) con `portal-files`. Es información de Ikisai: sale siempre en Información.
 - **Vista previa** con el enlace `preview: true` del núcleo (#325).
 
-**Sigue simulado (Organizers aún no lo publica):** `guest_experience_for`, `guest_materials` (con su resolutor de `portal-files`), `guest_questions` y `guest_answer`.
-- Guests acepta la forma de Organizers (`docs/organizers/API.md` §15.1 y §15.4: filas de `experience_modules` con `programa`, `ver`, `antes`… y `params.guest_price_text`; preguntas con `kind`, `prompt` y opciones de texto; materiales con `file_id`) y también la de §13, con `app/normalize.ts`.
-- Petición O2: que Organizers confirme la salida exacta de sus lecturas.
+- **Organizers** (#333): `guest_experience_for`, `guest_materials` (archivos con su resolutor real de `portal-files`), `guest_questions` y `guest_answer`, con la forma de §13.
+  - `app/normalize.ts` acepta además la forma por filas de `docs/organizers/API.md` §15, por si cambia.
+  - **Las respuestas aún no se guardan en el servidor:** `core.apply_portal_operations('organizers', …)` rechaza un destino que sea portal («target must be an internal app»). Lo corrige K6 del núcleo (#334). Hasta entonces, la cola de Guests las reintenta; la prueba comprueba la lectura y activa sola la parte de escritura cuando K6 entra.
+- **Navegación con la barra del kit 0.21 (U5):** `createAppShell({ maxNav: 5 })` y `setNav(nav, more)` por persona; los días, con `createDayTabs`. Sustituye a la barra propia y a la pantalla «Más».
+- **Fotos de los platos** (Food #332): miniatura por `portal-files`.
 
 **Pruebas:**
 - `tests/guests/api.test.ts` (8);
 - `tests/guests/static.test.ts` (6): diccionarios iguales, claves usadas y ids de feedback;
-- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`) y `modules.spec.ts` (6, 1 de ellas `@smoke`: programa, alojamiento, menú y lugar contra la API real; Organizers simulado); `normalize.test.ts` (3).
+- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`) y `modules.spec.ts` (6, 1 de ellas `@smoke`, todo contra la API real); `normalize.test.ts` (3).
 
 
 

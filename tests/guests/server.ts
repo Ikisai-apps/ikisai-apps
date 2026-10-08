@@ -36,6 +36,12 @@ export interface GuestsTestServer {
   assign(event: string, spaceId: string, bedId: string, guestId: string): Promise<void>;
   /** Una acción de Guests hecha por otro huésped (su propia cuenta y ámbito). */
   guestInvoke(reservationId: string, guestId: string, name: string, args: Record<string, unknown>): Promise<any>;
+  /** Experiencia de Guests configurada por el organizador (`organizers.experiences`, Organizers #333). */
+  experience(reservationId: string, fields: Record<string, unknown>): Promise<void>;
+  /** Material publicado del organizador; con `file`, un archivo verificado en `organizers-materials`. Devuelve el id del archivo. */
+  material(reservationId: string, m: { kind: 'file' | 'link' | 'text'; title: string; description?: string; window?: string; url?: string; body?: string; file?: { name: string; mime: string; size: number } }): Promise<string | null>;
+  /** Pregunta publicada del organizador. */
+  question(reservationId: string, q: { id?: string; type: string; label: string; help?: string; options?: Array<{ value: string; label: string }>; required?: boolean; closes_at?: string; opens_at?: string }): Promise<string>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -169,6 +175,27 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       await booking.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('guests', $1, 'editor', $2::jsonb)`,
         [user, JSON.stringify({ grants: [{ reservation_id: reservationId, guest_id: guestId }] })]);
       return booking.t.rpc('core_invoke', { p_app: 'guests', p_actor: user, p_name: name, p_args: { guest_id: guestId, ...args } });
+    },
+    async experience(reservationId, fields) {
+      const cols = Object.keys(fields);
+      await booking.t.db.query(`insert into organizers.experiences (reservation_id, ${cols.join(', ')}) values ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')})`,
+        [reservationId, ...cols.map((c) => (c === 'lodging_options' ? JSON.stringify(fields[c]) : fields[c]))]);
+    },
+    async material(reservationId, m) {
+      let fileId: string | null = null;
+      if (m.file) {
+        fileId = (await booking.t.db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status) values ('organizers', 'organizers-materials', $1, $2, $3, $4, $5, 'verified') returning id`,
+          [`organizers/${uuid()}`, m.file.name, m.file.mime, m.file.size, 'd'.repeat(64)])).rows[0]!.id;
+      }
+      await booking.t.db.query(`insert into organizers.materials (reservation_id, kind, title, description, file_id, url, body, published, "window") values ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
+        [reservationId, m.kind, m.title, m.description ?? null, fileId, m.url ?? null, m.body ?? null, m.window ?? 'always']);
+      return fileId;
+    },
+    async question(reservationId, q) {
+      const id = q.id ?? uuid();
+      await booking.t.db.query(`insert into organizers.questions (id, reservation_id, type, label, help, options, required, opens_at, closes_at, published) values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, true)`,
+        [id, reservationId, q.type, q.label, q.help ?? null, JSON.stringify(q.options ?? []), q.required ?? false, q.opens_at ?? null, q.closes_at ?? null]);
+      return id;
     },
     async seedCentralTexts() {
       await booking.t.db.query('select central.seed_texts()');
