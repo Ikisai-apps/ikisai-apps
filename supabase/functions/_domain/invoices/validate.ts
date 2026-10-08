@@ -160,6 +160,7 @@ export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', {
   uuid(fields, 'rectifies_invoice_id');
   text(fields, 'rectifies_number', { max: 64 });
   bool(fields, 'rectification_without_original');
+  if (has(fields, 'declared_period') && fields.declared_period !== null && (typeof fields.declared_period !== 'string' || !/^\d{4}T[1-4]$/.test(fields.declared_period))) domainFail('INVALID_FIELDS', 'El periodo de declaración tiene la forma 2026T3.', { field: 'declared_period' });
   money(fields, 'source_total');
   for (const key of ['calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total']) money(fields, key, { nullable: false });
   money(fields, 'totals_delta');

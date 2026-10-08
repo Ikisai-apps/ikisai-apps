@@ -114,7 +114,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'status', 'review_reason', 'annulled_reason', 'payment_status', 'payment_method', 'paid_at', 'source_total',
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
     'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
-    'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original',
+    'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original', 'declared_period',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
@@ -201,6 +201,9 @@ export interface InvoiceRow extends SyncedColumns {
   rectifies_invoice_id?: string | null;
   rectifies_number?: string | null;
   rectification_without_original?: boolean;
+  /** Trimestre en que se declara (`AAAATn`, 0228); nulo = el de su fecha. `declaration_date` la genera el servidor. */
+  declared_period?: string | null;
+  declaration_date?: string | null;
   fiscal_year: number;
   fiscal_quarter: number;
   fiscal_period: string;
