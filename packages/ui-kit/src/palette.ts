@@ -1,6 +1,7 @@
 import { el, replace } from './dom.ts';
 import { icon } from './icons.ts';
 import { lockScroll } from './overlay/focus.ts';
+import { kitLayer } from './layer.ts';
 
 export interface PaletteItem {
   group: string;
@@ -126,7 +127,7 @@ export function createCommandPalette(options: PaletteOptions): CommandPalette {
     });
     unlock = lockScroll();
     const host = typeof options.container === 'function' ? options.container() : options.container;
-    (host ?? document.body).append(back);
+    kitLayer(host).append(back);
     index = 0;
     draw();
     input.focus();

@@ -19,6 +19,7 @@ import type { FeedbackMode } from './feedback.ts';
 import { ensureFeedbackGlobalStyles, syncMarkHint } from './global-style.ts';
 import { createFeedbackReviewTab } from './review-feedback.ts';
 import { createUsageReviewTab, type UsageReviewItem } from './review-usage.ts';
+import { kitLayer } from '../layer.ts';
 
 export interface FeedbackReviewOptions {
   api: FeedbackApi;
@@ -145,7 +146,7 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
   ensureFeedbackGlobalStyles();
   const key = options.storageKey ?? 'ikisai-feedback-review';
   const tabKey = `${key}-tab`;
-  const host = () => options.container?.() ?? document.body;
+  const host = () => kitLayer(options.container?.());
   const navigate = options.navigate ?? defaultNavigate;
   const openUrl = options.openUrl ?? ((url: string) => location.assign(url));
   const listeners = new Set<(on: boolean) => void>();

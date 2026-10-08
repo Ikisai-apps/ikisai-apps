@@ -23,6 +23,7 @@ import { ensureFeedbackGlobalStyles, syncMarkHint } from './global-style.ts';
 import { resolveFeedbackNode, type FeedbackNode } from './node.ts';
 import { clearFeedbackForUser, feedbackDrafts, feedbackOutbox, type FeedbackDraft, type FeedbackOutboxItem } from './store.ts';
 import { kt } from '../i18n/i18n.ts';
+import { kitLayer } from '../layer.ts';
 
 export interface FeedbackOptions {
   app: string;
@@ -82,7 +83,7 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   observeFeedbackContext();
   if (options.fallbackNode) setFeedbackStepNode(() => options.fallbackNode?.().id);
   ensureFeedbackGlobalStyles();
-  const host = () => options.container?.() ?? document.body;
+  const host = () => kitLayer(options.container?.());
   const pinLayer = el('div', { class: 'ikisai-fb-layer fb-pins', 'aria-label': kt('Comentarios sobre la pantalla') });
   let current: FeedbackComposer | null = null;
   let currentVerify: (() => void) | null = null;

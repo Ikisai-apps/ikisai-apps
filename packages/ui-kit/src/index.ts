@@ -43,6 +43,7 @@ export { openImportSheet, createJsonSource, renderImportHeader, renderImportLine
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
+export { setKitLayer, kitLayer } from './layer.ts';
 export { initAppUpdates, shouldAutoApply, type AppUpdates, type AppUpdatesOptions } from './sync/updates.ts';
 export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';
