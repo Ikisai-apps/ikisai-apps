@@ -66,7 +66,8 @@ test('diseño · el organizador diseña en estudio, pide extras visibles, calcul
   await ok([{ op: 'call', procedure: PROCEDURES.newProposalVersion, args: { reservation_id: res, proposal_id: proposal } }]);
   await ok([{ op: 'insert', table: TABLES.proposalLines, id: uuid(), fields: { proposal_id: proposal, rate_id: stay, description: 'Pensión completa', unit: 'persona_noche', quantity: 28, unit_amount: 60 } }]);
   assert.deepEqual((await read(org, 'booking.portal_proposals', { reservation_id: res })).items, [], 'un borrador no se ve');
-  await ok([{ op: 'call', procedure: PROCEDURES.sendProposal, args: { proposal_id: proposal } }]);
+  // 1680 € por debajo del mínimo de 2500 €: se envía como excepción con su motivo
+  await ok([{ op: 'call', procedure: PROCEDURES.sendProposal, args: { proposal_id: proposal, below_minimum_reason: 'Retiro piloto' } }]);
   const seen = (await read(org, 'booking.portal_proposals', { reservation_id: res })).items[0];
   assert.deepEqual([seen.status, Number(seen.total), seen.lines.length, seen.conditions.name], ['enviada', 1680, 1, 'Condiciones portal']);
 
