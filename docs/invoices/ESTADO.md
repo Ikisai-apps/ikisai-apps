@@ -98,6 +98,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
 - Pruebas de Playwright con un solo `vite build` compartido entre specs (`tests/invoices/e2e-build.ts`): huella de las fuentes en `dist/.e2e-stamp` y cerrojo entre procesos, para que `--workers=2` no vacíe `dist` a medias (mismo fallo que Tasks).
 - Auditoría del 3T (8-10-2026), primera tanda: Inicio y Gestoría abren el trimestre que se declara (en el primer mes de un trimestre, el anterior); «Nueva factura» empieza por el documento y «Leer PDF» es el paso principal (la IA, para fotos o PDF escaneados); la revisión de lo leído pone primero proveedor, fecha, categoría y cuadre, con el JSON plegado; «Validar» deja de ser el botón principal mientras la factura no tiene datos.
+- Drive (fase 4, migración 0224, API.md §15): los PDF de «Entrada» se importan solos cada 15 minutos (5 por tick), leídos si tienen texto; duplicados por bytes y por contenido; lo que no es PDF va a «Con errores». Cuenta de servicio `drive`, solo la Drive API, llamadas registradas por ejecución. Tarjeta en Inicio con «Buscar ahora» (owner), filtro y origen en la ficha.
+- Arreglo urgente (#410, migración 0225): `import_v1` acepta líneas con `discount_amount` nulo; la importación de «Leer PDF» fallaba en el servidor.
 
 ## En curso
 

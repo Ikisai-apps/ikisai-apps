@@ -1198,3 +1198,48 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
    - **En la app:** «Rectificar» en la ficha de una emitida pide el tipo, la causa y el motivo. El borrador conserva su tipo y su serie y explica qué rectifica. La factura impresa dice de qué factura es rectificativa, con el motivo.
    - **Anulación:** la anulación del owner con su registro ya estaba en el PR 1.
 4. **Desde Booking (hecho, ronda 45):** ver «Cómo quedó» en §14.8. El editor admite además descuento por línea y «Precios con IVA incluido» en cualquier factura.
+
+## 15. Facturas recibidas por Google Drive (fase 4 · migración 0224 · aprobada por Core el 8-10-2026)
+
+**Qué hace:** el usuario, la gestoría o un proveedor (por reenvío) deja PDF en la carpeta **«Entrada»** de la unidad compartida «Ikisai · Lectura de facturas». Finance los importa solos como facturas recibidas, leídas si el PDF tiene texto. **Validar sigue siendo cosa de una persona.**
+
+**Configuración:**
+- Secretos de la Edge: `GOOGLE_SERVICE_ACCOUNT_JSON` (cuenta de servicio, firma común `createGoogleTokenSource` del kit) e `INVOICES_DRIVE_ID` (id de la unidad compartida).
+- Sin ellos, la integración queda apagada (`not_configured`).
+- **Solo la Drive API**, gratuita dentro de su cuota. Ningún servicio de pago de Google.
+
+**Disparo:**
+- `core.schedule_tick('invoices', 'drive/tick', '*/15 * * * *', 'invoices.drive_has_work')`, que llama a `POST /api/v1/worker/drive/tick` (clave de worker).
+- La sonda no puede ver Drive desde SQL. Decide por tiempo (14 minutos desde la última búsqueda), por lo que quedó pendiente (`more`) o porque el owner pulsó «Buscar ahora» (`POST /api/v1/drive/run`, solo owner).
+- Cada tick procesa como mucho **5 archivos**.
+- Un tick sin archivos hace **una sola llamada** a Drive: los ids de las carpetas se guardan en `drive_state`.
+- `drive_runs.api_calls` registra las llamadas de cada ejecución.
+
+**Carpetas** (en la raíz de la unidad; las crea si faltan): «Entrada», «Importadas», «Duplicadas» y «Con errores». Mover es cambiar el padre. **Nunca se borra ni se manda a la papelera nada.**
+
+**Por cada archivo de «Entrada»:**
+1. **Ya registrado** (`drive_imports.drive_file_id`, un tick que murió antes de moverlo): solo se mueve.
+2. **Documento de Google, más de 15 MB o sin cabecera `%PDF`:** va a «Con errores» con el motivo.
+3. **Mismos bytes** que el documento de otra factura viva: va a «Duplicadas».
+4. **Lectura** como «Leer PDF» (PDF.js en la Edge, plantillas del proveedor y reglas). PDF dañado o protegido: «Con errores».
+   - Si sale un documento completo y ya está importado (misma huella, o mismo proveedor y número), va a «Duplicadas».
+   - Mismo proveedor, fecha y total solo cuenta como duplicado si el documento no trae número.
+5. **Un solo lote con la cuenta de servicio `drive`** («Drive (sistema)», editor en Finance), con los hooks de Finance:
+   - factura en «Pendiente de datos», sin fecha (0223), con el proveedor provisional «Sin identificar (Drive)» (`slug` `sin_identificar`), objeto sacado del nombre del archivo, `drive_file_id` y `drive_url`;
+   - su documento (archivo verificado en el almacenamiento);
+   - si se leyó, `import_v1` sobre esa misma factura, que queda en «Pendiente de revisión» con su proveedor real.
+   - Un PDF escaneado, o uno que no se lee del todo, se queda en «Pendiente de datos». Se completa con «Leer PDF», la IA o la sesión de Claude (§15.1).
+6. Se guarda el texto del documento (para aprender la plantilla al validar) y el archivo va a «Importadas».
+
+**Modelo (0224):**
+- `invoices.invoices.drive_file_id` (único) y `drive_url`.
+- Tablas internas sin roles: `drive_state`, `drive_imports` y `drive_runs`.
+- Acciones de sistema `invoices.drive_seen`, `drive_record` y `drive_finish` (roles vacíos).
+- Lectura `invoices.drive_status` (solo owner): estado, últimas ejecuciones y últimos archivos con motivo.
+
+**En la app:**
+- Tarjeta «Desde Google Drive» en Inicio: por revisar y sin leer. El owner ve además la última búsqueda, el estado, los últimos archivos sin importar y «Buscar ahora».
+- Filtro «Llegadas por Drive, sin validar» en la lista.
+- «Origen: llegó por Google Drive · abrir el original» en la ficha.
+
+**Pendiente:** §15.1, la lectura con una sesión de Claude para completar los borradores (herramientas MCP), y el aviso en Tasks › Gestiones (segunda tanda).
