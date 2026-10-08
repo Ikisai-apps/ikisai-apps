@@ -1365,7 +1365,9 @@ Hoy se crea desde la app, en pocos minutos: no hace falta un asistente.
 
 Las tareas que Core escribe para el usuario en `coordinacion/TAREAS_VICTOR.md` llegan a Tasks como peticiones, y la regla del usuario las lleva a Aplicaciones › «Tareas de Core».
 
-### 25.1 Alta y reenvío: `POST https://tasks.ikisai.com/api/v1/worker/requests/task`
+### 25.1 Alta y reenvío: `POST <Edge>/api/v1/worker/requests/task`
+
+`<Edge>` es la Edge Function directa, `https://ctytaorylbninfyupfsn.supabase.co/functions/v1/tasks-api`. **Las rutas de worker no pasan por `tasks.ikisai.com`:** su proxy de Pages no reenvía la clave y responde `400 WORKER_ROUTE_NOT_PROXIED`.
 
 Cabeceras: `Content-Type: application/json` y `X-Ikisai-Worker-Key: <IKISAI_WORKER_KEY>` (la misma clave de worker que usa Booking; de servidor a servidor, sin sesión).
 
@@ -1377,9 +1379,9 @@ Cabeceras: `Content-Type: application/json` y `X-Ikisai-Worker-Key: <IKISAI_WORK
 - `external_ref`: letras, números, `.`, `_` y `-`, hasta 60 (Tasks la guarda como `core:TV-2.1`). `title` de 1 a 120; `note` hasta 1000; `priority` `normal | high | critical`; `due` `AAAA-MM-DD`, opcional. `kind_label` opcional (por defecto «Core · Tarea para ti»). Sin `external_url` ni `project_ref`.
 - Respuesta: `{taskId, status}` con `status` `pending` (sin regla: «Por clasificar») u `open`.
 - **Reenviar la misma referencia** con otro `title` o `note` actualiza la tarea mientras siga abierta: `{taskId, status: 'open', updated: true}`. Si nada cambió, `updated: false` y no se escribe nada (ni historial). Sin `note`, se conserva la que había. Hecha, descartada o en la papelera, no se toca. Una petición aún en «Por clasificar» se queda con su texto inicial hasta que se clasifica.
-- Escribe la identidad de servicio `core` (por `core.commit`, con historial). **Hasta que Core la registre** (`core.service_grants`: `'core'` → «Core (sistema)», editor en Tasks, como `booking` en la migración 0070), responde `503 SERVICE_NOT_READY`.
+- Escribe la identidad de servicio `core` (por `core.commit`, con historial), registrada en `core.service_grants` (#385); la primera petición la crea si aún no existe (#386).
 
-### 25.2 Estado: `POST https://tasks.ikisai.com/api/v1/worker/requests/status`
+### 25.2 Estado: `POST <Edge>/api/v1/worker/requests/status`
 
 Misma cabecera. `{"externalRefs": ["core:TV-2.1", "core:TV-2.2"]}` (hasta 200) → `{items: [{externalRef, status, taskId, doneAt, updatedAt}]}`, con `status` `pending | open | done | dismissed | deleted | unknown`.
 

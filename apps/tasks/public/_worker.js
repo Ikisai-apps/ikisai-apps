@@ -19,6 +19,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/v1/')) return asset(request, env, url);
+    // Las rutas de worker son de servidor a servidor: van directas a la Edge, con su clave. Este proxy no reenvía la clave
+    // (ni debe): se rechazan con un mensaje claro en vez de un 401 confuso (petición de Core, 8-10-2026).
+    if (url.pathname === '/api/v1/worker' || url.pathname.startsWith('/api/v1/worker/')) {
+      return Response.json(
+        { error: { code: 'WORKER_ROUTE_NOT_PROXIED', message: 'Las rutas de worker no pasan por tasks.ikisai.com: usa la Edge directa (…/functions/v1/tasks-api/api/v1/worker/…).', details: null } },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
 
     const origin = request.headers.get('origin');
     if (origin && origin !== url.origin) {
