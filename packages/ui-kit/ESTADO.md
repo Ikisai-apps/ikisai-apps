@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.24.0: capa global para lo flotante (`setKitLayer`) y aviso que no se estira (fallo del usuario en PC).
 - v0.23.0: versiones nuevas automáticas al abrir (`initAppUpdates`), común a todas las apps.
 - v0.22.0: teclado virtual en hojas y formularios, Revisor entre apps sin catálogo previo y `container` en el lanzador (QA del usuario en Android).
 - v0.21.0: arreglo de la barra del Revisor sobre la hoja del lanzador (fallo del usuario), barra de portal con «Más» y lista de días (U5 de Guests).
