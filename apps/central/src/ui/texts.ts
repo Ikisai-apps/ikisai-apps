@@ -1,7 +1,7 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  CONTACT_KEYS, TEXT_KINDS, TEXT_KIND_LABELS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
+  CONTACT_AUDIENCES, CONTACT_KEYS, TEXT_KINDS, contactEmailKey, isContactEmailKey, TEXT_KIND_LABELS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
   type MarkerSource, type TextKind, type TextLang,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
@@ -61,10 +61,16 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       replace(host, el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay textos'), isAdmin ? 'Crea el aviso de protección de datos, la declaración de quien organiza y el contacto.' : ''));
       return;
     }
-    replace(host, ...TEXT_KINDS.map((kind) => {
-      const rows = alive.filter((t) => t.kind === kind && t.lang === 'es').sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key));
-      const english = (key: string) => alive.find((t) => t.key === key && t.lang === 'en') ?? null;
-      return rows.length ? el('section', { class: 'textgroup', 'data-kind': kind }, el('div', { class: 'sectionlabel' }, TEXT_KIND_LABELS[kind]), ...rows.map((t) => card(t, english(t.key)))) : null;
+    const english = (key: string) => alive.find((t) => t.key === key && t.lang === 'en') ?? null;
+    const group = (kind: string, label: string, rows: Text[]) => rows.length
+      ? el('section', { class: 'textgroup', 'data-kind': kind }, el('div', { class: 'sectionlabel' }, label), ...rows.sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key)).map((t) => card(t, english(t.key))))
+      : null;
+    replace(host, ...TEXT_KINDS.flatMap((kind) => {
+      const rows = alive.filter((t) => t.kind === kind && t.lang === 'es');
+      if (kind !== 'contacto') return [group(kind, TEXT_KIND_LABELS[kind], rows)];
+      // Los correos por público van aparte: cada portal y cada documento usa el suyo (el de facturas es el de la Entidad).
+      return [group(kind, TEXT_KIND_LABELS[kind], rows.filter((t) => !isContactEmailKey(t.key))),
+        group('correos', 'Correos por público', rows.filter((t) => isContactEmailKey(t.key)))];
     }));
   }
 
@@ -181,7 +187,7 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     const entity = (await client.list(T.entity)).find((e) => !e.deleted_at) as MarkerSource['entity'] | undefined;
     const alive = texts.filter((t) => !t.deleted_at);
     const es = (k: string) => alive.find((t) => t.key === k && t.lang === 'es')?.body ?? null;
-    source = { entity: entity ?? null, email: es(CONTACT_KEYS.email), phone: es(CONTACT_KEYS.phone) };
+    source = { entity: entity ?? null, phone: es(CONTACT_KEYS.phone), emails: Object.fromEntries(CONTACT_AUDIENCES.map((a) => [a, es(contactEmailKey(a)) ?? (a === 'organizers' ? es('contact.email') : null)])) };
     paint();
   }
   void load();

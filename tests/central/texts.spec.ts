@@ -21,6 +21,7 @@ test.beforeAll(async () => {
   test.setTimeout(180_000);
   api = await startCentralServer();
   await api.app.t.db.query(`select central.seed_texts()`);
+  await api.app.t.db.query(`select central.seed_contact_audiences()`); // como en producción: un correo por público
   process.env.VITE_API_PROXY = api.url;
   await build({ configFile, logLevel: 'silent' });
   server = await preview({
@@ -48,33 +49,38 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await login(page, 'owner@example.invalid', 'Owner');
   await page.locator('#homeTexts').click();
   await expect(page.getByRole('heading', { name: 'Textos y contacto' })).toBeVisible();
-  await expect(page.locator('[data-text="contact.email"]')).toContainText('organiza@ikisai.com');
+  await expect(page.locator('[data-text="contact.organizers.email"]')).toContainText('organiza@ikisai.com');
+  const audiences = page.locator('[data-kind="correos"]');
+  await expect(audiences).toContainText('Correos por público');
+  await expect(audiences.locator('[data-text="contact.guests.email"]')).toContainText('ven@ikisai.com');
+  await expect(audiences.locator('[data-text="contact.phone"]')).toHaveCount(0);
   await expect(page.locator('[data-text="contact.phone"]')).toContainText('614 76 57 96');
   const privacy = page.locator('[data-text="portal.privacy"]');
-  await expect(privacy).toContainText('ES v1');
-  await expect(privacy).toContainText('EN v1');
-  await expect(page.locator('[data-text="contact.email"]')).toContainText('EN usa el español');
+  // La semilla de los correos por público cambió su marcador de contacto: v2 en los dos idiomas.
+  await expect(privacy).toContainText('ES v2');
+  await expect(privacy).toContainText('EN v2');
+  await expect(page.locator('[data-text="contact.organizers.email"]')).toContainText('EN usa el español');
 
   // Editar: la vista previa sustituye los marcadores (sin Entidad, «—»; el contacto, de sus textos).
   await privacy.getByRole('button', { name: 'Editar' }).click();
-  await expect(page.locator('#tx-preview')).toContainText('Contacto: organiza@ikisai.com · 614 76 57 96.');
+  await expect(page.locator('#tx-preview')).toContainText('Contacto: ven@ikisai.com · 614 76 57 96.');
   await expect(page.locator('#tx-preview')).toContainText('(NIF —)');
-  await expect(page.locator('#tx-version')).toHaveText('Versión actual: v1.');
+  await expect(page.locator('#tx-version')).toHaveText('Versión actual: v2.');
   await page.locator('#tx-body').press('End');
   await page.locator('#tx-body').evaluate((t: HTMLTextAreaElement) => { t.setSelectionRange(t.value.length, t.value.length); });
   await page.locator('#tx-body').pressSequentially('\n\nEscríbenos a ');
-  await page.locator('.markerbtn', { hasText: 'Correo de contacto' }).click();
+  await page.locator('.markerbtn', { hasText: 'Correo para organizadores' }).click();
   await expect(page.locator('#tx-preview')).toContainText('Escríbenos a organiza@ikisai.com');
-  await expect(page.locator('#tx-version')).toContainText('Al guardar se crea la versión v2; las aceptaciones anteriores conservan su versión');
+  await expect(page.locator('#tx-version')).toContainText('Al guardar se crea la versión v3; las aceptaciones anteriores conservan su versión');
   await page.locator('#saveText').click();
   await expect(page.getByText('Texto guardado.')).toBeVisible();
-  await expect(privacy).toContainText('ES v2');
-  await expect(privacy).toContainText('EN v1');
-  await expect.poll(async () => (await api.app.t.db.query<{ version: string }>(`select version from central.texts where key = 'portal.privacy' and lang = 'es'`)).rows[0]!.version).toBe('v2');
+  await expect(privacy).toContainText('ES v3');
+  await expect(privacy).toContainText('EN v2');
+  await expect.poll(async () => (await api.app.t.db.query<{ version: string }>(`select version from central.texts where key = 'portal.privacy' and lang = 'es'`)).rows[0]!.version).toBe('v3');
 
   // Historial: la v1 sigue ahí, tal como era.
   await privacy.getByRole('button', { name: 'Editar' }).click();
-  await expect(page.locator('#tx-history')).toContainText('Versiones anteriores (1)');
+  await expect(page.locator('#tx-history')).toContainText('Versiones anteriores (2)');
   await page.locator('#tx-history summary').first().click();
   await page.locator('.textversion summary').first().click();
   await expect(page.locator('.textversion[data-version="v1"]')).not.toContainText('Escríbenos a');

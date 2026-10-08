@@ -192,3 +192,43 @@ test('textos · X2: tres textos de Organizers en español e inglés, de tipo men
   assert.equal(out.rows[0].body, 'Ikisai will confirm the final date; the dates you mark are only possibilities.');
   assert.equal(out.rows[0].fallback, false);
 });
+
+test('textos · un correo por público: semilla, contact.email → organizadores, marcadores por público y contacto público por público', async () => {
+  const q = async <T = any>(sql: string, args: unknown[] = []) => (await app.t.db.query<T>(sql, args)).rows;
+  const emailKey = (a: string) => `contact.${a}.email`;
+  // Dominio: un marcador por público; {{contacto.correo}} sigue siendo el de organizadores.
+  const emails = { organizers: 'o@x.es', guests: 'g@x.es', staff: 's@x.es', suppliers: 'p@x.es' };
+  assert.equal(renderMarkers('{{contacto.organizadores}} {{contacto.huespedes}} {{contacto.trabajadores}} {{contacto.proveedores}} {{contacto.correo}}', { emails }), 'o@x.es g@x.es s@x.es p@x.es o@x.es');
+  assert.deepEqual(unknownMarkers('{{contacto.huespedes}} {{contacto.proveedores}}'), []);
+
+  await q(`select central.seed_texts_payment()`); // un texto de organizadores con {{contacto.correo}}
+  const before = (await q<{ body: string }>(`select body from central.texts where key = 'contact.email' and lang = 'es' and deleted_at is null`))[0]!.body;
+  assert.ok((await q<{ n: number }>(`select central.seed_contact_audiences() as n`))[0]!.n > 0);
+  assert.equal((await q<{ n: number }>(`select central.seed_contact_audiences() as n`))[0]!.n, 0);
+
+  // `contact.email` pasa a organizadores con su valor; los demás, con la semilla; todos de tipo contacto y en español.
+  assert.equal((await q(`select 1 from central.texts where key = 'contact.email' and deleted_at is null`)).length, 0);
+  const rows = await q<{ key: string; body: string; kind: string }>(`select key, body, kind from central.texts where key like 'contact.%.email' and lang = 'es' and deleted_at is null order by position`);
+  assert.deepEqual(rows.map((r) => [r.key, r.body, r.kind]), [
+    [emailKey('organizers'), before, 'contacto'], [emailKey('guests'), 'ven@ikisai.com', 'contacto'],
+    [emailKey('staff'), 'cuida@ikisai.com', 'contacto'], [emailKey('suppliers'), 'provee@ikisai.com', 'contacto'],
+  ]);
+
+  // Los textos que usaban {{contacto.correo}} pasan al público que los lee.
+  const body = async (key: string, lang = 'es') => (await q<{ body: string }>(`select body from central.texts where key = $1 and lang = $2 and deleted_at is null`, [key, lang]))[0]!.body;
+  for (const lang of ['es', 'en']) {
+    assert.match(await body('portal.privacy', lang), /\{\{contacto\.huespedes\}\}/);
+    assert.match(await body('info.parking', lang), /\{\{contacto\.huespedes\}\}/);
+    assert.match(await body('payment.instructions', lang), /\{\{contacto\.organizadores\}\}/);
+  }
+  assert.equal((await q(`select 1 from central.texts where body like '%{{contacto.correo}}%' and deleted_at is null`)).length, 0);
+  const privacy = (await q<{ body: string }>(`select body from ${TEXTS_PROJECTION} where key = 'portal.privacy' and lang = 'es'`))[0]!.body;
+  assert.match(privacy, /ven@ikisai\.com/);
+
+  // Contacto público: el correo del público pedido y el teléfono; sin público, el de organizadores.
+  const contact = async (args: Record<string, string>) => (await q<{ out: any[] }>(`select core.public_read('contact', $1::jsonb) as out`, [JSON.stringify(args)]))[0]!.out;
+  assert.deepEqual((await contact({ lang: 'es', audience: 'guests' })).map((c) => [c.key, c.body]), [[emailKey('guests'), 'ven@ikisai.com'], ['contact.phone', '614 76 57 96']]);
+  assert.deepEqual((await contact({ lang: 'en', audience: 'staff' })).map((c) => c.body), ['cuida@ikisai.com', '614 76 57 96']);
+  assert.deepEqual((await contact({ lang: 'es' })).map((c) => c.key), [emailKey('organizers'), 'contact.phone']);
+  assert.deepEqual(await contact({ lang: 'es', audience: 'otro' }), await contact({ lang: 'es' }));
+});
