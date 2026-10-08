@@ -1289,6 +1289,14 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
    - Un PDF escaneado, o uno que no se lee del todo, se queda en «Pendiente de datos». Se completa con «Leer PDF», la IA o la sesión de Claude (§15.1).
 6. Se guarda el texto del documento (para aprender la plantilla al validar) y el archivo va a «Importadas».
 
+Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el owner) dice qué faltó y la forma del texto (páginas con texto, fragmentos y caracteres), nunca su contenido.
+
+**Lo mismo desde el dispositivo («Subir varias» en Facturas):** cada archivo elegido es una factura.
+- PDF con los mismos bytes que el documento de otra factura viva: duplicada, no se sube.
+- PDF con texto: se lee con plantillas y reglas (rectificativa si lo es) y se importa en «Pendiente de revisión». Si el contenido ya está importado, duplicada.
+- Foto, escaneado o lectura incompleta: «Pendiente de datos», con el documento y el proveedor provisional.
+- Funciona sin red: los documentos y los lotes esperan en la cola del dispositivo.
+
 **Modelo (0224):**
 - `invoices.invoices.drive_file_id` (único) y `drive_url`.
 - Tablas internas sin roles: `drive_state`, `drive_imports` y `drive_runs`.
