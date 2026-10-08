@@ -31,12 +31,22 @@
 
 - 2026-10-08 · G2 de las fases 4 y 5 en `API.md` §15 y §16 (solo diseño): experiencia de Guests, materiales, preguntas y respuestas, programa (Booking), menú (Food), alojamiento delegable, ofertas y cartel. Peticiones B16, B17, Fd2, Fd3, X3 y K3–K5; respuesta a O1 de Guests.
 
+- 2026-10-08 · Fases 4 y 5, primera parte (lo que depende solo de Organizers):
+  - tablas `organizers.*` con ámbito por reserva (`visible`, `beforeCommit` y gancho en la base de datos), biblioteca del organizador y archivos en `organizers-materials`;
+  - lecturas y acción para Guests (O1, O2, O3, O5 y O7) y resolutor de `portal-files` (C8);
+  - pestaña «Experiencia»: qué ven los asistentes, mensaje, alojamiento, materiales, preguntas con aviso de datos sensibles, respuestas y CSV;
+  - pestaña «Ofertas»: ofertas, calculadora con lo contratado y cartel en PDF o JPG.
+
+  Pruebas en `experience.test.ts`, `quote.test.ts` y `portal.spec.ts`.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
-- Fases 4 y 5: construir cuando Core cruce las peticiones de los dos portales.
+- Fases 4 y 5, segunda parte: programa (Booking #328), menú y comentarios (Food #327), habitaciones y aprobación (Booking #328), vista previa con el huésped de muestra y lugar o plano (Central #326).
+- Escritura de las respuestas desde Guests: espera a K6 (núcleo).
+- Borrado de las respuestas a los 6 meses del fin del retiro: espera a B18.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.

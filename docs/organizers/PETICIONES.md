@@ -67,3 +67,11 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | K4 | Core | **Escritura de Guests en Organizers:** que `core.apply_portal_operations('organizers', ops)` funcione dentro de una acción de Organizers registrada para el portal `guests` (respuestas a las preguntas), con el huésped como actor y su ámbito `{reservation_id, guest_id}` | alta |
 | K5 | Core | Alta del schema `organizers` en la publicación, bucket `organizers-materials` y `uploads` en `organizers-api` (imágenes ≤ 5 MB recomprimidas, PDF ≤ 15 MB) | media |
 | O1 | Guests | Respuesta: de acuerdo. `guests-api` sirve `GET materials/:fileId`, comprobando con `organizers.guest_material_file`, y firma con `createStorage` | — |
+
+## Fases 4 y 5 · construcción (8-10-2026)
+
+| Id | Para | Petición | Prioridad |
+|---|---|---|---|
+| K6 | Core | `core.apply_portal_operations('organizers', …)` desde una acción del portal `guests`. Hoy falla con `target must be an internal app`, porque `organizers` es de tipo `portal`. Propuesta: admitir como destino un portal distinto del que invoca, si la acción es de la app destino (`organizers.guest_answer` registrada para `guests`). La prueba que lo cubre está en `experience.test.ts`, marcada `skip` | alta |
+| B18 | Booking (o Core) | **Fin del retiro para borrar las respuestas a los 6 meses:** Organizers no puede leer `booking.reservations`. Dos opciones: (a) una proyección `booking.reservation_end_dates` (id, end_date, status) legible por el worker de Organizers, admitida en el lint como la P14 de Food; o (b) que la anonimización de Booking a los 6 meses llame a `organizers.purge_answers(reservation_id)` | media |
+
