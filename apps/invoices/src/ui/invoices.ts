@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -15,7 +15,7 @@ import {
   type LocalAllocation, type LocalInvoice, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from '../app/client.ts';
 import {
-  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
+  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
@@ -148,6 +148,7 @@ export const mountInvoices: ViewMount = (ctx) => {
     const chips = [el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice))];
     if (invoice.payment_status === 'pagada') chips.push(el('span', { class: 'chip ok' }, 'Pagada'));
     if (!hasFile && invoice.status !== 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Sin documento'));
+    if (isLate(invoice)) chips.push(el('span', { class: 'chip warn' }, `Atrasada (${quarterName(periodOfDate(invoice.invoice_date))})`));
     if (invoice.invoice_kind === 'rectificativa') chips.push(el('span', { class: invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'chip' : 'chip warn' }, invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'Rectificativa' : 'Rectificativa sin enlazar'));
     return {
       id: invoice.id,
@@ -323,6 +324,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
       ...rectificationRows(ctx, invoice, mirror),
+      el('dt', null, 'Se declara en'), el('dd', { id: 'declaredPeriod' }, invoice.invoice_date || invoice.declared_period
+        ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
       ...(invoice.drive_url ? [el('dt', null, 'Origen'), el('dd', null, 'Llegó por Google Drive · ', el('a', { href: invoice.drive_url, target: '_blank', rel: 'noopener', id: 'driveOrigin' }, 'abrir el original'))] : []),
     ),
     el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions),
@@ -470,6 +473,24 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const rectFields = invoice.invoice_kind === 'rectificativa' ? el('div', { id: 'rectFields' },
     el('div', { class: 'row2' }, field('Rectifica a la factura nº', rectNumber, 'Tal como lo imprime el proveedor: la app la enlaza sola cuando esté.'), field('Factura original', rectOriginal)),
     el('label', { class: 'check' }, withoutOriginal, el('span', null, 'No tengo la original (se valida igual, con aviso en Gestoría)'))) : null;
+  // Periodo de declaración (0228): el de su fecha o uno posterior (atrasada). El aviso propone el trimestre en curso cuando la
+  // fecha es de uno anterior que aún no se ha entregado desde la app (lo normal es que se declarara fuera).
+  const ownPeriod = periodOfDate(invoice.invoice_date);
+  const periodOptions: Array<[string, string]> = [['', ownPeriod ? `El de su fecha (${quarterName(ownPeriod)})` : 'El de su fecha']];
+  if (ownPeriod) {
+    let [y, q] = [Number(ownPeriod.slice(0, 4)), Number(ownPeriod.slice(5))];
+    for (let i = 0; i < 4; i++) { q += 1; if (q > 4) { q = 1; y += 1; } periodOptions.push([`${y}T${q}`, `${q}T ${y} (atrasada)`]); }
+  }
+  if (invoice.declared_period && !periodOptions.some(([v]) => v === invoice.declared_period)) periodOptions.push([invoice.declared_period, quarterName(invoice.declared_period)]);
+  const periodSelect = select('invDeclaredPeriod', periodOptions, invoice.declared_period ?? '', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.periodo', 'data-feedback-label': 'Se declara en',
+    disabled: !canEdit || ['validada', 'archivada', 'anulada'].includes(invoice.status) && invoice.status !== 'validada', onchange: () => void update({ declared_period: periodSelect.value || null }) });
+  const delivered = (date: string) => mirror.exports.some((e) => !e.deleted_at && e.from_date <= date && date <= e.to_date);
+  const askLate = canEdit && !invoice.declared_period && !!ownPeriod && ownPeriod < workingPeriod() && invoice.status !== 'anulada' && invoice.status !== 'archivada' && !delivered(invoice.invoice_date!);
+  if (askLate) {
+    header.appendChild(el('div', { class: 'banner warn', id: 'lateBanner' }, el('span', null, `Es del ${quarterName(ownPeriod)}: ¿la declaras en el ${quarterName(workingPeriod())}? Si ese trimestre ya lo declaraste fuera de la app, sí.`),
+      el('button', { 'data-feedback-id': 'invoices.facturas.ficha.declarar_ahora', 'data-feedback-label': 'Declararla en el trimestre en curso', class: 'softbtn small', type: 'button', id: 'declareNow',
+        onclick: () => void update({ declared_period: workingPeriod() }, `Se declarará en el ${quarterName(workingPeriod())}.`) }, `Sí, en el ${quarterName(workingPeriod())}`)));
+  }
   const dueDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.vencimiento', 'data-feedback-label': 'Vencimiento', type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
   const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
     onchange: () => { const v = parseAmount(sourceTotal.value); if (sourceTotal.value.trim() && v === null) { toast('Importe inválido.'); return; } void update({ source_total: v }); } });
@@ -480,6 +501,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
     field('Tipo de factura', kind),
     rectFields,
+    field('Se declara en', periodSelect, 'Fecha real aparte: una factura del 2T que no declaraste entonces se declara en el trimestre que elijas.'),
     el('div', { class: 'row2' }, field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),
     field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'),
     field('Notas', notes),
@@ -501,6 +523,22 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 function periodOf(isoDate: string): string {
   const year = isoDate.slice(0, 4); const month = Number(isoDate.slice(5, 7)) || 1;
   return `${year}T${Math.ceil(month / 3)}`;
+}
+
+/** «2026T3» → «3T 2026». */
+function quarterName(period: string | null): string {
+  const m = period?.match(/^(\d{4})T([1-4])$/);
+  return m ? `${m[2]}T ${m[1]}` : '—';
+}
+/** Se declara en un trimestre posterior al de su fecha (0228). */
+function isLate(invoice: LocalInvoice): boolean {
+  const own = periodOfDate(invoice.invoice_date);
+  return !!invoice.declared_period && !!own && invoice.declared_period > own;
+}
+/** Periodo como `AAAATn` del trimestre en el que se trabaja (en octubre, el 3T). */
+function workingPeriod(): string {
+  const q = workingQuarter();
+  return `${q.year}T${q.quarter}`;
 }
 
 /** Lo que queda por asignar de una línea, en valor absoluto (en una rectificativa la línea y sus asignaciones son negativas). */
