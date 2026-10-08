@@ -28,7 +28,9 @@ def fetch_json(url):
     return json.loads(response.read())
 
 
-def verify(domain, version, attempts=6, wait=5):
+def verify(domain, version, attempts=12, wait=10):
+  # ~2 min: la Edge nueva tarda a veces más de 30 s en propagarse (falsos RELEASE_VERIFICATION_FAILED, 8-10-2026).
+  # El cuerpo sigue igual.
   base = 'https://' + domain
   last = None
   for attempt in range(attempts):
