@@ -371,3 +371,52 @@ test('proyecto por retiro (§23): idempotente por la reserva, renombrado, archiv
   }
   assert.equal((await commit([{ op: 'insert', table: 'tasks.projects', id: uuid(), fields: { tab_id: TAB, title: 'Falso', position: 1, external_ref: 'booking:RES-FALSA' } }])).status, 422);
 });
+
+test('tareas de Core para el usuario (§25): source core, a su proyecto por la regla, estado y reenvío que actualiza mientras siga abierta', async () => {
+  const worker = (route: string, body: unknown) => app.handler(new Request(`http://localhost/api/v1/worker/requests/${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
+  const json = async (res: Response) => ({ status: res.status, body: await res.json() as any });
+  const task = (extra: Record<string, unknown> = {}) => worker('task', { source: 'core', kind: 'core.user_task', external_ref: 'TV-2.1', title: 'Atar el dominio de Finance', note: 'Pasos en TAREAS_VICTOR.md', priority: 'high', ...extra });
+  // Sin su identidad de servicio (la registra una migración de Core), espera.
+  if (!(await app.t.db.query(`select 1 from core.profiles where service_name = 'core'`)).rows.length) {
+    const missing = await json(await task());
+    assert.equal(missing.status, 503, JSON.stringify(missing.body));
+    await simulateServiceIdentity(app.t.db, uuid(), 'core');
+  }
+  // La regla del usuario: Aplicaciones › «Tareas de Core» (aquí, un proyecto del área de prueba).
+  const project = uuid();
+  await commit([{ op: 'insert', table: 'tasks.projects', id: project, fields: { tab_id: TAB, title: 'Tareas de Core', position: 9100 } }]);
+  await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind: 'core.user_task', tab_id: TAB, project_id: project, position: 9200 } }]);
+
+  const created = await json(await task());
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.status, 'open');
+  const row = async () => (await rows('tasks.tasks')).find((t) => t.id === created.body.taskId);
+  assert.deepEqual([(await row()).project_id, (await row()).title, (await row()).priority, (await row()).external_ref, (await row()).external_kind], [project, 'Atar el dominio de Finance', 'high', 'core:TV-2.1', 'core.user_task']);
+  assert.equal((await rows('tasks.requests')).find((r) => r.id === created.body.taskId).kind_label, 'Core · Tarea para ti');
+
+  // Reenvío igual: nada cambia (ni revisión). Con otro título o nota: se actualiza mientras siga abierta.
+  const revision = (await row()).revision;
+  assert.deepEqual((await json(await task())).body, { taskId: created.body.taskId, status: 'open', updated: false });
+  assert.equal((await row()).revision, revision);
+  assert.deepEqual((await json(await task({ title: 'Atar finance.ikisai.com', note: 'Nuevos pasos' }))).body, { taskId: created.body.taskId, status: 'open', updated: true });
+  assert.deepEqual([(await row()).title, (await row()).note], ['Atar finance.ikisai.com', 'Nuevos pasos']);
+  assert.deepEqual((await json(await task({ title: 'Solo el título', note: undefined }))).body.updated, true);
+  assert.equal((await row()).note, 'Nuevos pasos', 'sin nota, se conserva la que había');
+
+  // Estado para Core; hecha, ya no se toca.
+  const status = await json(await worker('status', { externalRefs: ['core:TV-2.1', 'core:TV-9'] }));
+  assert.deepEqual(status.body.items.map((i: any) => [i.externalRef, i.status]), [['core:TV-2.1', 'open'], ['core:TV-9', 'unknown']]);
+  const current = await row();
+  assert.equal((await commit([{ op: 'update', table: 'tasks.tasks', id: current.id, expectedRevision: current.revision, fields: { done: true } }])).status, 200);
+  assert.deepEqual((await json(await task({ title: 'Otro título' }))).body, { taskId: created.body.taskId, status: 'done' });
+  assert.equal((await row()).title, 'Solo el título');
+
+  // Solo lo del contrato.
+  for (const bad of [{ kind: 'core.otra' }, { external_ref: 'con espacio' }, { external_url: 'https://tasks.ikisai.com/' }, { project_ref: 'RES2026-77' }]) {
+    assert.equal((await task(bad)).status, 422, JSON.stringify(bad));
+  }
+  // Ninguna otra identidad refresca una tarea de Core.
+  const refresh = await commit([{ op: 'call', procedure: 'tasks.refresh_request_task', args: { externalRef: 'core:TV-2.1', title: 'x' } } as any]);
+  assert.notEqual(refresh.status, 200);
+});
