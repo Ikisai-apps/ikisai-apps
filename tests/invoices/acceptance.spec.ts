@@ -1496,6 +1496,52 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
   }
 });
 
+test('feedback en Finance en móvil: tras enviar se cierra el formulario y se ve el aviso, también con la red lenta', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const before = api.feedbackReports().length;
+  try {
+    await login(page);
+    await synced(page);
+    await setSignal(page, true);
+    const send = async (selector: string, message: string) => {
+      await page.locator(selector).first().scrollIntoViewIfNeeded();
+      await hold(page, selector);
+      const composer = page.locator('.fb-composer');
+      await expect(composer).toBeVisible();
+      await composer.getByRole('textbox', { name: 'Comentario' }).fill(message);
+      await composer.getByRole('button', { name: 'Enviar' }).click();
+      await expect(composer).toHaveCount(0, { timeout: 10_000 });
+      const toast = page.locator('.toast.show').filter({ hasText: 'Enviado' });
+      await expect(toast).toBeVisible();
+      const box = (await toast.boundingBox())!;
+      expect(box.height).toBeLessThan(80);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(844);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+    };
+
+    await test.step('en Inicio', async () => {
+      await send('[data-feedback-id="invoices.inicio.trimestre.ir_gestoria"]', 'En móvil, el resumen debería caber sin desplazar.');
+      await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
+    });
+
+    await test.step('con la respuesta del servidor tardando 3 s: el formulario espera y luego se cierra con el aviso', async () => {
+      await page.route('**/api/v1/feedback', async (route) => {
+        if (route.request().method() === 'POST') await new Promise((r) => setTimeout(r, 3_000));
+        await route.continue();
+      });
+      await send('[data-feedback-id="invoices.inicio.trimestre"] h3', 'Con red lenta también debe cerrarse.');
+      await expect.poll(() => api.feedbackReports().length).toBe(before + 2);
+      await page.unroute('**/api/v1/feedback');
+    });
+    await setSignal(page, false);
+  } finally {
+    await context.close();
+  }
+});
+
 test('@smoke todas las pantallas de Finance llevan ids con la forma estable, con etiqueta y sin ids de negocio', async ({ browser }) => {
   test.setTimeout(120_000);
   const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
