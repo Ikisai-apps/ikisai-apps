@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.23.0 · 8 de octubre de 2026
+
+- **Versiones nuevas automáticas al abrir**, para todas las apps: `initAppUpdates({ isSafe, enabled, swUrl, autoApply, autoWindowMs, resumeAfterMs })` → `{ apply, check, available }`.
+  - Sustituye a los `updates.ts` copiados en cada app (Booking, Central, Food, Invoices, Organizers y Guests) y mantiene su protocolo con `sw.js` (`CHECK_UPDATE_READY`, `UPDATE_READY`/`UPDATE_ABORT`, `APPLY_UPDATE`).
+  - Mismo criterio que Tasks. Al abrir la app, o al volver a ella tras más de un minuto en segundo plano, si hay versión nueva y `isSafe()` (sin cola, conflicto, editor abierto ni fallo de sincronización), **se aplica sola**: dentro de 15 s y antes de la primera interacción.
+  - Si no, se queda el aviso de siempre (`ikisai:update-available`).
+  - `shouldAutoApply` exportada.
+- Prueba `v29` (con un service worker simulado).
+
 ## 0.22.0 · 8 de octubre de 2026
 
 Fallos del QA del usuario en Android:
