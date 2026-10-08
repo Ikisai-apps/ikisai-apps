@@ -153,7 +153,7 @@ test('[20][21][23][25] orden de proyectos, vistas guardadas, importación de Kee
     await a.locator(`[data-project-filter="${ID.p2}"]`).click();
     await a.locator('#applyFilterSheet').click();
     expect(await a.evaluate(() => filteredProjects().every((p: any) => p.id === (window as any).ID.p2))).toBe(true);
-    await a.locator('#savedViews').click();
+    await a.evaluate(() => (window as any).savedViewsSheet());
     await a.locator('#viewName').fill('Oficios pendientes · proyecto 2');
     await a.locator('#saveView').click();
     await settled(a);
@@ -354,6 +354,7 @@ test('[43][46][47][48][51] dependencias en los editores: bloqueo, herencia, disp
   });
 });
 
+declare const areasSheet: any;
 declare const importSheet: any, filterCount: any, setTheme: any, closeNavigation: any, manageTab: any, batchMode: any;
 
 test('[52][53] copia JSON: remapea dependencias y etiquetas, y rechaza dependencias externas sin resolver', async () => {
@@ -544,7 +545,9 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     expect(await a.evaluate(() => tab().projects.find((p: any) => p.id === (window as any).ID.p2).color)).toBe('#3f6d8e');
     expect(await a.locator('.project.colored[style*="--item-ink"]').count()).toBeGreaterThan(0);
     expect(await a.locator(`[data-drop-project="${ID.p1}"] .projecttitle .star`).count()).toBeGreaterThan(0);
-    await a.locator('.tabstrip [data-areas-tool]').click();
+    // Sin lápiz en la cabecera (FB_2026_020): «Áreas de trabajo» está en el menú.
+    await expect(a.locator('#shellTop [data-areas-tool]')).toHaveCount(0);
+    await a.evaluate(() => areasSheet());
     await expect(a.locator('#sheet')).toContainText('Áreas de trabajo');
     await a.evaluate(() => manageTab((window as any).ID.personal));
     await a.locator('#sheet .colorfield [data-color="#a3537a"]').click();
@@ -553,7 +556,7 @@ test('[56][57][58][59][60] tema, área General, alta en la fila, edición en el 
     expect((await serverRow('tasks.tabs', ID.personal!)).color).toBe('#a3537a');
     await a.evaluate(() => closeSheet());
     expect(await a.locator(`.tabpill.colored[data-tab="${ID.personal}"]`).count()).toBeGreaterThan(0);
-    await expect(a.locator('#savedViews')).toHaveCount(1);
+    await expect(a.locator('#shellTop #savedViews')).toHaveCount(0);
     expect((await serverRow('tasks.projects', ID.p2!)).color).toBe('#3f6d8e');
     expect(await a.locator('.project.colored').count()).toBeGreaterThan(0);
     expect(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);

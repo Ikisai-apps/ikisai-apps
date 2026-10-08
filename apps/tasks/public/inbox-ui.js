@@ -64,19 +64,39 @@ function destinationFields(current={}){const data=Sync.core.data,tabs=inboxRows(
   const projects=inboxRows('tasks.projects').filter(p=>p.tab_id===tabId&&p.status!=='archived').sort((a,b)=>(a.system==='inbox'?-1:b.system==='inbox'?1:(a.position||0)-(b.position||0)));
   const people=new Set(inboxRows('tasks.families').filter(f=>f.tab_id===tabId&&f.system_key==='person').map(f=>f.id));
   const owners=inboxRows('tasks.labels').filter(l=>l.tab_id===tabId&&people.has(l.family_id)&&!l.archived);
+  /* Responsables (FB_2026_015): primero las personas del equipo (cuentas de Ikisai con acceso a Tasks, las mismas que
+     Central enlaza a cada persona) y después las demás etiquetas Persona del área. Si una persona del equipo aún no tiene
+     etiqueta en el área, se crea al guardar. */
+  const team=teamPeople(),byName=new Map(owners.map(l=>[l.name.trim().toLowerCase(),l]));
+  const teamOptions=team.map(m=>{const l=byName.get(m.name.toLowerCase());return {value:l?l.id:'member:'+m.userId,name:m.name,label:l}});
+  const others=owners.filter(l=>!team.some(m=>m.name.toLowerCase()===l.name.trim().toLowerCase()));
+  const option=(value,name)=>`<option value="${esc(value)}" ${value===current.owner_label_id||value===current.owner_member?'selected':''}>${esc(name)}</option>`;
   return `<div class="field"><label for="destTab">Área</label><select id="destTab" data-feedback-id="tasks.destino.area" data-feedback-label="Área de destino">${tabs.map(t=>`<option value="${t.id}" ${t.id===tabId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="destProject">Proyecto</label><select id="destProject" data-feedback-id="tasks.destino.proyecto" data-feedback-label="Proyecto de destino">${projects.map(p=>`<option value="${p.system==='inbox'?'':p.id}" ${(p.system==='inbox'?!current.project_id:p.id===current.project_id)?'selected':''}>${esc(p.system==='inbox'?'Entrada del área':p.title)}</option>`).join('')}</select></div>
-    <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${owners.map(l=>`<option value="${l.id}" ${l.id===current.owner_label_id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></div>`}
+    <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${teamOptions.length?`<optgroup label="Equipo">${teamOptions.map(o=>option(o.value,o.name)).join('')}</optgroup>`:''}${others.length?`<optgroup label="${teamOptions.length?'Otras etiquetas Persona del área':'Etiquetas Persona del área'}">${others.map(l=>option(l.id,l.name)).join('')}</optgroup>`:''}</select></div>`}
+/* Personas del equipo con cuenta (sin agentes ni servicios). La lista la da el núcleo a la propietaria; se pide una vez. */
+function teamPeople(){return (Sync.members||[]).filter(m=>(m.kind||'human')==='human'&&m.displayName?.trim()).map(m=>({userId:m.userId,name:m.displayName.trim()})).sort((a,b)=>a.name.localeCompare(b.name,'es'))}
+let teamAsked=false;
+function loadTeam(reopen){if(Sync.members||teamAsked||!Sync.core||!navigator.onLine||Sync.actor?.role!=='owner')return;teamAsked=true;
+  Sync.core.api('/members').then(items=>{Sync.members=items;if(document.getElementById('destOwner'))reopen()}).catch(()=>{teamAsked=false})}
+/* La etiqueta Persona de una persona del equipo que aún no la tiene en el área: la operación que la crea y su id. */
+function personLabelOps(tabId,memberValue){const userId=memberValue.slice(7),m=teamPeople().find(x=>x.userId===userId);
+  const family=inboxRows('tasks.families').find(f=>f.tab_id===tabId&&f.system_key==='person');if(!m||!family)return null;
+  const id=uid(),position=(Math.max(0,...inboxRows('tasks.labels').filter(l=>l.family_id===family.id).map(l=>l.position||0))+1024);
+  return {id,ops:[{op:'insert',table:'tasks.labels',id,fields:{tab_id:tabId,family_id:family.id,name:m.name,position}}]}}
 function destinationValue(){const tab_id=document.getElementById('destTab').value,project=document.getElementById('destProject').value||null;
   const inbox=inboxRows('tasks.projects').find(p=>p.tab_id===tab_id&&p.system==='inbox');
-  return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:document.getElementById('destOwner').value||null}}
-function bindDestination(reopen){const t=document.getElementById('destTab');if(t)t.onchange=()=>reopen({tab_id:t.value})}
+  let owner=document.getElementById('destOwner').value||null,labelOps=[];
+  if(owner?.startsWith('member:')){const made=personLabelOps(tab_id,owner);owner=made?.id||null;labelOps=made?.ops||[]}
+  return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:owner,labelOps}}
+function bindDestination(reopen){const t=document.getElementById('destTab');if(t)t.onchange=()=>reopen({tab_id:t.value});
+  loadTeam(()=>{const o=document.getElementById('destOwner')?.value||null;reopen({tab_id:document.getElementById('destTab')?.value,project_id:document.getElementById('destProject')?.value||null,owner_label_id:o,owner_member:o})})}
 
 function moveRequestSheet(id,current={}){const r=inboxRows('tasks.requests').find(x=>x.id===id);if(!r)return;
   openSheet(`<h2 class="sheettitle">Mover a…</h2><p>${originChip(r.source)} ${esc(r.title)}</p>${destinationFields(current)}<div class="actions"><button class="primary" id="moveRequest" type="button" data-feedback-id="tasks.mover_peticion.crear_tarea" data-feedback-label="Crear la tarea aquí">Crear la tarea aquí</button></div>`);
   bindDestination(c=>moveRequestSheet(id,c));
   document.getElementById('moveRequest').onclick=()=>{const d=destinationValue();if(!d.target_project)return toast('Elige un proyecto.');
-    if(purchaseRun(data=>R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id}),'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
+    if(purchaseRun(data=>[...d.labelOps,...R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id})],'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
 
 function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,routes=inboxRows('tasks.request_routes');
   const kinds=new Map(KNOWN_KINDS.map(k=>[k.kind,{kind:k.kind,source:k.kind.slice(0,k.kind.indexOf('.')),label:k.label}]));for(const r of inboxRows('tasks.requests'))kinds.set(r.kind,{kind:r.kind,source:r.source,label:r.kind_label||kinds.get(r.kind)?.label||null});
@@ -103,7 +123,7 @@ function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;
   bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim()},isNew));
   document.getElementById('routeSave').onclick=()=>{const k=document.getElementById('routeKind').value.trim(),d=destinationValue();
     if(!/^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/.test(k))return toast('El tipo va como app.nombre, en minúsculas.');
-    if(!purchaseRun(data=>R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,owner_label_id:d.owner_label_id}),'Regla guardada.'))return;
+    if(!purchaseRun(data=>[...d.labelOps,...R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,owner_label_id:d.owner_label_id})],'Regla guardada.'))return;
     const waiting=R().pendingRequests(Sync.core.data,k).length;
     if(!waiting)return inboxDone();
     openSheet(`<h2 class="sheettitle">Regla guardada</h2><p>Hay ${waiting} ${waiting===1?'petición':'peticiones'} de este tipo esperando en «Por clasificar». ¿Las mueves también?</p><div class="actions"><button class="primary" id="routeWaiting" type="button" data-feedback-id="tasks.regla_guardada.mover_esperando" data-feedback-label="Mover también las que esperaban">Mover también ${waiting===1?'la que esperaba':`las ${waiting} que esperaban`}</button><button class="ghost" id="routeLater" type="button" data-feedback-id="tasks.regla_guardada.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
