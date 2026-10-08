@@ -21,12 +21,12 @@ EXTRA_DOMAINS = {}
 # invoices.ikisai.com y tramita.ikisai.com redirigen (reglas de Cloudflare).
 PRIMARY_DOMAINS = {'invoices': f'finance.{ZONE}'}
 
-# Organizers aún no sube archivos propios (sus materiales llegan en la fase 4); Guests usa el compartido de firmas.
+# Organizers: materiales del retiro (fase 4); Guests usa el compartido de firmas.
 _BUCKETS = {'tasks': 'ikisai-files', 'invoices': 'purchase-documents', 'booking': 'booking-documents', 'food': 'kitchen-media', 'central': 'central-documents',
-  'guests': 'guests-documents', 'organizers': None}
+  'guests': 'guests-documents', 'organizers': 'organizers-materials'}
 
 # Límites y tipos de los buckets (contrato §11.3: PDF hasta el techo de Storage, fotos recomprimidas en cliente).
-BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152}
+BUCKET_LIMITS = {'purchase-documents': 52428800, 'ikisai-files': 26214400, 'central-documents': 26214400, 'feedback-media': 2097152, 'guests-documents': 2097152, 'organizers-materials': 15728640}
 DEFAULT_BUCKET_LIMIT = 15728640
 BUCKET_MIME_TYPES = {
   'ikisai-files': ['image/webp', 'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'text/csv', 'application/zip',
@@ -41,6 +41,8 @@ BUCKET_MIME_TYPES = {
   # Comunes: imágenes del feedback de todas las apps (contrato §3.7) y firmas del parte desde Guests.
   'feedback-media': ['image/webp', 'image/jpeg', 'image/png'],
   'guests-documents': ['image/webp', 'image/jpeg', 'image/png'],
+  # Organizers: logotipo, imágenes recomprimidas en cliente (≤ 5 MB) y PDF (≤ 15 MB) de los materiales del retiro.
+  'organizers-materials': ['application/pdf', 'image/webp', 'image/jpeg', 'image/png'],
 }
 
 
