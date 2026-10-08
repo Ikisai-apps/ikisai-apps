@@ -1,5 +1,5 @@
 /** Ikisai Invoices · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/invoices/API.md §4.1, §6). */
-import { createApp, createStorage, createSupabase, fail, isFault, r2ConfigFromEnv, type AgentRiskAssessment, type AppConfig, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type StorageAccess, type Supabase } from '../_kit/mod.ts';
+import { createApp, createGoogleTokenSource, createStorage, createSupabase, createSync, ensureServiceActor, fail, isFault, r2ConfigFromEnv, type AgentRiskAssessment, type AppConfig, type AppHooks, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type StorageAccess, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { sha256Hex, stable } from '../_kit/supabase.ts';
 import {
   DomainError, EXPORT_CSV_FILES, buildImportArgs, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
@@ -7,6 +7,8 @@ import {
   type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
+import { createGoogleDriveApi, readPdfItemsServer, runDriveTick, type DriveApi, type DriveTickResult } from './drive.ts';
+import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
 // Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
 export const INVOICES_ORIGINS = ['https://finance.ikisai.com', 'https://ikisai-invoices.pages.dev'];
@@ -26,6 +28,11 @@ export interface InvoicesAppOptions {
    * Sin helper (o sin clave en la Edge) la ruta `imports/extract` responde `EXTRACTION_UNAVAILABLE 503`.
    */
   extractInvoice?: ExtractInvoice;
+  /**
+   * Facturas por Google Drive (fase 4, API.md §15). Por defecto, el Drive real si existen `GOOGLE_SERVICE_ACCOUNT_JSON` e
+   * `INVOICES_DRIVE_ID`; en las pruebas, uno simulado. `null` la apaga.
+   */
+  drive?: { api?: DriveApi | null; readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; upload?: DriveUpload };
 }
 
 /** Firma acordada con Core para el helper de `_kit` (API.md §6, ruta `imports/extract`). */
@@ -362,6 +369,19 @@ const MAX_TEXT_ITEMS = 20_000;
 interface ExtractionStatus { file_id: string; done: number; invoice_id: string | null; code: string | null; status: string | null }
 interface ApprovedExtraction { rows: Array<{ id: string; file_id: string; revision: number }> }
 
+/** Guarda (o sustituye) el texto con posiciones de un documento ya verificado; devuelve los caracteres útiles. */
+async function saveDocumentText(supabase: Supabase, ctx: RequestContext, fileId: string, items: Array<{ str: string; page: number; x: number | null; y: number | null; w: number | null; h: number | null }>): Promise<number> {
+  const file = await supabase.rpc<{ sha256: string }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
+  const charCount = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
+  const existing = await read<{ id: string; revision: number } | null>(supabase, ctx, 'invoices.document_text', { file_id: fileId });
+  const fields = { source: 'pdf_text', items, char_count: charCount, sha256: file.sha256 ?? null };
+  const operations = existing
+    ? [{ op: 'update', table: DOCUMENT_TEXTS, id: existing.id, expectedRevision: existing.revision, fields }]
+    : [{ op: 'insert', table: DOCUMENT_TEXTS, id: crypto.randomUUID(), fields: { file_id: fileId, ...fields } }];
+  await edgeCommit(supabase, ctx, `doc-text-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['document:text'] } });
+  return charCount;
+}
+
 /** Commit de la Edge con el actor de la petición (lo que hace `POST commands`, sin hooks: las filas las construye la Edge). */
 async function edgeCommit(supabase: Supabase, ctx: RequestContext, requestId: string, operations: unknown[], confirmation: Record<string, unknown> | null, digest?: string): Promise<CommitResult> {
   return supabase.rpc<CommitResult>('core_commit', {
@@ -618,14 +638,7 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
           return { str: o.str, page: Math.trunc(o.page as number), x: num(o.x), y: num(o.y), w: num(o.w), h: num(o.h) };
         });
         await verifiedFile(supabase, ctx, fileId, 0, 'fileId');
-        const file = await supabase.rpc<{ sha256: string }>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: fileId });
-        const charCount = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
-        const existing = await read<{ id: string; revision: number } | null>(supabase, ctx, 'invoices.document_text', { file_id: fileId });
-        const fields = { source, items, char_count: charCount, sha256: file.sha256 ?? null };
-        const operations = existing
-          ? [{ op: 'update', table: DOCUMENT_TEXTS, id: existing.id, expectedRevision: existing.revision, fields }]
-          : [{ op: 'insert', table: DOCUMENT_TEXTS, id: crypto.randomUUID(), fields: { file_id: fileId, ...fields } }];
-        await edgeCommit(supabase, ctx, `doc-text-${crypto.randomUUID()}`, operations, { required: false, id: null, risk: { required: false, reasons: ['document:text'] } });
+        const charCount = await saveDocumentText(supabase, ctx, fileId, items);
         return { file_id: fileId, char_count: charCount, items: items.length };
       },
     },
@@ -709,16 +722,87 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     defaultProvider: base.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
     fetch: base.fetch,
   });
+  const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) };
+  const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
+  const runDrive = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload });
   return createApp({
     ...base,
     app: 'invoices',
     slug: 'invoices-api',
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
-    hooks: { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) },
+    hooks,
     mcpTools: invoicesMcpTools(supabase),
-    routes: invoicesRoutes(supabase, targets, base.extractInvoice, storage),
+    routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage), {
+      // «Buscar ahora» en Ajustes (owner): el mismo tick, sin esperar al planificador.
+      method: 'POST', pattern: 'drive/run', handler: async ({ ctx }) => {
+        if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede buscar en Drive.');
+        return runDrive();
+      },
+    }],
+    workerRoutes: [{ method: 'POST', pattern: 'drive/tick', handler: () => runDrive() } satisfies WorkerRoute],
   });
+}
+
+/** Sube los bytes de un archivo ya creado en core.files (por defecto, PUT a la URL firmada del almacenamiento). */
+export type DriveUpload = (object: { bucket: string; path: string; storage_provider: 'supabase' | 'r2' }, bytes: Uint8Array) => Promise<void>;
+
+/** Drive real con la cuenta de servicio, o null (integración apagada) si faltan los secretos. */
+function driveFromEnv(env: (name: string) => string | undefined, transport?: typeof fetch): DriveApi | null {
+  const tokens = createGoogleTokenSource({ serviceAccountJson: env('GOOGLE_SERVICE_ACCOUNT_JSON'), scope: 'https://www.googleapis.com/auth/drive', fetch: transport });
+  const driveId = env('INVOICES_DRIVE_ID');
+  return tokens && driveId ? createGoogleDriveApi({ driveId, accessToken: () => tokens.accessToken(), fetch: transport }) : null;
+}
+
+/**
+ * Lo que el tick de Drive usa del núcleo: la cuenta de servicio `drive` (editor en Finance) firma el lote con los hooks
+ * de Finance, crea el archivo y guarda el texto; las acciones de sistema llevan el estado y el registro.
+ */
+function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: AppHooks, drive: DriveApi | null, options: { readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; fetch?: typeof fetch; upload?: DriveUpload }) {
+  const sync = createSync(supabase, 'invoices', hooks);
+  let actor: Promise<RequestContext> | null = null;
+  const ctx = () => (actor ??= (async () => {
+    const id = await ensureServiceActor(supabase, 'drive');
+    return sync.context({ id, email: null, sessionId: 'service:drive', kind: 'human', name: 'Drive (sistema)' }, '');
+  })().catch((error) => { actor = null; throw error; }));
+  let running: Promise<DriveTickResult> | null = null;
+  const tick = () => runDriveTick({
+    drive,
+    limit: options.limit,
+    invoke: (name, args) => supabase.rpc('core_invoke', { p_app: 'invoices', p_actor: null, p_name: name, p_args: args }),
+    rows: async () => {
+      const c = await ctx();
+      const [suppliers, templates, invoices, files] = await Promise.all([
+        allRows<SupplierRow>(supabase, c, TABLES.suppliers), allRows<any>(supabase, c, TABLES.supplierTemplates),
+        allRows<InvoiceRow>(supabase, c, TABLES.invoices), allRows<{ invoice_id: string; sha256: string | null; deleted_at: string | null }>(supabase, c, TABLES.invoiceFiles),
+      ]);
+      return { suppliers, templates: templates.filter((t) => !t.deleted_at && t.status !== 'retirada'), invoices, files };
+    },
+    storeFile: async (bytes, name, sha) => {
+      const c = await ctx();
+      const file = await supabase.rpc<any>('core_file_create', {
+        p_app: 'invoices', p_actor: c.user.id, p_bucket: INVOICES_BUCKET, p_filename: name.slice(0, 255), p_mime: 'application/pdf', p_size: bytes.length, p_sha256: sha, p_provider: storage.defaultProvider,
+      });
+      const object = { bucket: INVOICES_BUCKET, path: String(file.path), storage_provider: (file.storageProvider === 'r2' ? 'r2' : 'supabase') as 'supabase' | 'r2' };
+      if (options.upload) await options.upload(object, bytes);
+      else {
+        const upload = await storage.uploadUrl(object, 'application/pdf');
+        const put = await (options.fetch ?? fetch)(upload.url, { method: 'PUT', headers: upload.headers, body: bytes });
+        if (!put.ok) fail(503, 'STORAGE_UNAVAILABLE', 'No se pudo guardar el documento.');
+      }
+      await supabase.rpc('core_file_mark', { p_id: file.id, p_status: 'verified', p_size: bytes.length, p_hash_verified: true });
+      return String(file.id);
+    },
+    commit: async (requestId, operations) => sync.commit(await ctx(), { requestId, operations }),
+    saveText: async (fileId, items) => {
+      const num = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+      await saveDocumentText(supabase, await ctx(), fileId, items.slice(0, MAX_TEXT_ITEMS).map((it) => ({ str: it.str.slice(0, 500), page: Math.trunc(it.page), x: num(it.x), y: num(it.y), w: num(it.w), h: num(it.h) })));
+    },
+    readPdf: options.readPdf ?? readPdfItemsServer,
+    uuid: stableUuid,
+  });
+  // Un tick a la vez por instancia: «Buscar ahora» mientras corre el del planificador espera al mismo.
+  return () => (running ??= tick().finally(() => { running = null; }));
 }
 
 // ---------------------------------------------------------------------------
