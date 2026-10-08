@@ -5,11 +5,12 @@
  *   npx playwright test tests/invoices/acceptance.spec.ts
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildInvoicesApp } from './e2e-build.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 import { freePort } from './free-port.ts';
 import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
@@ -41,7 +42,7 @@ test.beforeAll(async () => {
     ],
   });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildInvoicesApp();
   server = await preview({
     configFile, logLevel: 'silent',
     preview: { port: await freePort(), strictPort: true, host: '127.0.0.1', proxy: { '/api': { target: api.url, changeOrigin: true } } },

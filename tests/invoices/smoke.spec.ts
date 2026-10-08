@@ -6,9 +6,10 @@
  * Si Playwright no encuentra su Chromium, playwright.config.ts usa el de %LOCALAPPDATA%\ms-playwright\chromium-1217.
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildInvoicesApp } from './e2e-build.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 import { freePort } from './free-port.ts';
 
@@ -24,7 +25,7 @@ let baseURL: string;
 test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildInvoicesApp();
   server = await preview({
     configFile,
     logLevel: 'silent',
