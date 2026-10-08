@@ -79,6 +79,17 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await expect.poll(async () => (await api.app.t.db.query(`select logo_mime from central.common_entity_projection`)).rows[0]).toEqual({ logo_mime: 'image/png' });
   await expect(page.locator('#entityView img.entitylogo')).toHaveCount(1);
 
+  // El lugar de los retiros y su plano (X3 y CE3): un PDF que llega verificado y lo publica la proyección del lugar para los portales.
+  await page.locator('#editEntity').click();
+  await page.locator('#en-venue').fill('Camino del Retiro 5, 28400 Collado'); // lugar ficticio, distinto del domicilio fiscal
+  await page.locator('#en-plan').setInputFiles({ name: 'plano.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 plano de prueba') });
+  await expect(page.locator('.planpreview')).toContainText('plano.pdf');
+  await page.locator('#saveEntity').click();
+  await expect(page.getByText('Datos de la entidad guardados.')).toBeVisible();
+  await expect.poll(async () => (await api.app.t.db.query(`select site_plan_mime, address from central.portal_place_projection`)).rows[0])
+    .toEqual({ site_plan_mime: 'application/pdf', address: 'Camino del Retiro 5, 28400 Collado' });
+  await expect(page.locator('#entityView')).toContainText('Ver plano');
+
   // Otra persona, en su propio navegador: lectora de Central.
   const other = await browser.newContext();
   const readerPage = await other.newPage();

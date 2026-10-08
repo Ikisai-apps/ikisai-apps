@@ -30,6 +30,7 @@
 - 2026-10-07 · **Textos y contacto** (regla del usuario): migración `0570_central_texts` (textos con versión de servidor, versiones guardadas ya sustituidas, marcadores, proyección `central.common_texts_projection` y lecturas `text_version`/`text_history` para organizers, guests, booking y central, semilla de los cuatro textos), pantalla desde Inicio. **Por idioma** (`es` obligatorio, `en` opcional con respaldo en español; versión inglesa inicial de la declaración y de la protección de datos). **CE2:** textos de Guests (`guests.data_why`, `guests.signature_statement`, `guests.allergies_notice`) e información práctica (`info.*`, tipo nuevo `info`), en los dos idiomas. Pruebas `tests/central/texts.test.ts` y `texts.spec.ts`.
 
 - 2026-10-08 · Contacto público sin sesión (C1/P9, `0580`), textos de Organizers (X2, `0590`) e **instrucciones de pago** (F3, `0595`: IBAN y Bizum en la Entidad, marcadores y `payment.instructions`).
+- 2026-10-08 · **El lugar en los portales** (X3 de Organizers y CE3 de Guests, `0596`): **dirección del lugar de los retiros** (`venue_address`; los portales nunca ven el domicilio fiscal), plano del centro en la Entidad (imagen o PDF, `permanent`) servido a los portales con C8 (`central.site_plan_file`), marcadores `{{entidad.lugar}}` y `{{entidad.mapa}}`, proyección `central.portal_place_projection` para organizers y guests, `info.arrival` pasa al lugar, y los textos `portal.menu_note`, `portal.practical`, `guests.menu_notice` e `info.map_link`.
 
 ## Pendiente
 
