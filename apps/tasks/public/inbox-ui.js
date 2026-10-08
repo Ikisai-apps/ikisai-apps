@@ -25,7 +25,8 @@ function originChip(source){return `<span class="pstate">${esc(appName(source))}
 /* Menú: «Por clasificar · N» en Trabajo, solo si hay algo esperando. */
 const navigationBeforeInbox=navigationGroups;
 navigationGroups=function(){const groups=navigationBeforeInbox(),n=pendingCount(),work=groups.find(g=>g.id==='work');
-  if(work&&n)work.items.unshift(['triage',`Por clasificar · ${n}`,'triage','view']);
+  // Con algo pendiente, para quien clasifica; a cero, sigue para el owner, que entra por aquí a «Gestionar entradas».
+  if(work&&(n||canManageRoutes()))work.items.unshift(['triage',n?`Por clasificar · ${n}`:'Por clasificar','triage','view']);
   return groups};
 
 let inboxListening=false;
@@ -38,6 +39,7 @@ function inboxView(){listenInbox();
     <span class="pmeta">${[r.due?'para el '+new Date(r.due+'T00:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'}):'',r.external_ref.slice(r.external_ref.indexOf(':')+1)].filter(Boolean).map(esc).join(' · ')}${r.external_url?` · <a href="${esc(r.external_url)}" target="_blank" rel="noopener" data-feedback-id="tasks.por_clasificar.lista.abrir_origen" data-feedback-label="Abrir en la app de origen">Abrir en ${esc(appName(r.source))}</a>`:''}</span>
     <div class="pactions"><span class="pgrow"></span><button class="softbtn small" data-request-move="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.mover" data-feedback-label="Mover petición a…">Mover a…</button><button class="ghost small" data-request-dismiss="${r.id}" type="button" data-feedback-id="tasks.por_clasificar.lista.descartar" data-feedback-label="Descartar petición">Descartar</button></div></div>`;
   return `<main class="screen inbox"><div class="screenhead"><div><h1 class="title">Por clasificar</h1><p class="subtitle">Peticiones de otras apps sin regla de entrada</p></div>${canManageRoutes()?'<button class="softbtn" id="manageRoutes" type="button" data-feedback-id="tasks.por_clasificar.gestionar_entradas" data-feedback-label="Gestionar entradas">Gestionar entradas</button>':''}</div>
+    ${canManageRoutes()&&!R().routeFor(Sync.core.data,'booking.retreat_project')?'<div class="notice" id="retreatRouteMissing" data-feedback-id="tasks.por_clasificar.aviso_retiros" data-feedback-label="Falta el área de los retiros">Falta elegir el área de los proyectos de retiro: hasta entonces, Booking no puede crearlos. <button class="linkbtn" type="button" data-route-new="booking.retreat_project">Elegir el área</button></div>':''}
     ${groups.length?groups.map(g=>`<section class="inboxgroup"><h2 class="sectionlabel">${esc(appName(g.source))} · ${esc(kindName(g.kind,g.label))} <span class="count">${g.items.length}</span>${canManageRoutes()?` <button class="linkbtn small" data-route-new="${esc(g.kind)}" type="button" data-feedback-id="tasks.por_clasificar.grupo.crear_regla" data-feedback-label="Crear regla para este tipo">Crear regla para este tipo</button>`:''}</h2>${g.items.map(row).join('')}</section>`).join(''):'<div class="empty">Nada por clasificar. Lo que pidan otras apps sin regla de entrada aparecerá aquí.</div>'}</main>`}
 
 const mainBeforeInbox=main;
