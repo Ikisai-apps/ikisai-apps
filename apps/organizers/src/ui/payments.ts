@@ -20,6 +20,11 @@ const money = (n: number | string) => i18n.formatMoney(Number(n));
 const PURPOSES: Record<string, string> = { senal: L('Señal'), saldo: L('Saldo'), extras: L('Extras') };
 const PAYMENT_TYPES: Record<string, string> = { efectivo: L('Efectivo'), tarjeta: L('Tarjeta'), transferencia: L('Transferencia'), plataforma_pago: L('Plataforma de pago'), otro: L('Otra') };
 
+/** Rótulo del concepto del cobro: «Señal», «Saldo» o «Extras»; sin rótulo para `general` o vacío. */
+const purposeChip = (purpose: string | null | undefined) => {
+  const label = purpose ? PURPOSES[purpose] : undefined;
+  return label ? el('span', { class: 'chip small orgpurpose' }, t(label)) : null;
+};
 const issueDay = (date: string) => dayLabel(`${date.slice(0, 10)}T12:00:00Z`);
 
 export function renderPayments(ctx: ViewContext, reservationId: string, contract: Contract | null): HTMLElement {
@@ -64,7 +69,7 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
       },
       el('span', { class: 'orginvoice-main' },
         el('strong', null, inv.type.startsWith('R') ? t('Rectificativa {numero}', { numero: inv.number }) : t('Factura {numero}', { numero: inv.number })),
-        el('span', { class: 'muted small' }, inv.purpose && PURPOSES[inv.purpose] ? el('span', { class: 'chip small orgpurpose' }, t(PURPOSES[inv.purpose])) : null, ' ', issueDay(inv.issue_date), inv.rectifies?.length ? ` · ${t('rectifica {numeros}', { numeros: inv.rectifies.join(', ') })}` : '')),
+        el('span', { class: 'muted small' }, purposeChip(inv.purpose), ' ', issueDay(inv.issue_date), inv.rectifies?.length ? ` · ${t('rectifica {numeros}', { numeros: inv.rectifies.join(', ') })}` : '')),
       el('span', { class: 'orginvoice-side' },
         el('strong', null, money(inv.total)),
         el('span', { class: `chip small ${inv.collected ? 'ok' : 'warn'}` }, inv.collected ? t('Cobrada') : t('Pendiente')))),
