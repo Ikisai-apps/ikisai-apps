@@ -107,6 +107,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Extracción automática real: falta que Core deje `ANTHROPIC_API_KEY` como secreto del proyecto; hasta entonces la ruta responde `EXTRACTION_UNAVAILABLE` y la app ofrece pegar el JSON.
 - Fase 2: las lecturas de `invoices.booking_cost_projection` (para `booking`) y `invoices.food_stock_projection` (para `food`) ya están registradas en la migración 0200; falta que Booking y Food las consuman.
 - Humo real contra `invoices-api` publicada tras la fusión (lo publica Core).
+- QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
 
 ## Bloqueos
 
