@@ -1,10 +1,9 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
-import { applyTheme, renderLogin } from '@ikisai/ui-kit';
+import { applyTheme, initAppUpdates, renderLogin } from '@ikisai/ui-kit';
 import { createClient, describeError } from './app/client.ts';
 import { safeToUpdate } from './app/guard.ts';
 import { renderShell } from './ui/shell.ts';
-import { initUpdates } from './updates.ts';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Falta el contenedor #app');
@@ -14,7 +13,8 @@ const client = createClient();
 let unmountShell: (() => void) | null = null;
 let unmountLogin: (() => void) | null = null;
 
-initUpdates({ isSafe: () => safeToUpdate(client) });
+// Versiones nuevas (kit 0.23): al abrir, o al volver tras más de un minuto, se aplican solas si es seguro; si no, el banner.
+initAppUpdates({ isSafe: () => safeToUpdate(client), enabled: import.meta.env.PROD });
 
 async function boot(): Promise<void> {
   try {
