@@ -7,7 +7,7 @@ import { el, plural, replace, type Child } from '@ikisai/ui-kit';
 import { nights } from '@ikisai/domain-booking';
 import { CONDITIONS, PROPOSALS, PROPOSAL_LINES, RESERVATIONS, TIERS, fullDay } from '../app/client.ts';
 import { RATE_LABELS } from '../app/labels.ts';
-import { amountText, byPosition, eur, figures, lineAmounts, pct, qty, signedPct, tierText, tiersOf, type Row } from '../app/rates.ts';
+import { amountText, byPosition, eur, figures, lineAmounts, pct, qty, signedPct, tierText, tiersOf, type Row, balanceDueText } from '../app/rates.ts';
 import type { ViewMount } from './shell.ts';
 
 interface Entity {
@@ -88,7 +88,8 @@ export function mountProposalDocument(id: string): ViewMount {
 
       const depositText = conditions && f.deposit_amount > 0
         ? `Para reservar se abona una señal de ${eur(f.deposit_amount)} (${pct(conditions.deposit_percent)} del total${Number(conditions.deposit_minimum) > 0 ? `, con un mínimo de ${eur(conditions.deposit_minimum)}` : ''}). `
-          + `Se paga en ${plural(Number(conditions.deposit_days), 'día', 'días')} desde la aceptación; si faltan menos de ${plural(Number(conditions.short_notice_days), 'día', 'días')} para la entrada, en ${plural(Number(conditions.deposit_days_short), 'día', 'días')}.`
+          + `Se paga en ${plural(Number(conditions.deposit_days), 'día', 'días')} desde la aceptación; si faltan menos de ${plural(Number(conditions.short_notice_days), 'día', 'días')} para la entrada, en ${plural(Number(conditions.deposit_days_short), 'día', 'días')}. `
+          + balanceDueText(conditions)
         : null;
 
       replace(host,

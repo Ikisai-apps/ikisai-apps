@@ -261,6 +261,7 @@ FIELDS[TABLES.conditions] = {
   is_default: { kind: 'bool' },
   active: { kind: 'bool' },
   minimum_total: { kind: 'money' },
+  balance_due_hours_after_end: { kind: 'int', nullable: false },
 };
 FIELDS[TABLES.cancellationTiers] = {
   conditions_id: { kind: 'uuid' },

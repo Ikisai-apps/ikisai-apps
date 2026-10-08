@@ -90,3 +90,12 @@ export function tierText(tier: Row): string {
 export function isPast(date: unknown, today: string): boolean {
   return typeof date === 'string' && date.slice(0, 10) < today;
 }
+
+/** Plazo del saldo de unas condiciones, en una frase («El saldo se paga en las 24 horas siguientes al final del evento.»). */
+export function balanceDueText(conditions: Record<string, unknown> | null | undefined): string {
+  const hours = Number(conditions?.balance_due_hours_after_end ?? 24);
+  if (!Number.isFinite(hours) || hours <= 0) return 'El saldo se paga al final del evento.';
+  return hours % 24 === 0 && hours > 24
+    ? `El saldo se paga en los ${hours / 24} días siguientes al final del evento.`
+    : `El saldo se paga en las ${hours} horas siguientes al final del evento.`;
+}
