@@ -110,7 +110,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'supplier_id', 'invoice_date', 'object', 'invoice_number', 'currency', 'due_date', 'expense_category', 'is_investment', 'deductibility',
     'status', 'review_reason', 'annulled_reason', 'payment_status', 'payment_method', 'paid_at', 'source_total',
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
-    'source', 'import_sha256', 'import_meta', 'notes',
+    'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
@@ -189,6 +189,9 @@ export interface InvoiceRow extends SyncedColumns {
   source: InvoiceSource;
   import_sha256: string | null;
   import_meta: Record<string, unknown> | null;
+  /** Llegó por Google Drive (0224): id del archivo en la unidad y enlace para abrirlo. */
+  drive_file_id?: string | null;
+  drive_url?: string | null;
   fiscal_year: number;
   fiscal_quarter: number;
   fiscal_period: string;
