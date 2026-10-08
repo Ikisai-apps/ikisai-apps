@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.25.4: `.field.check` blindada frente a la `.check` de Tasks (texto montado en «Me bloquea»).
 - v0.25.3: `feedbackRoundTrip` con hojas abiertas y ayudantes exportados; aviso de uso tras navegar; ayuda del gesto en campos de texto.
 - v0.25.2: formulario progresivo con bloqueo de doble envío, ids estables, cierre y aviso; `portalHelpRoundTrip` para Organizers y Guests.
 - v0.25.1: un solo envío por composer, cierre inmediato y aviso dentro de lo visible con teclado (FB_2026_016/017 en Finance).

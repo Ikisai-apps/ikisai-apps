@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.25.4 · 8 de octubre de 2026
+
+- **Fallo del usuario (Tasks en Android):** en el composer, «Me bloquea: no puedo seguir trabajando» salía con el texto montado junto a la casilla.
+  - **Causa:** la casilla del kit usa `.field.check`, y Tasks tiene su propia `.check` para las casillas de tarea (38×44 px con `::before`) en `index.html` y `taller.css`, sin acotar. Esa regla se aplicaba también dentro de la capa del kit y estrechaba la etiqueta.
+  - **Arreglo:** blindaje de `.field.check` en el kit (ancho, alto, borde, posición, fondo, color y pseudo-elementos), que gana por especificidad. Cubre también las casillas de agentes, del revisor y del selector de ámbitos dentro de Tasks.
+  - En apps sin esa regla no cambia nada.
+- Prueba `v32` a 390 px, con y sin la regla de Tasks. Sin el blindaje, falla.
+
 ## 0.25.3 · 8 de octubre de 2026
 
 Lo que piden Central, Booking, Tasks y Food de la prueba común:
