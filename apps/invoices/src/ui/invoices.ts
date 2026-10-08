@@ -78,7 +78,7 @@ export const mountInvoices: ViewMount = (ctx) => {
 
   const search = el('input', { 'data-feedback-id': 'invoices.facturas.buscar', 'data-feedback-label': 'Buscar facturas', type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
+  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['drive', 'Llegadas por Drive, sin validar'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
     { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Filtrar por estado', 'aria-label': 'Filtrar por estado', onchange: () => { filter = statusSelect.value; paint(); } });
   const listHost = el('div', { 'data-feedback-id': 'invoices.facturas.lista', 'data-feedback-label': 'Facturas recibidas', id: 'invoiceList' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
@@ -135,6 +135,7 @@ export const mountInvoices: ViewMount = (ctx) => {
       case 'anulada': return invoice.status === 'anulada';
       case 'sin_pagar': return invoice.status !== 'anulada' && invoice.payment_status === 'pendiente';
       case 'sin_documento': return invoice.status !== 'anulada' && !hasFile;
+      case 'drive': return !!invoice.drive_file_id && (invoice.status === 'pendiente_datos' || invoice.status === 'pendiente_revision');
       default: return invoice.status === filter;
     }
   }
@@ -197,6 +198,9 @@ export const mountInvoices: ViewMount = (ctx) => {
       });
       return;
     }
+    // Tarjetas de Inicio: `#/facturas?filtro=pendiente_datos|pendiente_revision|sin_pagar|drive`.
+    const wanted = tail.match(/^\?filtro=([a-z_]+)/);
+    if (wanted && [...statusSelect.options].some((o) => o.value === wanted[1])) { filter = wanted[1]!; statusSelect.value = filter; history.replaceState(null, '', '#/facturas'); paint(); return; }
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
     else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {
@@ -314,6 +318,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Fecha'), el('dd', null, invoice.invoice_date ? [shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`] : 'Sin fecha: léela del PDF o escríbela para poder validar'),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
+      ...(invoice.drive_url ? [el('dt', null, 'Origen'), el('dd', null, 'Llegó por Google Drive · ', el('a', { href: invoice.drive_url, target: '_blank', rel: 'noopener', id: 'driveOrigin' }, 'abrir el original'))] : []),
     ),
     el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions),
   );

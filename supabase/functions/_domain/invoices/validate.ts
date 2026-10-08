@@ -138,6 +138,8 @@ export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', {
     }
   }
   uuid(fields, 'supplier_id');
+  if (has(fields, 'drive_url') && fields.drive_url !== null && (typeof fields.drive_url !== 'string' || !/^https:\/\//.test(fields.drive_url) || fields.drive_url.length > 500)) domainFail('INVALID_FIELDS', 'El enlace de Drive no es válido.', { field: 'drive_url' });
+  if (has(fields, 'drive_file_id') && fields.drive_file_id !== null && (typeof fields.drive_file_id !== 'string' || !fields.drive_file_id || fields.drive_file_id.length > 200)) domainFail('INVALID_FIELDS', 'El id de Drive no es válido.', { field: 'drive_file_id' });
   date(fields, 'invoice_date');
   date(fields, 'due_date');
   date(fields, 'paid_at');

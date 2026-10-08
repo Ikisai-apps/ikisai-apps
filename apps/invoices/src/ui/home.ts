@@ -1,5 +1,6 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { el, formatDate, icon, replace } from '@ikisai/ui-kit';
+import { el, formatDate, icon, replace, toast } from '@ikisai/ui-kit';
+import { describeError } from '../app/client.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
 import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, todayIso } from '../app/data.ts';
@@ -21,6 +22,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const stat = (id: string) => el('dd', { id }, '…');
   const pendingData = stat('statPendingData'); const pendingReview = stat('statPendingReview'); const unassigned = stat('statUnassigned'); const unpaid = stat('statUnpaid');
   const supplierCount = stat('statSuppliers');
+  const fromDrive = stat('statFromDrive');
+  const driveState = el('p', { class: 'hint', id: 'driveState' });
+  const isOwner = client.bootstrap()?.membership.role === 'owner';
   const quarterBase = stat('statQuarterBase'); const quarterVat = stat('statQuarterVat'); const quarterCount = stat('statQuarterCount');
   const network = el('dd'); const pending = el('dd'); const conflicts = el('dd'); const lastPull = el('dd'); const role = el('dd');
 
@@ -38,6 +42,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     const live = m.invoices.filter((i) => !i.deleted_at && i.status !== 'anulada');
     const today = todayIso();
     pendingData.textContent = String(live.filter((i) => i.status === 'pendiente_datos').length);
+    const drive = live.filter((i) => i.drive_file_id && (i.status === 'pendiente_datos' || i.status === 'pendiente_revision'));
+    fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((i) => i.status === 'pendiente_datos').length} sin leer)` : '0';
     const review = live.filter((i) => i.status === 'pendiente_revision');
     const revisar = review.filter((i) => i.review_reason === 'REVISAR IMPORTES').length;
     pendingReview.textContent = revisar ? `${review.length} (${revisar} con importes por revisar)` : String(review.length);
@@ -59,16 +65,25 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Facturas de compra: documento, datos, revisión, asignación y gestoría. Todo funciona sin conexión.'))),
     el('div', { class: 'cardgrid' },
-      link({ feedbackId: 'invoices.inicio.pendientes_datos', feedbackLabel: 'Pendientes de datos' }, '#/facturas', 'Pendientes de datos', 'Facturas con documento pero sin importar ni teclear.', pendingData, 'Facturas'),
-      link({ feedbackId: 'invoices.inicio.pendientes_revision', feedbackLabel: 'Pendientes de revisión' }, '#/facturas', 'Pendientes de revisión', 'Importadas o editadas; hay que validarlas a mano.', pendingReview, 'Facturas'),
+      link({ feedbackId: 'invoices.inicio.pendientes_datos', feedbackLabel: 'Pendientes de datos' }, '#/facturas?filtro=pendiente_datos', 'Pendientes de datos', 'Facturas con documento pero sin importar ni teclear.', pendingData, 'Facturas'),
+      link({ feedbackId: 'invoices.inicio.pendientes_revision', feedbackLabel: 'Pendientes de revisión' }, '#/facturas?filtro=pendiente_revision', 'Pendientes de revisión', 'Importadas o editadas; hay que validarlas a mano.', pendingReview, 'Facturas'),
       link({ feedbackId: 'invoices.inicio.sin_asignar', feedbackLabel: 'Sin asignar' }, '#/compras', 'Sin asignar', 'Artículos de facturas validadas sin destino.', unassigned, 'Artículos'),
-      link({ feedbackId: 'invoices.inicio.sin_pagar', feedbackLabel: 'Sin pagar' }, '#/facturas', 'Sin pagar', 'Facturas con el pago pendiente.', unpaid, 'Facturas'),
+      link({ feedbackId: 'invoices.inicio.sin_pagar', feedbackLabel: 'Sin pagar' }, '#/facturas?filtro=sin_pagar', 'Sin pagar', 'Facturas con el pago pendiente.', unpaid, 'Facturas'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.trimestre', 'data-feedback-label': 'Trimestre' },
         el('h3', null, rangeLabel(workingQuarter())),
         el('p', null, 'Solo lo validado. Detalle y entrega en Gestoría.'),
         el('dl', { class: 'kv', 'data-feedback-ignore': '' }, el('dt', null, 'Base'), quarterBase, el('dt', null, 'IVA soportado'), quarterVat, el('dt', null, 'Facturas'), quarterCount),
         el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.trimestre.ir_gestoria', 'data-feedback-label': 'Ir a Gestoría', class: 'ghost', type: 'button', onclick: () => navigate('#/gestoria') }, icon('briefcase', 16), 'Ir a Gestoría')),
       ),
+      fb(el('article', { class: 'card' },
+        el('h3', null, 'Desde Google Drive'),
+        el('p', null, 'Las facturas que dejas en la carpeta «Entrada» llegan solas cada 15 minutos, leídas si el PDF tiene texto. Revísalas y valídalas.'),
+        el('dl', { class: 'kv' }, el('dt', null, 'Por revisar'), fromDrive),
+        el('p', { style: 'margin-top:10px', class: 'btnrow' },
+          el('button', { 'data-feedback-id': 'invoices.inicio.drive.ver', 'data-feedback-label': 'Ver las de Drive', class: 'ghost', type: 'button', onclick: () => navigate('#/facturas?filtro=drive') }, 'Ver las de Drive'),
+          isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null),
+        isOwner ? driveState : null,
+      ), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
       link({ feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }, '#/proveedores', 'Proveedores', 'Altas, NIF, alias y categoría por defecto.', supplierCount, 'Activos'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
         el('h3', null, 'Sincronización'),
@@ -91,8 +106,40 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     el('button', { 'data-feedback-id': 'invoices.inicio.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'homeNewInvoice', hidden: client.bootstrap()?.membership.role === 'reader', onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
   );
 
+  /** Estado de Drive para el owner: última búsqueda, salud y lo que no entró (duplicados o con errores). */
+  async function paintDrive(): Promise<void> {
+    if (!isOwner || !navigator.onLine) return;
+    try {
+      const st = await client.api<{ state: { last_run_at: string | null; health: string; health_detail: string | null } | null; files: Array<{ name: string; status: string; reason: string | null }> }>('/read/invoices.drive_status', { json: {} });
+      const health = st.state?.health ?? 'unknown';
+      const last = st.state?.last_run_at ? `Última búsqueda: ${formatDate(st.state.last_run_at)}.` : 'Aún no se ha buscado.';
+      const problem = health === 'not_configured' ? ' Drive no está configurado.'
+        : health === 'blocked' ? ` Drive rechaza la cuenta de servicio: ${st.state?.health_detail ?? ''}`
+        : health === 'error' ? ` ${st.state?.health_detail ?? 'Fallo pasajero; se reintenta.'}` : '';
+      const skipped = st.files.filter((f) => f.status !== 'importada').slice(0, 5);
+      const list = skipped.map((f) => `${f.name} (${f.status === 'duplicada' ? 'duplicada' : f.reason ?? 'error'})`).join(' · ');
+      replace(driveState, `${last}${problem}`, ...(skipped.length ? [el('br'), `Últimos sin importar: ${list}`] : []));
+    } catch { replace(driveState, ''); }
+  }
+  async function runDrive(button: HTMLButtonElement): Promise<void> {
+    if (!navigator.onLine) { toast('Buscar en Drive necesita conexión.'); return; }
+    button.disabled = true;
+    try {
+      const r = await client.api<{ outcome: string; imported: number; read: number; duplicates: number; errors: number; more: boolean; detail: string | null }>('/drive/run', { json: {} });
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      toast(r.outcome !== 'ok' ? (r.detail ?? 'No se pudo buscar en Drive.')
+        : r.imported || r.duplicates || r.errors
+          ? `Drive: ${plural(r.imported, 'nueva')} (${plural(r.read, 'leída')}), ${plural(r.duplicates, 'duplicada')}, ${r.errors} con errores${r.more ? '; quedan más para la siguiente búsqueda' : ''}.`
+          : 'Drive: no hay facturas nuevas en «Entrada».');
+      void client.sync().catch(() => undefined);
+    } catch (error) { toast(describeError(error)); }
+    button.disabled = false;
+    void paintDrive();
+  }
+
   paintStatus(client.status());
   void paintCounts();
+  void paintDrive();
   const offStatus = client.onStatus(paintStatus);
   const offTables = onAnyTable(client, () => void paintCounts());
   return () => { offStatus(); offTables(); };
