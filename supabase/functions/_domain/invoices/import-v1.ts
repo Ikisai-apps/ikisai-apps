@@ -119,7 +119,14 @@ export interface ImportArgs {
   supplier: { mode: 'existing' | 'create'; id: string | null; slug: string | null };
   invoice: ImportOverrides;
   files: ImportFileArg[];
+  /** Quién leyó el documento (0226): `pdf_text` (Leer PDF o Drive), `ia` (sesión de Claude u otra IA), `api` o `json`. */
+  origin?: ImportOrigin;
+  /** De dónde sale cada dato: campo → { método, texto, página, confianza }. */
+  provenance?: Record<string, ImportProvenance>;
 }
+
+export type ImportOrigin = 'pdf_text' | 'ia' | 'api' | 'json';
+export interface ImportProvenance { method: string; text: string | null; page: number | null; confidence: number }
 
 export interface BuildImportArgsOptions {
   document: ImportDocument;
@@ -130,6 +137,8 @@ export interface BuildImportArgsOptions {
   overrides?: ImportOverrides;
   files?: ImportFileArg[];
   uuid?: () => string;
+  origin?: ImportOrigin;
+  provenance?: Record<string, ImportProvenance>;
 }
 
 export function buildImportArgs(options: BuildImportArgsOptions): ImportArgs {
@@ -150,6 +159,8 @@ export function buildImportArgs(options: BuildImportArgsOptions): ImportArgs {
     supplier,
     invoice: options.overrides ?? {},
     files: options.files ?? [],
+    ...(options.origin ? { origin: options.origin } : {}),
+    ...(options.provenance ? { provenance: options.provenance } : {}),
   };
 }
 

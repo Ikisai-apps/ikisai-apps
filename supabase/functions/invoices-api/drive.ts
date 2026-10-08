@@ -271,7 +271,8 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
       let reason: string | null = null;
       if (document && documentSha && supplierMode) {
         let n = 0;
-        const importArgs = buildImportArgs({ document, documentSha256: documentSha, invoiceId, supplier: supplierMode, files: [], uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
+        const importArgs = buildImportArgs({ document, documentSha256: documentSha, invoiceId, supplier: supplierMode, files: [], origin: 'pdf_text',
+          provenance: Object.fromEntries(Object.entries(extraction.provenance).map(([k, p]) => [k, { method: p.method, text: p.text, page: p.page, confidence: p.confidence }])), uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
         try {
           await deps.commit(`drive-${file.id}`, [...base, { op: 'call', procedure: 'invoices.import_v1', args: importArgs }]);
           readOk = true;
