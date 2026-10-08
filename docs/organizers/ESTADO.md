@@ -30,7 +30,7 @@
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
-- Fase 2: cerrada a falta de B14 (Booking: tipo de reserva y campos de diseño en el detalle).
+- Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: lo contratado y el saldo, cuando Booking publique su lectura de dinero del retiro; abrir el PDF de una factura registrada, cuando exista `portal-files`.
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.

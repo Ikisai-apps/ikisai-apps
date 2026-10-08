@@ -360,6 +360,9 @@ export const EN: Dictionary = {
   'Diseño': 'Design',
   'Personas, comidas, alojamiento y extras, con el precio orientativo al momento.': 'People, meals, accommodation and extras, with the approximate price straight away.',
 
+  'Montaje especial de las salas': 'Special room setup',
+  'Apoyo técnico (sonido, proyección…)': 'Technical support (sound, projection…)',
+
   // Propuesta
   'Propuesta': 'Proposal',
   'Enviada': 'Sent',

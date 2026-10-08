@@ -338,7 +338,7 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await api.sendProposal(reservation, 20);
   await page.locator('#tab-propuesta').click();
   await expect(page.locator('#proposal-1')).toContainText('Pendiente de confirmar');
-  await expect(page.locator('#proposal-1 .proposalTotal')).toHaveText(/2\.?400,00/);
+  await expect(page.locator('#proposal-1 .proposalTotal')).toHaveText(/2\.?800,00/);
   await page.locator('#wantConfirm').click();
   await page.getByRole('button', { name: 'Quiero confirmar' }).last().click();
   await expect(page.locator('#myRequests')).toContainText('Quiero confirmar');

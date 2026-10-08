@@ -306,7 +306,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - Muestra noches y comidas incluidas, líneas, total con IVA incluido y su desglose, señal y aviso de mínimo aplicado.
   - La señal se calcula sobre lo que se paga.
   - Sin tarifas: «Ikisai te enviará el precio».
-  - Mientras Booking no publique el tipo de reserva en el detalle, calcula con `event_type: 'retiro'`.
+  - Calcula con el tipo de reserva real (`event_type`, B14), y con el montaje especial y el apoyo técnico si se piden.
 - **Calculadora privada:** precio por asistente, asistentes y otros gastos dan ingresos, gastos, margen y punto de equilibrio. Se guarda solo en el dispositivo (caché por persona; se borra al cerrar la sesión).
 - **Pestaña «Propuesta»** (cualquier retiro no cancelado): propuestas enviadas o aceptadas con líneas, totales, señal, validez, condiciones y tramos de cancelación (§13.3), con «Quiero confirmar» y «Enviar un comentario». Debajo, «Lo que has enviado a Ikisai», con su estado.
 - La pestaña «Cocina» aparece solo con la reserva confirmada. En el móvil, las pestañas se desplazan y la activa queda centrada.

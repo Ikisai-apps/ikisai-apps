@@ -150,7 +150,7 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
     async sendProposal(reservationId, persons) {
       const id = uuid();
       await commit([{ op: 'call', procedure: PROCEDURES.newProposalVersion, args: { reservation_id: reservationId, proposal_id: id } }]);
-      await commit([{ op: 'insert', table: TABLES.proposalLines, id: uuid(), fields: { proposal_id: id, description: 'Estancia con pensión completa', unit: 'persona_noche', quantity: persons * 2, unit_amount: 60, position: 1 } }]);
+      await commit([{ op: 'insert', table: TABLES.proposalLines, id: uuid(), fields: { proposal_id: id, description: 'Estancia con pensión completa', unit: 'persona_noche', quantity: persons * 2, unit_amount: 70, position: 1 } }]);
       const revision = Number((await booking.t.db.query<{ revision: string }>('select revision from booking.proposals where id = $1', [id])).rows[0]!.revision);
       await commit([{ op: 'call', procedure: PROCEDURES.sendProposal, args: { proposal_id: id, expectedRevision: revision } }]);
       return id;

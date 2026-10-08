@@ -19,6 +19,9 @@ export interface ReservationDetail extends Omit<PortalReservation, 'guests' | 'c
   final_guests: number | null; minors_count: number | null; arrival_time: string | null; departure_time: string | null;
   meal_plan: string | null; meal_plan_confirmed: boolean; menu_style: string | null; menu_style_confirmed: boolean; uses_accommodation: boolean; requires_meals: boolean;
   uses_interpretation_center: boolean; uses_outdoors: boolean; uses_pool: boolean;
+  /** Booking B14 (#310): lo necesario para pintar el borrador tal como está. */
+  revision?: number; event_type?: string | null; dates_definitive?: boolean; organizer_notes?: string | null;
+  special_setup?: boolean; technical_support?: boolean;
 }
 
 export interface PortalRestriction { id?: string; restriction_type: string; subject: string | null; severity: string | null; kitchen_notes: string | null; source?: 'guest' | 'organizer' | 'staff' }
