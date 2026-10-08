@@ -41,6 +41,17 @@ export function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** Primer día del periodo declarado (`2026T3` → `2026-07-01`) o la fecha de la factura (lo mismo que `declaration_date`). */
+export function declarationDate(invoice: { invoice_date: string | null; declared_period?: string | null }): string | null {
+  const m = invoice.declared_period?.match(/^(\d{4})T([1-4])$/);
+  return m ? `${m[1]}-${String((Number(m[2]) - 1) * 3 + 1).padStart(2, '0')}-01` : invoice.invoice_date;
+}
+
+/** Trimestre de una fecha como `AAAATn`. */
+export function periodOfDate(date: string | null): string | null {
+  return date ? `${date.slice(0, 4)}T${Math.floor((Number(date.slice(5, 7)) - 1) / 3) + 1}` : null;
+}
+
 export function inRange(date: string | null, range: DateRange): boolean {
   return date !== null && date >= range.from && date <= range.to;
 }
@@ -81,7 +92,8 @@ export interface FiscalSummaryInput {
 
 export function fiscalSummary(input: FiscalSummaryInput, range: DateRange): FiscalSummary {
   const today = input.today ?? new Date().toISOString().slice(0, 10);
-  const live = input.invoices.filter((i) => !i.deleted_at && inRange(i.invoice_date, range));
+  // Por periodo de declaración (0228): una factura atrasada cuenta en el trimestre en que se declara.
+  const live = input.invoices.filter((i) => !i.deleted_at && inRange(declarationDate(i), range));
   const counts: Record<InvoiceStatus, number> = { pendiente_datos: 0, pendiente_revision: 0, validada: 0, archivada: 0, anulada: 0 };
   for (const inv of live) counts[inv.status] += 1;
   const summed = live.filter((i) => SUMMED_STATUSES.includes(i.status));

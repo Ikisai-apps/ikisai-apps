@@ -1659,6 +1659,35 @@ test('Subir varias (auditoría del 3T): cada archivo es una factura; los PDF con
   }
 });
 
+test('Periodo de declaración (0228): una factura de un trimestre anterior pregunta si se declara en el trimestre en curso', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const old = `${new Date().getFullYear() - 2}-05-10`; // siempre de un trimestre anterior al de trabajo
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    await sheet.locator('#newDate').fill(old);
+    await sheet.getByLabel('Objeto').fill('factura atrasada');
+    await page.locator('#saveInvoice').click();
+    const f = ficha(page);
+    await expect(f.locator('#lateBanner')).toContainText(`Es del 2T ${old.slice(0, 4)}`, { timeout: 20_000 });
+    await f.locator('#declareNow').click();
+    await expect(f.locator('#declaredPeriod')).toContainText('atrasada', { timeout: 20_000 });
+    await expect(f.locator('#lateBanner')).toHaveCount(0);
+    await synced(page);
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'factura atrasada'));
+    expect(row.declared_period).toMatch(/^\d{4}T[1-4]$/);
+    expect(row.invoice_date).toBe(old);
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);
