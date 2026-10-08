@@ -1374,6 +1374,13 @@ Regla del usuario: **Ikisai fija y el organizador propone**. Migraciones `202610
 
 **Avisos al comercial:** las acciones del portal dejan un aviso en `booking.portal_notices` (tabla cerrada) y `POST /api/v1/worker/portal/tick` (sonda `booking.portal_has_work`) crea las peticiones a Tasks con la cuenta de servicio (formato de `docs/tasks/API.md` §22): `booking.organizer_dates` (`RES<código>-FECHAS-<n>`), `booking.organizer_confirm` (`RES<código>-CONFIRMAR`, prioridad alta) y `booking.proposal_comment` (`PROP<código>-COMENTARIO-<n>`), sin datos de contacto. El ámbito de los portales se comprueba con `core.portal_in_scope` (K1).
 
+## 22. Fase 3 de los portales · lo contratado y el proyecto del retiro en Tasks
+
+Migración `20261008_0455_booking_phase3.sql`.
+
+- **Lo contratado (F1):** `portal_reservation_detail.contract` (o `null` sin propuesta aceptada): `proposal_version`, `total`, `deposit_required`, `prices_include_vat`, `vat_amount`, `payment_type` (forma de pago acordada) y `due` con la **señal** (a los `deposit_days` de la aceptación, o `deposit_days_short` si la entrada está a menos de `short_notice_days`) y el **saldo** (el día de entrada). **Nunca lo pagado**: eso lo da Finance.
+- **Proyecto del retiro en Tasks (B13, `docs/tasks/API.md` §23):** `POST /api/v1/worker/tasks/tick` (sonda `booking.tasks_has_work`) llama a `worker/requests/project` con `kind: 'booking.retreat_project'`, `external_ref: 'RES<código>'`, la fecha de entrada y el título, y `state` `confirmed` (reserva confirmada, en ejecución o cerrada) o `cancelled` (cancelada, perdida o archivada, si ya tenía proyecto). La misma llamada renombra si cambian la fecha o el título. Con `no_route` reintenta. Después, una tarea por cada **extra** de la propuesta aceptada (`kind: 'booking.retreat_extra'`, `external_ref: 'RES<código>-EXTRA-<línea>'`, `project_ref`, vencimiento el día de entrada); `409 PROJECT_NOT_READY` reintenta. Estado en tablas cerradas `booking.tasks_projects` y `booking.tasks_extras`. Sin datos de contacto.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

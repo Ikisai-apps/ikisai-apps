@@ -4,6 +4,7 @@ import { bookingAgentRisk, canSeeGuests, TABLES, validateOperations } from '../_
 import type { CalendarAdapter } from './calendar/adapter.ts';
 import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transport.ts';
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
+import { createTasksPost, tasksTick, type TasksPost } from './tasks/sync.ts';
 import { createTasksNotifier, sesCancel, sesCommunicateGuestReport, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
 import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
 
@@ -24,6 +25,8 @@ export function visibleBookingRow(table: string, _row: Record<string, unknown>, 
 export interface BookingSesConfig {
   transport?: SesTransport;
   env?: (name: string) => string | undefined;
+  /** Rutas de worker de Tasks para el proyecto del retiro y sus extras (B13); por defecto, las reales si hay `IKISAI_WORKER_KEY`. */
+  tasksPost?: TasksPost | null;
   /** Aviso a Tasks (`booking.ses_deadline`); por defecto, la ruta de worker de Tasks si hay `IKISAI_WORKER_KEY`. */
   notifyTasks?: SesDeps['notifyTasks'] | null;
 }
@@ -79,6 +82,15 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
       if (!supabase) return { anonymized: 0 };
       await ensureServiceActor(supabase, 'booking'); // el lote del sistema lo firma «Booking (sistema)»
       return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.retention_run', p_args: { limit: 100 } });
+    },
+  }, {
+    // Proyecto del retiro en Tasks y una tarea por extra contratado (B13), con la cuenta de servicio.
+    method: 'POST', pattern: 'tasks/tick',
+    handler: async () => {
+      if (!supabase) return { projects: 0, extras: 0, waiting: 0 };
+      const post = ses.tasksPost === null ? undefined : ses.tasksPost ?? createTasksPost(ses.env ?? denoEnv);
+      if (post) await ensureServiceActor(supabase, 'booking');
+      return tasksTick({ invoke: sesDeps(supabase, ses).invoke, post });
     },
   }, {
     // Avisos del portal al comercial (fechas, «Quiero confirmar», comentarios) como peticiones a Tasks.
