@@ -36,6 +36,7 @@
 - 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (se aplican solas al abrir si es seguro); fuera la copia local `src/updates.ts`.
 - 2026-10-08 · **Textos en español v2** revisados por el usuario (`0599`): 18 claves, sin pisar las editadas a mano; `payment.instructions` sin Bizum.
 - 2026-10-08 · **Bloque condicional de Bizum** (`1500`, primer número del segundo bloque de Central) con el Bizum de vuelta en `payment.instructions`, y **protección de datos de los huéspedes sin NIF ni domicilio fiscal** (`1501`).
+- 2026-10-08 · Primera prueba de **envío de feedback** (prueba común del kit 0.25.1, `feedback.spec.ts`): en Inicio (`@smoke`) y con la hoja de Entidad abierta y el teclado en pantalla; con doble toque llega un solo reporte.
 
 ## Pendiente
 
