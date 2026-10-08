@@ -56,6 +56,9 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await page.locator('#en-address').fill('Calle Falsa 1');
   await page.locator('#en-postal').fill('28000');
   await page.locator('#en-city').fill('Madrid');
+  // IBAN de ejemplo (control correcto), escrito con espacios como lo copia una persona: la app lo guarda sin ellos.
+  await page.locator('#en-iban').fill('es91 2100 0418 4502 0005 1332');
+  await page.locator('#en-bizum').fill('600 000 000');
   await page.locator('#en-logo').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG });
   await expect(page.locator('.logopreview img')).toBeVisible();
   await page.locator('#saveEntity').click();
@@ -69,6 +72,8 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await expect(page.locator('#entityView')).toContainText('Entidad de Prueba S.L.');
   await expect(page.locator('#entityView')).toContainText('B12345674');
   await expect(page.locator('#entityView')).toContainText('Calle Falsa 1, 28000 Madrid');
+  await expect(page.locator('#entityView')).toContainText('ES91 2100 0418 4502 0005 1332');
+  await expect.poll(async () => (await api.app.t.db.query<{ iban: string }>(`select iban from central.entity`)).rows[0]?.iban).toBe('ES9121000418450200051332');
 
   // El logotipo llega al servidor como archivo verificado de Central y la proyección lo publica.
   await expect.poll(async () => (await api.app.t.db.query(`select logo_mime from central.common_entity_projection`)).rows[0]).toEqual({ logo_mime: 'image/png' });

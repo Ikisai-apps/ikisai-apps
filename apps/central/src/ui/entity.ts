@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { compressImage, confirmDialog, el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { LOGO_MAX_BYTES, LOGO_MIME, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
+import { LOGO_MAX_BYTES, LOGO_MIME, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
@@ -75,7 +75,9 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         fbMark(line('Domicilio fiscal', address, true), 'central.entidad.ficha.domicilio', 'Domicilio fiscal'),
         fbMark(line('Correo', r.email, true), 'central.entidad.ficha.correo', 'Correo'),
         fbMark(line('Teléfono', r.phone, true), 'central.entidad.ficha.telefono', 'Teléfono'),
-        fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web')),
+        fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web'),
+        fbMark(line('IBAN', formatIban(r.iban), true), 'central.entidad.ficha.iban', 'IBAN'),
+        fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum')),
       el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
       isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
   }
@@ -102,6 +104,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     const email = input('en-email', current?.email, { maxlength: '320', type: 'email', 'data-feedback-ignore': '' });
     const phone = input('en-phone', current?.phone, { maxlength: '32', type: 'tel', 'data-feedback-ignore': '' });
     const web = input('en-web', current?.website, { maxlength: '200', placeholder: 'https://' });
+    const iban = input('en-iban', formatIban(current?.iban), { maxlength: '42', placeholder: 'ES00 0000 0000 0000 0000 0000', autocomplete: 'off', 'data-feedback-ignore': '' });
+    const bizum = input('en-bizum', current?.bizum, { maxlength: '20', inputmode: 'tel', autocomplete: 'off', 'data-feedback-ignore': '' });
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
     const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
@@ -132,6 +136,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       legal_name: legal.value.trim(), trade_name: text(trade.value), tax_id: normalizeTaxId(taxId.value), address_line: street.value.trim(),
       postal_code: postal.value.trim(), city: city.value.trim(), province: text(province.value), country: country.value.trim().toUpperCase() || 'ES',
       email: text(email.value), phone: text(phone.value), website: text(web.value),
+      iban: iban.value.trim() ? normalizeIban(iban.value) : null, bizum: text(bizum.value),
     });
     const changed = (): Record<string, unknown> => {
       const all = values();
@@ -144,6 +149,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       sheet?.setFootHidden(current !== null && !dirty);
       const problem = taxId.value.trim() && country.value.trim().toUpperCase() === 'ES' ? taxIdProblem(taxId.value) : null;
       taxId.setCustomValidity(problem ? `NIF/CIF: ${problem}` : '');
+      const ibanIssue = iban.value.trim() ? ibanProblem(iban.value) : null;
+      iban.setCustomValidity(ibanIssue ? `IBAN: ${ibanIssue}` : '');
     };
 
     const newId = crypto.randomUUID();
@@ -201,6 +208,11 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_correo', 'data-feedback-label': 'Correo' }, el('span', null, 'Correo (opcional)'), email),
       el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_telefono', 'data-feedback-label': 'Teléfono' }, el('span', null, 'Teléfono (opcional)'), phone),
       el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_web', 'data-feedback-label': 'Web' }, el('span', null, 'Web (opcional)'), web),
+      el('div', { class: 'sectionlabel' }, 'Para cobrar'),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_iban', 'data-feedback-label': 'IBAN' }, el('span', null, 'IBAN (opcional)'), iban,
+        el('span', { class: 'muted small' }, 'Sale en las instrucciones de pago de los portales ({{entidad.iban}}).')),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_bizum', 'data-feedback-label': 'Bizum' }, el('span', null, 'Bizum (opcional)'), bizum,
+        el('span', { class: 'muted small' }, 'Teléfono o código Bizum ({{entidad.bizum}}).')),
       el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_logotipo', 'data-feedback-label': 'Logotipo' }, el('span', null, 'Logotipo'), logoPreview,
         el('label', { class: 'ghost btnlike', for: 'en-logo', 'data-feedback-id': 'central.entidad.editar.elegir_imagen', 'data-feedback-label': 'Elegir imagen' }, icon('upload', 18), 'Elegir imagen'), logoInput,
         el('span', { class: 'muted small' }, 'PNG, JPEG o WebP. Si pesa más de 2 MB se reduce al subirlo.')),

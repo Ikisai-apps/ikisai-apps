@@ -7,7 +7,7 @@ import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
   recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
 } from './people.ts';
-import { ENTITY_TABLE, taxIdProblem } from './entity.ts';
+import { ENTITY_TABLE, ibanProblem, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
 import { TEXTS_TABLE, TEXT_KEY, TEXT_KINDS, TEXT_LANGS } from './texts.ts';
 import { DECISIONS_TABLE, DECISION_SCOPES, DECISION_STATUSES } from './decisions.ts';
@@ -220,6 +220,8 @@ const SPECS: Record<string, TableSpec> = {
       phone: { kind: 'text', max: 32, nullable: true },
       website: { kind: 'text', max: 200, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
       logo_file_id: { kind: 'uuid', nullable: true, file: true },
+      iban: { kind: 'text', min: 15, max: 34, nullable: true, pattern: /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/, patternText: 'IBAN sin espacios y en mayúsculas' },
+      bizum: { kind: 'text', min: 3, max: 20, nullable: true, pattern: /^[0-9 +]{3,20}$/, patternText: 'número de teléfono o código Bizum' },
     },
     required: ['legal_name', 'tax_id', 'address_line', 'postal_code', 'city'],
   },
@@ -340,6 +342,10 @@ export function validateOperations(operations: readonly DomainOperation[], actor
       const problem = taxIdProblem(fields.tax_id);
       const country = (op.id && current ? current(table, op.id)?.country : undefined) ?? fields.country ?? 'ES';
       if (problem && country === 'ES') return fieldIssue(index, table, 'tax_id', problem);
+    }
+    if (table === ENTITY_TABLE && typeof fields.iban === 'string') {
+      const problem = ibanProblem(fields.iban);
+      if (problem) return fieldIssue(index, table, 'iban', problem);
     }
     if (table === TABLES.people && 'user_id' in fields && actor.role !== 'owner') {
       return { code: 'FORBIDDEN', message: 'Solo quien administra puede enlazar una cuenta.', details: { index, table, field: 'user_id' } };

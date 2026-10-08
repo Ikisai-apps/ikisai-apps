@@ -96,3 +96,36 @@ test('archivos · Central declara sus campos de archivo con su retención y acti
   const gc = await app.t.db.query(`select 1 from core.file_gc_apps where app = 'central'`);
   assert.equal(gc.rows.length, 1);
 });
+
+test('entidad · IBAN y Bizum (F3): dígito de control, formato, proyección y las instrucciones de pago', async () => {
+  const { ibanProblem, formatIban, renderMarkers } = await import('../../supabase/functions/_domain/central/mod.ts');
+  const IBAN = 'ES9121000418450200051332'; // IBAN de ejemplo con el control correcto, no una cuenta real de Ikisai
+  assert.equal(ibanProblem(IBAN), null);
+  assert.equal(ibanProblem('es91 2100 0418 4502 0005 1332'), null);
+  assert.match(ibanProblem('ES9121000418450200051333') ?? '', /control/);
+  assert.match(ibanProblem('ES912100041845') ?? '', /24 caracteres|forma/);
+  assert.equal(formatIban(IBAN), 'ES91 2100 0418 4502 0005 1332');
+  assert.equal(renderMarkers('{{entidad.iban}} · {{entidad.bizum}}', { entity: { iban: IBAN, bizum: '600 000 000' } }), 'ES91 2100 0418 4502 0005 1332 · 600 000 000');
+  assert.equal(renderMarkers('{{entidad.iban}}', {}), '—');
+
+  const [row] = (await app.call(`/api/v1/snapshot?tables=${ENTITY_TABLE}`)).data.tables[0].rows;
+  const bad = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { iban: 'ES9121000418450200051333' } }]);
+  assert.equal(bad.status, 422); assert.equal(bad.data.error.details.field, 'iban');
+  const spaced = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { iban: 'ES91 2100 0418 4502 0005 1332' } }]);
+  assert.equal(spaced.data.error.details.field, 'iban'); // se guarda sin espacios: la app lo normaliza antes
+  const ok = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { iban: IBAN, bizum: '600 000 000' } }]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal((await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision + 1, fields: { bizum: 'abc' } }])).data.error.details.field, 'bizum');
+
+  const projection = (await app.t.db.query<{ iban: string; bizum: string }>(`select iban, bizum from central.common_entity_projection`)).rows[0]!;
+  assert.deepEqual(projection, { iban: IBAN, bizum: '600 000 000' });
+
+  // El texto de pago, en los dos idiomas, con la cuenta en grupos de cuatro.
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_payment() as n`)).rows[0]!.n, 2);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_payment() as n`)).rows[0]!.n, 0);
+  const texts = (await app.t.db.query<{ lang: string; body: string; kind: string }>(`select lang, body, kind from central.common_texts_projection where key = 'payment.instructions' order by lang desc`)).rows;
+  assert.deepEqual(texts.map((t) => [t.lang, t.kind]), [['es', 'mensaje'], ['en', 'mensaje']]);
+  assert.match(texts[0]!.body, /cuenta ES91 2100 0418 4502 0005 1332, a nombre de Entidad de Prueba S\.L\./);
+  assert.match(texts[0]!.body, /Bizum\*\* al 600 000 000/);
+  assert.match(texts[1]!.body, /account ES91 2100 0418 4502 0005 1332/);
+});
