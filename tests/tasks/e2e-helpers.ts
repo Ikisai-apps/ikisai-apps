@@ -63,8 +63,13 @@ export async function settled(page: Page): Promise<void> {
 }
 
 /** Abre la app, entra con la cuenta indicada y espera al primer modelo. `ID` queda disponible en la página. */
-export async function openApp(context: BrowserContext, server: E2EServer, options: { user?: { email: string; password: string }; aliases?: Aliases; errors?: string[] } = {}): Promise<Page> {
+export async function openApp(context: BrowserContext, server: E2EServer, options: { user?: { email: string; password: string }; aliases?: Aliases; errors?: string[]; autoUpdate?: boolean } = {}): Promise<Page> {
   const page = await context.newPage();
+  // La versión nueva se aplica sola al abrir si es seguro (updates.js). En las pruebas va apagada salvo que se pida: las que
+  // publican una versión nueva a mitad comprueban el aviso y el veto, y una recarga inesperada las rompería.
+  if (!options.autoUpdate) await page.addInitScript('window.TASKS_UPDATE_AUTO_MS = 0;');
+  // El aviso de «Uso» del kit sale la primera vez para cada cuenta y taparía la pantalla: en las pruebas se da por aceptado.
+  await page.addInitScript(`{const get=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return String(k).startsWith('ikisai-usage-notice:')?'aceptado-en-pruebas':get.call(this,k)}}`);
   page.on('pageerror', (error) => { (options.errors ?? []).push(error.message); if (!options.errors) throw new Error('Error de JavaScript en la página: ' + error.message); });
   if (options.aliases) await page.addInitScript(`window.ID = ${JSON.stringify(options.aliases)};`);
   const user = options.user ?? OWNER;
