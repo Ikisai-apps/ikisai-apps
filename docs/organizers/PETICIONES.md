@@ -53,3 +53,17 @@ Detalle en `API.md` §13 y §14. Core responde aquí y resume en `docs/core/RESP
 | K2 | Core | **Ruta `portal-files`** en `organizers-api`: repite la lectura F2 con la sesión del portal y firma solo un `file_id` que esa lectura devuelva (PDF guardado de una factura registrada) | media |
 | T1 | Tasks | **Proyecto por retiro por petición de sistema:** crear de forma idempotente (por `external_ref` = reserva) el proyecto `AAAAMMDD-<título>` en el área que fija la regla del owner, y renombrarlo si cambian la fecha o el título | alta |
 | T2 | Tasks | Tareas de los extras contratados dentro de ese proyecto, idempotentes por línea (`external_ref` = línea de la propuesta) | media |
+
+## Fases 4 y 5 · Experiencia de Guests y decisiones del huésped (G2 en API.md §15 y §16)
+
+| Id | Para | Petición | Prioridad |
+|---|---|---|---|
+| B16 | Booking | **Programa del retiro:** tabla de Booking (reserva o evento, día, inicio, fin, título, espacio como texto o `space_id` público, nota pública, posición). Acciones de portal del organizador para añadir, editar, quitar y reordenar con guardado automático. Lectura `portal_program` para `organizers` y `guests`. El personal lo ve y lo corrige en Booking | alta |
+| B17 | Booking | **Alojamiento delegable:** (a) lectura `portal_rooms` del inventario del evento: habitaciones con capacidad, baño, si es de 2–4 plazas con baño y su extra, camas libres y asignaciones con el `display_name`; (b) acción del organizador para asignar o quitar una cama a un huésped; (c) `booking.portal_room_settings` (habitaciones abiertas a elegir, con suplemento y modo de aprobación) con acción del organizador; (d) aprobar o rechazar una plaza pendiente; (e) el suplemento como extra facturable al organizador. `portal_choose_bed` la pide Guests | alta |
+| Fd2 | Food | **Menú para los portales:** lectura `food.portal_menu({reservation_id})` para `organizers` y `guests`. Días, servicios y platos con su nombre y descripción públicos, dietas y alérgenos, y la marca «provisional»; sin cantidades ni datos internos | alta |
+| Fd3 | Food | **Comentarios del organizador sobre el menú:** acción `food.portal_menu_comment({reservation_id, menu_item_id?, kind: 'prefiero_que_no' \| 'comentario', message?})` y lectura de los propios con su estado. Cocina los ve en Food | media |
+| X3 | Central | Textos `portal.menu_note` («El menú puede cambiar para adaptarse a alergias e intolerancias») y `portal.practical` (información práctica general de Ikisai), en los dos idiomas. La dirección de la Entidad, legible para el cartel | media |
+| K3 | Core | **Archivos de un portal con ámbito:** que `files/:id` de un portal compruebe la visibilidad de la fila que referencia el archivo (los campos ya están declarados con `register_file_field`), para que un organizador no abra los materiales de otro retiro. Si no, una ruta propia de `organizers-api` | alta |
+| K4 | Core | **Escritura de Guests en Organizers:** que `core.apply_portal_operations('organizers', ops)` funcione dentro de una acción de Organizers registrada para el portal `guests` (respuestas a las preguntas), con el huésped como actor y su ámbito `{reservation_id, guest_id}` | alta |
+| K5 | Core | Alta del schema `organizers` en la publicación, bucket `organizers-materials` y `uploads` en `organizers-api` (imágenes ≤ 5 MB recomprimidas, PDF ≤ 15 MB) | media |
+| O1 | Guests | Respuesta: de acuerdo. `guests-api` sirve `GET materials/:fileId`, comprobando con `organizers.guest_material_file`, y firma con `createStorage` | — |
