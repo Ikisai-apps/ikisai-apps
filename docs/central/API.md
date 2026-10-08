@@ -550,7 +550,18 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 ### 9.4 Accesos (solo owner)
 
 - **Cuentas:** tabla de cuentas × apps con el rol en cada celda (móvil: lista de cuentas con chips por app). Tocar una celda: dar, cambiar o quitar el acceso, con los errores `LAST_OWNER` y `CURRENT_ACCOUNT` explicados. Los **ámbitos** de cada app se muestran en solo lectura con un enlace «Editar en <app>» (las pantallas de miembros de cada app ya los editan, y cada app interpreta los suyos); ver pregunta 4 de §15.
-- **Alta:** correo, nombre y accesos iniciales → contraseña temporal mostrada una vez, con botón de copiar. Ofrece enlazar o crear la ficha de persona.
+- **Alta:** «Persona del equipo», correo y accesos iniciales → contraseña temporal mostrada una vez, con botón de copiar. **La ficha manda sobre el nombre** (FB_2026_013, opción A del usuario):
+  - Si eliges una persona, el nombre sale de su ficha (no se escribe a mano), el correo de sus datos reservados si los hay, y la cuenta queda enlazada.
+  - Con «Persona nueva», el nombre se escribe una vez y se crea también su ficha mínima, enlazada.
+  - Si el correo ya tenía cuenta enlazada con otra ficha, no se cambia el enlace y se avisa.
+- **Nombres de cuenta:** el nombre visible de una cuenta enlazada es el de su ficha.
+  - Al renombrar la ficha, Central llama a `POST /api/v1/admin/accounts/:userId/name` del núcleo (solo owners de Central; queda en el registro de accesos).
+  - Sin red, apunta en el dispositivo solo el id de la cuenta, avisa y lo reintenta al volver la conexión y al arrancar, con el nombre que tenga entonces la ficha.
+  - Si quien renombra no administra Central, se le avisa de que la cuenta la alinea quien sí la administra.
+  - Al enlazar una cuenta existente con una ficha (desde Personas o desde Accesos), la cuenta toma el nombre de la ficha.
+- **Cuentas del equipo sin ficha o con otro nombre:** son del equipo las cuentas con acceso a alguna app interna; las de portal (organizadores y huéspedes) y los agentes no tienen ficha.
+  - En la lista, los chips «Sin ficha» y «Nombre distinto de la ficha», con un aviso que cuenta cuántas hay y deja ver solo esas.
+  - En la hoja de la cuenta, la sección «Ficha de Personas» permite enlazar con una persona sin cuenta (o crear su ficha) y tiene el botón «Usar el nombre de la ficha». La ficha de una persona tiene el mismo botón.
 - **Agentes:** claves de todas las apps, último uso, caducidad, revocar.
 - **Registro:** registro de accesos de todas las apps, filtrable por app, paginado.
 
