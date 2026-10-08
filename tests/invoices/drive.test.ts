@@ -166,6 +166,29 @@ test('Drive: si el tick muere antes de mover el archivo, el siguiente solo lo mu
   assert.equal(idle.data.api_calls, 1);
 });
 
+test('Drive: un abono (rectificativa impresa en positivo) se importa en negativo y se enlaza con su original', async () => {
+  const id = drive.add('Abono Pepe.pdf', textPdf([
+    ['FACTURA RECTIFICATIVA', 40, 815],
+    ['FRUTAS PEPE S.L.', 40, 800], ['C/ Mayor 1, Madrid', 40, 786], ['CIF: B12345674', 300, 786],
+    ['Factura nº: AB-0900-1', 40, 760], ['Fecha factura: 08/10/2026', 300, 760],
+    ['Rectifica a la factura nº: A-2026/0900', 40, 745],
+    ['Base imponible', 40, 690], ['140,00 €', 450, 690],
+    ['IVA 10%', 40, 676], ['40,00', 300, 676], ['4,00', 450, 676],
+    ['IVA 21%', 40, 662], ['100,00', 300, 662], ['21,00', 450, 662],
+    ['Retención IRPF 15%', 40, 648], ['6,00', 450, 648],
+    ['TOTAL FACTURA', 40, 620], ['159,00 €', 450, 620],
+  ]));
+  const res = await tick();
+  assert.equal(res.data.read, 1, JSON.stringify(res.data));
+  const invoices = await rows('invoices.invoices');
+  const abono = invoices.find((i) => i.drive_file_id === id)!;
+  const original = invoices.find((i) => i.invoice_number === 'A-2026/0900')!;
+  assert.equal(abono.invoice_kind, 'rectificativa');
+  assert.equal(abono.rectifies_number, 'A-2026/0900');
+  assert.equal(abono.rectifies_invoice_id, original.id, 'enlazada con la original');
+  assert.equal(Number(abono.calculated_total), -159);
+});
+
 test('Drive: «Buscar ahora» solo para el owner; el estado solo lo lee el owner', async () => {
   assert.equal((await app.call('/api/v1/drive/run', { body: {} })).status, 200);
   assert.equal((await app.call('/api/v1/drive/run', { body: {}, token: app.tokens.editor })).status, 403);

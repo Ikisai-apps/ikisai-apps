@@ -192,7 +192,9 @@ test('validación de campos por tabla: columnas escribibles, listas cerradas, pa
   assert.equal(failsWith(() => validateRowFields(TABLES.invoiceFiles, 'insert', { invoice_id: uid(1), file_id: 'nope', original_filename: 'scan.pdf' })), 'INVALID_FIELDS');
   assert.equal(failsWith(() => validateRowFields(TABLES.invoiceLines, 'insert', { invoice_id: uid(1), position: 0, description: 'Tomate', net_amount: 40, quantity: 20.123, unit_price: 2.0001 })), 'OK');
   assert.equal(failsWith(() => validateRowFields(TABLES.invoiceLines, 'insert', { invoice_id: uid(1), position: 0, description: 'Tomate', net_amount: 40, vat_rate: 120 })), 'INVALID_FIELDS');
-  assert.equal(failsWith(() => validateRowFields(TABLES.taxLines, 'insert', { invoice_id: uid(1), position: 0, tax_type: 'iva', amount: -1 })), 'INVALID_FIELDS');
+  // Con signo desde 0227 (rectificativas): el dominio lo deja pasar y el hook lo impide en una ordinaria.
+  assert.equal(failsWith(() => validateRowFields(TABLES.taxLines, 'insert', { invoice_id: uid(1), position: 0, tax_type: 'iva', amount: -1 })), 'OK');
+  assert.equal(failsWith(() => validateRowFields(TABLES.invoices, 'insert', { supplier_id: uid(1), object: 'abono', invoice_kind: 'devolucion' })), 'INVALID_FIELDS');
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'tasks', target_kind: 'project', target_id: 'p1', target_label: 'Huerto', allocated_amount: 10 })), 'OK');
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'tasks', target_kind: 'event', target_id: 'p1', target_label: 'x', allocated_amount: 10 })), 'INVALID_FIELDS');
   assert.equal(failsWith(() => validateRowFields(TABLES.allocations, 'insert', { invoice_line_id: uid(1), target_app: 'general', target_kind: 'unassigned', target_id: 'x', target_label: 'x', allocated_amount: 10 })), 'INVALID_FIELDS');
