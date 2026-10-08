@@ -135,7 +135,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
         el('span', { class: 'launcher-text' }, el('strong', null, options.centerLabel ?? kt('Sugerencias y QA')), el('small', null, options.centerText ?? (options.centerLabel ? kt('Cuéntanos qué falla o qué mejorarías.') : kt('Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')))),
         icon('chevronRight', 16)) : null,
-      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', kt('Señalar para comentar'), kt('Mantén pulsado cualquier elemento para comentar sobre él. Solo en este dispositivo.'), kt('Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo.')) : null,
+      options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', kt('Señalar para comentar'), kt('Mantén pulsado cualquier elemento para comentar sobre él (en un campo de texto, su etiqueta). Solo en este dispositivo.'), kt('Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo (en un campo de texto, su etiqueta).')) : null,
       options.review ? reviewSlot : null,
     );
   }
