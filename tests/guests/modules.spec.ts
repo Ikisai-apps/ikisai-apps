@@ -64,7 +64,7 @@ const ALL_MODULES = {
   organizer_message: '¡Bienvenidas! Traed esterilla.',
 };
 
-test('guests · sin configuración del organizador: como la fase 1, sin barra inferior @smoke', async ({ page }) => {
+test('guests · sin configuración del organizador: como la fase 1, sin barra inferior', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro sencillo' });
   const ana = await api.guest(event, { first_name: 'Ana' });
   await enter(page, await api.guestLink(reservation, ana, 'Ana'));

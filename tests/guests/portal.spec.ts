@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
+import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/guests/vite.config.ts');
@@ -261,21 +262,33 @@ test('guests · una cuenta con dos personas: elige a quién ver y nunca ve a otr
   await expect(page.locator('#hello')).toHaveText('Hola, Nico');
 });
 
-test('guests · ayuda: «Mi retiro» va al organizador con su ámbito y se ve en lo enviado', async ({ page }) => {
+const reportsWith = async (text: string) =>
+  (await api.booking.t.db.query<{ subject: string; category: string; scope: any; destination: string }>(`select subject, category, scope, destination from core.feedback_reports where message like $1`, [`%${text}%`])).rows;
+
+test('guests · «Ayuda y sugerencias»: «Mi retiro» con doble toque, un solo reporte para el organizador y se ve en lo enviado @smoke', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con comentario' });
   const eva = await api.guest(event, { first_name: 'Eva' });
   await enter(page, await api.guestLink(reservation, eva, 'Eva'));
   await acceptPrivacy(page);
+  // Prueba común del kit (0.25.2): entrada del lanzador, respuestas, doble toque en «Enviar», hoja cerrada y aviso visible.
+  await portalHelpRoundTrip(page, { choices: ['Mi retiro', 'Horarios'], text: 'La cena empieza muy tarde' });
+  const stored = await reportsWith('cena empieza');
+  expect(stored).toHaveLength(1); // `id` y `requestId` estables del formulario: el doble toque no duplica
+  expect(stored[0]).toMatchObject({ subject: 'event', category: 'schedule', destination: 'organizer' });
+  expect(stored[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: eva });
   await page.locator('#openHelp').click();
-  await page.getByRole('button', { name: 'Mi retiro' }).click();
-  await page.getByRole('button', { name: 'Horarios' }).click();
-  await page.locator('#helpSheet textarea').fill('La cena empieza muy tarde');
-  await page.getByRole('button', { name: 'Enviar' }).click();
-  await expect(page.getByText('Gracias. Lo hemos recibido.')).toBeVisible();
   await expect(page.locator('#helpMine')).toContainText('La cena empieza muy tarde');
-  const stored = await api.booking.t.db.query<{ subject: string; category: string; scope: any; destination: string }>(`select subject, category, scope, destination from core.feedback_reports where message like '%cena empieza%'`);
-  expect(stored.rows[0]).toMatchObject({ subject: 'event', category: 'schedule', destination: 'organizer' });
-  expect(stored.rows[0]!.scope).toMatchObject({ reservation_id: reservation, guest_id: eva });
+});
+
+test('guests · «Ayuda y sugerencias» con el teclado abierto en el móvil: se envía, se cierra y el aviso se ve @smoke', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con teclado' });
+  const leo = await api.guest(event, { first_name: 'Leo' });
+  await enter(page, await api.guestLink(reservation, leo, 'Leo'));
+  await acceptPrivacy(page);
+  await portalHelpRoundTrip(page, { open: (p) => p.locator('#openHelp').click(), choices: ['Un espacio de Ikisai', 'Baños', 'Agua o electricidad'], text: 'No sale agua caliente', keyboard: 686 });
+  const stored = await reportsWith('agua caliente');
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({ subject: 'space', category: 'utilities', destination: 'operations' });
 });
 
 // Último: siembra los textos de Central para el resto del archivo (los anteriores usan los textos de reserva).

@@ -272,8 +272,6 @@ export const EN: Dictionary = {
   'help.placeholder': 'What happened, or what would you like?',
   'help.retreatNote': 'What you tell us about your retreat goes to your organiser; spaces and the app go to the Ikisai team.',
   'help.urgent': 'If it is urgent, call us:',
-  'help.queued': 'We will send it as soon as you are back online.',
-  'help.sent': 'Thank you. We have received it.',
   'help.mine': 'What you have sent',
   'help.status.open': 'Received',
   'help.status.progress': 'In progress',
