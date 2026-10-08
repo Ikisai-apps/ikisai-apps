@@ -62,6 +62,7 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     group: ['identity', 'document', 'residence', 'contact', 'minor'],
     page: ['inicio', 'datos', 'alimentacion', 'firma', 'info', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas'],
     menu: ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'],
+    allergen: ['gluten', 'crustaceos', 'huevos', 'pescado', 'cacahuetes', 'soja', 'lacteos', 'frutos_de_cascara', 'apio', 'mostaza', 'sesamo', 'sulfitos', 'altramuces', 'moluscos'],
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],
     'help.place': ['habitacion', 'comedor', 'sala', 'banos', 'exterior', 'piscina', 'otro'],
     'help.kind': ['damage', 'cleaning', 'missing', 'utilities', 'safety', 'other'],

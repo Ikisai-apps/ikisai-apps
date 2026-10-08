@@ -51,10 +51,12 @@
 
   Se conectan a la API real según publiquen Booking (BG9–BG12), Food (FD1), Organizers (O1–O3), Central (CE3) y Core (C8 y C9).
 
+- 2026-10-08 · Fases 4 y 5 conectadas a Booking (programa y alojamiento), Food (menú) y Central (lugar y plano). Organizers sigue simulado, con normalizadores de su forma de datos.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
-- Conectar cada pieza de las fases 4 y 5 a la API real cuando la publique su dueño, y cambiar la prueba simulada por la real.
+- Conectar Organizers (experiencia, materiales y su resolutor de `portal-files`, preguntas y respuestas) cuando lo publique, y cambiar sus pruebas simuladas por las reales.
 
 ## Bloqueos
 

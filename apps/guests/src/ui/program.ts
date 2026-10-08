@@ -7,7 +7,7 @@ import { el, icon, replace } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
 import { formatDate, t } from '../app/i18n.ts';
 import { hhmm, restrictionLabel } from '../app/labels.ts';
-import type { Menu, ProgramItem } from '../app/portal.ts';
+import type { Dish, Menu, ProgramItem } from '../app/portal.ts';
 import { failure, fbIgnore, loading, staleNote } from './common.ts';
 import { todayMadrid } from './home.ts';
 
@@ -29,6 +29,19 @@ export function nowAndNext(items: ProgramItem[], day = todayMadrid(), now = nowM
 /** Próxima comida de hoy según el menú. */
 export function nextMeal(menu: Menu, day = todayMadrid(), now = nowMadrid()): Menu['services'][number] | null {
   return menu.services.filter((s) => s.date === day && (!s.time || hhmm(s.time)! >= now)).sort((a, b) => (a.time ?? '99').localeCompare(b.time ?? '99'))[0] ?? null;
+}
+
+/**
+ * Un plato: nombre y descripción públicos, etiquetas de dieta y, solo si cocina los revisó, sus alérgenos declarados.
+ * Nunca «apto para ti»: la frase sobre lo que tiene registrado cocina va aparte y no califica platos (API.md §13.3).
+ */
+function dish(d: Dish): HTMLElement {
+  const tags = (d.diet_tags ?? []).map((tag) => (t(`diet.${tag}`) === `diet.${tag}` ? tag : t(`diet.${tag}`)));
+  return el('li', { class: 'gdish' },
+    el('strong', null, d.name),
+    d.description ? el('span', { class: 'muted small' }, d.description) : null,
+    tags.length ? el('span', { class: 'gtags' }, ...tags.map((tag) => el('span', { class: 'chip small' }, tag))) : null,
+    d.allergens_checked && d.allergens?.length ? el('span', { class: 'small gallergens' }, t('menu.allergens', { list: d.allergens.map((code) => t(`allergen.${code}`)).join(', ') })) : null);
 }
 
 function daysOf<T>(list: T[], key: (x: T) => string): string[] {
@@ -75,7 +88,7 @@ export function mountProgram(main: HTMLElement, ctx: GuestContext): () => void {
 export function mountMenu(main: HTMLElement, ctx: GuestContext, notice: HTMLElement | null): () => void {
   let alive = true;
   replace(main, loading());
-  void ctx.reads.menu(ctx.grant.reservation_id).then((loaded) => {
+  void ctx.reads.menu(ctx.grant.reservation_id, ctx.grant.guest_id).then((loaded) => {
     if (!alive) return;
     const menu = loaded?.value ?? { status: null, services: [] };
     const restrictions = ctx.guest().restrictions;
@@ -94,7 +107,7 @@ export function mountMenu(main: HTMLElement, ctx: GuestContext, notice: HTMLElem
       replace(list, ...menu.services.filter((s) => s.date === selected).sort((a, b) => (a.time ?? '').localeCompare(b.time ?? '')).map((s) =>
         el('section', { class: 'card gcard gservice' },
           el('h3', null, t(`menu.${s.type}`), s.time ? el('span', { class: 'muted small' }, ` · ${hhmm(s.time)}`) : null),
-          el('ul', { class: 'plainlist' }, ...s.dishes.map((d) => el('li', null, d.name))))));
+          el('ul', { class: 'gdishes' }, ...s.dishes.map(dish)))));
     };
     replace(main, loaded?.stale ? staleNote(loaded.at) : null, head, kitchen, tabs, list, notice);
     paint();
@@ -112,7 +125,7 @@ export async function todayCard(ctx: GuestContext, program: boolean, menu: boole
     if (next) rows.push(el('p', { id: 'todayNext' }, el('strong', null, t('today.next', { time: hhmm(next.starts_at) ?? '' })), ` ${next.title}${next.place ? ` · ${next.place}` : ''}`));
   }
   if (menu) {
-    const loaded = await ctx.reads.menu(ctx.grant.reservation_id).catch(() => null);
+    const loaded = await ctx.reads.menu(ctx.grant.reservation_id, ctx.grant.guest_id).catch(() => null);
     const meal = loaded ? nextMeal(loaded.value) : null;
     if (meal) rows.push(el('p', { id: 'todayMeal' }, el('strong', null, `${t(`menu.${meal.type}`)}${meal.time ? ` · ${hhmm(meal.time)}` : ''}:`), ` ${meal.dishes.map((d) => d.name).join(', ')}`));
   }

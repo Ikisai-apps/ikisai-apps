@@ -217,7 +217,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       case 'datos': unmountView = mountData(main, gctx, base); break;
       case 'alimentacion': unmountView = mountDiet(main, gctx, base); break;
       case 'firma': unmountView = mountSign(main, gctx, base); break;
-      case 'info': unmountView = mountInfo(main, base, during, mods.map); break;
+      case 'info': unmountView = mountInfo(main, base, during, gctx.reads); break;
       case 'programa': unmountView = mountProgram(main, gctx); break;
       case 'menu': {
         const notice = commonText('guests.menu_notice');

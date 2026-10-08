@@ -456,10 +456,21 @@ Detalles de la implementación:
 - **Inicio:** mensaje del organizador, preguntas pendientes y «Elige tu habitación».
 - **Pruebas:** `tests/guests/modules.spec.ts`, 5 de Playwright con las lecturas simuladas por `page.route` y el reloj fijo (`page.clock`), para no depender de la hora.
 
+**Conectado a la API real (8-10-2026):**
+- **Programa:** `booking.portal_program` (Booking #328, §23).
+- **Alojamiento:** `booking.portal_lodging`, `portal_choose_bed`, `portal_release_bed` y `portal_room_preference` (Booking §23.1). Los ajustes son de Booking: `choice`, `choose_until`, `open` y `preferences`. De Organizers solo se usa la nota de precio (`guest_price_text`).
+- **Menú:** `food.portal_menu {reservation_id, guest_id}` (Food #327, §7.5). Guests solo ve menús validados. Los platos llevan descripción pública, etiquetas de dieta y, si cocina los revisó, los alérgenos declarados.
+- **El lugar:** `central.portal_place_projection` (Central #326, §2.9): dirección del lugar (nunca la fiscal), enlace del mapa y plano (imagen o PDF) con `portal-files`. Es información de Ikisai: sale siempre en Información.
+- **Vista previa** con el enlace `preview: true` del núcleo (#325).
+
+**Sigue simulado (Organizers aún no lo publica):** `guest_experience_for`, `guest_materials` (con su resolutor de `portal-files`), `guest_questions` y `guest_answer`.
+- Guests acepta la forma de Organizers (`docs/organizers/API.md` §15.1 y §15.4: filas de `experience_modules` con `programa`, `ver`, `antes`… y `params.guest_price_text`; preguntas con `kind`, `prompt` y opciones de texto; materiales con `file_id`) y también la de §13, con `app/normalize.ts`.
+- Petición O2: que Organizers confirme la salida exacta de sus lecturas.
+
 **Pruebas:**
 - `tests/guests/api.test.ts` (8);
 - `tests/guests/static.test.ts` (6): diccionarios iguales, claves usadas y ids de feedback;
-- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`) y `modules.spec.ts` (5, 1 de ellas `@smoke`).
+- `tests/guests/portal.spec.ts` (9 de Playwright, 3 de ellas `@smoke`) y `modules.spec.ts` (6, 1 de ellas `@smoke`: programa, alojamiento, menú y lugar contra la API real; Organizers simulado); `normalize.test.ts` (3).
 
 
 
