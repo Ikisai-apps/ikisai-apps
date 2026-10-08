@@ -1,5 +1,17 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.25.0 · 8 de octubre de 2026
+
+- **El composer se cierra tras su envío** aunque la bandeja tenga otro reporte atascado (fallo en Finance: «el reporte llega pero la hoja no se cierra y no se ve el aviso»).
+  - Antes, «Enviar» esperaba a vaciar toda la bandeja: un reporte anterior atascado (p. ej. una imagen que no termina de subir) lo dejaba en «Enviando…» indefinidamente.
+  - Ahora `enqueue` envía **ese** reporte (como mucho 15 s; si no, «Pendiente de enviar») y el resto de la bandeja sigue en segundo plano.
+  - Un mismo reporte nunca se envía dos veces a la vez.
+  - Si el `onSent` de la app lanza un error, el reporte ya enviado no vuelve a la bandeja como fallido.
+- **Prueba común para todas las apps:** `packages/ui-kit/testing/feedback-smoke.ts` → `feedbackRoundTrip(page, { target, launcher, text })`.
+  - Recorrido por la interfaz: lanzador → «Señalar para comentar» → pulsación larga → enviar → **composer cerrado** → **aviso «Enviado · FB_…» visible**, dentro de la pantalla y sin estirarse.
+  - Cada app lo llama desde su prueba `@smoke`.
+- Prueba `v31` (con `@smoke`, a 1280×800 y 390×844, y con un reporte atascado).
+
 ## 0.24.0 · 8 de octubre de 2026
 
 - **Fallo del usuario en PC (Tasks):** el aviso «Enviado · FB_2026_015» salía como una columna crema enorme.

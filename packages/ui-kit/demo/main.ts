@@ -816,7 +816,12 @@ const fbApi = (async (path: string, init: { method?: string; json?: unknown } = 
   if (support) { const r = st.reports.find((x) => x.id === support[1]); if (!r) throw fbError(404, 'OUT_OF_SCOPE'); if (!r.supporters.includes('demo-user')) r.supporters.push('demo-user'); fbSave(st); return { supportersCount: r.supporters.length }; }
   throw fbError(404, 'NOT_FOUND');
 }) as FeedbackApi;
-const fbFetch: typeof fetch = async (input, init) => (String(input).startsWith('mock://') ? new Response(null, { status: fbState().offline ? 503 : 200 }) : fetch(input, init));
+const fbFetch: typeof fetch = async (input, init) => {
+  if (!String(input).startsWith('mock://')) return fetch(input, init);
+  // `hangUploads`: la subida de una imagen no termina (reporte atascado en la bandeja).
+  if ((fbState() as FbState & { hangUploads?: boolean }).hangUploads) return new Promise<Response>(() => undefined);
+  return new Response(null, { status: fbState().offline ? 503 : 200 });
+};
 const feedback = createFeedback({ app: 'demo', api: fbApi, userId: () => 'demo-user', role: () => 'owner', fetchImpl: fbFetch, fallbackNode: () => ({ id: 'demo.feedback', path: ['Banco de feedback'] }) });
 const fbClicks = el('output', { id: 'fbClicks' }, '0');
 const fbTarget = el('button', { type: 'button', class: 'primary', id: 'fbAction', 'data-feedback-id': 'demo.reservation.guests.add', 'data-feedback-label': 'Añadir huésped', onclick: () => { fbClicks.textContent = String(Number(fbClicks.textContent) + 1); } }, 'Añadir huésped');

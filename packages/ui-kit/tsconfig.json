@@ -16,6 +16,6 @@
       "@ikisai/sync-client": ["../sync-client/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "demo/**/*.ts", "tests/**/*.ts", "../sync-client/src/**/*.ts"],
+  "include": ["src/**/*.ts", "demo/**/*.ts", "tests/**/*.ts", "testing/**/*.ts", "../sync-client/src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
