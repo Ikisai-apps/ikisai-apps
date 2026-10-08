@@ -10,7 +10,7 @@
  * sugerencia `project_id | tab_id` si quien pide la ve, o «Por clasificar». Lo que una regla manda a un área que quien
  * pide no ve entra igualmente (buzón) y quien pide solo recibe su estado (`request`: pending, created o dismissed).
  */
-import { createSync, fail, sha256Hex, type AppRoute, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
+import { createSync, ensureServiceActor, fail, sha256Hex, type AppRoute, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 
 const SOURCE = /^[a-z][a-z0-9_-]{1,30}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -193,7 +193,9 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const before = await status();
       if (before.status !== 'unknown' && !(source.refresh && before.status === 'open')) return reply(before);
 
-      const actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
+      let actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
+      // Core no tiene Edge propia que cree su identidad (Booking y Feedback la crean en su tick): se crea aquí la primera vez.
+      if (!actor && source.service === 'core') actor = await ensureServiceActor(supabase, 'core');
       if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
       const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
       if (before.status !== 'unknown') {

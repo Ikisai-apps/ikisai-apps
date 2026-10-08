@@ -377,11 +377,11 @@ test('tareas de Core para el usuario (§25): source core, a su proyecto por la r
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
   const json = async (res: Response) => ({ status: res.status, body: await res.json() as any });
   const task = (extra: Record<string, unknown> = {}) => worker('task', { source: 'core', kind: 'core.user_task', external_ref: 'TV-2.1', title: 'Atar el dominio de Finance', note: 'Pasos en TAREAS_VICTOR.md', priority: 'high', ...extra });
-  // Sin su identidad de servicio (la registra una migración de Core), espera.
+  // Core no tiene Edge propia: la primera petición crea su identidad de servicio (en una referencia aparte).
   if (!(await app.t.db.query(`select 1 from core.profiles where service_name = 'core'`)).rows.length) {
-    const missing = await json(await task());
-    assert.equal(missing.status, 503, JSON.stringify(missing.body));
-    await simulateServiceIdentity(app.t.db, uuid(), 'core');
+    const first = await json(await task({ external_ref: 'TV-0' }));
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal((await app.t.db.query(`select 1 from core.profiles where service_name = 'core'`)).rows.length, 1, 'identidad core creada');
   }
   // La regla del usuario: Aplicaciones › «Tareas de Core» (aquí, un proyecto del área de prueba).
   const project = uuid();
