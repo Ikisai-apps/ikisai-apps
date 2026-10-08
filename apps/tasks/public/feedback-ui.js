@@ -19,7 +19,7 @@ function tasksFeedback(){
     syncSummary:()=>{const s=Sync.core.status();return {pending:s.pendingCommands+s.pendingBlobs,conflicts:s.conflicts,lastSyncAt:s.lastPullAt,cursor:s.cursor}},
     fallbackNode:()=>{const s=screenMark();return {id:s.feedbackId,path:[s.label]}}});
   let catalog=null;
-  const review=K.createFeedbackReview({api,app:'tasks',appDomain:id=>catalog?.items?.find(a=>a.id===id)?.domain});
+  const review=K.createFeedbackReview({api,app:'tasks',container,appDomain:id=>catalog?.items?.find(a=>a.id===id)?.domain});
   const tracker=K.createUsage({app:'tasks',api,userId});
   Sync.core.onSessionEnd(id=>{void feedback.clear(id);void tracker.clear(id)});
   return tasksFeedbackParts={feedback,review,usage:tracker,setCatalog:c=>{catalog=c}};
@@ -30,11 +30,15 @@ const usage={
   track:(id,outcome='success')=>{try{const counter=tasksFeedback()?.usage;if(counter)counter.track(id,outcome)}catch{}},
 };
 
-/* Lanzador con los interruptores «Señalar para comentar» y modo revisor. */
-shellLauncher=function(){
+/* Lanzador con los interruptores «Señalar para comentar» y «Revisor de QA», y la entrada «Sugerencias y QA», en #kitLayer
+   (CSS del kit acotado). La cáscara puede montarse antes de que haya núcleo: engancha un envoltorio ligero y el lanzador
+   del kit se crea al primer toque, ya con el feedback; así nunca queda guardado uno sin interruptores. */
+function tasksRealLauncher(){
   if(tasksLauncher)return tasksLauncher;const p=tasksFeedback();
-  return tasksLauncher=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:async()=>{const c=await Sync.core.api('/apps');p?.setCatalog(c);return c},
-    ...(p?{feedback:p.feedback.mode,review:{get:()=>p.review.mode.get(),set:on=>p.review.mode.set(on),available:()=>p.review.available()}}:{})})};
+  const launcher=IkisaiKit.createAppLauncher({current:'tasks',container:sheetKitLayer,fetchApps:async()=>{const c=await Sync.core.api('/apps');p?.setCatalog(c);return c},
+    ...(p?{feedback:p.feedback.mode,review:{get:()=>p.review.mode.get(),set:on=>p.review.mode.set(on),available:()=>p.review.available()},center:openTasksFeedbackCenter}:{})});
+  if(p)tasksLauncher=launcher;return launcher}
+shellLauncher=function(){return {attach(trigger){if(!trigger)return;trigger.setAttribute('aria-haspopup','dialog');trigger.onclick=()=>{void tasksRealLauncher().open()}}}};
 
 /* «Sugerencias y QA» en el menú. */
 Object.assign(menuPaths,{help:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14 M12 17.5v.01'});
@@ -112,3 +116,9 @@ const portableExportBeforeUsage=portableExport;
 portableExport=function(...args){return usage.run('tasks.datos.exportar_portable',()=>portableExportBeforeUsage(...args))};
 const backupBeforeUsage=downloadServerBackup;
 downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',()=>backupBeforeUsage(...args))};
+
+/* Red de seguridad: las hojas y diálogos del kit que aún se monten en body sin contenedor se pasan a #kitLayer,
+   que lleva .ikisai-kit: con el CSS del kit acotado (vite.config.ts), fuera de ahí salen sin estilo y debajo de la cáscara. */
+new MutationObserver(changes=>{for(const change of changes)for(const node of change.addedNodes){
+  if(node.nodeType===1&&node.parentNode===document.body&&node.matches('.sheetback,.dialogback'))sheetKitLayer().appendChild(node)}})
+  .observe(document.body,{childList:true});
