@@ -93,6 +93,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Portal de organizadores, fase 3 (F1 y F2, migración 0220): dinero del retiro y documento de la factura, filtrados por ámbito y sin datos internos (API.md §7.7). Concepto del cobro (`purpose`, migración 0221): la factura de la señal queda marcada como «Señal» y F1 lo devuelve; lo contratado lo publica Booking y lo cobrado, Finance (ronda 52). Aplazada: firma de PDF guardados en la Edge del portal.
 - Lectura para Booking `invoices.reservation_collected` (migración 0222): facturado, cobrado y último cobro por reserva, la misma suma que F1 (API.md §7.8).
+- Versiones nuevas con el kit 0.23 (`initAppUpdates`): al abrir la app, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro; si no, sale el banner «Nueva versión disponible». Se ha borrado la copia propia `src/updates.ts`.
 
 ## En curso
 
