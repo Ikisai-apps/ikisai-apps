@@ -34,6 +34,7 @@
 - 2026-10-08 · **Enlace exacto del mapa** (FB_2026_010, `0597`): `venue_map_url` en la Entidad (solo mapas conocidos), que manda sobre la búsqueda por dirección en `{{entidad.mapa}}` y en los portales.
 - 2026-10-08 · **Un correo por público** (`0598`): `contact.<público>.email` (organizadores, huéspedes, equipo y proveedores) en la sección «Correos por público», marcadores por público, `contact.email` pasado a organizadores, `portal.privacy` con el correo de huéspedes y contacto público filtrado por `audience`.
 - 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (se aplican solas al abrir si es seguro); fuera la copia local `src/updates.ts`.
+- 2026-10-08 · **Textos en español v2** revisados por el usuario (`0599`): 18 claves, sin pisar las editadas a mano; `payment.instructions` sin Bizum.
 
 ## Pendiente
 

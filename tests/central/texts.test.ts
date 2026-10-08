@@ -232,3 +232,38 @@ test('textos · un correo por público: semilla, contact.email → organizadores
   assert.deepEqual((await contact({ lang: 'es' })).map((c) => c.key), [emailKey('organizers'), 'contact.phone']);
   assert.deepEqual(await contact({ lang: 'es', audience: 'otro' }), await contact({ lang: 'es' }));
 });
+
+test('textos · ES v2 del usuario: cambia solo lo que nadie ha editado a mano; el inglés no se toca', async () => {
+  const q = async <T = any>(sql: string, args: unknown[] = []) => (await app.t.db.query<T>(sql, args)).rows;
+  await q(`select central.seed_texts_portal_place()`);
+  const before = await q<{ key: string; lang: string; version: string; body: string; human: boolean }>(
+    `select t.key, t.lang, t.version, t.body,
+            (t.updated_by is not null or exists (select 1 from central.text_versions v where v.text_id = t.id and v.updated_by is not null)) as human
+       from central.texts t where t.deleted_at is null`);
+  const out = (await q<{ r: { applied: number; skipped: string[] } }>(`select central.apply_texts_es_v2() as r`))[0]!.r;
+  assert.ok(out.applied >= 10, JSON.stringify(out));
+  // `portal.privacy` lo editó el owner en la app (prueba de versiones): se respeta y se avisa.
+  assert.ok(out.skipped.includes('portal.privacy'), JSON.stringify(out));
+  const after = new Map((await q<{ key: string; lang: string; version: string; body: string }>(`select key, lang, version, body from central.texts where deleted_at is null`)).map((r) => [`${r.key}:${r.lang}`, r]));
+  for (const b of before) {
+    const a = after.get(`${b.key}:${b.lang}`)!;
+    if (b.lang === 'en' || b.human) assert.equal(a.body, b.body, `${b.key}:${b.lang} no debía cambiar`);
+    else if (a.body !== b.body) assert.equal(a.version, nextVersion(b.version), `${b.key} sube de versión`);
+  }
+  const es = (key: string) => after.get(`${key}:es`)!.body;
+  assert.doesNotMatch(es('payment.instructions'), /Bizum|entidad\.bizum/); // sin línea de Bizum mientras no haya número
+  assert.match(es('payment.instructions'), /\{\{entidad\.iban\}\}.*\{\{entidad\.razon_social\}\}/s);
+  assert.match(es('payment.instructions'), /\{\{contacto\.organizadores\}\}/);
+  assert.match(es('organizers.proposal_note'), /«Quiero confirmar»/);
+  assert.match(es('info.parking'), /\{\{contacto\.huespedes\}\}/);
+  assert.equal(es('info.map_link'), '{{entidad.mapa}}');
+  // Todo lo cambiado se resuelve sin marcadores desconocidos ni literales del contacto.
+  for (const [k, row] of after) {
+    if (!k.endsWith(':es')) continue;
+    assert.deepEqual(unknownMarkers(row.body), [], k);
+    const rendered = (await q<{ b: string }>(`select central.render_text($1) as b`, [row.body]))[0]!.b;
+    assert.doesNotMatch(rendered, /\{\{/, k);
+  }
+  // Una segunda vez no cambia nada.
+  assert.equal((await q<{ r: { applied: number } }>(`select central.apply_texts_es_v2() as r`))[0]!.r.applied, 0);
+});
