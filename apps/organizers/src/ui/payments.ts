@@ -89,7 +89,9 @@ export function renderPayments(ctx: ViewContext, reservationId: string, contract
         el('ul', { class: 'plainlist orgdue', id: 'contractDue' }, ...b.due.map((d) => el('li', { 'data-kind': d.kind },
           el('strong', null, d.kind === 'senal' ? t('Señal') : t('Saldo')), ` · ${money(d.amount)}`,
           d.date ? ` · ${t('antes del {fecha}', { fecha: issueDay(d.date) })}` : '', ' ',
-          el('span', { class: `chip small ${d.paid ? 'ok' : 'warn'}` }, d.paid ? t('Pagado') : t('Pendiente'))))),
+          el('span', { class: `chip small ${d.paid ? 'ok' : 'warn'}` }, d.paid ? t('Pagado') : t('Pendiente')),
+          // Decisión del usuario (8-10-2026): el saldo vence 24 horas después de terminar el evento.
+          d.kind === 'saldo' ? el('div', { class: 'muted small' }, t('en las 24 horas siguientes al final del retiro')) : null))),
         el('p', { class: 'muted small' }, t('Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.', { n: contract.proposal_version })))
       : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.'));
     replace(host,

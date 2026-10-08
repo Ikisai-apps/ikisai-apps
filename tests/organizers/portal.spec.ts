@@ -368,6 +368,7 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   await expect(page.locator('#contractBalance')).toHaveText(/2\.?500,00/);
   await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('840,00');
   await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('Pendiente');
+  await expect(page.locator('#contractDue li[data-kind="saldo"]')).toContainText('en las 24 horas siguientes al final del retiro');
 
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
   await page.locator('#moneyInvoices .orginvoice').first().click();
