@@ -36,7 +36,10 @@ export function createClient(): SyncClient {
 export function describeError(error: unknown): string {
   const e = error as Partial<ApiError> & { message?: string; details?: Record<string, unknown> };
   const code = typeof e?.code === 'string' ? e.code : '';
+  // Fallos de Auth al crear o cambiar cuentas (#404): el núcleo trae el motivo en `details.authMessage`.
+  const auth = typeof e?.details?.authMessage === 'string' && e.details.authMessage.trim() ? e.details.authMessage.trim() : null;
   switch (code) {
+    case 'AUTH_ADMIN_FAILED': return auth ? `No se pudo completar la operación de cuentas: ${auth}` : 'No se pudo completar la operación de cuentas.';
     case 'LOGIN_FAILED': return 'Correo o contraseña incorrectos.';
     case 'NETWORK': return 'No hay conexión con el servidor.';
     case 'UNAUTHENTICATED':
@@ -62,7 +65,10 @@ export function describeError(error: unknown): string {
     case 'IMMUTABLE_FIELD': return 'Ese dato no se puede cambiar.';
     case 'INVALID_FILE': return 'El archivo no se pudo enlazar. Vuelve a elegirlo.';
     case 'OFFLINE': return 'Esta acción necesita conexión.';
-    default: return typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
+    default: {
+      const message = typeof e?.message === 'string' && e.message ? e.message : 'Ha ocurrido un error inesperado.';
+      return auth && !message.includes(auth) ? `${message} (${auth})` : message;
+    }
   }
 }
 

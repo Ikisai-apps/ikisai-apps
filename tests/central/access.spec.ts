@@ -261,4 +261,15 @@ test('accesos · alta con un correo que ya tiene cuenta: enlazar, fusionar ficha
   expect((await userOf(mario.id)).u).toBeNull();
   // Nunca dos fichas con la misma cuenta.
   expect((await db.query(`select user_id from central.people where deleted_at is null and user_id is not null group by user_id having count(*) > 1`)).rows.length).toBe(0);
+  // Si Auth rechaza la cuenta, la pantalla enseña su motivo (`details.authMessage`, #404).
+  await page.route('**/api/v1/admin/invite', (route) => route.fulfill({ status: 422, contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'AUTH_ADMIN_FAILED', message: 'No se pudo completar la operación de cuentas.', details: { authCode: 'email_address_invalid', authMessage: 'Email address is invalid' } } }) }));
+  await page.reload();
+  await page.locator('#invitePerson').selectOption('');
+  await page.locator('#inviteName').fill('Persona sin correo válido');
+  await page.locator('#inviteEmail').fill('nadie@example.invalid');
+  await page.locator('#invite-booking').selectOption('reader');
+  await page.locator('#inviteSubmit').click();
+  await expect(page.locator('.formerror')).toContainText('No se pudo completar la operación de cuentas: Email address is invalid');
+  await page.unroute('**/api/v1/admin/invite');
 });
