@@ -37,7 +37,7 @@ export interface FeedbackClientOptions {
 }
 
 export interface FeedbackClient {
-  enqueue(item: FeedbackOutboxItem): Promise<void>;
+  enqueue(item: FeedbackOutboxItem, waitMs?: number): Promise<void>;
   flush(): Promise<void>;
   pending(): Promise<FeedbackOutboxItem[]>;
   openReports(nodeId: string): Promise<FeedbackReport[]>;
@@ -91,6 +91,7 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
   }
 
   async function send(item: FeedbackOutboxItem): Promise<void> {
+    let sent: FeedbackReport | null = null;
     try {
       await upload(item);
       const { report } = await options.api<{ report: FeedbackReport }>('/feedback', {
@@ -102,7 +103,7 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
       });
       await feedbackOutbox.delete(item.id);
       attemptsSinceSuccess = 0;
-      options.onSent?.(report, item);
+      sent = report;
     } catch (error) {
       const { code, status } = errorCode(error);
       item.attempts += 1;
@@ -111,6 +112,19 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
       await feedbackOutbox.put(item);
       if (!item.failed) { attemptsSinceSuccess += 1; schedule(); }
     }
+    // Fuera del `try`: si el aviso de la app falla, el reporte ya enviado no vuelve a la bandeja como fallido.
+    if (sent) { try { options.onSent?.(sent, item); } catch { /* el envío ya está hecho */ } }
+  }
+
+  /** Un mismo reporte no se envía dos veces a la vez (composer y vaciado de la bandeja pueden coincidir). */
+  const inFlight = new Map<string, Promise<void>>();
+  function sendOnce(item: FeedbackOutboxItem): Promise<void> {
+    let running = inFlight.get(item.id);
+    if (!running) {
+      running = send(item).finally(() => inFlight.delete(item.id));
+      inFlight.set(item.id, running);
+    }
+    return running;
   }
 
   async function flush(): Promise<void> {
@@ -119,7 +133,7 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
       const user = options.userId();
       if (!user) return;
       const items = (await feedbackOutbox.list(user, options.app)).filter((i) => !i.failed);
-      for (const item of items) await send(item);
+      for (const item of items) await sendOnce(item);
       options.onChange?.();
     })().finally(() => { flushing = null; });
     return flushing;
@@ -130,7 +144,19 @@ export function createFeedbackClient(options: FeedbackClientOptions): FeedbackCl
   void flush();
 
   return {
-    async enqueue(item) { await feedbackOutbox.put(item); options.onChange?.(); await flush(); },
+    /**
+     * Guarda en la bandeja y envía **este** reporte (como mucho `waitMs`, 15 s): el composer no espera a que se vacíe toda
+     * la bandeja (otro reporte atascado, p. ej. una imagen que no termina de subir, lo dejaba en «Enviando…» aunque el
+     * suyo ya hubiera llegado). El resto sigue en segundo plano.
+     */
+    async enqueue(item, waitMs = 15_000) {
+      await feedbackOutbox.put(item);
+      options.onChange?.();
+      const own = sendOnce(item);
+      void flush();
+      await Promise.race([own, new Promise((r) => setTimeout(r, waitMs))]);
+      options.onChange?.();
+    },
     flush,
     async pending() { const user = options.userId(); return user ? feedbackOutbox.list(user, options.app) : []; },
     async openReports(nodeId) {
