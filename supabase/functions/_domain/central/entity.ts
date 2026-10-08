@@ -13,6 +13,14 @@ export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 export const SITE_PLAN_MIME = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'] as const;
 export const PORTAL_PLACE_PROJECTION = 'central.portal_place_projection';
 
+/** Enlace exacto del mapa del lugar (FB_2026_010): https de un servicio de mapas conocido, sin espacios. Igual que el check de SQL. */
+export const VENUE_MAP_URL = /^https:\/\/((www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?\/maps|maps\.google\.[a-z]{2,3}(\.[a-z]{2})?\/|maps\.app\.goo\.gl\/|goo\.gl\/maps\/|(www\.)?openstreetmap\.org\/|maps\.apple\.com\/)\S*$/;
+
+/** Enlace del mapa del lugar, como `central.venue_map`: el exacto si lo hay; si no, la búsqueda por la dirección del lugar. */
+export function venueMap(e: { venue_address?: string | null; venue_map_url?: string | null } | null | undefined): string | null {
+  return e?.venue_map_url?.trim() || mapUrl(e?.venue_address);
+}
+
 /** Enlace de búsqueda en un mapa externo por la dirección (la del lugar, nunca la fiscal), con la misma codificación que `central.map_url`. */
 export function mapUrl(address: string | null | undefined): string | null {
   const a = address?.trim();
@@ -93,6 +101,7 @@ export interface EntityRow {
   iban: string | null;
   bizum: string | null;
   venue_address: string | null;
+  venue_map_url: string | null;
   site_plan_file_id: string | null;
 }
 

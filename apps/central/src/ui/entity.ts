@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { compressImage, confirmDialog, el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { LOGO_MAX_BYTES, LOGO_MIME, SITE_PLAN_MIME, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
+import { LOGO_MAX_BYTES, LOGO_MIME, SITE_PLAN_MIME, VENUE_MAP_URL, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
@@ -99,6 +99,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         fbMark(line('IBAN', formatIban(r.iban), true), 'central.entidad.ficha.iban', 'IBAN'),
         fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum'),
         fbMark(line('Lugar de los retiros', r.venue_address), 'central.entidad.ficha.lugar', 'Lugar de los retiros'),
+        r.venue_map_url ? el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.mapa', 'data-feedback-label': 'Mapa del lugar' }, el('dt', null, 'Mapa del lugar'),
+          el('dd', null, el('a', { href: r.venue_map_url, target: '_blank', rel: 'noopener noreferrer', 'data-feedback-id': 'central.entidad.ficha.abrir_mapa', 'data-feedback-label': 'Abrir el mapa' }, icon('pin', 16), ' Abrir el mapa'))) : null,
         el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.plano', 'data-feedback-label': 'Plano del centro' }, el('dt', null, 'Plano del centro'),
           el('dd', null, (await planNode(r.site_plan_file_id as LogoRef)) ?? el('span', { class: 'muted' }, 'Sin plano')))),
       el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
@@ -130,6 +132,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     const iban = input('en-iban', formatIban(current?.iban), { maxlength: '42', placeholder: 'ES00 0000 0000 0000 0000 0000', autocomplete: 'off', 'data-feedback-ignore': '' });
     const bizum = input('en-bizum', current?.bizum, { maxlength: '20', inputmode: 'tel', autocomplete: 'off', 'data-feedback-ignore': '' });
     const venue = input('en-venue', current?.venue_address, { maxlength: '300', autocomplete: 'off' });
+    const venueMap = input('en-venue-map', current?.venue_map_url, { maxlength: '500', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://maps.app.goo.gl/…' });
     let logo: LogoRef = (current?.logo_file_id as LogoRef) ?? null;
     let stagedLogo: Blob | null = null;
     const logoPreview = el('div', { class: 'logopreview', 'data-feedback-id': 'central.entidad.editar.logotipo_vista', 'data-feedback-label': 'Vista del logotipo' });
@@ -183,7 +186,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       legal_name: legal.value.trim(), trade_name: text(trade.value), tax_id: normalizeTaxId(taxId.value), address_line: street.value.trim(),
       postal_code: postal.value.trim(), city: city.value.trim(), province: text(province.value), country: country.value.trim().toUpperCase() || 'ES',
       email: text(email.value), phone: text(phone.value), website: text(web.value),
-      iban: iban.value.trim() ? normalizeIban(iban.value) : null, bizum: text(bizum.value), venue_address: text(venue.value),
+      iban: iban.value.trim() ? normalizeIban(iban.value) : null, bizum: text(bizum.value), venue_address: text(venue.value), venue_map_url: text(venueMap.value),
     });
     const changed = (): Record<string, unknown> => {
       const all = values();
@@ -198,6 +201,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       taxId.setCustomValidity(problem ? `NIF/CIF: ${problem}` : '');
       const ibanIssue = iban.value.trim() ? ibanProblem(iban.value) : null;
       iban.setCustomValidity(ibanIssue ? `IBAN: ${ibanIssue}` : '');
+      const mapIssue = venueMap.value.trim() && !VENUE_MAP_URL.test(venueMap.value.trim());
+      venueMap.setCustomValidity(mapIssue ? 'Pega el enlace de Google Maps (https://maps.app.goo.gl/… o https://www.google.com/maps/…).' : '');
     };
 
     const newId = crypto.randomUUID();
@@ -273,6 +278,8 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       el('div', { class: 'sectionlabel' }, 'Para los portales'),
       el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_lugar', 'data-feedback-label': 'Dirección del lugar de los retiros' }, el('span', null, 'Dirección del lugar de los retiros (opcional)'), venue,
         el('span', { class: 'muted small' }, 'La ven los portales, con el enlace del mapa ({{entidad.lugar}}, {{entidad.mapa}}). Nunca se usa el domicilio fiscal; si la dejas vacía, los portales no muestran dirección ni mapa.')),
+      el('label', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_mapa', 'data-feedback-label': 'Enlace exacto del mapa' }, el('span', null, 'Enlace exacto del mapa (opcional)'), venueMap,
+        el('span', { class: 'muted small' }, 'En Google Maps, busca el lugar, pulsa «Compartir» y pega aquí el enlace. Si lo pones, los portales lo usan en vez de buscar la dirección.')),
       el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_plano', 'data-feedback-label': 'Plano del centro' }, el('span', null, 'Plano del centro (opcional)'), planPreview,
         el('label', { class: 'ghost btnlike', for: 'en-plan', 'data-feedback-id': 'central.entidad.editar.elegir_plano', 'data-feedback-label': 'Elegir plano' }, icon('upload', 18), 'Elegir plano'), planInput,
         el('span', { class: 'muted small' }, 'Imagen o PDF. Lo ven los asistentes y quien organiza, en su portal.')),
@@ -304,5 +311,5 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
 const LABELS: Record<string, string> = {
   legal_name: 'Razón social', trade_name: 'Nombre comercial', tax_id: 'NIF/CIF', address_line: 'Domicilio fiscal', postal_code: 'Código postal',
   city: 'Municipio', province: 'Provincia', country: 'País', email: 'Correo', phone: 'Teléfono', website: 'Web', logo_file_id: 'Logotipo',
-  iban: 'IBAN', bizum: 'Bizum', venue_address: 'Dirección del lugar de los retiros', site_plan_file_id: 'Plano del centro',
+  iban: 'IBAN', bizum: 'Bizum', venue_address: 'Dirección del lugar de los retiros', venue_map_url: 'Enlace exacto del mapa', site_plan_file_id: 'Plano del centro',
 };

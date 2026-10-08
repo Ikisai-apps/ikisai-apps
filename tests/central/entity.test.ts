@@ -194,3 +194,34 @@ test('entidad · el lugar para los portales (X3 y CE3): dirección del lugar (nu
   place = (await app.t.db.query<any>(`select map_url from central.portal_place_projection`)).rows[0];
   assert.equal(place.map_url, exact);
 });
+
+test('entidad · enlace exacto del mapa (FB_2026_010): solo mapas conocidos; manda sobre la búsqueda por dirección', async () => {
+  const { VENUE_MAP_URL, renderMarkers } = await import('../../supabase/functions/_domain/central/mod.ts');
+  const EXACT = 'https://maps.app.goo.gl/AbCdEf123';
+  for (const ok of [EXACT, 'https://www.google.com/maps/place/Ikisai/@40.1,-3.9,17z', 'https://www.google.es/maps?q=40.1,-3.9', 'https://www.openstreetmap.org/#map=17/40.1/-3.9']) assert.ok(VENUE_MAP_URL.test(ok), ok);
+  for (const bad of ['http://maps.app.goo.gl/x', 'https://maps.app.goo.gl.evil.example/x', 'https://example.com/maps', 'https://maps.app.goo.gl/a b', 'javascript:alert(1)']) assert.ok(!VENUE_MAP_URL.test(bad), bad);
+  assert.equal(renderMarkers('{{entidad.mapa}}', { entity: { venue_address: 'Camino 5', venue_map_url: EXACT } }), EXACT);
+
+  // `info.map_link` vuelve al marcador (la prueba anterior lo dejó con un enlace propio).
+  await app.t.db.query(`update central.texts set body = '{{entidad.mapa}}' where key = 'info.map_link' and lang = 'es'`);
+  const before = (await app.t.db.query<{ u: string }>(`select map_url as u from central.portal_place_projection`)).rows[0]!.u;
+  assert.match(before, /^https:\/\/www\.google\.com\/maps\/search\//);
+
+  const [row] = (await app.call(`/api/v1/snapshot?tables=${ENTITY_TABLE}`)).data.tables[0].rows;
+  const bad = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { venue_map_url: 'https://example.com/maps' } }]);
+  assert.equal(bad.status, 422); assert.equal(bad.data.error.details.field, 'venue_map_url');
+  await assert.rejects(app.t.db.query(`update central.entity set venue_map_url = 'https://example.com/maps'`)); // también lo para la base
+  const ok = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { venue_map_url: EXACT } }]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal((await app.t.db.query<{ u: string }>(`select map_url as u from central.portal_place_projection`)).rows[0]!.u, EXACT);
+  assert.equal((await app.t.db.query<{ b: string }>(`select central.render_text('{{entidad.mapa}}') as b`)).rows[0]!.b, EXACT);
+
+  // Sin dirección del lugar, el enlace exacto sigue valiendo; sin los dos, no hay mapa (nunca la fiscal).
+  const r2 = ok.data.changes[0].after;
+  const noVenue = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: r2.revision, fields: { venue_address: null } }]);
+  assert.equal(noVenue.status, 200, JSON.stringify(noVenue.data));
+  assert.equal((await app.t.db.query<{ u: string }>(`select map_url as u from central.portal_place_projection`)).rows[0]!.u, EXACT);
+  const none = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: r2.revision + 1, fields: { venue_map_url: null } }]);
+  assert.equal(none.status, 200, JSON.stringify(none.data));
+  assert.deepEqual((await app.t.db.query(`select address, map_url from central.portal_place_projection`)).rows[0], { address: null, map_url: null });
+});
