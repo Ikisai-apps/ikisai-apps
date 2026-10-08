@@ -315,7 +315,11 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
           reason = `Leída, pero no se pudo importar (${code}): revísala con «Leer PDF» o la IA.`;
         }
       } else {
-        reason = !extraction.hasText ? 'PDF sin texto (escaneado o foto): léela con la IA.' : `Sin leer del todo (falta ${extraction.missing.join(', ') || 'algún dato'}): «Leer PDF» o la IA.`;
+        // Diagnóstico sin contenido (9-10-2026): páginas con texto, fragmentos y caracteres leídos.
+        const pages = items.reduce((n, it) => Math.max(n, it.page), 0);
+        const chars = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
+        const shape = `${pages} pág. con texto, ${items.length} fragmentos, ${chars} caracteres`;
+        reason = !extraction.hasText ? `PDF sin texto (escaneado o foto; ${shape}): la completa Claude o la IA.` : `Sin leer del todo (falta ${extraction.missing.join(', ') || 'algún dato'}; ${shape}): la completa Claude, «Leer PDF» o la IA.`;
       }
       if (!readOk) await deps.commit(`drive-${file.id}-pendiente`, base);
       if (items.length) await deps.saveText(fileId, items).catch(() => undefined);

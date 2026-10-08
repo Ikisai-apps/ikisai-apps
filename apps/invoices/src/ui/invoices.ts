@@ -27,6 +27,7 @@ import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedText } from '../
 import { readPdfItems } from '../app/pdf-text.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
+import { openBatchUpload } from './batch.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,7 +88,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   // Pestañas «Recibidas · Emitidas» (API.md §13.5): las emitidas registradas viven en su propio panel.
   const received = el('div', { id: 'receivedPanel' },
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
-    el('div', { class: 'toolbar', id: 'invoiceTools' }, extractAll),
+    el('div', { class: 'toolbar', id: 'invoiceTools' }, canEdit ? el('button', { 'data-feedback-id': 'invoices.facturas.subir_varias', 'data-feedback-label': 'Subir varias', class: 'softbtn small', type: 'button', id: 'batchUpload', onclick: () => openBatchUpload(ctx, () => loadMirror(client), () => void load()) }, icon('upload', 16), 'Subir varias') : null, extractAll),
     listHost,
     newButton);
   let issuedPanel: { element: HTMLElement; destroy: () => void } | null = null;
