@@ -91,6 +91,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Pruebas `@smoke` (norma nueva de la CI por app): entrada y sincronización, PWA y caché, lanzador, y la pantalla de cada sección con sus ids. Las corre la CI cuando cambia algo compartido.
 
+- Portal de organizadores, fase 3 (F1 y F2, migración 0220): dinero del retiro y documento de la factura, filtrados por ámbito y sin datos internos (API.md §7.7). Pendiente fuera de Invoices: firma de PDF guardados en la Edge del portal y datos de contrato y señal de Booking.
+
 ## En curso
 
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. PR 4 hecho: facturar desde una reserva (borrador relleno desde Booking con IVA incluido exacto, asignado a la reserva, sin duplicar). Directorio de clientes por NIF hecho (ronda 46, migración 0216): búsqueda en el borrador y guardar o actualizar al emitir.
