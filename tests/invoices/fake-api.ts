@@ -745,8 +745,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             message: String(body.message ?? ''), node: body.node ?? null, status: 'open', display: 'open', supportersCount: 1, mine: true, createdAt: nowIso(),
             blocking: !!body.blocking, context: body.context ?? null, requestId: String(body.requestId),
           };
-          feedbackStore.set(report.id, report);
-          feedbackByRequest.set(report.requestId, report.id);
+          // Como el servidor real: solo deduplica por `requestId`. Un segundo envío con el mismo `id` y otra petición crea
+          // otro reporte (FB_2026_016 y 017 en producción), así que no se pisa el anterior.
+          const key = feedbackStore.has(report.id) ? `${report.id}#${feedbackSeq}` : report.id;
+          feedbackStore.set(key, report);
+          feedbackByRequest.set(report.requestId, key);
           return json(res, 200, { report });
         }
         if (path === 'feedback' && method === 'GET') {
