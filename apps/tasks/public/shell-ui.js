@@ -25,19 +25,23 @@ function shellItemActive(id,type){return type==='view'&&(state.view===id||id==='
 
 function shellTabs(){
   const K=IkisaiKit,general=state.taskScope==='all';
-  return K.renderAreaTabs({label:'Áreas de trabajo',
-    leading:[K.renderStripTool({label:'Áreas de trabajo',icon:shellIcon('areasEdit'),attrs:{'data-areas-tool':'','data-tip':'Áreas de trabajo',title:null}})],
+  /* Sin el lápiz de «Áreas de trabajo» (FB_2026_020): está en el menú lateral, en Trabajo. */
+  const strip=K.renderAreaTabs({label:'Áreas de trabajo',
     items:[
       {label:'General',general:true,active:general,attrs:{'data-general-area':'',title:'Todas las áreas a la vez'}},
       ...activeAreas().map(t=>({label:t.name,active:!general&&t.id===state.activeTab,color:t.color||null,count:areaPending(t),attrs:{'data-tab':t.id}})),
     ]});
+  /* «General», con un icono de «todas las áreas» en vez de la palabra (FB_2026_019); el nombre queda para lectores de pantalla. */
+  const all=strip.querySelector('[data-general-area]');
+  if(all){all.replaceChildren(shellIcon('allAreas'));all.classList.add('generalicon');all.setAttribute('aria-label','General: todas las áreas');all.dataset.tip='General · todas las áreas'}
+  return strip;
 }
 function shellViews(){
   if(!tab())return null;
   const K=IkisaiKit,mine=myTaskFilters()?[{label:'Mis tareas',icon:shellIcon('user'),className:'mine',active:isMyTasksView(),attrs:{'data-quick-mine':'',title:'Tareas con mi etiqueta en todas las áreas'}}]:[];
-  return K.renderQuickViews({label:'Vistas guardadas',
-    leading:[K.renderStripTool({label:'Guardar o abrir vistas',icon:shellIcon('view'),className:'viewsave',attrs:{id:'savedViews','data-tip':'Guardar vista',title:null}})],
-    items:[...mine,...(tab().views||[]).filter(v=>!v.deleted).map(v=>({label:v.name,active:shellViewMatches(v),attrs:{'data-quick-view':v.id,title:'Aplicar la vista guardada'}}))]});
+  /* Sin el ojo de «Guardar o abrir vistas» (FB_2026_020): «Vistas guardadas» está en el menú lateral, en Trabajo. */
+  const items=[...mine,...(tab().views||[]).filter(v=>!v.deleted).map(v=>({label:v.name,active:shellViewMatches(v),attrs:{'data-quick-view':v.id,title:'Aplicar la vista guardada'}}))];
+  return items.length?K.renderQuickViews({label:'Vistas guardadas',items}):null;
 }
 function shellMenuParts(){
   const K=IkisaiKit,alias=myAlias();

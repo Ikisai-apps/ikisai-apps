@@ -54,3 +54,6 @@
 @media(min-width:1550px){.project-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 #filterBtn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+/* «General» con icono de todas las áreas (FB_2026_019). */
+.tabpill.generalicon{display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding-inline:10px}
+.tabpill.generalicon .menuicon{width:18px;height:18px}
