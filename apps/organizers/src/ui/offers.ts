@@ -155,7 +155,11 @@ export function renderOffers(ctx: ViewContext, reservationId: string, detail: Re
       if (!cacheImg.has(entry.url)) cacheImg.set(entry.url, await loadImage(entry.url).catch(() => null));
       return cacheImg.get(entry.url) ?? null;
     };
-    const place = el('input', { type: 'text', id: 'poster-place', maxlength: '120', value: 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
+    // El lugar, de Central (X3: nombre y dirección del lugar, nunca el domicilio fiscal); se puede cambiar a mano.
+    const venue = await ctx.api.readAny<{ rows?: Array<{ name: string | null; address: string | null }>; items?: Array<{ name: string | null; address: string | null }> }>('central.portal_place_projection')
+      .then((x) => (x.value.rows ?? x.value.items ?? [])[0] ?? null).catch(() => null);
+    const placeText = venue ? [venue.name, venue.address].filter(Boolean).join(' · ') : '';
+    const place = el('input', { type: 'text', id: 'poster-place', maxlength: '160', value: placeText || 'Ikisai', oninput: () => void draw() }) as HTMLInputElement;
     const note = el('input', { type: 'text', id: 'poster-note', maxlength: '160', placeholder: t('Plazas limitadas · reserva en…'), oninput: () => void draw() }) as HTMLInputElement;
     const canvas = el('canvas', { id: 'posterCanvas', class: 'orgposter-canvas', 'aria-label': t('Vista previa del cartel') }) as HTMLCanvasElement;
     const choose = <T extends string>(id: string, pairs: Array<[T, string]>, current: T, set: (v: T) => void) => el('select', { id,

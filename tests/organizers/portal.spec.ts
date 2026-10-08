@@ -424,6 +424,7 @@ test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enla
   expect(experience!.program_window).toBe('during');
 
   // Material: enlace al grupo, publicado antes del retiro.
+  await page.locator('#expnav-materiales').click();
   await page.locator('#expAddLink').click();
   await page.locator('#mat-title').fill('Grupo de WhatsApp');
   await page.locator('#mat-url').fill('http://chat.example');
@@ -438,6 +439,7 @@ test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enla
   await expect.poll(async () => (await rows('materials')).map((m) => [m.title, m.published, m.window])).toEqual([['Grupo de WhatsApp', true, 'before']]);
 
   // Pregunta: el editor avisa si parece pedir salud o alergias (O7); se guarda con sus opciones.
+  await page.locator('#expnav-preguntas').click();
   await page.locator('#expAddQuestion').click();
   await page.locator('#q-label').fill('¿Tienes alguna alergia?');
   await expect(page.locator('#q-sensitive')).toBeVisible();
@@ -482,4 +484,43 @@ test('organizers · ofertas y cartel (fase 5): ofertas privadas, calculadora con
   const download = page.waitForEvent('download');
   await page.locator('#posterJpg').click();
   expect((await download).suggestedFilename()).toBe('cartel-retiro-con-cartel.jpg');
+});
+
+test('organizers · experiencia (fases 4 y 5): programa por días, menú aún sin compartir, alojamiento y vista previa', async ({ page, context }) => {
+  const reservation = await api.reservation({ title: 'Retiro con programa', confirm: true, start: '2027-05-14', end: '2027-05-16' });
+  await enter(page, await api.organizerLink([reservation], 'programa@example.invalid', 'Pablo'));
+  await page.locator('#tab-experiencia').click();
+
+  // Programa (Booking): actividad del sábado por la mañana.
+  await page.locator('#expnav-programa').click();
+  await page.locator('[data-add-day="2027-05-15"]').click();
+  await page.locator('#pr-title').fill('Meditación');
+  await page.locator('#pr-starts').fill('08:00');
+  await page.locator('#pr-ends').fill('07:00');
+  await page.locator('#pr-save').click();
+  await expect(page.locator('#pr-error')).toContainText('posterior');
+  await page.locator('#pr-ends').fill('09:00');
+  await page.locator('#pr-place').fill('Sala grande');
+  await page.locator('#pr-save').click();
+  await expect(page.locator('[data-day="2027-05-15"] .orgitem')).toContainText('08:00–09:00');
+  await expect(page.locator('[data-day="2027-05-15"] .orgitem')).toContainText('Sala grande');
+
+  // Menú (Food): cocina aún no lo ha compartido.
+  await page.locator('#expnav-menu').click();
+  await expect(page.locator('#menuPending')).toBeVisible();
+
+  // Alojamiento (Booking): «piden su cama y tú la apruebas» se guarda en los dos lados.
+  await page.locator('#expnav-alojamiento').click();
+  await page.locator('#lodging-capability').selectOption('request');
+  await expect(page.locator('#lodgingOpen')).toBeVisible();
+  await expect.poll(async () => (await api.booking.t.db.query<{ choice: string }>(
+    `select s.choice from booking.lodging_settings s join booking.events e on e.id = s.event_id where e.reservation_id = $1`, [reservation])).rows[0]?.choice).toBe('request');
+  await expect.poll(async () => (await api.booking.t.db.query<{ lodging_capability: string }>(
+    'select lodging_capability from organizers.experiences where reservation_id = $1', [reservation])).rows[0]?.lodging_capability).toBe('request');
+
+  // Vista previa: abre Guests con el huésped de muestra.
+  await page.locator('#expnav-ven').click();
+  const popup = context.waitForEvent('page');
+  await page.locator('#expPreviewOpen').click();
+  await expect.poll(async () => (await popup).url()).toMatch(/^https:\/\/guests\.ikisai\.com\/i\//);
 });
