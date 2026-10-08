@@ -43,6 +43,8 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
     }
     if (app === 'guests' && (typeof scope.guest_id !== 'string' || !UUID.test(scope.guest_id))) fail(422, 'INVALID_OPERATION', 'Un enlace de huésped necesita guest_id.');
     const clean = app === 'guests' ? { reservation_id: scope.reservation_id.toLowerCase(), guest_id: scope.guest_id.toLowerCase() } : { reservation_id: scope.reservation_id.toLowerCase() };
+    // O6: enlace al huésped de muestra (vista previa del organizador). La sesión solo lee (PREVIEW_READ_ONLY en el kit).
+    if (app === 'guests' && body?.preview === true) (clean as Record<string, unknown>).preview = true;
     const person = body?.person ?? {};
     const name = typeof person.name === 'string' ? person.name.trim().slice(0, 120) : '';
     // Autoriza antes de crear la cuenta (la función SQL vuelve a comprobarlo todo en la transacción).

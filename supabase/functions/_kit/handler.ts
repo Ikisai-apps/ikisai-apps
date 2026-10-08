@@ -230,6 +230,14 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'portal-links/:id/extend', handler: async ({ ctx, params, json }) => links.manage(ctx, params.id ?? '', 'extend', await json()) },
     );
   }
+  // C8: archivo de otra app publicado a este portal (resolutores de `core.allow_portal_file`); URL firmada de 5 minutos.
+  routes.push({ method: 'GET', pattern: 'portal-files/:fileId', handler: async ({ ctx, params }) => {
+    const id = params.fileId ?? '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
+    const file = await supabase.rpc<any>('core_portal_file_get', { p_portal: config.app, p_actor: ctx.user.id, p_file: id });
+    const url = await storage.readUrl(file, 300);
+    return { id, url, expiresAt: new Date(Date.now() + 300_000).toISOString(), filename: file.filename, mime: file.mime, size: file.size };
+  } });
   routes.push(...(config.routes ?? []));
   const compiled = routes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
   const workerRoutes = [...(config.workerRoutes ?? [])];
@@ -353,6 +361,12 @@ export function createApp(config: AppConfig): AppHandler {
         try { message = JSON.parse(raw); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
         const out = await mcp.handle(message, ctx, mcpCore(ctx));
         return out === null ? new Response(null, { status: 202, headers }) : json(out);
+      }
+      // Vista previa (O6): una sesión cuyas entradas de ámbito son todas `preview` solo lee.
+      const grants = (ctx.membership as any)?.scopes?.grants;
+      if (request.method !== 'GET' && Array.isArray(grants) && grants.length && grants.every((g: any) => g?.preview === true)
+          && !relative.startsWith('read/') && relative !== 'auth/logout') {
+        fail(403, 'PREVIEW_READ_ONLY', 'Es una vista previa: no se guardan cambios.');
       }
       for (const route of compiled) {
         if (route.method !== request.method) continue;
