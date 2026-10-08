@@ -141,8 +141,40 @@ test('portal_menu_comment · el organizador comenta; sobre un menú validado lo 
   await assert.rejects(app.t.rpc('core_invoke', { p_app: 'guests', p_actor: guestUser, p_name: 'food.portal_menu_comment', p_args: { reservation_id: reservation, guest_id: guest, kind: 'comentario', message: 'x' } }));
 });
 
+test('fotos de los platos (C8): portal_menu da la miniatura y portal-files solo la abre a quien ve ese menú', async () => {
+  const file = async (name: string) => (await app.t.db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, status)
+    values ('food', 'kitchen-media', $1, $1, 'image/webp', 10, $2, 'verified') returning id`, [`food/${name}.webp`, name.padEnd(64, '0').slice(0, 64)])).rows[0]!.id;
+  const thumb = await file('a1'); const big = await file('b2'); const loose = await file('c3');
+  await app.t.db.query(`update food.recipes set photo_file_id = $2, photo_thumb_file_id = $3 where id = $1`, [curry, big, thumb]);
+  // Un menú compartido de nuevo y validado (las pruebas anteriores lo cerraron).
+  await app.t.db.query(`update food.menus set status = 'validado', organizer_shared = true where id = $1`, [menu]);
+  const org = await member('organizers', { reservation_id: reservation });
+  const outsider = await member('organizers', { reservation_id: other });
+  const guest = uuid();
+  const guestUser = await member('guests', { reservation_id: reservation, guest_id: guest });
+  const open = (portal: string, actor: string, id: string) => app.t.rpc('core_portal_file_get', { p_portal: portal, p_actor: actor, p_file: id }) as Promise<any>;
+
+  const out = await read('organizers', org, 'food.portal_menu', { reservation_id: reservation });
+  const curryDish = out.services[0].dishes.find((d: any) => d.name === 'Curry de verduras');
+  assert.equal(curryDish.photo_thumb_file_id, thumb);
+  assert.ok(!JSON.stringify(out).includes(big), 'la foto grande no sale');
+  assert.equal((await open('organizers', org, thumb)).id, thumb);
+  assert.equal((await open('guests', guestUser, thumb)).id, thumb);
+  for (const [portal, actor, id] of [['organizers', org, big], ['organizers', org, loose], ['organizers', outsider, thumb]] as const) {
+    await assert.rejects(open(portal, actor, id), (e: any) => e.code === 'FILE_NOT_FOUND', `${portal} ${id}`);
+  }
+  // Guests solo con el menú confirmado; el organizador ve también la propuesta. Sin compartir, nadie.
+  await app.t.db.query(`update food.menus set status = 'revisar' where id = $1`, [menu]);
+  await assert.rejects(open('guests', guestUser, thumb), (e: any) => e.code === 'FILE_NOT_FOUND');
+  assert.equal((await open('organizers', org, thumb)).id, thumb);
+  await app.t.db.query(`update food.menus set organizer_shared = false where id = $1`, [menu]);
+  await assert.rejects(open('organizers', org, thumb), (e: any) => e.code === 'FILE_NOT_FOUND');
+});
+
 test('las lecturas de portal están registradas para cada portal, y el comentario como acción', async () => {
   const { rows } = await app.t.db.query<{ app: string; name: string; kind: string }>(`select app, name, kind from core.allowed_reads where name like 'food.portal_%' order by app, name`);
   assert.deepEqual(rows.map((r) => `${r.app}:${r.name}:${r.kind}`), [
     'guests:food.portal_menu:function', 'organizers:food.portal_menu:function', 'organizers:food.portal_menu_comment:action', 'organizers:food.portal_my_menu_comments:function']);
+  const files = await app.t.db.query<{ portal: string; procedure: string }>(`select portal, procedure from core.portal_file_resolvers where procedure like 'food.%' order by portal`);
+  assert.deepEqual(files.rows.map((r) => `${r.portal}:${r.procedure}`), ['guests:food.portal_dish_photo', 'organizers:food.portal_dish_photo']);
 });

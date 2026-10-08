@@ -450,7 +450,7 @@ Migración `20261008_0191_food_portal_menu.sql`. Decisiones del usuario (8-10-20
 
 | Nombre | Portal | Tipo | Entrada → salida |
 |---|---|---|---|
-| `food.portal_menu` | `organizers`, `guests` | lectura | `{reservation_id, guest_id?}` (Guests con su `guest_id`) → `{reservation_id, available, status: provisional\|confirmado, menu_ids, updated_at, services: [{service_id, menu_id, date, type, time, dishes: [{menu_item_id, name, description, category, diet_tags, allergens, allergens_checked}]}], restrictions}` |
+| `food.portal_menu` | `organizers`, `guests` | lectura | `{reservation_id, guest_id?}` (Guests con su `guest_id`) → `{reservation_id, available, status: provisional\|confirmado, menu_ids, updated_at, services: [{service_id, menu_id, date, type, time, dishes: [{menu_item_id, name, description, category, diet_tags, allergens, allergens_checked, photo_thumb_file_id}]}], restrictions}` |
 | `food.portal_menu_comment` | `organizers` | acción | `{reservation_id, menu_item_id?, service_id?, kind: prefiero_que_no\|comentario, message?}` → `{id, status: 'nuevo', menu_status, cursor}`. `prefiero_que_no` exige plato; `comentario`, mensaje. Errores: `INVALID_OPERATION`, `INVALID_FIELDS`, `OUT_OF_SCOPE`, `MENU_CLOSED` |
 | `food.portal_my_menu_comments` | `organizers` | lectura | `{reservation_id}` → `{items: [{id, menu_item_id, service_id, dish, kind, message, status, reply, created_at, mine}]}` |
 
@@ -460,7 +460,7 @@ Migración `20261008_0191_food_portal_menu.sql`. Decisiones del usuario (8-10-20
 - **Nombre del plato**: `public_name` si lo hay; si no, `name`. Descripción: `public_description`.
 - `restrictions` (solo el organizador): el resumen agregado que ya publica Booking, sin `kitchen_notes`.
 - **Nunca** salen raciones, ingredientes, elaboración, conservación, notas del menú, del servicio o del plato, costes, compra, preparación, avisos ni quién validó.
-- **Fotos**: todavía no. Firmar la miniatura para un portal necesita la ruta de archivos de portal (C8/K3 de Core).
+- **Fotos** (C8, `20261008_0192_food_portal_photos.sql`): cada plato trae `photo_thumb_file_id` (la miniatura de 480 px, nunca la grande), y el portal la abre con `GET /api/v1/portal-files/:fileId`. El resolutor `food.portal_dish_photo`, registrado para los dos portales, solo dice que sí si el archivo es la miniatura de un plato de un menú compartido de una reserva del ámbito del miembro (en Guests, validado o cerrado).
 - **Comentario sobre un menú validado**: el mismo lote del portal (`core.apply_portal_operations`) inserta el comentario y pasa el menú a `revisar`. Un menú cerrado no admite comentarios.
 - **En Food**: la ficha del menú enseña «Comentarios del organizador» con «Visto», «Resuelto» y una respuesta que el organizador lee en `portal_my_menu_comments`.
 
