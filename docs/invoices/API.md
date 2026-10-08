@@ -1291,6 +1291,17 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
 
 Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el owner) dice qué faltó y la forma del texto (páginas con texto, fragmentos y caracteres), nunca su contenido.
 
+**Volver a leer** (`POST /api/v1/drive/reread`, solo owner; botón en la tarjeta de Drive de Inicio): lee otra vez, con el lector actual, el documento guardado de cada borrador de Drive en «Pendiente de datos» (10 por llamada). Si ahora sale entero, lo completa en su sitio con `import_v1` (origen `pdf_text`). Devuelve, por factura, qué sacó o qué faltó, con la forma del texto.
+
+**Formatos que lee sin IA** (además de «etiqueta e importe en la misma línea»):
+- pies en tabla: cabecera con base, % o tipo de IVA, cuota, retención y total, y debajo una fila de cifras por tipo de IVA (columnas emparejadas por posición);
+- varias etiquetas en una línea;
+- la fecha que sigue a «Fecha» aunque la línea tenga vencimiento;
+- «Número:» o «Nº:» suelto;
+- NIF con puntos, guiones, espacios o prefijo ES;
+- el NIF del cliente (línea «Cliente», «Destinatario» o «Facturar a») no se toma por el del proveedor;
+- sin nombre junto al NIF, la razón social de la cabecera (S.L., S.A., S.L.U., S. Coop.).
+
 **Lo mismo desde el dispositivo («Subir varias» en Facturas):** cada archivo elegido es una factura.
 - PDF con los mismos bytes que el documento de otra factura viva: duplicada, no se sube.
 - PDF con texto: se lee con plantillas y reglas (rectificativa si lo es) y se importa en «Pendiente de revisión». Si el contenido ya está importado, duplicada.

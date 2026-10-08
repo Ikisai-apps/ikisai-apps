@@ -104,6 +104,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Drive en una carpeta de usuario (9-10-2026, producción): búsqueda y listado con `corpora=allDrives`; sin crear subcarpetas (aviso si faltan las de destino); sin «Entrada», los PDF sueltos en la raíz.
 - Rectificativas recibidas (migración 0227, API.md §2.1): detección al leer el PDF (Drive, «Leer PDF», IA), importes en negativo, enlace con la original por proveedor y número en los dos sentidos, líneas devueltas con «Devuelto: X €», validación con original o «no tengo la original», «Repartir como la original» y tipo R con su referencia en la entrega a la gestoría.
 - «Subir varias» (auditoría del 3T): carga en lote desde el dispositivo, también sin red; PDF con texto leídos e importados, duplicados por bytes y por contenido, fotos y escaneados en «Pendiente de datos». El motivo de Drive dice ahora páginas, fragmentos y caracteres de texto para diagnosticar sin ver el contenido.
+- Lectura sin IA de facturas reales (9-10-2026, las dos primeras de Drive salían sin leer): pies en tabla (cabecera y cifras debajo, una fila por tipo de IVA, retención), varias etiquetas en una línea, la fecha que sigue a «Fecha» aunque haya vencimiento, «Número:» suelto, NIF con separadores, el NIF del cliente no se toma por el del proveedor y la razón social de la cabecera. «Volver a leer las pendientes» (owner, `POST drive/reread`) completa en su sitio los borradores de Drive con el lector actual.
 
 ## En curso
 
