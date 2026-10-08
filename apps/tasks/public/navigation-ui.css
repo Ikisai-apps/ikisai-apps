@@ -48,7 +48,7 @@
   
   
   
-  .toast{bottom:28px}
+  .toast:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){bottom:28px}
   #moveRail{left:calc(50% + var(--sidebar-width)/2);width:min(1050px,calc(100vw - var(--sidebar-width)));max-width:none}
 }
 @media(min-width:1550px){.project-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

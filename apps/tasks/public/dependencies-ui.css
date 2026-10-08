@@ -6,4 +6,4 @@
 .dependency-option span{overflow-wrap:anywhere}
 .dependency-field summary{cursor:pointer;padding:10px 0}
 .dependency-blocked{display:block;font-size:12px;line-height:1.4;color:#8c542e;margin-top:6px;overflow-wrap:anywhere}
-.task.context .check:disabled{opacity:.3;cursor:default}
+.task.context .check:disabled:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){opacity:.3;cursor:default}

@@ -80,3 +80,28 @@ test('FB_2026_015: el responsable de una regla se elige entre las personas del e
   expect((await server.rows('tasks.labels')).filter((l) => l.tab_id === tabId && l.name === 'Editor' && !l.deleted_at)).toHaveLength(1);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('reglas genéricas acotadas (8-10-2026): las casillas de tarea y los campos de Tasks conservan su estilo; el kit no los hereda', async () => {
+  await owner.evaluate(() => (window as any).closeSheet?.());
+  await owner.evaluate((id) => { state.taskScope = 'area'; state.activeTab = id; (window as any).navigateView('projects'); }, ID.ikisai);
+  await owner.locator('[data-open-project]').first().click().catch(async () => owner.locator('.project').first().click());
+  const check = owner.locator('.task .check').first();
+  await expect(check).toBeVisible();
+  const box = await check.boundingBox();
+  expect([Math.round(box!.width), Math.round(box!.height)]).toEqual([38, 44]);
+  await owner.screenshot({ path: '../coordinacion/tasks/proyecto-casillas-movil.png' }).catch(() => {});
+  // Un campo de una hoja de Tasks sigue con su altura; una casilla y un campo dentro de la capa del kit, no.
+  await owner.evaluate(() => (window as any).newAreaSheet());
+  expect(await owner.locator('#sheet .field label').first().evaluate((n) => getComputedStyle(n).textTransform)).toBe('uppercase');
+  const kit = await owner.evaluate(() => {
+    const layer = (window as any).sheetKitLayer(), host = document.createElement('div');
+    host.innerHTML = '<label class="check">Me bloquea</label><div class="field"><label id="kitProbe">Nota</label><input></div>';
+    layer.appendChild(host);
+    const out = { check: getComputedStyle(host.querySelector('.check')!).width, label: getComputedStyle(host.querySelector('#kitProbe')!).textTransform };
+    host.remove(); return out;
+  });
+  expect(kit.check).not.toBe('38px');
+  expect(kit.label).not.toBe('uppercase');
+  await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});

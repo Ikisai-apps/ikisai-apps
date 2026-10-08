@@ -57,10 +57,10 @@ body{background:var(--bg)}
 
 
 /* Buscador y controles. */
-.searchbar input,.softbtn,.facetbtn,.field input,.field textarea,.field select,select,.prioritybtn,.filterchip,.suggestion button{border-color:var(--edge);background-color:var(--paper);box-shadow:var(--shadow-1)}
+.searchbar input,.softbtn,.facetbtn,.field input:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.field textarea:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.field select:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),select,.prioritybtn,.filterchip,.suggestion button{border-color:var(--edge);background-color:var(--paper);box-shadow:var(--shadow-1)}
 .searchbar input{border-radius:14px}
 .searchbar input:focus{border-color:color-mix(in srgb,var(--accent) 55%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
-.field input:focus,.field textarea:focus,.field select:focus,.inlineedit{border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.field input:focus:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.field textarea:focus:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.field select:focus:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.inlineedit{border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
 .softbtn.active,.facetbtn.active,.batchtoggle.on,.menulist button.on,.themelist button.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent);color:var(--accent-deep)}
 .facetcount{background:var(--accent);color:var(--accent-ink)}
 .facetpanel{border-color:var(--edge);box-shadow:var(--shadow-3);background:var(--paper)}
@@ -121,13 +121,13 @@ body{background:var(--bg)}
 .task.child::before{left:-2px}
 .task.context{background:rgba(31,42,34,.03)}
 .task.done .taskbody{opacity:.55}
-.check:before{border-radius:7px;border-color:#9aa391;background:var(--paper)}
-.task.done .check:before{background:var(--accent);border-color:var(--accent)}
-.task.done .check{color:var(--accent-ink)!important}
-.check.mixed:before{background:var(--accent-soft);border-color:var(--accent)}
-.check.mixed{color:var(--accent-deep)!important}
-.check::after{transform:scale(.5);transition:transform .18s var(--ease),opacity .12s}
-.task.done .check::after,.check.mixed::after{transform:scale(1)}
+.check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):before{border-radius:7px;border-color:#9aa391;background:var(--paper)}
+.task.done .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):before{background:var(--accent);border-color:var(--accent)}
+.task.done .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){color:var(--accent-ink)!important}
+.check.mixed:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):before{background:var(--accent-soft);border-color:var(--accent)}
+.check.mixed:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){color:var(--accent-deep)!important}
+.check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{transform:scale(.5);transition:transform .18s var(--ease),opacity .12s}
+.task.done .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after,.check.mixed:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *))::after{transform:scale(1)}
 .tasktext{font-weight:600}
 .task.selected{background:var(--accent-soft)!important}
 .selectbox.on::before{background:var(--accent);border-color:var(--accent)}
@@ -149,7 +149,7 @@ body{background:var(--bg)}
 /* Botón flotante, barra de lote y avisos. */
 .fab{background:var(--accent);color:var(--accent-ink);box-shadow:0 12px 25px -8px var(--accent-glow);transition:transform .15s var(--ease),box-shadow .15s,background .3s}
 .fab:hover{background:color-mix(in srgb,var(--accent) 88%,#000);transform:translateY(-1px)}
-.batchbar,.toast,.undotoast,[data-tip]:hover::after{background:#1f2a22}
+.batchbar,.toast:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),.undotoast,[data-tip]:hover::after{background:#1f2a22}
 .primary{background:var(--olive-dark)}
 /* Inicio: la portada toma el color del área (o el acento neutro en General). */
 .homehead{--hero:var(--accent);--hero-ink:var(--accent-ink);position:relative;overflow:hidden;color:var(--hero-ink);border:0;background:linear-gradient(120deg,color-mix(in srgb,var(--hero) 84%,#000) 0%,var(--hero) 52%,color-mix(in srgb,var(--hero) 80%,#fff) 100%);box-shadow:0 24px 50px -28px color-mix(in srgb,var(--hero) 90%,transparent),var(--shadow-1);border-radius:22px;padding:22px 24px}
@@ -282,21 +282,21 @@ html.dark .facetpanel,html.dark #moveRail{background:var(--paper-2);border-color
 
 
 
-html.dark .searchbar input,html.dark .softbtn,html.dark .facetbtn,html.dark .field input,html.dark .field textarea,html.dark .field select,html.dark select,html.dark .prioritybtn,html.dark .filterchip,html.dark .suggestion button,html.dark .ghost,html.dark .viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background-color:var(--paper);border-color:var(--edge);color:var(--ink)}
+html.dark .searchbar input,html.dark .softbtn,html.dark .facetbtn,html.dark .field input:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .field textarea:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .field select:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark select,html.dark .prioritybtn,html.dark .filterchip,html.dark .suggestion button,html.dark .ghost,html.dark .viewpill:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .themetoggle:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .viewsave:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .aliasbtn:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background-color:var(--paper);border-color:var(--edge);color:var(--ink)}
 html.dark .softbtn.active,html.dark .facetbtn.active,html.dark .batchtoggle.on,html.dark .menulist button.on,html.dark .themelist button.on{background:var(--accent-soft);color:var(--accent-deep)}
 html.dark .viewpill.active:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:var(--accent);color:var(--accent-ink)}
 html.dark .task{border-bottom-color:var(--edge)}
 html.dark .task.context{background:rgba(236,229,216,.03)}
 html.dark .task.newtask{background:var(--paper-2)}
-html.dark .check{color:var(--muted)!important}
-html.dark .check:before{border-color:#6f6a5e;background:var(--paper)}
-html.dark .task.done .check:before{background:var(--accent);border-color:var(--accent)}
-html.dark .task.done .check{color:var(--accent-ink)!important}
+html.dark .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){color:var(--muted)!important}
+html.dark .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):before{border-color:#6f6a5e;background:var(--paper)}
+html.dark .task.done .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)):before{background:var(--accent);border-color:var(--accent)}
+html.dark .task.done .check:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){color:var(--accent-ink)!important}
 html.dark .task.selected{background:var(--accent-soft)!important}
 html.dark .chip[data-pastel]:is(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)){background:color-mix(in srgb,var(--chip) 24%,var(--paper))!important;color:color-mix(in srgb,var(--chip) 62%,var(--ink));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 35%,transparent)}
 
 html.dark .taskbody .cost{background:var(--accent-soft);color:var(--accent-deep)}
-html.dark .batchbar,html.dark .toast,html.dark .undotoast,html.dark [data-tip]:hover::after{background:#ece5d8;color:#1a1915}
+html.dark .batchbar,html.dark .toast:where(:not(.ikisai-kit *),.ikisai-legacy :not(.ikisai-legacy .ikisai-kit *)),html.dark .undotoast,html.dark [data-tip]:hover::after{background:#ece5d8;color:#1a1915}
 html.dark .fab{background:var(--accent);color:var(--accent-ink)}
 html.dark .fab:hover{background:color-mix(in srgb,var(--accent) 85%,#fff)}
 html.dark .primary{background:#6b7a54;color:#fff}
