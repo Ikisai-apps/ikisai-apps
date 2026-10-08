@@ -4,6 +4,7 @@
  */
 import type { SyncClient } from '@ikisai/sync-client';
 import type { GuestMode } from '../../../../supabase/functions/_domain/booking/mod.ts';
+import type { IssuedDocument } from '../../../../supabase/functions/_domain/invoices/issued.ts';
 import { cache } from './cache.ts';
 import { declarationVersion } from './common-texts.ts';
 
@@ -92,6 +93,18 @@ export interface PortalProposal {
   } | null;
   lines: ProposalLine[];
 }
+/** Dinero del retiro según Finance (F1): sus facturas y lo facturado, cobrado y pendiente. Lo pagado sale solo de aquí. */
+export interface PortalInvoice {
+  id: string; number: string; issue_date: string; type: string; rectifies: string[] | null; base: number | string; tax: number | string;
+  withholding: number | string; total: number | string; status: 'emitida' | 'rectificada' | 'registrada'; collected: boolean; collected_at: string | null; has_document: boolean;
+}
+export interface PortalMoney { reservation_id: string; currency: string; invoices: PortalInvoice[]; totals: { invoiced: number | string; collected: number | string; pending: number | string } }
+/** Copia congelada de una factura (F2) o los PDF guardados de una registrada (aún sin URL firmada para el portal). */
+export interface PortalInvoiceDocument {
+  id: string; number: string; issue_date: string; status: string; document: IssuedDocument | null;
+  files: Array<{ file_id: string; filename: string; mime: string; size: number }>;
+}
+
 export interface PortalRequest { id: string; kind: 'quiere_confirmar' | 'comentario'; proposal_id: string | null; message: string | null; status: 'enviada' | 'vista' | 'respondida'; created_at: string; mine: boolean }
 
 export interface IssuedLink { linkId: string; url: string; validUntil: string | null }
@@ -115,6 +128,8 @@ export interface PortalApi {
   proposals(reservationId: string): Promise<Loaded<{ items: PortalProposal[] }>>;
   request(reservationId: string, request: { kind: 'quiere_confirmar' | 'comentario'; proposal_id?: string | null; message?: string | null }): Promise<{ id: string; status: string }>;
   myRequests(reservationId: string): Promise<Loaded<{ items: PortalRequest[] }>>;
+  money(reservationId: string): Promise<Loaded<PortalMoney>>;
+  invoiceDocument(reservationId: string, invoiceId: string): Promise<Loaded<PortalInvoiceDocument>>;
   addGuest(args: { reservation_id: string; guest_id: string; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   updateGuest(args: { guest_id: string; expectedRevision: number; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   removeGuest(args: { guest_id: string; expectedRevision: number }): Promise<unknown>;
@@ -163,6 +178,8 @@ export function createPortalApi(client: SyncClient): PortalApi {
     proposals: (reservationId) => read('booking.portal_proposals', { reservation_id: reservationId }),
     request: (reservationId, request) => invoke('booking.portal_request', { reservation_id: reservationId, ...request }) as Promise<{ id: string; status: string }>,
     myRequests: (reservationId) => read('booking.portal_my_requests', { reservation_id: reservationId }),
+    money: (reservationId) => read('invoices.portal_reservation_money', { reservation_id: reservationId }),
+    invoiceDocument: (reservationId, invoiceId) => read('invoices.portal_invoice_document', { reservation_id: reservationId, issued_invoice_id: invoiceId }),
     links: (reservationId) => load('portal-links', { reservation: reservationId }, () => client.api(`/portal-links?reservation=${encodeURIComponent(reservationId)}`)),
     addGuest: (args) => invoke('booking.portal_add_guest', { ...args, declaration_version: declarationVersion() }),
     updateGuest: (args) => invoke('booking.portal_update_guest', { ...args, declaration_version: declarationVersion() }),

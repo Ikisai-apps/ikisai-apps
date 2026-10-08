@@ -344,3 +344,52 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await expect(page.locator('#myRequests')).toContainText('Quiero confirmar');
   await expect(page.locator('#myRequests')).toContainText('Enviada');
 });
+
+test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de Finance; factura sin documento; cómo pagar', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con facturas', confirm: true });
+  await api.registeredInvoice(reservation, '2026-0101', 300, true);
+  await api.registeredInvoice(reservation, '2026-0102', 700, false);
+  await enter(page, await api.organizerLink([reservation], 'pagos@example.invalid', 'Nora'));
+
+  await page.locator('#tab-pagos').click();
+  await expect(page.locator('#moneyInvoiced')).toHaveText(/1\.?000,00/);
+  await expect(page.locator('#moneyCollected')).toHaveText(/300,00/);
+  await expect(page.locator('#moneyPending')).toHaveText(/700,00/);
+  await expect(page.locator('#moneyInvoices .orginvoice')).toHaveCount(2);
+  await expect(page.locator('#moneyInvoices')).toContainText('Cobrada');
+  await expect(page.locator('#paymentInstructions')).toContainText('Por transferencia');
+
+  // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
+  await page.locator('#moneyInvoices .orginvoice').first().click();
+  await expect(page.locator('#askInvoice')).toContainText('organiza@ikisai.com');
+});
+
+test('organizers · factura emitida desde Finance: la copia congelada se pinta e imprime con la página del kit', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con factura emitida', confirm: true });
+  const invoice = crypto.randomUUID();
+  // Lecturas de Finance simuladas (emitir de verdad exige la entidad de Central completa).
+  await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
+    reservation_id: reservation, currency: 'EUR', totals: { invoiced: 1100, collected: 0, pending: 1100 },
+    invoices: [{ id: invoice, number: 'F2026-0001', issue_date: '2026-10-08', type: 'F1', rectifies: null, base: 1000, tax: 100, withholding: 0, total: 1100, status: 'emitida', collected: false, collected_at: null, has_document: true }],
+  } }));
+  await page.route('**/api/v1/read/invoices.portal_invoice_document', (route) => route.fulfill({ json: {
+    id: invoice, number: 'F2026-0001', issue_date: '2026-10-08', status: 'emitida', files: [],
+    document: {
+      full_number: 'F2026-0001', series: 'F', number: '0001', issue_date: '2026-10-08', operation_date: null, invoice_type: 'F1',
+      issuer: { entity_id: 'e', entity_revision: 1, legal_name: 'Ikisai Asociación', trade_name: 'Ikisai', tax_id: 'G00000000', address_line: 'Camino 1', postal_code: '00000', city: 'Sierra', province: null, country: 'ES', email: null, phone: null, website: null, logo_file_id: null },
+      recipient: { name: 'Asociación Organiza', tax_id: 'G87654321', id_type: 'NIF', country: 'ES', address: { line: 'Calle Retiro 1', postal_code: '28001', city: 'Madrid' }, kind: 'empresa' },
+      description: 'Retiro de otoño',
+      lines: [{ position: 1, description: 'Alojamiento', quantity: 1, unit: null, unit_price: 1000, discount_amount: null, net_amount: 1000, tax: 'iva', vat_rate: 10, vat_amount: 100 }],
+      breakdown: [{ tax: 'iva', rate: 10, base: 1000, quota: 100, exemption: null, surcharge_rate: null, surcharge_quota: null }],
+      withholdings: [], prices_include_vat: false, totals: { base: 1000, quota: 100, surcharge: 0, withholding: 0, total: 1100, vf_amount: 1100 },
+      rectification: null, currency: 'EUR', issued_at: '2026-10-08T10:00:00Z',
+    },
+  } }));
+  await enter(page, await api.organizerLink([reservation], 'emitida@example.invalid', 'Olga'));
+  await page.locator('#tab-pagos').click();
+  await page.locator('#moneyInvoices .orginvoice').first().click();
+  await expect(page.locator('#invoiceDocumentView')).toContainText('Factura F2026-0001');
+  await expect(page.locator('#docRecipient')).toContainText('Asociación Organiza');
+  await expect(page.locator('#docTotal')).toHaveText(/1\.?100,00/);
+  await expect(page.locator('#printPage')).toBeVisible();
+});

@@ -346,6 +346,14 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 ### 13.3 Fase 3 · Formalización (a grandes rasgos)
 
+**Estado (8-10-2026):** pestaña «Pagos» (desde la prerreserva, retiro no cancelado) sobre Finance F1 y F2 (#307) y el texto `payment.instructions` de Central (#308):
+- **Resumen de Finance:** facturado, cobrado y pendiente. Lo pagado sale solo de Finance.
+- **Facturas del retiro:** número, fecha, total y si están cobradas.
+  - La emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o guardar en PDF), tal como se emitió y en español.
+  - La registrada de otra herramienta (solo PDF guardado) muestra «Pídenosla», con el contacto público, hasta que exista la ruta firmada `portal-files`.
+- **«Cómo pagar»:** el texto de Central en el idioma elegido.
+- **Pendiente:** lo contratado (total, señal requerida y vencimientos) llegará de la lectura de portal de Booking. Con ello se añadirá el saldo, que es lo contratado (Booking) menos lo cobrado (Finance).
+
 - **Fecha definitiva:** la que marca el personal en Booking (§13.2).
 - **Propuesta (decisión del usuario, 7-10-2026):** el organizador **no la acepta** desde el portal.
   - Ve la propuesta enviada, con sus líneas, condiciones, tramos de cancelación y validez.

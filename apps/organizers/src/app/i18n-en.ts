@@ -396,6 +396,23 @@ export const EN: Dictionary = {
   'Cuando el equipo de Ikisai te envíe la propuesta, la verás aquí. Mientras, puedes escribirnos.': 'When the Ikisai team sends you the proposal, you will see it here. In the meantime, you can write to us.',
   'La aceptación la cierra el equipo de Ikisai contigo. Si te encaja, pulsa «Quiero confirmar».': 'The Ikisai team finalises the acceptance with you. If it suits you, press “I want to confirm”.',
 
+  // Pagos y facturas (fase 3)
+  'Pagos': 'Payments',
+  'Aún no hay facturas de este retiro.': 'There are no invoices for this retreat yet.',
+  'Cobrada': 'Paid',
+  'Cobrado': 'Paid',
+  'Cómo pagar': 'How to pay',
+  'Esta factura se hizo con otra herramienta y aún no se puede abrir desde aquí. Pídenosla y te la enviamos.': 'This invoice was made with another tool and cannot be opened here yet. Ask us for it and we will send it to you.',
+  'Factura {numero}': 'Invoice {numero}',
+  'Facturado': 'Invoiced',
+  'Facturas': 'Invoices',
+  'Imprimir / Guardar PDF': 'Print / Save as PDF',
+  'Lo cobrado lo registra el equipo de Ikisai al recibir cada pago.': 'The Ikisai team records each payment when it is received.',
+  'Pendiente de pago': 'Outstanding',
+  'Pendiente': 'Outstanding',
+  'Rectificativa {numero}': 'Corrective invoice {numero}',
+  'rectifica {numeros}': 'corrects {numeros}',
+
   // Cabecera
   '¿Salir de Organizers?': 'Leave Organizers?',
   'Para volver a entrar necesitarás el enlace que te enviamos.': 'To get back in you will need the link we sent you.',
