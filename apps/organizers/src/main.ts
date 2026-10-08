@@ -1,13 +1,12 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
-import { applyTheme } from '@ikisai/ui-kit';
+import { applyTheme, initAppUpdates } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createPortalApi } from './app/api.ts';
 import { loadPublicContact } from './app/common-texts.ts';
 import { i18n } from './app/i18n.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
-import { initUpdates } from './updates.ts';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Falta el contenedor #app');
@@ -19,9 +18,16 @@ let unmount: (() => void) | null = null;
 let lastError: unknown;
 let fromLink = false;
 
-// Sin cola de cambios ni espejo: actualizar el shell es seguro salvo con un formulario a medias (sus borradores
-// quedan guardados en el dispositivo, así que tampoco se pierde nada).
-initUpdates({ isSafe: () => true });
+// Versiones nuevas (kit 0.23): al abrir, o al volver tras más de un minuto, se aplican solas si es seguro; si no, el banner.
+// Seguro: sin una hoja abierta (formulario a medias) y sin cambios propios por enviar ni conflictos. La cola sobreviviría
+// a la recarga (está en el dispositivo), pero así nadie ve recargarse la pantalla mientras guarda.
+initAppUpdates({
+  enabled: import.meta.env.PROD,
+  isSafe: () => {
+    const status = client.status();
+    return !document.querySelector('.sheetback') && status.pendingCommands === 0 && status.pendingBlobs === 0 && status.conflicts === 0;
+  },
+});
 
 /**
  * Entrada (API.md §9.1): `/i/<token>` canjea el enlace personal y quita el token de la URL antes de pintar nada.

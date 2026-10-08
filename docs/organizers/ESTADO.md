@@ -48,6 +48,8 @@
 
 - 2026-10-08 · Correo de contacto por público (Central #341): el portal lee `contact.organizers.email` de los textos y del contacto público; `contact.email` queda como alias mientras exista.
 
+- 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (sin `src/updates.ts` propio): se aplican solas al abrir o al volver si no hay una hoja abierta ni cambios por enviar; si no, el aviso.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
