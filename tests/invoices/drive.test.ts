@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { DriveError, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
+import { createGoogleDriveApi, DriveError, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
 import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
 
 const WORKER_KEY = 'clave-de-worker-de-prueba';
@@ -17,8 +17,15 @@ class FakeDrive implements DriveApi {
   count = 0;
   seq = 0;
   failMoves = 0;
+  /** `false`: carpeta de un usuario (la cuenta de servicio no puede crear subcarpetas). */
+  constructor(readonly canCreate = true, readonly rootId = 'carpeta-raiz', readonly inbox = 'carpeta-Entrada') {}
   calls() { return this.count; }
-  async folder(name: string) { this.count += 1; if (!this.folders.has(name)) this.folders.set(name, `carpeta-${name}`); return this.folders.get(name)!; }
+  root() { return this.rootId; }
+  async folder(name: string) {
+    this.count += 1;
+    if (!this.folders.has(name)) { if (!this.canCreate) return null; this.folders.set(name, `carpeta-${name}`); }
+    return this.folders.get(name)!;
+  }
   async list(folderId: string, limit: number) {
     this.count += 1;
     return [...this.files.values()].filter((f) => f.parent === folderId).slice(0, limit).map((f) => f.file);
@@ -31,10 +38,10 @@ class FakeDrive implements DriveApi {
   }
   add(name: string, bytes: Uint8Array, mimeType = 'application/pdf') {
     const id = `drv${++this.seq}`;
-    this.files.set(id, { file: { id, name, mimeType, size: bytes.length, webViewLink: `https://drive.google.com/file/d/${id}/view` }, parent: 'carpeta-Entrada', bytes });
+    this.files.set(id, { file: { id, name, mimeType, size: bytes.length, webViewLink: `https://drive.google.com/file/d/${id}/view` }, parent: this.inbox, bytes });
     return id;
   }
-  where(id: string) { const parent = this.files.get(id)!.parent; return [...this.folders].find(([, v]) => v === parent)?.[0] ?? (parent === 'carpeta-Entrada' ? 'Entrada' : parent); }
+  where(id: string) { const parent = this.files.get(id)!.parent; return [...this.folders].find(([, v]) => v === parent)?.[0] ?? (parent === 'carpeta-Entrada' ? 'Entrada' : parent === this.rootId ? 'raíz' : parent); }
 }
 
 const drive = new FakeDrive();
@@ -165,4 +172,50 @@ test('Drive: «Buscar ahora» solo para el owner; el estado solo lo lee el owner
   assert.equal((await app.call('/api/v1/read/invoices.drive_status', { body: {}, token: app.tokens.editor })).status, 403);
   // Las acciones de sistema no se pueden invocar desde la app
   assert.notEqual((await app.call('/api/v1/invoke/invoices.drive_finish', { body: {} })).status, 200);
+});
+
+test('Drive en una carpeta de un usuario (9-10-2026): sin subcarpetas avisa y no importa; sin «Entrada» importa los PDF sueltos en la raíz', async () => {
+  const folderDrive = new FakeDrive(false, 'carpeta-usuario', 'carpeta-usuario');
+  const own = await createTestApp({
+    app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
+      drive: { api: folderDrive, upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); } } }),
+  });
+  const run = () => own.call('/api/v1/worker/drive/tick', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
+  const suelto = folderDrive.add('Factura suelta.pdf', invoiceTextPdf('A-2026/0950'));
+  const blocked = await run();
+  assert.equal(blocked.data.outcome, 'blocked');
+  assert.match(blocked.data.detail, /Crea en tu carpeta de Drive estas subcarpetas: Importadas, Duplicadas, Con errores/);
+  assert.equal(folderDrive.where(suelto), 'raíz', 'no toca nada');
+  assert.equal(folderDrive.folders.size, 0, 'no crea carpetas');
+  assert.equal((await own.call('/api/v1/read/invoices.drive_status', { body: {} })).data.state.health, 'blocked');
+  // El usuario crea las tres de destino (sin «Entrada»): los PDF sueltos en la raíz se importan
+  for (const name of ['Importadas', 'Duplicadas', 'Con errores']) folderDrive.folders.set(name, `carpeta-${name}`);
+  const ok = await run();
+  assert.equal(ok.data.outcome, 'ok', JSON.stringify(ok.data));
+  assert.deepEqual([ok.data.imported, ok.data.read], [1, 1]);
+  assert.equal(folderDrive.where(suelto), 'Importadas');
+});
+
+test('Cliente de Drive: carpeta de un usuario (allDrives, sin crear subcarpetas) y unidad compartida (las crea)', async () => {
+  const calls: Array<{ method: string; url: string }> = [];
+  const fakeFetch = (shared: boolean): typeof fetch => (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input); const method = init?.method ?? 'GET';
+    calls.push({ method, url });
+    if (url.includes('/drives/')) return shared ? Response.json({ id: 'u' }) : Response.json({ error: { message: 'Shared drive not found' } }, { status: 404 });
+    if (method === 'POST') return Response.json({ id: 'nueva' });
+    return Response.json({ files: [] });
+  }) as typeof fetch;
+  const userFolder = createGoogleDriveApi({ driveId: 'raiz', accessToken: async () => 'token', fetch: fakeFetch(false) });
+  assert.equal(await userFolder.folder('Importadas'), null);
+  assert.ok(calls[0]!.url.includes('corpora=allDrives') && !calls[0]!.url.includes('driveId='));
+  assert.ok(calls.some((c) => c.url.includes('/drives/raiz')));
+  assert.ok(!calls.some((c) => c.method === 'POST'), 'nunca crea en la carpeta de un usuario');
+  await userFolder.list('raiz', 6);
+  const listUrl = decodeURIComponent(calls.at(-1)!.url);
+  assert.match(listUrl, /'raiz' in parents and trashed = false and mimeType != 'application\/vnd\.google-apps\.folder'/);
+  calls.length = 0;
+  const sharedDrive = createGoogleDriveApi({ driveId: 'unidad', accessToken: async () => 'token', fetch: fakeFetch(true) });
+  assert.equal(await sharedDrive.folder('Importadas'), 'nueva');
+  assert.ok(calls.some((c) => c.method === 'POST'));
 });
