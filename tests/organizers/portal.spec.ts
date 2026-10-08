@@ -265,3 +265,43 @@ test('organizers · instalar: al entrar por enlace se ofrece instalar la app y �
   expect(Number(dismissed)).toBeGreaterThan(0);
   await context.close();
 });
+
+const plusDays = (d: string, days: number) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + days); return x.toISOString().slice(0, 10); };
+
+test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ikisai y fecha definitiva; se guarda solo', async ({ page }) => {
+  const [w2, w3, w4, w6] = [await api.friday(2), await api.friday(3), await api.friday(4), await api.friday(6)];
+  await api.block(w3, plusDays(w3, 2));
+  const calendar = await api.draftReservation({ title: 'Retiro por decidir' });
+  const offered = await api.draftReservation({ title: 'Retiro con propuestas', status: 'negociacion' });
+  await api.ikisaiOptions(offered, [[w4, plusDays(w4, 2)], [w6, plusDays(w6, 2)]]);
+  const fixed = await api.draftReservation({ title: 'Retiro con fecha', status: 'negociacion', start_date: w2, end_date: plusDays(w2, 2), dates_definitive: true });
+  await enter(page, await api.organizerLink([calendar, offered, fixed], 'disena@example.invalid', 'Lola'));
+
+  // Calendario: lo ocupado no se puede marcar; lo marcado se guarda solo y sigue al volver.
+  await page.locator('.orgretreat', { hasText: 'Retiro por decidir' }).click();
+  await expect(page.locator('#summaryDates')).toContainText('Ikisai confirmará');
+  await page.locator('#tab-fechas').click();
+  await expect(page.locator('#datesCalendar')).toBeVisible();
+  await expect(page.locator(`.orgweekend[data-start="${w3}"]`)).toBeDisabled();
+  await page.locator(`.orgweekend[data-start="${w2}"]`).click();
+  await page.locator(`.orgweekend[data-start="${w4}"]`).click();
+  await expect(page.locator('#datesCount')).toHaveText('Has marcado 2 fines de semana.');
+  await expect(page.locator('#datesSaveState')).toContainText('Guardado');
+  await page.reload();
+  await expect(page.locator(`.orgweekend[data-start="${w2}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator(`.orgweekend[data-start="${w4}"]`)).toHaveAttribute('aria-pressed', 'true');
+
+  // Propuestas de Ikisai: se marcan las que vienen bien.
+  await page.goto(`${baseURL}/#/retiro/${offered}/fechas`);
+  await expect(page.locator('#datesIkisai')).toBeVisible();
+  await expect(page.locator('#datesIkisai .orgdateoption')).toHaveCount(2);
+  await page.locator('#datesIkisai .orgdateoption').first().locator('input').check();
+  await expect(page.locator('#datesSaveState')).toContainText('Guardado');
+  await page.reload();
+  await expect(page.locator('#datesIkisai .orgdateoption').first().locator('input')).toBeChecked();
+
+  // Fecha definitiva: solo se lee.
+  await page.goto(`${baseURL}/#/retiro/${fixed}/fechas`);
+  await expect(page.locator('#datesFixed')).toBeVisible();
+  await expect(page.locator('#datesFixed input, #datesFixed .orgweekend')).toHaveCount(0);
+});

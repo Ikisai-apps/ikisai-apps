@@ -31,7 +31,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 /* Ficha del retiro */
 .orghead h2{margin-bottom:4px}
 .orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto}
-.orgtabs a{flex:1 0 auto;padding:8px 14px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
+.orgtabs a{flex:1 1 auto;min-width:0;padding:8px 10px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
 .orgtabs a.on{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
 .orgcard{padding:14px 16px;margin:0 0 12px}
 .orgcard h3{margin:0 0 8px;font-size:1rem}
@@ -54,6 +54,18 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgsavestate[data-state="saved"]{color:var(--ok,var(--ink))}
 .orgsavestate[data-state="error"],.orgsavestate[data-state="declaration"]{color:var(--alert,var(--ink))}
 .orgdanger{margin:24px 0 96px;text-align:center}
+
+/* Fechas (fase 2) */
+.orglegend{list-style:none;padding:0;margin:8px 0;display:grid;gap:4px;font-size:var(--text-sm,.875rem);color:var(--muted)}
+.orgcalendar{display:grid;gap:14px;margin-top:8px}
+.orgmonth h4{margin:0 0 6px;font-size:.95rem}
+.orgweekends{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px}
+.orgweekend{display:flex;flex-direction:column;align-items:center;gap:4px;min-height:var(--tap,44px);padding:8px 6px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;cursor:pointer}
+.orgweekend.on{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 3px var(--accent-soft)}
+.orgweekend.on .chip{background:var(--paper);color:var(--ink)}
+.orgweekend.busy{opacity:.55;cursor:not-allowed;text-decoration:line-through}
+.orgweekend .chip{font-size:11px}
+.orgdateoptions{display:grid;gap:6px;margin:8px 0}
 
 /* Ayuda */
 .orgmine{list-style:none;padding:0}

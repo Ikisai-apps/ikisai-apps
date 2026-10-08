@@ -18,6 +18,14 @@ export interface OrganizersTestServer {
   organizerLink(reservations: string[], email: string, name?: string): Promise<string>;
   /** El propio huésped escribe datos desde Guests (procedencia «guest»). */
   guestWrites(reservationId: string, guestId: string, fields: Record<string, unknown>, consent?: boolean): Promise<void>;
+  /** Reserva en diseño (fase 2) con los campos que se indiquen (estado `en_estudio` por defecto, sin fechas). */
+  draftReservation(fields: Record<string, unknown>): Promise<string>;
+  /** Fechas posibles que propone el personal de Ikisai (`proposed_by: ikisai`). */
+  ikisaiOptions(reservationId: string, ranges: Array<[string, string]>): Promise<void>;
+  /** Bloqueo manual del personal (el portal solo ve «ocupado»). */
+  block(start: string, end: string): Promise<void>;
+  /** Viernes a `weeks` semanas de hoy (hora de Madrid), `AAAA-MM-DD`. */
+  friday(weeks: number): Promise<string>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -92,6 +100,21 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
         [user, JSON.stringify({ grants: [{ reservation_id: reservationId, guest_id: guestId }] })]);
       await booking.t.rpc('core_invoke', { p_app: 'guests', p_actor: user, p_name: 'booking.portal_guest_update', p_args: { guest_id: guestId, fields } });
       if (consent) await booking.t.rpc('core_invoke', { p_app: 'guests', p_actor: user, p_name: 'booking.portal_guest_consent', p_args: { guest_id: guestId, allergies_visible_to_organizer: true } });
+    },
+    async draftReservation(fields) {
+      const id = uuid();
+      await commit([{ op: 'insert', table: TABLES.reservations, id, fields: { title: 'Retiro en diseño', status: 'en_estudio', ...fields } }]);
+      return id;
+    },
+    async ikisaiOptions(reservationId, ranges) {
+      await commit(ranges.map(([start_date, end_date], i) => ({ op: 'insert', table: TABLES.dateOptions, id: uuid(),
+        fields: { reservation_id: reservationId, start_date, end_date, proposed_by: 'ikisai', position: i + 1 } })));
+    },
+    async block(start_date, end_date) {
+      await commit([{ op: 'insert', table: TABLES.dateBlocks, id: uuid(), fields: { start_date, end_date, reason: 'Mantenimiento interno' } }]);
+    },
+    async friday(weeks) {
+      return (await booking.t.db.query<{ d: string }>(`select ((now() at time zone 'Europe/Madrid')::date + ((5 - extract(isodow from (now() at time zone 'Europe/Madrid')::date)::int + 7) % 7) + $1 * 7)::text d`, [weeks])).rows[0]!.d;
     },
     setOffline(on) { offline = on; },
     close: async () => {

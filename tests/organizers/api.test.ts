@@ -169,3 +169,26 @@ test('organizers · enlaces de huésped: solo de huésped y de sus reservas; lis
   const after = await call(`/api/v1/portal-links?reservation=${R1}`, { token: org });
   assert.ok(after.data.items.find((l: any) => l.linkId === link.data.linkId).revokedAt);
 });
+
+test('organizers · fechas (fase 2): calendario por fines de semana, marcar posibles, releer; nunca fuera de ámbito', async () => {
+  const id = uuid();
+  await commit([{ op: 'insert', table: TABLES.reservations, id, fields: { title: 'Retiro en estudio', status: 'en_estudio' } }]);
+  const token = await organizerSession([id], 'disena@example.invalid');
+
+  const dates = await call('/api/v1/read/booking.portal_dates', { token, body: { reservation_id: id } });
+  assert.equal(dates.status, 200, JSON.stringify(dates.data));
+  assert.equal(dates.data.mode, 'calendar');
+  const weekends = await call('/api/v1/read/booking.portal_availability', { token, body: { reservation_id: id } });
+  assert.equal(weekends.status, 200, JSON.stringify(weekends.data));
+  const free = weekends.data.weekends.filter((w: any) => w.status !== 'ocupado').slice(0, 2);
+  assert.equal(free.length, 2);
+
+  const set = await call('/api/v1/invoke/booking.portal_set_date_preferences', { token, body: { reservation_id: id, options: free.map((w: any) => ({ start: w.start, end: w.end })) } });
+  assert.equal(set.status, 200, JSON.stringify(set.data));
+  const again = await call('/api/v1/read/booking.portal_dates', { token, body: { reservation_id: id } });
+  assert.deepEqual(again.data.options.map((o: any) => o.start), free.map((w: any) => w.start));
+  assert.ok(again.data.options.every((o: any) => o.proposed_by === 'organizer' && o.organizer_ok));
+
+  assert.equal(code(await call('/api/v1/read/booking.portal_dates', { token: other, body: { reservation_id: id } })), 'OUT_OF_SCOPE');
+  assert.equal(code(await call('/api/v1/invoke/booking.portal_set_date_preferences', { token: other, body: { reservation_id: id, options: [] } })), 'OUT_OF_SCOPE');
+});
