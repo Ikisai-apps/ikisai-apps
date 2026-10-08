@@ -314,8 +314,12 @@ export function createApp(config: AppConfig): AppHandler {
       // (core.allow_public_read); cacheable 5 minutos. Sin datos personales.
       if (path === '/api/v1/public/contact' && request.method === 'GET') {
         const lang = url.searchParams.get('lang') === 'en' ? 'en' : 'es';
-        const items = await supabase.rpc<unknown[] | null>('core_public_read', { p_name: 'contact', p_args: { lang } });
-        return json(withHeaders({ lang, items: Array.isArray(items) ? items : [] }, { 'Cache-Control': 'public, max-age=300' }));
+        // Público del contacto (cada uno con su correo, editable en Central): por defecto, el del propio portal.
+        const AUDIENCES = ['organizers', 'guests', 'staff', 'suppliers'];
+        const asked = url.searchParams.get('audience') ?? '';
+        const audience = AUDIENCES.includes(asked) ? asked : (AUDIENCES.includes(config.app) ? config.app : 'organizers');
+        const items = await supabase.rpc<unknown[] | null>('core_public_read', { p_name: 'contact', p_args: { lang, audience } });
+        return json(withHeaders({ lang, audience, items: Array.isArray(items) ? items : [] }, { 'Cache-Control': 'public, max-age=300' }));
       }
       if (path === '/api/v1/auth/recover' && request.method === 'POST') {
         if (!recoveryOn) fail(503, 'RECOVERY_DISABLED', messageFor('RECOVERY_DISABLED'));
