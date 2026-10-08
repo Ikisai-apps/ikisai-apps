@@ -1395,6 +1395,24 @@ Peticiones B16 (Organizers) y BG9, BG11 y BG12 (Guests). Migración 0459.
 - **BG12:** ya estaba: `reservation_id` es la última columna de `booking.food_event_projection` (0404).
 - **Nombre público de los espacios:** `spaces.public_name` (opcional), editable por el personal.
 
+### 23.1 Alojamiento delegable (fase 5: B17 y BG10, migración 0460)
+
+Decisiones del usuario (8-10-2026): el huésped **solo elige entre las camas con baño ya contratadas** por el organizador (elegir no factura nada nuevo: el suplemento de las de 2–4 plazas con baño va en la propuesta); la preferencia de compañeros la ven el personal y el organizador.
+
+- **Inventario del retiro:** las habitaciones con alguna asignación viva del evento (el personal las asigna, también como grupo sin cama). Columnas nuevas: `spaces.en_suite`; `room_assignments.source` (`guest` · `organizer` · `staff`, la pone el servidor según quién escribe) y `status` (`confirmed` · `requested`; una pendiente ya ocupa la cama); `guests.room_preference` (≤ 200) y `needs_ground_floor`.
+- **Ajustes** (`booking.lodging_settings`, uno por evento: `choice` `off` · `choose` · `request`, `choose_until` inclusive en hora de Madrid, `preferences`) y **habitaciones abiertas** (`booking.open_rooms`: `space_id`, `option_key` `[a-z0-9_-]{1,40}`, `supplement`). Los ve y corrige el personal.
+- **Guests:**
+  - `booking.portal_lodging({guest_id})` → `{choice, choose_until, open, preferences, mine: {space_name, zone, bed_label, status, source} | null, preference: {text, ground_floor} | null, rooms}`. `rooms` solo con elección y solo las abiertas del retiro: `{space_id, name, zone, kind, capacity, en_suite, small_en_suite, option_key, open, supplement, beds_total, beds_free, beds: [{bed_id, label, kind, free, mine}]}`. Nunca de quién es una cama.
+  - `booking.portal_choose_bed({guest_id, bed_id})`: bloquea la cama (`for update`), comprueba que está libre en las noches de la reserva y sustituye en el mismo lote la asignación anterior del huésped → `{assignment_id, revision, status}` (`requested` con `choice = 'request'`). Errores: `BED_TAKEN` (409), `CHOICE_CLOSED`, `NOT_OFFERED`, `OUT_OF_SCOPE`, `PREVIEW_READ_ONLY`; la invariante `BED_OVERBOOKED` sigue al final del lote.
+  - `booking.portal_release_bed({guest_id})`: suelta la que eligió él mientras siga abierta.
+  - `booking.portal_room_preference({guest_id, text, ground_floor, expectedRevision?})` → `{revision}`.
+- **Organizers** (reserva confirmada; si no, `EVENT_REQUIRED`):
+  - `booking.portal_rooms({reservation_id})` → `{settings, rooms (las del retiro, con cada cama: assignment_id, guest_id o group_label, status, source), pending: [{assignment_id, revision, guest_id, space_id, bed_id}], preferences: [{guest_id, text, ground_floor}]}`. Los nombres, de `portal_guests`.
+  - `booking.portal_assign_bed({reservation_id, guest_id, bed_id | null})`: cualquier cama del retiro (también sin baño), libre; `null` la quita.
+  - `booking.portal_room_settings({reservation_id, choice?, choose_until?, preferences?, rooms?: [{space_id, option_key?, supplement?}], expectedRevision?})`: `rooms` sustituye la lista; solo habitaciones **con baño** del retiro (si no, `NOT_OFFERED`).
+  - `booking.portal_approve_bed({reservation_id, assignment_id, approve})`: confirma o quita una plaza pendiente.
+- **Personal:** en «Alojamiento» de la ficha, cada asignación dice si está pendiente y quién la hizo, con la preferencia del huésped.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

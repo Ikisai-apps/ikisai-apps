@@ -23,6 +23,8 @@ export const TABLES = {
   extraRequests: 'booking.reservation_extra_requests',
   portalRequests: 'booking.portal_requests',
   programItems: 'booking.program_items',
+  lodgingSettings: 'booking.lodging_settings',
+  openRooms: 'booking.open_rooms',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */

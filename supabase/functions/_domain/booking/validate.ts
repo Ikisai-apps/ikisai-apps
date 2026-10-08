@@ -186,6 +186,7 @@ FIELDS[TABLES.spaces] = {
   position: { kind: 'number' },
   notes: text(LONG),
   public_name: text(120),
+  en_suite: { kind: 'bool' },
 };
 FIELDS[TABLES.beds] = {
   space_id: { kind: 'uuid' },
@@ -205,6 +206,7 @@ FIELDS[TABLES.roomAssignments] = {
   from_date: { kind: 'date' },
   to_date: { kind: 'date' },
   notes: text(LONG),
+  status: choice(['confirmed', 'requested'], false),
 };
 
 FIELDS[TABLES.staffAssignments] = {
@@ -339,6 +341,18 @@ FIELDS[TABLES.programItems] = {
   optional: { kind: 'bool' },
   position: { kind: 'number' },
 };
+FIELDS[TABLES.lodgingSettings] = {
+  event_id: { kind: 'uuid' },
+  choice: choice(['off', 'choose', 'request'], false),
+  choose_until: { kind: 'date' },
+  preferences: { kind: 'bool' },
+};
+FIELDS[TABLES.openRooms] = {
+  event_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid' },
+  option_key: text(40),
+  supplement: { kind: 'bool' },
+};
 FIELDS[TABLES.dateBlocks] = {
   start_date: { kind: 'date' },
   end_date: { kind: 'date' },
@@ -360,6 +374,8 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.proposalLines]: 'proposal_id',
   [TABLES.dateOptions]: 'reservation_id',
   [TABLES.programItems]: 'event_id',
+  [TABLES.lodgingSettings]: 'event_id',
+  [TABLES.openRooms]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -382,6 +398,8 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.dateOptions]: ['reservation_id', 'start_date', 'end_date'],
   [TABLES.dateBlocks]: ['start_date', 'end_date'],
   [TABLES.programItems]: ['event_id', 'day', 'title'],
+  [TABLES.lodgingSettings]: ['event_id'],
+  [TABLES.openRooms]: ['event_id', 'space_id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
