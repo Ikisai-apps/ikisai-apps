@@ -7,6 +7,7 @@ import { confirmDialog, el, openSheet, replace, toast } from '@ikisai/ui-kit';
 import type { PortalProposal, PortalRequest } from '../app/api.ts';
 import { describeError } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
+import { textParagraphs } from '../app/common-texts.ts';
 import { dateRange, dayLabel } from '../app/labels.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
@@ -75,9 +76,10 @@ export function renderProposal(ctx: ViewContext, reservationId: string): HTMLEle
         p.valid_until ? el('dt', null, t('Válida hasta')) : null, p.valid_until ? el('dd', null, dayLabel(`${p.valid_until}T12:00:00Z`)) : null),
       p.includes ? el('p', null, el('strong', null, t('Incluye: ')), p.includes) : null,
       p.excludes ? el('p', null, el('strong', null, t('No incluye: ')), p.excludes) : null,
+      // El texto llega de Booking con las cifras ya resueltas (#358): se pinta tal cual. Los tramos, solo si no hay texto.
       c ? el('details', { class: 'orgconditions' }, el('summary', null, t('Condiciones y cancelación')),
-        c.text ? el('p', { class: 'small' }, c.text) : null,
-        c.tiers.length ? el('ul', { class: 'plainlist small' }, ...c.tiers.map((tier) => el('li', null,
+        c.text ? el('div', { class: 'orgconditions-text' }, ...textParagraphs(c.text)) : null,
+        !c.text && c.tiers.length ? el('ul', { class: 'plainlist small' }, ...c.tiers.map((tier) => el('li', null,
           tier.min_days_before === 0
             ? t('Menos días: se devuelve el {pct} % de la señal', { pct: i18n.formatNumber(Number(tier.deposit_refund_pct)) })
             : t('Con {dias} días o más de antelación: se devuelve el {pct} % de la señal', { dias: tier.min_days_before, pct: i18n.formatNumber(Number(tier.deposit_refund_pct)) })))) : null) : null,

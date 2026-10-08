@@ -339,6 +339,14 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await page.locator('#tab-propuesta').click();
   await expect(page.locator('#proposal-1')).toContainText('Pendiente de confirmar');
   await expect(page.locator('#proposal-1 .proposalTotal')).toHaveText(/2\.?800,00/);
+  // Condiciones: el texto de Booking con las cifras resueltas, negritas y un tramo por línea; sin repetir la lista del portal.
+  await page.locator('#proposal-1 .orgconditions summary').click();
+  const conditions = page.locator('#proposal-1 .orgconditions-text');
+  await expect(conditions.locator('strong').first()).toHaveText('Señal:');
+  await expect(conditions).toContainText('30 %');
+  await expect(conditions).toContainText('Con 60 días o más de antelación');
+  await expect(conditions).not.toContainText('{{');
+  await expect(page.locator('#proposal-1 .orgconditions ul')).toHaveCount(0);
   await page.locator('#wantConfirm').click();
   await page.getByRole('button', { name: 'Quiero confirmar' }).last().click();
   await expect(page.locator('#myRequests')).toContainText('Quiero confirmar');
