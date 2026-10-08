@@ -11,6 +11,7 @@ import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { ROLE_LABELS, type Account, type Role } from '../app/admin.ts';
 import { showSecret } from './access.ts';
+import { syncAccountName } from '../app/account-names.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
@@ -244,11 +245,17 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
       ? [{ op: 'update', table: T.people, id, expectedRevision: person.revision, fields: changed() }]
       : [{ op: 'insert', table: T.people, id, fields: { ...values(), position: Date.now() / 1000 } }];
     save.disabled = true;
+    const renamed = person?.user_id && 'display_name' in changed() ? { userId: person.user_id, name: name.value.trim() } : null;
     const ok = await commitSafely(client, operations, person ? 'Cambios guardados.' : 'Persona creada.');
     save.disabled = false;
     if (!ok) return;
     guard.dirtyEditor = false;
     await sheet?.close(true);
+    // La ficha manda (FB_2026_013): su cuenta enlazada toma el nombre nuevo. Solo lo puede cambiar quien administra Central.
+    if (renamed) {
+      if (ctx.isAdmin) void syncAccountName(ctx.admin, renamed.userId, renamed.name);
+      else toast('El nombre de su cuenta lo actualiza quien administra Central (Accesos).');
+    }
     if (!person) onCreated?.(id);
   } },
   el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre con el que se le conoce'), name),
@@ -378,6 +385,11 @@ export function mountPerson(personId: string): ViewMount {
       const account = accounts?.find((a) => a.userId === person.user_id);
       return [
         account ? el('p', { 'data-feedback-ignore': '' }, el('strong', null, account.displayName || account.email || 'Cuenta'), el('span', { class: 'muted' }, ` · ${account.email ?? ''}`)) : el('p', { class: 'muted' }, accounts ? 'Cuenta enlazada (no aparece en la lista de cuentas).' : 'Cuenta enlazada. Sus accesos se ven con conexión.'),
+        account && account.displayName !== person.display_name ? el('p', { class: 'note warn', 'data-feedback-id': 'central.persona.cuenta.nombre_distinto', 'data-feedback-label': 'Nombre de la cuenta distinto' },
+          'La cuenta tiene otro nombre. ',
+          el('button', { class: 'linkbtn', type: 'button', id: 'useFichaName', 'data-feedback-id': 'central.persona.cuenta.usar_nombre_ficha', 'data-feedback-label': 'Usar el nombre de la ficha', onclick: async () => {
+            if (await syncAccountName(admin, account.userId, person.display_name)) { toast('La cuenta usa ya el nombre de la ficha.'); accounts = null; void loadAccounts(); }
+          } }, 'Usar el nombre de la ficha')) : null,
         account ? el('span', { class: 'chips', 'data-feedback-id': 'central.persona.cuenta.accesos', 'data-feedback-label': 'Accesos de la cuenta' }, ...(account.disabled ? [el('span', { class: 'chip alert' }, 'Desactivada')] : []),
           ...account.memberships.map((m) => el('span', { class: `chip role-${m.role}` }, `${appName(m.app)} · ${ROLE_LABELS[m.role]}`))) : null,
         el('div', { class: 'zone', 'data-feedback-id': 'central.persona.cuenta.acciones', 'data-feedback-label': 'Acciones de la cuenta' },
@@ -647,7 +659,13 @@ export function mountPerson(personId: string): ViewMount {
       const select = el('select', { id: 'la-account', 'data-feedback-ignore': '' }, ...free.map((a) => el('option', { value: a.userId }, `${a.displayName || a.email} · ${a.email ?? ''}`))) as HTMLSelectElement;
       const submit = el('button', { class: 'primary', type: 'button', id: 'linkSubmit', 'data-feedback-id': 'central.persona.cuenta.enlazar_hoja.enviar', 'data-feedback-label': 'Enlazar', onclick: async () => {
         const fresh = data.people.find((p) => p.id === person.id) ?? person;
-        if (await commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: select.value } }], 'Cuenta enlazada.')) await sheet?.close(true);
+        if (await commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: select.value } }], 'Cuenta enlazada.')) {
+          await sheet?.close(true);
+          // La ficha manda: la cuenta enlazada toma su nombre (FB_2026_013).
+          const account = free.find((a) => a.userId === select.value);
+          if (account && account.displayName !== fresh.display_name) await syncAccountName(admin, account.userId, fresh.display_name);
+          accounts = null; void loadAccounts();
+        }
       } }, 'Enlazar');
       sheet = ignoreSheetMeta(openSheet({ title: 'Enlazar cuenta existente', meta: person.display_name, body: el('label', { class: 'field', 'data-feedback-id': 'central.persona.cuenta.enlazar_hoja.campo_cuenta', 'data-feedback-label': 'Cuenta' }, el('span', null, 'Cuenta'), select),
         panelAttrs: { 'data-feedback-id': 'central.persona.cuenta.enlazar_hoja', 'data-feedback-label': 'Enlazar cuenta existente' },
