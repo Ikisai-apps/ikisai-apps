@@ -21,3 +21,21 @@ test('worker: no-cache para la cáscara sin huella; las fuentes e imágenes, con
   }
   for (const p of ['/icons/tasks-192.png', '/fonts/inter.woff2']) assert.equal((await get(p)).headers.get('cache-control'), 'public, max-age=14400, must-revalidate', p);
 });
+
+test('worker: las rutas de worker no pasan por el proxy (400 claro, sin llamar a la Edge)', async () => {
+  const realFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+  try {
+    for (const p of ['/api/v1/worker/requests/task', '/api/v1/worker']) {
+      const res = await worker.fetch(new Request(`https://tasks.ikisai.com${p}`, { method: 'POST', headers: { 'X-Ikisai-Worker-Key': 'k', 'Content-Type': 'application/json' }, body: '{}' }), env);
+      assert.equal(res.status, 400, p);
+      assert.equal((await res.json() as any).error.code, 'WORKER_ROUTE_NOT_PROXIED');
+    }
+    assert.equal(called, false, 'no se reenvía nada a la Edge');
+    // El resto de la API sigue pasando.
+    await worker.fetch(new Request('https://tasks.ikisai.com/api/v1/bootstrap'), env);
+    assert.equal(called, true);
+  } finally { globalThis.fetch = realFetch; }
+});
+
