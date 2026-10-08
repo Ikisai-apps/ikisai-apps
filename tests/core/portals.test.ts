@@ -255,3 +255,20 @@ test('portales · C8: archivo de otra app publicado al portal por resolutor; O6:
   assert.equal((await callPortal(g, 'guests', '/api/v1/bootstrap', { token: preview })).status, 200, 'leer sí');
   assert.notEqual((await callPortal(g, 'guests', '/api/v1/commands', { token: marta, body: { operations: [] } })).data?.error?.code, 'PREVIEW_READ_ONLY');
 });
+
+test('portales · K6: una acción de Organizers invocada desde Guests escribe en organizers; un portal no se escribe a sí mismo por esta vía', async () => {
+  await app.t.db.exec(`create table public.test_answers (id uuid primary key, body text, revision bigint not null default 1, created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(), updated_by uuid, deleted_at timestamptz);
+    select core.register_table('organizers', 'public', 'test_answers', array['body']);
+    create function public.test_guest_answer(p_ctx jsonb) returns jsonb language plpgsql as $$
+      begin return core.apply_portal_operations(p_ctx->'args'->>'target', jsonb_build_array(jsonb_build_object('op', 'insert', 'table', 'public.test_answers', 'id', p_ctx->'args'->>'id', 'fields', jsonb_build_object('body', 'sí')))); end $$;
+    select core.allow_read('guests', 'public.test_guest_answer', 'action', '{editor}');`);
+  const link = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: crypto.randomUUID() }, person: { name: 'Respondona' } } });
+  const token = (await callPortal(guests, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } })).data.token as string;
+  const id = crypto.randomUUID();
+  const ok = await callPortal(guests, 'guests', '/api/v1/invoke/public.test_guest_answer', { token, body: { id, target: 'organizers' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.equal((await app.t.db.query<{ app: string }>('select app from core.changes where row_id = $1', [id])).rows[0]!.app, 'organizers');
+  const self = await callPortal(guests, 'guests', '/api/v1/invoke/public.test_guest_answer', { token, body: { id: crypto.randomUUID(), target: 'guests' } });
+  assert.equal(self.status, 422, JSON.stringify(self.data));
+});
