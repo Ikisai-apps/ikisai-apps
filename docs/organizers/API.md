@@ -352,7 +352,10 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - La emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o guardar en PDF), tal como se emitió y en español.
   - La registrada de otra herramienta (solo PDF guardado) muestra «Pídenosla», con el contacto público, hasta que exista la ruta firmada `portal-files`.
 - **«Cómo pagar»:** el texto de Central en el idioma elegido.
-- **Pendiente:** lo contratado (total, señal requerida y vencimientos) llegará de la lectura de portal de Booking. Con ello se añadirá el saldo, que es lo contratado (Booking) menos lo cobrado (Finance).
+- **Lo contratado** (Booking, `portal_reservation_detail.contract`, #312): total de la propuesta aceptada, lo pagado (lo cobrado según Finance), el **saldo pendiente** (contratado − cobrado, nunca negativo) y la forma de pago acordada.
+  - Vencimientos de la señal y del saldo, con fecha e importe tal como llegan en `due`; cada uno sale «Pagado» si lo cobrado cubre lo acumulado hasta él.
+  - Sin propuesta aceptada, un aviso de que aparecerá al cerrarla.
+  - Cálculo puro en `app/quote.ts` (`balanceOf`), probado.
 
 - **Fecha definitiva:** la que marca el personal en Booking (§13.2).
 - **Propuesta (decisión del usuario, 7-10-2026):** el organizador **no la acepta** desde el portal.
