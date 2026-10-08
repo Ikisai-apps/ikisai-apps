@@ -28,6 +28,24 @@ export interface FeedbackRoundTripOptions {
   text?: string;
   /** Tiempo máximo para que se cierre el composer y salga el aviso (ms); por defecto 8000. */
   timeout?: number;
+  /** Pulsa «Enviar» dos veces seguidas (como el usuario que no ve el aviso); por defecto sí. La app comprueba en su servidor que llega uno. */
+  doubleTap?: boolean;
+  /** Simula el teclado abierto: alto visible en px (p. ej. 686 en un móvil de 1008). El aviso tiene que verse dentro de lo visible. */
+  keyboard?: number;
+}
+
+/** Simula el teclado virtual: la vista visual se queda con `visible` px de alto (o se restaura con `null`). */
+export async function simulateKeyboard(page: Page, visible: number | null): Promise<void> {
+  await page.evaluate((h) => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    if (h === null) { delete (vv as unknown as Record<string, unknown>).height; delete (vv as unknown as Record<string, unknown>).offsetTop; }
+    else {
+      Object.defineProperty(vv, 'height', { configurable: true, get: () => h });
+      Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 0 });
+    }
+    vv.dispatchEvent(new Event('resize'));
+  }, visible);
 }
 
 async function setMode(page: Page, launcher: string, on: boolean): Promise<void> {
@@ -59,8 +77,10 @@ export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOp
   const composer = page.locator('.fb-composer');
   await expect(composer).toBeVisible();
   await composer.locator('.fb-message').fill(options.text ?? 'Prueba de humo del feedback');
+  if (options.keyboard) await simulateKeyboard(page, options.keyboard);
   await composer.locator('.fb-send').focus();
   await page.keyboard.press('Enter');
+  if (options.doubleTap !== false) await page.keyboard.press('Enter').catch(() => undefined);
 
   // La hoja (composer) se cierra sola tras el envío correcto…
   await expect(composer).toHaveCount(0, { timeout });
@@ -69,11 +89,15 @@ export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOp
   await expect(toast).toBeVisible({ timeout });
   const fit = await toast.evaluate((node) => {
     const r = node.getBoundingClientRect();
-    return { h: r.height, w: r.width, inside: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    return { h: r.height, w: r.width, inside: r.top >= top && r.bottom <= bottom && r.left >= 0 && r.right <= innerWidth };
   });
   expect(fit.inside, 'el aviso tiene que verse dentro de la pantalla').toBe(true);
   expect(fit.h, 'el aviso no puede estirarse en columna').toBeLessThan(90);
   const code = /FB_\d{4}_\d+/.exec((await toast.textContent()) ?? '')?.[0] ?? '';
+  if (options.keyboard) await simulateKeyboard(page, null);
 
   await setMode(page, launcher, false);
   return { code };

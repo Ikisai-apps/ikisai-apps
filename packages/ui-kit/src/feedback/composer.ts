@@ -112,17 +112,25 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
     };
     status.textContent = text ?? texts[state];
     status.className = `fb-status${state === 'error' ? ' error' : ''}`;
-    send.disabled = state === 'sending';
+    // Enviado o pendiente: ya no se puede volver a enviar desde este composer (FB_2026_016/017: un segundo toque durante
+    // el cierre creó un duplicado).
+    send.disabled = state === 'sending' || state === 'sent' || state === 'pending';
   }
 
+  let submitting = false;
   send.addEventListener('click', async () => {
+    if (submitting || closed) return;
     if (!message.value.trim()) { setState('error', kt('Escribe un comentario antes de enviar.')); message.focus(); return; }
+    submitting = true;
     setState('sending');
     try {
       const result = await options.onSend(value());
       setState(result);
-      setTimeout(() => finish(), result === 'sent' ? 700 : 1400);
+      // Se cierra enseguida y suelta el teclado: el aviso «Enviado · FB_…» confirma el envío.
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setTimeout(() => finish(), result === 'sent' ? 250 : 1200);
     } catch (error) {
+      submitting = false;
       setState('error', (error as Error)?.message || kt('No se pudo enviar.'));
     }
   });

@@ -16,12 +16,25 @@ function host(): HTMLDivElement {
   // En la capa del kit (apps con el CSS acotado): fuera de ella el aviso se quedaba sin sus estilos.
   const layer = kitLayer();
   if (node.parentElement !== layer) layer.appendChild(node);
-  node.classList.toggle('top', overlayOpen());
+  const overlay = overlayOpen();
+  node.classList.toggle('top', overlay);
+  // Dentro de lo **visible** (`visualViewport`): con el teclado abierto en Android la vista visible es más baja o está
+  // desplazada, y un aviso colocado respecto a la de diseño quedaba fuera de la vista (FB_2026_016/017).
+  const vv = window.visualViewport;
+  const visTop = vv ? vv.offsetTop : 0;
+  const visBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
   // Con una hoja abierta, el aviso se coloca justo bajo su cabecera para no taparle el título ni el botón de cerrar.
   // `bottom: auto` en línea también: con solo `top`, una regla `.toast { bottom: … }` de la app lo estiraba en columna.
   const head = document.querySelector<HTMLElement>('.sheetback.show .sheet-head');
-  node.style.top = head ? `${Math.round(head.getBoundingClientRect().bottom) + 6}px` : '';
-  node.style.bottom = head ? 'auto' : '';
+  if (overlay) {
+    const wanted = head ? Math.round(head.getBoundingClientRect().bottom) + 6 : visTop + 12;
+    node.style.top = `${Math.max(visTop + 8, Math.min(wanted, visBottom - 64))}px`;
+    node.style.bottom = 'auto';
+  } else {
+    const hidden = Math.round(window.innerHeight - visBottom);
+    node.style.top = '';
+    node.style.bottom = hidden > 1 ? `${hidden + 24}px` : '';
+  }
   node.style.height = 'auto';
   return node;
 }
