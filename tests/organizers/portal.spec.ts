@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { startOrganizersServer, type OrganizersTestServer } from './server.ts';
+import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/organizers/vite.config.ts');
@@ -207,21 +208,29 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await expect(page.locator('#f-email')).toHaveValue('rosa@example.invalid');
 });
 
-test('organizers · ayuda y sugerencias: un comentario sobre «Mi retiro» llega y se ve en lo enviado', async ({ page }) => {
+test('organizers · ayuda y sugerencias: enviar con doble toque llega una vez, se cierra y se ve el aviso; también con teclado @smoke', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con comentario', confirm: true });
   await enter(page, await api.organizerLink([reservation], 'eva@example.invalid'));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro con comentario');
+  const reports = async (text: string) => (await api.booking.t.db.query<{ subject: string; category: string; scope: any }>(
+    `select subject, category, scope from core.feedback_reports where message like $1`, [`%${text}%`])).rows;
+
+  // Prueba común del kit (portalHelpRoundTrip): lanzador → «Ayuda y sugerencias» → respuestas → enviar con doble toque.
+  await portalHelpRoundTrip(page, { choices: ['Mi retiro', 'Limpieza'], text: 'Faltan toallas en la sala grande' });
+  const stored = await reports('toallas');
+  expect(stored, 'un solo reporte aunque se toque dos veces').toHaveLength(1);
+  expect(stored[0]).toMatchObject({ subject: 'event', category: 'cleaning' });
+  expect(stored[0]!.scope.reservation_id).toBe(reservation);
+
+  // Con el teclado del móvil abierto (686 px de alto visible): el aviso se ve igual y tampoco se duplica.
+  await portalHelpRoundTrip(page, { choices: ['Mi retiro', 'Limpieza'], text: 'La ducha del baño gotea', keyboard: 686 });
+  expect(await reports('ducha')).toHaveLength(1);
+
+  // Lo enviado se ve al volver a abrir la ayuda.
   await page.locator('#appLauncher').click();
-  await page.getByText('Ayuda y sugerencias').click();
-  await page.getByRole('button', { name: 'Mi retiro' }).click();
-  await page.getByRole('button', { name: 'Limpieza' }).click();
-  await page.locator('#helpSheet textarea').fill('Faltan toallas en la sala grande');
-  await page.getByRole('button', { name: 'Enviar' }).click();
-  await expect(page.getByText('Gracias. Lo hemos recibido.')).toBeVisible();
+  await page.locator('.launcher-center').click();
   await expect(page.locator('#helpMine')).toContainText('Faltan toallas en la sala grande');
-  const stored = await api.booking.t.db.query<{ subject: string; category: string; scope: any }>(`select subject, category, scope from core.feedback_reports where message like '%toallas%'`);
-  expect(stored.rows[0]).toMatchObject({ subject: 'event', category: 'cleaning' });
-  expect(stored.rows[0]!.scope.reservation_id).toBe(reservation);
+  await expect(page.locator('#helpMine')).toContainText('La ducha del baño gotea');
 });
 
 test('organizers · en inglés: navegador en inglés, selector ES | EN y textos de Central en el idioma elegido', async ({ browser }) => {
