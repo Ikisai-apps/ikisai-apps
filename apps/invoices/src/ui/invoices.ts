@@ -113,7 +113,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   function extractable(): LocalInvoice[] {
     if (!mirror) return [];
     return mirror.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (mirror!.filesByInvoice.get(i.id) ?? []).some((f) => f.kind === 'original'))
-      .sort((a, b) => a.invoice_date.localeCompare(b.invoice_date));
+      .sort((a, b) => (a.invoice_date ?? '').localeCompare(b.invoice_date ?? ''));
   }
 
   async function extractPending(): Promise<void> {
@@ -162,7 +162,7 @@ export const mountInvoices: ViewMount = (ctx) => {
     extractAll.hidden = !canEdit || pendingDocs === 0;
     extractAll.textContent = '';
     extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
-    const visible = mirror.invoices.filter((i) => !i.deleted_at && matches(i)).sort((a, b) => b.invoice_date.localeCompare(a.invoice_date) || (b.code ?? '').localeCompare(a.code ?? ''));
+    const visible = mirror.invoices.filter((i) => !i.deleted_at && matches(i)).sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? '') || (b.code ?? '').localeCompare(a.code ?? ''));
     if (!visible.length) {
       replace(listHost, el('div', { class: 'empty' }, el('strong', null, mirror.invoices.length ? 'Ninguna factura coincide' : 'Todavía no hay facturas'),
         mirror.invoices.length ? 'Cambia el filtro o la búsqueda.' : 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.'));
@@ -311,7 +311,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     ),
     el('dl', { class: 'kv', 'data-feedback-ignore': '' },
       el('dt', null, 'Proveedor'), el('dd', null, supplier?.name ?? '—', supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
-      el('dt', null, 'Fecha'), el('dd', null, shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`),
+      el('dt', null, 'Fecha'), el('dd', null, invoice.invoice_date ? [shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`] : 'Sin fecha: léela del PDF o escríbela para poder validar'),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
     ),
@@ -428,6 +428,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const category = select('invCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.categoria', 'data-feedback-label': 'Categoría de gasto', disabled: !editable, onchange: () => void update({ expense_category: category.value || null }) });
   const investment = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.inversion', 'data-feedback-label': 'Es inversión', type: 'checkbox', id: 'invInvestment', checked: invoice.is_investment, disabled: !editable, onchange: () => void update({ is_investment: investment.checked }) });
   const deductibility = select('invDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), invoice.deductibility, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.deducibilidad', 'data-feedback-label': 'Deducibilidad', disabled: !canEdit || invoice.status === 'anulada', onchange: () => void update({ deductibility: deductibility.value as Deductibility }) });
+  const invDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.fecha', 'data-feedback-label': 'Fecha de la factura', type: 'date', id: 'invDate', value: invoice.invoice_date ?? '', disabled: !editable, onchange: () => void update({ invoice_date: invDate.value || null }) });
   const dueDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.vencimiento', 'data-feedback-label': 'Vencimiento', type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
   const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
     onchange: () => { const v = parseAmount(sourceTotal.value); if (sourceTotal.value.trim() && v === null) { toast('Importe inválido.'); return; } void update({ source_total: v }); } });
@@ -436,7 +437,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const fiscalBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.fiscal', feedbackLabel: 'Fiscal y pago' }, 'Fiscal y pago', `${categoryLabel(invoice.expense_category)}${invoice.is_investment ? ' · inversión' : ''}`, false,
     el('div', { class: 'row2' }, field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
-    el('div', { class: 'row2' }, field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'), field('Vencimiento', dueDate)),
+    el('div', { class: 'row2' }, field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),
+    field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'),
     field('Notas', notes),
   );
 
@@ -555,7 +557,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const syncSupplierFields = () => { supplierFields.hidden = supplier.value !== NEW_SUPPLIER; };
   supplier.addEventListener('change', () => { syncSupplierFields(); if (supplier.value === NEW_SUPPLIER) supplierName.focus(); });
   syncSupplierFields();
-  const date = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'newDate', value: todayIso(), required: true });
+  const date = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'newDate' });
   const object = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.objeto', 'data-feedback-label': 'Objeto', type: 'text', id: 'newObject', required: true, maxlength: '120', placeholder: 'alimentos retiro yoga' });
   const number = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.numero', 'data-feedback-label': 'Número de factura', type: 'text', id: 'newNumber', maxlength: '64', placeholder: 'Opcional' });
   const total = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'newTotal', placeholder: 'Opcional, con IVA' });
@@ -583,7 +585,6 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     error.textContent = '';
     if (!supplier.value) { error.textContent = 'Elige el proveedor o «+ Nuevo proveedor…».'; supplier.focus(); return; }
     if (supplier.value === NEW_SUPPLIER && !supplierName.value.trim()) { error.textContent = 'Escribe el nombre del proveedor nuevo.'; supplierName.focus(); return; }
-    if (!date.value) { error.textContent = 'Indica la fecha de la factura.'; date.focus(); return; }
     if (!object.value.trim()) { error.textContent = 'Indica el objeto (qué se compró).'; object.focus(); return; }
     const sourceTotal = total.value.trim() ? parseAmount(total.value) : null;
     if (total.value.trim() && sourceTotal === null) { error.textContent = 'Total inválido.'; total.focus(); return; }
@@ -598,7 +599,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
       const chosen = mirror.supplierById.get(supplierId);
       const ops: RowOperation[] = [
         ...(supplier.value === NEW_SUPPLIER && !sameTaxId ? [{ op: 'insert', table: SUPPLIERS, id: supplierId, fields: { name: supplierName.value.trim(), tax_id: taxId } } as RowOperation] : []),
-        { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: date.value, object: object.value.trim(), invoice_number: number.value.trim() || null, source_total: sourceTotal, expense_category: chosen?.default_category ?? null, is_investment: chosen?.default_is_investment ?? false } },
+        { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: date.value || null, object: object.value.trim(), invoice_number: number.value.trim() || null, source_total: sourceTotal, expense_category: chosen?.default_category ?? null, is_investment: chosen?.default_is_investment ?? false } },
         ...staged.map((s, i): RowOperation => ({ op: 'insert', table: INVOICE_FILES, id: crypto.randomUUID(), fields: { invoice_id: invoiceId, file_id: s.marker, original_filename: s.filename, page_order: i + 1, kind: 'original', mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 } })),
       ];
       if (sameTaxId) toast(`Ya tenías el proveedor ${sameTaxId.name} con ese NIF: la factura queda a su nombre.`);
@@ -614,7 +615,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   } },
     field('Proveedor', supplier, 'Si no está en la lista, elige «+ Nuevo proveedor…» y créalo aquí. Con el JSON de ChatGPT se crea solo.'),
     supplierFields,
-    el('div', { class: 'row2' }, field('Fecha', date), field('Número de factura', number)),
+    el('div', { class: 'row2' }, field('Fecha', date, 'Opcional: si la dejas vacía, se toma del PDF al leerlo.'), field('Número de factura', number)),
     field('Objeto', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
     field('Total del documento', total),
     field('PDF o fotos', files, 'Las fotos se reducen en el móvil y se guardan como imagen WebP (los PDF, como PDF). Puedes añadir más páginas después.'),
@@ -625,7 +626,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   const preview = () => {
     const chosen = mirror.supplierById.get(supplier.value);
     const name = supplier.value === NEW_SUPPLIER ? supplierName.value : chosen?.name ?? '';
-    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || todayIso(), supplierSlug: chosen?.slug ?? slugify(name), object: object.value, mime: storedMime(files.files?.[0]) });
+    form.querySelector('#namePreview')!.textContent = normalizedFilename({ invoiceDate: date.value || null, supplierSlug: chosen?.slug ?? slugify(name), object: object.value, mime: storedMime(files.files?.[0]) });
   };
   files.addEventListener('change', preview);
   form.addEventListener('input', preview);
@@ -831,7 +832,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       })(),
       duplicate ? el('div', { class: 'banner warn' }, icon('warn', 18), el('span', null, `Ya existe la factura ${duplicate.code ?? ''} de este proveedor con el número ${doc.invoice.invoice_number}. La importación será rechazada como duplicado.`)) : null,
       el('div', { class: 'row2' }, field('Proveedor', supplierSelect, doc.invoice.supplier_tax_id ? `NIF del documento: ${doc.invoice.supplier_tax_id}` : 'El documento no trae NIF.'), field('Fecha', dateInput)),
-      discrepancyNote(dateChoice.discrepancy && target ? { kind: 'date', typed: target.invoice_date, document: doc.invoice.invoice_date, input: dateInput } : null),
+      discrepancyNote(dateChoice.discrepancy && target?.invoice_date ? { kind: 'date', typed: target.invoice_date, document: doc.invoice.invoice_date, input: dateInput } : null),
       field('Objeto', objectInput),
       discrepancyNote(target && doc.invoice.object.trim() && doc.invoice.object.trim().toLowerCase() !== target.object.trim().toLowerCase() ? { kind: 'object', typed: target.object, document: doc.invoice.object.trim(), input: objectInput } : null),
       el('div', { class: 'row2' }, field('Categoría', categorySelect), field('Deducibilidad', deductibilitySelect)),

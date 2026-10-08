@@ -41,8 +41,8 @@ export function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-export function inRange(date: string, range: DateRange): boolean {
-  return date >= range.from && date <= range.to;
+export function inRange(date: string | null, range: DateRange): boolean {
+  return date !== null && date >= range.from && date <= range.to;
 }
 
 const SUMMED_STATUSES: readonly InvoiceStatus[] = ['validada', 'archivada'];
@@ -252,7 +252,7 @@ export function purchaseItems(input: PurchaseItemsInput, filters: PurchaseFilter
       allocated_quantity: quantities.length ? quantities.reduce((a, b) => a + b, 0) : null,
     });
   }
-  items.sort((a, b) => b.invoice.invoice_date.localeCompare(a.invoice.invoice_date) || (a.invoice.code ?? '').localeCompare(b.invoice.code ?? '') || a.line.position - b.line.position);
+  items.sort((a, b) => (b.invoice.invoice_date ?? '').localeCompare(a.invoice.invoice_date ?? '') || (a.invoice.code ?? '').localeCompare(b.invoice.code ?? '') || a.line.position - b.line.position);
 
   const group = (keyOf: (item: PurchaseItem) => Array<[string, string, number]>): PurchaseGroup[] => {
     const map = new Map<string, PurchaseGroup>();

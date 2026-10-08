@@ -164,7 +164,8 @@ export interface SupplierRow extends SyncedColumns {
 export interface InvoiceRow extends SyncedColumns {
   code: string | null;
   supplier_id: string;
-  invoice_date: string;
+  /** Puede quedar vacía al crearla (0223): se lee del PDF o se escribe después; sin ella no se valida. */
+  invoice_date: string | null;
   object: string;
   invoice_number: string | null;
   currency: string;

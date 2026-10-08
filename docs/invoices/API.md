@@ -44,9 +44,9 @@ Decisión de Core (plan §5): proveedores en tabla ligera, aunque el handoff los
 
 | Columna | Tipo | Restricciones |
 |---|---|---|
-| `code` | `text unique not null` | `FVR_AAAA_NNN` (`core.next_code('FVR', año de invoice_date)`), asignado por trigger en el `insert`. No escribible. |
+| `code` | `text unique not null` | `FVR_AAAA_NNN` (`core.next_code('FVR', año de invoice_date)`, o el año en curso si aún no tiene fecha), asignado por trigger en el `insert`. No escribible. |
 | `supplier_id` | `uuid not null references invoices.suppliers(id)` | |
-| `invoice_date` | `date not null` | Fecha de la factura. Origen del nombre canónico y del periodo fiscal. |
+| `invoice_date` | `date` | Fecha de la factura. Origen del nombre canónico y del periodo fiscal. **Opcional desde 0223** (QA FB_2026_016): se puede crear sin ella y leerla del PDF o escribirla después. Sin fecha, el periodo fiscal queda vacío, el nombre canónico empieza por `sin_fecha`, no entra en resúmenes ni entregas por periodo y `validate` responde `INVOICE_INCOMPLETE` con `invoice_date` entre los datos que faltan. |
 | `object` | `text not null check (length(object) between 1 and 120)` | Objeto corto («alimentos retiro yoga»). Va al nombre canónico. |
 | `invoice_number` | `text null` | Número del proveedor (≤ 64); puede faltar en tickets. |
 | `currency` | `char(3) not null default 'EUR' check (currency = 'EUR')` | |
