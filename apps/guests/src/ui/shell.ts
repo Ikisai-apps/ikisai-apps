@@ -23,7 +23,7 @@ import { momentOf, mountHome } from './home.ts';
 import { mountInfo } from './info.ts';
 import { mountLodging } from './lodging.ts';
 import { clearOfflineMaterials, mountMaterials } from './materials.ts';
-import { modulesOf, mountMore, mountNav, type Modules } from './nav.ts';
+import { modulesOf, navItems, type Modules } from './nav.ts';
 import { mountMenu, mountProgram } from './program.ts';
 import { mountQuestions } from './questions.ts';
 import { languageSelect } from './language.ts';
@@ -38,14 +38,14 @@ export interface ShellContext {
 }
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-const PERSON = new RegExp(`^#/p/(${UUID})(?:/(datos|alimentacion|firma|info|programa|menu|alojamiento|materiales|preguntas|mas))?$`, 'i');
-type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas' | 'mas';
+const PERSON = new RegExp(`^#/p/(${UUID})(?:/(datos|alimentacion|firma|info|programa|menu|alojamiento|materiales|preguntas))?$`, 'i');
+type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas';
 /** Ids literales de cada pantalla (el catálogo de la publicación los recoge del código). */
 const PAGE_IDS: Record<Page, [string, string]> = {
   inicio: ['guests.inicio', 'Inicio'], datos: ['guests.datos', 'Mis datos'], alimentacion: ['guests.alimentacion', 'Alimentación'],
   firma: ['guests.firma', 'Firma'], info: ['guests.info', 'Información práctica'], programa: ['guests.programa', 'Programa'],
   menu: ['guests.menu', 'Menú'], alojamiento: ['guests.alojamiento', 'Alojamiento'], materiales: ['guests.materiales', 'Materiales'],
-  preguntas: ['guests.preguntas', 'Preguntas del organizador'], mas: ['guests.mas', 'Más'],
+  preguntas: ['guests.preguntas', 'Preguntas del organizador'],
 };
 /** Páginas de un módulo del organizador: solo existen si está activo (si no, se vuelve a Inicio). */
 const MODULE_OF: Partial<Record<Page, keyof Modules>> = { programa: 'program', menu: 'menu', alojamiento: 'lodging', materiales: 'materials', preguntas: 'questions' };
@@ -76,6 +76,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     markIcon: 'guest',
     subtitle: client.bootstrap()?.profile.displayName ?? '',
     nav: [],
+    // Barra del kit 0.21 (U5): los módulos del organizador y «Más»; vacía en la fase 1 (sin módulos).
+    maxNav: 5,
     navigate,
     launcher,
     tools: [languageSelect(), logoutButton],
@@ -86,9 +88,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const saveState = el('p', { class: 'gsavestate', id: 'saveState', role: 'status', 'aria-live': 'polite' });
   const previewBand = el('p', { class: 'banner warn gpreview', id: 'previewBand', role: 'status', hidden: true });
   shell.banners.append(previewBand, saveState);
-  const navHost = el('div', { class: 'gnav-host' });
-  root.append(navHost);
-  let unmountNav: () => void = () => undefined;
   ctx.setBusy(() => person?.ctx.writer.busy() ?? false);
 
   let unmountView: (() => void) | null = null;
@@ -171,14 +170,13 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     unmountView?.();
     unmountView = null;
-    unmountNav();
-    unmountNav = () => undefined;
     const grants = api.grants();
     const match = hash.match(PERSON);
     const grant = match ? grants.find((g) => g.guest_id === match[1]!.toLowerCase()) : null;
     if (!grant) {
       if (grants.length === 1) { navigate(`#/p/${grants[0]!.guest_id}`, true); return; }
       person?.ctx.destroy(); person = null; paintSaveState(); previewBand.hidden = true;
+      shell.setNav([], []);
       if (!grants.length) { replace(main, el('p', { class: 'card gcard', id: 'noAccess' }, t('error.noAccess'))); return; }
       main.setAttribute('data-feedback-id', 'guests.inicio');
       main.setAttribute('data-feedback-label', 'Inicio');
@@ -205,19 +203,21 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     main.setAttribute('data-feedback-id', PAGE_IDS[page][0]);
     main.setAttribute('data-feedback-label', PAGE_IDS[page][1]);
     document.title = `${t(`page.${page}`)} · Ikisai Guests`;
-    const guarded = ['inicio', 'datos', 'alimentacion', 'firma', 'preguntas', 'alojamiento', 'mas'].includes(page);
+    const guarded = ['inicio', 'datos', 'alimentacion', 'firma', 'preguntas', 'alojamiento'].includes(page);
     if (guarded && needsPrivacy(gctx)) {
       renderPrivacy(main, gctx, () => void route());
       return;
     }
     const during = momentOf(gctx.guest()) === 'during';
-    unmountNav = mountNav(navHost, base, mods, page === 'inicio' ? '' : page);
+    const items = navItems(gctx, base, mods);
+    shell.setNav(items.nav, items.more);
+    shell.setRoute(page === 'inicio' ? base : `${base}/${page}`);
     const help = (start?: 'place' | 'event') => openHelp({ client, userId, grant, ...(start ? { start } : {}) });
     switch (page) {
       case 'datos': unmountView = mountData(main, gctx, base); break;
       case 'alimentacion': unmountView = mountDiet(main, gctx, base); break;
       case 'firma': unmountView = mountSign(main, gctx, base); break;
-      case 'info': unmountView = mountInfo(main, base, during, mods.map); break;
+      case 'info': unmountView = mountInfo(main, base, during, gctx.reads); break;
       case 'programa': unmountView = mountProgram(main, gctx); break;
       case 'menu': {
         const notice = commonText('guests.menu_notice');
@@ -227,7 +227,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       case 'alojamiento': unmountView = mountLodging(main, gctx); break;
       case 'materiales': unmountView = mountMaterials(main, gctx, userId); break;
       case 'preguntas': unmountView = mountQuestions(main, gctx); break;
-      case 'mas': unmountView = mountMore(main, gctx, base, mods, () => help()); break;
       default: unmountView = mountHome(main, gctx, {
         base,
         modules: mods,
@@ -251,8 +250,6 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offSessionEnd();
     usage.destroy();
     unmountView?.();
-    unmountNav();
-    navHost.remove();
     person?.ctx.destroy();
     window.removeEventListener('hashchange', onHash);
     shell.destroy();

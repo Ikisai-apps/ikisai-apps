@@ -16,7 +16,7 @@ export interface CommonText {
 export interface ShownText extends CommonText { spanishOnly: boolean }
 
 export const INFO_KEYS = ['info.arrival', 'info.parking', 'info.facilities', 'info.rules', 'info.bring'] as const;
-const KEYS = ['portal.privacy', 'contact.email', 'contact.phone', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice', 'info.map_link', ...INFO_KEYS] as const;
+const KEYS = ['portal.privacy', 'contact.email', 'contact.guests.email', 'contact.phone', 'guests.data_why', 'guests.signature_statement', 'guests.allergies_notice', 'guests.menu_notice', 'info.map_link', ...INFO_KEYS] as const;
 export type TextKey = (typeof KEYS)[number];
 const STORE = 'ikisai-guests-texts';
 
@@ -26,7 +26,8 @@ const text = (key: TextKey, kind: string, body: string, title: string | null = n
 const FALLBACK: ByLang = {
   es: {
     'portal.privacy': text('portal.privacy', 'legal', 'Ikisai trata tus datos para gestionar tu estancia y, cuando la ley lo exige, para el registro de viajeros, que se conserva tres años. Puedes consultarlos, corregirlos o pedir su supresión escribiendo a Ikisai.', 'Protección de datos'),
-    'contact.email': text('contact.email', 'contact', 'organiza@ikisai.com'),
+    // Correo de los huéspedes (decisión del usuario del 8-10-2026: cada portal el suyo, editable en Central).
+    'contact.email': text('contact.email', 'contact', 'ven@ikisai.com'),
     'contact.phone': text('contact.phone', 'contact', '614 76 57 96'),
     'guests.data_why': text('guests.data_why', 'mensaje', 'La ley obliga a los alojamientos a registrar a cada viajero y comunicarlo al Ministerio del Interior (Real Decreto 933/2021). Solo pedimos lo que exige ese registro.', '¿Por qué te lo pedimos?'),
     'guests.signature_statement': text('guests.signature_statement', 'legal', 'Declaro que estos datos son ciertos. Se incorporan al registro de viajeros de Ikisai, que la ley obliga a conservar tres años.', 'Declaración'),
@@ -86,7 +87,7 @@ export async function loadPublicContact(): Promise<void> {
     const rows: CommonText[] = out.items ?? out.rows ?? Object.entries(out)
       .filter(([, v]) => typeof v === 'string' || (v && typeof (v as CommonText).body === 'string'))
       .map(([key, v]) => (typeof v === 'string' ? { key, body: v, title: null, version: null, kind: 'contact' } : { ...(v as CommonText), key }));
-    store(rows.filter((r) => r.key === 'contact.email' || r.key === 'contact.phone'));
+    store(rows.filter((r) => r.key === 'contact.email' || r.key === 'contact.guests.email' || r.key === 'contact.phone'));
   } catch {
     /* sin red: copia guardada o reserva */
   }
@@ -99,10 +100,11 @@ export function commonText(key: TextKey): ShownText | null {
   if (own) return { ...own, spanishOnly: false };
   const spanish = loaded.es?.[key] ?? FALLBACK.es?.[key];
   if (!spanish) return null;
-  return { ...spanish, spanishOnly: lang !== 'es' && key !== 'contact.email' && key !== 'contact.phone' };
+  return { ...spanish, spanishOnly: lang !== 'es' && !key.startsWith('contact.') };
 }
 
-export function contactEmail(): string { return commonText('contact.email')?.body ?? ''; }
+/** Correo de contacto de los huéspedes: `contact.guests.email` de Central si existe; si no, `contact.email` o la reserva. */
+export function contactEmail(): string { return commonText('contact.guests.email')?.body ?? commonText('contact.email')?.body ?? ''; }
 export function contactPhone(): string { return commonText('contact.phone')?.body ?? ''; }
 
 /** Versión del texto que se muestra ahora («es-v2»); `null` si es el texto de reserva del código. */

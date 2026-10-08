@@ -19,23 +19,24 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | C5 | Core | comentarios «Mi retiro» antes de la bandeja de Organizers | respondida: los ve Booking |
 | C6 | Core | cuentas internas de huésped al vencer la conservación | la hace Core con Booking |
 | C7 | Core | `uploads`: lectura y verificación solo del autor | hecha (#288) |
-| O1 | Organizers | URL firmadas de los materiales publicados para el huésped | abierta |
+| O1 | Organizers | URL firmadas de los materiales publicados para el huésped | hecha (#333), en uso |
 | U1 | UI | capa de traducción y catálogos del feedback por idioma | hecha (#285), en uso |
 | U2 | UI | recuadro de firma en el kit | opcional: Guests tiene el suyo en `ui/sign.ts` |
 | U3 | UI | estado de guardado por campo y global | opcional: Guests tiene el suyo (`writer.ts`) |
 | U4 | UI | icono de Guests y `nav: []` sin barra | hecha |
-| BG9 | Booking | programa del retiro: `program_items`, acciones para el organizador y `portal_program` | abierta (fase 4) |
-| BG10 | Booking | alojamiento: `portal_lodging`, `portal_choose_bed` atómica, `portal_release_bed`, `portal_room_preference` y columnas nuevas | abierta (fase 5) |
-| BG11 | Booking | huésped de muestra para la vista previa (`preview`, `PREVIEW_READ_ONLY`) | abierta (si se elige, O6) |
-| BG12 | Booking | `reservation_id` en `food_event_projection` | abierta (fase 4) |
-| FD1 | Food | `food.portal_menu` para `guests` y `organizers` | abierta (fase 4) |
-| O1 | Organizers | resolutor `guest_material_file` y lectura `guest_materials` | abierta (fase 4) |
-| O2 | Organizers | forma de `guest_experience_for`, `guest_questions` y `guest_answer` | abierta (fase 4) |
-| O3 | Organizers | configuración del alojamiento y aprobación de peticiones | abierta (fase 5) |
+| BG9 | Booking | programa del retiro: `program_items`, acciones para el organizador y `portal_program` | hecha (#328), en uso |
+| BG10 | Booking | alojamiento: `portal_lodging`, `portal_choose_bed` atómica, `portal_release_bed`, `portal_room_preference` y columnas nuevas | hecha (#328), en uso |
+| BG11 | Booking | huésped de muestra para la vista previa (`preview`, `PREVIEW_READ_ONLY`) | hecha (#328 y #325), en uso |
+| BG12 | Booking | `reservation_id` en `food_event_projection` | hecha (ya estaba) |
+| FD1 | Food | `food.portal_menu` para `guests` y `organizers` | hecha (#327), en uso |
+| O1 | Organizers | resolutor `guest_material_file` y lectura `guest_materials` | hecha (#333), en uso |
+| O2 | Organizers | forma de `guest_experience_for`, `guest_questions` y `guest_answer` | hecha (#333): la forma de §13; en uso |
+| O3 | Organizers | configuración del alojamiento y aprobación de peticiones | hecha (#333 y Booking #328), en uso |
 | O5 | Organizers | quitar `guest_offers` del contrato | abierta |
 | O6 | Organizers | vista previa: huésped de muestra en Guests o pintada en Organizers | decidida: huésped de muestra en Guests |
 | O7 | Organizers | preguntas sin salud, alergias ni documentos | abierta |
-| CE3 | Central | `info.map_link`, `guests.menu_notice` y plano del centro | abierta (fase 4) |
+| CE3 | Central | `info.map_link`, `guests.menu_notice` y plano del centro | hecha (#326), en uso |
 | C8 | Core | archivos publicados a un portal: `core.allow_portal_file` y `GET portal-files/:fileId` | hecha (#325) |
 | C9 | Core | enlace de Guests al huésped de muestra para el organizador | hecha (#325, `preview: true`) |
-| U5 | UI | barra inferior con «Más» y lista de días para el programa | abierta (opcional) |
+| U5 | UI | barra inferior con «Más» y lista de días para el programa | hecha (kit 0.21), en uso |
+| K6 | Core | que una acción de Organizers invocada desde Guests escriba en `organizers.*` (`apply_portal_operations` rechaza hoy un destino portal); sin ello no se guardan las respuestas | en la #334 |

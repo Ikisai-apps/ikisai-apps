@@ -1,8 +1,9 @@
 /**
- * Módulos visibles y barra inferior (API.md §13.1): Inicio · Programa · Menú · Alojamiento · Más, solo con lo que el
- * organizador haya activado y en su ventana (antes, durante o después). Sin configuración no hay barra (fase 1).
+ * Módulos visibles y navegación (API.md §13.1) con la barra del kit 0.21 (U5): Inicio y los módulos que el organizador
+ * haya activado en su ventana (antes, durante o después) van en la barra; el resto, en «Más» (como mucho cinco entradas en
+ * el móvil). Sin módulos del organizador no hay barra (fase 1).
  */
-import { el, icon, replace, type IconName } from '@ikisai/ui-kit';
+import type { NavItem } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import { inWindow } from '../app/portal.ts';
@@ -27,43 +28,23 @@ export function hasNav(mods: Modules): boolean {
   return mods.program || mods.menu || mods.lodging || mods.materials || mods.questions;
 }
 
-interface Item { page: string; label: string; icon: IconName; id: string }
-
-/** Barra inferior propia (los módulos cambian por persona y retiro; la del kit se fija al crear la cáscara). */
-export function mountNav(root: HTMLElement, base: string, mods: Modules, current: string): () => void {
-  if (!hasNav(mods)) return () => undefined;
-  const items: Item[] = [
-    { page: '', label: t('nav.home'), icon: 'home', id: 'nav-home' },
-    ...(mods.program ? [{ page: 'programa', label: t('nav.program'), icon: 'calendar' as IconName, id: 'nav-program' }] : []),
-    ...(mods.menu ? [{ page: 'menu', label: t('nav.menu'), icon: 'chef' as IconName, id: 'nav-menu' }] : []),
-    ...(mods.lodging ? [{ page: 'alojamiento', label: t('nav.lodging'), icon: 'bed' as IconName, id: 'nav-lodging' }] : []),
-    { page: 'mas', label: t('nav.more'), icon: 'more', id: 'nav-more' },
-  ];
-  const bar = el('nav', { class: 'gnav', id: 'guestNav', 'aria-label': t('nav.label'), 'data-feedback-id': 'guests.navegacion', 'data-feedback-label': 'Navegación' },
-    ...items.map((item) => el('a', {
-      href: item.page ? `${base}/${item.page}` : base, id: item.id, class: item.page === current ? 'on' : null,
-      'aria-current': item.page === current ? 'page' : null,
-    }, icon(item.icon, 20), el('span', null, item.label))));
-  replace(root, bar);
-  document.body.classList.add('has-gnav');
-  return () => { replace(root); document.body.classList.remove('has-gnav'); };
-}
-
-/** «Más»: el resto de pantallas en una lista. */
-export function mountMore(main: HTMLElement, ctx: GuestContext, base: string, mods: Modules, openHelp: () => void): () => void {
+/** Secciones de la barra y de «Más» para una persona. Vacías sin módulos del organizador. */
+export function navItems(ctx: GuestContext, base: string, mods: Modules): { nav: NavItem[]; more: NavItem[] } {
+  if (!hasNav(mods)) return { nav: [], more: [] };
   const g = ctx.guest();
-  const link = (href: string, ic: IconName, label: string, id: string) =>
-    el('a', { class: 'card gcard glink', href, id, 'data-feedback-id': 'guests.mas.lista.abrir', 'data-feedback-label': 'Abrir sección' }, icon(ic, 20), el('span', null, el('strong', null, label)));
-  replace(main,
-    el('div', { class: 'pagehead' }, el('h2', null, t('nav.more'))),
-    el('div', { class: 'gcards', id: 'moreList' },
-      link(`${base}/info`, 'info', t('home.info'), 'more-info'),
-      mods.materials ? link(`${base}/materiales`, 'attach', t('materials.title'), 'more-materials') : null,
-      mods.questions ? link(`${base}/preguntas`, 'help', t('questions.title'), 'more-questions') : null,
-      g.mode !== 'ninguno' ? link(`${base}/datos`, 'user', t('home.data'), 'more-data') : null,
-      link(`${base}/alimentacion`, 'chef', t('home.diet'), 'more-diet'),
-      g.mode === 'ses' ? link(`${base}/firma`, 'edit', t('home.sign'), 'more-sign') : null,
-      el('button', { type: 'button', class: 'card gcard glink', id: 'more-help', 'data-feedback-id': 'guests.mas.ayuda.abrir', 'data-feedback-label': 'Ayuda y sugerencias', onclick: openHelp },
-        icon('help', 20), el('span', null, el('strong', null, t('home.help'))))));
-  return () => replace(main);
+  const nav: NavItem[] = [
+    { hash: base, label: t('nav.home'), icon: 'home', matches: [base] },
+    ...(mods.program ? [{ hash: `${base}/programa`, label: t('nav.program'), icon: 'calendar' } as NavItem] : []),
+    ...(mods.menu ? [{ hash: `${base}/menu`, label: t('nav.menu'), icon: 'chef' } as NavItem] : []),
+    ...(mods.lodging ? [{ hash: `${base}/alojamiento`, label: t('nav.lodging'), icon: 'bed' } as NavItem] : []),
+  ];
+  const more: NavItem[] = [
+    { hash: `${base}/info`, label: t('home.info'), icon: 'info' },
+    ...(mods.materials ? [{ hash: `${base}/materiales`, label: t('materials.title'), icon: 'attach' } as NavItem] : []),
+    ...(mods.questions ? [{ hash: `${base}/preguntas`, label: t('questions.title'), icon: 'help' } as NavItem] : []),
+    ...(g.mode !== 'ninguno' ? [{ hash: `${base}/datos`, label: t('home.data'), icon: 'user' } as NavItem] : []),
+    { hash: `${base}/alimentacion`, label: t('home.diet'), icon: 'chef' },
+    ...(g.mode === 'ses' ? [{ hash: `${base}/firma`, label: t('home.sign'), icon: 'edit' } as NavItem] : []),
+  ];
+  return { nav, more };
 }

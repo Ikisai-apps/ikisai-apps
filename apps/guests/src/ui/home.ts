@@ -46,16 +46,15 @@ export function mountHome(main: HTMLElement, ctx: GuestContext, actions: HomeAct
 
   async function loadExtras(): Promise<void> {
     const guest = ctx.guest();
-    const lodging = ctx.experience()?.modules.lodging;
     const [questions, room, today] = await Promise.all([
       mods?.questions ? ctx.reads.questions(ctx.grant.reservation_id, ctx.grant.guest_id).catch(() => null) : null,
-      mods?.lodging && (lodging?.capability === 'choose' || lodging?.capability === 'request') && choiceOpen(lodging.choose_until)
-        ? ctx.reads.lodging(ctx.grant.reservation_id, ctx.grant.guest_id).catch(() => null) : null,
+      mods?.lodging ? ctx.reads.lodging(ctx.grant.guest_id).catch(() => null) : null,
       momentOf(guest) === 'during' && mods ? todayCard(ctx, mods.program, mods.menu).catch(() => []) : [],
     ]);
     if (!alive) return;
     extras.questionsPending = questions ? questions.value.items.filter((q) => q.required && q.open && !answered(q)).length : 0;
-    extras.chooseRoom = room ? { chosen: Boolean(room.value.mine), until: lodging?.choose_until ?? null } : null;
+    // «Elige tu habitación» solo con la elección de Booking abierta (Booking §23.1).
+    extras.chooseRoom = room && choiceOpen(room.value) ? { chosen: Boolean(room.value.mine), until: room.value.choose_until ?? null } : null;
     extras.today = today;
     paint();
   }
