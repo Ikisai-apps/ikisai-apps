@@ -1,5 +1,11 @@
 /** Food · apoyo de pruebas: eventos sintéticos sembrados en Booking, que Food lee por `booking.food_event_projection`. */
 import { createServer } from 'node:net';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
 import type { TestApp } from '../../packages/test-kit/src/http.ts';
 
 /** Zona de la casa: el servidor cuenta los días en hora de Madrid, y las pruebas de navegador fijan la misma zona. */
@@ -57,5 +63,53 @@ export function freePort(): Promise<number> {
       probe.close(() => resolve(port));
     });
   });
+}
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export const FOOD_VITE_CONFIG = path.resolve(here, '../../apps/food/vite.config.ts');
+const DIST = path.resolve(here, '../../apps/food/dist');
+const BUILD_SOURCES = ['../../apps/food/public', '../../apps/food/src', '../../apps/food/index.html', '../../apps/food/vite.config.ts',
+  '../../packages/ui-kit/src', '../../packages/sync-client/src', '../../packages/domain-food/src', '../../supabase/functions/_domain'].map((p) => path.resolve(here, p));
+
+/** Huella de las fuentes que entran en el build: rutas, tamaños y fechas. */
+function sourceStamp(): string {
+  const hash = createHash('sha256');
+  const walk = (p: string) => {
+    if (!existsSync(p)) return;
+    const st = statSync(p);
+    if (st.isDirectory()) { for (const name of readdirSync(p).sort()) walk(path.join(p, name)); return; }
+    hash.update(`${p}|${st.size}|${st.mtimeMs};`);
+  };
+  for (const p of BUILD_SOURCES) walk(p);
+  return hash.digest('hex');
+}
+
+/**
+ * Build de Food para las pruebas de navegador, **uno solo** aunque haya varios workers (la CI lanza `--workers=2`; patrón de
+ * `tests/tasks/e2e-server.ts`). Antes cada spec hacía su `vite build`, que vacía `dist/`: si dos se cruzaban, una página
+ * podía cargar a medias. Ahora se construye solo si las fuentes cambiaron desde el último build (huella en
+ * `dist/.e2e-stamp`) y con un cerrojo entre procesos; quien llega mientras otro construye, espera. El proxy de `/api` va en
+ * `vite preview`, así que el mismo build sirve para todas las API falsas.
+ */
+export async function buildFoodApp(): Promise<void> {
+  const stampFile = path.join(DIST, '.e2e-stamp'), stamp = sourceStamp();
+  const fresh = () => existsSync(stampFile) && readFileSync(stampFile, 'utf8') === stamp;
+  const lock = path.join(tmpdir(), `ikisai-food-e2e-build-${createHash('sha256').update(DIST).digest('hex').slice(0, 12)}`);
+  for (const started = Date.now(); ;) {
+    if (fresh()) return;
+    let mine = false;
+    try { mkdirSync(lock); mine = true; } catch {
+      // Un cerrojo de un proceso que murió a medias no bloquea para siempre.
+      try { if (Date.now() - statSync(lock).mtimeMs > 180_000) rmSync(lock, { recursive: true, force: true }); } catch { /* ya no está */ }
+    }
+    if (mine) {
+      try {
+        if (!fresh()) { await build({ configFile: FOOD_VITE_CONFIG, logLevel: 'silent' }); writeFileSync(stampFile, stamp); }
+      } finally { rmSync(lock, { recursive: true, force: true }); }
+      return;
+    }
+    if (Date.now() - started > 240_000) throw new Error('Esperando el build de Food de otro worker más de 4 minutos.');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }
 
