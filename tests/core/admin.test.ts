@@ -92,3 +92,15 @@ test('admin · estado de cuenta, contraseña temporal nueva, desactivar y reacti
   assert.equal(self.status, 422); assert.equal(self.data.error.code, 'CURRENT_ACCOUNT');
   assert.equal((await app.call(`/api/v1/admin/accounts/${app.users.reader}/disable`, { token: app.tokens.editor, body: {} })).status, 403);
 });
+
+test('admin · el nombre visible de una cuenta lo cambia el owner de Central (FB_2026_013); nunca una de servicio', async () => {
+  assert.equal((await app.call(`/api/v1/admin/accounts/${app.users.reader}/name`, { token: app.tokens.editor, body: { displayName: 'X' } })).status, 403);
+  const ok = await app.call(`/api/v1/admin/accounts/${app.users.reader}/name`, { body: { displayName: '  Marta Ruiz  ' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data)); assert.equal(ok.data.displayName, 'Marta Ruiz');
+  const row = await app.t.db.query<{ display_name: string }>('select display_name from core.profiles where user_id = $1', [app.users.reader]);
+  assert.equal(row.rows[0]!.display_name, 'Marta Ruiz');
+  assert.equal((await app.call(`/api/v1/admin/accounts/${app.users.reader}/name`, { body: { displayName: '   ' } })).status, 422);
+  const svc = await app.t.createUser();
+  await app.t.db.query(`insert into core.profiles (user_id, display_name, kind, service_name) values ($1, 'Feedback (sistema)', 'service', 'feedback') on conflict (user_id) do update set kind = 'service', service_name = 'feedback'`, [svc]);
+  assert.equal((await app.call(`/api/v1/admin/accounts/${svc}/name`, { body: { displayName: 'Otro' } })).status, 422);
+});
