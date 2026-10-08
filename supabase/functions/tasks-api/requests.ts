@@ -118,7 +118,8 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
   },
   booking: {
     // Plazo legal de SES y, desde los portales de organizadores (T3), fechas posibles, «quiere confirmar» y comentarios a la propuesta.
-    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
+    // `booking.retreat_extra`: un extra contratado de un retiro (§23), que va al proyecto de su reserva (`project_ref`).
+    service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
   },
 };
@@ -145,7 +146,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         return (value as string).trim();
       };
       // Solo los campos del contrato: el destino lo deciden las reglas del usuario, nunca quien pide.
-      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'kind_label', 'external_ref', 'title', 'note', 'external_url', 'on_behalf_of', 'due', 'priority', 'project_ref'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
       const sourceName = String(body?.source ?? '');
       const source = Object.hasOwn(SYSTEM_SOURCES, sourceName) ? SYSTEM_SOURCES[sourceName]! : invalid('source', `source debe ser ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`);
       const kind = text('kind', 100, true)!;
@@ -168,6 +169,11 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
         invalid('on_behalf_of', 'on_behalf_of es {kind: internal|organizer|guest, report_code}.');
       }
 
+      // Un extra de un retiro va al proyecto de su reserva: `project_ref` es obligatorio para ese tipo y solo para él.
+      const projectRef = text('project_ref', 150);
+      if (kind === 'booking.retreat_extra' && !projectRef) invalid('project_ref', 'Un extra necesita project_ref (la referencia de su reserva).');
+      if (projectRef !== undefined && (kind !== 'booking.retreat_extra' || !source.reference.test(projectRef))) invalid('project_ref', 'project_ref solo vale para booking.retreat_extra y es una referencia de reserva.');
+
       const externalRef = `${sourceName}:${reference}`;
       const id = await requestTaskId(externalRef);
       const status = async () => ((await invoke('tasks.requests_status', { externalRefs: [externalRef] })) as { items: Array<{ status: string; taskId: string | null }> }).items[0]!;
@@ -179,19 +185,65 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
       const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
       try {
-        await internal.commit(ctx, {
+        const committed = await internal.commit(ctx, {
           requestId: `${sourceName}-${crypto.randomUUID()}`,
           operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
-            id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
+            id, externalRef, kind, kindLabel, externalUrl, title, note, due, priority, ...(projectRef ? { projectRef: `${sourceName}:${projectRef}` } : {}), ...(behalf ? { onBehalfOf: { kind: behalf.kind, report_code: behalf.report_code } } : {}),
           } }],
         });
+        if ((committed.results[0] as { result?: { routed?: string } })?.result?.routed === 'no_project') {
+          fail(409, 'PROJECT_NOT_READY', 'El proyecto de esa reserva aún no existe: pide antes el proyecto (requests/project).', { project_ref: projectRef });
+        }
       } catch (error) {
+        if ((error as { code?: string })?.code === 'PROJECT_NOT_READY') throw error;
         // Dos reintentos a la vez: el segundo choca con la petición que acaba de dar de alta el primero.
         const raced = await status();
         if (raced.status !== 'unknown') return reply(raced);
         throw error;
       }
       return reply(await status());
+    },
+  }, {
+    /**
+     * `POST worker/requests/project` (§23, peticiones T1 de Organizers): el proyecto de un retiro, idempotente por la
+     * reserva. Tasks compone el nombre `AAAAMMDD-<título>`; lo crea en el área de la regla del usuario para su tipo, lo
+     * renombra si cambian la fecha o el título, lo archiva con `state: 'cancelled'` y lo desarchiva al volver a
+     * confirmarse. Responde `{projectId, status}`.
+     */
+    method: 'POST', pattern: 'requests/project', handler: async ({ json, invoke }) => {
+      const body = await json() as Record<string, unknown>;
+      const invalid = (field: string, message: string): never => fail(422, 'INVALID_INPUT', message, { field });
+      for (const key of Object.keys(body ?? {})) if (!['source', 'kind', 'external_ref', 'date', 'title', 'note', 'state'].includes(key)) invalid(key, `Campo no admitido: ${key}.`);
+      if (body?.source !== 'booking') invalid('source', 'source debe ser booking.');
+      if (body?.kind !== 'booking.retreat_project') invalid('kind', 'kind debe ser booking.retreat_project.');
+      const reference = typeof body.external_ref === 'string' ? body.external_ref.trim() : '';
+      if (!SYSTEM_SOURCES.booking!.reference.test(reference)) invalid('external_ref', 'external_ref es la referencia de la reserva.');
+      const date = body.date;
+      if (typeof date !== 'string' || !DATE.test(date) || Number.isNaN(Date.parse(date))) invalid('date', 'date va como AAAA-MM-DD (día de entrada).');
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title || title.length > 280) invalid('title', 'title es el título del retiro, de 1 a 280 caracteres.');
+      if (body.note !== undefined && (typeof body.note !== 'string' || body.note.length > 1000)) invalid('note', 'note es texto de hasta 1000 caracteres.');
+      const state = body.state ?? 'confirmed';
+      if (state !== 'confirmed' && state !== 'cancelled') invalid('state', 'state es confirmed o cancelled.');
+
+      const externalRef = `booking:${reference}`;
+      const actor = ((await invoke('tasks.service_actor', { name: 'booking' })) as { actor: string | null }).actor;
+      if (!actor) fail(503, 'SERVICE_NOT_READY', 'La identidad de servicio «booking» aún no existe.');
+      const ctx = await internal.context({ id: actor!, email: null, sessionId: 'service:booking', kind: 'human' }, '');
+      const projectId = await requestTaskId(externalRef);
+      const run = () => internal.commit(ctx, {
+        requestId: `booking-project-${crypto.randomUUID()}`,
+        operations: [{ op: 'call', procedure: 'tasks.request_project', args: {
+          id: projectId, externalRef, kind: 'booking.retreat_project', name: `${(date as string).replaceAll('-', '')}-${title}`, note: body.note ?? '', state,
+        } }],
+      });
+      let result;
+      try { result = await run(); } catch (error) {
+        // Dos peticiones a la vez para la misma reserva: la segunda choca con el proyecto que acaba de crear la primera.
+        result = await run();
+      }
+      const out = (result.results[0] as { result?: { id: string | null; status: string } })?.result;
+      return { projectId: out?.id ?? null, status: out?.status ?? 'unknown' };
     },
   }, {
     method: 'POST', pattern: 'requests/status', handler: async ({ json, invoke }) => {

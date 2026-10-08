@@ -294,3 +294,65 @@ test('puente con Feedback (§22.2): worker/requests/task escribe como la identid
   assert.equal((await commit([{ op: 'update', table: 'tasks.tasks', id: task.id, expectedRevision: task.revision, fields: { external_on_behalf: 'internal' } }])).status, 422);
   assert.equal((await commit([{ op: 'insert', table: 'tasks.tasks', id: uuid(), fields: { tab_id: TAB, project_id: INBOX, title: 'x', position: 7, external_on_behalf: 'guest' } }])).status, 422);
 });
+
+test('proyecto por retiro (§23): idempotente por la reserva, renombrado, archivado y extras dentro con su vencimiento', async () => {
+  const worker = (route: string, body: unknown) => app.handler(new Request(`http://localhost/api/v1/worker/requests/${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
+  const project = (extra: Record<string, unknown> = {}) => worker('project', { source: 'booking', kind: 'booking.retreat_project', external_ref: 'RES2026-77', date: '2026-11-15', title: 'Retiro de yoga', ...extra });
+  const json = async (res: Response) => ({ status: res.status, body: await res.json() as any });
+  if (!(await app.t.db.query(`select 1 from core.profiles where service_name = 'booking'`).catch(() => ({ rows: [] }))).rows.length) await simulateServiceIdentity(app.t.db, uuid(), 'booking');
+
+  // Sin regla para su tipo, no hay área: Booking reintenta.
+  assert.deepEqual((await json(await project())).body, { projectId: null, status: 'no_route' });
+  await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind: 'booking.retreat_project', tab_id: TAB, position: 9000 } }]);
+  const created = await json(await project());
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.status, 'created');
+  const id = created.body.projectId;
+  const row = async () => (await rows('tasks.projects')).find((x) => x.id === id);
+  assert.deepEqual([(await row()).title, (await row()).tab_id, (await row()).external_ref], ['20261115-Retiro de yoga', TAB, 'booking:RES2026-77']);
+  assert.deepEqual((await json(await project())).body, { projectId: id, status: 'unchanged' });
+  // Cambia la fecha: se renombra el mismo proyecto.
+  assert.deepEqual((await json(await project({ date: '2026-11-22' }))).body, { projectId: id, status: 'renamed' });
+  assert.equal((await row()).title, '20261122-Retiro de yoga');
+
+  // Extras: dentro del proyecto, con vencimiento el día de entrada, una vez por línea.
+  const extra = (line: string, extraFields: Record<string, unknown> = {}) => worker('task', { source: 'booking', kind: 'booking.retreat_extra', external_ref: `RES2026-77-EXTRA-${line}`, project_ref: 'RES2026-77',
+    title: 'Masaje para 12 personas', due: '2026-11-22', external_url: 'https://booking.ikisai.com/#/reservas/77', ...extraFields });
+  const first = await json(await extra('1'));
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.status, 'open');
+  const task = (await rows('tasks.tasks')).find((t) => t.id === first.body.taskId);
+  assert.deepEqual([task.project_id, task.due, task.external_kind], [id, '2026-11-22', 'booking.retreat_extra']);
+  // Quien la trabaja cambia la fecha; un reenvío de Booking no la pisa.
+  await commit([{ op: 'update', table: 'tasks.tasks', id: task.id, expectedRevision: task.revision, fields: { due: '2026-11-20' } }]);
+  assert.equal((await json(await extra('1'))).body.status, 'open');
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === task.id).due, '2026-11-20');
+  // Un extra de una reserva sin proyecto: 409, y no se da de alta nada.
+  const early = await json(await worker('task', { source: 'booking', kind: 'booking.retreat_extra', external_ref: 'RES2026-99-EXTRA-1', project_ref: 'RES2026-99', title: 'x' }));
+  assert.equal(early.status, 409, JSON.stringify(early.body));
+  assert.equal(early.body.error.code, 'PROJECT_NOT_READY');
+  assert.equal((await rows('tasks.requests')).some((r) => r.external_ref === 'booking:RES2026-99-EXTRA-1'), false);
+  assert.equal((await worker('task', { source: 'booking', kind: 'booking.retreat_extra', external_ref: 'RES2026-77-EXTRA-2', title: 'x' })).status, 422, 'sin project_ref');
+  assert.equal((await worker('task', { source: 'booking', kind: 'booking.ses_deadline', external_ref: 'SES-9', title: 'x', project_ref: 'RES2026-77' })).status, 422, 'project_ref solo en extras');
+
+  // Cancelada: se archiva (sus tareas quedan como están); confirmada de nuevo: se desarchiva.
+  assert.deepEqual((await json(await project({ date: '2026-11-22', state: 'cancelled' }))).body, { projectId: id, status: 'archived' });
+  assert.equal((await row()).status, 'archived');
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === task.id).deleted_at, null);
+  assert.deepEqual((await json(await project({ date: '2026-11-22', state: 'cancelled' }))).body, { projectId: id, status: 'unchanged' });
+  assert.deepEqual((await json(await project({ date: '2026-11-22' }))).body, { projectId: id, status: 'restored' });
+  assert.equal((await row()).status, 'active');
+  assert.deepEqual((await json(await worker('project', { source: 'booking', kind: 'booking.retreat_project', external_ref: 'RES2026-NUEVA', date: '2026-12-01', title: 'x', state: 'cancelled' }))).body, { projectId: null, status: 'unchanged' });
+
+  // En la papelera: no se resucita.
+  const live = await row();
+  assert.equal((await commit([{ op: 'delete', table: 'tasks.projects', id, expectedRevision: live.revision }])).status, 200);
+  assert.deepEqual((await json(await project({ date: '2026-11-22' }))).body, { projectId: id, status: 'deleted' });
+
+  // Entradas inválidas y origen protegido.
+  for (const bad of [{ date: '22/11/2026' }, { state: 'perdida' }, { title: '' }, { kind: 'booking.otra' }, { source: 'feedback' }, { external_ref: 'con espacio' }, { tab_id: TAB }]) {
+    assert.equal((await project(bad)).status, 422, JSON.stringify(bad));
+  }
+  assert.equal((await commit([{ op: 'insert', table: 'tasks.projects', id: uuid(), fields: { tab_id: TAB, title: 'Falso', position: 1, external_ref: 'booking:RES-FALSA' } }])).status, 422);
+});
