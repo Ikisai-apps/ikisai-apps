@@ -55,7 +55,7 @@ function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name
 
 let shellMenuStamp='';
 let tasksLauncher=null;
-function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',container:sheetKitLayer,fetchApps:()=>Sync.core.api('/apps')})}
+function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:()=>Sync.core.api('/apps')})}
 function shellMount(){
   const K=IkisaiKit,app=document.getElementById('app');
   const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
