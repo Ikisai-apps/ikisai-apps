@@ -21,6 +21,8 @@ export interface TabRow extends BaseRow { name: string; color: string | null; po
 export interface ProjectRow extends BaseRow {
   tab_id: Uuid; title: string; note: string; status: ProjectStatus; priority: Priority; due: string | null;
   owner_label_id: Uuid | null; color: string | null; budget: number | null; position: number; system: 'inbox' | null;
+  /** Proyecto de un retiro (§23): `booking:RES<código>`; solo lo fija la ruta de worker `requests/project`. */
+  external_ref?: string | null;
 }
 export interface TaskRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; parent_id: Uuid | null; title: string; note: string; done: boolean; done_at: string | null;
@@ -107,7 +109,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.tabs': ['name', 'color', 'position', 'purchase_approver_id'],
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
-  'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system'],
+  'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref'],
   'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
@@ -129,7 +131,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   // `system_key` solo puede pasar a o desde 'person' (familia de responsables, migración 0304): lo valida `validate.ts`.
   'tasks.families': ['tab_id'],
   'tasks.labels': ['tab_id'],
-  'tasks.projects': ['tab_id', 'system'],
+  'tasks.projects': ['tab_id', 'system', 'external_ref'],
   'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
