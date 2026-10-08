@@ -32,7 +32,7 @@ def parse_tasks(markdown):
     tail = f'\n\nDetalle completo: coordinacion/TAREAS_VICTOR.md, apartado {num}.'
     text = re.sub(r'\n{3,}', '\n\n', body)
     if len(text) + len(tail) > NOTE_MAX:
-      text = text[: NOTE_MAX - len(tail) - 1].rsplit('\n', 1)[0] + '\n…'
+      text = text[: NOTE_MAX - len(tail) - 2].rsplit('\n', 1)[0] + '\n…'
     out.append((f'TV-{num}', f'{num} · {clean}'[:120], text + tail))
   return out
 
