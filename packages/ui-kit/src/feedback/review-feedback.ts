@@ -41,7 +41,7 @@ export function createFeedbackReviewTab(host: ReviewHost): ReviewTab & { goTo(r:
   }
 
   async function goTo(r: Pick<FeedbackReport, 'code' | 'originApp'>): Promise<void> {
-    if (r.originApp && r.originApp !== host.app) { host.openApp(r.originApp, { [FB_PARAM]: r.code }); return; }
+    if (r.originApp && r.originApp !== host.app) { await host.openApp(r.originApp, { [FB_PARAM]: r.code }); return; }
     await show(r.code);
   }
 

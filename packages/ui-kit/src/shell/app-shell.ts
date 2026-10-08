@@ -3,6 +3,7 @@ import { el, replace } from '../dom.ts';
 import { icon, type IconName } from '../icons.ts';
 import { createStatusBar, statusBanners, type StatusBannersOptions, type StatusBarOptions } from '../status/status-bar.ts';
 import { kt } from '../i18n/i18n.ts';
+import { installKeyboardInsets } from '../overlay/keyboard.ts';
 import { openSheet, type Sheet } from '../overlay/sheet.ts';
 import type { AppLauncher } from './launcher.ts';
 
@@ -74,6 +75,7 @@ export interface AppShell {
 
 /** Cabecera, navegación (inferior en móvil, lateral en escritorio), zona de banners y `<main>`. */
 export function createAppShell(root: HTMLElement, options: AppShellOptions): AppShell {
+  installKeyboardInsets();
   const navigate = options.navigate ?? ((hash: string) => { location.hash = hash; });
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});

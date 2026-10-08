@@ -12,6 +12,7 @@
  */
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { kt } from '../i18n/i18n.ts';
 import { toast } from '../toast.ts';
 import type { FeedbackApi, FeedbackReport } from './client.ts';
 import type { FeedbackMode } from './feedback.ts';
@@ -65,7 +66,7 @@ export interface ReviewHost {
   /** Navega a la ruta (si hay) y espera al nodo; lo ilumina. Con `watch`, si no está, lo ilumina cuando aparezca. */
   goToNode(routeRaw: string | null | undefined, nodeId: string | null | undefined, opts?: { watch?: boolean }): Promise<{ element: Element | null; exact: boolean }>;
   /** Abre otra app con los parámetros dados (y `qa=1`). */
-  openApp(app: string, params: Record<string, string>): void;
+  openApp(app: string, params: Record<string, string>): Promise<void>;
   repaint(): void;
   refresh(): Promise<void>;
   /** Contenedor de la app (para diálogos abiertos desde la tarjeta). */
@@ -85,6 +86,25 @@ export interface ReviewTab {
 }
 
 const QA_PARAM = 'qa';
+
+/**
+ * Dominio de otra app: el que dé la app (`appDomain`), si no la última lista guardada por el lanzador en este
+ * dispositivo y, si tampoco, `GET /apps` (fallo del usuario: el Revisor de Central no abría reportes de Booking hasta
+ * haber abierto antes el lanzador, porque la app solo conocía el catálogo después de pedirlo para él).
+ */
+async function findDomain(app: string, api: FeedbackApi, appDomain?: (app: string) => string | null | undefined): Promise<string | null> {
+  const given = appDomain?.(app);
+  if (given) return given;
+  try {
+    const cached = JSON.parse(localStorage.getItem('ikisai-launcher-apps') ?? 'null') as { catalog?: { items?: { id: string; domain: string }[] } } | null;
+    const hit = cached?.catalog?.items?.find((a) => a.id === app)?.domain;
+    if (hit) return hit;
+  } catch { /* sin almacenamiento */ }
+  try {
+    const catalog = await api<{ items?: { id: string; domain: string }[] }>('/apps');
+    return catalog.items?.find((a) => a.id === app)?.domain ?? null;
+  } catch { return null; }
+}
 
 /** Navegación por defecto: hash (`/#/reservas/…`) o ruta (`/reservas/…`). */
 function defaultNavigate(routeRaw: string): void {
@@ -186,6 +206,7 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
     card.style.top = `${top}px`;
   }
 
+  const resolveDomain = (app: string) => findDomain(app, options.api, options.appDomain);
   const reviewHost: ReviewHost = {
     api: options.api,
     app: options.app,
@@ -234,9 +255,9 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
       }
       return found;
     },
-    openApp(app, params) {
-      const domain = options.appDomain?.(app);
-      if (!domain) { toast(`No sé abrir ${app} desde aquí.`); return; }
+    async openApp(app, params) {
+      const domain = await resolveDomain(app);
+      if (!domain) { toast(kt('No sé abrir {app} desde aquí.', { app })); return; }
       closeCard();
       const query = new URLSearchParams({ ...params, [QA_PARAM]: '1' });
       openUrl(`https://${domain}/?${query.toString()}`);

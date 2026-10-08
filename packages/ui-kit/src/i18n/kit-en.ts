@@ -5,6 +5,9 @@
 import type { Dictionary } from './i18n.ts';
 
 export const KIT_EN: Dictionary = {
+  // Revisor
+  'No sé abrir {app} desde aquí.': 'I cannot open {app} from here.',
+
   // Cáscara y días
   'Secciones': 'Sections',
   'Más': 'More',
