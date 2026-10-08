@@ -195,7 +195,7 @@ test('entradas (§20): por clasificar, mover a…, crear regla y mover las que e
   // El menú lleva la entrada con su contador (en el móvil, dentro del menú; puede estar en un grupo plegado).
   await expect(owner.locator('[data-menu-view="triage"]').first()).toContainText('Por clasificar · 1');
   await owner.evaluate(() => (window as any).navigateView('triage'));
-  await expect(owner.locator('.inboxgroup h2')).toContainText('Central · Vencimientos');
+  await expect(owner.locator('.inboxgroup h2')).toContainText('Vencimientos');
   await expect(owner.locator('[data-request-row] a')).toHaveAttribute('href', 'https://central.ikisai.com/#/cumplimiento/VTO_1');
 
   // Mover a… la Entrada del área: se crea la tarea con su origen.
@@ -308,5 +308,42 @@ test('«Por clasificar» siempre a mano para la propietaria, y aviso del área d
   await expect.poll(async () => (await server.rows('tasks.request_routes')).some((r) => r.kind === 'booking.retreat_project' && !r.deleted_at)).toBe(true);
   await owner.evaluate(() => (window as any).navigateView('triage'));
   await expect(owner.locator('#retreatRouteMissing')).toHaveCount(0);
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('compras por proveedor (8-10-2026): lo pendiente de cada proveedor, esté o no en un plan', async () => {
+  await go(owner, 'purchases');
+  await owner.locator('[data-purchase-grouping="supplier"]').click();
+  await expect(owner.locator('[data-purchase-grouping="supplier"]')).toHaveAttribute('aria-pressed', 'true');
+  const labels = await owner.locator('main.purchases .sectionlabel').allTextContents();
+  expect(labels.some((l) => /Ferretería Centro/.test(l)), labels.join(' | ')).toBe(true);
+  expect(labels.every((l) => !/^\s*(Pedidas|Aprobadas|Compradas)\b/.test(l)), 'sin las secciones por estado').toBe(true);
+  // Se recuerda en el dispositivo.
+  await go(owner, 'home');
+  await go(owner, 'purchases');
+  await expect(owner.locator('[data-purchase-grouping="supplier"]')).toHaveAttribute('aria-pressed', 'true');
+  await owner.locator('[data-purchase-grouping="status"]').click();
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+
+test('la regla propuesta busca también el proyecto por su nombre (estructura del 8-10-2026)', async () => {
+  // Un proyecto «Administración y fiscal» en un área «Gestiones»: la regla del plazo de SES lo propone directamente.
+  const tab = crypto.randomUUID(), project = crypto.randomUUID();
+  await server.commit(createTabOps({ id: tab, name: 'Gestiones', position: 98_000, inboxId: crypto.randomUUID() }), server.app.tokens.owner);
+  await server.commit([{ op: 'insert', table: 'tasks.projects', id: project, fields: { tab_id: tab, title: 'Administración y fiscal', position: 2048 } }], server.app.tokens.owner);
+  await owner.evaluate(() => (window as any).syncNow?.());
+  await settled(owner);
+  await go(owner, 'triage');
+  await owner.locator('#manageRoutes').click();
+  await owner.locator('[data-route-edit="booking.ses_deadline"]').click();
+  await expect(owner.locator('#destTab')).toHaveValue(tab);
+  await expect(owner.locator('#destProject')).toHaveValue(project);
+  // Los tipos de Central y del feedback del espacio también salen como conocidos.
+  await owner.evaluate(() => (window as any).closeSheet());
+  await owner.locator('#manageRoutes').click();
+  await expect(owner.locator('[data-route-edit="central.compliance_due"]')).toContainText('Vencimientos');
+  await expect(owner.locator('[data-route-edit="feedback.space.damage"]')).toContainText('Avería');
+  await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

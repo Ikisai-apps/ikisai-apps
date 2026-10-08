@@ -70,6 +70,15 @@ function purchaseRow(r){const [label,tone]=PURCHASE_STATUS[r.status]||[r.status,
   const meta=[qty(r.quantity,r.unit),r.supplier_name,project,r.due?'para el '+shortDate(r.due):'',r.repeat_days?`cada ${r.repeat_days} días`:'',invoiceCodes(r.id).length?'Factura '+invoiceCodes(r.id).join(', '):''].filter(Boolean).join(' · ');
   return `<button type="button" class="pcard" data-purchase="${r.id}" data-feedback-id="tasks.compras.lista.solicitud" data-feedback-label="Solicitud de compra"><span class="phead">${r.priority!=='normal'?priorityStar(r.priority):''}<strong>${esc(r.title)}</strong><span class="pstate ${tone}">${label}</span></span>${meta?`<span class="pmeta">${esc(meta)}</span>`:''}</button>`}
 let showRejectedPurchases=false;
+/* «Por proveedor» (8-10-2026): lo pendiente de cada proveedor (pedido, aprobado o comprado sin recibir), esté o no en un plan.
+   Se recuerda por dispositivo. */
+let purchaseGrouping=(()=>{try{return localStorage.getItem('tasks.purchases.grouping')==='supplier'?'supplier':'status'}catch{return 'status'}})();
+/* Lo pendiente agrupado por proveedor (el del catálogo de Finance o el nombre libre; sin proveedor, al final). */
+function supplierSections(list){
+  if(!list.length)return '<p class="small muted">Nada pendiente.</p>';
+  const groups=new Map();
+  for(const r of list){const key=r.supplier_id?'id:'+r.supplier_id:r.supplier_name?.trim()?'nombre:'+r.supplier_name.trim().toLowerCase():'';const g=groups.get(key)||{name:r.supplier_name?.trim()||'Sin proveedor',items:[]};g.items.push(r);groups.set(key,g)}
+  return [...groups.entries()].sort(([a,ga],[b,gb])=>(a===''?1:0)-(b===''?1:0)||ga.name.localeCompare(gb.name,'es')).map(([,g])=>`<h2 class="sectionlabel">${esc(g.name)} <span class="count">${g.items.length}</span></h2>${g.items.map(purchaseRow).join('')}`).join('')}
 function purchasesView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Solicitudes de compra</h1>${purchaseAreaNote()}</main>`;
   const all=liveRows('tasks.purchase_requests').filter(r=>r.tab_id===tab().id).sort((a,b)=>(a.position||0)-(b.position||0));
   const open=all.filter(r=>['requested','approved','purchased'].includes(r.status)).length;
@@ -78,7 +87,8 @@ function purchasesView(){listenPurchases();if(generalMode()||!tab())return `<mai
   const received=all.filter(r=>r.status==='received').sort((a,b)=>(b.received_at||'').localeCompare(a.received_at||'')).slice(0,20),rejected=all.filter(r=>r.status==='rejected');
   return `<main class="screen purchases"><div class="screenhead"><div><h1 class="title">Solicitudes de compra</h1><p class="subtitle">${esc(tab().name)} · ${open} abiertas · ${purchaseApprover(tab().id)&&purchaseApprover(tab().id)===Sync.actor?.id?'apruebas tú':'aprueba '+esc(approverName(tab().id))}</p></div>${canEdit()?'<button class="primary" id="newPurchase" type="button" data-feedback-id="tasks.compras.cabecera.pedir" data-feedback-label="Pedir algo">+ Pedir algo</button>':''}</div>
     ${all.length?'':'<div class="empty">Todavía no hay solicitudes. Pide aquí lo que haga falta comprar; quien aprueba lo verá.</div>'}
-    ${section('requested','Pedidas',all.filter(r=>r.status==='requested'))}${section('approved','Aprobadas',all.filter(r=>r.status==='approved'))}${section('purchased','Compradas',all.filter(r=>r.status==='purchased'))}${section('received','Recibidas',received)}
+    ${all.length?`<div class="segmented purchasegrouping" role="group" aria-label="Agrupar las solicitudes">${[['status','Por estado'],['supplier','Por proveedor']].map(([k,l])=>`<button type="button" class="${purchaseGrouping===k?'on':''}" data-purchase-grouping="${k}" aria-pressed="${purchaseGrouping===k}" data-feedback-id="tasks.compras.lista.agrupar" data-feedback-label="Agrupar las solicitudes" style="width:auto;padding:0 10px">${l}</button>`).join('')}</div>`:''}
+    ${purchaseGrouping==='supplier'?supplierSections(all.filter(r=>['requested','approved','purchased'].includes(r.status))):`${section('requested','Pedidas',all.filter(r=>r.status==='requested'))}${section('approved','Aprobadas',all.filter(r=>r.status==='approved'))}${section('purchased','Compradas',all.filter(r=>r.status==='purchased'))}`}${section('received','Recibidas',received)}
     ${rejected.length?`<button class="ghost" id="toggleRejectedPurchases" type="button" data-feedback-id="tasks.compras.lista.ver_rechazadas" data-feedback-label="Ver rechazadas">${showRejectedPurchases?'Ocultar rechazadas':`Ver rechazadas (${rejected.length})`}</button>${showRejectedPurchases?rejected.map(purchaseRow).join(''):''}`:''}</main>`}
 function suppliesView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Suministros</h1>${purchaseAreaNote()}</main>`;
   if(!fullScope(tab().id))return `<main class="screen"><h1 class="title">Suministros</h1><div class="notice">El almacén es del área entera; tu acceso es a algunos proyectos.</div></main>`;
@@ -212,6 +222,7 @@ bind=function(){bindBeforePurchases();
   const ns=document.getElementById('newSupply');if(ns)ns.onclick=()=>supplySheet();
   const pp=document.getElementById('preparePlan');if(pp)pp.onclick=()=>{const title='Compra del '+new Date().toLocaleDateString('es-ES',{day:'numeric',month:'long'});if(purchaseRun(d=>IkisaiTasks.purchases.preparePlanOps(d,{tab_id:tab().id,title,today:today()}),'Plan preparado.'))usage.track('tasks.planes.preparar')};
   const tr=document.getElementById('toggleRejectedPurchases');if(tr)tr.onclick=()=>{showRejectedPurchases=!showRejectedPurchases;render()};
+  document.querySelectorAll('[data-purchase-grouping]').forEach(b=>b.onclick=()=>{purchaseGrouping=b.dataset.purchaseGrouping;try{localStorage.setItem('tasks.purchases.grouping',purchaseGrouping)}catch{}render()});
   on('[data-purchase]',b=>b.onclick=()=>purchaseSheet(b.dataset.purchase));
   on('[data-supply]',b=>b.onclick=()=>supplySheet(b.dataset.supply));
   on('[data-supply-move]',b=>b.onclick=()=>{const [id,kind]=b.dataset.supplyMove.split('|');supplyMoveSheet(id,kind)});
