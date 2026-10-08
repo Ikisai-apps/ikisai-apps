@@ -105,3 +105,11 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
     - `taller.css` ya no pisa los `.segmented` del kit.
   - Desde el kit 0.18.2: `openFeedbackCenter` recibe `container` (`#kitLayer`), el kit inyecta sus reglas de `html.fb-*` y sus pestañas usan `data-fb-tab`, así que ya no hacen falta las copias locales.
   - Pruebas: `tests/tasks/feedback-ids.test.ts` (forma y literales) y `tests/tasks/feedback.spec.ts` (interruptor, pulsación larga, envío real, centro y uso).
+
+- **Caché de la cáscara (8-10-2026):** los scripts de `apps/tasks/public` tienen nombre fijo.
+  - `_worker.js` (y `_headers`) los sirve con `Cache-Control: no-cache`, y el service worker los instala con `cache: 'reload'`.
+  - **No volver a ponerles caché de horas.**
+  - **Pendiente (decisión del usuario, sin prisa):** huella en los nombres (`shell-ui.3f9a2c.js`), generada en el build, con caché `max-age=31536000, immutable`; `index.html` y `sw.js` siguen en `no-cache`.
+  - Encaja cuando la cáscara heredada deje de cargarse script a script: hoy son unos 35 `<script src>` en `index.html` y la lista `SHELL` de `sw.js`, y habría que reescribir ambos en el build.
+- **Capa del kit:** `IkisaiKit.setKitLayer(sheetKitLayer)` al cargar `feedback-ui.js` (kit 0.24). Todo lo flotante del kit va a `#kitLayer`, sin pasar `container` pieza a pieza.
+
