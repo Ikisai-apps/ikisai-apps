@@ -1579,10 +1579,9 @@ test('feedback con la hoja «Nueva factura» y el teclado abiertos (móvil 484×
   }
 });
 
-// Fallo del kit (formulario del feedback, territorio de UI): al pasar a «Enviado» el botón «Enviar» vuelve a estar activo
-// durante los 700 ms antes de cerrarse, y una segunda pulsación manda otro POST con otro `requestId` (duplicado).
-// Se activa cuando el kit deje el botón desactivado tras enviar o reutilice el `requestId` del formulario.
-test.fixme('feedback: dos pulsaciones seguidas en «Enviar» crean un solo reporte', async ({ browser }) => {
+// Fallo del kit corregido en ui-kit 0.25.1 (FB_2026_016/017): «Enviar» queda desactivado desde el primer toque hasta que
+// se cierra el formulario y el `requestId` es el mismo en cada intento, así que una segunda pulsación no crea un duplicado.
+test('feedback: dos pulsaciones seguidas en «Enviar» crean un solo reporte', async ({ browser }) => {
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const posts: string[] = [];
