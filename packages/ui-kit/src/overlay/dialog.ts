@@ -1,6 +1,7 @@
 import { el, type Child } from '../dom.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
 import { kt } from '../i18n/i18n.ts';
+import { installKeyboardInsets } from './keyboard.ts';
 
 export interface DialogOptions {
   title: string;
@@ -18,6 +19,7 @@ export interface DialogOptions {
 
 /** Diálogo de confirmación modal: resuelve `true` al confirmar; Escape, fondo o «Cancelar» resuelven `false`. */
 export function confirmDialog(options: DialogOptions): Promise<boolean> {
+  installKeyboardInsets();
   return new Promise((resolve) => {
     const opener = document.activeElement as HTMLElement | null;
     const titleId = 'dialogTitle';

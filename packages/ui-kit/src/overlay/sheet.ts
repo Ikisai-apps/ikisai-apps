@@ -1,6 +1,7 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
+import { installKeyboardInsets } from './keyboard.ts';
 import { kt } from '../i18n/i18n.ts';
 
 export interface SheetOptions {
@@ -50,6 +51,7 @@ let current: Sheet | null = null;
 
 /** Hoja inferior (diálogo centrado en escritorio): una sola abierta, foco atrapado, Escape y fondo cierran, foco devuelto. */
 export function openSheet(options: SheetOptions): Sheet {
+  installKeyboardInsets();
   if (current) {
     const previous = current;
     current = null;

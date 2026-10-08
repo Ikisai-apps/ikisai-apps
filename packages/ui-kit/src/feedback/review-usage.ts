@@ -94,7 +94,7 @@ export function createUsageReviewTab(host: ReviewHost): ReviewTab & { goTo(item:
   }
 
   async function goTo(i: Pick<UsageReviewItem, 'featureId' | 'app'>): Promise<void> {
-    if (i.app && i.app !== host.app) { host.openApp(i.app, { [FBF_PARAM]: i.featureId }); return; }
+    if (i.app && i.app !== host.app) { await host.openApp(i.app, { [FBF_PARAM]: i.featureId }); return; }
     await show(i.featureId);
   }
 

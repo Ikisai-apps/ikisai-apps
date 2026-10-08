@@ -55,6 +55,11 @@ export interface AppLauncherOptions {
   centerLabel?: string;
   /** Línea pequeña bajo la etiqueta. */
   centerText?: string;
+  /**
+   * Dónde montar la hoja; por defecto `document.body`. Las apps con el CSS del kit acotado (Tasks, Finance) pasan su capa
+   * `.ikisai-kit` (`#kitLayer`): fuera de ella la hoja sale sin estilos y no se ve.
+   */
+  container?: () => HTMLElement | null | undefined;
 }
 
 /** Un interruptor del lanzador: `get` y `set` (como `FeedbackMode`). */
@@ -165,7 +170,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     askReview();
     const cached = readCache(key);
     paint(host, cached, cached ? 'fresh' : 'loading');
-    const sheet = openSheet({ title: options.title ?? kt('Apps de Ikisai'), body: host });
+    const sheet = openSheet({ title: options.title ?? kt('Apps de Ikisai'), body: host, container: options.container?.() ?? undefined });
     currentSheet = sheet;
     try {
       const catalog = await options.fetchApps();

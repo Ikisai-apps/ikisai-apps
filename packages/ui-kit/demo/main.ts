@@ -901,7 +901,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
   el('div', { class: 'card' }, fbPortal.element),
   fbPortalOut,
 );
-(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter, createAppLauncher };
+(window as unknown as { ikisaiFeedback: unknown }).ikisaiFeedback = { feedback, fbState, fbSave, fbPortal, review, fbSeed, usage, openFeedbackCenter, createAppLauncher, createFeedbackReview };
 
 // --- Idiomas (portales): español e inglés -----------------------------------------------------------
 /** Diccionario de ejemplo de una app (claves propias). */
