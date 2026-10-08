@@ -33,7 +33,25 @@ export async function showUsageNotice(options: UsageNoticeOptions): Promise<Shee
   catch { return null; /* sin red: otra vez será */ }
   if (consentedAt) { try { localStorage.setItem(flag(user), consentedAt); } catch { /* */ } return null; }
   await new Promise((r) => setTimeout(r, options.delayMs ?? 1500));
-  while (currentSheet()?.isOpen()) await new Promise((r) => setTimeout(r, 1000));
+  // Solo con la pantalla libre: sin hoja, diálogo, composer ni tarjeta del feedback abiertos. Si mientras tanto se usó el
+  // feedback, se espera además a la siguiente navegación (no salir justo al cerrar el composer y tapar el lanzador).
+  let sawFeedback = false;
+  const busy = () => {
+    const feedback = !!document.querySelector('.ikisai-fb-layer.fb-layer, .fb-review-card:not([hidden]), .fb-capture-bar');
+    if (feedback) sawFeedback = true;
+    return feedback || !!currentSheet()?.isOpen() || !!document.querySelector('.dialogback');
+  };
+  while (busy()) await new Promise((r) => setTimeout(r, 1000));
+  if (sawFeedback) {
+    await new Promise<void>((resolve) => {
+      const go = () => { window.removeEventListener('hashchange', go); window.removeEventListener('popstate', go); resolve(); };
+      window.addEventListener('hashchange', go);
+      window.addEventListener('popstate', go);
+    });
+    while (busy()) await new Promise((r) => setTimeout(r, 1000));
+  }
+  // Las pruebas de humo lo dan por aceptado (`feedbackRoundTrip`): no se muestra con esta marca en el dispositivo.
+  try { if (localStorage.getItem('ikisai-usage-notice-skip') === '1') return null; } catch { /* */ }
   if (options.userId() !== user) return null;
 
   const status = el('p', { class: 'fb-status', role: 'status' });

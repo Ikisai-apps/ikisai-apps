@@ -94,3 +94,55 @@ for (const size of [{ name: 'escritorio', width: 1280, height: 800, keyboard: un
     expect(st.reports[0].message).toContain('Ayuda y sugerencias');
   });
 }
+
+test('feedbackRoundTrip con `before` (hoja abierta) y objetivo por defecto que salta lo ignorado', async ({ page }) => {
+  await fresh(page);
+  await feedbackRoundTrip(page, {
+    launcher: '#demoLauncher',
+    before: async (p) => {
+      await p.evaluate(() => {
+        const kit = (window as any).ikisaiKit;
+        kit.openSheet({ title: 'Persona', body: kit.el('div', null,
+          kit.el('p', { 'data-feedback-id': 'demo.persona.saludo', 'data-feedback-ignore': '' }, 'Hola, Ana'),
+          kit.el('section', { 'data-feedback-ignore': '' }, kit.el('span', { 'data-feedback-id': 'demo.persona.privado' }, 'Dato privado')),
+          kit.el('button', { type: 'button', 'data-feedback-id': 'demo.persona.guardar', 'data-feedback-label': 'Guardar persona' }, 'Guardar')) });
+      });
+    },
+  });
+  const st = await page.evaluate(() => (window as any).ikisaiFeedback.fbState());
+  expect(st.reports).toHaveLength(1);
+  expect(st.reports[0].node.id).toBe('demo.persona.guardar');
+});
+
+test('el aviso de medición de uso no sale justo al cerrar el composer: espera a la siguiente navegación', async ({ page }) => {
+  await fresh(page);
+  await page.evaluate(() => { localStorage.removeItem('ikisai-usage-notice-skip'); localStorage.removeItem('ikisai-usage-notice:demo-user'); });
+  await page.locator('#fbOpen').click();
+  await expect(page.locator('.fb-composer')).toBeVisible();
+  // Se pide el aviso con el composer abierto (como al arrancar una app mientras se comenta).
+  await page.evaluate(() => (document.querySelector('#usageNotice') as HTMLButtonElement).click());
+  await page.waitForTimeout(500);
+  await expect(page.locator('.usage-notice')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.fb-composer')).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.usage-notice')).toHaveCount(0);
+  await page.evaluate(() => { location.hash = '#cards'; });
+  await expect(page.locator('.usage-notice')).toBeVisible({ timeout: 4000 });
+});
+
+test('el gesto no abre el composer sobre un campo de texto (a propósito); sobre su etiqueta, sí', async ({ page }) => {
+  await fresh(page);
+  await page.evaluate(() => (window as any).ikisaiFeedback.feedback.mode.set(true));
+  await page.evaluate(() => {
+    const kit = (window as any).ikisaiKit;
+    kit.openSheet({ title: 'Ficha', body: kit.el('label', { class: 'field', 'data-feedback-id': 'demo.ficha.nombre', 'data-feedback-label': 'Nombre' },
+      kit.el('span', { id: 'fichaEtiqueta' }, 'Nombre'), kit.el('input', { id: 'fichaCampo' })) });
+  });
+  const { longPress } = await import('../testing/feedback-smoke.ts');
+  await longPress(page, page.locator('#fichaCampo'));
+  await page.waitForTimeout(300);
+  await expect(page.locator('.fb-composer')).toHaveCount(0);
+  await longPress(page, page.locator('#fichaEtiqueta'));
+  await expect(page.locator('.fb-composer .fb-where strong')).toHaveText('Nombre');
+});

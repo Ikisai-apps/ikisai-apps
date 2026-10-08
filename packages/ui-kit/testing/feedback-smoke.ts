@@ -32,6 +32,22 @@ export interface FeedbackRoundTripOptions {
   doubleTap?: boolean;
   /** Simula el teclado abierto: alto visible en px (p. ej. 686 en un móvil de 1008). El aviso tiene que verse dentro de lo visible. */
   keyboard?: number;
+  /**
+   * Se ejecuta **después** de encender «Señalar para comentar» y antes del gesto: p. ej. abrir la hoja de un formulario
+   * para comentar sobre ella (con la hoja abierta, el lanzador quedaría debajo).
+   */
+  before?: (page: Page) => Promise<void>;
+  /** Sinónimo de `before`. */
+  beforeTarget?: (page: Page) => Promise<void>;
+  /** Da por aceptado el aviso de medición de uso (por defecto sí): si no, puede salir y tapar el lanzador. */
+  acceptUsageNotice?: boolean;
+}
+
+/** Da por aceptado el aviso de uso en este dispositivo (y lo cierra si ya estaba abierto). */
+export async function acceptUsageNotice(page: Page): Promise<void> {
+  await page.evaluate(() => { try { localStorage.setItem('ikisai-usage-notice-skip', '1'); } catch { /* */ } });
+  const ok = page.locator('.sheetback.show .usage-ok');
+  if (await ok.count()) await ok.first().click();
 }
 
 /** Simula el teclado virtual: la vista visual se queda con `visible` px de alto (o se restaura con `null`). */
@@ -48,7 +64,11 @@ export async function simulateKeyboard(page: Page, visible: number | null): Prom
   }, visible);
 }
 
-async function setMode(page: Page, launcher: string, on: boolean): Promise<void> {
+/**
+ * Enciende o apaga «Señalar para comentar» desde el lanzador. No cierra hojas de la app: llámalo **antes** de abrirlas
+ * (opción `before`), porque el lanzador es otra hoja y sustituiría a la abierta.
+ */
+export async function setMode(page: Page, launcher: string, on: boolean): Promise<void> {
   await page.locator(launcher).first().click();
   const toggle = page.locator('.launcher-signal input');
   await expect(toggle).toBeVisible();
@@ -58,7 +78,8 @@ async function setMode(page: Page, launcher: string, on: boolean): Promise<void>
   await expect(page.locator('.sheetback.show')).toHaveCount(0);
 }
 
-async function longPress(page: Page, target: Locator): Promise<void> {
+/** Pulsación mantenida de 800 ms sobre el elemento. */
+export async function longPress(page: Page, target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   const box = (await target.boundingBox())!;
   await target.hover({ position: { x: Math.min(box.width / 2, 20), y: Math.min(box.height / 2, 20) } });
@@ -67,12 +88,38 @@ async function longPress(page: Page, target: Locator): Promise<void> {
   await page.mouse.up();
 }
 
+/**
+ * Primer elemento visible con `data-feedback-id` (en la hoja abierta, si la hay; si no, en `main`) que **no** esté excluido del gesto (`data-feedback-ignore` en
+ * él o en un ancestro) ni sea un campo editable (en Central, el primero era el saludo con el nombre, que está ignorado).
+ */
+async function defaultTarget(page: Page): Promise<Locator> {
+  const found = await page.evaluate(() => {
+    document.querySelectorAll('[data-fb-smoke-target]').forEach((n) => n.removeAttribute('data-fb-smoke-target'));
+    const editable = 'input, textarea, select, [contenteditable="true"]';
+    // Con una hoja abierta (opción `before`), se comenta sobre la hoja; si no, sobre `main`.
+    const scope = document.querySelector('.sheetback.show') ? '.sheetback.show' : 'main';
+    for (const node of document.querySelectorAll<HTMLElement>(`${scope} [data-feedback-id]`)) {
+      if (node.closest('[data-feedback-ignore]') || node.matches(editable) || node.closest('.ikisai-fb-layer')) continue;
+      const r = node.getBoundingClientRect();
+      if (!r.width || !r.height || getComputedStyle(node).visibility === 'hidden') continue;
+      node.setAttribute('data-fb-smoke-target', '');
+      return true;
+    }
+    return false;
+  });
+  expect(found, 'no hay ningún elemento visible con data-feedback-id (sin data-feedback-ignore) en main').toBe(true);
+  return page.locator('[data-fb-smoke-target]');
+}
+
 export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOptions = {}): Promise<{ code: string }> {
   const launcher = options.launcher ?? '#appLauncher';
   const timeout = options.timeout ?? 8000;
+  if (options.acceptUsageNotice !== false) await acceptUsageNotice(page);
   await setMode(page, launcher, true);
 
-  const target = options.target ? page.locator(options.target).first() : page.locator('main [data-feedback-id]:visible').first();
+  const before = options.before ?? options.beforeTarget;
+  if (before) await before(page);
+  const target = options.target ? page.locator(options.target).first() : await defaultTarget(page);
   await longPress(page, target);
   const composer = page.locator('.fb-composer');
   await expect(composer).toBeVisible();
@@ -99,7 +146,8 @@ export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOp
   const code = /FB_\d{4}_\d+/.exec((await toast.textContent()) ?? '')?.[0] ?? '';
   if (options.keyboard) await simulateKeyboard(page, null);
 
-  await setMode(page, launcher, false);
+  // Apaga el modo solo si no queda ninguna hoja de la app abierta (no se cierran con Escape: la prueba de la app decide).
+  if (!(await page.locator('.sheetback.show, .dialogback').count())) await setMode(page, launcher, false);
   return { code };
 }
 
