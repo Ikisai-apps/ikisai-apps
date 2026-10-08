@@ -68,26 +68,36 @@ function destinationFields(current={}){const data=Sync.core.data,tabs=inboxRows(
      Central enlaza a cada persona) y después las demás etiquetas Persona del área. Si una persona del equipo aún no tiene
      etiqueta en el área, se crea al guardar. */
   const team=teamPeople(),byName=new Map(owners.map(l=>[l.name.trim().toLowerCase(),l]));
-  const teamOptions=team.map(m=>{const l=byName.get(m.name.toLowerCase());return {value:l?l.id:'member:'+m.userId,name:m.name,label:l}});
-  const others=owners.filter(l=>!team.some(m=>m.name.toLowerCase()===l.name.trim().toLowerCase()));
+  const teamOptions=team.map(m=>{const l=m.names.map(n=>byName.get(n)).find(Boolean);return {value:l?l.id:m.key,name:m.name,label:l}});
+  const others=owners.filter(l=>!team.some(m=>m.names.includes(l.name.trim().toLowerCase())));
   const option=(value,name)=>`<option value="${esc(value)}" ${value===current.owner_label_id||value===current.owner_member?'selected':''}>${esc(name)}</option>`;
   return `<div class="field"><label for="destTab">Área</label><select id="destTab" data-feedback-id="tasks.destino.area" data-feedback-label="Área de destino">${tabs.map(t=>`<option value="${t.id}" ${t.id===tabId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="destProject">Proyecto</label><select id="destProject" data-feedback-id="tasks.destino.proyecto" data-feedback-label="Proyecto de destino">${projects.map(p=>`<option value="${p.system==='inbox'?'':p.id}" ${(p.system==='inbox'?!current.project_id:p.id===current.project_id)?'selected':''}>${esc(p.system==='inbox'?'Entrada del área':p.title)}</option>`).join('')}</select></div>
     <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${teamOptions.length?`<optgroup label="Equipo">${teamOptions.map(o=>option(o.value,o.name)).join('')}</optgroup>`:''}${others.length?`<optgroup label="${teamOptions.length?'Otras etiquetas Persona del área':'Etiquetas Persona del área'}">${others.map(l=>option(l.id,l.name)).join('')}</optgroup>`:''}</select></div>`}
 /* Personas del equipo con cuenta (sin agentes ni servicios). La lista la da el núcleo a la propietaria; se pide una vez. */
-function teamPeople(){return (Sync.members||[]).filter(m=>(m.kind||'human')==='human'&&m.displayName?.trim()).map(m=>({userId:m.userId,name:m.displayName.trim()})).sort((a,b)=>a.name.localeCompare(b.name,'es'))}
-let teamAsked=false;
-function loadTeam(reopen){if(Sync.members||teamAsked||!Sync.core||!navigator.onLine||Sync.actor?.role!=='owner')return;teamAsked=true;
-  Sync.core.api('/members').then(items=>{Sync.members=items;if(document.getElementById('destOwner'))reopen()}).catch(()=>{teamAsked=false})}
+/* El equipo: las personas activas de Central (`central.people_options`, con su nombre de ficha, que manda) y las cuentas
+   de Ikisai con acceso a Tasks; una sola vez quien tiene cuenta y ficha. Sin la lectura de Central (aún no publicada, sin
+   red o sin acceso), solo las cuentas. `names`: los nombres con los que se reconoce su etiqueta Persona del área. */
+function teamPeople(){
+  const members=(Sync.members||[]).filter(m=>(m.kind||'human')==='human'&&m.displayName?.trim()),out=[],byUser=new Map(members.map(m=>[m.userId,m]));
+  for(const p of centralPeople||[]){if(p.active===false||!p.name?.trim())continue;const m=p.user_id?byUser.get(p.user_id):null;if(m)byUser.delete(m.userId);
+    out.push({key:m?'member:'+m.userId:'person:'+p.person_id,name:p.name.trim(),names:[...new Set([p.name.trim().toLowerCase(),...(m?[m.displayName.trim().toLowerCase()]:[])])]})}
+  for(const m of byUser.values())out.push({key:'member:'+m.userId,name:m.displayName.trim(),names:[m.displayName.trim().toLowerCase()]});
+  return out.sort((a,b)=>a.name.localeCompare(b.name,'es'))}
+let teamAsked=false,centralPeople=null;
+function loadTeam(reopen){if((Sync.members&&centralPeople)||teamAsked||!Sync.core||!navigator.onLine||Sync.actor?.role!=='owner')return;teamAsked=true;
+  const people=Sync.core.api('/read/central.people_options',{method:'POST',json:{}}).then(out=>{const rows=Array.isArray(out)?out:out?.rows||out?.items||[];centralPeople=rows}).catch(()=>{centralPeople=[]});
+  const members=Sync.members?Promise.resolve():Sync.core.api('/members').then(items=>{Sync.members=items}).catch(()=>{});
+  Promise.all([people,members]).then(()=>{if(document.getElementById('destOwner'))reopen()})}
 /* La etiqueta Persona de una persona del equipo que aún no la tiene en el área: la operación que la crea y su id. */
-function personLabelOps(tabId,memberValue){const userId=memberValue.slice(7),m=teamPeople().find(x=>x.userId===userId);
+function personLabelOps(tabId,key){const m=teamPeople().find(x=>x.key===key);
   const family=inboxRows('tasks.families').find(f=>f.tab_id===tabId&&f.system_key==='person');if(!m||!family)return null;
   const id=uid(),position=(Math.max(0,...inboxRows('tasks.labels').filter(l=>l.family_id===family.id).map(l=>l.position||0))+1024);
   return {id,ops:[{op:'insert',table:'tasks.labels',id,fields:{tab_id:tabId,family_id:family.id,name:m.name,position}}]}}
 function destinationValue(){const tab_id=document.getElementById('destTab').value,project=document.getElementById('destProject').value||null;
   const inbox=inboxRows('tasks.projects').find(p=>p.tab_id===tab_id&&p.system==='inbox');
   let owner=document.getElementById('destOwner').value||null,labelOps=[];
-  if(owner?.startsWith('member:')){const made=personLabelOps(tab_id,owner);owner=made?.id||null;labelOps=made?.ops||[]}
+  if(owner?.startsWith('member:')||owner?.startsWith('person:')){const made=personLabelOps(tab_id,owner);owner=made?.id||null;labelOps=made?.ops||[]}
   return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:owner,labelOps}}
 function bindDestination(reopen){const t=document.getElementById('destTab');if(t)t.onchange=()=>reopen({tab_id:t.value});
   loadTeam(()=>{const o=document.getElementById('destOwner')?.value||null;reopen({tab_id:document.getElementById('destTab')?.value,project_id:document.getElementById('destProject')?.value||null,owner_label_id:o,owner_member:o})})}

@@ -84,6 +84,7 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - Migración `0314` (`tasks.convert_tab_into_project` y `tasks.guard_immutable` con modo conversión), ruta `tabs/:tabId/convert` y acción «Convertir en proyecto de…» en «Editar área», con vista previa y la lista de líneas de Finance asignadas al área o a sus proyectos. Detalle en `API.md` §24.4.
 - Pendiente del usuario: ejecutarla desde la app para «Jardinería» y «Anti-incendios» (§24.5).
 - Tareas de Core para el usuario (§25): `source: 'core'` (`core.user_task`) en `worker/requests/task`, reenvío que actualiza la tarea abierta (migración `0315`). Falta que Core registre su identidad de servicio `core`.
+- Responsables (FB_2026_015): el grupo «Equipo» suma las personas activas de Central (`central.people_options`) a las cuentas con acceso a Tasks, sin duplicar a quien tiene cuenta y ficha; las que no tienen etiqueta Persona en el área la reciben al guardar. Sin esa lectura (Central aún no la ha publicado), solo las cuentas.
 - Después: `reservation_id` en `requests/project` para colocar el feedback de un retiro en su proyecto (§24.3; coordinar con Booking y Core).
 
 ## Siguiente tanda

@@ -105,3 +105,26 @@ test('reglas genéricas acotadas (8-10-2026): las casillas de tarea y los campos
   await owner.evaluate(() => (window as any).closeSheet());
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('FB_2026_015 (2): con central.people_options, el equipo suma a las personas sin cuenta y no duplica a quien tiene cuenta y ficha', async () => {
+  // La lectura es de Central (la publica Central); aquí se simula con su forma acordada.
+  const ownerId = (await server.app.t.db.query<{ user_id: string }>(`select m.user_id from core.memberships m join core.profiles p on p.user_id = m.user_id where m.app = 'tasks' and p.display_name = 'Owner'`)).rows[0]!.user_id;
+  await owner.route('**/read/central.people_options', (route) => route.fulfill({ json: { rows: [
+    { person_id: 'p-1', name: 'Marta Jardín', user_id: null, active: true },
+    { person_id: 'p-2', name: 'Olga Propietaria', user_id: ownerId, active: true },
+    { person_id: 'p-3', name: 'Baja Antigua', user_id: null, active: false },
+  ] } }));
+  await owner.evaluate(() => { (window as any).eval('teamAsked=false;centralPeople=null'); });
+  await owner.evaluate(() => routeSheet('central.compliance_due'));
+  const team = owner.locator('#destOwner optgroup[label="Equipo"] option');
+  await expect(team).toHaveText(['Editor', 'Marta Jardín', 'Olga Propietaria', 'Reader']);
+  await owner.locator('#destOwner').selectOption({ label: 'Marta Jardín' });
+  const tabId = await owner.locator('#destTab').inputValue();
+  await owner.locator('#routeSave').click();
+  await settled(owner);
+  const route = (await server.rows('tasks.request_routes')).find((r) => r.kind === 'central.compliance_due' && !r.deleted_at);
+  const label = (await server.rows('tasks.labels')).find((l) => l.id === route.owner_label_id);
+  expect([label.name, label.tab_id]).toEqual(['Marta Jardín', tabId]);
+  await owner.unroute('**/read/central.people_options');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
