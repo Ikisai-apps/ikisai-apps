@@ -1385,6 +1385,16 @@ async function hold(page: Page, selector: string, ms = 900): Promise<void> {
   await page.mouse.up();
 }
 
+/** El aviso «Enviado · FB_…» con los estilos del kit: fijo, abajo y del tamaño de una línea (kit 0.24, fallo en PC). */
+async function expectCompactToast(page: Page): Promise<void> {
+  const toast = page.locator('.toast.show').filter({ hasText: 'Enviado' });
+  await expect(toast).toBeVisible();
+  const box = (await toast.boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(520);
+  expect(box.height).toBeLessThan(80);
+  expect(await toast.evaluate((n) => getComputedStyle(n).position)).toBe('fixed');
+}
+
 /** Abre el panel de la marca y cambia «Señalar para comentar». */
 async function setSignal(page: Page, on: boolean): Promise<void> {
   await page.locator('#appLauncher').click();
@@ -1438,6 +1448,29 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
       expect(report.node?.id).toBe('invoices.inicio.trimestre.ir_gestoria');
       expect(report.node?.path).toEqual(['Inicio', 'Trimestre', 'Ir a Gestoría']);
       await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 5_000 });
+      await expectCompactToast(page);
+    });
+
+    await test.step('desde una hoja abierta (kit 0.24): hoja con los estilos del kit, reporte enviado y aviso compacto', async () => {
+      await page.goto(`${baseURL}/#/facturas?vista=emitidas`);
+      await page.locator('#newIssued').click();
+      const sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
+      await expect(sheet).toBeVisible();
+      const box = (await sheet.boundingBox())!;
+      expect(box.width).toBeLessThan(1280);
+      expect(await sheet.evaluate((n) => getComputedStyle(n.closest('.sheetback') ?? n).position)).toBe('fixed');
+      // Los campos editables no se señalan (FEEDBACK.md §2.3): la etiqueta «Serie» resuelve al formulario
+      await hold(page, '.sheet [data-feedback-id="invoices.emitidas.registrar.formulario"] label.field > span');
+      const composer = page.locator('.fb-composer');
+      await expect(composer).toBeVisible();
+      await composer.getByRole('textbox', { name: 'Comentario' }).fill('La serie nueva debería proponer el formato de la hoja.');
+      await composer.getByRole('button', { name: 'Enviar' }).click();
+      await expect.poll(() => api.feedbackReports().length).toBe(2);
+      expect(api.feedbackReports()[1]!.node?.id).toBe('invoices.emitidas.registrar.formulario');
+      await expectCompactToast(page);
+      await sheet.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(sheet).toBeHidden();
+      await page.goto(`${baseURL}/#/`);
     });
 
     await test.step('«Sugerencias y QA» desde el panel de la marca lista el reporte', async () => {
@@ -1446,8 +1479,8 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
       const sheet = page.getByRole('dialog', { name: 'Sugerencias y QA' });
       await expect(sheet).toBeVisible();
       await sheet.getByRole('tab', { name: 'Abiertos' }).click();
-      await expect(sheet.locator('.fb-card')).toContainText('FB-0001');
-      await expect(sheet.locator('.fb-card')).toContainText('Inicio › Trimestre › Ir a Gestoría');
+      await expect(sheet.locator('.fb-card')).toHaveCount(2);
+      await expect(sheet.locator('.fb-card').filter({ hasText: 'FB-0001' })).toContainText('Inicio › Trimestre › Ir a Gestoría');
       await page.keyboard.press('Escape');
       await expect(sheet).toBeHidden();
     });
