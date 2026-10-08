@@ -35,6 +35,10 @@
 .field .fielderror{font-size:12.5px;color:var(--alert);font-weight:600}
 .field .fielderror:empty{display:none}
 .field.check{grid-template-columns:auto 1fr;align-items:center;gap:10px}
+/* Blindaje: apps con su propia `.check` (Tasks, casillas de tarea de 38×44 px con ::before) la deformaban dentro del kit
+   (fallo del usuario: «Me bloquea» del composer con el texto montado). `.field.check` gana por especificidad. */
+.field.check{width:auto;min-width:0;height:auto;min-height:0;border:0;border-radius:0;position:static;z-index:auto;font-size:inherit;background:transparent!important;color:inherit!important}
+.field.check::before,.field.check::after{content:none!important;display:none}
 .field.check input{width:20px;min-height:0;height:20px;margin:0;box-shadow:none;accent-color:var(--accent)}
 /* Controles sueltos (fuera de .field): filtros, filas compactas, barras. Misma piel que los campos; `.compact` para 36 px. */
 :where(select,textarea,input:where(:not([type]),[type="text"],[type="search"],[type="email"],[type="url"],[type="tel"],[type="password"],[type="number"],[type="date"],[type="time"],[type="datetime-local"],[type="month"],[type="week"])){border:1px solid var(--line);background-color:var(--paper);color:var(--ink);min-height:var(--tap);border-radius:var(--radius-sm);padding:8px 12px;box-shadow:var(--shadow-1);max-width:100%}
