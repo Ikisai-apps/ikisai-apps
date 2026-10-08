@@ -10,7 +10,7 @@ import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
-declare const navigateView: any, manageTab: any, Sync: any;
+declare const navigateView: any, manageTab: any, Sync: any, IkisaiTasks: any, purchaseRun: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -289,5 +289,24 @@ test('reporte de huésped por el worker de Feedback (§22.2): entra por la regla
   await owner.evaluate((id) => (window as any).openTaskEditor(id), out.taskId);
   await expect(owner.locator('#taskOrigin')).toContainText('Reporte de huésped · Espacio · Avería · FB_2026_000429');
   await owner.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('«Por clasificar» siempre a mano para la propietaria, y aviso del área de los retiros que falta', async () => {
+  // Sin nada pendiente sigue en el menú, sin contador: por ahí se entra a «Gestionar entradas».
+  const pending = await owner.evaluate(() => IkisaiTasks.requests.pendingRequests(Sync.core.data).length);
+  if (pending) await owner.evaluate(() => { for (const r of IkisaiTasks.requests.pendingRequests(Sync.core.data)) purchaseRun((d: any) => IkisaiTasks.requests.dismissRequestOps(d, r.id)); });
+  await settled(owner);
+  await owner.evaluate(() => (window as any).render());
+  await expect(owner.locator('[data-menu-view="triage"]').first()).toHaveText(/^\s*Por clasificar\s*$/);
+  await owner.evaluate(() => (window as any).navigateView('triage'));
+  await expect(owner.locator('#retreatRouteMissing')).toContainText('Falta elegir el área de los proyectos de retiro');
+  await owner.locator('#retreatRouteMissing [data-route-new="booking.retreat_project"]').click();
+  await expect(owner.locator('#routeLabel')).toHaveValue('Retiro · Proyecto');
+  await expect(owner.locator('#routeAreaOnly')).toBeVisible();
+  await owner.locator('#routeSave').click();
+  await expect.poll(async () => (await server.rows('tasks.request_routes')).some((r) => r.kind === 'booking.retreat_project' && !r.deleted_at)).toBe(true);
+  await owner.evaluate(() => (window as any).navigateView('triage'));
+  await expect(owner.locator('#retreatRouteMissing')).toHaveCount(0);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

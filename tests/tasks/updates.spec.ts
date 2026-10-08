@@ -1,7 +1,8 @@
 /**
  * Ikisai Tasks · actualización del service worker (portado de `tests/updates.cjs` del repo antiguo): borradores y colas
  * pendientes, propios o de otra pestaña, vetan la activación del worker nuevo; con todas las pestañas de acuerdo se recarga.
- * La segunda pestaña comparte contexto (y sesión) con la primera, así que queda como pestaña secundaria.
+ * La segunda pestaña comparte contexto (y sesión) con la primera, así que queda como pestaña secundaria. Al abrir la app, una
+ * versión nueva se aplica sola si es seguro (decisión del usuario, 8-10-2026; última prueba).
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { build } from 'vite';
@@ -34,6 +35,8 @@ const clickUpdate = (page: Page) => page.evaluate(() => (document.getElementById
 test('actualización del service worker: borradores y colas vetan la activación', async ({ browser }) => {
   test.setTimeout(120_000);
   context = await browser.newContext();
+  // Esta prueba es del veto del botón: sin la aplicación automática al abrir (que tiene su propia prueba abajo).
+  await context.addInitScript('window.TASKS_UPDATE_AUTO_MS = 0;');
   const first = await openApp(context, server, { aliases: ID, errors });
   const controlled = () => first.waitForFunction(async () => !!navigator.serviceWorker.controller && !!(await caches.match('/updates.js')), null, { timeout: 20_000 });
   try { await controlled(); } catch {
@@ -147,5 +150,24 @@ test('actualización del service worker: borradores y colas vetan la activación
     expect(await first.evaluate((id) => state.tabs.some((x: any) => x.projects.some((p: any) => p.tasks.some((t: any) => t.id === id))), ID.t2)).toBe(true);
   });
 
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('al abrir, una versión nueva se aplica sola si es seguro (el veto lo comparte con el botón: prueba de arriba)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const auto = await browser.newContext();
+  try {
+    const page = await openApp(auto, server, { aliases: ID, errors, autoUpdate: true });
+    const controlled = () => page.waitForFunction(async () => !!navigator.serviceWorker.controller && !!(await caches.match('/updates.js')), null, { timeout: 20_000 });
+    await controlled().catch(async () => { await page.reload(); await controlled(); });
+    await settled(page);
+    // Se publica una versión nueva y la app se vuelve a abrir, sin nada pendiente: entra sola, sin pulsar el aviso.
+    server.swGeneration += 1;
+    const next = server.swGeneration;
+    await page.reload();
+    await page.waitForFunction(async (g) => (await caches.keys()).includes(`ikisai-shell-qa-${g}`) && !(await navigator.serviceWorker.getRegistration())?.waiting, next, { timeout: 40_000 });
+    await page.waitForFunction(() => typeof Sync !== 'undefined' && Sync.ready, null, { timeout: 20_000 });
+    await expect(page.locator('#appUpdate')).toHaveCount(0);
+  } finally { await auto.close(); }
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

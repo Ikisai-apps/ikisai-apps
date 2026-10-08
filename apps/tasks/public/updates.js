@@ -1,6 +1,12 @@
 /* Updating the shell must never interrupt an editor or a durable outbox. */
 if ('serviceWorker' in navigator && isSecureContext) {
   let registration, updateLocked=false, unlockTimer;
+  /* Al abrir la app (decisión del usuario, 8-10-2026): si hay versión nueva y es seguro, se aplica sola en los primeros
+     segundos, para que ninguna PWA se quede atrás sin que nadie pulse el botón. Si no es seguro (cola, conflicto, fallo de
+     sincronización o algo a medias), se queda el aviso «Nueva versión disponible» de siempre. Las pruebas cambian la
+     ventana con window.TASKS_UPDATE_AUTO_MS (0 la apaga). */
+  const bootAt=Date.now(),autoWindow=typeof window.TASKS_UPDATE_AUTO_MS==='number'?window.TASKS_UPDATE_AUTO_MS:20000;let autoTried=false;
+  function maybeAutoUpdate(){if(autoTried||Date.now()-bootAt>autoWindow||!registration?.waiting||!Sync.ready||Sync.secondary||!safeToUpdate())return;autoTried=true;applyUpdate()}
   function unlock(){updateLocked=false;Sync.updateLocked=false;clearTimeout(unlockTimer);}
   /* Algo a medias en esta pestaña: un campo en línea, una hoja abierta, la paleta, una selección múltiple o un campo de texto
      con el foco (la búsqueda no cuenta: no es un borrador). */
@@ -12,7 +18,7 @@ if ('serviceWorker' in navigator && isSecureContext) {
     if(!registration?.waiting){navigator.serviceWorker.getRegistration().then(found=>{registration=found;if(found?.waiting)showUpdate();}).catch(()=>{});return;}
     let button=document.getElementById('appUpdate');
     if(!button){button=document.createElement('button');button.id='appUpdate';button.dataset.feedbackId='tasks.actualizacion.aplicar';button.dataset.feedbackLabel='Nueva versión disponible';button.className='syncbadge';button.textContent='Nueva versión disponible';button.onclick=applyUpdate;document.querySelector('.brandrow')?.append(button);}
-  }
+  ;maybeAutoUpdate()}
   async function applyUpdate(){
     if(Sync.secondary)return toast('Actualiza desde la pestaña activa.');
     await Sync.chain;

@@ -79,6 +79,14 @@ test('un área creada en otro dispositivo aparece en la tira sin recargar @smoke
 
 test('la marca de la cabecera abre el lanzador de apps con Tasks marcada como «Aquí» @smoke', async () => {
   await a.locator('#appLauncher').click();
+  const sheet = a.getByRole('dialog', { name: 'Apps de Ikisai' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toBeInViewport();
+  await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toBeVisible();
+  await expect(sheet.getByRole('switch', { name: /Señalar para comentar/ })).toBeVisible();
+  await expect(sheet.getByText('Sugerencias y QA')).toBeVisible();
+  // La marca lleva el icono de Tasks del kit, no el glifo genérico.
+  expect(await a.locator('#appLauncher').textContent()).not.toContain('•||•');
   await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toHaveCount(1);
   await expect(a.locator('.launcher-text', { hasText: 'Aquí' })).toContainText(/Tasks/);
   await a.keyboard.press('Escape');

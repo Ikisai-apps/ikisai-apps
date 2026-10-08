@@ -55,13 +55,12 @@ function shellMenuKey(){return JSON.stringify([shellGroups().map(g=>[g.id,g.name
 
 let shellMenuStamp='';
 let tasksLauncher=null;
-function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',fetchApps:()=>Sync.core.api('/apps')})}
+function shellLauncher(){return tasksLauncher||=IkisaiKit.createAppLauncher({current:'tasks',container:sheetKitLayer,fetchApps:()=>Sync.core.api('/apps')})}
 function shellMount(){
   const K=IkisaiKit,app=document.getElementById('app');
   const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
-  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',markButton:true,tools:[more],rows:[shellTabs(),shellViews()]});
-  // La marca de Tasks es su glifo de siempre, no el icono genérico del kit.
-  const mark=bar.querySelector('.mark');mark.replaceChildren('•||•');mark.style.cssText='font:800 17px/1 var(--sans);letter-spacing:-2px';
+  // La marca lleva el icono de Tasks del kit, como el resto de apps (Booking la cama, Central la cuadrícula…).
+  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',markButton:true,markIcon:'tasks',tools:[more],rows:[shellTabs(),shellViews()]});
   // La marca abre el lanzador común: las apps de Ikisai a las que tiene acceso esta cuenta.
   shellLauncher().attach(bar.querySelector('#appLauncher'));
   const menu=shellMenuParts();menu.id='kebab';shellMenuStamp=shellMenuKey();
