@@ -336,6 +336,21 @@ test('proyecto por retiro (§23): idempotente por la reserva, renombrado, archiv
   assert.equal((await worker('task', { source: 'booking', kind: 'booking.retreat_extra', external_ref: 'RES2026-77-EXTRA-2', title: 'x' })).status, 422, 'sin project_ref');
   assert.equal((await worker('task', { source: 'booking', kind: 'booking.ses_deadline', external_ref: 'SES-9', title: 'x', project_ref: 'RES2026-77' })).status, 422, 'project_ref solo en extras');
 
+  // Un reporte de Feedback sobre el retiro (§22.2) va al proyecto de la reserva si lo trae; si el proyecto no existe, no
+  // se bloquea: va por su regla o a «Por clasificar».
+  if (!(await app.t.db.query(`select 1 from core.profiles where service_name = 'feedback'`)).rows.length) await simulateServiceIdentity(app.t.db, uuid(), 'feedback');
+  const report = (code: string, ref?: string) => worker('task', { source: 'feedback', kind: 'feedback.event.setup', external_ref: code, title: 'Faltan sillas', external_url: `https://tasks.ikisai.com/#/feedback/${code}`,
+    on_behalf_of: { kind: 'organizer', report_code: code }, ...(ref ? { project_ref: ref } : {}) });
+  const inRetreat = await json(await report('FB_2026_0500', 'RES2026-77'));
+  assert.equal(inRetreat.status, 200, JSON.stringify(inRetreat.body));
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === inRetreat.body.taskId).project_id, id);
+  const noProject = await json(await report('FB_2026_0501', 'RES2026-NO-EXISTE'));
+  assert.equal(noProject.status, 200, JSON.stringify(noProject.body));
+  // Aquí hay regla para feedback.event.setup (prueba anterior): va por ella, fuera del proyecto del retiro.
+  assert.equal(noProject.body.status, 'open');
+  assert.notEqual((await rows('tasks.tasks')).find((t) => t.id === noProject.body.taskId).project_id, id);
+  assert.equal((await worker('task', { source: 'feedback', kind: 'feedback.space.damage', external_ref: 'FB_2026_0502', title: 'x', external_url: 'https://tasks.ikisai.com/#/feedback/FB_2026_0502', on_behalf_of: { kind: 'guest', report_code: 'FB_2026_0502' }, project_ref: 'RES2026-77' })).status, 422, 'project_ref no vale para lo del espacio');
+
   // Cancelada: se archiva (sus tareas quedan como están); confirmada de nuevo: se desarchiva.
   assert.deepEqual((await json(await project({ date: '2026-11-22', state: 'cancelled' }))).body, { projectId: id, status: 'archived' });
   assert.equal((await row()).status, 'archived');
