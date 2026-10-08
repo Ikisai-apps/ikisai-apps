@@ -110,6 +110,8 @@ interface SystemSource {
   url: (reference: string, url: string) => boolean;
   /** Si `on_behalf_of` es obligatorio (Feedback) u opcional (Booking). */
   behalf: 'required' | 'optional';
+  /** Si reenviar la misma referencia actualiza el título y la nota de la tarea abierta (Core, §25). */
+  refresh?: boolean;
 }
 const SYSTEM_SOURCES: Record<string, SystemSource> = {
   feedback: {
@@ -121,6 +123,12 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     // `booking.retreat_extra`: un extra contratado de un retiro (§23), que va al proyecto de su reserva (`project_ref`).
     service: 'booking', kinds: new Set(['booking.ses_deadline', 'booking.organizer_dates', 'booking.organizer_confirm', 'booking.proposal_comment', 'booking.retreat_extra']), reference: /^[A-Za-z0-9_.:-]{1,150}$/, behalf: 'optional',
     url: (_reference, url) => /^https:\/\/booking\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
+  },
+  core: {
+    // Tareas que Core escribe para el usuario (§25): referencia del estilo `TV-2.1`, sin enlace. Si se reenvía con otro
+    // título o nota, se actualiza la tarea mientras siga abierta.
+    service: 'core', kinds: new Set(['core.user_task']), reference: /^[A-Za-z0-9_.-]{1,60}$/, behalf: 'optional', refresh: true,
+    url: () => false,
   },
 };
 const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
@@ -153,7 +161,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       if (!source.kinds.has(kind)) invalid('kind', `Tipo no admitido para ${sourceName}: ${[...source.kinds].join(', ')}.`);
       const reference = text('external_ref', 150, true)!;
       if (!source.reference.test(reference)) invalid('external_ref', 'external_ref no es una referencia válida.');
-      const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || undefined;
+      const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || (kind === 'core.user_task' ? 'Core · Tarea para ti' : undefined);
       // Fecha objetivo y urgencia, opcionales, con la misma validación que `requests/task` (Booking: plazo legal de SES).
       const due = text('due', 10);
       if (due !== undefined && (!DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
@@ -183,11 +191,17 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       const status = async () => ((await invoke('tasks.requests_status', { externalRefs: [externalRef] })) as { items: Array<{ status: string; taskId: string | null }> }).items[0]!;
       const reply = (current: { status: string }) => ({ taskId: id, status: current.status });
       const before = await status();
-      if (before.status !== 'unknown') return reply(before);
+      if (before.status !== 'unknown' && !(source.refresh && before.status === 'open')) return reply(before);
 
       const actor = ((await invoke('tasks.service_actor', { name: source.service })) as { actor: string | null }).actor;
       if (!actor) fail(503, 'SERVICE_NOT_READY', `La identidad de servicio «${source.service}» aún no existe.`);
       const ctx = await internal.context({ id: actor!, email: null, sessionId: `service:${source.service}`, kind: 'human' }, '');
+      if (before.status !== 'unknown') {
+        // Reenvío de una tarea abierta (§25): título y nota nuevos, si cambiaron; si no, no se escribe nada.
+        const refreshed = await internal.commit(ctx, { requestId: `${sourceName}-${crypto.randomUUID()}`,
+          operations: [{ op: 'call', procedure: 'tasks.refresh_request_task', args: { externalRef, title, ...(note !== undefined ? { note } : {}) } }] });
+        return { ...reply(before), updated: Boolean((refreshed.results[0] as { result?: { updated?: boolean } })?.result?.updated) };
+      }
       const send = (toProject: boolean) => internal.commit(ctx, {
         requestId: `${sourceName}-${crypto.randomUUID()}`,
         operations: [{ op: 'call', procedure: 'tasks.request_task', args: {
