@@ -331,7 +331,14 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 
 ### 3.1 Procedimientos (`call`)
 
-Ninguno en V1. Todo cabe en operaciones de fila con validación en `beforeCommit` y en `validate_hooks`. La creación de tareas en Tasks no es un `call` (sale fuera de la base y necesita red): es una ruta de §6.
+Uno solo: **`central.merge_people`** (`{from, into}`, solo el owner; migración `1503`). Fusiona dos fichas de la misma persona en una transacción:
+- `into` recibe los datos reservados que le falten (los que ya tiene se respetan), copias de la documentación y la formación con sus archivos, los equipos que no tenía y las responsabilidades de obligaciones, documentos clave y decisiones;
+- `from` va a la papelera con `merged_into = into` y suelta su cuenta. Se puede restaurar, aunque vacía.
+- Falla si las dos fichas tienen cuentas distintas.
+- `merged_into` solo lo escribe el procedimiento: la Edge lo rechaza desde la app.
+- La vista `central.people_merges` (`person_id, merged_into, updated_at`), para tasks y central, dice a qué ficha pasó una fusionada.
+
+El resto cabe en operaciones de fila con validación en `beforeCommit` y en `validate_hooks`. La creación de tareas en Tasks no es un `call` (sale fuera de la base y necesita red): es una ruta de §6.
 
 ### 3.2 Lecturas registradas y vencimientos
 
@@ -555,7 +562,11 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 - **Alta:** «Persona del equipo», correo y accesos iniciales → contraseña temporal mostrada una vez, con botón de copiar. **La ficha manda sobre el nombre** (FB_2026_013, opción A del usuario):
   - Si eliges una persona, el nombre sale de su ficha (no se escribe a mano), el correo de sus datos reservados si los hay, y la cuenta queda enlazada.
   - Con «Persona nueva», el nombre se escribe una vez y se crea también su ficha mínima, enlazada.
-  - Si el correo ya tenía cuenta enlazada con otra ficha, no se cambia el enlace y se avisa.
+  - **Correo que ya tiene cuenta** (decisión del usuario: una persona, una ficha, una cuenta). Antes de llamar a `admin/invite`, en Alta y en «Dar cuenta», Central busca el correo en `GET /admin/accounts`. Si existe, avisa: «Este correo ya tiene cuenta: <nombre>, con acceso a <apps>, <enlazada a la ficha X | sin ficha>.», y deja elegir:
+    1. **Sin ficha** → «Enlazar esta ficha a esa cuenta» (o crear su ficha). Los accesos marcados se suman.
+    2. **Enlazada a otra ficha** → «Fusionar las dos fichas» (`central.merge_people`; queda la de la cuenta) o «Cancelar». Sin ficha de partida (Alta con «Persona nueva»): «Añadir los accesos a su cuenta», sin crear otra ficha.
+    3. **Otra persona** → «Usar otro correo», sin dar el alta.
+  - Nunca dos fichas con la misma cuenta: lo garantiza el índice único `people_user_idx`.
 - **Nombres de cuenta:** el nombre visible de una cuenta enlazada es el de su ficha.
   - Al renombrar la ficha, Central llama a `POST /api/v1/admin/accounts/:userId/name` del núcleo (solo owners de Central; queda en el registro de accesos).
   - Sin red, apunta en el dispositivo solo el id de la cuenta, avisa y lo reintenta al volver la conexión y al arrancar, con el nombre que tenga entonces la ficha.
