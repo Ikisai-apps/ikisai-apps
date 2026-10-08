@@ -13,6 +13,8 @@ const CSS = [
   'html.fb-reviewing #appLauncher::before{content:"";position:absolute;left:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--ok,#4f7a4a);border:2px solid var(--bg,#f6f1e7)}',
   /* Un diálogo abierto desde la tarjeta del revisor va por encima de ella. */
   'html.fb-reviewing .dialogback{z-index:97}',
+  /* La barra del revisor no tapa ninguna hoja ni diálogo (ni su propio interruptor en el lanzador): se aparta mientras hay uno abierto. */
+  'html:has(.sheetback.show) .fb-review,html:has(.dialogback) .fb-review{display:none}',
   /* Señalar una vez (portales): las hojas se apartan para ver la pantalla y vuelven al terminar. */
   'html.fb-capturing .sheetback,html.fb-capturing .dialogback{visibility:hidden;pointer-events:none}',
 ].join('\n');

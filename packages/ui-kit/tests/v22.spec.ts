@@ -48,4 +48,29 @@ test.describe('ui-kit v0.18 · «Sugerencias y QA» en el panel del lanzador', (
     await expect(page.locator('.launcher-center strong')).toHaveText('Ayuda y sugerencias');
     await expect(page.locator('.launcher-center small')).toContainText('qué falla');
   });
+
+  test('con el Revisor activo, su barra no tapa el interruptor del lanzador (fallo del usuario, 390×844)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#launcher');
+    await page.evaluate(() => (window as any).ikisaiFeedback.review.mode.set(true));
+    await expect(page.locator('.fb-review')).toBeVisible();
+    await page.locator('#demoLauncher').click();
+    // Con la hoja abierta, la barra del Revisor se aparta.
+    await expect(page.locator('.fb-review')).toBeHidden();
+    const toggle = page.locator('.launcher-review');
+    await toggle.scrollIntoViewIfNeeded();
+    await expect(toggle).toBeInViewport();
+    // Lo que hay en el centro del interruptor es el propio interruptor (nada encima).
+    const onTop = await toggle.evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!hit && node.contains(hit);
+    });
+    expect(onTop).toBe(true);
+    await toggle.click();
+    await expect(page.locator('.launcher-review input')).not.toBeChecked();
+    expect(await page.evaluate(() => (window as any).ikisaiFeedback.review.mode.get())).toBe(false);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.fb-review')).toHaveCount(0);
+  });
 });

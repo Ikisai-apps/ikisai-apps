@@ -5,6 +5,15 @@
 import type { Dictionary } from './i18n.ts';
 
 export const KIT_EN: Dictionary = {
+  // Cáscara y días
+  'Secciones': 'Sections',
+  'Más': 'More',
+  'pendiente de la fase 1': 'coming in phase 1',
+  'fase 1': 'phase 1',
+  '{count} avisos': '{count} alerts',
+  'Días': 'Days',
+  'Hoy': 'Today',
+
   // Estado de guardado
   'Guardando…': 'Saving…',
   'Guardado': 'Saved',

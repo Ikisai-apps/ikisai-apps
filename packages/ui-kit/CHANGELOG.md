@@ -1,5 +1,23 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.21.0 · 8 de octubre de 2026
+
+- **Arreglo (fallo del usuario en Central, Android):** con el Revisor de QA activo, su barra plegada tapaba el final de la hoja del lanzador, así que el interruptor «Revisor de QA» se podía encender pero no apagar.
+  - La barra del Revisor se aparta mientras hay una hoja o un diálogo abiertos; va en la hoja global, así que vale también con el CSS acotado.
+  - La hoja se desplaza entera (`min-height: 0` en el cuerpo y margen para el área segura inferior).
+- **Barra de portal con «Más»** (U5 de Guests): `createAppShell({ nav, more, maxNav: 5 })`.
+  - En móvil, la barra lleva como mucho `maxNav` entradas contando «Más», que abre una hoja con el resto (con contadores y la ruta activa marcada).
+  - En escritorio, la barra lateral las enseña todas, con el resto en su propio grupo.
+  - `setNav(nav, more)` cambia las secciones en vivo (módulos que activa el organizador).
+  - Sin `more` ni `maxNav` todo sigue igual.
+- **Lista de días deslizable** `createDayTabs({ days, selected, today, count, onSelect, panelId })` → `{ element, get, select, setDays }`:
+  - pestañas horizontales con desplazamiento suave;
+  - hoy marcado y elegido por defecto;
+  - flechas, Inicio y Fin; la elegida se centra;
+  - contador por día y nombres con `Intl` en el idioma del kit.
+- Prueba del gesto (`v18-qa`, «moverse más de 8 px cancela») estable con la máquina cargada.
+- Pruebas `v27` (dos `@smoke`) y `v22` ampliada (390×844 con el Revisor activo).
+
 ## 0.20.0 · 7 de octubre de 2026
 
 Piezas que piden los portales (Organizers y Guests); todas en español e inglés:
