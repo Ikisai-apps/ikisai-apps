@@ -7,11 +7,11 @@
  * Solo contra la API falsa en memoria (fake-api.ts); nunca contra Supabase.
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { day, freePort, TIME_ZONE } from './helpers.ts';
+import { day, freePort, TIME_ZONE, buildFoodApp } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 import { feedbackRoundTrip, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
@@ -43,7 +43,7 @@ test.beforeAll(async () => {
     }],
   });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildFoodApp();
   server = await preview({
     configFile,
     logLevel: 'silent',

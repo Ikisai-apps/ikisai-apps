@@ -5,10 +5,10 @@
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freePort, TIME_ZONE } from './helpers.ts';
+import { freePort, TIME_ZONE, buildFoodApp } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,7 @@ let baseURL: string;
 test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildFoodApp();
   server = await preview({
     configFile,
     logLevel: 'silent',

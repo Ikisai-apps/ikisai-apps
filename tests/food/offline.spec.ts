@@ -8,11 +8,11 @@
  * Cómo correrlo:   npx playwright test tests/food/offline.spec.ts      (desde la raíz del repo)
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freePort, day, TIME_ZONE } from './helpers.ts';
+import { freePort, day, TIME_ZONE, buildFoodApp } from './helpers.ts';
 import { startFakeApi, type FakeApi, type FakeRow } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -51,7 +51,7 @@ test.beforeAll(async () => {
   step = api.seed('food.preparation_items', { menu_id: MENU_ID, menu_item_id: dish.id, recipe_id: curry.id, scheduled_date: day(10), scheduled_time: '18:30:00', text: 'Preparar Curry de verduras' });
 
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildFoodApp();
   server = await preview({
     configFile,
     logLevel: 'silent',

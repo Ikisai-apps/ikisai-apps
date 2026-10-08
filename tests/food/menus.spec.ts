@@ -5,11 +5,11 @@
  * Cómo correrlo:   npx playwright test tests/food/menus.spec.ts      (desde la raíz del repo)
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freePort, day, TIME_ZONE } from './helpers.ts';
+import { freePort, day, TIME_ZONE, buildFoodApp } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -48,7 +48,7 @@ test.beforeAll(async () => {
   api.seed('food.recipes', { name: 'Curry de verduras', public_name: 'Curry suave de temporada', public_description: 'Verduras de temporada con leche de coco y arroz especiado.', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegano', 'vegetariano'], allergens: [], allergens_checked: true });
   api.seed('food.recipes', { name: 'Pasta al pesto', category: 'principal', base_servings: 20, status: 'validada', diet_tags: ['vegetariano'], allergens: ['gluten', 'frutos_de_cascara', 'lacteos'], allergens_checked: true });
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildFoodApp();
   server = await preview({
     configFile,
     logLevel: 'silent',
