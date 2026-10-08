@@ -29,7 +29,7 @@ const row = async (table: string, id: string) => (await rows(table)).find((r) =>
 // Las altas de la siembra llevan posición si su tabla la tiene (la API la exige).
 const POSITIONED = new Set(['tasks.tasks', 'tasks.labels', 'tasks.task_dependencies', 'tasks.attachments', 'tasks.supply_items', 'tasks.purchase_requests', 'tasks.purchase_plan_stops', 'tasks.request_routes']);
 const commit = (operations: Operation[], token?: string) => app.call('/api/v1/commands', { token, body: { requestId: `seed-${++seq}`,
-  operations: operations.map((o) => (o.op === 'insert' && POSITIONED.has(o.table) && o.fields?.position === undefined ? { ...o, fields: { ...o.fields, position: ++seq * 1024 } } : o)) } });
+  operations: operations.map((o) => (o.op === 'insert' && POSITIONED.has(o.table ?? '') && o.fields?.position === undefined ? { ...o, fields: { ...o.fields, position: ++seq * 1024 } } : o)) } });
 const ok = async (operations: Operation[]) => { const res = await commit(operations); assert.equal(res.status, 200, JSON.stringify(res.data)); return res; };
 const convert = (body: Record<string, unknown>, token?: string, tab = JARDIN) => app.call(`/api/v1/tabs/${tab}/convert`, { token, body: { requestId: `convert-${++seq}`, ...body } });
 
