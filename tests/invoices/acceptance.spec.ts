@@ -1542,6 +1542,64 @@ test('feedback en Finance en móvil: tras enviar se cierra el formulario y se ve
   }
 });
 
+/** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
+async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
+  await login(page);
+  await synced(page);
+  await page.goto(`${baseURL}/#/facturas`);
+  await setSignal(page, true);
+  await page.locator('#newInvoice').click();
+  await expect(page.getByRole('dialog', { name: 'Nueva factura' })).toBeVisible();
+  await hold(page, '#newInvoiceForm label.field > span');
+  const composer = page.locator('.fb-composer');
+  await expect(composer).toBeVisible();
+  await composer.getByRole('textbox', { name: 'Comentario' }).fill('El proveedor debería sugerirse por el NIF.');
+  await page.setViewportSize({ width: 484, height: 686 });
+}
+
+test('feedback con la hoja «Nueva factura» y el teclado abiertos (móvil 484×1008 → 686): se cierra el formulario y se ve el aviso', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const before = api.feedbackReports().length;
+  try {
+    await composeInNewInvoiceWithKeyboard(page);
+    await page.locator('.fb-composer').getByRole('button', { name: 'Enviar' }).click();
+    await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 10_000 });
+    const toast = page.locator('.toast.show').filter({ hasText: 'Enviado' });
+    await expect(toast).toBeVisible();
+    const box = (await toast.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(686);
+    expect(box.height).toBeLessThan(80);
+    await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
+    expect(api.feedbackReports().at(-1)!.node?.id).toBe('invoices.facturas.nueva.formulario');
+  } finally {
+    await context.close();
+  }
+});
+
+// Fallo del kit (formulario del feedback, territorio de UI): al pasar a «Enviado» el botón «Enviar» vuelve a estar activo
+// durante los 700 ms antes de cerrarse, y una segunda pulsación manda otro POST con otro `requestId` (duplicado).
+// Se activa cuando el kit deje el botón desactivado tras enviar o reutilice el `requestId` del formulario.
+test.fixme('feedback: dos pulsaciones seguidas en «Enviar» crean un solo reporte', async ({ browser }) => {
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const posts: string[] = [];
+  page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/v1/feedback')) posts.push(String(JSON.parse(r.postData() ?? '{}').requestId)); });
+  try {
+    await composeInNewInvoiceWithKeyboard(page);
+    const send = page.locator('.fb-composer').getByRole('button', { name: 'Enviar' });
+    await send.click();
+    await page.waitForTimeout(250);
+    await send.click({ timeout: 2_000 }).catch(() => undefined);
+    await page.waitForTimeout(1_500);
+    expect(new Set(posts).size).toBe(1);
+  } finally {
+    await context.close();
+  }
+});
+
 test('@smoke todas las pantallas de Finance llevan ids con la forma estable, con etiqueta y sin ids de negocio', async ({ browser }) => {
   test.setTimeout(120_000);
   const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
