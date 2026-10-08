@@ -120,7 +120,7 @@ export const mountAccounting: ViewMount = (ctx) => {
     const byId = new Map(m.invoices.map((i) => [i.id, i]));
     if (items.some((it) => { const inv = byId.get(it.invoice_id); return !inv || inv.revision !== it.invoice_revision || inv.status === 'anulada'; })) return true;
     const included = new Set(items.map((it) => it.invoice_id));
-    return m.invoices.some((i) => !i.deleted_at && (i.status === 'validada' || i.status === 'archivada') && i.invoice_date >= e.from_date && i.invoice_date <= e.to_date && !included.has(i.id));
+    return m.invoices.some((i) => !i.deleted_at && (i.status === 'validada' || i.status === 'archivada') && i.invoice_date !== null && i.invoice_date >= e.from_date && i.invoice_date <= e.to_date && !included.has(i.id));
   }
 
   async function download(path: string, filename: string): Promise<void> {

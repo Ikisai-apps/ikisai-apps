@@ -133,8 +133,9 @@ export function shortDate(iso: string | null | undefined): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-export function monthKey(iso: string): string {
-  return iso.slice(0, 7);
+/** `AAAA-MM`, o «Sin fecha» para una factura recibida que aún no la tiene (0223): `monthLabel` la deja tal cual. */
+export function monthKey(iso: string | null): string {
+  return iso ? iso.slice(0, 7) : 'Sin fecha';
 }
 
 export function monthLabel(key: string): string {
