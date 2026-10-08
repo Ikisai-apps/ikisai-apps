@@ -91,7 +91,7 @@ test('archivos · Central declara sus campos de archivo con su retención y acti
   const fields = (await app.t.db.query<{ col: string; retention: string }>(
     `select table_name || '.' || column_name as col, retention from core.file_fields where app = 'central' order by 1`)).rows;
   assert.deepEqual(fields.map((f) => [f.col, f.retention]), [
-    ['entity.logo_file_id', 'permanent'], ['key_documents.file_id', 'legal'], ['person_records.file_id', 'legal'],
+    ['entity.logo_file_id', 'permanent'], ['entity.site_plan_file_id', 'permanent'], ['key_documents.file_id', 'legal'], ['person_records.file_id', 'legal'],
   ]);
   const gc = await app.t.db.query(`select 1 from core.file_gc_apps where app = 'central'`);
   assert.equal(gc.rows.length, 1);
@@ -128,4 +128,50 @@ test('entidad · IBAN y Bizum (F3): dígito de control, formato, proyección y l
   assert.match(texts[0]!.body, /cuenta ES91 2100 0418 4502 0005 1332, a nombre de Entidad de Prueba S\.L\./);
   assert.match(texts[0]!.body, /Bizum\*\* al 600 000 000/);
   assert.match(texts[1]!.body, /account ES91 2100 0418 4502 0005 1332/);
+});
+
+test('entidad · el lugar para los portales (X3 y CE3): dirección, mapa, plano y textos', async () => {
+  const { mapUrl, renderMarkers, PORTAL_PLACE_PROJECTION } = await import('../../supabase/functions/_domain/central/mod.ts');
+  const MAP = 'https://www.google.com/maps/search/?api=1&query=Calle+Falsa+1%2C+28000+Madrid';
+  assert.equal(mapUrl('Calle Falsa 1, 28000 Madrid'), MAP);
+  assert.equal(mapUrl('  '), null);
+  assert.equal(mapUrl('C/ Sol 3 #2 & 50%'), 'https://www.google.com/maps/search/?api=1&query=C%2F+Sol+3+%232+%26+50%25');
+  assert.equal(renderMarkers('{{entidad.mapa}}', { entity: ENTITY }), MAP);
+  assert.equal((await app.t.db.query<{ u: string }>(`select central.map_url('C/ Sol 3 #2 & 50%') as u`)).rows[0]!.u, mapUrl('C/ Sol 3 #2 & 50%'));
+
+  // El plano: imagen o PDF verificado de Central (el bucket ya no admite otros tipos); un id que no existe no vale.
+  const [row] = (await app.call(`/api/v1/snapshot?tables=${ENTITY_TABLE}`)).data.tables[0].rows;
+  const rejected = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { site_plan_file_id: uuid() } }]);
+  assert.equal(rejected.status, 422); assert.equal(rejected.data.error.details.field, 'site_plan_file_id');
+  const plan = await upload('application/pdf', '%PDF-1.4 plano de prueba');
+  const ok = await commit([{ op: 'update', table: ENTITY_TABLE, id: row.id, expectedRevision: row.revision, fields: { site_plan_file_id: plan } }]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+
+  // Textos: siete borradores, una sola vez.
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 7);
+  assert.equal((await app.t.db.query<{ n: number }>(`select central.seed_texts_portal_place() as n`)).rows[0]!.n, 0);
+  const keys = (await app.t.db.query<{ k: string }>(`select key || ':' || lang as k from central.texts where position in (36, 37, 75, 99) and deleted_at is null order by 1`)).rows.map((r) => r.k);
+  assert.deepEqual(keys, ['guests.menu_notice:en', 'guests.menu_notice:es', 'info.map_link:es', 'portal.menu_note:en', 'portal.menu_note:es', 'portal.practical:en', 'portal.practical:es']);
+  const practical = (await app.t.db.query<{ body: string }>(`select body from central.common_texts_projection where key = 'portal.practical' and lang = 'es'`)).rows[0]!;
+  assert.match(practical.body, /\*\*Dónde:\*\* Calle Falsa 1, 28000 Madrid\./);
+
+  // Organizers y Guests leen el lugar (sin datos fiscales ni bancarios); otra app no.
+  for (const reader of ['organizers', 'guests']) {
+    const user = await app.t.createUser();
+    await app.t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'reader')`, [reader, user]);
+    const out = await app.t.rpc('core_read', { p_app: reader, p_actor: user, p_name: PORTAL_PLACE_PROJECTION, p_args: {} }) as { rows: any[] };
+    assert.equal(out.rows.length, 1, reader);
+    const p = out.rows[0];
+    assert.equal(p.name, ENTITY.legal_name); assert.equal(p.address, 'Calle Falsa 1, 28000 Madrid'); assert.equal(p.map_url, MAP);
+    assert.equal(p.site_plan_file_id, plan); assert.equal(p.site_plan_mime, 'application/pdf');
+    assert.equal(p.tax_id, undefined); assert.equal(p.iban, undefined);
+  }
+  const foodUser = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('food', $1, 'reader')`, [foodUser]);
+  await assert.rejects(app.t.rpc('core_read', { p_app: 'food', p_actor: foodUser, p_name: PORTAL_PLACE_PROJECTION, p_args: {} }));
+
+  // El owner puede poner el enlace exacto en `info.map_link`.
+  const exact = 'https://maps.example/ikisai';
+  await app.t.db.query(`update central.texts set body = $1 where key = 'info.map_link' and lang = 'es'`, [exact]);
+  assert.equal((await app.t.db.query<{ u: string }>(`select map_url as u from central.portal_place_projection`)).rows[0]!.u, exact);
 });

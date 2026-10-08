@@ -221,6 +221,7 @@ const SPECS: Record<string, TableSpec> = {
       website: { kind: 'text', max: 200, nullable: true, pattern: /^https:\/\//, patternText: 'debe empezar por https://' },
       logo_file_id: { kind: 'uuid', nullable: true, file: true },
       iban: { kind: 'text', min: 15, max: 34, nullable: true, pattern: /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/, patternText: 'IBAN sin espacios y en mayúsculas' },
+      site_plan_file_id: { kind: 'uuid', nullable: true, file: true },
       bizum: { kind: 'text', min: 3, max: 20, nullable: true, pattern: /^[0-9 +]{3,20}$/, patternText: 'número de teléfono o código Bizum' },
     },
     required: ['legal_name', 'tax_id', 'address_line', 'postal_code', 'city'],

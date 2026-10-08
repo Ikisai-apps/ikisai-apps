@@ -1,6 +1,6 @@
 import type { RowOperation } from '@ikisai/sync-client';
 import { compressImage, confirmDialog, el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { LOGO_MAX_BYTES, LOGO_MIME, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
+import { LOGO_MAX_BYTES, LOGO_MIME, SITE_PLAN_MIME, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
@@ -19,9 +19,17 @@ async function prepareLogo(file: File): Promise<Blob> {
   return out.full;
 }
 
+/** Plano listo para subir: el PDF tal cual; una imagen, como el logotipo (las fotos grandes se recomprimen). */
+async function preparePlan(file: File): Promise<Blob> {
+  if (file.type === 'application/pdf') return file;
+  if (!file.type.startsWith('image/')) throw new Error('tipo');
+  return prepareLogo(file);
+}
+
 /**
- * Datos de la entidad (configuración común, API.md §2.9): razón social, NIF/CIF, domicilio fiscal y logotipo.
- * Los ve cualquier miembro de Central; solo el owner los edita. Booking y Finance los leen por su proyección.
+ * Datos de la entidad (configuración común, API.md §2.9): razón social, NIF/CIF, domicilio fiscal, logotipo y plano del centro.
+ * Los ve cualquier miembro de Central; solo el owner los edita. Booking y Finance los leen por su proyección; Organizers y
+ * Guests, el lugar (nombre, dirección, mapa y plano) por `central.portal_place_projection`.
  */
 export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
   let row: Row | null = null;
@@ -52,6 +60,18 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     }
   }
 
+  /** Enlace para abrir el plano en otra pestaña (archivo de Central; uno recién elegido se ve desde este dispositivo). */
+  async function planNode(ref: LogoRef): Promise<HTMLElement | null> {
+    if (!ref) return null;
+    let url: string | undefined;
+    if (isBlob(ref)) url = blobUrls.get(ref.$blob);
+    else {
+      try { url = await client.fileUrl(ref); } catch { return el('span', { class: 'muted' }, icon('offline', 16), ' El plano se verá con conexión.'); }
+    }
+    if (!url) return el('span', { class: 'muted' }, 'Plano pendiente de subir.');
+    return el('a', { href: url, target: '_blank', rel: 'noopener', 'data-feedback-id': 'central.entidad.ficha.ver_plano', 'data-feedback-label': 'Ver plano' }, icon('pin', 16), ' Ver plano');
+  }
+
   function line(label: string, value: string | null | undefined, personal = false): HTMLElement | null {
     return value ? el('div', { class: 'kv' }, el('dt', null, label), el('dd', personal ? { 'data-feedback-ignore': '' } : null, value)) : null;
   }
@@ -77,7 +97,9 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         fbMark(line('Teléfono', r.phone, true), 'central.entidad.ficha.telefono', 'Teléfono'),
         fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web'),
         fbMark(line('IBAN', formatIban(r.iban), true), 'central.entidad.ficha.iban', 'IBAN'),
-        fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum')),
+        fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum'),
+        el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.plano', 'data-feedback-label': 'Plano del centro' }, el('dt', null, 'Plano del centro'),
+          el('dd', null, (await planNode(r.site_plan_file_id as LogoRef)) ?? el('span', { class: 'muted' }, 'Sin plano')))),
       el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
       isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
   }
@@ -132,6 +154,29 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     });
     void paintLogo();
 
+    const plan: LogoRef = (current?.site_plan_file_id as LogoRef) ?? null;
+    let stagedPlan: File | Blob | null = null;
+    let stagedPlanName = '';
+    const planPreview = el('div', { class: 'planpreview', 'data-feedback-id': 'central.entidad.editar.plano_vista', 'data-feedback-label': 'Plano elegido' });
+    const planInput = el('input', { id: 'en-plan', type: 'file', accept: SITE_PLAN_MIME.join(','), class: 'visually-hidden', 'data-feedback-id': 'central.entidad.editar.plano_archivo', 'data-feedback-label': 'Archivo del plano' }) as HTMLInputElement;
+    const paintPlan = async () => {
+      replace(planPreview, stagedPlan ? el('span', null, icon('check', 16), ` ${stagedPlanName}`) : (await planNode(plan)) ?? el('span', { class: 'muted' }, 'Sin plano'));
+    };
+    planInput.addEventListener('change', async () => {
+      const file = planInput.files?.[0];
+      if (!file) return;
+      try {
+        stagedPlan = await preparePlan(file);
+        stagedPlanName = file.name;
+        guard.dirtyEditor = true;
+        sheet?.setFootHidden(false);
+        await paintPlan();
+      } catch {
+        error.textContent = 'El plano debe ser una imagen (PNG, JPEG o WebP) o un PDF.';
+      }
+    });
+    void paintPlan();
+
     const values = (): Record<string, unknown> => ({
       legal_name: legal.value.trim(), trade_name: text(trade.value), tax_id: normalizeTaxId(taxId.value), address_line: street.value.trim(),
       postal_code: postal.value.trim(), city: city.value.trim(), province: text(province.value), country: country.value.trim().toUpperCase() || 'ES',
@@ -144,7 +189,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       return Object.fromEntries(Object.entries(all).filter(([key, value]) => (current[key] ?? null) !== (value ?? null)));
     };
     const refreshDirty = () => {
-      const dirty = Object.keys(changed()).length > 0 || stagedLogo !== null;
+      const dirty = Object.keys(changed()).length > 0 || stagedLogo !== null || stagedPlan !== null;
       guard.dirtyEditor = current ? dirty : values().legal_name !== '';
       sheet?.setFootHidden(current !== null && !dirty);
       const problem = taxId.value.trim() && country.value.trim().toUpperCase() === 'ES' ? taxIdProblem(taxId.value) : null;
@@ -162,14 +207,14 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
         const fields = changed();
         save.disabled = true;
         try {
-          // Se valida antes de encolar el logotipo: un dato erróneo no debe dejar un archivo pendiente en la cola.
-          const operationsWith = (logoRef: unknown): RowOperation[] => {
-            const all = stagedLogo ? { ...fields, logo_file_id: logoRef } : fields;
+          // Se valida antes de encolar los archivos: un dato erróneo no debe dejar un archivo pendiente en la cola.
+          const operationsWith = (logoRef: unknown, planRef: unknown): RowOperation[] => {
+            const all = { ...fields, ...(stagedLogo ? { logo_file_id: logoRef } : {}), ...(stagedPlan ? { site_plan_file_id: planRef } : {}) };
             return current
               ? [{ op: 'update', table: T.entity, id: current.id, expectedRevision: current.revision, fields: all }]
               : [{ op: 'insert', table: T.entity, id: newId, fields: all }];
           };
-          const issue = validateOperations(operationsWith({ $blob: 'pendiente' }), client.bootstrap()?.membership ?? { role: 'reader' }, () => current ?? undefined);
+          const issue = validateOperations(operationsWith({ $blob: 'pendiente' }, { $blob: 'pendiente' }), client.bootstrap()?.membership ?? { role: 'reader' }, () => current ?? undefined);
           if (issue) {
             error.textContent = issue.message.replace(/^Campo (\w+)/, (_, f: string) => `«${LABELS[f] ?? f}»`);
             error.scrollIntoView({ block: 'nearest' });
@@ -182,7 +227,14 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
             blobUrls.set(sha, URL.createObjectURL(stagedLogo));
             logoRef = { $blob: sha };
           }
-          const operations = operationsWith(logoRef);
+          let planRef: unknown = null;
+          if (stagedPlan) {
+            const mime = stagedPlan.type || 'application/pdf';
+            const sha = await client.stageBlob(stagedPlan, { filename: `plano.${mime === 'application/pdf' ? 'pdf' : mime.split('/')[1] ?? 'png'}`, mime });
+            blobUrls.set(sha, URL.createObjectURL(stagedPlan));
+            planRef = { $blob: sha };
+          }
+          const operations = operationsWith(logoRef, planRef);
           await usage.run('central.entidad.guardar', () => client.commit(operations));
           toast(!navigator.onLine ? 'Datos guardados en este dispositivo. Se sincronizarán cuando haya red.' : 'Datos de la entidad guardados.');
           guard.dirtyEditor = false;
@@ -216,6 +268,10 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
       el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_logotipo', 'data-feedback-label': 'Logotipo' }, el('span', null, 'Logotipo'), logoPreview,
         el('label', { class: 'ghost btnlike', for: 'en-logo', 'data-feedback-id': 'central.entidad.editar.elegir_imagen', 'data-feedback-label': 'Elegir imagen' }, icon('upload', 18), 'Elegir imagen'), logoInput,
         el('span', { class: 'muted small' }, 'PNG, JPEG o WebP. Si pesa más de 2 MB se reduce al subirlo.')),
+      el('div', { class: 'sectionlabel' }, 'Para los portales'),
+      el('div', { class: 'field', 'data-feedback-id': 'central.entidad.editar.campo_plano', 'data-feedback-label': 'Plano del centro' }, el('span', null, 'Plano del centro (opcional)'), planPreview,
+        el('label', { class: 'ghost btnlike', for: 'en-plan', 'data-feedback-id': 'central.entidad.editar.elegir_plano', 'data-feedback-label': 'Elegir plano' }, icon('upload', 18), 'Elegir plano'), planInput,
+        el('span', { class: 'muted small' }, 'Imagen o PDF. Lo ven los asistentes en su portal. La dirección y el mapa salen del domicilio fiscal; si el retiro es en otro sitio, cambia el texto «info.map_link» en Textos.')),
       error,
     );
 
@@ -244,4 +300,5 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
 const LABELS: Record<string, string> = {
   legal_name: 'Razón social', trade_name: 'Nombre comercial', tax_id: 'NIF/CIF', address_line: 'Domicilio fiscal', postal_code: 'Código postal',
   city: 'Municipio', province: 'Provincia', country: 'País', email: 'Correo', phone: 'Teléfono', website: 'Web', logo_file_id: 'Logotipo',
+  iban: 'IBAN', bizum: 'Bizum', site_plan_file_id: 'Plano del centro',
 };

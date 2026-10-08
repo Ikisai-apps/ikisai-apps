@@ -220,6 +220,7 @@ Primer bloque de configuración común: los datos legales de Ikisai. Migración 
 | `iban` | `text null` | Cuenta para transferencias (F3, migración `0595`): sin espacios y en mayúsculas; `_domain/central` comprueba el dígito de control (`ibanProblem`). Se muestra en grupos de cuatro (`central.format_iban`). |
 | `bizum` | `text null` | Teléfono o código Bizum (`^[0-9 +]{3,20}$`). |
 | `logo_file_id` | `uuid null` | Archivo de Central verificado, PNG, JPEG o WebP. Se sube **sin recomprimir** si pesa hasta 2 MB (un logotipo no es una foto: excepción explícita al contrato §11.3); si pesa más, se reduce en el cliente. |
+| `site_plan_file_id` | `uuid null` | **Plano del centro** para los portales (CE3, migración `0596`): archivo de Central verificado, imagen (PNG, JPEG o WebP; las fotos grandes se reducen en el cliente) o PDF tal cual. Retención `permanent`. |
 
 **Proyección `central.common_entity_projection`** (registrada para `booking`, `invoices` y `central`):
 
@@ -229,6 +230,17 @@ entity_revision, updated_at, logo_file_id, logo_bucket, logo_path, logo_mime, lo
 ```
 
 La leen Booking (documento de la propuesta al organizador) y Finance (facturas emitidas) con `GET read/central.common_entity_projection` en su propia API. El **logotipo** va como referencia al archivo verificado (`logo_bucket`, `logo_path`, `logo_provider`): la Edge lectora lo firma con `createStorage(supabase).readUrl({ bucket: logo_bucket, path: logo_path, storage_provider: logo_provider })` (contrato §3.9; nunca llamando a `/storage/v1/object…` directamente) o lo descarga con `.download(…)` para incrustarlo. Migración `0550` (columna `logo_provider`, la última de la vista). `entity_revision` sirve para saber si un documento ya emitido usó datos anteriores (contrato §8).
+
+**Proyección `central.portal_place_projection`** (X3 y CE3, migración `0596`; registrada para `organizers`, `guests` y `central`): el lugar, sin datos fiscales ni bancarios.
+
+```text
+entity_id, name, address, map_url, site_plan_file_id, site_plan_mime, site_plan_size, entity_revision, updated_at
+```
+
+- `name`: el nombre comercial o, si no hay, la razón social. `address`: el domicilio en una línea («Calle…, 28000 Madrid, Provincia»; el país solo si no es `ES`), lo mismo que `{{entidad.domicilio}}`. Para el **cartel** de Organizers.
+- `map_url`: el texto `info.map_link` (español) ya sustituido. Por defecto es `{{entidad.mapa}}`, una **búsqueda por dirección** en un mapa externo (`central.map_url`, sin coordenadas inventadas); el owner puede escribir ahí el enlace exacto del lugar. `null` si no hay dirección.
+- `site_plan_file_id`, `site_plan_mime`, `site_plan_size`: el plano, si está subido y verificado. Para servirlo a los portales, Central registrará `core.allow_portal_file('guests', 'central.<fn>')` cuando Core publique C8; hasta entonces, el portal no puede firmar su URL.
+- Ojo: el domicilio fiscal puede no ser el del lugar del retiro. Si algún día difieren, se añadirá una dirección del lugar; de momento basta con cambiar `info.map_link`.
 
 Otros candidatos de configuración común, sin hacer hasta que alguien los pida: textos legales y versiones de consentimiento (fase de portales), plazos de conservación (irán con el registro de tratamientos). Espacios, tipos de evento y categorías de gasto ya tienen dueño.
 
@@ -282,7 +294,7 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
   - `version` la lleva la base: `v1` al crear, y sube (`v2`, `v3`…) cuando cambian el título, el cuerpo o el tipo; reordenar no la cambia. No es escribible.
 - **Versiones** (`central.text_versions`, tabla cerrada que escribe un disparador): guarda cada versión con su cuerpo tal como se escribió y **ya sustituido en ese momento**. Así, una declaración aceptada se muestra exactamente como se aceptó aunque luego cambien la Entidad o el contacto.
   - Ojo: un cambio en la Entidad o en el contacto **no** crea versión nueva de los textos que los usan; la proyección muestra siempre los datos actuales, y la versión guardada, los de su momento.
-- **Marcadores**, sustituidos al leer (`central.render_text`, y `renderMarkers` en `_domain/central/texts.ts` para la vista previa sin red): `{{entidad.razon_social}}`, `{{entidad.nif}}`, `{{entidad.domicilio}}`, `{{entidad.iban}}` (en grupos de cuatro), `{{entidad.bizum}}` (F3), `{{contacto.correo}}` y `{{contacto.telefono}}` (los dos últimos salen de los textos `contact.email` y `contact.phone`). Lo que falta se escribe «—».
+- **Marcadores**, sustituidos al leer (`central.render_text`, y `renderMarkers` en `_domain/central/texts.ts` para la vista previa sin red): `{{entidad.razon_social}}`, `{{entidad.nif}}`, `{{entidad.domicilio}}`, `{{entidad.iban}}` (en grupos de cuatro), `{{entidad.bizum}}` (F3), `{{entidad.mapa}}` (enlace de búsqueda del domicilio en un mapa externo, `0596`), `{{contacto.correo}}` y `{{contacto.telefono}}` (los dos últimos salen de los textos `contact.email` y `contact.phone`). Lo que falta se escribe «—».
 - **Proyección `central.common_texts_projection`** (`key, lang, title, body` ya sustituido, `version, kind, updated_at, source_lang, fallback`): una fila por clave y por idioma (`es`, `en`). Si falta el inglés, la fila `en` trae el español con `fallback = true` y `source_lang = 'es'`. Registrada con `core.allow_read` para **organizers, guests, booking y central**. Sin datos personales. Uso: `GET read/central.common_texts_projection?where[key]=portal.privacy&where[lang]=en`. Una aceptación guarda `source_lang` y `version`.
 - **Lecturas:**
   - `central.text_version` (`{key, lang?, version?}` → `{key, lang, version, kind, title, body, createdAt}`, con el cuerpo sustituido de esa versión; `lang` por defecto `es`; sin `version`, la vigente de ese idioma o, si no hay traducción, la del español), para organizers, guests, booking y central. Una app que guarde una aceptación debe guardar `source_lang` y `version` y mostrarla después con esta lectura.
@@ -291,6 +303,7 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **Semilla:** `central.seed_texts()`, con `core.apply_migration_operations`. Siembra `contact.email` (organiza@ikisai.com), `contact.phone` (614 76 57 96), `organizers.declaration` (legal) y `portal.privacy` (legal, «Protección de datos»), todos en `v1` y en español, más la **versión inglesa de `organizers.declaration` y `portal.privacy`** (borrador de Central, para que la revise el usuario). **CE2** (portal de huéspedes), en español e inglés y también como borrador de Central: `guests.data_why` (por qué pedimos los datos), `guests.signature_statement` (`legal`, declaración al firmar), `guests.allergies_notice` (aviso sobre alergias, sin promesas) e información práctica `info.arrival`, `info.parking`, `info.facilities`, `info.rules` e `info.bring` (tipo `info`). No inventan datos del lugar (horarios, aparcamiento): remiten a quien organiza o al contacto, y la dirección sale de `{{entidad.domicilio}}`. No hace nada con una clave e idioma que ya existan, y solo se ejecuta si Central ya tiene miembros (en producción, sí).
 - **Textos de Organizers (X2, migración `0590`, semilla `central.seed_texts_organizers()`):** `organizers.dates_note`, `organizers.quote_note` (precio orientativo con IVA; el mínimo por retiro lo confirma el equipo, sin importe en el texto) y `organizers.proposal_note`, de tipo `mensaje`, en español e inglés (borradores de Central).
 - **Instrucciones de pago (F3, migración `0595`, semilla `central.seed_texts_payment()`):** `payment.instructions` (`mensaje`, español e inglés): transferencia a `{{entidad.iban}}` a nombre de `{{entidad.razon_social}}` con el concepto «código de reserva + nombre», o Bizum a `{{entidad.bizum}}`. La proyección ya estaba registrada para organizers.
+- **El lugar en los portales (X3 y CE3, migración `0596`, semilla `central.seed_texts_portal_place()`):** borradores de Central en español e inglés: `portal.menu_note` (`mensaje`, aviso sobre el menú para Organizers), `portal.practical` (`info`, información práctica con `{{contacto.telefono}}` y `{{entidad.domicilio}}`), `guests.menu_notice` (`mensaje`, el menú se adapta a alergias e intolerancias) y, solo en español porque es un enlace, `info.map_link` (`info`, cuerpo `{{entidad.mapa}}`). La dirección, el mapa y el plano, en `central.portal_place_projection` (§2.9).
 - **Pantalla «Textos y contacto»** (desde Inicio):
   - Lista por tipo con la versión de cada idioma («ES v2 · EN v1» o «EN usa el español»), con «Traducir al inglés» (parte del español) o «Inglés» para editar la traducción. Enviar el español a la papelera se lleva su traducción.
   - Editor (owner) con: ayuda para insertar marcadores, aviso de marcadores desconocidos, vista previa ya sustituida, el aviso «Al guardar se crea la versión vN; las aceptaciones anteriores conservan su versión» y las versiones anteriores.
@@ -316,6 +329,7 @@ Lecturas registradas que sí existen:
 | `central.record_file` | editor | Archivo de un registro de documentación, si se ve la fila (§8). |
 | `central.requirement_brief` | editor | Código, nombre, vencimiento y riesgo de una obligación, para pedir su tarea a Tasks. |
 | `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
+| `central.portal_place_projection` | todos | El lugar para los portales: nombre, dirección, mapa y plano (§2.9). |
 
 La **regla de estado derivado** vive en `_domain/central` (la usa el cliente sin red) y se repite en SQL para las lecturas:
 
@@ -415,6 +429,7 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 | `central.booking_person_projection` | booking | `person_id, code, display_name, base_role, active, revision` | Booking ya prevé `staff_assignments.person_ref_*` para elegir a la persona del turno sin copiarla (§15.3 de su `API.md`). Solo el nombre visible y la función, nunca contacto. **Se publica cuando Booking lo pida**; nota: Booking lo apunta como `target_app = 'encarna'` y debería ser `'central'`. |
 | `central.booking_blocking_projection` (V2) | booking, tasks | `requirement_id, code, name, blocks_operation, state, expires_on` de requisitos vencidos que bloquean la operación | C09 «bloquea operación»: aviso en Booking y Tasks. Se propone; no entra en V1. |
 | `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
+| `central.portal_place_projection` | organizers, guests, central | §2.9 | Nombre, dirección, enlace del mapa y plano del lugar (cartel de Organizers, portal de huéspedes). |
 | `central.<destino>_kpi_projection` de Central | central | Como §7.2 | Vencimientos y riesgos también son KPIs del panel. |
 
 ### 7.2 Contrato de KPIs (lo que Central pide a cada app)
@@ -491,7 +506,7 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 - Fotos de certificados o carnés: recompresión en cliente (1600 px, WebP) según el contrato §11.3; PDF tal cual.
 - Referencias: `person_records.file_id` y `key_documents.file_id`. Subida sin red con el marcador `{"$blob": sha}` de `sync-client`.
 - **Riesgo:** `GET files/:id` comprueba hoy solo la pertenencia a la app; un `reader` que conociera el id de un documento de una persona obtendría la URL. Los ids no se exponen a quien no ve la fila, pero no basta para documentación laboral. Petición P1: hook de visibilidad de archivos en el kit. Mientras no exista: las rutas del kit se resuelven antes que las de la app, así que `files/:id` no se puede sustituir. La interfaz de Central pedirá los documentos reservados por una ruta propia, `GET people/records/:id/file` (comprueba la visibilidad de la fila y firma la URL con la service key), y los ids de esos archivos solo llegan a quien ve la fila. El hueco que queda (alguien sin permiso que obtenga un id por otra vía) lo cierra P1.
-- **Retención** (contrato §3.9, migración `0560`): `entity.logo_file_id` es `permanent`; `person_records.file_id` y `key_documents.file_id` son `legal`. La recogida de huérfanos del núcleo está activada para Central: un archivo que alguna vez fue `legal` o `permanent` nunca se borra solo, y un huérfano espera 30 días.
+- **Retención** (contrato §3.9, migración `0560`): `entity.logo_file_id` y `entity.site_plan_file_id` (`0596`) son `permanent`; `person_records.file_id` y `key_documents.file_id` son `legal`. La recogida de huérfanos del núcleo está activada para Central: un archivo que alguna vez fue `legal` o `permanent` nunca se borra solo, y un huérfano espera 30 días.
 
 ---
 

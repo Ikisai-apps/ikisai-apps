@@ -3,7 +3,7 @@
  * que ven las personas y los portales, editados siempre desde Central. Marcadores, versión y Markdown sencillo.
  * La sustitución de marcadores es la misma que hace `central.render_text` en SQL (vista previa sin red en la app).
  */
-import { formatIban } from './entity.ts';
+import { formatIban, mapUrl } from './entity.ts';
 
 export const TEXTS_TABLE = 'central.texts';
 export const TEXTS_PROJECTION = 'central.common_texts_projection';
@@ -22,6 +22,7 @@ export const TEXT_MARKERS: ReadonlyArray<{ marker: string; label: string }> = [
   { marker: '{{entidad.razon_social}}', label: 'Razón social' },
   { marker: '{{entidad.nif}}', label: 'NIF/CIF' },
   { marker: '{{entidad.domicilio}}', label: 'Domicilio fiscal' },
+  { marker: '{{entidad.mapa}}', label: 'Enlace del mapa' },
   { marker: '{{entidad.iban}}', label: 'IBAN' },
   { marker: '{{entidad.bizum}}', label: 'Bizum' },
   { marker: '{{contacto.correo}}', label: 'Correo de contacto' },
@@ -49,6 +50,7 @@ export function renderMarkers(body: string, source: MarkerSource): string {
     '{{entidad.razon_social}}': e?.legal_name || '—',
     '{{entidad.nif}}': e?.tax_id || '—',
     '{{entidad.domicilio}}': entityAddress(e) || '—',
+    '{{entidad.mapa}}': mapUrl(entityAddress(e)) || '—',
     '{{entidad.iban}}': formatIban(e?.iban) || '—',
     '{{entidad.bizum}}': e?.bizum?.trim() || '—',
     '{{contacto.correo}}': source.email?.trim() || '—',
