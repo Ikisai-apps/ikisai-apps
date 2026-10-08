@@ -5,6 +5,7 @@
  * Compila la app con la API de Vite, la sirve con `vite preview` y reenvía /api a una API falsa en memoria (fake-api.ts).
  */
 import { expect, test } from 'playwright/test';
+import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 import { proposalTotals } from '../../supabase/functions/_domain/booking/mod.ts';
 import { ASSIGNMENTS, BEDS, NEEDS, SPACES, STAFF, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
@@ -1337,6 +1338,23 @@ test('@smoke lanzador: la marca de la cabecera abre las apps de la cuenta con Bo
   await expect(sheet.locator('[aria-current]')).toContainText('Booking');
   await page.keyboard.press('Escape');
   await expect(sheet).toBeHidden();
+});
+
+test('@smoke feedback: enviar con doble toque, se cierra, se ve el aviso y llega un solo reporte', async ({ page }) => {
+  await login(page);
+  const before = api.feedbackReports().length;
+  await feedbackRoundTrip(page, { target: '[data-feedback-id="booking.inicio.proximas"]' });
+  await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
+});
+
+// Con el teclado del móvil abierto sobre la hoja del comentario. Con una hoja de la app ya abierta, `feedbackRoundTrip` no
+// llega al lanzador (queda debajo del fondo de la hoja): avisado a Core y UI.
+test('@smoke feedback: con el teclado del móvil, el aviso se ve dentro de lo visible y llega un solo reporte', async ({ page }) => {
+  await login(page);
+  await page.goto(`${baseURL}/#/reservas`);
+  const before = api.feedbackReports().length;
+  await feedbackRoundTrip(page, { target: '#newReservation', keyboard: 686 });
+  await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
 });
 
 test('@smoke PWA: manifest, service worker y shell en caché', async ({ page }) => {

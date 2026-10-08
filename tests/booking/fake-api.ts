@@ -770,7 +770,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           if (known) return json(res, 200, { report: feedbackStore.get(known) });
           feedbackSeq += 1;
           const report: FakeFeedbackReport = {
-            id: String(body.id), code: `FB-${String(feedbackSeq).padStart(4, '0')}`, originApp: 'booking', subject: String(body.subject ?? 'application'), intent: String(body.intent ?? 'bug'),
+            id: String(body.id), code: `FB_2026_${String(feedbackSeq).padStart(3, '0')}`, originApp: 'booking', subject: String(body.subject ?? 'application'), intent: String(body.intent ?? 'bug'),
             message: String(body.message ?? ''), node: body.node ?? null, status: 'open', display: 'open', supportersCount: 1, mine: true, createdAt: nowIso(),
             blocking: !!body.blocking, context: body.context ?? null, requestId: String(body.requestId),
           };
