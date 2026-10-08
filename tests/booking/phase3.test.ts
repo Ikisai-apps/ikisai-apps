@@ -86,6 +86,20 @@ test('fase 3 · lo contratado sin lo pagado; proyecto en Tasks creado, renombrad
   assert.deepEqual([extra.kind, extra.project_ref, extra.due, extra.title], ['booking.retreat_extra', `RES${code}`, '2028-09-08', 'Equipo de sonido']);
   assert.equal((await tick()).projects + (await tick()).extras, 0, 'nada más que hacer');
 
+  // proyecto en la papelera de Tasks: sus extras nuevos no se piden; al restaurarse, sí
+  const line2 = uuid();
+  await app.t.db.query(`update booking.tasks_projects set last_status = 'deleted' where reservation_id = $1`, [res]);
+  await app.t.db.query(`insert into booking.proposal_lines (proposal_id, rate_id, description, unit, quantity, unit_amount, position, id)
+    select $1, $2, 'Equipo de sonido extra', 'estancia', 1, 200, 3, $3`, [proposal, sound, line2]).catch(async () => {
+    // la propuesta aceptada está bloqueada: se inserta como el procedimiento (marca local de la transacción)
+    await app.t.db.query(`select set_config('booking.proposal_procedure', 'on', false)`);
+    await app.t.db.query(`insert into booking.proposal_lines (proposal_id, rate_id, description, unit, quantity, unit_amount, position, id) values ($1, $2, 'Equipo de sonido extra', 'estancia', 1, 200, 3, $3)`, [proposal, sound, line2]);
+    await app.t.db.query(`select set_config('booking.proposal_procedure', '', false)`);
+  });
+  assert.equal((await app.t.db.query<{ v: boolean }>(`select booking.tasks_has_work() v`)).rows[0]!.v, false, 'con el proyecto en la papelera no se reintenta');
+  await app.t.db.query(`update booking.tasks_projects set last_status = 'restored' where reservation_id = $1`, [res]);
+  assert.equal((await tick()).extras, 1, 'al restaurarse el proyecto, se pide el extra pendiente');
+
   // cambia la fecha: se renombra; se cancela: se archiva
   await ok([{ op: 'update', table: TABLES.reservations, id: res, expectedRevision: await revision('booking.reservations', res), fields: { start_date: '2028-09-15', end_date: '2028-09-17' } }]);
   out = await tick();
