@@ -282,3 +282,11 @@ test('portales · contacto público por público: cada portal pide el suyo por d
   assert.equal(o.data.audience, 'organizers'); assert.equal(o.data.items[0].body, 'organiza@ikisai.com');
   assert.equal((await callPortal(guests, 'guests', '/api/v1/public/contact?audience=nadie')).data.audience, 'guests', 'público desconocido → el del portal');
 });
+
+test('portales · K7: la cuenta de servicio de Organizers se registra sin pertenencias', async () => {
+  const user = await app.t.createUser();
+  const id = (await app.t.db.query<{ id: string }>(`select core.register_service_actor($1, 'organizers')::text id`, [user])).rows[0]!.id;
+  assert.equal(id, user);
+  assert.equal((await app.t.db.query<{ n: number }>('select count(*)::int n from core.memberships where user_id = $1', [user])).rows[0]!.n, 0);
+  assert.equal((await app.t.db.query<{ id: string }>(`select core.service_actor('organizers')::text id`)).rows[0]!.id, user);
+});
