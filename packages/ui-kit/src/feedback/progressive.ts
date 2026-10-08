@@ -17,6 +17,8 @@ import { captureFeedbackTarget } from './capture.ts';
 import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
 import { kitLocaleNow, kt, onKitLocaleChange, type Locale } from '../i18n/i18n.ts';
+import { currentSheet } from '../overlay/sheet.ts';
+import { toast } from '../toast.ts';
 
 export type ProgressiveAnswers = Record<string, string>;
 
@@ -54,6 +56,12 @@ export interface ProgressiveResult {
   answers: ProgressiveAnswers; message: string; images: FeedbackImage[];
   /** Elemento señalado en un paso `signal` (id y ruta de etiquetas). */
   node?: { id: string; path: string[] };
+  /**
+   * `id` y `requestId` para `POST feedback`: **los mismos en cada intento** de este formulario mientras el contenido no
+   * cambie, así un segundo toque o un reintento no crean un duplicado (el servidor deduplica). Nuevos si cambia tras un fallo.
+   */
+  id: string;
+  requestId: string;
 }
 
 export interface ProgressiveFormOptions {
@@ -70,6 +78,11 @@ export interface ProgressiveFormOptions {
   fallbackNode?: () => { id: string; path: string[] };
   container?: () => HTMLElement;
   onChange?: (answers: ProgressiveAnswers) => void;
+  /**
+   * Tras enviar (o quedar pendiente): por defecto, aviso («Enviado. Gracias.» o «Pendiente…») y se cierra la hoja del kit
+   * que contiene el formulario. Con `onDone`, la app decide (cerrar su vista, volver a Inicio).
+   */
+  onDone?: (result: 'sent' | 'pending') => void;
 }
 
 export interface ProgressiveForm {
@@ -88,6 +101,10 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
   const message = el('textarea', { class: 'fb-message', rows: '4', maxlength: String(FEEDBACK_MAX_MESSAGE), 'aria-label': kt('Comentario') }) as HTMLTextAreaElement;
   let images: FeedbackImage[] = [];
   const element = el('div', { class: 'fb-progressive' });
+  let submitting = false;
+  let done = false;
+  let attempt: { id: string; requestId: string; key: string } | null = null;
+  const newUuid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
   /** Nodos señalados por paso `signal`. */
   const signalled = new Map<string, { id: string; path: string[] }>();
 
@@ -209,14 +226,31 @@ export function createFeedbackProgressiveForm(options: ProgressiveFormOptions): 
       const status = el('p', { class: 'fb-status', role: 'status', 'aria-live': 'polite' });
       const send = el('button', { type: 'button', class: 'primary fb-send' }, kt('Enviar'));
       send.addEventListener('click', async () => {
+        // Mismo bloqueo que el composer (FB_2026_016/017): un envío a la vez y ninguno más tras el éxito.
+        if (submitting || done) return;
         if (!message.value.trim()) { status.textContent = kt('Escribe un comentario antes de enviar.'); status.className = 'fb-status error'; message.focus(); return; }
+        submitting = true;
         send.disabled = true; status.className = 'fb-status'; status.textContent = kt('Enviando…');
         try {
           const node = [...chain()].reverse().map((s) => signalled.get(s.id)).find(Boolean);
-          const result = await options.onSubmit({ answers: { ...answers }, message: message.value.trim(), images, ...(node ? { node } : {}) });
-          status.textContent = result === 'sent' ? kt('Enviado. Gracias.') : kt('Pendiente de enviar: se enviará al volver la conexión.');
+          const key = JSON.stringify([answers, message.value.trim(), images.map((i) => i.id)]);
+          if (attempt && attempt.key !== key) attempt = null;
+          attempt ??= { id: newUuid(), requestId: newUuid(), key };
+          const result = await options.onSubmit({ answers: { ...answers }, message: message.value.trim(), images, ...(node ? { node } : {}), id: attempt.id, requestId: attempt.requestId });
+          done = true;
+          const text = result === 'sent' ? kt('Enviado. Gracias.') : kt('Pendiente de enviar: se enviará al volver la conexión.');
+          status.textContent = text;
           element.dataset.state = result;
+          (document.activeElement as HTMLElement | null)?.blur?.();
+          toast(text);
+          if (options.onDone) options.onDone(result);
+          else {
+            // Dentro de una hoja del kit («Ayuda y sugerencias»): se cierra sola.
+            const sheet = currentSheet();
+            if (sheet?.isOpen() && sheet.element.contains(element)) setTimeout(() => void sheet.close(true), result === 'sent' ? 250 : 1200);
+          }
         } catch (error) {
+          submitting = false;
           send.disabled = false; status.className = 'fb-status error'; status.textContent = (error as Error)?.message || kt('No se pudo enviar.');
         }
       });

@@ -102,3 +102,53 @@ export async function feedbackRoundTrip(page: Page, options: FeedbackRoundTripOp
   await setMode(page, launcher, false);
   return { code };
 }
+
+export interface PortalHelpRoundTripOptions {
+  /** Abre «Ayuda y sugerencias». Por defecto: la marca (`#appLauncher`) y la entrada del lanzador (`.launcher-center`). */
+  open?: (page: Page) => Promise<void>;
+  /** Respuestas a elegir en orden (texto de cada opción), hasta llegar al paso del comentario. */
+  choices: string[];
+  text?: string;
+  /** Pulsa «Enviar» dos veces seguidas; por defecto sí. */
+  doubleTap?: boolean;
+  /** Simula el teclado abierto (alto visible en px). */
+  keyboard?: number;
+  timeout?: number;
+}
+
+/**
+ * Prueba común de los portales (Organizers, Guests): «Ayuda y sugerencias» → formulario progresivo → enviar con doble
+ * toque → la hoja se cierra → el aviso se ve dentro de lo visible. La app comprueba en su servidor que llega uno.
+ */
+export async function portalHelpRoundTrip(page: Page, options: PortalHelpRoundTripOptions): Promise<void> {
+  const timeout = options.timeout ?? 8000;
+  if (options.open) await options.open(page);
+  else {
+    await page.locator('#appLauncher').first().click();
+    await page.locator('.launcher-center').click();
+  }
+  const form = page.locator('.sheetback.show .fb-progressive');
+  await expect(form).toBeVisible();
+  for (const choice of options.choices) await form.locator('.fb-choice', { hasText: choice }).last().click();
+  const message = form.locator('textarea.fb-message');
+  await expect(message).toBeVisible();
+  await message.fill(options.text ?? 'Prueba de humo de «Ayuda y sugerencias»');
+  if (options.keyboard) await simulateKeyboard(page, options.keyboard);
+  await form.locator('.fb-send').focus();
+  await page.keyboard.press('Enter');
+  if (options.doubleTap !== false) await page.keyboard.press('Enter').catch(() => undefined);
+
+  await expect(page.locator('.sheetback.show .fb-progressive')).toHaveCount(0, { timeout });
+  const toast = page.locator('.toast.show').filter({ hasText: /Enviado|Sent|Pendiente|Pending/ });
+  await expect(toast).toBeVisible({ timeout });
+  const fit = await toast.evaluate((node) => {
+    const r = node.getBoundingClientRect();
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
+    return { h: r.height, inside: r.top >= top && r.bottom <= bottom && r.left >= 0 && r.right <= innerWidth };
+  });
+  expect(fit.inside, 'el aviso tiene que verse dentro de lo visible').toBe(true);
+  expect(fit.h, 'el aviso no puede estirarse en columna').toBeLessThan(90);
+  if (options.keyboard) await simulateKeyboard(page, null);
+}
