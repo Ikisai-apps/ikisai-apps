@@ -952,7 +952,7 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   ]);
   const issued = (await ok([call('invoices.issue', { id: e1 })])).results[0].result;
   const reg = uuid();
-  await ok([insert('invoices.issued_invoices', reg, { series_code: 'PA', number: '2026-0007', issue_date: today.d, invoice_type: 'F2', description: 'Señal del retiro' }),
+  await ok([insert('invoices.issued_invoices', reg, { series_code: 'PA', number: '2026-0007', issue_date: today.d, invoice_type: 'F2', description: 'Señal del retiro', purpose: 'senal' }),
     insert('invoices.issued_invoice_lines', uuid(), { issued_invoice_id: reg, description: 'Señal', net_amount: 300, vat_rate: 0 })]);
   const draft = uuid();
   await ok([insert('invoices.issued_invoices', draft, { series_code: 'PZ', status: 'borrador', issue_date: today.d, description: 'Borrador del retiro' })]);
@@ -977,6 +977,14 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   const rectRow = money.invoices.find((i: any) => i.id === rect);
   assert.deepEqual(rectRow.rectifies, [issued.full_number]); assert.equal(rectRow.total, -110);
   assert.equal(money.invoices.find((i: any) => i.id === reg).collected, true);
+  // Concepto del cobro (0221): la señal sale rotulada; en una emitida congelada se puede poner después, y un valor desconocido no entra
+  assert.equal(money.invoices.find((i: any) => i.id === reg).purpose, 'senal');
+  assert.equal(e1Row.purpose, null);
+  const e1Frozen = await row('invoices.issued_invoices', e1);
+  await ok([update('invoices.issued_invoices', e1, e1Frozen.revision, { purpose: 'saldo' })]);
+  const e1After = await row('invoices.issued_invoices', e1);
+  await assert.rejects(ok([update('invoices.issued_invoices', e1, e1After.revision, { purpose: 'propina' })]));
+  assert.equal((await portal('invoices.portal_reservation_money', { reservation_id: R })).rows[0]!.r.invoices.find((i: any) => i.id === e1).purpose, 'saldo');
   assert.deepEqual(money.totals, { invoiced: 1290, collected: 300, pending: 990 });
   const flat = JSON.stringify(money);
   for (const internal of ['Nota interna', 'notes', 'review_reason', 'income_category', 'external_tool', 'vf_hash', 'Otro retiro', 'Borrador del retiro']) assert.equal(flat.includes(internal), false, internal);

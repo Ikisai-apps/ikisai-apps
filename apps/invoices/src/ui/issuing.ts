@@ -10,7 +10,7 @@ import { closeSheet, confirmDialog, createPrintView, el, icon, openSheet, replac
 import { fb, type FbMark } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUE_MISSING_LABELS, ISSUED_TYPE_LABELS,
+  INCOME_CATEGORIES, INCOME_CATEGORY_LABELS, INCOME_CATEGORY_VAT, ISSUE_MISSING_LABELS, ISSUED_PURPOSES, ISSUED_PURPOSE_LABELS, ISSUED_TYPE_LABELS,
   customerOffer, customerTaxId, displayPrice, draftLineFromPrice, findCustomerByTaxId, formatIssuedNumber, issueMissing, reservationPrefill, searchCustomers,
   type DraftLineValues, type DraftPrefill, type IncomeCategory, type IssuedAddress, type IssuedDocument, type IssuerSnapshot, type PricedLine, type ReservationInvoiceSource,
 } from '@ikisai/domain-invoices';
@@ -98,6 +98,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
   const description = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.concepto', 'data-feedback-label': 'Concepto', type: 'text', id: 'draftDescription', maxlength: '500', placeholder: 'Estancia retiro de yoga, 3 noches', value: draft?.description ?? prefill?.description ?? '' });
   const operationDate = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.fecha_operacion', 'data-feedback-label': 'Fecha de la operación', type: 'date', id: 'draftOperationDate', value: draft?.operation_date ?? prefill?.operation_date ?? '' });
   const category = select('draftCategory', [['', 'Sin categoría'], ...INCOME_CATEGORIES.map((c) => [c, `${INCOME_CATEGORY_LABELS[c]} · IVA ${INCOME_CATEGORY_VAT[c]} %`] as [string, string])], draft?.income_category ?? prefill?.income_category ?? null, { 'data-feedback-id': 'invoices.emitidas.borrador.categoria', 'data-feedback-label': 'Categoría de ingreso' });
+  const purpose = select('draftPurpose', [['', 'Sin indicar'], ...ISSUED_PURPOSES.map((p) => [p, ISSUED_PURPOSE_LABELS[p]] as [string, string])], draft?.purpose ?? null, { 'data-feedback-id': 'invoices.emitidas.borrador.concepto_cobro', 'data-feedback-label': 'Concepto del cobro' });
   // Precios con IVA incluido (las tarifas de Booking lo están): base y cuota se guardan exactas por línea.
   const includeVat = el('input', { 'data-feedback-id': 'invoices.emitidas.borrador.iva_incluido', 'data-feedback-label': 'Precios con IVA incluido', type: 'checkbox', id: 'draftPricesIncludeVat', checked: draft?.prices_include_vat ?? prefill?.prices_include_vat ?? false });
   const totals = el('p', { 'data-feedback-ignore': '', class: 'hint', id: 'draftTotals' });
@@ -197,7 +198,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
       recipient_name: name.value.trim() || null, recipient_tax_id: customerTaxId(taxId.value) || null,
       recipient_id_type: taxId.value.trim() ? (recipientCountry === 'ES' ? 'NIF' : '02') : null, recipient_country: recipientCountry,
       recipient_address: hasAddress ? address : null, description: description.value.trim(), operation_date: operationDate.value || null,
-      income_category: category.value || null, prices_include_vat: includeVat.checked,
+      income_category: category.value || null, prices_include_vat: includeVat.checked, purpose: purpose.value || null,
       base_total: base, quota_total: quota, total: Math.round((base + quota) * 100) / 100,
     };
     const ops: RowOperation[] = draft
@@ -229,6 +230,7 @@ export function openInvoiceDraft(ctx: ViewContext, data: IssuedData, draft?: Loc
     el('div', { class: 'field' }, el('span', null, 'Domicilio'), line, el('div', { class: 'row3' }, postal, city, province), country, addressNote),
     field('Concepto', description),
     el('div', { class: 'row2' }, field('Fecha de la operación', operationDate, 'Solo si no es la de hoy (por ejemplo, la salida).'), field('Categoría de ingreso', category)),
+    field('Concepto del cobro', purpose, 'Señal, saldo o extras: así lo ve rotulado el organizador en su portal.'),
     el('label', { class: 'check' }, includeVat, el('span', null, 'Precios con IVA incluido')),
     el('div', { class: 'field' }, el('span', null, 'Líneas'), linesHost, el('button', { 'data-feedback-id': 'invoices.emitidas.borrador.anadir_linea', 'data-feedback-label': 'Añadir línea', class: 'linkbtn', type: 'button', id: 'addDraftLine', onclick: () => addLine() }, icon('plus', 16), 'Añadir línea')),
     totals,

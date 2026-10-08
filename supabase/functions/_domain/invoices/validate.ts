@@ -8,7 +8,7 @@ import {
   DEDUCTIBILITIES, EXPENSE_CATEGORIES, EXPORT_STATUSES, FILE_KINDS, FILE_MIMES, INVOICE_SOURCES, INVOICE_STATUSES, ITEM_TYPES, PAYMENT_METHODS,
   PAYMENT_STATUSES, TABLES, TARGET_APPS, TARGET_KINDS, TAX_TYPES, WRITABLE, type InvoicesTable,
 } from './types.ts';
-import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS, ISSUED_STATUSES, RECIPIENT_KINDS, SERIES_MODES } from './issued.ts';
+import { EXEMPTIONS, INCOME_CATEGORIES, ISSUED_TARGET_KINDS, ISSUED_TAXES, ISSUED_TAX_LINE_TAXES, ISSUED_TYPES, QUALIFICATIONS, RECIPIENT_ID_TYPES, RECTIFICATION_KINDS, SERIES_KINDS, ISSUED_STATUSES, RECIPIENT_KINDS, SERIES_MODES, ISSUED_PURPOSES } from './issued.ts';
 import { validIssuedNumberFormat } from './verifactu.ts';
 
 /** Error de dominio: se convierte en `Fault(422, code, message, details)` en la Edge y en mensaje en el cliente. */
@@ -355,6 +355,7 @@ export function validateIssuedInvoiceFields(fields: Fields, op: 'insert' | 'upda
   if (fields.status === 'anulada') domainFail('INVALID_TRANSITION', 'Para anular una emitida usa invoices.annul_issued.', { field: 'status' });
   if (fields.status === 'emitida' || fields.status === 'rectificada') domainFail('INVALID_TRANSITION', 'Para emitir una factura usa invoices.issue.', { field: 'status' });
   oneOf(fields, 'recipient_kind', RECIPIENT_KINDS);
+  oneOf(fields, 'purpose', ISSUED_PURPOSES);
   bool(fields, 'prices_include_vat');
   if (has(fields, 'recipient_address') && fields.recipient_address !== null) {
     const addr = fields.recipient_address as Record<string, unknown>;
