@@ -12,6 +12,7 @@ import { T, describeError, type Mirror } from '../app/client.ts';
 import { ROLE_LABELS, type Account, type Role } from '../app/admin.ts';
 import { showSecret } from './access.ts';
 import { syncAccountName } from '../app/account-names.ts';
+import { checkExistingAccount, mergePeople } from './account-conflict.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
@@ -624,7 +625,22 @@ export function mountPerson(personId: string): ViewMount {
         if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
         submit.disabled = true;
         try {
-          const out = await usage.run('central.persona.cuenta.dar', () => admin.invite({ email: mail, displayName: person.display_name, memberships }));
+          // Una persona, una ficha, una cuenta: si el correo ya tiene cuenta, se avisa y se elige antes de dar el alta.
+          const choice = await checkExistingAccount({ admin, client, email: mail, person, appName });
+          if (choice.kind === 'abort') {
+            if (choice.otherEmail) { email.focus(); email.select(); error.textContent = 'Escribe el correo de esta persona.'; }
+            return;
+          }
+          if (choice.kind === 'use_existing') return; // sin ficha de partida no se llega aquí: «Dar cuenta» siempre tiene una
+          const into = choice.kind === 'merge' ? choice.into : null;
+          const out = await usage.run('central.persona.cuenta.dar', () => admin.invite({ email: mail, displayName: into ? into.display_name : person.display_name, memberships }));
+          if (into) {
+            await mergePeople(client, person.id, into.id);
+            await sheet?.close(true);
+            toast(`Fichas fusionadas: queda «${into.display_name}».`);
+            navigate(`#/personas/${into.id}`);
+            return;
+          }
           const fresh = data.people.find((p) => p.id === person.id) ?? person;
           await client.commit([{ op: 'update', table: T.people, id: person.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
           await sheet?.close(true);

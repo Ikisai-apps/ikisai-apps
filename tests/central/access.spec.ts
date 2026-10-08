@@ -207,3 +207,69 @@ test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin re
   await expect(page.getByText('La cuenta usa ya el nombre de la ficha.')).toBeVisible();
   expect(await profileName(api.app.users.reader)).toBe('Reader');
 });
+
+// Una persona, una ficha, una cuenta (decisión del usuario): el alta con un correo que ya tiene cuenta avisa y deja elegir.
+test('accesos · alta con un correo que ya tiene cuenta: enlazar, fusionar fichas u otro correo', async ({ page }) => {
+  const db = api.app.t.db;
+  const person = (name: string, extra: Record<string, unknown> = {}) => ({ op: 'insert', table: 'central.people', id: crypto.randomUUID(), fields: { display_name: name, relation: 'equipo', position: 2, ...extra } });
+  const invite = async (email: string) => (await api.app.call('/api/v1/admin/invite', { body: { email, displayName: email.split('@')[0], memberships: [{ app: 'tasks', role: 'reader' }] } })).data.userId as string;
+  // Una cuenta del equipo sin ficha, y otra enlazada a la ficha «Carla Prueba» que tiene una duplicada sin cuenta.
+  const lonely = await invite('sinficha@example.invalid');
+  const carla = await invite('carla@example.invalid');
+  const luis = person('Luis Prueba'); const carlaKeep = person('Carla Prueba', { user_id: carla }); const carlaDup = person('Carla P.'); const mario = person('Mario Prueba');
+  const setup = await api.app.call('/api/v1/commands', { body: { requestId: 'existing-setup', operations: [luis, carlaKeep, carlaDup, mario] } });
+  expect(setup.status, JSON.stringify(setup.data)).toBe(200);
+  const userOf = async (id: string) => (await db.query<{ u: string | null; d: string | null; m: string | null }>(`select user_id as u, deleted_at as d, merged_into as m from central.people where id = $1`, [id])).rows[0]!;
+
+  await login(page, 'owner@example.invalid');
+  await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
+  const startInvite = async (personName: string, email: string) => {
+    await page.goto(`${baseURL}/#/accesos/alta`);
+    await page.locator('#invitePerson').selectOption({ label: personName });
+    await page.locator('#inviteEmail').fill(email);
+    await page.locator('#invite-booking').selectOption('reader');
+    await page.locator('#inviteSubmit').click();
+    await expect(page.locator('#existingAccount')).toBeVisible();
+  };
+
+  // 1. Cuenta sin ficha → enlazar esta ficha (y se suman los accesos).
+  await startInvite('Luis Prueba', 'sinficha@example.invalid');
+  await expect(page.locator('#existingAccount')).toContainText('Este correo ya tiene cuenta');
+  await expect(page.locator('#existingAccount')).toContainText('sin ficha');
+  await expect(page.locator('#existingMerge')).toHaveCount(0);
+  await page.locator('#existingLink').click();
+  await expect(page.getByText('Esa cuenta ya existía: se le han añadido los accesos.')).toBeVisible();
+  await expect.poll(async () => (await userOf(luis.id)).u).toBe(lonely);
+  expect((await db.query(`select 1 from core.memberships where user_id = $1 and app = 'booking'`, [lonely])).rows.length).toBe(1);
+
+  // 2. Cuenta enlazada a otra ficha → fusionar las dos fichas: queda la de la cuenta.
+  await startInvite('Carla P.', 'carla@example.invalid');
+  await expect(page.locator('#existingAccount')).toContainText('enlazada a la ficha «Carla Prueba»');
+  await page.locator('#existingMerge').click();
+  await expect(page.getByText('Fichas fusionadas: queda «Carla Prueba».')).toBeVisible();
+  await expect.poll(async () => (await userOf(carlaDup.id)).d).not.toBeNull();
+  expect((await userOf(carlaDup.id)).m).toBe(carlaKeep.id);
+  expect((await userOf(carlaKeep.id)).u).toBe(carla);
+  expect((await db.query(`select 1 from core.memberships where user_id = $1 and app = 'booking'`, [carla])).rows.length).toBe(1);
+
+  // 3. Es otra persona → usar otro correo: no se da de alta ni se enlaza nada.
+  await startInvite('Mario Prueba', 'carla@example.invalid');
+  await page.locator('#existingOther').click();
+  await expect(page.locator('#existingAccount')).toHaveCount(0);
+  await expect(page.locator('.formerror')).toContainText('Escribe el correo de esta persona.');
+  await expect(page.locator('#inviteEmail')).toBeFocused();
+  expect((await userOf(mario.id)).u).toBeNull();
+  // Nunca dos fichas con la misma cuenta.
+  expect((await db.query(`select user_id from central.people where deleted_at is null and user_id is not null group by user_id having count(*) > 1`)).rows.length).toBe(0);
+  // Si Auth rechaza la cuenta, la pantalla enseña su motivo (`details.authMessage`, #404).
+  await page.route('**/api/v1/admin/invite', (route) => route.fulfill({ status: 422, contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'AUTH_ADMIN_FAILED', message: 'No se pudo completar la operación de cuentas.', details: { authCode: 'email_address_invalid', authMessage: 'Email address is invalid' } } }) }));
+  await page.reload();
+  await page.locator('#invitePerson').selectOption('');
+  await page.locator('#inviteName').fill('Persona sin correo válido');
+  await page.locator('#inviteEmail').fill('nadie@example.invalid');
+  await page.locator('#invite-booking').selectOption('reader');
+  await page.locator('#inviteSubmit').click();
+  await expect(page.locator('.formerror')).toContainText('No se pudo completar la operación de cuentas: Email address is invalid');
+  await page.unroute('**/api/v1/admin/invite');
+});

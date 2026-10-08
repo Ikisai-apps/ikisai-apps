@@ -5,6 +5,7 @@ import {
 import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError } from '../app/client.ts';
 import { isStaffAccount, syncAccountName } from '../app/account-names.ts';
+import { checkExistingAccount, mergePeople } from './account-conflict.ts';
 import { describeScopes, EVENT_LABELS, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
 import type { Usage } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
@@ -386,15 +387,27 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
     const memberships = [...selects].filter(([, s]) => s.value).map(([app, s]) => ({ app, role: s.value as Role }));
     if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
     const p = chosen();
-    const displayName = p ? p.display_name : name.value.trim();
+    let displayName = p ? p.display_name : name.value.trim();
     if (!displayName) { error.textContent = 'Escribe el nombre de la persona.'; name.focus(); return; }
     submit.disabled = true;
     try {
+      // Una persona, una ficha, una cuenta: si el correo ya tiene cuenta, se avisa y se elige antes de dar el alta.
+      const catalog = await admin.catalog();
+      const choice = await checkExistingAccount({ admin, client, email: mail, person: p, appName: (id) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id });
+      if (choice.kind === 'abort') {
+        if (choice.otherEmail) { email.focus(); email.select(); error.textContent = 'Escribe el correo de esta persona.'; }
+        return;
+      }
+      if (choice.kind === 'merge' || choice.kind === 'use_existing') displayName = choice.into.display_name; // la ficha que queda manda
       const out = await usage.run('central.accesos.alta.crear', () => admin.invite({ email: mail, displayName, memberships }));
-      // Enlaza la cuenta con su ficha (o crea la ficha). Si esa cuenta ya estaba enlazada con otra ficha, se deja como está.
+      // Enlaza la cuenta con su ficha (o crea la ficha), o fusiona la ficha elegida con la que ya tenía la cuenta.
       const current = ((await client.list(T.people)) as unknown as PersonLite[]).filter((x) => !x.deleted_at);
       const alreadyLinked = current.find((x) => x.user_id === out.userId);
-      if (alreadyLinked) toast(`Esa cuenta ya estaba enlazada con la ficha de ${alreadyLinked.display_name}.`);
+      if (choice.kind === 'merge' && p) {
+        await mergePeople(client, p.id, choice.into.id);
+        toast(`Fichas fusionadas: queda «${choice.into.display_name}».`);
+      } else if (choice.kind === 'use_existing') toast(`Accesos añadidos a la cuenta de ${choice.into.display_name}.`);
+      else if (alreadyLinked) toast(`Esa cuenta ya estaba enlazada con la ficha de ${alreadyLinked.display_name}.`);
       else if (p) {
         const fresh = current.find((x) => x.id === p.id) ?? p;
         await client.commit([{ op: 'update', table: T.people, id: p.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
@@ -404,7 +417,8 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
       if (out.temporaryPassword) {
         showSecret(out.temporaryPassword, out.email, () => navigate('#/accesos'));
       } else {
-        toast('Esa cuenta ya existía: se le han añadido los accesos. Su contraseña no cambia.');
+        // Fusión o ficha existente ya tienen su aviso; el resto, el de siempre.
+        if (choice.kind !== 'merge' && choice.kind !== 'use_existing') toast('Esa cuenta ya existía: se le han añadido los accesos. Su contraseña no cambia.');
         navigate('#/accesos');
       }
       form.reset();

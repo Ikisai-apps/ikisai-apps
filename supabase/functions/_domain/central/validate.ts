@@ -15,6 +15,9 @@ import {
   COMPLIANCE_TABLES, DOCUMENT_KINDS, FREQUENCIES, IMPACTS, KEY_DOCUMENT_STATUSES, REQUIREMENT_STATUSES, REQUIREMENT_TYPES, RISKS,
 } from './compliance.ts';
 
+/** Único procedimiento de Central: fusiona dos fichas de la misma persona (solo el owner; API.md §3.1). */
+export const MERGE_PEOPLE_PROCEDURE = 'central.merge_people';
+
 export interface DomainOperation {
   op: string;
   table?: string;
@@ -276,7 +279,15 @@ const fieldIssue = (index: number, table: string, field: string, reason: string)
  */
 export function validateOperations(operations: readonly DomainOperation[], actor: Actor, current?: (table: string, id: string) => Record<string, unknown> | undefined): Issue | null {
   for (const [index, op] of operations.entries()) {
-    if (op.op === 'call') return { code: 'INVALID_OPERATION', message: 'Central no tiene procedimientos.', details: { index } };
+    if (op.op === 'call') {
+      if (op.procedure !== MERGE_PEOPLE_PROCEDURE) return { code: 'INVALID_OPERATION', message: 'Central solo tiene el procedimiento de fusionar fichas.', details: { index } };
+      if (actor.role !== 'owner') return { code: 'FORBIDDEN', message: 'Solo quien administra Central puede fusionar fichas.', details: { index } };
+      const args = op.args ?? {};
+      if (typeof args.from !== 'string' || typeof args.into !== 'string' || args.from === args.into) {
+        return { code: 'INVALID_OPERATION', message: 'Indica las dos fichas que se fusionan.', details: { index } };
+      }
+      continue;
+    }
     const table = op.table ?? '';
     const spec = SPECS[table];
     if (!spec) continue; // tabla desconocida: la rechaza el núcleo
@@ -288,6 +299,7 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     }
     if (op.op !== 'insert' && op.op !== 'update' && op.op !== 'restore') continue;
     const fields = op.fields ?? {};
+    if (table === TABLES.people && 'merged_into' in fields) return fieldIssue(index, table, 'merged_into', 'solo lo escribe la fusión de fichas');
     for (const [field, value] of Object.entries(fields)) {
       const fieldSpec = spec.fields[field];
       if (!fieldSpec) continue; // el núcleo responde INVALID_FIELDS con su lista blanca
