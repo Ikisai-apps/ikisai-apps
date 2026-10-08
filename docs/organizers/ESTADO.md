@@ -57,7 +57,6 @@
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
 - Fase 3: abrir el PDF de una factura registrada (K2, aplazado: «Pídenosla» basta).
-- Borrado de las respuestas a los 6 meses: construido (0701 y `worker/retention/tick`); en producción necesita la cuenta de servicio `organizers` (K7).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.
