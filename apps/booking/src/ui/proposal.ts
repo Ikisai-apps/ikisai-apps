@@ -1,6 +1,6 @@
 /** Bloque «Propuesta» de la ficha (docs/booking/API.md §15.2): versión vigente, acciones por estado e historial de versiones. */
 import type { RejectedBatch, SyncClient, TableName } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, renderMoneyBreakdown, toast, type Child } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, renderMoneyBreakdown, toast, type Child } from '@ikisai/ui-kit';
 import { PROCEDURES } from '@ikisai/domain-booking';
 import { CONDITIONS, PROPOSALS, PROPOSAL_LINES, TIERS, describeError, fullDay, today } from '../app/client.ts';
 import { RATE_LABELS } from '../app/labels.ts';
@@ -128,7 +128,43 @@ export function renderProposalBlock(options: ProposalBlockOptions): HTMLElement 
   }
 
   async function send(p: Row): Promise<void> {
+    // Por debajo del mínimo comercial: se puede enviar como excepción, confirmando con un motivo que queda en la propuesta
+    const conditions = conditionsOf(p);
+    const minimum = conditions?.minimum_total === null || conditions?.minimum_total === undefined ? null : Number(conditions.minimum_total);
+    const total = figures(p, linesOf(p), conditions).total;
+    if (minimum !== null && Number.isFinite(minimum) && total < minimum) {
+      const reason = await askBelowMinimumReason(total, minimum);
+      if (!reason) return;
+      await launch('send', PROCEDURES.sendProposal, { proposal_id: p.id, expectedRevision: p.revision, below_minimum_reason: reason }, p.id, 'Propuesta marcada como enviada (por debajo del mínimo).');
+      return;
+    }
     await launch('send', PROCEDURES.sendProposal, { proposal_id: p.id, expectedRevision: p.revision }, p.id, 'Propuesta marcada como enviada.');
+  }
+
+  function askBelowMinimumReason(total: number, minimum: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (value: string | null) => { if (done) return; done = true; resolve(value); };
+      const input = el('textarea', { id: 'belowMinimumReason', rows: '3', maxlength: '500', 'aria-label': 'Motivo de la excepción',
+        'data-feedback-id': 'booking.reserva.propuesta.minimo.motivo', 'data-feedback-label': 'Motivo de la excepción' }) as HTMLTextAreaElement;
+      const error = el('p', { class: 'formerror', role: 'alert' });
+      const sheet = openSheet({
+        title: 'Por debajo del mínimo',
+        body: el('div', { class: 'rowform', 'data-feedback-id': 'booking.reserva.propuesta.minimo', 'data-feedback-label': 'Por debajo del mínimo' },
+          el('p', null, `El total (${eur(total)}) está por debajo del mínimo de ${eur(minimum)}: ¿enviar igualmente?`),
+          el('label', { for: 'belowMinimumReason' }, 'Motivo de la excepción (queda guardado en la propuesta)'), input, error),
+        foot: el('div', { class: 'choices' },
+          el('button', { class: 'primary', type: 'button', id: 'confirmBelowMinimum', 'data-feedback-id': 'booking.reserva.propuesta.minimo.enviar', 'data-feedback-label': 'Enviar igualmente',
+            onclick: () => {
+              const value = input.value.trim();
+              if (!value) { error.textContent = 'Indica el motivo de la excepción.'; return; }
+              finish(value); void sheet.close(true);
+            } }, 'Enviar igualmente'),
+          el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.propuesta.minimo.cancelar', 'data-feedback-label': 'Cancelar',
+            onclick: () => { finish(null); void sheet.close(true); } }, 'Cancelar')),
+        onClose: () => finish(null),
+      });
+    });
   }
 
   async function accept(p: Row): Promise<void> {

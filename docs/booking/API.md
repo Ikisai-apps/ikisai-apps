@@ -1367,6 +1367,8 @@ Regla del usuario: **Ikisai fija y el organizador propone**. Migraciones `202610
 **Diseño, extras, tarifas y propuesta (B7d, B9, B10, B12):**
 - `portal_update_draft({reservation_id, expectedRevision?, fields, extras?})`: solo en `en_estudio` o `negociacion` (si no, `DRAFT_LOCKED`) y solo campos de diseño (personas, menores, régimen y menú pedidos, servicios y `organizer_notes`); `extras` sustituye los extras pedidos (`booking.reservation_extra_requests`), solo de tarifas `portal_visible` (si no, `EXTRA_NOT_OFFERED`).
 - `portal_rates({reservation_id})`: tarifas activas visibles en el portal (con `public_name` y `public_description`) y las condiciones por defecto con `minimum_total`; `available: false` sin tarifas. **La calculadora la hace Organizers** con `suggestLines`, `proposalTotals` y `applyMinimum` de `@ikisai/domain-booking`.
+- **Mínimo al enviar:** si el total de la propuesta queda por debajo de `conditions.minimum_total`, `send_proposal` responde `422 BELOW_MINIMUM` salvo que llegue `below_minimum_reason`; el motivo queda en `proposals.below_minimum_reason` (excepción comercial). La app lo pide antes de enviar.
+- `portal_reservation_detail` incluye también `revision`, `event_type`, `dates_definitive`, `organizer_notes`, `special_setup` y `technical_support` (B14).
 - `portal_proposals({reservation_id})`: propuestas `enviada` y `aceptada` con líneas, condiciones, tramos y validez (nunca borradores ni sustituidas).
 - `portal_request({reservation_id, kind: 'quiere_confirmar'|'comentario', proposal_id?, message?})` → `booking.portal_requests` (estado `enviada`/`vista`/`respondida`, que cambia el personal). `portal_my_requests` las lista. **La aceptación sigue siendo del personal** (`accept_proposal`).
 
