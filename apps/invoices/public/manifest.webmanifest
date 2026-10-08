@@ -44,7 +44,15 @@
             "application/json",
             "text/plain",
             ".json",
-            ".txt"
+            ".txt",
+            "application/pdf",
+            "image/*",
+            ".pdf",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".heic"
           ]
         }
       ]

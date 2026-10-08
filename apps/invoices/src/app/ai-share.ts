@@ -85,3 +85,23 @@ export async function takeSharedText(): Promise<string | null> {
     return null;
   }
 }
+
+/** Facturas (PDF o fotos) compartidas con Finance desde otra app: se recogen una vez y se borran de la caché. */
+export async function takeSharedDocuments(): Promise<File[]> {
+  try {
+    const cache = await caches.open(SHARE_CACHE);
+    const index = await cache.match('/__shared_docs__');
+    if (!index) return [];
+    const data = (await index.json()) as { files?: Array<{ key: string; name: string; type: string }> };
+    const files: File[] = [];
+    for (const entry of data.files ?? []) {
+      const response = await cache.match(entry.key);
+      if (response) files.push(new File([await response.blob()], entry.name, { type: entry.type }));
+      await cache.delete(entry.key);
+    }
+    await cache.delete('/__shared_docs__');
+    return files;
+  } catch {
+    return [];
+  }
+}

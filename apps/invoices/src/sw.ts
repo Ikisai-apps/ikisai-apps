@@ -83,17 +83,33 @@ async function activateSafely(): Promise<void> {
  * .json/.txt, hasta 1 MB) en una caché propia y abre Facturas, que lo pasa a la importación. Lo recibido es no confiable:
  * aquí no se interpreta nada.
  */
+/** Facturas compartidas desde otra app (PDF o fotos): como mucho 20, de 15 MB cada una. */
+const SHARED_DOCS_MAX = 20;
+const SHARED_DOC_BYTES = 15 * 1024 * 1024;
+
 async function receiveShare(request: Request): Promise<Response> {
   const parts: string[] = [];
   try {
     const form = await request.formData();
     for (const key of ['title', 'text', 'url']) { const v = form.get(key); if (typeof v === 'string' && v.trim()) parts.push(v); }
+    const docs: File[] = [];
     for (const item of form.getAll('files')) {
       if (typeof item === 'string') continue;
       const name = item.name.toLowerCase();
+      if (item.type === 'application/pdf' || name.endsWith('.pdf') || item.type.startsWith('image/')) {
+        if (docs.length < SHARED_DOCS_MAX && item.size <= SHARED_DOC_BYTES) docs.push(item);
+        continue;
+      }
       if (item.size <= 1_000_000 && (item.type.startsWith('text/') || item.type === 'application/json' || name.endsWith('.json') || name.endsWith('.txt'))) parts.push(await item.text());
     }
     const cache = await caches.open('ikisai-invoices-share');
+    // Facturas (PDF o fotos): la app las recoge y las sube como «Subir varias».
+    if (docs.length) {
+      const index = docs.map((doc, i) => ({ key: `/__shared_doc__/${i}`, name: doc.name || `factura-${i + 1}`, type: doc.type || 'application/octet-stream' }));
+      for (const [i, doc] of docs.entries()) await cache.put(index[i]!.key, new Response(doc, { headers: { 'Content-Type': index[i]!.type } }));
+      await cache.put('/__shared_docs__', new Response(JSON.stringify({ files: index, receivedAt: new Date().toISOString() }), { headers: { 'Content-Type': 'application/json' } }));
+      return Response.redirect('/#/facturas?compartido=docs', 303);
+    }
     await cache.put('/__shared__', new Response(JSON.stringify({ text: parts.join('\n\n'), receivedAt: new Date().toISOString() }), { headers: { 'Content-Type': 'application/json' } }));
     return Response.redirect('/#/facturas?compartido=1', 303);
   } catch {

@@ -23,7 +23,7 @@ import { FRESHNESS_LABELS, KIND_LABELS, checkTargetFreshness, kindsFor, recentTa
 import { guard } from '../app/guard.ts';
 import { describeExtractionError, describeUsage, extractDocument, extractionQueue, type ExtractionUsage } from '../app/extract.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
-import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedText } from '../app/ai-share.ts';
+import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedDocuments, takeSharedText } from '../app/ai-share.ts';
 import { readPdfItems } from '../app/pdf-text.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
@@ -190,6 +190,16 @@ export const mountInvoices: ViewMount = (ctx) => {
   function fromHash(): void {
     const tail = location.hash.replace(/^#\/facturas\/?/, '');
     // Resultado compartido hacia Ikisai (share_target): se abre la importación sobre la pendiente más reciente con documento.
+    // Facturas (PDF o fotos) compartidas desde otra app: «Subir varias» con ellas.
+    if (/^\?compartido=docs/.test(tail) && mirror) {
+      history.replaceState(null, '', '#/facturas');
+      void takeSharedDocuments().then((files) => {
+        if (!files.length) { toast('No ha llegado ninguna factura. Vuelve a compartirla o usa «Subir varias».'); return; }
+        if (!canEdit) { toast('Tu cuenta no puede subir facturas.'); return; }
+        openBatchUpload(ctx, () => loadMirror(client), () => void load(), files);
+      });
+      return;
+    }
     const shared = tail.match(/^\?compartido=([01])/);
     if (shared && mirror) {
       history.replaceState(null, '', '#/facturas');
