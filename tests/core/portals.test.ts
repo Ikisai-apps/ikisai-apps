@@ -223,3 +223,35 @@ test('portales · K3: un organizador abre un archivo de su retiro subido por otr
   assert.notEqual((await callPortal(org, 'organizers', `/api/v1/files/${ticket.data.id}`, { token: pepe })).status, 404, 'coorganizador del mismo retiro');
   assert.equal((await callPortal(org, 'organizers', `/api/v1/files/${ticket.data.id}`, { token: otro })).status, 404, 'organizador de otro retiro');
 });
+
+test('portales · C8: archivo de otra app publicado al portal por resolutor; O6: la vista previa solo lee', async () => {
+  const base = { url: app.supabase.url, anonKey: app.supabase.anonKey, serviceKey: app.supabase.serviceKey, fetch: app.supabase.fetch };
+  const g = createApp({ ...base, app: 'guests', slug: 'guests-api', origins: ['https://guests.ikisai.com'] });
+  const R5 = crypto.randomUUID(); await setUntil(R5, 30);
+  const owner = await app.t.createUser();
+  const file = (await app.t.db.query<{ id: string }>(`insert into core.files (app, bucket, path, filename, mime, size, sha256, created_by, status)
+    values ('organizers', 'organizers-materials', 'organizers/x.pdf', 'programa.pdf', 'application/pdf', 10, $1, $2, 'verified') returning id`, ['c'.repeat(64), owner])).rows[0]!.id;
+  await app.t.db.exec(`create table public.test_published (file_id uuid, reservation_id uuid);
+    create function public.test_material_file(p_ctx jsonb) returns boolean language sql stable as $$
+      select exists (select 1 from public.test_published p where p.file_id = (p_ctx->>'file_id')::uuid
+        and core.portal_in_scope(p_ctx->>'portal', (p_ctx->>'actor')::uuid, p.reservation_id, null) is not null
+        and exists (select 1 from jsonb_array_elements(p_ctx->'scopes'->'grants') x where x->>'reservation_id' = p.reservation_id::text)) $$;
+    select core.allow_portal_file('guests', 'public.test_material_file');`);
+  const issue = async (preview: boolean) => {
+    const link = await callPortal(organizers, 'organizers', '/api/v1/portal-links', { token: orgSession, body: { app: 'guests', scope: { reservation_id: R1, guest_id: crypto.randomUUID() }, person: { name: preview ? 'Huésped de muestra' : 'Marta' }, preview } });
+    assert.equal(link.status, 200, JSON.stringify(link.data));
+    return (await callPortal(g, 'guests', '/api/v1/auth/link', { body: { token: tokenOf(link.data.url) } })).data.token as string;
+  };
+  const marta = await issue(false);
+  assert.equal((await callPortal(g, 'guests', `/api/v1/portal-files/${file}`, { token: marta })).status, 404, 'no publicado');
+  await app.t.db.query('insert into public.test_published values ($1, $2)', [file, R5]);
+  assert.equal((await callPortal(g, 'guests', `/api/v1/portal-files/${file}`, { token: marta })).status, 404, 'publicado en otro retiro');
+  await app.t.db.query('insert into public.test_published values ($1, $2)', [file, R1]);
+  const ok = await callPortal(g, 'guests', `/api/v1/portal-files/${file}`, { token: marta });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data)); assert.equal(ok.data.filename, 'programa.pdf');
+  const preview = await issue(true);
+  const write = await callPortal(g, 'guests', '/api/v1/commands', { token: preview, body: { operations: [] } });
+  assert.equal(write.status, 403); assert.equal(write.data.error.code, 'PREVIEW_READ_ONLY');
+  assert.equal((await callPortal(g, 'guests', '/api/v1/bootstrap', { token: preview })).status, 200, 'leer sí');
+  assert.notEqual((await callPortal(g, 'guests', '/api/v1/commands', { token: marta, body: { operations: [] } })).data?.error?.code, 'PREVIEW_READ_ONLY');
+});
