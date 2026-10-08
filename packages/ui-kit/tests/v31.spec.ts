@@ -1,5 +1,5 @@
 import { expect, test, type Page } from 'playwright/test';
-import { feedbackRoundTrip } from '../testing/feedback-smoke.ts';
+import { feedbackRoundTrip, portalHelpRoundTrip } from '../testing/feedback-smoke.ts';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mP8z8DwnwEJMDKgCcAEAANKBQH6PbUeAAAAAElFTkSuQmCC', 'base64');
 
@@ -82,3 +82,15 @@ test('recorrido común con teclado y doble toque (móvil): un solo reporte', asy
   await page.waitForTimeout(800);
   expect((await page.evaluate(() => (window as any).ikisaiFeedback.fbState())).reports).toHaveLength(1);
 });
+
+for (const size of [{ name: 'escritorio', width: 1280, height: 800, keyboard: undefined }, { name: 'móvil con teclado', width: 484, height: 1008, keyboard: 686 }]) {
+  test(`portales @smoke (${size.name}): «Ayuda y sugerencias» → enviar con doble toque → hoja cerrada, aviso y un solo reporte`, async ({ page }) => {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await fresh(page);
+    await portalHelpRoundTrip(page, { open: async (p) => { await p.locator('#portalHelp').click(); }, choices: ['Retiro / evento', 'Comida'], keyboard: size.keyboard });
+    await page.waitForTimeout(800);
+    const st = await page.evaluate(() => (window as any).ikisaiFeedback.fbState());
+    expect(st.reports).toHaveLength(1);
+    expect(st.reports[0].message).toContain('Ayuda y sugerencias');
+  });
+}

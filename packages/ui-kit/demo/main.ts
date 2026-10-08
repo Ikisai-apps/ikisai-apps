@@ -888,6 +888,22 @@ const fbPortal = createFeedbackProgressiveForm({
   onSubmit: async (r) => { fbPortalOut.textContent = JSON.stringify({ answers: r.answers, message: r.message, images: r.images.length, ...(r.node ? { node: r.node } : {}) }); return 'sent'; },
 });
 fbPortal.element.id = 'fbPortal';
+/** «Ayuda y sugerencias» como en un portal: hoja con el formulario progresivo que envía a `POST /feedback`. */
+const openPortalHelp = () => {
+  const form = createFeedbackProgressiveForm({
+    config: { start: 'about', steps: [
+      { id: 'about', kind: 'choice', question: '¿Sobre qué quieres comentarnos algo?', options: [{ value: 'event', label: 'Retiro / evento', next: 'eventCat' }, { value: 'space', label: 'Espacio', next: 'message' }] },
+      { id: 'eventCat', kind: 'choice', question: '¿Sobre qué parte del retiro?', options: [{ value: 'comida', label: 'Comida' }, { value: 'horarios', label: 'Horarios' }], next: 'message' },
+      { id: 'message', kind: 'text', question: 'Cuéntanos', placeholder: '¿Qué ha pasado?' },
+    ] },
+    onSubmit: async (r) => {
+      await fbApi('/feedback', { method: 'POST', json: { id: r.id, requestId: r.requestId, subject: r.answers.about === 'space' ? 'space' : 'event', intent: 'problem', message: r.message, node: { id: 'demo.portal.ayuda', path: ['Ayuda y sugerencias'] }, context: {}, category: r.answers.eventCat ?? null } });
+      return 'sent';
+    },
+  });
+  form.element.id = 'portalHelpForm';
+  openSheet({ title: 'Ayuda y sugerencias', body: form.element });
+};
 const fbModeSwitch = el('input', { type: 'checkbox', id: 'fbMode', onchange: (e: Event) => feedback.mode.set((e.target as HTMLInputElement).checked) }) as HTMLInputElement;
 fbModeSwitch.checked = feedback.mode.get();
 feedback.mode.onChange((on) => { fbModeSwitch.checked = on; });
@@ -897,6 +913,7 @@ const feedbackSection = section('feedback', 'Feedback: modo, composer, borradore
     el('label', { class: 'field check' }, fbModeSwitch, el('span', null, 'Señalar para comentar')),
     el('button', { type: 'button', class: 'ghost small', id: 'fbCenter', onclick: () => void openFeedbackCenter({ api: fbApi, app: 'demo', canEdit: () => true, feedback }) }, 'Sugerencias y QA'),
     el('button', { type: 'button', class: 'ghost small', id: 'usageNotice', 'data-feedback-ignore': '', onclick: () => void showUsageNotice({ api: fbApi, userId: () => 'demo-user', delayMs: 0 }) }, 'Aviso de uso'),
+    el('button', { type: 'button', class: 'ghost small', id: 'portalHelp', 'data-feedback-ignore': '', onclick: () => openPortalHelp() }, 'Ayuda y sugerencias (portal)'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbSeed', onclick: () => { fbSeed(); void review.refresh(); } }, 'Ejemplos del revisor'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbFix', onclick: async () => { const st = fbState(); for (const r of st.reports) if ((r.display ?? r.status) === 'open') r.display = 'pending_verify'; fbSave(st); await feedback.refreshVerify(); } }, 'Publicar arreglo'),
     el('button', { type: 'button', class: 'ghost small', id: 'fbOpen', onclick: () => void feedback.signal(fbTarget) }, 'Comentar «Añadir huésped»'),
