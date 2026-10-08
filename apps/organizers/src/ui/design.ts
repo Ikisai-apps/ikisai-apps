@@ -20,6 +20,7 @@ const MENU_STYLES: Array<[string, string]> = [['vegetariano', L('Vegetariano')],
 const SPACES: Array<[keyof DraftFields, string]> = [
   ['uses_accommodation', L('Alojamiento (dormir en Ikisai)')], ['uses_interpretation_center', L('Centro de interpretación')],
   ['uses_outdoors', L('Zonas exteriores')], ['uses_pool', L('Piscina')],
+  ['special_setup', L('Montaje especial de las salas')], ['technical_support', L('Apoyo técnico (sonido, proyección…)')],
 ];
 
 interface Margins { price: string; attendees: string; other: string }
@@ -33,11 +34,12 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
   let pendingExtras: ExtraRequest[] | null = null;
 
   // Estado del borrador (lo que hay en Booking más lo que se va tecleando).
-  const state: Required<Pick<DraftFields, 'expected_guests' | 'minors_count' | 'requires_meals' | 'meal_plan_requested' | 'menu_style_requested' | 'uses_accommodation' | 'uses_interpretation_center' | 'uses_outdoors' | 'uses_pool'>> & { organizer_notes: string } = {
+  const state: Required<Pick<DraftFields, 'expected_guests' | 'minors_count' | 'requires_meals' | 'meal_plan_requested' | 'menu_style_requested' | 'uses_accommodation' | 'uses_interpretation_center' | 'uses_outdoors' | 'uses_pool' | 'special_setup' | 'technical_support'>> & { organizer_notes: string } = {
     expected_guests: detail.expected_guests ?? null, minors_count: detail.minors_count ?? 0, requires_meals: detail.requires_meals,
     meal_plan_requested: detail.meal_plan ?? null, menu_style_requested: detail.menu_style ?? null,
     uses_accommodation: detail.uses_accommodation, uses_interpretation_center: detail.uses_interpretation_center,
-    uses_outdoors: detail.uses_outdoors, uses_pool: detail.uses_pool, organizer_notes: '',
+    uses_outdoors: detail.uses_outdoors, uses_pool: detail.uses_pool,
+    special_setup: detail.special_setup ?? false, technical_support: detail.technical_support ?? false, organizer_notes: detail.organizer_notes ?? '',
   };
   let extras: ExtraRequest[] = [];
   let rates: PortalRates = { available: false, rates: [], conditions: null };
@@ -94,9 +96,9 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       lastQuote = null; paintMargin(); return;
     }
     const q = quote({
-      reservation: { event_type: 'retiro', start_date: chosen.start, end_date: chosen.end, expected_guests: state.expected_guests,
+      reservation: { event_type: detail.event_type ?? 'retiro', start_date: chosen.start, end_date: chosen.end, expected_guests: state.expected_guests,
         uses_accommodation: state.uses_accommodation, requires_meals: state.requires_meals, uses_interpretation_center: state.uses_interpretation_center,
-        uses_outdoors: state.uses_outdoors, uses_pool: state.uses_pool },
+        uses_outdoors: state.uses_outdoors, uses_pool: state.uses_pool, special_setup: state.special_setup, technical_support: state.technical_support },
       persons: state.expected_guests ?? 0, rates: rates.rates, conditions: rates.conditions, extras,
     });
     lastQuote = q;

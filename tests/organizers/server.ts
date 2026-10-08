@@ -33,6 +33,11 @@ export interface OrganizersTestServer {
   seedRates(): Promise<{ extraId: string }>;
   /** Propuesta enviada por el personal para una reserva, con una línea. Devuelve su id. */
   sendProposal(reservationId: string, persons: number): Promise<string>;
+  /**
+   * Factura registrada en Finance (de otra herramienta, sin copia congelada) con su ingreso asignado a la reserva, como la
+   * prueba de Finance (tests/invoices/sql.test.ts). `collected` la marca cobrada.
+   */
+  registeredInvoice(reservationId: string, number: string, amount: number, collected: boolean): Promise<string>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -49,6 +54,7 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
   const organizers = createOrganizersApp({ url: booking.supabase.url, anonKey: booking.supabase.anonKey, serviceKey: booking.supabase.serviceKey, fetch: booking.supabase.fetch, origins: [origin], release: 'test' });
   // Textos legales y de contacto de Central (#281): en producción los siembra la migración; aquí, a mano.
   await booking.t.db.query('select central.seed_texts()');
+  await booking.t.db.query('select central.seed_texts_payment()');
   let seq = 0;
   let offline = false;
   let seeded: { extraId: string } | null = null;
@@ -144,9 +150,29 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
     async sendProposal(reservationId, persons) {
       const id = uuid();
       await commit([{ op: 'call', procedure: PROCEDURES.newProposalVersion, args: { reservation_id: reservationId, proposal_id: id } }]);
-      await commit([{ op: 'insert', table: TABLES.proposalLines, id: uuid(), fields: { proposal_id: id, description: 'Estancia con pensión completa', unit: 'persona_noche', quantity: persons * 2, unit_amount: 60, position: 1 } }]);
+      await commit([{ op: 'insert', table: TABLES.proposalLines, id: uuid(), fields: { proposal_id: id, description: 'Estancia con pensión completa', unit: 'persona_noche', quantity: persons * 2, unit_amount: 70, position: 1 } }]);
       const revision = Number((await booking.t.db.query<{ revision: string }>('select revision from booking.proposals where id = $1', [id])).rows[0]!.revision);
       await commit([{ op: 'call', procedure: PROCEDURES.sendProposal, args: { proposal_id: id, expectedRevision: revision } }]);
+      return id;
+    },
+    async registeredInvoice(reservationId, number, amount, collected) {
+      const actor = booking.users.owner;
+      await booking.t.db.query(`insert into core.memberships (app, user_id, role) values ('invoices', $1, 'owner') on conflict (app, user_id) do nothing`, [actor]);
+      const financeCommit = async (operations: unknown[]) => {
+        await booking.t.db.query(`select core.commit('invoices', $1, $2, $3, null, $4::jsonb, null::jsonb)`, [actor, `inv-${uuid()}`, uuid(), JSON.stringify(operations)]);
+      };
+      const today = (await booking.t.db.query<{ d: string }>(`select to_char((now() at time zone 'Europe/Madrid')::date, 'YYYY-MM-DD') d`)).rows[0]!.d;
+      const id = uuid();
+      await financeCommit([
+        { op: 'insert', table: 'invoices.issued_invoices', id, fields: { series_code: 'PA', number, issue_date: today, invoice_type: 'F2', description: 'Señal del retiro' } },
+        { op: 'insert', table: 'invoices.issued_invoice_lines', id: uuid(), fields: { issued_invoice_id: id, description: 'Señal', net_amount: amount, vat_rate: 0 } },
+      ]);
+      await booking.t.db.query(`insert into invoices.issued_allocations (issued_invoice_id, target_app, target_kind, target_id, target_label, allocated_amount)
+        values ($1, 'booking', 'reservation', $2, 'Reservas › Retiro', $3)`, [id, reservationId, amount]);
+      if (collected) {
+        const revision = Number((await booking.t.db.query<{ revision: string }>('select revision from invoices.issued_invoices where id = $1', [id])).rows[0]!.revision);
+        await financeCommit([{ op: 'update', table: 'invoices.issued_invoices', id, expectedRevision: revision, fields: { payment_status: 'cobrada', paid_at: today } }]);
+      }
       return id;
     },
     setOffline(on) { offline = on; },

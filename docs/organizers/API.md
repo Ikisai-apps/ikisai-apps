@@ -306,7 +306,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - Muestra noches y comidas incluidas, líneas, total con IVA incluido y su desglose, señal y aviso de mínimo aplicado.
   - La señal se calcula sobre lo que se paga.
   - Sin tarifas: «Ikisai te enviará el precio».
-  - Mientras Booking no publique el tipo de reserva en el detalle, calcula con `event_type: 'retiro'`.
+  - Calcula con el tipo de reserva real (`event_type`, B14), y con el montaje especial y el apoyo técnico si se piden.
 - **Calculadora privada:** precio por asistente, asistentes y otros gastos dan ingresos, gastos, margen y punto de equilibrio. Se guarda solo en el dispositivo (caché por persona; se borra al cerrar la sesión).
 - **Pestaña «Propuesta»** (cualquier retiro no cancelado): propuestas enviadas o aceptadas con líneas, totales, señal, validez, condiciones y tramos de cancelación (§13.3), con «Quiero confirmar» y «Enviar un comentario». Debajo, «Lo que has enviado a Ikisai», con su estado.
 - La pestaña «Cocina» aparece solo con la reserva confirmada. En el móvil, las pestañas se desplazan y la activa queda centrada.
@@ -345,6 +345,14 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 **Calculadora privada de margen.** Calcula ingresos, margen y punto de equilibrio solo en el dispositivo, nunca en el servidor, y se borra al cerrar la sesión.
 
 ### 13.3 Fase 3 · Formalización (a grandes rasgos)
+
+**Estado (8-10-2026):** pestaña «Pagos» (desde la prerreserva, retiro no cancelado) sobre Finance F1 y F2 (#307) y el texto `payment.instructions` de Central (#308):
+- **Resumen de Finance:** facturado, cobrado y pendiente. Lo pagado sale solo de Finance.
+- **Facturas del retiro:** número, fecha, total y si están cobradas.
+  - La emitida desde Finance se pinta desde su copia congelada con la página imprimible del kit (imprimir o guardar en PDF), tal como se emitió y en español.
+  - La registrada de otra herramienta (solo PDF guardado) muestra «Pídenosla», con el contacto público, hasta que exista la ruta firmada `portal-files`.
+- **«Cómo pagar»:** el texto de Central en el idioma elegido.
+- **Pendiente:** lo contratado (total, señal requerida y vencimientos) llegará de la lectura de portal de Booking. Con ello se añadirá el saldo, que es lo contratado (Booking) menos lo cobrado (Finance).
 
 - **Fecha definitiva:** la que marca el personal en Booking (§13.2).
 - **Propuesta (decisión del usuario, 7-10-2026):** el organizador **no la acepta** desde el portal.

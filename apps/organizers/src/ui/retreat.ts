@@ -12,9 +12,10 @@ import { renderGuestList } from './guests.ts';
 import { renderDates } from './dates.ts';
 import { renderDesign } from './design.ts';
 import { renderProposal } from './proposal.ts';
+import { renderPayments } from './payments.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
-export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'asistentes' | 'cocina';
+export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'pagos' | 'asistentes' | 'cocina';
 
 /** Estados en que el retiro se está diseñando: las fechas aún se pueden proponer (fase 2). */
 export const DESIGN_STATUSES = new Set(['en_estudio', 'negociacion', 'pre_reservada']);
@@ -82,6 +83,8 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     const showDates = DESIGN_STATUSES.has(d.status);
     const showDesign = DRAFT_STATUSES.has(d.status);
     const showProposal = !isCancelled(d.status);
+    // Pagos y facturas (fase 3): desde la prerreserva, cuando ya puede haber señal y facturas.
+    const showPayments = !isCancelled(d.status) && !DRAFT_STATUSES.has(d.status);
     const showKitchen = data.guests.value.confirmed;
     const tabButton = (id: RetreatTab, label: string) => el('a', {
       href: id === 'resumen' ? `#/retiro/${reservationId}` : `#/retiro/${reservationId}/${id}`, role: 'tab', id: `tab-${id}`,
@@ -92,6 +95,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
       showDates ? fbMark(tabButton('fechas', t('Fechas')), 'organizers.retiro.pestanas.fechas', 'Fechas') : null,
       showDesign ? fbMark(tabButton('diseno', t('Diseño')), 'organizers.retiro.pestanas.diseno', 'Diseño') : null,
       showProposal ? fbMark(tabButton('propuesta', t('Propuesta')), 'organizers.retiro.pestanas.propuesta', 'Propuesta') : null,
+      showPayments ? fbMark(tabButton('pagos', t('Pagos')), 'organizers.retiro.pestanas.pagos', 'Pagos') : null,
       showGuests ? fbMark(tabButton('asistentes', t('Asistentes')), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
       showKitchen ? fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina') : null));
 
@@ -105,6 +109,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     if (tab === 'fechas' && showDates) sub(renderDates(ctx, reservationId));
     else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
     else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
+    else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId));
     else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
     else if (tab === 'cocina' && showKitchen) content.push(renderKitchen(data.kitchen.value));
     else content.push(...renderSummary(ctx, reservationId, data, showGuests, showDates, showDesign));

@@ -82,6 +82,16 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgconditions{margin:8px 0}
 .orgconditions>summary{cursor:pointer;font-weight:600}
 
+/* Pagos y facturas (fase 3) */
+.orginvoice{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.orginvoice-main,.orginvoice-side{display:flex;flex-direction:column;gap:2px}
+.orginvoice-side{align-items:flex-end}
+.warn-text{color:var(--warn,var(--ink))}
+.orginvoice-parties{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:0 0 12px}
+.orginvoice-parties small{display:block;color:var(--muted)}
+.orginvoice-lines th{text-align:left;font-size:12px;color:var(--muted)}
+.orginvoice-lines th.num{text-align:right}
+
 /* Ayuda */
 .orgmine{list-style:none;padding:0}
 .orgmine li{padding:6px 0;border-bottom:1px solid var(--line)}

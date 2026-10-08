@@ -218,3 +218,12 @@ test('organizers · diseño (fase 2): borrador con extras solo en estudio o nego
   const pending = await call('/api/v1/invoke/booking.portal_update_draft', { token: org, body: { reservation_id: R2, fields: { expected_guests: 3 } } });
   assert.equal(code(pending), 'DRAFT_LOCKED');
 });
+
+test('organizers · dinero del retiro (fase 3): la lectura de Finance pasa por organizers-api y respeta el ámbito', async () => {
+  const mine = await call('/api/v1/read/invoices.portal_reservation_money', { token: org, body: { reservation_id: R1 } });
+  assert.equal(mine.status, 200, JSON.stringify(mine.data));
+  assert.deepEqual(mine.data.invoices, []);
+  assert.equal(Number(mine.data.totals.invoiced), 0);
+  assert.equal(code(await call('/api/v1/read/invoices.portal_reservation_money', { token: other, body: { reservation_id: R1 } })), 'OUT_OF_SCOPE');
+  assert.equal(code(await call('/api/v1/read/invoices.portal_invoice_document', { token: org, body: { reservation_id: R1, issued_invoice_id: uuid() } })), 'OUT_OF_SCOPE');
+});
