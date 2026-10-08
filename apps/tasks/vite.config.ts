@@ -1,4 +1,6 @@
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import postcss, { type Plugin as PostcssPlugin } from 'postcss';
 import { build, defineConfig, type Plugin } from 'vite';
@@ -68,6 +70,27 @@ function scopeKitCss(): PostcssPlugin {
 scopeKitCss.postcss = true;
 
 /**
+ * Huella en las URLs de la cáscara (8-10-2026): cada `<script src>` y `<link href>` locales de `.js` o `.css` de
+ * `dist/index.html` pasa a `/<archivo>?v=<huella del contenido>`. Los scripts de la cáscara tienen nombre fijo y Cloudflare
+ * los sirve con 4 h de caché de navegador (el TTL de la zona se impone al `no-cache` del worker para `.js` y `.css`); con la
+ * huella, `index.html` (que sí llega con `no-cache`) apunta a URLs nuevas en cada versión y la copia vieja deja de usarse,
+ * también en la primera carga sin service worker. El service worker busca en su caché con `ignoreSearch`. Paso intermedio
+ * hacia la huella en los nombres de archivo (pendiente en docs/tasks/ESTADO.md).
+ */
+export function versionShellUrls(dist: string): number {
+  const file = path.join(dist, 'index.html');
+  let changed = 0;
+  const html = readFileSync(file, 'utf8').replace(/\b(src|href)="(\/[A-Za-z0-9_.\/-]+\.(?:js|css))"/g, (whole, attr: string, url: string) => {
+    const target = path.join(dist, url);
+    if (url.startsWith('//') || !existsSync(target)) return whole;
+    changed++;
+    return `${attr}="${url}?v=${createHash('sha256').update(readFileSync(target)).digest('hex').slice(0, 12)}"`;
+  });
+  writeFileSync(file, html);
+  return changed;
+}
+
+/**
  * Segundo paquete clásico: `src/kit.ts` → `dist/kit.js` + `dist/kit.css` (`window.IkisaiKit`, el kit de interfaz común).
  * Un IIFE solo admite una entrada, así que se construye en una segunda pasada al terminar la principal.
  */
@@ -94,6 +117,8 @@ function kitBundle(): Plugin {
           rollupOptions: { output: { assetFileNames: 'kit[extname]' } },
         },
       });
+      // Con todo en dist (también kit.js y kit.css), la huella en las URLs de index.html.
+      versionShellUrls(path.resolve(root, 'dist'));
     },
   };
 }

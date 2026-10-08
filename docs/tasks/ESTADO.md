@@ -109,6 +109,7 @@ Cambios en la interfaz heredada, todos por el paso de ids fijos a uuid o por def
 - **Caché de la cáscara (8-10-2026):** los scripts de `apps/tasks/public` tienen nombre fijo.
   - `_worker.js` (y `_headers`) los sirve con `Cache-Control: no-cache`, y el service worker los instala con `cache: 'reload'`.
   - **No volver a ponerles caché de horas.**
+  - **Hecho (paso intermedio):** en el build, `?v=<huella del contenido>` en cada `<script src>` y `<link href>` locales de `index.html` (`versionShellUrls`, en `apps/tasks/vite.config.ts`), y el service worker busca con `ignoreSearch`. Motivo: el TTL de navegador de la zona de Cloudflare (4 h) se impone al `no-cache` del worker en `.js` y `.css`; `index.html` sí llega con `no-cache`.
   - **Pendiente (decisión del usuario, sin prisa):** huella en los nombres (`shell-ui.3f9a2c.js`), generada en el build, con caché `max-age=31536000, immutable`; `index.html` y `sw.js` siguen en `no-cache`.
   - Encaja cuando la cáscara heredada deje de cargarse script a script: hoy son unos 35 `<script src>` en `index.html` y la lista `SHELL` de `sw.js`, y habría que reescribir ambos en el build.
 - **Capa del kit:** `IkisaiKit.setKitLayer(sheetKitLayer)` al cargar `feedback-ui.js` (kit 0.24). Todo lo flotante del kit va a `#kitLayer`, sin pasar `container` pieza a pieza.
