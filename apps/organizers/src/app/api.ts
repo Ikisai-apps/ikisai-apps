@@ -44,6 +44,25 @@ export interface PortalLink {
 
 export interface Coorganizer { display_name: string; me: boolean }
 
+/** Disponibilidad de un tramo para el portal: nunca dice quién ni por qué (Booking B6). */
+export type Availability = 'libre' | 'en_opcion' | 'ocupado';
+
+export interface DateOption {
+  id: string; start: string; end: string; arrival_time: string | null; departure_time: string | null;
+  proposed_by: 'ikisai' | 'organizer'; organizer_ok: boolean; availability: Availability;
+}
+
+/** Fechas del retiro (Booking B7c): fija, opciones de Ikisai o calendario libre (API.md §13.2). */
+export interface PortalDates {
+  mode: 'fixed' | 'ikisai_options' | 'calendar';
+  definitive: { start: string; end: string; arrival_time: string | null; departure_time: string | null } | null;
+  options: DateOption[];
+}
+
+export interface Weekend { start: string; end: string; status: Availability }
+
+export type DatePreference = { option_id: string; ok: boolean } | { start: string; end: string };
+
 export interface IssuedLink { linkId: string; url: string; validUntil: string | null }
 
 /** Resultado de una lectura: `at` es la hora de los datos y `stale` dice si vienen de la caché por falta de red. */
@@ -56,6 +75,9 @@ export interface PortalApi {
   kitchen(reservationId: string): Promise<Loaded<KitchenSummary>>;
   links(reservationId: string): Promise<Loaded<{ items: PortalLink[] }>>;
   organizers(reservationId: string): Promise<Loaded<{ items: Coorganizer[] }>>;
+  dates(reservationId: string): Promise<Loaded<PortalDates>>;
+  availability(reservationId: string, from?: string, to?: string): Promise<Loaded<{ from: string; to: string; weekends: Weekend[] }>>;
+  setDatePreferences(reservationId: string, options: DatePreference[]): Promise<unknown>;
   addGuest(args: { reservation_id: string; guest_id: string; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   updateGuest(args: { guest_id: string; expectedRevision: number; fields: Record<string, unknown>; declaration?: boolean }): Promise<unknown>;
   removeGuest(args: { guest_id: string; expectedRevision: number }): Promise<unknown>;
@@ -95,6 +117,9 @@ export function createPortalApi(client: SyncClient): PortalApi {
     guests: (reservationId) => read('booking.portal_guests', { reservation_id: reservationId }),
     kitchen: (reservationId) => read('booking.portal_kitchen_summary', { reservation_id: reservationId }),
     organizers: (reservationId) => read('booking.portal_organizers', { reservation_id: reservationId }),
+    dates: (reservationId) => read('booking.portal_dates', { reservation_id: reservationId }),
+    availability: (reservationId, from, to) => read('booking.portal_availability', { reservation_id: reservationId, ...(from ? { from } : {}), ...(to ? { to } : {}) }),
+    setDatePreferences: (reservationId, options) => invoke('booking.portal_set_date_preferences', { reservation_id: reservationId, options }),
     links: (reservationId) => load('portal-links', { reservation: reservationId }, () => client.api(`/portal-links?reservation=${encodeURIComponent(reservationId)}`)),
     addGuest: (args) => invoke('booking.portal_add_guest', { ...args, declaration_version: declarationVersion() }),
     updateGuest: (args) => invoke('booking.portal_update_guest', { ...args, declaration_version: declarationVersion() }),

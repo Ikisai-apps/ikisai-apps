@@ -294,6 +294,8 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
 
+**Estado (8-10-2026):** las fechas están construidas sobre Booking B6–B8 (#303). Pestaña «Fechas» de la ficha mientras el retiro está en estudio, negociación o prerreserva, con los tres modos de abajo, guardado automático y tarjeta en el resumen. Un fin de semana es de viernes a domingo; se ofrecen los próximos doce meses y como mucho 20 marcas. El resto de la fase (borrador, extras, calculadora y propuesta) espera a la segunda parte de Booking (B7d, B9, B10 y B12).
+
 **Principio (decisión del usuario, 7-10-2026): Ikisai fija y el organizador propone.** El organizador nunca fija una fecha ni acepta una propuesta; marca posibilidades, pide y comenta, y el personal decide en Booking.
 
 - La comercial crea el retiro en Booking (una reserva «en estudio») con los datos mínimos que tenga y emite el enlace del organizador. **El borrador del retiro es esa reserva**, no un dato de Organizers, así que el personal ve cada cambio al instante.

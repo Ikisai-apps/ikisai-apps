@@ -25,6 +25,9 @@ export function describeError(error: unknown, name?: string): string {
     case 'FIELD_OWNED_BY_GUEST': return t('{nombre} ya ha rellenado este dato. No hace falta que lo cambies.', { nombre: who });
     case 'GUEST_CHECKED_IN': return t('{nombre} ya ha hecho la entrada. Para darle de baja, habla con Ikisai.', { nombre: who });
     case 'VERSION_CONFLICT': return t('Alguien ha cambiado estos datos mientras los editabas. Te enseñamos lo último; lo que escribiste sigue en el formulario.');
+    case 'DATES_FIXED': return t('Ikisai ya ha fijado la fecha definitiva de este retiro.');
+    case 'DATE_UNAVAILABLE': return t('Esa fecha acaba de ocuparse. Elige otra.');
+    case 'DATE_NOT_OFFERED': return t('Ikisai ha cambiado las fechas que te propone. Te enseñamos las nuevas.');
     case 'ROW_EXISTS': return t('Ese asistente ya existe. Recarga la lista.');
     case 'OUT_OF_SCOPE':
     case 'NO_MEMBERSHIP':
