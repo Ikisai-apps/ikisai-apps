@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarStatus } from '../app/calendarStatus.ts';
@@ -15,6 +15,7 @@ import { toCalendarEvent } from './calendar.ts';
 import { loadLodging, lodgingSummary, renderLodgingBlock } from './lodging.ts';
 import { createDatesBlock } from './dates.ts';
 import { createPortalBlock } from './portal.ts';
+import { hasUnseenRequest, loadPortalData, renderExtraRequests, renderPortalRequests } from './portalRequests.ts';
 import { createSesBlock } from './ses.ts';
 import { createStaffBlock, loadStaff, missingHoursWarning, staffSummary } from './staff.ts';
 import { hasProposalMarks, loadMarks, loadProposals, renderProposalBlock } from './proposal.ts';
@@ -54,6 +55,7 @@ const RESERVATION_SPECS: FieldSpec[] = [
   { key: 'special_setup', label: 'Montaje especial', type: 'check', section: 'Más información' },
   { key: 'technical_support', label: 'Soporte técnico', type: 'check' },
   { key: 'customer_notes', label: 'Observaciones del cliente', type: 'textarea' },
+  { key: 'organizer_notes', label: 'Notas del organizador', type: 'textarea', max: 2000, hint: 'Las escribe el organizador desde su portal; puedes corregirlas.' },
   { key: 'internal_notes', label: 'Notas internas', type: 'textarea' },
 ];
 
@@ -174,6 +176,7 @@ export function mountReservation(id: string): ViewMount {
       const editable = writable && !deleted;
       const proposalData = writable ? await loadProposals(client, id) : null;
       const dateOptions = writable && canRead(client, DATE_OPTIONS) ? ((await client.list(DATE_OPTIONS)) as Row[]).filter((r) => r.reservation_id === id) : null;
+      const portalData = writable ? await loadPortalData(client, id) : null;
       const proposalMarks = proposalData ? await loadMarks(client, id, proposalData.proposals) : null;
 
       // Confirmación enviada sin red: la marca vive hasta que aparece el evento (API §10).
@@ -267,6 +270,7 @@ export function mountReservation(id: string): ViewMount {
           ];
 
       // --- bloques
+      const draftProposal = proposalData?.proposals.filter((p) => p.status === 'borrador').sort((a, b) => Number(b.version) - Number(a.version))[0] ?? null;
       const n = nights(reservation.start_date, reservation.end_date);
       const services = [['uses_accommodation', 'Alojamiento'], ['requires_meals', 'Comidas'], ['uses_interpretation_center', 'Centro de interpretación'], ['uses_outdoors', 'Exteriores'], ['uses_pool', 'Piscina']]
         .filter(([key]) => reservation[key as string] === true).map(([, name]) => name).join(' · ');
@@ -297,8 +301,10 @@ export function mountReservation(id: string): ViewMount {
         ['Servicios', services || '—'], ['Prioridad', label(reservation.priority)],
         ['Briefing final', reservation.briefing_received ? 'Recibido' : 'Pendiente'],
         reservation.customer_notes ? ['Observaciones', reservation.customer_notes] : null,
+        reservation.organizer_notes ? ['Notas del organizador', el('span', { 'data-feedback-id': 'booking.reserva.resumen.notas_organizador', 'data-feedback-label': 'Notas del organizador', 'data-feedback-ignore': '' }, reservation.organizer_notes)] : null,
         reservation.internal_notes ? ['Notas internas', reservation.internal_notes] : null,
-      ), editable ? el('label', { class: 'date-check', 'data-feedback-id': 'booking.reserva.resumen.definitiva', 'data-feedback-label': 'Fecha definitiva' }, definitiveCheck,
+      ), portalData && proposalData ? renderExtraRequests({ data: portalData, draft: draftProposal, draftLines: proposalData.lines.filter((l) => l.proposal_id === draftProposal?.id), editable, run }) : null,
+      editable ? el('label', { class: 'date-check', 'data-feedback-id': 'booking.reserva.resumen.definitiva', 'data-feedback-label': 'Fecha definitiva' }, definitiveCheck,
         el('span', null, 'Fecha definitiva', el('span', { class: 'hint', style: 'display:block' }, 'El organizador la verá fija y no podrá proponer otras.'))) : null]);
 
       // Cierre operativo: si faltan horas reales en algún turno, la hoja de cierre lo avisa (aviso, no bloquea).
@@ -431,6 +437,7 @@ export function mountReservation(id: string): ViewMount {
         ] : null,
       ]);
 
+      const portalRequestsCard = portalData && editable ? renderPortalRequests({ data: portalData, proposals: proposalData?.proposals ?? [], run }) : null;
       const proposalBlock = !proposalData || !proposalMarks ? null : renderProposalBlock({ client, reservation, data: proposalData, marks: proposalMarks, editable, navigate, refresh: () => void paint() });
 
       // Factura: la prepara Finance leyendo booking.reservation_invoice_source (API.md §19); si ya hay una, Finance lo avisa.
@@ -509,6 +516,7 @@ export function mountReservation(id: string): ViewMount {
             el('span', { class: 'chip', dataset: { status: reservation.status }, id: 'statusChip', 'data-feedback-id': 'booking.reserva.cabecera.estado', 'data-feedback-label': 'Estado' }, statusLabel(reservation.status)),
             calendarChip,
             confirmPending ? el('span', { class: 'chip pending', id: 'confirmPendingChip', 'data-feedback-id': 'booking.reserva.cabecera.confirmacion', 'data-feedback-label': 'Confirmación pendiente' }, 'Confirmación pendiente de enviar') : null,
+            hasUnseenRequest(portalData) ? el('span', { class: 'chip alert', id: 'portalRequestChip', 'data-feedback-id': 'booking.reserva.cabecera.peticion', 'data-feedback-label': 'Petición del organizador' }, 'Petición del organizador') : null,
             archived ? el('span', { class: 'chip' }, 'Archivada') : null,
             deleted ? el('span', { class: 'chip trash' }, 'En la papelera') : null,
             reservation._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null))),
@@ -520,7 +528,7 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
@@ -533,7 +541,7 @@ export function mountReservation(id: string): ViewMount {
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));
     // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
     if (writable && canRead(client, DATE_OPTIONS)) offs.push(client.onTable(DATE_OPTIONS, () => void paint()));
-    for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
+    for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, PORTAL_REQUESTS, EXTRA_REQUESTS, RATES]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
     return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
   };
 }

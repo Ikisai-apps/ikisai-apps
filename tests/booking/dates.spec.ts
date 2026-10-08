@@ -63,10 +63,11 @@ test('fechas posibles: dos opciones, orden, chip del organizador, fijar una; y u
     await bad.getByLabel('Hora de llegada aproximada').fill('16:00');
     await page.getByRole('button', { name: 'Guardar' }).click();
     await expect(bad).toBeHidden();
-    expect(api.rows(OPTIONS)).toHaveLength(1);
+    await expect.poll(() => api.rows(OPTIONS).length).toBe(1);
 
     await addOption(inDays(30), inDays(33));
     await expect(page.locator('#blockDates .sortable-row')).toHaveCount(2);
+    await expect.poll(() => api.rows(OPTIONS).length).toBe(2);
     const rows = api.rows(OPTIONS).sort((a, b) => Number(a.position) - Number(b.position));
     expect(rows.map((r) => [r.start_date, r.proposed_by, r.organizer_ok])).toEqual([[inDays(20), 'ikisai', false], [inDays(30), 'ikisai', false]]);
     expect(rows[0]!.reservation_id).toBe(reservationId());

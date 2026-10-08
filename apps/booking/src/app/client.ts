@@ -19,6 +19,8 @@ export const PROPOSAL_LINES: TableName = TABLES.proposalLines;
 export const SES_SETTINGS: TableName = TABLES.sesSettings;
 export const DATE_OPTIONS: TableName = TABLES.dateOptions;
 export const DATE_BLOCKS: TableName = TABLES.dateBlocks;
+export const EXTRA_REQUESTS: TableName = TABLES.extraRequests;
+export const PORTAL_REQUESTS: TableName = TABLES.portalRequests;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -79,7 +81,7 @@ export function createClient(): SyncClient {
     // Sin `tables`: el espejo guarda las tablas legibles para el rol (un lector no recibe importes ni huéspedes).
     pullIntervalMs: 30_000,
     // Datos personales e importes no se quedan en el dispositivo al cerrar sesión (docs/booking/API.md §5.3).
-    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES],
+    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES, EXTRA_REQUESTS, PORTAL_REQUESTS],
   });
 }
 
