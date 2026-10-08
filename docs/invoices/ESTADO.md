@@ -102,6 +102,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Arreglo urgente (#410, migración 0225): `import_v1` acepta líneas con `discount_amount` nulo; la importación de «Leer PDF» fallaba en el servidor.
 - Lectura con Claude (§15.1, migración 0226): «Conectar Claude» crea la clave de agente con el comando para Claude Code; MCP `invoices_pending_drafts` (borradores con su PDF, URL de 10 min) e `invoices_import_json` con `invoice_id` y `provenance` (origen «ia»); la ficha muestra quién la leyó y la procedencia de cada dato.
 - Drive en una carpeta de usuario (9-10-2026, producción): búsqueda y listado con `corpora=allDrives`; sin crear subcarpetas (aviso si faltan las de destino); sin «Entrada», los PDF sueltos en la raíz.
+- Rectificativas recibidas (migración 0227, API.md §2.1): detección al leer el PDF (Drive, «Leer PDF», IA), importes en negativo, enlace con la original por proveedor y número en los dos sentidos, líneas devueltas con «Devuelto: X €», validación con original o «no tengo la original», «Repartir como la original» y tipo R con su referencia en la entrega a la gestoría.
 
 ## En curso
 

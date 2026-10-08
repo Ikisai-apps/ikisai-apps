@@ -234,6 +234,59 @@ AAAA_MM_DD_(empresa)_objeto[_NN][_pNN|_aNN].ext
 
 ---
 
+### 2.1 Facturas rectificativas recibidas (migración 0227, aprobada por Core el 8-10-2026)
+
+Abonos y devoluciones de proveedores. Por ejemplo, una compra en Obramat (factura A) y, semanas después, una rectificativa que resta los productos devueltos.
+
+**Modelo:**
+- En `invoices.invoices`:
+  - `invoice_kind` (`ordinaria` · `rectificativa`, por defecto `ordinaria`);
+  - `rectifies_invoice_id` (la original);
+  - `rectifies_number` (el número de la rectificada tal como lo imprime el proveedor);
+  - `rectification_without_original` («no tengo la original»).
+- En `invoices.invoice_lines`: `rectifies_line_id` (la línea devuelta de la original).
+
+**Signo:**
+- Una rectificativa lleva líneas, impuestos y asignaciones **negativos**: resta de la original.
+- `tax_lines.amount` y `allocations.allocated_amount` ya no tienen check de signo en la fila. El hook de invariantes exige:
+  - que una ordinaria no tenga impuestos negativos (`NEGATIVE_TAX_IN_ORDINARY`);
+  - que cada asignación lleve el signo de su línea y no pase de su valor absoluto (`ALLOCATIONS_EXCEED_LINE`).
+- Una ordinaria se comporta como siempre.
+
+**Detección** (`detectRectification` en el dominio):
+- Por el texto del documento: «rectificativa», «abono», «devolución», «nota de abono», «factura rectificada», «rectifica a la factura nº…». También por las notas de la IA o por un total negativo.
+- Saca también el número rectificado.
+- Si el proveedor la imprimió en positivo, se importa en negativo (`negateDocument`).
+- **El contrato `ikisai.invoice.v1` no cambia.** El tipo y el número viajan en los `overrides` de `import_v1` (`invoice_kind`, `rectifies_number`).
+- Quién la detecta:
+  - Drive, al leer el PDF;
+  - la revisión de «Leer PDF» o del JSON pegado (campos «Tipo de factura» y «Rectifica a la factura nº», editables);
+  - la herramienta MCP `invoices_import_json`, con el argumento `rectification: { number }` o por el documento.
+
+**Enlace con la original** (hook de invariantes):
+- Por proveedor y número normalizado (`invoices.normalized_number`: sin espacios, puntos, guiones, barras ni mayúsculas).
+- Funciona en los dos sentidos:
+  - al llegar la rectificativa, se busca la original;
+  - si no está, queda «pendiente de enlazar», y al llegar después una ordinaria de ese proveedor con ese número, se enlaza sola.
+- A mano, desde la ficha: «Factura original», o «No tengo la original».
+- Al enlazar, las líneas de la rectificativa se emparejan con las de la original de igual descripción normalizada (`rectifies_line_id`).
+- La ficha de la original muestra «Rectificada por …» y «Devuelto: X €» en cada línea devuelta.
+
+**Validar** (`invoices.validate`): una rectificativa necesita `rectifies_invoice_id` o `rectification_without_original` (si no, `INVOICE_INCOMPLETE` con `rectified_invoice`) y un total negativo o cero (si no, `rectification_sign`).
+
+**Reparto** («Repartir como la original» en la ficha):
+- `proposeRectificationAllocations` propone las mismas asignaciones que la original, en proporción y en negativo:
+  - las líneas emparejadas, con las de su línea;
+  - las demás, con las de toda la original.
+- Se confirma antes de guardar. Así el coste de la obra, del proyecto o del retiro baja solo.
+
+**Periodo y gestoría:**
+- La rectificativa cuenta en el trimestre de **su** fecha, con importes negativos: el resumen fiscal y la entrega suman con signo.
+- `export_manifest` añade a cada factura `kind` y `rectifies` (`code`, `invoice_number`, `invoice_date`, `other_period`, `without_original`).
+- El CSV de recibidas añade al final las columnas `tipo` (F1 o R), `rectifica`, `fecha_original` y `original_otro_periodo`.
+
+**En la lista:** etiqueta «Rectificativa» (o «Rectificativa sin enlazar») y filtro «Rectificativas sin enlazar».
+
 ## 3. Procedimientos (`call`)
 
 `security definer`, solo `service_role`, registrados con `core.allow_procedure('invoices', …)`, y escriben **solo** vía `core.apply_row_op(app, actor, role, requestId, cursor, op)`. Reciben `{app, actor, role, requestId, cursor, args}`.
