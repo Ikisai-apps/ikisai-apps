@@ -450,7 +450,9 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // --- Importación ---------------------------------------------------------
   const meta = invoice.import_meta as Record<string, unknown> | null;
   const importBlock = meta ? fbBlock({ feedbackId: 'invoices.facturas.ficha.importacion', feedbackLabel: 'Importación' }, 'Importación', `confianza ${typeof meta.overall_confidence === 'number' ? Math.round(meta.overall_confidence * 100) + ' %' : '—'}`, false,
+    typeof meta.origin === 'string' ? el('p', { id: 'importOrigin' }, el('strong', null, ORIGIN_LABELS[meta.origin] ?? meta.origin)) : null,
     meta.extraction_notes ? el('p', null, String(meta.extraction_notes)) : null,
+    meta.provenance && typeof meta.provenance === 'object' ? renderProvenance(meta.provenance as Record<string, FieldProvenance>) : null,
     Array.isArray(meta.warnings) && meta.warnings.length ? el('div', { class: 'chips' }, ...(meta.warnings as string[]).map((w) => el('span', { class: 'chip alert' }, w))) : el('p', { class: 'hint' }, 'Sin avisos de extracción.'),
   ) : null;
 
@@ -660,6 +662,8 @@ const PROVENANCE_LABELS: Record<string, string> = {
   'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total',
 };
 const METHOD_LABELS: Record<string, string> = { pdf_text: 'texto del PDF', supplier_template: 'plantilla del proveedor', external_ai: 'app de IA', manual: 'sin leer', ocr: 'OCR' };
+/** Quién leyó la factura (0226, `import_meta.origin`). */
+const ORIGIN_LABELS: Record<string, string> = { pdf_text: 'Leída del texto del PDF, sin IA', ia: 'Leída por una sesión de Claude (IA): revisa cada dato', api: 'Extraída automáticamente', json: 'Importada del JSON de ChatGPT' };
 
 /** Procedencia por campo: valor propuesto, confianza y de dónde sale. Nada inferido se presenta como verificado. */
 function renderProvenance(provenance: Record<string, FieldProvenance>): HTMLElement {
