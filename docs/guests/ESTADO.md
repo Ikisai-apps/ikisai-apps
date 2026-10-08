@@ -59,10 +59,11 @@
 
 - 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (se borra la copia `src/updates.ts`): se aplican solas al abrir si no hay cambios por confirmar.
 
+- 2026-10-08 · K6 en main (#334): las respuestas a las preguntas del organizador se guardan; la prueba las comprueba siempre.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
-- Guardar las respuestas a las preguntas del organizador en cuanto entre K6 del núcleo (#334). La prueba se activa sola.
 
 ## Bloqueos
 
