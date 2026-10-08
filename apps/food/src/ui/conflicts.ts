@@ -68,6 +68,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
       case T.menus: return 'Menú';
       case T.menuServices: return `Servicio: ${SERVICE_LABELS[row.service_type as keyof typeof SERVICE_LABELS] ?? ''} del ${shortDay(String(row.service_date))}`;
       case T.menuItems: return `Plato del menú: ${nameOf(row.recipe_id)}`;
+      case T.menuComments: return 'Comentario del organizador';
       case T.shoppingLists: return 'Lista de compra';
       case T.shoppingItems: return `Compra: ${nameOf(row.ingredient_id)}`;
       case T.preparation: return `Paso de preparación: ${row.text}`;

@@ -272,4 +272,59 @@ test('evento → menú → avisos → validar → el evento cambia → revisar y
     await expect(page.locator('#eventList .row', { hasText: 'Test1' })).toContainText('Menú: borrador');
   });
 
+  await test.step('compartir el menú validado con el organizador y atender sus comentarios del portal', async () => {
+    const retiro = menu();
+    await page.goto(`${baseURL}/#/menus/${retiro.id}`);
+    await expect(page.locator('#menuStatus')).toHaveText('Validado');
+    // Sin compartir y sin comentarios: no hay sección de comentarios.
+    await expect(page.locator('#menuComments')).toBeHidden();
+    await expect(page.locator('#menuShare')).toContainText('El organizador lo verá en su portal como propuesta hasta que esté validado.');
+    await page.locator('#shareMenu').click();
+    await expect(page.locator('#menuShared')).toHaveText('Compartido con el organizador');
+    await expect(page.locator('#unshareMenu')).toBeVisible();
+    await expect.poll(() => menu().organizer_shared).toBe(true);
+    expect(api.rows('food.menus').find((m) => m.id === retiro.id)).toMatchObject({ organizer_shared: true, status: 'validado' });
+    await expect(page.locator('#menuComments')).toContainText('Sin comentarios del organizador.');
+
+    // El organizador comenta desde su portal (la acción de servidor crea las filas; aquí se siembran y se publican como cambios).
+    const serviceIds = api.rows('food.menu_services').filter((s) => s.menu_id === retiro.id).map((s) => s.id);
+    const pesto = api.rows('food.menu_items').find((i) => i.servings === 2 && serviceIds.includes(i.service_id as string))!;
+    const dish = api.seed('food.menu_comments', { menu_id: retiro.id, service_id: pesto.service_id, menu_item_id: pesto.id, kind: 'prefiero_que_no', message: 'Mejor sin frutos secos, por favor.' });
+    const general = api.seed('food.menu_comments', { menu_id: retiro.id, kind: 'comentario', message: '¿Puede haber más fruta en el desayuno?' });
+    api.serverUpdate('food.menu_comments', dish.id, { created_at: new Date(Date.now() - 60_000).toISOString() });
+    api.serverUpdate('food.menu_comments', general.id, { created_at: new Date().toISOString() });
+    await page.reload();
+
+    const notice = page.locator('#menuCommentsNotice');
+    await expect(notice).toContainText('2 comentarios nuevos del organizador');
+    await notice.locator('#goComments').click();
+    const items = page.locator('#menuComments .menucomment');
+    await expect(items).toHaveCount(2);
+    // Del más nuevo al más antiguo.
+    await expect(items.nth(0)).toContainText('Menú en general');
+    await expect(items.nth(0)).toContainText('Comentario');
+    await expect(items.nth(0)).toContainText('¿Puede haber más fruta en el desayuno?');
+    await expect(items.nth(1)).toContainText('Pasta al pesto');
+    await expect(items.nth(1)).toContainText('Prefiere que no');
+    await expect(items.nth(1).locator('.commentstatus')).toHaveText('Nuevo');
+
+    // En la lista de Menús, el chip de comentarios nuevos.
+    await page.goto(`${baseURL}/#/menus`);
+    await expect(page.locator('#menuList li', { hasText: 'Retiro Test' })).toContainText('2 comentarios nuevos');
+    await page.goBack();
+
+    // Cocina responde al del plato y lo da por resuelto.
+    const pestoComment = page.locator('#menuComments .menucomment', { hasText: 'Pasta al pesto' });
+    await pestoComment.getByLabel('Respuesta al organizador').fill('Lo cambiamos por pasta al pomodoro.');
+    await pestoComment.getByRole('button', { name: 'Responder' }).click();
+    await expect.poll(() => api.rows('food.menu_comments').find((c) => c.id === dish.id)?.reply).toBe('Lo cambiamos por pasta al pomodoro.');
+    await expect(pestoComment.locator('.commentstatus')).toHaveText('Visto');
+    await expect(notice).toContainText('1 comentario nuevo del organizador');
+    await pestoComment.getByRole('button', { name: 'Resuelto' }).click();
+    await expect(pestoComment.locator('.commentstatus')).toHaveText('Resuelto');
+    await expect.poll(() => api.rows('food.menu_comments').find((c) => c.id === dish.id)).toMatchObject({ status: 'resuelto', reply: 'Lo cambiamos por pasta al pomodoro.' });
+    await expect(pestoComment.getByRole('button', { name: 'Resuelto' })).toHaveCount(0);
+    expect(api.rows('food.menu_comments').find((c) => c.id === general.id)).toMatchObject({ status: 'nuevo', reply: null });
+  });
+
 });

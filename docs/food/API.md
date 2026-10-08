@@ -118,7 +118,8 @@ food.menus
   preparation_source_revisions  jsonb         ®   §2.4
   notes                         text
   closing_notes                 text              cierre de cocina (canon §31): raciones reales, sobras, reposición, mejoras
-writable: event_id, source_event_revision, source_event_snapshot, notes, closing_notes + reservadas.
+  organizer_shared              boolean not null default false   cocina lo comparte con el organizador (§7.5)
+writable: event_id, source_event_revision, source_event_snapshot, notes, closing_notes, organizer_shared + reservadas.
 Único: event_id where deleted_at is null   (un menú por evento en V1)
 
 food.menu_services
@@ -137,6 +138,17 @@ food.menu_items
   position    numeric not null default 0
   notes       text
 writable: todas.  Índices: service_id, recipe_id.
+
+food.menu_comments                comentarios del organizador desde su portal (§7.5)
+  menu_id       uuid not null → food.menus   on delete cascade   ®
+  service_id    uuid → food.menu_services   on delete set null   ®
+  menu_item_id  uuid → food.menu_items      on delete set null   ®
+  kind          text not null     prefiero_que_no | comentario   ®
+  message       text              ≤ 1000   ®
+  author_id     uuid → auth.users   ®
+  status        text not null default 'nuevo'   nuevo | visto | resuelto
+  reply         text              ≤ 1000; respuesta de cocina, la ve el organizador
+Los crea solo food.portal_menu_comment; en Food solo cambian status y reply (lo demás, inmutable por trigger).
 ```
 
 `source_event_revision` y `source_event_snapshot` se escriben con `insert` al crear el menú; después solo las cambian `food.acknowledge_event` y `food.validate_menu`.
@@ -429,6 +441,28 @@ Vista `food.central_kpi_projection` (`20261007_0170_food_central_kpi.sql`), con 
 | `food.events_without_menu_30d` | Eventos sin menú en los próximos 30 días | Eventos de `booking.food_event_projection` que piden menú (misma regla que `needsMenu`: reserva no cancelada ni perdida, `requires_meals` distinto de `false`, régimen distinto de `no_aplica`), empiezan entre hoy y hoy + 30 y no tienen menú vivo. `period_end` = hoy + 30. Desde `20261007_0190`. | `count` · `down` | `#/eventos` |
 
 `food.events_without_menu_30d` es la única clave que lee `booking.food_event_projection`: el lint lo permite solo para esa proyección (petición P14, PR #265 de Core).
+
+### 7.5 El menú en los portales (fase 4: Fd2/FD1 y Fd3)
+
+Migración `20261008_0191_food_portal_menu.sql`. Decisiones del usuario (8-10-2026): el organizador ve el menú solo cuando cocina pulsa **«Compartir con el organizador»** (`menus.organizer_shared`), y puede comentar un menú validado, pero su comentario lo devuelve a «por revisar».
+
+Ámbito: `core.portal_in_scope(portal, actor, reservation_id, guest_id?)` (K1); la reserva se liga con el evento por `booking.food_event_projection.reservation_id`. Fuera de ámbito, con otra reserva o con un id inválido, la misma respuesta: `OUT_OF_SCOPE 403`.
+
+| Nombre | Portal | Tipo | Entrada → salida |
+|---|---|---|---|
+| `food.portal_menu` | `organizers`, `guests` | lectura | `{reservation_id, guest_id?}` (Guests con su `guest_id`) → `{reservation_id, available, status: provisional\|confirmado, menu_ids, updated_at, services: [{service_id, menu_id, date, type, time, dishes: [{menu_item_id, name, description, category, diet_tags, allergens, allergens_checked}]}], restrictions}` |
+| `food.portal_menu_comment` | `organizers` | acción | `{reservation_id, menu_item_id?, service_id?, kind: prefiero_que_no\|comentario, message?}` → `{id, status: 'nuevo', menu_status, cursor}`. `prefiero_que_no` exige plato; `comentario`, mensaje. Errores: `INVALID_OPERATION`, `INVALID_FIELDS`, `OUT_OF_SCOPE`, `MENU_CLOSED` |
+| `food.portal_my_menu_comments` | `organizers` | lectura | `{reservation_id}` → `{items: [{id, menu_item_id, service_id, dish, kind, message, status, reply, created_at, mine}]}` |
+
+- **Solo lo compartido**: sin menú compartido, `available: false` y `services: []`.
+- **Guests** solo ve menús validados o cerrados, y `restrictions: null`. Qué módulos ve cada huésped lo decide Organizers (`guest_experience_for`); Food no lo duplica.
+- `status` es `provisional` mientras algún menú siga en borrador o por revisar.
+- **Nombre del plato**: `public_name` si lo hay; si no, `name`. Descripción: `public_description`.
+- `restrictions` (solo el organizador): el resumen agregado que ya publica Booking, sin `kitchen_notes`.
+- **Nunca** salen raciones, ingredientes, elaboración, conservación, notas del menú, del servicio o del plato, costes, compra, preparación, avisos ni quién validó.
+- **Fotos**: todavía no. Firmar la miniatura para un portal necesita la ruta de archivos de portal (C8/K3 de Core).
+- **Comentario sobre un menú validado**: el mismo lote del portal (`core.apply_portal_operations`) inserta el comentario y pasa el menú a `revisar`. Un menú cerrado no admite comentarios.
+- **En Food**: la ficha del menú enseña «Comentarios del organizador» con «Visto», «Resuelto» y una respuesta que el organizador lee en `portal_my_menu_comments`.
 
 ---
 

@@ -1,10 +1,10 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
   FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
-  type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
+  type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, createSortableList, el, formatDate, icon, listRow, openSheet, renderMoneyBreakdown, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSortableList, el, formatDate, icon, listRow, openSheet, plural, renderMoneyBreakdown, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
@@ -25,6 +25,15 @@ import { fb, fbRows, type FbMark } from './feedback.ts';
 type MenuRow = Mirror<Menu>;
 type ServiceRow = Mirror<MenuService>;
 type ItemRow = Mirror<MenuItem>;
+type CommentRow = Mirror<MenuComment>;
+
+const COMMENT_KIND_LABELS: Record<MenuComment['kind'], string> = { prefiero_que_no: 'Prefiere que no', comentario: 'Comentario' };
+const COMMENT_STATUS_LABELS: Record<MenuComment['status'], string> = { nuevo: 'Nuevo', visto: 'Visto', resuelto: 'Resuelto' };
+const REPLY_MAX = 1000;
+/** «3 comentarios nuevos» (con «del organizador» en la ficha). */
+const newCommentsText = (n: number) => plural(n, 'comentario nuevo', 'comentarios nuevos');
+/** Al pulsar el aviso desde otra pestaña: la ficha vuelve a Menú y baja a los comentarios. */
+let scrollToComments = false;
 
 export type MenuTab = 'menu' | 'compra' | 'preparacion' | 'organizador' | 'cierre';
 const TABS: Array<[MenuTab, string]> = [['menu', 'Menú'], ['compra', 'Compra'], ['preparacion', 'Preparación'], ['organizador', 'Organizador'], ['cierre', 'Cierre']];
@@ -42,6 +51,7 @@ const removeOp = (table: (typeof T)[keyof typeof T], row: SyncedRow): RowOperati
 export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: MenuRow[] = [];
+  let fresh = new Map<string, number>(); // comentarios nuevos del organizador por menú
   const list = el('ul', { class: 'list', id: 'menuList', 'aria-label': 'Menús' });
   const host = el('div');
   replace(
@@ -59,7 +69,8 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       id: menu.id,
       title: event?.title ?? 'Evento no disponible',
       meta: event ? [dateRange(event), guestsLabel(event), mealPlanLabel(event.meal_plan)] : ['Sin datos del evento en este dispositivo'],
-      chips: [event ? menuChip(event, menu) : el('span', { class: 'chip' }, MENU_STATUS_LABELS[menu.status])],
+      chips: [event ? menuChip(event, menu) : el('span', { class: 'chip' }, MENU_STATUS_LABELS[menu.status]),
+        fresh.get(menu.id) ? el('span', { class: 'chip warn menucomments-new' }, newCommentsText(fresh.get(menu.id)!)) : null].filter((c): c is HTMLElement => c !== null),
       pending: menu._pending === true,
       label: `Abrir el menú de ${event?.title ?? 'este evento'}`,
       onClick: () => navigate(`#/menus/${menu.id}`),
@@ -70,13 +81,16 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   }
 
   async function load(): Promise<void> {
-    menus = (await client.list(T.menus)) as MenuRow[];
+    const [rows, comments] = await Promise.all([client.list(T.menus) as Promise<MenuRow[]>, client.list(T.menuComments) as Promise<CommentRow[]>]);
+    menus = rows;
+    fresh = new Map();
+    for (const c of comments) if (c.status === 'nuevo' && !c.deleted_at) fresh.set(c.menu_id, (fresh.get(c.menu_id) ?? 0) + 1);
     paint();
   }
   void load();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paint(); });
-  const offMenus = client.onTable(T.menus, () => void load());
-  return () => { offEvents(); offMenus(); };
+  const offTables = [T.menus, T.menuComments].map((table) => client.onTable(table, () => void load()));
+  return () => { offEvents(); offTables.forEach((off) => off()); };
 };
 
 const CHANGE_LABELS: Record<EventChange['field'], string> = { guest_count: 'Personas', dates: 'Fechas', meal_plan: 'Régimen', menu_style: 'Tipo de menú', restrictions: 'Restricciones' };
@@ -98,6 +112,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     let menu: MenuRow | null = null;
     let services: ServiceRow[] = [];
     let items: ItemRow[] = [];
+    let comments: CommentRow[] = [];
+    const replyDrafts = new Map<string, string>(); // lo escrito en cada respuesta sobrevive a los repintados
     let recipes: RecipeRow[] = [];
     let recipeLines: Mirror<RecipeIngredient>[] = [];
     let ingredients: Mirror<Ingredient>[] = [];
@@ -132,7 +148,11 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       return fb(el('a', { href: hash, 'data-tab': value, 'aria-current': value === tab ? 'page' : 'false', onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, label), TAB_MARKS[value]);
     }));
     const tabHost = el('div', { id: 'menuTab' });
-    replace(main, head, banner, restrictionsHost, tabs, tab === 'menu' ? el('div', null, actions, el('div', { class: 'btnrow' }, cookToggle), costHost, builder) : tabHost);
+    const commentsNotice = el('div', { id: 'menuCommentsNotice' });
+    const shareHost = el('section', { 'data-feedback-id': 'food.menu.organizador_portal', 'data-feedback-label': 'Compartir con el organizador', class: 'card menushare', id: 'menuShare' });
+    const commentsHost = el('section', { 'data-feedback-id': 'food.menu.comentarios', 'data-feedback-label': 'Comentarios del organizador', class: 'card menucomments', id: 'menuComments', hidden: true, tabindex: '-1' });
+    replace(main, head, banner, commentsNotice, restrictionsHost, tabs,
+      tab === 'menu' ? el('div', null, actions, shareHost, commentsHost, el('div', { class: 'btnrow' }, cookToggle), costHost, builder) : tabHost);
 
     const graph = (): MenuGraph => menuGraph;
     const warnings = (): MenuWarning[] => { const e = event(); return e ? menuWarnings(e, graph()) : []; };
@@ -213,6 +233,112 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         found.length ? el('ul', { class: 'warninglist', id: 'menuWarnings' }, ...found.map((w) =>
           el('li', { class: w.requiresAck ? 'warnline' : 'muted' }, w.text))) : null,
       );
+    }
+
+    // --- Portal del organizador: compartir y comentarios ------------------------------------
+    const shared = () => menu?.organizer_shared === true;
+
+    function goToComments(): void {
+      if (tab !== 'menu') { scrollToComments = true; navigate(`#/menus/${menuId}`); return; }
+      commentsHost.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      commentsHost.focus({ preventScroll: true });
+    }
+
+    function paintCommentsNotice(): void {
+      const count = comments.filter((c) => c.status === 'nuevo').length;
+      if (!count) { replace(commentsNotice); return; }
+      replace(commentsNotice, el('div', { 'data-feedback-id': 'food.menu.comentarios.aviso', 'data-feedback-label': 'Aviso de comentarios nuevos', class: 'banner info', role: 'status' },
+        el('span', null, el('strong', null, `${newCommentsText(count)} del organizador`)),
+        el('button', { 'data-feedback-id': 'food.menu.comentarios.ver', 'data-feedback-label': 'Ver comentarios', class: 'linkbtn', type: 'button', id: 'goComments', onclick: goToComments }, 'Ver comentarios')));
+    }
+
+    async function setShared(value: boolean): Promise<void> {
+      if (!menu) return;
+      const ok = await commitSafely([{ op: 'update', table: T.menus, id: menu.id, expectedRevision: menu.revision, fields: { organizer_shared: value } }]);
+      if (value) usage.track('food.menu.compartir', ok ? 'success' : 'error');
+      if (ok) toast(value ? 'Menú compartido con el organizador.' : 'El organizador ya no ve este menú.');
+    }
+
+    function paintShare(): void {
+      if (!menu) { replace(shareHost); return; }
+      const hint = el('p', { class: 'hint' }, 'El organizador lo verá en su portal como propuesta hasta que esté validado.');
+      if (!shared()) {
+        replace(shareHost, el('h3', null, 'Portal del organizador'),
+          canWrite()
+            ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.menu.organizador_portal.compartir', 'data-feedback-label': 'Compartir con el organizador', class: 'ghost', type: 'button', id: 'shareMenu', onclick: () => void setShared(true) }, 'Compartir con el organizador'))
+            : el('p', { class: 'muted' }, 'Este menú no se ha compartido con el organizador.'),
+          hint);
+        return;
+      }
+      replace(shareHost, el('h3', null, 'Portal del organizador'),
+        el('div', { class: 'btnrow' },
+          el('span', { class: 'chip ok', id: 'menuShared' }, 'Compartido con el organizador'),
+          canWrite() ? el('button', { 'data-feedback-id': 'food.menu.organizador_portal.dejar_compartir', 'data-feedback-label': 'Dejar de compartir', class: 'linkbtn', type: 'button', id: 'unshareMenu', onclick: () => void setShared(false) }, 'Dejar de compartir') : null),
+        hint);
+    }
+
+    /** A qué se refiere el comentario: el plato (nombre interno de la receta), el servicio o el menú entero. */
+    function commentTarget(comment: CommentRow): string {
+      const serviceText = (service: ServiceRow | undefined) => (service ? `${SERVICE_LABELS[service.service_type]} · ${longDay(service.service_date)}` : null);
+      if (comment.menu_item_id) {
+        const item = items.find((i) => i.id === comment.menu_item_id);
+        if (!item) return 'Plato retirado del menú';
+        const where = serviceText(services.find((s) => s.id === item.service_id));
+        return `${recipeOf(item)?.name ?? 'Receta retirada'}${where ? ` (${where})` : ''}`;
+      }
+      if (comment.service_id) return serviceText(services.find((s) => s.id === comment.service_id)) ?? 'Servicio retirado del menú';
+      return 'Menú en general';
+    }
+
+    const updateComment = (comment: CommentRow, fields: Partial<Pick<MenuComment, 'status' | 'reply'>>) =>
+      commitSafely([{ op: 'update', table: T.menuComments, id: comment.id, expectedRevision: comment.revision, fields }]);
+
+    async function reply(comment: CommentRow, text: string): Promise<void> {
+      const value = text.trim();
+      if (value.length > REPLY_MAX) { toast(`La respuesta no puede pasar de ${REPLY_MAX} caracteres.`); return; }
+      // Responder implica haberlo leído: un comentario nuevo pasa a visto.
+      const ok = await updateComment(comment, { reply: value || null, ...(comment.status === 'nuevo' ? { status: 'visto' as const } : {}) });
+      usage.track('food.menu.responder_comentario', ok ? 'success' : 'error');
+      if (ok) { replyDrafts.delete(comment.id); toast(value ? 'Respuesta guardada.' : 'Respuesta borrada.'); paintComments(true); }
+    }
+
+    function commentRow(comment: CommentRow): HTMLElement {
+      const statusClass = comment.status === 'nuevo' ? 'chip warn' : comment.status === 'resuelto' ? 'chip ok' : 'chip';
+      let actionsRow: HTMLElement | null = null;
+      if (canWrite()) {
+        const field = el('textarea', { 'data-feedback-id': 'food.menu.comentarios.respuesta', 'data-feedback-label': 'Respuesta al organizador', class: 'replytext', maxlength: String(REPLY_MAX),
+          rows: '2', 'aria-label': 'Respuesta al organizador', placeholder: 'Respuesta para el organizador',
+          oninput: () => replyDrafts.set(comment.id, field.value) });
+        field.value = replyDrafts.get(comment.id) ?? comment.reply ?? '';
+        actionsRow = el('div', null, field,
+          el('div', { class: 'btnrow' },
+            el('button', { 'data-feedback-id': 'food.menu.comentarios.responder', 'data-feedback-label': 'Responder', class: 'ghost', type: 'button', onclick: () => void reply(comment, field.value) }, 'Responder'),
+            comment.status === 'nuevo' ? el('button', { 'data-feedback-id': 'food.menu.comentarios.visto', 'data-feedback-label': 'Marcar como visto', class: 'ghost', type: 'button', onclick: () => void updateComment(comment, { status: 'visto' }) }, 'Visto') : null,
+            comment.status !== 'resuelto' ? el('button', { 'data-feedback-id': 'food.menu.comentarios.resuelto', 'data-feedback-label': 'Marcar como resuelto', class: 'ghost', type: 'button', onclick: () => void updateComment(comment, { status: 'resuelto' }) }, 'Resuelto') : null),
+          el('p', { class: 'hint' }, 'El organizador verá la respuesta en su portal.'));
+      }
+      return el('li', { 'data-feedback-id': 'food.menu.comentarios.comentario', 'data-feedback-label': 'Comentario del organizador', class: 'menucomment', 'data-id': comment.id, 'data-status': comment.status },
+        el('div', { class: 'commenthead' },
+          el('strong', null, commentTarget(comment)),
+          el('span', { class: comment.kind === 'prefiero_que_no' ? 'chip alert' : 'chip' }, COMMENT_KIND_LABELS[comment.kind]),
+          el('span', { class: `${statusClass} commentstatus` }, COMMENT_STATUS_LABELS[comment.status]),
+          comment._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null),
+        el('p', { class: 'commentmeta' }, formatDate(comment.created_at)),
+        comment.message ? el('p', { class: 'commentmsg', 'data-feedback-ignore': '' }, comment.message) : null,
+        comment.reply && !canWrite() ? el('p', { class: 'commentreply', 'data-feedback-ignore': '' }, el('strong', null, 'Respuesta: '), comment.reply) : null,
+        actionsRow);
+    }
+
+    /** Solo se rehace si cambia algo de lo que enseña: así no se pierde el foco de una respuesta a medio escribir. */
+    let commentsSig = '';
+    function paintComments(force = false): void {
+      const sig = JSON.stringify([shared(), canWrite(), comments.map((c) => `${c.id}:${c.revision}:${c._pending ? 1 : 0}`), comments.map(commentTarget)]);
+      if (!force && sig === commentsSig) return;
+      commentsSig = sig;
+      if (!menu || (!comments.length && !shared())) { commentsHost.hidden = true; replace(commentsHost); return; }
+      commentsHost.hidden = false;
+      replace(commentsHost, el('h3', null, 'Comentarios del organizador'),
+        comments.length ? el('ul', { class: 'commentlist' }, ...comments.map(commentRow)) : el('p', { class: 'muted' }, 'Sin comentarios del organizador.'));
     }
 
     // --- Estados ----------------------------------------------------------------------------
@@ -547,8 +673,12 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function paintActionsAndRest(): void {
-      paintHead(); paintBanner(); paintRestrictions();
-      if (tab === 'menu') { paintActions(); paintBuilder(); paintCost(); return; }
+      paintHead(); paintBanner(); paintCommentsNotice(); paintRestrictions();
+      if (tab === 'menu') {
+        paintActions(); paintShare(); paintComments(); paintBuilder(); paintCost();
+        if (scrollToComments && !commentsHost.hidden) { scrollToComments = false; goToComments(); }
+        return;
+      }
       if (!unmountTab) {
         const context = { client, menuId, host: tabHost, canWrite };
         unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
@@ -567,6 +697,9 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       }
       menu = data.menu;
       ({ services, items, recipes, ingredients, equipment, needs } = data);
+      comments = ((await client.list(T.menuComments)) as CommentRow[])
+        .filter((c) => c.menu_id === menuId)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
       recipeLines = data.lines;
       menuGraph = data.graph;
       if (tab === 'menu') void loadPurchases(client).then((next) => { const changed = next.fetchedAt !== purchases.fetchedAt; purchases = next; if (changed) { builderShape = ''; paintActionsAndRest(); } });
@@ -575,7 +708,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     void load();
     const offEvents = watchEvents(client, (next) => { snapshot = next; if (menu) paintActionsAndRest(); });
-    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
+    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
     const offStatus = client.onStatus(() => void refreshEvents(client));
     return () => {
       offEvents();
