@@ -55,6 +55,8 @@
 
 - 2026-10-08 · Organizers conectado (#333): experiencia, materiales con `portal-files` y preguntas. Barra y días del kit 0.21, y fotos de los platos (Food #332). Pruebas de las fases 4 y 5 contra la API real.
 
+- 2026-10-08 · Contacto por público (Central #341): Guests muestra `ven@ikisai.com` (`contact.guests.email` o el contacto público con su público); comprobado sin Central y con sus textos sembrados.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.

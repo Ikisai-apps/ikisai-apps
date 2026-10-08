@@ -199,6 +199,7 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
     },
     async seedCentralTexts() {
       await booking.t.db.query('select central.seed_texts()');
+      await booking.t.db.query('select central.seed_contact_audiences()'); // correo por público (Central #341): Guests, ven@
     },
     setOffline(on) { offline = on; },
     close: async () => {
