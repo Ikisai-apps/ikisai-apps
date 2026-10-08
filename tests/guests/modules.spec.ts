@@ -211,13 +211,13 @@ test('guests · vista previa del organizador (huésped de muestra): franja visib
   const { id: reservation, event } = await api.reservation({ title: 'Retiro en vista previa' });
   const muestra = await api.guest(event, { first_name: 'Huésped de muestra' });
   await simulate(page, { 'organizers.guest_experience_for': EXPERIENCE() });
-  // BG11 aún no existe: la ficha real se completa con `preview: true`.
-  await page.route('**/api/v1/read/booking.portal_my_guest', async (route) => {
-    const response = await route.fetch();
-    await route.fulfill({ response, json: { ...(await response.json()), preview: true } });
-  });
-  await enter(page, await api.guestLink(reservation, muestra, 'Muestra'));
+  // Enlace real de vista previa (contrato §3.6, O6): la entrada de ámbito llega marcada `preview` y el kit rechaza escrituras.
+  await page.goto(`${baseURL}/i/${await api.guestLink(reservation, muestra, 'Muestra', undefined, true)}`);
   await expect(page.locator('#previewBand')).toBeVisible();
+  // En la vista previa el aviso legal se puede leer, pero aceptarlo no escribe nada en Booking.
+  await page.locator('#privacyOk').click();
+  await expect(page.locator('#retreatTitle')).toBeVisible();
+  expect((await api.row(muestra)).privacy_ack_version).toBeNull();
   await page.locator('#nav-more').click();
   await page.locator('#more-data').click();
   await page.locator('#f-last_name_1').fill('Prueba');

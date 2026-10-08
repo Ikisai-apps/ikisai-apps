@@ -452,7 +452,7 @@ Detalles de la implementación:
 - **Materiales** con `portal-files` y «Guardar para verlo sin conexión» en la caché del navegador, como mucho 20 MB por persona y borrados al salir (`ui/materials.ts`).
 - **Preguntas** con autoguardado en la cola (`ui/questions.ts`; operación `answer` de `writer.ts`, que no toca la revisión de la ficha de Booking).
 - **Alojamiento** (`ui/lodging.ts`): ver, preferir, elegir o pedir, con confirmación, `BED_TAKEN` y solo con red.
-- **Vista previa:** con `preview` en la ficha, franja y solo lectura (la cola no encola nada).
+- **Vista previa:** con `preview` en la entrada de ámbito (enlace real del núcleo, #325), franja y solo lectura: la cola no encola nada.
 - **Inicio:** mensaje del organizador, preguntas pendientes y «Elige tu habitación».
 - **Pruebas:** `tests/guests/modules.spec.ts`, 5 de Playwright con las lecturas simuladas por `page.route` y el reloj fijo (`page.clock`), para no depender de la hora.
 
@@ -532,6 +532,7 @@ options[]   = [{ key, label, guest_note }]                   tipos de habitació
   - El organizador lo abre en Guests con un enlace que emite Organizers (`portal-links` con ese `guest_id`).
   - Ve exactamente lo que verá un huésped, sin duplicar pantallas en Organizers.
   - Las escrituras de ese huésped se rechazan con `PREVIEW_READ_ONLY`, y Guests muestra una franja «Vista previa: no se guarda nada».
+  - **Hecho en el núcleo (#325, contrato §3.6):** el enlace de Guests emitido con `preview: true` marca la entrada de ámbito con `preview`, y el kit rechaza cualquier escritura. Guests lo lee de `scopes.grants[].preview`: muestra la franja y no encola nada.
   - Alternativa, si Organizers prefiere pintarla él: las mismas lecturas sobre datos ficticios. Lo deciden Core y Organizers (petición O6).
 
 ### 13.2 Programa (fase 4)
@@ -616,6 +617,8 @@ booking.program_items        sincronizable, ámbito por evento
   3. **Respuesta:** `{url, expiresAt, name, mime, size}`. Fuera de ámbito, o no publicado: `404 FILE_NOT_FOUND`, como si no existiera.
   4. Lo mismo sirve después para el plano de Central (§13.4) o para un documento de Booking.
 
+  **Aprobado y hecho por Core (#325):** `core.allow_portal_file(portal, 'schema.fn')` con `fn(p_ctx jsonb {actor, portal, file_id, scopes}) returns boolean` y `GET /api/v1/portal-files/:fileId`. Los materiales no admiten SVG (pueden llevar código); el logotipo, en PNG o WebP.
+
   **Por qué así y no una lectura que devuelva URL firmadas:** la lectura (`read/…`) es SQL y no puede firmar. Firmar todas las URL al listar haría caducar enseguida las que no se abren. Y un resolutor por app mantiene la regla «la app dueña decide quién ve su dato».
 - **En Guests:**
   - pestaña o entrada «Materiales» con lista por tipo (documento, enlace o texto) y el título y la descripción del organizador;
@@ -648,6 +651,7 @@ booking.program_items        sincronizable, ámbito por evento
   - pantalla «Preguntas de tu organizador», con autoguardado por respuesta en la misma cola local (`writer.ts`, operación nueva `answer` hacia otra app);
   - aviso fijo: «Tu organizador verá tus respuestas»;
   - las obligatorias sin responder entran en «Lo que te falta» de Inicio.
+- **Conservación (decisión del usuario, 8-10-2026):** las respuestas de los huéspedes se borran a los **6 meses del fin del retiro**, como el resto de sus datos y como promete el aviso de protección de datos. Las preguntas y la configuración pueden quedar como plantilla del organizador. Lo hace Organizers.
 - **Límites recomendados a Organizers:**
   - no preguntar por salud, alergias ni documentos, porque ya lo cubre Ikisai con su consentimiento;
   - un aviso en su editor si el texto de una pregunta parece pedirlos.
@@ -692,7 +696,7 @@ booking.program_items        sincronizable, ámbito por evento
     - `NOT_OFFERED` (cama de una habitación no abierta a elección);
     - `OUT_OF_SCOPE`.
 - **`booking.portal_release_bed({guest_id})`:** suelta su elección mientras la elección siga abierta.
-- **`booking.portal_room_preference({guest_id, text, ground_floor})`**, con `prefer`. Columnas nuevas en `booking.guests`: `room_preference` y `needs_ground_floor`, escribibles solo por las acciones de portal y visibles para el organizador, porque son para organizar el alojamiento.
+- **`booking.portal_room_preference({guest_id, text, ground_floor})`**, con `prefer`. Columnas nuevas en `booking.guests`: `room_preference` y `needs_ground_floor`, escribibles solo por las acciones de portal. **Decisión del usuario (8-10-2026):** las ven el personal y también el organizador.
 - **Para Organizers** (no lo usa Guests): abrir habitaciones a elección con su `option_key`, y aprobar o rechazar las peticiones.
 
 **Columnas nuevas** que propongo a Booking:
@@ -703,7 +707,7 @@ booking.program_items        sincronizable, ámbito por evento
 **Suplemento:** Guests nunca muestra el coste de Ikisai.
 - Muestra el `guest_note` que escribe el organizador para cada tipo de habitación: «Incluido», «+40 € por persona, a pagar a tu organizador» o «Consulta con tu organizador».
 - Lo que Ikisai factura al organizador por esas habitaciones va por la propuesta y Finance (fase 3) y no pasa por Guests.
-- **Recomendación:** las habitaciones con baño abiertas a elección son las que el organizador ya contrató como extra. Así la elección del huésped no cambia el importe de Ikisai: solo reparte camas ya contratadas. Si el usuario quiere que la elección sume extras sobre la marcha, es otra decisión (pregunta 1 de la salida).
+- **Decisión del usuario (8-10-2026):** el huésped solo elige entre las camas con baño que el organizador **ya contrató** como extra en su propuesta. Elegir no cambia lo que Ikisai factura.
 
 **En Guests:**
 - pestaña Alojamiento con «Tu habitación»;

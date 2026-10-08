@@ -17,14 +17,14 @@ export interface MyGuest {
   id: string; revision: number; mode: GuestMode; fields: Record<string, string | boolean | null>; missing: string[]; signed: boolean;
   sources: Record<string, Source>; allergies_visible_to_organizer: boolean; privacy_ack_at: string | null; privacy_ack_version: string | null;
   diet_reviewed_at: string | null; signature_text_version: string | null;
-  /** Huésped de muestra para la vista previa del organizador (BG11): solo lectura. */
+  /** Huésped de muestra de Booking (BG11): no cuenta en totales ni en SES. */
   preview?: boolean;
   reservation: { title: string; start_date: string | null; end_date: string | null; status: string; arrival_time: string | null; departure_time: string | null };
   restrictions: Restriction[];
 }
 
-/** Entrada del ámbito de la cuenta: una persona en un retiro (API.md §5). */
-export interface Grant { reservation_id: string; guest_id: string }
+/** Entrada del ámbito de la cuenta: una persona en un retiro (API.md §5). `preview`: vista previa del organizador (O6), solo lectura. */
+export interface Grant { reservation_id: string; guest_id: string; preview?: boolean }
 
 /** Resultado de una lectura: `at` es la hora de los datos y `stale` dice si vienen de la caché por falta de red. */
 export interface Loaded<T> { value: T; at: string; stale: boolean }

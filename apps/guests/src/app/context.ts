@@ -12,7 +12,7 @@ export interface GuestContext {
   guest(): MyGuest;
   /** Lo que configuró el organizador (§13.1); null sin configuración o si Organizers aún no la publica. */
   experience(): Experience | null;
-  /** Vista previa del organizador (huésped de muestra, BG11): solo lectura. */
+  /** Vista previa del organizador (enlace con `preview`, contrato §3.6 O6): solo lectura; el kit rechaza las escrituras. */
   readOnly(): boolean;
   /** Hora de la copia local si la ficha viene de la caché sin red; null si es del servidor. */
   staleAt(): string | null;
@@ -46,7 +46,7 @@ export async function openGuest(api: GuestApi, reads: PortalReads, userId: strin
   const writer: Writer = createWriter({
     api, userId, guest,
     answer: (questionId, value) => reads.answer(guestId, questionId, value),
-    readOnly: () => guest.preview === true,
+    readOnly: () => grant.preview === true || guest.preview === true,
     onGuest(fresh) { guest = fresh; staleAt = null; emit('guest'); },
     onState() { emit('state'); },
     onConflict(found) { conflicts = [...conflicts.filter((c) => !found.some((f) => f.field === c.field)), ...found]; emit('conflict'); },
@@ -59,7 +59,7 @@ export async function openGuest(api: GuestApi, reads: PortalReads, userId: strin
     reads,
     guest: () => guest,
     experience: () => experience,
-    readOnly: () => guest.preview === true,
+    readOnly: () => grant.preview === true || guest.preview === true,
     staleAt: () => staleAt,
     writer,
     conflicts: () => conflicts,

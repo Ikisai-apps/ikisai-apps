@@ -19,7 +19,7 @@ export interface GuestsTestServer {
   /** El organizador escribe datos del huésped desde Organizers (procedencia «organizer»). */
   organizerWrites(reservationId: string, guestId: string, fields: Record<string, unknown>): Promise<void>;
   /** Enlace del huésped emitido por el personal de Booking; devuelve el token de `/i/<token>`. */
-  guestLink(reservationId: string, guestId: string, name: string, email?: string): Promise<string>;
+  guestLink(reservationId: string, guestId: string, name: string, email?: string, preview?: boolean): Promise<string>;
   /** Fila del huésped en Booking (para comprobar lo guardado). */
   row(guestId: string): Promise<Record<string, any>>;
   /** Siembra los textos de Central (`central.seed_texts`, migración 0570): legales, contacto e información práctica. */
@@ -93,8 +93,8 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
         [user, JSON.stringify({ grants: [{ reservation_id: reservationId }] })]);
       await booking.t.rpc('core_invoke', { p_app: 'organizers', p_actor: user, p_name: 'booking.portal_update_guest', p_args: { guest_id: guestId, fields, declaration: true } });
     },
-    async guestLink(reservationId, guestId, name, email) {
-      const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name, ...(email ? { email } : {}) } } });
+    async guestLink(reservationId, guestId, name, email, preview) {
+      const link = await booking.call('/api/v1/portal-links', { token: booking.tokens.editor, body: { app: 'guests', scope: { reservation_id: reservationId, guest_id: guestId }, person: { name, ...(email ? { email } : {}) }, ...(preview ? { preview: true } : {}) } });
       if (link.status !== 200) throw new Error(`portal-links ${link.status}: ${JSON.stringify(link.data)}`);
       return link.data.url.split('/i/')[1];
     },
