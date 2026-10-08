@@ -1,6 +1,6 @@
 /** Tarifario y condiciones comerciales (docs/booking/API.md §15.2): tarifas por capa, condiciones con sus tramos de cancelación. Solo el propietario escribe. */
 import type { RowOperation, TableName } from '@ikisai/sync-client';
-import { RATE_LAYERS } from '@ikisai/domain-booking';
+import { CONDITIONS_MARKERS, RATE_LAYERS, renderConditionsText } from '@ikisai/domain-booking';
 import { createSortableList, el, icon, plural, positionBetween, renumber, replace, toast, type Sortable } from '@ikisai/ui-kit';
 import { CONDITIONS, PROPOSALS, RATES, TIERS, canRead, describeError, fullDay } from '../app/client.ts';
 import { OPTIONS, RATE_LABELS, RATE_OPTIONS, label } from '../app/labels.ts';
@@ -38,7 +38,7 @@ const CONDITION_SPECS: FieldSpec[] = [
   { key: 'prices_include_vat', label: 'Precios con IVA incluido', type: 'check', section: 'IVA' },
   { key: 'vat_rate', label: 'Tipo de IVA (%)', type: 'number', decimal: true },
   { key: 'minimum_total', label: 'Mínimo por retiro (€)', type: 'number', decimal: true, section: 'Mínimo comercial', hint: 'Si el total no llega, se cobra el mínimo.' },
-  { key: 'text', label: 'Texto de las condiciones', type: 'textarea', section: 'Texto para el organizador', hint: 'Sale tal cual en el documento de la propuesta.' },
+  { key: 'text', label: 'Texto de las condiciones', type: 'textarea', section: 'Texto para el organizador', hint: 'Sale en el documento de la propuesta y en el portal. No repitas cifras: usa los marcadores de abajo, que se rellenan con los campos.' },
   { key: 'is_default', label: 'Condiciones por defecto (las usan las propuestas nuevas)', type: 'check', section: 'Uso' },
   { key: 'active', label: 'Activas', type: 'check' },
 ];
@@ -167,14 +167,32 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
     return operations;
   }
 
+  // Ayuda de los marcadores y vista previa del texto ya resuelto con los valores del formulario.
+  function conditionsTextHelp(merged: Record<string, unknown>, own: Row[]): HTMLElement {
+    const preview = renderConditionsText(merged.text as string | null, merged, own);
+    return el('div', { id: 'conditionsTextHelp', 'data-feedback-id': 'booking.tarifas.condiciones_hoja.marcadores', 'data-feedback-label': 'Marcadores del texto' },
+      el('details', null, el('summary', null, 'Marcadores del texto'),
+        el('ul', { class: 'hint' }, CONDITIONS_MARKERS.map(([key, text]) => el('li', null, el('code', null, `{{${key}}}`), ` · ${text}`))),
+        el('p', { class: 'hint' }, 'Bloque que desaparece si el campo está vacío: ', el('code', null, '{{#condiciones.senal_minima}}…{{/condiciones.senal_minima}}'), '. Los tramos se editan en la tarjeta de las condiciones.')),
+      preview.text ? [el('div', { class: 'sectionlabel' }, 'Vista previa'), el('p', { class: 'pdoc-text', id: 'conditionsTextPreview' }, preview.text)] : null,
+      preview.unknown.length ? el('p', { class: 'banner warn', role: 'status', id: 'conditionsTextUnknown' }, `Marcadores desconocidos: ${preview.unknown.map((k) => `{{${k}}}`).join(', ')}`) : null);
+  }
+
   function openConditions(row: Row | null): void {
     openRowSheet({
       client, title: row ? 'Condiciones' : 'Nuevas condiciones', table: CONDITIONS, row, specs: CONDITION_SPECS, feedbackId: row ? 'booking.tarifas.condiciones_hoja' : 'booking.tarifas.nuevas_condiciones', feedbackLabel: row ? 'Editar condiciones' : 'Nuevas condiciones',
       defaults: { deposit_percent: 30, deposit_minimum: 0, deposit_days: 5, deposit_days_short: 2, short_notice_days: 15, balance_deadline_hours_after_end: 24, prices_include_vat: true, vat_rate: 10, active: true, is_default: conditions.every((c) => c.is_default !== true) },
       check: (merged) => (num(merged.deposit_percent) > 100 || num(merged.vat_rate) > 100 ? 'Los porcentajes van de 0 a 100.' : null),
-      extra: () => (row && inUse(row)
-        ? el('p', { class: 'hint', id: 'conditionsInUse' }, 'Ya se usaron en una propuesta enviada: solo puedes cambiar si están activas o por defecto. Para otros cambios, crea unas nuevas (botón «Duplicar»).') : null),
-      buildOperations: (values) => conditionOperations(row, values),
+      extra: (merged) => [
+        row && inUse(row)
+          ? el('p', { class: 'hint', id: 'conditionsInUse' }, 'Ya se usaron en una propuesta enviada: solo puedes cambiar si están activas o por defecto. Para otros cambios, crea unas nuevas (botón «Duplicar»).') : null,
+        conditionsTextHelp(merged, row ? tiersOf(tiers, row.id) : []),
+      ].filter(Boolean) as HTMLElement[],
+      buildOperations: (values) => {
+        const unknown = renderConditionsText(values.text as string | null, values, row ? tiersOf(tiers, row.id) : []).unknown;
+        if (unknown.length) toast(`Marcadores desconocidos en el texto: ${unknown.map((k) => `{{${k}}}`).join(', ')}. Se verán tal cual.`);
+        return conditionOperations(row, values);
+      },
       remove: row && !usedByDraft(row)
         ? { label: 'Quitar', operations: () => [...tiersOf(tiers, row.id).map((t) => del(TIERS, t)), del(CONDITIONS, row)], confirmDialog: { title: 'Quitar condiciones', text: 'Se quitan también sus tramos de cancelación.', confirmLabel: 'Quitar' } } : undefined,
       savedMessage: 'Condiciones guardadas.', settle: true,
@@ -236,7 +254,7 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
         el('dt', null, 'Saldo (interno)'), el('dd', null, `Plazo máximo: ${balanceDeadlineHours(c)} h tras el final del evento`),
         el('dt', null, 'IVA'), el('dd', null, c.prices_include_vat ? `Incluido (${pct(c.vat_rate)})` : `No incluido: se suma el ${pct(c.vat_rate)}`),
         c.minimum_total !== null && c.minimum_total !== undefined ? el('dt', null, 'Mínimo por retiro') : null, c.minimum_total !== null && c.minimum_total !== undefined ? el('dd', null, eur(c.minimum_total)) : null,
-        c.text ? el('dt', null, 'Texto') : null, c.text ? el('dd', null, c.text) : null),
+        c.text ? el('dt', null, 'Texto') : null, c.text ? el('dd', { class: 'pdoc-text' }, renderConditionsText(c.text, c, own).text) : null),
       el('div', { class: 'sectionlabel' }, 'Cancelación', el('span', { class: 'count' }, String(own.length))),
       own.length === 0 ? el('p', { class: 'hint' }, 'Sin tramos: no se devuelve nada de la señal.')
         : el('ul', { class: 'list tiers', 'data-feedback-id': 'booking.tarifas.condiciones.tramos', 'data-feedback-label': 'Tramos de cancelación' }, own.map((t) => el('li', { class: 'row tier', dataset: { pending: String(t._pending === true) }, 'data-feedback-id': 'booking.tarifas.condiciones.tramos.fila', 'data-feedback-label': 'Tramo' },

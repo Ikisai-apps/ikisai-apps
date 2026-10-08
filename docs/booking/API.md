@@ -1417,6 +1417,27 @@ Decisiones del usuario (8-10-2026): el huésped **solo elige entre las camas con
 
 Vista para la conservación de Organizers (borra las respuestas de los huéspedes a los 6 meses del fin del retiro): `reservation_id`, `end_date` y `status` (el de la reserva, o `borrada` si se borró, para que lo suyo también caduque). Sin datos personales. Se lee por SQL desde el schema `organizers` (lint, #334); no es una lectura de portal.
 
+### 23.3 Marcadores en el «Texto de las condiciones» (migración 0462)
+
+Decisión del usuario (8-10-2026): el texto no repite las cifras de los campos; las nombra con marcadores que se resuelven al pintar (documento de la propuesta, tarjeta de condiciones y `portal_proposals`, que ya devuelve `conditions.text` resuelto). Lógica en `_domain/booking/conditionsText.ts` (`renderConditionsText`) y, en español, en SQL (`booking.conditions_text`); una prueba comprueba que dan lo mismo.
+
+| Marcador | Valor |
+|---|---|
+| `{{condiciones.senal_porcentaje}}` | `deposit_percent` («30 %») |
+| `{{condiciones.senal_minima}}` | `deposit_minimum` («1.234,50 €») |
+| `{{condiciones.senal_plazo}}` | `deposit_days` («7 días») |
+| `{{condiciones.senal_plazo_corto}}` | `deposit_days_short` |
+| `{{condiciones.poca_antelacion}}` | `short_notice_days` |
+| `{{condiciones.iva}}` | `vat_rate` («10 %») |
+| `{{condiciones.minimo}}` | `minimum_total` («2.500 €») |
+| `{{condiciones.cancelacion}}` | tramos, uno por línea, de mayor a menor antelación: «Con 90 días o más de antelación: se devuelve el 100 % de la señal.»; el de 0 días, «Con menos de 45 días: no se devuelve la señal» (más « y se cobran costes extra» con `extra_costs`); un único tramo de 0 días, «En cualquier momento: …» |
+
+- **Bloques:** `{{#condiciones.x}}…{{/condiciones.x}}` desaparece si el campo está vacío (null o 0; sin tramos, para `cancelacion`). Sin espacios dentro de las llaves.
+- **Nunca** hay marcador para `balance_deadline_hours_after_end` (interno).
+- **Desconocidos:** se ven tal cual; el editor los señala en la vista previa y avisa al guardar (no bloquea).
+- **Editor:** ayuda con la lista de marcadores y vista previa resuelta con los valores del formulario y los tramos guardados.
+- **Inglés:** `renderConditionsText(…, 'en')` formatea en `en-GB` («12.5%», «€2,500») para cuando haya versión inglesa; el SQL del portal resuelve en español.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

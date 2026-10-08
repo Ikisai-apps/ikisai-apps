@@ -4,7 +4,7 @@
  */
 import type { TableName } from '@ikisai/sync-client';
 import { el, plural, replace, type Child } from '@ikisai/ui-kit';
-import { nights } from '@ikisai/domain-booking';
+import { nights, renderConditionsText } from '@ikisai/domain-booking';
 import { CONDITIONS, PROPOSALS, PROPOSAL_LINES, RESERVATIONS, TIERS, fullDay } from '../app/client.ts';
 import { RATE_LABELS } from '../app/labels.ts';
 import { amountText, byPosition, eur, figures, lineAmounts, pct, qty, signedPct, tierText, tiersOf, type Row } from '../app/rates.ts';
@@ -127,7 +127,8 @@ export function mountProposalDocument(id: string): ViewMount {
               ...tiers.map((t) => el('li', null, tierText(t))),
               Number(tiers[tiers.length - 1]!.min_days_before) > 0 ? el('li', null, 'Con menos antelación: no se devuelve la señal.') : null,
             ])) : null,
-          conditions?.text ? section('Condiciones', el('p', { class: 'pdoc-text' }, conditions.text)) : null,
+          // marcadores del texto ({{condiciones.…}}) resueltos con los campos y los tramos de estas condiciones
+          conditions?.text ? section('Condiciones', el('p', { class: 'pdoc-text' }, renderConditionsText(conditions.text, conditions, tiers).text)) : null,
           proposal.valid_until ? el('p', { class: 'pdoc-valid', id: 'documentValidUntil', 'data-feedback-id': 'booking.propuesta.documento.validez', 'data-feedback-label': 'Validez' }, `Propuesta válida hasta el ${fullDay(proposal.valid_until)}.`) : null));
     }
 
