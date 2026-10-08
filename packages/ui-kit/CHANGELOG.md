@@ -1,5 +1,18 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.25.3 · 8 de octubre de 2026
+
+Lo que piden Central, Booking, Tasks y Food de la prueba común:
+- **`feedbackRoundTrip` con una hoja de la app abierta:**
+  - opción `before` (o `beforeTarget`): se ejecuta después de encender «Señalar» y antes del gesto;
+  - **no cierra las hojas de la app con Escape**: al final apaga el modo solo si no queda ninguna abierta;
+  - el objetivo por defecto se busca en la hoja abierta (si no, en `main`) y **salta lo ignorado** (`data-feedback-ignore` en él o en un ancestro) y los campos editables;
+  - se exportan `setMode`, `longPress`, `simulateKeyboard` y `acceptUsageNotice`;
+  - da por aceptado el aviso de medición de uso (`acceptUsageNotice: false` para no hacerlo).
+- **Aviso de medición de uso:** solo sale con la pantalla libre (sin hoja, diálogo ni feedback abiertos). Si se acaba de usar el feedback, espera a la siguiente navegación, así que no tapa el lanzador al cerrar el composer.
+- **Gesto sobre campos de texto:** no abre el composer **a propósito** (para no estorbar al escribir; sí sobre su etiqueta). Ahora lo dice la ayuda del interruptor y el README.
+- `v31` ampliada.
+
 ## 0.25.2 · 8 de octubre de 2026
 
 - **Formulario progresivo de los portales** («Ayuda y sugerencias») con el mismo comportamiento que el composer tras FB_2026_016/017:
