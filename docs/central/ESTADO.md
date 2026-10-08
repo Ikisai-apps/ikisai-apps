@@ -32,6 +32,7 @@
 - 2026-10-08 · Contacto público sin sesión (C1/P9, `0580`), textos de Organizers (X2, `0590`) e **instrucciones de pago** (F3, `0595`: IBAN y Bizum en la Entidad, marcadores y `payment.instructions`).
 - 2026-10-08 · **El lugar en los portales** (X3 de Organizers y CE3 de Guests, `0596`): **dirección del lugar de los retiros** (`venue_address`; los portales nunca ven el domicilio fiscal), plano del centro en la Entidad (imagen o PDF, `permanent`) servido a los portales con C8 (`central.site_plan_file`), marcadores `{{entidad.lugar}}` y `{{entidad.mapa}}`, proyección `central.portal_place_projection` para organizers y guests, `info.arrival` pasa al lugar, y los textos `portal.menu_note`, `portal.practical`, `guests.menu_notice` e `info.map_link`.
 - 2026-10-08 · **Enlace exacto del mapa** (FB_2026_010, `0597`): `venue_map_url` en la Entidad (solo mapas conocidos), que manda sobre la búsqueda por dirección en `{{entidad.mapa}}` y en los portales.
+- 2026-10-08 · **Un correo por público** (`0598`): `contact.<público>.email` (organizadores, huéspedes, equipo y proveedores) en la sección «Correos por público», marcadores por público, `contact.email` pasado a organizadores, `portal.privacy` con el correo de huéspedes y contacto público filtrado por `audience`.
 
 ## Pendiente
 
