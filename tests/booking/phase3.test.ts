@@ -62,7 +62,8 @@ test('fase 3 · lo contratado sin lo pagado; proyecto en Tasks creado, renombrad
   const detail = (await app.t.rpc('core_read', { p_app: 'organizers', p_actor: org, p_name: 'booking.portal_reservation_detail', p_args: { reservation_id: res } })) as any;
   assert.deepEqual([Number(detail.contract.total), Number(detail.contract.deposit_required), detail.contract.payment_type, detail.contract.proposal_version], [3200, 960, 'transferencia', 1]);
   assert.deepEqual(detail.contract.due.map((d: any) => [d.kind, Number(d.amount)]), [['senal', 960], ['saldo', 2240]]);
-  assert.equal(detail.contract.due[1].date, '2028-09-08', 'el saldo vence el día de entrada');
+  assert.equal(detail.contract.due[1].date, '2028-09-11', 'el saldo vence 24 h después del final (día siguiente al de salida)');
+  assert.equal(detail.contract.due[1].hours_after_end, 24);
   assert.ok(!JSON.stringify(detail).includes('deposit_paid') && !JSON.stringify(detail.contract).includes('500'), 'lo pagado no sale de Booking');
 
   // B13: sin confirmar no hay proyecto; al confirmar, primero sin ruta (se reintenta) y después se crea con su extra
