@@ -998,4 +998,21 @@ test('portal de organizadores (F1 y F2): dinero del retiro y documento de la fac
   await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: other }), /OUT_OF_SCOPE/);
   await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R, issued_invoice_id: draft }), /OUT_OF_SCOPE/);
   await assert.rejects(portal('invoices.portal_invoice_document', { reservation_id: R2, issued_invoice_id: other }), /OUT_OF_SCOPE/);
+
+  // Lectura para Booking (0222): lo facturado y lo cobrado por reserva, la misma suma que F1
+  await app.t.db.query(`insert into core.memberships (app, user_id, role) values ('booking', $1, 'reader') on conflict (app, user_id) do nothing`, [uid]);
+  const collected = async (ids: unknown) => (await app.t.db.query<{ r: any }>(`select core.read('booking', $1, 'invoices.reservation_collected', $2) r`, [uid, JSON.stringify({ reservation_ids: ids })])).rows[0]!.r;
+  const NONE = '99999999-9999-4999-8999-999999999999';
+  const byRes = await collected([R, R2, NONE, R]);
+  assert.equal(byRes.length, 3);
+  const forR = byRes.find((x: any) => x.reservation_id === R);
+  assert.equal(forR.invoiced, money.totals.invoiced); assert.equal(forR.collected, money.totals.collected);
+  assert.deepEqual([forR.invoiced, forR.collected, forR.last_collected_at], [1290, 300, today.d]);
+  assert.deepEqual(byRes.find((x: any) => x.reservation_id === R2), { reservation_id: R2, invoiced: Number((await row('invoices.issued_invoices', other)).total), collected: 0, last_collected_at: null });
+  assert.deepEqual(byRes.find((x: any) => x.reservation_id === NONE), { reservation_id: NONE, invoiced: 0, collected: 0, last_collected_at: null });
+  assert.equal(JSON.stringify(byRes).includes('Asociación'), false);
+  await assert.rejects(collected(['x']), /INVALID_OPERATION/);
+  await assert.rejects(collected(R), /INVALID_OPERATION/);
+  // No es lectura de portal: el organizador no la tiene
+  await assert.rejects(portal('invoices.reservation_collected', { reservation_ids: [R] }));
 });
