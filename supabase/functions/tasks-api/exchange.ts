@@ -168,6 +168,27 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         return { trashed: (prepared.results[0] as { result?: { trashed?: number } })?.result?.trashed ?? 0, purged: purged.purged, cursor: purged.cursor };
       },
     },
+    /**
+     * Convertir un área en proyecto de otra (§24.4): en un lote y con historial, las tareas vivas pasan con los mismos ids a
+     * un proyecto nuevo del área de destino y el área de origen, vacía, va a la papelera. Solo la propietaria con acceso
+     * completo, desde la app y tras la vista previa.
+     */
+    {
+      method: 'POST', pattern: 'tabs/:tabId/convert', handler: async ({ ctx, params, json }) => {
+        admin(ctx);
+        const body = await json();
+        const sourceTabId = String(params.tabId ?? '').toLowerCase();
+        const targetTabId = typeof body.targetTabId === 'string' ? body.targetTabId.toLowerCase() : '';
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        if (!UUID.test(sourceTabId) || !UUID.test(targetTabId) || sourceTabId === targetTabId) fail(422, 'INVALID_OPERATION', 'Elige un área de destino distinta.');
+        if (!title || title.length > 300) fail(422, 'INVALID_OPERATION', 'El proyecto necesita un nombre (hasta 300 caracteres).');
+        const projectId = typeof body.projectId === 'string' && UUID.test(body.projectId) ? body.projectId.toLowerCase() : await stableId(body.requestId, sourceTabId);
+        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.convert_tab_into_project', args: { sourceTabId, targetTabId, projectId, title } }] });
+        const result = (committed.results[0] as { result?: { projectId: string; counts: Record<string, number> } })?.result;
+        return { projectId: result?.projectId ?? projectId, counts: result?.counts ?? {}, cursor: committed.cursor };
+      },
+    },
     { method: 'GET', pattern: 'portable', handler: async ({ ctx }) => zipResponse(await bundle(ctx), 'Ikisai-portable.zip') },
     { method: 'GET', pattern: 'backup', handler: async ({ ctx }) => { admin(ctx); return zipResponse(await bundle(ctx), 'Ikisai-respaldo.zip'); } },
     {
