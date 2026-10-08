@@ -136,10 +136,6 @@ test('guests · preguntas del organizador: pendiente en Inicio, se responden sin
   const q1 = await api.question(reservation, { type: 'text', label: '¿Qué esperas del retiro?', required: true });
   const q2 = await api.question(reservation, { type: 'yes_no', label: '¿Vienes en coche?', help: 'Para organizar el aparcamiento' });
   const q3 = await api.question(reservation, { type: 'choice', label: 'Taller del sábado', options: [{ value: 'a', label: 'Cerámica' }, { value: 'b', label: 'Dibujo' }], closes_at: day(-1), opens_at: day(-5) });
-  // Escribir en Organizers desde Guests (portal → portal) necesita K6 del núcleo (#334). Hasta que esté en main, se salta.
-  const probe = await api.guestInvoke(reservation, await api.guest(event, { first_name: 'Sonda' }), 'organizers.guest_answer', { question_id: q1, value: 'sonda' })
-    .then(() => null, (error: unknown) => `${String(error)} ${JSON.stringify((error as { details?: unknown; detail?: unknown }).details ?? (error as { detail?: unknown }).detail ?? '')}`);
-  const k6 = !probe?.includes('target must be an internal app');
   await enter(page, await api.guestLink(reservation, eva, 'Eva'));
   await expect(page.locator('#task-questions')).toContainText('1 pregunta');
   await expect(navMain(page)).toHaveText(['Inicio']);
@@ -148,10 +144,6 @@ test('guests · preguntas del organizador: pendiente en Inicio, se responden sin
   await expect(page.locator('#questionsNotice')).toHaveText(' Tu organizador verá tus respuestas.');
   await expect(page.locator(`[data-question="${q3}"] input[value="a"]`)).toBeDisabled();
   await expect(page.locator(`[data-question="${q3}"]`)).toContainText('Ya no se pueden cambiar');
-  if (!k6) {
-    test.info().annotations.push({ type: 'pendiente', description: 'La escritura de respuestas espera K6 del núcleo (#334)' });
-    return;
-  }
   await page.locator(`#q-${q1}`).fill('Descansar y aprender a respirar');
   await page.locator(`[data-question="${q2}"] input[value="true"]`).check();
   const answers = async () => (await api.booking.t.db.query<{ question_id: string; value: unknown }>(`select question_id, value from organizers.answers where guest_id = $1 and deleted_at is null`, [eva])).rows;

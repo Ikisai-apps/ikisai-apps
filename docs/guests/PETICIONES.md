@@ -39,4 +39,4 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | C8 | Core | archivos publicados a un portal: `core.allow_portal_file` y `GET portal-files/:fileId` | hecha (#325) |
 | C9 | Core | enlace de Guests al huésped de muestra para el organizador | hecha (#325, `preview: true`) |
 | U5 | UI | barra inferior con «Más» y lista de días para el programa | hecha (kit 0.21), en uso |
-| K6 | Core | que una acción de Organizers invocada desde Guests escriba en `organizers.*` (`apply_portal_operations` rechaza hoy un destino portal); sin ello no se guardan las respuestas | en la #334 |
+| K6 | Core | que una acción de Organizers invocada desde Guests escriba en `organizers.*` (`apply_portal_operations` rechaza hoy un destino portal); sin ello no se guardan las respuestas | hecha (#334), en uso |

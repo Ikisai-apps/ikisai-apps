@@ -465,7 +465,7 @@ Detalles de la implementación:
 
 - **Organizers** (#333): `guest_experience_for`, `guest_materials` (archivos con su resolutor real de `portal-files`), `guest_questions` y `guest_answer`, con la forma de §13.
   - `app/normalize.ts` acepta además la forma por filas de `docs/organizers/API.md` §15, por si cambia.
-  - **Las respuestas aún no se guardan en el servidor:** `core.apply_portal_operations('organizers', …)` rechaza un destino que sea portal («target must be an internal app»). Lo corrige K6 del núcleo (#334). Hasta entonces, la cola de Guests las reintenta; la prueba comprueba la lectura y activa sola la parte de escritura cuando K6 entra.
+  - **Las respuestas se guardan** desde que entró K6 del núcleo (#334): una acción de Organizers invocada desde Guests escribe en `organizers.*`.
 - **Navegación con la barra del kit 0.21 (U5):** `createAppShell({ maxNav: 5 })` y `setNav(nav, more)` por persona; los días, con `createDayTabs`. Sustituye a la barra propia y a la pantalla «Más».
 - **Fotos de los platos** (Food #332): miniatura por `portal-files`.
 
