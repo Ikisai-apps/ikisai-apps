@@ -10,6 +10,7 @@ import {
   createUsage,
   createI18n,
   createSaveState,
+  createDayTabs,
   createSignaturePad,
   createInstallPrompt,
   createLanguageSelect,
@@ -954,6 +955,27 @@ const signature = createSignaturePad({ label: 'Firma del organizador', attrs: { 
 const sigOut = el('output', { id: 'sigOut' });
 const install = createInstallPrompt({ appName: 'Ikisai Guests', app: 'demo-guests', markIcon: 'guest' });
 const portalShellHost = el('div', { id: 'portalShellHost', class: 'card', style: 'position:relative;transform:translateZ(0);height:220px;overflow:auto' });
+// Guests con módulos (U5): Inicio · Programa · Menú · Alojamiento · Más (Información, Materiales, Mis datos…).
+const guestsShellHost = el('div', { id: 'guestsShellHost', class: 'card', style: 'position:relative;transform:translateZ(0);height:380px;overflow:auto;padding:0' });
+const guestsRoute = el('output', { id: 'guestsRoute' }, '#/');
+const guestsShell = createAppShell(guestsShellHost, {
+  appName: 'Guests', markIcon: 'guest', maxNav: 5,
+  navigate: (hash) => { guestsRoute.textContent = hash; guestsShell.setRoute(hash); },
+  nav: [
+    { hash: '#/', label: 'Inicio', icon: 'home' }, { hash: '#/programa', label: 'Programa', icon: 'calendar' },
+    { hash: '#/menu', label: 'Menú', icon: 'chef' }, { hash: '#/alojamiento', label: 'Alojamiento', icon: 'bed' },
+  ],
+  more: [
+    { hash: '#/info', label: 'Información', icon: 'info' }, { hash: '#/materiales', label: 'Materiales', icon: 'attach' },
+    { hash: '#/datos', label: 'Mis datos', icon: 'user' }, { hash: '#/firma', label: 'Firma', icon: 'edit', badge: 1 },
+  ],
+});
+guestsShell.setRoute('#/');
+const programDays = ['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11', '2026-10-12'];
+const dayOut = el('output', { id: 'dayOut' });
+const dayTabs = createDayTabs({ days: programDays, today: '2026-10-09', count: (d) => (d === '2026-10-10' ? 4 : null), panelId: 'dayPanel', onSelect: (d) => { dayOut.textContent = d; } });
+dayTabs.element.id = 'dayTabs';
+guestsShell.main.append(el('h3', null, 'Programa'), dayTabs.element, el('div', { id: 'dayPanel', role: 'tabpanel' }, 'Elegido: ', dayOut));
 const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado por campo y global, recuadro de firma (trazo, deshacer, borrar, escribir el nombre, PNG recortado), «Instala la app» y la cáscara sin barra inferior con nav: [].',
   el('div', { class: 'demo-row' },
     ...(['ok', 'fail', 'offline'] as const).map((m) => el('label', { class: 'field check' }, el('input', { type: 'radio', name: 'saveMode', id: `saveMode-${m}`, checked: m === 'ok', onchange: () => { saveMode = m; } }), el('span', null, m))),
@@ -967,7 +989,9 @@ const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado 
       sigOut.textContent = `${blob.type} ${bmp.width}x${bmp.height}`;
     } }, 'Exportar PNG'), sigOut)),
   el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'ghost small', id: 'installSheet', onclick: () => void install.openSheet() }, 'Hoja «Instala la app»'), install.card() ?? el('span', null, 'instalada')),
-  portalShellHost);
+  portalShellHost,
+  el('p', { class: 'small muted' }, 'Ruta de Guests: ', guestsRoute),
+  guestsShellHost);
 createAppShell(portalShellHost, { appName: 'Guests', markIcon: 'guest', nav: [] });
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
