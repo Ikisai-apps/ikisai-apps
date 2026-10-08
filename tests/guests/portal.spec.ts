@@ -5,11 +5,12 @@
  * organizador, varias entradas en una cuenta y ayuda.
  */
 import { expect, test, type Page } from 'playwright/test';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { startGuestsServer, type GuestsTestServer } from './server.ts';
+import { buildGuestsApp } from './build.ts';
 import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,7 +23,7 @@ let baseURL: string;
 test.beforeAll(async () => {
   api = await startGuestsServer();
   process.env.VITE_API_PROXY = api.url;
-  await build({ configFile, logLevel: 'silent' });
+  await buildGuestsApp(); // un solo build entre workers (tests/guests/build.ts)
   server = await preview({
     configFile,
     logLevel: 'silent',
