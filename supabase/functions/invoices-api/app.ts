@@ -2,7 +2,7 @@
 import { createApp, createGoogleTokenSource, createStorage, createSupabase, createSync, ensureServiceActor, fail, isFault, r2ConfigFromEnv, type AgentRiskAssessment, type AppConfig, type AppHooks, type AppRoute, type CommitResult, type McpTool, type Operation, type RequestContext, type StorageAccess, type Supabase, type WorkerRoute } from '../_kit/mod.ts';
 import { sha256Hex, stable } from '../_kit/supabase.ts';
 import {
-  DomainError, EXPORT_CSV_FILES, buildImportArgs, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
+  DomainError, EXPORT_CSV_FILES, buildImportArgs, detectRectification, negateDocument, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
   type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
 } from '../_domain/invoices/mod.ts';
@@ -899,13 +899,20 @@ export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = cr
           invoice_id: { type: 'string', format: 'uuid', description: 'Factura existente en pendiente_datos donde volcar los datos.' },
           supplier_id: { type: 'string', format: 'uuid', description: 'Forzar un proveedor existente en lugar del emparejamiento automático.' },
           file_ids: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 8, description: 'Documentos ya subidos y verificados (POST uploads + verify), en orden de página.' },
+          rectification: { type: 'object', additionalProperties: false, properties: { number: { type: ['string', 'null'], maxLength: 64, description: 'Número de la factura que rectifica, tal como lo imprime el proveedor.' } },
+            description: 'Si es una factura rectificativa, un abono o una devolución: se importa como rectificativa (importes en negativo) y se enlaza sola con la original del mismo proveedor y número.' },
           provenance: { type: 'object', description: 'De dónde sale cada dato: { campo: { confidence (0-1), text, page } }, p. ej. { "invoice.invoice_number": { "confidence": 0.95, "text": "Factura nº A-12", "page": 1 } }. Se guarda en la factura (origen «ia»).' },
         },
       },
       handler: async (args, ctx, kit) => {
         const validation = validateImportDocument(args.document);
         if (!validation.ok) fail(422, 'IMPORT_INVALID', domainMessage('IMPORT_INVALID'), { errors: validation.errors });
-        const document = validation.document;
+        // Rectificativa (0227): la indica la IA (`rectification`) o se deduce del documento (nota o total negativo).
+        const detected = detectRectification({ document: validation.document });
+        const rectArg = args.rectification && typeof args.rectification === 'object' ? args.rectification as { number?: string | null } : null;
+        const isRectification = !!rectArg || detected.isRectification;
+        const document = isRectification && validation.document.document_totals.total > 0 ? negateDocument(validation.document) : validation.document;
+        const rectifiesNumber = (typeof rectArg?.number === 'string' && rectArg.number.trim() ? rectArg.number.trim().slice(0, 64) : null) ?? detected.number;
         const sha = await importDocumentSha256(document);
         const [suppliers, invoices] = await Promise.all([allRows<SupplierRow>(supabase, ctx, TABLES.suppliers), allRows<InvoiceRow>(supabase, ctx, TABLES.invoices)]);
         const invoiceId = typeof args.invoice_id === 'string' && UUID.test(args.invoice_id) ? args.invoice_id.toLowerCase() : await stableUuid(`invoice:${ctx.user.id}:${sha}`);
@@ -935,7 +942,8 @@ export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = cr
           files.push({ file_id: id, original_filename: file.filename, page_order: index + 1 });
         }
         let n = 0;
-        const importArgs = buildImportArgs({ document, documentSha256: sha, invoiceId, supplier, files, uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}`, origin: 'ia', provenance: iaProvenance(args.provenance) });
+        const importArgs = buildImportArgs({ document, documentSha256: sha, invoiceId, supplier, files, uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}`, origin: 'ia', provenance: iaProvenance(args.provenance),
+          overrides: isRectification ? { invoice_kind: 'rectificativa', rectifies_number: rectifiesNumber } : undefined });
         const result = await kit.commit({ requestId: `mcp-import-${invoiceId}`, operations: [{ op: 'call', procedure: 'invoices.import_v1', args: importArgs }] }) as CommitResult;
         const after = (result.changes ?? []).find((c: any) => c.table === TABLES.invoices && c.after?.id === invoiceId)?.after as Record<string, unknown> | undefined;
         const proposal = proposeImport(document, supplierRow, {});

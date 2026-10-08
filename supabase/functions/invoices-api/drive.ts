@@ -17,7 +17,7 @@
  * 429: el siguiente tick reintenta). Nada de la clave, el token ni el contenido del PDF va a registros.
  */
 import {
-  buildImportArgs, extractWithTemplates, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, matchSupplier, softDuplicate,
+  buildImportArgs, detectRectification, extractWithTemplates, negateDocument, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, matchSupplier, softDuplicate,
   type ImportDocument, type InvoiceRow, type PdfTextItem, type SupplierRow, type TemplateLike,
 } from '../_domain/invoices/mod.ts';
 
@@ -273,7 +273,10 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
         suppliers: data.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })),
         templates: data.templates,
       });
-      const document: ImportDocument | null = extraction.hasText && extraction.ok && extraction.document ? extraction.document : null;
+      let document: ImportDocument | null = extraction.hasText && extraction.ok && extraction.document ? extraction.document : null;
+      // Rectificativa (abono o devolución, 0227): por el texto o el total negativo; impresa en positivo, se importa en negativo.
+      const rectification = document ? detectRectification({ text: items.map((i) => i.str).join('\n'), document }) : null;
+      if (document && rectification?.isRectification && document.document_totals.total > 0) document = negateDocument(document);
       let documentSha: string | null = null;
       let supplierMode: { mode: 'existing'; id: string } | { mode: 'create'; id: string } | null = null;
       if (document) {
@@ -301,6 +304,7 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
       if (document && documentSha && supplierMode) {
         let n = 0;
         const importArgs = buildImportArgs({ document, documentSha256: documentSha, invoiceId, supplier: supplierMode, files: [], origin: 'pdf_text',
+          overrides: rectification?.isRectification ? { invoice_kind: 'rectificativa', rectifies_number: rectification.number } : undefined,
           provenance: Object.fromEntries(Object.entries(extraction.provenance).map(([k, p]) => [k, { method: p.method, text: p.text, page: p.page, confidence: p.confidence }])), uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
         try {
           await deps.commit(`drive-${file.id}`, [...base, { op: 'call', procedure: 'invoices.import_v1', args: importArgs }]);
