@@ -57,6 +57,8 @@
 
 - 2026-10-08 · Contacto por público (Central #341): Guests muestra `ven@ikisai.com` (`contact.guests.email` o el contacto público con su público); comprobado sin Central y con sus textos sembrados.
 
+- 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (se borra la copia `src/updates.ts`): se aplican solas al abrir si no hay cambios por confirmar.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.

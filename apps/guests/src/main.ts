@@ -1,13 +1,12 @@
 import '@ikisai/ui-kit/ui-kit.css';
 import './styles/app.css';
-import { applyTheme } from '@ikisai/ui-kit';
+import { applyTheme, initAppUpdates } from '@ikisai/ui-kit';
 import { createClient } from './app/client.ts';
 import { createGuestApi } from './app/api.ts';
 import { onLocaleChange } from './app/i18n.ts';
 import { loadPublicContact } from './app/common-texts.ts';
 import { renderEntry } from './ui/entry.ts';
 import { renderShell } from './ui/shell.ts';
-import { initUpdates } from './updates.ts';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Falta el contenedor #app');
@@ -18,8 +17,9 @@ let unmount: (() => void) | null = null;
 let busy: () => boolean = () => false;
 let entryError: unknown;
 
-// Actualizar el shell solo sin cambios por confirmar (la cola también sobrevive a una recarga, writer.ts).
-initUpdates({ isSafe: () => !busy() });
+// Versiones nuevas (kit 0.23): al abrir o al volver tras más de un minuto se aplican solas si es seguro, es decir, sin
+// cambios por confirmar en la cola (que además sobrevive a una recarga, writer.ts).
+initAppUpdates({ isSafe: () => !busy(), enabled: import.meta.env.PROD });
 
 /**
  * Entrada (API.md §9.1): `/i/<token>` canjea el enlace personal y quita el token de la URL antes de pintar nada. Si en
