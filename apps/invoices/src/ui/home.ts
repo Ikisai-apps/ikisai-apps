@@ -1,5 +1,5 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { el, formatDate, icon, replace, toast } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, el, formatDate, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
@@ -84,6 +84,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
           isOwner ? el('button', { 'data-feedback-id': 'invoices.inicio.drive.buscar', 'data-feedback-label': 'Buscar ahora', class: 'ghost', type: 'button', id: 'driveRun', onclick: (e: Event) => void runDrive(e.currentTarget as HTMLButtonElement) }, 'Buscar ahora') : null),
         isOwner ? driveState : null,
       ), { feedbackId: 'invoices.inicio.drive', feedbackLabel: 'Desde Google Drive' }),
+      isOwner ?       fb(el('article', { class: 'card' },
+        el('h3', null, 'Leer con Claude'),
+        el('p', null, 'Una sesión de Claude Code completa las facturas que llegan sin leer (escaneadas o con datos que faltan). Tú las revisas y validas.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.claude.conectar', 'data-feedback-label': 'Conectar Claude', class: 'ghost', type: 'button', id: 'connectClaude', onclick: () => void connectClaude() }, 'Conectar Claude')),
+      ), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' }) : null,
       link({ feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }, '#/proveedores', 'Proveedores', 'Altas, NIF, alias y categoría por defecto.', supplierCount, 'Activos'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
         el('h3', null, 'Sincronización'),
@@ -105,6 +110,31 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     ),
     el('button', { 'data-feedback-id': 'invoices.inicio.nueva_factura', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'homeNewInvoice', hidden: client.bootstrap()?.membership.role === 'reader', onclick: () => navigate('#/facturas/nueva') }, icon('plus'), 'Nueva factura'),
   );
+
+  /**
+   * Clave de agente para una sesión de Claude Code (§15.1): editor en Finance, nunca owner. Se muestra una sola vez con el
+   * comando para conectarla; se revoca en Central › Accesos › Agentes.
+   */
+  async function connectClaude(): Promise<void> {
+    if (!navigator.onLine) { toast('Conectar Claude necesita conexión.'); return; }
+    const ok = await confirmDialog({ title: '¿Crear una clave para Claude?', text: 'Claude podrá leer y completar facturas (nunca validarlas). La clave se muestra una sola vez; puedes revocarla en Central › Accesos › Agentes.', confirmLabel: 'Crear clave' });
+    if (!ok) return;
+    try {
+      const issued = await client.api<{ token: string }>('/agents', { json: { name: 'Claude · lectura de facturas', role: 'editor' } });
+      const command = `claude mcp add --transport http ikisai-finance ${location.origin}/api/v1/mcp --header "Authorization: Bearer ${issued.token}"`;
+      const box = el('textarea', { 'data-feedback-ignore': '', readonly: true, rows: '4', id: 'claudeCommand', style: 'width:100%;font-family:monospace' });
+      box.value = command;
+      openSheet({
+        title: 'Conectar Claude',
+        body: el('div', null,
+          el('p', null, '1. En el ordenador, abre una terminal y pega este comando (una sola vez):'), box,
+          el('p', { class: 'btnrow' }, el('button', { class: 'softbtn small', type: 'button', onclick: () => void navigator.clipboard.writeText(command).then(() => toast('Comando copiado.')) }, 'Copiar comando')),
+          el('p', null, '2. Abre Claude Code y escribe: «Lee las facturas pendientes de Drive en Ikisai Finance y complétalas».'),
+          el('p', { class: 'hint' }, 'Esta clave no se vuelve a mostrar. Guárdala solo en el comando; si la pierdes, crea otra y revoca esta en Central.')),
+        foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Hecho')],
+      });
+    } catch (error) { toast(describeError(error)); }
+  }
 
   /** Estado de Drive para el owner: última búsqueda, salud y lo que no entró (duplicados o con errores). */
   async function paintDrive(): Promise<void> {

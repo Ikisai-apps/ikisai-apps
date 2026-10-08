@@ -732,7 +732,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     origins: base.origins ?? INVOICES_ORIGINS,
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks,
-    mcpTools: invoicesMcpTools(supabase),
+    mcpTools: invoicesMcpTools(supabase, storage),
     routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage), {
       // «Buscar ahora» en Ajustes (owner): el mismo tick, sin esperar al planificador.
       method: 'POST', pattern: 'drive/run', handler: async ({ ctx }) => {
@@ -831,11 +831,65 @@ function periodArgs(args: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-export function invoicesMcpTools(supabase: Supabase): McpTool[] {
+/** Procedencia por campo que manda una IA (0226): validada y recortada antes de guardarla en `import_meta`. */
+function iaProvenance(raw: unknown): Record<string, { method: string; text: string | null; page: number | null; confidence: number }> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) fail(422, 'INVALID_OPERATION', 'provenance debe ser un objeto campo → { confidence, text, page }.', { field: 'provenance' });
+  const out: Record<string, { method: string; text: string | null; page: number | null; confidence: number }> = {};
+  for (const [field, value] of Object.entries(raw as Record<string, unknown>).slice(0, 40)) {
+    const v = value as Record<string, unknown> | null;
+    const confidence = typeof v?.confidence === 'number' && v.confidence >= 0 && v.confidence <= 1 ? v.confidence : null;
+    if (!/^[a-z_.]{1,60}$/.test(field) || confidence === null) fail(422, 'INVALID_OPERATION', 'Cada dato de provenance necesita confidence entre 0 y 1.', { field: `provenance.${field}` });
+    out[field] = { method: 'external_ai', text: typeof v?.text === 'string' ? v.text.slice(0, 300) : null, page: Number.isInteger(v?.page) ? Number(v?.page) : null, confidence };
+  }
+  return out;
+}
+
+export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = createStorage(supabase)): McpTool[] {
   return [
     {
+      // §15.1: una sesión de Claude (o cualquier agente editor) completa lo que llegó por Drive sin leer del todo.
+      name: 'invoices_pending_drafts',
+      description: 'Lista las facturas recibidas en «pendiente de datos» (por defecto, las llegadas por Google Drive): su documento con una URL firmada de 10 minutos para descargarlo y leerlo, y el esquema ikisai.invoice.v1. Para completar una: lee el PDF, construye el JSON y llama a invoices_import_json con su invoice_id, el documento y provenance. Nunca valida nada.',
+      minRole: 'editor',
+      annotations: { title: 'Borradores por completar', readOnlyHint: true },
+      inputSchema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 20, description: 'Cuántas devolver (por defecto 10), las más antiguas primero.' },
+          only_drive: { type: 'boolean', description: 'Solo las llegadas por Google Drive (por defecto, sí).' },
+        },
+      },
+      handler: async (args, ctx) => {
+        const limit = Number.isInteger(args.limit) ? Math.min(Math.max(Number(args.limit), 1), 20) : 10;
+        const onlyDrive = args.only_drive !== false;
+        const [invoices, files] = await Promise.all([
+          allRows<InvoiceRow>(supabase, ctx, TABLES.invoices),
+          allRows<{ id: string; invoice_id: string; file_id: string; original_filename: string; normalized_filename: string | null; mime_type: string; size_bytes: number; kind: string; page_order: number; deleted_at: string | null }>(supabase, ctx, TABLES.invoiceFiles),
+        ]);
+        const pending = invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (!onlyDrive || !!i.drive_file_id))
+          .sort((a, b) => a.created_at.localeCompare(b.created_at));
+        const items = [];
+        for (const invoice of pending.slice(0, limit)) {
+          const docs = files.filter((f) => !f.deleted_at && f.invoice_id === invoice.id && f.kind === 'original').sort((a, b) => a.page_order - b.page_order);
+          const documents = [];
+          for (const f of docs) {
+            const file = await supabase.rpc<any>('core_file_get', { p_app: ctx.app, p_actor: ctx.user.id, p_id: f.file_id });
+            const url = file?.status === 'verified' ? await storage.readUrl(file, 600) : null;
+            documents.push({ file_id: f.file_id, filename: f.original_filename, mime: f.mime_type, size: Number(f.size_bytes), url, expires_in_seconds: url ? 600 : null });
+          }
+          items.push({ invoice_id: invoice.id, code: invoice.code, object: invoice.object, created_at: invoice.created_at, drive_url: invoice.drive_url ?? null, documents });
+        }
+        return {
+          total: pending.length, items,
+          how_to_complete: 'Por cada factura: descarga el PDF de documents[].url (caduca en 10 minutos; si caduca, vuelve a pedir la lista), léelo y construye un JSON ikisai.invoice.v1 según json_schema. Si es una factura rectificativa o un abono, dilo en extraction_notes. Llama a invoices_import_json con { invoice_id, document, provenance: { campo: { confidence (0-1), text (lo leído), page } } }. Si no puedes leer algún dato con seguridad, ponlo a null y explícalo en extraction_notes: la persona lo revisa antes de validar.',
+          json_schema: IMPORT_JSON_SCHEMA,
+        };
+      },
+    },
+    {
       name: 'invoices_import_json',
-      description: 'Importa una factura desde un JSON ikisai.invoice.v1 (el del prompt de extracción). Empareja el proveedor por NIF, alias o nombre (o lo crea), recalcula y deja la factura en «pendiente de revisión»: nunca la valida. Opcional: documentos ya subidos (file_ids) o una factura existente en «pendiente de datos» (invoice_id). Reintentar con el mismo JSON no duplica.',
+      description: 'Importa una factura desde un JSON ikisai.invoice.v1 (el del prompt de extracción). Empareja el proveedor por NIF, alias o nombre (o lo crea), recalcula y deja la factura en «pendiente de revisión»: nunca la valida. Opcional: documentos ya subidos (file_ids), una factura existente en «pendiente de datos» (invoice_id, p. ej. una llegada por Drive: se completa sin crear otra) y la procedencia de cada dato (provenance). Reintentar con el mismo JSON no duplica.',
       minRole: 'editor',
       annotations: { title: 'Importar factura desde JSON', destructiveHint: false, idempotentHint: true },
       inputSchema: {
@@ -845,6 +899,7 @@ export function invoicesMcpTools(supabase: Supabase): McpTool[] {
           invoice_id: { type: 'string', format: 'uuid', description: 'Factura existente en pendiente_datos donde volcar los datos.' },
           supplier_id: { type: 'string', format: 'uuid', description: 'Forzar un proveedor existente en lugar del emparejamiento automático.' },
           file_ids: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 8, description: 'Documentos ya subidos y verificados (POST uploads + verify), en orden de página.' },
+          provenance: { type: 'object', description: 'De dónde sale cada dato: { campo: { confidence (0-1), text, page } }, p. ej. { "invoice.invoice_number": { "confidence": 0.95, "text": "Factura nº A-12", "page": 1 } }. Se guarda en la factura (origen «ia»).' },
         },
       },
       handler: async (args, ctx, kit) => {
@@ -880,7 +935,7 @@ export function invoicesMcpTools(supabase: Supabase): McpTool[] {
           files.push({ file_id: id, original_filename: file.filename, page_order: index + 1 });
         }
         let n = 0;
-        const importArgs = buildImportArgs({ document, documentSha256: sha, invoiceId, supplier, files, uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
+        const importArgs = buildImportArgs({ document, documentSha256: sha, invoiceId, supplier, files, uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}`, origin: 'ia', provenance: iaProvenance(args.provenance) });
         const result = await kit.commit({ requestId: `mcp-import-${invoiceId}`, operations: [{ op: 'call', procedure: 'invoices.import_v1', args: importArgs }] }) as CommitResult;
         const after = (result.changes ?? []).find((c: any) => c.table === TABLES.invoices && c.after?.id === invoiceId)?.after as Record<string, unknown> | undefined;
         const proposal = proposeImport(document, supplierRow, {});
