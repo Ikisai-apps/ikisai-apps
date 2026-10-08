@@ -1242,4 +1242,25 @@ La alternativa sería que Booking cree el borrador llamando a la Edge de Finance
 - Filtro «Llegadas por Drive, sin validar» en la lista.
 - «Origen: llegó por Google Drive · abrir el original» en la ficha.
 
-**Pendiente:** §15.1, la lectura con una sesión de Claude para completar los borradores (herramientas MCP), y el aviso en Tasks › Gestiones (segunda tanda).
+**Pendiente:** el aviso en Tasks › Gestiones (segunda tanda).
+
+### 15.1 Completar los borradores con una sesión de Claude (migración 0226)
+
+Lo que Drive no lee del todo (PDF escaneado o con datos que faltan) queda en «Pendiente de datos». Una sesión de Claude Code del usuario (suscripción propia, sin coste por API) lo completa por la MCP de Finance:
+
+**Conexión:**
+- En Inicio, «Leer con Claude › Conectar Claude» (solo owner) crea una clave de agente **editor** (`POST agents`, nunca owner).
+- Muestra una sola vez el comando `claude mcp add --transport http ikisai-finance https://finance.ikisai.com/api/v1/mcp --header "Authorization: Bearer ika_…"`.
+- Se revoca en Central › Accesos › Agentes.
+
+**Herramientas MCP:**
+- **`invoices_pending_drafts`** (editor): facturas en `pendiente_datos` (por defecto solo las de Drive), las más antiguas primero, como mucho 20. Para cada una: `invoice_id`, código, objeto, `drive_url` y documentos con **URL firmada de 10 minutos**. Devuelve también `how_to_complete` y `json_schema` (`ikisai.invoice.v1`).
+- **`invoices_import_json`** con `invoice_id`: completa ese borrador sin crear otro. `import_v1` admite `pendiente_datos` con `source = manual`, que es como quedan las de Drive.
+  - Argumento nuevo `provenance` (`{ campo: { confidence 0–1, text, page } }`), validado: como mucho 40 campos y textos de 300 caracteres.
+  - Queda en la factura con origen **`ia`**.
+- Un agente no puede validar: la factura queda en «Pendiente de revisión».
+
+**`import_v1` (0226)** guarda `args.origin` (`pdf_text` · `ia` · `api` · `json`) y `args.provenance` en `import_meta`:
+- Drive guarda `pdf_text` con la procedencia de la lectura.
+- La herramienta MCP guarda `ia`.
+- La ficha muestra en «Importación» quién la leyó y de dónde sale cada dato, con su confianza.

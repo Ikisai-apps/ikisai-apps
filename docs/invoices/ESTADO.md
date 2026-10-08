@@ -100,6 +100,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Auditoría del 3T (8-10-2026), primera tanda: Inicio y Gestoría abren el trimestre que se declara (en el primer mes de un trimestre, el anterior); «Nueva factura» empieza por el documento y «Leer PDF» es el paso principal (la IA, para fotos o PDF escaneados); la revisión de lo leído pone primero proveedor, fecha, categoría y cuadre, con el JSON plegado; «Validar» deja de ser el botón principal mientras la factura no tiene datos.
 - Drive (fase 4, migración 0224, API.md §15): los PDF de «Entrada» se importan solos cada 15 minutos (5 por tick), leídos si tienen texto; duplicados por bytes y por contenido; lo que no es PDF va a «Con errores». Cuenta de servicio `drive`, solo la Drive API, llamadas registradas por ejecución. Tarjeta en Inicio con «Buscar ahora» (owner), filtro y origen en la ficha.
 - Arreglo urgente (#410, migración 0225): `import_v1` acepta líneas con `discount_amount` nulo; la importación de «Leer PDF» fallaba en el servidor.
+- Lectura con Claude (§15.1, migración 0226): «Conectar Claude» crea la clave de agente con el comando para Claude Code; MCP `invoices_pending_drafts` (borradores con su PDF, URL de 10 min) e `invoices_import_json` con `invoice_id` y `provenance` (origen «ia»); la ficha muestra quién la leyó y la procedencia de cada dato.
 
 ## En curso
 
