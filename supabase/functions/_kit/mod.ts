@@ -15,3 +15,4 @@ export { createMcp, MCP_PROTOCOL_VERSIONS } from './mcp.ts';
 export type { McpTool, McpToolKit } from './mcp.ts';
 export { ensureServiceActor } from './service.ts';
 export { createStorage, r2ConfigFromEnv, type StorageAccess, type StoredObject, type ProviderName } from './storage.ts';
+export { createGoogleTokenSource, parseServiceAccount, GoogleAuthError, type GoogleServiceAccount } from './google.ts';
