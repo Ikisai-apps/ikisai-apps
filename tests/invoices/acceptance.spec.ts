@@ -1592,6 +1592,38 @@ test('QA FB_2026_016: nueva factura sin fecha (opcional, sin rellenar con hoy); 
   }
 });
 
+test('Rectificativa recibida (0227): el abono se reconoce al importar, se importa en negativo y la ficha dice qué rectifica', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    await page.locator('#importNew').click();
+    const sheet = ficha(page);
+    // Abono impreso en positivo, con la referencia a la original en las notas
+    const abono = { ...EXAMPLE, invoice: { ...EXAMPLE.invoice, invoice_number: 'AB-0001' }, extraction_notes: 'Factura rectificativa (abono). Rectifica a la factura nº F-2026-123.' };
+    await sheet.getByLabel('JSON', { exact: true }).fill(JSON.stringify(abono));
+    await expect(sheet.locator('#importKind')).toHaveValue('rectificativa');
+    await expect(sheet.locator('#importRectNumber')).toHaveValue('F-2026-123');
+    await sheet.locator('#confirmImport').click();
+    await expect(ficha(page).locator('#rectChip')).toHaveText('Rectificativa', { timeout: 20_000 });
+    await expect(ficha(page).locator('#rectifiesOriginal')).toContainText('F-2026-123');
+    await synced(page);
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'AB-0001'));
+    expect(row).toMatchObject({ invoice_kind: 'rectificativa', rectifies_number: 'F-2026-123' });
+    expect(Number(row.calculated_total)).toBeLessThan(0);
+    // En la lista, con su etiqueta y en el filtro «Rectificativas sin enlazar» (la API simulada no enlaza)
+    await closeSheet(page);
+    await page.locator('#invoiceFilter').selectOption('rect_sin_enlazar');
+    await expect(page.locator('#invoiceList')).toContainText('Rectificativa sin enlazar');
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);

@@ -53,6 +53,9 @@ export interface ManifestInvoice {
   }>;
   files: Array<{ name: string; sha256: string; size_bytes: number; mime_type: string; kind: string; page_order: number }>;
   missing_file: boolean;
+  /** Rectificativa recibida (0227): tipo y referencia a la original. */
+  kind?: 'ordinaria' | 'rectificativa';
+  rectifies?: { code: string | null; invoice_number: string | null; invoice_date: string | null; other_period: boolean; without_original: boolean } | null;
 }
 
 export interface ManifestTotals {
@@ -114,11 +117,16 @@ export function issuedCsv(manifest: ExportManifest): string {
 
 export function invoicesCsv(manifest: ExportManifest): string {
   return csvRows(
-    ['codigo', 'fecha', 'proveedor', 'nif', 'numero', 'objeto', 'categoria', 'inversion', 'deducibilidad', 'base', 'iva', 'otros', 'retenciones', 'total', 'total_documento', 'delta', 'estado', 'pago', 'metodo_pago', 'fecha_pago', 'archivos'],
+    ['codigo', 'fecha', 'proveedor', 'nif', 'numero', 'objeto', 'categoria', 'inversion', 'deducibilidad', 'base', 'iva', 'otros', 'retenciones', 'total', 'total_documento', 'delta', 'estado', 'pago', 'metodo_pago', 'fecha_pago', 'archivos', 'tipo', 'rectifica', 'fecha_original', 'original_otro_periodo'],
     manifest.invoices.map((i) => [
       i.code, i.invoice_date, i.supplier.name, i.supplier.tax_id, i.invoice_number, i.object, i.expense_category, i.is_investment, i.deductibility,
       money(i.base), money(i.vat), money(i.other), money(i.withholding), money(i.total), money(i.source_total), money(i.totals_delta), i.status, i.payment.status, i.payment.method, i.payment.paid_at,
       i.files.map((f) => f.name.replace(/^facturas\//, '')).join(' | '),
+      // Libro de recibidas: F1 ordinaria, R rectificativa con la referencia a la original (que puede ser de otro periodo)
+      i.kind === 'rectificativa' ? 'R' : 'F1',
+      i.kind === 'rectificativa' ? (i.rectifies?.invoice_number ?? (i.rectifies?.without_original ? 'sin original' : null)) : null,
+      i.kind === 'rectificativa' ? i.rectifies?.invoice_date ?? null : null,
+      i.kind === 'rectificativa' ? !!i.rectifies?.other_period : null,
     ]),
   );
 }

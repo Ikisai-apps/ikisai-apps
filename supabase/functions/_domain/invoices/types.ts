@@ -19,6 +19,9 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 };
 
 export const INVOICE_STATUSES = ['pendiente_datos', 'pendiente_revision', 'validada', 'archivada', 'anulada'] as const;
+/** Factura recibida ordinaria o rectificativa (abono o devolución del proveedor, 0227). */
+export const INVOICE_KINDS = ['ordinaria', 'rectificativa'] as const;
+export type InvoiceKind = (typeof INVOICE_KINDS)[number];
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
@@ -111,11 +114,12 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'status', 'review_reason', 'annulled_reason', 'payment_status', 'payment_method', 'paid_at', 'source_total',
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
     'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
+    'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
     'invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount',
-    'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes',
+    'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes', 'rectifies_line_id',
   ],
   'invoices.tax_lines': ['invoice_id', 'position', 'tax_type', 'rate', 'taxable_base', 'amount', 'notes'],
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
@@ -192,6 +196,11 @@ export interface InvoiceRow extends SyncedColumns {
   /** Llegó por Google Drive (0224): id del archivo en la unidad y enlace para abrirlo. */
   drive_file_id?: string | null;
   drive_url?: string | null;
+  /** Rectificativa recibida (0227): resta de la original, con importes negativos. */
+  invoice_kind?: InvoiceKind;
+  rectifies_invoice_id?: string | null;
+  rectifies_number?: string | null;
+  rectification_without_original?: boolean;
   fiscal_year: number;
   fiscal_quarter: number;
   fiscal_period: string;
@@ -228,6 +237,8 @@ export interface InvoiceLineRow extends SyncedColumns {
   is_investment: boolean | null;
   confidence: number | null;
   notes: string | null;
+  /** Línea de la original que devuelve esta línea de una rectificativa (0227). */
+  rectifies_line_id?: string | null;
 }
 
 export interface TaxLineRow extends SyncedColumns {

@@ -59,6 +59,9 @@ export interface ImportOverrides {
   is_investment?: boolean | null;
   deductibility?: Deductibility | null;
   notes?: string | null;
+  /** Rectificativa recibida (0227): tipo y número de la factura que rectifica. */
+  invoice_kind?: 'ordinaria' | 'rectificativa' | null;
+  rectifies_number?: string | null;
 }
 
 export interface ImportProposal {

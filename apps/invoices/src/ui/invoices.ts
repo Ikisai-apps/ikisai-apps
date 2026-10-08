@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -78,7 +78,7 @@ export const mountInvoices: ViewMount = (ctx) => {
 
   const search = el('input', { 'data-feedback-id': 'invoices.facturas.buscar', 'data-feedback-label': 'Buscar facturas', type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['drive', 'Llegadas por Drive, sin validar'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
+  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['drive', 'Llegadas por Drive, sin validar'], ['rect_sin_enlazar', 'Rectificativas sin enlazar'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
     { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Filtrar por estado', 'aria-label': 'Filtrar por estado', onchange: () => { filter = statusSelect.value; paint(); } });
   const listHost = el('div', { 'data-feedback-id': 'invoices.facturas.lista', 'data-feedback-label': 'Facturas recibidas', id: 'invoiceList' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
@@ -135,6 +135,7 @@ export const mountInvoices: ViewMount = (ctx) => {
       case 'anulada': return invoice.status === 'anulada';
       case 'sin_pagar': return invoice.status !== 'anulada' && invoice.payment_status === 'pendiente';
       case 'sin_documento': return invoice.status !== 'anulada' && !hasFile;
+      case 'rect_sin_enlazar': return invoice.status !== 'anulada' && invoice.invoice_kind === 'rectificativa' && !invoice.rectifies_invoice_id && !invoice.rectification_without_original;
       case 'drive': return !!invoice.drive_file_id && (invoice.status === 'pendiente_datos' || invoice.status === 'pendiente_revision');
       default: return invoice.status === filter;
     }
@@ -146,6 +147,7 @@ export const mountInvoices: ViewMount = (ctx) => {
     const chips = [el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice))];
     if (invoice.payment_status === 'pagada') chips.push(el('span', { class: 'chip ok' }, 'Pagada'));
     if (!hasFile && invoice.status !== 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Sin documento'));
+    if (invoice.invoice_kind === 'rectificativa') chips.push(el('span', { class: invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'chip' : 'chip warn' }, invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'Rectificativa' : 'Rectificativa sin enlazar'));
     return {
       id: invoice.id,
       title: invoiceTitle(invoice, m),
@@ -312,12 +314,14 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice)),
       invoice.payment_status === 'pagada' ? el('span', { class: 'chip ok' }, `Pagada${invoice.paid_at ? ' ' + shortDate(invoice.paid_at) : ''}`) : el('span', { class: 'chip' }, 'Pendiente de pago'),
       invoice.source === 'import_v1' ? el('span', { class: 'chip', title: 'Datos importados del JSON de ChatGPT' }, 'Desde JSON') : null,
+      invoice.invoice_kind === 'rectificativa' ? el('span', { class: 'chip warn', id: 'rectChip' }, 'Rectificativa') : null,
     ),
     el('dl', { class: 'kv', 'data-feedback-ignore': '' },
       el('dt', null, 'Proveedor'), el('dd', null, supplier?.name ?? '—', supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
       el('dt', null, 'Fecha'), el('dd', null, invoice.invoice_date ? [shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`] : 'Sin fecha: léela del PDF o escríbela para poder validar'),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
+      ...rectificationRows(ctx, invoice, mirror),
       ...(invoice.drive_url ? [el('dt', null, 'Origen'), el('dd', null, 'Llegó por Google Drive · ', el('a', { href: invoice.drive_url, target: '_blank', rel: 'noopener', id: 'driveOrigin' }, 'abrir el original'))] : []),
     ),
     el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions),
@@ -369,6 +373,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     el('div', { class: 'line-nums' },
       el('span', { 'data-feedback-ignore': '' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
       el('strong', { 'data-feedback-ignore': '' }, eur(l.net_amount)),
+      returnedOf(l.id, mirror) ? el('span', { class: 'chip warn', 'data-feedback-ignore': '' }, `Devuelto: ${eur(returnedOf(l.id, mirror))}`) : null,
       el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`),
       editable ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.editar', 'data-feedback-label': 'Editar artículo', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
     ),
@@ -411,7 +416,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       const allocations = mirror.allocationsByLine.get(l.id) ?? [];
       const assigned = fromCents(sumCents(allocations.map((a) => Number(a.allocated_amount))));
       const rest = unallocated(l, mirror);
-      const pct = Number(l.net_amount) > 0 ? Math.min(100, Math.round((assigned / Number(l.net_amount)) * 100)) : 0;
+      const pct = Number(l.net_amount) !== 0 ? Math.min(100, Math.round((Math.abs(assigned) / Math.abs(Number(l.net_amount))) * 100)) : 0;
       return el('div', { class: 'alloc-line' },
         el('div', { class: 'alloc-head', 'data-feedback-ignore': '' }, el('strong', null, l.description), el('span', null, `${eur(assigned)} de ${eur(l.net_amount)}`)),
         el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${pct}%` })),
@@ -429,11 +434,41 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     }),
   );
 
+  // Rectificativa enlazada: su reparto se propone igual que el de la original, en proporción y en negativo (0227).
+  const originalLines = invoice.rectifies_invoice_id ? mirror.lines.filter((l) => !l.deleted_at && l.invoice_id === invoice.rectifies_invoice_id) : [];
+  const originalAllocations = originalLines.flatMap((l) => mirror.allocationsByLine.get(l.id) ?? []).filter((a) => !a.deleted_at);
+  if (canEdit && invoice.status !== 'anulada' && invoice.invoice_kind === 'rectificativa' && originalAllocations.length && lines.every((l) => !(mirror.allocationsByLine.get(l.id) ?? []).length)) {
+    allocBlock.appendChild(el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ficha.asignacion.como_original', 'data-feedback-label': 'Repartir como la original', class: 'softbtn', type: 'button', id: 'allocateLikeOriginal',
+      onclick: async () => {
+        const proposed = proposeRectificationAllocations({ rectLines: lines.map((l) => ({ id: l.id, net_amount: Number(l.net_amount), rectifies_line_id: l.rectifies_line_id ?? null })),
+          originalLines: originalLines.map((l) => ({ id: l.id, net_amount: Number(l.net_amount) })),
+          originalAllocations: originalAllocations.map((a) => ({ ...a, allocated_amount: Number(a.allocated_amount), target_revision: a.target_revision ?? null, target_code: a.target_code ?? null })) });
+        if (!proposed.length) { toast('La original no tiene reparto que copiar.'); return; }
+        const ok = await confirmDialog({ title: 'Repartir como la original', text: proposed.map((p) => `${p.target_label}: ${eur(p.allocated_amount)}`).join(' · '), confirmLabel: 'Repartir' });
+        if (!ok) return;
+        await commitSafely(client, proposed.map((p): RowOperation => ({ op: 'insert', table: ALLOCATIONS, id: crypto.randomUUID(), fields: { ...p } })), 'Reparto copiado de la original.');
+      } }, 'Repartir como la original'),
+      el('span', { class: 'hint' }, 'Resta de las mismas obras, proyectos o retiros que la original, en proporción.')));
+  }
+
   // --- Pago y fiscal -------------------------------------------------------
   const category = select('invCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], invoice.expense_category, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.categoria', 'data-feedback-label': 'Categoría de gasto', disabled: !editable, onchange: () => void update({ expense_category: category.value || null }) });
   const investment = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.inversion', 'data-feedback-label': 'Es inversión', type: 'checkbox', id: 'invInvestment', checked: invoice.is_investment, disabled: !editable, onchange: () => void update({ is_investment: investment.checked }) });
   const deductibility = select('invDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), invoice.deductibility, { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.deducibilidad', 'data-feedback-label': 'Deducibilidad', disabled: !canEdit || invoice.status === 'anulada', onchange: () => void update({ deductibility: deductibility.value as Deductibility }) });
   const invDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.fecha', 'data-feedback-label': 'Fecha de la factura', type: 'date', id: 'invDate', value: invoice.invoice_date ?? '', disabled: !editable, onchange: () => void update({ invoice_date: invDate.value || null }) });
+  const kind = select('invKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], invoice.invoice_kind ?? 'ordinaria',
+    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.tipo', 'data-feedback-label': 'Tipo de factura', disabled: !editable, onchange: () => void update({ invoice_kind: kind.value }) });
+  const rectNumber = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.rectifica_numero', 'data-feedback-label': 'Número de la factura que rectifica', type: 'text', id: 'invRectNumber', maxlength: '64',
+    value: invoice.rectifies_number ?? '', disabled: !editable, onchange: () => void update({ rectifies_number: rectNumber.value.trim() || null }) });
+  const candidates = mirror.invoices.filter((o) => !o.deleted_at && o.status !== 'anulada' && o.id !== invoice.id && o.supplier_id === invoice.supplier_id && (o.invoice_kind ?? 'ordinaria') === 'ordinaria')
+    .sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? ''));
+  const rectOriginal = select('invRectOriginal', [['', 'Sin enlazar'], ...candidates.map((o) => [o.id, `nº ${o.invoice_number ?? '—'} · ${shortDate(o.invoice_date)} · ${eur(o.calculated_total)}`] as [string, string])], invoice.rectifies_invoice_id ?? '',
+    { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.rectifica_original', 'data-feedback-label': 'Factura original', disabled: !editable, onchange: () => void update({ rectifies_invoice_id: rectOriginal.value || null }) });
+  const withoutOriginal = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.sin_original', 'data-feedback-label': 'No tengo la original', type: 'checkbox', id: 'invWithoutOriginal', checked: !!invoice.rectification_without_original, disabled: !editable,
+    onchange: () => void update({ rectification_without_original: withoutOriginal.checked }) });
+  const rectFields = invoice.invoice_kind === 'rectificativa' ? el('div', { id: 'rectFields' },
+    el('div', { class: 'row2' }, field('Rectifica a la factura nº', rectNumber, 'Tal como lo imprime el proveedor: la app la enlaza sola cuando esté.'), field('Factura original', rectOriginal)),
+    el('label', { class: 'check' }, withoutOriginal, el('span', null, 'No tengo la original (se valida igual, con aviso en Gestoría)'))) : null;
   const dueDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.vencimiento', 'data-feedback-label': 'Vencimiento', type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
   const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
     onchange: () => { const v = parseAmount(sourceTotal.value); if (sourceTotal.value.trim() && v === null) { toast('Importe inválido.'); return; } void update({ source_total: v }); } });
@@ -442,6 +477,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const fiscalBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.fiscal', feedbackLabel: 'Fiscal y pago' }, 'Fiscal y pago', `${categoryLabel(invoice.expense_category)}${invoice.is_investment ? ' · inversión' : ''}`, false,
     el('div', { class: 'row2' }, field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
+    field('Tipo de factura', kind),
+    rectFields,
     el('div', { class: 'row2' }, field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),
     field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'),
     field('Notas', notes),
@@ -465,9 +502,33 @@ function periodOf(isoDate: string): string {
   return `${year}T${Math.ceil(month / 3)}`;
 }
 
+/** Lo que queda por asignar de una línea, en valor absoluto (en una rectificativa la línea y sus asignaciones son negativas). */
 function unallocated(line: LocalInvoiceLine, mirror: Mirror): number {
   const assigned = sumCents((mirror.allocationsByLine.get(line.id) ?? []).map((a) => Number(a.allocated_amount)));
-  return fromCents(Math.max(0, toCents(Number(line.net_amount)) - assigned));
+  return fromCents(Math.max(0, Math.abs(toCents(Number(line.net_amount))) - Math.abs(assigned)));
+}
+
+/** Importe devuelto de una línea por las rectificativas vivas enlazadas a ella (0227). */
+function returnedOf(lineId: string, mirror: Mirror): number {
+  const live = new Set(mirror.invoices.filter((i) => !i.deleted_at && i.status !== 'anulada').map((i) => i.id));
+  return fromCents(Math.abs(sumCents(mirror.lines.filter((l) => !l.deleted_at && l.rectifies_line_id === lineId && live.has(l.invoice_id)).map((l) => Number(l.net_amount)))));
+}
+
+/** Filas de la ficha: a qué rectifica (o «pendiente de enlazar») o por qué rectificativas está rectificada. */
+function rectificationRows(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror): HTMLElement[] {
+  const byId = new Map(mirror.invoices.map((i) => [i.id, i]));
+  if (invoice.invoice_kind === 'rectificativa') {
+    const original = invoice.rectifies_invoice_id ? byId.get(invoice.rectifies_invoice_id) : undefined;
+    return [el('dt', null, 'Rectifica a'), el('dd', { id: 'rectifiesOriginal' }, original
+      ? el('a', { href: `#/facturas/${original.id}`, onclick: (e: Event) => { e.preventDefault(); void openInvoice(ctx, original.id); } }, `${original.code ?? 'factura'} · nº ${original.invoice_number ?? '—'} · ${shortDate(original.invoice_date)}`)
+      : invoice.rectification_without_original ? `Sin la original (nº ${invoice.rectifies_number ?? '—'})` : `Pendiente de enlazar (nº ${invoice.rectifies_number ?? 'sin indicar'})`)];
+  }
+  const rects = mirror.invoices.filter((r) => !r.deleted_at && r.status !== 'anulada' && r.rectifies_invoice_id === invoice.id);
+  if (!rects.length) return [];
+  const total = fromCents(sumCents(rects.map((r) => Number(r.calculated_total))));
+  return [el('dt', null, 'Rectificada por'), el('dd', { id: 'rectifiedBy' }, ...rects.map((r, i) => [i ? ' · ' : '',
+    el('a', { href: `#/facturas/${r.id}`, onclick: (e: Event) => { e.preventDefault(); void openInvoice(ctx, r.id); } }, `${r.code ?? 'rectificativa'} (${eur(r.calculated_total)})`)]).flat(),
+    ` · devuelto en total ${eur(Math.abs(total))}`)];
 }
 
 function allocationLabel(a: LocalAllocation): string {
@@ -655,7 +716,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
 /** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
-export interface ExtractionPrefill { document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null; provenance?: Record<string, FieldProvenance>; origin?: 'api' | 'pdf_text' }
+export interface ExtractionPrefill { rectification?: { isRectification: boolean; number: string | null; evidence: string | null }; document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null; provenance?: Record<string, FieldProvenance>; origin?: 'api' | 'pdf_text' }
 
 const PROVENANCE_LABELS: Record<string, string> = {
   'invoice.supplier_name': 'Proveedor', 'invoice.supplier_tax_id': 'NIF', 'invoice.invoice_date': 'Fecha', 'invoice.invoice_number': 'Número',
@@ -717,7 +778,9 @@ async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   guard.dirtyEditor = false;
   await closeSheet(true);
   const templateNote = result.template ? `Plantilla del proveedor v${result.template.version} · ${result.template.confirmations} factura${result.template.confirmations === 1 ? '' : 's'}${result.template.status === 'aprendiendo' ? ' (aprendiendo)' : ''}.` : null;
-  openImport(ctx, mirror, target, { document: result.document, warnings: [...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+  const rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: result.document });
+  const documentForImport = rectification.isRectification && result.document.document_totals.total > 0 ? negateDocument(result.document) : result.document;
+  openImport(ctx, mirror, target, { document: documentForImport, rectification, warnings: [...(rectification.isRectification ? [`Parece una rectificativa (${rectification.evidence}): revisa el número de la original.`] : []), ...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
 }
 
 async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
@@ -778,6 +841,8 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   let categorySelect: HTMLSelectElement | null = null;
   let investmentInput: HTMLInputElement | null = null;
   let deductibilitySelect: HTMLSelectElement | null = null;
+  let kindSelect: HTMLSelectElement | null = null;
+  let rectNumberInput: HTMLInputElement | null = null;
 
   function parse(text: string): void {
     // Lo que vuelve de la app de IA es no confiable: JSON extraído del texto, sobre aparte y validación estricta.
@@ -830,6 +895,10 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
     dateInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'importDate', value: target ? dateChoice.value : first.invoice_date });
     categorySelect = select('importCategory', [['', 'Sin categoría'], ...CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]] as [string, string])], target?.expense_category ?? first.expense_category, { 'data-feedback-id': 'invoices.facturas.importar.categoria', 'data-feedback-label': 'Categoría' });
     investmentInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.inversion', 'data-feedback-label': 'Es inversión', type: 'checkbox', id: 'importInvestment', checked: target?.is_investment ?? first.is_investment });
+    // Rectificativa (0227): detectada al leer el PDF o por el documento (nota o total negativo); el usuario la confirma.
+    const detected = prefill?.rectification ?? detectRectification({ document: doc });
+    kindSelect = select('importKind', [['ordinaria', 'Factura ordinaria'], ['rectificativa', 'Rectificativa (abono o devolución)']], detected.isRectification ? 'rectificativa' : 'ordinaria', { 'data-feedback-id': 'invoices.facturas.importar.tipo', 'data-feedback-label': 'Tipo de factura' });
+    rectNumberInput = el('input', { 'data-feedback-id': 'invoices.facturas.importar.rectifica', 'data-feedback-label': 'Rectifica a la factura nº', type: 'text', id: 'importRectNumber', maxlength: '64', value: detected.number ?? '' });
     deductibilitySelect = select('importDeductibility', DEDUCTIBILITIES.map((d) => [d, DEDUCTIBILITY_LABELS[d] ?? d] as [string, string]), first.deductibility, { 'data-feedback-id': 'invoices.facturas.importar.deducibilidad', 'data-feedback-label': 'Deducibilidad' });
     const recalc = recalculate(doc.lines.map((l) => ({ quantity: l.quantity ?? null, unit_price: l.unit_price ?? null, discount_amount: l.discount_amount ?? 0, net_amount: l.net_amount, vat_rate: l.vat_rate ?? null, vat_amount: l.vat_amount ?? null })), doc.taxes.map((t) => ({ tax_type: t.tax_type, rate: t.rate ?? null, taxable_base: t.taxable_base ?? null, amount: t.amount })), doc.document_totals);
     const duplicate = mirror.invoices.find((i) => !i.deleted_at && i.status !== 'anulada' && i.id !== target?.id && supplierFor() && i.supplier_id === supplierFor()!.id && doc.invoice.invoice_number && (i.invoice_number ?? '').toLowerCase() === doc.invoice.invoice_number.toLowerCase());
@@ -847,6 +916,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       discrepancyNote(target && doc.invoice.object.trim() && doc.invoice.object.trim().toLowerCase() !== target.object.trim().toLowerCase() ? { kind: 'object', typed: target.object, document: doc.invoice.object.trim(), input: objectInput } : null),
       el('div', { class: 'row2' }, field('Categoría', categorySelect), field('Deducibilidad', deductibilitySelect)),
       el('label', { class: 'check' }, investmentInput, el('span', null, 'Es inversión')),
+      el('div', { class: 'row2', id: 'importKindRow' }, field('Tipo de factura', kindSelect, detected.isRectification ? `Parece una rectificativa (${detected.evidence ?? 'importes negativos'}): se importa en negativo y se enlaza con la original.` : undefined), field('Rectifica a la factura nº', rectNumberInput)),
       el('h3', null, `Cuadre · ${doc.lines.length} artículo${doc.lines.length === 1 ? '' : 's'} · ${recalc.taxes.length} impuesto${recalc.taxes.length === 1 ? '' : 's'}${recalc.taxes_derived ? ' (derivados de las líneas)' : ''}`),
       el('table', { 'data-feedback-ignore': '', class: 'inv-table cuadre-table' },
         el('thead', null, el('tr', null, el('th'), el('th', { class: 'num' }, 'Calculado'), el('th', { class: 'num' }, 'Documento'), el('th', { class: 'num' }, 'Diferencia'))),
@@ -869,6 +939,8 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
     confirm.disabled = true;
     try {
       const staged = target ? [] : await pickFiles(docs, client);
+      // Rectificativa impresa en positivo: se importa en negativo (resta de la original).
+      if (kindSelect?.value === 'rectificativa' && document.document_totals.total > 0) document = negateDocument(document);
       const sha = await importDocumentSha256(document);
       const existingSupplier = supplierSelect.value !== '__new__' ? mirror.supplierById.get(supplierSelect.value) ?? null : null;
       const invoiceId = target?.id ?? crypto.randomUUID();
@@ -876,7 +948,8 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
       const { operations } = importOperations({
         document, documentSha256: sha, invoiceId, existing: target ? { revision: target.revision } : null,
         supplier: existingSupplier ? { mode: 'existing', row: existingSupplier } : { mode: 'create', id: crypto.randomUUID() },
-        overrides: { object: objectInput?.value.trim() || null, invoice_date: dateInput?.value || null, expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput?.checked ?? null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null },
+        overrides: { object: objectInput?.value.trim() || null, invoice_date: dateInput?.value || null, expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput?.checked ?? null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null,
+          invoice_kind: kindSelect?.value === 'rectificativa' ? 'rectificativa' : 'ordinaria', rectifies_number: rectNumberInput?.value.trim() || null },
         files: staged.map((s, i) => ({ file_id: s.marker, original_filename: s.filename, page_order: i + 1, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 })),
       });
       const imported = await commitSafely(client, operations as RowOperation[], 'Factura importada en este dispositivo. Queda pendiente de revisión.');
@@ -1088,7 +1161,8 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
       fields = { target_app: choice.app, target_kind: choice.kind, target_id: choice.id, target_code: choice.code, target_label: targetLabel(choice), target_revision: choice.revision };
       rememberTarget(choice);
     }
-    const ok = await commitSafely(client, [{ op: 'insert', table: ALLOCATIONS, id: crypto.randomUUID(), fields: { ...fields, invoice_line_id: line.id, allocated_amount: a, allocated_quantity: q } }], 'Asignación guardada.');
+    // En una rectificativa la línea es negativa: se escribe el importe en positivo y se guarda con su signo.
+    const ok = await commitSafely(client, [{ op: 'insert', table: ALLOCATIONS, id: crypto.randomUUID(), fields: { ...fields, invoice_line_id: line.id, allocated_amount: Number(line.net_amount) < 0 ? -a : a, allocated_quantity: q } }], 'Asignación guardada.');
     usage.track('invoices.facturas.asignar', ok ? 'success' : 'error');
     if (ok) { await closeSheet(true); void openInvoice(ctx, invoice.id); }
   } }, 'Asignar');

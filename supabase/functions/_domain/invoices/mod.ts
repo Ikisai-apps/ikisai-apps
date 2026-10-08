@@ -19,3 +19,4 @@ export * from './supplier-templates.ts';
 export * from './validate.ts';
 export * from './summary.ts';
 export * from './export-csv.ts';
+export * from './rectification.ts';
