@@ -1,6 +1,7 @@
 /* Frontend improvements over R0. Domain writes still use the versioned outbox. */
 const menuPaths={
   grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
+  allAreas:'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5 M3 17.5l9 5 9-5',
   tasks:'M9 5h12 M9 12h12 M9 19h12 M3 5l1 1 2-2 M3 12l1 1 2-2 M3 19l1 1 2-2',
   filter:'M3 5h18 M6 12h12 M10 19h4',
   view:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12 M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0',
@@ -88,12 +89,25 @@ openLabelPicker=function(selected,cb){
 
 function areasSheet(){
   const current=state.activeTab,active=state.tabs.filter(t=>!t.deleted),removed=state.tabs.filter(t=>t.deleted);
-  openSheet(`<h2 class="sheettitle">Áreas de trabajo</h2><p>Ikisai, Personal o Detailorg son áreas independientes. Cada una contiene sus proyectos, etiquetas y vistas.</p>${isAdministrator()?'<button class="primary" id="newArea" data-feedback-id="tasks.areas.nueva" data-feedback-label="Nueva área">+ Nueva área</button>':''}<div class="area-list">${active.map(t=>`<section class="area-card ${t.id===current?'current':''}"><strong>${esc(t.name)}${t.id===current?' · actual':''}</strong><p class="small muted">${t.projects.filter(p=>!p.deleted&&!p.system).length} proyectos${t.restricted?' compartidos':''}</p><div class="actions"><button class="softbtn" data-open-area="${t.id}" data-feedback-id="tasks.areas.lista.abrir" data-feedback-label="Abrir área">Abrir</button>${canManageArea(t)?`<button class="ghost" data-edit-area="${t.id}" data-feedback-id="tasks.areas.lista.editar" data-feedback-label="Editar o eliminar área">Editar / eliminar</button>`:''}</div></section>`).join('')}</div>${removed.some(canManageArea)?'<h3>Áreas en papelera</h3>'+removed.filter(canManageArea).map(t=>`<div class="suggestion"><span>${esc(t.name)}</span><button data-restore-area="${t.id}" data-feedback-id="tasks.areas.papelera.restaurar" data-feedback-label="Restaurar área">Restaurar</button></div>`).join(''):''}`);
+  openSheet(`<h2 class="sheettitle">Áreas de trabajo</h2><p>Ikisai, Personal o Detailorg son áreas independientes. Cada una contiene sus proyectos, etiquetas y vistas.</p>${isAdministrator()?'<button class="primary" id="newArea" data-feedback-id="tasks.areas.nueva" data-feedback-label="Nueva área">+ Nueva área</button>':''}<div class="area-list">${active.map((t,i)=>`<section class="area-card ${t.id===current?'current':''}"><strong>${esc(t.name)}${t.id===current?' · actual':''}</strong><p class="small muted">${t.projects.filter(p=>!p.deleted&&!p.system).length} proyectos${t.restricted?' compartidos':''}</p><div class="actions"><button class="softbtn" data-open-area="${t.id}" data-feedback-id="tasks.areas.lista.abrir" data-feedback-label="Abrir área">Abrir</button>${canManageArea(t)?`<button class="ghost" data-edit-area="${t.id}" data-feedback-id="tasks.areas.lista.editar" data-feedback-label="Editar o eliminar área">Editar / eliminar</button>`:''}${isAdministrator()&&active.length>1?`<button class="ghost" type="button" data-area-move="${t.id}|-1" aria-label="Subir ${esc(t.name)}" ${i===0?'disabled':''} data-feedback-id="tasks.areas.lista.subir" data-feedback-label="Subir área">↑</button><button class="ghost" type="button" data-area-move="${t.id}|1" aria-label="Bajar ${esc(t.name)}" ${i===active.length-1?'disabled':''} data-feedback-id="tasks.areas.lista.bajar" data-feedback-label="Bajar área">↓</button>`:''}</div></section>`).join('')}</div>${removed.some(canManageArea)?'<h3>Áreas en papelera</h3>'+removed.filter(canManageArea).map(t=>`<div class="suggestion"><span>${esc(t.name)}</span><button data-restore-area="${t.id}" data-feedback-id="tasks.areas.papelera.restaurar" data-feedback-label="Restaurar área">Restaurar</button></div>`).join(''):''}`);
   document.getElementById('newArea')?.addEventListener('click',newAreaSheet);
   document.querySelectorAll('[data-open-area]').forEach(b=>b.onclick=()=>{state.activeTab=b.dataset.openArea;state.groupBy='project';navigateView('projects')});
   document.querySelectorAll('[data-edit-area]').forEach(b=>b.onclick=()=>manageTab(b.dataset.editArea));
+  document.querySelectorAll('[data-area-move]').forEach(b=>b.onclick=()=>{const [id,step]=b.dataset.areaMove.split('|');if(moveArea(id,Number(step)))setTimeout(areasSheet,0)});
   document.querySelectorAll('[data-restore-area]').forEach(b=>b.onclick=()=>{const t=state.tabs.find(t=>t.id===b.dataset.restoreArea);if(!canManageArea(t))return;t.deleted=false;save();render();areasSheet()});
 }
+/* Orden de las áreas (FB_2026_018): sube o baja un área en la lista y renumera las posiciones de todas, en un lote.
+   La posición de un área solo la escribe el puente al crearla, así que el orden se guarda con operaciones directas. */
+function moveArea(id,step){
+  if(!isAdministrator())return false;const order=state.tabs.filter(t=>!t.deleted).map(t=>t.id),at=order.indexOf(id),to=at+step;
+  if(at<0||to<0||to>=order.length)return false;order.splice(to,0,order.splice(at,1)[0]);
+  const rows=new Map((Sync.core?.data?.['tasks.tabs']||[]).map(r=>[r.id,r]));
+  const ops=order.map((tid,i)=>({row:rows.get(tid),position:(i+1)*1024})).filter(x=>x.row&&x.row.position!==x.position)
+    .map(x=>({op:'update',table:'tasks.tabs',id:x.row.id,expectedRevision:x.row.revision,fields:{position:x.position}}));
+  if(!ops.length)return false;
+  // El modelo local sigue el nuevo orden ya, sin esperar a la sincronización.
+  const live=state.tabs.filter(t=>!t.deleted).sort((a,b)=>order.indexOf(a.id)-order.indexOf(b.id)),gone=state.tabs.filter(t=>t.deleted);state.tabs.splice(0,state.tabs.length,...live,...gone);
+  return purchaseCommit(ops,'Orden de las áreas guardado.')}
 function newAreaSheet(){
   if(!isAdministrator())return toast('Crear áreas requiere acceso de propietario global.');
   openSheet('<h2 class="sheettitle">Nueva área</h2><div class="field"><label for="tabName">Nombre</label><input id="tabName" maxlength="100" placeholder="Por ejemplo: Jardín" data-feedback-id="tasks.nueva_area.nombre" data-feedback-label="Nombre"></div><p class="small muted">Empezará con Entrada y un catálogo vacío de etiquetas.</p><div class="actions"><button class="ghost" id="cancelArea" data-feedback-id="tasks.nueva_area.volver" data-feedback-label="Volver">Volver</button><button class="primary" id="createTab" data-feedback-id="tasks.nueva_area.crear" data-feedback-label="Crear">Crear</button></div>');
