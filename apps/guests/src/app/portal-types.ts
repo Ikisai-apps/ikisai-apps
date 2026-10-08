@@ -23,7 +23,7 @@ export interface Experience {
 export interface ProgramItem { id: string; day: string; starts_at: string | null; ends_at: string | null; title: string; place: string | null; public_note: string | null; kind: string; position?: number }
 
 /** Plato publicado (`food.portal_menu`, Food §7.5): nombre y descripción públicos; los alérgenos, solo si cocina los revisó. */
-export interface Dish { menu_item_id?: string; name: string; description?: string | null; category?: string | null; diet_tags?: string[] | null; allergens?: string[] | null; allergens_checked?: boolean }
+export interface Dish { menu_item_id?: string; photo_thumb_file_id?: string | null; name: string; description?: string | null; category?: string | null; diet_tags?: string[] | null; allergens?: string[] | null; allergens_checked?: boolean }
 
 /** Menú publicado (`food.portal_menu`, Food §7.5). Guests solo ve los menús validados o cerrados. */
 export interface Menu {
