@@ -272,3 +272,13 @@ test('portales · K6: una acción de Organizers invocada desde Guests escribe en
   const self = await callPortal(guests, 'guests', '/api/v1/invoke/public.test_guest_answer', { token, body: { id: crypto.randomUUID(), target: 'guests' } });
   assert.equal(self.status, 422, JSON.stringify(self.data));
 });
+
+test('portales · contacto público por público: cada portal pide el suyo por defecto', async () => {
+  await app.t.db.exec(`create or replace function public.test_contact(p_args jsonb) returns jsonb language sql stable as $$
+    select jsonb_build_array(jsonb_build_object('key', 'contact.email', 'title', 'Correo', 'body', case p_args->>'audience' when 'guests' then 'ven@ikisai.com' else 'organiza@ikisai.com' end)) $$;`);
+  const g = await callPortal(guests, 'guests', '/api/v1/public/contact?lang=es');
+  assert.equal(g.data.audience, 'guests'); assert.equal(g.data.items[0].body, 'ven@ikisai.com');
+  const o = await callPortal(organizers, 'organizers', '/api/v1/public/contact');
+  assert.equal(o.data.audience, 'organizers'); assert.equal(o.data.items[0].body, 'organiza@ikisai.com');
+  assert.equal((await callPortal(guests, 'guests', '/api/v1/public/contact?audience=nadie')).data.audience, 'guests', 'público desconocido → el del portal');
+});
