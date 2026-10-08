@@ -25,7 +25,8 @@ test.afterAll(async () => {
 });
 
 test('login → Inicio → reservas sin red → sincronizar', async ({ page, context }) => {
-  test.setTimeout(120_000);
+  // el recorrido más largo: con --workers=2 en una máquina lenta pasa de 2 minutos
+  test.setTimeout(300_000);
 
   await test.step('login contra la API, bootstrap y las cuatro entradas de navegación', async () => {
     await login(page);
