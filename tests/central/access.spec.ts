@@ -133,3 +133,76 @@ test('accesos · un editor de Central no ve Accesos ni puede abrirlos por la dir
   await expect(page.getByRole('heading', { name: 'Hola, Reader' })).toBeVisible();
   await expect(page.locator('#accountList')).toHaveCount(0);
 });
+
+// FB_2026_013 (opción A del usuario): la ficha de Personas manda sobre el nombre de la cuenta. Datos ficticios.
+test('accesos · la ficha manda: alta desde la ficha, renombrar (también sin red), enlazar cuentas y alinear nombres', async ({ page, context }) => {
+  const db = api.app.t.db;
+  const profileName = async (userId: string) => (await db.query<{ n: string }>(`select display_name as n from core.profiles where user_id = $1`, [userId])).rows[0]?.n;
+  const personId = crypto.randomUUID();
+  const created = await api.app.call('/api/v1/commands', { body: { requestId: 'fb013-person', operations: [
+    { op: 'insert', table: 'central.people', id: personId, fields: { display_name: 'Marta Ruiz', relation: 'equipo', base_role: 'otro', coverage: 'todo', availability: 'segun_calendario', position: 1 } },
+    { op: 'insert', table: 'central.person_private', id: crypto.randomUUID(), fields: { person_id: personId, email: 'marta@example.invalid' } },
+  ] } });
+  expect(created.status, JSON.stringify(created.data)).toBe(200);
+  await login(page, 'owner@example.invalid');
+  await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
+
+  // 1. Alta desde la ficha: el nombre y el correo salen de ella y la cuenta queda enlazada.
+  await page.goto(`${baseURL}/#/accesos/alta`);
+  await page.locator('#invitePerson').selectOption({ label: 'Marta Ruiz' });
+  await expect(page.locator('#inviteName')).toHaveValue('Marta Ruiz');
+  await expect(page.locator('#inviteName')).toHaveAttribute('readonly', '');
+  await expect(page.locator('#inviteEmail')).toHaveValue('marta@example.invalid');
+  await page.locator('#invite-tasks').selectOption('editor');
+  await page.locator('#inviteSubmit').click();
+  await expect(page.getByRole('heading', { name: 'Contraseña temporal' })).toBeVisible();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  await page.getByLabel('La he guardado en un lugar seguro').check();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  const linkedUser = async () => (await db.query<{ u: string | null }>(`select user_id as u from central.people where id = $1`, [personId])).rows[0]?.u ?? null;
+  await expect.poll(linkedUser).not.toBeNull();
+  const userId = (await linkedUser())!;
+  expect(await profileName(userId)).toBe('Marta Ruiz');
+
+  // 2. Renombrar la ficha cambia el nombre de su cuenta.
+  await page.goto(`${baseURL}/#/personas/${personId}`);
+  await page.locator('#editPerson').click();
+  await page.locator('#p-name').fill('Marta Ruiz Gil');
+  await page.locator('#savePerson').click();
+  await expect(page.getByText('Cambios guardados.')).toBeVisible();
+  await expect.poll(() => profileName(userId)).toBe('Marta Ruiz Gil');
+
+  // 3. Sin red: se guarda la ficha, se avisa y la cuenta se cambia al volver la conexión.
+  await context.setOffline(true);
+  await page.locator('#editPerson').click();
+  await page.locator('#p-name').fill('Marta R. Gil');
+  await page.locator('#savePerson').click();
+  await expect(page.getByText('El nombre de su cuenta se cambiará al volver la conexión.')).toBeVisible();
+  expect(await profileName(userId)).toBe('Marta Ruiz Gil');
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => profileName(userId), { timeout: 20_000 }).toBe('Marta R. Gil');
+
+  // 4. Cuentas del equipo sin ficha: aviso, «Sin ficha» y «Enlazar con una persona» (aquí, creando su ficha).
+  await page.goto(`${baseURL}/#/accesos`);
+  await expect(page.locator('#accountIssues')).toContainText('sin ficha');
+  const reader = page.locator('.accountrow', { hasText: 'Reader' });
+  await expect(reader).toContainText('Sin ficha');
+  await reader.click();
+  await page.locator('#linkPerson').selectOption('');
+  await page.locator('#linkPersonSubmit').click();
+  await expect(page.getByText('Ficha creada y enlazada.')).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(reader).not.toContainText('Sin ficha');
+  expect((await db.query(`select 1 from central.people where user_id = $1 and display_name = 'Reader' and deleted_at is null`, [api.app.users.reader])).rows.length).toBe(1);
+
+  // 5. Nombre distinto (por ejemplo, de antes de este cambio): «Usar el nombre de la ficha».
+  await db.query(`update core.profiles set display_name = 'Lector antiguo' where user_id = $1`, [api.app.users.reader]);
+  await page.reload();
+  const renamed = page.locator('.accountrow', { hasText: 'Lector antiguo' });
+  await expect(renamed).toContainText('Nombre distinto de la ficha');
+  await renamed.click();
+  await page.locator('#useFichaName').click();
+  await expect(page.getByText('La cuenta usa ya el nombre de la ficha.')).toBeVisible();
+  expect(await profileName(api.app.users.reader)).toBe('Reader');
+});

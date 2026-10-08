@@ -110,6 +110,9 @@ export function createAdminApi(client: SyncClient) {
     invite: (body: { email: string; displayName?: string; memberships: Array<{ app: string; role: Role; scopes?: unknown }> }) =>
       call<InviteResult>('/admin/invite', { method: 'POST', json: body }),
     resetPassword: (userId: string) => call<{ userId: string; temporaryPassword: string }>(`/admin/accounts/${userId}/password`, { method: 'POST', json: {} }),
+    /** Nombre visible de una cuenta (núcleo, #389): la ficha de Personas manda (FB_2026_013). Solo owners de Central. */
+    setDisplayName: (userId: string, displayName: string) =>
+      call<{ userId: string; displayName: string }>(`/admin/accounts/${userId}/name`, { method: 'POST', json: { displayName } }),
     setDisabled: (userId: string, disabled: boolean) => call<{ userId: string; disabled: boolean }>(`/admin/accounts/${userId}/${disabled ? 'disable' : 'enable'}`, { method: 'POST', json: {} }),
     async agents(): Promise<AgentKey[]> {
       const out = await call<{ items: AgentKey[] }>('/admin/agents');

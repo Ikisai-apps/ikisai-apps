@@ -2,7 +2,9 @@ import {
   confirmDialog, el, formatDate, icon, openSheet, plural, relativeTime, renderAccessLog, renderSecretOnce, replace, toast,
   type AccessLogEntry, type Sheet,
 } from '@ikisai/ui-kit';
-import { describeError } from '../app/client.ts';
+import type { SyncClient } from '@ikisai/sync-client';
+import { T, describeError } from '../app/client.ts';
+import { isStaffAccount, syncAccountName } from '../app/account-names.ts';
 import { describeScopes, EVENT_LABELS, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
 import type { Usage } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
@@ -30,6 +32,24 @@ function roleSelect(id: string, value: Role | null, options: { agent: boolean; a
     el('option', { value: '', selected: value === null }, 'Sin acceso'),
     ...allowed.map((r) => el('option', { value: r, selected: value === r }, ROLE_LABELS[r]))) as HTMLSelectElement;
 }
+
+/** Ficha de Personas, lo que Accesos necesita para enlazar cuentas (FB_2026_013: la ficha manda sobre el nombre). */
+interface PersonLite { id: string; revision: number; display_name: string; base_role: string; active: boolean; user_id: string | null; deleted_at: string | null; position: number }
+async function loadPeopleLite(client: SyncClient): Promise<{ people: PersonLite[]; emails: Map<string, string> }> {
+  const people = ((await client.list(T.people)) as unknown as PersonLite[]).filter((p) => !p.deleted_at)
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
+  const emails = new Map<string, string>();
+  try {
+    for (const x of (await client.list(T.personPrivate)) as unknown as Array<{ person_id: string; email: string | null; deleted_at: string | null }>) {
+      if (!x.deleted_at && x.email) emails.set(x.person_id, x.email);
+    }
+  } catch { /* sin datos reservados: el correo se escribe a mano */ }
+  return { people, emails };
+}
+/** Ficha mínima para una cuenta del equipo que aún no la tenía (el resto se completa en Personas). */
+const newPersonFields = (name: string, userId: string) => ({
+  display_name: name, relation: 'equipo', base_role: 'otro', coverage: 'todo', availability: 'segun_calendario', committed_post: false, user_id: userId, position: Date.now() / 1000,
+});
 
 /** Accesos (API.md §9.4): solo owner de Central. Todo necesita red; la última lista se pinta sin red mientras dure la sesión. */
 export function mountAccess(tab: AccessTab): ViewMount {
@@ -59,8 +79,8 @@ export function mountAccess(tab: AccessTab): ViewMount {
     const state = { alive: true };
     const stop = () => { state.alive = false; };
     switch (tab) {
-      case 'cuentas': void mountAccounts(body, admin, me, state, ctx.navigate, ctx.usage); break;
-      case 'alta': mountInvite(body, admin, ctx.navigate, ctx.usage); break;
+      case 'cuentas': void mountAccounts(body, admin, client, me, state, ctx.navigate, ctx.usage); break;
+      case 'alta': void mountInvite(body, admin, client, ctx.navigate, ctx.usage); break;
       case 'agentes': void mountAgents(body, admin, state, ctx.usage); break;
       case 'registro': void mountLog(body, admin, state); break;
     }
@@ -71,26 +91,37 @@ export function mountAccess(tab: AccessTab): ViewMount {
 // ---------------------------------------------------------------------------
 // Cuentas: lista de cuentas con su acceso en cada app; ficha con cambios de acceso, contraseña y desactivación.
 // ---------------------------------------------------------------------------
-async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, state: { alive: boolean }, navigate: (hash: string) => void, usage: Usage): Promise<void> {
+async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncClient, me: string, state: { alive: boolean }, navigate: (hash: string) => void, usage: Usage): Promise<void> {
   let catalog: CatalogApp[] = admin.cached.catalog ?? [];
   let accounts: Account[] = admin.cached.accounts?.items ?? [];
+  let people: PersonLite[] = [];
   let query = '';
   let showAgents = false;
+  let onlyIssues = false;
+  const personOf = (a: Account) => people.find((p) => p.user_id === a.userId) ?? null;
+  /** Lo que hay que arreglar en una cuenta del equipo: sin ficha, o con un nombre distinto del de su ficha. */
+  const issueOf = (a: Account): 'sin_ficha' | 'nombre' | null => {
+    if (!isStaffAccount(a, catalog)) return null;
+    const p = personOf(a);
+    return !p ? 'sin_ficha' : p.display_name !== a.displayName ? 'nombre' : null;
+  };
   const list = el('ul', { class: 'list accounts', id: 'accountList', 'aria-label': 'Cuentas', 'data-feedback-id': 'central.accesos.cuentas.lista', 'data-feedback-label': 'Lista de cuentas' });
   const note = el('div', { 'data-feedback-id': 'central.accesos.cuentas.aviso', 'data-feedback-label': 'Aviso de cuentas' });
+  const issues = el('div', { 'data-feedback-id': 'central.accesos.cuentas.por_revisar', 'data-feedback-label': 'Cuentas por revisar' });
   const search = el('input', { type: 'search', id: 'accountSearch', 'data-feedback-id': 'central.accesos.cuentas.buscar', 'data-feedback-label': 'Buscar cuenta', placeholder: 'Buscar por nombre o correo', 'aria-label': 'Buscar cuenta',
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const agentsToggle = el('label', { class: 'check' },
     el('input', { type: 'checkbox', id: 'showAgents', 'data-feedback-id': 'central.accesos.cuentas.mostrar_agentes', 'data-feedback-label': 'Mostrar agentes', onchange: (e: Event) => { showAgents = (e.target as HTMLInputElement).checked; paint(); } }),
     el('span', null, 'Mostrar agentes'));
   replace(body, el('div', { class: 'toolbar', 'data-feedback-id': 'central.accesos.cuentas.barra', 'data-feedback-label': 'Barra de cuentas' }, search, agentsToggle,
-    el('button', { class: 'primary', type: 'button', id: 'goInvite', 'data-feedback-id': 'central.accesos.cuentas.alta', 'data-feedback-label': 'Alta de cuenta', onclick: () => navigate('#/accesos/alta') }, icon('plus', 18), 'Alta')), note, list);
+    el('button', { class: 'primary', type: 'button', id: 'goInvite', 'data-feedback-id': 'central.accesos.cuentas.alta', 'data-feedback-label': 'Alta de cuenta', onclick: () => navigate('#/accesos/alta') }, icon('plus', 18), 'Alta')), note, issues, list);
 
   const appName = (id: string) => catalog.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
 
   function paint(): void {
     const visible = accounts
       .filter((a) => showAgents || a.kind !== 'agent')
+      .filter((a) => !onlyIssues || issueOf(a) !== null)
       .filter((a) => !query || a.displayName.toLowerCase().includes(query) || (a.email ?? '').toLowerCase().includes(query));
     if (!visible.length) {
       replace(list, el('li', { class: 'empty' }, accounts.length ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'));
@@ -101,6 +132,9 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
         `${appName(m.app)} · ${ROLE_LABELS[m.role]}`, describeScopes(m.app, m.scopes) ? ' *' : ''));
       if (a.disabled) chips.unshift(el('span', { class: 'chip alert' }, 'Desactivada'));
       if (a.kind === 'agent') chips.unshift(el('span', { class: 'chip' }, icon('bot', 14), 'Agente'));
+      const issue = issueOf(a);
+      if (issue === 'sin_ficha') chips.unshift(el('span', { class: 'chip warn', 'data-issue': 'sin_ficha' }, 'Sin ficha'));
+      if (issue === 'nombre') chips.unshift(el('span', { class: 'chip warn', 'data-issue': 'nombre' }, 'Nombre distinto de la ficha'));
       return el('li', null, el('button', { class: 'accountrow', type: 'button', 'data-user': a.userId, 'data-feedback-id': 'central.accesos.cuentas.fila', 'data-feedback-label': 'Cuenta', onclick: () => openAccount(a) },
         el('span', { class: 'accountname', 'data-feedback-ignore': '' }, a.displayName || a.email || 'Sin nombre', a.userId === me ? el('span', { class: 'muted' }, ' (tú)') : null),
         el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [a.email ?? '', a.lastSignInAt ? `último acceso ${relativeTime(a.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
@@ -108,10 +142,24 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
     }));
   }
 
+  /** Aviso con las cuentas del equipo que hay que enlazar o alinear (FB_2026_013). */
+  function paintIssues(): void {
+    const all = accounts.map(issueOf);
+    const missing = all.filter((x) => x === 'sin_ficha').length;
+    const names = all.filter((x) => x === 'nombre').length;
+    if (!missing && !names) { replace(issues); onlyIssues = false; return; }
+    const parts = [missing ? `${plural(missing, 'cuenta del equipo sin ficha', 'cuentas del equipo sin ficha')}` : '', names ? `${plural(names, 'con otro nombre que su ficha', 'con otro nombre que su ficha')}` : ''].filter(Boolean);
+    replace(issues, el('p', { class: 'note warn', id: 'accountIssues' }, `${parts.join(' · ')}. La ficha de Personas manda sobre el nombre. `,
+      el('button', { class: 'linkbtn', type: 'button', id: 'showIssues', 'data-feedback-id': 'central.accesos.cuentas.revisar', 'data-feedback-label': 'Ver las cuentas por revisar',
+        onclick: () => { onlyIssues = !onlyIssues; paint(); paintIssues(); } }, onlyIssues ? 'Ver todas' : 'Ver solo esas')));
+  }
+
   async function load(): Promise<void> {
     try {
       [catalog, accounts] = await Promise.all([admin.catalog(), admin.accounts()]);
+      people = (await loadPeopleLite(client)).people;
       replace(note);
+      paintIssues();
     } catch (error) {
       replace(note, navigator.onLine ? el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.accesos.cuentas.error', 'data-feedback-label': 'Error de cuentas' }, describeError(error)) : offlineNote(admin.cached.accounts?.at));
     }
@@ -193,6 +241,43 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
       } catch (e) { error.textContent = describeError(e); }
     }
 
+    /** Ficha de Personas de la cuenta: enlazar si no tiene (o crearla) y alinear el nombre si es distinto. */
+    function personSection(): HTMLElement | null {
+      if (!isStaffAccount(account, catalog)) return null;
+      const person = personOf(account);
+      const head = el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.cuenta.ficha', 'data-feedback-label': 'Ficha de Personas' }, 'Ficha de Personas');
+      if (person) {
+        return el('div', { class: 'personlink' }, head,
+          el('p', null, el('a', { href: `#/personas/${person.id}`, 'data-feedback-ignore': '' }, person.display_name)),
+          person.display_name !== account.displayName ? el('p', { class: 'note warn', 'data-feedback-id': 'central.accesos.cuenta.nombre_distinto', 'data-feedback-label': 'Nombre distinto de la ficha' }, 'La cuenta se llama de otra forma que su ficha. ',
+            el('button', { class: 'linkbtn', type: 'button', id: 'useFichaName', 'data-feedback-id': 'central.accesos.cuenta.usar_nombre_ficha', 'data-feedback-label': 'Usar el nombre de la ficha', onclick: async () => {
+              if (await syncAccountName(admin, account.userId, person.display_name)) { toast('La cuenta usa ya el nombre de la ficha.'); await refresh(); }
+            } }, 'Usar el nombre de la ficha')) : null);
+      }
+      const free = people.filter((p) => !p.user_id);
+      const select = el('select', { id: 'linkPerson', 'aria-label': 'Persona del equipo', 'data-feedback-ignore': '' },
+        el('option', { value: '' }, 'Persona nueva: crear su ficha con este nombre'),
+        ...free.map((p) => el('option', { value: p.id }, p.display_name))) as HTMLSelectElement;
+      const link = el('button', { class: 'primary', type: 'button', id: 'linkPersonSubmit', 'data-feedback-id': 'central.accesos.cuenta.enlazar_ficha', 'data-feedback-label': 'Enlazar con una persona', onclick: async () => {
+        error.textContent = '';
+        link.disabled = true;
+        try {
+          const chosen = free.find((p) => p.id === select.value) ?? null;
+          if (chosen) {
+            await client.commit([{ op: 'update', table: T.people, id: chosen.id, expectedRevision: chosen.revision, fields: { user_id: account.userId } }]);
+            if (chosen.display_name !== account.displayName) await syncAccountName(admin, account.userId, chosen.display_name);
+          } else {
+            await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(account.displayName || account.email || 'Sin nombre', account.userId) }]);
+          }
+          toast(chosen ? 'Cuenta enlazada con su ficha.' : 'Ficha creada y enlazada.');
+          await refresh();
+        } catch (e) { error.textContent = describeError(e); } finally { link.disabled = false; }
+      } }, 'Enlazar con una persona') as HTMLButtonElement;
+      return el('div', { class: 'personlink' }, head,
+        el('p', { class: 'note warn', 'data-feedback-id': 'central.accesos.cuenta.sin_ficha', 'data-feedback-label': 'Cuenta sin ficha' }, 'Esta cuenta del equipo no tiene ficha en Personas.'),
+        el('label', { class: 'field', 'data-feedback-id': 'central.accesos.cuenta.campo_persona', 'data-feedback-label': 'Persona del equipo' }, el('span', null, 'Persona del equipo'), select), link);
+    }
+
     const content = el('div', { class: 'accountsheet', 'data-feedback-id': 'central.accesos.cuenta.contenido', 'data-feedback-label': 'Ficha de la cuenta' });
     function renderBody(): void {
       const rows = catalog.map((app) => {
@@ -219,6 +304,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, me: string, sta
         el('p', { class: 'muted', 'data-feedback-ignore': '' }, [account.email, `alta ${formatDate(account.createdAt)}`, account.lastSignInAt ? `último acceso ${relativeTime(account.lastSignInAt)}` : 'nunca ha entrado'].filter(Boolean).join(' · ')),
         account.disabled ? el('p', { class: 'note warn' }, 'Cuenta desactivada: no puede entrar en ninguna app.') : null,
         isMe ? el('p', { class: 'note' }, 'Es tu cuenta: no puedes quitarte la administración ni desactivarte.') : null,
+        personSection(),
         el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.cuenta.acceso_por_app', 'data-feedback-label': 'Acceso por app' }, 'Acceso por app'),
         ...rows,
         error,
@@ -268,10 +354,26 @@ export function showSecret(password: string, email: string, onDone?: () => void)
 // ---------------------------------------------------------------------------
 // Alta: correo, nombre y accesos iniciales → contraseña temporal una vez.
 // ---------------------------------------------------------------------------
-function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string) => void, usage: Usage): void {
+async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClient, navigate: (hash: string) => void, usage: Usage): Promise<void> {
+  const { people, emails } = await loadPeopleLite(client);
+  const free = people.filter((p) => !p.user_id && p.active);
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.accesos.alta.error', 'data-feedback-label': 'Error del alta' });
   const email = el('input', { id: 'inviteEmail', 'data-feedback-ignore': '', type: 'email', required: true, autocomplete: 'off', maxlength: '320' }) as HTMLInputElement;
   const name = el('input', { id: 'inviteName', 'data-feedback-ignore': '', type: 'text', maxlength: '80', autocomplete: 'off' }) as HTMLInputElement;
+  // La ficha manda (FB_2026_013): el nombre sale de la persona elegida; con «Persona nueva» se escribe una vez y crea su ficha.
+  const person = el('select', { id: 'invitePerson', 'data-feedback-ignore': '' },
+    el('option', { value: '' }, 'Persona nueva (se crea su ficha)'),
+    ...free.map((p) => el('option', { value: p.id }, p.display_name))) as HTMLSelectElement;
+  const nameHelp = el('span', { class: 'muted small' });
+  const chosen = () => free.find((p) => p.id === person.value) ?? null;
+  const syncFromPerson = () => {
+    const p = chosen();
+    name.readOnly = !!p;
+    if (p) { name.value = p.display_name; if (emails.get(p.id) && !email.value.trim()) email.value = emails.get(p.id)!; }
+    else if (name.readOnly === false && free.some((x) => x.display_name === name.value)) name.value = '';
+    nameHelp.textContent = p ? 'El de su ficha. Para cambiarlo, edita la ficha en Personas.' : 'Será también el nombre de su ficha en Personas.';
+  };
+  person.addEventListener('change', syncFromPerson);
   const appsHost = el('div', { id: 'inviteApps', 'data-feedback-id': 'central.accesos.alta.apps', 'data-feedback-label': 'Accesos iniciales por app' }, el('p', { class: 'muted' }, 'Cargando apps…'));
   const selects = new Map<string, HTMLSelectElement>();
   const submit = el('button', { class: 'primary', type: 'submit', id: 'inviteSubmit', 'data-feedback-id': 'central.accesos.alta.enviar', 'data-feedback-label': 'Dar de alta' }, 'Dar de alta') as HTMLButtonElement;
@@ -283,9 +385,22 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { error.textContent = 'Escribe un correo válido.'; email.focus(); return; }
     const memberships = [...selects].filter(([, s]) => s.value).map(([app, s]) => ({ app, role: s.value as Role }));
     if (!memberships.length) { error.textContent = 'Elige al menos una app.'; return; }
+    const p = chosen();
+    const displayName = p ? p.display_name : name.value.trim();
+    if (!displayName) { error.textContent = 'Escribe el nombre de la persona.'; name.focus(); return; }
     submit.disabled = true;
     try {
-      const out = await usage.run('central.accesos.alta.crear', () => admin.invite({ email: mail, ...(name.value.trim() ? { displayName: name.value.trim() } : {}), memberships }));
+      const out = await usage.run('central.accesos.alta.crear', () => admin.invite({ email: mail, displayName, memberships }));
+      // Enlaza la cuenta con su ficha (o crea la ficha). Si esa cuenta ya estaba enlazada con otra ficha, se deja como está.
+      const current = ((await client.list(T.people)) as unknown as PersonLite[]).filter((x) => !x.deleted_at);
+      const alreadyLinked = current.find((x) => x.user_id === out.userId);
+      if (alreadyLinked) toast(`Esa cuenta ya estaba enlazada con la ficha de ${alreadyLinked.display_name}.`);
+      else if (p) {
+        const fresh = current.find((x) => x.id === p.id) ?? p;
+        await client.commit([{ op: 'update', table: T.people, id: p.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
+      } else {
+        await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(displayName, out.userId) }]);
+      }
       if (out.temporaryPassword) {
         showSecret(out.temporaryPassword, out.email, () => navigate('#/accesos'));
       } else {
@@ -299,14 +414,16 @@ function mountInvite(body: HTMLElement, admin: AdminApi, navigate: (hash: string
       submit.disabled = false;
     }
   } },
+  el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_persona', 'data-feedback-label': 'Persona del equipo' }, el('span', null, 'Persona del equipo'), person),
   el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_correo', 'data-feedback-label': 'Correo' }, el('span', null, 'Correo'), email),
-  el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nombre', 'data-feedback-label': 'Nombre visible' }, el('span', null, 'Nombre visible'), name),
+  el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nombre', 'data-feedback-label': 'Nombre visible' }, el('span', null, 'Nombre'), name, nameHelp),
   el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.alta.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'),
   appsHost,
   error,
   el('div', { class: 'formactions', 'data-feedback-id': 'central.accesos.alta.acciones', 'data-feedback-label': 'Acciones del alta' }, submit));
 
-  replace(body, el('p', { class: 'muted' }, 'Crea la cuenta con una contraseña temporal que se muestra una sola vez. Si el correo ya tiene cuenta, solo se añaden los accesos.'), form);
+  replace(body, el('p', { class: 'muted' }, 'Crea la cuenta con una contraseña temporal que se muestra una sola vez. Si el correo ya tiene cuenta, solo se añaden los accesos. La cuenta queda enlazada con la ficha de la persona en Personas.'), form);
+  syncFromPerson();
 
   void admin.catalog().then((catalog) => {
     replace(appsHost, ...catalog.map((app) => {

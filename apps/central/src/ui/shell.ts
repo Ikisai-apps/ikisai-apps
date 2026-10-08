@@ -5,6 +5,7 @@ import {
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { createAdminApi, type AdminApi } from '../app/admin.ts';
+import { clearPendingAccountNames, flushPendingAccountNames } from '../app/account-names.ts';
 import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
@@ -108,7 +109,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const review = createFeedbackReview({ api, app: 'central', appDomain: (id) => catalog?.items.find((app) => app.id === id)?.domain });
   // Uso semántico (USO.md): exposición y activación de lo marcado con `data-feedback-id`, y éxito o error con `usage.run`.
   const usage = createUsage({ app: 'central', api, userId: () => client.bootstrap()?.profile.userId ?? null });
-  const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); void usage.clear(userId); });
+  const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); void usage.clear(userId); clearPendingAccountNames(); });
 
   // La marca de la cabecera abre el lanzador común: las demás apps de la cuenta (sin volver a pedir contraseña), los
   // interruptores «Señalar para comentar» y «Revisor de QA», y la entrada «Sugerencias y QA» (kit 0.18; guía demo/adopcion.ts).
@@ -122,6 +123,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const admin = createAdminApi(client);
   const boot = client.bootstrap();
   const isAdmin = boot?.membership.role === 'owner' && boot.profile.kind !== 'agent';
+  // Nombres de cuenta pendientes de una ficha renombrada sin red (FB_2026_013): al arrancar y al volver la conexión.
+  const flushNames = () => { if (isAdmin) void flushPendingAccountNames(admin, client).catch(() => undefined); };
+  window.addEventListener('online', flushNames);
+  flushNames();
   const shell = createAppShell(root, {
     appName: 'Central',
     markIcon: 'grid',
@@ -243,6 +248,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   return () => {
     offStatus();
     offSessionEnd();
+    window.removeEventListener('online', flushNames);
     feedback.destroy();
     review.destroy();
     usage.destroy();
