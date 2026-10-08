@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.25.2 · 8 de octubre de 2026
+
+- **Formulario progresivo de los portales** («Ayuda y sugerencias») con el mismo comportamiento que el composer tras FB_2026_016/017:
+  - un envío a la vez y ninguno más tras el éxito;
+  - `result.id` y `result.requestId` **estables por formulario** (los mismos en cada intento mientras el contenido no cambie), para pasarlos a `POST feedback` y que el servidor deduplique;
+  - al terminar, aviso («Enviado. Gracias.» o «Pendiente…»), se suelta el teclado y **se cierra la hoja del kit** que lo contiene. Con `onDone(result)`, la app decide.
+- **Prueba común de los portales:** `portalHelpRoundTrip(page, { open, choices, keyboard })` en `testing/feedback-smoke.ts`. Recorre «Ayuda y sugerencias» → respuestas → enviar con doble toque → hoja cerrada → aviso visible dentro de lo visible.
+- `v31` ampliada, en escritorio y en móvil con teclado: un solo reporte.
+
 ## 0.25.1 · 8 de octubre de 2026
 
 Doble envío del feedback en Finance (FB_2026_016 y FB_2026_017, con un segundo de diferencia, desde una hoja abierta y con el teclado abierto):
