@@ -83,6 +83,16 @@ function nav(page: Page, name: string) {
   return page.locator('.nav').getByRole('link', { name: new RegExp(name) });
 }
 
+/**
+ * Gestoría abre el trimestre en el que se trabaja (en el primer mes de un trimestre, el anterior): las pruebas eligen
+ * el de la fecha que necesitan para no depender del reloj.
+ */
+async function gestoriaPeriod(page: Page, isoDate = new Date().toISOString().slice(0, 10)): Promise<void> {
+  await page.getByLabel('Año', { exact: true }).fill(isoDate.slice(0, 4));
+  await page.getByLabel('Año', { exact: true }).dispatchEvent('change');
+  await page.getByLabel('Trimestre', { exact: true }).selectOption(String(Math.floor((Number(isoDate.slice(5, 7)) - 1) / 3) + 1));
+}
+
 /** Vuelve la red: el cliente sincroniza solo al detectar el evento; si el botón está libre se pulsa también (más rápido en Playwright). */
 async function reconnect(context: BrowserContext, page: Page): Promise<void> {
   await context.setOffline(false);
@@ -340,6 +350,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
 
   await test.step('A13b · Gestoría: resumen fiscal del trimestre y alertas', async () => {
     await nav(page, 'Gestoría').click();
+    await gestoriaPeriod(page, '2026-10-05');
     await expect(page.locator('#fiscalSummary')).toContainText('Base40,00 €');
     await expect(page.locator('#fiscalSummary')).toContainText('IVA soportado4,00 €');
     await expect(page.locator('#fiscalSummary')).toContainText('10 %40,00 € → 4,00 €');
@@ -502,6 +513,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     const totalsOnline = await page.locator('#purchaseTotals').innerText();
     expect(totalsOnline).toContain('Base');
     await nav(page, 'Gestoría').click();
+    await gestoriaPeriod(page, '2026-10-05');
     await expect(page.locator('#fiscalSummary')).toContainText('Facturas validadas');
     const summaryOnline = await page.locator('#fiscalSummary').innerText();
     await context.setOffline(true);
@@ -512,6 +524,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     const norm = (text: string) => text.replace(/\s+/g, ' ').trim();
     await expect.poll(async () => norm(await page.locator('#purchaseTotals').innerText())).toBe(norm(totalsOnline));
     await nav(page, 'Gestoría').click();
+    await gestoriaPeriod(page, '2026-10-05');
     await expect.poll(async () => norm(await page.locator('#fiscalSummary').innerText())).toBe(norm(summaryOnline));
     // Filtros del handoff: por destino (ingrediente) y «solo sin asignar»
     await nav(page, 'Compras').click();
@@ -562,6 +575,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect(ficha(page).getByRole('button', { name: 'Asignar a…' })).toHaveCount(0);
     await closeSheet(page);
     await nav(page, 'Gestoría').click();
+    await gestoriaPeriod(page, '2026-10-05');
     await expect(page.locator('#prepareExport')).toBeHidden();
     await expect(page.locator('#fiscalSummary')).toContainText('Base');
     await context.setOffline(true);
@@ -736,6 +750,7 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     }
     await page.keyboard.press('Escape').catch(() => undefined);
     await nav(page, 'Gestoría').click();
+    await gestoriaPeriod(page);
     await expect(page.locator('#issuedSummary')).toContainText('IVA repercutido20,50 €');
     await expect(page.locator('#issuedSummary')).toContainText('IVA 21 %50,00 € → 10,50 €');
     await expect(page.locator('#vatBalance')).toContainText('Repercutido20,50 €');

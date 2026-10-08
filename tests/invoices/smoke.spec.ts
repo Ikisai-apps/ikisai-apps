@@ -184,6 +184,10 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
     await expect(page.locator('#purchaseTotals')).toContainText('Base 40,00 €');
     await page.getByRole('link', { name: /Gestoría/ }).click();
     await expect(page.getByRole('heading', { name: 'Gestoría', level: 2 })).toBeVisible();
+    // Gestoría abre el trimestre en el que se trabaja; la factura es del 4T 2026
+    await page.getByLabel('Año', { exact: true }).fill('2026');
+    await page.getByLabel('Año', { exact: true }).dispatchEvent('change');
+    await page.getByLabel('Trimestre', { exact: true }).selectOption('4');
     await expect(page.locator('#fiscalAlerts')).toContainText('pendiente de revisión');
     await page.getByRole('link', { name: /Inicio/ }).click();
     await expect(page.locator('#statPendingReview')).toHaveText('1');

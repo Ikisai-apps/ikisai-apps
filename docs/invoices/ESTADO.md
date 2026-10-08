@@ -97,6 +97,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Capa del kit 0.24 (`setKitLayer`): Finance carga el CSS del kit sin acotar a `.ikisai-kit`, así que lo flotante va a `document.body`, la capa por defecto, con sus estilos. No hace falta llamarla. La prueba de feedback en escritorio (1280×800) envía un reporte desde una hoja abierta y comprueba que el aviso «Enviado» es fijo y compacto.
 - QA FB_2026_016 (migración 0223): la fecha de una factura recibida es opcional al crearla. «Nueva factura» ya no la rellena con la de hoy; se lee del PDF o se escribe después en «Fiscal y pago». Sin fecha no se puede validar.
 - Pruebas de Playwright con un solo `vite build` compartido entre specs (`tests/invoices/e2e-build.ts`): huella de las fuentes en `dist/.e2e-stamp` y cerrojo entre procesos, para que `--workers=2` no vacíe `dist` a medias (mismo fallo que Tasks).
+- Auditoría del 3T (8-10-2026), primera tanda: Inicio y Gestoría abren el trimestre que se declara (en el primer mes de un trimestre, el anterior); «Nueva factura» empieza por el documento y «Leer PDF» es el paso principal (la IA, para fotos o PDF escaneados); la revisión de lo leído pone primero proveedor, fecha, categoría y cuadre, con el JSON plegado; «Validar» deja de ser el botón principal mientras la factura no tiene datos.
 
 ## En curso
 
