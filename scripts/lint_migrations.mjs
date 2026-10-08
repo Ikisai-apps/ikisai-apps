@@ -32,6 +32,7 @@ for (const file of files) {
       if (other === 'core' && CORE_HELPERS.includes(ref)) continue;
       if (schema === 'food' && other === 'booking' && /booking\.events\b/.test(ref) && /references\s+booking\.events/.test(sql)) continue; // FK permitida por contrato
       if (schema === 'food' && other === 'booking' && ref === 'booking.food_event_projection') continue; // proyección publicada para Food (petición P14 de Food)
+      if (schema === 'organizers' && other === 'booking' && ref === 'booking.reservation_end_dates') continue; // fechas de fin para purgar respuestas (B18 de Organizers)
       problems.push(`${file}: referencia a ${ref} fuera de su schema`);
     }
   }
