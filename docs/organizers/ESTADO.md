@@ -50,6 +50,8 @@
 
 - 2026-10-08 · Versiones nuevas con `initAppUpdates` del kit 0.23 (sin `src/updates.ts` propio): se aplican solas al abrir o al volver si no hay una hoja abierta ni cambios por enviar; si no, el aviso.
 
+- 2026-10-08 · Condiciones de la propuesta: el texto de Booking (#358) llega con las cifras resueltas y se pinta tal cual (párrafos, saltos de línea y negritas, sin HTML); la lista de tramos del portal queda solo de reserva cuando no hay texto.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.

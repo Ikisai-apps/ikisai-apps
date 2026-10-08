@@ -140,7 +140,9 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
       if (seeded) return seeded;
       const conditions = uuid();
       await commit([
-        { op: 'insert', table: TABLES.conditions, id: conditions, fields: { name: 'Condiciones de prueba', deposit_percent: 30, deposit_minimum: 300, minimum_total: 2500, is_default: true } },
+        { op: 'insert', table: TABLES.conditions, id: conditions, fields: { name: 'Condiciones de prueba', deposit_percent: 30, deposit_minimum: 300, minimum_total: 2500, is_default: true,
+          // Con marcadores (Booking #358): portal_proposals los devuelve resueltos.
+          text: '**Señal:** el {{condiciones.senal_porcentaje}} del total para reservar.\n\n**Cancelación**\n{{condiciones.cancelacion}}' } },
         { op: 'insert', table: TABLES.cancellationTiers, id: uuid(), fields: { conditions_id: conditions, min_days_before: 60, deposit_refund_pct: 100 } },
         { op: 'insert', table: TABLES.cancellationTiers, id: uuid(), fields: { conditions_id: conditions, min_days_before: 30, deposit_refund_pct: 50 } },
       ]);

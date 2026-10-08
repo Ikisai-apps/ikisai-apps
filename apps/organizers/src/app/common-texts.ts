@@ -132,13 +132,17 @@ export function declarationVersion(): string {
 
 /** Cuerpo de un texto de Central (markdown sencillo: párrafos y **negrita**) como nodos, sin HTML del servidor. */
 export function textParagraphs(body: string): HTMLElement[] {
-  return body.split(/\n{2,}/).map((block) => {
+  // Markdown sencillo y sin HTML del servidor: párrafos por línea en blanco, saltos de línea dentro del párrafo y **negritas**.
+  return body.replace(/\r\n?/g, '\n').trim().split(/\n{2,}/).map((block) => {
     const p = document.createElement('p');
     p.className = 'small';
-    for (const [i, part] of block.split('**').entries()) {
-      if (!part) continue;
-      if (i % 2) { const b = document.createElement('strong'); b.textContent = part; p.append(b); }
-      else p.append(document.createTextNode(part));
+    for (const [n, line] of block.split('\n').entries()) {
+      if (n) p.append(document.createElement('br'));
+      for (const [i, part] of line.split('**').entries()) {
+        if (!part) continue;
+        if (i % 2) { const b = document.createElement('strong'); b.textContent = part; p.append(b); }
+        else p.append(document.createTextNode(part));
+      }
     }
     return p;
   });
