@@ -1438,6 +1438,10 @@ Decisión del usuario (8-10-2026): el texto no repite las cifras de los campos; 
 - **Editor:** ayuda con la lista de marcadores y vista previa resuelta con los valores del formulario y los tramos guardados.
 - **Inglés:** `renderConditionsText(…, 'en')` formatea en `en-GB` («12.5%», «€2,500») para cuando haya versión inglesa; el SQL del portal resuelve en español.
 
+### 23.4 Peticiones a Tasks: Edge directa (migración 0463)
+
+Todas las llamadas de Booking a Tasks (proyecto del retiro y extras, avisos del portal, aviso de plazo de SES) van a `<SUPABASE_URL>/functions/v1/tasks-api/api/v1/worker/…` con `X-Ikisai-Worker-Key` (`tasksWorkerBase` en `booking-api/tasks/sync.ts`). Nunca a `tasks.ikisai.com`: su proxy de Pages solo reenvía unas cabeceras y perdía la clave (401; en producción no llegó ninguna). `TASKS_WORKER_BASE_URL` solo como sustitución explícita (p. ej. `tasks-api-qa`). La migración 0463 reactiva los avisos del portal que agotaron sus 20 intentos; los proyectos y los avisos de SES reintentan sin límite.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

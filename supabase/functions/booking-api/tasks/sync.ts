@@ -6,11 +6,23 @@
  */
 export type TasksPost = (path: string, body: Record<string, unknown>) => Promise<{ status: number; data: any }>;
 
-/** Poster real: rutas de worker de Tasks con la clave de sistema. Sin clave, no hay integración. */
-export function createTasksPost(env: (name: string) => string | undefined, fetchImpl: typeof fetch = fetch): TasksPost | undefined {
+/**
+ * Base de las rutas de worker de Tasks: su Edge directa (`<supabase>/functions/v1/tasks-api/api/v1/worker`), como el
+ * feedback del kit. Nunca el dominio de Pages: su proxy solo reenvía unas cabeceras y pierde `X-Ikisai-Worker-Key`
+ * (Tasks respondía 401). `TASKS_WORKER_BASE_URL` queda solo como sustitución explícita (p. ej. el slug -qa).
+ */
+export function tasksWorkerBase(env: (name: string) => string | undefined, supabaseBase?: string): string | undefined {
+  const explicit = env('TASKS_WORKER_BASE_URL');
+  if (explicit) return explicit.replace(/\/$/, '');
+  const base = supabaseBase ?? env('SUPABASE_URL');
+  return base ? `${base.replace(/\/$/, '')}/functions/v1/tasks-api/api/v1/worker` : undefined;
+}
+
+/** Poster real: rutas de worker de Tasks con la clave de sistema. Sin clave o sin base, no hay integración. */
+export function createTasksPost(env: (name: string) => string | undefined, fetchImpl: typeof fetch = fetch, supabaseBase?: string): TasksPost | undefined {
   const key = env('IKISAI_WORKER_KEY');
-  if (!key) return undefined;
-  const base = (env('TASKS_WORKER_BASE_URL') ?? 'https://tasks.ikisai.com/api/v1/worker').replace(/\/$/, '');
+  const base = tasksWorkerBase(env, supabaseBase);
+  if (!key || !base) return undefined;
   return async (path, body) => {
     const res = await fetchImpl(`${base}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ikisai-worker-key': key }, body: JSON.stringify(body) });
     return { status: res.status, data: await res.json().catch(() => null) };
