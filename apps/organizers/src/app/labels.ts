@@ -1,5 +1,5 @@
 /** Textos en lenguaje claro para lo que llega de Booking (API.md §9). Nada de códigos ni jerga en pantalla. */
-import type { GuestMode } from '@ikisai/domain-booking';
+import type { GuestMode } from '../../../../supabase/functions/_domain/booking/mod.ts';
 import type { ReservationStatus } from './api.ts';
 import { i18n, L, lang, t } from './i18n.ts';
 

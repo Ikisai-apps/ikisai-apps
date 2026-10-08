@@ -294,7 +294,22 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
 
 ### 13.2 Fase 2 · Diseño desde el interesado (a grandes rasgos)
 
-**Estado (8-10-2026):** las fechas están construidas sobre Booking B6–B8 (#303). Pestaña «Fechas» de la ficha mientras el retiro está en estudio, negociación o prerreserva, con los tres modos de abajo, guardado automático y tarjeta en el resumen. Un fin de semana es de viernes a domingo; se ofrecen los próximos doce meses y como mucho 20 marcas. El resto de la fase (borrador, extras, calculadora y propuesta) espera a la segunda parte de Booking (B7d, B9, B10 y B12).
+**Estado (8-10-2026):** las fechas están construidas sobre Booking B6–B8 (#303). Pestaña «Fechas» de la ficha mientras el retiro está en estudio, negociación o prerreserva, con los tres modos de abajo, guardado automático y tarjeta en el resumen. Un fin de semana es de viernes a domingo; se ofrecen los próximos doce meses y como mucho 20 marcas. El resto de la fase está construido sobre la segunda parte de Booking (#305: B7d, B9, B10 y B12):
+- **Pestaña «Diseño»** (en estudio o negociación; si no, `DRAFT_LOCKED`):
+  - personas y menores, comidas (régimen y orientación del menú), alojamiento y espacios;
+  - extras visibles en el portal, con su cantidad;
+  - «¿Necesitas otra cosa?» (`organizer_notes`).
+
+  Todo se guarda solo con `portal_update_draft`.
+- **Precio orientativo:** en el dispositivo (`app/quote.ts`), con `suggestLines`, `proposalTotals` y `applyMinimum` del dominio de Booking sobre `portal_rates`.
+  - Fechas del cálculo: la definitiva o una de las posibles, a elegir.
+  - Muestra noches y comidas incluidas, líneas, total con IVA incluido y su desglose, señal y aviso de mínimo aplicado.
+  - La señal se calcula sobre lo que se paga.
+  - Sin tarifas: «Ikisai te enviará el precio».
+  - Mientras Booking no publique el tipo de reserva en el detalle, calcula con `event_type: 'retiro'`.
+- **Calculadora privada:** precio por asistente, asistentes y otros gastos dan ingresos, gastos, margen y punto de equilibrio. Se guarda solo en el dispositivo (caché por persona; se borra al cerrar la sesión).
+- **Pestaña «Propuesta»** (cualquier retiro no cancelado): propuestas enviadas o aceptadas con líneas, totales, señal, validez, condiciones y tramos de cancelación (§13.3), con «Quiero confirmar» y «Enviar un comentario». Debajo, «Lo que has enviado a Ikisai», con su estado.
+- La pestaña «Cocina» aparece solo con la reserva confirmada. En el móvil, las pestañas se desplazan y la activa queda centrada.
 
 **Principio (decisión del usuario, 7-10-2026): Ikisai fija y el organizador propone.** El organizador nunca fija una fecha ni acepta una propuesta; marca posibilidades, pide y comenta, y el personal decide en Booking.
 

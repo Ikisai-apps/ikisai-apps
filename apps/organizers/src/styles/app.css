@@ -30,8 +30,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 
 /* Ficha del retiro */
 .orghead h2{margin-bottom:4px}
-.orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto}
-.orgtabs a{flex:1 1 auto;min-width:0;padding:8px 10px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
+.orgtabs{display:flex;gap:4px;padding:4px;margin:4px 0 14px;border-radius:999px;background:var(--paper-2);overflow-x:auto;scrollbar-width:none}
+.orgtabs::-webkit-scrollbar{display:none}
+.orgtabs a{flex:1 0 auto;padding:8px 12px;border-radius:999px;text-align:center;color:var(--ink);text-decoration:none;font-weight:600;white-space:nowrap}
 .orgtabs a.on{background:var(--paper);box-shadow:0 1px 2px rgb(0 0 0 / 12%)}
 .orgcard{padding:14px 16px;margin:0 0 12px}
 .orgcard h3{margin:0 0 8px;font-size:1rem}
@@ -66,6 +67,20 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgweekend.busy{opacity:.55;cursor:not-allowed;text-decoration:line-through}
 .orgweekend .chip{font-size:11px}
 .orgdateoptions{display:grid;gap:6px;margin:8px 0}
+
+/* Diseño y propuesta (fase 2) */
+.orggrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+.orgextras{display:grid;gap:6px}
+.orgextra{display:grid;grid-template-columns:minmax(0,1fr) 72px;align-items:center;gap:8px}
+.orgextra .field{margin:0}
+.orgquote{width:100%;border-collapse:collapse;margin:8px 0;font-size:var(--text-sm,.875rem)}
+.orgquote td{padding:6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.orgquote td.num{text-align:right;white-space:nowrap;padding-left:12px}
+.orgtotals{margin:8px 0}
+.orgtotals dd{font-variant-numeric:tabular-nums}
+#quoteTotal,.proposalTotal{font-weight:800;font-size:1.1rem}
+.orgconditions{margin:8px 0}
+.orgconditions>summary{cursor:pointer;font-weight:600}
 
 /* Ayuda */
 .orgmine{list-style:none;padding:0}

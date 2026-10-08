@@ -2,7 +2,7 @@
  * Textos para compartir y copiar (API.md §9.4 a §9.6), en el idioma de quien organiza. Sin datos de otras personas en lo
  * que se pega en grupos.
  */
-import type { GuestMode } from '@ikisai/domain-booking';
+import type { GuestMode } from '../../../../supabase/functions/_domain/booking/mod.ts';
 import { t } from './i18n.ts';
 import { dateRange, missingText } from './labels.ts';
 

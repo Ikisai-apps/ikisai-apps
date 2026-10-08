@@ -28,6 +28,8 @@ export function describeError(error: unknown, name?: string): string {
     case 'DATES_FIXED': return t('Ikisai ya ha fijado la fecha definitiva de este retiro.');
     case 'DATE_UNAVAILABLE': return t('Esa fecha acaba de ocuparse. Elige otra.');
     case 'DATE_NOT_OFFERED': return t('Ikisai ha cambiado las fechas que te propone. Te enseñamos las nuevas.');
+    case 'DRAFT_LOCKED': return t('El retiro ya está prerreservado: los cambios se hablan ahora con el equipo de Ikisai.');
+    case 'EXTRA_NOT_OFFERED': return t('Ese extra ya no se ofrece. Te enseñamos los que hay.');
     case 'ROW_EXISTS': return t('Ese asistente ya existe. Recarga la lista.');
     case 'OUT_OF_SCOPE':
     case 'NO_MEMBERSHIP':

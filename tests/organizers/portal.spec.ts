@@ -305,3 +305,42 @@ test('organizers · fechas (fase 2): calendario de fines de semana, fechas de Ik
   await expect(page.locator('#datesFixed')).toBeVisible();
   await expect(page.locator('#datesFixed input, #datesFixed .orgweekend')).toHaveCount(0);
 });
+
+test('organizers · diseño (fase 2): datos, extras y precio orientativo; calculadora privada; propuesta con «Quiero confirmar»', async ({ page }) => {
+  const { extraId } = await api.seedRates();
+  const w = await api.friday(8);
+  const reservation = await api.draftReservation({ title: 'Retiro a diseñar', status: 'negociacion' });
+  await api.ikisaiOptions(reservation, [[w, plusDays(w, 2)]]);
+  await enter(page, await api.organizerLink([reservation], 'diseno@example.invalid', 'Tere'));
+
+  await expect(page.locator('#summaryDesign')).toBeVisible();
+  await page.locator('#goDesign').click();
+  await expect(page.locator('#designPeople')).toBeVisible();
+  await page.locator('#d-expected_guests').fill('20');
+  // 20 personas × 2 noches × 60 € + 3 días de sala × 200 € = 3000 € (IVA incluido)
+  await expect(page.locator('#quoteTotal')).toHaveText(/3\.?000,00/);
+  await page.locator(`.orgextra[data-rate="${extraId}"] input[type=checkbox]`).check();
+  await expect(page.locator('#quoteTotal')).toHaveText(/3\.?150,00/);
+  await expect(page.locator('#quoteDeposit')).toHaveText(/945,00/);
+  await expect(page.locator('#designSaveState')).toContainText('Guardado');
+
+  // Calculadora privada: 20 asistentes a 300 € frente a 3150 € de Ikisai.
+  await page.locator('#margin-price').fill('300');
+  await expect(page.locator('#marginValue')).toHaveText(/2\.?850,00/);
+  await expect(page.locator('#marginBreakEven')).toHaveText('11 asistentes');
+
+  await page.reload();
+  await expect(page.locator('#d-expected_guests')).toHaveValue('20');
+  await expect(page.locator(`.orgextra[data-rate="${extraId}"] input[type=checkbox]`)).toBeChecked();
+  await expect(page.locator('#margin-price')).toHaveValue('300');
+
+  // Propuesta enviada por el personal: el organizador no la acepta; pide confirmarla.
+  await api.sendProposal(reservation, 20);
+  await page.locator('#tab-propuesta').click();
+  await expect(page.locator('#proposal-1')).toContainText('Pendiente de confirmar');
+  await expect(page.locator('#proposal-1 .proposalTotal')).toHaveText(/2\.?400,00/);
+  await page.locator('#wantConfirm').click();
+  await page.getByRole('button', { name: 'Quiero confirmar' }).last().click();
+  await expect(page.locator('#myRequests')).toContainText('Quiero confirmar');
+  await expect(page.locator('#myRequests')).toContainText('Enviada');
+});
