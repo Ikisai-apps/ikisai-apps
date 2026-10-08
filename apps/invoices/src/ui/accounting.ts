@@ -2,7 +2,7 @@
 import { confirmDialog, el, icon, renderList, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
 import { INCOME_CATEGORY_LABELS, fiscalSummary, issuedSummary, type FiscalSummary } from '@ikisai/domain-invoices';
 import { categoryLabel as categoryName, describeError, type LocalExport } from '../app/client.ts';
-import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
+import { DEDUCTIBILITY_LABELS, TAX_TYPE_LABELS, workingQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, type Mirror, type RangeKind } from '../app/data.ts';
 import { downloadWithSession } from '../app/files.ts';
 import { openInvoice } from './invoices.ts';
 import { loadIssued } from './issued.ts';
@@ -14,7 +14,7 @@ export const mountAccounting: ViewMount = (ctx) => {
   const { main, client } = ctx;
   let mirror: Mirror | null = null;
   let issued: Awaited<ReturnType<typeof loadIssued>> | null = null;
-  let range = currentQuarter();
+  let range = workingQuarter();
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
 
