@@ -201,7 +201,7 @@ test('import_v1 con lo que da «Leer PDF» (líneas con discount_amount null, 02
   const invoiceId = uuid(); let n = 0;
   const args = buildImportArgs({ document, documentSha256: await importDocumentSha256(document), invoiceId, supplier: { mode: 'create', id: uuid() },
     files: [{ file_id: file.file_id, original_filename: 'leido.pdf', page_order: 1 }], uuid: () => `${invoiceId.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
-  const res = await ok([call('invoices.import_v1', args)]);
+  const res = await ok([call('invoices.import_v1', args as unknown as Record<string, unknown>)]);
   assert.equal(res.results[0].result.status, 'pendiente_revision');
   const lineRows = await rows('invoices.invoice_lines', (l) => l.invoice_id === invoiceId);
   assert.equal(lineRows.length, document.lines.length);
