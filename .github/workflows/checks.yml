@@ -111,11 +111,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   uikit:
-    name: Pruebas del ui-kit
+    name: Pruebas del ui-kit · ${{ matrix.shard }}/3
     needs: cambios
     if: needs.cambios.outputs.uikit == 'true'
     runs-on: ubuntu-24.04
+    # La suite del kit pasa ya de 10 min seguida: tres trozos en paralelo (Playwright --shard).
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -124,4 +129,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:ui-kit
+      - run: npm -w @ikisai/ui-kit run test:e2e -- --shard=${{ matrix.shard }}/3
