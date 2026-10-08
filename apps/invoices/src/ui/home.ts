@@ -2,7 +2,7 @@ import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, icon, replace } from '@ikisai/ui-kit';
 import { fb, type FbMark } from './feedback.ts';
 import { fiscalSummary, purchaseItems } from '@ikisai/domain-invoices';
-import { currentQuarter, eur, loadMirror, onAnyTable, rangeLabel, todayIso } from '../app/data.ts';
+import { workingQuarter, eur, loadMirror, onAnyTable, rangeLabel, todayIso } from '../app/data.ts';
 import type { ViewMount } from './shell.ts';
 
 interface InstallPromptEvent extends Event {
@@ -47,7 +47,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     const overdue = due.filter((i) => i.due_date && i.due_date < today).length;
     unpaid.textContent = overdue ? `${due.length} (${overdue} vencidas)` : String(due.length);
     supplierCount.textContent = String(m.suppliers.filter((s) => !s.deleted_at).length);
-    const q = fiscalSummary({ invoices: m.invoices, taxLines: m.taxes }, currentQuarter());
+    const q = fiscalSummary({ invoices: m.invoices, taxLines: m.taxes }, workingQuarter());
     quarterBase.textContent = eur(q.base); quarterVat.textContent = eur(q.vat); quarterCount.textContent = String(q.invoices.validada + q.invoices.archivada);
   }
 
@@ -64,7 +64,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       link({ feedbackId: 'invoices.inicio.sin_asignar', feedbackLabel: 'Sin asignar' }, '#/compras', 'Sin asignar', 'Artículos de facturas validadas sin destino.', unassigned, 'Artículos'),
       link({ feedbackId: 'invoices.inicio.sin_pagar', feedbackLabel: 'Sin pagar' }, '#/facturas', 'Sin pagar', 'Facturas con el pago pendiente.', unpaid, 'Facturas'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.trimestre', 'data-feedback-label': 'Trimestre' },
-        el('h3', null, rangeLabel(currentQuarter())),
+        el('h3', null, rangeLabel(workingQuarter())),
         el('p', null, 'Solo lo validado. Detalle y entrega en Gestoría.'),
         el('dl', { class: 'kv', 'data-feedback-ignore': '' }, el('dt', null, 'Base'), quarterBase, el('dt', null, 'IVA soportado'), quarterVat, el('dt', null, 'Facturas'), quarterCount),
         el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.trimestre.ir_gestoria', 'data-feedback-label': 'Ir a Gestoría', class: 'ghost', type: 'button', onclick: () => navigate('#/gestoria') }, icon('briefcase', 16), 'Ir a Gestoría')),

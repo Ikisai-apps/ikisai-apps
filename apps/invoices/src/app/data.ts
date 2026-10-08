@@ -155,6 +155,16 @@ export function currentQuarter(): DateRange {
   return quarterRange(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) + 1);
 }
 
+/**
+ * Trimestre en el que se trabaja: durante el primer mes de un trimestre, el anterior (es el que se declara: el IVA del 3T
+ * vence el 20 de octubre); después, el actual. Para Inicio y Gestoría; Compras sigue con el actual.
+ */
+export function workingQuarter(now = new Date()): DateRange {
+  const year = now.getFullYear(); const quarter = Math.floor(now.getMonth() / 3) + 1;
+  if (now.getMonth() % 3 !== 0) return quarterRange(year, quarter);
+  return quarter === 1 ? quarterRange(year - 1, 4) : quarterRange(year, quarter - 1);
+}
+
 export type RangeKind = 'quarter' | 'month' | 'year';
 
 export function rangeFor(kind: RangeKind, year: number, part: number): DateRange {

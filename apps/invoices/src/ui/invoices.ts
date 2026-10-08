@@ -272,7 +272,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // --- Acciones ------------------------------------------------------------
   const actions: HTMLElement[] = [];
   if (editable && pendingState) {
-    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error'); } }, icon('check', 18), 'Validar'));
+    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error'); } }, icon('check', 18), 'Validar'));
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.importar_json', 'data-feedback-label': 'Importar JSON', class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
     if (invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original')) {
       actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.extraer', 'data-feedback-label': 'Extraer', class: 'softbtn', type: 'button', id: 'extractInvoice', title: 'Pide a la Edge el JSON del documento y lo lleva a la vista previa de importación', onclick: () => void extractInto(ctx, invoice) }, icon('upload', 18), 'Extraer'));
@@ -613,13 +613,14 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     } catch (err) { error.textContent = describeError(err); }
     save.disabled = false;
   } },
+    field('PDF o fotos', files, 'Elige el PDF y pulsa «Leer PDF»: la app rellena sola los datos y los importes. Las fotos se reducen en el móvil.'),
+    chatgpt,
+    el('p', { class: 'hint form-section' }, 'O a mano (si no hay PDF con texto ni IA):'),
     field('Proveedor', supplier, 'Si no está en la lista, elige «+ Nuevo proveedor…» y créalo aquí. Con el JSON de ChatGPT se crea solo.'),
     supplierFields,
     el('div', { class: 'row2' }, field('Fecha', date, 'Opcional: si la dejas vacía, se toma del PDF al leerlo.'), field('Número de factura', number)),
     field('Objeto', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
     field('Total del documento', total),
-    field('PDF o fotos', files, 'Las fotos se reducen en el móvil y se guardan como imagen WebP (los PDF, como PDF). Puedes añadir más páginas después.'),
-    chatgpt,
     el('p', { class: 'hint' }, 'Vista previa del nombre: ', el('code', { id: 'namePreview' }, '…')),
     error,
   );
@@ -637,7 +638,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
       el('div', { class: 'btnrow', style: 'margin-bottom:12px' }, el('button', { 'data-feedback-id': 'invoices.facturas.nueva.importar_json', 'data-feedback-label': 'Importar JSON de ChatGPT', class: 'softbtn', type: 'button', id: 'importNew', onclick: () => void openImport(ctx, mirror, null) }, icon('upload', 18), 'Importar JSON de ChatGPT')),
       form),
     foot: [el('button', { 'data-feedback-id': 'invoices.facturas.nueva.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), save],
-    initialFocus: supplier,
+    initialFocus: files,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
     onClose: () => { guard.dirtyEditor = false; },
   });
@@ -888,15 +889,19 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   const usageLine = usageText ? el('p', { class: 'hint', id: 'extractionUsage' }, 'Coste de la extracción: ', usageText) : null;
   const extractionNote = !prefill ? null : prefill.document && prefill.origin === 'pdf_text'
     ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Leído del texto del PDF, sin IA. '),
-      'Son propuestas: revisa cada dato antes de importar. La confianza y el texto de origen de cada uno están aquí:', prefill.provenance ? renderProvenance(prefill.provenance) : null,
+      'Son propuestas: revisa abajo proveedor, fecha, categoría y cuadre antes de importar.',
+      prefill.provenance ? el('details', { class: 'provenance' }, el('summary', null, 'De dónde sale cada dato (confianza y texto del PDF)'), renderProvenance(prefill.provenance)) : null,
       prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null))
     : prefill.document
     ? el('div', { class: 'banner info', id: 'extractionNote' }, icon('info', 18), el('div', null, el('strong', null, 'Extraído automáticamente del documento. '), 'Revisa el cuadre antes de importar.', prefill.warnings.length ? el('ul', { class: 'hint' }, ...prefill.warnings.map((w) => el('li', null, w))) : null, usageLine))
     : el('div', { class: 'banner warn', id: 'extractionNote' }, icon('warn', 18), el('div', null, el('strong', null, 'La extracción automática no ha dado un JSON utilizable. '), 'Pega el JSON de ChatGPT o vuelve a intentarlo.', el('ul', { class: 'hint' }, ...(prefill.errors ?? []).map((e) => el('li', null, describeExtractionError(e))), ...prefill.warnings.map((w) => el('li', null, w))), usageLine));
   openSheet({
-    title: target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
-    meta: 'Formato ikisai.invoice.v1. La app recalcula y compara con el total del documento; nada se valida en silencio.',
-    body: el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json o .txt', jsonFile), sourceNote, preview, error),
+    // Auditoría del 3T: con datos ya leídos (PDF o IA), primero la revisión; el JSON queda plegado por si hace falta tocarlo.
+    title: prefill?.document ? `Revisar los datos leídos${target?.code ? ` · ${target.code}` : ''}` : target ? `Importar JSON en ${target.code ?? 'la factura'}` : 'Importar JSON de ChatGPT',
+    meta: 'La app recalcula y compara con el total del documento; nada se valida en silencio.',
+    body: prefill?.document
+      ? el('div', null, queueNote, extractionNote, preview, error, el('details', { class: 'inv-block' }, el('summary', null, 'JSON (ikisai.invoice.v1)'), field('JSON', textarea), field('…o cargar archivo .json o .txt', jsonFile)), sourceNote)
+      : el('div', null, queueNote, extractionNote, promptPanel(), field('JSON', textarea), field('…o cargar archivo .json o .txt', jsonFile), sourceNote, preview, error),
     foot: [el('button', { 'data-feedback-id': 'invoices.facturas.importar.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), confirm],
     initialFocus: prefill?.document ? confirm : textarea,
     beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay una importación sin terminar', text: '¿Descartarla?', confirmLabel: 'Descartar', danger: true }),
@@ -979,13 +984,15 @@ function chatgptSteps(id: string, onPaste: () => void, getDocument?: () => Promi
       if (how === 'files' || how === 'text') toast('Cuando la app de IA responda, comparte el resultado con Ikisai Finance o pégalo con «Pegar resultado».');
     } catch (error) { toast(describeError(error)); }
   } }, icon('upload', 16), 'Analizar con IA') : null;
+  // Auditoría del 3T (8-10-2026): primero «Leer PDF» (gratis, al momento y sin red); la IA, para fotos o PDF escaneados.
+  if (share) share.className = 'softbtn small';
   return el('div', { 'data-feedback-id': 'invoices.facturas.ia', 'data-feedback-label': 'Extraer con IA', class: 'chatgpt-steps', id },
-    el('p', { class: 'chatgpt-title' }, el('strong', null, 'Extraer con ChatGPT'), el('span', { class: 'hint' }, ' · o con otro asistente que lea imágenes')),
-    share ? el('div', { class: 'btnrow' }, share, el('span', { class: 'hint' }, 'Comparte el documento y las instrucciones con tu app de IA.')) : null,
+    el('p', { class: 'chatgpt-title' }, el('strong', null, 'Leer los datos del documento'), el('span', { class: 'hint' }, ' · primero «Leer PDF»; si es una foto o no sale, con ChatGPT u otro asistente')),
     // Fase 2 (ronda 29): leer el texto del PDF en el propio dispositivo, sin IA, con reglas.
-    getDocument && onRead ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ia.leer_pdf', 'data-feedback-label': 'Leer PDF', class: 'softbtn small', type: 'button', dataset: { step: 'read' }, onclick: async () => {
+    getDocument && onRead ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ia.leer_pdf', 'data-feedback-label': 'Leer PDF', class: 'primary small', type: 'button', dataset: { step: 'read' }, onclick: async () => {
       try { const doc = await getDocument(); if (doc) await onRead(doc.file); } catch (error) { toast(describeError(error)); }
     } }, icon('eye', 16), 'Leer PDF'), el('span', { class: 'hint' }, 'Si el PDF tiene texto, la app lo lee aquí mismo, sin IA.')) : null,
+    share ? el('div', { class: 'btnrow' }, share, el('span', { class: 'hint' }, 'Foto o PDF escaneado: comparte el documento y las instrucciones con tu app de IA.')) : null,
     el('ol', { class: 'steps' },
       el('li', null, el('button', { 'data-feedback-id': 'invoices.facturas.ia.copiar_prompt', 'data-feedback-label': 'Copiar prompt', class: 'softbtn small', type: 'button', dataset: { step: 'copy' }, onclick: () => void copyPrompt(promptText) }, icon('attach', 16), '1) Copiar prompt'),
         el('span', { class: 'hint' }, ' Pégalo en ChatGPT y adjunta esta misma foto o PDF.')),
