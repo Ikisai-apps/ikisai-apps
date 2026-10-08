@@ -219,6 +219,7 @@ export function createApp(config: AppConfig): AppHandler {
       { method: 'POST', pattern: 'admin/accounts/:userId/password', handler: ({ ctx, params }) => admin.resetPassword(ctx, params.userId ?? '') },
       { method: 'POST', pattern: 'admin/accounts/:userId/disable', handler: ({ ctx, params }) => admin.setDisabled(ctx, params.userId ?? '', true) },
       { method: 'POST', pattern: 'admin/accounts/:userId/enable', handler: ({ ctx, params }) => admin.setDisabled(ctx, params.userId ?? '', false) },
+      { method: 'POST', pattern: 'admin/accounts/:userId/name', handler: async ({ ctx, params, json }) => admin.setDisplayName(ctx, params.userId ?? '', await json()) },
     );
   }
   if (config.portalIssuer) {

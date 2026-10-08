@@ -107,11 +107,19 @@ export function createAdmin(supabase: Supabase) {
     return { userId, disabled };
   }
 
+  /** FB_2026_013: el nombre de la ficha de Personas manda; Central lo copia a la cuenta enlazada. */
+  async function setDisplayName(ctx: RequestContext, userId: string, body: any) {
+    human(ctx);
+    if (!UUID.test(userId)) fail(422, 'INVALID_OPERATION', 'userId inválido.');
+    if (typeof body?.displayName !== 'string') fail(422, 'INVALID_OPERATION', 'displayName requerido.');
+    return supabase.rpc('core_admin_set_display_name', { p_actor: ctx.user.id, p_user: userId, p_name: body.displayName });
+  }
+
   /** Almacenamiento (ALMACENAMIENTO.md fase 0): tamaños, niveles respecto a los límites e historial semanal. */
   async function storage(ctx: RequestContext) {
     human(ctx);
     return supabase.rpc('core_admin_storage', { p_actor: ctx.user.id });
   }
 
-  return { accounts, setMembership, invite, accessLog, agents, revokeAgent, resetPassword, setDisabled, storage };
+  return { accounts, setMembership, invite, accessLog, agents, revokeAgent, resetPassword, setDisabled, setDisplayName, storage };
 }
