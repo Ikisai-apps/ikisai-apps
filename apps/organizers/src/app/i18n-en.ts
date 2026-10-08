@@ -429,7 +429,6 @@ export const EN: Dictionary = {
   'Señal': 'Deposit',
   'Saldo': 'Balance',
   'antes del {fecha}': 'by {fecha}',
-  'en las 24 horas siguientes al final del retiro': 'within 24 hours after the end of the retreat',
   'Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.': 'According to the accepted proposal (version {n}). Paid amounts come from the invoices that have been paid.',
   'Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.': 'When the Ikisai team finalises the proposal with you, you will see here what you have booked, the deposit and the due dates.',
   'Facturación': 'Invoicing',
