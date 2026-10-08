@@ -353,7 +353,7 @@ PORTALES_V2 resuelve los seis puntos que quedaron abiertos en la primera versió
   - La registrada de otra herramienta (solo PDF guardado) muestra «Pídenosla», con el contacto público, hasta que exista la ruta firmada `portal-files`.
 - **«Cómo pagar»:** el texto de Central en el idioma elegido.
 - **Lo contratado** (Booking, `portal_reservation_detail.contract`, #312): total de la propuesta aceptada, lo pagado (lo cobrado según Finance), el **saldo pendiente** (contratado − cobrado, nunca negativo) y la forma de pago acordada.
-  - Vencimientos de la señal y del saldo, con fecha e importe tal como llegan en `due`; cada uno sale «Pagado» si lo cobrado cubre lo acumulado hasta él.
+  - Vencimientos de la señal y del saldo, con fecha e importe tal como llegan en `due` (el saldo, «en las 24 horas siguientes al final del retiro», decisión del usuario del 8-10-2026); cada uno sale «Pagado» si lo cobrado cubre lo acumulado hasta él.
   - Sin propuesta aceptada, un aviso de que aparecerá al cerrarla.
   - Cálculo puro en `app/quote.ts` (`balanceOf`), probado.
 
