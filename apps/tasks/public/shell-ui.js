@@ -60,7 +60,7 @@ function shellMount(){
   const K=IkisaiKit,app=document.getElementById('app');
   const more=K.el('button',{type:'button',class:'iconbtn mobile-only',id:'moreBtn','aria-label':'Menú principal','aria-controls':'kebab','aria-expanded':'false'},shellIcon('menu'));
   // La marca lleva el icono de Tasks del kit, como el resto de apps (Booking la cama, Central la cuadrícula…).
-  const bar=K.renderWorkspaceBar({name:'Ikisai',rowClass:'brandrow',markButton:true,markIcon:'tasks',tools:[more],rows:[shellTabs(),shellViews()]});
+  const bar=K.renderWorkspaceBar({name:'Ikisai Tasks',rowClass:'brandrow',markButton:true,markIcon:'tasks',tools:[more],rows:[shellTabs(),shellViews()]});
   // La marca abre el lanzador común: las apps de Ikisai a las que tiene acceso esta cuenta.
   shellLauncher().attach(bar.querySelector('#appLauncher'));
   const menu=shellMenuParts();menu.id='kebab';shellMenuStamp=shellMenuKey();

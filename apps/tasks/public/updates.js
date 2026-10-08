@@ -44,5 +44,8 @@ if ('serviceWorker' in navigator && isSecureContext) {
     if(navigator.onLine)await current.update();
   }).catch(()=>{});
   addEventListener('online',()=>registration?.update().catch(()=>{}));
+  // Una PWA puede pasar días abierta en segundo plano: al volver a primer plano también se busca versión nueva (y, si la hay,
+  // sale el aviso; la aplicación automática es solo al abrir).
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')registration?.update().catch(()=>{})});
   setInterval(()=>{if(!document.hidden&&navigator.onLine)registration?.update().catch(()=>{});},5*60*1000);
 }

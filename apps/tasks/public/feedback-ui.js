@@ -120,5 +120,5 @@ downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',(
 /* Red de seguridad: las hojas y diálogos del kit que aún se monten en body sin contenedor se pasan a #kitLayer,
    que lleva .ikisai-kit: con el CSS del kit acotado (vite.config.ts), fuera de ahí salen sin estilo y debajo de la cáscara. */
 new MutationObserver(changes=>{for(const change of changes)for(const node of change.addedNodes){
-  if(node.nodeType===1&&node.parentNode===document.body&&node.matches('.sheetback,.dialogback'))sheetKitLayer().appendChild(node)}})
+  if(node.nodeType===1&&node.parentNode===document.body&&node.matches('.sheetback,.dialogback,.toast[role="status"]:not(#toast)'))sheetKitLayer().appendChild(node)}})
   .observe(document.body,{childList:true});
