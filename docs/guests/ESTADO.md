@@ -63,6 +63,8 @@
 
 - 2026-10-08 · «Ayuda y sugerencias» con `id` y `requestId` estables del formulario (kit 0.25.2): el doble toque no duplica y la hoja la cierra el kit con su aviso. Prueba común `portalHelpRoundTrip` en `@smoke`, también con el teclado abierto en el móvil.
 
+- 2026-10-08 · Un solo `vite build` para las pruebas de Playwright aunque haya varios workers (`tests/guests/build.ts`, patrón de Tasks): huella en `dist/.e2e-stamp` y cerrojo entre procesos. Probado tres veces seguidas con `--workers=2`.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
