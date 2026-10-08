@@ -262,17 +262,6 @@ test('organizers · conservación (B18): las respuestas se borran a los 6 meses 
   const has = async () => (await booking.t.db.query<{ v: boolean }>('select organizers.retention_has_work() v')).rows[0]!.v;
   assert.equal(await has(), false, 'el retiro aún no ha terminado');
 
-  // K7 (pendiente de Core): la cuenta de servicio `organizers`. Hasta que esté en main, la prueba la da de alta en su base.
-  const known = (await booking.t.db.query<{ g: unknown }>(`select core.service_grants('organizers') g`)).rows[0]!.g;
-  if (!known) {
-    await booking.t.db.query(`create or replace function core.service_grants(p_name text) returns jsonb language sql immutable as $f$
-      select case p_name
-        when 'feedback' then jsonb_build_object('displayName', 'Feedback (sistema)', 'memberships', jsonb_build_array(jsonb_build_object('app', 'tasks', 'role', 'editor')))
-        when 'booking' then jsonb_build_object('displayName', 'Booking (sistema)', 'memberships', jsonb_build_array(jsonb_build_object('app', 'tasks', 'role', 'editor')))
-        when 'organizers' then jsonb_build_object('displayName', 'Organizers (sistema)', 'memberships', '[]'::jsonb)
-        else null end $f$`);
-  }
-
   // El retiro terminó hace más de seis meses.
   await booking.t.db.query(`update booking.reservations set start_date = date '2025-01-10', end_date = date '2025-01-12' where id = $1`, [R]);
   assert.equal(await has(), true);

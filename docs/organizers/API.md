@@ -434,7 +434,7 @@ organizers.offers           §16.2
     - el fin lo da `booking.reservation_end_dates` (B18, #335);
     - el tick diario `worker/retention/tick` (sonda `organizers.retention_has_work`) vacía el valor y borra cada respuesta vencida en un lote del sistema (`apply_system_operations`), para que también desaparezca de los dispositivos;
     - una reserva borrada, cancelada o perdida sin fecha de fin caduca ya;
-    - necesita la cuenta de servicio `organizers` en el núcleo (K7).
+    - el lote lo firma la cuenta de servicio «Organizers (sistema)» (K7, #353).
 
 ### 15.2 Módulos y capacidades de la V1
 
