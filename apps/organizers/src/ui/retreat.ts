@@ -109,7 +109,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     if (tab === 'fechas' && showDates) sub(renderDates(ctx, reservationId));
     else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
     else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
-    else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId));
+    else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId, d.contract ?? null));
     else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
     else if (tab === 'cocina' && showKitchen) content.push(renderKitchen(data.kitchen.value));
     else content.push(...renderSummary(ctx, reservationId, data, showGuests, showDates, showDesign));

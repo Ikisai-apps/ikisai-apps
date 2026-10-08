@@ -347,6 +347,9 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
 
 test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de Finance; factura sin documento; cómo pagar', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con facturas', confirm: true });
+  await api.seedRates();
+  const proposal = await api.sendProposal(reservation, 20);
+  await api.acceptProposal(proposal);
   await api.registeredInvoice(reservation, '2026-0101', 300, true);
   await api.registeredInvoice(reservation, '2026-0102', 700, false);
   await enter(page, await api.organizerLink([reservation], 'pagos@example.invalid', 'Nora'));
@@ -359,6 +362,13 @@ test('organizers · pagos y facturas (fase 3): facturado, cobrado y pendiente de
   await expect(page.locator('#moneyInvoices')).toContainText('Cobrada');
   await expect(page.locator('#paymentInstructions')).toContainText('Por transferencia');
 
+  // Lo contratado (Booking): 2800 € con señal de 840 €; pagado 300 € (Finance); saldo 2500 €; la señal aún no está cubierta.
+  await expect(page.locator('#contractTotal')).toHaveText(/2\.?800,00/);
+  await expect(page.locator('#contractPaid')).toHaveText(/300,00/);
+  await expect(page.locator('#contractBalance')).toHaveText(/2\.?500,00/);
+  await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('840,00');
+  await expect(page.locator('#contractDue li[data-kind="senal"]')).toContainText('Pendiente');
+
   // Registrada de otra herramienta: aún no se abre desde el portal; se pide a Ikisai.
   await page.locator('#moneyInvoices .orginvoice').first().click();
   await expect(page.locator('#askInvoice')).toContainText('organiza@ikisai.com');
@@ -370,7 +380,7 @@ test('organizers · factura emitida desde Finance: la copia congelada se pinta e
   // Lecturas de Finance simuladas (emitir de verdad exige la entidad de Central completa).
   await page.route('**/api/v1/read/invoices.portal_reservation_money', (route) => route.fulfill({ json: {
     reservation_id: reservation, currency: 'EUR', totals: { invoiced: 1100, collected: 0, pending: 1100 },
-    invoices: [{ id: invoice, number: 'F2026-0001', issue_date: '2026-10-08', type: 'F1', rectifies: null, base: 1000, tax: 100, withholding: 0, total: 1100, status: 'emitida', collected: false, collected_at: null, has_document: true }],
+    invoices: [{ id: invoice, number: 'F2026-0001', issue_date: '2026-10-08', type: 'F1', rectifies: null, base: 1000, tax: 100, withholding: 0, total: 1100, status: 'emitida', collected: false, collected_at: null, has_document: true, purpose: 'saldo' }],
   } }));
   await page.route('**/api/v1/read/invoices.portal_invoice_document', (route) => route.fulfill({ json: {
     id: invoice, number: 'F2026-0001', issue_date: '2026-10-08', status: 'emitida', files: [],
@@ -387,6 +397,8 @@ test('organizers · factura emitida desde Finance: la copia congelada se pinta e
   } }));
   await enter(page, await api.organizerLink([reservation], 'emitida@example.invalid', 'Olga'));
   await page.locator('#tab-pagos').click();
+  // Concepto del cobro (Finance #313): rótulo «Saldo».
+  await expect(page.locator('#moneyInvoices .orgpurpose')).toHaveText('Saldo');
   await page.locator('#moneyInvoices .orginvoice').first().click();
   await expect(page.locator('#invoiceDocumentView')).toContainText('Factura F2026-0001');
   await expect(page.locator('#docRecipient')).toContainText('Asociación Organiza');

@@ -22,6 +22,13 @@ export interface ReservationDetail extends Omit<PortalReservation, 'guests' | 'c
   /** Booking B14 (#310): lo necesario para pintar el borrador tal como está. */
   revision?: number; event_type?: string | null; dates_definitive?: boolean; organizer_notes?: string | null;
   special_setup?: boolean; technical_support?: boolean;
+  /** Lo contratado (Booking F1, #312): propuesta aceptada, señal y vencimientos. Nunca lo pagado (eso es de Finance). */
+  contract?: Contract | null;
+}
+
+export interface Contract {
+  proposal_version: number; total: number | string; deposit_required: number | string; prices_include_vat: boolean; vat_amount: number | string | null;
+  payment_type: string | null; due: Array<{ kind: 'senal' | 'saldo'; date: string | null; amount: number | string }>;
 }
 
 export interface PortalRestriction { id?: string; restriction_type: string; subject: string | null; severity: string | null; kitchen_notes: string | null; source?: 'guest' | 'organizer' | 'staff' }
@@ -100,6 +107,8 @@ export interface PortalProposal {
 export interface PortalInvoice {
   id: string; number: string; issue_date: string; type: string; rectifies: string[] | null; base: number | string; tax: number | string;
   withholding: number | string; total: number | string; status: 'emitida' | 'rectificada' | 'registrada'; collected: boolean; collected_at: string | null; has_document: boolean;
+  /** Concepto del cobro (Finance #313): señal, saldo o extras; `general` o `null`, sin rótulo. */
+  purpose?: 'senal' | 'saldo' | 'extras' | 'general' | null;
 }
 export interface PortalMoney { reservation_id: string; currency: string; invoices: PortalInvoice[]; totals: { invoiced: number | string; collected: number | string; pending: number | string } }
 /** Copia congelada de una factura (F2) o los PDF guardados de una registrada (aún sin URL firmada para el portal). */

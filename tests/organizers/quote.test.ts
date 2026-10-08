@@ -58,3 +58,16 @@ test('organizers · calculadora privada: ingresos, gastos, margen y punto de equ
   assert.deepEqual(marginOf({ price: 300, attendees: 20, ikisai: 3000, otherCosts: 500 }), { revenue: 6000, cost: 3500, margin: 2500, breakEven: 12 });
   assert.deepEqual(marginOf({ price: 0, attendees: 20, ikisai: 3000, otherCosts: 0 }), { revenue: 0, cost: 3000, margin: -3000, breakEven: null });
 });
+
+test('organizers · saldo: contratado (Booking) menos cobrado (Finance); cada vencimiento, pagado si lo cobrado lo cubre', async () => {
+  const { balanceOf } = await import('../../apps/organizers/src/app/quote.ts');
+  const contract = { proposal_version: 2, total: 2800, deposit_required: 840, prices_include_vat: true, vat_amount: 254.55, payment_type: 'transferencia',
+    due: [{ kind: 'senal' as const, date: '2026-10-13', amount: 840 }, { kind: 'saldo' as const, date: '2027-03-12', amount: 1960 }] };
+  const none = balanceOf(contract, 0);
+  assert.deepEqual([none.balance, none.due.map((d) => d.paid)], [2800, [false, false]]);
+  const deposit = balanceOf(contract, 840);
+  assert.deepEqual([deposit.balance, deposit.due.map((d) => d.paid)], [1960, [true, false]]);
+  const all = balanceOf(contract, 2800);
+  assert.deepEqual([all.balance, all.due.map((d) => d.paid)], [0, [true, true]]);
+  assert.equal(balanceOf(contract, 3000).balance, 0, 'si se cobra de más, el saldo no es negativo');
+});

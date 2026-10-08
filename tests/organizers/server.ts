@@ -33,6 +33,8 @@ export interface OrganizersTestServer {
   seedRates(): Promise<{ extraId: string }>;
   /** Propuesta enviada por el personal para una reserva, con una línea. Devuelve su id. */
   sendProposal(reservationId: string, persons: number): Promise<string>;
+  /** El personal acepta la propuesta (fija importe y señal en Booking). */
+  acceptProposal(proposalId: string): Promise<void>;
   /**
    * Factura registrada en Finance (de otra herramienta, sin copia congelada) con su ingreso asignado a la reserva, como la
    * prueba de Finance (tests/invoices/sql.test.ts). `collected` la marca cobrada.
@@ -174,6 +176,10 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
         await financeCommit([{ op: 'update', table: 'invoices.issued_invoices', id, expectedRevision: revision, fields: { payment_status: 'cobrada', paid_at: today } }]);
       }
       return id;
+    },
+    async acceptProposal(proposalId) {
+      const revision = Number((await booking.t.db.query<{ revision: string }>('select revision from booking.proposals where id = $1', [proposalId])).rows[0]!.revision);
+      await commit([{ op: 'call', procedure: PROCEDURES.acceptProposal, args: { proposal_id: proposalId, expectedRevision: revision } }]);
     },
     setOffline(on) { offline = on; },
     close: async () => {

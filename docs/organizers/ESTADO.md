@@ -27,11 +27,13 @@
 
 - 2026-10-08 · Pagos y facturas (Finance F1 y F2, Central F3): pestaña «Pagos» con lo facturado, cobrado y pendiente, las facturas del retiro (la emitida, imprimible desde su copia congelada; la registrada, a pedir a Ikisai) y «Cómo pagar». Pruebas en `api.test.ts` y `portal.spec.ts`.
 
+- 2026-10-08 · Lo contratado y el saldo en «Pagos» (Booking #312): total, pagado según Finance, saldo pendiente, forma de pago y vencimientos con su estado.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).
-- Fase 3: lo contratado y el saldo, cuando Booking publique su lectura de dinero del retiro; abrir el PDF de una factura registrada, cuando exista `portal-files`.
+- Fase 3: abrir el PDF de una factura registrada, cuando exista `portal-files` (K2).
 
 - Alta de infraestructura (C5): publicación, Pages y `organizers.ikisai.com` con `organiza.ikisai.com`.
 - Textos comunes de Central (C7): la app ya los lee; mientras, usa la reserva.

@@ -7,7 +7,7 @@
  */
 // Ruta directa al dominio (no el alias de Vite) para que las pruebas de Node puedan importarlo tal cual.
 import { applyMinimum, proposalTotals, quantityFor, round2, stayLength, suggestLines, type LineLike, type ReservationForRates } from '../../../../supabase/functions/_domain/booking/rates.ts';
-import type { ExtraRequest, PortalConditions, PortalRate } from './api.ts';
+import type { Contract, ExtraRequest, PortalConditions, PortalRate } from './api.ts';
 
 export interface QuoteInput {
   reservation: ReservationForRates;
@@ -87,4 +87,18 @@ export function marginOf(input: { price: number; attendees: number; ikisai: numb
   const revenue = round2(Math.max(0, input.price) * Math.max(0, input.attendees));
   const cost = round2(Math.max(0, input.ikisai) + Math.max(0, input.otherCosts));
   return { revenue, cost, margin: round2(revenue - cost), breakEven: input.price > 0 ? Math.ceil(cost / input.price) : null };
+}
+
+/**
+ * Saldo = contratado (Booking) − cobrado (Finance). Cada vencimiento queda cubierto si lo cobrado llega a lo acumulado
+ * hasta él (primero la señal y luego el saldo).
+ */
+export function balanceOf(contract: Contract, collected: number): { contracted: number; collected: number; balance: number; due: Array<{ kind: string; date: string | null; amount: number; paid: boolean }> } {
+  const contracted = Number(contract.total) || 0;
+  let accumulated = 0;
+  const due = contract.due.map((d) => {
+    accumulated += Number(d.amount) || 0;
+    return { kind: d.kind, date: d.date, amount: Number(d.amount) || 0, paid: collected + 0.005 >= accumulated };
+  });
+  return { contracted, collected, balance: Math.max(0, Math.round((contracted - collected) * 100) / 100), due };
 }

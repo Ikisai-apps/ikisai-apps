@@ -7,18 +7,22 @@
  */
 import { createPrintView, el, openSheet, replace, toast } from '@ikisai/ui-kit';
 import type { IssuedAddress, IssuedDocument, IssuerSnapshot } from '../../../../supabase/functions/_domain/invoices/issued.ts';
-import type { PortalInvoice, PortalMoney } from '../app/api.ts';
+import type { Contract, PortalInvoice, PortalMoney } from '../app/api.ts';
+import { balanceOf } from '../app/quote.ts';
 import { describeError } from '../app/client.ts';
 import { commonText, contactLine, textParagraphs } from '../app/common-texts.ts';
-import { i18n, t } from '../app/i18n.ts';
+import { i18n, L, t } from '../app/i18n.ts';
 import { dayLabel } from '../app/labels.ts';
 import { failure, fbMark, loading, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 const money = (n: number | string) => i18n.formatMoney(Number(n));
+const PURPOSES: Record<string, string> = { senal: L('Señal'), saldo: L('Saldo'), extras: L('Extras') };
+const PAYMENT_TYPES: Record<string, string> = { efectivo: L('Efectivo'), tarjeta: L('Tarjeta'), transferencia: L('Transferencia'), plataforma_pago: L('Plataforma de pago'), otro: L('Otra') };
+
 const issueDay = (date: string) => dayLabel(`${date.slice(0, 10)}T12:00:00Z`);
 
-export function renderPayments(ctx: ViewContext, reservationId: string): HTMLElement {
+export function renderPayments(ctx: ViewContext, reservationId: string, contract: Contract | null): HTMLElement {
   const host = el('div', { id: 'payments', 'data-feedback-id': 'organizers.pagos', 'data-feedback-label': 'Pagos y facturas' }, loading());
   let alive = true;
 
@@ -60,16 +64,33 @@ export function renderPayments(ctx: ViewContext, reservationId: string): HTMLEle
       },
       el('span', { class: 'orginvoice-main' },
         el('strong', null, inv.type.startsWith('R') ? t('Rectificativa {numero}', { numero: inv.number }) : t('Factura {numero}', { numero: inv.number })),
-        el('span', { class: 'muted small' }, issueDay(inv.issue_date), inv.rectifies?.length ? ` · ${t('rectifica {numeros}', { numeros: inv.rectifies.join(', ') })}` : '')),
+        el('span', { class: 'muted small' }, inv.purpose && PURPOSES[inv.purpose] ? el('span', { class: 'chip small orgpurpose' }, t(PURPOSES[inv.purpose])) : null, ' ', issueDay(inv.issue_date), inv.rectifies?.length ? ` · ${t('rectifica {numeros}', { numeros: inv.rectifies.join(', ') })}` : '')),
       el('span', { class: 'orginvoice-side' },
         el('strong', null, money(inv.total)),
         el('span', { class: `chip small ${inv.collected ? 'ok' : 'warn'}` }, inv.collected ? t('Cobrada') : t('Pendiente')))),
       'organizers.pagos.factura.abrir', 'Abrir factura')))
       : el('p', { class: 'muted', id: 'noInvoices' }, t('Aún no hay facturas de este retiro.'));
     const instructions = commonText('payment.instructions');
+    const b = contract ? balanceOf(contract, Number(totals.collected) || 0) : null;
+    const contracted = contract && b
+      ? section(t('Lo contratado'), { id: 'moneyContract' },
+        el('dl', { class: 'kv orgtotals' },
+          el('dt', null, t('Total contratado')), el('dd', { id: 'contractTotal' }, money(b.contracted)),
+          el('dt', null, t('Pagado')), el('dd', { id: 'contractPaid' }, money(b.collected)),
+          el('dt', null, t('Saldo pendiente')), el('dd', { id: 'contractBalance', class: b.balance > 0 ? 'warn-text' : '' }, el('strong', null, money(b.balance))),
+          contract.payment_type ? el('dt', null, t('Forma de pago acordada')) : null,
+          contract.payment_type ? el('dd', null, t(PAYMENT_TYPES[contract.payment_type] ?? contract.payment_type)) : null),
+        el('h4', null, t('Vencimientos')),
+        el('ul', { class: 'plainlist orgdue', id: 'contractDue' }, ...b.due.map((d) => el('li', { 'data-kind': d.kind },
+          el('strong', null, d.kind === 'senal' ? t('Señal') : t('Saldo')), ` · ${money(d.amount)}`,
+          d.date ? ` · ${t('antes del {fecha}', { fecha: issueDay(d.date) })}` : '', ' ',
+          el('span', { class: `chip small ${d.paid ? 'ok' : 'warn'}` }, d.paid ? t('Pagado') : t('Pendiente'))))),
+        el('p', { class: 'muted small' }, t('Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.', { n: contract.proposal_version })))
+      : el('p', { class: 'muted', id: 'noContract' }, t('Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.'));
     replace(host,
       staleAt ? staleNote(staleAt) : null,
-      section(t('Resumen'), { id: 'moneyTotals' },
+      contracted,
+      section(t('Facturación'), { id: 'moneyTotals' },
         el('dl', { class: 'kv orgtotals' },
           el('dt', null, t('Facturado')), el('dd', { id: 'moneyInvoiced' }, money(totals.invoiced)),
           el('dt', null, t('Cobrado')), el('dd', { id: 'moneyCollected' }, money(totals.collected)),

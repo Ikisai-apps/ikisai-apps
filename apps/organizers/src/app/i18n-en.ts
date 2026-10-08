@@ -416,6 +416,23 @@ export const EN: Dictionary = {
   'Rectificativa {numero}': 'Corrective invoice {numero}',
   'rectifica {numeros}': 'corrects {numeros}',
 
+  'Efectivo': 'Cash',
+  'Tarjeta': 'Card',
+  'Transferencia': 'Bank transfer',
+  'Plataforma de pago': 'Payment platform',
+  'Lo contratado': 'What you have booked',
+  'Total contratado': 'Total booked',
+  'Pagado': 'Paid',
+  'Saldo pendiente': 'Balance due',
+  'Forma de pago acordada': 'Agreed payment method',
+  'Vencimientos': 'Due dates',
+  'Señal': 'Deposit',
+  'Saldo': 'Balance',
+  'antes del {fecha}': 'by {fecha}',
+  'Según la propuesta aceptada (versión {n}). Lo pagado sale de las facturas cobradas.': 'According to the accepted proposal (version {n}). Paid amounts come from the invoices that have been paid.',
+  'Cuando el equipo de Ikisai cierre la propuesta contigo, verás aquí lo contratado, la señal y los vencimientos.': 'When the Ikisai team finalises the proposal with you, you will see here what you have booked, the deposit and the due dates.',
+  'Facturación': 'Invoicing',
+
   // Cabecera
   '¿Salir de Organizers?': 'Leave Organizers?',
   'Para volver a entrar necesitarás el enlace que te enviamos.': 'To get back in you will need the link we sent you.',
