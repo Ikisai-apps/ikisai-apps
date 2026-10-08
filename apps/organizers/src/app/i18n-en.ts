@@ -231,8 +231,6 @@ export const EN: Dictionary = {
   'Resuelto': 'Resolved',
   'Cerrado': 'Closed',
   'Ayuda y sugerencias': 'Help and suggestions',
-  'Lo enviaremos en cuanto vuelva la conexión.': 'We will send it as soon as you are back online.',
-  'Gracias. Lo hemos recibido.': 'Thank you. We have received it.',
   'Lo que me has enviado': 'What you have sent us',
   'Cuéntanos un problema o una idea sobre la aplicación, tu retiro o un espacio.': 'Tell us about a problem or an idea about the app, your retreat or a space.',
 

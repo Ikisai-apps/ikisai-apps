@@ -5,7 +5,7 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { L, t } from '../app/i18n.ts';
 import {
-  collectFeedbackContext, createFeedbackClient, createFeedbackProgressiveForm, el, openSheet, replace, toast,
+  collectFeedbackContext, createFeedbackClient, createFeedbackProgressiveForm, el, openSheet, replace,
   type FeedbackIntent, type FeedbackReport, type FeedbackSubject, type ProgressiveAnswers, type ProgressiveStep,
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
@@ -77,9 +77,10 @@ export async function openHelp(options: HelpOptions): Promise<void> {
     onSubmit: async (result) => {
       const shape = reportShape(result.answers, reservationId);
       const node = result.node ?? { id: shape.scope ? 'organizers.retiro' : 'organizers.retiros', path: [shape.scope ? 'Retiro' : 'Mis retiros'] };
-      const id = crypto.randomUUID();
+      // `id` y `requestId` estables por formulario (kit 0.25.2): un doble toque no crea un segundo reporte.
+      const { id, requestId } = result;
       await reports.enqueue({
-        id, requestId: crypto.randomUUID(), userId, app: 'organizers', nodeId: node.id, nodePath: node.path,
+        id, requestId, userId, app: 'organizers', nodeId: node.id, nodePath: node.path,
         message: shape.place ? `[${shape.place}] ${result.message}` : result.message,
         intent: shape.intent, subject: shape.subject, images: result.images, updatedAt: new Date().toISOString(),
         context: await collectFeedbackContext({ app: 'organizers', node: { id: node.id, path: node.path, element: null }, role: 'editor' }),
@@ -88,7 +89,7 @@ export async function openHelp(options: HelpOptions): Promise<void> {
       });
       await reports.flush().catch(() => undefined);
       const pending = (await reports.pending()).some((item) => item.id === id);
-      toast(pending ? t('Lo enviaremos en cuanto vuelva la conexión.') : t('Gracias. Lo hemos recibido.'));
+      // El aviso («Enviado. Gracias.» o «Pendiente…») y el cierre de la hoja los pone el kit.
       void paintMine();
       return pending ? 'pending' : 'sent';
     },

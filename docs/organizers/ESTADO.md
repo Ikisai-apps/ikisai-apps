@@ -52,6 +52,8 @@
 
 - 2026-10-08 · Condiciones de la propuesta: el texto de Booking (#358) llega con las cifras resueltas y se pinta tal cual (párrafos, saltos de línea y negritas, sin HTML); la lista de tramos del portal queda solo de reserva cuando no hay texto.
 
+- 2026-10-08 · «Ayuda y sugerencias» con `result.id` y `result.requestId` estables del formulario progresivo (kit 0.25.2): un doble toque no duplica el reporte; el aviso y el cierre los pone el kit. Prueba común `portalHelpRoundTrip` en `@smoke`, también con el teclado del móvil.
+
 ## Pendiente
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
