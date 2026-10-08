@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.25.1: un solo envío por composer, cierre inmediato y aviso dentro de lo visible con teclado (FB_2026_016/017 en Finance).
 - v0.25.0: el composer se cierra tras su envío aunque la bandeja tenga otro atascado; prueba común `feedbackRoundTrip`.
 - v0.24.0: capa global para lo flotante (`setKitLayer`) y aviso que no se estira (fallo del usuario en PC).
 - v0.23.0: versiones nuevas automáticas al abrir (`initAppUpdates`), común a todas las apps.

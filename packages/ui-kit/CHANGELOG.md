@@ -1,5 +1,16 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.25.1 · 8 de octubre de 2026
+
+Doble envío del feedback en Finance (FB_2026_016 y FB_2026_017, con un segundo de diferencia, desde una hoja abierta y con el teclado abierto):
+- **Un solo envío por composer:**
+  - «Enviar» queda bloqueado desde el primer toque hasta que el composer se cierra (antes se rehabilitaba en «Enviado», durante el cierre);
+  - el `id` y el `requestId` son los mismos en cada intento mientras el contenido no cambie, así que el servidor deduplica. Si tras un fallo se cambia el texto, van nuevos, para no chocar con la huella.
+- **Cierre inmediato:** tras «Enviado» se cierra enseguida y suelta el teclado.
+- **Aviso dentro de lo visible:** el aviso se coloca dentro de la parte visible (`visualViewport`), así que con el teclado abierto ya no queda fuera de la vista. Con una hoja abierta, sigue saliendo bajo su cabecera.
+- **Prueba común:** `feedbackRoundTrip` pulsa dos veces por defecto y admite `keyboard` (alto visible simulado); `simulateKeyboard(page, alto)` se exporta.
+- `v31` cubre el caso exacto: 484×1008, hoja «Nueva factura», teclado de 1008 a 686 px y doble toque → un solo reporte, composer cerrado y aviso visible.
+
 ## 0.25.0 · 8 de octubre de 2026
 
 - **El composer se cierra tras su envío** aunque la bandeja tenga otro reporte atascado (fallo en Finance: «el reporte llega pero la hoja no se cierra y no se ve el aviso»).

@@ -44,3 +44,41 @@ test('un reporte atascado en la bandeja no deja abierto el composer del siguient
   await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 5_000 });
   await expect(page.locator('.toast.show')).toContainText('Enviado · FB_');
 });
+
+test('caso de Finance (FB_2026_016/017) @smoke: hoja abierta, teclado abierto y doble toque → un solo reporte, cerrado y con aviso', async ({ page }) => {
+  await page.setViewportSize({ width: 484, height: 1008 });
+  await fresh(page);
+  await page.evaluate(() => {
+    const kit = (window as any).ikisaiKit;
+    kit.openSheet({ title: 'Nueva factura', body: kit.el('div', { 'data-feedback-id': 'demo.facturas.nueva.formulario', 'data-feedback-label': 'Formulario' },
+      kit.el('label', { class: 'field' }, kit.el('span', null, 'Concepto'), kit.el('input', { id: 'concepto' }))) });
+  });
+  await page.locator('#concepto').focus();
+  await page.evaluate(() => (window as any).ikisaiFeedback.feedback.signal(document.querySelector('[data-feedback-id="demo.facturas.nueva.formulario"]')));
+  const composer = page.locator('.fb-composer');
+  await expect(composer).toBeVisible();
+  await composer.locator('.fb-message').fill('No se guarda el concepto');
+  const { simulateKeyboard } = await import('../testing/feedback-smoke.ts');
+  await simulateKeyboard(page, 686);
+  // Dos toques seguidos, como hizo el usuario al no ver el aviso.
+  await composer.locator('.fb-send').evaluate((b) => { (b as HTMLButtonElement).click(); (b as HTMLButtonElement).click(); });
+  await expect(composer).toHaveCount(0, { timeout: 3_000 });
+  const toast = page.locator('.toast.show').filter({ hasText: /Enviado · FB_/ });
+  await expect(toast).toBeVisible();
+  const inside = await toast.evaluate((n) => { const r = n.getBoundingClientRect(); const vv = window.visualViewport!; return r.top >= vv.offsetTop && r.bottom <= vv.offsetTop + vv.height; });
+  expect(inside).toBe(true);
+  await page.waitForTimeout(1200);
+  const st = await page.evaluate(() => (window as any).ikisaiFeedback.fbState());
+  expect(st.reports).toHaveLength(1);
+  expect(st.posts).toBe(1);
+  // La hoja de la app sigue ahí, con su contenido.
+  await expect(page.locator('#concepto')).toBeVisible();
+});
+
+test('recorrido común con teclado y doble toque (móvil): un solo reporte', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fresh(page);
+  await feedbackRoundTrip(page, { launcher: '#demoLauncher', target: '#fbAction', keyboard: 560 });
+  await page.waitForTimeout(800);
+  expect((await page.evaluate(() => (window as any).ikisaiFeedback.fbState())).reports).toHaveLength(1);
+});

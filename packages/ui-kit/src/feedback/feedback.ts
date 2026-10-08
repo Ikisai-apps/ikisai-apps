@@ -254,7 +254,12 @@ export function createFeedback(options: FeedbackOptions): Feedback {
   async function compose(node: FeedbackNode, anchor: Element | null | undefined, existing?: FeedbackDraft): Promise<FeedbackComposer> {
     current?.close();
     const user = options.userId();
-    const draftId = existing?.id ?? newId();
+    let draftId = existing?.id ?? newId();
+    /**
+     * Un mismo `id` y `requestId` por composer mientras el contenido no cambie: un segundo toque o un reintento no crean
+     * un duplicado (el servidor deduplica). Si tras un fallo se cambia el texto, van nuevos (si no, la huella no casaría).
+     */
+    let attempt: { requestId: string; key: string } | null = null;
     const saveDraft = async (value: ComposerValue) => {
       if (!user) return;
       await feedbackDrafts.put({ id: draftId, userId: user, app: options.app, nodeId: node.id, nodePath: node.path, message: value.message, intent: value.intent, blocking: value.blocking, subject: 'application', images: value.images, updatedAt: new Date().toISOString() });
@@ -273,11 +278,15 @@ export function createFeedback(options: FeedbackOptions): Feedback {
       onSend: async (value) => {
         if (!user) throw new Error(kt('Inicia sesión para enviar comentarios.'));
         const item: FeedbackOutboxItem = {
-          id: draftId, requestId: newId(), userId: user, app: options.app, nodeId: node.id, nodePath: node.path,
+          id: draftId, requestId: '', userId: user, app: options.app, nodeId: node.id, nodePath: node.path,
           message: value.message, intent: value.intent, blocking: value.blocking, subject: 'application', images: value.images, updatedAt: new Date().toISOString(),
           context: await collectFeedbackContext({ app: options.app, node, role: options.role?.(), sync: options.syncSummary?.() }), attempts: 0,
         };
-        await feedbackDrafts.delete(draftId);
+        const key = JSON.stringify([value.message, value.intent, !!value.blocking, value.images.map((i) => i.id)]);
+        if (attempt && attempt.key !== key) { draftId = newId(); item.id = draftId; attempt = null; }
+        attempt ??= { requestId: newId(), key };
+        item.requestId = attempt.requestId;
+        await feedbackDrafts.delete(existing?.id ?? draftId);
         await client.enqueue(item);
         current = null;
         refreshPins();
