@@ -102,3 +102,15 @@ export function balanceOf(contract: Contract, collected: number): { contracted: 
   });
   return { contracted, collected, balance: Math.max(0, Math.round((contracted - collected) * 100) / 100), due };
 }
+
+/**
+ * Calculadora con las ofertas del organizador (API.md §16.2): ingresos = Σ precio × plazas que espera vender. Lo de Ikisai
+ * es lo contratado (o el precio orientativo) y los otros gastos los pone él; nada de esto viaja al servidor.
+ */
+export function offersMargin(offers: Array<{ price: number | string; expected?: number | string | null }>, ikisai: number, otherCosts: number): Margin & { attendees: number } {
+  const revenue = round2(offers.reduce((sum, o) => sum + Math.max(0, Number(o.price) || 0) * Math.max(0, Number(o.expected) || 0), 0));
+  const attendees = offers.reduce((sum, o) => sum + Math.max(0, Number(o.expected) || 0), 0);
+  const cost = round2(Math.max(0, ikisai) + Math.max(0, otherCosts));
+  const average = attendees > 0 ? revenue / attendees : 0;
+  return { revenue, cost, margin: round2(revenue - cost), breakEven: average > 0 ? Math.ceil(cost / average) : null, attendees };
+}

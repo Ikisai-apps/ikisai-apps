@@ -402,57 +402,35 @@ Organizers guarda solo lo suyo:
 - sus materiales;
 - sus preguntas, y las respuestas a ellas.
 
-### 15.1 Datos propios (schema `organizers`, migraciones `0700–0799`)
+### 15.1 Datos propios (schema `organizers`, migración `20261008_0700`) · construido
 
-Son las primeras tablas sincronizables de Organizers (contrato §2: `id`, `revision`, fechas, `updated_by`, `deleted_at`, registradas en `core.synced_tables`). La PWA las tendrá en el espejo de `sync-client`, así que se podrán editar sin red y la cola las enviará al volver.
-
-**Visibilidad:** `visible(row, membership)` deja ver una fila si su `reservation_id` está en `scopes.grants` del organizador. Todas las tablas llevan `reservation_id`, y las respuestas también, para no depender de un join.
+Son las primeras tablas sincronizables de Organizers (contrato §2), en el espejo de `sync-client`: se editan sin red y la cola las envía al volver. Los códigos son los que lee Guests (`docs/guests/API.md` §13).
 
 ```text
-organizers.experience_modules        un módulo de la experiencia de un retiro; único por (reservation_id, module)
-  reservation_id   uuid                       reserva de Booking (sin FK entre schemas; se comprueba el ámbito)
-  module           text   programa | menu | materiales | preguntas | alojamiento | info_practica | comentarios
-  visible          boolean                    se ve en Guests
-  capability       text   ver | preferencia | elegir | responder      (la que tenga sentido en cada módulo, §15.2)
-  window           text   antes | durante | despues | siempre         cuándo se ve (por las fechas de la reserva)
-  params           jsonb  null                opciones del módulo (p. ej. alojamiento, §16.1), con forma cerrada por módulo
-  position         numeric                    orden en la barra y en Inicio de Guests
+organizers.experiences      una por reserva (única con deleted_at null)
+  reservation_id, program_visible, program_window, menu_visible, menu_window, materials_visible, questions_visible,
+  lodging_visible, lodging_capability (view | prefer | choose | request), lodging_choose_until,
+  lodging_options [{key, label, guest_note}] (≤ 12), map_visible, organizer_message (≤ 1000), message_lang (es | en)
+  window = before | during | after | always
 
-organizers.materials                 materiales del organizador para un retiro
-  reservation_id   uuid
-  kind             text   archivo | enlace | texto
-  title            text   (1–160)
-  description      text   null (≤ 1000)
-  file_id          uuid   null → core.files   (archivo: PDF ≤ 15 MB o imagen recomprimida en cliente, lado mayor 1600 px)
-  url              text   null                (enlace: grupo de WhatsApp o Telegram, web…; solo https)
-  body             text   null (≤ 4000)       (texto breve)
-  is_logo          boolean                    el logotipo del organizador (para el cartel, §16.3); uno por reserva
-  published        boolean                    lo ve el huésped (si el módulo «materiales» está visible)
-  window           text   antes | durante | despues | siempre
-  position         numeric
-
-organizers.questions                 preguntas propias del organizador a sus asistentes
-  reservation_id   uuid
-  kind             text   texto | opcion | varias | si_no | numero | fecha
-  prompt           text   (1–300)
-  options          jsonb  null                 opciones de `opcion` y `varias` (2–12 textos)
-  required         boolean
-  opens_at         date   null                 ventana para responder (por defecto, hasta el día de entrada)
-  closes_at        date   null
-  published        boolean
-  position         numeric
-
-organizers.answers                   respuestas de los huéspedes (datos del huésped que pertenecen a Organizers)
-  reservation_id   uuid
-  question_id      uuid → organizers.questions
-  guest_id         uuid                         huésped de Booking (sin FK entre schemas); única por (question_id, guest_id)
-  value            jsonb                        según el tipo de pregunta
+organizers.materials        reservation_id, owner_id, kind (file | link | text), title (1–160), description, file_id → core.files,
+                            url (solo https), body (≤ 4000), is_logo (uno por reserva), published, window, position
+organizers.questions        reservation_id, owner_id, type (text | choice | multi | yes_no | number | date), label (1–300), help,
+                            options [{value, label}] (2–12 en choice y multi), required, opens_at, closes_at, published, position
+organizers.answers          reservation_id, question_id, guest_id, value jsonb; única por (question_id, guest_id)
+organizers.offers           §16.2
 ```
 
-- **Archivos:** bucket propio `organizers-materials`, con `uploads` del kit en `organizers-api`, y `core.register_file_field('organizers', 'organizers', 'materials', 'file_id', 'operational')`. En la misma migración, `core.enable_file_gc('organizers')`.
-- **Conservación:** propongo borrar materiales, preguntas y respuestas de un retiro **12 meses después de su fin**, igual que los reportes de los portales, con una acción de sistema y `apply_system_operations`. Es la pregunta 1 de la salida.
-- **Escrituras del organizador:** `core.commit` normal, con `beforeCommit` en `organizers-api` para comprobar el ámbito (`reservation_id` en los grants) y la forma de `params` y `options`. Las respuestas no las escribe el organizador.
-- **Escrituras del huésped:** solo `organizers.guest_answer`, una acción de Organizers registrada para `guests` (§15.4).
+- **Visibilidad (`visible` en `organizers-api`):** una fila se ve si su `reservation_id` está en `scopes.grants`. Además, los materiales y las preguntas se ven siempre a quien los creó (`owner_id`): son su **biblioteca** y se copian a sus próximos retiros («De otros retiros»), por decisión del usuario del 8-10-2026.
+- **Escrituras del organizador:** `core.commit`, con la validación compartida `_domain/organizers` en el dispositivo y en `beforeCommit`. El gancho `organizers.validate_batch` lo comprueba también en la base de datos, sobre las filas del lote:
+  - la reserva está en su ámbito y `reservation_id` no cambia;
+  - `owner_id` es quien da el alta y no cambia;
+  - no escribe respuestas.
+- **Escrituras del huésped:** solo `organizers.guest_answer` (§15.4). El gancho exige su ámbito de Guests `{reservation_id, guest_id}` y una pregunta de esa reserva.
+- **Archivos:** bucket `organizers-materials` (K5) con `uploads`: PDF ≤ 15 MB e imágenes PNG, JPG o WebP recomprimidas en el dispositivo; **sin SVG**. `register_file_field(…, 'materials', 'file_id', 'operational')` y `enable_file_gc('organizers')`. El organizador abre sus archivos con `files/:id` (K3).
+- **Conservación (decisión del usuario):**
+  - el logotipo, los materiales y las preguntas se conservan para sus próximos retiros;
+  - **las respuestas se borran a los 6 meses del fin del retiro**. Falta saber esa fecha desde Organizers (petición B18).
 
 ### 15.2 Módulos y capacidades de la V1
 
@@ -487,6 +465,12 @@ Lecturas de Organizers registradas para `guests` (`core.allow_read('guests', 'or
 
 Escritura:
 - `organizers.guest_answer(p)` `{question_id, value}`: valida el tipo y la ventana, y escribe la respuesta propia con procedencia «huésped» mediante un lote de Organizers. Necesita que el núcleo admita que una acción de Organizers invocada desde el portal Guests escriba en `organizers.*` (K4).
+
+**Construido** (migración `0700`, pruebas en `tests/organizers/experience.test.ts`):
+- las tres lecturas y la acción, con las formas de Guests §13.1, §13.5 y §13.6;
+- el resolutor, registrado con `core.allow_portal_file('guests', 'organizers.guest_material_file')` (C8). Guests abre el archivo con `GET portal-files/:fileId`;
+- **ventanas:** las fechas son de Booking. Organizers devuelve `window` en cada módulo y material, y Guests filtra con las fechas de la reserva. El resolutor exige el material publicado, el módulo visible y la reserva del huésped;
+- **pendiente de K6:** `guest_answer` valida y devuelve `QUESTION_CLOSED`, `INVALID_ANSWER` y `OUT_OF_SCOPE`. Pero `core.apply_portal_operations` aún rechaza como destino una app de tipo portal, y `organizers` lo es.
 
 **Sin `organizers.guest_offers`:** las ofertas no se muestran en Guests (decisión del usuario, confirmada por Core). Los nombres de los asistentes en las respuestas los toma el organizador de `booking.portal_guests`; Organizers no los copia.
 

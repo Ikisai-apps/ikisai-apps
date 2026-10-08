@@ -407,3 +407,79 @@ test('organizers · factura emitida desde Finance: la copia congelada se pinta e
   await expect(page.locator('#docTotal')).toHaveText(/1\.?100,00/);
   await expect(page.locator('#printPage')).toBeVisible();
 });
+
+test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enlace publicado y pregunta con aviso de datos sensibles @smoke', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con experiencia', confirm: true });
+  await enter(page, await api.organizerLink([reservation], 'experiencia@example.invalid', 'Irene'));
+  const rows = async (table: string) => (await api.booking.t.db.query<Record<string, any>>(`select * from organizers.${table} where reservation_id = $1 and deleted_at is null order by created_at`, [reservation])).rows;
+
+  await page.locator('#tab-experiencia').click();
+  await page.locator('#exp-materials_visible').check();
+  await page.locator('#exp-program_visible').check();
+  await page.locator('#exp-program_window').selectOption('during');
+  await page.locator('#exp-message').fill('¡Bienvenidas al retiro!');
+  await expect.poll(async () => (await rows('experiences'))[0]?.organizer_message, { timeout: 15_000 }).toBe('¡Bienvenidas al retiro!');
+  const [experience] = await rows('experiences');
+  expect(experience!.materials_visible).toBe(true);
+  expect(experience!.program_window).toBe('during');
+
+  // Material: enlace al grupo, publicado antes del retiro.
+  await page.locator('#expAddLink').click();
+  await page.locator('#mat-title').fill('Grupo de WhatsApp');
+  await page.locator('#mat-url').fill('http://chat.example');
+  await page.locator('#mat-save').click();
+  await expect(page.locator('#mat-error')).toContainText('https');
+  await page.locator('#mat-url').fill('https://chat.whatsapp.com/abc');
+  await page.locator('#mat-published').check();
+  await page.locator('#mat-window').selectOption('before');
+  await page.locator('#mat-save').click();
+  await expect(page.locator('#expMaterials .orgitem')).toHaveCount(1);
+  await expect(page.locator('#expMaterials .orgitem')).toContainText('Antes del retiro');
+  await expect.poll(async () => (await rows('materials')).map((m) => [m.title, m.published, m.window])).toEqual([['Grupo de WhatsApp', true, 'before']]);
+
+  // Pregunta: el editor avisa si parece pedir salud o alergias (O7); se guarda con sus opciones.
+  await page.locator('#expAddQuestion').click();
+  await page.locator('#q-label').fill('¿Tienes alguna alergia?');
+  await expect(page.locator('#q-sensitive')).toBeVisible();
+  await page.locator('#q-label').fill('¿Qué turno de yoga prefieres?');
+  await expect(page.locator('#q-sensitive')).toBeHidden();
+  await page.locator('#q-type').selectOption('choice');
+  await page.locator('#q-options').fill('Mañana\nTarde');
+  await page.locator('#q-published').check();
+  await page.locator('#q-save').click();
+  await expect(page.locator('#expQuestions .orgitem')).toContainText('Una opción');
+  await expect.poll(async () => (await rows('questions')).map((q) => [q.label, q.options])).toEqual([['¿Qué turno de yoga prefieres?', [{ value: 'manana', label: 'Mañana' }, { value: 'tarde', label: 'Tarde' }]]]);
+  await page.locator('#expAnswers').click();
+  await expect(page.locator('#answersBody')).toContainText('Sin respuestas todavía.');
+});
+
+test('organizers · ofertas y cartel (fase 5): ofertas privadas, calculadora con lo contratado y cartel en JPG', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con cartel', confirm: true });
+  await api.seedRates();
+  await api.acceptProposal(await api.sendProposal(reservation, 20));
+  await enter(page, await api.organizerLink([reservation], 'ofertas@example.invalid', 'Olga'));
+
+  await page.locator('#tab-ofertas').click();
+  await expect(page.locator('#offersEmpty')).toBeVisible();
+  await page.locator('#offersAdd').click();
+  await page.locator('#of-name').fill('Estándar');
+  await page.locator('#of-price').fill('450');
+  await page.locator('#of-expected').fill('10');
+  await page.locator('#of-includes').fill('Alojamiento, comidas y talleres');
+  await page.locator('#of-save').click();
+  await expect(page.locator('#offersList .orgitem')).toHaveCount(1);
+  await expect(page.locator('#offersRevenue')).toHaveText(/4\.?500,00/);
+  // Lo contratado con Ikisai (2800 €) entra en los gastos: 4500 − 2800 = 1700.
+  await expect(page.locator('#offersMargin')).toHaveText(/1\.?700,00/);
+  await page.locator('#offersOther').fill('200');
+  await expect(page.locator('#offersMargin')).toHaveText(/1\.?500,00/);
+
+  await page.locator('#posterOpen').click();
+  await expect(page.locator('#posterCanvas')).toBeVisible();
+  expect(await page.locator('#posterCanvas').evaluate((c: HTMLCanvasElement) => [c.width, c.height])).toEqual([1240, 1754]);
+  await page.locator('#poster-format').selectOption('cuadrado');
+  await expect.poll(() => page.locator('#posterCanvas').evaluate((c: HTMLCanvasElement) => c.width === c.height)).toBe(true);
+  const download = page.waitForEvent('download');
+  await page.locator('#posterJpg').click();
+  expect((await download).suggestedFilename()).toBe('cartel-retiro-con-cartel.jpg');
+});

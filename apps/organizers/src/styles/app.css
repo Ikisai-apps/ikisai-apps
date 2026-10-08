@@ -98,3 +98,21 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 
 /* «Guarda tu acceso» */
 .orgaccess{display:inline-flex;align-items:center;gap:8px}
+
+/* Fase 4 y 5: experiencia, materiales, preguntas, ofertas y cartel */
+.orgmodule{padding:6px 0;border-bottom:1px solid var(--line,rgb(0 0 0 / 8%))}
+.orgmodule:last-of-type{border-bottom:0}
+.orgmodule-window{margin:4px 0 0 28px;max-width:260px}
+.orglodging{margin:8px 0 0 28px}
+.orgoption{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:6px}
+@media (max-width:520px){.orgoption{grid-template-columns:1fr auto}.orgoption input:nth-child(2){grid-column:1}}
+.orgitems{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.orgitem{display:flex;align-items:center;gap:6px;border:1px solid var(--line,rgb(0 0 0 / 10%));border-radius:12px;padding:4px 6px;background:var(--paper)}
+.orgitem-main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;text-align:left;background:none;border:0;padding:8px 4px;color:inherit;font:inherit;cursor:pointer}
+.orgitem-main>span{min-width:0;overflow-wrap:anywhere}
+.orgmove{display:flex;gap:2px}
+.choices.left{justify-content:flex-start;flex-wrap:wrap}
+.organswers{margin:12px 0}
+.organswers h4{margin:0 0 6px}
+.orgposter{margin-top:12px;display:flex;justify-content:center}
+.orgposter-canvas{width:100%;max-width:420px;height:auto;border-radius:8px;box-shadow:var(--shadow-1)}
