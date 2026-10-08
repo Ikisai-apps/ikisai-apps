@@ -9,6 +9,7 @@ import { build } from 'vite';
 import path from 'node:path';
 import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 let server: E2EServer;
 let ID: Aliases;
@@ -60,5 +61,17 @@ test('cabecera del kit en móvil: marca de Tasks visible y la hoja «Apps de Iki
   const dot = await mark.evaluate((node) => getComputedStyle(node, '::after').content);
   expect(dot).not.toBe('none');
   await page.screenshot({ path: path.join(shots, 'cabecera-tasks-senalar.png'), clip: { x: 0, y: 0, width: 390, height: 170 } });
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('feedback común del kit (móvil con el teclado abierto): enviar con doble toque, se cierra, aviso visible y un solo reporte @smoke', async () => {
+  await settled(page);
+  const text = 'Prueba de humo del feedback · móvil con el teclado abierto';
+  const count = async () => Number((await server.app.t.db.query<{ n: number }>(`select count(*) n from core.feedback_reports where origin_app = 'tasks' and message = $1`, [text])).rows[0]!.n);
+  const { code } = await feedbackRoundTrip(page, { target: '[data-feedback-id="tasks.cabecera.areas.general"]', text, keyboard: 686 });
+  expect(code).toMatch(/^FB_/);
+  await expect.poll(count).toBe(1);
+  await page.waitForTimeout(500);
+  expect(await count(), 'el doble toque no envía dos reportes').toBe(1);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

@@ -7,6 +7,7 @@ import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { build } from 'vite';
 import { VITE_CONFIG, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
 let server: E2EServer;
 let ID: Aliases;
@@ -101,5 +102,17 @@ test('recorrido de feedback en Tasks: interruptor, pulsación larga, envío, «S
     const today = await page.evaluate(() => (window as any).tasksFeedback().usage.today().map((i: any) => [i.featureId, i.successes]));
     expect(today).toEqual(expect.arrayContaining([['tasks.tarea.crear', 1], ['tasks.tarea.completar', 1]]));
   });
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('feedback común del kit (escritorio): enviar con doble toque, se cierra, aviso visible y un solo reporte @smoke', async () => {
+  await settled(page);
+  const text = 'Prueba de humo del feedback · escritorio';
+  const count = async () => Number((await server.app.t.db.query<{ n: number }>(`select count(*) n from core.feedback_reports where origin_app = 'tasks' and message = $1`, [text])).rows[0]!.n);
+  const { code } = await feedbackRoundTrip(page, { target: '[data-feedback-id="tasks.cabecera.areas.general"]', text });
+  expect(code).toMatch(/^FB_/);
+  await expect.poll(count).toBe(1);
+  await page.waitForTimeout(500);
+  expect(await count(), 'el doble toque no envía dos reportes').toBe(1);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
