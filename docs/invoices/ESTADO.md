@@ -120,6 +120,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 2 del lector: ranking de plantillas sin depender del NIF (huella, etiquetas y nombre, con umbral y margen); el proveedor reconocido por el formato va como «revísalo».
 - Fase 1 del lector, PR 3: el texto leído al subir («Subir varias», «Nueva factura») va al servidor con `fill` en cuanto el documento está subido, también al volver la red; el servidor rellena lo que falte y guarda el resumen.
 - Fase 2 del lector, PR 6: una regla de plantilla también se retira si falla más del 40 % tras 5 usos.
+- Fase 2 del lector, PR 7: corpus real en el bucket privado `test-corpus`, con un job nocturno o manual que solo escribe acierto o fallo por campo; script para subir facturas con su esperado.
 
 ## En curso
 

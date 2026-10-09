@@ -1489,3 +1489,20 @@ Ya era así:
 
 **Nuevo:** una regla también se retira si falla mucho aunque no sea seguido (más del 40 % de fallos tras 5 usos). Las reglas que aciertan siguen.
 
+### 16.6 Corpus real del lector (fase 2, 9-10-2026; excepción aprobada por Core)
+- **Dónde:** las facturas reales viven solo en el bucket privado `test-corpus` de producción (sin políticas RLS: solo entra la clave de servicio), cada una como `<id>.pdf` más `<id>.expected.json`. Los campos del esperado son `supplier_tax_id`, `invoice_number`, `invoice_date`, `base`, `vat` (suma de cuotas), `withholding` y `total`. En el repositorio no hay nada real.
+- **Subir**, en local, con `private/cloud-credentials.json`:
+
+  ```
+  python tests/invoices/corpus/corpus.py upload 001 factura.pdf esperado.json
+  ```
+
+  Para listarlas: `… corpus.py list`.
+- **Job** `.github/workflows/invoices-corpus.yml`, nocturno y manual, nunca en un PR:
+  - descarga el corpus una vez, con la clave de servicio pedida a la API de gestión con `SUPABASE_ACCESS_TOKEN`, enmascarada y solo en memoria;
+  - `tests/invoices/corpus/run.ts` lo lee con el mismo PDF.js y el mismo lector que la Edge;
+  - en el resumen del job escribe **solo acierto o fallo por campo y documento**;
+  - borra los documentos al terminar;
+  - sale en rojo si falla algún campo.
+- **Cada fallo real**, además, se convierte en una copia sintética con el mismo diseño en `pdf-real.test.ts`, que corre en la CI.
+
