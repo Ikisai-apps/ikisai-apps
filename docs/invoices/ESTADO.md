@@ -115,6 +115,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 1 del lector, PR 1: núcleo `readAndFill` en el servidor; `documents/:id/text` con `fill` rellena el borrador de quien sube el texto (cuenta `lector`); precedencia por nivel (plantilla > regla > inferencia, lo humano manda) y sin duplicar números.
 - Fase 1 del lector, PR 2: en «Nueva factura», elegir el PDF ya lo lee (límites de 15 MB y 8 s, primeras y últimas páginas, sin bloquear el móvil, medido con la CPU 4× más lenta); proveedor y objeto opcionales con documento.
 - «Mi nombre» de los artículos con memoria por proveedor (0230): se recuerda al validar y se pone solo en la siguiente factura; editable también en validadas sin devolverlas a revisión. FB_2026_024: «Se deja en su trimestre» (0231), fuera de las entregas y reversible.
+- Artículos aprendidos: al validar, la plantilla aprende la tabla de artículos y las siguientes facturas del proveedor salen desglosadas (totales intactos, aviso si no cuadran); huella del formato sin las filas de artículos.
 
 ## En curso
 
