@@ -366,7 +366,7 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
         let k = 0x1000;
         const fill = partialFillOperations({
           invoice: { id: invoiceId, supplier_id: placeholderId, invoice_number: null, invoice_date: null, source_total: null, import_meta: null },
-          placeholderSupplierId: placeholderId, suppliers: data.suppliers, hasContent: false, found: extraction.found,
+          placeholderSupplierId: placeholderId, suppliers: data.suppliers, hasContent: false, found: extraction.found, provenance: extraction.provenance, invoices: data.invoices,
           reading: readingSummary(extraction, READER_VERSION, new Date().toISOString()), newId: () => `${invoiceId.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`,
         });
         // La factura se crea ya con lo leído (un solo insert, sin update en el mismo lote).
@@ -450,7 +450,7 @@ export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'comm
       const placeholder = data.suppliers.find((s) => !s.deleted_at && s.slug === 'sin_identificar');
       let k = 0x2000;
       const fill = partialFillOperations({
-        invoice, placeholderSupplierId: placeholder?.id ?? null, suppliers: data.suppliers, hasContent: false, found: extraction.found,
+        invoice, placeholderSupplierId: placeholder?.id ?? null, suppliers: data.suppliers, hasContent: false, found: extraction.found, provenance: extraction.provenance, invoices: data.invoices,
         reading: readingSummary(extraction, READER_VERSION, new Date().toISOString()), newId: () => `${invoice.id.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`,
       });
       const filled = Object.keys(fill.filled).length;
