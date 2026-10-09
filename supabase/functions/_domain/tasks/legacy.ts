@@ -8,11 +8,12 @@
  */
 import { statuses } from './graph.ts';
 import { fullTab, type Scopes } from './scopes.ts';
-import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type LabelRow, type Operation, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
+import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type Operation, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
 
 export interface LegacyAttachment { id: Uuid; name: string; mime?: string; size?: number; sha256?: string; url?: string }
-export interface LegacyFamily { id: Uuid; name: string; color: string; archived: boolean; system: string | null; version: number }
-export interface LegacyLabel { id: Uuid; text: string; family: Uuid; parent: Uuid | null; archived: boolean; beforeFamilyArchive?: boolean; version: number }
+/** `general`: del catálogo General (tab_id nulo, FB_2026_023); sale en todas las áreas y se guarda una sola vez. */
+export interface LegacyFamily { id: Uuid; name: string; color: string; archived: boolean; system: string | null; version: number; general?: boolean }
+export interface LegacyLabel { id: Uuid; text: string; family: Uuid; parent: Uuid | null; archived: boolean; beforeFamilyArchive?: boolean; version: number; general?: boolean }
 export interface LegacyView { id: Uuid; name: string; search: string; filters: Record<string, string[]>; groupBy: string; deleted: boolean; version: number }
 export interface LegacyTask {
   id: Uuid; text: string; note: string; done: boolean; priority: Priority; due: string; labels: Uuid[]; owner: Uuid | null; parentId: Uuid | null;
@@ -61,8 +62,16 @@ const attachment = (row: AttachmentRow): LegacyAttachment => ({ id: row.id, name
 export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[] {
   const info = statuses({ tasks: data['tasks.tasks'], projects: data['tasks.projects'], dependencies: data['tasks.task_dependencies'] });
   const known = new Set(data['tasks.tasks'].map((t) => t.id));
-  const families = group(live(data['tasks.families']), (f) => f.tab_id);
-  const labels = group(live(data['tasks.labels']), (l) => l.tab_id);
+  const families = group(live(data['tasks.families']).filter((f) => f.tab_id != null), (f) => f.tab_id!);
+  const labels = group(live(data['tasks.labels']).filter((l) => l.tab_id != null), (l) => l.tab_id!);
+  // Catálogo General (FB_2026_023): en todas las áreas, delante de lo propio de cada una.
+  const generalFamilies = live(data['tasks.families']).filter((f) => f.tab_id == null).sort(byPosition);
+  const generalLabels = live(data['tasks.labels']).filter((l) => l.tab_id == null).sort(byPosition);
+  const familyOf = (f: FamilyRow, general: boolean) => ({ id: f.id, name: f.name, color: f.color, archived: f.archived, system: f.system_key, version: f.revision, ...(general ? { general: true } : {}) });
+  const labelOf = (l: LabelRow, general: boolean) => ({
+    id: l.id, text: l.name, family: l.family_id, parent: l.parent_id, archived: l.archived,
+    ...(l.archived_before_family === null ? {} : { beforeFamilyArchive: l.archived_before_family }), version: l.revision, ...(general ? { general: true } : {}),
+  });
   const views = group(data['tasks.saved_views'], (v) => v.tab_id);
   const projects = group(data['tasks.projects'], (p) => p.tab_id);
   const tasks = group(data['tasks.tasks'], (t) => t.project_id);
@@ -75,11 +84,8 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
   return [...data['tasks.tabs']].sort(byPosition).map((tab) => ({
     id: tab.id, name: tab.name, color: tab.color, deleted: !!tab.deleted_at, version: tab.revision, updatedAt: tab.updated_at,
     ...(options.scopes !== undefined && !fullTab(options.scopes, tab.id) ? { restricted: true } : {}),
-    families: (families.get(tab.id) ?? []).sort(byPosition).map((f) => ({ id: f.id, name: f.name, color: f.color, archived: f.archived, system: f.system_key, version: f.revision })),
-    labels: (labels.get(tab.id) ?? []).sort(byPosition).map((l) => ({
-      id: l.id, text: l.name, family: l.family_id, parent: l.parent_id, archived: l.archived,
-      ...(l.archived_before_family === null ? {} : { beforeFamilyArchive: l.archived_before_family }), version: l.revision,
-    })),
+    families: [...generalFamilies.map((f) => familyOf(f, true)), ...(families.get(tab.id) ?? []).sort(byPosition).map((f) => familyOf(f, false))],
+    labels: [...generalLabels.map((l) => labelOf(l, true)), ...(labels.get(tab.id) ?? []).sort(byPosition).map((l) => labelOf(l, false))],
     views: (views.get(tab.id) ?? []).sort(byPosition).map((v) => ({ id: v.id, name: v.name, search: v.search, filters: v.filters, groupBy: v.group_by, deleted: !!v.deleted_at, version: v.revision })),
     projects: (projects.get(tab.id) ?? []).sort(byPosition).map((p) => ({
       id: p.id, title: p.title, note: p.note, status: p.status, priority: p.priority, due: p.due ?? '', owner: p.owner_label_id,
@@ -184,6 +190,11 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     for (const row of existing) if (!keep.has(row.id)) want('tasks.attachments', row.id, {}, true);
   };
 
+  // Lo General sale en todas las áreas del modelo: se guarda una vez, con la copia que cambió (si ninguna, la primera).
+  const generalWanted = new Map<string, { table: string; id: Uuid; fields: Fields }[]>();
+  const wantGeneral = (table: string, id: Uuid, fields: Fields) => { const key = `${table}|${id}`; generalWanted.set(key, [...(generalWanted.get(key) ?? []), { table, id, fields }]); };
+  const isGeneral = (table: string, item: { id: Uuid; general?: boolean }) => !!item.general || (rowOf(table, item.id) !== undefined && rowOf(table, item.id)!.tab_id == null);
+
   for (const tab of tabs) {
     const tabRow = rowOf('tasks.tabs', tab.id);
     want('tasks.tabs', tab.id, { name: tab.name, color: orNull(tab.color), ...(tabRow ? {} : { position: tabPosition() }) }, !!tab.deleted);
@@ -194,7 +205,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
       familyArchived.set(f.id, !!f.archived);
       // La marca de familia de responsables ('person') se puede mover (migración 0304); las demás claves no cambian.
       const personMoved = !!row && (row.system_key ?? null) !== (f.system ?? null) && ((row.system_key ?? null) === 'person' || (f.system ?? null) === 'person');
-      want('tasks.families', f.id, { name: f.name, color: f.color, archived: !!f.archived, ...(row ? (personMoved ? { system_key: f.system ?? null } : {}) : { tab_id: tab.id, position: (index + 1) * POSITION_STEP, system_key: f.system ?? null }) });
+      const general = isGeneral('tasks.families', f);
+      const fields: Fields = { name: f.name, color: f.color, archived: !!f.archived, ...(row ? (personMoved ? { system_key: f.system ?? null } : {}) : { tab_id: general ? null : tab.id, position: (index + 1) * POSITION_STEP, system_key: f.system ?? null }) };
+      if (general) wantGeneral('tasks.families', f.id, fields); else want('tasks.families', f.id, fields);
     });
     (tab.labels ?? []).forEach((l, index) => {
       const row = rowOf('tasks.labels', l.id) as (LabelRow & Row) | undefined;
@@ -208,7 +221,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         if (l.beforeFamilyArchive !== undefined) fields.archived = !!l.beforeFamilyArchive;
         fields.archived_before_family = null;
       }
-      want('tasks.labels', l.id, { ...fields, ...(row ? {} : { tab_id: tab.id, position: (index + 1) * POSITION_STEP }) });
+      const general = isGeneral('tasks.labels', l);
+      const all = { ...fields, ...(row ? {} : { tab_id: general ? null : tab.id, position: (index + 1) * POSITION_STEP }) };
+      if (general) wantGeneral('tasks.labels', l.id, all); else want('tasks.labels', l.id, all);
     });
     (tab.views ?? []).forEach((v, index) => {
       const row = rowOf('tasks.saved_views', v.id);
@@ -239,6 +254,13 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         files(tab.id, p.id, t.id, t.attachments);
       });
     });
+  }
+
+  for (const copies of generalWanted.values()) {
+    const row = rowOf(copies[0]!.table, copies[0]!.id);
+    const changed = row ? copies.find((c) => Object.entries(c.fields).some(([k, v]) => !same(row[k] ?? null, v ?? null))) : undefined;
+    const pick = changed ?? copies[0]!;
+    want(pick.table, pick.id, pick.fields);
   }
 
   // Lo que estaba en el modelo y ya no está pasa a la papelera.

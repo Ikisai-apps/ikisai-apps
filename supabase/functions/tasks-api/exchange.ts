@@ -189,6 +189,24 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         return { projectId: result?.projectId ?? projectId, counts: result?.counts ?? {}, cursor: committed.cursor };
       },
     },
+    /**
+     * Fusionar en General etiquetas repetidas entre áreas (FB_2026_023): `groups` son las que la propietaria marcó en la vista
+     * previa, cada una con sus copias de cada área. En un lote y con historial; las copias quedan archivadas.
+     */
+    {
+      method: 'POST', pattern: 'labels/general/merge', handler: async ({ ctx, json }) => {
+        admin(ctx);
+        const body = await json();
+        if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        const groups = body.groups;
+        if (!Array.isArray(groups) || !groups.length || groups.length > 500 || !groups.every((g: unknown) => Array.isArray(g) && g.length >= 2 && g.length <= 100 && g.every((id) => typeof id === 'string' && UUID.test(id)))) {
+          fail(422, 'INVALID_OPERATION', 'groups es una lista de grupos de etiquetas (dos o más ids por grupo).');
+        }
+        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.merge_labels_into_general', args: { groups: groups.map((g: string[]) => g.map((id) => id.toLowerCase())) } }] });
+        const result = (committed.results[0] as { result?: { generals: Record<string, string>; counts: Record<string, number> } })?.result;
+        return { generals: result?.generals ?? {}, counts: result?.counts ?? {}, cursor: committed.cursor };
+      },
+    },
     { method: 'GET', pattern: 'portable', handler: async ({ ctx }) => zipResponse(await bundle(ctx), 'Ikisai-portable.zip') },
     { method: 'GET', pattern: 'backup', handler: async ({ ctx }) => { admin(ctx); return zipResponse(await bundle(ctx), 'Ikisai-respaldo.zip'); } },
     {
