@@ -362,6 +362,33 @@ export interface TemplateExtraction extends PdfExtraction {
   lines: PdfLine[];
 }
 
+/**
+ * Ranking de plantillas sin depender del NIF (fase 2, 9-10-2026): si el NIF del documento no es de un proveedor conocido,
+ * se puntúan las plantillas activas de todos los proveedores con evidencia determinista:
+ * 0,5 · huella del formato (la mejor entre la completa y la estable) + 0,2 · etiquetas de sus reglas presentes en el
+ * documento + 0,2 · nombre del proveedor en el texto + 0,1 · NIF (aquí, 0). Gana la primera si pasa de 0,7 y saca 0,1 a la
+ * segunda. El proveedor que sale así va como «revísalo»; nunca se da de alta un proveedor solo por parecido.
+ */
+export const RANK_THRESHOLD = 0.7;
+export const RANK_MARGIN = 0.1;
+export function rankTemplates<T extends TemplateLike>(templates: T[], lines: PdfLine[], suppliers: Array<{ id?: string; name: string }>): Array<{ template: T; score: number; similarity: number }> {
+  const full = layoutTokens(lines);
+  const stable = stableLayoutTokens(lines);
+  const text = normText(lines.map((l) => l.text).join(' '));
+  const names = new Map(suppliers.filter((s) => s.id).map((s) => [s.id!, normText(s.name).replace(/\b(?:s\.?\s?l\.?\s?u?|s\.?\s?a\.?\s?u?|s\.?\s?coop)\.?$/, '').trim()]));
+  const out: Array<{ template: T; score: number; similarity: number }> = [];
+  for (const t of templates) {
+    if (t.deleted_at || t.status !== 'activa') continue;
+    const similarity = Math.max(jaccard(t.layout_tokens, full), stable.length >= 3 ? jaccard(t.layout_tokens, stable) : 0);
+    const anchors = Object.entries(t.fields).filter(([k, r]) => k !== ITEMS_KEY && !r.retired).map(([, r]) => normText(r.anchor.text)).filter((a) => a.length >= 3);
+    const labels = anchors.length ? anchors.filter((a) => text.includes(a)).length / anchors.length : 0;
+    const name = names.get(t.supplier_id);
+    const nameHit = name && name.length >= 4 && text.includes(name) ? 1 : 0;
+    out.push({ template: t, similarity, score: Math.round((0.5 * similarity + 0.2 * labels + 0.2 * nameHit) * 100) / 100 });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
 export function extractWithTemplates(items: PdfTextItem[], options: PdfExtractOptions & { templates?: TemplateLike[]; fallbackSupplierId?: string | null } = {}): TemplateExtraction {
   const lines = linesFromItems(items);
   const byTaxId = new Map((options.suppliers ?? []).filter((s) => s.id && s.tax_id).map((s) => [validSpanishTaxId(s.tax_id!) ?? s.tax_id!.toUpperCase(), s.id!]));
@@ -371,13 +398,29 @@ export function extractWithTemplates(items: PdfTextItem[], options: PdfExtractOp
     if (supplierId) break;
   }
   supplierId = supplierId ?? options.fallbackSupplierId ?? null;
-  const chosen = supplierId && options.templates?.length ? chooseTemplate(options.templates, supplierId, layoutTokens(lines), (() => { const st = stableLayoutTokens(lines); return st.length >= 3 ? st : undefined; })()) : null;
+  // Sin proveedor por NIF: la plantilla más parecida de cualquier proveedor, si gana con claridad.
+  let ranked: { template: TemplateLike; score: number; similarity: number } | null = null;
+  if (!supplierId && options.templates?.length) {
+    const r = rankTemplates(options.templates, lines, options.suppliers ?? []);
+    if (r[0] && r[0].score >= RANK_THRESHOLD && (!r[1] || r[0].score - r[1].score >= RANK_MARGIN)) { ranked = r[0]; supplierId = r[0].template.supplier_id; }
+  }
+  const chosen = ranked ? { template: ranked.template, similarity: ranked.similarity } : supplierId && options.templates?.length ? chooseTemplate(options.templates, supplierId, layoutTokens(lines), (() => { const st = stableLayoutTokens(lines); return st.length >= 3 ? st : undefined; })()) : null;
   const applied = chosen ? applyTemplate(lines, chosen.template) : null;
   // Artículos con la tabla aprendida (si la hay y no está retirada).
   const itemsRule = chosen ? itemsRuleOf(chosen.template) : null;
   const read = itemsRule && !itemsRule.retired ? applyItemTable(lines, itemsRule) : [];
   const itemsConfidence = chosen ? Math.min(0.9, ruleConfidence(chosen.template, { hits: itemsRule?.hits ?? 0, misses: itemsRule?.misses ?? 0 } as TemplateRule)) : 0;
-  const result = extractFromPdfText(items, { ...options, ...(applied ? { templateValues: applied } : {}), ...(read.length ? { templateItems: { items: read, confidence: itemsConfidence } } : {}) });
+  const rankedSupplier = ranked ? (options.suppliers ?? []).find((s) => s.id === ranked!.template.supplier_id) ?? null : null;
+  const result = extractFromPdfText(items, { ...options, ...(applied ? { templateValues: applied } : {}), ...(read.length ? { templateItems: { items: read, confidence: itemsConfidence } } : {}),
+    ...(rankedSupplier && !options.fallback?.supplier_name ? { fallback: { ...(options.fallback ?? {}), supplier_name: rankedSupplier.name, supplier_tax_id: rankedSupplier.tax_id ?? null } } : {}) });
+  // Proveedor reconocido solo por el formato: «revísalo», con la procedencia de la plantilla.
+  if (rankedSupplier) {
+    if (result.provenance['invoice.supplier_name']?.method === 'manual') {
+      result.provenance['invoice.supplier_name'] = { method: 'supplier_template', text: `Formato parecido al de ${rankedSupplier.name} (sin su NIF en el documento): revísalo`, page: null, x: null, y: null, confidence: 0.5 };
+      result.found.supplier_name = rankedSupplier.name;
+    }
+    result.warnings.push(`El proveedor se ha reconocido por el formato de sus facturas (${rankedSupplier.name}), no por su NIF: revísalo.`);
+  }
   return {
     ...result, lines, supplierId,
     template: chosen ? { id: chosen.template.id, version: chosen.template.version, status: chosen.template.status, confirmations: chosen.template.confirmations, similarity: Math.round(chosen.similarity * 100) / 100 } : null,
