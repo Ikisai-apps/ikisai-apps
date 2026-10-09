@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.27.2 · 9 de octubre de 2026
+
+- **«Atrás» tras cerrar hojas** (FB_2026_025, regresión de la 0.27.1 que rompía el humo de Booking, `smoke.spec.ts:200`): tras abrir y cerrar tres hojas en `#/espacios`, el primer «atrás» no hacía nada.
+  - Si «atrás» se salta entradas muertas y llega a la **misma pantalla** de la que se partió, sigue hacia atrás solo hasta una pantalla distinta (o la raíz).
+  - Una hoja que se abre sobre la entrada muerta de otra recién cerrada **la reutiliza** en vez de apilar otra: la historia ya no crece con cada hoja abierta y cerrada.
+  - La navegación nueva por fragmento se distingue de un «atrás» con la Navigation API (`navigationType`); el cambio de `history.length` queda solo como respaldo, porque falla con la historia llena (50 entradas).
+- CI: un cambio en `back-navigation.ts`, `app-shell.ts`, `sheet.ts` o `dialog.ts` corre la batería completa de todas las apps.
+- Pruebas `v33`: tres hojas cerradas y un solo «atrás»; en el inicio, tras cerrar una hoja, «atrás» pregunta «¿Cerrar la app?» a la primera.
+
 ## 0.27.1 · 9 de octubre de 2026
 
 - **«Atrás» sin carreras** (FB_2026_025): el humo de Food (`smoke.spec.ts:71`) fallaba 1 de cada 4 veces.

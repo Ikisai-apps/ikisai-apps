@@ -107,6 +107,39 @@ test.describe('ui-kit v0.26 · triaje del 9-10 (FB_2026_012, 004, 025 y 011)', (
     expect(new URL(page.url()).hash).toBe('#/eventos');
   });
 
+  test('FB_2026_025 (Booking): tras abrir y cerrar tres hojas, un solo «atrás» vuelve a la pantalla anterior', async ({ page }) => {
+    await page.goto('/#/');
+    await page.evaluate(() => (window as any).ikisaiKit.installBackNavigation());
+    await page.evaluate(() => { location.hash = '#/reservas/1'; });
+    await page.evaluate(() => { location.hash = '#/espacios'; });
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(async () => {
+        const kit = (window as any).ikisaiKit;
+        const sheet = kit.openSheet({ title: 'Nuevo espacio', body: kit.el('p', null, 'x') });
+        await new Promise((r) => setTimeout(r, 30));
+        await sheet.close(true);
+      });
+    }
+    expect(await page.evaluate(() => history.state)).toEqual({ ikisai: 'dead' });
+    await back(page);
+    await expect.poll(() => new URL(page.url()).hash).toBe('#/reservas/1');
+    await back(page);
+    await expect.poll(() => new URL(page.url()).hash).toBe('#/');
+  });
+
+  test('FB_2026_025: en el inicio, tras cerrar una hoja, «atrás» pregunta «¿Cerrar la app?» a la primera', async ({ page }) => {
+    await page.goto('/#/');
+    await page.evaluate(() => (window as any).ikisaiKit.installBackNavigation());
+    await page.evaluate(async () => {
+      const kit = (window as any).ikisaiKit;
+      const sheet = kit.openSheet({ title: 'Hoja', body: kit.el('p', null, 'x') });
+      await new Promise((r) => setTimeout(r, 30));
+      await sheet.close(true);
+    });
+    await back(page);
+    await expect(page.locator('.dialog')).toContainText('¿Cerrar la app?');
+  });
+
   test('FB_2026_025: entrando directamente a una pantalla, «atrás» lleva al inicio', async ({ page }) => {
     await page.goto('/#/espacios/nuevo');
     await page.evaluate(() => (window as any).ikisaiKit.installBackNavigation());
