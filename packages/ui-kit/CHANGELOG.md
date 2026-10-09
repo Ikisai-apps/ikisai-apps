@@ -1,5 +1,15 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.27.0 · 9 de octubre de 2026
+
+- **Texto con sugerencias** (petición de Booking, de su versión local para FB_2026_014; también para etiquetas de Tasks y proveedores de Finance):
+  - `createSuggestField({ label, values, mode, onUse, onChange, feedbackId, attrs })` → `{ element, input, get, set, setValues, check, match }`;
+  - `attachSuggestions(input, { values, mode, onUse, feedbackId })` para un campo que ya existe;
+  - lista con búsqueda (`<datalist>`, valores limpios, sin repetidos y ordenados según el idioma);
+  - aviso «Ya existe «X».» con **«Usar «X»»** cuando se parece salvo mayúsculas, tildes o espacios, y «Nuevo: no existe todavía.» (modo `pick`) o «Ya hay uno que se llama «X».» (modo `unique`);
+  - mismo marcado que Booking (`small.hint.suggest[role=status]`, botón con `<feedbackId>_usar`). Funciones `normalizeName`, `uniqueNames`, `matchName` y `suggestMessage` exportadas. En español e inglés.
+- Prueba `v34` (con `@smoke`).
+
 ## 0.26.0 · 9 de octubre de 2026
 
 Triaje de feedback del 9-10:

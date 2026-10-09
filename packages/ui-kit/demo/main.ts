@@ -11,6 +11,7 @@ import {
   createI18n,
   createSaveState,
   createDayTabs,
+  createSuggestField,
   initAppUpdates,
   setKitLayer,
   installBackNavigation,
@@ -1001,6 +1002,8 @@ const dayOut = el('output', { id: 'dayOut' });
 const dayTabs = createDayTabs({ days: programDays, today: '2026-10-09', count: (d) => (d === '2026-10-10' ? 4 : null), panelId: 'dayPanel', onSelect: (d) => { dayOut.textContent = d; } });
 dayTabs.element.id = 'dayTabs';
 guestsShell.main.append(el('h3', null, 'Programa'), dayTabs.element, el('div', { id: 'dayPanel', role: 'tabpanel' }, 'Elegido: ', dayOut));
+const suggestPick = createSuggestField({ label: 'Zona', values: ['Sala Roble', 'Comedor', ' comedor ', 'Piscina', '', null], mode: 'pick', feedbackId: 'demo.espacio.zona', attrs: { id: 'suggestPick' } });
+const suggestUnique = createSuggestField({ label: 'Nombre del espacio', values: ['Habitación 3', 'Sala Roble'], mode: 'unique', attrs: { id: 'suggestUnique' } });
 const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado por campo y global, recuadro de firma (trazo, deshacer, borrar, escribir el nombre, PNG recortado), «Instala la app» y la cáscara sin barra inferior con nav: [].',
   el('div', { class: 'demo-row' },
     ...(['ok', 'fail', 'offline'] as const).map((m) => el('label', { class: 'field check' }, el('input', { type: 'radio', name: 'saveMode', id: `saveMode-${m}`, checked: m === 'ok', onchange: () => { saveMode = m; } }), el('span', null, m))),
@@ -1014,6 +1017,7 @@ const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado 
       sigOut.textContent = `${blob.type} ${bmp.width}x${bmp.height}`;
     } }, 'Exportar PNG'), sigOut)),
   el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'ghost small', id: 'installSheet', onclick: () => void install.openSheet() }, 'Hoja «Instala la app»'), install.card() ?? el('span', null, 'instalada')),
+  el('div', { class: 'cardgrid' }, suggestPick.element, suggestUnique.element),
   portalShellHost,
   el('p', { class: 'small muted' }, 'Ruta de Guests: ', guestsRoute),
   guestsShellHost);
