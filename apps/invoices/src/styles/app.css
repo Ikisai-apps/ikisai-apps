@@ -98,3 +98,7 @@ code{font-size:12.5px;word-break:break-all}
 /* Lo que falta para validar: resaltado al saltar al campo */
 .needs-attention{outline:3px solid var(--warn, #d08a00);outline-offset:2px;border-radius:8px;transition:outline-color .3s}
 #validateInvoice[aria-disabled="true"]{opacity:.55}
+/* «Datos de la factura»: base, tipo y cuota en una fila que cabe en el móvil (antes la cuota se salía por la derecha) */
+.manual-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,.9fr);gap:8px;margin-bottom:8px}
+.manual-row>*{min-width:0;width:100%;box-sizing:border-box}
+#invoiceEditor .row2>*{min-width:0}

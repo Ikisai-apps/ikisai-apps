@@ -11,7 +11,7 @@ import type { RowOperation } from '@ikisai/sync-client';
 import { confirmDialog, el, replace, toast } from '@ikisai/ui-kit';
 import { validSpanishTaxId, type FieldProvenance } from '@ikisai/domain-invoices';
 import { CATEGORIES, CATEGORY_LABELS, INVOICES, INVOICE_LINES, SUPPLIERS, TAX_LINES, type LocalInvoice } from '../app/client.ts';
-import { eur, parseAmount, type Mirror } from '../app/data.ts';
+import { eur, loadMirror, parseAmount, supplierName, type Mirror } from '../app/data.ts';
 import { guard } from '../app/guard.ts';
 import { commitSafely, field, select } from './common.ts';
 import { readingPanel } from './reading.ts';
@@ -59,13 +59,23 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
     (span as HTMLElement & { repaint?: () => void }).repaint = paintBadge;
     return span;
   };
-  const labelled = (text: string, b: HTMLElement) => el('span', null, `${text} `, b);
 
-  // --- Guardar un campo al cambiarlo
-  async function saveField(fields: Record<string, unknown>, message = 'Guardado.'): Promise<void> {
-    if (pendingFill) return; // lo leído se guarda todo junto con «Guardar lo leído»
-    const fresh = mirror.invoices.find((i) => i.id === invoice.id) ?? invoice;
-    await commitSafely(client, [{ op: 'update', table: INVOICES, id: invoice.id, expectedRevision: fresh.revision, fields }], message);
+  // --- Guardar un campo al cambiarlo: en orden y con la revisión al día (sin fusiones automáticas entre autoguardados,
+  // que saldrían como «cambios de otra persona»).
+  let queue: Promise<unknown> = Promise.resolve();
+  /** La factura con la revisión del servidor: espera (hasta 5 s, con red) a que se confirme lo anterior. */
+  async function freshInvoice(): Promise<LocalInvoice> {
+    const until = Date.now() + 5000;
+    while (client.status().pendingCommands && navigator.onLine && Date.now() < until) await new Promise((r) => setTimeout(r, 120));
+    return (await loadMirror(client)).invoices.find((i) => i.id === invoice.id) ?? invoice;
+  }
+  function saveField(fields: Record<string, unknown>, message = 'Guardado.'): Promise<unknown> {
+    if (pendingFill) return Promise.resolve(); // lo leído se guarda todo junto con «Guardar lo leído»
+    queue = queue.then(async () => {
+      const fresh = await freshInvoice();
+      await commitSafely(client, [{ op: 'update', table: INVOICES, id: invoice.id, expectedRevision: fresh.revision, fields }], message);
+    }).catch(() => undefined);
+    return queue;
   }
 
   // --- Proveedor por NIF (o el de la factura), con alta rápida
@@ -81,11 +91,13 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
     const found = findByTaxId();
     // Un NIF que ya no es el del proveedor conocido: su nombre no vale para el nuevo (se escribe).
     if (!found && nameFromKnown) { name.value = ''; nameFromKnown = false; }
-    if (found) { nameFromKnown = true; name.value = found.name; name.disabled = true; replace(supplierNote, `Proveedor conocido: ${(found as { label?: string | null }).label?.trim() || found.name}.`); }
+    if (found) { nameFromKnown = true; name.value = found.name; name.disabled = true; replace(supplierNote, `Proveedor conocido: ${supplierName(found)}.`); }
     else { name.disabled = false; replace(supplierNote, taxId.value.trim() ? (validSpanishTaxId(taxId.value) ? 'Proveedor nuevo: se dará de alta con este NIF y nombre.' : 'Ese NIF no parece válido; revísalo.') : 'Escribe el NIF: si ya existe, se elige solo.'); }
   };
   /** Operaciones para poner el proveedor que dicen NIF y nombre (o ninguna si no cambia o no se puede). */
+  let created: string | null = null;
   const supplierOps = (): { ops: RowOperation[]; supplierId: string | null } => {
+    if (created) return { ops: [], supplierId: null };
     const known = findByTaxId();
     if (known) return { ops: [], supplierId: known.id === invoice.supplier_id ? null : known.id };
     const nif = validSpanishTaxId(taxId.value);
@@ -93,15 +105,16 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
     const id = crypto.randomUUID();
     return { ops: [{ op: 'insert', table: SUPPLIERS, id, fields: { name: name.value.trim(), tax_id: nif } }], supplierId: id };
   };
-  const saveSupplier = async () => {
+  const saveSupplier = () => (queue = queue.then(async () => {
     if (pendingFill) return;
     const { ops, supplierId } = supplierOps();
     if (!supplierId) return;
-    const fresh = mirror.invoices.find((i) => i.id === invoice.id) ?? invoice;
+    const fresh = await freshInvoice();
     const owner = mirror.supplierById.get(supplierId);
     await commitSafely(client, [...ops, { op: 'update', table: INVOICES, id: invoice.id, expectedRevision: fresh.revision, fields: {
       supplier_id: supplierId, ...(!invoice.expense_category && owner?.default_category ? { expense_category: owner.default_category } : {}) } }], 'Proveedor guardado.');
-  };
+    created = supplierId;
+  }).catch(() => undefined));
   taxId.addEventListener('input', syncSupplier);
   taxId.addEventListener('change', () => void saveSupplier());
   name.addEventListener('change', () => void saveSupplier());
@@ -205,6 +218,7 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
   const saveAmounts = el('button', { 'data-feedback-id': 'invoices.facturas.manual.guardar_importes', 'data-feedback-label': 'Guardar importes', class: 'primary small', type: 'button', id: 'saveAmounts', onclick: async () => {
     const ops = await amountOps();
     if (!ops) return;
+    await queue;
     if (await commitSafely(client, ops, 'Importes guardados.')) { amountsDirty = false; markDirty(); }
   } }, 'Guardar importes');
   const discardAmounts = el('button', { 'data-feedback-id': 'invoices.facturas.manual.descartar_importes', 'data-feedback-label': 'Descartar cambios de importes', class: 'linkbtn', type: 'button', onclick: () => { loadAmounts(); amountsDirty = false; markDirty(); paint(); } }, 'Descartar');
@@ -216,7 +230,8 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
     const amounts = await amountOps();
     if (!amounts) return;
     const sup = supplierOps();
-    const fresh = mirror.invoices.find((i) => i.id === invoice.id) ?? invoice;
+    await queue;
+    const fresh = await freshInvoice();
     const fields: Record<string, unknown> = { invoice_number: number.value.trim() || null, invoice_date: date.value || null, source_total: parseAmount(total.value), ...(sup.supplierId ? { supplier_id: sup.supplierId } : {}) };
     if (await commitSafely(client, [...sup.ops, { op: 'update', table: INVOICES, id: invoice.id, expectedRevision: fresh.revision, fields }, ...amounts], 'Datos leídos guardados.')) {
       pendingFill = false; amountsDirty = false; markDirty(); replace(readingHost);
@@ -235,22 +250,22 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
   const element = el('div', { 'data-feedback-id': 'invoices.facturas.manual', 'data-feedback-label': 'Datos de la factura', id: 'invoiceEditor' },
     readingHost,
     el('div', { class: 'row2' },
-      field('', taxId), field('', name)),
+      field('NIF del proveedor', taxId), field('Proveedor', name)),
     supplierNote,
-    el('div', { class: 'row2' }, field('', number), field('', date)),
+    el('div', { class: 'row2' }, field('Número de factura', number), field('Fecha de la factura', date)),
     el('p', { class: 'hint' }, 'Base imponible, tipo de IVA y cuota (se calcula; corrígela si la factura dice otra cosa):', ' ', b('document_totals.base', () => rows.map((r) => r.base.value).join(''))),
     rowsHost,
     el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.manual.otro_tipo', 'data-feedback-label': 'Otro tipo de IVA', class: 'linkbtn', type: 'button', id: 'manualAddRow', onclick: () => { addRow('10'); onAmounts(); } }, '+ Otro tipo de IVA')),
     el('div', { class: 'row2' }, field('Retención', withholdingKind), withholdingAmount),
-    field('', total, 'Lo que imprime la factura: se compara con el cálculo (tolerancia 0,02 €).'),
+    field('Total de la factura', total, 'Lo que imprime la factura: se compara con el cálculo (tolerancia 0,02 €).'),
     cuadre,
     amountsBar,
-    field('', category),
+    field('Categoría de gasto', category),
     fillBar,
     reread ? el('p', { class: 'btnrow' }, reread, el('span', { class: 'hint' }, 'Pinta aquí lo que se lee del documento para revisarlo antes de guardarlo.')) : null,
   );
   // Etiquetas con su marca de lectura (las de `field` se ponen aquí para llevar el chip)
-  const setLabel = (input: HTMLElement, text: string, key: string | null, value: () => string) => { const span = input.closest('label')?.querySelector(':scope > span'); if (span) replace(span, labelled(text, b(key, value))); };
+  const setLabel = (input: HTMLElement, _text: string, key: string | null, value: () => string) => { const span = input.closest('label')?.querySelector(':scope > span'); if (span) span.append(' ', b(key, value)); };
   setLabel(taxId, 'NIF del proveedor', 'invoice.supplier_tax_id', () => taxId.value);
   setLabel(name, 'Proveedor', 'invoice.supplier_name', () => name.value);
   setLabel(number, 'Número de factura', 'invoice.invoice_number', () => number.value);
@@ -289,7 +304,7 @@ export function createInvoiceEditor(ctx: ViewContext, mirror: Mirror, invoice: L
         withholdingAmount.value = money(f.withholding.amount);
       }
     }
-    replace(readingHost, readingPanel(prefill));
+    replace(readingHost, readingPanel(prefill, { fields: false }));
     pendingFill = true; markDirty(); paint();
   }
 
