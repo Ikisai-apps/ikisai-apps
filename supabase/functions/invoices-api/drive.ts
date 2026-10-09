@@ -18,6 +18,7 @@
  */
 import {
   buildImportArgs, detectRectification, extractWithTemplates, negateDocument, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, matchSupplier, softDuplicate,
+  keepHumanFields, partialFillOperations, readingMessage, readingSummary,
   type ImportDocument, type InvoiceRow, type PdfTextItem, type SupplierRow, type TemplateLike,
 } from '../_domain/invoices/mod.ts';
 
@@ -361,11 +362,22 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
           reason = `Leída, pero no se pudo importar (${code}): revísala con «Leer PDF» o la IA.`;
         }
       } else {
-        // Diagnóstico sin contenido (9-10-2026): páginas con texto, fragmentos y caracteres leídos.
-        const pages = items.reduce((n, it) => Math.max(n, it.page), 0);
-        const chars = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
-        const shape = `${pages} pág. con texto, ${items.length} fragmentos, ${chars} caracteres`;
-        reason = !extraction.hasText ? `PDF sin texto (escaneado o foto; ${shape}): la completa Claude o la IA.` : `Sin leer del todo (falta ${extraction.missing.join(', ') || 'algún dato'}; ${shape}): la completa Claude, «Leer PDF» o la IA.`;
+        // Lectura parcial (fase 0): lo encontrado se escribe en el borrador y el resumen, en `import_meta.reading`.
+        let k = 0x1000;
+        const fill = partialFillOperations({
+          invoice: { id: invoiceId, supplier_id: placeholderId, invoice_number: null, invoice_date: null, source_total: null, import_meta: null },
+          placeholderSupplierId: placeholderId, suppliers: data.suppliers, hasContent: false, found: extraction.found,
+          reading: readingSummary(extraction, READER_VERSION, new Date().toISOString()), newId: () => `${invoiceId.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`,
+        });
+        // La factura se crea ya con lo leído (un solo insert, sin update en el mismo lote).
+        const insert = base.find((op) => (op as { table?: string; id?: string }).table === 'invoices.invoices' && (op as { id?: string }).id === invoiceId) as { fields: Record<string, unknown> };
+        for (const op of fill.ops) {
+          const o = op as { op: string; table: string; id: string; fields: Record<string, unknown> };
+          if (o.op === 'update' && o.table === 'invoices.invoices' && o.id === invoiceId) Object.assign(insert.fields, o.fields);
+          else if (o.table === 'invoices.suppliers') base.splice(base.indexOf(insert), 0, o);
+          else base.push(o);
+        }
+        reason = `${readingMessage(extraction)}${extraction.hasText ? ' Complétala a mano, con «Leer con IA» o con Claude.' : ''}`.slice(0, 300);
       }
       if (!readOk) await deps.commit(`drive-${file.id}-pendiente`, base);
       if (items.length) await deps.saveText(fileId, items).catch(() => undefined);
@@ -434,14 +446,31 @@ export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'comm
     const chars = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
     const shape = `${pages} pág. con texto, ${items.length} fragmentos, ${chars} caracteres`;
     if (!(extraction.hasText && extraction.ok && extraction.document)) {
-      result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `${extraction.hasText ? `Falta ${extraction.missing.join(', ') || 'algún dato'}` : 'Sin texto'} (${shape}).` });
+      // Lectura parcial (fase 0): rellena solo lo vacío del borrador y guarda el resumen.
+      const placeholder = data.suppliers.find((s) => !s.deleted_at && s.slug === 'sin_identificar');
+      let k = 0x2000;
+      const fill = partialFillOperations({
+        invoice, placeholderSupplierId: placeholder?.id ?? null, suppliers: data.suppliers, hasContent: false, found: extraction.found,
+        reading: readingSummary(extraction, READER_VERSION, new Date().toISOString()), newId: () => `${invoice.id.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`,
+      });
+      const filled = Object.keys(fill.filled).length;
+      try { await deps.commit(`drive-partial-${invoice.id}-${invoice.revision ?? 0}`, fill.ops); } catch (error) {
+        result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `${readingMessage(extraction)} No se pudo guardar lo leído (${codeOf(error)}).`.slice(0, 280) });
+        return;
+      }
+      await deps.saveText(file.file_id, items).catch(() => undefined);
+      result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `${readingMessage(extraction)}${filled ? ` Rellenado: ${filled} dato${filled === 1 ? '' : 's'}.` : ''} (${shape}).`.slice(0, 280) });
       return;
     }
     const rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: extraction.document });
-    const document = rectification.isRectification && extraction.document.document_totals.total > 0 ? negateDocument(extraction.document) : extraction.document;
+    // Lo que ya escribió una persona en el borrador manda sobre lo leído.
+    const read = keepHumanFields(extraction.document, invoice);
+    const document = rectification.isRectification && read.document_totals.total > 0 ? negateDocument(read) : read;
     const documentSha = await importDocumentSha256(document);
     const best = matchSupplier(document, data.suppliers)[0];
-    const supplier = best && best.score >= 0.8 ? { mode: 'existing' as const, id: best.supplier.id } : { mode: 'create' as const, id: crypto.randomUUID() };
+    // Un proveedor ya puesto en el borrador (por una persona o por una lectura parcial con NIF) se respeta.
+    const chosen = data.suppliers.find((s) => s.id === invoice.supplier_id && !s.deleted_at && s.slug !== 'sin_identificar');
+    const supplier = chosen ? { mode: 'existing' as const, id: chosen.id } : best && best.score >= 0.8 ? { mode: 'existing' as const, id: best.supplier.id } : { mode: 'create' as const, id: crypto.randomUUID() };
     const dup = findDuplicateImport(documentSha, data.invoices.filter((i) => i.id !== invoice.id))
       ?? findDuplicateInvoice(document, supplier.mode === 'existing' ? supplier.id : null, data.invoices.filter((i) => i.id !== invoice.id));
     if (dup) { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `Ya está importada como ${dup.code ?? 'otra factura'}: anula este borrador.` }); return; }
