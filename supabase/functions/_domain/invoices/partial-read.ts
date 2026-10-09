@@ -61,10 +61,10 @@ const PROVENANCE_KEY: Record<string, string> = {
 };
 
 export interface PartialFillInput {
-  invoice: { id: string; supplier_id: string; invoice_number: string | null; invoice_date: string | null; source_total: number | string | null; revision?: number; import_meta?: unknown };
+  invoice: { id: string; supplier_id: string; invoice_number: string | null; invoice_date: string | null; source_total: number | string | null; revision?: number; import_meta?: unknown; expense_category?: string | null };
   /** El proveedor «Sin identificar» de Drive: se sustituye si el documento trae un NIF válido. */
   placeholderSupplierId: string | null;
-  suppliers: Array<{ id: string; tax_id: string | null; deleted_at?: string | null; slug?: string | null }>;
+  suppliers: Array<{ id: string; tax_id: string | null; deleted_at?: string | null; slug?: string | null; default_category?: string | null }>;
   /** La factura ya tiene líneas o impuestos: entonces no se tocan los importes. */
   hasContent: boolean;
   found: PartialInvoice;
@@ -101,7 +101,11 @@ export function partialFillOperations(x: PartialFillInput): { ops: Array<Record<
   if (x.placeholderSupplierId && invoice.supplier_id === x.placeholderSupplierId && found.supplier_tax_id) {
     const id = normTaxId(found.supplier_tax_id);
     const known = x.suppliers.find((s) => !s.deleted_at && s.slug !== 'sin_identificar' && s.tax_id && normTaxId(s.tax_id) === id);
-    if (known) { fields.supplier_id = known.id; filled.supplier_id = { value: known.id, level: level('supplier_id') }; }
+    if (known) {
+      fields.supplier_id = known.id; filled.supplier_id = { value: known.id, level: level('supplier_id') };
+      // Su categoría de gasto por defecto, si la factura no tiene (como al importar).
+      if (known.default_category && !(invoice as { expense_category?: string | null }).expense_category) fields.expense_category = known.default_category;
+    }
     else if (found.supplier_name) {
       const supplierId = x.newId('supplier');
       ops.push({ op: 'insert', table: 'invoices.suppliers', id: supplierId, fields: { name: found.supplier_name.slice(0, 160), tax_id: id } });
@@ -143,7 +147,7 @@ export function partialFillOperations(x: PartialFillInput): { ops: Array<Record<
 export function readAndFill(input: {
   items: PdfTextItem[];
   invoice: PartialFillInput['invoice'];
-  suppliers: Array<{ id: string; name: string; tax_id: string | null; deleted_at?: string | null; slug?: string | null }>;
+  suppliers: Array<{ id: string; name: string; tax_id: string | null; deleted_at?: string | null; slug?: string | null; default_category?: string | null }>;
   templates: TemplateLike[];
   placeholderSupplierId: string | null;
   hasContent: boolean;

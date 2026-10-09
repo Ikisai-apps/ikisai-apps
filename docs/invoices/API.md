@@ -1514,3 +1514,11 @@ Ya era así:
 
   `how_to_complete` y el mensaje para Claude piden respetar `already` y completar `reading.missing`.
 
+### 16.8 «Validar» nunca falla en silencio (incidencia del usuario, 9-10-2026)
+- **Antes de enviar**, la ficha comprueba lo mismo que `invoices.validate` (`validationMissing`, en `validation-check.ts`): fecha, categoría de gasto, documento original, artículos o IVA, rectificativa enlazada y con signo, y cuadre dentro de la tolerancia.
+  - Arriba de la ficha, un aviso: «Revisa los datos: se guardan solos al cambiarlos. Falta: …», con cada punto como enlace que abre el bloque, lleva al campo y lo resalta. Sin nada pendiente dice «Todo listo para validar».
+  - «Validar» queda con `aria-disabled` y su motivo: si se pulsa, no envía nada y explica qué falta.
+  - «Fiscal y pago» se abre solo si falta algo suyo.
+- **Si aun así el servidor rechaza** (por ejemplo, otro dispositivo cambió algo), `app/rejections.ts` traduce el motivo (`validationRejectionText`: «No se pudo validar FVR_…: falta la categoría de gasto») y descarta solo ese lote. Un intento de validar fallido no deja «1 rechazado». Al arrancar, la app limpia los que hubiera.
+- **Categoría por defecto:** la importación ya usaba la del proveedor. Ahora, al validar, la categoría pasa a ser la del proveedor si no tenía ninguna (sin pisarla), y la lectura automática la pone al reconocer al proveedor por NIF.
+

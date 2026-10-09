@@ -318,21 +318,19 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(ficha(page)).toContainText('REVISAR IMPORTES', { timeout: 20_000 });
     await expect(ficha(page)).toContainText('diferencia 0,50 €');
     await synced(page);
-    // Validar con descuadre: el servidor lo rechaza y el lote queda en Rechazados, nunca validada en silencio.
-    await ficha(page).locator('#validateInvoice').click();
-    await expect(page.locator('#syncStatus')).toContainText(/rechazad/i, { timeout: 20_000 });
+    // Validar con descuadre (incidencia del 9-10-2026): no se envía; dice qué falta y lleva al total del documento.
+    await expect(ficha(page).locator('#reviewBanner')).toContainText('que los importes cuadren con el total del documento');
+    await ficha(page).locator('#validateInvoice').click({ force: true });
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: /Para validar falta .*que los importes cuadren/ }).first()).toBeVisible();
+    await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i);
     expect(api.rows('invoices.invoices').find((i) => i.invoice_number === 'F-2026-124')!.status).toBe('pendiente_revision');
-    await ficha(page).locator('details.inv-block', { hasText: 'Fiscal y pago' }).locator('summary').click();
+    // «Fiscal y pago» ya está abierto: falta algo suyo
     await ficha(page).locator('#invSourceTotal').fill('44');
     await ficha(page).locator('#invSourceTotal').press('Tab');
     await expect(ficha(page)).toContainText('Importes corregidos', { timeout: 20_000 });
     await closeSheet(page);
-    await nav(page, 'Inicio').click();
-    await page.getByRole('button', { name: 'Ver conflictos' }).click();
-    await expect(page.locator('#rejectedList')).toContainText(/importes|cuadran/i);
-    await page.locator('#rejectedList').getByRole('button', { name: /Descartar/ }).first().click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Descartar' }).click();
-    await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i, { timeout: 20_000 });
+    // Nada que descartar: el intento no llegó a enviarse
+    await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i);
   });
 
   await test.step('A13 · Compras: por destino y artículos, solo validadas por defecto', async () => {
@@ -440,7 +438,7 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     const inv = api.rows('invoices.invoices').find((i) => i.invoice_number === 'F-OFF-1')!;
     await context.setOffline(true);
     await page.locator('#invoiceList .row', { hasText: 'Sin Red SL' }).click();
-    await ficha(page).locator('details.inv-block', { hasText: 'Fiscal y pago' }).locator('summary').click();
+    await ficha(page).locator('details.inv-block', { hasText: 'Fiscal y pago' }).evaluate((d) => { (d as HTMLDetailsElement).open = true; });
     await ficha(page).locator('#invNotes').fill('nota desde el móvil');
     await ficha(page).locator('#invNotes').press('Tab'); // un solo evento change → un solo comando
     await closeSheet(page);
@@ -2051,6 +2049,66 @@ test('Fase 1 · el texto leído al subir va al servidor con `fill` en cuanto el 
     expect(post.items).toBeGreaterThan(3);
     // Enviado: la cola queda vacía
     await expect.poll(() => page.evaluate(() => localStorage.getItem('ikisai.invoices.pendingTexts')), { timeout: 10_000 }).toBeNull();
+  } finally {
+    await context.close();
+  }
+});
+
+test('Incidencia del usuario (9-10-2026): «Validar» sin categoría no se envía; dice qué falta, lleva al campo y, completado, valida', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Intermodalidad Prueba SA', slug: 'intermodalidad_prueba_sa', aliases: [], default_is_investment: false, tax_id: 'A87654323' }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FVR_2026_VAL', supplier_id: supplierId, invoice_date: '2026-05-20', object: 'transporte', status: 'pendiente_revision', expense_category: null, source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, description: 'Transporte', net_amount: 100, vat_rate: 21, vat_amount: 21, discount_amount: 0 }]);
+    api.seed('invoices.tax_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, tax_type: 'iva', rate: 21, taxable_base: 100, amount: 21 }]);
+    api.seed('invoices.invoice_files', [{ id: randomUUID(), invoice_id: invoiceId, file_id: randomUUID(), original_filename: 'f.pdf', normalized_filename: 'f.pdf', page_order: 1, kind: 'original', mime_type: 'application/pdf', size_bytes: 10, sha256: 'b'.repeat(64) }]);
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    await expect(f.locator('#reviewBanner')).toContainText('Falta: la categoría de gasto', { timeout: 20_000 });
+    await expect(f.locator('#validateInvoice')).toHaveAttribute('aria-disabled', 'true');
+    const before = api.cursor();
+    // Con `aria-disabled` sigue pulsable a propósito: explica qué falta (Playwright lo da por deshabilitado).
+    await f.locator('#validateInvoice').click({ force: true });
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'Para validar falta la categoría de gasto' }).first()).toBeVisible();
+    await expect(f.locator('#invCategory')).toBeFocused();
+    expect(api.cursor()).toBe(before);
+    await f.locator('#invCategory').selectOption('suministros');
+    await expect(f.locator('#reviewBanner')).toContainText('Todo listo para validar', { timeout: 20_000 });
+    await f.locator('#validateInvoice').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)?.status, { timeout: 20_000 }).toBe('validada');
+    // La categoría pasa a ser la del proveedor (no tenía)
+    await expect.poll(() => api.rows('invoices.suppliers').find((s) => s.id === supplierId)?.default_category, { timeout: 20_000 }).toBe('suministros');
+  } finally {
+    await context.close();
+  }
+});
+
+test('Incidencia del usuario (9-10-2026): si el servidor rechaza «Validar», se dice el motivo en español y el intento se descarta solo', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Rechazo Prueba SL', slug: 'rechazo_prueba_sl', aliases: [], default_is_investment: false, default_category: 'otros' }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FVR_2026_REJ', supplier_id: supplierId, invoice_date: '2026-09-20', object: 'material', status: 'pendiente_revision', expense_category: 'compras', source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 5, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, description: 'Material', net_amount: 100, vat_rate: 21, vat_amount: 21, discount_amount: 0 }]);
+    api.seed('invoices.tax_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, tax_type: 'iva', rate: 21, taxable_base: 100, amount: 21 }]);
+    api.seed('invoices.invoice_files', [{ id: randomUUID(), invoice_id: invoiceId, file_id: randomUUID(), original_filename: 'r.pdf', normalized_filename: 'r.pdf', page_order: 1, kind: 'original', mime_type: 'application/pdf', size_bytes: 10, sha256: 'c'.repeat(64) }]);
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    await expect(f.locator('#reviewBanner')).toContainText('Todo listo para validar', { timeout: 20_000 });
+    // El servidor ve algo que aquí no (en la API falsa, un descuadre guardado): rechaza la validación
+    await f.locator('#validateInvoice').click();
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: /No se pudo validar FVR_\d{4}_\d+: falta que los importes cuadren/ }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i, { timeout: 20_000 });
+    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status).toBe('pendiente_revision');
   } finally {
     await context.close();
   }
