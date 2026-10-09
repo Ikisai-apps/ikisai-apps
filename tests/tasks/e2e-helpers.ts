@@ -63,13 +63,20 @@ export async function settled(page: Page): Promise<void> {
 }
 
 /** Abre la app, entra con la cuenta indicada y espera al primer modelo. `ID` queda disponible en la página. */
+/**
+ * El aviso de «Uso» del kit sale la primera vez para cada cuenta, con retraso, y tapa la pantalla: en las pruebas se da
+ * por aceptado. Sin esto, una prueba lenta lo encontraba encima del botón que iba a pulsar y esperaba hasta cortarse por
+ * tiempo (la «archivar una familia» de app.spec.ts, 8-10-2026). Vale para una página o para todo un contexto.
+ */
+export async function quietUsageNotice(target: Page | BrowserContext): Promise<void> {
+  await target.addInitScript(`{const get=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return String(k).startsWith('ikisai-usage-notice:')?'aceptado-en-pruebas':get.call(this,k)}}`);
+}
 export async function openApp(context: BrowserContext, server: E2EServer, options: { user?: { email: string; password: string }; aliases?: Aliases; errors?: string[]; autoUpdate?: boolean } = {}): Promise<Page> {
   const page = await context.newPage();
   // La versión nueva se aplica sola al abrir si es seguro (updates.js). En las pruebas va apagada salvo que se pida: las que
   // publican una versión nueva a mitad comprueban el aviso y el veto, y una recarga inesperada las rompería.
   if (!options.autoUpdate) await page.addInitScript('window.TASKS_UPDATE_AUTO_MS = 0;');
-  // El aviso de «Uso» del kit sale la primera vez para cada cuenta y taparía la pantalla: en las pruebas se da por aceptado.
-  await page.addInitScript(`{const get=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return String(k).startsWith('ikisai-usage-notice:')?'aceptado-en-pruebas':get.call(this,k)}}`);
+  await quietUsageNotice(page);
   page.on('pageerror', (error) => { (options.errors ?? []).push(error.message); if (!options.errors) throw new Error('Error de JavaScript en la página: ' + error.message); });
   if (options.aliases) await page.addInitScript(`window.ID = ${JSON.stringify(options.aliases)};`);
   const user = options.user ?? OWNER;
