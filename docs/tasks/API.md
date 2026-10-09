@@ -1423,4 +1423,8 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
   - repunta las etiquetas de tareas y proyectos (sin duplicar), los responsables, las reglas, las hijas que se quedan en su área (pasan a colgar de la madre General, en su familia) y las vistas guardadas;
   - archiva las copias de cada área, que siguen en el historial.
 - La app compone lo General en todas las áreas (`general: true`) y lo guarda una sola vez.
-- **Pendiente (segunda PR):** la pantalla de «Etiquetas» con General arriba y «Solo de <área>» debajo.
+- **«Etiquetas»** (segunda PR):
+  - arriba, **General**, con sus familias. Cada familia General enseña también, marcadas «solo de <área>», las etiquetas de esa familia que solo son del área actual, incluidas las de la familia del área con el mismo nombre o clave. Botones «+ General» (solo quien tiene toda la app) y «+ Solo de <área>»;
+  - debajo, **«Solo de <área>»**, con las familias sin General equivalente;
+  - una familia General no se archiva desde aquí: sus etiquetas, una a una.
+- **Selector de etiquetas:** cada familia sale una vez, con las General primero.
