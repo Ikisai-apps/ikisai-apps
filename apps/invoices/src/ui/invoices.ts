@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, MISSING_LABELS, validationMissing, type MissingKey, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -288,6 +288,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 
   const update = (fields: Record<string, unknown>, message = 'Guardado en este dispositivo.') =>
     commitSafely(client, [{ op: 'update', table: INVOICES, id: invoice.id, expectedRevision: invoice.revision, fields }], message);
+  // Lo que falta para validar (incidencia del usuario, 9-10-2026): lo mismo que comprueba el servidor, antes de enviar.
+  const missing: MissingKey[] = pendingState ? validationMissing({
+    invoice, hasOriginal: files.some((f) => f.kind === 'original' && !f.deleted_at),
+    lines: lines.filter((l) => !l.deleted_at).map((l) => ({ quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), discount_amount: Number(l.discount_amount ?? 0), net_amount: Number(l.net_amount), vat_rate: l.vat_rate === null ? null : Number(l.vat_rate), vat_amount: l.vat_amount === null ? null : Number(l.vat_amount) })),
+    taxes: taxes.filter((t) => !t.deleted_at).map((t) => ({ tax_type: t.tax_type, rate: t.rate === null ? null : Number(t.rate), taxable_base: t.taxable_base === null ? null : Number(t.taxable_base), amount: Number(t.amount) })),
+  }) : [];
+  const missingText = missing.map((m) => MISSING_LABELS[m]).join(', ');
   const call = (procedure: string, args: Record<string, unknown>, message: string) => commitSafely(client, [{ op: 'call', procedure, args }], message);
 
   // --- Acciones ------------------------------------------------------------
@@ -304,7 +311,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       onclick: () => openManualEntry(ctx, mirror, invoice, validateAndReopen(ctx)) }, icon('edit', 18), 'Rellenar a mano'));
   }
   if (editable && pendingState) {
-    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error'); } }, icon('check', 18), 'Validar'));
+    // Con algo pendiente no se envía: se dice qué falta y se lleva al campo (nunca un «1 rechazado» sin explicación).
+    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice',
+      'aria-disabled': missing.length ? 'true' : null, title: missing.length ? `Para validar falta ${missingText}.` : null,
+      onclick: async () => {
+        if (missing.length) { toast(`Para validar falta ${missingText}.`); goToMissing(missing[0]!); return; }
+        const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error');
+      } }, icon('check', 18), 'Validar'));
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.importar_json', 'data-feedback-label': 'Importar JSON', class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
     if (invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original')) {
       actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.extraer', 'data-feedback-label': 'Extraer', class: 'softbtn', type: 'button', id: 'extractInvoice', title: 'Pide a la Edge el JSON del documento y lo lleva a la vista previa de importación', onclick: () => void extractInto(ctx, invoice) }, icon('upload', 18), 'Extraer'));
@@ -335,6 +348,19 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   }
 
   // --- Cabecera y totales --------------------------------------------------
+  /** Abre el bloque del campo que falta, lo lleva a la vista, le da el foco y lo resalta un momento. */
+  function goToMissing(key: MissingKey): void {
+    const selector: Record<MissingKey, string> = { invoice_date: '#invDate', expense_category: '#invCategory', original_file: '[data-feedback-id="invoices.facturas.ficha.documento"]', lines_or_taxes: '[data-feedback-id="invoices.facturas.ficha.articulos"]', rectified_invoice: '#invKind', rectification_sign: '#invKind', totals: '#invSourceTotal' };
+    const target = document.querySelector<HTMLElement>(selector[key]);
+    if (!target) return;
+    const details = target.closest('details');
+    if (details) (details as HTMLDetailsElement).open = true;
+    if (target.tagName === 'DETAILS') (target as HTMLDetailsElement).open = true;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)) target.focus({ preventScroll: true });
+    target.classList.add('needs-attention');
+    setTimeout(() => target.classList.remove('needs-attention'), 2500);
+  }
   const header = el('div', { class: 'inv-head', 'data-feedback-id': 'invoices.facturas.ficha', 'data-feedback-label': 'Ficha de factura' },
     el('div', { class: 'chips' },
       el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice)),
@@ -516,6 +542,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     disabled: !canEdit || ['validada', 'archivada', 'anulada'].includes(invoice.status) && invoice.status !== 'validada', onchange: () => void update({ declared_period: periodSelect.value || null }) });
   const delivered = (date: string) => mirror.exports.some((e) => !e.deleted_at && e.from_date <= date && date <= e.to_date);
   const askLate = canEdit && !invoice.declared_period && !!ownPeriod && ownPeriod < workingPeriod() && invoice.status !== 'anulada' && invoice.status !== 'archivada' && !delivered(invoice.invoice_date!);
+  // Cómo se edita y qué falta (incidencia del usuario, 9-10-2026): arriba de la ficha, con la lista viva de lo que falta.
+  if (editable && pendingState) {
+    header.appendChild(el('div', { class: `banner ${missing.length ? 'warn' : 'ok'}`, id: 'reviewBanner', role: 'status' },
+      el('span', null, missing.length ? 'Revisa los datos: se guardan solos al cambiarlos. Falta: ' : 'Revisa los datos (se guardan solos al cambiarlos). Todo listo para validar.'),
+      ...missing.flatMap((m, i) => [i ? ', ' : '', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.falta', 'data-feedback-label': 'Ir a lo que falta', class: 'linkbtn', type: 'button', dataset: { missing: m }, onclick: () => goToMissing(m) }, MISSING_LABELS[m])]),
+      missing.length ? '.' : ''));
+  }
   // FB_2026_024: «Se deja en su trimestre» para la atrasada que la gestoría ya tiene; queda fuera de las entregas.
   const keepInQuarter = () => el('button', { 'data-feedback-id': 'invoices.facturas.ficha.dejar_en_su_trimestre', 'data-feedback-label': 'Se deja en su trimestre', class: 'softbtn small', type: 'button', id: 'keepInQuarter',
     onclick: () => void update({ declared_period: ownPeriod, delivered_elsewhere: true }, `Se queda en el ${quarterName(ownPeriod!)}, como ya pasada a la gestoría.`) }, `Se deja en el ${quarterName(ownPeriod!)} (ya la tiene la gestoría)`);
@@ -538,7 +571,9 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     onchange: () => { const v = parseAmount(sourceTotal.value); if (sourceTotal.value.trim() && v === null) { toast('Importe inválido.'); return; } void update({ source_total: v }); } });
   const notes = el('textarea', { 'data-feedback-ignore': '', id: 'invNotes', rows: '2', disabled: !canEdit }); notes.value = invoice.notes ?? '';
   notes.addEventListener('change', () => void update({ notes: notes.value.trim() || null }));
-  const fiscalBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.fiscal', feedbackLabel: 'Fiscal y pago' }, 'Fiscal y pago', `${categoryLabel(invoice.expense_category)}${invoice.is_investment ? ' · inversión' : ''}`, false,
+  // Abierto si falta algo suyo para validar: al volver a pintarse la ficha, lo que falta sigue a la vista.
+  const fiscalMissing = missing.some((m) => m !== 'original_file' && m !== 'lines_or_taxes');
+  const fiscalBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.fiscal', feedbackLabel: 'Fiscal y pago' }, 'Fiscal y pago', `${categoryLabel(invoice.expense_category)}${invoice.is_investment ? ' · inversión' : ''}`, fiscalMissing,
     el('div', { class: 'row2' }, field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
     field('Tipo de factura', kind),
@@ -1035,6 +1070,11 @@ async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfText
  */
 async function validateWithLearning(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice): Promise<RowOperation[]> {
   const ops: RowOperation[] = [{ op: 'call', procedure: 'invoices.validate', args: { invoice_id: invoice.id, expectedRevision: invoice.revision } }];
+  // La categoría con que se valida pasa a ser la del proveedor si no tenía ninguna (sin pisarla): la siguiente ya la lleva.
+  const owner = mirror.supplierById.get(invoice.supplier_id);
+  if (owner && owner.slug !== 'sin_identificar' && !owner.default_category && invoice.expense_category) {
+    ops.push({ op: 'update', table: SUPPLIERS, id: owner.id, expectedRevision: owner.revision, fields: { default_category: invoice.expense_category } });
+  }
   try {
     const original = (mirror.filesByInvoice.get(invoice.id) ?? []).filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
     if (!original || !navigator.onLine) return ops;
