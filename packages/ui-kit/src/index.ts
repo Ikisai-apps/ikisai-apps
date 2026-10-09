@@ -48,6 +48,7 @@ export { installBackNavigation, trackOverlay, type BackNavigationOptions, type O
 export { initAppUpdates, shouldAutoApply, type AppUpdates, type AppUpdatesOptions } from './sync/updates.ts';
 export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';
+export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';
 export { createSignaturePad, type SignaturePad, type SignaturePadOptions } from './fields/signature.ts';
 export { createInstallPrompt, isAppInstalled, installPlatform, type InstallPrompt, type InstallPromptOptions, type InstallPlatform } from './shell/install.ts';

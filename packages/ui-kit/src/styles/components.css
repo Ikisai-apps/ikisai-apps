@@ -960,3 +960,8 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .daytab.on .daytab-wd,.daytab.on .daytab-m{color:inherit;opacity:.85}
 .daytab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .daytab-count{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--warn);color:#1f2a22;font-size:10.5px;font-weight:800;line-height:18px}
+/* Texto con sugerencias */
+.suggest-wrap{display:contents}
+.hint.suggest:empty{display:none}
+.hint.suggest.warn{color:var(--warn-ink,#8a5a00)}
+.hint.suggest .linkbtn{font-size:inherit}
