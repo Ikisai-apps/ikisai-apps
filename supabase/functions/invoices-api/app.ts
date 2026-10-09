@@ -5,9 +5,10 @@ import {
   DomainError, EXPORT_CSV_FILES, buildImportArgs, detectRectification, negateDocument, issuerSnapshot, EXTRACTION_PROMPT_STRUCTURED, FILE_MIMES, IMPORT_JSON_SCHEMA, TABLES, domainMessage, findDuplicateImport, findDuplicateInvoice, fiscalSummary, importDocumentSha256, isBlobMarker,
   matchSupplier, normalizedFilename, proposeImport, purchaseItems, quarterRange, slugify, validTargetPair, validateImportDocument, validateRowFields,
   type AllocationRow, type BuildImportArgsOptions, type ImportFileArg, type ExportCsvName, type ExportManifest, type InvoiceLineRow, type InvoiceRow, type SupplierRow, type TaxLineRow,
+  readAndFill, readingMessage,
 } from '../_domain/invoices/mod.ts';
 import { zipStream, type ZipEntrySource } from './zip.ts';
-import { createGoogleDriveApi, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
+import { createGoogleDriveApi, READER_VERSION, readPdfItemsServer, rereadDriveDrafts, runDriveTick, type DriveApi, type DriveTickDeps, type DriveTickResult } from './drive.ts';
 import type { PdfTextItem } from '../_domain/invoices/mod.ts';
 
 // Finance (antes Invoices): finance.ikisai.com es el dominio; invoices.ikisai.com y tramita.ikisai.com redirigen a él (301, fase C).
@@ -265,7 +266,7 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       if (op.op === 'insert' || op.op === 'update') {
         // La lectura parcial (fase 0, 9-10-2026): solo la cuenta de sistema de Drive escribe `import_meta.reading` en un
         // borrador. Las sesiones de personas tienen un uuid como id de sesión; `service:drive` no se puede suplantar.
-        const reading = ctx.user.sessionId === 'service:drive' && op.table === TABLES.invoices && isReadingMeta(fields.import_meta);
+        const reading = (ctx.user.sessionId === 'service:drive' || ctx.user.sessionId === 'service:lector') && op.table === TABLES.invoices && isReadingMeta(fields.import_meta);
         try { validateRowFields(op.table, op.op, fields, { allowImportMeta: reading }); } catch (error) { throwDomain(error, index); }
       }
       if (op.table === TABLES.invoices) {
@@ -507,7 +508,11 @@ interface Bundle {
   stale: boolean;
 }
 
-export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?: ExtractInvoice, storage: StorageAccess = createStorage(supabase)): AppRoute[] {
+/** Relleno con el texto que sube la app (fase 1): lo aplica la cuenta de sistema `lector` con el mismo núcleo que Drive. */
+export type FillFromText = (user: RequestContext, fileId: string, items: PdfTextItem[]) => Promise<FillOutcome>;
+export interface FillOutcome { filled: boolean; reason?: string; invoice_id?: string; read?: string; fields?: string[]; missing?: string[]; message?: string; duplicate_of?: string }
+
+export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?: ExtractInvoice, storage: StorageAccess = createStorage(supabase), fillFromText?: FillFromText): AppRoute[] {
   async function bundle(ctx: RequestContext, id: string): Promise<Bundle> {
     if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Entrega no encontrada.');
     return read<Bundle>(supabase, ctx, 'invoices.export_bundle', { export_id: id.toLowerCase() });
@@ -644,7 +649,10 @@ export function invoicesRoutes(supabase: Supabase, targets: Targets, extractor?:
         });
         await verifiedFile(supabase, ctx, fileId, 0, 'fileId');
         const charCount = await saveDocumentText(supabase, ctx, fileId, items);
-        return { file_id: fileId, char_count: charCount, items: items.length };
+        // `fill: true` (lote, lectura automática, vuelta de la red): rellena lo vacío del borrador de quien sube el texto.
+        // «Leer PDF» no lo pide: la persona revisa lo leído en la vista previa o en «Rellenar a mano».
+        const fill = body.fill === true && fillFromText ? await fillFromText(ctx, fileId, items.map((it) => ({ ...it, x: it.x ?? 0, y: it.y ?? 0, w: it.w ?? undefined, h: it.h ?? undefined }))) : null;
+        return { file_id: fileId, char_count: charCount, items: items.length, ...(fill ? { fill } : {}) };
       },
     },
     {
@@ -739,7 +747,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     uploads: base.uploads ?? { bucket: INVOICES_BUCKET, maxBytes: 50 * 1024 * 1024, allowedMime: [...FILE_MIMES] },
     hooks,
     mcpTools: invoicesMcpTools(supabase, storage),
-    routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage), {
+    routes: [...invoicesRoutes(supabase, targets, base.extractInvoice, storage, createLectorFill(supabase, hooks)), {
       // «Buscar ahora» en Ajustes (owner): el mismo tick, sin esperar al planificador.
       method: 'POST', pattern: 'drive/run', handler: async ({ ctx }) => {
         if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede buscar en Drive.');
@@ -779,6 +787,44 @@ function driveFromEnv(env: (name: string) => string | undefined, transport?: typ
   const tokens = createGoogleTokenSource({ serviceAccountJson: env('GOOGLE_SERVICE_ACCOUNT_JSON'), scope: 'https://www.googleapis.com/auth/drive', fetch: transport });
   const driveId = env('INVOICES_DRIVE_ID');
   return tokens && driveId ? createGoogleDriveApi({ driveId, accessToken: () => tokens.accessToken(), fetch: transport }) : null;
+}
+
+/**
+ * Relleno con el texto que sube la app (fase 1, cuenta `lector`, 0090): solo el borrador en «Pendiente de datos» cuyo
+ * documento original subió quien manda el texto. El mismo `readAndFill` que Drive; rellena lo vacío o lo que rellenó una
+ * lectura automática de menos nivel.
+ */
+function createLectorFill(supabase: Supabase, hooks: AppHooks): FillFromText {
+  const sync = createSync(supabase, 'invoices', hooks);
+  let actor: Promise<RequestContext> | null = null;
+  const ctx = () => (actor ??= (async () => {
+    const id = await ensureServiceActor(supabase, 'lector');
+    return sync.context({ id, email: null, sessionId: 'service:lector', kind: 'human', name: 'Lector (sistema)' }, '');
+  })().catch((error) => { actor = null; throw error; }));
+  return async (user, fileId, items) => {
+    const c = await ctx();
+    const [files, invoices, suppliers, templates] = await Promise.all([
+      allRows<{ invoice_id: string; file_id: string; kind: string | null; deleted_at: string | null }>(supabase, c, TABLES.invoiceFiles),
+      allRows<InvoiceRow>(supabase, c, TABLES.invoices), allRows<SupplierRow>(supabase, c, TABLES.suppliers), allRows<any>(supabase, c, TABLES.supplierTemplates),
+    ]);
+    // Solo el documento que subió quien manda el texto (`core.files.created_by`), como original de un borrador.
+    const stored = await supabase.rpc<{ created_by: string | null }>('core_file_get', { p_app: 'invoices', p_actor: c.user.id, p_id: fileId });
+    const link = stored.created_by === user.user.id ? files.find((f) => !f.deleted_at && f.file_id === fileId && (f.kind ?? 'original') === 'original') : undefined;
+    if (!link) return { filled: false, reason: 'NO_DRAFT' };
+    const invoice = invoices.find((i) => i.id === link.invoice_id && !i.deleted_at);
+    if (!invoice || invoice.status !== 'pendiente_datos') return { filled: false, reason: 'NOT_PENDING', invoice_id: invoice?.id };
+    const placeholder = suppliers.find((s) => !s.deleted_at && s.slug === 'sin_identificar');
+    let k = 0x3000;
+    const r = readAndFill({
+      items, invoice, suppliers, templates: templates.filter((t) => !t.deleted_at && t.status !== 'retirada'), placeholderSupplierId: placeholder?.id ?? null, hasContent: false,
+      readerVersion: READER_VERSION, at: new Date().toISOString(), newId: () => `${invoice.id.slice(0, 24)}${(++k).toString(16).padStart(12, '0')}`, invoices,
+    });
+    if (r.duplicateOf) return { filled: false, reason: 'DUPLICATE', invoice_id: invoice.id, duplicate_of: r.duplicateOf.code ?? r.duplicateOf.id, message: `Ya está importada como ${r.duplicateOf.code ?? 'otra factura'}: anula este borrador.` };
+    try { await sync.commit(c, { requestId: `lector-${invoice.id}-${invoice.revision}`, operations: r.ops as unknown as Operation[] }); } catch (error) {
+      return { filled: false, reason: isFault(error) ? error.code : 'ERROR', invoice_id: invoice.id };
+    }
+    return { filled: true, invoice_id: invoice.id, read: r.extraction.read, fields: Object.keys(r.filled), missing: r.summary.missing, message: readingMessage(r.extraction) };
+  };
 }
 
 /**

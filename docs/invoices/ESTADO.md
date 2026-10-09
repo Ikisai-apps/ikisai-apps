@@ -112,6 +112,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Relectura automática por versión del lector (0229): el tick vuelve a leer, con el límite de 5, los borradores de Drive pendientes leídos con un lector anterior; rastro «en curso» antes de cada PDF y error visible si «Volver a leer» falla.
 - Lectura parcial (fase 0): el extractor conserva lo encontrado aunque falten campos; Drive y «Volver a leer» rellenan lo vacío del borrador y guardan el resumen en `import_meta.reading`, con mensajes honestos y sin pisar lo escrito a mano.
 - Interfaz de la lectura parcial (fase 0): «Leer PDF» y «Nueva factura» rellenan lo encontrado, la ficha enseña «Lectura del documento» con «Texto leído» y «Copiar texto», y «Subir varias» distingue lectura parcial de PDF sin texto. FVR_2026_003 y 004 se leyeron enteras en producción con la relectura automática (9-10-2026).
+- Fase 1 del lector, PR 1: núcleo `readAndFill` en el servidor; `documents/:id/text` con `fill` rellena el borrador de quien sube el texto (cuenta `lector`); precedencia por nivel (plantilla > regla > inferencia, lo humano manda) y sin duplicar números.
 
 ## En curso
 

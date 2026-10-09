@@ -1353,6 +1353,15 @@ El resumen va a `import_meta.reading` (`read`, `found`, `missing`, `stats`, plan
 - **Ficha de una pendiente con PDF:** bloque «Lectura del documento». Va abierto en «Pendiente de datos». Usa el texto guardado o lee el PDF en el dispositivo, y la cabecera resume `import_meta.reading`.
 - **«Subir varias»:** un PDF con texto que no llega a factura completa queda como «Lectura parcial: complétala», con lo encontrado rellenado y el mensaje. Solo un PDF sin texto dice «no contiene texto legible».
 
+**Fase 1 · núcleo único en el servidor (9-10-2026).** `readAndFill(items, invoice, …)`, en `partial-read.ts`, lee con plantillas y reglas y prepara el relleno.
+
+- **Quién lo usa:** Drive y la relectura (con `partialFillOperations`), y la ruta `POST documents/:fileId/text` cuando el cuerpo lleva `fill: true`.
+- **Qué rellena la ruta:** solo el borrador en «Pendiente de datos» cuyo documento original subió quien manda el texto (`core.files.created_by`). Lo hace con la cuenta de sistema `lector` (0090, sesión `service:lector`), la única con `drive` que puede escribir `import_meta.reading`.
+- **Respuesta:** `fill: { filled, reason?, invoice_id, read, fields, missing, message, duplicate_of? }`. Motivos: `NO_DRAFT`, `NOT_PENDING` y `DUPLICATE` (mismo proveedor y número que otra factura viva: no se rellena, y el mensaje dice cuál es).
+- **Sin `fill`** solo guarda el texto. Es lo que hace «Leer PDF», porque la persona revisa lo leído en la vista previa o en «Rellenar a mano»; rellenar a la vez daría conflicto de revisión.
+
+**Precedencia por nivel.** `reading.filled[campo] = { value, level }`, con nivel `plantilla` (plantilla con confianza ≥ 0,8), `regla` (≥ 0,6) o `inferencia`. Una lectura automática escribe un campo si está vacío, o si lo rellenó antes la lectura con menos nivel y sigue igual. Lo que cambió una persona, o la importación confirmada, manda. El formato de la fase 0 (`{campo: valor}`) cuenta como inferencia. El número no se escribe si duplicaría otra factura del mismo proveedor (`duplicateOf`).
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.
