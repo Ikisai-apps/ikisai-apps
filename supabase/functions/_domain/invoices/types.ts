@@ -103,6 +103,8 @@ export const TABLES = {
   supplierTemplates: 'invoices.supplier_templates',
   // Directorio de clientes por NIF (ronda 46)
   customers: 'invoices.customers',
+  // «Mi nombre» de los artículos recordado por proveedor (0230)
+  itemLabels: 'invoices.item_labels',
 } as const;
 export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
@@ -114,12 +116,12 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'status', 'review_reason', 'annulled_reason', 'payment_status', 'payment_method', 'paid_at', 'source_total',
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
     'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
-    'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original', 'declared_period',
+    'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original', 'declared_period', 'delivered_elsewhere',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
     'invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount',
-    'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes', 'rectifies_line_id',
+    'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes', 'rectifies_line_id', 'label',
   ],
   'invoices.tax_lines': ['invoice_id', 'position', 'tax_type', 'rate', 'taxable_base', 'amount', 'notes'],
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
@@ -143,6 +145,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.issued_allocations': ['issued_invoice_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_amount', 'notes'],
   'invoices.customers': ['name', 'tax_id', 'id_type', 'country', 'kind', 'address'],
   'invoices.supplier_templates': ['supplier_id', 'version', 'status', 'layout_tokens', 'layout_hash', 'page_size', 'fields', 'confirmations', 'uses', 'full_hits', 'last_confirmed_invoice_id'],
+  'invoices.item_labels': ['label'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -201,6 +204,8 @@ export interface InvoiceRow extends SyncedColumns {
   rectifies_invoice_id?: string | null;
   rectifies_number?: string | null;
   rectification_without_original?: boolean;
+  /** Ya pasada a la gestoría fuera de la app (0231): declarada en su trimestre y fuera de las entregas. */
+  delivered_elsewhere?: boolean;
   /** Trimestre en que se declara (`AAAATn`, 0228); nulo = el de su fecha. `declaration_date` la genera el servidor. */
   declared_period?: string | null;
   declaration_date?: string | null;
@@ -242,6 +247,19 @@ export interface InvoiceLineRow extends SyncedColumns {
   notes: string | null;
   /** Línea de la original que devuelve esta línea de una rectificativa (0227). */
   rectifies_line_id?: string | null;
+  /** «Mi nombre» (0230): el nombre propio del usuario; la descripción de la factura no se toca. */
+  label?: string | null;
+  /** «manual» o «recordado» (puesto solo desde la memoria del proveedor). Lo pone el servidor. */
+  label_source?: 'manual' | 'recordado' | null;
+}
+
+/** Memoria de «Mi nombre» por proveedor y artículo (0230). La escribe el servidor al validar; el cliente corrige `label`. */
+export interface ItemLabelRow extends SyncedColumns {
+  supplier_id: string;
+  match_key: string;
+  label: string;
+  uses: number;
+  last_invoice_id: string | null;
 }
 
 export interface TaxLineRow extends SyncedColumns {

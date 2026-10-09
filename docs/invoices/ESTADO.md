@@ -114,6 +114,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Interfaz de la lectura parcial (fase 0): «Leer PDF» y «Nueva factura» rellenan lo encontrado, la ficha enseña «Lectura del documento» con «Texto leído» y «Copiar texto», y «Subir varias» distingue lectura parcial de PDF sin texto. FVR_2026_003 y 004 se leyeron enteras en producción con la relectura automática (9-10-2026).
 - Fase 1 del lector, PR 1: núcleo `readAndFill` en el servidor; `documents/:id/text` con `fill` rellena el borrador de quien sube el texto (cuenta `lector`); precedencia por nivel (plantilla > regla > inferencia, lo humano manda) y sin duplicar números.
 - Fase 1 del lector, PR 2: en «Nueva factura», elegir el PDF ya lo lee (límites de 15 MB y 8 s, primeras y últimas páginas, sin bloquear el móvil, medido con la CPU 4× más lenta); proveedor y objeto opcionales con documento.
+- «Mi nombre» de los artículos con memoria por proveedor (0230): se recuerda al validar y se pone solo en la siguiente factura; editable también en validadas sin devolverlas a revisión. FB_2026_024: «Se deja en su trimestre» (0231), fuera de las entregas y reversible.
 
 ## En curso
 

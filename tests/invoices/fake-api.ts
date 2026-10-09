@@ -253,7 +253,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       batchChanges.push(record(op.table, op.op, row, nextCursor, batchChanges.length + 1, body.requestId, actorId));
       const invoiceId = op.table === 'invoices.invoices' ? op.id : typeof row.invoice_id === 'string' ? row.invoice_id : null;
       if (invoiceId) touchedInvoices.add(invoiceId);
-      if (invoiceId && ['invoices.invoice_lines', 'invoices.tax_lines'].includes(op.table)) childTouched.add(invoiceId);
+      // «Mi nombre» (0230): lo pone el servidor y cambiarlo solo no es editar la factura.
+      const labelOnly = op.table === 'invoices.invoice_lines' && op.op === 'update' && Object.keys(fields).every((k) => k === 'label');
+      if (op.table === 'invoices.invoice_lines' && 'label' in fields) row.label_source = fields.label ? 'manual' : null;
+      if (invoiceId && ['invoices.invoice_lines', 'invoices.tax_lines'].includes(op.table) && !labelOnly) childTouched.add(invoiceId);
       if (invoiceId && op.table === 'invoices.invoice_files' && row.kind === 'original') childTouched.add(invoiceId);
       if (op.table === 'invoices.invoices' && op.op === 'update' && Object.keys(fields).some((k) => SENSITIVE.includes(k))) sensitiveChanged.add(op.id);
     });

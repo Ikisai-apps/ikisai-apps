@@ -4,7 +4,7 @@ import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
 import { categoryLabel } from '../app/client.ts';
 import { currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, statusChipClass, statusText, type Mirror, type RangeKind } from '../app/data.ts';
-import { ITEM_TYPE_LABELS } from '../app/data.ts';
+import { ITEM_TYPE_LABELS, lineName } from '../app/data.ts';
 import { openInvoice } from './invoices.ts';
 import { FRESHNESS_LABELS, checkTargetFreshness } from '../app/targets.ts';
 import type { ViewMount } from './shell.ts';
@@ -111,7 +111,7 @@ export const mountPurchases: ViewMount = (ctx) => {
   function renderItems(result: PurchaseItemsResult): HTMLElement {
     return fbRows(renderList({ label: 'Artículos comprados', empty: { title: 'Sin artículos', text: 'Ajusta el periodo o los filtros.' }, rows: result.items.map((item): ListRowSpec => ({
       id: item.line.id,
-      title: item.line.description,
+      title: lineName(item.line),
       meta: [item.supplier?.name ?? '—', shortDate(item.invoice.invoice_date), item.invoice.code ?? 'código pendiente', item.line.quantity === null ? '' : `${Number(item.line.quantity)} ${item.line.unit ?? ''}`.trim(), item.line.item_type ? ITEM_TYPE_LABELS[item.line.item_type] ?? item.line.item_type : ''].filter(Boolean),
       chips: [
         el('span', { class: 'chip' }, eur(item.line.net_amount)),
@@ -125,7 +125,7 @@ export const mountPurchases: ViewMount = (ctx) => {
       ],
       pending: (item.line as { _pending?: boolean })._pending === true || (item.invoice as { _pending?: boolean })._pending === true,
       onClick: () => void openInvoice(ctx, item.invoice.id),
-      label: `Abrir la factura de ${item.line.description}`,
+      label: `Abrir la factura de ${lineName(item.line)}`,
       actions: [el('button', { 'data-feedback-id': 'invoices.compras.resultados.articulo.factura', 'data-feedback-label': 'Factura', class: 'linkbtn', type: 'button', onclick: () => void openInvoice(ctx, item.invoice.id) }, icon('invoice', 16), 'Factura')],
     })) }), { feedbackId: 'invoices.compras.resultados.articulos', feedbackLabel: 'Artículos comprados' }, { feedbackId: 'invoices.compras.resultados.articulo', feedbackLabel: 'Artículo' });
   }

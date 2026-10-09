@@ -15,7 +15,7 @@ import {
   type LocalAllocation, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from '../app/client.ts';
 import {
-  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
+  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, lineName, loadMirror, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
@@ -348,7 +348,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
       ...rectificationRows(ctx, invoice, mirror),
       el('dt', null, 'Se declara en'), el('dd', { id: 'declaredPeriod' }, invoice.invoice_date || invoice.declared_period
-        ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
+        ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${invoice.delivered_elsewhere ? ' · ya pasada a la gestoría' : isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
       ...(invoice.drive_url ? [el('dt', null, 'Origen'), el('dd', null, 'Llegó por Google Drive · ', el('a', { href: invoice.drive_url, target: '_blank', rel: 'noopener', id: 'driveOrigin' }, 'abrir el original'))] : []),
     ),
     el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions),
@@ -396,20 +396,26 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // Orden manual (decisión del usuario, TABLÓN): con dos o más artículos y permiso de edición, lista reordenable del kit.
   // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
   const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
-    el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, l.description), l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
+    el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, lineName(l)),
+      l.label_source === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
+      l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null,
+      // La descripción de la factura (la que vale fiscalmente) sigue a la vista bajo «Mi nombre».
+      l.label ? el('span', { class: 'hint line-original', 'data-feedback-ignore': '' }, `En la factura: ${l.description}`) : null),
     el('div', { class: 'line-nums' },
       el('span', { 'data-feedback-ignore': '' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
       el('strong', { 'data-feedback-ignore': '' }, eur(l.net_amount)),
       returnedOf(l.id, mirror) ? el('span', { class: 'chip warn', 'data-feedback-ignore': '' }, `Devuelto: ${eur(returnedOf(l.id, mirror))}`) : null,
       el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`),
-      editable ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.editar', 'data-feedback-label': 'Editar artículo', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${l.description}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
+      editable ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.editar', 'data-feedback-label': 'Editar artículo', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${lineName(l)}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
+      // «Mi nombre»: también en una factura validada (no la devuelve a revisión).
+      canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada' ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'linkbtn', type: 'button', 'aria-label': `Mi nombre para ${l.description}`, onclick: () => replace(lineEditor, labelForm(client, l, () => replace(lineEditor))) }, 'Mi nombre') : null,
     ),
   );
   const linesView = !lines.length
     ? el('p', { class: 'hint' }, 'Sin artículos. Importa el JSON o añádelos a mano.')
     : editable && lines.length > 1
       ? createSortableList<LocalInvoiceLine>({
-        items: lines, key: (l) => l.id, name: (l) => l.description, label: 'Artículos de la factura', id: 'invoiceLines', render: lineRow,
+        items: lines, key: (l) => l.id, name: (l) => lineName(l), label: 'Artículos de la factura', id: 'invoiceLines', render: lineRow,
         onReorder: async (ordered) => {
           const ops: RowOperation[] = ordered.flatMap((l, index): RowOperation[] => l.position === index ? [] : [{ op: 'update', table: INVOICE_LINES, id: l.id, expectedRevision: l.revision, fields: { position: index } }]);
           if (ops.length) await commitSafely(client, ops, 'Orden de los artículos guardado.');
@@ -445,7 +451,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       const rest = unallocated(l, mirror);
       const pct = Number(l.net_amount) !== 0 ? Math.min(100, Math.round((Math.abs(assigned) / Math.abs(Number(l.net_amount))) * 100)) : 0;
       return el('div', { class: 'alloc-line' },
-        el('div', { class: 'alloc-head', 'data-feedback-ignore': '' }, el('strong', null, l.description), el('span', null, `${eur(assigned)} de ${eur(l.net_amount)}`)),
+        el('div', { class: 'alloc-head', 'data-feedback-ignore': '' }, el('strong', null, lineName(l)), el('span', null, `${eur(assigned)} de ${eur(l.net_amount)}`)),
         el('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, el('span', { style: `width:${pct}%` })),
         el('div', { class: 'chips' },
           ...allocations.map((a) => {
@@ -509,10 +515,22 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     disabled: !canEdit || ['validada', 'archivada', 'anulada'].includes(invoice.status) && invoice.status !== 'validada', onchange: () => void update({ declared_period: periodSelect.value || null }) });
   const delivered = (date: string) => mirror.exports.some((e) => !e.deleted_at && e.from_date <= date && date <= e.to_date);
   const askLate = canEdit && !invoice.declared_period && !!ownPeriod && ownPeriod < workingPeriod() && invoice.status !== 'anulada' && invoice.status !== 'archivada' && !delivered(invoice.invoice_date!);
+  // FB_2026_024: «Se deja en su trimestre» para la atrasada que la gestoría ya tiene; queda fuera de las entregas.
+  const keepInQuarter = () => el('button', { 'data-feedback-id': 'invoices.facturas.ficha.dejar_en_su_trimestre', 'data-feedback-label': 'Se deja en su trimestre', class: 'softbtn small', type: 'button', id: 'keepInQuarter',
+    onclick: () => void update({ declared_period: ownPeriod, delivered_elsewhere: true }, `Se queda en el ${quarterName(ownPeriod!)}, como ya pasada a la gestoría.`) }, `Se deja en el ${quarterName(ownPeriod!)} (ya la tiene la gestoría)`);
   if (askLate) {
-    header.appendChild(el('div', { class: 'banner warn', id: 'lateBanner' }, el('span', null, `Es del ${quarterName(ownPeriod)}: ¿la declaras en el ${quarterName(workingPeriod())}? Si ese trimestre ya lo declaraste fuera de la app, sí.`),
+    header.appendChild(el('div', { class: 'banner warn', id: 'lateBanner' }, el('span', null, `Es del ${quarterName(ownPeriod)}: ¿la declaras en el ${quarterName(workingPeriod())}? Si ese trimestre ya lo declaraste fuera de la app, sí. Si la gestoría ya la tiene, se deja en su trimestre.`),
       el('button', { 'data-feedback-id': 'invoices.facturas.ficha.declarar_ahora', 'data-feedback-label': 'Declararla en el trimestre en curso', class: 'softbtn small', type: 'button', id: 'declareNow',
-        onclick: () => void update({ declared_period: workingPeriod() }, `Se declarará en el ${quarterName(workingPeriod())}.`) }, `Sí, en el ${quarterName(workingPeriod())}`)));
+        onclick: () => void update({ declared_period: workingPeriod() }, `Se declarará en el ${quarterName(workingPeriod())}.`) }, `Sí, en el ${quarterName(workingPeriod())}`),
+      keepInQuarter()));
+  } else if (canEdit && ownPeriod && isLate(invoice) && !invoice.delivered_elsewhere && invoice.status !== 'anulada' && invoice.status !== 'archivada') {
+    // Atrasada (movida a otro trimestre): también se puede dejar en el suyo si la gestoría ya la tiene.
+    header.appendChild(el('div', { class: 'banner info', id: 'lateMoved' }, el('span', null, `Atrasada: es del ${quarterName(ownPeriod)} y se declara en el ${quarterName(invoice.declared_period!)}. Si la gestoría ya la tiene, se deja en su trimestre.`), keepInQuarter()));
+  }
+  if (canEdit && invoice.delivered_elsewhere && invoice.status !== 'anulada' && invoice.status !== 'archivada') {
+    header.appendChild(el('div', { class: 'banner info', id: 'deliveredElsewhere' }, el('span', null, `Ya pasada a la gestoría: se queda en el ${quarterName(invoice.declared_period ?? ownPeriod ?? '')} y no entra en las entregas.`),
+      el('button', { 'data-feedback-id': 'invoices.facturas.ficha.deshacer_ya_pasada', 'data-feedback-label': 'Deshacer «ya pasada a la gestoría»', class: 'linkbtn', type: 'button', id: 'undoDeliveredElsewhere',
+        onclick: () => void update({ declared_period: null, delivered_elsewhere: false }, 'Vuelve a contar para las entregas.') }, 'Deshacer')));
   }
   const dueDate = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.fiscal.vencimiento', 'data-feedback-label': 'Vencimiento', type: 'date', id: 'invDue', value: invoice.due_date ?? '', disabled: !editable, onchange: () => void update({ due_date: dueDate.value || null }) });
   const sourceTotal = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'invSourceTotal', value: invoice.source_total === null ? '' : String(Number(invoice.source_total)).replace('.', ','), disabled: !editable, placeholder: 'Total impreso en la factura',
@@ -640,6 +658,7 @@ function allocationLabel(a: LocalAllocation): string {
 // ---------------------------------------------------------------------------
 function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalInvoiceLine | null, count: number): HTMLElement {
   const description = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'lineDescription', required: true, maxlength: '500', value: line?.description ?? '' });
+  const label = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'lineLabel', maxlength: '120', placeholder: 'Opcional: cómo lo llamas tú', value: line?.label ?? '' });
   const quantity = el('input', { 'data-feedback-id': 'invoices.facturas.articulo.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', id: 'lineQuantity', value: line?.quantity === null || line?.quantity === undefined ? '' : String(Number(line.quantity)) });
   const unit = el('input', { 'data-feedback-id': 'invoices.facturas.articulo.unidad', 'data-feedback-label': 'Unidad', type: 'text', id: 'lineUnit', maxlength: '16', value: line?.unit ?? '' });
   const unitPrice = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'lineUnitPrice', value: line?.unit_price === null || line?.unit_price === undefined ? '' : String(Number(line.unit_price)) });
@@ -659,13 +678,15 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
     const fields: Record<string, unknown> = {
       description: description.value.trim(), quantity: parseAmount(quantity.value), unit: unit.value.trim() || null, unit_price: parseAmount(unitPrice.value), net_amount: netValue,
       vat_rate: rate, vat_amount: rate === null ? null : Math.round(netValue * rate) / 100, gross_amount: rate === null ? null : Math.round(netValue * (100 + rate)) / 100, item_type: itemType.value || null,
+      label: label.value.trim() || null,
     };
     const ops: RowOperation[] = line
       ? [{ op: 'update', table: INVOICE_LINES, id: line.id, expectedRevision: line.revision, fields: changed(fields, line) }]
       : [{ op: 'insert', table: INVOICE_LINES, id: crypto.randomUUID(), fields: { ...fields, invoice_id: invoice.id, position: count, discount_amount: 0 } }];
     if (await commitSafely(client, ops, line ? 'Artículo guardado.' : 'Artículo añadido.')) replace(host);
   } },
-    el('div', { class: 'row2' }, field('Descripción', description), field('Tipo', itemType)),
+    el('div', { class: 'row2' }, field('Descripción', description, 'La de la factura: es la que va a la gestoría.'), field('Tipo', itemType)),
+    field('Mi nombre', label, 'Cómo lo llamas tú. Al validar, Finance lo recuerda para las siguientes facturas de este proveedor.'),
     el('div', { class: 'row2' }, field('Cantidad', quantity), field('Unidad', unit), field('Precio unitario', unitPrice)),
     el('div', { class: 'row2' }, field('Base (sin IVA)', net), field('IVA', vatRate)),
     error,
@@ -676,6 +697,23 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
     ),
   );
   return host;
+}
+
+/** «Mi nombre» de una línea, en una sola casilla (también en facturas validadas: no las devuelve a revisión). */
+function labelForm(client: SyncClient, line: LocalInvoiceLine, done: () => void): HTMLElement {
+  const input = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'labelInput', maxlength: '120', value: line.label ?? '', placeholder: line.description, 'aria-label': 'Mi nombre' });
+  const form = el('form', { 'data-feedback-id': 'invoices.facturas.articulo.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'inv-form', novalidate: true, onsubmit: async (e: Event) => {
+    e.preventDefault();
+    const value = input.value.trim() || null;
+    if (value === (line.label ?? null)) { done(); return; }
+    if (await commitSafely(client, [{ op: 'update', table: INVOICE_LINES, id: line.id, expectedRevision: line.revision, fields: { label: value } }], value ? 'Nombre guardado. Al validar, se recuerda para este proveedor.' : 'Nombre quitado.')) done();
+  } },
+    field('Mi nombre', input, `En la factura: «${line.description}». Vacío para usar ese.`),
+    el('div', { class: 'btnrow' },
+      el('button', { 'data-feedback-id': 'invoices.facturas.articulo.mi_nombre.guardar', 'data-feedback-label': 'Guardar nombre', class: 'primary', type: 'submit', id: 'saveLabel' }, 'Guardar'),
+      el('button', { 'data-feedback-id': 'invoices.facturas.articulo.mi_nombre.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: done }, 'Cancelar')));
+  setTimeout(() => input.focus(), 0);
+  return form;
 }
 
 function renderTaxForm(client: SyncClient, invoice: LocalInvoice, tax: LocalTaxLine | null, count: number): HTMLElement {
@@ -1326,7 +1364,7 @@ export function openAllocation(ctx: ViewContext, mirror: Mirror, invoice: LocalI
   } }, 'Asignar');
 
   openSheet({
-    title: `Asignar «${line.description}»`,
+    title: `Asignar «${lineName(line)}»`,
     meta: `${eur(rest)} sin asignar de ${eur(line.net_amount)}`,
     body: el('div', null, appButtons, appArea, el('div', { class: 'row2' }, field('Importe (base, sin IVA)', amount), field('Cantidad', quantity)), error),
     foot: [el('button', { 'data-feedback-id': 'invoices.facturas.asignar.volver', 'data-feedback-label': 'Volver', class: 'ghost', type: 'button', onclick: async () => { await closeSheet(true); void openInvoice(ctx, invoice.id); } }, 'Volver'), save],
