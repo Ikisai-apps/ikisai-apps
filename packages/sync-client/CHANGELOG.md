@@ -1,5 +1,10 @@
 # Cambios de @ikisai/sync-client
 
+## 0.5.1 · 9 de octubre de 2026
+
+- **«Reintentar con lo mío» en un `call`.** `resolveConflict(requestId, { choice: 'mine' })` con una operación `call` no reenviaba nada: quitaba el conflicto sin reintentar (incidencia del usuario al validar una factura en Finance justo después de cambiarle la categoría). Ahora reenvía el `call` con `args.expectedRevision` puesto a la revisión actual del servidor, si lo llevaba. Con «theirs» o «merge», como antes, solo las otras operaciones del lote.
+- La lógica sale a la función pura `conflictRetryOperations(record, decision)`, con pruebas en `tests/sync-client/conflict-call.test.ts`.
+
 ## 0.2.0 · 6 de octubre de 2026
 
 Peticiones de los equipos de app. El contrato `src/types.ts` solo gana miembros; nada de lo existente cambia.
