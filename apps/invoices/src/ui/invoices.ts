@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, readingMessage, readingText, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -777,14 +777,17 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     await closeSheet(true);
     openImport(ctx, mirror, null, undefined, { files: picked });
   }, async () => {
-    const file = files.files?.[0];
+    const all = Array.from(files.files ?? []);
+    const file = all.find((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) ?? all[0];
     return file ? { file, source: { filename: file.name, sha256: await sha256Hex(file) } } : null;
-  }, (file) => readNew(file, false));
+  }, async (file) => { await readNew(file, false); });
   /** Lee el PDF elegido (al elegirlo, o con «Leer PDF») y rellena el formulario con lo que encuentre. */
-  async function readNew(file: File, auto: boolean): Promise<void> {
+  async function readNew(file: File, auto: boolean): Promise<ReadLevel | null> {
     const picked = Array.from(files.files ?? []);
+    let level: ReadLevel | null = null;
     if (auto) replace(readingHost, el('p', { class: 'hint', id: 'readingProgress', role: 'status' }, 'Leyendo el PDF…'));
     await readPdfInto(ctx, mirror, null, file, picked, undefined, (prefill) => {
+      level = prefill.read;
       // Lectura parcial (fase 0): lo encontrado rellena lo vacío del formulario; lo demás, a mano o con la IA.
       const f = prefill.found;
       const taxId = f.supplier_tax_id?.replace(/[\s.-]/g, '').toUpperCase() ?? null;
@@ -804,21 +807,52 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
         : null);
       preview();
     }, auto);
+    return level;
+  }
+  const isPdfFile = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  /** Varias páginas de una misma factura: lee el primer PDF con texto (no solo el primero). */
+  async function readFirstWithText(picked: File[]): Promise<void> {
+    for (const f of picked.filter(isPdfFile)) if ((await readNew(f, true)) !== 'no_text') return;
   }
   const readingHost = el('div', { id: 'newReading' });
+  // Varios archivos (pregunta del usuario, 9-10-2026): ¿páginas de una misma factura o facturas distintas?
+  const multiHost = el('div', { id: 'multiFiles' });
+  let multiChoice: 'same' | null = null;
   chatgpt.hidden = true;
   // Fase 1: elegir el PDF ya lo lee (en el worker de PDF.js, con límites de tamaño y tiempo); sin pulsar nada más.
   files.addEventListener('change', () => {
-    chatgpt.hidden = !(files.files && files.files.length);
-    const first = files.files?.[0];
-    if (first && (first.type === 'application/pdf' || /\.pdf$/i.test(first.name))) void readNew(first, true);
-    else replace(readingHost);
+    const picked = Array.from(files.files ?? []);
+    multiChoice = null;
+    replace(readingHost);
+    replace(multiHost);
+    chatgpt.hidden = !picked.length;
+    if (picked.length > 1) {
+      chatgpt.hidden = true;
+      replace(multiHost, el('div', { class: 'banner info', id: 'multiQuestion', role: 'group', 'aria-label': 'Varios archivos' },
+        el('span', null, `Has elegido ${picked.length} archivos. ¿Son páginas de una misma factura o facturas distintas?`),
+        el('div', { class: 'btnrow' },
+          el('button', { 'data-feedback-id': 'invoices.facturas.nueva.varios.misma', 'data-feedback-label': 'Páginas de una misma factura', class: 'softbtn small', type: 'button', id: 'samePages', onclick: () => {
+            multiChoice = 'same';
+            replace(multiHost, el('p', { class: 'hint', id: 'multiChoice' }, `Una sola factura con ${picked.length} documentos.`));
+            chatgpt.hidden = false;
+            void readFirstWithText(picked);
+          } }, 'Páginas de una misma factura'),
+          el('button', { 'data-feedback-id': 'invoices.facturas.nueva.varios.distintas', 'data-feedback-label': 'Facturas distintas', class: 'primary small', type: 'button', id: 'separateInvoices', onclick: async () => {
+            // Como al compartir desde otra app: una factura por archivo, con lectura automática.
+            guard.dirtyEditor = false;
+            await closeSheet(true);
+            openBatchUpload(ctx, () => loadMirror(client), () => undefined, picked);
+          } }, 'Facturas distintas'))));
+      return;
+    }
+    if (picked[0] && isPdfFile(picked[0])) void readNew(picked[0], true);
   });
   const form = el('form', { 'data-feedback-id': 'invoices.facturas.nueva.formulario', 'data-feedback-label': 'Datos de la factura', id: 'newInvoiceForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; }, onsubmit: async (e: Event) => {
     e.preventDefault();
     error.textContent = '';
     // Fase 1: con documento, ni el proveedor ni el objeto son obligatorios: queda en «Pendiente de datos» con el
     // proveedor provisional y el objeto del nombre del archivo, y se completa después.
+    if ((files.files?.length ?? 0) > 1 && multiChoice !== 'same') { error.textContent = 'Elige si son páginas de una misma factura o facturas distintas.'; multiHost.scrollIntoView({ block: 'nearest' }); return; }
     const firstFile = files.files?.[0] ?? null;
     const noSupplier = !supplier.value || (supplier.value === NEW_SUPPLIER && !supplierName.value.trim() && !supplierTaxId.value.trim());
     if (noSupplier && !firstFile) { error.textContent = 'Elige el PDF o foto, o el proveedor.'; files.focus(); return; }
@@ -854,7 +888,8 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     } catch (err) { error.textContent = describeError(err); }
     save.disabled = false;
   } },
-    field('PDF o fotos', files, 'Elige el PDF: se lee solo y rellena lo que encuentre. Las fotos se reducen en el móvil.'),
+    field('PDF o fotos', files, 'Elige el PDF: se lee solo y rellena lo que encuentre. Varias facturas a la vez: se crea una por archivo. Las fotos se reducen en el móvil.'),
+    multiHost,
     chatgpt,
     readingHost,
     el('p', { class: 'hint form-section' }, 'O a mano (si no hay PDF con texto ni IA):'),
