@@ -97,9 +97,9 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('bootstrap registra las veintitrés tablas (extracciones, emitidas, plantillas, texto de documentos, registro VERI*FACTU y Drive); proveedores con slug derivado y alias', async () => {
+test('bootstrap registra las veinticinco tablas (extracciones, emitidas, plantillas, texto de documentos, registro VERI*FACTU, Drive y nombres de artículos); proveedores con slug derivado y alias', async () => {
   const boot = await app.call('/api/v1/bootstrap');
-  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.customers', 'invoices.document_texts', 'invoices.drive_imports', 'invoices.drive_runs', 'invoices.drive_state', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines', 'invoices.vf_events', 'invoices.vf_records', 'invoices.vf_state']);
+  assert.deepEqual(boot.data.tables.map((t: any) => t.table).sort(), ['invoices.allocations', 'invoices.customers', 'invoices.document_texts', 'invoices.drive_imports', 'invoices.drive_runs', 'invoices.drive_state', 'invoices.export_items', 'invoices.exports', 'invoices.extractions', 'invoices.invoice_files', 'invoices.invoice_lines', 'invoices.invoices', 'invoices.issued_allocations', 'invoices.issued_invoice_files', 'invoices.issued_invoice_lines', 'invoices.issued_invoices', 'invoices.issued_series', 'invoices.issued_tax_lines', 'invoices.item_labels', 'invoices.supplier_templates', 'invoices.suppliers', 'invoices.tax_lines', 'invoices.vf_events', 'invoices.vf_records', 'invoices.vf_state']);
   // Las tablas VERI*FACTU están registradas pero nadie las lee ni las escribe por sincronización
   // Las tablas VERI*FACTU y las del worker de Drive están registradas pero nadie las lee ni las escribe por sincronización
   for (const t of boot.data.tables.filter((x: any) => x.table.startsWith('invoices.vf_') || x.table.startsWith('invoices.drive_'))) assert.deepEqual([t.readable, t.writable], [false, false]);

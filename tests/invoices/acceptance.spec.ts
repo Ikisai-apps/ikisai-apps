@@ -7,7 +7,7 @@
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
 import fs from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildInvoicesApp } from './e2e-build.ts';
@@ -1914,6 +1914,59 @@ test('Nueva factura (fase 1): elegir el PDF ya lo lee; sin proveedor ni objeto s
     await expect(sheet.locator('#newNumber')).toHaveValue('AUTO-2026/0001');
     await sheet.locator('#importRead').click();
     await expect(ficha(page).locator('#importPreview')).toBeVisible({ timeout: 20_000 });
+  } finally {
+    await context.close();
+  }
+});
+
+test('«Mi nombre» (0230): renombrar un artículo de una factura validada; se ve el nombre propio y la descripción de la factura, y sigue validada', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID(); const lineId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Makro Nombres S.A.', slug: 'makro_nombres_s_a', aliases: [], default_is_investment: false }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FR_2026_NOM', supplier_id: supplierId, invoice_date: '2026-10-05', object: 'compra nombres', status: 'validada', expense_category: 'compras', source_total: 12.1, calculated_base: 10, calculated_vat: 2.1, calculated_total: 12.1, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: lineId, invoice_id: invoiceId, position: 0, description: '12345 TOMATE PERA 1KG', net_amount: 10, vat_rate: 21, vat_amount: 2.1, discount_amount: 0 }]);
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    await expect(f).toContainText('12345 TOMATE PERA 1KG', { timeout: 20_000 });
+    await f.getByRole('button', { name: 'Mi nombre para 12345 TOMATE PERA 1KG' }).click();
+    await f.locator('#labelInput').fill('Tomates');
+    await f.locator('#saveLabel').click();
+    await expect(f.locator('.line-desc').first()).toHaveText('Tomates', { timeout: 20_000 });
+    await expect(f.locator('.line-original').first()).toHaveText('En la factura: 12345 TOMATE PERA 1KG');
+    await synced(page);
+    expect(api.rows('invoices.invoice_lines').find((l) => l.id === lineId)).toMatchObject({ label: 'Tomates', label_source: 'manual', description: '12345 TOMATE PERA 1KG' });
+    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status).toBe('validada');
+  } finally {
+    await context.close();
+  }
+});
+
+test('FB_2026_024 · «Se deja en su trimestre»: la atrasada que ya tiene la gestoría se queda en su trimestre, marcada, y se puede deshacer', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Atrasada Gestoría S.L.', slug: 'atrasada_gestoria_s_l', aliases: [], default_is_investment: false }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FR_2026_ATR', supplier_id: supplierId, invoice_date: '2026-05-10', object: 'servicio atrasado', status: 'pendiente_revision', expense_category: 'servicios', source_total: 12.1, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    await f.locator('#keepInQuarter').click({ timeout: 20_000 });
+    await expect(f.locator('#deliveredElsewhere')).toContainText('Ya pasada a la gestoría', { timeout: 20_000 });
+    await expect(f.locator('#declaredPeriod')).toContainText('ya pasada a la gestoría');
+    await synced(page);
+    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)).toMatchObject({ declared_period: '2026T2', delivered_elsewhere: true });
+    await f.locator('#undoDeliveredElsewhere').click();
+    await expect(f.locator('#deliveredElsewhere')).toHaveCount(0, { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)).toMatchObject({ declared_period: null, delivered_elsewhere: false });
   } finally {
     await context.close();
   }

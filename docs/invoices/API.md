@@ -1432,3 +1432,23 @@ Lo que Drive no lee del todo (PDF escaneado o con datos que faltan) queda en «P
 - Drive guarda `pdf_text` con la procedencia de la lectura.
 - La herramienta MCP guarda `ia`.
 - La ficha muestra en «Importación» quién la leyó y de dónde sale cada dato, con su confianza.
+
+## 16. «Mi nombre» de los artículos y «Se deja en su trimestre» (9-10-2026)
+
+### 16.1 «Mi nombre» (0230)
+- **`invoice_lines.label`** (hasta 120 caracteres): el nombre propio del usuario. La descripción de la factura no se toca y es la que va a la gestoría (CSV y manifest). **`label_source`** (`manual` o `recordado`) lo pone un disparador; el cliente no lo escribe.
+- **Dónde se ve:** en la ficha, el «Mi nombre» y debajo «En la factura: …»; también en la asignación, en Compras y en la proyección de stock para Food (`line_description`). Booking no recibe descripciones.
+- **Memoria por proveedor (`invoices.item_labels`):**
+  - clave `cod:<código>` si la descripción empieza por un código (letras y cifras), o `txt:<descripción normalizada>`;
+  - se aprende al **validar** (hook `invoices.learn_item_labels`);
+  - se aplica sola al **insertar** una línea del mismo proveedor y clave, venga de donde venga (importación, a mano, Drive, lote, relectura), como «recordado»;
+  - el cliente solo corrige `label` o borra una entrada; crearla, no.
+- **Editar «Mi nombre»** también en una factura validada: cambiar solo `label` no la devuelve a «Pendiente de revisión» (`invoices.label_only_change` en `check_invariants`).
+
+### 16.2 FB_2026_024 · «Se deja en su trimestre» (0231)
+Para una factura atrasada que la gestoría ya tiene: `delivered_elsewhere = true` y `declared_period` = el trimestre de su fecha.
+- No se mueve al trimestre en curso ni vuelve a preguntar.
+- No entra en las entregas que se preparen en la app (`export_manifest`) ni las deja desactualizadas (`export_bundle.stale`).
+- El resumen fiscal de su trimestre la sigue contando.
+- En la ficha: el botón está en el aviso «Es del 2T…» y en el de «Atrasada»; después aparece el aviso «Ya pasada a la gestoría», con «Deshacer».
+
