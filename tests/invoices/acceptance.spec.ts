@@ -1972,6 +1972,63 @@ test('FB_2026_024 · «Se deja en su trimestre»: la atrasada que ya tiene la ge
   }
 });
 
+test('Nueva factura con varios archivos: «Facturas distintas» crea una por archivo (como «Subir varias»)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await expect(sheet).toContainText('Varias facturas a la vez: se crea una por archivo');
+    await sheet.getByLabel('PDF o fotos').setInputFiles([
+      { name: 'varias_uno.pdf', mimeType: 'application/pdf', buffer: invoiceTextPdf('VAR-2026/0001') },
+      { name: 'varias_dos.pdf', mimeType: 'application/pdf', buffer: invoiceTextPdf('VAR-2026/0002') },
+    ]);
+    await expect(sheet.locator('#multiQuestion')).toContainText('¿Son páginas de una misma factura o facturas distintas?');
+    // Sin elegir, no se guarda
+    await page.locator('#saveInvoice').click();
+    await expect(sheet.locator('.formerror')).toContainText('páginas de una misma factura o facturas distintas');
+    await sheet.locator('#separateInvoices').click();
+    const batch = page.getByRole('dialog', { name: 'Subir varias facturas' });
+    await expect(batch.locator('#batchSummary')).toContainText('2 leídas', { timeout: 60_000 });
+    await synced(page);
+    await expect.poll(() => api.rows('invoices.invoices').filter((i) => ['VAR-2026/0001', 'VAR-2026/0002'].includes(String(i.invoice_number))).length, { timeout: 20_000 }).toBe(2);
+  } finally {
+    await context.close();
+  }
+});
+
+test('Nueva factura con varios archivos: «Páginas de una misma factura» lee el primer PDF con texto y crea una sola factura con todos', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles([
+      { name: 'portada_escaneada.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([textPdf([]), Buffer.from('% portada')]) },
+      { name: 'misma_detalle.pdf', mimeType: 'application/pdf', buffer: invoiceTextPdf('MIS-2026/0001') },
+    ]);
+    await sheet.locator('#samePages').click();
+    await expect(sheet.locator('#multiChoice')).toContainText('Una sola factura con 2 documentos');
+    await expect(sheet.locator('#readingMessage')).toContainText('Lectura completa', { timeout: 20_000 });
+    await expect(sheet.locator('#newNumber')).toHaveValue('MIS-2026/0001');
+    await page.locator('#saveInvoice').click();
+    await expect(ficha(page)).toContainText('MIS-2026/0001', { timeout: 20_000 });
+    await synced(page);
+    const inv = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'MIS-2026/0001'));
+    await expect.poll(() => api.rows('invoices.invoice_files').filter((f) => f.invoice_id === inv.id && !f.deleted_at).length, { timeout: 20_000 }).toBe(2);
+  } finally {
+    await context.close();
+  }
+});
+
 /**
  * Medición de la lectura automática en el móvil (fase 1): CPU 4× más lenta, 390 px, PDF de 1, 10 y 30 páginas y uno
  * de 15 MB. Solo con IKISAI_MEASURE=1 (no en la CI): escribe tiempo, tarea larga máxima del hilo y montón de JS.
