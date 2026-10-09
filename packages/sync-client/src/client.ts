@@ -1528,33 +1528,52 @@ export class SyncClientImpl implements SyncClient {
     if (!record) throw new SyncApiError(404, 'NOT_FOUND', `No hay conflicto pendiente con requestId ${requestId}`);
     await this.db.delete(CONFLICTS_STORE, requestId);
 
-    const operations: RowOperation[] = [...record.otherOperations];
-    if (decision.choice !== 'theirs') {
-      const op = record.operation as RowOperation;
-      const table = record.current.id && op.op !== 'call' ? op.table : null;
-      if (table) {
-        const id = record.current.id;
-        const revision = record.current.revision;
-        const fields: Record<string, unknown> =
-          decision.choice === 'merge' ? { ...decision.fields } : op.op === 'update' ? { ...op.fields } : {};
-        const rowDeletedOnServer = record.code === 'ROW_DELETED' || record.current.deleted_at !== null;
-        if (decision.choice === 'mine' && op.op === 'delete') {
-          operations.push({ op: 'delete', table, id, expectedRevision: revision });
-        } else if (decision.choice === 'mine' && (op as RowOperation).op === 'restore') {
-          operations.push({ op: 'restore', table, id, expectedRevision: revision });
-        } else if (rowDeletedOnServer) {
-          operations.push({ op: 'restore', table, id, expectedRevision: revision });
-          if (Object.keys(fields).length > 0) operations.push({ op: 'update', table, id, expectedRevision: revision + 1, fields });
-        } else if (Object.keys(fields).length > 0) {
-          operations.push({ op: 'update', table, id, expectedRevision: revision, fields });
-        }
-      }
-    }
+    const operations = conflictRetryOperations(record, decision);
     if (operations.length > 0) {
       await this.enqueue(operations, { ...(record.blobs ? { blobs: record.blobs } : {}) });
     }
     await this.refreshCounts();
   }
+}
+
+/**
+ * Lo que se reenvía al resolver un conflicto: las operaciones del lote sobre otras filas y, salvo con «theirs», la mía
+ * sobre la revisión actual del servidor. Un `call` con «mine» se reenvía con `args.expectedRevision` puesto a esa
+ * revisión (si lo llevaba): «Reintentar con lo mío» tiene que reintentar, no solo quitar el conflicto.
+ */
+export function conflictRetryOperations(
+  record: ConflictRecord,
+  decision: { choice: 'mine' } | { choice: 'theirs' } | { choice: 'merge'; fields: Record<string, unknown> },
+): RowOperation[] {
+  const operations: RowOperation[] = [...record.otherOperations];
+  if (decision.choice === 'theirs') return operations;
+  const op = record.operation as RowOperation;
+  if (op.op === 'call') {
+    if (decision.choice === 'mine') {
+      const revision = record.current.revision;
+      const args = 'expectedRevision' in op.args && typeof revision === 'number' ? { ...op.args, expectedRevision: revision } : { ...op.args };
+      operations.push({ op: 'call', procedure: op.procedure, args });
+    }
+    return operations;
+  }
+  const table = record.current.id ? op.table : null;
+  if (!table) return operations;
+  const id = record.current.id;
+  const revision = record.current.revision;
+  const fields: Record<string, unknown> =
+    decision.choice === 'merge' ? { ...decision.fields } : op.op === 'update' ? { ...op.fields } : {};
+  const rowDeletedOnServer = record.code === 'ROW_DELETED' || record.current.deleted_at !== null;
+  if (decision.choice === 'mine' && op.op === 'delete') {
+    operations.push({ op: 'delete', table, id, expectedRevision: revision });
+  } else if (decision.choice === 'mine' && op.op === 'restore') {
+    operations.push({ op: 'restore', table, id, expectedRevision: revision });
+  } else if (rowDeletedOnServer) {
+    operations.push({ op: 'restore', table, id, expectedRevision: revision });
+    if (Object.keys(fields).length > 0) operations.push({ op: 'update', table, id, expectedRevision: revision + 1, fields });
+  } else if (Object.keys(fields).length > 0) {
+    operations.push({ op: 'update', table, id, expectedRevision: revision, fields });
+  }
+  return operations;
 }
 
 // ---------------------------------------------------------------------------
