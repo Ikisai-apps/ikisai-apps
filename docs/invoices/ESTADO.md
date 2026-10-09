@@ -119,6 +119,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Nueva factura con varios archivos: pregunta si son páginas de una misma factura (lee el primer PDF con texto) o facturas distintas (abre «Subir varias», una por archivo).
 - Fase 2 del lector: ranking de plantillas sin depender del NIF (huella, etiquetas y nombre, con umbral y margen); el proveedor reconocido por el formato va como «revísalo».
 - Fase 1 del lector, PR 3: el texto leído al subir («Subir varias», «Nueva factura») va al servidor con `fill` en cuanto el documento está subido, también al volver la red; el servidor rellena lo que falte y guarda el resumen.
+- Fase 2 del lector, PR 6: una regla de plantilla también se retira si falla más del 40 % tras 5 usos.
 
 ## En curso
 
