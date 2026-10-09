@@ -12,13 +12,14 @@ import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, el, openSheet, replace, toast } from '@ikisai/ui-kit';
 import {
   detectRectification, extractWithTemplates, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, importOperations, matchSupplier, negateDocument,
-  partialFillOperations, readingMessage, readingSummary, type ImportDocument, type TemplateExtraction,
+  partialFillOperations, readingMessage, readingSummary, type ImportDocument, type PdfTextItem, type TemplateExtraction,
 } from '@ikisai/domain-invoices';
 import { INVOICES, INVOICE_FILES, SUPPLIERS } from '../app/client.ts';
 import type { Mirror } from '../app/data.ts';
 import { ACCEPT_ATTR, stageDocument } from '../app/files.ts';
 import { sha256Hex } from '../app/ai-share.ts';
 import { readPdfItems } from '../app/pdf-text.ts';
+import { flushDocumentTexts, queueDocumentText } from '../app/text-queue.ts';
 import { usage } from '../app/usage.ts';
 import { commitSafely } from './common.ts';
 import type { ViewContext } from './shell.ts';
@@ -54,6 +55,7 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
     replace(summary, `${counts.leida} leída${counts.leida === 1 ? '' : 's'}, ${counts.parcial ? `${counts.parcial} con lectura parcial, ` : ''}${counts.sin_leer} sin leer, ${counts.duplicada} duplicada${counts.duplicada === 1 ? '' : 's'}${counts.error ? `, ${counts.error} con error` : ''}. Revísalas y valídalas en la lista.`);
     toast(navigator.onLine ? 'Facturas subidas.' : 'Facturas guardadas en este dispositivo: se subirán al volver la conexión.');
     onDone();
+    void flushDocumentTexts(ctx.client);
   }
 
   openSheet({
@@ -84,9 +86,11 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
   let document: ImportDocument | null = null;
   let rectification: ReturnType<typeof detectRectification> | null = null;
   let partial: TemplateExtraction | null = null;
+  let readItems: PdfTextItem[] = [];
   if (isPdf) {
     try {
       const items = await readPdfItems(file);
+      readItems = items;
       const result = extractWithTemplates(items, { suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })), templates: mirror.templates });
       partial = result;
       if (result.hasText && result.ok && result.document) {
@@ -96,6 +100,8 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
     } catch { document = null; }
   }
   const staged = await stageDocument(client, file);
+  // Fase 1: el texto va al servidor en cuanto el documento esté subido (rellena lo que falte y guarda el resumen).
+  if (readItems.length && partial?.hasText) queueDocumentText(staged.sha256, readItems);
   const fileArg = { file_id: staged.marker, original_filename: staged.filename, page_order: 1, mime_type: staged.mime, size_bytes: staged.size, sha256: staged.sha256 };
   if (document) {
     const documentSha = await importDocumentSha256(document);

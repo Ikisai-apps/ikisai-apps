@@ -6,7 +6,7 @@
  */
 import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, openSheet, replace } from '@ikisai/ui-kit';
-import { validSpanishTaxId, type PartialInvoice, type ReadLevel } from '@ikisai/domain-invoices';
+import { validSpanishTaxId, type PartialInvoice, type PdfTextItem, type ReadLevel } from '@ikisai/domain-invoices';
 import { CATEGORIES, CATEGORY_LABELS, INVOICES, INVOICE_LINES, SUPPLIERS, TAX_LINES, type LocalInvoice } from '../app/client.ts';
 import { eur, parseAmount, type Mirror } from '../app/data.ts';
 import { guard } from '../app/guard.ts';
@@ -21,7 +21,7 @@ const cents = (v: number) => Math.round(v * 100);
 const money = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
 
 /** Lo que leyó «Leer PDF» sin llegar a una factura completa: rellena lo vacío y se enseña arriba, con el texto. */
-export interface ManualPrefill { read: ReadLevel; found: PartialInvoice; message: string; text: string | null }
+export interface ManualPrefill { read: ReadLevel; found: PartialInvoice; message: string; text: string | null; items?: PdfTextItem[] }
 
 export function openManualEntry(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, validate: (invoiceId: string) => Promise<void>, prefill?: ManualPrefill): void {
   const { client } = ctx;

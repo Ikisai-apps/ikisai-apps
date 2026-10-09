@@ -1905,6 +1905,8 @@ test('Nueva factura (fase 1): elegir el PDF ya lo lee; sin proveedor ni objeto s
     await expect(ficha(page)).toContainText('Sin identificar', { timeout: 20_000 });
     await synced(page);
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.object === 'ticket sin fecha'), { timeout: 20_000 }).toMatchObject({ status: 'pendiente_datos', source_total: 18.4 });
+    // Fase 1, PR 3: lo leído va al servidor con `fill` en cuanto el documento está subido
+    await expect.poll(() => api.documentTextPosts().some((p) => p.fill && p.items >= 4), { timeout: 30_000 }).toBe(true);
     await closeSheet(page);
     // Completa: rellena el formulario sin cambiar de pantalla y «Importar lo leído» abre la vista previa
     await page.getByRole('button', { name: 'Nueva factura' }).click();
@@ -2024,6 +2026,31 @@ test('Nueva factura con varios archivos: «Páginas de una misma factura» lee e
     await synced(page);
     const inv = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'MIS-2026/0001'));
     await expect.poll(() => api.rows('invoices.invoice_files').filter((f) => f.invoice_id === inv.id && !f.deleted_at).length, { timeout: 20_000 }).toBe(2);
+  } finally {
+    await context.close();
+  }
+});
+
+test('Fase 1 · el texto leído al subir va al servidor con `fill` en cuanto el documento está subido («Subir varias»)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    const before = api.documentTextPosts().filter((p) => p.fill).length;
+    await page.locator('#batchUpload').click();
+    const sheet = page.getByRole('dialog', { name: 'Subir varias facturas' });
+    await sheet.locator('#batchFiles').setInputFiles([{ name: 'texto_al_servidor.pdf', mimeType: 'application/pdf', buffer: textPdf([['SERVIDOR TEXTO S.L.', 40, 800], ['Factura nº: SRV-1', 40, 780], ['Concepto variado de prueba', 40, 760], ['TOTAL', 40, 700], ['33,00 €', 450, 700]]) }]);
+    await sheet.locator('#batchStart').click();
+    await expect(sheet.locator('#batchSummary')).toContainText('1 con lectura parcial', { timeout: 60_000 });
+    await synced(page);
+    await expect.poll(() => api.documentTextPosts().filter((p) => p.fill).length, { timeout: 30_000 }).toBe(before + 1);
+    const post = api.documentTextPosts().filter((p) => p.fill).at(-1)!;
+    expect(post.items).toBeGreaterThan(3);
+    // Enviado: la cola queda vacía
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('ikisai.invoices.pendingTexts')), { timeout: 10_000 }).toBeNull();
   } finally {
     await context.close();
   }

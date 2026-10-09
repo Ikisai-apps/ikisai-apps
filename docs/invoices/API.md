@@ -1376,6 +1376,10 @@ Medición (CPU 4×, 390 px; prueba «medición» con `IKISAI_MEASURE=1`): de 1 a
 
 Sin elegir, no se guarda. «Leer PDF» usa el primer PDF, no el primer archivo.
 
+**Fase 1 · el texto al servidor (PR 3).** Lo leído en el dispositivo al subir («Subir varias» y «Nueva factura») se guarda por SHA-256 del documento en este dispositivo (`app/text-queue.ts`, `localStorage`, como mucho 20 documentos y 4.000 fragmentos cada uno). Cuando el documento está subido (también al volver la red), se manda a `POST documents/:id/text` con `fill: true`. El servidor rellena lo que falte del borrador con `readAndFill` (importes si había base, el resumen `import_meta.reading`) y no pisa nada.
+
+Los envíos se reintentan mientras haya algo pendiente. Un rechazo definitivo (4xx) se descarta, y lo que no llega a subirse en 7 días también. Al cerrar sesión, la cola se borra.
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.

@@ -77,6 +77,8 @@ export interface FakeApi {
   rows(table: string): FakeRow[];
   /** Reportes de «Sugerencias y QA» recibidos en `POST /feedback`. */
   feedbackReports(): FakeFeedbackReport[];
+  /** Textos recibidos en `POST documents/:id/text`, con `fill` (fase 1: el servidor rellena el borrador). */
+  documentTextPosts(): Array<{ fileId: string; items: number; fill: boolean }>;
   /** Lotes de uso recibidos en `POST /usage/batch` (USO.md). */
   usageBatches(): Array<{ deviceId: string; items: Array<Record<string, unknown>> }>;
   /** Simula una edición de otra persona directamente en el servidor (para provocar conflictos). */
@@ -123,6 +125,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const reservationSources = new Map<string, Record<string, unknown>>();
   // «Sugerencias y QA» y uso de funcionalidades (kit 0.18): en memoria, como en el simulado de Booking.
   const feedbackStore = new Map<string, FakeFeedbackReport>();
+  const textPosts: Array<{ fileId: string; items: number; fill: boolean }> = [];
   const feedbackByRequest = new Map<string, string>();
   let feedbackSeq = 0;
   const usageBatches: Array<{ deviceId: string; items: Array<Record<string, unknown>> }> = [];
@@ -790,7 +793,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
         const body = await readJson(req);
         documentTexts.set(docText[1]!, { items: Array.isArray(body.items) ? body.items : [], source: body.source ?? 'pdf_text' });
-        return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length });
+        textPosts.push({ fileId: docText[1]!, items: documentTexts.get(docText[1]!)!.items.length, fill: body.fill === true });
+        return json(res, 200, { file_id: docText[1], items: documentTexts.get(docText[1]!)!.items.length, ...(body.fill === true ? { fill: { filled: false, reason: 'FAKE' } } : {}) });
       }
       if (path === 'read/booking.reservation_invoice_source' && method === 'POST') {
         const body = await readJson(req);
@@ -882,6 +886,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     setEntity(e) { entity = e; },
     setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
+    documentTextPosts: () => textPosts.map((t) => ({ ...t })),
     usageBatches: () => usageBatches.map((b) => ({ ...b })),
     failNextVerify: () => { failVerify = true; },
     targets,
