@@ -36,9 +36,9 @@ export interface TaskRow extends BaseRow {
   external_on_behalf?: 'internal' | 'organizer' | 'guest' | null;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
-export interface FamilyRow extends BaseRow { tab_id: Uuid; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
+export interface FamilyRow extends BaseRow { tab_id: Uuid | null; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
 export interface LabelRow extends BaseRow {
-  tab_id: Uuid; family_id: Uuid; parent_id: Uuid | null; name: string; archived: boolean; archived_before_family: boolean | null; position: number;
+  tab_id: Uuid | null; family_id: Uuid; parent_id: Uuid | null; name: string; archived: boolean; archived_before_family: boolean | null; position: number;
 }
 export interface TaskLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; label_id: Uuid }
 export interface ProjectLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; label_id: Uuid }

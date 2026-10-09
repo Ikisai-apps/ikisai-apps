@@ -61,7 +61,8 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
       return someTab(scopes, String(row.id ?? ''));
     case 'tasks.families':
     case 'tasks.labels':
-      return someTab(scopes, tab);
+      // El catálogo General (tab_id nulo, FB_2026_023) lo ve cualquiera con acceso a Tasks.
+      return row.tab_id == null || someTab(scopes, tab);
     case 'tasks.saved_views':
       return fullTab(scopes, tab);
     case 'tasks.projects':
