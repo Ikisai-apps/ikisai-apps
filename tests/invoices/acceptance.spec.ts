@@ -448,6 +448,9 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await page.getByRole('button', { name: 'Resolver' }).click();
     await expect(page.locator('#conflictList')).toContainText('nota desde el PC');
     await expect(page.locator('#conflictList')).toContainText('nota desde el móvil');
+    // Kit 0.28.0: nombre legible (código · proveedor, nunca el id) y quién lo cambió
+    await expect(page.locator('#conflictList')).toContainText('Sin Red SL');
+    await expect(page.locator('#conflictIntro')).not.toHaveText('Nada se pierde hasta que decidas.');
     expect(api.rows('invoices.invoices').find((i) => i.id === inv.id)!.notes).toBe('nota desde el PC');
   });
 

@@ -1522,3 +1522,16 @@ Ya era así:
 - **Si aun así el servidor rechaza** (por ejemplo, otro dispositivo cambió algo), `app/rejections.ts` traduce el motivo (`validationRejectionText`: «No se pudo validar FVR_…: falta la categoría de gasto») y descarta solo ese lote. Un intento de validar fallido no deja «1 rechazado». Al arrancar, la app limpia los que hubiera.
 - **Categoría por defecto:** la importación ya usaba la del proveedor. Ahora, al validar, la categoría pasa a ser la del proveedor si no tenía ninguna (sin pisarla), y la lectura automática la pone al reconocer al proveedor por NIF.
 
+### 16.9 «Validar» sin chocar con uno mismo (incidencia del usuario, 9-10-2026, tras #449)
+- **El problema:** elegir la categoría y pulsar «Validar» al instante mandaba la validación con la revisión de antes del acuse del cambio → `VERSION_CONFLICT` contra el propio cambio.
+- **Arreglo, en la ficha:**
+  - «Validar» deja que el último cambio entre en la cola y, con red, espera (hasta 8 s) a que el servidor lo confirme;
+  - vuelve a comprobar lo que falta con el espejo de ese momento y valida con la revisión fresca;
+  - sin red, o si los cambios siguen pendientes, la validación sale sin `expectedRevision`: los cambios propios van antes en la cola.
+- **Si aun así hay conflicto:** las validaciones se anotan en el dispositivo (`ikisai.invoices.validateRequests`). Un conflicto de una validación anotada contra un cambio propio se descarta y se vuelve a validar solo con la revisión nueva. Uno parecido sin anotar (como el que tenía el usuario) se descarta con el aviso de repetir la acción: el servidor ya tiene sus datos.
+- **Pantalla de conflictos (kit 0.28.0):**
+  - el nombre es legible: «código · proveedor» en facturas y el nombre en proveedores, nunca el id;
+  - dice quién lo cambió (`currentUserId`);
+  - la cabecera usa `conflictIntro` en lugar del «Otra persona cambió lo mismo que tú» fijo;
+  - los campos de factura tienen etiqueta.
+
