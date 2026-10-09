@@ -68,7 +68,7 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
     await page.getByRole('button', { name: 'Nuevo proveedor' }).click();
     const dialog = page.getByRole('dialog', { name: 'Nuevo proveedor' });
     await expect(dialog).toBeVisible();
-    await dialog.getByLabel('Nombre', { exact: true }).fill('Frutas Pepe');
+    await dialog.locator('#f-name').fill('Frutas Pepe');
     await dialog.getByLabel('NIF').fill('b12345678');
     await dialog.getByLabel('Categoría por defecto').selectOption('compras');
     await dialog.getByLabel('Notas').fill('Reparte los martes');
@@ -103,7 +103,7 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
     await expect(dialog).toContainText('Revisión 1');
     // «Guardar» solo aparece cuando hay cambios.
     await expect(page.locator('#saveSupplier')).toBeHidden();
-    await dialog.getByLabel('Nombre', { exact: true }).fill('Frutas Pepe e Hijos');
+    await dialog.locator('#f-name').fill('Frutas Pepe e Hijos');
     await expect(page.locator('#saveSupplier')).toBeVisible();
     await page.locator('#saveSupplier').click();
     await expect(dialog).toBeHidden();

@@ -127,6 +127,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Incidencia del usuario (tras #449): «Validar» espera a que se confirmen los cambios pendientes y no choca consigo mismo; conflictos propios de validar se reintentan solos; pantalla de conflictos con la tarjeta del kit 0.28.0 (nombre legible y quién lo cambió).
 - Sin bucle de conflictos al validar (sync-client 0.5.2: el `call` aparcado va aparte; Finance reintenta una sola vez).
 - Lector v4 (FVR_2026_005): nombre con letras sueltas y sin «Cliente», líneas por cercanía (IVA un punto por encima) y la «Base imponible» rotulada manda sobre el subtotal de la tabla.
+- «Mi nombre» del proveedor (0232): nombre comercial que la app enseña en lugar de la razón social; la gestoría sigue recibiendo la razón social.
 
 ## En curso
 

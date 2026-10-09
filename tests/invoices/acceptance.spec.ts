@@ -123,7 +123,7 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await page.getByRole('link', { name: /Proveedores/ }).click();
     await page.getByRole('button', { name: 'Nuevo proveedor' }).click();
     const sheet = page.getByRole('dialog', { name: 'Nuevo proveedor' });
-    await sheet.getByLabel('Nombre', { exact: true }).fill('Proveedor Ejemplo S.L.');
+    await sheet.locator('#f-name').fill('Proveedor Ejemplo S.L.');
     await sheet.getByLabel('NIF').fill('B00000000');
     await sheet.getByLabel('Categoría por defecto').selectOption('compras');
     await sheet.getByLabel('Alias').fill('PROVEEDOR EJEMPLO, Ejemplo SL');
@@ -2188,6 +2188,30 @@ test('Incidencia del usuario (tras #452): validar sin red tras un cambio propio 
     expect(sent).toBeLessThanOrEqual(4);
     expect(await page.locator('#syncStatus').innerText()).not.toMatch(/conflicto|pendiente|rechazad/i);
     expect(await page.locator('.toast').filter({ hasText: 'Validando FVR_' }).count()).toBeLessThanOrEqual(1);
+  } finally {
+    await context.close();
+  }
+});
+
+test('«Mi nombre» del proveedor (0232): se ve en la lista y en la ficha de su factura, con la razón social al lado', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'DISTRIBUCIONES ALIMENTARIAS DEL SUR SLU', slug: 'distribuciones_alimentarias_del_sur_slu', aliases: [], default_is_investment: false, tax_id: 'B12345674' }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FR_2026_LBL', supplier_id: supplierId, invoice_date: '2026-09-20', object: 'fruta', status: 'pendiente_revision', expense_category: 'compras', source_total: 121, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/proveedores`);
+    await page.getByRole('button', { name: 'Editar DISTRIBUCIONES ALIMENTARIAS DEL SUR SLU' }).click();
+    await page.locator('#f-label').fill('Frutas Paco');
+    await page.locator('#saveSupplier').click();
+    await expect(page.locator('main')).toContainText('Frutas Paco', { timeout: 20_000 });
+    await expect.poll(() => api.rows('invoices.suppliers').find((s) => s.id === supplierId)?.label, { timeout: 20_000 }).toBe('Frutas Paco');
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    await expect(ficha(page).locator('#invSupplier')).toContainText('Frutas Paco', { timeout: 20_000 });
+    await expect(ficha(page).locator('#invSupplier')).toContainText('DISTRIBUCIONES ALIMENTARIAS DEL SUR SLU');
   } finally {
     await context.close();
   }
