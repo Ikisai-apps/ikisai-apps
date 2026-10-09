@@ -312,3 +312,46 @@ test('relectura automática (0229): el tick vuelve a leer solo los borradores de
   // Ya no queda nada viejo: el siguiente tick no relee
   assert.equal((await run()).data.reread ?? 0, 0);
 });
+
+test('lectura parcial (fase 0): un PDF de Drive con texto sin fecha ni IVA queda con proveedor, NIF, número y total, y el resumen de la lectura', async () => {
+  const d = new FakeDrive();
+  const own = await createTestApp({
+    app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
+      drive: { api: d, upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); } } }),
+  });
+  const run = () => own.call('/api/v1/worker/drive/tick', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
+  const id = d.add('Parcial.pdf', textPdf([
+    ['SUMINISTROS PARCIALES S.L.', 40, 800], ['CIF: B12345674', 300, 800],
+    ['Factura nº: PAR-77', 40, 770],
+    ['Material de oficina variado para el almacén', 40, 740],
+    ['TOTAL FACTURA', 40, 700], ['121,00 €', 450, 700],
+  ]));
+  const r = await run();
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual([r.data.imported, r.data.read], [1, 0]);
+  const snap = (await own.call('/api/v1/snapshot?tables=invoices.invoices,invoices.suppliers')).data.tables as Array<{ rows: Array<Record<string, any>> }>;
+  const inv = snap[0]!.rows.find((i) => i.drive_file_id === id)!;
+  const supplier = snap[1]!.rows.find((s) => s.id === inv.supplier_id)!;
+  assert.equal(inv.status, 'pendiente_datos');
+  assert.equal(inv.invoice_number, 'PAR-77');
+  assert.equal(Number(inv.source_total), 121);
+  assert.equal(inv.invoice_date, null);
+  assert.deepEqual([supplier.name, supplier.tax_id], ['SUMINISTROS PARCIALES S.L.', 'B12345674']);
+  const reading = inv.import_meta.reading;
+  assert.equal(reading.read, 'partial');
+  assert.deepEqual(reading.found, ['proveedor', 'número', 'total']);
+  assert.ok(reading.missing.includes('la fecha'));
+  assert.ok(reading.stats.chars > 40);
+  assert.equal(JSON.stringify(reading).includes('Material de oficina'), false, 'sin texto del documento en el resumen');
+  const row = (await own.t.db.query<{ reason: string }>(`select reason from invoices.drive_imports where drive_file_id = $1`, [id])).rows[0]!;
+  assert.match(row.reason, /^He leído el PDF \(1 pág\., \d+ caracteres\) y encontrado proveedor, número y total, pero no he identificado la fecha/);
+
+  // Una persona escribe la fecha a mano; la relectura completa no la pisa y respeta el proveedor ya puesto.
+  await own.t.db.query(`update invoices.invoices set invoice_number = 'PAR-77-MANO' where id = $1`, [inv.id]);
+  const again = await own.call('/api/v1/drive/reread', { body: {} });
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  const after = (await own.call('/api/v1/snapshot?tables=invoices.invoices')).data.tables[0].rows.find((i: any) => i.id === inv.id);
+  assert.equal(after.invoice_number, 'PAR-77-MANO', 'la relectura no pisa lo escrito a mano');
+  assert.equal(after.supplier_id, inv.supplier_id);
+});
