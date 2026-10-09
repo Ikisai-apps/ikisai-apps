@@ -198,3 +198,6 @@ export function parseAmount(value: string): number | null {
 
 /** Nombre de una línea para mostrar (0230): «Mi nombre» si lo hay; si no, la descripción de la factura. */
 export const lineName = (l: { label?: string | null; description: string }): string => (l.label?.trim() ? l.label : l.description);
+
+/** Nombre de un proveedor para mostrar (0232): «Mi nombre» si lo hay; si no, la razón social. */
+export const supplierName = (s: { label?: string | null; name: string } | null | undefined, fallback = '—'): string => (s ? (s.label?.trim() ? s.label : s.name) : fallback);

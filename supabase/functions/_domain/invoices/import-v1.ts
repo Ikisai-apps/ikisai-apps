@@ -33,7 +33,8 @@ export function matchSupplier(document: ImportDocument, suppliers: SupplierRow[]
   const out: SupplierMatch[] = [];
   for (const s of live) {
     if (taxId && normalizeTaxId(s.tax_id) === taxId) { out.push({ supplier: s, by: 'tax_id', score: 1 }); continue; }
-    if (s.aliases.some((a) => normalizeName(a) === name)) { out.push({ supplier: s, by: 'alias', score: 0.9 }); continue; }
+    // «Mi nombre» (0232) cuenta como un alias más.
+    if ([...s.aliases, ...(s.label ? [s.label] : [])].some((a) => normalizeName(a) === name)) { out.push({ supplier: s, by: 'alias', score: 0.9 }); continue; }
     const own = normalizeName(s.name);
     if (own === name) out.push({ supplier: s, by: 'name', score: 0.8 });
     else if (name.length >= 4 && (own.includes(name) || name.includes(own))) out.push({ supplier: s, by: 'name', score: 0.5 });

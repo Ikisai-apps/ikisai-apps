@@ -54,7 +54,7 @@ async function main() {
   // proveedor y facturas de muestra
   await m.getByRole('link', { name: /Proveedores/ }).click();
   await m.getByRole('button', { name: 'Nuevo proveedor' }).click();
-  await m.getByLabel('Nombre', { exact: true }).fill('Proveedor Ejemplo S.L.');
+  await m.locator('#f-name').fill('Proveedor Ejemplo S.L.');
   await m.getByLabel('NIF').fill('B00000000');
   await m.getByLabel('Categoría por defecto').selectOption('compras');
   await m.getByRole('button', { name: 'Guardar' }).click();

@@ -1,4 +1,5 @@
 import type { RowOperation } from '@ikisai/sync-client';
+import { supplierName } from '../app/data.ts';
 import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { guard } from '../app/guard.ts';
@@ -7,6 +8,7 @@ import type { ViewMount } from './shell.ts';
 
 interface FormValues {
   name: string;
+  label: string;
   tax_id: string;
   default_category: string;
   default_is_investment: boolean;
@@ -17,6 +19,7 @@ interface FormValues {
 function valuesOf(row: SupplierRow | null): FormValues {
   return {
     name: row?.name ?? '',
+    label: row?.label ?? '',
     tax_id: row?.tax_id ?? '',
     default_category: row?.default_category ?? '',
     default_is_investment: row?.default_is_investment ?? false,
@@ -26,12 +29,13 @@ function valuesOf(row: SupplierRow | null): FormValues {
 }
 
 function sameValues(a: FormValues, b: FormValues): boolean {
-  return a.name === b.name && a.tax_id === b.tax_id && a.default_category === b.default_category && a.default_is_investment === b.default_is_investment && a.aliases === b.aliases && a.notes === b.notes;
+  return a.name === b.name && a.label === b.label && a.tax_id === b.tax_id && a.default_category === b.default_category && a.default_is_investment === b.default_is_investment && a.aliases === b.aliases && a.notes === b.notes;
 }
 
 function toFields(values: FormValues): Record<string, unknown> {
   return {
     name: values.name.trim(),
+    label: values.label.trim() || null,
     tax_id: values.tax_id.trim() || null,
     default_category: values.default_category || null,
     default_is_investment: values.default_is_investment,
@@ -72,7 +76,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
 
   function matches(row: SupplierRow): boolean {
     if (!query) return true;
-    return row.name.toLowerCase().includes(query) || (row.tax_id ?? '').toLowerCase().includes(query);
+    return row.name.toLowerCase().includes(query) || (row.label ?? '').toLowerCase().includes(query) || (row.tax_id ?? '').toLowerCase().includes(query);
   }
 
   function rowItem(row: SupplierRow, deleted: boolean): HTMLElement {
@@ -80,8 +84,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     const restore = el('button', { 'data-feedback-id': 'invoices.proveedores.papelera.restaurar', 'data-feedback-label': 'Restaurar', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void restoreRow(row) }, icon('restore', 18), 'Restaurar');
     return listRow({
       id: row.id,
-      title: row.name,
-      meta: [row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF', categoryLabel(row.default_category)],
+      title: supplierName(row),
+      meta: [row.label ? row.name : null, row.tax_id ? `NIF ${row.tax_id}` : 'Sin NIF', categoryLabel(row.default_category)].filter(Boolean) as string[],
       pending: row._pending === true,
       deleted,
       actions: [deleted ? restore : edit],
@@ -89,7 +93,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   }
 
   function paint(): void {
-    const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const sorted = [...rows].sort((a, b) => supplierName(a).localeCompare(supplierName(b), 'es'));
     const active = sorted.filter((r) => !r.deleted_at);
     const deleted = sorted.filter((r) => r.deleted_at);
     const visible = active.filter(matches);
@@ -133,6 +137,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
 
     const name = el('input', { 'data-feedback-ignore': '', id: 'f-name', name: 'name', type: 'text', required: true, maxlength: '200', autocomplete: 'organization', value: initial.name });
+    const label = el('input', { 'data-feedback-ignore': '', id: 'f-label', name: 'label', type: 'text', maxlength: '120', autocomplete: 'off', value: initial.label, placeholder: 'Cómo lo llamas tú (p. ej. «Makro»)' });
     const taxId = el('input', { 'data-feedback-ignore': '', id: 'f-tax', name: 'tax_id', type: 'text', maxlength: '32', autocomplete: 'off', spellcheck: 'false', value: initial.tax_id, style: 'text-transform:uppercase' });
     const category = el('select', { 'data-feedback-id': 'invoices.proveedores.ficha.categoria', 'data-feedback-label': 'Categoría por defecto', id: 'f-category', name: 'default_category' },
       el('option', { value: '' }, 'Sin categoría'),
@@ -143,7 +148,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     const aliases = el('input', { 'data-feedback-ignore': '', id: 'f-aliases', name: 'aliases', type: 'text', autocomplete: 'off', value: initial.aliases, placeholder: 'MAKRO ESPAÑA S.A., Makro Alcorcón' });
     const investment = el('input', { 'data-feedback-id': 'invoices.proveedores.ficha.inversion', 'data-feedback-label': 'Suelen ser inversión', id: 'f-investment', name: 'default_is_investment', type: 'checkbox', checked: initial.default_is_investment });
 
-    const current = (): FormValues => ({ name: name.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, default_is_investment: investment.checked, aliases: aliases.value, notes: notes.value });
+    const current = (): FormValues => ({ name: name.value, label: label.value, tax_id: taxId.value.toUpperCase(), default_category: category.value, default_is_investment: investment.checked, aliases: aliases.value, notes: notes.value });
     const isDirty = () => !sameValues(current(), initial);
     const refreshDirty = () => {
       const dirty = isDirty();
@@ -176,7 +181,8 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
           await sheet?.close(true);
         }
       } },
-      el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
+      el('label', { class: 'field' }, el('span', null, 'Mi nombre'), label, el('span', { class: 'hint' }, 'El nombre por el que lo conoces. Es el que verás en la app.')),
+      el('label', { class: 'field' }, el('span', null, 'Razón social (la de la factura)'), name, el('span', { class: 'hint' }, 'La que va a la gestoría.')),
       el('label', { class: 'field' }, el('span', null, 'NIF'), taxId, el('span', { class: 'hint' }, 'Opcional. Hasta 32 caracteres.')),
       el('label', { class: 'field' }, el('span', null, 'Categoría por defecto'), category),
       el('label', { class: 'check' }, investment, el('span', null, 'Sus facturas suelen ser inversión')),

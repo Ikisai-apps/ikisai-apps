@@ -1551,3 +1551,9 @@ Ya era así:
 - `READER_VERSION` = 4: el tick vuelve a leer lo pendiente de Drive.
 - Copia sintética con la misma geometría en `pdf-real.test.ts`. El PDF real se leyó solo en local y se borró.
 
+### 16.12 «Mi nombre» del proveedor (0232, petición del usuario, 9-10-2026)
+`suppliers.label` (hasta 120 caracteres) guarda el nombre por el que conoces al proveedor, porque muchos facturan con una razón social rara y distinta de su marca.
+- **Dónde se ve:** la app lo enseña en lugar de la razón social en la lista de proveedores, la ficha de la factura (con la razón social al lado), los desplegables, Compras y Conflictos.
+- **La razón social** (`name`) no cambia: es la que va a la gestoría.
+- **Al importar,** «Mi nombre» empareja como un alias más.
+
