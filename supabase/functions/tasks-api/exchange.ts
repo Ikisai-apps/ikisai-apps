@@ -198,11 +198,15 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         admin(ctx);
         const body = await json();
         if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        // Cada grupo: una lista de ids, o `{ ids, root }` (root: la General queda en la raíz aunque las madres difieran). Con un
+        // solo id, «Hacer General».
+        const ids = (g: unknown): unknown => (Array.isArray(g) ? g : g && typeof g === 'object' ? (g as { ids?: unknown }).ids : null);
         const groups = body.groups;
-        if (!Array.isArray(groups) || !groups.length || groups.length > 500 || !groups.every((g: unknown) => Array.isArray(g) && g.length >= 2 && g.length <= 100 && g.every((id) => typeof id === 'string' && UUID.test(id)))) {
-          fail(422, 'INVALID_OPERATION', 'groups es una lista de grupos de etiquetas (dos o más ids por grupo).');
+        if (!Array.isArray(groups) || !groups.length || groups.length > 500 || !groups.every((g: unknown) => { const list = ids(g); return Array.isArray(list) && list.length >= 1 && list.length <= 100 && list.every((id) => typeof id === 'string' && UUID.test(id)); })) {
+          fail(422, 'INVALID_OPERATION', 'groups es una lista de grupos de etiquetas (uno o más ids por grupo).');
         }
-        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.merge_labels_into_general', args: { groups: groups.map((g: string[]) => g.map((id) => id.toLowerCase())) } }] });
+        const normalized = groups.map((g: unknown) => { const list = (ids(g) as string[]).map((id) => id.toLowerCase()); return Array.isArray(g) ? list : { ids: list, root: !!(g as { root?: unknown }).root }; });
+        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [{ op: 'call', procedure: 'tasks.merge_labels_into_general', args: { groups: normalized } }] });
         const result = (committed.results[0] as { result?: { generals: Record<string, string>; counts: Record<string, number> } })?.result;
         return { generals: result?.generals ?? {}, counts: result?.counts ?? {}, cursor: committed.cursor };
       },
