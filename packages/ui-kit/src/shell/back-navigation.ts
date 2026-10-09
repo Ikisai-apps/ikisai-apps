@@ -35,10 +35,19 @@ let asking = false;
 let homeUrl = '/';
 /** Estado de la entrada actual (se siguen `pushState`, `replaceState`, `hashchange` y `popstate`). */
 let current: Entry | null = null;
-/** «Atrás» automático para saltar una entrada muerta: el siguiente `popstate` no aplica la regla de «venir de una muerta». */
+/** «Atrás» automático en curso (saltando muertas o la misma pantalla): el siguiente `popstate` conserva el origen. */
 let skipping = false;
 /** Largo de la historia: un `popstate` que lo cambia es una navegación nueva (Chrome lo dispara al cambiar `location.hash`), no un «atrás». */
 let knownLength = 0;
+/** URL de la entrada actual, y la de donde empezó el «atrás» que se está encadenando (saltando muertas o duplicadas). */
+let currentUrl = '';
+let chainOrigin: string | null = null;
+/**
+ * Tipo de la última navegación según la Navigation API (Chrome 102+): `traverse` es un «atrás»/«adelante»; `push` o
+ * `replace` (p. ej. `location.hash = …`, que en Chrome también dispara `popstate`) es una navegación nueva. Sin la API se
+ * usa el cambio de `history.length`, que falla con la historia llena (50 entradas).
+ */
+let lastNavigation: string | null = null;
 
 const asEntry = (state: unknown): Entry | null => (state && typeof state === 'object' ? state as Entry : null);
 
@@ -70,9 +79,11 @@ export function installBackNavigation(options: BackNavigationOptions = {}): void
   // Seguir la entrada actual también cuando navega la app.
   const rawPush = history.pushState.bind(history);
   const rawReplace = history.replaceState.bind(history);
-  history.pushState = (state: unknown, title: string, url?: string | URL | null) => { rawPush(state, title, url); current = asEntry(state); knownLength = history.length; };
-  history.replaceState = (state: unknown, title: string, url?: string | URL | null) => { rawReplace(state, title, url); current = asEntry(state); knownLength = history.length; };
-  window.addEventListener('hashchange', () => { current = asEntry(history.state); knownLength = history.length; });
+  history.pushState = (state: unknown, title: string, url?: string | URL | null) => { rawPush(state, title, url); lastNavigation = null; current = asEntry(state); currentUrl = location.href; knownLength = history.length; };
+  history.replaceState = (state: unknown, title: string, url?: string | URL | null) => { rawReplace(state, title, url); lastNavigation = null; current = asEntry(state); currentUrl = location.href; knownLength = history.length; };
+  const nav = (window as unknown as { navigation?: EventTarget }).navigation;
+  nav?.addEventListener('navigate', (e) => { lastNavigation = (e as Event & { navigationType?: string }).navigationType ?? null; });
+  window.addEventListener('hashchange', () => { current = asEntry(history.state); currentUrl = location.href; knownLength = history.length; });
 
   const here = `${location.pathname}${location.search}${location.hash}`;
   const atHome = urlOf(homeUrl) === here || (homeUrl === '#/' && (location.hash === '' || location.hash === '#' || location.hash === '#/'));
@@ -82,27 +93,38 @@ export function installBackNavigation(options: BackNavigationOptions = {}): void
 
   window.addEventListener('popstate', () => {
     const left = current;
+    const leftUrl = currentUrl;
     current = asEntry(history.state);
+    currentUrl = location.href;
     // Navegación por fragmento (`location.hash = …`): entrada nueva, no un «atrás».
-    if (history.length !== knownLength) { knownLength = history.length; return; }
+    const kind = lastNavigation;
+    lastNavigation = null;
+    const isNew = kind ? kind !== 'traverse' : history.length !== knownLength;
+    knownLength = history.length;
+    if (isNew) { skipping = false; chainOrigin = null; return; }
     if (ignorePops > 0) { ignorePops -= 1; return; }
     // Hoja o diálogo abierto: «atrás» lo cierra (su entrada ya se ha consumido).
     const top = overlays.pop();
     if (top) { top.close(); return; }
-    const wasSkipping = skipping;
+    // El «atrás» de la persona empieza en la entrada que deja; los saltos automáticos conservan ese origen.
+    if (!skipping) chainOrigin = leftUrl;
     skipping = false;
-    // Se ha caído en una entrada muerta (una hoja ya cerrada, o una de hoja que ya no está): se salta.
+    // Entrada muerta (hoja ya cerrada, o de una hoja que ya no está): se salta.
     if (current?.ikisai === 'dead' || (current?.ikisai === 'overlay' && !overlays.some((o) => o.id === current?.overlay))) {
       skipping = true;
       history.back();
       return;
     }
-    // Se venía de una entrada muerta: la de debajo es la misma pantalla, así que «atrás» sigue un paso más.
-    if (!wasSkipping && left?.ikisai === 'dead' && current?.ikisai !== 'root') {
+    // Se venía de una entrada muerta (o se han saltado muertas) y se llega a la **misma pantalla** de la que se partió:
+    // «atrás» no ha cambiado nada visible, así que sigue (FB_2026_025: tras cerrar tres hojas en `#/espacios`, el primer
+    // «atrás» se quedaba en `#/espacios`).
+    const cameFromDead = left?.ikisai === 'dead' || chainOrigin !== leftUrl;
+    if (cameFromDead && current?.ikisai !== 'root' && location.href === chainOrigin) {
       skipping = true;
       history.back();
       return;
     }
+    chainOrigin = null;
     if (current?.ikisai === 'root') void askExit(confirmExit);
   });
 }
@@ -126,7 +148,10 @@ export function trackOverlay(close: () => void): OverlayHandle {
   const id = nextOverlay++;
   const entry = { id, close };
   overlays.push(entry);
-  history.pushState({ ikisai: 'overlay', overlay: id } satisfies Entry, '', location.href);
+  // Sobre la entrada muerta de una hoja recién cerrada, se reutiliza en vez de apilar otra (la historia no crece con cada
+  // hoja abierta y cerrada en la misma pantalla).
+  if (current?.ikisai === 'dead') history.replaceState({ ikisai: 'overlay', overlay: id } satisfies Entry, '', location.href);
+  else history.pushState({ ikisai: 'overlay', overlay: id } satisfies Entry, '', location.href);
   return {
     release() {
       const at = overlays.indexOf(entry);
