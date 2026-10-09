@@ -462,6 +462,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const inv = stagedTable('invoices.invoices').get(String(args.invoice_id));
     if (op.procedure === 'invoices.validate') {
       if (!inv) throw new Fault(404, 'NOT_FOUND', 'La factura no existe.', { index });
+      // Como el SQL (0227): con `expectedRevision`, la revisión tiene que coincidir.
+      const expected = (op.args as { expectedRevision?: unknown } | undefined)?.expectedRevision;
+      if (expected !== undefined && expected !== null && Number(expected) !== Number(inv.revision)) {
+        throw new Fault(409, 'VERSION_CONFLICT', 'La fila cambió en el servidor.', { table: 'invoices.invoices', id: inv.id, expectedRevision: Number(expected), currentRevision: inv.revision, current: { ...inv } });
+      }
       if (inv.totals_delta !== null && Math.abs(Number(inv.totals_delta)) > 0.02) throw new Fault(422, 'INVOICE_TOTALS_MISMATCH', 'Los importes no cuadran con el total del documento.', { delta: inv.totals_delta });
       const missing: string[] = [];
       if (!inv.invoice_date) missing.push('invoice_date');

@@ -2114,6 +2114,44 @@ test('Incidencia del usuario (9-10-2026): si el servidor rechaza «Validar», se
   }
 });
 
+test('Incidencia del usuario (9-10-2026, tras #449): elegir la categoría y validar al instante no choca consigo mismo, con red y sin red', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const seedInvoice = (code: string) => {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: `Proveedor ${code} SL`, slug: `proveedor_${code.toLowerCase()}_sl`, aliases: [], default_is_investment: false }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code, supplier_id: supplierId, invoice_date: '2026-09-20', object: 'material', status: 'pendiente_revision', expense_category: null, source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, description: 'Material', net_amount: 100, vat_rate: 21, vat_amount: 21, discount_amount: 0 }]);
+    api.seed('invoices.tax_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, tax_type: 'iva', rate: 21, taxable_base: 100, amount: 21 }]);
+    api.seed('invoices.invoice_files', [{ id: randomUUID(), invoice_id: invoiceId, file_id: randomUUID(), original_filename: 'v.pdf', normalized_filename: `${code}.pdf`, page_order: 1, kind: 'original', mime_type: 'application/pdf', size_bytes: 10, sha256: 'd'.repeat(64) }]);
+    return invoiceId;
+  };
+  try {
+    const online = seedInvoice('FVR_ONLINE'); const offline = seedInvoice('FVR_OFFLINE');
+    await login(page);
+    await synced(page);
+    for (const [invoiceId, withoutNetwork] of [[online, false], [offline, true]] as Array<[string, boolean]>) {
+      await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+      const f = ficha(page);
+      await expect(f.locator('#reviewBanner')).toContainText('Falta: la categoría de gasto', { timeout: 20_000 });
+      if (withoutNetwork) await context.setOffline(true);
+      await f.locator('#invCategory').selectOption('suministros');
+      // Al instante, sin esperar al acuse del cambio de categoría
+      await f.locator('#validateInvoice').click({ force: true });
+      // La ficha tapa «Sincronizar ahora»: se cierra antes de volver a tener red (como en O1–O6)
+      if (withoutNetwork) { await closeSheet(page); await reconnect(context, page); }
+      await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)?.status, { timeout: 30_000 }).toBe('validada');
+      await page.waitForTimeout(1500);
+      expect(await page.locator('#syncStatus').innerText()).not.toMatch(/conflicto|rechazad/i);
+      expect(await page.evaluate(() => localStorage.getItem('ikisai.invoices.validateRequests'))).toBeTruthy();
+      if (!withoutNetwork) await closeSheet(page);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 /**
  * Medición de la lectura automática en el móvil (fase 1): CPU 4× más lenta, 390 px, PDF de 1, 10 y 30 páginas y uno
  * de 15 MB. Solo con IKISAI_MEASURE=1 (no en la CI): escribe tiempo, tarea larga máxima del hilo y montón de JS.
