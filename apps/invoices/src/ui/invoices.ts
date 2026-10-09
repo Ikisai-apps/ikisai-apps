@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -30,7 +30,7 @@ import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
 import { openManualEntry, type ManualPrefill } from './manual.ts';
-import { documentReadingBlock, extractFor, readingPanel } from './reading.ts';
+import { currentReading, documentReadingBlock, extractFor, readingPanel } from './reading.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -572,7 +572,7 @@ function periodOf(isoDate: string): string {
 }
 
 /** Mensaje para una sesión de Claude Code con la MCP de Finance (§15.1). */
-const CLAUDE_MESSAGE = 'Lee las facturas pendientes de Drive en Ikisai Finance y complétalas. Usa la herramienta invoices_pending_drafts para ver cuáles son; descarga cada PDF de su enlace, léelo con cuidado y llama a invoices_import_json con su invoice_id, el JSON ikisai.invoice.v1 y la procedencia de cada dato (provenance con confidence, text y page). Si un dato no se lee con seguridad, déjalo a null y explícalo en extraction_notes. Si es una factura rectificativa o un abono, dilo en extraction_notes con el número de la factura que rectifica. No valides nada. Al terminar, dime cuántas has completado y cuáles te han dado problemas.';
+const CLAUDE_MESSAGE = 'Lee las facturas pendientes de Drive en Ikisai Finance y complétalas. Usa la herramienta invoices_pending_drafts para ver cuáles son; descarga cada PDF de su enlace, léelo con cuidado y llama a invoices_import_json con su invoice_id, el JSON ikisai.invoice.v1 y la procedencia de cada dato (provenance con confidence, text y page). Si el borrador ya tiene datos (en «already»: proveedor, número, fecha o total), compruébalos en el PDF y respétalos salvo error evidente; completa solo lo que falta (reading.missing). Si un dato no se lee con seguridad, déjalo a null y explícalo en extraction_notes. Si es una factura rectificativa o un abono, dilo en extraction_notes con el número de la factura que rectifica. No valides nada. Al terminar, dime cuántas has completado y cuáles te han dado problemas.';
 
 /**
  * «Leer con IA» (flujo recomendado para la primera factura de un proveedor): ChatGPT en el móvil (comparte el PDF y las
@@ -591,7 +591,10 @@ function openReadWithAi(ctx: ViewContext, invoice: LocalInvoice, original: Local
         if (!navigator.onLine) { toast('Para compartir el documento hace falta conexión (está en la nube).'); return; }
         try {
           const file = await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type);
-          const how = await shareWithAi(file, { filename: original.normalized_filename, sha256: original.sha256 });
+          // Fase 3: lo ya leído va con las instrucciones; la IA completa solo lo que falta.
+          const reading = await currentReading(ctx, await loadMirror(ctx.client), invoice, original);
+          const known = reading?.hasText ? knownFieldsText(reading.found, missingLabels(reading.found)) : null;
+          const how = await shareWithAi(file, { filename: original.normalized_filename, sha256: original.sha256 }, known);
           if (how === 'files' || how === 'text') toast('Cuando ChatGPT responda, comparte el resultado con Ikisai Finance o pégalo con «Pegar JSON».');
         } catch (error) { toast(describeError(error)); }
       } }, 'Compartir con ChatGPT'),
