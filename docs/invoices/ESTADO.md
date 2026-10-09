@@ -107,6 +107,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Lectura sin IA de facturas reales (9-10-2026, las dos primeras de Drive salían sin leer): pies en tabla (cabecera y cifras debajo, una fila por tipo de IVA, retención), varias etiquetas en una línea, la fecha que sigue a «Fecha» aunque haya vencimiento, «Número:» suelto, NIF con separadores, el NIF del cliente no se toma por el del proveedor y la razón social de la cabecera. «Volver a leer las pendientes» (owner, `POST drive/reread`) completa en su sitio los borradores de Drive con el lector actual.
 - Periodo de declaración (migración 0228, API.md §2.2): fecha real y trimestre en que se declara por separado; las de un trimestre ya entregado pasan solas al siguiente («Atrasada (2T)»); si el trimestre de su fecha terminó sin entrega en la app, la ficha pregunta; resumen y entrega por periodo de declaración, CSV con `periodo_declaracion` y `atrasada`.
 - Compartir facturas con Finance desde el móvil (PDF o fotos, hasta 20 a la vez): el service worker las recibe y la app las sube como «Subir varias».
+- Aviso de Drive en Tasks › Gestiones: uno al día con las facturas de Drive por revisar, y otro si Drive se bloquea (origen `invoices`; la cuenta `drive` es editora en Tasks, #419). Funciona en cuanto Tasks publique el origen.
 
 ## En curso
 
