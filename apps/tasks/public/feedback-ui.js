@@ -115,3 +115,20 @@ const portableExportBeforeUsage=portableExport;
 portableExport=function(...args){return usage.run('tasks.datos.exportar_portable',()=>portableExportBeforeUsage(...args))};
 const backupBeforeUsage=downloadServerBackup;
 downloadServerBackup=function(...args){return usage.run('tasks.datos.respaldo',()=>backupBeforeUsage(...args))};
+
+/* «Atrás» (FB_2026_025, kit 0.26): el kit apila en la historia sus hojas, diálogos y el composer, y «atrás» los cierra;
+   desde el inicio pregunta «¿Cerrar la app?». Tasks no lleva sus pantallas en la URL, así que registra dos cosas más:
+   salir del Inicio (y «atrás» vuelve a él) y el menú lateral abierto (y «atrás» lo cierra). */
+IkisaiKit.installBackNavigation({home:'#/'});
+let backView=null,backMenu=null;
+function syncBackStack(){
+  const menuOpen=!!document.getElementById('kebab')?.classList.contains('show');
+  if(!menuOpen&&backMenu){const h=backMenu;backMenu=null;if(h.active())h.release()}
+  const away=!!state.view&&state.view!=='home';
+  if(away&&!backView)backView=IkisaiKit.trackOverlay(()=>{backView=null;navigateView('home')});
+  else if(!away&&backView){const h=backView;backView=null;if(h.active())h.release()}
+  if(menuOpen&&!backMenu)backMenu=IkisaiKit.trackOverlay(()=>{backMenu=null;closeNavigation()});
+}
+const renderBeforeBack=render;
+render=function(...args){const out=renderBeforeBack(...args);syncBackStack();return out};
+document.addEventListener('click',()=>setTimeout(syncBackStack,0),true);
