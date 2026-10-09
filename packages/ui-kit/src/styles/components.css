@@ -238,6 +238,8 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .segmented{background:rgba(236,229,216,.08)}}
 .statuschip[data-rejected="true"]{color:var(--alert);border-color:color-mix(in srgb,var(--alert) 50%,transparent);background:var(--alert-soft)}
 .conflict .meta{color:var(--muted);font-size:13px;margin-bottom:4px}
+.conflict .who{margin:0 0 2px;font-size:14px}
+.conflict .choices{margin:10px 0 4px}
 .conflict th[scope="row"]{font-size:13.5px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600}
 .conflict.busy{opacity:.6;pointer-events:none}
 .conflict.rejected{border-color:color-mix(in srgb,var(--warn) 45%,transparent)}

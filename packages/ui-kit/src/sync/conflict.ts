@@ -12,8 +12,18 @@ export interface ConflictOptions {
   fieldLabels?: Record<string, string>;
   /** Cómo mostrar un valor; por defecto texto plano, fechas en `deleted_at`, «—» si vacío. */
   show?: (field: string, value: unknown) => Child;
-  /** Nombre legible de la fila (por defecto `name`, `title` o el id). */
-  rowName?: (conflict: PendingConflict) => string;
+  /**
+   * Nombre legible de la fila («FVR_2026_003 · Intermodalidad de Levante»). Si no se da, o devuelve vacío: `code`/`number`
+   * y `name`/`title` de la fila; si no los tiene, el nombre de la tabla (`tableLabels`). Nunca el id.
+   */
+  rowName?: (conflict: PendingConflict) => string | null | undefined;
+  /** Nombre de cada tabla para el título cuando la fila no tiene nombre: `{ 'invoices.invoices': 'facturas' }`. */
+  tableLabels?: Record<string, string>;
+  /**
+   * Persona con la sesión abierta (`profile.userId` del arranque). Con ella, la tarjeta dice si el cambio del servidor es
+   * de **otra persona** o **tuyo desde otra pestaña o dispositivo**.
+   */
+  currentUserId?: string | null;
   /** Resuelve el conflicto en el cliente; la app llama a `client.resolveConflict` y recarga. */
   onResolve: (conflict: PendingConflict, decision: ConflictDecision) => void | Promise<void>;
   /**
@@ -26,8 +36,9 @@ export interface ConflictOptions {
 
 /** Sufijos y etiquetas de los controles de la tarjeta de conflicto (los lee también el generador del catálogo). */
 export const CONFLICT_MARKS = {
-  mine: ['mantener_mia', 'Mantener la mía'],
-  theirs: ['tomar_servidor', 'Tomar la del servidor'],
+  mine: ['mantener_mia', 'Reintentar con lo mío'],
+  theirs: ['tomar_servidor', 'Quedarme con lo del servidor'],
+  diff: ['diferencias', 'Ver diferencias'],
   merge: ['combinar', 'Combinar campo a campo'],
   save: ['guardar_combinacion', 'Guardar combinación'],
   back: ['volver', 'Volver'],
@@ -40,10 +51,29 @@ function defaultShow(field: string, value: unknown): Child {
   return String(value);
 }
 
-function defaultRowName(conflict: PendingConflict): string {
+const text = (value: unknown): string => (typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '');
+
+/** Nombre de la fila según sus datos (`code`/`number` · `name`/`title`), o vacío si no tiene ninguno. */
+export function conflictRowName(conflict: PendingConflict): string {
   const row = conflict.current ?? conflict.base;
-  const candidate = row?.name ?? row?.title ?? conflict.operation.id;
-  return String(candidate);
+  const code = text(row?.code) || text(row?.number);
+  const name = text(row?.name) || text(row?.title);
+  return code && name ? `${code} · ${name}` : code || name;
+}
+
+/** Quién hizo el cambio del servidor: tú (otra pestaña o dispositivo), otra persona, o no se sabe. */
+export function conflictAuthor(conflict: PendingConflict, currentUserId: string | null | undefined): 'self' | 'other' | 'unknown' {
+  const by = conflict.current?.updated_by;
+  if (!currentUserId || !by) return 'unknown';
+  return by === currentUserId ? 'self' : 'other';
+}
+
+/** Frase para la cabecera de la pantalla de conflictos, según quién hizo los cambios. */
+export function conflictIntro(conflicts: PendingConflict[], currentUserId?: string | null): string {
+  const authors = new Set(conflicts.map((c) => conflictAuthor(c, currentUserId)));
+  if (authors.size === 1 && authors.has('self')) return kt('Lo cambiaste tú desde otra pestaña o dispositivo antes de que llegara este cambio. Nada se pierde hasta que decidas.');
+  if (authors.size === 1 && authors.has('other')) return kt('Otra persona cambió lo mismo que tú. Nada se pierde hasta que decidas.');
+  return kt('Lo que cambiaste se cambió también en el servidor. Nada se pierde hasta que decidas.');
 }
 
 /**
@@ -59,10 +89,18 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   const fields = Array.from(new Set([...Object.keys(mine), ...conflict.overlapping, ...changedByServer]));
   const picks = new Map<string, 'mine' | 'theirs'>();
   let merging = false;
+  let showDiff = false;
   let busy = false;
 
-  const name = (options.rowName ?? defaultRowName)(conflict);
-  const title = op.op === 'delete' ? kt('Querías borrar «{name}»', { name }) : `«${name}»`;
+  const name = text(options.rowName?.(conflict)) || conflictRowName(conflict);
+  const tableName = options.tableLabels?.[op.table] ?? op.table.split('.').pop() ?? op.table;
+  const title = name
+    ? (op.op === 'delete' ? kt('Querías borrar «{name}»', { name }) : `«${name}»`)
+    : (op.op === 'delete' ? kt('Querías borrar un registro de {table}', { table: tableName }) : kt('Un registro de {table}', { table: tableName }));
+  const author = conflictAuthor(conflict, options.currentUserId);
+  const who = author === 'self' ? kt('Lo cambiaste tú desde otra pestaña o dispositivo.')
+    : author === 'other' ? kt('Lo cambió otra persona.')
+    : kt('Se cambió también en el servidor.');
   const article = el('article', { class: 'conflict', dataset: { requestId: conflict.requestId } });
 
   async function resolve(decision: ConflictDecision): Promise<void> {
@@ -107,8 +145,9 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   function choices(): HTMLElement {
     if (!merging) {
       return el('div', { class: 'choices' },
-        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, kt(CONFLICT_MARKS.mine[1])),
-        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, kt(CONFLICT_MARKS.theirs[1])),
+        el('button', { class: 'primary', type: 'button', 'data-choice': 'theirs', title: kt('Descarta lo tuyo y deja lo que hay en el servidor.'), ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, kt(CONFLICT_MARKS.theirs[1])),
+        el('button', { class: 'ghost', type: 'button', 'data-choice': 'mine', title: kt('Vuelve a enviar tu cambio sobre la versión del servidor.'), ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, kt(CONFLICT_MARKS.mine[1])),
+        fields.length ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'diff', 'aria-expanded': String(showDiff), ...mark('diff'), onclick: () => { showDiff = !showDiff; repaint(); } }, showDiff ? kt('Ocultar diferencias') : kt(CONFLICT_MARKS.diff[1])) : null,
         op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', ...mark('merge'), onclick: () => { merging = true; repaint(); } }, kt(CONFLICT_MARKS.merge[1])) : null,
       );
     }
@@ -123,11 +162,16 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   }
 
   function repaint(): void {
+    // Las decisiones van arriba: en móvil, con muchos campos, la tabla las dejaba fuera de la pantalla. Al combinar, la
+    // tabla (con sus «usar la mía / usar esta») va antes de «Guardar combinación».
+    const diff = fields.length ? table() : null;
+    if (diff) diff.hidden = !showDiff && !merging;
     replace(article,
       el('h3', null, title),
+      el('p', { class: 'who' }, who),
       el('p', { class: 'meta' }, kt('Detectado {date} · revisión del servidor {revision}', { date: formatDate(conflict.detectedAt), revision: String(conflict.current.revision) })),
-      table(),
-      choices(),
+      merging ? diff : choices(),
+      merging ? choices() : diff,
     );
   }
   repaint();

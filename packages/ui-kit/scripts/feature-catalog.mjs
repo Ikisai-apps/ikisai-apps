@@ -137,7 +137,7 @@ function ternaryLiterals(text, at) {
  * Mantener al día con `CONFLICT_MARKS` de `src/sync/conflict.ts`.
  */
 const KIT_CHILDREN = {
-  renderConflict: [['mantener_mia', 'Mantener la mía', 'button'], ['tomar_servidor', 'Tomar la del servidor', 'button'], ['combinar', 'Combinar campo a campo', 'button'], ['guardar_combinacion', 'Guardar combinación', 'button'], ['volver', 'Volver', 'button']],
+  renderConflict: [['mantener_mia', 'Reintentar con lo mío', 'button'], ['tomar_servidor', 'Quedarme con lo del servidor', 'button'], ['diferencias', 'Ver diferencias', 'button'], ['combinar', 'Combinar campo a campo', 'button'], ['guardar_combinacion', 'Guardar combinación', 'button'], ['volver', 'Volver', 'button']],
 };
 KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
 
