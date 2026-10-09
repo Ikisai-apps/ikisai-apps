@@ -138,55 +138,96 @@ const norm = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-
 // ---------------------------------------------------------------------------
 type ColumnKind = 'base' | 'rate' | 'quota' | 'total' | 'withholding' | 'ignore';
 
-/** Qué es una celda de cabecera de un pie de factura. */
+/** Qué es una etiqueta de columna de una tabla de importes (líneas de factura o pie). */
 function columnKind(text: string): ColumnKind | null {
   const t = norm(text);
   if (/\b(?:irpf|retencion|ret\.)/.test(t)) return 'withholding';
-  if (/recargo|r\.?\s?e\.?$|dto|descuento|cantidad|unidades|precio/.test(t)) return 'ignore';
-  if (/%|\btipo\b|\bporc/.test(t) && /iva|igic|impuesto|\btipo\b|%/.test(t)) return 'rate';
-  if (/\b(?:cuota|importe iva|iva|igic)\b/.test(t)) return 'quota';
-  if (/\b(?:base imponible|base|subtotal|neto|importe neto)\b/.test(t)) return 'base';
+  if (/(?:incl\.?|incluido|con)\s*(?:el\s+)?iva|\bt\.?t\.?i\b|\bt\.?i\.?i\b|total\s+(?:factura|a pagar)/.test(t)) return 'total';
+  if (/sin\s+(?:iva|impuestos)|\btotal\s+s\.?\s?i\b|base|subtotal|\bneto\b|importe neto/.test(t)) return 'base';
+  if (/recargo|r\.?\s?e\.?$|dto|descu|cantidad|unid|precio|ref|designa|descrip|concepto|fecha/.test(t)) return 'ignore';
+  if (/%|\btipo\b|\btasa\b|\bporc/.test(t)) return /iva|igic|ipsi|impuesto|%|tipo|tasa/.test(t) ? 'rate' : null;
+  if (/\b(?:cuota|importe iva|iva|igic|ipsi)\b/.test(t)) return 'quota';
+  // «Importe» a secas es el de cada línea (no el total): sin etiqueta, la columna no cuenta.
   if (/\btotal\b/.test(t)) return 'total';
   return null;
 }
 
+/** Varias etiquetas de columna dentro de un mismo trozo («Total SI (EUR) Total IVA Total TTI (EUR)»), en orden. */
+const COLUMN_LABEL = /(?:tasa|tipo|%)\s*(?:de\s+)?(?:iva|igic|ipsi)(?:\s*\/\s*(?:iva|igic|ipsi))*|(?:iva|igic)\s*%|total\s+(?:t\.?t\.?i|t\.?i\.?i)\b(?:\s*\(eur\))?|precio\s+incl\.?\s*iva|total\s+s\.?\s?i\b(?:\s*\(eur\))?|base imponible|precio sin iva|total\s+(?:iva|igic|ipsi)(?:\s*\/\s*(?:iva|igic|ipsi))*|cuota(?:\s+iva)?|irpf|retenci[oó]n|\btotal\b/gi;
+function labelsInOrder(text: string): ColumnKind[] {
+  // «Retención IRPF» o «IVA %» son una sola columna: etiquetas seguidas del mismo tipo cuentan una vez.
+  return [...text.matchAll(COLUMN_LABEL)].map((m) => columnKind(m[0]) ?? 'ignore').filter((k, i, all) => i === 0 || k !== all[i - 1]);
+}
+
+const DATE_CELL = /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$/;
+
 /**
- * Pies en tabla: una línea de cabecera («Base imponible · % IVA · Cuota · Total») y debajo filas solo con cifras. Cada
- * fila se convierte en líneas «con etiqueta» que entiende la regla de siempre («Base imponible 1.234,56»,
- * «IVA 21 % 1.234,56 259,26», «Total 1.493,82»), emparejando cada cifra con la columna que tiene encima.
+ * Tablas de importes (pie o líneas de factura): una cabecera con etiquetas y debajo filas con cifras. Cada fila se
+ * reparte entre las columnas (por posición, o por orden si una celda lleva varias etiquetas) y las filas se SUMAN por
+ * tipo de IVA (una tabla de líneas trae varias filas del mismo tipo). Una fila igual a la suma de las anteriores es la de
+ * totales y cierra la tabla. El resultado son líneas «con etiqueta» que entiende la regla de siempre.
  */
 export function tableAmountLines(lines: PdfLine[]): PdfLine[] {
   const out: PdfLine[] = [];
   lines.forEach((header, index) => {
     const cells = header.cells ?? [];
-    if (cells.length < 2 || amountsIn(header.text).length) return;
-    const kinds = cells.map((c) => columnKind(c.text));
+    if (!cells.length || amountsIn(header.text).length) return;
+    const perCell = cells.map((c) => labelsInOrder(c.text));
+    const byOrder = perCell.some((k) => k.length > 1);
+    const kinds = byOrder ? perCell.flat() : cells.map((c) => columnKind(c.text));
     const useful = kinds.filter((k) => k && k !== 'ignore');
     if (useful.length < 2 || !useful.some((k) => k === 'base' || k === 'total')) return;
-    for (const row of lines.slice(index + 1, index + 5)) {
+    const sums = new Map<number | null, { base: number; quota: number }>();
+    let total = 0; let withholding = 0; let rowsUsed = 0;
+    for (const row of lines.slice(index + 1, index + 40)) {
       if (row.page !== header.page) break;
-      const rowCells = (row.cells ?? []).filter((c) => /\d/.test(c.text));
-      if (!rowCells.length || rowCells.some((c) => /[a-z]{4}/i.test(c.text.replace(/eur|euros/gi, '')))) break;
-      const values: Partial<Record<ColumnKind, string>> = {};
-      for (const cell of rowCells) {
-        const centre = (cell.x + cell.x2) / 2;
-        let best = -1; let distance = Infinity;
-        cells.forEach((h, i) => {
-          if (!kinds[i] || kinds[i] === 'ignore') return;
-          const overlap = Math.min(cell.x2, h.x2) - Math.max(cell.x, h.x);
-          const d = overlap > 0 ? 0 : Math.abs(centre - (h.x + h.x2) / 2);
-          if (d < distance) { distance = d; best = i; }
-        });
-        if (best >= 0) values[kinds[best]!] = cell.text;
+      const numeric = (row.cells ?? []).filter((c) => /\d/.test(c.text) && !DATE_CELL.test(c.text.trim()));
+      if (numeric.length < 2) { if (rowsUsed) break; continue; }
+      const values: Partial<Record<ColumnKind, number>> = {};
+      let rate: number | null = null;
+      const pct = row.text.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/);
+      if (pct) rate = Number(pct[1]!.replace(',', '.'));
+      if (byOrder) {
+        const amountKinds = kinds.filter((k): k is ColumnKind => !!k && k !== 'ignore' && k !== 'rate');
+        const amounts = amountsIn(row.text);
+        if (amounts.length < amountKinds.length) { if (rowsUsed) break; continue; }
+        amounts.slice(-amountKinds.length).forEach((v, i) => { values[amountKinds[i]!] = v; });
+      } else {
+        for (const cell of numeric) {
+          const centre = (cell.x + cell.x2) / 2;
+          let best = -1; let distance = Infinity;
+          cells.forEach((h, i) => {
+            if (!kinds[i]) return;
+            const overlap = Math.min(cell.x2, h.x2) - Math.max(cell.x, h.x);
+            const d = overlap > 0 ? 0 : Math.abs(centre - (h.x + h.x2) / 2);
+            if (d < distance) { distance = d; best = i; }
+          });
+          const kind = best >= 0 ? kinds[best] : null;
+          if (!kind || kind === 'ignore') continue;
+          if (kind === 'rate') { const r = cell.text.match(/\d{1,2}(?:[.,]\d+)?/); if (r) rate = Number(r[0].replace(',', '.')); continue; }
+          const v = amountsIn(cell.text)[0];
+          // Dos cifras bajo la misma columna (cabecera «Base imponible Descuento» en una celda): manda la primera.
+          if (v !== undefined && values[kind] === undefined) values[kind] = v;
+        }
       }
-      const at = (text: string): PdfLine => ({ text, page: row.page, x: row.x, y: row.y });
-      const rate = values.rate ? Number((values.rate.match(/\d{1,2}(?:[.,]\d+)?/) ?? ['0'])[0].replace(',', '.')) : null;
-      if (values.base) out.push(at(`Base imponible ${values.base}`));
-      if (values.quota && rate !== null) out.push(at(`IVA ${rate} % ${values.base ?? ''} ${values.quota}`));
-      else if (values.quota && /%/.test(values.quota)) { /* columna «IVA» con el tipo: sin cuota no hay importe */ }
-      if (values.withholding) out.push(at(`Retención ${values.withholding}`));
-      if (values.total) out.push(at(`Total ${values.total}`));
+      if (values.base === undefined && values.total === undefined && values.quota === undefined) { if (rowsUsed) break; continue; }
+      // Una fila que repite la suma de las anteriores es la de totales: cierra la tabla.
+      const sumBase = [...sums.values()].reduce((n, v) => n + v.base, 0);
+      if (rowsUsed && sumBase && values.base !== undefined && Math.abs(Math.round(values.base * 100) - sumBase) <= 1) break;
+      const g = sums.get(rate) ?? { base: 0, quota: 0 };
+      sums.set(rate, { base: g.base + Math.round((values.base ?? 0) * 100), quota: g.quota + Math.round((values.quota ?? 0) * 100) });
+      total += Math.round((values.total ?? 0) * 100);
+      withholding += Math.round((values.withholding ?? 0) * 100);
+      rowsUsed += 1;
     }
+    if (!rowsUsed) return;
+    const at = (text: string): PdfLine => ({ text, page: header.page, x: header.x, y: header.y });
+    const money = (c: number) => (c / 100).toFixed(2).replace('.', ',');
+    const base = [...sums.values()].reduce((n, v) => n + v.base, 0);
+    if (base) out.push(at(`Base imponible ${money(base)}`));
+    for (const [rate, v] of sums) if (rate !== null && v.quota) out.push(at(`IVA ${rate} % ${money(v.base)} ${money(v.quota)}`));
+    if (withholding) out.push(at(`Retención ${money(withholding)}`));
+    if (total) out.push(at(`Total ${money(total)}`));
   });
   return out;
 }
@@ -238,7 +279,9 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   let supplierTaxId: string | null = null; let supplierName: string | null = null;
   // El NIF de una línea de cliente o destinatario no es el del proveedor (si hay otro).
   const customerLine = (l: PdfLine) => /\b(?:cliente|destinatario|facturar a|datos del cliente|customer|bill to)\b/.test(norm(l.text));
-  if (taxIds.length > 1 && taxIds.some((t) => !customerLine(t.line))) taxIds.sort((a, b) => Number(customerLine(a.line)) - Number(customerLine(b.line)));
+  // Quien factura casi siempre es una sociedad: con un CIF de sociedad y un NIF de persona, gana el CIF.
+  const company = (id: string) => /^[ABCDEFGHJNPQRSUVW]/.test(id);
+  if (taxIds.length > 1) taxIds.sort((a, b) => Number(customerLine(a.line)) - Number(customerLine(b.line)) || Number(company(b.id)) - Number(company(a.id)));
   const knownHit = taxIds.find((t) => known.has(t.id));
   if (knownHit) {
     supplierTaxId = knownHit.id; supplierName = known.get(knownHit.id)!;
@@ -255,8 +298,10 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     const previous = idx > 0 && lines[idx - 1]!.page === first.line.page ? lines[idx - 1]! : null;
     // Un nombre no lleva cifras ni parece una dirección; si lo de antes del NIF lo parece, se prueba la línea de arriba.
     const looksLikeName = (t: string) => /[a-záéíóúñ]{3}/i.test(t) && !/\d/.test(t) && !/^(?:c\/|calle|avda|avenida|plaza|pza|paseo|ctra|carretera|pol[ií]gono)\b/i.test(t.trim());
-    const candidate = looksLikeName(before) && !before.includes(first.id) ? before : previous && looksLikeName(previous.text) ? previous.text.trim() : null;
-    if (candidate) { supplierName = candidate.replace(/[\s·|,;-]+$/, '').slice(0, 120); provenance['invoice.supplier_name'] = from(candidate === before ? first.line : previous!, 0.5); }
+    // En un pie legal («Empresa S.L.U. Avenida…, N.I.F. B-…»), el trozo con la forma jurídica, cortado tras ella.
+    const legalPart = first.line.text.split(/\s*[\/|·]\s*|,\s+|\s{3,}/).map((part) => part.match(/^(.{2,80}?\b(?:S\.?\s?L\.?\s?U\.?|S\.?\s?A\.?\s?U\.?|S\.?\s?L\.?|S\.?\s?A\.?|S\.?\s?Coop\.?))(?=\s|$|\.)/i)?.[1]).find((n) => n && /[a-záéíóúñ]{3}/i.test(n));
+    const candidate = legalPart ? legalPart.trim() : looksLikeName(before) && !before.includes(first.id) ? before : previous && looksLikeName(previous.text) ? previous.text.trim() : null;
+    if (candidate) { supplierName = candidate.replace(/[\s·|,;-]+$/, '').slice(0, 120); provenance['invoice.supplier_name'] = from(legalPart || candidate === before || !previous ? first.line : previous, legalPart ? 0.7 : 0.5); }
   }
   // Sin nombre junto al NIF: la razón social de la cabecera (S.L., S.A., S.L.U., S. Coop.…) que no sea la del cliente.
   if (!supplierName || supplierName === options.fallback?.supplier_name) {
@@ -295,7 +340,8 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   // Número de factura por etiqueta
   let invoiceNumber: string | null = null;
   for (const line of lines) {
-    const m = line.text.match(/(?:n[º°o]\.?\s*(?:de\s+)?factura|n[úu]mero\s+(?:de\s+)?factura|factura\s*(?:n[º°o]\.?|n[úu]m\.?|n[úu]mero|#)|fra\.?\s*n[º°o]\.?|invoice\s*(?:no\.?|number|#))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-/.]{0,30})/i);
+    const m = line.text.match(/(?:n[º°o]\.?\s*(?:de\s+)?factura|n[úu]mero\s+(?:de\s+)?factura|factura\s*(?:n[º°o]\.?|n[úu]m\.?|n[úu]mero|#)|fra\.?\s*n[º°o]\.?|invoice\s*(?:no\.?|number|#))\s*[:.]?\s*([A-Z0-9][A-Z0-9\-/._]{0,30})/i)
+      ?? line.text.match(/^\s*factura\s+([A-Z0-9][A-Z0-9\-/._]{3,30})\s*$/i);
     if (m && /\d/.test(m[1]!)) { invoiceNumber = m[1]!.replace(/[.]+$/, ''); provenance['invoice.invoice_number'] = from(line, 0.85); break; }
   }
   // Respaldo: «Número: …» o «Nº: …» suelto (la palabra «Factura» va en otra línea), salvo pedido, albarán, cliente o cuenta.
@@ -327,8 +373,8 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
       vatByRate.set(rate, { base: amounts.length >= 2 ? amounts[amounts.length - 2]! : null, quota: amounts[amounts.length - 1]!, line });
       continue;
     }
-    if (/\b(?:base imponible|base\b|subtotal|importe neto|total neto|neto)/.test(t) && !/total (?:factura|a pagar)/.test(t)) { base = { v: amounts[amounts.length - 1]!, line }; continue; }
-    if (/\btotal\b/.test(t) && !/\b(?:sub ?total|total (?:iva|base|neto|cuota|bruto))\b/.test(t)) {
+    if (/\b(?:base imponible|base\b|subtotal|importe neto|total neto|neto)|sin (?:iva|impuestos)|\btotal s\.?\s?i\b/.test(t) && !/total (?:factura|a pagar)/.test(t)) { base = { v: amounts[amounts.length - 1]!, line }; continue; }
+    if ((/\btotal\b/.test(t) || /(?:incl\.?|incluido)\s*(?:el\s+)?iva|\bt\.?t\.?i\b/.test(t)) && !/\b(?:sub ?total|total (?:iva|base|neto|cuota|bruto))\b/.test(t)) {
       const v = amounts[amounts.length - 1]!;
       if (!total || v >= total.v) total = { v, line };
     }
