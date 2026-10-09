@@ -1362,6 +1362,14 @@ El resumen va a `import_meta.reading` (`read`, `found`, `missing`, `stats`, plan
 
 **Precedencia por nivel.** `reading.filled[campo] = { value, level }`, con nivel `plantilla` (plantilla con confianza ≥ 0,8), `regla` (≥ 0,6) o `inferencia`. Una lectura automática escribe un campo si está vacío, o si lo rellenó antes la lectura con menos nivel y sigue igual. Lo que cambió una persona, o la importación confirmada, manda. El formato de la fase 0 (`{campo: valor}`) cuenta como inferencia. El número no se escribe si duplicaría otra factura del mismo proveedor (`duplicateOf`).
 
+**Fase 1 · lectura automática al subir (PR 2).** En «Nueva factura», elegir el PDF ya lo lee, en el worker de PDF.js. Límites: 15 MB y 8 s (`READ_LIMITS`); se leen las 8 primeras y las 2 últimas páginas si hay más de 10, porque los totales suelen ir al final. Nunca cambia de pantalla sola:
+- con lectura completa, rellena el formulario y ofrece «Importar lo leído» (la vista previa de siempre);
+- con lectura parcial o sin texto, rellena lo que haya y lo explica.
+
+Con documento, el proveedor y el objeto no son obligatorios: la factura queda en «Pendiente de datos», con el proveedor provisional y el objeto sacado del nombre del archivo.
+
+Medición (CPU 4×, 390 px; prueba «medición» con `IKISAI_MEASURE=1`): de 1 a 30 páginas, unos 0,6 s; 15 MB, sin ninguna tarea larga en el hilo de la interfaz.
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.
