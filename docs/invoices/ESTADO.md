@@ -117,6 +117,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - «Mi nombre» de los artículos con memoria por proveedor (0230): se recuerda al validar y se pone solo en la siguiente factura; editable también en validadas sin devolverlas a revisión. FB_2026_024: «Se deja en su trimestre» (0231), fuera de las entregas y reversible.
 - Artículos aprendidos: al validar, la plantilla aprende la tabla de artículos y las siguientes facturas del proveedor salen desglosadas (totales intactos, aviso si no cuadran); huella del formato sin las filas de artículos.
 - Nueva factura con varios archivos: pregunta si son páginas de una misma factura (lee el primer PDF con texto) o facturas distintas (abre «Subir varias», una por archivo).
+- Fase 2 del lector: ranking de plantillas sin depender del NIF (huella, etiquetas y nombre, con umbral y margen); el proveedor reconocido por el formato va como «revísalo».
 
 ## En curso
 
