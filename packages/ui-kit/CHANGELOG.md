@@ -8,6 +8,7 @@ Triaje de feedback del 9-10:
   - Desde el inicio pregunta «¿Cerrar la app?» (Cerrar / Cancelar).
   - Con una hoja, un diálogo o el composer abiertos, «atrás» los cierra primero; el composer guarda el borrador.
   - Una hoja que sustituye a otra hereda su entrada, y si la app navega con una hoja abierta, cerrarla no deshace esa navegación. `trackOverlay` exportado.
+  - Sin carreras con `history.back()`, que es asíncrono. La entrada de una hoja cerrada se quita en el siguiente ciclo y solo si sigue arriba, así que «Crear menú» → `#/menus/…` en Food conserva la navegación. Una hoja nueva espera a que termine el «atrás» pendiente, y las entradas huérfanas se saltan solas.
 - **FB_2026_012 · la barra del Revisor tapaba la navegación inferior.** En el móvil va encima de la navegación (cáscara del kit o `.bottomnav` de Tasks) y empuja el contenido: las dos se ven y se puede navegar.
 - **FB_2026_004 · el interruptor del Revisor dejaba de verse.**
   - Más contraste en claro y en oscuro: carril con borde y blindado frente al CSS de la app.
