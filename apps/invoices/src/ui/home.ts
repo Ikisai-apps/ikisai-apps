@@ -166,7 +166,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Hecho')],
       });
       void client.sync().catch(() => undefined);
-    } catch (error) { toast(describeError(error)); }
+    } catch (error) {
+      // Que el fallo se vea (9-10-2026): una hoja con el motivo, no un aviso que se pierde.
+      openSheet({ title: 'No se pudo volver a leer', body: el('p', { id: 'rereadError', role: 'alert' }, describeError(error)), foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
+    }
     button.disabled = false;
   }
   async function runDrive(button: HTMLButtonElement): Promise<void> {

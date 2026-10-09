@@ -1326,7 +1326,9 @@ Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el ow
 - «FACTURA 108-0007-…» sin «nº», y números con guion bajo;
 - con un CIF de sociedad y un NIF de persona (el cliente autónomo), gana el CIF. El nombre sale del trozo de la línea con la forma jurídica, como en un pie legal.
 
-**Volver a leer** deja rastro: cada relectura actualiza el motivo en `drive_imports` («Relectura: leída/sin leer…»).
+**Volver a leer** deja rastro: antes de abrir cada PDF, el motivo pasa a «Relectura (lector vN): en curso.», y al terminar, a «Relectura (lector vN): leída/sin leer. …». Si la app no recibe respuesta, abre una hoja «No se pudo volver a leer» con el motivo (`#rereadError`).
+
+**Relectura automática (0229).** `READER_VERSION` en `drive.ts` es la versión del lector; súbela con cada mejora de `pdf-extract.ts`. Cada archivo de Drive guarda con qué versión se leyó (`drive_imports.reader_version`), y el estado, la última versión que ha corrido (`drive_state.reader_version`). Con el presupuesto de 5 por tick que sobre tras «Entrada», el tick vuelve a leer los borradores de Drive en «Pendiente de datos» leídos con una versión anterior o sin versión (acción de sistema `invoices.drive_stale`). La sonda `drive_has_work` despierta al planificador mientras queden. El resultado del tick añade `reread` y `reread_read`. Una relectura solo completa borradores en «Pendiente de datos» y nunca pisa una factura ya revisada.
 
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 

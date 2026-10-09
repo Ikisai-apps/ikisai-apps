@@ -281,5 +281,34 @@ test('«Volver a leer las pendientes» (owner): un borrador de Drive que no se l
   assert.equal(after[0]!.import_meta.origin, 'pdf_text');
   // Queda rastro en el registro de Drive (lo ve el owner en Inicio)
   const st = (await own.call('/api/v1/read/invoices.drive_status', { body: {} })).data;
-  assert.ok(st.files.some((f: any) => /^Relectura: leída/.test(f.reason ?? '')), JSON.stringify(st.files));
+  assert.ok(st.files.some((f: any) => /^Relectura \(lector v\d+\): leída/.test(f.reason ?? '')), JSON.stringify(st.files));
+});
+
+test('relectura automática (0229): el tick vuelve a leer solo los borradores de Drive leídos con un lector anterior', async () => {
+  const d = new FakeDrive();
+  let oldReader = true;
+  const own = await createTestApp({
+    app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
+    createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
+      drive: { api: d, readPdf: async (bytes) => { if (oldReader) { oldReader = false; return []; } return readPdfItemsServer(bytes); },
+        upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); } } }),
+  });
+  const run = () => own.call('/api/v1/worker/drive/tick', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
+  const id = d.add('Factura antigua.pdf', invoiceTextPdf('AU-2026/0001'));
+  assert.deepEqual([(await run()).data.imported, oldReader], [1, false]);
+  // Leída con un lector anterior (como las de antes de #422)
+  await own.t.db.query(`update invoices.drive_imports set reader_version = 1 where drive_file_id = $1`, [id]);
+  assert.equal((await own.t.db.query<{ w: boolean }>(`select invoices.drive_has_work() w`)).rows[0]!.w, true, 'la sonda lo detecta');
+  const second = await run();
+  assert.equal(second.status, 200, JSON.stringify(second.data));
+  assert.deepEqual([second.data.listed, second.data.reread, second.data.reread_read], [0, 1, 1]);
+  const snap = (await own.call('/api/v1/snapshot?tables=invoices.invoices')).data.tables[0].rows as Array<Record<string, any>>;
+  const inv = snap.find((i) => i.drive_file_id === id)!;
+  assert.equal(inv.status, 'pendiente_revision');
+  assert.equal(inv.invoice_number, 'AU-2026/0001');
+  const row = (await own.t.db.query<{ v: number; reason: string }>(`select reader_version v, reason from invoices.drive_imports where drive_file_id = $1`, [id])).rows[0]!;
+  assert.equal(row.v, 2);
+  assert.match(row.reason, /^Relectura \(lector v2\): leída/);
+  // Ya no queda nada viejo: el siguiente tick no relee
+  assert.equal((await run()).data.reread ?? 0, 0);
 });
