@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.28.1 · 9 de octubre de 2026
+
+- **Conflicto de un `call` aparcado** (p. ej. validar una factura): no lleva tabla, y la 0.28.0 la usaba para el título.
+  - Ahora se pinta igual, con «Un cambio pendiente» si la app no da `rowName`, y con sus decisiones.
+  - Prueba en `v35`.
+- **Humo de Food (`tests/food/feedback.spec.ts:170`, en la CI fallaba 3 de 3 dentro del mismo trabajo):**
+  - **Causa:** la pulsación larga medía la caja de «Nombre» nada más abrirse la hoja, a media animación. La pulsación caía unos 10 px más abajo, sobre el campo editable, y el gesto no abría el formulario.
+  - **Arreglo:** el `hold` de la prueba usa `hover()`, que espera a que el elemento esté quieto.
+
 ## 0.28.0 · 9 de octubre de 2026
 
 - **Conflictos que se pueden descartar y con nombre legible** (incidencia del usuario en Finance: «Conflictos … «1edf75e5-…»», sin manera de quitarlo):
