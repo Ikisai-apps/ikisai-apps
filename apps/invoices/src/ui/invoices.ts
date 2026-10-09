@@ -894,7 +894,7 @@ export interface ExtractionPrefill { rectification?: { isRectification: boolean;
 
 const PROVENANCE_LABELS: Record<string, string> = {
   'invoice.supplier_name': 'Proveedor', 'invoice.supplier_tax_id': 'NIF', 'invoice.invoice_date': 'Fecha', 'invoice.invoice_number': 'Número',
-  'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total',
+  'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total', lines: 'Artículos',
 };
 const METHOD_LABELS: Record<string, string> = { pdf_text: 'texto del PDF', supplier_template: 'plantilla del proveedor', external_ai: 'app de IA', manual: 'sin leer', ocr: 'OCR' };
 /** Quién leyó la factura (0226, `import_meta.origin`). */
