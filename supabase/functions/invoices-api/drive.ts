@@ -28,9 +28,9 @@ export const DRIVE_MAX_BYTES = 15 * 1024 * 1024;
 export const DRIVE_PER_TICK = 5;
 /**
  * Versión del lector de PDF (`pdf-extract.ts`). Súbela cada vez que mejore: el tick vuelve a leer solo los borradores de
- * Drive en «Pendiente de datos» leídos con una versión anterior (migración 0229). 2 = lector de #422; 3 = lectura parcial.
+ * Drive en «Pendiente de datos» leídos con una versión anterior (migración 0229). 2 = lector de #422; 3 = lectura parcial; 4 = FVR_2026_005 (letras sueltas, base rotulada, líneas por cercanía).
  */
-export const READER_VERSION = 3;
+export const READER_VERSION = 4;
 const MAX_PAGES = 10;
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
