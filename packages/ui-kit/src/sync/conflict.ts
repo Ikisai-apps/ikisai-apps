@@ -93,10 +93,14 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   let busy = false;
 
   const name = text(options.rowName?.(conflict)) || conflictRowName(conflict);
-  const tableName = options.tableLabels?.[op.table] ?? op.table.split('.').pop() ?? op.table;
+  // Un `call` aparcado (p. ej. validar una factura) no lleva tabla.
+  const opTable = (op as { table?: string }).table;
+  const tableName = opTable ? options.tableLabels?.[opTable] ?? opTable.split('.').pop() ?? opTable : '';
   const title = name
     ? (op.op === 'delete' ? kt('Querías borrar «{name}»', { name }) : `«${name}»`)
-    : (op.op === 'delete' ? kt('Querías borrar un registro de {table}', { table: tableName }) : kt('Un registro de {table}', { table: tableName }));
+    : tableName
+      ? (op.op === 'delete' ? kt('Querías borrar un registro de {table}', { table: tableName }) : kt('Un registro de {table}', { table: tableName }))
+      : kt('Un cambio pendiente');
   const author = conflictAuthor(conflict, options.currentUserId);
   const who = author === 'self' ? kt('Lo cambiaste tú desde otra pestaña o dispositivo.')
     : author === 'other' ? kt('Lo cambió otra persona.')

@@ -253,6 +253,7 @@ export const KIT_EN: Dictionary = {
   'Vuelve a enviar tu cambio sobre la versión del servidor.': 'Sends your change again on top of the server version.',
   'Querías borrar un registro de {table}': 'You wanted to delete a record from {table}',
   'Un registro de {table}': 'A record from {table}',
+  'Un cambio pendiente': 'A pending change',
   'Lo cambiaste tú desde otra pestaña o dispositivo.': 'You changed it from another tab or device.',
   'Lo cambió otra persona.': 'Someone else changed it.',
   'Se cambió también en el servidor.': 'It was also changed on the server.',

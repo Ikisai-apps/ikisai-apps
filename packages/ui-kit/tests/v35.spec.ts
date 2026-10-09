@@ -35,6 +35,15 @@ test.describe('ui-kit v0.28 · conflictos que se pueden descartar y con nombre l
     await expect(page.locator('.toast.show')).toContainText('req-4: mine');
   });
 
+  test('un `call` aparcado (validar) sin tabla ni nombre se pinta igual, sin id y con sus decisiones', async ({ page }) => {
+    await page.goto('/#conflicts');
+    const card = page.locator('#conflictHost [data-request-id="req-5"]');
+    await expect(card.locator('h3')).toHaveText('Un cambio pendiente');
+    await expect(card).not.toContainText('1edf75e5');
+    await card.getByRole('button', { name: 'Quedarme con lo del servidor' }).click();
+    await expect(page.locator('.toast.show')).toContainText('req-5: theirs');
+  });
+
   test('nombre de la fila: código y nombre; frase de cabecera según quién cambió', async () => {
     const { conflictIntro, conflictRowName } = await import('../src/sync/conflict.ts');
     const row = (extra: Record<string, unknown>) => ({ id: 'x', revision: 2, created_at: '', updated_at: '', updated_by: 'u1', deleted_at: null, ...extra });

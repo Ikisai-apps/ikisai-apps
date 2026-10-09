@@ -286,6 +286,8 @@ const selfConflict: PendingConflict = {
   overlapping: [],
   detectedAt: new Date().toISOString(),
 };
+// `call` aparcado (validar) sin nombre en la fila: sin tabla, «Un cambio pendiente».
+const callConflict: PendingConflict = { ...selfConflict, requestId: 'req-5', operation: { op: 'call', procedure: 'invoices.validate', args: { id: '1edf75e5-0000-4000-8000-000000000001' } } as never };
 const rejectedSample: RejectedBatch = {
   requestId: 'req-3',
   operations: [{ op: 'update', table: 'invoices.suppliers', id: 'sup-2', expectedRevision: 1, fields: { tax_id: 'XXX' } }],
@@ -293,7 +295,7 @@ const rejectedSample: RejectedBatch = {
   baseRows: { 'invoices.suppliers|sup-2': { id: 'sup-2', revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, name: 'Maderas del Valle' } },
   rejectedAt: new Date().toISOString(),
 };
-const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict, selfConflict], {
+const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict, selfConflict, callConflict], {
   feedbackId: 'demo.conflicto',
   currentUserId: 'u1',
   tableLabels: { 'invoices.invoices': 'facturas' },
