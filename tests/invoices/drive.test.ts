@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
-import { createGoogleDriveApi, DriveError, readPdfItemsServer, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
+import { createGoogleDriveApi, DriveError, READER_VERSION, readPdfItemsServer, type DriveApi, type DriveFile } from '../../supabase/functions/invoices-api/drive.ts';
 import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
 
 const WORKER_KEY = 'clave-de-worker-de-prueba';
@@ -307,8 +307,8 @@ test('relectura automática (0229): el tick vuelve a leer solo los borradores de
   assert.equal(inv.status, 'pendiente_revision');
   assert.equal(inv.invoice_number, 'AU-2026/0001');
   const row = (await own.t.db.query<{ v: number; reason: string }>(`select reader_version v, reason from invoices.drive_imports where drive_file_id = $1`, [id])).rows[0]!;
-  assert.equal(row.v, 2);
-  assert.match(row.reason, /^Relectura \(lector v2\): leída/);
+  assert.equal(row.v, READER_VERSION);
+  assert.match(row.reason, /^Relectura \(lector v\d+\): leída/);
   // Ya no queda nada viejo: el siguiente tick no relee
   assert.equal((await run()).data.reread ?? 0, 0);
 });
