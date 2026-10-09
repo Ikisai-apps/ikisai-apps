@@ -1535,3 +1535,8 @@ Ya era así:
   - la cabecera usa `conflictIntro` en lugar del «Otra persona cambió lo mismo que tú» fijo;
   - los campos de factura tienen etiqueta.
 
+### 16.10 Sin bucle de conflictos al validar (incidencia del usuario, tras #452)
+- **Causa (sync-client):** un lote con solo `invoices.validate` que chocaba se aparcaba como un `update` vacío, con el `call` en `otherOperations`. «theirs» y «mine» volvían a encolar el `call` con la revisión vieja, y el descarte automático de #452 entraba en bucle («1 pendiente» y el aviso repetido).
+- **Sync-client 0.5.2:** el `call` va aparte (`ConflictRecord.call`) y `PendingConflict.procedure` dice cuál es. «theirs» lo descarta y «mine» lo reenvía con la revisión actual.
+- **Finance:** un conflicto propio de `invoices.validate` se reintenta **una sola vez** por factura y sesión con «mine». Si vuelve a chocar, queda en la tarjeta del kit para que decida el usuario. Un conflicto del formato antiguo (el del móvil del usuario) se resuelve una vez y el `call`, al volver a la cola, ya se aparca bien. Se acaba la anotación de `requestId` de #452.
+

@@ -5,7 +5,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { conflictRetryOperations, type ConflictRecord } from '../../packages/sync-client/src/client.ts';
+import { conflictRetryOperations, parkedCallFor, type ConflictRecord } from '../../packages/sync-client/src/client.ts';
 
 const current = { id: 'f1', revision: 6, created_at: '', updated_at: '', updated_by: null, deleted_at: null, status: 'pendiente_revision' };
 const other = { op: 'update' as const, table: 'invoices.suppliers' as const, id: 's1', expectedRevision: 2, fields: { default_category: 'otros' } };
@@ -40,3 +40,18 @@ test("update con 'mine': igual que antes (mis campos sobre la revisión actual)"
   };
   assert.deepEqual(conflictRetryOperations(record, { choice: 'mine' }), [{ op: 'update', table: 'invoices.invoices', id: 'f1', expectedRevision: 6, fields: { notes: 'mía' } }]);
 });
+
+test('0.5.2: un lote que solo tiene un call aparca el call aparte; «theirs» no lo reenvía y «mine» lo reenvía con la revisión actual (sin bucle)', () => {
+  const validate = { op: 'call' as const, procedure: 'invoices.validate', args: { invoice_id: 'f1', expectedRevision: 5 } };
+  assert.equal(parkedCallFor([other, validate], { expectedRevision: 5 }), validate);
+  assert.equal(parkedCallFor([validate, { op: 'call', procedure: 'x', args: {} }], { expectedRevision: 5 }), validate);
+  assert.equal(parkedCallFor([other], { expectedRevision: 5 }), null);
+  // Como lo guarda `park`: la tarjeta ve un update vacío de la fila; el call va aparte y fuera de las otras operaciones
+  const record: ConflictRecord = { requestId: 'r3', code: 'VERSION_CONFLICT', base: null, current, overlapping: [], detectedAt: '',
+    operation: { op: 'update', table: 'invoices.invoices', id: 'f1', expectedRevision: 5, fields: {} } as ConflictRecord['operation'],
+    otherOperations: [other], call: validate, procedure: 'invoices.validate' };
+  assert.deepEqual(conflictRetryOperations(record, { choice: 'theirs' }), [other]);
+  assert.deepEqual(conflictRetryOperations(record, { choice: 'mine' }), [other, { op: 'call', procedure: 'invoices.validate', args: { invoice_id: 'f1', expectedRevision: 6 } }]);
+  assert.deepEqual(conflictRetryOperations(record, { choice: 'merge', fields: {} }), [other]);
+});
+

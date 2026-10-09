@@ -2147,9 +2147,47 @@ test('Incidencia del usuario (9-10-2026, tras #449): elegir la categoría y vali
       await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)?.status, { timeout: 30_000 }).toBe('validada');
       await page.waitForTimeout(1500);
       expect(await page.locator('#syncStatus').innerText()).not.toMatch(/conflicto|rechazad/i);
-      expect(await page.evaluate(() => localStorage.getItem('ikisai.invoices.validateRequests'))).toBeTruthy();
       if (!withoutNetwork) await closeSheet(page);
     }
+  } finally {
+    await context.close();
+  }
+});
+
+test('Incidencia del usuario (tras #452): validar sin red tras un cambio propio en otro dispositivo acaba validada, sin bucle ni pendientes ni conflictos', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Bucle Prueba SL', slug: 'bucle_prueba_sl', aliases: [], default_is_investment: false }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FVR_2026_BUC', supplier_id: supplierId, invoice_date: '2026-09-20', object: 'material', status: 'pendiente_revision', expense_category: null, source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, description: 'Material', net_amount: 100, vat_rate: 21, vat_amount: 21, discount_amount: 0 }]);
+    api.seed('invoices.tax_lines', [{ id: randomUUID(), invoice_id: invoiceId, position: 0, tax_type: 'iva', rate: 21, taxable_base: 100, amount: 21 }]);
+    api.seed('invoices.invoice_files', [{ id: randomUUID(), invoice_id: invoiceId, file_id: randomUUID(), original_filename: 'b.pdf', normalized_filename: 'FVR_2026_BUC.pdf', page_order: 1, kind: 'original', mime_type: 'application/pdf', size_bytes: 10, sha256: 'e'.repeat(64) }]);
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    await f.locator('#invCategory').selectOption('suministros');
+    const me = await eventually(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId && i.expense_category === 'suministros')?.updated_by as string | undefined);
+    await synced(page);
+    // Sin red: el servidor recibe otro cambio PROPIO (desde otro dispositivo) y aquí se valida con la revisión vieja
+    await closeSheet(page);
+    await context.setOffline(true);
+    api.serverUpdate('invoices.invoices', invoiceId, { notes: 'desde el ordenador', updated_by: me });
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    await ficha(page).locator('#validateInvoice').click({ force: true });
+    await closeSheet(page);
+    const commandsBefore = api.requests.filter((r) => r.path.endsWith('/commands')).length;
+    await reconnect(context, page);
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)?.status, { timeout: 30_000 }).toBe('validada');
+    await page.waitForTimeout(3000);
+    // Sin bucle: un puñado de envíos (el que chocó y el reintento), no decenas; ni conflictos ni pendientes
+    const sent = api.requests.filter((r) => r.path.endsWith('/commands')).length - commandsBefore;
+    expect(sent).toBeLessThanOrEqual(4);
+    expect(await page.locator('#syncStatus').innerText()).not.toMatch(/conflicto|pendiente|rechazad/i);
+    expect(await page.locator('.toast').filter({ hasText: 'Validando FVR_' }).count()).toBeLessThanOrEqual(1);
   } finally {
     await context.close();
   }
