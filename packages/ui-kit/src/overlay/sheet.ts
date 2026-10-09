@@ -2,6 +2,7 @@ import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { focusFirst, lockScroll, trapFocus } from './focus.ts';
 import { installKeyboardInsets } from './keyboard.ts';
+import { trackOverlay, type OverlayHandle } from '../shell/back-navigation.ts';
 import { kt } from '../i18n/i18n.ts';
 import { kitLayer } from '../layer.ts';
 
@@ -49,6 +50,8 @@ export interface Sheet {
 }
 
 let current: Sheet | null = null;
+/** Entrada de historia de la hoja abierta («atrás» la cierra); una hoja que sustituye a otra la hereda. */
+let historyHandle: OverlayHandle | null = null;
 
 /** Hoja inferior (diálogo centrado en escritorio): una sola abierta, foco atrapado, Escape y fondo cierran, foco devuelto. */
 export function openSheet(options: SheetOptions): Sheet {
@@ -83,6 +86,10 @@ export function openSheet(options: SheetOptions): Sheet {
   document.addEventListener('keydown', onKey);
   kitLayer(options.container).appendChild(element);
   focusFirst(body, options.initialFocus ?? null);
+  // «Atrás» (FB_2026_025) cierra la hoja; si se niega (`beforeClose`), vuelve a registrarse.
+  const onBack = () => { historyHandle = null; void close(false).then((closed) => { if (!closed && open) historyHandle = trackOverlay(onBack); }); };
+  if (historyHandle?.active()) historyHandle.setClose(onBack);
+  else historyHandle = trackOverlay(onBack);
 
   function release(): void {
     if (!open) return;
@@ -96,7 +103,7 @@ export function openSheet(options: SheetOptions): Sheet {
     if (!force && options.beforeClose && !(await options.beforeClose())) return false;
     release();
     element.remove();
-    if (current === sheet) current = null;
+    if (current === sheet) { current = null; historyHandle?.release(); historyHandle = null; }
     options.onClose?.('close');
     if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     return true;

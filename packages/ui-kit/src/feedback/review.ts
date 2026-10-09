@@ -173,9 +173,19 @@ export function createFeedbackReview(options: FeedbackReviewOptions): FeedbackRe
     onChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   };
 
+  /**
+   * ¿Puede revisar esta cuenta? Solo se recuerda la respuesta definitiva (sí, o 403/404): un fallo pasajero (sin red, sesión
+   * aún arrancando) no deja el interruptor oculto para siempre (FB_2026_004: «después de entrar y navegar ya no se ve»).
+   */
   function available(): Promise<boolean> {
-    availability ??= options.api('/feedback?review=true&app=all&limit=1').then(() => true, () => false);
-    return availability;
+    if (availability) return availability;
+    const check = options.api('/feedback?review=true&app=all&limit=1').then(() => true, (error: { status?: number }) => {
+      if (error?.status === 403 || error?.status === 404) return false;
+      availability = null;
+      return false;
+    });
+    availability = check;
+    return check;
   }
 
   // --- Tarjeta y navegación (compartidas por las pestañas) ---------------------------------------------

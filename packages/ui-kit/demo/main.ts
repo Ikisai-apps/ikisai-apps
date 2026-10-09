@@ -13,6 +13,7 @@ import {
   createDayTabs,
   initAppUpdates,
   setKitLayer,
+  installBackNavigation,
   createSignaturePad,
   createInstallPrompt,
   createLanguageSelect,
@@ -214,7 +215,7 @@ renderLogin(loginHost, {
 document.title = 'Ikisai UI kit';
 
 const shellHost = el('div', { class: 'demo-frame shell-frame', id: 'shellFrame' });
-const shell = createAppShell(shellHost, {
+const shell = createAppShell(shellHost, { backNavigation: false,
   appName: 'Invoices',
   subtitle: 'Víctor',
   nav: [
@@ -982,7 +983,7 @@ const portalShellHost = el('div', { id: 'portalShellHost', class: 'card', style:
 // Guests con módulos (U5): Inicio · Programa · Menú · Alojamiento · Más (Información, Materiales, Mis datos…).
 const guestsShellHost = el('div', { id: 'guestsShellHost', class: 'card', style: 'position:relative;transform:translateZ(0);height:380px;overflow:auto;padding:0' });
 const guestsRoute = el('output', { id: 'guestsRoute' }, '#/');
-const guestsShell = createAppShell(guestsShellHost, {
+const guestsShell = createAppShell(guestsShellHost, { backNavigation: false,
   appName: 'Guests', markIcon: 'guest', maxNav: 5,
   navigate: (hash) => { guestsRoute.textContent = hash; guestsShell.setRoute(hash); },
   nav: [
@@ -1016,7 +1017,7 @@ const portalSection = section('portal', 'Piezas de portal', 'Estado de guardado 
   portalShellHost,
   el('p', { class: 'small muted' }, 'Ruta de Guests: ', guestsRoute),
   guestsShellHost);
-createAppShell(portalShellHost, { appName: 'Guests', markIcon: 'guest', nav: [] });
+createAppShell(portalShellHost, { backNavigation: false, appName: 'Guests', markIcon: 'guest', nav: [] });
 
 const moneySection = section('money', 'Desglose de importes', 'Total frente a una referencia (presupuesto o importe final; en rojo si se excede), líneas por categoría con participación y enlace a la factura, «y N más». Para el «Coste real» de la reserva en Booking.',
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
@@ -1025,7 +1026,7 @@ const moneySection = section('money', 'Desglose de importes', 'Total frente a un
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { setKitLayer, initAppUpdates, compressImage, renderLogin, toast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
