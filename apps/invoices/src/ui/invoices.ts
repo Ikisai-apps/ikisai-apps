@@ -29,7 +29,8 @@ import { flushDocumentTexts, queueDocumentText } from '../app/text-queue.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
-import { openManualEntry, type ManualPrefill } from './manual.ts';
+import type { ManualPrefill } from './manual.ts';
+import { createInvoiceEditor, type InvoiceEditor } from './editor.ts';
 import { currentReading, documentReadingBlock, extractFor, readingPanel } from './reading.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -245,8 +246,13 @@ let openInvoiceId: string | null = null;
 let openSheetRef: Sheet | null = null;
 function setOpen(id: string | null): void { openInvoiceId = id; for (const l of openListeners) l(id); }
 
+/** El editor de «Datos de la factura» de la ficha abierta (para «Leer PDF»). */
+let activeEditor: InvoiceEditor | null = null;
+
 function refreshOpenInvoice(ctx: ViewContext, id: string, mirror: Mirror): void {
   if (openInvoiceId !== id || !openSheetRef) return;
+  // Con cambios sin guardar en «Datos de la factura», no se repinta (se perdería lo escrito).
+  if (guard.dirtyEditor) return;
   const invoice = mirror.invoices.find((i) => i.id === id);
   if (!invoice) return;
   replace(openSheetRef.body, renderInvoice(ctx, invoice, mirror));
@@ -302,6 +308,15 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // Lo que falta para validar (incidencia del usuario, 9-10-2026): lo mismo que comprueba el servidor, antes de enviar.
   const missing: MissingKey[] = pendingState ? missingOf(mirror, invoice) : [];
   const missingText = missing.map((m) => MISSING_LABELS[m]).join(', ');
+  // «Datos de la factura» editables en la propia ficha (petición del usuario, 9-10-2026)
+  const withEditor = editable && pendingState;
+  const pdfOriginalForEditor = files.filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
+  const editor: InvoiceEditor | null = withEditor ? createInvoiceEditor(ctx, mirror, invoice, {
+    onReread: pdfOriginalForEditor ? () => void rereadIntoEditor(ctx, mirror, invoice, pdfOriginalForEditor) : undefined,
+  }) : null;
+  activeEditor = editor;
+  const editorBlock = editor ? fbBlock({ feedbackId: 'invoices.facturas.ficha.datos', feedbackLabel: 'Datos de la factura' }, 'Datos de la factura', missing.length ? `falta ${missingText}` : 'revisa y corrige aquí', true, editor.element) : null;
+  if (editorBlock) editorBlock.id = 'editorBlock';
   const call = (procedure: string, args: Record<string, unknown>, message: string) => commitSafely(client, [{ op: 'call', procedure, args }], message);
 
   // --- Acciones ------------------------------------------------------------
@@ -314,14 +329,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     const original = files.filter((f) => f.kind === 'original').sort((a, b) => a.page_order - b.page_order)[0];
     if (original) actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.leer_ia', 'data-feedback-label': 'Leer con IA', class: noTemplate ? 'primary' : 'softbtn', type: 'button', id: 'readWithAi',
       onclick: () => openReadWithAi(ctx, invoice, original) }, icon('upload', 18), 'Leer con IA'));
-    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.rellenar', 'data-feedback-label': 'Rellenar a mano', class: 'softbtn', type: 'button', id: 'fillManually',
-      onclick: () => openManualEntry(ctx, mirror, invoice, validateAndReopen(ctx)) }, icon('edit', 18), 'Rellenar a mano'));
   }
   if (editable && pendingState) {
     // Con algo pendiente no se envía: se dice qué falta y se lleva al campo (nunca un «1 rechazado» sin explicación).
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice',
       'aria-disabled': missing.length ? 'true' : null, title: missing.length ? `Para validar falta ${missingText}.` : null,
       onclick: async () => {
+        if (editor?.dirty()) { toast('Guarda primero los cambios de «Datos de la factura» (o descártalos).'); document.querySelector<HTMLElement>('#saveAmounts:not([hidden]), #saveRead')?.scrollIntoView({ block: 'center' }); return; }
         // Con el espejo de ahora: el último cambio (p. ej. la categoría recién elegida) puede no estar aún en la cola ni pintado.
         await settlePending(client);
         const freshMirror = await loadMirror(client);
@@ -362,7 +376,9 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // --- Cabecera y totales --------------------------------------------------
   /** Abre el bloque del campo que falta, lo lleva a la vista, le da el foco y lo resalta un momento. */
   function goToMissing(key: MissingKey): void {
-    const selector: Record<MissingKey, string> = { invoice_date: '#invDate', expense_category: '#invCategory', original_file: '[data-feedback-id="invoices.facturas.ficha.documento"]', lines_or_taxes: '[data-feedback-id="invoices.facturas.ficha.articulos"]', rectified_invoice: '#invKind', rectification_sign: '#invKind', totals: '#invSourceTotal' };
+    const selector: Record<MissingKey, string> = withEditor
+      ? { invoice_date: '#manualDate', expense_category: '#manualCategory', original_file: '[data-feedback-id="invoices.facturas.ficha.documento"]', lines_or_taxes: '#manualRows input', rectified_invoice: '#invKind', rectification_sign: '#invKind', totals: '#manualTotal' }
+      : { invoice_date: '#invDate', expense_category: '#invCategory', original_file: '[data-feedback-id="invoices.facturas.ficha.documento"]', lines_or_taxes: '[data-feedback-id="invoices.facturas.ficha.articulos"]', rectified_invoice: '#invKind', rectification_sign: '#invKind', totals: '#invSourceTotal' };
     const target = document.querySelector<HTMLElement>(selector[key]);
     if (!target) return;
     const details = target.closest('details');
@@ -584,15 +600,15 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const notes = el('textarea', { 'data-feedback-ignore': '', id: 'invNotes', rows: '2', disabled: !canEdit }); notes.value = invoice.notes ?? '';
   notes.addEventListener('change', () => void update({ notes: notes.value.trim() || null }));
   // Abierto si falta algo suyo para validar: al volver a pintarse la ficha, lo que falta sigue a la vista.
-  const fiscalMissing = missing.some((m) => m !== 'original_file' && m !== 'lines_or_taxes');
+  const fiscalMissing = missing.some((m) => (withEditor ? m === 'rectified_invoice' || m === 'rectification_sign' : m !== 'original_file' && m !== 'lines_or_taxes'));
   const fiscalBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.fiscal', feedbackLabel: 'Fiscal y pago' }, 'Fiscal y pago', `${categoryLabel(invoice.expense_category)}${invoice.is_investment ? ' · inversión' : ''}`, fiscalMissing,
-    el('div', { class: 'row2' }, field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
+    el('div', { class: 'row2' }, withEditor ? null : field('Categoría de gasto', category), field('Deducibilidad', deductibility)),
     el('label', { class: 'check' }, investment, el('span', null, 'Es inversión (no gasto de explotación)')),
     field('Tipo de factura', kind),
     rectFields,
     field('Se declara en', periodSelect, 'Fecha real aparte: una factura del 2T que no declaraste entonces se declara en el trimestre que elijas.'),
-    el('div', { class: 'row2' }, field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),
-    field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'),
+    el('div', { class: 'row2' }, withEditor ? null : field('Fecha de la factura', invDate, invoice.invoice_date ? undefined : 'Sin fecha no se puede validar.'), field('Vencimiento', dueDate)),
+    withEditor ? null : field('Total del documento', sourceTotal, 'Lo que imprime la factura; se compara con el total calculado (tolerancia 0,02 €).'),
     field('Notas', notes),
   );
 
@@ -609,7 +625,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const pdfOriginal = files.filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
   const readingBlock = pendingState && pdfOriginal ? documentReadingBlock(ctx, mirror, invoice, pdfOriginal) : null;
 
-  return el('div', { class: 'inv' }, header, totals, documentBlock, readingBlock, linesBlock, taxBlock, allocBlock, fiscalBlock, importBlock);
+  return el('div', { class: 'inv' }, header, editorBlock, totals, documentBlock, readingBlock, linesBlock, taxBlock, allocBlock, fiscalBlock, importBlock);
 }
 
 /** Periodo fiscal derivado en el cliente para filas optimistas (el servidor lo genera al confirmar). */
@@ -1048,7 +1064,7 @@ async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   if (!result.ok || !result.document) {
     // Lectura parcial (fase 0): nunca una pantalla vacía. Lo leído rellena «Rellenar a mano» (o el formulario nuevo).
     const prefill: ManualPrefill = { read: result.read, found: result.found, message: readingMessage(result), text: readingText(items), items };
-    if (target) { guard.dirtyEditor = false; await closeSheet(true); openManualEntry(ctx, mirror, target, validateAndReopen(ctx), prefill); }
+    if (target && activeEditor) activeEditor.fill(prefill, 'empty');
     else if (onPartial) onPartial(prefill);
     else toast(prefill.message);
     return;
@@ -1155,6 +1171,20 @@ export function startValidationConflictWatcher(ctx: ViewContext): () => void {
   });
   void resolveOwnValidationConflicts(ctx);
   return off;
+}
+
+/** «Volver a leer el PDF»: lee el documento guardado y pinta lo leído en «Datos de la factura», resaltando lo que cambia. */
+async function rereadIntoEditor(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, original: LocalInvoiceFile): Promise<void> {
+  if (!navigator.onLine) { toast('Volver a leer necesita conexión (el documento está en la nube).'); return; }
+  try {
+    toast('Leyendo el PDF…');
+    const file = await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type);
+    const items = await readPdfItems(file, READ_LIMITS);
+    const r = extractFor(mirror, items, invoice);
+    activeEditor?.fill({ read: r.read, found: r.found, message: readingMessage(r), text: r.hasText ? readingText(items) : null, items }, 'replace');
+  } catch (error) {
+    toast(error instanceof ReadLimitError ? 'El PDF es muy grande o tarda demasiado: usa «Leer con IA».' : 'No se pudo abrir el PDF. Puede estar dañado o protegido.');
+  }
 }
 
 async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
