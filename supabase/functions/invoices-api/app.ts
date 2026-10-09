@@ -824,6 +824,7 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
     uuid: stableUuid,
     notifyTasks: options.notifyTasks,
     today: options.today,
+    fileBytes: (fileId: string) => fileBytes(fileId),
   });
   const tick = () => runDriveTick(tickDeps());
   // Bytes de un documento ya guardado (para volver a leerlo), con la cuenta de servicio.

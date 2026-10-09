@@ -25,6 +25,11 @@ export const DRIVE_FOLDERS = ['Entrada', 'Importadas', 'Duplicadas', 'Con errore
 export type DriveFolder = (typeof DRIVE_FOLDERS)[number];
 export const DRIVE_MAX_BYTES = 15 * 1024 * 1024;
 export const DRIVE_PER_TICK = 5;
+/**
+ * Versión del lector de PDF (`pdf-extract.ts`). Súbela cada vez que mejore: el tick vuelve a leer solo los borradores de
+ * Drive en «Pendiente de datos» leídos con una versión anterior (migración 0229). 2 = lector de #422.
+ */
+export const READER_VERSION = 2;
 const MAX_PAGES = 10;
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
@@ -175,6 +180,8 @@ export interface DriveTickDeps {
   notifyTasks?: (request: TasksDriveRequest) => Promise<boolean>;
   /** Hoy en Madrid (AAAA-MM-DD), inyectable en pruebas. */
   today?: () => string;
+  /** Bytes de un documento ya guardado (para volver a leer lo pendiente con un lector nuevo). */
+  fileBytes?: (fileId: string) => Promise<Uint8Array>;
 }
 
 /** Petición a Tasks (contrato acordado con Core el 9-10-2026). */
@@ -185,7 +192,7 @@ export interface TasksDriveRequest {
 const FINANCE_URL = 'https://finance.ikisai.com';
 const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-export interface DriveTickResult { outcome: 'ok' | 'not_configured' | 'blocked' | 'error'; listed: number; imported: number; read: number; duplicates: number; errors: number; api_calls: number; more: boolean; detail?: string | null }
+export interface DriveTickResult { outcome: 'ok' | 'not_configured' | 'blocked' | 'error'; listed: number; imported: number; read: number; duplicates: number; errors: number; api_calls: number; more: boolean; detail?: string | null; reread?: number; reread_read?: number }
 
 /** Proveedor provisional de lo que llega sin leer: `import_v1` lo sustituye al leerlo después («Leer PDF», IA o JSON). */
 export const UNIDENTIFIED_SUPPLIER = { name: 'Sin identificar (Drive)', slug: 'sin_identificar' };
@@ -205,7 +212,7 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
   const finish = async (folders?: Record<string, string>) => {
     result.api_calls = (deps.drive?.calls?.() ?? 0) - callsAtStart;
     await notify().catch(() => undefined);
-    await deps.invoke('invoices.drive_finish', { started_at: startedAt, ...result, ...(folders ? { folders } : {}) });
+    await deps.invoke('invoices.drive_finish', { started_at: startedAt, ...result, reader_version: READER_VERSION, ...(folders ? { folders } : {}) });
     return result;
   };
   /** Aviso en Tasks: uno al día con lo pendiente de Drive (se actualiza con el recuento) o uno si Drive se bloquea. */
@@ -225,6 +232,14 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
       title: `Revisar ${pending.length} factura${pending.length === 1 ? '' : 's'} llegada${pending.length === 1 ? '' : 's'} por Drive`,
       note: `Por revisar y validar: ${pending.length - unread} leída${pending.length - unread === 1 ? '' : 's'} y ${unread} sin leer (las completa Claude o la IA). En esta búsqueda: ${result.imported} nueva${result.imported === 1 ? '' : 's'}, ${result.duplicates} duplicada${result.duplicates === 1 ? '' : 's'}, ${result.errors} con errores.`,
       external_url: `${FINANCE_URL}/#/facturas?filtro=drive`, priority: 'normal' });
+  };
+  /** Relectura automática: lo pendiente leído con un lector anterior, con el presupuesto que sobre de este tick. */
+  const rereadStale = async (budget: number) => {
+    if (budget <= 0 || !deps.fileBytes) return;
+    const ids = ((await deps.invoke('invoices.drive_stale', { version: READER_VERSION, limit: budget })) ?? []) as string[];
+    if (!ids.length) return;
+    const r = await rereadDriveDrafts({ rows: deps.rows, commit: deps.commit, readPdf: deps.readPdf, saveText: deps.saveText, invoke: deps.invoke, fileBytes: deps.fileBytes, onlyIds: ids });
+    result.reread = r.checked; result.reread_read = r.read;
   };
   if (!deps.drive) { result.outcome = 'not_configured'; result.detail = 'Faltan GOOGLE_SERVICE_ACCOUNT_JSON o INVOICES_DRIVE_ID.'; return finish(); }
   const drive = deps.drive;
@@ -255,7 +270,7 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
     result.more = listed.length > limit;
     const files = listed.slice(0, limit);
     result.listed = files.length;
-    if (!files.length) return finish(folders);
+    if (!files.length) { await rereadStale(limit); return finish(folders); }
     const seen = new Map<string, DriveSeen>(((await deps.invoke('invoices.drive_seen', { drive_file_ids: files.map((f) => f.id) }))?.seen ?? []).map((s: DriveSeen) => [s.drive_file_id, s]));
     let data = await deps.rows();
     const move = async (file: DriveFile, to: DriveFolder) => { await drive.move(file.id, folders.Entrada!, folders[to]!); };
@@ -356,11 +371,12 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
       if (items.length) await deps.saveText(fileId, items).catch(() => undefined);
       result.imported += 1;
       if (readOk) result.read += 1;
-      await record(file, { status: 'importada', invoice_id: invoiceId, sha256: sha, reason });
+      await record(file, { status: 'importada', invoice_id: invoiceId, sha256: sha, reason, reader_version: READER_VERSION });
       await move(file, 'Importadas');
       await record(file, { status: 'importada', moved_to: 'Importadas' });
       data = await deps.rows(); // proveedores nuevos y la factura recién creada cuentan para los duplicados del siguiente
     }
+    await rereadStale(limit - files.length);
     return finish(folders);
   } catch (error) {
     if (error instanceof DriveError) {
@@ -385,16 +401,22 @@ export interface RereadResult { checked: number; read: number; items: Array<{ in
  * sale entero, lo completa en su sitio con `import_v1` (origen `pdf_text`, procedencia por campo). Nada se valida.
  * El detalle dice qué faltó y la forma del texto, nunca su contenido.
  */
-export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'commit' | 'readPdf' | 'saveText' | 'invoke'> & { fileBytes(fileId: string): Promise<Uint8Array>; limit?: number }): Promise<RereadResult> {
+export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'commit' | 'readPdf' | 'saveText' | 'invoke'> & { fileBytes(fileId: string): Promise<Uint8Array>; limit?: number; onlyIds?: string[] }): Promise<RereadResult> {
   const data = await deps.rows();
   // Rastro (9-10-2026): el registro de Drive guarda lo que dio cada relectura (lo ve el owner en Inicio).
+  // Sin contenido en el log: solo el código del error, para saber si el rastro no se pudo escribir.
+  const record = (invoice: InvoiceRow, args: Record<string, unknown>) => deps.invoke('invoices.drive_record', { drive_file_id: invoice.drive_file_id, name: invoice.object || 'factura de Drive', status: 'importada', invoice_id: invoice.id, ...args })
+    .catch((error) => { console.warn('invoices drive reread: drive_record falló', (error as { code?: string })?.code ?? 'error'); });
   const trace = async (invoice: InvoiceRow, read: boolean, detail: string) => {
     if (!invoice.drive_file_id) return;
-    await deps.invoke('invoices.drive_record', { drive_file_id: invoice.drive_file_id, name: invoice.object, status: 'importada', invoice_id: invoice.id, reason: `Relectura: ${read ? 'leída' : 'sin leer'}. ${detail}`.slice(0, 300) }).catch(() => undefined);
+    await record(invoice, { reader_version: READER_VERSION, reason: `Relectura (lector v${READER_VERSION}): ${read ? 'leída' : 'sin leer'}. ${detail}`.slice(0, 300) });
   };
-  const drafts = data.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && i.drive_file_id).slice(0, deps.limit ?? 10);
+  const only = deps.onlyIds ? new Set(deps.onlyIds) : null;
+  const drafts = data.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && i.drive_file_id && (!only || only.has(i.id))).slice(0, deps.limit ?? 10);
   const result: RereadResult = { checked: drafts.length, read: 0, items: [] };
   for (const invoice of drafts) {
+    // Antes de abrir el PDF, sin versión: si la Edge se corta a mitad, queda «en curso» y el tick lo reintenta.
+    if (invoice.drive_file_id) await record(invoice, { reason: `Relectura (lector v${READER_VERSION}): en curso.` });
     const before = result.items.length;
     await processOne(invoice);
     const item = result.items[before];
