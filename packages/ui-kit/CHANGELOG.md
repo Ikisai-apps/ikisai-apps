@@ -1,5 +1,31 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.28.0 · 9 de octubre de 2026
+
+- **Conflictos que se pueden descartar y con nombre legible** (incidencia del usuario en Finance: «Conflictos … «1edf75e5-…»», sin manera de quitarlo):
+  - **Decisiones arriba y a la vista:** las decisiones van ahora encima de la tabla de campos. Antes, en móvil, la tabla las dejaba fuera de la pantalla.
+    - **«Quedarme con lo del servidor»** descarta lo tuyo (`theirs`).
+    - **«Reintentar con lo mío»** reenvía tu cambio (`mine`).
+    - **«Ver diferencias»** despliega la tabla, plegada por defecto (sigue en el DOM).
+    - «Combinar campo a campo» sigue igual en las ediciones.
+    - Los `data-choice` y las marcas de feedback no cambian; se añade `<base>.diferencias`.
+  - **Título legible:**
+    - `rowName(conflict)` es la etiqueta de la app (p. ej. «FVR_2026_003 · Intermodalidad de Levante»).
+    - Si falta, se usa `code`/`number` · `name`/`title` de la fila.
+    - Si tampoco los hay, «Un registro de {tabla}», con `tableLabels: { 'invoices.invoices': 'facturas' }`.
+    - **Nunca el id.**
+  - **Quién lo cambió:** con `currentUserId` (`profile.userId` del arranque), la tarjeta dice «Lo cambió otra persona.» o «Lo cambiaste tú desde otra pestaña o dispositivo.».
+    - `conflictIntro(conflicts, currentUserId)` da la frase de la cabecera de la pantalla, en lugar del «Otra persona cambió lo mismo que tú» fijo.
+  - Funciones exportadas: `conflictIntro`, `conflictRowName`, `conflictAuthor`. En español e inglés.
+- Prueba `v35` (con `@smoke`).
+
+Adopción (Finance, Food, Booking, Central):
+```ts
+el('p', null, conflictIntro(conflicts, userId)),
+...renderConflicts(conflicts, { fieldLabels, show, onResolve, currentUserId: userId,
+  rowName: (c) => invoiceLabel(c.current), tableLabels: { 'invoices.invoices': 'facturas', 'invoices.suppliers': 'proveedores' } })
+```
+
 ## 0.27.2 · 9 de octubre de 2026
 
 - **«Atrás» tras cerrar hojas** (FB_2026_025, regresión de la 0.27.1 que rompía el humo de Booking, `smoke.spec.ts:200`): tras abrir y cerrar tres hojas en `#/espacios`, el primer «atrás» no hacía nada.

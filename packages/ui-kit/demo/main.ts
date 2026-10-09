@@ -277,6 +277,15 @@ const conflictSample: PendingConflict = {
   detectedAt: new Date().toISOString(),
 };
 const deleteConflict: PendingConflict = { ...conflictSample, requestId: 'req-2', operation: { op: 'delete', table: 'invoices.suppliers', id: 'sup-1', expectedRevision: 3 }, overlapping: [] };
+// Conflicto consigo mismo (otra pestaña) en una fila sin nombre: el título sale de `tableLabels`, nunca el id.
+const selfConflict: PendingConflict = {
+  requestId: 'req-4',
+  operation: { op: 'update', table: 'invoices.invoices', id: '1edf75e5-0000-4000-8000-000000000001', expectedRevision: 5, fields: { status: 'validada' } },
+  base: { id: '1edf75e5-0000-4000-8000-000000000001', revision: 5, created_at: '', updated_at: '', updated_by: 'u1', deleted_at: null, status: 'pendiente_revision', expense_category: null },
+  current: { id: '1edf75e5-0000-4000-8000-000000000001', revision: 6, created_at: '', updated_at: '', updated_by: 'u1', deleted_at: null, status: 'pendiente_revision', expense_category: 'otros' },
+  overlapping: [],
+  detectedAt: new Date().toISOString(),
+};
 const rejectedSample: RejectedBatch = {
   requestId: 'req-3',
   operations: [{ op: 'update', table: 'invoices.suppliers', id: 'sup-2', expectedRevision: 1, fields: { tax_id: 'XXX' } }],
@@ -284,8 +293,10 @@ const rejectedSample: RejectedBatch = {
   baseRows: { 'invoices.suppliers|sup-2': { id: 'sup-2', revision: 1, created_at: '', updated_at: '', updated_by: null, deleted_at: null, name: 'Maderas del Valle' } },
   rejectedAt: new Date().toISOString(),
 };
-const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict], {
+const conflictHost = el('div', { id: 'conflictHost' }, ...renderConflicts([conflictSample, deleteConflict, selfConflict], {
   feedbackId: 'demo.conflicto',
+  currentUserId: 'u1',
+  tableLabels: { 'invoices.invoices': 'facturas' },
   fieldLabels: { name: 'Nombre', tax_id: 'NIF', notes: 'Notas', deleted_at: 'Borrado' },
   onResolve: (conflict, decision) => { toast(`Conflicto ${conflict.requestId}: ${decision.choice}${decision.choice === 'merge' ? ' ' + JSON.stringify(decision.fields) : ''}`); conflictHost.querySelector(`[data-request-id="${conflict.requestId}"]`)?.remove(); },
 }));

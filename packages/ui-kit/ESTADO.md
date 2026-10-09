@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.28.0: tarjeta de conflicto con decisiones arriba («Quedarme con lo del servidor», «Reintentar con lo mío», «Ver diferencias»), título legible (`rowName`, `tableLabels`, nunca el id) y quién lo cambió (`currentUserId`, `conflictIntro`).
 - v0.27.2: «atrás» sigue solo si tras saltar hojas cerradas cae en la misma pantalla (humo de Booking); CI completa al tocar la navegación.
 - v0.27.1: «atrás» sin `history.back()` asíncronos al cerrar hojas (humo de Food inestable).
 - v0.27.0: texto con sugerencias (`createSuggestField`, `attachSuggestions`), petición de Booking.
