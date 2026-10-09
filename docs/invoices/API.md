@@ -1557,3 +1557,14 @@ Ya era así:
 - **La razón social** (`name`) no cambia: es la que va a la gestoría.
 - **Al importar,** «Mi nombre» empareja como un alias más.
 
+### 16.13 «Datos de la factura» editables en la ficha (petición del usuario, 9-10-2026)
+En «Pendiente de datos» y «Pendiente de revisión», la ficha abre arriba el bloque «Datos de la factura» (`ui/editor.ts`), que sustituye a la hoja «Rellenar a mano».
+- **Qué se ve y edita:** proveedor (NIF y nombre, con alta rápida), número, fecha, base por tipo de IVA con su cuota, retención, total del documento (con el cuadre en vivo) y categoría. Junto a cada dato, «leído», «revísalo» o «falta», según la procedencia y la confianza de la lectura (`import_meta.provenance`).
+- **Cómo se guarda:**
+  - número, fecha, total, categoría y proveedor, solos al cambiarlos, en orden y con la revisión al día, sin fusiones automáticas que se vean como «cambios de otra persona»;
+  - los importes, con «Guardar importes», porque rehacen líneas e impuestos; si hay artículos, se pide confirmación.
+- **Leer el PDF:** «Leer de nuevo el PDF» (o «Leer PDF» con una lectura parcial) pinta lo leído en los campos y resalta lo que cambia. «Guardar lo leído» lo aplica de una vez y «Descartar» lo deshace. Sirve para corregir una factura leída con un lector anterior, como FVR_2026_005 con el v4.
+- **Mientras haya algo sin guardar,** la ficha no se repinta y «Validar» pide guardar primero.
+- **Para no repetir los campos,** «Fiscal y pago» deja de mostrar fecha, total y categoría en las pendientes, y lo que falta para validar lleva a los campos del editor.
+- **En el móvil,** la fila base · tipo · cuota cabe en el ancho (antes la cuota se salía).
+

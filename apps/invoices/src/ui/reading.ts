@@ -46,10 +46,11 @@ export function readTextPanel(text: string): HTMLElement {
 }
 
 /** Mensaje, campos y texto de una lectura. */
-export function readingPanel(r: { read: ReadLevel; found: PartialInvoice; message: string; text: string | null }): HTMLElement {
+export function readingPanel(r: { read: ReadLevel; found: PartialInvoice; message: string; text: string | null }, opts: { fields?: boolean } = {}): HTMLElement {
   return el('div', { class: 'reading', id: 'readingPanel' },
     el('div', { class: `banner ${r.read === 'sufficient' ? 'ok' : 'warn'}`, id: 'readingMessage', role: 'status' }, el('span', null, r.message)),
-    r.read === 'no_text' ? null : foundList(r.found),
+    // En el editor de la ficha, los campos ya están pintados en sus casillas: no se repiten.
+    r.read === 'no_text' || opts.fields === false ? null : foundList(r.found),
     r.text ? readTextPanel(r.text) : null);
 }
 
