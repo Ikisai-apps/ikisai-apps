@@ -802,9 +802,9 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .fb-blocking input{width:18px;height:18px;accent-color:var(--alert)}
 /* Modo «Señalar para comentar»: marca discreta en la cabecera e interruptor al pie del lanzador */
 .launcher-fb{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-top:10px;padding:12px;border-top:1px solid var(--edge);cursor:pointer}
-.launcher-fb input{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:24px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .15s;margin:0}
-.launcher-fb input::before{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fffdf8;box-shadow:var(--shadow-1);transition:transform .15s}
-.launcher-fb input:checked{background:var(--accent)}
+.launcher-fb input{appearance:none;-webkit-appearance:none;flex:none;display:inline-block;visibility:visible;opacity:1;width:42px;min-width:42px;height:24px;min-height:24px;padding:0;border-radius:999px;background:color-mix(in srgb,var(--muted) 38%,var(--paper));border:1.5px solid var(--muted);position:relative;cursor:pointer;transition:background .15s;margin:0;box-shadow:none}
+.launcher-fb input::before{content:"";position:absolute;top:1.5px;left:1.5px;width:18px;height:18px;border-radius:50%;background:#fffdf8;box-shadow:var(--shadow-1);transition:transform .15s}
+.launcher-fb input:checked{background:var(--accent);border-color:var(--accent)}
 .launcher-fb input:checked::before{transform:translateX(18px)}
 .launcher-fb input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Centro «Sugerencias y QA» */

@@ -14,6 +14,7 @@ import type { FeedbackNode } from './node.ts';
 import type { FeedbackImage } from './store.ts';
 import { kt } from '../i18n/i18n.ts';
 import { kitLayer } from '../layer.ts';
+import { trackOverlay } from '../shell/back-navigation.ts';
 
 export type ComposerState = 'empty' | 'draft' | 'sending' | 'pending' | 'sent' | 'error';
 
@@ -184,6 +185,8 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); leave(); }
     else if (e.key === 'Tab') trapFocus(e, panel);
   };
+  // «Atrás» (FB_2026_025) cierra el composer como Escape (con contenido, queda borrador).
+  const historyHandle = trackOverlay(() => leave());
   document.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', place);
   window.visualViewport?.addEventListener('resize', place);
@@ -192,6 +195,7 @@ export function openFeedbackComposer(options: FeedbackComposerOptions): Feedback
   function finish(): void {
     if (closed) return;
     closed = true;
+    historyHandle.release();
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', place);
     window.visualViewport?.removeEventListener('resize', place);

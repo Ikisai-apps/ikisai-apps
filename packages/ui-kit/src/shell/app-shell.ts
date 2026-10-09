@@ -4,6 +4,7 @@ import { icon, type IconName } from '../icons.ts';
 import { createStatusBar, statusBanners, type StatusBannersOptions, type StatusBarOptions } from '../status/status-bar.ts';
 import { kt } from '../i18n/i18n.ts';
 import { installKeyboardInsets } from '../overlay/keyboard.ts';
+import { installBackNavigation, type BackNavigationOptions } from './back-navigation.ts';
 import { openSheet, type Sheet } from '../overlay/sheet.ts';
 import type { AppLauncher } from './launcher.ts';
 
@@ -46,6 +47,11 @@ export interface AppShellOptions {
    */
   more?: readonly NavItem[];
   /**
+   * «Atrás» dentro de la app (FB_2026_025): vuelve a la pantalla anterior o al inicio, y desde el inicio pregunta
+   * «¿Cerrar la app?». Por defecto activado; `false` lo desactiva; `{ home }` fija la URL del inicio.
+   */
+  backNavigation?: boolean | BackNavigationOptions;
+  /**
    * Máximo de entradas en la barra inferior contando «Más» (los portales: 5). Lo que sobre de `nav` pasa a «Más».
    * Sin límite por defecto (las apps internas no cambian).
    */
@@ -76,6 +82,7 @@ export interface AppShell {
 /** Cabecera, navegación (inferior en móvil, lateral en escritorio), zona de banners y `<main>`. */
 export function createAppShell(root: HTMLElement, options: AppShellOptions): AppShell {
   installKeyboardInsets();
+  if (options.backNavigation !== false) installBackNavigation(typeof options.backNavigation === 'object' ? options.backNavigation : {});
   const navigate = options.navigate ?? ((hash: string) => { location.hash = hash; });
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});

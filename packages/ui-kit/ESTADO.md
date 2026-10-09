@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.26.0: «atrás» dentro de la app (FB_2026_025), Revisor sobre la navegación (FB_2026_012), interruptor visible (FB_2026_004) y «Duda» (FB_2026_011).
 - v0.25.4: `.field.check` blindada frente a la `.check` de Tasks (texto montado en «Me bloquea»).
 - v0.25.3: `feedbackRoundTrip` con hojas abiertas y ayudantes exportados; aviso de uso tras navegar; ayuda del gesto en campos de texto.
 - v0.25.2: formulario progresivo con bloqueo de doble envío, ids estables, cierre y aviso; `portalHelpRoundTrip` para Organizers y Guests.

@@ -10,6 +10,9 @@ export const KIT_EN: Dictionary = {
   'Guarda y cierra el formulario; sincroniza o resuelve tus cambios pendientes antes de actualizar.': 'Save and close the form; sync or resolve your pending changes before updating.',
   'Hay otra pestaña con cambios o un formulario abierto. Ciérrala o termina de guardar antes de actualizar.': 'Another tab has changes or an open form. Close it or finish saving before updating.',
 
+  // «Atrás»
+  '¿Cerrar la app?': 'Close the app?',
+
   // Revisor
   'No sé abrir {app} desde aquí.': 'I cannot open {app} from here.',
 
@@ -131,7 +134,7 @@ export const KIT_EN: Dictionary = {
   'Me bloquea': 'Blocking me',
   'Algo falla': 'Something is wrong',
   'Mejora': 'Improvement',
-  'Idea': 'Idea',
+  'Duda': 'Question',
   'Problema': 'Problem',
   'Sugerencia': 'Suggestion',
   'Abierto': 'Open',

@@ -15,6 +15,9 @@ const CSS = [
   'html.fb-reviewing .dialogback{z-index:97}',
   /* La barra del revisor no tapa ninguna hoja ni diálogo (ni su propio interruptor en el lanzador): se aparta mientras hay uno abierto. */
   'html:has(.sheetback.show) .fb-review,html:has(.dialogback) .fb-review{display:none}',
+  /* En el móvil, la barra del Revisor va encima de la navegación inferior de la app (cáscara del kit o `.bottomnav` de Tasks)
+     y empuja el contenido: las dos se ven y se puede navegar (FB_2026_012). */
+  '@media (max-width:719px){html.fb-reviewing:has(.shell:not(.nonav) > .nav:not([hidden])) .fb-review,html.fb-reviewing:has(.bottomnav) .fb-review{bottom:calc(80px + env(safe-area-inset-bottom))}html.fb-reviewing .shell:not(.nonav){padding-bottom:calc(140px + env(safe-area-inset-bottom))}html.fb-reviewing .shell.nonav{padding-bottom:76px}html.fb-reviewing .fb-review.collapsed{max-height:56px}}',
   /* Señalar una vez (portales): las hojas se apartan para ver la pantalla y vuelven al terminar. */
   'html.fb-capturing .sheetback,html.fb-capturing .dialogback{visibility:hidden;pointer-events:none}',
 ].join('\n');

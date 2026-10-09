@@ -44,6 +44,7 @@ export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, typ
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';
+export { installBackNavigation, trackOverlay, type BackNavigationOptions, type OverlayHandle } from './shell/back-navigation.ts';
 export { initAppUpdates, shouldAutoApply, type AppUpdates, type AppUpdatesOptions } from './sync/updates.ts';
 export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';

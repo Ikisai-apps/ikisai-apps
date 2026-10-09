@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.26.0 · 9 de octubre de 2026
+
+Triaje de feedback del 9-10:
+- **FB_2026_025 · «atrás» dentro de la app**, sin que cada app haga nada. Lo instala `createAppShell` (`backNavigation: false` lo desactiva; `{ home }` fija el inicio); Tasks llama a `installBackNavigation()`.
+  - «Atrás» vuelve a la pantalla anterior o, si no la hay (entrada directa), al inicio.
+  - Desde el inicio pregunta «¿Cerrar la app?» (Cerrar / Cancelar).
+  - Con una hoja, un diálogo o el composer abiertos, «atrás» los cierra primero; el composer guarda el borrador.
+  - Una hoja que sustituye a otra hereda su entrada, y si la app navega con una hoja abierta, cerrarla no deshace esa navegación. `trackOverlay` exportado.
+  - Sin carreras con `history.back()`, que es asíncrono. La entrada de una hoja cerrada se quita en el siguiente ciclo y solo si sigue arriba, así que «Crear menú» → `#/menus/…` en Food conserva la navegación. Una hoja nueva espera a que termine el «atrás» pendiente, y las entradas huérfanas se saltan solas.
+- **FB_2026_012 · la barra del Revisor tapaba la navegación inferior.** En el móvil va encima de la navegación (cáscara del kit o `.bottomnav` de Tasks) y empuja el contenido: las dos se ven y se puede navegar.
+- **FB_2026_004 · el interruptor del Revisor dejaba de verse.**
+  - Más contraste en claro y en oscuro: carril con borde y blindado frente al CSS de la app.
+  - `available()` ya no recuerda los fallos pasajeros (sin red, sesión arrancando), así que el interruptor vuelve. Solo recuerda «sí» o 403/404.
+- **FB_2026_011 · «Idea» se llama «Duda»** (solo la etiqueta; el valor interno sigue siendo `idea`).
+- Prueba `v33` (con `@smoke`).
+
 ## 0.25.4 · 8 de octubre de 2026
 
 - **Fallo del usuario (Tasks en Android):** en el composer, «Me bloquea: no puedo seguir trabajando» salía con el texto montado junto a la casilla.

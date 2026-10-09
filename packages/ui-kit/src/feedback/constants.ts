@@ -15,7 +15,7 @@ export type FeedbackIntent = 'bug' | 'improvement' | 'idea' | 'problem' | 'sugge
 export type FeedbackSubject = 'application' | 'event' | 'space';
 
 export const FEEDBACK_INTENT_LABELS: Record<FeedbackIntent, string> = {
-  bug: 'Algo falla', improvement: 'Mejora', idea: 'Idea', problem: 'Problema', suggestion: 'Sugerencia',
+  bug: 'Algo falla', improvement: 'Mejora', idea: 'Duda', problem: 'Problema', suggestion: 'Sugerencia',
 };
 export const FEEDBACK_DISPLAY_LABELS: Record<string, string> = {
   open: 'Abierto', in_progress: 'En curso', pending_verify: 'Pendiente de verificar', verified: 'Verificado', dismissed: 'Descartado',

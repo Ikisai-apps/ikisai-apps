@@ -3,6 +3,7 @@ import { focusFirst, lockScroll, trapFocus } from './focus.ts';
 import { kt } from '../i18n/i18n.ts';
 import { installKeyboardInsets } from './keyboard.ts';
 import { kitLayer } from '../layer.ts';
+import { trackOverlay } from '../shell/back-navigation.ts';
 
 export interface DialogOptions {
   title: string;
@@ -34,9 +35,12 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
     const back = el('div', { class: 'dialogback' }, panel);
     const unlock = lockScroll();
     let done = false;
+    // «Atrás» (FB_2026_025) cierra el diálogo como «Cancelar».
+    const historyHandle = trackOverlay(() => finish(false));
     function finish(value: boolean): void {
       if (done) return;
       done = true;
+      historyHandle.release();
       document.removeEventListener('keydown', onKey);
       unlock();
       back.remove();
