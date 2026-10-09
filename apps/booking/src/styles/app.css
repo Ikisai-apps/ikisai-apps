@@ -234,3 +234,7 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .completeness { margin: 0 0 10px; font-weight: 600; }
 .consent { display: grid; gap: 2px; margin: 10px 0; font-size: var(--text-sm); color: var(--muted); }
 .sigimg { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
+/* FB_2026_014 · aviso de nombre nuevo o parecido bajo un campo con sugerencias */
+.hint.suggest:empty { display: none; }
+.hint.suggest.warn { color: var(--warn-ink); }
+.hint.suggest .linkbtn { font-size: inherit; }

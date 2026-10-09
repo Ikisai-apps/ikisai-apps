@@ -45,3 +45,31 @@ test('crear distribución inicial: 6 habitaciones y 58 camas en un solo lote', a
   await expect(page.locator('#createLayout')).toHaveCount(0);
 
 });
+
+// FB_2026_014: la zona se elige entre las existentes o se crea; un nombre parecido (mayúsculas, tildes, espacios) se avisa.
+test('zona con lo que ya existe: nueva, parecida con «Usar», y nombre de espacio repetido', async ({ page }) => {
+  const api = harness.api;
+  await login(page, harness.baseURL);
+  await page.goto(`${harness.baseURL}/#/espacios`);
+
+  const create = async (name: string, zone: string) => {
+    await page.locator('#newSpace').click();
+    const sheet = page.getByRole('dialog', { name: 'Nuevo espacio' });
+    await sheet.locator('#f-name').fill(name);
+    await sheet.locator('#f-zone').fill(zone);
+    return sheet;
+  };
+  let sheet = await create('Sala del Roble', 'Edificio norte');
+  await expect(sheet.locator('#f-zone-suggest')).toHaveText('Nuevo: no existe todavía.');
+  await sheet.getByRole('button', { name: 'Guardar' }).click();
+  await expect(sheet).toBeHidden();
+  await expect.poll(() => api.rows(SPACES).some((s) => s.zone === 'Edificio norte')).toBe(true);
+
+  sheet = await create('sala del roble', 'edificio  NORTE');
+  await expect(sheet.locator('#f-name-suggest')).toContainText('Ya hay uno que se llama «Sala del Roble».');
+  await expect(sheet.locator('#f-zone-suggest')).toContainText('Ya existe «Edificio norte».');
+  await expect(sheet.locator('#f-zone-list option[value="Edificio norte"]')).toHaveCount(1);
+  await sheet.locator('#f-zone-suggest').getByRole('button', { name: /Usar «Edificio norte»/ }).click();
+  await expect(sheet.locator('#f-zone')).toHaveValue('Edificio norte');
+  await expect(sheet.locator('#f-zone-suggest')).toBeEmpty();
+});

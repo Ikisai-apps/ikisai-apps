@@ -116,12 +116,19 @@ export const mountSpaces: ViewMount = ({ main, client, navigate }) => {
     return sortable.element;
   }
 
+  // FB_2026_014: la zona se elige entre las que ya hay (o se crea una nueva) y el nombre avisa si ya existe uno igual o parecido.
+  function withSuggestions(specs: FieldSpec[], space: Row | null): FieldSpec[] {
+    const live = spaces.filter((s) => s.deleted_at === null);
+    return specs.map((spec) => spec.key === 'zone' ? { ...spec, suggestions: live.map((s) => s.zone as string | null).filter((z): z is string => !!z), suggestMode: 'pick' as const }
+      : spec.key === 'name' ? { ...spec, suggestions: live.filter((s) => s.id !== space?.id).map((s) => String(s.name)), suggestMode: 'unique' as const } : spec);
+  }
+
   function openSpace(space: Row | null): void {
     const spaceBeds = space ? beds.filter((b) => b.space_id === space.id && b.deleted_at === null) : [];
     const blocking = space ? assignments.filter((a) => a.space_id === space.id) : [];
     const last = spaces.reduce((max, s) => Math.max(max, Number(s.position) || 0), 0);
     openRowSheet({
-      client, title: space ? 'Espacio' : 'Nuevo espacio', table: SPACES, row: space, feedbackId: space ? 'booking.espacios.espacio' : 'booking.espacios.nuevo', feedbackLabel: space ? 'Editar espacio' : 'Nuevo espacio', specs: space ? SPACE_SPECS : [SPACE_SPECS[0]!, SPACE_SPECS[1]!, ...QUICK_SPECS, ...SPACE_SPECS.slice(2)],
+      client, title: space ? 'Espacio' : 'Nuevo espacio', table: SPACES, row: space, feedbackId: space ? 'booking.espacios.espacio' : 'booking.espacios.nuevo', feedbackLabel: space ? 'Editar espacio' : 'Nuevo espacio', specs: withSuggestions(space ? SPACE_SPECS : [SPACE_SPECS[0]!, SPACE_SPECS[1]!, ...QUICK_SPECS, ...SPACE_SPECS.slice(2)], space),
       defaults: { kind: 'habitacion', active: true, accessible: false, bookable: true },
       ...(space ? {} : {
         buildOperations: (values: Record<string, unknown>) => {

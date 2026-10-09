@@ -13,7 +13,7 @@ type Row = SyncedRow & Record<string, any>;
 
 const KIND_OPTIONS = [['actividad', 'Actividad'], ['comida', 'Comida'], ['descanso', 'Descanso'], ['otro', 'Otro']] as const;
 
-function specs(reservation: Row, spaces: Row[]): FieldSpec[] {
+function specs(reservation: Row, spaces: Row[], places: string[]): FieldSpec[] {
   return [
     { key: 'day', label: 'Día', type: 'date', dateMin: reservation.start_date ?? null, dateMax: reservation.end_date ?? null },
     { key: 'starts_at', label: 'Inicio', type: 'time', hint: 'Sin hora: «durante el día».' },
@@ -21,7 +21,7 @@ function specs(reservation: Row, spaces: Row[]): FieldSpec[] {
     { key: 'title', label: 'Actividad', type: 'text', max: 120 },
     { key: 'kind', label: 'Tipo', type: 'select', options: KIND_OPTIONS },
     { key: 'space_id', label: 'Espacio', type: 'select', optional: true, options: spaces.map((s) => [s.id, s.public_name || s.name] as const) },
-    { key: 'place_text', label: 'Otro lugar', type: 'text', max: 80, hint: 'Solo si no es un espacio de Ikisai («Excursión al pinar»).' },
+    { key: 'place_text', label: 'Otro lugar', type: 'text', max: 80, hint: 'Solo si no es un espacio de Ikisai («Excursión al pinar»).', suggestions: places, suggestMode: 'pick' },
     { key: 'public_note', label: 'Nota para los huéspedes', type: 'textarea', max: 500 },
     { key: 'internal_note', label: 'Nota interna', type: 'textarea', max: 2000, hint: 'La ven el personal y el organizador; nunca los huéspedes.' },
   ];
@@ -45,7 +45,7 @@ export function renderProgram(opts: {
   const outOfRange = (day: string) => (reservation.start_date && day < reservation.start_date) || (reservation.end_date && day > reservation.end_date);
   const days = [...new Set(data.items.map((i) => String(i.day)))];
   const edit = (row: Row | null) => openRowSheet({
-    client, title: row ? 'Actividad del programa' : 'Nueva actividad', table: PROGRAM, row, specs: specs(reservation, data.spaces),
+    client, title: row ? 'Actividad del programa' : 'Nueva actividad', table: PROGRAM, row, specs: specs(reservation, data.spaces, data.items.map((i) => i.place_text as string | null).filter((x): x is string => !!x)),
     feedbackId: row ? 'booking.reserva.programa.hoja' : 'booking.reserva.programa.nueva', feedbackLabel: row ? 'Editar actividad' : 'Nueva actividad',
     savedMessage: 'Programa guardado.',
     defaults: { kind: 'actividad', day: reservation.start_date ?? null },
