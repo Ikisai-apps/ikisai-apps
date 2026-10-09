@@ -1479,4 +1479,13 @@ Si el NIF del documento no es de un proveedor conocido, `rankTemplates` puntúa 
 Gana la primera si llega a 0,7 y saca al menos 0,1 a la segunda. La plantilla aporta sus campos como siempre.
 
 El proveedor que sale así lleva un aviso («reconocido por el formato de sus facturas, no por su NIF: revísalo»). Si el documento no trae nombre, lo pone la plantilla con procedencia `supplier_template` y confianza 0,5. Nunca se da de alta un proveedor solo por parecido. Sin NIF ni nombre, el formato solo no basta.
+### 16.5 Aprendizaje de las plantillas (fase 2, 9-10-2026)
+Ya era así:
+- solo se aprende al **validar**, de lo confirmado;
+- un valor confirmado que no está impreso no cuenta como fallo;
+- una factura rara no cambia la etiqueta (se guarda como variante);
+- tres fallos seguidos retiran la regla;
+- un formato que no se parece a ninguno crea una versión nueva.
+
+**Nuevo:** una regla también se retira si falla mucho aunque no sea seguido (más del 40 % de fallos tras 5 usos). Las reglas que aciertan siguen.
 

@@ -106,3 +106,20 @@ test('proveedor sin plantilla o desconocido: solo reglas genéricas', () => {
   assert.equal(r.template, null); assert.equal(r.supplierId, SUPPLIER);
   assert.equal(r.provenance['document_totals.total']!.method, 'pdf_text');
 });
+
+test('fase 2: una regla que falla mucho, aunque no sea seguido, se retira (más del 40 % de fallos tras 5 usos)', async () => {
+  let t = await asTemplate(learnFromConfirmation({ lines: linesFromItems(first), confirmed: confirmed1, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [] }), 'tpl-r');
+  const hit = () => learnFromConfirmation({ lines: linesFromItems(pepe('X-81', '09/10/2026', '10,00', '1,00', '11,00')), confirmed: { invoice_number: 'X-81', invoice_date: '2026-10-09', base: 10, total: 11, vat: { '10': 1 } }, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [t] });
+  const miss = () => learnFromConfirmation({ lines: linesFromItems([...pepe('X-82', '09/10/2026', '10,00', '1,00', '11,00'), { str: 'Pedido: Z-12', page: 1, x: 40, y: 500, w: 60, h: 10 }]), confirmed: { invoice_number: 'Z-12', invoice_date: '2026-10-09', base: 10, total: 11, vat: { '10': 1 } }, supplierId: SUPPLIER, invoiceId: INVOICE, templates: [t] });
+  // acierto, fallo, acierto, fallo, fallo (nunca tres seguidos): 3 fallos de 6 usos → retirada
+  for (const step of [miss, hit, miss, hit, miss]) {
+    const l = (await step())!;
+    t = { ...t, ...l.template, id: t.id } as TemplateLike;
+  }
+  const rule = t.fields.invoice_number!;
+  assert.deepEqual([rule.hits, rule.misses, rule.streak_misses < 3], [3, 3, true]);
+  assert.equal(rule.retired, true);
+  // Las demás reglas, que aciertan, siguen
+  assert.notEqual(t.fields.base?.retired, true);
+});
+

@@ -53,6 +53,9 @@ export interface ConfirmedValues {
 export const SIMILARITY_THRESHOLD = 0.6;
 const RELIABLE_CONFIRMATIONS = 2;
 const RETIRE_AFTER_MISSES = 3;
+/** También se retira si falla mucho aunque no sea seguido: más del 40 % de fallos tras 5 usos (fase 2). */
+const RETIRE_MIN_USES = 5;
+const RETIRE_MISS_RATIO = 0.4;
 
 export const normText = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 
@@ -320,7 +323,7 @@ export async function learnFromConfirmation(input: {
     if (elsewhere && elsewhere.relation === rule.relation && elsewhere.anchor.text !== rule.anchor.text && !rule.anchor.variants.includes(elsewhere.anchor.text) && rule.anchor.variants.length < 5) {
       rule.anchor.variants.push(elsewhere.anchor.text);
     }
-    if (rule.streak_misses >= RETIRE_AFTER_MISSES) rule.retired = true;
+    if (rule.streak_misses >= RETIRE_AFTER_MISSES || (rule.hits + rule.misses >= RETIRE_MIN_USES && rule.misses / (rule.hits + rule.misses) > RETIRE_MISS_RATIO)) rule.retired = true;
   }
   learnItems(fields);
   const confirmations = t.confirmations + 1;
