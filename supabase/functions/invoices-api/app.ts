@@ -32,7 +32,7 @@ export interface InvoicesAppOptions {
    * Facturas por Google Drive (fase 4, API.md §15). Por defecto, el Drive real si existen `GOOGLE_SERVICE_ACCOUNT_JSON` e
    * `INVOICES_DRIVE_ID`; en las pruebas, uno simulado. `null` la apaga.
    */
-  drive?: { api?: DriveApi | null; readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; upload?: DriveUpload };
+  drive?: { api?: DriveApi | null; readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; upload?: DriveUpload; notifyTasks?: DriveTickDeps['notifyTasks'] | null; today?: () => string };
 }
 
 /** Firma acordada con Core para el helper de `_kit` (API.md §6, ruta `imports/extract`). */
@@ -724,7 +724,8 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
   });
   const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) };
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
-  const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload });
+  const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
+    notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
   return createApp({
     ...base,
     app: 'invoices',
@@ -753,6 +754,21 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
 /** Sube los bytes de un archivo ya creado en core.files (por defecto, PUT a la URL firmada del almacenamiento). */
 export type DriveUpload = (object: { bucket: string; path: string; storage_provider: 'supabase' | 'r2' }, bytes: Uint8Array) => Promise<void>;
 
+/** Aviso en Tasks por la ruta de worker de su Edge (la directa, nunca el proxy de Pages), con la clave de sistema. */
+function tasksNotifierFromEnv(env: (name: string) => string | undefined, transport: typeof fetch | undefined, supabaseBase: string | undefined): DriveTickDeps['notifyTasks'] {
+  const key = env('IKISAI_WORKER_KEY');
+  const explicit = env('TASKS_WORKER_BASE_URL');
+  const base = explicit ? explicit.replace(/\/$/, '') : supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1/tasks-api/api/v1/worker` : undefined;
+  if (!key || !base) return undefined;
+  return async (request) => {
+    try {
+      const res = await (transport ?? fetch)(`${base}/requests/task`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ikisai-worker-key': key }, body: JSON.stringify(request) });
+      await res.body?.cancel();
+      return res.ok;
+    } catch { return false; }
+  };
+}
+
 /** Drive real con la cuenta de servicio, o null (integración apagada) si faltan los secretos. */
 function driveFromEnv(env: (name: string) => string | undefined, transport?: typeof fetch): DriveApi | null {
   const tokens = createGoogleTokenSource({ serviceAccountJson: env('GOOGLE_SERVICE_ACCOUNT_JSON'), scope: 'https://www.googleapis.com/auth/drive', fetch: transport });
@@ -764,7 +780,7 @@ function driveFromEnv(env: (name: string) => string | undefined, transport?: typ
  * Lo que el tick de Drive usa del núcleo: la cuenta de servicio `drive` (editor en Finance) firma el lote con los hooks
  * de Finance, crea el archivo y guarda el texto; las acciones de sistema llevan el estado y el registro.
  */
-function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: AppHooks, drive: DriveApi | null, options: { readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; fetch?: typeof fetch; upload?: DriveUpload }) {
+function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: AppHooks, drive: DriveApi | null, options: { readPdf?: (bytes: Uint8Array) => Promise<PdfTextItem[]>; limit?: number; fetch?: typeof fetch; upload?: DriveUpload; notifyTasks?: DriveTickDeps['notifyTasks']; today?: () => string }) {
   const sync = createSync(supabase, 'invoices', hooks);
   let actor: Promise<RequestContext> | null = null;
   const ctx = () => (actor ??= (async () => {
@@ -806,6 +822,8 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
     },
     readPdf: options.readPdf ?? readPdfItemsServer,
     uuid: stableUuid,
+    notifyTasks: options.notifyTasks,
+    today: options.today,
   });
   const tick = () => runDriveTick(tickDeps());
   // Bytes de un documento ya guardado (para volver a leerlo), con la cuenta de servicio.

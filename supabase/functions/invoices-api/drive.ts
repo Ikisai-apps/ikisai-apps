@@ -171,7 +171,19 @@ export interface DriveTickDeps {
   readPdf(bytes: Uint8Array): Promise<PdfTextItem[]>;
   uuid(seed: string): Promise<string>;
   limit?: number;
+  /** Aviso en Tasks › Gestiones (`POST worker/requests/task`, origen `invoices`); sin él, no se avisa. */
+  notifyTasks?: (request: TasksDriveRequest) => Promise<boolean>;
+  /** Hoy en Madrid (AAAA-MM-DD), inyectable en pruebas. */
+  today?: () => string;
 }
+
+/** Petición a Tasks (contrato acordado con Core el 9-10-2026). */
+export interface TasksDriveRequest {
+  source: 'invoices'; kind: 'invoices.drive_review' | 'invoices.drive_blocked'; kind_label: string; external_ref: string;
+  title: string; note: string; external_url: string; priority: 'normal' | 'high';
+}
+const FINANCE_URL = 'https://finance.ikisai.com';
+const madridToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 export interface DriveTickResult { outcome: 'ok' | 'not_configured' | 'blocked' | 'error'; listed: number; imported: number; read: number; duplicates: number; errors: number; api_calls: number; more: boolean; detail?: string | null }
 
@@ -192,8 +204,27 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
   const callsAtStart = deps.drive?.calls?.() ?? 0;
   const finish = async (folders?: Record<string, string>) => {
     result.api_calls = (deps.drive?.calls?.() ?? 0) - callsAtStart;
+    await notify().catch(() => undefined);
     await deps.invoke('invoices.drive_finish', { started_at: startedAt, ...result, ...(folders ? { folders } : {}) });
     return result;
+  };
+  /** Aviso en Tasks: uno al día con lo pendiente de Drive (se actualiza con el recuento) o uno si Drive se bloquea. */
+  const notify = async () => {
+    if (!deps.notifyTasks) return;
+    if (result.outcome === 'blocked') {
+      await deps.notifyTasks({ source: 'invoices', kind: 'invoices.drive_blocked', kind_label: 'Finance · Drive bloqueado', external_ref: 'drive:blocked',
+        title: 'Drive no puede importar facturas', note: `${result.detail ?? 'Drive rechaza la cuenta de servicio o falta una carpeta.'} Mientras tanto, las facturas de «Entrada» esperan.`,
+        external_url: `${FINANCE_URL}/#/`, priority: 'high' });
+      return;
+    }
+    if (result.outcome !== 'ok' || !result.imported) return;
+    const data = await deps.rows();
+    const pending = data.invoices.filter((i) => !i.deleted_at && i.drive_file_id && (i.status === 'pendiente_datos' || i.status === 'pendiente_revision'));
+    const unread = pending.filter((i) => i.status === 'pendiente_datos').length;
+    await deps.notifyTasks({ source: 'invoices', kind: 'invoices.drive_review', kind_label: 'Finance · Facturas por revisar', external_ref: `drive:${(deps.today ?? madridToday)()}`,
+      title: `Revisar ${pending.length} factura${pending.length === 1 ? '' : 's'} llegada${pending.length === 1 ? '' : 's'} por Drive`,
+      note: `Por revisar y validar: ${pending.length - unread} leída${pending.length - unread === 1 ? '' : 's'} y ${unread} sin leer (las completa Claude o la IA). En esta búsqueda: ${result.imported} nueva${result.imported === 1 ? '' : 's'}, ${result.duplicates} duplicada${result.duplicates === 1 ? '' : 's'}, ${result.errors} con errores.`,
+      external_url: `${FINANCE_URL}/#/facturas?filtro=drive`, priority: 'normal' });
   };
   if (!deps.drive) { result.outcome = 'not_configured'; result.detail = 'Faltan GOOGLE_SERVICE_ACCOUNT_JSON o INVOICES_DRIVE_ID.'; return finish(); }
   const drive = deps.drive;
