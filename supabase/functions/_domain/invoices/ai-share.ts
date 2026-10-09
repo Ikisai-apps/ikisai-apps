@@ -13,7 +13,9 @@ export const INVOICE_RESULT_FILENAME = 'ikisai_invoice_result.json';
 export interface SharedSource { filename: string; sha256: string }
 
 /** Instrucciones que acompañan al documento. Si se conoce el documento, pide devolver `source` con su nombre y hash. */
-export function invoiceContractText(source?: SharedSource | null): string {
+export function invoiceContractText(source?: SharedSource | null, known?: string | null): string {
+  // Fase 3 (9-10-2026): lo que Finance ya leyó va con el contrato; la IA lo comprueba y completa solo lo que falta.
+  const knownBlock = known ? `\n\n${known}` : '';
   const envelope = source
     ? `\n\nSobre de intercambio: añade al JSON, en el primer nivel, la clave "source" con exactamente este valor, sin cambiarlo:\n"source": { "filename": ${JSON.stringify(source.filename)}, "sha256": "${source.sha256}" }\nSirve para comprobar que el resultado corresponde a este documento.`
     : '';
@@ -27,8 +29,25 @@ Normas obligatorias:
 - Fechas en formato AAAA-MM-DD. Números con punto decimal y sin símbolo de moneda (40.5, no "40,50 €").
 - Si te es posible, devuelve el resultado también como archivo ${INVOICE_RESULT_FILENAME} y compártelo con Ikisai; si no, el usuario lo copiará y lo pegará.
 
-${EXTRACTION_PROMPT_STRUCTURED}${envelope}
+${EXTRACTION_PROMPT_STRUCTURED}${knownBlock}${envelope}
 `;
+}
+
+/**
+ * Lo que Finance ya ha leído del documento, para la IA: valores encontrados y lo que falta. La IA los comprueba en el
+ * documento, los conserva salvo error evidente y completa solo lo demás. Devuelve `null` si no hay nada leído.
+ */
+export function knownFieldsText(found: { supplier_name: string | null; supplier_tax_id: string | null; invoice_number: string | null; invoice_date: string | null; base: number | null; vat: Array<{ rate: number; quota: number }>; withholding: { amount: number } | null; total: number | null }, missing: string[]): string | null {
+  const lines: string[] = [];
+  if (found.supplier_name || found.supplier_tax_id) lines.push(`- Proveedor: ${[found.supplier_name, found.supplier_tax_id ? `NIF ${found.supplier_tax_id}` : null].filter(Boolean).join(', ')}`);
+  if (found.invoice_number) lines.push(`- Número de factura: ${found.invoice_number}`);
+  if (found.invoice_date) lines.push(`- Fecha de la factura: ${found.invoice_date}`);
+  if (found.base !== null) lines.push(`- Base imponible: ${found.base}`);
+  for (const v of found.vat) lines.push(`- IVA ${v.rate} %: ${v.quota}`);
+  if (found.withholding) lines.push(`- Retención: ${found.withholding.amount}`);
+  if (found.total !== null) lines.push(`- Total: ${found.total}`);
+  if (!lines.length) return null;
+  return `DATOS YA LEÍDOS POR FINANCE (sin IA) — compruébalos en el documento y consérvalos salvo error evidente; completa solo lo que falta:\n${lines.join('\n')}${missing.length ? `\nFalta: ${missing.join(', ')}.` : ''}\nSi algún dato ya leído no coincide con el documento, usa el del documento y dilo en extraction_notes.`;
 }
 
 /**

@@ -1402,3 +1402,25 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - Estado: `worker/requests/status` con `invoices:drive:…`.
 - «Gestionar entradas» propone para los dos el proyecto «Administración y fiscal» (o el área «Gestiones»).
 - Migración `0316`.
+
+## 27. Catálogo General de etiquetas (FB_2026_023; aprobado por el usuario el 9-10-2026)
+
+**Modelo** (migración `0317`)
+- `tasks.families.tab_id` y `tasks.labels.tab_id` admiten nulo: **General**, válida en todas las áreas.
+- Una etiqueta General vive en una familia General. Una etiqueta de un área, en una familia de su área o en una General: así, una familia que existe en los dos sitios sale una sola vez.
+- Una hija puede colgar de una madre General; una hija General, solo de una madre General.
+- Lo General vale en tareas, proyectos, responsables (si es de Persona), vistas guardadas y reglas de entrada de cualquier área.
+- Solo quien tiene acceso a toda la app escribe lo General; cualquiera con acceso a Tasks lo ve.
+- Al convertir un área en proyecto de otra (§24.4), sus etiquetas General no se convierten: valen en el destino tal cual.
+
+**Fusión de repetidas:** `POST labels/general/merge {groups: [[labelId, …], …], requestId}` → `{generals, counts, cursor}`. Es acción de la propietaria con acceso completo, desde «Etiquetas» › «Repetidas → General».
+- **Vista previa** (en el dispositivo):
+  - grupos de la misma familia (por clave de sistema o nombre) y el mismo nombre, sin mayúsculas, en dos o más áreas, con casillas;
+  - una hija solo se puede marcar si su madre también;
+  - aparte, los parecidos que no son iguales (acentos o signos), para decidir a mano.
+- **Fusión**, en un lote con historial (`tasks.merge_labels_into_general`):
+  - crea o reutiliza la familia General y crea la etiqueta General, con el nombre de la primera del grupo (el más repetido);
+  - repunta las etiquetas de tareas y proyectos (sin duplicar), los responsables, las reglas, las hijas que se quedan en su área (pasan a colgar de la madre General, en su familia) y las vistas guardadas;
+  - archiva las copias de cada área, que siguen en el historial.
+- La app compone lo General en todas las áreas (`general: true`) y lo guarda una sola vez.
+- **Pendiente (segunda PR):** la pantalla de «Etiquetas» con General arriba y «Solo de <área>» debajo.

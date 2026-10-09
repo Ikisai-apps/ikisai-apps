@@ -391,6 +391,11 @@ test('MCP §15.1: la sesión de Claude lista los borradores de Drive con su PDF 
   assert.equal(item.drive_url, 'https://drive.google.com/file/d/drv-mcp-1/view');
   assert.equal(item.documents.length, 1); assert.ok(item.documents[0].url, 'URL firmada del PDF'); assert.equal(item.documents[0].expires_in_seconds, 600);
   assert.ok(listed.structuredContent.json_schema, 'lleva el esquema ikisai.invoice.v1');
+  // Fase 3: lo que el borrador ya tiene y lo que falta, para completar solo eso
+  assert.equal(item.already.invoice_number, undefined);
+  assert.equal(item.already.invoice_date, undefined);
+  assert.equal(item.reading, null);
+  assert.match(listed.structuredContent.how_to_complete, /already .*respétalo salvo error evidente/);
   const asReader = (await rpc('tools/call', { name: 'invoices_pending_drafts', arguments: {} }, app.tokens.reader)).data;
   assert.ok(asReader.error || asReader.result?.isError, 'el lector no la tiene');
 

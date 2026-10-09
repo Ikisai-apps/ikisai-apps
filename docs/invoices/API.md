@@ -1506,3 +1506,11 @@ Ya era así:
   - sale en rojo si falla algún campo.
 - **Cada fallo real**, además, se convierte en una copia sintética con el mismo diseño en `pdf-real.test.ts`, que corre en la CI.
 
+### 16.7 La IA completa solo lo que falta (fase 3, 9-10-2026)
+- **ChatGPT y otras apps («Leer con IA» › «Compartir con ChatGPT»):** antes de compartir, Finance lee el PDF (el texto guardado o en el dispositivo). Lo encontrado va en el contrato (`invoiceContractText(source, known)`), en la sección «DATOS YA LEÍDOS POR FINANCE» (`knownFieldsText`): los valores y lo que falta. La IA los comprueba en el documento, los conserva salvo error evidente, dice en `extraction_notes` si alguno no coincide y completa solo lo demás. El JSON de vuelta sigue siendo un `ikisai.invoice.v1` completo y se revisa en la vista previa, como siempre.
+- **Claude por MCP (`invoices_pending_drafts`):** cada borrador lleva:
+  - `already`: lo que ya tiene (proveedor si no es el provisional, número, fecha y total), porque lo leyó Finance o lo escribió una persona;
+  - `reading`: `read` y `missing`, de `import_meta.reading`.
+
+  `how_to_complete` y el mensaje para Claude piden respetar `already` y completar `reading.missing`.
+

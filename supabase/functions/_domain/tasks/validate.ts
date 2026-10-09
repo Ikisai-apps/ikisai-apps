@@ -110,18 +110,20 @@ const RULES: Record<TableName, TableRules> = {
   },
   'tasks.families': {
     fields: {
-      tab_id: uuid(), name: text(1, 100, 'INVALID_FAMILY', 'La familia necesita un nombre.'),
+      // `tab_id` nulo: familia General (FB_2026_023), válida en todas las áreas.
+      tab_id: nullable(uuid()), name: text(1, 100, 'INVALID_FAMILY', 'La familia necesita un nombre.'),
       color: (v, f) => { if (typeof v !== 'string' || !HEX.test(v)) reject(422, 'INVALID_FAMILY', 'La familia necesita un color de seis cifras hexadecimales.', { field: f }); },
       archived: flag('INVALID_FLAG'), position, system_key: nullable(oneOf(SYSTEM_KEYS, 'INVALID_FIELDS', 'Familia de sistema desconocida.')),
     },
-    required: ['tab_id', 'name', 'color'],
+    required: ['name', 'color'],
   },
   'tasks.labels': {
     fields: {
-      tab_id: uuid(), family_id: uuid('INVALID_LABEL'), parent_id: nullable(uuid('INVALID_LABEL_PARENT')),
+      // `tab_id` nulo: etiqueta General (FB_2026_023).
+      tab_id: nullable(uuid()), family_id: uuid('INVALID_LABEL'), parent_id: nullable(uuid('INVALID_LABEL_PARENT')),
       name: text(1, 200, 'INVALID_LABEL', 'La etiqueta necesita texto.'), archived: flag('INVALID_FLAG'), archived_before_family: nullable(flag('INVALID_FLAG')), position,
     },
-    required: ['tab_id', 'family_id', 'name'],
+    required: ['family_id', 'name'],
   },
   'tasks.projects': {
     fields: {
@@ -249,6 +251,7 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
     return;
   }
   if (table === 'tasks.requests') forbidden('Las peticiones de otras apps son de quien tiene acceso a toda la app.');
+  if (op.op === 'insert' && (table === 'tasks.families' || table === 'tasks.labels') && f.tab_id === null) forbidden('El catálogo General es de quien tiene acceso a toda la app.');
   if (op.op !== 'insert' || !tab) return;
   if (table === 'tasks.families' || table === 'tasks.labels' || table === 'tasks.saved_views') {
     if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
@@ -313,6 +316,8 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
       if (table === 'tasks.task_dependencies' && fields.task_id === fields.depends_on_id) {
         reject(422, 'INVALID_DEPENDENCIES', 'Una tarea no puede depender de sí misma.', { index });
       }
+      // Familias y etiquetas dicen siempre su área; nula es General, nunca por olvido.
+      if ((table === 'tasks.families' || table === 'tasks.labels') && !('tab_id' in fields)) reject(422, 'INVALID_FIELDS', 'Falta un campo obligatorio.', { index, table, field: 'tab_id' });
       if ((table === 'tasks.tasks' || table === 'tasks.labels') && fields.parent_id === op.id) {
         reject(422, table === 'tasks.tasks' ? 'INVALID_PARENT' : 'INVALID_LABEL_PARENT', 'Un elemento no puede colgar de sí mismo.', { index });
       }

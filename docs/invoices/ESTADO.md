@@ -122,6 +122,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 2 del lector, PR 6: una regla de plantilla también se retira si falla más del 40 % tras 5 usos.
 - Fase 2 del lector, PR 7: corpus real en el bucket privado `test-corpus`, con un job nocturno o manual que solo escribe acierto o fallo por campo; script para subir facturas con su esperado.
 
+- Fase 3 del lector: la IA recibe lo que Finance ya leyó (contrato de ChatGPT y `invoices_pending_drafts` de Claude) y completa solo lo que falta.
+
 ## En curso
 
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. PR 4 hecho: facturar desde una reserva (borrador relleno desde Booking con IVA incluido exacto, asignado a la reserva, sin duplicar). Directorio de clientes por NIF hecho (ronda 46, migración 0216): búsqueda en el borrador y guardar o actualizar al emitir.
