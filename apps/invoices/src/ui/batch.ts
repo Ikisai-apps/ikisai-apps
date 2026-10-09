@@ -124,7 +124,7 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
   if (partial?.hasText) {
     const fill = partialFillOperations({
       invoice: { id: invoiceId, supplier_id: supplierId, invoice_number: null, invoice_date: null, source_total: null },
-      placeholderSupplierId: supplierId, suppliers: mirror.suppliers, hasContent: false, found: partial.found,
+      placeholderSupplierId: supplierId, suppliers: mirror.suppliers, hasContent: false, found: partial.found, provenance: partial.provenance, invoices: mirror.invoices,
       reading: readingSummary(partial, 0, new Date().toISOString()), newId: () => crypto.randomUUID(),
     });
     for (const op of fill.ops) {
