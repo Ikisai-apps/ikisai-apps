@@ -130,6 +130,18 @@ const SYSTEM_SOURCES: Record<string, SystemSource> = {
     service: 'core', kinds: new Set(['core.user_task']), reference: /^[A-Za-z0-9_.-]{1,60}$/, behalf: 'optional', refresh: true,
     url: () => false,
   },
+  invoices: {
+    // Aviso de facturas de Drive de Finance (§26): por revisar o Drive bloqueado. Pide con la identidad `drive`; si se
+    // reenvía con otro título o nota, se actualiza la tarea mientras siga abierta.
+    service: 'drive', kinds: new Set(['invoices.drive_review', 'invoices.drive_blocked']), reference: /^drive:[A-Za-z0-9_.:-]{1,140}$/, behalf: 'optional', refresh: true,
+    url: (_reference, url) => /^https:\/\/finance\.ikisai\.com\/#\/[^\s]{0,190}$/.test(url),
+  },
+};
+/** Nombre del tipo cuando quien pide no manda `kind_label`. */
+const DEFAULT_KIND_LABELS: Record<string, string> = {
+  'core.user_task': 'Core · Tarea para ti',
+  'invoices.drive_review': 'Finance · Facturas de Drive por revisar',
+  'invoices.drive_blocked': 'Finance · Drive bloqueado',
 };
 const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
 
@@ -161,7 +173,7 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
       if (!source.kinds.has(kind)) invalid('kind', `Tipo no admitido para ${sourceName}: ${[...source.kinds].join(', ')}.`);
       const reference = text('external_ref', 150, true)!;
       if (!source.reference.test(reference)) invalid('external_ref', 'external_ref no es una referencia válida.');
-      const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || (kind === 'core.user_task' ? 'Core · Tarea para ti' : undefined);
+      const title = text('title', 120, true)!, note = text('note', 1000), kindLabel = text('kind_label', 100) || DEFAULT_KIND_LABELS[kind];
       // Fecha objetivo y urgencia, opcionales, con la misma validación que `requests/task` (Booking: plazo legal de SES).
       const due = text('due', 10);
       if (due !== undefined && (!DATE.test(due) || Number.isNaN(Date.parse(due)))) invalid('due', 'due va como AAAA-MM-DD.');
