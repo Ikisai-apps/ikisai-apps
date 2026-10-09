@@ -195,3 +195,6 @@ export function parseAmount(value: string): number | null {
   const n = Number(normalized);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
+
+/** Nombre de una línea para mostrar (0230): «Mi nombre» si lo hay; si no, la descripción de la factura. */
+export const lineName = (l: { label?: string | null; description: string }): string => (l.label?.trim() ? l.label : l.description);
