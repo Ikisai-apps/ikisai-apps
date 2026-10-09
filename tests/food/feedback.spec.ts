@@ -57,11 +57,13 @@ test.afterAll(async () => {
   await api?.close();
 });
 
-/** Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). */
+/**
+ * Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). `hover()` espera a que el
+ * elemento esté quieto: medir la caja nada más abrirse una hoja la tomaba a media animación, y en la CI la pulsación caía
+ * unos 10 px más abajo, ya sobre el campo editable, donde el gesto no abre el formulario.
+ */
 async function hold(page: Page, selector: string, ms = 900): Promise<void> {
-  const box = await page.locator(selector).first().boundingBox();
-  if (!box) throw new Error(`Sin caja para ${selector}`);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator(selector).first().hover();
   await page.mouse.down();
   await page.waitForTimeout(ms);
   await page.mouse.up();
