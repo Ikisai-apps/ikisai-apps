@@ -1,7 +1,7 @@
 /** Fase 0 de REVISION_LECTOR (9-10-2026): un PDF con texto nunca termina sin información; la lectura parcial no pisa lo humano. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractFromPdfText, keepHumanFields, partialFillOperations, readingMessage, readingSummary, readingText, type PdfTextItem } from '../../packages/domain-invoices/src/index.ts';
+import { extractFromPdfText, invoiceContractText, knownFieldsText, keepHumanFields, partialFillOperations, readingMessage, readingSummary, readingText, type PdfTextItem } from '../../packages/domain-invoices/src/index.ts';
 
 function page(lines: string[], pageNo = 1): PdfTextItem[] {
   const items: PdfTextItem[] = [];
@@ -97,3 +97,17 @@ test('precedencia por nivel (fase 1): una plantilla mejora lo que rellenó una r
   assert.equal(fieldsOf(fill).invoice_number, undefined);
   assert.deepEqual(fill.duplicateOf, { id: 'otra', code: 'FVR_2026_001' });
 });
+
+test('fase 3: lo ya leído va a la IA con las instrucciones, y lo que falta', () => {
+  const r = extractFromPdfText(page(['TALLERES IA S.L.|CIF: B12345674', 'Factura nº: IA-7', 'TOTAL|121,00']));
+  const known = knownFieldsText(r.found, ['la fecha', 'el IVA'])!;
+  assert.match(known, /^DATOS YA LEÍDOS POR FINANCE/);
+  assert.match(known, /- Proveedor: TALLERES IA S\.L\., NIF B12345674/);
+  assert.match(known, /- Número de factura: IA-7/);
+  assert.match(known, /- Total: 121/);
+  assert.match(known, /Falta: la fecha, el IVA\./);
+  const contract = invoiceContractText({ filename: 'f.pdf', sha256: 'a'.repeat(64) }, known);
+  assert.ok(contract.indexOf('DATOS YA LEÍDOS') < contract.indexOf('Sobre de intercambio'), 'antes del sobre');
+  assert.equal(knownFieldsText({ supplier_name: null, supplier_tax_id: null, invoice_number: null, invoice_date: null, base: null, vat: [], withholding: null, total: null }, []), null);
+});
+

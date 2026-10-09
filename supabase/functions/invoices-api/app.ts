@@ -951,9 +951,10 @@ export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = cr
       handler: async (args, ctx) => {
         const limit = Number.isInteger(args.limit) ? Math.min(Math.max(Number(args.limit), 1), 20) : 10;
         const onlyDrive = args.only_drive !== false;
-        const [invoices, files] = await Promise.all([
+        const [invoices, files, suppliers] = await Promise.all([
           allRows<InvoiceRow>(supabase, ctx, TABLES.invoices),
           allRows<{ id: string; invoice_id: string; file_id: string; original_filename: string; normalized_filename: string | null; mime_type: string; size_bytes: number; kind: string; page_order: number; deleted_at: string | null }>(supabase, ctx, TABLES.invoiceFiles),
+          allRows<SupplierRow>(supabase, ctx, TABLES.suppliers),
         ]);
         const pending = invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && (!onlyDrive || !!i.drive_file_id))
           .sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -966,11 +967,19 @@ export function invoicesMcpTools(supabase: Supabase, storage: StorageAccess = cr
             const url = file?.status === 'verified' ? await storage.readUrl(file, 600) : null;
             documents.push({ file_id: f.file_id, filename: f.original_filename, mime: f.mime_type, size: Number(f.size_bytes), url, expires_in_seconds: url ? 600 : null });
           }
-          items.push({ invoice_id: invoice.id, code: invoice.code, object: invoice.object, created_at: invoice.created_at, drive_url: invoice.drive_url ?? null, documents });
+          // Fase 3: lo que el borrador ya tiene (lectura parcial o una persona) y lo que falta; la IA completa solo eso.
+          const supplier = suppliers.find((s) => s.id === invoice.supplier_id && s.slug !== 'sin_identificar');
+          const reading = (invoice.import_meta as { reading?: { read?: string; missing?: string[] } } | null)?.reading;
+          const already = Object.fromEntries(Object.entries({
+            supplier: supplier ? { name: supplier.name, tax_id: supplier.tax_id } : null, invoice_number: invoice.invoice_number, invoice_date: invoice.invoice_date,
+            source_total: invoice.source_total === null ? null : Number(invoice.source_total),
+          }).filter(([, v]) => v !== null && v !== undefined));
+          items.push({ invoice_id: invoice.id, code: invoice.code, object: invoice.object, created_at: invoice.created_at, drive_url: invoice.drive_url ?? null, documents,
+            already, reading: reading ? { read: reading.read ?? null, missing: reading.missing ?? [] } : null });
         }
         return {
           total: pending.length, items,
-          how_to_complete: 'Por cada factura: descarga el PDF de documents[].url (caduca en 10 minutos; si caduca, vuelve a pedir la lista), léelo y construye un JSON ikisai.invoice.v1 según json_schema. Si es una factura rectificativa o un abono, dilo en extraction_notes. Llama a invoices_import_json con { invoice_id, document, provenance: { campo: { confidence (0-1), text (lo leído), page } } }. Si no puedes leer algún dato con seguridad, ponlo a null y explícalo en extraction_notes: la persona lo revisa antes de validar.',
+          how_to_complete: 'Por cada factura: descarga el PDF de documents[].url (caduca en 10 minutos; si caduca, vuelve a pedir la lista), léelo y construye un JSON ikisai.invoice.v1 según json_schema. Lo que ya tiene el borrador va en already (lo leyó Finance o lo escribió una persona): compruébalo en el PDF y respétalo salvo error evidente; reading.missing dice lo que falta. Si es una factura rectificativa o un abono, dilo en extraction_notes. Llama a invoices_import_json con { invoice_id, document, provenance: { campo: { confidence (0-1), text (lo leído), page } } }. Si no puedes leer algún dato con seguridad, ponlo a null y explícalo en extraction_notes: la persona lo revisa antes de validar.',
           json_schema: IMPORT_JSON_SCHEMA,
         };
       },

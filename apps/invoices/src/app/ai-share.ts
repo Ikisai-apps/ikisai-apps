@@ -39,7 +39,7 @@ async function copyText(text: string): Promise<boolean> {
  * segundo archivo, el contrato va en `text` y además al portapapeles. Sin Web Share (escritorio): se copia y se descarga
  * el contrato para adjuntarlo a mano con el documento. Devuelve el camino usado (para las pruebas y el aviso).
  */
-export async function shareWithAi(document: File, source: SharedSource | null): Promise<'files' | 'text' | 'fallback' | 'cancelled'> {
+export async function shareWithAi(document: File, source: SharedSource | null, known?: string | null): Promise<'files' | 'text' | 'fallback' | 'cancelled'> {
   const ok = await confirmDialog({
     title: 'Analizar con IA',
     text: el('div', null,
@@ -48,7 +48,7 @@ export async function shareWithAi(document: File, source: SharedSource | null): 
     confirmLabel: 'Compartir',
   });
   if (!ok) return 'cancelled';
-  const contract = invoiceContractText(source);
+  const contract = invoiceContractText(source, known);
   const contractFile = new File([contract], INVOICE_CONTRACT_FILENAME, { type: 'text/plain' });
   const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
   try {

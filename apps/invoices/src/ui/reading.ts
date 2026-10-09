@@ -60,6 +60,12 @@ async function documentItems(ctx: ViewContext, original: { file_id: string; norm
   return readPdfItems(await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type));
 }
 
+/** Lo que se lee hoy del documento de una factura (para dárselo a la IA); `null` si no se puede (sin red, foto…). */
+export async function currentReading(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, original: { file_id: string; normalized_filename: string; mime_type: string }): Promise<TemplateExtraction | null> {
+  if (original.mime_type !== 'application/pdf' || !navigator.onLine) return null;
+  try { return extractFor(mirror, await documentItems(ctx, original), invoice); } catch { return null; }
+}
+
 /**
  * Bloque «Lectura del documento» de la ficha (PDF de una factura pendiente): el resumen guardado al leerla y, al abrirlo,
  * la lectura actual con los campos, lo que falta y el texto.
