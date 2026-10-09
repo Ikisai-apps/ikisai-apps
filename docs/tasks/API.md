@@ -1428,3 +1428,12 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
   - debajo, **«Solo de <área>»**, con las familias sin General equivalente;
   - una familia General no se archiva desde aquí: sus etiquetas, una a una.
 - **Selector de etiquetas:** cada familia sale una vez, con las General primero.
+
+### 27.1 Arreglos tras el primer uso real (9-10-2026, migración `0318`)
+
+- **Siempre a la vista** para la propietaria con acceso completo, en la sección General: «Repetidas → General (N)», también con 0, y «+ Nueva familia General». Antes, «+ General» solo salía dentro de una familia General, y sin ninguna no había forma de empezar.
+- **«Hacer General»** en cada familia del área y en el editor de cada etiqueta del área: la lleva a General con sus iguales de otras áreas. Un grupo puede tener una sola etiqueta.
+- **Detección por nombre de familia** normalizado, aunque las claves de sistema no coincidan o alguna sea nula. La familia General solo hereda la clave si todas la comparten.
+- **Madres distintas** (VG en la raíz en unas áreas y bajo «Staff» en otra): el grupo se ofrece igual y la General queda en la raíz (`{ids, root: true}`).
+- **Claves por corregir:** familias cuya marca de sistema no casa con su nombre y sí con otra, o que otra área llama igual sin esa marca. Ejemplos: «Zona: Espacio» marcada como responsables y «Persona» marcada como fases. Se corrigen antes de fusionar: se quita la marca y, si eran responsables, esos responsables se quedan vacíos.
+- `tasks.guard_family_key` deja ahora quitar cualquier marca. Poner una que no sea `person` sigue sin poderse.
