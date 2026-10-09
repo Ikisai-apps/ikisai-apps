@@ -1,5 +1,13 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.27.1 · 9 de octubre de 2026
+
+- **«Atrás» sin carreras** (FB_2026_025): el humo de Food (`smoke.spec.ts:71`) fallaba 1 de cada 4 veces.
+  - Al cerrar el lanzador con Escape, el kit lanzaba un `history.back()` para quitar la entrada de la hoja. Si se navegaba justo después (`#/maquinaria`), ese «atrás» asíncrono deshacía la navegación.
+  - Ahora una hoja o un diálogo cerrados por la interfaz dejan su entrada **marcada como muerta**, con `replaceState`, que es síncrono. «Atrás» se salta las muertas: desde una muerta sigue un paso más, para que una sola pulsación lleve siempre a la pantalla anterior.
+  - Un `popstate` que cambia `history.length` es una navegación nueva por fragmento (Chrome lo dispara al cambiar `location.hash`), no un «atrás».
+  - El módulo sigue `pushState` y `replaceState` para saber en qué entrada está.
+
 ## 0.27.0 · 9 de octubre de 2026
 
 - **Texto con sugerencias** (petición de Booking, de su versión local para FB_2026_014; también para etiquetas de Tasks y proveedores de Finance):
