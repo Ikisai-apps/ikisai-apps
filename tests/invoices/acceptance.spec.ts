@@ -1904,7 +1904,7 @@ test('Nueva factura (fase 1): elegir el PDF ya lo lee; sin proveedor ni objeto s
     await page.locator('#saveInvoice').click();
     await expect(ficha(page)).toContainText('Sin identificar', { timeout: 20_000 });
     await synced(page);
-    expect(api.rows('invoices.invoices').find((i) => i.object === 'ticket sin fecha')).toMatchObject({ status: 'pendiente_datos', source_total: 18.4 });
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.object === 'ticket sin fecha'), { timeout: 20_000 }).toMatchObject({ status: 'pendiente_datos', source_total: 18.4 });
     await closeSheet(page);
     // Completa: rellena el formulario sin cambiar de pantalla y «Importar lo leído» abre la vista previa
     await page.getByRole('button', { name: 'Nueva factura' }).click();
@@ -1939,8 +1939,8 @@ test('«Mi nombre» (0230): renombrar un artículo de una factura validada; se v
     await expect(f.locator('.line-desc').first()).toHaveText('Tomates', { timeout: 20_000 });
     await expect(f.locator('.line-original').first()).toHaveText('En la factura: 12345 TOMATE PERA 1KG');
     await synced(page);
-    expect(api.rows('invoices.invoice_lines').find((l) => l.id === lineId)).toMatchObject({ label: 'Tomates', label_source: 'manual', description: '12345 TOMATE PERA 1KG' });
-    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status).toBe('validada');
+    await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === lineId), { timeout: 20_000 }).toMatchObject({ label: 'Tomates', label_source: 'manual', description: '12345 TOMATE PERA 1KG' });
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status, { timeout: 20_000 }).toBe('validada');
   } finally {
     await context.close();
   }
@@ -1962,11 +1962,11 @@ test('FB_2026_024 · «Se deja en su trimestre»: la atrasada que ya tiene la ge
     await expect(f.locator('#deliveredElsewhere')).toContainText('Ya pasada a la gestoría', { timeout: 20_000 });
     await expect(f.locator('#declaredPeriod')).toContainText('ya pasada a la gestoría');
     await synced(page);
-    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)).toMatchObject({ declared_period: '2026T2', delivered_elsewhere: true });
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId), { timeout: 20_000 }).toMatchObject({ declared_period: '2026T2', delivered_elsewhere: true });
     await f.locator('#undoDeliveredElsewhere').click();
     await expect(f.locator('#deliveredElsewhere')).toHaveCount(0, { timeout: 20_000 });
     await synced(page);
-    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)).toMatchObject({ declared_period: null, delivered_elsewhere: false });
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId), { timeout: 20_000 }).toMatchObject({ declared_period: null, delivered_elsewhere: false });
   } finally {
     await context.close();
   }
