@@ -11,6 +11,7 @@ declara como `import_map_path` para que Deno resuelva los paquetes npm del kit.
 import argparse
 import hashlib
 import json
+import time
 import os
 import re
 import urllib.error
@@ -80,21 +81,34 @@ def deploy(client, app_name, apply=False, qa=False, release=None):
     body += f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: {mime}\r\n\r\n'.encode() + raw + b'\r\n'
   body += f'--{boundary}--\r\n'.encode()
   request = urllib.request.Request(client.base + '/functions/deploy?slug=' + slug, data=body, method='POST', headers={'Authorization': 'Bearer ' + client.token, 'Content-Type': 'multipart/form-data; boundary=' + boundary})
-  try:
-    with client.opener.open(request, timeout=90) as response:
-      result = json.loads(response.read())
-  except urllib.error.HTTPError as error:
-    # El cuerpo del proveedor solo se guarda en private/, redactando el token; nunca se imprime.
-    raw = error.read(16384).decode('utf-8', errors='replace').replace(client.token, '[redacted]')
-    PRIVATE.mkdir(parents=True, exist_ok=True)
-    (PRIVATE / f'edge-deployment-error-{slug}.txt').write_text(raw, encoding='utf-8')
-    raise CloudError(error.code, 'FUNCTION_DEPLOY_FAILED') from None
-  except (urllib.error.URLError, TimeoutError, OSError):
-    raise CloudError(None, 'FUNCTION_NETWORK_FAILED') from None
+  # Supabase devuelve a veces un 500 pasajero al empaquetar (visto con invoices-api, 8 y 9-10-2026): hasta 3 intentos.
+  for attempt in range(3):
+    try:
+      with client.opener.open(request, timeout=90) as response:
+        result = json.loads(response.read())
+      break
+    except urllib.error.HTTPError as error:
+      if error.code >= 500 and attempt < 2:
+        time.sleep(15 * (attempt + 1))
+        continue
+      _fail_deploy(error, client, slug)
+    except (urllib.error.URLError, TimeoutError, OSError):
+      if attempt < 2:
+        time.sleep(15 * (attempt + 1))
+        continue
+      raise CloudError(None, 'FUNCTION_NETWORK_FAILED') from None
   report.update({key: result.get(key) for key in ('status', 'version', 'id')})
   report['deployedSlug'] = result.get('slug')
   return report
 
+
+
+def _fail_deploy(error, client, slug):
+  # El cuerpo del proveedor solo se guarda en private/, redactando el token; nunca se imprime.
+  raw = error.read(16384).decode('utf-8', errors='replace').replace(client.token, '[redacted]')
+  PRIVATE.mkdir(parents=True, exist_ok=True)
+  (PRIVATE / f'edge-deployment-error-{slug}.txt').write_text(raw, encoding='utf-8')
+  raise CloudError(error.code, 'FUNCTION_DEPLOY_FAILED') from None
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
