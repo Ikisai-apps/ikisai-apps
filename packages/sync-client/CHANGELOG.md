@@ -1,5 +1,13 @@
 # Cambios de @ikisai/sync-client
 
+## 0.5.2 · 9 de octubre de 2026
+
+- **Un `call` que choca ya no vuelve en bucle** (incidencia del usuario en Finance: «Se descartó una acción sobre FVR_2026_003…» una y otra vez, con «1 pendiente»).
+  - Cuando el servidor señalaba una fila que el lote no tocaba directamente (un lote con solo `invoices.validate`), `park` guardaba un `update` vacío como operación del conflicto y dejaba el `call` en `otherOperations`. Así, «theirs» y también «mine» volvían a encolar el `call` con la revisión vieja → otro `VERSION_CONFLICT` → bucle.
+  - Ahora el `call` se guarda aparte (`ConflictRecord.call`, elegido con `parkedCallFor`) y fuera de `otherOperations`. «theirs» lo descarta; «mine» lo reenvía con la revisión actual. La tarjeta sigue viendo el `update` vacío de la fila: el contrato no cambia.
+  - `PendingConflict.procedure` (opcional) dice qué procedimiento chocó (p. ej. `invoices.validate`).
+- Prueba nueva en `tests/sync-client/conflict-call.test.ts`.
+
 ## 0.5.1 · 9 de octubre de 2026
 
 - **«Reintentar con lo mío» en un `call`.** `resolveConflict(requestId, { choice: 'mine' })` con una operación `call` no reenviaba nada: quitaba el conflicto sin reintentar (incidencia del usuario al validar una factura en Finance justo después de cambiarle la categoría). Ahora reenvía el `call` con `args.expectedRevision` puesto a la revisión actual del servidor, si lo llevaba. Con «theirs» o «merge», como antes, solo las otras operaciones del lote.

@@ -86,6 +86,8 @@ export interface PendingConflict {
   current: SyncedRow;
   /** Campos que el usuario cambió y que también cambió el servidor. */
   overlapping: string[];
+  /** Si lo que chocó fue un `call` (p. ej. `invoices.validate`), su procedimiento (0.5.2). */
+  procedure?: string;
   detectedAt: string;
 }
 
