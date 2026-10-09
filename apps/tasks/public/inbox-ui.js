@@ -23,6 +23,8 @@ const KNOWN_KINDS=[
   {kind:'booking.ses_deadline',label:'SES · Plazo legal',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
   {kind:'central.compliance_due',label:'Central · Vencimientos',suggest:{project:/cumplimiento/i,area:/gesti/i}},
   {kind:'core.user_task',label:'Core · Tarea para ti',suggest:{project:/tareas de core/i,area:/aplicaciones/i}},
+  {kind:'invoices.drive_review',label:'Finance · Facturas de Drive por revisar',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
+  {kind:'invoices.drive_blocked',label:'Finance · Drive bloqueado',suggest:{project:/administraci|fiscal/i,area:/gesti/i}},
   ...Object.entries(SPACE_KINDS).map(([k,v])=>({kind:'feedback.space.'+k,label:'Espacio · '+v,suggest:{project:/reparaci/i,area:/mantenimiento/i}})),
   // Lo del retiro va al proyecto de su reserva cuando el reporte la trae (§22.2); la regla es para lo que no.
   ...Object.entries(EVENT_KINDS).map(([k,v])=>({kind:'feedback.event.'+k,label:'Retiro · '+v,suggest:{area:/retiro/i}})),

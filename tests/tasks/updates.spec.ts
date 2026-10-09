@@ -6,7 +6,7 @@
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, startE2EServer, type E2EServer } from './e2e-server.ts';
-import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
+import { openApp, quietUsageNotice, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -46,6 +46,7 @@ test('actualización del service worker: borradores y colas vetan la activación
   const second = await context.newPage();
   second.on('pageerror', (error) => errors.push(error.message));
   await second.addInitScript(`window.ID = ${JSON.stringify(ID)};`);
+  await quietUsageNotice(second);
   await second.goto(server.url + '/');
   await second.waitForFunction(() => typeof Sync !== 'undefined' && Sync.secondary === true && state.tabs.length > 0, null, { timeout: 20_000 });
   await second.evaluate(() => { if (document.getElementById('sheetBack')?.classList.contains('show')) closeSheet(); });

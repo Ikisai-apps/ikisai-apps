@@ -1388,3 +1388,17 @@ Misma cabecera. `{"externalRefs": ["core:TV-2.1", "core:TV-2.2"]}` (hasta 200) �
 ### 25.3 En la app
 
 «Gestionar entradas» enseña «Core · Tarea para ti» como tipo conocido y propone el proyecto «Tareas de Core» (o el área «Aplicaciones»). El usuario crea el proyecto y guarda la regla una vez.
+
+## 26. Aviso de facturas de Drive de Finance (petición de Finance por Core, 9-10-2026)
+
+Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive está bloqueado.
+
+- `POST <Edge>/api/v1/worker/requests/task` (Edge directa, clave de worker; §25.1), con `source: 'invoices'` y uno de estos tipos:
+  - `invoices.drive_review` («Finance · Facturas de Drive por revisar»);
+  - `invoices.drive_blocked` («Finance · Drive bloqueado»).
+- `external_ref` como `drive:<algo>`, de hasta 140 caracteres más el prefijo; Tasks la guarda como `invoices:drive:…`. `external_url` opcional, en `https://finance.ikisai.com/#/…`.
+- Pide con la identidad de servicio `drive` (núcleo #419, editora en Tasks).
+- Reenviar la misma referencia con otro título o nota actualiza la tarea mientras siga abierta (como §25).
+- Estado: `worker/requests/status` con `invoices:drive:…`.
+- «Gestionar entradas» propone para los dos el proyecto «Administración y fiscal» (o el área «Gestiones»).
+- Migración `0316`.

@@ -8,6 +8,7 @@
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
 import { buildTasksApp, EDITOR, OWNER, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
+import { quietUsageNotice } from './e2e-helpers.ts';
 
 // Globales de la interfaz heredada (ligaduras léxicas de sus scripts clásicos), visibles dentro de page.evaluate.
 declare const Sync: any;
@@ -73,6 +74,8 @@ async function settled(page: Page): Promise<void> {
 }
 
 async function open(context: BrowserContext, user = OWNER): Promise<Page> {
+  // En el contexto: también para las segundas pestañas que abra la prueba.
+  await quietUsageNotice(context);
   const page = await context.newPage();
   page.on('pageerror', (error) => { throw new Error('Error de JavaScript en la página: ' + error.message); });
   await page.goto(server.url + '/');

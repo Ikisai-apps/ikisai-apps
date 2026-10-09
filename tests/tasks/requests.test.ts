@@ -420,3 +420,35 @@ test('tareas de Core para el usuario (§25): source core, a su proyecto por la r
   const refresh = await commit([{ op: 'call', procedure: 'tasks.refresh_request_task', args: { externalRef: 'core:TV-2.1', title: 'x' } } as any]);
   assert.notEqual(refresh.status, 200);
 });
+
+test('aviso de facturas de Drive (§26): source invoices como la identidad drive, reenvío que actualiza y estado', async () => {
+  const worker = (route: string, body: unknown) => app.handler(new Request(`http://localhost/api/v1/worker/requests/${route}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
+  const json = async (res: Response) => ({ status: res.status, body: await res.json() as any });
+  const review = (extra: Record<string, unknown> = {}) => worker('task', { source: 'invoices', kind: 'invoices.drive_review', external_ref: 'drive:2026-10-09', title: '3 facturas de Drive por revisar',
+    note: 'Llegaron a la carpeta de Drive.', external_url: 'https://finance.ikisai.com/#/facturas/drive', ...extra });
+  if (!(await app.t.db.query(`select 1 from core.profiles where service_name = 'drive'`)).rows.length) {
+    assert.equal((await review()).status, 503, 'sin la identidad drive, espera');
+    await simulateServiceIdentity(app.t.db, uuid(), 'drive');
+  }
+  const created = await json(await review());
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const request = (await rows('tasks.requests')).find((r) => r.id === created.body.taskId);
+  assert.deepEqual([request.source, request.kind, request.external_ref, request.kind_label], ['invoices', 'invoices.drive_review', 'invoices:drive:2026-10-09', 'Finance · Facturas de Drive por revisar']);
+  // Con regla, abierta; el reenvío con otro título la actualiza.
+  const project = uuid();
+  await commit([{ op: 'insert', table: 'tasks.projects', id: project, fields: { tab_id: TAB, title: 'Administración y fiscal', position: 9300 } }]);
+  await commit([{ op: 'insert', table: 'tasks.request_routes', id: uuid(), fields: { kind: 'invoices.drive_blocked', tab_id: TAB, project_id: project, position: 9400 } }]);
+  const blocked = (extra: Record<string, unknown> = {}) => worker('task', { source: 'invoices', kind: 'invoices.drive_blocked', external_ref: 'drive:bloqueo', title: 'Drive bloqueado', ...extra });
+  const open = await json(await blocked());
+  assert.equal(open.body.status, 'open', JSON.stringify(open.body));
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === open.body.taskId).project_id, project);
+  assert.deepEqual((await json(await blocked({ title: 'Drive bloqueado: renovar el permiso' }))).body, { taskId: open.body.taskId, status: 'open', updated: true });
+  assert.equal((await rows('tasks.tasks')).find((t) => t.id === open.body.taskId).title, 'Drive bloqueado: renovar el permiso');
+  const status = await json(await worker('status', { externalRefs: ['invoices:drive:bloqueo', 'invoices:drive:2026-10-09'] }));
+  assert.deepEqual(status.body.items.map((i: any) => [i.externalRef, i.status]), [['invoices:drive:2026-10-09', 'pending'], ['invoices:drive:bloqueo', 'open']]);
+  // Solo lo del contrato.
+  for (const bad of [{ external_ref: 'sin-prefijo' }, { external_url: 'https://tasks.ikisai.com/#/x' }, { kind: 'invoices.otra' }]) {
+    assert.equal((await review(bad)).status, 422, JSON.stringify(bad));
+  }
+});
