@@ -78,10 +78,10 @@ test('corregir las claves incoherentes (como la vista previa) y fusionar: VG en 
   ]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const labels = await rows('tasks.labels'), families = await rows('tasks.families'), g = res.data.generals as Record<string, string>;
-  const general = labels.find((l) => l.id === g[vg.Apps]);
+  const general = labels.find((l) => l.id === g[vg.Apps!]);
   assert.deepEqual([general.tab_id, general.parent_id, general.name], [null, null, 'VG']);
   assert.equal(families.find((f) => f.id === general.family_id).system_key, 'person');
-  for (const v of Object.values(vg)) assert.equal(g[v], general.id);
+  for (const v of Object.values(vg)) assert.equal(g[v!], general.id);
   // La VG de Mejoras (bajo Staff) pasa a la General en la raíz; Staff sigue en Mejoras; su tarea, con la General.
   assert.equal(labels.find((l) => l.id === vg.Mejoras).archived, true);
   assert.equal(labels.find((l) => l.id === staff).archived, false);

@@ -465,9 +465,11 @@ test('aceptación V1 · familia de responsables: la marca se mueve quitando en e
   await db.commit([update('tasks.tasks', task, 2, { owner_label_id: vera })]);
   const data = await db.data();
   assert.deepEqual([antigua, grupo].map((id) => data['tasks.families'].find((f) => f.id === id)!.system_key), [null, 'person']);
-  // Las demás claves de sistema siguen fijas: ni se quitan ni se convierten en la de responsables.
-  await rejects(db.commit([update('tasks.families', families.trade!, 1, { system_key: null })]), 'IMMUTABLE_FIELD');
+  // Las demás claves de sistema no se convierten en la de responsables ni en otra; desde 0318 sí se pueden quitar (así
+  // se corrige una familia con una clave equivocada, FB_2026_023).
   await rejects(db.commit([update('tasks.families', families.space!, 1, { system_key: 'person' })]), 'IMMUTABLE_FIELD');
+  await db.commit([update('tasks.families', families.trade!, 1, { system_key: null })]);
+  assert.equal((await db.data())['tasks.families'].find((f) => f.id === families.trade)!.system_key, null);
   await rejects(db.commit([update('tasks.families', antigua, 2, { system_key: 'trade' })]), 'IMMUTABLE_FIELD');
 });
 
