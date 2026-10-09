@@ -46,13 +46,16 @@ class FakeDrive implements DriveApi {
 
 const drive = new FakeDrive();
 let app: TestApp;
+/** Avisos que Finance manda a Tasks › Gestiones. */
+const notices: Array<Record<string, any>> = [];
 
 test.before(async () => {
   app = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
     createHandler: (config) => createInvoicesApp({
       ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
-      drive: { api: drive, limit: 5, upload: async (object, bytes) => { app.supabase.storage.set(object.path, bytes); } },
+      drive: { api: drive, limit: 5, upload: async (object, bytes) => { app.supabase.storage.set(object.path, bytes); },
+        notifyTasks: async (request) => { notices.push(request); return true; }, today: () => '2026-10-09' },
     }),
   });
 });
@@ -85,6 +88,11 @@ test('Drive: PDF con texto → factura leída (pendiente de revisión) con su do
   assert.equal(res.status, 200, JSON.stringify(res.data));
   assert.deepEqual({ outcome: res.data.outcome, listed: res.data.listed, imported: res.data.imported, read: res.data.read }, { outcome: 'ok', listed: 1, imported: 1, read: 1 });
   assert.ok(res.data.api_calls >= 3, 'cuenta las llamadas a la Drive API');
+  // Aviso del día en Tasks › Gestiones
+  const notice = notices.at(-1)!;
+  assert.deepEqual([notice.source, notice.kind, notice.external_ref, notice.priority], ['invoices', 'invoices.drive_review', 'drive:2026-10-09', 'normal']);
+  assert.equal(notice.title, 'Revisar 1 factura llegada por Drive');
+  assert.equal(notice.external_url, 'https://finance.ikisai.com/#/facturas?filtro=drive');
   assert.equal(drive.where(leida), 'Importadas');
   const invoice = (await rows('invoices.invoices')).find((i) => i.drive_file_id === leida)!;
   assert.ok(invoice, 'factura con su origen en Drive');
@@ -199,10 +207,11 @@ test('Drive: «Buscar ahora» solo para el owner; el estado solo lo lee el owner
 
 test('Drive en una carpeta de un usuario (9-10-2026): sin subcarpetas avisa y no importa; sin «Entrada» importa los PDF sueltos en la raíz', async () => {
   const folderDrive = new FakeDrive(false, 'carpeta-usuario', 'carpeta-usuario');
+  const folderNotices: Array<Record<string, any>> = [];
   const own = await createTestApp({
     app: 'invoices', slug: 'invoices-api', origin: INVOICES_ORIGINS[0]!,
     createHandler: (config) => createInvoicesApp({ ...config, origins: [INVOICES_ORIGINS[0]!], workerKey: WORKER_KEY,
-      drive: { api: folderDrive, upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); } } }),
+      drive: { api: folderDrive, upload: async (object, bytes) => { own.supabase.storage.set(object.path, bytes); }, notifyTasks: async (r) => { folderNotices.push(r); return true; } } }),
   });
   const run = () => own.call('/api/v1/worker/drive/tick', { token: null, method: 'POST', body: {}, headers: { 'x-ikisai-worker-key': WORKER_KEY } });
   const suelto = folderDrive.add('Factura suelta.pdf', invoiceTextPdf('A-2026/0950'));
@@ -211,6 +220,7 @@ test('Drive en una carpeta de un usuario (9-10-2026): sin subcarpetas avisa y no
   assert.match(blocked.data.detail, /Crea en tu carpeta de Drive estas subcarpetas: Importadas, Duplicadas, Con errores/);
   assert.equal(folderDrive.where(suelto), 'raíz', 'no toca nada');
   assert.equal(folderDrive.folders.size, 0, 'no crea carpetas');
+  assert.deepEqual([folderNotices[0]?.kind, folderNotices[0]?.external_ref, folderNotices[0]?.priority], ['invoices.drive_blocked', 'drive:blocked', 'high']);
   assert.equal((await own.call('/api/v1/read/invoices.drive_status', { body: {} })).data.state.health, 'blocked');
   // El usuario crea las tres de destino (sin «Entrada»): los PDF sueltos en la raíz se importan
   for (const name of ['Importadas', 'Duplicadas', 'Con errores']) folderDrive.folders.set(name, `carpeta-${name}`);

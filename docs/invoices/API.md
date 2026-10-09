@@ -1345,7 +1345,10 @@ Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el ow
 - Filtro «Llegadas por Drive, sin validar» en la lista.
 - «Origen: llegó por Google Drive · abrir el original» en la ficha.
 
-**Pendiente:** el aviso en Tasks › Gestiones (segunda tanda).
+**Aviso en Tasks › Gestiones:** origen `invoices`, por `POST worker/requests/task` de `tasks-api` con la clave de worker. La cuenta `drive` es editora en Tasks (#419).
+- Tras un tick que importa algo, un aviso al día (`external_ref: drive:AAAA-MM-DD`, `kind: invoices.drive_review`, prioridad normal). Dice cuántas facturas de Drive quedan por revisar y validar (leídas y sin leer) y enlaza a `#/facturas?filtro=drive`. Si se repite el mismo día, Tasks actualiza el recuento.
+- Si Drive queda bloqueado, `drive:blocked` (`invoices.drive_blocked`, prioridad alta) con el motivo.
+- Sin `IKISAI_WORKER_KEY`, o si Tasks lo rechaza, no se avisa y el tick sigue.
 
 ### 15.1 Completar los borradores con una sesión de Claude (migración 0226)
 
