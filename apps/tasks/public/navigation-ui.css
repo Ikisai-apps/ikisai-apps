@@ -57,3 +57,15 @@
 /* «General» con icono de todas las áreas (FB_2026_019). */
 .tabpill.generalicon{display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding-inline:10px}
 .tabpill.generalicon .menuicon{width:18px;height:18px}
+/* «Áreas de trabajo» en filas compactas (FB_2026_018): asa, color, nombre con sus proyectos debajo y editar a la derecha. */
+.arearows{display:grid;gap:6px}
+.area-row{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 4px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.area-row.current{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.area-row.dragging{box-shadow:var(--shadow-1);opacity:.92}
+.area-row .draghandle{width:32px;height:40px;border:0;background:transparent;color:var(--muted);touch-action:none;flex:none}
+.area-row .areadot{width:12px;height:12px;border-radius:50%;flex:none}
+.area-open{flex:1;min-width:0;display:grid;gap:2px;text-align:left;border:0;background:transparent;padding:4px 0;color:inherit}
+.area-open strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arearow-edit{width:40px;height:40px;flex:none;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;font-size:0}
+.arearow-edit::before{content:'';width:19px;height:19px;background:currentColor;-webkit-mask:var(--icon-pencil) center/contain no-repeat;mask:var(--icon-pencil) center/contain no-repeat}
+

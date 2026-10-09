@@ -109,7 +109,16 @@ function project(){return tab().projects.find(p=>p.id===state.currentProject)}
 function family(id){return tab().families.find(f=>f.id===id)}
 function label(id){return tab().labels.find(l=>l.id===id)}
 function familyColorByLabel(id){const l=label(id);const f=l&&family(l.family);return f?f.color:'#777'}
-function chips(ids=[]){return ids.map(id=>{const l=label(id);if(!l||l.archived)return'';return `<span class="chip" style="background:${familyColorByLabel(id)}">${esc(labelName(l))}</span>`}).join('')}
+function chips(ids=[]){return labelGroups(ids).map(g=>`<span class="chip" style="background:${familyColorByLabel(g.mother.id)}">${esc(g.text)}</span>`).join('')}
+/* Chips agrupados por etiqueta madre (FB_2026_021): una sola por madre, con sus hijas dentro («Staff: VG, AN»); con todas
+   sus hijas, o con la madre sola («Todos»), solo la madre. Una hija cuenta en su madre si es de la misma familia. */
+function labelMotherOf(l){const p=l?.parent?label(l.parent):null;return p&&p.family===l.family?p:null}
+function labelChildren(m){const scope=state.tabs.find(t=>(t.labels||[]).some(x=>x.id===m.id));return (scope?.labels||[]).filter(c=>c.parent===m.id&&c.family===m.family&&!c.archived)}
+function labelGroups(ids=[]){const groups=new Map();
+  for(const id of [...new Set(ids)]){const l=label(id);if(!l||l.archived)continue;const m=labelMotherOf(l)||l;if(m.archived)continue;
+    const g=groups.get(m.id)||{mother:m,kids:[]};if(m!==l)g.kids.push(l);groups.set(m.id,g)}
+  return [...groups.values()].map(g=>{const all=labelChildren(g.mother);const every=!g.kids.length||all.length&&all.every(c=>g.kids.some(k=>k.id===c.id));
+    return {...g,text:every?g.mother.text:`${g.mother.text}: ${g.kids.map(k=>k.text).join(', ')}`}})}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function progress(p){const a=p.tasks.filter(t=>!t.deleted);if(!a.length)return 0;return Math.round(a.filter(t=>t.done).length/a.length*100)}
 function aggregatedLabels(p){const set=new Set(p.ownLabels||[]);p.tasks.filter(t=>!t.deleted).forEach(t=>(t.labels||[]).forEach(x=>set.add(x)));return [...set]}
