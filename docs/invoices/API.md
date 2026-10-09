@@ -1539,4 +1539,15 @@ Ya era así:
 - **Causa (sync-client):** un lote con solo `invoices.validate` que chocaba se aparcaba como un `update` vacío, con el `call` en `otherOperations`. «theirs» y «mine» volvían a encolar el `call` con la revisión vieja, y el descarte automático de #452 entraba en bucle («1 pendiente» y el aviso repetido).
 - **Sync-client 0.5.2:** el `call` va aparte (`ConflictRecord.call`) y `PendingConflict.procedure` dice cuál es. «theirs» lo descarta y «mine» lo reenvía con la revisión actual.
 - **Finance:** un conflicto propio de `invoices.validate` se reintenta **una sola vez** por factura y sesión con «mine». Si vuelve a chocar, queda en la tarjeta del kit para que decida el usuario. Un conflicto del formato antiguo (el del móvil del usuario) se resuelve una vez y el `call`, al volver a la cola, ya se aparca bien. Se acaba la anotación de `requestId` de #452.
+### 16.11 Lector: FVR_2026_005 (9-10-2026, lector v4)
+- **Nombre con letras sueltas:** el PDF trae el texto con espacios dentro del propio fragmento («JI M ÉN EZ»). `cleanSupplierName`:
+  - toma el bloque de la línea con la forma jurídica (tres espacios separan columnas, así que «Cliente» queda fuera) y corta tras la forma jurídica;
+  - quita las etiquetas de cliente que vengan al final;
+  - une las rachas de trozos de una o dos letras que no son partículas (de, la, y…). Dentro de una racha, una palabra que ya parece completa (-EZ, -ES, -AS, -OS…) cierra y empieza otra.
+
+  Si el PDF trae letras sueltas, se avisa para revisar el nombre: lo que no se puede reconstruir sin diccionario, como «RODRÍ GUEZ», queda a la vista.
+- **Líneas por cercanía:** un fragmento que cae en una línea pero está más cerca de otra (un importe 1 punto por encima de su etiqueta «IVA 21%») pasa a la más cercana.
+- **Base rotulada:** una «Base imponible» impresa en el documento manda sobre un «Subtotal», un «Neto» o la base que se arma con las columnas de la tabla de artículos (antes del descuento).
+- `READER_VERSION` = 4: el tick vuelve a leer lo pendiente de Drive.
+- Copia sintética con la misma geometría en `pdf-real.test.ts`. El PDF real se leyó solo en local y se borró.
 

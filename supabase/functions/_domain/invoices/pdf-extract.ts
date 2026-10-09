@@ -54,6 +54,44 @@ export interface PdfExtraction {
 // ---------------------------------------------------------------------------
 // Líneas
 // ---------------------------------------------------------------------------
+const LEGAL_FORM = /\b(?:s\.?\s?l\.?\s?u\.?|s\.?\s?a\.?\s?u\.?|s\.?\s?l\.?|s\.?\s?a\.?|s\.?\s?coop\.?|sociedad (?:limitada|an[oó]nima))(?=[\s,.·|]|$)/i;
+/** Palabras cortas de verdad en nombres españoles: no son trozos de una palabra partida. */
+const PARTICLES = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'y', 'e', 'i', 'en', 'sl', 'sa', 'cb', 'sc', 'slu', 'sau']);
+
+/**
+ * Nombre de proveedor limpio (FVR_2026_005, 9-10-2026): el primer bloque de la línea (lo que va tras 3 espacios es otra
+ * columna, p. ej. «Cliente»), cortado tras la forma jurídica, sin etiquetas de cliente al final, y con las palabras que el
+ * PDF parte en trozos de una o dos letras («JI M ÉN EZ» → «JIMÉNEZ») unidas.
+ */
+export function cleanSupplierName(raw: string): string {
+  let name = raw.split(/\s{3,}/).find((p) => LEGAL_FORM.test(p)) ?? raw.split(/\s{3,}/)[0] ?? raw;
+  const legal = name.match(new RegExp(`^(.*?${LEGAL_FORM.source})`, 'i'));
+  if (legal) name = legal[1]!;
+  name = name.replace(/\s+(?:cliente|destinatario|datos del cliente|facturar a)\b.*$/i, '');
+  const tokens = name.trim().split(/\s+/);
+  const short = (t: string) => t.replace(/[^\p{L}]/gu, '').length <= 2 && !PARTICLES.has(t.toLowerCase().replace(/\./g, ''));
+  if (tokens.filter(short).length >= 2) {
+    // Se unen entre sí las rachas de trozos cortos seguidos («JI M ÉN EZ» → «JIMÉNEZ», «FI RM A» → «FIRMA»).
+    // Dentro de una racha, una palabra que ya parece completa (-EZ, -AZ, -OZ, -ES, -AS, -OS) cierra y empieza otra.
+    const out: string[] = [];
+    let run = false;
+    for (const t of tokens) {
+      const current = out[out.length - 1] ?? '';
+      const closes = current.length >= 4 && /(?:ez|az|oz|es|as|os)$/i.test(current);
+      if (short(t) && run && !closes) out[out.length - 1] += t;
+      else out.push(t);
+      run = short(t);
+    }
+    name = out.join(' ');
+  }
+  return name.replace(/[\s·|,;:-]+$/, '').trim().slice(0, 120);
+}
+
+/** El texto trae palabras partidas en trozos de una o dos letras (espaciado roto del PDF). */
+function brokenSpacing(raw: string): boolean {
+  return raw.split(/\s{3,}/)[0]!.trim().split(/\s+/).filter((t) => t.replace(/[^\p{L}]/gu, '').length <= 2 && !PARTICLES.has(t.toLowerCase().replace(/\./g, ''))).length >= 2;
+}
+
 /** Agrupa los fragmentos por página y altura (de arriba abajo) y los une de izquierda a derecha. */
 export function linesFromItems(items: PdfTextItem[]): PdfLine[] {
   const lines: Array<PdfLine & { parts: PdfTextItem[] }> = [];
@@ -62,6 +100,17 @@ export function linesFromItems(items: PdfTextItem[]): PdfLine[] {
     const tolerance = Math.max(2, (item.h ?? 10) * 0.5);
     const line = lines.find((l) => l.page === item.page && Math.abs(l.y - item.y) <= tolerance);
     if (line) line.parts.push(item); else lines.push({ text: '', page: item.page, x: item.x, y: item.y, parts: [item] });
+  }
+  // Segunda pasada (FVR_2026_005): un fragmento que cayó en una línea pero está más cerca de otra (un importe 1 punto
+  // más alto que su etiqueta «IVA 21%») pasa a la más cercana. La altura de cada línea es la de su primer fragmento.
+  for (const line of lines) {
+    for (const item of [...line.parts]) {
+      if (item === line.parts[0]) continue;
+      const tolerance = Math.max(2, (item.h ?? 10) * 0.5);
+      const best = lines.filter((l) => l !== line && l.page === item.page && Math.abs(l.y - item.y) <= tolerance && Math.abs(l.y - item.y) < Math.abs(line.y - item.y))
+        .sort((a, b) => Math.abs(a.y - item.y) - Math.abs(b.y - item.y))[0];
+      if (best) { line.parts.splice(line.parts.indexOf(item), 1); best.parts.push(item); }
+    }
   }
   return lines.map((l) => {
     const parts = l.parts.sort((a, b) => a.x - b.x);
@@ -329,7 +378,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     // En un pie legal («Empresa S.L.U. Avenida…, N.I.F. B-…»), el trozo con la forma jurídica, cortado tras ella.
     const legalPart = first.line.text.split(/\s*[\/|·]\s*|,\s+|\s{3,}/).map((part) => part.match(/^(.{2,80}?\b(?:S\.?\s?L\.?\s?U\.?|S\.?\s?A\.?\s?U\.?|S\.?\s?L\.?|S\.?\s?A\.?|S\.?\s?Coop\.?))(?=\s|$|\.)/i)?.[1]).find((n) => n && /[a-záéíóúñ]{3}/i.test(n));
     const candidate = legalPart ? legalPart.trim() : looksLikeName(before) && !before.includes(first.id) ? before : previous && looksLikeName(previous.text) ? previous.text.trim() : null;
-    if (candidate) { supplierName = candidate.replace(/[\s·|,;-]+$/, '').slice(0, 120); provenance['invoice.supplier_name'] = from(legalPart || candidate === before || !previous ? first.line : previous, legalPart ? 0.7 : 0.5); }
+    if (candidate) { supplierName = cleanSupplierName(candidate); if (brokenSpacing(candidate)) warnings.push(`El nombre del proveedor viene con letras sueltas en el PDF; se ha leído «${supplierName}»: revísalo.`); provenance['invoice.supplier_name'] = from(legalPart || candidate === before || !previous ? first.line : previous, legalPart ? 0.7 : 0.5); }
   }
   // Sin nombre junto al NIF: la razón social de la cabecera (S.L., S.A., S.L.U., S. Coop.…) que no sea la del cliente.
   if (!supplierName || supplierName === options.fallback?.supplier_name) {
@@ -337,7 +386,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     const head = lines.filter((l) => l.page === 1).slice(0, 15).find((l) => legal.test(l.text) && !customerLine(l));
     if (head) {
       const name = head.text.split(/\s{3,}|·|\||\b(?:c\.?i\.?f\.?|n\.?i\.?f\.?)\b/i).find((part) => legal.test(part))?.replace(/[\s:·|,;-]+$/, '').trim();
-      if (name && /[a-záéíóúñ]{3}/i.test(name)) { supplierName = name.slice(0, 120); provenance['invoice.supplier_name'] = from(head, 0.55); }
+      if (name && /[a-záéíóúñ]{3}/i.test(name)) { supplierName = cleanSupplierName(name); provenance['invoice.supplier_name'] = from(head, 0.55); }
     }
   }
   if (!supplierName && options.fallback?.supplier_name) {
@@ -386,9 +435,12 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   // Importes por etiqueta
   const vatByRate = new Map<number, { base: number | null; quota: number; line: PdfLine }>();
   let base: { v: number; line: PdfLine } | null = null;
+  /** La base salió de una etiqueta «Base imponible»: un «Subtotal» o «Neto» (antes de descuentos) ya no la pisa. */
+  let baseLabelled = false;
   let total: { v: number; line: PdfLine } | null = null;
   let withholding: { v: number; rate: number | null; line: PdfLine } | null = null;
-  const amountLines = [...lines.filter((l) => !splitLabelledLine(l).length), ...lines.flatMap(splitLabelledLine), ...tableAmountLines(lines)];
+  const fromTable = tableAmountLines(lines);
+  const amountLines = [...lines.filter((l) => !splitLabelledLine(l).length), ...lines.flatMap(splitLabelledLine), ...fromTable];
   for (const line of amountLines) {
     const t = norm(line.text);
     const amounts = amountsIn(line.text);
@@ -401,7 +453,12 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
       vatByRate.set(rate, { base: amounts.length >= 2 ? amounts[amounts.length - 2]! : null, quota: amounts[amounts.length - 1]!, line });
       continue;
     }
-    if (/\b(?:base imponible|base\b|subtotal|importe neto|total neto|neto)|sin (?:iva|impuestos)|\btotal s\.?\s?i\b/.test(t) && !/total (?:factura|a pagar)/.test(t)) { base = { v: amounts[amounts.length - 1]!, line }; continue; }
+    if (/\b(?:base imponible|base\b|subtotal|importe neto|total neto|neto)|sin (?:iva|impuestos)|\btotal s\.?\s?i\b/.test(t) && !/total (?:factura|a pagar)/.test(t)) {
+      // Solo una «Base imponible» impresa en el documento (no la que se arma con las columnas de la tabla de artículos).
+      const labelled = /\bbase imponible\b/.test(t) && !fromTable.includes(line);
+      if (labelled || !baseLabelled) { base = { v: amounts[amounts.length - 1]!, line }; baseLabelled ||= labelled; }
+      continue;
+    }
     if ((/\btotal\b/.test(t) || /(?:incl\.?|incluido)\s*(?:el\s+)?iva|\bt\.?t\.?i\b/.test(t)) && !/\b(?:sub ?total|total (?:iva|base|neto|cuota|bruto))\b/.test(t)) {
       const v = amounts[amounts.length - 1]!;
       if (!total || v >= total.v) total = { v, line };
