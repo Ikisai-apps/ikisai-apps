@@ -1328,6 +1328,12 @@ Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el ow
 - Foto, escaneado o lectura incompleta: «Pendiente de datos», con el documento y el proveedor provisional.
 - Funciona sin red: los documentos y los lotes esperan en la cola del dispositivo.
 
+**Compartir con Finance desde otra app** (Gmail, WhatsApp, Archivos…, en el móvil con la PWA instalada):
+- El `share_target` del manifest acepta PDF e imágenes, además del JSON o el texto de la IA.
+- El service worker guarda las facturas recibidas (hasta 20, de 15 MB como mucho cada una) en la caché `ikisai-invoices-share` y abre `#/facturas?compartido=docs`.
+- La app las recoge una vez (`takeSharedDocuments`), las borra de la caché y las sube como «Subir varias», sin más pasos.
+- Si solo llega texto (el resultado de la IA), sigue el camino de siempre: `?compartido=1` abre la importación.
+
 **Modelo (0224):**
 - `invoices.invoices.drive_file_id` (único) y `drive_url`.
 - Tablas internas sin roles: `drive_state`, `drive_imports` y `drive_runs`.

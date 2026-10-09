@@ -28,7 +28,7 @@ const UNIDENTIFIED = { name: 'Sin identificar (Drive)', slug: 'sin_identificar' 
 type Outcome = 'leida' | 'sin_leer' | 'duplicada' | 'error';
 const OUTCOME_LABELS: Record<Outcome, string> = { leida: 'Leída', sin_leer: 'Sin leer: complétala después', duplicada: 'Duplicada: no se sube', error: 'Error' };
 
-export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirror>, onDone: () => void): void {
+export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirror>, onDone: () => void, shared: File[] = []): void {
   const input = el('input', { 'data-feedback-id': 'invoices.facturas.lote.archivos', 'data-feedback-label': 'Facturas', type: 'file', id: 'batchFiles', accept: ACCEPT_ATTR, multiple: true });
   const list = el('ol', { class: 'batch-list', id: 'batchList', 'data-feedback-ignore': '' });
   const summary = el('p', { class: 'hint', id: 'batchSummary', role: 'status' }, 'Elige todas las facturas a la vez (PDF o fotos). Cada una se convierte en una factura.');
@@ -36,7 +36,7 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
   input.addEventListener('change', () => { start.disabled = !(input.files && input.files.length); replace(summary, `${input.files?.length ?? 0} archivo${input.files?.length === 1 ? '' : 's'} elegido${input.files?.length === 1 ? '' : 's'}.`); });
 
   async function run(): Promise<void> {
-    const files = Array.from(input.files ?? []);
+    const files = shared.length ? shared : Array.from(input.files ?? []);
     if (!files.length) return;
     start.disabled = true; input.disabled = true;
     const counts: Record<Outcome, number> = { leida: 0, sin_leer: 0, duplicada: 0, error: 0 };
@@ -63,6 +63,12 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
     foot: [el('button', { 'data-feedback-id': 'invoices.facturas.lote.cerrar', 'data-feedback-label': 'Cerrar', class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar'), start],
     initialFocus: input,
   });
+  // Compartidas desde otra app (Gmail, WhatsApp…): se suben sin más pasos.
+  if (shared.length) {
+    input.hidden = true;
+    replace(summary, `${shared.length} factura${shared.length === 1 ? '' : 's'} compartida${shared.length === 1 ? '' : 's'} con Finance.`);
+    void run();
+  }
 }
 
 async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise<{ outcome: Outcome; detail: string }> {

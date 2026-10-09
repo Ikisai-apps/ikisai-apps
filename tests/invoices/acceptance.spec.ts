@@ -1688,6 +1688,34 @@ test('Periodo de declaración (0228): una factura de un trimestre anterior pregu
   }
 });
 
+test('Compartir facturas con Finance desde otra app (PDF): el service worker las recibe y la app las sube como «Subir varias»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    // El service worker tiene que controlar la página (como la PWA instalada)
+    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker?.controller), { timeout: 30_000 }).toBe(true);
+    const pdf = [...invoiceTextPdf('COMP-0001')];
+    const status = await page.evaluate(async (bytes) => {
+      const form = new FormData();
+      form.append('files', new File([new Uint8Array(bytes)], 'Factura compartida.pdf', { type: 'application/pdf' }));
+      const response = await fetch('/share-target', { method: 'POST', body: form, redirect: 'manual' });
+      return response.type;
+    }, pdf);
+    expect(status).toBe('opaqueredirect');
+    await page.goto(`${baseURL}/#/facturas?compartido=docs`);
+    const sheet = page.getByRole('dialog', { name: 'Subir varias facturas' });
+    await expect(sheet.locator('#batchSummary')).toContainText('1 leída', { timeout: 60_000 });
+    await synced(page);
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'COMP-0001'));
+    expect(row.status).toBe('pendiente_revision');
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);
