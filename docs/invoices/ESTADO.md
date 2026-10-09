@@ -110,6 +110,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Aviso de Drive en Tasks › Gestiones: uno al día con las facturas de Drive por revisar, y otro si Drive se bloquea (origen `invoices`; la cuenta `drive` es editora en Tasks, #419). Funciona en cuanto Tasks publique el origen.
 - Lectura afinada con las dos primeras facturas reales (PDF leídos en local y borrados, sin copiar su contenido): ticket de cadena de tiendas y factura de transporte salen enteras. «Rellenar a mano» y «Leer con IA» en la ficha (la primera de cada proveedor con IA; al validar, la plantilla); «Volver a leer» deja rastro en el registro de Drive.
 - Relectura automática por versión del lector (0229): el tick vuelve a leer, con el límite de 5, los borradores de Drive pendientes leídos con un lector anterior; rastro «en curso» antes de cada PDF y error visible si «Volver a leer» falla.
+- Lectura parcial (fase 0): el extractor conserva lo encontrado aunque falten campos; Drive y «Volver a leer» rellenan lo vacío del borrador y guardan el resumen en `import_meta.reading`, con mensajes honestos y sin pisar lo escrito a mano.
 
 ## En curso
 

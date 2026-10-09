@@ -16,9 +16,32 @@ export interface PdfLine { text: string; page: number; x: number; y: number; cel
 export type ProvenanceMethod = 'pdf_text' | 'supplier_template' | 'external_ai' | 'manual' | 'ocr';
 export interface FieldProvenance { method: ProvenanceMethod; text: string | null; page: number | null; x: number | null; y: number | null; confidence: number }
 
+/**
+ * Lo que el lector ha encontrado aunque no llegue a una factura completa (fase 0 de REVISION_LECTOR, 9-10-2026): un PDF
+ * con texto nunca termina sin información. Los importes, en euros; `null` si no se ha identificado.
+ */
+export interface PartialInvoice {
+  supplier_name: string | null;
+  supplier_tax_id: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  base: number | null;
+  vat: Array<{ rate: number; base: number | null; quota: number }>;
+  withholding: { amount: number; rate: number | null } | null;
+  total: number | null;
+  iban: string | null;
+}
+/** `no_text`: escaneado o foto · `partial`: texto leído, faltan datos · `sufficient`: hay un `ikisai.invoice.v1` completo. */
+export type ReadLevel = 'no_text' | 'partial' | 'sufficient';
+export interface ReadStats { pages: number; items: number; chars: number }
+
 export interface PdfExtraction {
   /** Hay texto suficiente en el PDF; si no, es un escaneado o una foto. */
   hasText: boolean;
+  read: ReadLevel;
+  /** Lo encontrado, también cuando falta algo esencial. */
+  found: PartialInvoice;
+  stats: ReadStats;
   /** Fecha e importes leídos: el documento sirve para la vista previa. */
   ok: boolean;
   document: ImportDocument | null;
@@ -269,7 +292,8 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   const warnings: string[] = [];
   const missing: string[] = [];
   const from = (line: PdfLine, confidence: number): FieldProvenance => ({ method: 'pdf_text', text: line.text, page: line.page, x: Math.round(line.x), y: Math.round(line.y), confidence });
-  if (textChars < 40) return { hasText: false, ok: false, document: null, provenance, missing: ['texto'], warnings: ['El PDF no tiene texto (escaneado o foto).'], iban: null };
+  const stats = readStats(items);
+  if (textChars < 40) return { hasText: false, read: 'no_text', found: emptyPartial(), stats, ok: false, document: null, provenance, missing: ['texto'], warnings: ['El PDF no tiene texto (escaneado o foto).'], iban: null };
 
   // Proveedor: un NIF válido que coincida con un proveedor conocido; si no, el primero que no sea propio.
   const own = new Set((options.ownTaxIds ?? []).map((t) => validSpanishTaxId(t) ?? t.toUpperCase()));
@@ -391,6 +415,8 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   const w = withholding ? toCents(withholding.v) : 0;
   let baseCents = base ? toCents(base.v) : null;
   if (baseCents === null && vatByRate.size && [...vatByRate.values()].every((v) => v.base !== null)) baseCents = [...vatByRate.values()].reduce((a, v) => a + toCents(v.base!), 0);
+  // Deducida del total: vale para la factura completa, pero no es una base «encontrada» si no hay ningún IVA.
+  const baseFromTotalOnly = baseCents === null && !!total && !vatByRate.size;
   if (baseCents === null && total) baseCents = toCents(total.v) - vatTotal + w;
   if (base) provenance['document_totals.base'] = from(base.line, 0.85);
   else if (baseCents !== null) provenance['document_totals.base'] = { method: 'pdf_text', text: 'Calculada desde los tipos de IVA o el total', page: null, x: null, y: null, confidence: 0.5 };
@@ -408,8 +434,20 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   let iban: string | null = null;
   for (const line of lines) { const m = line.text.match(/\bES\d{2}(?:\s?\d{4}){5}\b/i); if (m && validIban(m[0])) { iban = validIban(m[0]); break; } }
 
+  // Lo encontrado, con o sin factura completa. El nombre solo si sale del documento (no el de la factura pendiente).
+  const nameMethod = provenance['invoice.supplier_name'];
+  const found: PartialInvoice = {
+    supplier_name: nameMethod && nameMethod.method !== 'manual' ? supplierName : null,
+    supplier_tax_id: provenance['invoice.supplier_tax_id'] ? supplierTaxId : null,
+    invoice_number: invoiceNumber, invoice_date: invoiceDate,
+    base: baseCents === null || baseFromTotalOnly ? null : fromCents(baseCents),
+    vat: [...vatByRate.entries()].sort((a, b) => a[0] - b[0]).map(([rate, v]) => ({ rate, base: v.base, quota: v.quota })),
+    withholding: withholding ? { amount: withholding.v, rate: withholding.rate } : null,
+    total: totalCents === null ? null : fromCents(totalCents),
+    iban,
+  };
   if (missing.includes('fecha') || missing.includes('importes')) {
-    return { hasText: true, ok: false, document: null, provenance, missing, warnings, iban };
+    return { hasText: true, read: 'partial', found, stats, ok: false, document: null, provenance, missing, warnings, iban };
   }
   // Líneas: una por tipo de IVA con su base (o una sola con la base si no hay desglose).
   const rates = [...vatByRate.entries()].sort((a, b) => a[0] - b[0]);
@@ -433,8 +471,71 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   };
   if (!options.fallback?.object) provenance['invoice.object'] = { method: 'manual', text: 'Objeto por defecto: escríbelo en la vista previa', page: null, x: null, y: null, confidence: 0 };
   const validation = validateImportDocument(document);
-  if (!validation.ok) return { hasText: true, ok: false, document: null, provenance, missing: ['formato'], warnings: [...warnings, ...validation.errors.map((e) => `${e.path}: ${e.reason}`)], iban };
-  return { hasText: true, ok: true, document: validation.document, provenance, missing, warnings, iban };
+  if (!validation.ok) return { hasText: true, read: 'partial', found, stats, ok: false, document: null, provenance, missing: ['formato'], warnings: [...warnings, ...validation.errors.map((e) => `${e.path}: ${e.reason}`)], iban };
+  return { hasText: true, read: 'sufficient', found, stats, ok: true, document: validation.document, provenance, missing, warnings, iban };
+}
+
+// ---------------------------------------------------------------------------
+// Lectura parcial (fase 0, 9-10-2026): estadísticas, texto legible y mensaje honesto
+// ---------------------------------------------------------------------------
+export function emptyPartial(): PartialInvoice {
+  return { supplier_name: null, supplier_tax_id: null, invoice_number: null, invoice_date: null, base: null, vat: [], withholding: null, total: null, iban: null };
+}
+
+/** Páginas con texto, fragmentos y caracteres (sin espacios): el diagnóstico sin contenido. */
+export function readStats(items: PdfTextItem[]): ReadStats {
+  return { pages: items.reduce((n, it) => Math.max(n, it.page), 0), items: items.length, chars: items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0) };
+}
+
+/** El texto leído, legible: por líneas (como las ve el lector), con una marca por página. Para verlo y copiarlo. */
+export function readingText(items: PdfTextItem[], maxChars = 60_000): string {
+  const lines = linesFromItems(items);
+  const pages = new Set(lines.map((l) => l.page)).size;
+  const out: string[] = [];
+  let page = 0;
+  for (const line of lines) {
+    if (line.page !== page) { page = line.page; if (pages > 1) out.push(`${out.length ? '\n' : ''}— Página ${page} —`); }
+    out.push(line.text);
+  }
+  const text = out.join('\n');
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n…` : text;
+}
+
+const joinEs = (parts: string[]) => (parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`);
+
+/** Qué falta, en palabras («la fecha», «el IVA»…), a partir de lo encontrado. */
+export function missingLabels(found: PartialInvoice): string[] {
+  const out: string[] = [];
+  if (!found.supplier_name && !found.supplier_tax_id) out.push('el proveedor');
+  if (!found.invoice_date) out.push('la fecha');
+  if (found.base === null) out.push('la base');
+  if (!found.vat.length && found.base === null) out.push('el IVA');
+  if (found.total === null) out.push('el total');
+  return out;
+}
+
+/** Qué se ha encontrado, en palabras («proveedor, número y total»). */
+export function foundLabels(found: PartialInvoice): string[] {
+  const out: string[] = [];
+  if (found.supplier_name || found.supplier_tax_id) out.push('proveedor');
+  if (found.invoice_number) out.push('número');
+  if (found.invoice_date) out.push('fecha');
+  if (found.base !== null) out.push('base');
+  if (found.vat.length) out.push('IVA');
+  if (found.total !== null) out.push('total');
+  return out;
+}
+
+/** Mensaje honesto para la persona: nunca «sin texto» si lo hay. */
+export function readingMessage(x: Pick<PdfExtraction, 'read' | 'found' | 'stats' | 'missing'>): string {
+  if (x.read === 'no_text') return 'Este PDF no contiene texto legible. Parece un documento escaneado o una foto: usa «Leer con IA» o complétalo a mano.';
+  if (x.read === 'sufficient') return 'Lectura completa. Revisa los datos antes de validar.';
+  const got = foundLabels(x.found);
+  const lack = missingLabels(x.found);
+  const shape = `${x.stats.pages} pág., ${x.stats.chars} caracteres`;
+  if (x.missing.includes('formato') && !lack.length) return `He leído el PDF (${shape}) y encontrado ${joinEs(got)}, pero los datos no cuadran entre sí: revísalos.`;
+  if (!got.length) return `He leído el texto del PDF (${shape}), pero no he identificado ningún dato de la factura.`;
+  return `He leído el PDF (${shape}) y encontrado ${joinEs(got)}, pero no he identificado ${joinEs(lack.length ? lack : ['algún dato'])}.`;
 }
 
 /** Duplicado blando: misma fecha y total (y mismo proveedor si se conoce) que otra factura no anulada. */

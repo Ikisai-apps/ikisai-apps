@@ -226,6 +226,8 @@ async function verifiedFile(supabase: Supabase, ctx: RequestContext, fileId: unk
   return { mime_type: file.mime, size_bytes: Number(file.size), sha256: file.sha256 };
 }
 
+const isReadingMeta = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { reading?: unknown }).reading === 'object' && (v as { reading?: unknown }).reading !== null;
+
 export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
   return async function beforeCommit(operations: Operation[], ctx: RequestContext): Promise<void> {
     let entityRow: { row: Record<string, unknown> | null } | null = null;
@@ -261,7 +263,10 @@ export function createInvoicesHooks(supabase: Supabase, targets: Targets) {
       }
       const fields = op.fields ?? {};
       if (op.op === 'insert' || op.op === 'update') {
-        try { validateRowFields(op.table, op.op, fields); } catch (error) { throwDomain(error, index); }
+        // La lectura parcial (fase 0, 9-10-2026): solo la cuenta de sistema de Drive escribe `import_meta.reading` en un
+        // borrador. Las sesiones de personas tienen un uuid como id de sesión; `service:drive` no se puede suplantar.
+        const reading = ctx.user.sessionId === 'service:drive' && op.table === TABLES.invoices && isReadingMeta(fields.import_meta);
+        try { validateRowFields(op.table, op.op, fields, { allowImportMeta: reading }); } catch (error) { throwDomain(error, index); }
       }
       if (op.table === TABLES.invoices) {
         if (op.op === 'delete') fail(422, 'INVOICE_NOT_DELETABLE', domainMessage('INVOICE_NOT_DELETABLE'), { index, id: op.id });
