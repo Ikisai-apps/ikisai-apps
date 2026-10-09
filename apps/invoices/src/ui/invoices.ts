@@ -12,7 +12,7 @@ import {
 } from '@ikisai/domain-invoices';
 import {
   ALLOCATIONS, CATEGORIES, CATEGORY_LABELS, INVOICES, INVOICE_FILES, INVOICE_LINES, SUPPLIERS, TAX_LINES, categoryLabel, describeError,
-  type LocalAllocation, type LocalInvoice, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
+  type LocalAllocation, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from '../app/client.ts';
 import {
   DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, loadMirror, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
@@ -28,6 +28,7 @@ import { readPdfItems } from '../app/pdf-text.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
+import { openManualEntry } from './manual.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -289,6 +290,23 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 
   // --- Acciones ------------------------------------------------------------
   const actions: HTMLElement[] = [];
+  if (editable && invoice.status === 'pendiente_datos') {
+    // Flujo recomendado (usuario, 9-10-2026): la primera factura de cada proveedor, con IA; al validarla se aprende la
+    // plantilla y las siguientes se leen solas. Con plantilla, «Leer PDF» (en el bloque del documento) basta.
+    const supplierRow = mirror.supplierById.get(invoice.supplier_id);
+    const noTemplate = !supplierRow || supplierRow.slug === 'sin_identificar' || !mirror.templates.some((t) => t.supplier_id === invoice.supplier_id && t.status !== 'retirada');
+    const original = files.filter((f) => f.kind === 'original').sort((a, b) => a.page_order - b.page_order)[0];
+    if (original) actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.leer_ia', 'data-feedback-label': 'Leer con IA', class: noTemplate ? 'primary' : 'softbtn', type: 'button', id: 'readWithAi',
+      onclick: () => openReadWithAi(ctx, invoice, original) }, icon('upload', 18), 'Leer con IA'));
+    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.rellenar', 'data-feedback-label': 'Rellenar a mano', class: 'softbtn', type: 'button', id: 'fillManually',
+      onclick: () => openManualEntry(ctx, mirror, invoice, async (invoiceId) => {
+        const fresh = await loadMirror(client);
+        const current = fresh.invoices.find((i) => i.id === invoiceId);
+        if (!current) return;
+        const ok = await commitSafely(client, await validateWithLearning(ctx, fresh, current), 'Factura validada. Finance aprende este proveedor para la próxima.');
+        if (ok) void openInvoice(ctx, invoiceId);
+      }) }, icon('edit', 18), 'Rellenar a mano'));
+  }
   if (editable && pendingState) {
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error'); } }, icon('check', 18), 'Validar'));
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.importar_json', 'data-feedback-label': 'Importar JSON', class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
@@ -533,6 +551,39 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
 function periodOf(isoDate: string): string {
   const year = isoDate.slice(0, 4); const month = Number(isoDate.slice(5, 7)) || 1;
   return `${year}T${Math.ceil(month / 3)}`;
+}
+
+/** Mensaje para una sesión de Claude Code con la MCP de Finance (§15.1). */
+const CLAUDE_MESSAGE = 'Lee las facturas pendientes de Drive en Ikisai Finance y complétalas. Usa la herramienta invoices_pending_drafts para ver cuáles son; descarga cada PDF de su enlace, léelo con cuidado y llama a invoices_import_json con su invoice_id, el JSON ikisai.invoice.v1 y la procedencia de cada dato (provenance con confidence, text y page). Si un dato no se lee con seguridad, déjalo a null y explícalo en extraction_notes. Si es una factura rectificativa o un abono, dilo en extraction_notes con el número de la factura que rectifica. No valides nada. Al terminar, dime cuántas has completado y cuáles te han dado problemas.';
+
+/**
+ * «Leer con IA» (flujo recomendado para la primera factura de un proveedor): ChatGPT en el móvil (comparte el PDF y las
+ * instrucciones; el JSON vuelve compartido o pegado) o una sesión de Claude en el ordenador (el mensaje, listo para copiar).
+ */
+function openReadWithAi(ctx: ViewContext, invoice: LocalInvoice, original: LocalInvoiceFile): void {
+  const message = el('textarea', { 'data-feedback-ignore': '', readonly: true, rows: '5', id: 'claudeMessage', style: 'width:100%' });
+  message.value = CLAUDE_MESSAGE;
+  openSheet({
+    title: 'Leer con IA',
+    meta: 'La primera factura de cada proveedor se lee con IA; al validarla, Finance aprende la plantilla y las siguientes se leen solas.',
+    body: el('div', { 'data-feedback-id': 'invoices.facturas.leer_ia', 'data-feedback-label': 'Leer con IA' },
+      el('h3', null, 'En el móvil: con ChatGPT'),
+      el('p', null, '1. Pulsa «Compartir con ChatGPT» y elige ChatGPT: le llegan el PDF y las instrucciones. 2. Cuando responda, comparte su respuesta con Ikisai Finance (o cópiala y usa «Pegar JSON»). 3. Revisa y valida.'),
+      el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.leer_ia.chatgpt', 'data-feedback-label': 'Compartir con ChatGPT', class: 'primary', type: 'button', id: 'shareChatgpt', onclick: async () => {
+        if (!navigator.onLine) { toast('Para compartir el documento hace falta conexión (está en la nube).'); return; }
+        try {
+          const file = await fetchStoredDocument(ctx.client, original.file_id, original.normalized_filename, original.mime_type);
+          const how = await shareWithAi(file, { filename: original.normalized_filename, sha256: original.sha256 });
+          if (how === 'files' || how === 'text') toast('Cuando ChatGPT responda, comparte el resultado con Ikisai Finance o pégalo con «Pegar JSON».');
+        } catch (error) { toast(describeError(error)); }
+      } }, 'Compartir con ChatGPT'),
+        el('button', { 'data-feedback-id': 'invoices.facturas.leer_ia.pegar', 'data-feedback-label': 'Pegar JSON', class: 'softbtn', type: 'button', onclick: async () => { await closeSheet(true); const m = await loadMirror(ctx.client); openImport(ctx, m, m.invoices.find((i) => i.id === invoice.id) ?? invoice); } }, 'Pegar JSON')),
+      el('h3', null, 'En el ordenador: con Claude'),
+      el('p', null, 'Con Claude Code conectado (Inicio › «Leer con Claude» › «Conectar Claude»), pega este mensaje: completa esta y las demás pendientes de Drive.'),
+      message,
+      el('p', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.leer_ia.claude', 'data-feedback-label': 'Copiar mensaje para Claude', class: 'softbtn', type: 'button', onclick: () => void navigator.clipboard.writeText(CLAUDE_MESSAGE).then(() => toast('Mensaje copiado.')) }, 'Copiar mensaje para Claude'))),
+    foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')],
+  });
 }
 
 /** «2026T3» → «3T 2026». */

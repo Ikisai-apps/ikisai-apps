@@ -1716,6 +1716,46 @@ test('Compartir facturas con Finance desde otra app (PDF): el service worker las
   }
 });
 
+test('«Rellenar a mano» (9-10-2026): proveedor nuevo por NIF, base al 21 %, cuota calculada, total y cuadre en vivo', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    await sheet.getByLabel('Objeto').fill('para rellenar a mano');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'escaneada.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([textPdf([]), Buffer.from('% a mano')]) });
+    await page.locator('#saveInvoice').click();
+    const f = ficha(page);
+    await expect(f.locator('#fillManually')).toBeVisible({ timeout: 20_000 });
+    await expect(f.locator('#readWithAi')).toHaveClass(/primary/);
+    await f.locator('#fillManually').click();
+    const manual = page.getByRole('dialog', { name: 'Rellenar a mano' });
+    await manual.locator('#manualTaxId').fill('A12345674');
+    await expect(manual.locator('#manualSupplierNote')).toContainText('Proveedor nuevo');
+    await manual.locator('#manualName').fill('Suministros A Mano SA');
+    await manual.locator('#manualNumber').fill('MAN-001');
+    await manual.locator('#manualDate').fill('2026-09-15');
+    await manual.getByLabel('Base imponible 1').fill('100');
+    await manual.locator('#manualTotal').fill('121');
+    await expect(manual.locator('#manualCuadre')).toContainText('cuadra con el total');
+    await manual.locator('#manualCategory').selectOption('compras');
+    await manual.locator('#manualSave').click();
+    await expect(manual).toBeHidden({ timeout: 20_000 });
+    await synced(page);
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'MAN-001'));
+    expect(row).toMatchObject({ invoice_date: '2026-09-15', source_total: 121, expense_category: 'compras' });
+    expect(api.rows('invoices.suppliers').find((s) => s.id === row.supplier_id)).toMatchObject({ name: 'Suministros A Mano SA', tax_id: 'A12345674' });
+    await expect.poll(() => api.rows('invoices.tax_lines').filter((t) => t.invoice_id === row.id && !t.deleted_at).map((t) => [t.rate, t.taxable_base, t.amount]), { timeout: 20_000 }).toEqual([[21, 100, 21]]);
+  } finally {
+    await context.close();
+  }
+});
+
 /** Caso real (FB_2026_016 y 017): Android, 484 px de ancho, hoja «Nueva factura» abierta y el teclado bajando la altura a 686. */
 async function composeInNewInvoiceWithKeyboard(page: Page): Promise<void> {
   await login(page);

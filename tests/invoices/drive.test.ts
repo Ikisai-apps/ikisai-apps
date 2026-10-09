@@ -279,4 +279,7 @@ test('«Volver a leer las pendientes» (owner): un borrador de Drive que no se l
   assert.equal(after[0]!.status, 'pendiente_revision');
   assert.equal(after[0]!.invoice_number, 'RE-2026/0001');
   assert.equal(after[0]!.import_meta.origin, 'pdf_text');
+  // Queda rastro en el registro de Drive (lo ve el owner en Inicio)
+  const st = (await own.call('/api/v1/read/invoices.drive_status', { body: {} })).data;
+  assert.ok(st.files.some((f: any) => /^Relectura: leída/.test(f.reason ?? '')), JSON.stringify(st.files));
 });

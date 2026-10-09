@@ -837,7 +837,7 @@ function createDriveRunner(supabase: Supabase, storage: StorageAccess, hooks: Ap
   // Un tick a la vez por instancia: «Buscar ahora» mientras corre el del planificador espera al mismo.
   return {
     run: () => (running ??= tick().finally(() => { running = null; })),
-    reread: () => { const d = tickDeps(); return rereadDriveDrafts({ rows: d.rows, commit: d.commit, readPdf: d.readPdf, saveText: d.saveText, fileBytes }); },
+    reread: () => { const d = tickDeps(); return rereadDriveDrafts({ rows: d.rows, commit: d.commit, readPdf: d.readPdf, saveText: d.saveText, invoke: d.invoke, fileBytes }); },
   };
 }
 

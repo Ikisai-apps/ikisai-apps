@@ -65,3 +65,47 @@ test('pie en tabla con dos tipos de IVA (una fila por tipo) y retención', async
   assert.equal(d.document_totals.total, 161);
   assert.equal(d.document_totals.vat, 26);
 });
+
+test('ticket de cadena de tiendas: NIF del cliente arriba, totales en una celda («Total SI · Total IVA · Total TII»), fila de pago y CIF en el pie legal', async () => {
+  const r = await read([
+    ['FACTURA 123-0001-000001', 300, 800],
+    ['Tienda Ejemplo Ciudad', 40, 786], ['Autonomo', 300, 786],
+    ['Número NIF:', 40, 760], ['11111111H', 160, 760],
+    ['Fecha de venta:', 40, 746], ['07/07/2026', 160, 746],
+    ['Modos de pago', 40, 600], ['Tasa IVA/IGIC/IPSI', 200, 600], ['Total SI (EUR) Total IVA/IGIC/IPSI Total TII (EUR)', 300, 600],
+    ['TARJ.BANC. (EUR)', 40, 586], ['121,00', 150, 586], ['ANTICIPO 21.00%', 220, 586], ['100,00', 330, 586], ['21,00', 410, 586], ['121,00', 490, 586],
+    ['EUR', 40, 572], ['100,00', 330, 572], ['21,00', 410, 572], ['121,00', 490, 572],
+    ['Pendiente de pago 0,00', 40, 556],
+    ['Comercio Ejemplo España S.L.U. Avenida Inventada 2, 28000 Madrid N.I.F.B-12.345.674. Inscrita en el', 40, 520],
+    ['Registro Mercantil de Madrid. Tomo 1, Folio 1', 40, 506],
+  ]);
+  assert.equal(r.ok, true, JSON.stringify(r.missing));
+  const d = r.document!;
+  assert.equal(d.invoice.supplier_tax_id, 'B12345674', 'el CIF de la empresa, no el NIF del cliente');
+  assert.equal(d.invoice.supplier_name, 'Comercio Ejemplo España S.L.U.');
+  assert.equal(d.invoice.invoice_number, '123-0001-000001');
+  assert.equal(d.invoice.invoice_date, '2026-07-07');
+  assert.deepEqual([d.document_totals.base, d.document_totals.vat, d.document_totals.total], [100, 21, 121]);
+});
+
+test('factura de transporte: tabla de líneas con fechas (se suman las filas), «Precio sin IVA» y «Precio Incl. IVA», CIF de la empresa en el pie', async () => {
+  const r = await read([
+    ['Número de factura', 40, 800], ['V_00000000000001', 160, 800], ['Razón social', 300, 800], ['Persona Ejemplo', 400, 800],
+    ['Localizador de reserva', 40, 786], ['ABC123', 160, 786], ['CIF', 300, 786], ['11111111H', 400, 786],
+    ['Fecha y hora de reserva', 40, 772], ['2026-05-20 22:41', 160, 772],
+    ['Base imponible', 160, 700], ['Descuento', 240, 700], ['% IVA', 310, 700], ['IVA', 370, 700], ['Precio Incl. IVA', 430, 700],
+    ['Inicial', 40, 686], ['28-05-2026', 90, 686], ['50,00', 160, 686], ['0.00', 240, 686], ['10,00', 310, 686], ['5,00', 370, 686], ['55,00', 430, 686],
+    ['Inicial', 40, 672], ['31-05-2026', 90, 672], ['60,00', 160, 672], ['0.00', 240, 672], ['10,00', 310, 672], ['6,00', 370, 672], ['66,00', 430, 672],
+    ['% IVA', 40, 640], ['11,00', 160, 640],
+    ['Precio sin IVA', 40, 626], ['110,00', 160, 626],
+    ['Precio Incl. IVA', 40, 612], ['121,00', 160, 612],
+    ['Calle Inventada 2. Valencia 46000 / Transportes Ejemplo SA / CIF A12345674', 40, 560],
+  ]);
+  assert.equal(r.ok, true, JSON.stringify(r.missing));
+  const d = r.document!;
+  assert.equal(d.invoice.supplier_tax_id, 'A12345674');
+  assert.equal(d.invoice.supplier_name, 'Transportes Ejemplo SA');
+  assert.equal(d.invoice.invoice_number, 'V_00000000000001');
+  assert.deepEqual([d.document_totals.base, d.document_totals.vat, d.document_totals.total], [110, 11, 121]);
+  assert.deepEqual(d.taxes.map((t) => [t.rate, t.taxable_base, t.amount]), [[10, 110, 11]]);
+});

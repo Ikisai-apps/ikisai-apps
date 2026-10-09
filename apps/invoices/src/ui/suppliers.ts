@@ -206,7 +206,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
   /** Plantillas aprendidas de sus facturas confirmadas (API.md §6.9): versión, estado, evidencia y qué lee. */
   function templatesBlock(row: SupplierRow): HTMLElement | null {
     const mine = templates.filter((t) => t.supplier_id === row.id).sort((a, b) => b.version - a.version);
-    if (!mine.length) return el('p', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'hint', id: 'supplierTemplates' }, 'Sin plantillas todavía: se aprenden al validar sus facturas con PDF.');
+    if (!mine.length) return el('p', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'hint', id: 'supplierTemplates' }, 'Sin plantilla todavía: lee la primera factura con IA (o rellénala a mano) y valídala; Finance aprende dónde están los datos y las siguientes se leen solas.');
     const isOwner = client.bootstrap()?.membership.role === 'owner';
     const STATUS: Record<string, string> = { aprendiendo: 'Aprendiendo', activa: 'Activa', retirada: 'Retirada' };
     const FIELD: Record<string, string> = { invoice_number: 'número', invoice_date: 'fecha', supplier_tax_id: 'NIF', base: 'base', total: 'total', withholding: 'retención' };
@@ -215,6 +215,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
         const reads = Object.entries(t.fields).filter(([, r]) => !r.retired).map(([k]) => (k.startsWith('vat:') ? `IVA ${k.slice(4)} %` : FIELD[k] ?? k));
         return el('li', { class: 'tpl-row', dataset: { version: String(t.version) } },
           el('strong', null, `v${t.version} · ${STATUS[t.status] ?? t.status}`),
+          el('span', { class: 'hint' }, ` · aprendida el ${new Date(t.created_at).toLocaleDateString('es-ES')}`),
           el('span', { class: 'hint' }, ` ${t.confirmations} factura${t.confirmations === 1 ? '' : 's'} confirmada${t.confirmations === 1 ? '' : 's'} · ${t.full_hits} sin correcciones · lee ${reads.join(', ') || 'nada todavía'}`),
           isOwner && t.status !== 'retirada' ? el('button', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas.retirar', 'data-feedback-label': 'Retirar plantilla', class: 'linkbtn', type: 'button', 'aria-label': `Retirar plantilla v${t.version}`, onclick: async () => {
             const ok = await confirmDialog({ title: `¿Retirar la plantilla v${t.version}?`, text: 'Deja de usarse al leer sus PDF. Se conserva y las siguientes confirmaciones pueden crear otra.', confirmLabel: 'Retirar', danger: true });
