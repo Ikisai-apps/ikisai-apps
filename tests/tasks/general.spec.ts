@@ -57,7 +57,7 @@ test('vista previa: el grupo repetido y los parecidos; fusionar crea la General 
   expect((await server.rows('tasks.tasks')).find((t) => t.id === T).owner_label_id).toBe(general.id);
   // En la app, la General sale en las dos áreas, marcada.
   for (const area of [A, B]) expect(await page.evaluate(([a, g]) => state.tabs.find((t: any) => t.id === a).labels.find((l: any) => l.id === g)?.general, [area, general.id])).toBe(true);
-  await expect(page.locator('#generalMergeOpen')).toHaveCount(0);
+  await expect(page.locator('#generalMergeOpen')).toContainText('(0)');
 });
 
 test('después, la app guarda con lo General: renombrarla desde un área la cambia una sola vez', async () => {
