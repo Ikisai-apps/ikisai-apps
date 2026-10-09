@@ -124,6 +124,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - Fase 3 del lector: la IA recibe lo que Finance ya leyó (contrato de ChatGPT y `invoices_pending_drafts` de Claude) y completa solo lo que falta.
 - Incidencia del usuario (9-10-2026): «Validar» comprueba antes de enviar y dice qué falta (lleva al campo); un rechazo del servidor se explica y se descarta solo; la categoría con que se valida pasa a ser la del proveedor si no tenía.
+- Incidencia del usuario (tras #449): «Validar» espera a que se confirmen los cambios pendientes y no choca consigo mismo; conflictos propios de validar se reintentan solos; pantalla de conflictos con la tarjeta del kit 0.28.0 (nombre legible y quién lo cambió).
 
 ## En curso
 

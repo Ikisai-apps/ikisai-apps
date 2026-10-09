@@ -4,7 +4,7 @@ import { describeError } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountSuppliers } from './suppliers.ts';
 import { mountConflicts } from './conflicts.ts';
-import { mountInvoices } from './invoices.ts';
+import { mountInvoices, startValidationConflictWatcher } from './invoices.ts';
 import { mountPurchases } from './purchases.ts';
 import { mountAccounting } from './accounting.ts';
 import { fb } from './feedback.ts';
@@ -186,6 +186,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const offTextQueue = startTextQueue(client);
   // Un «Validar» rechazado se explica y se descarta solo (incidencia del usuario, 9-10-2026).
   const offRejections = startRejectionWatcher(client);
+  // Un «Validar» que choca con un cambio propio se reintenta solo (incidencia del usuario, 9-10-2026).
+  const offValidationConflicts = startValidationConflictWatcher({ ...ctx, main, navigate, logout });
   const offStatus = client.onStatus((status) => {
     if (!client.session()) {
       ctx.onLogout();
@@ -206,6 +208,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     offSessionEnd();
     offTextQueue();
     offRejections();
+    offValidationConflicts();
     if (!client.session()) clearPendingTexts();
     feedback.destroy();
     review.destroy();

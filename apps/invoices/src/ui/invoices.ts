@@ -272,6 +272,17 @@ export async function openInvoice(ctx: ViewContext, id: string): Promise<void> {
   setOpen(id);
 }
 
+/** Lo que falta para validar una factura, con lo que hay en el espejo. */
+function missingOf(mirror: Mirror, invoice: LocalInvoice): MissingKey[] {
+  const lines = (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at);
+  const taxes = (mirror.taxesByInvoice.get(invoice.id) ?? []).filter((t) => !t.deleted_at);
+  return validationMissing({
+    invoice, hasOriginal: (mirror.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original' && !f.deleted_at),
+    lines: lines.map((l) => ({ quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), discount_amount: Number(l.discount_amount ?? 0), net_amount: Number(l.net_amount) })),
+    taxes: taxes.map((t) => ({ tax_type: t.tax_type, rate: t.rate === null ? null : Number(t.rate), taxable_base: t.taxable_base === null ? null : Number(t.taxable_base), amount: Number(t.amount) })),
+  });
+}
+
 function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror): HTMLElement {
   const { client } = ctx;
   const role = client.bootstrap()?.membership.role ?? 'reader';
@@ -289,11 +300,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const update = (fields: Record<string, unknown>, message = 'Guardado en este dispositivo.') =>
     commitSafely(client, [{ op: 'update', table: INVOICES, id: invoice.id, expectedRevision: invoice.revision, fields }], message);
   // Lo que falta para validar (incidencia del usuario, 9-10-2026): lo mismo que comprueba el servidor, antes de enviar.
-  const missing: MissingKey[] = pendingState ? validationMissing({
-    invoice, hasOriginal: files.some((f) => f.kind === 'original' && !f.deleted_at),
-    lines: lines.filter((l) => !l.deleted_at).map((l) => ({ quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), discount_amount: Number(l.discount_amount ?? 0), net_amount: Number(l.net_amount), vat_rate: l.vat_rate === null ? null : Number(l.vat_rate), vat_amount: l.vat_amount === null ? null : Number(l.vat_amount) })),
-    taxes: taxes.filter((t) => !t.deleted_at).map((t) => ({ tax_type: t.tax_type, rate: t.rate === null ? null : Number(t.rate), taxable_base: t.taxable_base === null ? null : Number(t.taxable_base), amount: Number(t.amount) })),
-  }) : [];
+  const missing: MissingKey[] = pendingState ? missingOf(mirror, invoice) : [];
   const missingText = missing.map((m) => MISSING_LABELS[m]).join(', ');
   const call = (procedure: string, args: Record<string, unknown>, message: string) => commitSafely(client, [{ op: 'call', procedure, args }], message);
 
@@ -315,8 +322,13 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice',
       'aria-disabled': missing.length ? 'true' : null, title: missing.length ? `Para validar falta ${missingText}.` : null,
       onclick: async () => {
-        if (missing.length) { toast(`Para validar falta ${missingText}.`); goToMissing(missing[0]!); return; }
-        const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error');
+        // Con el espejo de ahora: el último cambio (p. ej. la categoría recién elegida) puede no estar aún en la cola ni pintado.
+        await settlePending(client);
+        const freshMirror = await loadMirror(client);
+        const fresh = freshMirror.invoices.find((i) => i.id === invoice.id) ?? invoice;
+        const now = missingOf(freshMirror, fresh);
+        if (now.length) { toast(`Para validar falta ${now.map((m) => MISSING_LABELS[m]).join(', ')}.`); goToMissing(now[0]!); return; }
+        const ok = await validateNow(ctx, invoice.id, 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error');
       } }, icon('check', 18), 'Validar'));
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.importar_json', 'data-feedback-label': 'Importar JSON', class: 'softbtn', type: 'button', id: 'importInto', onclick: () => void openImport(ctx, mirror, invoice) }, icon('upload', 18), 'Importar JSON'));
     if (invoice.status === 'pendiente_datos' && files.some((f) => f.kind === 'original')) {
@@ -1052,12 +1064,103 @@ async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
 /** Tras «Rellenar a mano» con «Guardar y validar»: valida con aprendizaje y vuelve a abrir la ficha. */
 function validateAndReopen(ctx: ViewContext): (invoiceId: string) => Promise<void> {
   return async (invoiceId) => {
-    const fresh = await loadMirror(ctx.client);
-    const current = fresh.invoices.find((i) => i.id === invoiceId);
-    if (!current) return;
-    const ok = await commitSafely(ctx.client, await validateWithLearning(ctx, fresh, current), 'Factura validada. Finance aprende este proveedor para la próxima.');
+    const ok = await validateNow(ctx, invoiceId, 'Factura validada. Finance aprende este proveedor para la próxima.');
     if (ok) void openInvoice(ctx, invoiceId);
   };
+}
+
+// ---------------------------------------------------------------------------
+// Validar sin chocar con uno mismo (incidencia del usuario, 9-10-2026): elegir la categoría y validar al instante
+// salía con la revisión de antes del acuse del cambio → VERSION_CONFLICT contra el propio cambio.
+// ---------------------------------------------------------------------------
+const VALIDATE_REQUESTS_KEY = 'ikisai.invoices.validateRequests';
+function validateRequests(): Record<string, string> {
+  try { const v = JSON.parse(localStorage.getItem(VALIDATE_REQUESTS_KEY) ?? '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
+function rememberValidateRequest(requestId: string, invoiceId: string | null): void {
+  try {
+    const all = validateRequests();
+    if (invoiceId) all[requestId] = invoiceId; else delete all[requestId];
+    localStorage.setItem(VALIDATE_REQUESTS_KEY, JSON.stringify(Object.fromEntries(Object.entries(all).slice(-50))));
+  } catch { /* sin almacenamiento: el vigilante descarta el conflicto con aviso */ }
+}
+
+/**
+ * Valida con la revisión que tiene el servidor: con red, espera (hasta 8 s) a que se confirmen los cambios pendientes;
+ * si siguen pendientes (sin red), la validación sale sin revisión esperada (los cambios propios van antes en la cola).
+ */
+/** Deja que el último cambio entre en la cola y, con red, espera (hasta 8 s) a que el servidor lo confirme. */
+async function settlePending(client: SyncClient): Promise<void> {
+  await new Promise((r) => setTimeout(r, 250));
+  if (client.status().pendingCommands && navigator.onLine) {
+    void client.sync().catch(() => undefined);
+    const until = Date.now() + 8000;
+    while (client.status().pendingCommands && Date.now() < until && navigator.onLine) await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: string): Promise<boolean> {
+  const { client } = ctx;
+  await settlePending(client);
+  const mirror = await loadMirror(client);
+  const invoice = mirror.invoices.find((i) => i.id === invoiceId);
+  if (!invoice) return false;
+  const ops = await validateWithLearning(ctx, mirror, invoice);
+  if (client.status().pendingCommands) {
+    const call = ops[0] as { op: 'call'; args: Record<string, unknown> };
+    delete call.args.expectedRevision;
+  }
+  try {
+    const { requestId } = await client.commit(ops);
+    rememberValidateRequest(requestId, invoiceId);
+    toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
+    return true;
+  } catch (error) {
+    toast(describeError(error));
+    return false;
+  }
+}
+
+let resolving = false;
+/**
+ * Conflictos de «Validar» contra un cambio propio: se reintenta solo con la revisión nueva (sin pantalla de conflicto).
+ * Uno así que no sea de una validación anotada (p. ej. de antes de este arreglo) se descarta con aviso: el servidor ya
+ * tiene los datos de quien lo hizo; solo hay que repetir la acción.
+ */
+export async function resolveOwnValidationConflicts(ctx: ViewContext): Promise<void> {
+  if (resolving) return;
+  resolving = true;
+  try {
+    const { client } = ctx;
+    const me = client.bootstrap()?.profile.userId ?? null;
+    if (!me) return;
+    const known = validateRequests();
+    for (const c of await client.conflicts()) {
+      const op = c.operation as { op: string; table: string; id: string; fields?: Record<string, unknown> };
+      const ownChange = (c.current as { updated_by?: string | null }).updated_by === me;
+      const callOnly = op.table === INVOICES && op.op === 'update' && !Object.keys(op.fields ?? {}).length;
+      if (!ownChange || !callOnly) continue;
+      await client.resolveConflict(c.requestId, { choice: 'theirs' });
+      const invoiceId = known[c.requestId];
+      rememberValidateRequest(c.requestId, null);
+      const code = (c.current as { code?: string | null }).code ?? 'la factura';
+      const status = (c.current as { status?: string }).status;
+      if (invoiceId && (status === 'pendiente_datos' || status === 'pendiente_revision')) await validateNow(ctx, invoiceId, `${code} validada.`);
+      else toast(`Se descartó una acción sobre ${code} que chocaba con un cambio tuyo anterior: vuelve a hacerla si hace falta.`);
+    }
+  } catch { /* lo intenta otra vez en el siguiente cambio de estado */ } finally {
+    resolving = false;
+  }
+}
+
+export function startValidationConflictWatcher(ctx: ViewContext): () => void {
+  let last = ctx.client.status().conflicts;
+  const off = ctx.client.onStatus((status) => {
+    if (status.conflicts && status.conflicts !== last) void resolveOwnValidationConflicts(ctx);
+    last = status.conflicts;
+  });
+  void resolveOwnValidationConflicts(ctx);
+  return off;
 }
 
 async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
