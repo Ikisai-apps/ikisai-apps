@@ -52,6 +52,20 @@ function generalMergeSheet(){
   paint();
 }
 
+/* «Etiquetas» (FB_2026_023): primero General, con sus familias (y, marcadas, las etiquetas de esa familia que solo son de
+   esta área); debajo, «Solo de <área>», con las familias que no tienen General equivalente. Lo General lo edita quien
+   tiene acceso a toda la app; una familia General no se archiva desde aquí (sus etiquetas, una a una). */
+function generalFamilyCard(f){
+  const scope=tab(),ids=catalogFamilyIds(f),admin=isAdministrator();
+  const ls=catalogOrder(scope.labels.filter(l=>ids.includes(l.family)&&(showArchivedCatalog||!l.archived)).sort((a,b)=>Number(b.general||0)-Number(a.general||0)));
+  return `<section class="family-card generalfamily"><div class="family-card-head"><span class="dot" style="background:${esc(f.color)}"></span><strong>${esc(f.name)}${f.archived?' · archivada':''}</strong><div class="spacer"></div>${admin?`<button class="ghost" data-edit-family="${f.id}" data-feedback-id="tasks.etiquetas.familia.editar" data-feedback-label="Editar familia">Editar familia</button>`:''}</div><div class="chips">${ls.map(l=>`<button class="chip label-edit ${l.archived?'archivedchip':''} ${l.general?'':'arealabel'}" style="background:${esc(f.color)}" data-edit-label="${l.id}" title="${l.general?'General: en todas las áreas':`Solo de ${esc(scope.name)}`}" data-feedback-id="tasks.etiquetas.familia.etiqueta" data-feedback-label="Editar etiqueta">${l.parent&&ls.some(x=>x.id===l.parent)?'↳ ':''}${esc(l.text)}${l.general?'':`<span class="scopemark"> · solo de ${esc(scope.name)}</span>`}${l.archived?' · archivada':''}</button>`).join('')||'<span class="small muted">Sin etiquetas.</span>'}</div>${!f.archived?`<div class="row generalnew">${admin?`<button class="ghost" data-new-general-label="${f.id}" data-feedback-id="tasks.etiquetas.general.nueva" data-feedback-label="Nueva etiqueta General">+ General</button>`:''}${canManageCatalog()?`<button class="ghost" data-new-label="${f.id}" data-feedback-id="tasks.etiquetas.familia.nueva_etiqueta" data-feedback-label="Nueva etiqueta">+ Solo de ${esc(scope.name)}</button>`:''}</div>`:''}</section>`}
+labelsView=function(){const scope=tab(),generals=catalogFamilies().filter(f=>f.general&&(showArchivedCatalog||!f.archived)),own=catalogFamilies().filter(f=>!f.general);
+  return `<main class="screen label-manager"><div class="screenhead"><div><h1 class="title">Etiquetas</h1><p class="subtitle">General, en todas las áreas, y lo propio de ${esc(scope.name)}. Pulsa una etiqueta para editarla.</p></div></div><div class="notice">Las familias agrupan etiquetas por color. Archivar una etiqueta conserva sus referencias en tareas e historial.${!canManageCatalog()?' Tu acceso permite consultar este catálogo.':''}</div>
+    <h2 class="sectionlabel catalogsection" id="catalogGeneral">General <span class="small muted">· en todas las áreas</span></h2>${generals.map(generalFamilyCard).join('')||'<p class="small muted">Aún no hay etiquetas General. Las repetidas entre áreas se pueden fusionar aquí.</p>'}
+    <h2 class="sectionlabel catalogsection" id="catalogOwn">Solo de ${esc(scope.name)}</h2>${own.map(familyCard).join('')||'<p class="small muted">Todo lo de esta área está en General.</p>'}
+    <div class="catalog-actions"><button class="primary" id="newFamily" ${canManageCatalog()?'':'disabled'} data-feedback-id="tasks.etiquetas.catalogo.nueva_familia" data-feedback-label="Nueva familia">+ Nueva familia</button>${archivedCatalogButton()}</div></main>`};
+document.addEventListener('click',e=>{const b=e.target.closest?.('[data-new-general-label]');if(!b)return;labelEditorScope='general';openLabelEditor(b.dataset.newGeneralLabel)});
+
 /* En «Etiquetas», para la propietaria con acceso completo, si hay repetidas. */
 const labelsViewBeforeGeneral=labelsView;
 labelsView=function(){const html=labelsViewBeforeGeneral();if(!isAdministrator()||!Sync.core)return html;const n=generalMergeGroups().filter(g=>g.mergeable).length;if(!n)return html;

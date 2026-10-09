@@ -75,3 +75,42 @@ test('después, la app guarda con lo General: renombrarla desde un área la camb
   expect((await server.rows('tasks.task_labels')).some((l) => l.task_id === task.id && l.label_id === general.id && !l.deleted_at)).toBe(true);
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
+
+test('«Etiquetas»: General arriba y «Solo de <área>» debajo; crear General y solo del área; el selector junta la familia', async () => {
+  await page.evaluate((id) => { state.activeTab = id; state.view = 'labels'; render(); }, A);
+  const generalSection = page.locator('.generalfamily');
+  await expect(page.locator('#catalogGeneral')).toBeVisible();
+  await expect(page.locator('#catalogOwn')).toContainText('Solo de Casa');
+  const person = generalSection.filter({ hasText: 'Persona' });
+  await expect(person).toContainText('VG Gil');
+  // La General va antes que las del área en la página.
+  expect((await page.locator('#catalogGeneral').boundingBox())!.y).toBeLessThan((await page.locator('#catalogOwn').boundingBox())!.y);
+  await page.screenshot({ path: '../coordinacion/tasks/etiquetas-general-movil.png', fullPage: true }).catch(() => {});
+
+  // + General: una etiqueta para todas las áreas.
+  await person.locator('[data-new-general-label]').click();
+  await expect(page.locator('#sheet')).toContainText('General, en todas las áreas');
+  await page.locator('#nlText').fill('AN');
+  await page.locator('#saveNewLabel').click();
+  await settled(page);
+  const an = (await server.rows('tasks.labels')).find((l) => l.name === 'AN');
+  expect(an.tab_id).toBeNull();
+  // + Solo de Casa, dentro de la familia General.
+  await page.locator('.generalfamily', { hasText: 'Persona' }).locator('[data-new-label]').click();
+  await expect(page.locator('#sheet')).toContainText('solo de Casa');
+  await page.locator('#nlText').fill('Jardinero');
+  await page.locator('#saveNewLabel').click();
+  await settled(page);
+  const jardinero = (await server.rows('tasks.labels')).find((l) => l.name === 'Jardinero');
+  expect([jardinero.tab_id, jardinero.family_id]).toEqual([A, an.family_id]);
+  await expect(page.locator('.generalfamily', { hasText: 'Persona' }).locator('.chip.arealabel', { hasText: 'Jardinero' })).toContainText('solo de Casa');
+
+  // En el selector, «Persona» sale una vez, con las General primero y las de Casa.
+  await page.evaluate(() => (window as any).openLabelPicker([], () => {}));
+  const persona = page.locator('#sheet section.family', { hasText: 'Persona' });
+  await expect(persona).toHaveCount(1);
+  await expect(persona).toContainText('AN');
+  await expect(persona).toContainText('Jardinero');
+  await page.evaluate(() => (window as any).closeSheet());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
