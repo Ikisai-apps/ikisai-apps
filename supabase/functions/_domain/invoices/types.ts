@@ -110,7 +110,7 @@ export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
 /** Columnas escribibles por tabla (deben coincidir con `core.register_table` de la migración). */
 export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
-  'invoices.suppliers': ['name', 'tax_id', 'default_category', 'default_is_investment', 'aliases', 'slug', 'notes'],
+  'invoices.suppliers': ['name', 'tax_id', 'default_category', 'default_is_investment', 'aliases', 'slug', 'notes', 'label'],
   'invoices.invoices': [
     'supplier_id', 'invoice_date', 'object', 'invoice_number', 'currency', 'due_date', 'expense_category', 'is_investment', 'deductibility',
     'status', 'review_reason', 'annulled_reason', 'payment_status', 'payment_method', 'paid_at', 'source_total',
@@ -160,6 +160,8 @@ export interface SyncedColumns {
 
 export interface SupplierRow extends SyncedColumns {
   name: string;
+  /** «Mi nombre» (0232): el nombre por el que se le conoce; `name` es la razón social (la de la gestoría). */
+  label?: string | null;
   tax_id: string | null;
   default_category: ExpenseCategory | null;
   default_is_investment: boolean;

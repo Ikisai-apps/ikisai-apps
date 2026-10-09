@@ -116,6 +116,7 @@ export function validateSupplierFields(fields: Fields, op: 'insert' | 'update'):
   onlyWritable(TABLES.suppliers, fields);
   if (op === 'insert' && !has(fields, 'name')) domainFail('INVALID_FIELDS', 'El nombre del proveedor es obligatorio.', { field: 'name' });
   text(fields, 'name', { required: true, max: 200 });
+  text(fields, 'label', { max: 120 });
   text(fields, 'tax_id', { max: 32 });
   text(fields, 'slug', { max: 40 });
   if (has(fields, 'slug') && typeof fields.slug === 'string' && !/^[a-z0-9_]*$/.test(fields.slug)) domainFail('INVALID_FIELDS', 'El slug solo admite minúsculas, dígitos y _.', { field: 'slug' });
