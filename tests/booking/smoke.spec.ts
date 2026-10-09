@@ -340,8 +340,12 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     const now = await order();
     const last = now[now.length - 1]!;
     await expect(handleOf(last)).toBeVisible();
-    const from = (await handleOf(last).boundingBox())!;
-    const to = (await list().locator('.sortable-row').first().boundingBox())!;
+    // la lista se repinta al llegar la confirmación del servidor: se espera a que no queden cambios en cola y a que las
+    // dos cajas existan (sin `!` sobre un `boundingBox()` nulo de una fila recién sustituida)
+    await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado', { timeout: 15_000 });
+    const boxOf = async (locator: ReturnType<typeof list>) => { let box = null; await expect.poll(async () => (box = await locator.boundingBox()) !== null).toBe(true); return box!; };
+    const from = await boxOf(handleOf(last));
+    const to = await boxOf(list().locator('.sortable-row').first());
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 12, { steps: 3 });

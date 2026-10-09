@@ -116,10 +116,12 @@ test('fechas posibles: dos opciones, orden, chip del organizador, fijar una; y u
     await expect(confirm).toBeVisible();
     await confirm.getByRole('button', { name: 'Fijar fecha' }).click();
     await expect(page.locator('#datesChip')).toHaveText('Definitiva');
+    // el chip cambia con el espejo local; el lote llega al servidor con la sincronización
+    await expect.poll(() => api.changeLog().length - mark).toBe(1);
     const batch = api.changeLog().slice(mark);
     expect(batch).toHaveLength(1);
     expect(batch[0]).toMatchObject({ table: RESERVATIONS, op: 'update', id: reservationId() });
-    expect(api.rows(RESERVATIONS)[0]).toMatchObject({ dates_definitive: true });
+    await expect.poll(() => api.rows(RESERVATIONS)[0]!.dates_definitive).toBe(true);
     expect(api.rows(RESERVATIONS)[0]!.start_date).not.toBeNull();
     // Con fecha definitiva el bloque se pliega y un enlace lo despliega.
     await expect(page.locator('#dateOptionsEmpty, #addDateOption')).toHaveCount(0);

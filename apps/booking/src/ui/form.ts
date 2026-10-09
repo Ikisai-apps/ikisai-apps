@@ -1,7 +1,6 @@
 /** Formularios de fila: se describen con una lista de campos y solo viaja al servidor lo que cambia. */
 import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/sync-client';
-import { matchName, suggestMessage, uniqueNames } from './suggest.ts';
-import { confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { attachSuggestions, confirmDialog, el, openSheet, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { validateFields } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import { describeError } from '../app/client.ts';
@@ -76,25 +75,6 @@ export type FieldMark = (key: string) => Child;
  * `feedbackBase` (p. ej. `booking.reservas.alta`) da a cada campo el id `<base>.<clave>`; la etiqueta es la del campo.
  * Sin base no se marca nada (formularios de otras pantallas que ya marcan por su cuenta).
  */
-/** Lista con búsqueda y aviso de «nuevo» o «parecido» para un campo de texto con `suggestions`. */
-function suggestField(spec: FieldSpec, input: HTMLInputElement, fire: () => void, feedbackBase?: string): HTMLElement {
-  const options = uniqueNames(spec.suggestions ?? []);
-  const listId = `f-${spec.key}-list`;
-  input.setAttribute('list', listId);
-  const status = el('small', { class: 'hint suggest', id: `f-${spec.key}-suggest`, role: 'status' });
-  const paint = () => {
-    const message = suggestMessage(matchName(input.value, options), spec.suggestMode ?? 'pick');
-    status.classList.toggle('warn', !!message?.warn);
-    status.replaceChildren(...(message ? [message.text, message.use
-      ? el('button', { class: 'linkbtn', type: 'button', ...(feedbackBase ? { 'data-feedback-id': `${feedbackBase}.${spec.key}_usar`, 'data-feedback-label': 'Usar el existente' } : {}),
-          onclick: () => { input.value = message.use!; paint(); fire(); } }, ` Usar «${message.use}»`)
-      : ''] : []));
-  };
-  input.addEventListener('input', paint);
-  paint();
-  return el('span', { class: 'suggest-wrap' }, el('datalist', { id: listId }, options.map((value) => el('option', { value }))), status);
-}
-
 export function buildForm(specs: readonly FieldSpec[], row: Record<string, unknown> | null, defaults: Record<string, unknown> = {}, mark?: FieldMark, feedbackBase?: string): BuiltForm {
   const listeners: Array<() => void> = [];
   const controls = new Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>();
@@ -148,7 +128,7 @@ export function buildForm(specs: readonly FieldSpec[], row: Record<string, unkno
     }
     controls.set(spec.key, control);
     if (spec.section) children.push(el('div', { class: 'sectionlabel formsection' }, spec.section));
-    const suggest = spec.type === 'text' && spec.suggestions ? suggestField(spec, control as HTMLInputElement, fire, feedbackBase) : null;
+    const suggest = spec.type === 'text' && spec.suggestions ? attachSuggestions(control as HTMLInputElement, { values: spec.suggestions, mode: spec.suggestMode ?? 'pick', ...(feedbackBase ? { feedbackId: `${feedbackBase}.${spec.key}` } : {}) }).element : null;
     const wrap = spec.type === 'check'
       ? el('label', { class: 'check', ...fieldMarks(spec) }, control, el('span', null, spec.label, mark?.(spec.key) ?? null))
       : el('label', { class: 'field', ...fieldMarks(spec) }, el('span', null, spec.label, mark?.(spec.key) ?? null), control, suggest, spec.hint ? el('small', { class: 'hint' }, spec.hint) : null);
