@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.27.2: «atrás» sigue solo si tras saltar hojas cerradas cae en la misma pantalla (humo de Booking); CI completa al tocar la navegación.
 - v0.27.1: «atrás» sin `history.back()` asíncronos al cerrar hojas (humo de Food inestable).
 - v0.27.0: texto con sugerencias (`createSuggestField`, `attachSuggestions`), petición de Booking.
 - v0.26.0: «atrás» dentro de la app (FB_2026_025), Revisor sobre la navegación (FB_2026_012), interruptor visible (FB_2026_004) y «Duda» (FB_2026_011).
