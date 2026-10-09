@@ -385,22 +385,35 @@ export interface RereadResult { checked: number; read: number; items: Array<{ in
  * sale entero, lo completa en su sitio con `import_v1` (origen `pdf_text`, procedencia por campo). Nada se valida.
  * El detalle dice qué faltó y la forma del texto, nunca su contenido.
  */
-export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'commit' | 'readPdf' | 'saveText'> & { fileBytes(fileId: string): Promise<Uint8Array>; limit?: number }): Promise<RereadResult> {
+export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'commit' | 'readPdf' | 'saveText' | 'invoke'> & { fileBytes(fileId: string): Promise<Uint8Array>; limit?: number }): Promise<RereadResult> {
   const data = await deps.rows();
+  // Rastro (9-10-2026): el registro de Drive guarda lo que dio cada relectura (lo ve el owner en Inicio).
+  const trace = async (invoice: InvoiceRow, read: boolean, detail: string) => {
+    if (!invoice.drive_file_id) return;
+    await deps.invoke('invoices.drive_record', { drive_file_id: invoice.drive_file_id, name: invoice.object, status: 'importada', invoice_id: invoice.id, reason: `Relectura: ${read ? 'leída' : 'sin leer'}. ${detail}`.slice(0, 300) }).catch(() => undefined);
+  };
   const drafts = data.invoices.filter((i) => !i.deleted_at && i.status === 'pendiente_datos' && i.drive_file_id).slice(0, deps.limit ?? 10);
   const result: RereadResult = { checked: drafts.length, read: 0, items: [] };
   for (const invoice of drafts) {
+    const before = result.items.length;
+    await processOne(invoice);
+    const item = result.items[before];
+    if (item) await trace(invoice, item.read, item.detail);
+  }
+  return result;
+
+  async function processOne(invoice: InvoiceRow): Promise<void> {
     const file = data.files.filter((f) => !f.deleted_at && f.invoice_id === invoice.id && (f.kind ?? 'original') === 'original' && f.file_id).sort((a, b) => (a.page_order ?? 1) - (b.page_order ?? 1))[0];
-    if (!file?.file_id) { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: 'Sin documento.' }); continue; }
+    if (!file?.file_id) { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: 'Sin documento.' }); return; }
     let items: PdfTextItem[];
-    try { items = await deps.readPdf(await deps.fileBytes(file.file_id)); } catch { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: 'No se pudo abrir el PDF.' }); continue; }
+    try { items = await deps.readPdf(await deps.fileBytes(file.file_id)); } catch { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: 'No se pudo abrir el PDF.' }); return; }
     const extraction = extractWithTemplates(items, { suppliers: data.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })), templates: data.templates });
     const pages = items.reduce((n, it) => Math.max(n, it.page), 0);
     const chars = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
     const shape = `${pages} pág. con texto, ${items.length} fragmentos, ${chars} caracteres`;
     if (!(extraction.hasText && extraction.ok && extraction.document)) {
       result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `${extraction.hasText ? `Falta ${extraction.missing.join(', ') || 'algún dato'}` : 'Sin texto'} (${shape}).` });
-      continue;
+      return;
     }
     const rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: extraction.document });
     const document = rectification.isRectification && extraction.document.document_totals.total > 0 ? negateDocument(extraction.document) : extraction.document;
@@ -409,7 +422,7 @@ export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'comm
     const supplier = best && best.score >= 0.8 ? { mode: 'existing' as const, id: best.supplier.id } : { mode: 'create' as const, id: crypto.randomUUID() };
     const dup = findDuplicateImport(documentSha, data.invoices.filter((i) => i.id !== invoice.id))
       ?? findDuplicateInvoice(document, supplier.mode === 'existing' ? supplier.id : null, data.invoices.filter((i) => i.id !== invoice.id));
-    if (dup) { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `Ya está importada como ${dup.code ?? 'otra factura'}: anula este borrador.` }); continue; }
+    if (dup) { result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `Ya está importada como ${dup.code ?? 'otra factura'}: anula este borrador.` }); return; }
     let n = 0;
     const args = buildImportArgs({ document, documentSha256: documentSha, invoiceId: invoice.id, supplier, files: [], origin: 'pdf_text',
       provenance: Object.fromEntries(Object.entries(extraction.provenance).map(([k, p]) => [k, { method: p.method, text: p.text, page: p.page, confidence: p.confidence }])),
@@ -425,5 +438,4 @@ export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'comm
       result.items.push({ invoice_id: invoice.id, code: invoice.code, read: false, detail: `Leída, pero no se pudo importar (${codeOf(error)}).` });
     }
   }
-  return result;
 }
