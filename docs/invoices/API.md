@@ -1465,3 +1465,14 @@ Para una factura atrasada que la gestoría ya tiene: `delivered_elsewhere = true
 - **Aciertos y fallos**, como en las demás reglas: una factura rara no cambia la tabla; tres fallos seguidos la retiran y la siguiente validación aprende otra. Un documento sin tabla no cuenta como fallo.
 - **Huella estable:** la huella del formato de las plantillas nuevas no incluye las líneas con importes (las filas de artículos cambian de una factura a otra). Al elegir, se compara con la huella completa y con la estable, y vale la mejor, así que las plantillas antiguas siguen funcionando.
 
+### 16.4 Plantillas sin depender del NIF (fase 2, 9-10-2026)
+Si el NIF del documento no es de un proveedor conocido, `rankTemplates` puntúa las plantillas **activas** de todos los proveedores:
+- 0,5 · huella del formato (la mejor entre la completa y la estable);
+- 0,2 · etiquetas de sus reglas que aparecen en el documento;
+- 0,2 · nombre del proveedor en el texto;
+- 0,1 · NIF (aquí, 0).
+
+Gana la primera si llega a 0,7 y saca al menos 0,1 a la segunda. La plantilla aporta sus campos como siempre.
+
+El proveedor que sale así lleva un aviso («reconocido por el formato de sus facturas, no por su NIF: revísalo»). Si el documento no trae nombre, lo pone la plantilla con procedencia `supplier_template` y confianza 0,5. Nunca se da de alta un proveedor solo por parecido. Sin NIF ni nombre, el formato solo no basta.
+
