@@ -25,6 +25,7 @@ import { describeExtractionError, describeUsage, extractDocument, extractionQueu
 import type { ViewContext, ViewMount } from './shell.ts';
 import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedDocuments, takeSharedText } from '../app/ai-share.ts';
 import { READ_LIMITS, ReadLimitError, readPdfItems } from '../app/pdf-text.ts';
+import { flushDocumentTexts, queueDocumentText } from '../app/text-queue.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
@@ -788,6 +789,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     if (auto) replace(readingHost, el('p', { class: 'hint', id: 'readingProgress', role: 'status' }, 'Leyendo el PDF…'));
     await readPdfInto(ctx, mirror, null, file, picked, undefined, (prefill) => {
       level = prefill.read;
+      if (prefill.items?.length) lastRead = { file, items: prefill.items };
       // Lectura parcial (fase 0): lo encontrado rellena lo vacío del formulario; lo demás, a mano o con la IA.
       const f = prefill.found;
       const taxId = f.supplier_tax_id?.replace(/[\s.-]/g, '').toUpperCase() ?? null;
@@ -815,6 +817,8 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     for (const f of picked.filter(isPdfFile)) if ((await readNew(f, true)) !== 'no_text') return;
   }
   const readingHost = el('div', { id: 'newReading' });
+  /** Lo último leído (fase 1, PR 3): al crear la factura, su texto va al servidor para rellenar lo que falte. */
+  let lastRead: { file: File; items: PdfTextItem[] } | null = null;
   // Varios archivos (pregunta del usuario, 9-10-2026): ¿páginas de una misma factura o facturas distintas?
   const multiHost = el('div', { id: 'multiFiles' });
   let multiChoice: 'same' | null = null;
@@ -879,6 +883,10 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
       ];
       if (sameTaxId) toast(`Ya tenías el proveedor ${sameTaxId.name} con ese NIF: la factura queda a su nombre.`);
       const created = await commitSafely(client, ops, 'Factura creada en este dispositivo.');
+      if (created && lastRead) {
+        const sha = await sha256Hex(lastRead.file);
+        if (staged.some((s) => s.sha256 === sha)) { queueDocumentText(sha, lastRead.items); void flushDocumentTexts(client); }
+      }
       usage.track('invoices.facturas.subir', created ? 'success' : 'error');
       if (created) {
         guard.dirtyEditor = false;
@@ -986,10 +994,10 @@ async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   usage.track('invoices.facturas.leer_pdf', result.hasText && result.ok && result.document ? 'success' : 'error');
   if (!result.hasText) { notice(readingMessage(result)); return; }
   // Lectura automática al elegir el PDF (fase 1): nunca salta de pantalla; rellena el formulario y ofrece importar.
-  if (auto && onPartial) { onPartial({ read: result.read, found: result.found, message: readingMessage(result), text: readingText(items) }); return; }
+  if (auto && onPartial) { onPartial({ read: result.read, found: result.found, message: readingMessage(result), text: readingText(items), items }); return; }
   if (!result.ok || !result.document) {
     // Lectura parcial (fase 0): nunca una pantalla vacía. Lo leído rellena «Rellenar a mano» (o el formulario nuevo).
-    const prefill: ManualPrefill = { read: result.read, found: result.found, message: readingMessage(result), text: readingText(items) };
+    const prefill: ManualPrefill = { read: result.read, found: result.found, message: readingMessage(result), text: readingText(items), items };
     if (target) { guard.dirtyEditor = false; await closeSheet(true); openManualEntry(ctx, mirror, target, validateAndReopen(ctx), prefill); }
     else if (onPartial) onPartial(prefill);
     else toast(prefill.message);
