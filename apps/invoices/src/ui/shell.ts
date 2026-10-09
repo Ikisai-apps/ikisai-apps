@@ -9,6 +9,7 @@ import { mountPurchases } from './purchases.ts';
 import { mountAccounting } from './accounting.ts';
 import { fb } from './feedback.ts';
 import { setUsage } from '../app/usage.ts';
+import { clearPendingTexts, startTextQueue } from '../app/text-queue.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -180,6 +181,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     window.scrollTo({ top: 0 });
   }
 
+  // Fase 1 del lector: el texto leído al subir va al servidor cuando el documento está subido.
+  const offTextQueue = startTextQueue(client);
   const offStatus = client.onStatus((status) => {
     if (!client.session()) {
       ctx.onLogout();
@@ -198,6 +201,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   return () => {
     offSessionEnd();
+    offTextQueue();
+    if (!client.session()) clearPendingTexts();
     feedback.destroy();
     review.destroy();
     usageCollector.destroy();

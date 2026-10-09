@@ -2029,6 +2029,31 @@ test('Nueva factura con varios archivos: «Páginas de una misma factura» lee e
   }
 });
 
+test('Fase 1 · el texto leído al subir va al servidor con `fill` en cuanto el documento está subido («Subir varias»)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    const before = api.documentTextPosts().filter((p) => p.fill).length;
+    await page.locator('#batchUpload').click();
+    const sheet = page.getByRole('dialog', { name: 'Subir varias facturas' });
+    await sheet.locator('#batchFiles').setInputFiles([{ name: 'texto_al_servidor.pdf', mimeType: 'application/pdf', buffer: textPdf([['SERVIDOR TEXTO S.L.', 40, 800], ['Factura nº: SRV-1', 40, 780], ['Concepto variado de prueba', 40, 760], ['TOTAL', 40, 700], ['33,00 €', 450, 700]]) }]);
+    await sheet.locator('#batchStart').click();
+    await expect(sheet.locator('#batchSummary')).toContainText('1 con lectura parcial', { timeout: 60_000 });
+    await synced(page);
+    await expect.poll(() => api.documentTextPosts().filter((p) => p.fill).length, { timeout: 30_000 }).toBe(before + 1);
+    const post = api.documentTextPosts().filter((p) => p.fill).at(-1)!;
+    expect(post.items).toBeGreaterThan(3);
+    // Enviado: la cola queda vacía
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('ikisai.invoices.pendingTexts')), { timeout: 10_000 }).toBeNull();
+  } finally {
+    await context.close();
+  }
+});
+
 /**
  * Medición de la lectura automática en el móvil (fase 1): CPU 4× más lenta, 390 px, PDF de 1, 10 y 30 páginas y uno
  * de 15 MB. Solo con IKISAI_MEASURE=1 (no en la CI): escribe tiempo, tarea larga máxima del hilo y montón de JS.
