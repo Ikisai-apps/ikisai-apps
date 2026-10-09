@@ -1905,6 +1905,8 @@ test('Nueva factura (fase 1): elegir el PDF ya lo lee; sin proveedor ni objeto s
     await expect(ficha(page)).toContainText('Sin identificar', { timeout: 20_000 });
     await synced(page);
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.object === 'ticket sin fecha'), { timeout: 20_000 }).toMatchObject({ status: 'pendiente_datos', source_total: 18.4 });
+    // Fase 1, PR 3: lo leído va al servidor con `fill` en cuanto el documento está subido
+    await expect.poll(() => api.documentTextPosts().some((p) => p.fill && p.items >= 4), { timeout: 30_000 }).toBe(true);
     await closeSheet(page);
     // Completa: rellena el formulario sin cambiar de pantalla y «Importar lo leído» abre la vista previa
     await page.getByRole('button', { name: 'Nueva factura' }).click();
