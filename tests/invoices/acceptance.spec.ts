@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { buildInvoicesApp } from './e2e-build.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 import { freePort } from './free-port.ts';
-import { invoiceTextPdf, textPdf } from './pdf-fixture.ts';
+import { invoiceTextPdf, manyPagesPdf, textPdf } from './pdf-fixture.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/invoices/vite.config.ts');
@@ -607,7 +607,7 @@ test('Aceptación V1 (Android): proveedor nuevo desde la hoja y «Extraer con Ch
     await sheet.locator('#newSupplier').selectOption({ label: '+ Nuevo proveedor…' });
     await expect(sheet.locator('#newSupplierFields')).toBeVisible();
     await sheet.locator('#saveInvoice').click();
-    await expect(sheet.locator('.formerror')).toContainText('nombre del proveedor nuevo');
+    await expect(sheet.locator('.formerror')).toContainText('Elige el PDF o foto, o el proveedor');
     await sheet.locator('#newSupplierName').fill('Frutas Nuevas SL');
     await sheet.locator('#newSupplierTaxId').fill('B11111111');
     await sheet.getByLabel('Fecha').fill('2026-10-06');
@@ -1882,6 +1882,81 @@ test('Lectura parcial (fase 0): un PDF con texto sin fecha nunca deja la pantall
     await expect(manual.locator('#manualNumber')).toHaveValue('PAR-77');
     await expect(manual.locator('#manualTotal')).toHaveValue('121');
     await expect(manual.locator('#manualDate')).toHaveValue('');
+  } finally {
+    await context.close();
+  }
+});
+
+test('Nueva factura (fase 1): elegir el PDF ya lo lee; sin proveedor ni objeto se guarda en «Pendiente de datos» y la lectura completa se importa con un toque', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    // Parcial y sin proveedor: se guarda con el provisional y el objeto del nombre del archivo
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    let sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'ticket_sin_fecha.pdf', mimeType: 'application/pdf', buffer: textPdf([['Gracias por su compra en nuestra tienda de barrio', 40, 800], ['Varios artículos de limpieza', 40, 780], ['TOTAL', 40, 700], ['18,40 €', 450, 700]]) });
+    await expect(sheet.locator('#readingMessage')).toContainText('no he identificado', { timeout: 20_000 });
+    await expect(sheet.locator('#newObject')).toHaveValue('ticket sin fecha');
+    await page.locator('#saveInvoice').click();
+    await expect(ficha(page)).toContainText('Sin identificar', { timeout: 20_000 });
+    await synced(page);
+    expect(api.rows('invoices.invoices').find((i) => i.object === 'ticket sin fecha')).toMatchObject({ status: 'pendiente_datos', source_total: 18.4 });
+    await closeSheet(page);
+    // Completa: rellena el formulario sin cambiar de pantalla y «Importar lo leído» abre la vista previa
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'completa.pdf', mimeType: 'application/pdf', buffer: invoiceTextPdf('AUTO-2026/0001') });
+    await expect(sheet.locator('#readingMessage')).toContainText('Lectura completa', { timeout: 20_000 });
+    await expect(sheet.locator('#newNumber')).toHaveValue('AUTO-2026/0001');
+    await sheet.locator('#importRead').click();
+    await expect(ficha(page).locator('#importPreview')).toBeVisible({ timeout: 20_000 });
+  } finally {
+    await context.close();
+  }
+});
+
+/**
+ * Medición de la lectura automática en el móvil (fase 1): CPU 4× más lenta, 390 px, PDF de 1, 10 y 30 páginas y uno
+ * de 15 MB. Solo con IKISAI_MEASURE=1 (no en la CI): escribe tiempo, tarea larga máxima del hilo y montón de JS.
+ */
+test('medición: lectura automática al elegir el PDF en un móvil lento', async ({ browser }) => {
+  test.skip(!process.env.IKISAI_MEASURE, 'Solo con IKISAI_MEASURE=1');
+  test.setTimeout(300_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    (window as any).__longTasks = [];
+    // Solo cuenta lo que pasa tras el evento `change` del selector (no la copia del archivo que hace Playwright).
+    (window as any).__changeAt = Infinity;
+    document.addEventListener('change', () => { (window as any).__changeAt = performance.now(); }, true);
+    new PerformanceObserver((list) => { for (const e of list.getEntries()) (window as any).__longTasks.push({ start: e.startTime, end: e.startTime + e.duration, duration: e.duration }); }).observe({ type: 'longtask', buffered: true });
+  });
+  try {
+    await login(page);
+    await synced(page);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    const cases: Array<[string, Buffer]> = [['1 pág.', manyPagesPdf(1)], ['10 pág.', manyPagesPdf(10)], ['30 pág.', manyPagesPdf(30)], ['3,9 MB', manyPagesPdf(2, 4 * 1024 * 1024 - 120_000)], ['15 MB', manyPagesPdf(2, 15 * 1024 * 1024 - 20_000)], ['16 MB', manyPagesPdf(2, 16 * 1024 * 1024)]];
+    const results: string[] = [];
+    for (const [label, pdf] of cases) {
+      await page.goto(`${baseURL}/#/facturas`);
+      await page.reload();
+      await page.getByRole('button', { name: 'Nueva factura' }).click({ timeout: 30_000 });
+      const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+      await page.evaluate(() => { (window as any).__longTasks = []; });
+      const start = Date.now();
+      await sheet.getByLabel('PDF o fotos').setInputFiles({ name: `medida ${label}.pdf`, mimeType: 'application/pdf', buffer: pdf });
+      await expect(sheet.locator('#readingMessage')).toBeVisible({ timeout: 60_000 });
+      const ms = Date.now() - start;
+      const m = await page.evaluate(() => ({ long: Math.max(0, ...((window as any).__longTasks as Array<{ start: number; duration: number }>).filter((t) => t.start >= (window as any).__changeAt).map((t) => t.duration)), heap: Math.round(((performance as any).memory?.usedJSHeapSize ?? 0) / 1048576) }));
+      results.push(`${label} (${(pdf.length / 1048576).toFixed(1)} MB): ${ms} ms · tarea larga máx. ${Math.round(m.long)} ms · montón ${m.heap} MB · «${(await sheet.locator('#readingMessage').innerText()).slice(0, 60)}»`);
+      console.log(`MEDIDA ${results[results.length - 1]}`);
+    }
+    console.log(`\nMEDICIÓN (CPU 4×)\n${results.join('\n')}`);
   } finally {
     await context.close();
   }
