@@ -4,7 +4,7 @@ import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
 import { categoryLabel } from '../app/client.ts';
 import { currentQuarter, eur, loadMirror, onAnyTable, rangeFor, rangeLabel, shortDate, statusChipClass, statusText, type Mirror, type RangeKind } from '../app/data.ts';
-import { ITEM_TYPE_LABELS, lineName } from '../app/data.ts';
+import { ITEM_TYPE_LABELS, lineName, supplierName } from '../app/data.ts';
 import { openInvoice } from './invoices.ts';
 import { FRESHNESS_LABELS, checkTargetFreshness } from '../app/targets.ts';
 import type { ViewMount } from './shell.ts';
@@ -112,7 +112,7 @@ export const mountPurchases: ViewMount = (ctx) => {
     return fbRows(renderList({ label: 'Artículos comprados', empty: { title: 'Sin artículos', text: 'Ajusta el periodo o los filtros.' }, rows: result.items.map((item): ListRowSpec => ({
       id: item.line.id,
       title: lineName(item.line),
-      meta: [item.supplier?.name ?? '—', shortDate(item.invoice.invoice_date), item.invoice.code ?? 'código pendiente', item.line.quantity === null ? '' : `${Number(item.line.quantity)} ${item.line.unit ?? ''}`.trim(), item.line.item_type ? ITEM_TYPE_LABELS[item.line.item_type] ?? item.line.item_type : ''].filter(Boolean),
+      meta: [supplierName(item.supplier), shortDate(item.invoice.invoice_date), item.invoice.code ?? 'código pendiente', item.line.quantity === null ? '' : `${Number(item.line.quantity)} ${item.line.unit ?? ''}`.trim(), item.line.item_type ? ITEM_TYPE_LABELS[item.line.item_type] ?? item.line.item_type : ''].filter(Boolean),
       chips: [
         el('span', { class: 'chip' }, eur(item.line.net_amount)),
         ...item.allocations.map((a) => {

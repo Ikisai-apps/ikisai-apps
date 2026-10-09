@@ -15,7 +15,7 @@ import {
   type LocalAllocation, type LocalInvoice, type LocalInvoiceFile, type LocalInvoiceLine, type LocalSupplier, type LocalTaxLine,
 } from '../app/client.ts';
 import {
-  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, lineName, loadMirror, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
+  DEDUCTIBILITY_LABELS, GENERAL_KIND_LABELS, ITEM_TYPE_LABELS, PAYMENT_METHOD_LABELS, TAX_TYPE_LABELS, eur, lineName, loadMirror, supplierName, workingQuarter, monthKey, monthLabel, onAnyTable, parseAmount, shortDate,
   statusChipClass, statusText, todayIso, type Mirror,
 } from '../app/data.ts';
 import { ACCEPT_ATTR, formatBytes, openFile, stageDocument, storedMime, type StagedDocument } from '../app/files.ts';
@@ -38,12 +38,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Utilidades de la vista
 // ---------------------------------------------------------------------------
 function supplierOptions(suppliers: LocalSupplier[]): Array<[string, string]> {
-  return suppliers.filter((s) => !s.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es')).map((s) => [s.id, s.name] as [string, string]);
+  return suppliers.filter((s) => !s.deleted_at).sort((a, b) => supplierName(a).localeCompare(supplierName(b), 'es')).map((s) => [s.id, s.label ? `${s.label} (${s.name})` : s.name] as [string, string]);
 }
 
 function invoiceTitle(invoice: LocalInvoice, mirror: Mirror): string {
   const supplier = mirror.supplierById.get(invoice.supplier_id);
-  return `${supplier?.name ?? 'Proveedor'} · ${invoice.object}`;
+  return `${supplierName(supplier, 'Proveedor')} · ${invoice.object}`;
 }
 
 function changed(fields: Record<string, unknown>, row: Record<string, unknown>): Record<string, unknown> {
@@ -131,7 +131,7 @@ export const mountInvoices: ViewMount = (ctx) => {
   function matches(invoice: LocalInvoice): boolean {
     if (!mirror) return false;
     const supplier = mirror.supplierById.get(invoice.supplier_id);
-    const hay = [supplier?.name ?? '', invoice.object, invoice.invoice_number ?? '', invoice.code ?? ''].join(' ').toLowerCase();
+    const hay = [supplier?.name ?? '', supplier?.label ?? '', invoice.object, invoice.invoice_number ?? '', invoice.code ?? ''].join(' ').toLowerCase();
     if (query && !hay.includes(query)) return false;
     const hasFile = (mirror.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
     switch (filter) {
@@ -381,7 +381,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       invoice.invoice_kind === 'rectificativa' ? el('span', { class: 'chip warn', id: 'rectChip' }, 'Rectificativa') : null,
     ),
     el('dl', { class: 'kv', 'data-feedback-ignore': '' },
-      el('dt', null, 'Proveedor'), el('dd', null, supplier?.name ?? '—', supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
+      el('dt', null, 'Proveedor'), el('dd', { id: 'invSupplier' }, supplierName(supplier), supplier?.label ? el('span', { class: 'hint' }, ` · ${supplier.name}`) : null, supplier?.tax_id ? ` · ${supplier.tax_id}` : ''),
       el('dt', null, 'Fecha'), el('dd', null, invoice.invoice_date ? [shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`] : 'Sin fecha: léela del PDF o escríbela para poder validar'),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),

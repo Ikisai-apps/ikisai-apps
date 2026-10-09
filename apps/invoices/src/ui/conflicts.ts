@@ -1,6 +1,6 @@
 import type { PendingConflict } from '@ikisai/sync-client';
 import { confirmDialog, conflictIntro, el, formatDate, renderConflicts, renderRejectedList, replace, toast } from '@ikisai/ui-kit';
-import { loadMirror } from '../app/data.ts';
+import { loadMirror, supplierName } from '../app/data.ts';
 import { categoryLabel, describeError } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -53,7 +53,7 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
       const table = (c.operation as { table?: string }).table ?? ('supplier_id' in row && 'code' in row ? 'invoices.invoices' : null);
       if (table === 'invoices.invoices') {
         const supplier = mirror.supplierById.get(String(row.supplier_id ?? ''));
-        return [row.code ?? 'Factura sin código', supplier?.slug === 'sin_identificar' ? null : supplier?.name].filter(Boolean).join(' · ');
+        return [row.code ?? 'Factura sin código', supplier?.slug === 'sin_identificar' ? null : supplierName(supplier, '')].filter(Boolean).join(' · ');
       }
       if (table === 'invoices.suppliers') return row.name ? String(row.name) : null;
       return null;
