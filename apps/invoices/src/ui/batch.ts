@@ -12,7 +12,7 @@ import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, el, openSheet, replace, toast } from '@ikisai/ui-kit';
 import {
   detectRectification, extractWithTemplates, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, importOperations, matchSupplier, negateDocument,
-  type ImportDocument,
+  partialFillOperations, readingMessage, readingSummary, type ImportDocument, type TemplateExtraction,
 } from '@ikisai/domain-invoices';
 import { INVOICES, INVOICE_FILES, SUPPLIERS } from '../app/client.ts';
 import type { Mirror } from '../app/data.ts';
@@ -25,8 +25,8 @@ import type { ViewContext } from './shell.ts';
 
 /** Proveedor provisional de lo que entra sin leer (el mismo que usa Drive). */
 const UNIDENTIFIED = { name: 'Sin identificar (Drive)', slug: 'sin_identificar' };
-type Outcome = 'leida' | 'sin_leer' | 'duplicada' | 'error';
-const OUTCOME_LABELS: Record<Outcome, string> = { leida: 'Leída', sin_leer: 'Sin leer: complétala después', duplicada: 'Duplicada: no se sube', error: 'Error' };
+type Outcome = 'leida' | 'parcial' | 'sin_leer' | 'duplicada' | 'error';
+const OUTCOME_LABELS: Record<Outcome, string> = { leida: 'Leída', parcial: 'Lectura parcial: complétala', sin_leer: 'Sin leer: complétala después', duplicada: 'Duplicada: no se sube', error: 'Error' };
 
 export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirror>, onDone: () => void, shared: File[] = []): void {
   const input = el('input', { 'data-feedback-id': 'invoices.facturas.lote.archivos', 'data-feedback-label': 'Facturas', type: 'file', id: 'batchFiles', accept: ACCEPT_ATTR, multiple: true });
@@ -39,7 +39,7 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
     const files = shared.length ? shared : Array.from(input.files ?? []);
     if (!files.length) return;
     start.disabled = true; input.disabled = true;
-    const counts: Record<Outcome, number> = { leida: 0, sin_leer: 0, duplicada: 0, error: 0 };
+    const counts: Record<Outcome, number> = { leida: 0, parcial: 0, sin_leer: 0, duplicada: 0, error: 0 };
     replace(list);
     for (const [index, file] of files.entries()) {
       const item = el('li', null, el('strong', null, file.name), ' · ', el('span', { class: 'hint' }, 'leyendo…'));
@@ -51,7 +51,7 @@ export function openBatchUpload(ctx: ViewContext, getMirror: () => Promise<Mirro
       replace(summary, `${index + 1} de ${files.length}…`);
     }
     usage.track('invoices.facturas.lote', counts.error ? 'error' : 'success');
-    replace(summary, `${counts.leida} leída${counts.leida === 1 ? '' : 's'}, ${counts.sin_leer} sin leer, ${counts.duplicada} duplicada${counts.duplicada === 1 ? '' : 's'}${counts.error ? `, ${counts.error} con error` : ''}. Revísalas y valídalas en la lista.`);
+    replace(summary, `${counts.leida} leída${counts.leida === 1 ? '' : 's'}, ${counts.parcial ? `${counts.parcial} con lectura parcial, ` : ''}${counts.sin_leer} sin leer, ${counts.duplicada} duplicada${counts.duplicada === 1 ? '' : 's'}${counts.error ? `, ${counts.error} con error` : ''}. Revísalas y valídalas en la lista.`);
     toast(navigator.onLine ? 'Facturas subidas.' : 'Facturas guardadas en este dispositivo: se subirán al volver la conexión.');
     onDone();
   }
@@ -83,10 +83,12 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
   // Lectura como «Leer PDF» (las fotos no tienen texto que leer en el dispositivo)
   let document: ImportDocument | null = null;
   let rectification: ReturnType<typeof detectRectification> | null = null;
+  let partial: TemplateExtraction | null = null;
   if (isPdf) {
     try {
       const items = await readPdfItems(file);
       const result = extractWithTemplates(items, { suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })), templates: mirror.templates });
+      partial = result;
       if (result.hasText && result.ok && result.document) {
         rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: result.document });
         document = rectification.isRectification && result.document.document_totals.total > 0 ? negateDocument(result.document) : result.document;
@@ -116,11 +118,29 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
   const placeholder = mirror.suppliers.find((s) => !s.deleted_at && s.slug === UNIDENTIFIED.slug);
   const supplierId = placeholder?.id ?? crypto.randomUUID();
   const invoiceId = crypto.randomUUID();
+  const invoiceFields: Record<string, unknown> = { supplier_id: supplierId, invoice_date: null, object: (file.name.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_\s]+/g, ' ').trim() || 'factura').slice(0, 120) };
+  // Lectura parcial (fase 0): lo encontrado rellena la factura nueva (el resumen `import_meta` solo lo escribe Drive).
+  const extra: RowOperation[] = [];
+  if (partial?.hasText) {
+    const fill = partialFillOperations({
+      invoice: { id: invoiceId, supplier_id: supplierId, invoice_number: null, invoice_date: null, source_total: null },
+      placeholderSupplierId: supplierId, suppliers: mirror.suppliers, hasContent: false, found: partial.found,
+      reading: readingSummary(partial, 0, new Date().toISOString()), newId: () => crypto.randomUUID(),
+    });
+    for (const op of fill.ops) {
+      if (op.op === 'update' && op.table === INVOICES) { const { import_meta: _meta, ...fields } = op.fields as Record<string, unknown>; Object.assign(invoiceFields, fields); }
+      else extra.push(op as unknown as RowOperation);
+    }
+  }
   const operations: RowOperation[] = [
     ...(placeholder ? [] : [{ op: 'insert', table: SUPPLIERS, id: supplierId, fields: { name: UNIDENTIFIED.name, slug: UNIDENTIFIED.slug } } as RowOperation]),
-    { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: null, object: (file.name.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_\s]+/g, ' ').trim() || 'factura').slice(0, 120) } },
+    ...extra.filter((op) => 'table' in op && op.table === SUPPLIERS),
+    { op: 'insert', table: INVOICES, id: invoiceId, fields: invoiceFields },
     { op: 'insert', table: INVOICE_FILES, id: crypto.randomUUID(), fields: { invoice_id: invoiceId, ...fileArg, kind: 'original' } },
+    ...extra.filter((op) => !('table' in op && op.table === SUPPLIERS)),
   ];
   const ok = await commitSafely(client, operations, `Guardada: ${file.name}`);
-  return ok ? { outcome: 'sin_leer', detail: isPdf ? '(PDF sin texto legible)' : '(foto)' } : { outcome: 'error', detail: '' };
+  if (!ok) return { outcome: 'error', detail: '' };
+  if (partial?.hasText) return { outcome: 'parcial', detail: readingMessage(partial) };
+  return { outcome: 'sin_leer', detail: isPdf ? '(este PDF no contiene texto legible: parece escaneado)' : '(foto)' };
 }

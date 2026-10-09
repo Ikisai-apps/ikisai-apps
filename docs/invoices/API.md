@@ -1348,6 +1348,11 @@ El resumen va a `import_meta.reading` (`read`, `found`, `missing`, `stats`, plan
 
 **Precedencia (mínima).** Una relectura que ya da la factura completa conserva el número y la fecha escritos por una persona: los distintos de los que rellenó la lectura, según `reading.filled` (`keepHumanFields`). También respeta el proveedor ya puesto en el borrador.
 
+**En la app** (`ui/reading.ts`):
+- **«Leer PDF» con lectura parcial.** En la ficha, abre «Rellenar a mano» con lo leído. En «Nueva factura», rellena lo vacío del formulario: proveedor por NIF (o alta), fecha, número, total y objeto desde el nombre del archivo. En los dos casos, arriba aparecen el mensaje, los campos (valor o «Falta») y el plegable «Texto leído» con «Copiar texto».
+- **Ficha de una pendiente con PDF:** bloque «Lectura del documento». Va abierto en «Pendiente de datos». Usa el texto guardado o lee el PDF en el dispositivo, y la cabecera resume `import_meta.reading`.
+- **«Subir varias»:** un PDF con texto que no llega a factura completa queda como «Lectura parcial: complétala», con lo encontrado rellenado y el mensaje. Solo un PDF sin texto dice «no contiene texto legible».
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.

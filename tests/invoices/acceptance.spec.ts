@@ -1287,7 +1287,7 @@ test('IA sin API de pago (fase 2): «Leer PDF» con texto, procedencia por campo
   await test.step('PDF escaneado (sin texto): se dice y se remite a «Analizar con IA»', async () => {
     await newInvoice('escaneada', textPdf([]));
     await ficha(page).locator('#chatgptInvoice [data-step="read"]').click();
-    await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'no tiene texto' }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'no contiene texto legible' }).first()).toBeVisible({ timeout: 30_000 });
     await expect(ficha(page).locator('#chatgptInvoice')).toBeVisible();
   });
   await context.close();
@@ -1837,6 +1837,51 @@ test('@smoke todas las pantallas de Finance llevan ids con la forma estable, con
       const unlabeled = await page.evaluate(() => Array.from(document.querySelectorAll('[data-feedback-id]:not([data-feedback-label])')).map((n) => n.getAttribute('data-feedback-id')));
       expect(unlabeled, hash).toEqual([]);
     }
+  } finally {
+    await context.close();
+  }
+});
+
+test('Lectura parcial (fase 0): un PDF con texto sin fecha nunca deja la pantalla vacía (Nueva factura, ficha y «Leer PDF»)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'parcial_material.pdf', mimeType: 'application/pdf', buffer: textPdf([
+      ['SUMINISTROS PARCIALES S.L.', 40, 800], ['CIF: A87654323', 300, 800],
+      ['Factura nº: PAR-77', 40, 770],
+      ['Material de oficina variado para el almacén', 40, 740],
+      ['TOTAL FACTURA', 40, 700], ['121,00 €', 450, 700],
+    ]) });
+    await sheet.locator('#chatgptNew [data-step="read"]').click();
+    // Lo encontrado rellena el formulario; el aviso dice qué falta; el texto se puede ver y copiar.
+    await expect(sheet.locator('#readingMessage')).toContainText('no he identificado la fecha', { timeout: 20_000 });
+    await expect(sheet.locator('#readingMessage')).not.toContainText('no contiene texto');
+    await expect(sheet.locator('#newNumber')).toHaveValue('PAR-77');
+    await expect(sheet.locator('#newSupplierTaxId')).toHaveValue('A87654323');
+    await expect(sheet.locator('#newSupplierName')).toHaveValue('SUMINISTROS PARCIALES S.L.');
+    await expect(sheet.locator('#newTotal')).toHaveValue('121');
+    await expect(sheet.locator('#newObject')).toHaveValue('parcial material');
+    await expect(sheet.locator('#readingFields')).toContainText('Falta');
+    await sheet.locator('#readingText summary').click();
+    await expect(sheet.locator('#readingText pre')).toContainText('Material de oficina');
+    await page.locator('#saveInvoice').click();
+    // Ficha: «Lectura del documento» abierta en una pendiente de datos, con lo leído y lo que falta.
+    const f = ficha(page);
+    await expect(f.locator('#readingBlock #readingMessage')).toContainText('no he identificado la fecha', { timeout: 30_000 });
+    await expect(f.locator('#readingBlock #readingFields')).toContainText('PAR-77');
+    // «Leer PDF» en la ficha: abre «Rellenar a mano» con lo leído (solo falta la fecha y la base).
+    await f.locator('#chatgptInvoice [data-step="read"]').click();
+    const manual = page.getByRole('dialog', { name: 'Rellenar a mano' });
+    await expect(manual.locator('#readingMessage')).toContainText('no he identificado la fecha', { timeout: 20_000 });
+    await expect(manual.locator('#manualNumber')).toHaveValue('PAR-77');
+    await expect(manual.locator('#manualTotal')).toHaveValue('121');
+    await expect(manual.locator('#manualDate')).toHaveValue('');
   } finally {
     await context.close();
   }

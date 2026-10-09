@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, extractWithTemplates, confirmedFromInvoice, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, readingMessage, readingText, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -28,7 +28,8 @@ import { readPdfItems } from '../app/pdf-text.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
-import { openManualEntry } from './manual.ts';
+import { openManualEntry, type ManualPrefill } from './manual.ts';
+import { documentReadingBlock, extractFor, readingPanel } from './reading.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -299,13 +300,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     if (original) actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.leer_ia', 'data-feedback-label': 'Leer con IA', class: noTemplate ? 'primary' : 'softbtn', type: 'button', id: 'readWithAi',
       onclick: () => openReadWithAi(ctx, invoice, original) }, icon('upload', 18), 'Leer con IA'));
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.rellenar', 'data-feedback-label': 'Rellenar a mano', class: 'softbtn', type: 'button', id: 'fillManually',
-      onclick: () => openManualEntry(ctx, mirror, invoice, async (invoiceId) => {
-        const fresh = await loadMirror(client);
-        const current = fresh.invoices.find((i) => i.id === invoiceId);
-        if (!current) return;
-        const ok = await commitSafely(client, await validateWithLearning(ctx, fresh, current), 'Factura validada. Finance aprende este proveedor para la próxima.');
-        if (ok) void openInvoice(ctx, invoiceId);
-      }) }, icon('edit', 18), 'Rellenar a mano'));
+      onclick: () => openManualEntry(ctx, mirror, invoice, validateAndReopen(ctx)) }, icon('edit', 18), 'Rellenar a mano'));
   }
   if (editable && pendingState) {
     actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.validar', 'data-feedback-label': 'Validar', class: invoice.status === 'pendiente_datos' ? 'softbtn' : 'primary', type: 'button', id: 'validateInvoice', onclick: async () => { const ok = await commitSafely(client, await validateWithLearning(ctx, mirror, invoice), 'Factura validada.'); usage.track('invoices.facturas.validar', ok ? 'success' : 'error'); } }, icon('check', 18), 'Validar'));
@@ -544,7 +539,11 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     Array.isArray(meta.warnings) && meta.warnings.length ? el('div', { class: 'chips' }, ...(meta.warnings as string[]).map((w) => el('span', { class: 'chip alert' }, w))) : el('p', { class: 'hint' }, 'Sin avisos de extracción.'),
   ) : null;
 
-  return el('div', { class: 'inv' }, header, totals, documentBlock, linesBlock, taxBlock, allocBlock, fiscalBlock, importBlock);
+  // Lectura del documento (fase 0): lo que se lee del PDF, lo que falta y el texto, en las pendientes.
+  const pdfOriginal = files.filter((f) => f.kind === 'original' && f.mime_type === 'application/pdf').sort((a, b) => a.page_order - b.page_order)[0];
+  const readingBlock = pendingState && pdfOriginal ? documentReadingBlock(ctx, mirror, invoice, pdfOriginal) : null;
+
+  return el('div', { class: 'inv' }, header, totals, documentBlock, readingBlock, linesBlock, taxBlock, allocBlock, fiscalBlock, importBlock);
 }
 
 /** Periodo fiscal derivado en el cliente para filas optimistas (el servidor lo genera al confirmar). */
@@ -744,8 +743,25 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     return file ? { file, source: { filename: file.name, sha256: await sha256Hex(file) } } : null;
   }, async (file) => {
     const picked = Array.from(files.files ?? []);
-    await readPdfInto(ctx, mirror, null, file, picked);
+    await readPdfInto(ctx, mirror, null, file, picked, undefined, (prefill) => {
+      // Lectura parcial (fase 0): lo encontrado rellena lo vacío del formulario; lo demás, a mano o con la IA.
+      const f = prefill.found;
+      const taxId = f.supplier_tax_id?.replace(/[\s.-]/g, '').toUpperCase() ?? null;
+      const known = taxId ? mirror.suppliers.find((s) => !s.deleted_at && s.slug !== 'sin_identificar' && (s.tax_id ?? '').replace(/[\s.-]/g, '').toUpperCase() === taxId) : undefined;
+      if (!supplier.value || supplier.value === NEW_SUPPLIER) {
+        if (known) supplier.value = known.id;
+        else if (f.supplier_name || f.supplier_tax_id) { supplier.value = NEW_SUPPLIER; if (!supplierName.value && f.supplier_name) supplierName.value = f.supplier_name; if (!supplierTaxId.value && f.supplier_tax_id) supplierTaxId.value = f.supplier_tax_id; }
+        syncSupplierFields();
+      }
+      if (!date.value && f.invoice_date) date.value = f.invoice_date;
+      if (!number.value && f.invoice_number) number.value = f.invoice_number;
+      if (!total.value && f.total !== null) total.value = String(f.total).replace('.', ',');
+      if (!object.value.trim()) object.value = (file.name.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_\s]+/g, ' ').trim() || 'factura').slice(0, 120);
+      replace(readingHost, readingPanel(prefill));
+      preview();
+    });
   });
+  const readingHost = el('div', { id: 'newReading' });
   chatgpt.hidden = true;
   files.addEventListener('change', () => { chatgpt.hidden = !(files.files && files.files.length); });
   const form = el('form', { 'data-feedback-id': 'invoices.facturas.nueva.formulario', 'data-feedback-label': 'Datos de la factura', id: 'newInvoiceForm', novalidate: true, oninput: () => { guard.dirtyEditor = true; }, onsubmit: async (e: Event) => {
@@ -783,6 +799,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   } },
     field('PDF o fotos', files, 'Elige el PDF y pulsa «Leer PDF»: la app rellena sola los datos y los importes. Las fotos se reducen en el móvil.'),
     chatgpt,
+    readingHost,
     el('p', { class: 'hint form-section' }, 'O a mano (si no hay PDF con texto ni IA):'),
     field('Proveedor', supplier, 'Si no está en la lista, elige «+ Nuevo proveedor…» y créalo aquí. Con el JSON de ChatGPT se crea solo.'),
     supplierFields,
@@ -858,29 +875,42 @@ function discrepancyNote(d: { kind: 'date' | 'object'; typed: string; document: 
 }
 
 /** «Leer PDF»: texto del PDF en el dispositivo y reglas deterministas; si no hay texto o faltan datos, se dice. */
-async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[], storedFileId?: string): Promise<void> {
+async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoice | null, file: File, files?: File[], storedFileId?: string, onPartial?: (prefill: ManualPrefill) => void): Promise<void> {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { toast('«Leer PDF» solo sirve para PDF. Para fotos usa «Analizar con IA».'); return; }
   toast('Leyendo el PDF…');
   let items;
-  try { items = await readPdfItems(file); } catch { toast('No se pudo abrir el PDF (dañado o protegido): usa «Analizar con IA».'); return; }
-  const supplier = target ? mirror.supplierById.get(target.supplier_id) ?? null : null;
+  try { items = await readPdfItems(file); } catch { toast('No se pudo abrir el PDF. Puede estar dañado o protegido: usa «Leer con IA» o complétalo a mano.'); return; }
   // Fase 3: la plantilla del proveedor (si la hay) lee primero; las reglas genéricas, lo demás.
-  const result = extractWithTemplates(items, {
-    suppliers: mirror.suppliers.filter((s) => !s.deleted_at).map((s) => ({ id: s.id, name: s.name, tax_id: s.tax_id })),
-    templates: mirror.templates, fallbackSupplierId: target?.supplier_id ?? null,
-    fallback: target ? { supplier_name: supplier?.name ?? null, supplier_tax_id: supplier?.tax_id ?? null, object: target.object } : undefined,
-  });
+  const result = extractFor(mirror, items, target);
   // El texto leído se guarda en el servidor (solo la Edge lo escribe) para aprender al validar sin volver a leer el PDF.
   if (storedFileId && result.hasText && navigator.onLine) void saveDocumentText(ctx, storedFileId, items);
   usage.track('invoices.facturas.leer_pdf', result.hasText && result.ok && result.document ? 'success' : 'error');
-  if (!result.hasText) { toast('Este PDF no tiene texto (escaneado o foto): usa «Analizar con IA».'); return; }
-  if (!result.ok || !result.document) { toast(`No he podido leer ${result.missing.join(' ni ')} del PDF: usa «Analizar con IA» o pega el JSON.`); return; }
+  if (!result.hasText) { toast(readingMessage(result)); return; }
+  if (!result.ok || !result.document) {
+    // Lectura parcial (fase 0): nunca una pantalla vacía. Lo leído rellena «Rellenar a mano» (o el formulario nuevo).
+    const prefill: ManualPrefill = { read: result.read, found: result.found, message: readingMessage(result), text: readingText(items) };
+    if (target) { guard.dirtyEditor = false; await closeSheet(true); openManualEntry(ctx, mirror, target, validateAndReopen(ctx), prefill); }
+    else if (onPartial) onPartial(prefill);
+    else toast(prefill.message);
+    return;
+  }
   guard.dirtyEditor = false;
   await closeSheet(true);
   const templateNote = result.template ? `Plantilla del proveedor v${result.template.version} · ${result.template.confirmations} factura${result.template.confirmations === 1 ? '' : 's'}${result.template.status === 'aprendiendo' ? ' (aprendiendo)' : ''}.` : null;
   const rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: result.document });
   const documentForImport = rectification.isRectification && result.document.document_totals.total > 0 ? negateDocument(result.document) : result.document;
   openImport(ctx, mirror, target, { document: documentForImport, rectification, warnings: [...(rectification.isRectification ? [`Parece una rectificativa (${rectification.evidence}): revisa el número de la original.`] : []), ...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+}
+
+/** Tras «Rellenar a mano» con «Guardar y validar»: valida con aprendizaje y vuelve a abrir la ficha. */
+function validateAndReopen(ctx: ViewContext): (invoiceId: string) => Promise<void> {
+  return async (invoiceId) => {
+    const fresh = await loadMirror(ctx.client);
+    const current = fresh.invoices.find((i) => i.id === invoiceId);
+    if (!current) return;
+    const ok = await commitSafely(ctx.client, await validateWithLearning(ctx, fresh, current), 'Factura validada. Finance aprende este proveedor para la próxima.');
+    if (ok) void openInvoice(ctx, invoiceId);
+  };
 }
 
 async function saveDocumentText(ctx: ViewContext, fileId: string, items: PdfTextItem[]): Promise<void> {
