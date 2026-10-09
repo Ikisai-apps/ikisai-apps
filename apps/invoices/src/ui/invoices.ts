@@ -1005,6 +1005,7 @@ async function validateWithLearning(ctx: ViewContext, mirror: Mirror, invoice: L
     const learning = await learnFromConfirmation({
       lines: linesFromItems(items), supplierId: invoice.supplier_id, invoiceId: invoice.id, templates: mirror.templates,
       confirmed: confirmedFromInvoice(invoice, supplier?.tax_id ?? null, mirror.taxesByInvoice.get(invoice.id) ?? []),
+      items: (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at).sort((a, b) => a.position - b.position).map((l) => ({ description: l.description, quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), net_amount: Number(l.net_amount) })),
     });
     if (!learning) return ops;
     const current = learning.template.id ? mirror.templates.find((t) => t.id === learning.template.id) ?? null : null;
