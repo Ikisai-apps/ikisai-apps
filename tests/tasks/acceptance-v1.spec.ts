@@ -70,6 +70,8 @@ test('[V1·9] etiquetas padre e hija: «Padre: Hija», elegir una hija añade su
       { id: zona, text: 'Zona', family: family.id, parent: null, archived: false },
       { id: planta, text: 'Planta', family: family.id, parent: null, archived: false },
       { id: espacio, text: 'Espacio', family: family.id, parent: zona, archived: false },
+      // Una segunda hija de Zona: con una sola, elegirla sería «todas» y la chip diría solo «Zona» (FB_2026_021).
+      { id: crypto.randomUUID(), text: 'Patio', family: family.id, parent: zona, archived: false },
       { id: sotano, text: 'Sótano', family: family.id, parent: planta, archived: false });
     save(); render();
     return { family: family.id, zona, espacio, planta, sotano };
