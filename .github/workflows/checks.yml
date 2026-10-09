@@ -41,6 +41,9 @@ jobs:
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
             if echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then smoke=true; fi
             if echo "$files" | grep -Eq '^(packages/ui-kit/|package-lock\.json)'; then uikit=true; fi
+            # Historia, cáscara, hojas y diálogos del kit («atrás», FB_2026_025): cambian el recorrido de todas las apps, así
+            # que corre la batería completa de cada una, no solo el humo (regresión de la 0.27.1 en Booking).
+            if echo "$files" | grep -Eq '^packages/ui-kit/src/(shell/(back-navigation|app-shell)|overlay/(sheet|dialog))\.ts$'; then full="$apps"; fi
             for app in $apps; do
               if echo "$files" | grep -Eq "^(apps/$app/|supabase/functions/$app-api/|supabase/functions/_domain/$app/|packages/domain-$app/|tests/$app/|supabase/migrations/[0-9_]+_${app}_)"; then full="$full $app"; fi
             done
