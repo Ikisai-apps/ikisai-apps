@@ -1,0 +1,37 @@
+# Corpus real del lector de facturas (Invoices, fase 2; excepción aprobada por Core el 9-10-2026).
+# Solo lee el bucket privado `test-corpus` de producción (una descarga por ejecución) y escribe acierto o fallo por campo
+# en el resumen del job: ni valores ni texto de las facturas. Nunca en pull_request.
+name: Corpus del lector (Invoices)
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: invoices-corpus
+  cancel-in-progress: false
+jobs:
+  corpus:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Descargar el corpus (solo lectura; la clave, enmascarada y en memoria)
+        run: python tests/invoices/corpus/corpus.py download "$RUNNER_TEMP/corpus"
+      - name: Leer y comparar (solo acierto o fallo por campo)
+        run: npx tsx tests/invoices/corpus/run.ts "$RUNNER_TEMP/corpus" >> "$GITHUB_STEP_SUMMARY"
+      - name: Borrar los documentos
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/corpus"
