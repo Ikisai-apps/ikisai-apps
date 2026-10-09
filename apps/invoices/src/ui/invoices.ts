@@ -1073,18 +1073,6 @@ function validateAndReopen(ctx: ViewContext): (invoiceId: string) => Promise<voi
 // Validar sin chocar con uno mismo (incidencia del usuario, 9-10-2026): elegir la categoría y validar al instante
 // salía con la revisión de antes del acuse del cambio → VERSION_CONFLICT contra el propio cambio.
 // ---------------------------------------------------------------------------
-const VALIDATE_REQUESTS_KEY = 'ikisai.invoices.validateRequests';
-function validateRequests(): Record<string, string> {
-  try { const v = JSON.parse(localStorage.getItem(VALIDATE_REQUESTS_KEY) ?? '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
-}
-function rememberValidateRequest(requestId: string, invoiceId: string | null): void {
-  try {
-    const all = validateRequests();
-    if (invoiceId) all[requestId] = invoiceId; else delete all[requestId];
-    localStorage.setItem(VALIDATE_REQUESTS_KEY, JSON.stringify(Object.fromEntries(Object.entries(all).slice(-50))));
-  } catch { /* sin almacenamiento: el vigilante descarta el conflicto con aviso */ }
-}
-
 /**
  * Valida con la revisión que tiene el servidor: con red, espera (hasta 8 s) a que se confirmen los cambios pendientes;
  * si siguen pendientes (sin red), la validación sale sin revisión esperada (los cambios propios van antes en la cola).
@@ -1111,8 +1099,7 @@ async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: strin
     delete call.args.expectedRevision;
   }
   try {
-    const { requestId } = await client.commit(ops);
-    rememberValidateRequest(requestId, invoiceId);
+    await client.commit(ops);
     toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
     return true;
   } catch (error) {
@@ -1122,10 +1109,14 @@ async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: strin
 }
 
 let resolving = false;
+/** Facturas cuya validación ya se ha reintentado sola en esta sesión: un solo intento, luego decide el usuario. */
+const retriedValidations = new Set<string>();
 /**
- * Conflictos de «Validar» contra un cambio propio: se reintenta solo con la revisión nueva (sin pantalla de conflicto).
- * Uno así que no sea de una validación anotada (p. ej. de antes de este arreglo) se descarta con aviso: el servidor ya
- * tiene los datos de quien lo hizo; solo hay que repetir la acción.
+ * Conflictos de «Validar» contra un cambio propio (incidencia del usuario, 9-10-2026):
+ * - el `call` de validar aparcado (sync-client 0.5.2, `procedure`): se reintenta UNA vez con «mine» (revisión actual);
+ * - el formato antiguo (un update vacío con el `call` aparte, de antes del arreglo): se resuelve una vez y el `call`
+ *   vuelve a la cola, donde ya se aparca bien;
+ * - si vuelve a chocar, queda en la tarjeta del kit para que decida el usuario. Nada en bucle.
  */
 export async function resolveOwnValidationConflicts(ctx: ViewContext): Promise<void> {
   if (resolving) return;
@@ -1134,19 +1125,22 @@ export async function resolveOwnValidationConflicts(ctx: ViewContext): Promise<v
     const { client } = ctx;
     const me = client.bootstrap()?.profile.userId ?? null;
     if (!me) return;
-    const known = validateRequests();
     for (const c of await client.conflicts()) {
-      const op = c.operation as { op: string; table: string; id: string; fields?: Record<string, unknown> };
-      const ownChange = (c.current as { updated_by?: string | null }).updated_by === me;
-      const callOnly = op.table === INVOICES && op.op === 'update' && !Object.keys(op.fields ?? {}).length;
-      if (!ownChange || !callOnly) continue;
-      await client.resolveConflict(c.requestId, { choice: 'theirs' });
-      const invoiceId = known[c.requestId];
-      rememberValidateRequest(c.requestId, null);
-      const code = (c.current as { code?: string | null }).code ?? 'la factura';
-      const status = (c.current as { status?: string }).status;
-      if (invoiceId && (status === 'pendiente_datos' || status === 'pendiente_revision')) await validateNow(ctx, invoiceId, `${code} validada.`);
-      else toast(`Se descartó una acción sobre ${code} que chocaba con un cambio tuyo anterior: vuelve a hacerla si hace falta.`);
+      const op = c.operation as unknown as { op: string; table?: string; fields?: Record<string, unknown> };
+      const row = c.current as { updated_by?: string | null; status?: string; code?: string | null; id?: string };
+      if (row.updated_by !== me) continue;
+      const callOnly = op.op === 'update' && op.table === INVOICES && !Object.keys(op.fields ?? {}).length;
+      if (!callOnly) continue;
+      // Formato de antes del sync-client 0.5.2 (sin `procedure`): se resuelve una vez y el call vuelve a la cola, donde
+      // ya se aparca bien (con `procedure`) y entra por la rama de abajo.
+      if (!c.procedure) { await client.resolveConflict(c.requestId, { choice: 'theirs' }); continue; }
+      const isValidate = c.procedure === 'invoices.validate';
+      const invoiceId = String(row.id ?? '');
+      if (!isValidate || !invoiceId || retriedValidations.has(invoiceId)) continue;
+      if (row.status !== 'pendiente_datos' && row.status !== 'pendiente_revision') continue;
+      retriedValidations.add(invoiceId);
+      await client.resolveConflict(c.requestId, { choice: 'mine' });
+      toast(`Validando ${row.code ?? 'la factura'} con tu último cambio.`);
     }
   } catch { /* lo intenta otra vez en el siguiente cambio de estado */ } finally {
     resolving = false;
