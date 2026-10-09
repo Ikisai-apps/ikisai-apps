@@ -1755,6 +1755,8 @@ test('«Datos de la factura» editables en la ficha (9-10-2026): proveedor nuevo
     expect(row).toMatchObject({ invoice_date: '2026-09-15' });
     expect(api.rows('invoices.suppliers').find((s) => s.id === row.supplier_id)).toMatchObject({ name: 'Suministros A Mano SA', tax_id: 'A12345674' });
     await expect.poll(() => api.rows('invoices.tax_lines').filter((t) => t.invoice_id === row.id && !t.deleted_at).map((t) => [t.rate, t.taxable_base, t.amount]), { timeout: 20_000 }).toEqual([[21, 100, 21]]);
+    // Los autoguardados van en orden y con la revisión al día: nada de «cambios de otra persona»
+    expect(await page.locator('.toast').filter({ hasText: 'otra persona' }).count()).toBe(0);
   } finally {
     await context.close();
   }

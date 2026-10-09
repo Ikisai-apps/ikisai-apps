@@ -128,6 +128,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Sin bucle de conflictos al validar (sync-client 0.5.2: el `call` aparcado va aparte; Finance reintenta una sola vez).
 - Lector v4 (FVR_2026_005): nombre con letras sueltas y sin «Cliente», líneas por cercanía (IVA un punto por encima) y la «Base imponible» rotulada manda sobre el subtotal de la tabla.
 - «Mi nombre» del proveedor (0232): nombre comercial que la app enseña en lugar de la razón social; la gestoría sigue recibiendo la razón social.
+- «Datos de la factura» editables en la propia ficha (lo leído pintado con «leído/revísalo/falta», autoguardado de cabecera, «Guardar importes», «Leer de nuevo el PDF» con «Guardar lo leído»); sustituye a «Rellenar a mano».
 
 ## En curso
 
