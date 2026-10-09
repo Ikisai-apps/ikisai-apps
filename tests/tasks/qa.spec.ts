@@ -45,18 +45,46 @@ test('FB_2026_019 y 020: cabecera sin los iconos de áreas y vistas; «General»
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 
-test('FB_2026_018: ordenar las áreas desde «Áreas de trabajo», y el orden queda en la cabecera y en el servidor', async () => {
+test('FB_2026_018: filas compactas en «Áreas de trabajo»; se ordenan con el asa (teclado y arrastre) y el orden queda en la cabecera y en el servidor', async () => {
   await owner.evaluate(() => areasSheet());
-  const names = async () => owner.locator('#shellTop [data-tab]').allTextContents();
+  const names = async () => (await owner.locator('#shellTop [data-tab]').allTextContents()).map((n) => n.replace(/\d+$/, '').trim());
+  const rows = () => owner.locator('#sheet .area-row');
   const before = await names();
-  expect(before.length).toBeGreaterThan(1);
-  await expect(owner.locator('[data-area-move$="|-1"]').first()).toBeDisabled();
-  await owner.locator('[data-area-move$="|1"]').first().click();
+  expect(before.length).toBeGreaterThan(2);
+  // Cada fila: asa, color, nombre con sus proyectos debajo y editar a la derecha; sin los botones ↑ y ↓.
+  const first = rows().first();
+  await expect(first.locator('[data-area-drag]')).toBeVisible();
+  await expect(first.locator('.areadot')).toBeVisible();
+  await expect(first.locator('.area-open')).toContainText(/\d+ proyectos?/);
+  await expect(first.locator('[data-edit-area]')).toBeVisible();
+  await expect(owner.locator('#sheet [data-area-move]')).toHaveCount(0);
+  const box = (sel: string) => first.locator(sel).boundingBox();
+  expect((await box('[data-area-drag]'))!.x).toBeLessThan((await box('.area-open'))!.x);
+  expect((await box('[data-edit-area]'))!.x).toBeGreaterThan((await box('.area-open'))!.x);
+
+  // Con el teclado: flecha abajo en el asa de la primera la baja una posición, y el foco sigue en su asa.
+  const firstId = await first.getAttribute('data-area-row');
+  await first.locator('[data-area-drag]').focus();
+  await owner.keyboard.press('ArrowDown');
   await expect.poll(names).toEqual([before[1], before[0], ...before.slice(2)]);
+  await expect(owner.locator(`[data-area-drag="${firstId}"]`)).toBeFocused();
+
+  // Arrastrando (ratón o dedo): la última a la primera posición.
+  const order = await names();
+  const lastHandle = rows().last().locator('[data-area-drag]');
+  const from = (await lastHandle.boundingBox())!, to = (await rows().first().boundingBox())!;
+  await owner.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await owner.mouse.down();
+  await owner.mouse.move(from.x + from.width / 2, to.y + 4, { steps: 8 });
+  await owner.mouse.up();
+  await expect.poll(names).toEqual([order[order.length - 1], ...order.slice(0, -1)]);
   await settled(owner);
-  const live = (await server.rows('tasks.tabs')).filter((t) => !t.deleted_at).sort((a, b) => a.position - b.position);
-  expect(live[0].name).toBe(before[1]!.replace(/\d+$/, '').trim());
-  await expect(owner.locator('#sheet')).toContainText('Áreas de trabajo');
+  const live = (await server.rows('tasks.tabs')).filter((t) => !t.deleted_at).sort((a, b) => a.position - b.position).map((t) => t.name);
+  expect(live).toEqual(await names());
+  await owner.screenshot({ path: '../coordinacion/tasks/areas-filas-movil.png' }).catch(() => {});
+  // Tocar el nombre abre el área.
+  await rows().nth(1).locator('.area-open').click();
+  await expect.poll(() => owner.evaluate(() => state.view)).toBe('projects');
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });
 
@@ -125,5 +153,71 @@ test('FB_2026_015 (2): con central.people_options, el equipo suma a las personas
   const label = (await server.rows('tasks.labels')).find((l) => l.id === route.owner_label_id);
   expect([label.name, label.tab_id]).toEqual(['Marta Jardín', tabId]);
   await owner.unroute('**/read/central.people_options');
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('FB_2026_021: chips de etiquetas agrupados por madre, y el selector con madres desplegables y «Todos»', async () => {
+  // Una madre «Staff» con tres hijas en la familia Persona del área.
+  const ids = await owner.evaluate(() => {
+    const scope = (window as any).tab(), family = scope.families.find((f: any) => f.system === 'person');
+    const staff = crypto.randomUUID(), vg = crypto.randomUUID(), an = crypto.randomUUID(), jl = crypto.randomUUID();
+    scope.labels.push({ id: staff, text: 'Staff', family: family.id, parent: null, archived: false },
+      { id: vg, text: 'VG', family: family.id, parent: staff, archived: false },
+      { id: an, text: 'AN', family: family.id, parent: staff, archived: false },
+      { id: jl, text: 'JL', family: family.id, parent: staff, archived: false });
+    (window as any).save(); return { staff, vg, an, jl };
+  });
+  await settled(owner);
+  // En la tarjeta: una sola chip por madre.
+  const chipsOf = (list: string[]) => owner.evaluate((l) => { const d = document.createElement('div'); d.innerHTML = (window as any).chips(l); return [...d.querySelectorAll('.chip')].map((c) => c.textContent); }, list);
+  expect(await chipsOf([ids.staff, ids.vg, ids.an])).toEqual(['Staff: VG, AN']);
+  expect(await chipsOf([ids.staff, ids.vg, ids.an, ids.jl])).toEqual(['Staff']);
+  expect(await chipsOf([ids.staff])).toEqual(['Staff']);
+  expect(await chipsOf([ids.vg])).toEqual(['Staff: VG']);
+
+  // En el selector: la madre se despliega; «Todos» y una hija suelta no van juntas.
+  let picked: string[] | null = null;
+  await owner.evaluate(() => { (window as any).__picked = null; (window as any).openLabelPicker([], (l: string[]) => { (window as any).__picked = l; }); });
+  const mother = owner.locator(`[data-pick-mother="${ids.staff}"]`);
+  await expect(mother).toHaveText(/Staff/);
+  await expect(owner.locator(`[data-pick-kid="${ids.vg}"]`)).toHaveCount(0);
+  await mother.click();
+  await owner.locator(`[data-pick-kid="${ids.vg}"]`).click();
+  await owner.locator(`[data-pick-kid="${ids.an}"]`).click();
+  await expect(owner.locator(`[data-pick-mother="${ids.staff}"]`)).toContainText('Staff: VG, AN');
+  await owner.locator(`[data-pick-all="${ids.staff}"]`).click();
+  await expect(owner.locator(`[data-pick-mother="${ids.staff}"]`)).toContainText('Staff: Todos');
+  await expect(owner.locator(`[data-pick-kid="${ids.vg}"]`)).not.toHaveClass(/\bon\b/);
+  await owner.locator(`[data-pick-kid="${ids.jl}"]`).click();
+  await expect(owner.locator(`[data-pick-all="${ids.staff}"]`)).not.toHaveClass(/\bon\b/);
+  await owner.locator('#labelsDone').click();
+  picked = await owner.evaluate(() => (window as any).__picked);
+  expect(picked).toEqual([ids.jl]);
+  await owner.evaluate(() => (window as any).closeSheet?.());
+  expect(errors, 'errores de JavaScript en la página').toEqual([]);
+});
+
+test('FB_2026_022: la lupa y el filtro son iconos en la fila de facetas; la lupa despliega el campo', async () => {
+  await owner.evaluate((id) => { state.taskScope = 'area'; state.activeTab = id; state.search = ''; state.filters = {}; (window as any).navigateView('projects'); }, ID.ikisai);
+  const row = owner.locator('.facetbar .facets');
+  await expect(row.locator('#searchToggle')).toBeVisible();
+  await expect(row.locator('#filterBtn')).toBeVisible();
+  await expect(row.locator('[data-facet]').first()).toBeVisible();
+  await expect(owner.locator('#searchInput')).toBeHidden();
+  await row.locator('#searchToggle').click();
+  await expect(owner.locator('#searchInput')).toBeFocused();
+  await owner.keyboard.type('zzz-sin-resultados');
+  await expect.poll(() => owner.evaluate(() => state.search)).toBe('zzz-sin-resultados');
+  await expect(owner.locator('#searchInput')).toBeVisible();
+  // Cerrar la lupa borra la búsqueda y pliega el campo.
+  await owner.locator('#searchToggle').click();
+  await expect(owner.locator('#searchInput')).toBeHidden();
+  expect(await owner.evaluate(() => state.search)).toBe('');
+  // «/» la abre y la enfoca.
+  await owner.locator('body').click({ position: { x: 5, y: 400 } });
+  await owner.keyboard.press('/');
+  await expect(owner.locator('#searchInput')).toBeFocused();
+  await owner.keyboard.press('Escape');
+  await owner.screenshot({ path: '../coordinacion/tasks/facetas-iconos-movil.png', clip: { x: 0, y: 0, width: 484, height: 360 } }).catch(() => {});
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

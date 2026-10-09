@@ -37,6 +37,25 @@ if(typeof homeTaskRow==='function'){
 // Atajo a la paleta dentro del buscador.
 const searchbarBeforeTaller=searchbar;
 searchbar=function(){return searchbarBeforeTaller().replace(/(<input id="searchInput"[^>]*>)/,'<div class="searchwrap">$1<button type="button" class="kbdhint" data-open-palette data-feedback-id="tasks.paleta.abrir" data-feedback-label="Abrir la paleta de comandos" aria-label="Abrir la paleta de comandos" title="Ctrl K">'+menuIcon('search')+'<span>Ctrl K</span></button></div>')};
+/* Búsqueda y filtros como iconos en la fila de Estado, Disponibilidad y las demás facetas (FB_2026_022). La lupa
+   despliega el campo, que sigue abierto mientras haya texto; cerrarlo borra la búsqueda. «/» lo abre y lo enfoca. Donde
+   no hay facetas (otras pantallas), la barra queda como estaba. */
+let searchOpen=false;
+const searchbarBeforeCompact=searchbar;
+searchbar=function(){const html=searchbarBeforeCompact(),holder=document.createElement('template');holder.innerHTML=html;
+  const bar=holder.content.querySelector('.searchbar'),facets=holder.content.querySelector('.facetbar .facets'),filter=bar?.querySelector('#filterBtn');
+  if(!bar||!facets||!filter)return html;
+  const open=searchOpen||!!(state.search||'').trim();
+  const tools=document.createElement('div');tools.className='facettools';
+  tools.innerHTML=`<button type="button" class="softbtn searchtoggle ${open?'active':''}" id="searchToggle" aria-expanded="${open}" aria-controls="searchInput" aria-label="${open?'Cerrar la búsqueda':'Buscar'}" data-feedback-id="tasks.busqueda.abrir" data-feedback-label="Buscar">${menuIcon('search')}</button>`;
+  filter.classList.add('iconfilter');tools.appendChild(filter);facets.prepend(tools);
+  bar.classList.add('collapsible');if(!open)bar.hidden=true;
+  return [...holder.content.childNodes].map(n=>n.outerHTML??n.textContent).join('')};
+function setSearchOpen(open){searchOpen=open;if(!open&&state.search){state.search='';persistUI()}render();if(open)setTimeout(()=>{const s=document.getElementById('searchInput');s?.focus();s?.select()},0)}
+window.addEventListener('keydown',e=>{if(e.key!=='/'||e.ctrlKey||e.metaKey||e.altKey)return;const t=e.target;if(t?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
+  const s=document.getElementById('searchInput');if(s&&s.closest('.searchbar')?.hidden){searchOpen=true;render()}},true);
+const bindBeforeCompact=bind;
+bind=function(){bindBeforeCompact();const t=document.getElementById('searchToggle');if(t)t.onclick=e=>{e.stopPropagation();setSearchOpen(!(searchOpen||!!(state.search||'').trim()))}};
 // Entrada de vista animada solo cuando cambia la pantalla, no en cada repintado; y marca de solo lectura.
 let tallerViewKey='';
 const renderBeforeTaller=render;

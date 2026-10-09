@@ -79,28 +79,65 @@ function openLabelEditor(fid,id=null,returnTo=null){
   document.getElementById('saveNewLabel').onclick=()=>{if(!canManageCatalog())return;const text=document.getElementById('nlText').value.trim();if(!text)return toast('Escribe un nombre.');if(tab().labels.some(l=>l.id!==id&&l.family===fid&&l.text.toLocaleLowerCase()===text.toLocaleLowerCase()))return toast('Ya existe una etiqueta con ese nombre en esta familia.');const parent=document.getElementById('labelParent').value||null;const scope=state.tabs.find(t=>t.id===scopeId&&!t.deleted);if(!scope||state.activeTab!==scopeId)return toast('El área ya no está disponible.');let result=id?scope.labels.find(l=>l.id===id):null;if(id){if(!result)return;const edits=editorFields(result,draft,{text,parent});if(!edits)return;Object.assign(result,edits)}else {result={id:uid('label-'),text,family:fid,parent,archived:!!f.archived,version:1};tab().labels.push(result)}save();render();back(result);toast('Etiqueta guardada')};
   const archive=document.getElementById('archiveLabel');if(archive)archive.onclick=()=>{if(!canManageCatalog()||family(fid)?.archived)return;const current=label(id);if(!current)return;current.archived=!current.archived;save();render();back(current);toast(current.archived?'Etiqueta archivada':'Etiqueta restaurada')};
 }
+/* Elegir etiquetas (FB_2026_021): las madres como chips. Una madre con hijas se despliega para elegir hijas concretas o
+   «Todos» (la madre sola); «Todos» y una hija suelta no van juntas. Al guardar, el núcleo añade la madre de cada hija. */
+let pickerOpenMothers=new Set();
 openLabelPicker=function(selected,cb){
+  selected=[...new Set(selected)];
   const used=new Set((project()?.tasks||[]).flatMap(t=>t.labels||[]));
-  openSheet(`<h2 class="sheettitle">Elegir etiquetas</h2><p class="subtitle">Catálogo de ${esc(tab().name)}. Puedes crear una etiqueta sin perder lo escrito.</p>${tab().families.filter(f=>!f.archived).map(f=>{const ls=tab().labels.filter(l=>l.family===f.id&&!l.archived).sort((a,b)=>Number(used.has(b.id))-Number(used.has(a.id)));return `<section class="family"><div class="familyhead"><span class="dot" style="background:${esc(f.color)}"></span><span class="familyname">${esc(f.name)}</span></div>${ls.map(l=>`<button class="filterchip ${selected.includes(l.id)?'on':''}" style="color:${esc(f.color)}" data-pick-label="${l.id}" data-feedback-id="tasks.elegir_etiquetas.etiqueta" data-feedback-label="Etiqueta">${esc(l.text)}</button>`).join('')}${canManageCatalog()?`<button class="ghost" data-picker-new-label="${f.id}" data-feedback-id="tasks.elegir_etiquetas.nueva_etiqueta" data-feedback-label="Nueva etiqueta">+ Nueva etiqueta</button>`:''}</section>`}).join('')}<div class="actions"><button class="primary" id="labelsDone" data-feedback-id="tasks.elegir_etiquetas.aplicar" data-feedback-label="Aplicar">Aplicar</button></div>`);
+  const mothersOf=f=>tab().labels.filter(l=>l.family===f.id&&!l.archived&&!labelMotherOf(l)).sort((a,b)=>Number(used.has(b.id))-Number(used.has(a.id)));
+  const kidsOn=m=>labelChildren(m).filter(c=>selected.includes(c.id));
+  const motherChip=(m,f)=>{const kids=labelChildren(m);
+    if(!kids.length)return `<button class="filterchip ${selected.includes(m.id)?'on':''}" style="color:${esc(f.color)}" data-pick-label="${m.id}" data-feedback-id="tasks.elegir_etiquetas.etiqueta" data-feedback-label="Etiqueta">${esc(m.text)}</button>`;
+    const on=kidsOn(m),all=selected.includes(m.id)&&!on.length,open=pickerOpenMothers.has(m.id),summary=all?'Todos':on.map(c=>c.text).join(', ');
+    return `<span class="mothergroup ${open?'open':''}"><button class="filterchip motherchip ${all||on.length?'on':''}" style="color:${esc(f.color)}" data-pick-mother="${m.id}" aria-expanded="${open}" data-feedback-id="tasks.elegir_etiquetas.madre" data-feedback-label="Etiqueta madre">${esc(m.text)}${summary?`<span class="mothersummary">: ${esc(summary)}</span>`:''}<span class="motherarrow" aria-hidden="true"></span></button>${open?`<span class="motherkids"><button class="filterchip ${all?'on':''}" style="color:${esc(f.color)}" data-pick-all="${m.id}" data-feedback-id="tasks.elegir_etiquetas.todos" data-feedback-label="Todas las hijas">Todos</button>${kids.map(c=>`<button class="filterchip ${selected.includes(c.id)?'on':''}" style="color:${esc(f.color)}" data-pick-kid="${c.id}" data-feedback-id="tasks.elegir_etiquetas.hija" data-feedback-label="Etiqueta hija">${esc(c.text)}</button>`).join('')}</span>`:''}</span>`};
+  const scroll=document.getElementById('sheet')?.scrollTop||0;
+  openSheet(`<h2 class="sheettitle">Elegir etiquetas</h2><p class="subtitle">Catálogo de ${esc(tab().name)}. Puedes crear una etiqueta sin perder lo escrito.</p>${tab().families.filter(f=>!f.archived).map(f=>`<section class="family"><div class="familyhead"><span class="dot" style="background:${esc(f.color)}"></span><span class="familyname">${esc(f.name)}</span></div>${mothersOf(f).map(m=>motherChip(m,f)).join('')}${canManageCatalog()?`<button class="ghost" data-picker-new-label="${f.id}" data-feedback-id="tasks.elegir_etiquetas.nueva_etiqueta" data-feedback-label="Nueva etiqueta">+ Nueva etiqueta</button>`:''}</section>`).join('')}<div class="actions"><button class="primary" id="labelsDone" data-feedback-id="tasks.elegir_etiquetas.aplicar" data-feedback-label="Aplicar">Aplicar</button></div>`);
+  const sheet=document.getElementById('sheet');if(sheet)sheet.scrollTop=scroll;
+  const again=()=>openLabelPicker(selected,cb);
   document.querySelectorAll('[data-pick-label]').forEach(b=>b.onclick=()=>{const id=b.dataset.pickLabel;selected=selected.includes(id)?selected.filter(x=>x!==id):[...selected,id];b.classList.toggle('on')});
+  document.querySelectorAll('[data-pick-mother]').forEach(b=>b.onclick=()=>{const id=b.dataset.pickMother;if(pickerOpenMothers.has(id))pickerOpenMothers.delete(id);else pickerOpenMothers.add(id);again()});
+  document.querySelectorAll('[data-pick-all]').forEach(b=>b.onclick=()=>{const m=label(b.dataset.pickAll),kids=labelChildren(m).map(c=>c.id),all=selected.includes(m.id)&&!kids.some(k=>selected.includes(k));
+    selected=selected.filter(x=>x!==m.id&&!kids.includes(x));if(!all)selected.push(m.id);again()});
+  document.querySelectorAll('[data-pick-kid]').forEach(b=>b.onclick=()=>{const c=label(b.dataset.pickKid),m=labelMotherOf(c);
+    // Una hija concreta quita «Todos»: la madre la vuelve a poner el núcleo al guardar.
+    selected=selected.includes(c.id)?selected.filter(x=>x!==c.id):[...selected.filter(x=>x!==m?.id),c.id];again()});
   document.querySelectorAll('[data-picker-new-label]').forEach(b=>b.onclick=()=>openLabelEditor(b.dataset.pickerNewLabel,null,l=>{if(l&&!selected.includes(l.id))selected.push(l.id);openLabelPicker(selected,cb)}));
-  document.getElementById('labelsDone').onclick=()=>cb(selected);
+  document.getElementById('labelsDone').onclick=()=>{pickerOpenMothers=new Set();cb(selected)};
 };
 
-function areasSheet(){
-  const current=state.activeTab,active=state.tabs.filter(t=>!t.deleted),removed=state.tabs.filter(t=>t.deleted);
-  openSheet(`<h2 class="sheettitle">Áreas de trabajo</h2><p>Ikisai, Personal o Detailorg son áreas independientes. Cada una contiene sus proyectos, etiquetas y vistas.</p>${isAdministrator()?'<button class="primary" id="newArea" data-feedback-id="tasks.areas.nueva" data-feedback-label="Nueva área">+ Nueva área</button>':''}<div class="area-list">${active.map((t,i)=>`<section class="area-card ${t.id===current?'current':''}"><strong>${esc(t.name)}${t.id===current?' · actual':''}</strong><p class="small muted">${t.projects.filter(p=>!p.deleted&&!p.system).length} proyectos${t.restricted?' compartidos':''}</p><div class="actions"><button class="softbtn" data-open-area="${t.id}" data-feedback-id="tasks.areas.lista.abrir" data-feedback-label="Abrir área">Abrir</button>${canManageArea(t)?`<button class="ghost" data-edit-area="${t.id}" data-feedback-id="tasks.areas.lista.editar" data-feedback-label="Editar o eliminar área">Editar / eliminar</button>`:''}${isAdministrator()&&active.length>1?`<button class="ghost" type="button" data-area-move="${t.id}|-1" aria-label="Subir ${esc(t.name)}" ${i===0?'disabled':''} data-feedback-id="tasks.areas.lista.subir" data-feedback-label="Subir área">↑</button><button class="ghost" type="button" data-area-move="${t.id}|1" aria-label="Bajar ${esc(t.name)}" ${i===active.length-1?'disabled':''} data-feedback-id="tasks.areas.lista.bajar" data-feedback-label="Bajar área">↓</button>`:''}</div></section>`).join('')}</div>${removed.some(canManageArea)?'<h3>Áreas en papelera</h3>'+removed.filter(canManageArea).map(t=>`<div class="suggestion"><span>${esc(t.name)}</span><button data-restore-area="${t.id}" data-feedback-id="tasks.areas.papelera.restaurar" data-feedback-label="Restaurar área">Restaurar</button></div>`).join(''):''}`);
+/* «Áreas de trabajo» (FB_2026_018): una fila compacta por área. A la izquierda, el asa para ordenar (arrastrar con el ratón
+   o el dedo, o con las flechas del teclado), el color y el nombre con sus proyectos debajo (tocarlo abre el área); a la
+   derecha, editar. */
+function areasSheet(focusId=null){
+  const current=state.activeTab,active=state.tabs.filter(t=>!t.deleted),removed=state.tabs.filter(t=>t.deleted),sortable=isAdministrator()&&active.length>1;
+  openSheet(`<h2 class="sheettitle">Áreas de trabajo</h2><p>Ikisai, Personal o Detailorg son áreas independientes. Cada una contiene sus proyectos, etiquetas y vistas.</p>${isAdministrator()?'<button class="primary" id="newArea" data-feedback-id="tasks.areas.nueva" data-feedback-label="Nueva área">+ Nueva área</button>':''}<div class="area-list arearows">${active.map(t=>{const n=t.projects.filter(p=>!p.deleted&&!p.system).length;
+    return `<div class="area-row ${t.id===current?'current':''}" data-area-row="${t.id}">${sortable?`<button class="draghandle" type="button" data-area-drag="${t.id}" aria-label="Mover ${esc(t.name)}: arrastra, o usa las flechas arriba y abajo" data-feedback-id="tasks.areas.lista.ordenar" data-feedback-label="Ordenar área">⠿</button>`:''}<span class="dot areadot" style="background:${esc(t.color||'var(--line)')}"></span><button class="area-open" type="button" data-area-open="${t.id}" data-feedback-id="tasks.areas.lista.abrir" data-feedback-label="Abrir área"><strong>${esc(t.name)}${t.id===current?' · actual':''}</strong><span class="small muted">${n} ${n===1?'proyecto':'proyectos'}${t.restricted?' compartidos':''}</span></button>${canManageArea(t)?`<button class="iconbtn arearow-edit" type="button" data-edit-area="${t.id}" aria-label="Editar ${esc(t.name)}" data-feedback-id="tasks.areas.lista.editar" data-feedback-label="Editar o eliminar área"></button>`:''}</div>`}).join('')}</div>${removed.some(canManageArea)?'<h3>Áreas en papelera</h3>'+removed.filter(canManageArea).map(t=>`<div class="suggestion"><span>${esc(t.name)}</span><button data-restore-area="${t.id}" data-feedback-id="tasks.areas.papelera.restaurar" data-feedback-label="Restaurar área">Restaurar</button></div>`).join(''):''}`);
   document.getElementById('newArea')?.addEventListener('click',newAreaSheet);
-  document.querySelectorAll('[data-open-area]').forEach(b=>b.onclick=()=>{state.activeTab=b.dataset.openArea;state.groupBy='project';navigateView('projects')});
+  document.querySelectorAll('[data-area-open]').forEach(b=>b.onclick=()=>{state.activeTab=b.dataset.areaOpen;state.groupBy='project';navigateView('projects')});
   document.querySelectorAll('[data-edit-area]').forEach(b=>b.onclick=()=>manageTab(b.dataset.editArea));
-  document.querySelectorAll('[data-area-move]').forEach(b=>b.onclick=()=>{const [id,step]=b.dataset.areaMove.split('|');if(moveArea(id,Number(step)))setTimeout(areasSheet,0)});
+  document.querySelectorAll('[data-area-drag]').forEach(bindAreaDrag);
   document.querySelectorAll('[data-restore-area]').forEach(b=>b.onclick=()=>{const t=state.tabs.find(t=>t.id===b.dataset.restoreArea);if(!canManageArea(t))return;t.deleted=false;save();render();areasSheet()});
+  if(focusId)document.querySelector(`[data-area-drag="${focusId}"]`)?.focus();
 }
-/* Orden de las áreas (FB_2026_018): sube o baja un área en la lista y renumera las posiciones de todas, en un lote.
+/* Asa de una fila: flechas del teclado (una posición) y arrastre con puntero (ratón o dedo), con la fila siguiendo al dedo. */
+function bindAreaDrag(handle){
+  const id=handle.dataset.areaDrag;
+  handle.onkeydown=e=>{if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;e.preventDefault();const order=state.tabs.filter(t=>!t.deleted).map(t=>t.id);
+    if(moveAreaTo(id,order.indexOf(id)+(e.key==='ArrowUp'?-1:1)))setTimeout(()=>areasSheet(id),0)};
+  // Mover la fila en el DOM le quita la captura del puntero al asa: el movimiento y el final se escuchan en la ventana.
+  handle.onpointerdown=e=>{if(e.button>0)return;e.preventDefault();const row=handle.closest('.area-row'),list=row.parentElement,pid=e.pointerId;row.classList.add('dragging');
+    const move=ev=>{if(ev.pointerId!==pid)return;ev.preventDefault();const rows=[...list.querySelectorAll('.area-row')].filter(r=>r!==row);const after=rows.find(r=>{const b=r.getBoundingClientRect();return ev.clientY<b.top+b.height/2});if(row.nextElementSibling!==(after||null))list.insertBefore(row,after||null)};
+    const end=ev=>{if(ev.pointerId!==pid)return;window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);row.classList.remove('dragging');
+      const to=[...list.querySelectorAll('.area-row')].indexOf(row);if(moveAreaTo(id,to))setTimeout(()=>areasSheet(),0)};
+    window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end)};
+}
+/* Orden de las áreas (FB_2026_018): lleva un área a otra posición de la lista y renumera las de todas, en un lote.
    La posición de un área solo la escribe el puente al crearla, así que el orden se guarda con operaciones directas. */
-function moveArea(id,step){
-  if(!isAdministrator())return false;const order=state.tabs.filter(t=>!t.deleted).map(t=>t.id),at=order.indexOf(id),to=at+step;
-  if(at<0||to<0||to>=order.length)return false;order.splice(to,0,order.splice(at,1)[0]);
+function moveArea(id,step){const order=state.tabs.filter(t=>!t.deleted).map(t=>t.id);return moveAreaTo(id,order.indexOf(id)+step)}
+function moveAreaTo(id,to){
+  if(!isAdministrator())return false;const order=state.tabs.filter(t=>!t.deleted).map(t=>t.id),at=order.indexOf(id);
+  if(at<0||to<0||to>=order.length||to===at)return false;order.splice(to,0,order.splice(at,1)[0]);
   const rows=new Map((Sync.core?.data?.['tasks.tabs']||[]).map(r=>[r.id,r]));
   const ops=order.map((tid,i)=>({row:rows.get(tid),position:(i+1)*1024})).filter(x=>x.row&&x.row.position!==x.position)
     .map(x=>({op:'update',table:'tasks.tabs',id:x.row.id,expectedRevision:x.row.revision,fields:{position:x.position}}));

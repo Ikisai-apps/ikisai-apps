@@ -353,4 +353,18 @@ html{overflow-x:hidden}
 @keyframes donebump{0%{transform:scale(1)}35%{transform:scale(1.12);color:var(--accent)}100%{transform:scale(1)}}
 .doneghost{background:var(--paper);border-radius:12px;box-shadow:var(--shadow-1)}
 @media (prefers-reduced-motion:reduce){.donefold.grew>summary [data-done-count]{animation:none}.donefoldarrow{transition:none}}
+/* Etiquetas madre en el selector (FB_2026_021): se despliegan para elegir hijas o «Todos». */
+.mothergroup{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mothergroup.open{display:flex;width:100%;padding:6px 0}
+.motherchip{display:inline-flex;align-items:center;gap:2px}
+.mothersummary{font-weight:500}
+.motherarrow{width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin:0 2px 3px 8px}
+.mothergroup.open .motherarrow{transform:rotate(-135deg);margin-bottom:-2px}
+.motherkids{display:inline-flex;flex-wrap:wrap;gap:6px;padding-left:12px;border-left:2px solid var(--line)}
+/* Lupa y filtro en la fila de facetas (FB_2026_022). */
+.facettools{display:inline-flex;gap:6px;align-items:center;flex:none}
+.facettools .softbtn{width:40px;height:40px;padding:0;display:inline-grid;place-items:center;position:relative}
+.facettools .iconfilter .filterlabel{display:none}
+.facettools .iconfilter .filter-count,.facettools .iconfilter .facetcount{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;line-height:18px;padding:0 4px}
+.searchbar.collapsible[hidden]{display:none}
 
