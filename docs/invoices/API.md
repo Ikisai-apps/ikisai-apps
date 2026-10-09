@@ -1452,3 +1452,10 @@ Para una factura atrasada que la gestoría ya tiene: `delivered_elsewhere = true
 - El resumen fiscal de su trimestre la sigue contando.
 - En la ficha: el botón está en el aviso «Es del 2T…» y en el de «Atrasada»; después aparece el aviso «Ya pasada a la gestoría», con «Deshacer».
 
+### 16.3 Artículos aprendidos (9-10-2026)
+- **Al validar** una factura con artículos (al menos dos, que no sean las líneas genéricas «Base al X % según documento»), `learnItemsFromConfirmation` localiza en el PDF la tabla: la fila de cabecera (sus palabras) y las columnas de descripción, cantidad, precio e importe (posición de las celdas). La guarda en la plantilla del proveedor, en `fields.__items`.
+- **En la siguiente factura** del proveedor, `applyItemTable` lee las filas desde la cabecera hasta los totales («Base imponible», «Total», «IVA»…). Une la descripción que sigue en otra línea y repite en cada página donde vuelva a salir la cabecera. Las filas salen como líneas, con procedencia `supplier_template` (`provenance.lines`, «Artículos» en la vista previa).
+- **Los totales no se tocan.** Si las filas no suman la base (±0,02 €) o hay varios tipos de IVA, se quedan las líneas por tipo de IVA, con un aviso.
+- **Aciertos y fallos**, como en las demás reglas: una factura rara no cambia la tabla; tres fallos seguidos la retiran y la siguiente validación aprende otra. Un documento sin tabla no cuenta como fallo.
+- **Huella estable:** la huella del formato de las plantillas nuevas no incluye las líneas con importes (las filas de artículos cambian de una factura a otra). Al elegir, se compara con la huella completa y con la estable, y vale la mejor, así que las plantillas antiguas siguen funcionando.
+

@@ -268,7 +268,11 @@ export function splitLabelledLine(line: PdfLine): PdfLine[] {
 // ---------------------------------------------------------------------------
 // Extracción
 // ---------------------------------------------------------------------------
+/** Artículos leídos con la tabla aprendida de la plantilla (item-table.ts). */
+export interface TemplateItems { items: Array<{ description: string; quantity: number | null; unit_price: number | null; net_amount: number; page: number; text: string }>; confidence: number }
+
 export interface PdfExtractOptions {
+  templateItems?: TemplateItems;
   /** Proveedores conocidos (por NIF): si uno aparece en el documento, se usa su nombre. */
   suppliers?: Array<{ id?: string; name: string; tax_id: string | null }>;
   /** NIF propios (del negocio) que no pueden ser el proveedor. */
@@ -451,9 +455,24 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
   }
   // Líneas: una por tipo de IVA con su base (o una sola con la base si no hay desglose).
   const rates = [...vatByRate.entries()].sort((a, b) => a[0] - b[0]);
-  const docLines = rates.length && rates.every(([, v]) => v.base !== null)
+  // Artículos de la tabla aprendida (si la plantilla la tiene): solo si suman la base y hay un único tipo de IVA; los
+  // totales no se tocan. Si no cuadran, las líneas por tipo de IVA de siempre y un aviso.
+  const ti = options.templateItems;
+  let itemLines: ImportDocument['lines'] | null = null;
+  if (ti?.items.length) {
+    const sum = ti.items.reduce((n, it) => n + toCents(it.net_amount), 0);
+    if (Math.abs(sum - baseCents!) > 2) warnings.push(`Los ${ti.items.length} artículos leídos con la plantilla suman ${fromCents(sum).toFixed(2).replace('.', ',')} € y la base es ${fromCents(baseCents!).toFixed(2).replace('.', ',')} €: se dejan las líneas por tipo de IVA. Revisa los artículos.`);
+    else if (rates.length > 1) warnings.push(`Hay ${rates.length} tipos de IVA: los artículos leídos con la plantilla no se usan (no se sabe el tipo de cada uno).`);
+    else {
+      const rate = rates.length === 1 ? rates[0]![0] : null;
+      itemLines = ti.items.map((it) => ({ description: it.description.slice(0, 500), quantity: it.quantity, unit: null, unit_price: it.unit_price, discount_amount: null, net_amount: it.net_amount,
+        vat_rate: rate, vat_amount: rate === null ? null : fromCents(Math.round(toCents(it.net_amount) * rate / 100)), gross_amount: null, suggested_item_type: null, suggested_match_name: null, confidence: ti.confidence, notes: null }));
+      provenance['lines'] = { method: 'supplier_template', text: `${ti.items.length} artículos de la tabla aprendida`, page: ti.items[0]!.page, x: null, y: null, confidence: ti.confidence };
+    }
+  }
+  const docLines = itemLines ?? (rates.length && rates.every(([, v]) => v.base !== null)
     ? rates.map(([rate, v]) => ({ description: `Base al ${rate} % según documento`, quantity: null, unit: null, unit_price: null, discount_amount: null, net_amount: v.base!, vat_rate: rate, vat_amount: v.quota, gross_amount: null, suggested_item_type: null, suggested_match_name: null, confidence: 0.6, notes: null }))
-    : [{ description: 'Importe según documento', quantity: null, unit: null, unit_price: null, discount_amount: null, net_amount: fromCents(baseCents!), vat_rate: rates.length === 1 ? rates[0]![0] : null, vat_amount: rates.length === 1 ? rates[0]![1].quota : null, gross_amount: null, suggested_item_type: null, suggested_match_name: null, confidence: 0.5, notes: null }];
+    : [{ description: 'Importe según documento', quantity: null, unit: null, unit_price: null, discount_amount: null, net_amount: fromCents(baseCents!), vat_rate: rates.length === 1 ? rates[0]![0] : null, vat_amount: rates.length === 1 ? rates[0]![1].quota : null, gross_amount: null, suggested_item_type: null, suggested_match_name: null, confidence: 0.5, notes: null }]);
   const document = {
     schema_version: 'ikisai.invoice.v1',
     invoice: {

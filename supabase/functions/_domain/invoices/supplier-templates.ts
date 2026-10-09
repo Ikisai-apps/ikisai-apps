@@ -8,6 +8,7 @@
  * - Usar: se localiza la etiqueta y se toma el valor; confianza según la evidencia (≤ 0,5 mientras «aprendiendo»).
  * - Una factura anómala no cambia una etiqueta; tres fallos seguidos retiran esa regla; otro formato, otra versión.
  */
+import { applyItemTable, ITEMS_KEY, learnItemsFromConfirmation, type ConfirmedItem, type ItemTableRule } from './item-table.ts';
 import { fromCents, toCents } from './money.ts';
 import { amountsIn, datesIn, extractFromPdfText, linesFromItems, validSpanishTaxId, type FieldProvenance, type PdfExtraction, type PdfExtractOptions, type PdfLine, type PdfTextItem } from './pdf-extract.ts';
 
@@ -66,6 +67,14 @@ export function layoutTokens(lines: PdfLine[]): string[] {
   return [...words].sort();
 }
 
+/**
+ * Huella estable (9-10-2026): la misma, sin las líneas con importes (las filas de artículos cambian de una factura a otra).
+ * Las plantillas nuevas la guardan; al elegir se compara con las dos y vale la mejor (las antiguas guardaban la completa).
+ */
+export function stableLayoutTokens(lines: PdfLine[]): string[] {
+  return layoutTokens(lines.filter((l) => !amountsIn(l.text).length));
+}
+
 export async function layoutHash(tokens: string[]): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tokens.join('\n')));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -79,11 +88,11 @@ export function jaccard(a: string[], b: string[]): number {
 }
 
 /** La plantilla no retirada más parecida del proveedor, si llega al umbral. */
-export function chooseTemplate<T extends TemplateLike>(templates: T[], supplierId: string, tokens: string[]): { template: T; similarity: number } | null {
+export function chooseTemplate<T extends TemplateLike>(templates: T[], supplierId: string, tokens: string[], stable?: string[]): { template: T; similarity: number } | null {
   let best: { template: T; similarity: number } | null = null;
   for (const t of templates) {
     if (t.deleted_at || t.status === 'retirada' || t.supplier_id !== supplierId) continue;
-    const similarity = jaccard(t.layout_tokens, tokens);
+    const similarity = Math.max(jaccard(t.layout_tokens, tokens), stable ? jaccard(t.layout_tokens, stable) : 0);
     if (similarity >= SIMILARITY_THRESHOLD && (!best || similarity > best.similarity)) best = { template: t, similarity };
   }
   return best;
@@ -193,10 +202,16 @@ const PROVENANCE_KEY: Record<string, string> = {
   base: 'document_totals.base', total: 'document_totals.total', withholding: 'document_totals.withholding',
 };
 
+/** La tabla de artículos aprendida de una plantilla (se guarda en `fields.__items`). */
+export function itemsRuleOf(template: { fields: Record<string, unknown> }): ItemTableRule | null {
+  const r = template.fields[ITEMS_KEY] as ItemTableRule | undefined;
+  return r && r.kind === 'items_table' ? r : null;
+}
+
 export function applyTemplate(lines: PdfLine[], template: TemplateLike): TemplateApplication {
   const values: ConfirmedValues = {}; const provenance: Record<string, FieldProvenance> = {};
   for (const [field, rule] of Object.entries(template.fields)) {
-    if (rule.retired) continue;
+    if (field === ITEMS_KEY || rule.retired) continue;
     const found = findAnchorLine(lines, rule);
     if (!found) continue;
     const value = readValue(rule, found.rest);
@@ -259,15 +274,27 @@ export interface TemplateLearning {
  */
 export async function learnFromConfirmation(input: {
   lines: PdfLine[]; confirmed: ConfirmedValues; supplierId: string; invoiceId: string; templates: TemplateLike[];
+  /** Artículos de la factura validada: si están en el PDF, la plantilla aprende la tabla (item-table.ts). */
+  items?: ConfirmedItem[];
 }): Promise<TemplateLearning | null> {
-  const tokens = layoutTokens(input.lines);
-  if (!tokens.length) return null;
-  const chosen = chooseTemplate(input.templates, input.supplierId, tokens);
+  const full = layoutTokens(input.lines);
+  const stable = stableLayoutTokens(input.lines);
+  const tokens = stable.length >= 3 ? stable : full;
+  if (!full.length) return null;
+  const chosen = chooseTemplate(input.templates, input.supplierId, full, tokens);
   const entries = confirmedEntries(input.confirmed);
   const learned: string[] = []; const hits: string[] = []; const misses: string[] = [];
+  /** La tabla de artículos: acierto, fallo o regla nueva (no cuenta como fallo si el documento no tiene artículos). */
+  const learnItems = (fields: Record<string, TemplateRule>) => {
+    if (!input.items?.length) return;
+    const r = learnItemsFromConfirmation(input.lines, input.items, itemsRuleOf({ fields }));
+    if (r.rule) (fields as Record<string, unknown>)[ITEMS_KEY] = r.rule;
+    if (r.outcome === 'learned') learned.push('items'); else if (r.outcome === 'hit') hits.push('items'); else if (r.outcome === 'miss') misses.push('items');
+  };
   if (!chosen) {
     const fields: Record<string, TemplateRule> = {};
     for (const [field, kind, value] of entries) { const rule = learnRule(input.lines, field, kind, value); if (rule) { fields[field] = rule; learned.push(field); } }
+    learnItems(fields);
     if (!learned.length) return null;
     const version = Math.max(0, ...input.templates.filter((t) => t.supplier_id === input.supplierId).map((t) => t.version)) + 1;
     return { isNew: true, learned, hits, misses, template: { id: null, supplier_id: input.supplierId, version, status: 'aprendiendo', layout_tokens: tokens, layout_hash: await layoutHash(tokens), fields, confirmations: 1, uses: 0, full_hits: 0 } };
@@ -295,6 +322,7 @@ export async function learnFromConfirmation(input: {
     }
     if (rule.streak_misses >= RETIRE_AFTER_MISSES) rule.retired = true;
   }
+  learnItems(fields);
   const confirmations = t.confirmations + 1;
   return {
     isNew: false, learned, hits, misses,
@@ -343,9 +371,13 @@ export function extractWithTemplates(items: PdfTextItem[], options: PdfExtractOp
     if (supplierId) break;
   }
   supplierId = supplierId ?? options.fallbackSupplierId ?? null;
-  const chosen = supplierId && options.templates?.length ? chooseTemplate(options.templates, supplierId, layoutTokens(lines)) : null;
+  const chosen = supplierId && options.templates?.length ? chooseTemplate(options.templates, supplierId, layoutTokens(lines), (() => { const st = stableLayoutTokens(lines); return st.length >= 3 ? st : undefined; })()) : null;
   const applied = chosen ? applyTemplate(lines, chosen.template) : null;
-  const result = extractFromPdfText(items, { ...options, ...(applied ? { templateValues: applied } : {}) });
+  // Artículos con la tabla aprendida (si la hay y no está retirada).
+  const itemsRule = chosen ? itemsRuleOf(chosen.template) : null;
+  const read = itemsRule && !itemsRule.retired ? applyItemTable(lines, itemsRule) : [];
+  const itemsConfidence = chosen ? Math.min(0.9, ruleConfidence(chosen.template, { hits: itemsRule?.hits ?? 0, misses: itemsRule?.misses ?? 0 } as TemplateRule)) : 0;
+  const result = extractFromPdfText(items, { ...options, ...(applied ? { templateValues: applied } : {}), ...(read.length ? { templateItems: { items: read, confidence: itemsConfidence } } : {}) });
   return {
     ...result, lines, supplierId,
     template: chosen ? { id: chosen.template.id, version: chosen.template.version, status: chosen.template.status, confirmations: chosen.template.confirmations, similarity: Math.round(chosen.similarity * 100) / 100 } : null,

@@ -894,7 +894,7 @@ export interface ExtractionPrefill { rectification?: { isRectification: boolean;
 
 const PROVENANCE_LABELS: Record<string, string> = {
   'invoice.supplier_name': 'Proveedor', 'invoice.supplier_tax_id': 'NIF', 'invoice.invoice_date': 'Fecha', 'invoice.invoice_number': 'Número',
-  'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total',
+  'invoice.object': 'Objeto', 'document_totals.base': 'Base', 'document_totals.vat': 'IVA', 'document_totals.withholding': 'Retención', 'document_totals.total': 'Total', lines: 'Artículos',
 };
 const METHOD_LABELS: Record<string, string> = { pdf_text: 'texto del PDF', supplier_template: 'plantilla del proveedor', external_ai: 'app de IA', manual: 'sin leer', ocr: 'OCR' };
 /** Quién leyó la factura (0226, `import_meta.origin`). */
@@ -1005,6 +1005,7 @@ async function validateWithLearning(ctx: ViewContext, mirror: Mirror, invoice: L
     const learning = await learnFromConfirmation({
       lines: linesFromItems(items), supplierId: invoice.supplier_id, invoiceId: invoice.id, templates: mirror.templates,
       confirmed: confirmedFromInvoice(invoice, supplier?.tax_id ?? null, mirror.taxesByInvoice.get(invoice.id) ?? []),
+      items: (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at).sort((a, b) => a.position - b.position).map((l) => ({ description: l.description, quantity: l.quantity === null ? null : Number(l.quantity), unit_price: l.unit_price === null ? null : Number(l.unit_price), net_amount: Number(l.net_amount) })),
     });
     if (!learning) return ops;
     const current = learning.template.id ? mirror.templates.find((t) => t.id === learning.template.id) ?? null : null;

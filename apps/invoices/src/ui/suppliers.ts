@@ -209,7 +209,7 @@ export const mountSuppliers: ViewMount = ({ main, client }) => {
     if (!mine.length) return el('p', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'hint', id: 'supplierTemplates' }, 'Sin plantilla todavía: lee la primera factura con IA (o rellénala a mano) y valídala; Finance aprende dónde están los datos y las siguientes se leen solas.');
     const isOwner = client.bootstrap()?.membership.role === 'owner';
     const STATUS: Record<string, string> = { aprendiendo: 'Aprendiendo', activa: 'Activa', retirada: 'Retirada' };
-    const FIELD: Record<string, string> = { invoice_number: 'número', invoice_date: 'fecha', supplier_tax_id: 'NIF', base: 'base', total: 'total', withholding: 'retención' };
+    const FIELD: Record<string, string> = { invoice_number: 'número', invoice_date: 'fecha', supplier_tax_id: 'NIF', base: 'base', total: 'total', withholding: 'retención', __items: 'artículos (tabla)' };
     return el('div', { 'data-feedback-id': 'invoices.proveedores.ficha.plantillas', 'data-feedback-label': 'Plantillas de lectura', class: 'field', id: 'supplierTemplates' }, el('span', null, 'Plantillas de lectura'),
       el('ul', { class: 'list plain' }, ...mine.map((t) => {
         const reads = Object.entries(t.fields).filter(([, r]) => !r.retired).map(([k]) => (k.startsWith('vat:') ? `IVA ${k.slice(4)} %` : FIELD[k] ?? k));
