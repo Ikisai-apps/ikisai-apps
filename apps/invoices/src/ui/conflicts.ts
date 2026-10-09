@@ -49,11 +49,13 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
     // Kit 0.28.0: nombre legible («FVR_2026_003 · Intermodalidad de Levante»), quién lo cambió y la frase de cabecera.
     const rowName = (c: PendingConflict): string | null => {
       const row = c.current as Record<string, unknown>;
-      if (c.operation.table === 'invoices.invoices') {
+      // Un `call` aparcado (p. ej. validar) no lleva tabla: la fila es una factura si tiene código y proveedor.
+      const table = (c.operation as { table?: string }).table ?? ('supplier_id' in row && 'code' in row ? 'invoices.invoices' : null);
+      if (table === 'invoices.invoices') {
         const supplier = mirror.supplierById.get(String(row.supplier_id ?? ''));
         return [row.code ?? 'Factura sin código', supplier?.slug === 'sin_identificar' ? null : supplier?.name].filter(Boolean).join(' · ');
       }
-      if (c.operation.table === 'invoices.suppliers') return row.name ? String(row.name) : null;
+      if (table === 'invoices.suppliers') return row.name ? String(row.name) : null;
       return null;
     };
     replace(intro, conflicts.length ? conflictIntro(conflicts, userId) : 'Nada se pierde hasta que decidas.');

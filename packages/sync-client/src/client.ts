@@ -48,6 +48,11 @@ export interface ConflictRecord extends PendingConflict {
   code: 'VERSION_CONFLICT' | 'ROW_DELETED';
   /** Operaciones del mismo lote sobre otras filas; se reenvían con la decisión. */
   otherOperations: RowOperation[];
+  /**
+   * El `call` que chocó (0.5.2), aparte de `otherOperations`: «theirs» lo descarta y «mine» lo reenvía con la revisión
+   * actual. Antes iba en `otherOperations` y cualquier decisión lo volvía a encolar con la revisión vieja, en bucle.
+   */
+  call?: RowOperation & { op: 'call' };
   blobs?: string[];
 }
 
@@ -1341,13 +1346,15 @@ export class SyncClientImpl implements SyncClient {
     const operation =
       candidates.find((op) => hasExpectedRevision(op) && op.expectedRevision === details.expectedRevision) ?? candidates[0];
     if (!operation) {
-      // El servidor señala una fila que este lote no toca explícitamente (p. ej. un `call`): no se puede rebasar.
+      // El servidor señala una fila que este lote no toca explícitamente (p. ej. un `call`): no se puede rebasar. La
+      // tarjeta sigue viendo un update vacío de esa fila; el `call` se guarda aparte (`call`) para resolverlo bien.
       await this.park(entry, {
         code: 'VERSION_CONFLICT',
         operation: { op: 'update', table: details.table, id: details.id, expectedRevision: details.expectedRevision, fields: {} },
         key,
         current: stripLocal(details.current),
         overlapping: [],
+        call: parkedCallFor(entry.batch.operations, details) ?? undefined,
       });
       return false;
     }
@@ -1413,7 +1420,7 @@ export class SyncClientImpl implements SyncClient {
   /** Mueve el comando a `conflicts`, lo saca de la outbox y devuelve el espejo a lo que dice el servidor. */
   private async park(
     entry: OutboxEntry,
-    info: { code: ConflictRecord['code']; operation: RowOperation; key: RowKey; current: SyncedRow; overlapping: string[] },
+    info: { code: ConflictRecord['code']; operation: RowOperation; key: RowKey; current: SyncedRow; overlapping: string[]; call?: RowOperation & { op: 'call' } },
   ): Promise<void> {
     const record: ConflictRecord = {
       requestId: entry.requestId,
@@ -1423,7 +1430,8 @@ export class SyncClientImpl implements SyncClient {
       overlapping: info.overlapping,
       detectedAt: new Date(this.now()).toISOString(),
       code: info.code,
-      otherOperations: entry.batch.operations.filter((op) => operationKey(op) !== info.key),
+      otherOperations: entry.batch.operations.filter((op) => op !== info.call && operationKey(op) !== info.key),
+      ...(info.call ? { call: info.call, procedure: info.call.procedure } : {}),
       ...(entry.batch.blobs ? { blobs: entry.batch.blobs } : {}),
     };
     await this.withdraw(entry, { [info.key]: info.current }, { conflict: record });
@@ -1516,7 +1524,7 @@ export class SyncClientImpl implements SyncClient {
     const records = await this.db.getAll<ConflictRecord>(CONFLICTS_STORE);
     return records
       .sort((a, b) => a.detectedAt.localeCompare(b.detectedAt))
-      .map(({ code: _code, otherOperations: _others, blobs: _blobs, ...conflict }) => conflict);
+      .map(({ code: _code, otherOperations: _others, blobs: _blobs, call: _call, ...conflict }) => conflict);
   }
 
   async resolveConflict(
@@ -1537,6 +1545,15 @@ export class SyncClientImpl implements SyncClient {
 }
 
 /**
+ * El `call` del lote que chocó con la fila señalada: el que lleva `args.expectedRevision` igual a la revisión esperada
+ * (o, si solo hay un `call`, ese). `null` si no hay ninguno.
+ */
+export function parkedCallFor(operations: RowOperation[], details: { expectedRevision: number }): (RowOperation & { op: 'call' }) | null {
+  const calls = operations.filter((op): op is RowOperation & { op: 'call' } => op.op === 'call');
+  return calls.find((op) => Number((op.args as Record<string, unknown> | undefined)?.expectedRevision) === details.expectedRevision) ?? (calls.length === 1 ? calls[0]! : null);
+}
+
+/**
  * Lo que se reenvía al resolver un conflicto: las operaciones del lote sobre otras filas y, salvo con «theirs», la mía
  * sobre la revisión actual del servidor. Un `call` con «mine» se reenvía con `args.expectedRevision` puesto a esa
  * revisión (si lo llevaba): «Reintentar con lo mío» tiene que reintentar, no solo quitar el conflicto.
@@ -1547,6 +1564,15 @@ export function conflictRetryOperations(
 ): RowOperation[] {
   const operations: RowOperation[] = [...record.otherOperations];
   if (decision.choice === 'theirs') return operations;
+  // El `call` que chocó (0.5.2): «mine» lo reenvía con la revisión actual; «merge» no aplica a un call.
+  if (record.call) {
+    if (decision.choice === 'mine') {
+      const revision = record.current.revision;
+      const args = record.call.args ?? {};
+      operations.push({ op: 'call', procedure: record.call.procedure, args: 'expectedRevision' in args && typeof revision === 'number' ? { ...args, expectedRevision: revision } : { ...args } });
+    }
+    return operations;
+  }
   const op = record.operation as RowOperation;
   if (op.op === 'call') {
     if (decision.choice === 'mine') {
