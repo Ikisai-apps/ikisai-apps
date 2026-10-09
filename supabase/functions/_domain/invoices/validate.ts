@@ -160,6 +160,7 @@ export function validateInvoiceFields(fields: Fields, op: 'insert' | 'update', {
   uuid(fields, 'rectifies_invoice_id');
   text(fields, 'rectifies_number', { max: 64 });
   bool(fields, 'rectification_without_original');
+  bool(fields, 'delivered_elsewhere');
   if (has(fields, 'declared_period') && fields.declared_period !== null && (typeof fields.declared_period !== 'string' || !/^\d{4}T[1-4]$/.test(fields.declared_period))) domainFail('INVALID_FIELDS', 'El periodo de declaración tiene la forma 2026T3.', { field: 'declared_period' });
   money(fields, 'source_total');
   for (const key of ['calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total']) money(fields, key, { nullable: false });
@@ -205,6 +206,7 @@ export function validateInvoiceLineFields(fields: Fields, op: 'insert' | 'update
   uuid(fields, 'rectifies_line_id');
   integer(fields, 'position', { min: 0 });
   text(fields, 'description', { required: true, max: 500 });
+  text(fields, 'label', { max: 120 });
   text(fields, 'unit', { max: 16 });
   text(fields, 'match_name', { max: 200 });
   text(fields, 'notes', { max: 2000 });
@@ -478,6 +480,10 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
     case TABLES.issuedAllocations: return validateIssuedAllocationFields(fields, op);
     case TABLES.supplierTemplates: return validateSupplierTemplateFields(fields, op);
     case TABLES.customers: return validateCustomerFields(fields, op);
+    case TABLES.itemLabels:
+      if (op === 'insert') return domainFail('INVALID_OPERATION', 'La memoria de nombres la escribe el servidor al validar; aquí solo se corrige el nombre.', { table });
+      onlyWritable(TABLES.itemLabels, fields);
+      return text(fields, 'label', { required: true, max: 120 });
     default: return;
   }
 }
