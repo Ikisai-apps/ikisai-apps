@@ -325,8 +325,8 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i);
     expect(api.rows('invoices.invoices').find((i) => i.invoice_number === 'F-2026-124')!.status).toBe('pendiente_revision');
     // «Fiscal y pago» ya está abierto: falta algo suyo
-    await ficha(page).locator('#invSourceTotal').fill('44');
-    await ficha(page).locator('#invSourceTotal').press('Tab');
+    await ficha(page).locator('#manualTotal').fill('44');
+    await ficha(page).locator('#manualTotal').press('Tab');
     await expect(ficha(page)).toContainText('Importes corregidos', { timeout: 20_000 });
     await closeSheet(page);
     // Nada que descartar: el intento no llegó a enviarse
@@ -1582,7 +1582,7 @@ test('QA FB_2026_016: nueva factura sin fecha (opcional, sin rellenar con hoy); 
     const created = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'papeleria sin fecha'));
     expect(created.invoice_date).toBeNull();
     // La fecha se escribe después en «Fiscal y pago»
-    const date = f.locator('#invDate');
+    const date = f.locator('#manualDate');
     if (!(await date.isVisible())) await f.getByText('Fiscal y pago', { exact: true }).first().click();
     await expect(date).toHaveValue('');
     await date.fill('2026-10-06');
@@ -1717,7 +1717,7 @@ test('Compartir facturas con Finance desde otra app (PDF): el service worker las
   }
 });
 
-test('«Rellenar a mano» (9-10-2026): proveedor nuevo por NIF, base al 21 %, cuota calculada, total y cuadre en vivo', async ({ browser }) => {
+test('«Datos de la factura» editables en la ficha (9-10-2026): proveedor nuevo por NIF, base al 21 %, cuota calculada, total y cuadre en vivo', async ({ browser }) => {
   test.setTimeout(120_000);
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
@@ -1732,24 +1732,27 @@ test('«Rellenar a mano» (9-10-2026): proveedor nuevo por NIF, base al 21 %, cu
     await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'escaneada.pdf', mimeType: 'application/pdf', buffer: Buffer.concat([textPdf([]), Buffer.from('% a mano')]) });
     await page.locator('#saveInvoice').click();
     const f = ficha(page);
-    await expect(f.locator('#fillManually')).toBeVisible({ timeout: 20_000 });
+    // «Datos de la factura» en la propia ficha (sin hoja aparte): lo que se cambia se guarda solo; los importes, con su botón
+    await expect(f.locator('#invoiceEditor')).toBeVisible({ timeout: 20_000 });
     await expect(f.locator('#readWithAi')).toHaveClass(/primary/);
-    await f.locator('#fillManually').click();
-    const manual = page.getByRole('dialog', { name: 'Rellenar a mano' });
-    await manual.locator('#manualTaxId').fill('A12345674');
-    await expect(manual.locator('#manualSupplierNote')).toContainText('Proveedor nuevo');
-    await manual.locator('#manualName').fill('Suministros A Mano SA');
-    await manual.locator('#manualNumber').fill('MAN-001');
-    await manual.locator('#manualDate').fill('2026-09-15');
-    await manual.getByLabel('Base imponible 1').fill('100');
-    await manual.locator('#manualTotal').fill('121');
-    await expect(manual.locator('#manualCuadre')).toContainText('cuadra con el total');
-    await manual.locator('#manualCategory').selectOption('compras');
-    await manual.locator('#manualSave').click();
-    await expect(manual).toBeHidden({ timeout: 20_000 });
+    await f.locator('#manualTaxId').fill('A12345674');
+    await expect(f.locator('#manualSupplierNote')).toContainText('Proveedor nuevo');
+    await f.locator('#manualName').fill('Suministros A Mano SA');
+    await f.locator('#manualName').press('Tab');
+    await expect.poll(() => api.rows('invoices.suppliers').find((s) => s.tax_id === 'A12345674')?.name, { timeout: 20_000 }).toBe('Suministros A Mano SA');
+    await f.locator('#manualNumber').fill('MAN-001');
+    await f.locator('#manualNumber').press('Tab');
+    await f.locator('#manualDate').fill('2026-09-15');
+    await f.locator('#manualDate').press('Tab');
+    await f.getByLabel('Base imponible 1').fill('100');
+    await f.locator('#manualTotal').fill('121');
+    await f.locator('#manualTotal').press('Tab');
+    await expect(f.locator('#manualCuadre')).toContainText('cuadra con el total');
+    await f.locator('#saveAmounts').click();
+    await f.locator('#manualCategory').selectOption('compras');
     await synced(page);
-    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'MAN-001'));
-    expect(row).toMatchObject({ invoice_date: '2026-09-15', source_total: 121, expense_category: 'compras' });
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'MAN-001' && i.expense_category === 'compras' && Number(i.source_total) === 121));
+    expect(row).toMatchObject({ invoice_date: '2026-09-15' });
     expect(api.rows('invoices.suppliers').find((s) => s.id === row.supplier_id)).toMatchObject({ name: 'Suministros A Mano SA', tax_id: 'A12345674' });
     await expect.poll(() => api.rows('invoices.tax_lines').filter((t) => t.invoice_id === row.id && !t.deleted_at).map((t) => [t.rate, t.taxable_base, t.amount]), { timeout: 20_000 }).toEqual([[21, 100, 21]]);
   } finally {
@@ -1876,13 +1879,14 @@ test('Lectura parcial (fase 0): un PDF con texto sin fecha nunca deja la pantall
     const f = ficha(page);
     await expect(f.locator('#readingBlock #readingMessage')).toContainText('no he identificado la fecha', { timeout: 30_000 });
     await expect(f.locator('#readingBlock #readingFields')).toContainText('PAR-77');
-    // «Leer PDF» en la ficha: abre «Rellenar a mano» con lo leído (solo falta la fecha y la base).
+    // «Leer PDF» en la ficha: pinta lo leído en «Datos de la factura», allí mismo (solo falta la fecha y la base).
     await f.locator('#chatgptInvoice [data-step="read"]').click();
-    const manual = page.getByRole('dialog', { name: 'Rellenar a mano' });
-    await expect(manual.locator('#readingMessage')).toContainText('no he identificado la fecha', { timeout: 20_000 });
-    await expect(manual.locator('#manualNumber')).toHaveValue('PAR-77');
-    await expect(manual.locator('#manualTotal')).toHaveValue('121');
-    await expect(manual.locator('#manualDate')).toHaveValue('');
+    const editor = f.locator('#invoiceEditor');
+    await expect(editor.locator('#readingMessage')).toContainText('no he identificado la fecha', { timeout: 20_000 });
+    await expect(editor.locator('#manualNumber')).toHaveValue('PAR-77');
+    await expect(editor.locator('#manualTotal')).toHaveValue('121');
+    await expect(editor.locator('#manualDate')).toHaveValue('');
+    await expect(editor.locator('#saveRead')).toBeVisible();
   } finally {
     await context.close();
   }
@@ -2078,9 +2082,9 @@ test('Incidencia del usuario (9-10-2026): «Validar» sin categoría no se enví
     // Con `aria-disabled` sigue pulsable a propósito: explica qué falta (Playwright lo da por deshabilitado).
     await f.locator('#validateInvoice').click({ force: true });
     await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'Para validar falta la categoría de gasto' }).first()).toBeVisible();
-    await expect(f.locator('#invCategory')).toBeFocused();
+    await expect(f.locator('#manualCategory')).toBeFocused();
     expect(api.cursor()).toBe(before);
-    await f.locator('#invCategory').selectOption('suministros');
+    await f.locator('#manualCategory').selectOption('suministros');
     await expect(f.locator('#reviewBanner')).toContainText('Todo listo para validar', { timeout: 20_000 });
     await f.locator('#validateInvoice').click();
     await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId)?.status, { timeout: 20_000 }).toBe('validada');
@@ -2139,7 +2143,7 @@ test('Incidencia del usuario (9-10-2026, tras #449): elegir la categoría y vali
       const f = ficha(page);
       await expect(f.locator('#reviewBanner')).toContainText('Falta: la categoría de gasto', { timeout: 20_000 });
       if (withoutNetwork) await context.setOffline(true);
-      await f.locator('#invCategory').selectOption('suministros');
+      await f.locator('#manualCategory').selectOption('suministros');
       // Al instante, sin esperar al acuse del cambio de categoría
       await f.locator('#validateInvoice').click({ force: true });
       // La ficha tapa «Sincronizar ahora»: se cierra antes de volver a tener red (como en O1–O6)
@@ -2169,7 +2173,7 @@ test('Incidencia del usuario (tras #452): validar sin red tras un cambio propio 
     await synced(page);
     await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
     const f = ficha(page);
-    await f.locator('#invCategory').selectOption('suministros');
+    await f.locator('#manualCategory').selectOption('suministros');
     const me = await eventually(() => api.rows('invoices.invoices').find((i) => i.id === invoiceId && i.expense_category === 'suministros')?.updated_by as string | undefined);
     await synced(page);
     // Sin red: el servidor recibe otro cambio PROPIO (desde otro dispositivo) y aquí se valida con la revisión vieja
@@ -2212,6 +2216,50 @@ test('«Mi nombre» del proveedor (0232): se ve en la lista y en la ficha de su 
     await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
     await expect(ficha(page).locator('#invSupplier')).toContainText('Frutas Paco', { timeout: 20_000 });
     await expect(ficha(page).locator('#invSupplier')).toContainText('DISTRIBUCIONES ALIMENTARIAS DEL SUR SLU');
+  } finally {
+    await context.close();
+  }
+});
+
+test('«Leer de nuevo el PDF» (9-10-2026): pinta lo leído en «Datos de la factura», resalta lo que cambia y «Guardar lo leído» lo aplica (descuento del 75 %)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const pdf = textPdf([
+    ['FACTURA', 516, 808], ['Fecha', 485, 794], ['31/08/2026', 516, 793], ['Nº factura', 485, 783], ['260002', 536, 782],
+    ['LUIS PÉ R EZ CO NS UL TO RE S SL', 23, 708], ['Cliente', 340, 707],
+    ['B12345674', 23, 697], ['ANA CLIENTA PRUEBA', 340, 694], ['12345678Z', 340, 683],
+    ['Precio', 343, 578], ['Subtotal', 405, 578], ['%Dto', 459, 578], ['Total', 556, 578], ['Descripción', 17, 575],
+    ['ASESORAMIENTO MENSUAL', 14, 559], ['1', 290, 559], ['85,00€', 342, 559], ['85,00€', 410, 559], ['75,00', 458, 559], ['21,25€', 552, 559],
+    ['Forma de pago', 14, 245], ['21,25€', 546, 243], ['Base imponible', 451, 242],
+    ['DOMICILIACION BANCARIA 5 DIAS', 14, 233], ['4,46€', 553, 229], ['IVA', 473, 228], ['21%', 494, 228],
+    ['Total:', 476, 141], ['25,71€', 543, 141],
+  ]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'asesoria_agosto.pdf', mimeType: 'application/pdf', buffer: pdf });
+    await expect(sheet.locator('#readingMessage')).toBeVisible({ timeout: 20_000 });
+    // Se guarda sin importar lo leído (como una factura que se leyó mal o se dejó a medias)
+    await page.locator('#saveInvoice').click();
+    const f = ficha(page);
+    await synced(page);
+    await expect(f.locator('#rereadPdf')).toBeVisible({ timeout: 20_000 });
+    await f.locator('#rereadPdf').click();
+    await expect(f.locator('#invoiceEditor #readingMessage')).toBeVisible({ timeout: 20_000 });
+    await expect(f.getByLabel('Base imponible 1')).toHaveValue('21,25');
+    await expect(f.getByLabel('Cuota de IVA 1')).toHaveValue('4,46');
+    await expect(f.locator('#manualTotal')).toHaveValue('25,71');
+    await expect(f.locator('#manualCuadre')).toContainText('cuadra con el total');
+    await expect(f.getByLabel('Base imponible 1')).toHaveClass(/needs-attention/);
+    await f.locator('#saveRead').click();
+    await synced(page);
+    const inv = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'asesoria agosto' && Number(i.source_total) === 25.71));
+    await expect.poll(() => api.rows('invoices.tax_lines').filter((t) => t.invoice_id === inv.id && !t.deleted_at).map((t) => [t.rate, t.taxable_base, t.amount]), { timeout: 20_000 }).toEqual([[21, 21.25, 4.46]]);
+    expect(inv.invoice_number).toBe('260002');
   } finally {
     await context.close();
   }
