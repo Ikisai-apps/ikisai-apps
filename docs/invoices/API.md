@@ -1321,6 +1321,26 @@ Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el ow
 - NIF con puntos, guiones, espacios o prefijo ES;
 - el NIF del cliente (línea «Cliente», «Destinatario» o «Facturar a») no se toma por el del proveedor;
 - sin nombre junto al NIF, la razón social de la cabecera (S.L., S.A., S.L.U., S. Coop.).
+- tablas por columnas o, si una celda de cabecera lleva varias etiquetas («Total SI (EUR) Total IVA Total TTI»), por orden. Las filas se suman por tipo de IVA (líneas de factura), y una fila igual a la suma de las anteriores cierra la tabla. Las fechas de las filas no cuentan como importes, y «Importe» a secas es el de cada línea;
+- base y total con otras etiquetas: «Precio sin IVA», «Total SI», «sin impuestos»; «Precio Incl. IVA», «TTI», «IVA incluido»;
+- «FACTURA 108-0007-…» sin «nº», y números con guion bajo;
+- con un CIF de sociedad y un NIF de persona (el cliente autónomo), gana el CIF. El nombre sale del trozo de la línea con la forma jurídica, como en un pie legal.
+
+**Volver a leer** deja rastro: cada relectura actualiza el motivo en `drive_imports` («Relectura: leída/sin leer…»).
+
+### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
+
+**La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.
+
+En la ficha de una factura en «Pendiente de datos»:
+- **«Leer con IA»** es el botón principal si el proveedor no tiene plantilla (o es el provisional de Drive). Ofrece:
+  - ChatGPT en el móvil: comparte el PDF y las instrucciones; el JSON vuelve compartido o pegado;
+  - Claude en el ordenador: el mensaje para Claude Code, listo para copiar.
+- **«Rellenar a mano»:** proveedor por NIF (elige el existente o lo da de alta), número, fecha, base por tipo de IVA (la cuota se calcula y se puede corregir), retención y total del documento, con el cuadre en vivo, y la categoría.
+  - «Guardar» deja la factura en «Pendiente de revisión».
+  - «Guardar y validar» valida en el mismo lote y aprende la plantilla.
+
+La ficha del proveedor dice desde cuándo tiene plantilla, o «Sin plantilla todavía» con el flujo recomendado.
 
 **Lo mismo desde el dispositivo («Subir varias» en Facturas):** cada archivo elegido es una factura.
 - PDF con los mismos bytes que el documento de otra factura viva: duplicada, no se sube.
