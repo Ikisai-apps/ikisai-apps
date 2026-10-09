@@ -88,6 +88,25 @@ test.describe('ui-kit v0.26 · triaje del 9-10 (FB_2026_012, 004, 025 y 011)', (
     await expect(dialog).toHaveCount(0);
   });
 
+  test('FB_2026_025: cerrar una hoja y navegar a la vez conserva la navegación (como «Crear menú» en Food)', async ({ page }) => {
+    await page.goto('/#/');
+    await page.evaluate(() => (window as any).ikisaiKit.installBackNavigation());
+    await page.evaluate(() => { location.hash = '#/eventos'; });
+    await page.evaluate(async () => {
+      const kit = (window as any).ikisaiKit;
+      const sheet = kit.openSheet({ title: 'Retiro', body: kit.el('p', null, 'x') });
+      await new Promise((r) => setTimeout(r, 50));
+      await sheet.close(true);
+      location.hash = '#/menus/123';
+    });
+    await page.waitForTimeout(300);
+    expect(new URL(page.url()).hash).toBe('#/menus/123');
+    // «Atrás» vuelve a la pantalla anterior (salta la entrada que dejó la hoja).
+    await back(page);
+    await page.waitForTimeout(200);
+    expect(new URL(page.url()).hash).toBe('#/eventos');
+  });
+
   test('FB_2026_025: entrando directamente a una pantalla, «atrás» lleva al inicio', async ({ page }) => {
     await page.goto('/#/espacios/nuevo');
     await page.evaluate(() => (window as any).ikisaiKit.installBackNavigation());

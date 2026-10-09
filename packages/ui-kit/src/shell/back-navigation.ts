@@ -27,6 +27,16 @@ let nextOverlay = 1;
 /** Hojas y diálogos abiertos, el último arriba: «atrás» cierra el de arriba. */
 const overlays: { id: number; close: () => void }[] = [];
 let asking = false;
+/** «Atrás» propio en curso (es asíncrono): una hoja nueva espera a que termine para apilar su entrada. */
+let pendingBack: Promise<void> | null = null;
+let resolvePending: (() => void) | null = null;
+
+/** `history.back()` propio, sin tratarlo como navegación; las entradas nuevas esperan a que termine. */
+function quietBack(): void {
+  ignorePops += 1;
+  if (!pendingBack) pendingBack = new Promise<void>((r) => { resolvePending = r; });
+  history.back();
+}
 let homeUrl = '/';
 
 const stateOf = (): Entry => (history.state && typeof history.state === 'object' ? history.state as Entry : {});
@@ -74,11 +84,18 @@ export function installBackNavigation(options: BackNavigationOptions = {}): void
   if (!atHome) history.pushState(null, '', here);
 
   window.addEventListener('popstate', () => {
-    if (ignorePops > 0) { ignorePops -= 1; return; }
+    if (ignorePops > 0) {
+      ignorePops -= 1;
+      if (ignorePops === 0 && resolvePending) { const r = resolvePending; resolvePending = null; pendingBack = null; r(); }
+      return;
+    }
     // Hoja o diálogo abierto: «atrás» lo cierra (su entrada ya se ha consumido).
     const top = overlays.pop();
     if (top) { top.close(); return; }
-    if (stateOf().ikisai === 'root') void askExit(confirmExit);
+    const state = stateOf();
+    // Entrada de una hoja ya cerrada (la app navegó con ella abierta): se salta, con la misma URL que la de debajo.
+    if (state.ikisai === 'overlay') { history.back(); return; }
+    if (state.ikisai === 'root') void askExit(confirmExit);
   });
 }
 
@@ -101,14 +118,17 @@ export function trackOverlay(close: () => void): OverlayHandle {
   const id = nextOverlay++;
   const entry = { id, close };
   overlays.push(entry);
-  history.pushState({ ikisai: 'overlay', overlay: id } satisfies Entry, '', location.href);
+  const push = () => { if (overlays.includes(entry)) history.pushState({ ikisai: 'overlay', overlay: id } satisfies Entry, '', location.href); };
+  // Si hay un «atrás» propio en curso (otra hoja que se acaba de cerrar), se apila después; si no, se perdería.
+  if (pendingBack) void pendingBack.then(push); else push();
   return {
     release() {
       const at = overlays.indexOf(entry);
       if (at < 0) return; // ya cerrado con «atrás»
       overlays.splice(at, 1);
-      // Solo se quita su entrada si sigue arriba: si la app navegó con la hoja abierta, no se deshace esa navegación.
-      if (stateOf().ikisai === 'overlay' && stateOf().overlay === id) { ignorePops += 1; history.back(); }
+      // En el siguiente ciclo y solo si su entrada sigue arriba: si la app navega justo al cerrar la hoja (p. ej. «Crear
+      // menú» → `#/menus/…`), no se deshace esa navegación; la entrada queda debajo y «atrás» la salta.
+      setTimeout(() => { if (stateOf().ikisai === 'overlay' && stateOf().overlay === id) quietBack(); }, 0);
     },
     setClose(next) { entry.close = next; },
     active: () => overlays.includes(entry),
