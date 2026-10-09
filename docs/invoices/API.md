@@ -1330,6 +1330,24 @@ Cuando no se lee del todo, el motivo (`drive_imports.reason`, visible para el ow
 
 **Relectura automática (0229).** `READER_VERSION` en `drive.ts` es la versión del lector; súbela con cada mejora de `pdf-extract.ts`. Cada archivo de Drive guarda con qué versión se leyó (`drive_imports.reader_version`), y el estado, la última versión que ha corrido (`drive_state.reader_version`). Con el presupuesto de 5 por tick que sobre tras «Entrada», el tick vuelve a leer los borradores de Drive en «Pendiente de datos» leídos con una versión anterior o sin versión (acción de sistema `invoices.drive_stale`). La sonda `drive_has_work` despierta al planificador mientras queden. El resultado del tick añade `reread` y `reread_read`. Una relectura solo completa borradores en «Pendiente de datos» y nunca pisa una factura ya revisada.
 
+### 15.1 bis Lectura parcial (fase 0 de REVISION_LECTOR, 9-10-2026)
+
+Un PDF con texto nunca termina sin información. `extractFromPdfText` devuelve, además de `ok`/`document`:
+- `read`: `no_text` · `partial` · `sufficient`;
+- `found` (`PartialInvoice`): proveedor, NIF, número, fecha, base, IVA por tipo, retención, total e IBAN encontrados, aunque falte algo esencial. La base deducida solo del total, sin ningún IVA, no cuenta como encontrada;
+- `stats`: páginas, fragmentos y caracteres.
+
+Ayudantes: `readingText(items)` (texto legible por líneas y páginas, para verlo y copiarlo), `readingMessage(extraction)` (mensaje honesto: «Este PDF no contiene texto legible…» frente a «He leído el PDF (…) y encontrado proveedor y total, pero no he identificado la fecha»), `foundLabels` y `missingLabels`.
+
+**Drive y «Volver a leer».** Con una lectura parcial, `partialFillOperations` rellena el borrador en «Pendiente de datos». Solo toca lo vacío:
+- el proveedor provisional, por un NIF válido (el existente, o uno nuevo con nombre y NIF);
+- el número, la fecha y el total del documento, si están vacíos;
+- los importes (líneas e impuestos), solo si se identificó la base. Con importes, la factura pasa a «Pendiente de revisión», como siempre.
+
+El resumen va a `import_meta.reading` (`read`, `found`, `missing`, `stats`, plantilla, `reader_version`, `filled`), sin texto del documento. Solo puede escribirlo la cuenta de sistema `drive` (sesión `service:drive`); las demás siguen sin poder escribir `import_meta`. El motivo del registro de Drive es el mensaje honesto.
+
+**Precedencia (mínima).** Una relectura que ya da la factura completa conserva el número y la fecha escritos por una persona: los distintos de los que rellenó la lectura, según `reading.filled` (`keepHumanFields`). También respeta el proveedor ya puesto en el borrador.
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.
