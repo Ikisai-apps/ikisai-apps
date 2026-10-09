@@ -109,3 +109,23 @@ test('factura de transporte: tabla de líneas con fechas (se suman las filas), �
   assert.deepEqual([d.document_totals.base, d.document_totals.vat, d.document_totals.total], [110, 11, 121]);
   assert.deepEqual(d.taxes.map((t) => [t.rate, t.taxable_base, t.amount]), [[10, 110, 11]]);
 });
+
+test('copia sintética de FVR_2026_005 (9-10-2026): nombre con letras sueltas, «Cliente» en la misma línea, descuento en la tabla e IVA un punto por encima de su etiqueta', async () => {
+  const pdf = textPdf([
+    ['FACTURA', 516, 808], ['Fecha', 485, 794], ['31/08/2026', 516, 793], ['Nº factura', 485, 783], ['260001', 536, 782],
+    ['LUIS PÉ R EZ CO NS UL TO RE S SL', 23, 708], ['Cliente', 340, 707],
+    ['B12345674', 23, 697], ['ANA CLIENTA PRUEBA', 340, 694],
+    ['CALLE INVENTADA 1, LOCAL 2', 23, 685], ['12345678Z', 340, 683],
+    ['Precio', 343, 578], ['Subtotal', 405, 578], ['%Dto', 459, 578], ['Total', 556, 578], ['Descripción', 17, 575],
+    ['ASESORAMIENTO MENSUAL', 14, 559], ['1', 290, 559], ['85,00€', 342, 559], ['85,00€', 410, 559], ['75,00', 458, 559], ['21,25€', 552, 559],
+    ['Forma de pago', 14, 245], ['21,25€', 546, 243], ['Base imponible', 451, 242],
+    ['DOMICILIACION BANCARIA 5 DIAS', 14, 233], ['4,46€', 553, 229], ['IVA', 473, 228], ['21%', 494, 228],
+    ['Total:', 476, 141], ['25,71€', 543, 141],
+  ]);
+  const r = extractWithTemplates(await readPdfItemsServer(new Uint8Array(pdf)), {});
+  assert.equal(r.ok, true, JSON.stringify(r.warnings));
+  assert.equal(r.found.supplier_name, 'LUIS PÉREZ CONSULTORES SL');
+  assert.ok(r.warnings.some((w) => /letras sueltas/.test(w)));
+  assert.equal(r.found.supplier_tax_id, 'B12345674');
+  assert.deepEqual([r.document!.document_totals.base, r.document!.document_totals.vat, r.document!.document_totals.total], [21.25, 4.46, 25.71]);
+});
