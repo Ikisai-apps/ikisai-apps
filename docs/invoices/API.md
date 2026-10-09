@@ -1370,6 +1370,12 @@ Con documento, el proveedor y el objeto no son obligatorios: la factura queda en
 
 Medición (CPU 4×, 390 px; prueba «medición» con `IKISAI_MEASURE=1`): de 1 a 30 páginas, unos 0,6 s; 15 MB, sin ninguna tarea larga en el hilo de la interfaz.
 
+**Nueva factura con varios archivos (9-10-2026).** Con más de un archivo, la hoja pregunta «¿Son páginas de una misma factura o facturas distintas?»:
+- **«Facturas distintas»** cierra la hoja y abre «Subir varias» con esos archivos: una factura por archivo, con lectura automática;
+- **«Páginas de una misma factura»** lee el primer PDF **con texto** y adjunta todos los archivos a una sola factura.
+
+Sin elegir, no se guarda. «Leer PDF» usa el primer PDF, no el primer archivo.
+
 ### 15.2 Primera factura de cada proveedor: con IA o a mano (9-10-2026)
 
 **La plantilla se aprende al validar, venga de donde venga el dato.** `validateWithLearning` toma los valores confirmados de la factura (IA, a mano o reglas) y `learnFromConfirmation` los busca en el texto del PDF (guardado en `document_texts`). Así aprende la etiqueta o la posición de número, fecha, base, IVA, total y retención. Desde ese momento, la lectura (Drive, «Leer PDF», «Subir varias») usa la plantilla de ese proveedor en cuanto reconoce su NIF en el documento. Hace falta que el PDF tenga texto y que el valor validado aparezca impreso; pasa a «activa» tras 2 confirmaciones.
