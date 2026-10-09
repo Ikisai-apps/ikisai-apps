@@ -163,9 +163,10 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
     await expect(ficha).toContainText('✓ Importes comprobados');
     await expect(ficha.locator('.inv-totals')).toContainText('44,00 €');
 
-    // Sin documento original la validación es rechazada por el servidor y el lote queda como rechazado.
-    await ficha.locator('#validateInvoice').click();
-    await expect(page.locator('#syncStatus')).toContainText(/rechazad|Todo sincronizado|pendiente/i);
+    // Sin documento original no se envía la validación: se dice qué falta (incidencia del 9-10-2026).
+    await ficha.locator('#validateInvoice').click({ force: true });
+    await expect(page.locator('.toast, [role="status"]').filter({ hasText: 'Para validar falta' }).first()).toContainText('el documento original');
+    await expect(page.locator('#syncStatus')).not.toContainText(/rechazad/i);
     const invoices = api.rows('invoices.invoices');
     expect(invoices).toHaveLength(1);
     expect(invoices[0]).toMatchObject({ object: 'Alimentos retiro yoga', status: 'pendiente_revision', calculated_total: 44 });

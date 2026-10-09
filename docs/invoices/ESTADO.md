@@ -123,6 +123,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Fase 2 del lector, PR 7: corpus real en el bucket privado `test-corpus`, con un job nocturno o manual que solo escribe acierto o fallo por campo; script para subir facturas con su esperado.
 
 - Fase 3 del lector: la IA recibe lo que Finance ya leyó (contrato de ChatGPT y `invoices_pending_drafts` de Claude) y completa solo lo que falta.
+- Incidencia del usuario (9-10-2026): «Validar» comprueba antes de enviar y dice qué falta (lleva al campo); un rechazo del servidor se explica y se descarta solo; la categoría con que se valida pasa a ser la del proveedor si no tenía.
 
 ## En curso
 
