@@ -6,12 +6,13 @@
  */
 import type { RowOperation } from '@ikisai/sync-client';
 import { closeSheet, confirmDialog, el, openSheet, replace } from '@ikisai/ui-kit';
-import { validSpanishTaxId } from '@ikisai/domain-invoices';
+import { validSpanishTaxId, type PartialInvoice, type ReadLevel } from '@ikisai/domain-invoices';
 import { CATEGORIES, CATEGORY_LABELS, INVOICES, INVOICE_LINES, SUPPLIERS, TAX_LINES, type LocalInvoice } from '../app/client.ts';
 import { eur, parseAmount, type Mirror } from '../app/data.ts';
 import { guard } from '../app/guard.ts';
 import { usage } from '../app/usage.ts';
 import { commitSafely, field, select } from './common.ts';
+import { readingPanel } from './reading.ts';
 import type { ViewContext } from './shell.ts';
 
 const RATES: Array<[string, string]> = [['21', 'IVA 21 %'], ['10', 'IVA 10 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 % / exenta']];
@@ -19,7 +20,10 @@ const WITHHOLDINGS: Array<[string, string]> = [['', 'Sin retención'], ['15', 'I
 const cents = (v: number) => Math.round(v * 100);
 const money = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
 
-export function openManualEntry(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, validate: (invoiceId: string) => Promise<void>): void {
+/** Lo que leyó «Leer PDF» sin llegar a una factura completa: rellena lo vacío y se enseña arriba, con el texto. */
+export interface ManualPrefill { read: ReadLevel; found: PartialInvoice; message: string; text: string | null }
+
+export function openManualEntry(ctx: ViewContext, mirror: Mirror, invoice: LocalInvoice, validate: (invoiceId: string) => Promise<void>, prefill?: ManualPrefill): void {
   const { client } = ctx;
   const current = mirror.supplierById.get(invoice.supplier_id);
   const placeholder = current?.slug === 'sin_identificar';
@@ -83,6 +87,27 @@ export function openManualEntry(ctx: ViewContext, mirror: Mirror, invoice: Local
     replace(cuadre, el('span', null, `Base ${fmt(f.base)} + IVA ${fmt(f.vat)}${f.withholding ? ` − retención ${fmt(f.withholding)}` : ''} = ${fmt(f.calculated)}`,
       diff === null ? ' · escribe el total de la factura para comprobarlo.' : Math.abs(diff) <= 2 ? ' · ✓ cuadra con el total.' : ` · no cuadra con el total (diferencia ${fmt(diff)}).`));
   }
+  // Lectura parcial (fase 0): lo encontrado rellena lo vacío; lo que falta queda en blanco y lo dice el aviso de arriba.
+  if (prefill) {
+    const f = prefill.found;
+    if (!taxId.value && f.supplier_tax_id) taxId.value = f.supplier_tax_id;
+    if (!name.value && f.supplier_name) name.value = f.supplier_name;
+    if (!number.value && f.invoice_number) number.value = f.invoice_number;
+    if (!date.value && f.invoice_date) date.value = f.invoice_date;
+    if (!total.value && f.total !== null) total.value = money(f.total);
+    const bases = f.vat.length && f.vat.every((v) => v.base !== null) ? f.vat : f.base !== null ? [{ rate: f.vat.length === 1 ? f.vat[0]!.rate : 21, base: f.base, quota: f.vat.length === 1 ? f.vat[0]!.quota : null }] : [];
+    bases.forEach((v, i) => {
+      if (i > 0) addRow();
+      const row = rows[i]!;
+      if (RATES.some(([r]) => r === String(v.rate))) row.rate.value = String(v.rate);
+      row.base.value = money(v.base);
+      if (v.quota !== null) { row.quota.value = money(v.quota); row.touched = true; }
+    });
+    if (f.withholding) {
+      withholdingKind.value = f.withholding.rate !== null && WITHHOLDINGS.some(([r]) => r === String(f.withholding!.rate)) ? String(f.withholding.rate) : 'otro';
+      withholdingAmount.value = money(f.withholding.amount);
+    }
+  }
   [total, withholdingAmount].forEach((i) => i.addEventListener('input', paint));
   withholdingKind.addEventListener('change', paint);
   taxId.addEventListener('input', syncSupplier);
@@ -127,6 +152,7 @@ export function openManualEntry(ctx: ViewContext, mirror: Mirror, invoice: Local
     title: 'Rellenar a mano',
     meta: 'Los datos esenciales de la factura. Al validar, Finance aprende dónde están en el PDF de este proveedor para leer solas las siguientes.',
     body: el('div', { 'data-feedback-id': 'invoices.facturas.manual', 'data-feedback-label': 'Rellenar a mano', oninput: () => { guard.dirtyEditor = true; } },
+      prefill ? readingPanel(prefill) : null,
       el('div', { class: 'row2' }, field('NIF del proveedor', taxId), field('Proveedor', name)), supplierNote,
       el('div', { class: 'row2' }, field('Número de factura', number), field('Fecha de la factura', date)),
       el('p', { class: 'hint' }, 'Base imponible, tipo de IVA y cuota (se calcula; corrígela si la factura dice otra cosa):'),

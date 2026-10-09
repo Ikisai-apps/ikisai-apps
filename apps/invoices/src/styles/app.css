@@ -89,3 +89,9 @@ code{font-size:12.5px;word-break:break-all}
 #issuingSettings h3{margin:16px 0 6px;font-size:15px}
 .customer-results{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .series-new{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+/* Lectura del documento (fase 0): campos encontrados y texto leído */
+.reading{display:grid;gap:10px;margin-bottom:12px}
+.reading-fields{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:0}
+.reading-fields dt{color:var(--muted, #666)}
+.reading-fields dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.reading-text{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.4;padding:8px;border-radius:8px;background:var(--surface-2, rgba(127,127,127,.08))}
