@@ -2309,3 +2309,50 @@ test('medición: lectura automática al elegir el PDF en un móvil lento', async
     await context.close();
   }
 });
+
+test('FB_2026_026 · FB_2026_031 · FB_2026_032 (móvil 484×686): artículos opcionales al crear a mano, acciones en una fila y datos editables en la ficha', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 686 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    // Sin objeto y con dos artículos (el segundo, al 10 %); una fila vacía se ignora
+    await sheet.locator('#newAddArticle').click();
+    await sheet.getByLabel('Artículo 1', { exact: true }).fill('Esterillas de yoga');
+    await sheet.getByLabel('Base del artículo 1').fill('80');
+    await sheet.locator('#newAddArticle').click();
+    await sheet.getByLabel('Artículo 2', { exact: true }).fill('Fruta');
+    await sheet.getByLabel('Base del artículo 2').fill('20');
+    await sheet.getByLabel('IVA del artículo 2').selectOption('10');
+    await sheet.locator('#newAddArticle').click();
+    await page.locator('#saveInvoice').click();
+    await expect(sheet).toBeHidden();
+    const inv = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'Esterillas de yoga'));
+    await expect.poll(() => api.rows('invoices.invoice_lines').filter((l) => l.invoice_id === inv.id).map((l) => [l.position, l.description, Number(l.net_amount), Number(l.vat_rate), Number(l.vat_amount)]).sort(), { timeout: 20_000 })
+      .toEqual([[0, 'Esterillas de yoga', 80, 21, 16.8], [1, 'Fruta', 20, 10, 2]]);
+    const f = ficha(page);
+    await expect(f.locator('#invoiceLines .line-desc')).toHaveText(['Esterillas de yoga', 'Fruta'], { timeout: 20_000 });
+    // Acciones: todas en una sola fila y con nombre accesible
+    const tops = await f.locator('.inv-actions > button').evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().top)));
+    expect(tops.length).toBeGreaterThan(1);
+    expect(new Set(tops).size).toBe(1);
+    for (const b of await f.locator('.inv-actions > button').all()) expect(await b.getAttribute('aria-label')).toBeTruthy();
+    // FB_2026_032: en el móvil, los datos de la factura se pueden editar en la propia ficha
+    await expect(f.locator('#invoiceEditor')).toBeVisible({ timeout: 20_000 });
+    await f.locator('#manualNumber').scrollIntoViewIfNeeded();
+    await f.locator('#manualNumber').fill('MOV-032');
+    await f.locator('#manualNumber').press('Tab');
+    await f.locator('#manualDate').fill('2026-10-02');
+    await f.locator('#manualDate').press('Tab');
+    await synced(page);
+    const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.id === inv.id && i.invoice_number === 'MOV-032' && i.invoice_date === '2026-10-02'));
+    expect(row).toBeTruthy();
+  } finally {
+    await context.close();
+  }
+});

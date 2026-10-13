@@ -278,6 +278,25 @@ export async function openInvoice(ctx: ViewContext, id: string): Promise<void> {
   setOpen(id);
 }
 
+/**
+ * Botón de la fila de acciones (FB_2026_031): el texto va en `.act-label` (en el móvil solo se ve el icono) y es también su
+ * nombre accesible y su título, para que quepan todos en una fila.
+ */
+const SHORT_ACTION: Record<string, string> = {
+  'invoices.facturas.ficha.validar': 'Validar', 'invoices.facturas.ficha.importar_json': 'JSON', 'invoices.facturas.ficha.pago': 'Pago',
+  'invoices.facturas.ficha.anular': 'Anular', 'invoices.facturas.ficha.leer_ia': 'IA', 'invoices.facturas.ficha.extraer': 'Extraer',
+  'invoices.facturas.ficha.archivar': 'Archivar', 'invoices.facturas.ficha.desarchivar': 'Sacar',
+};
+function compactAction(button: HTMLElement): HTMLElement {
+  const text = button.textContent?.trim() ?? '';
+  for (const node of [...button.childNodes]) if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) button.replaceChild(el('span', { class: 'act-label' }, node.textContent.trim()), node);
+  const short = SHORT_ACTION[button.getAttribute('data-feedback-id') ?? ''];
+  if (short) button.appendChild(el('span', { class: 'act-short', 'aria-hidden': 'true' }, short));
+  if (text && !button.getAttribute('aria-label')) button.setAttribute('aria-label', text);
+  if (text && !button.title) button.title = text;
+  return button;
+}
+
 /** Lo que falta para validar una factura, con lo que hay en el espejo. */
 function missingOf(mirror: Mirror, invoice: LocalInvoice): MissingKey[] {
   const lines = (mirror.linesByInvoice.get(invoice.id) ?? []).filter((l) => !l.deleted_at);
@@ -350,10 +369,10 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     }
   }
   if (canEdit && invoice.status !== 'anulada') {
-    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago', 'data-feedback-label': 'Pago', class: 'softbtn', type: 'button', id: 'togglePaid', onclick: () => void togglePaid() }, invoice.payment_status === 'pagada' ? 'Marcar pendiente de pago' : 'Marcar pagada'));
+    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago', 'data-feedback-label': 'Pago', class: 'softbtn', type: 'button', id: 'togglePaid', onclick: () => void togglePaid() }, icon('euro', 18), invoice.payment_status === 'pagada' ? 'Marcar pendiente de pago' : 'Marcar pagada'));
   }
-  if (role === 'owner' && invoice.status === 'validada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.archivar', 'data-feedback-label': 'Archivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'archivada' }, 'Factura archivada.') }, 'Archivar'));
-  if (role === 'owner' && invoice.status === 'archivada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.desarchivar', 'data-feedback-label': 'Desarchivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'validada' }, 'Factura desarchivada.') }, 'Desarchivar'));
+  if (role === 'owner' && invoice.status === 'validada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.archivar', 'data-feedback-label': 'Archivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'archivada' }, 'Factura archivada.') }, icon('briefcase', 18), 'Archivar'));
+  if (role === 'owner' && invoice.status === 'archivada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.desarchivar', 'data-feedback-label': 'Desarchivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'validada' }, 'Factura desarchivada.') }, icon('undo', 18), 'Desarchivar'));
   if (canEdit && invoice.status !== 'anulada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.anular', 'data-feedback-label': 'Anular', class: 'danger', type: 'button', id: 'annulInvoice', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
 
   async function togglePaid(): Promise<void> {
@@ -406,7 +425,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
         ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${invoice.delivered_elsewhere ? ' · ya pasada a la gestoría' : isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
       ...(invoice.drive_url ? [el('dt', null, 'Origen'), el('dd', null, 'Llegó por Google Drive · ', el('a', { href: invoice.drive_url, target: '_blank', rel: 'noopener', id: 'driveOrigin' }, 'abrir el original'))] : []),
     ),
-    el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions),
+    el('div', { class: 'btnrow inv-actions', 'data-feedback-id': 'invoices.facturas.ficha.acciones', 'data-feedback-label': 'Acciones' }, ...actions.map(compactAction)),
   );
 
   const totals = el('section', { class: 'inv-totals', 'data-feedback-id': 'invoices.facturas.ficha.totales', 'data-feedback-label': 'Totales', 'data-feedback-ignore': '' },
@@ -573,17 +592,17 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // Cómo se edita y qué falta (incidencia del usuario, 9-10-2026): arriba de la ficha, con la lista viva de lo que falta.
   if (editable && pendingState) {
     header.appendChild(el('div', { class: `banner ${missing.length ? 'warn' : 'ok'}`, id: 'reviewBanner', role: 'status' },
-      el('span', null, missing.length ? 'Revisa los datos: se guardan solos al cambiarlos. Falta: ' : 'Revisa los datos (se guardan solos al cambiarlos). Todo listo para validar.'),
-      ...missing.flatMap((m, i) => [i ? ', ' : '', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.falta', 'data-feedback-label': 'Ir a lo que falta', class: 'linkbtn', type: 'button', dataset: { missing: m }, onclick: () => goToMissing(m) }, MISSING_LABELS[m])]),
-      missing.length ? '.' : ''));
+      el('span', null, missing.length ? 'Falta: ' : 'Todo listo para validar. Lo que cambies abajo se guarda solo.',
+        ...missing.flatMap((m, i) => [i ? ', ' : '', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.falta', 'data-feedback-label': 'Ir a lo que falta', class: 'linkbtn inline', type: 'button', dataset: { missing: m }, onclick: () => goToMissing(m) }, MISSING_LABELS[m])]),
+        missing.length ? '.' : '')));
   }
   // FB_2026_024: «Se deja en su trimestre» para la atrasada que la gestoría ya tiene; queda fuera de las entregas.
   const keepInQuarter = () => el('button', { 'data-feedback-id': 'invoices.facturas.ficha.dejar_en_su_trimestre', 'data-feedback-label': 'Se deja en su trimestre', class: 'softbtn small', type: 'button', id: 'keepInQuarter',
-    onclick: () => void update({ declared_period: ownPeriod, delivered_elsewhere: true }, `Se queda en el ${quarterName(ownPeriod!)}, como ya pasada a la gestoría.`) }, `Se deja en el ${quarterName(ownPeriod!)} (ya la tiene la gestoría)`);
+    onclick: () => void update({ declared_period: ownPeriod, delivered_elsewhere: true }, `Se queda en el ${quarterName(ownPeriod!)}, como ya pasada a la gestoría.`) }, `En el ${quarterName(ownPeriod!)} (ya la tiene la gestoría)`);
   if (askLate) {
-    header.appendChild(el('div', { class: 'banner warn', id: 'lateBanner' }, el('span', null, `Es del ${quarterName(ownPeriod)}: ¿la declaras en el ${quarterName(workingPeriod())}? Si ese trimestre ya lo declaraste fuera de la app, sí. Si la gestoría ya la tiene, se deja en su trimestre.`),
+    header.appendChild(el('div', { class: 'banner warn', id: 'lateBanner' }, el('span', null, `Es del ${quarterName(ownPeriod)}. ¿Dónde la declaras?`),
       el('button', { 'data-feedback-id': 'invoices.facturas.ficha.declarar_ahora', 'data-feedback-label': 'Declararla en el trimestre en curso', class: 'softbtn small', type: 'button', id: 'declareNow',
-        onclick: () => void update({ declared_period: workingPeriod() }, `Se declarará en el ${quarterName(workingPeriod())}.`) }, `Sí, en el ${quarterName(workingPeriod())}`),
+        onclick: () => void update({ declared_period: workingPeriod() }, `Se declarará en el ${quarterName(workingPeriod())}.`) }, `En el ${quarterName(workingPeriod())}`),
       keepInQuarter()));
   } else if (canEdit && ownPeriod && isLate(invoice) && !invoice.delivered_elsewhere && invoice.status !== 'anulada' && invoice.status !== 'archivada') {
     // Atrasada (movida a otro trimestre): también se puede dejar en el suyo si la gestoría ya la tiene.
@@ -830,7 +849,23 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
   supplier.addEventListener('change', () => { syncSupplierFields(); if (supplier.value === NEW_SUPPLIER) supplierName.focus(); });
   syncSupplierFields();
   const date = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.fecha', 'data-feedback-label': 'Fecha', type: 'date', id: 'newDate' });
-  const object = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.objeto', 'data-feedback-label': 'Objeto', type: 'text', id: 'newObject', required: true, maxlength: '120', placeholder: 'alimentos retiro yoga' });
+  const object = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.objeto', 'data-feedback-label': 'Objeto', type: 'text', id: 'newObject', maxlength: '120', placeholder: 'Opcional: alimentos retiro yoga' });
+  // FB_2026_026: artículos opcionales al crear la factura a mano (descripción, base sin IVA y tipo).
+  type ArticleRow = { description: HTMLInputElement; amount: HTMLInputElement; rate: HTMLSelectElement };
+  const articles: ArticleRow[] = [];
+  const articlesHost = el('div', { id: 'newArticles' });
+  const addArticle = () => {
+    const n = articles.length + 1;
+    const row: ArticleRow = {
+      description: el('input', { 'data-feedback-ignore': '', type: 'text', maxlength: '500', placeholder: 'Artículo', 'aria-label': `Artículo ${n}` }),
+      amount: el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', placeholder: 'Base', 'aria-label': `Base del artículo ${n}` }),
+      rate: select('', [['21', 'IVA 21 %'], ['10', 'IVA 10 %'], ['4', 'IVA 4 %'], ['0', 'IVA 0 %']], '21', { 'data-feedback-ignore': '', 'aria-label': `IVA del artículo ${n}` }),
+    };
+    articles.push(row);
+    articlesHost.appendChild(el('div', { class: 'row3 manual-row' }, row.description, row.amount, row.rate));
+    row.description.focus();
+  };
+  const addArticleButton = el('button', { 'data-feedback-id': 'invoices.facturas.nueva.anadir_articulo', 'data-feedback-label': '+ Añadir artículo', class: 'linkbtn', type: 'button', id: 'newAddArticle', onclick: addArticle }, '+ Añadir artículo');
   const number = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.numero', 'data-feedback-label': 'Número de factura', type: 'text', id: 'newNumber', maxlength: '64', placeholder: 'Opcional' });
   const total = el('input', { 'data-feedback-ignore': '', type: 'text', inputmode: 'decimal', id: 'newTotal', placeholder: 'Opcional, con IVA' });
   const files = el('input', { 'data-feedback-id': 'invoices.facturas.nueva.documentos', 'data-feedback-label': 'PDF o fotos', type: 'file', id: 'newFiles', accept: ACCEPT_ATTR, multiple: true });
@@ -927,8 +962,10 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     const noSupplier = !supplier.value || (supplier.value === NEW_SUPPLIER && !supplierName.value.trim() && !supplierTaxId.value.trim());
     if (noSupplier && !firstFile) { error.textContent = 'Elige el PDF o foto, o el proveedor.'; files.focus(); return; }
     if (supplier.value === NEW_SUPPLIER && !noSupplier && !supplierName.value.trim()) { error.textContent = 'Escribe el nombre del proveedor nuevo.'; supplierName.focus(); return; }
-    if (!object.value.trim() && firstFile) object.value = (firstFile.name.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_\s]+/g, ' ').trim() || 'factura').slice(0, 120);
-    if (!object.value.trim()) { error.textContent = 'Indica el objeto (qué se compró).'; object.focus(); return; }
+    const filledArticles = articles.map((a) => ({ description: a.description.value.trim(), amount: parseAmount(a.amount.value), rate: Number(a.rate.value) })).filter((a) => a.description || a.amount !== null);
+    if (filledArticles.some((a) => !a.description || a.amount === null)) { error.textContent = 'Cada artículo necesita descripción y base (o déjalo vacío).'; return; }
+    // El objeto es opcional (FB_2026_026): del primer artículo, del nombre del archivo o «factura».
+    if (!object.value.trim()) object.value = (filledArticles[0]?.description || (firstFile ? firstFile.name.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_\s]+/g, ' ').trim() : '') || 'factura').slice(0, 120);
     const sourceTotal = total.value.trim() ? parseAmount(total.value) : null;
     if (total.value.trim() && sourceTotal === null) { error.textContent = 'Total inválido.'; total.focus(); return; }
     save.disabled = true;
@@ -946,6 +983,8 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
         ...(!noSupplier && supplier.value === NEW_SUPPLIER && !sameTaxId ? [{ op: 'insert', table: SUPPLIERS, id: supplierId, fields: { name: supplierName.value.trim(), tax_id: taxId } } as RowOperation] : []),
         { op: 'insert', table: INVOICES, id: invoiceId, fields: { supplier_id: supplierId, invoice_date: date.value || null, object: object.value.trim(), invoice_number: number.value.trim() || null, source_total: sourceTotal, expense_category: chosen?.default_category ?? null, is_investment: chosen?.default_is_investment ?? false } },
         ...staged.map((s, i): RowOperation => ({ op: 'insert', table: INVOICE_FILES, id: crypto.randomUUID(), fields: { invoice_id: invoiceId, file_id: s.marker, original_filename: s.filename, page_order: i + 1, kind: 'original', mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 } })),
+        ...filledArticles.map((a, i): RowOperation => ({ op: 'insert', table: INVOICE_LINES, id: crypto.randomUUID(), fields: {
+          invoice_id: invoiceId, position: i, description: a.description, net_amount: a.amount, vat_rate: a.rate, vat_amount: Math.round(a.amount! * a.rate) / 100, discount_amount: 0 } })),
       ];
       if (sameTaxId) toast(`Ya tenías el proveedor ${sameTaxId.name} con ese NIF: la factura queda a su nombre.`);
       const created = await commitSafely(client, ops, 'Factura creada en este dispositivo.');
@@ -970,7 +1009,8 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
     field('Proveedor', supplier, 'Si no está en la lista, elige «+ Nuevo proveedor…» y créalo aquí. Con el JSON de ChatGPT se crea solo.'),
     supplierFields,
     el('div', { class: 'row2' }, field('Fecha', date, 'Opcional: si la dejas vacía, se toma del PDF al leerlo.'), field('Número de factura', number)),
-    field('Objeto', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
+    field('Objeto (opcional)', object, 'Qué se compró, en pocas palabras. Forma parte del nombre del archivo.'),
+    el('div', { 'data-feedback-id': 'invoices.facturas.nueva.articulos', 'data-feedback-label': 'Artículos (opcional)' }, articlesHost, el('p', { class: 'btnrow' }, addArticleButton, el('span', { class: 'hint' }, 'Opcional: artículo, base sin IVA y tipo.'))),
     field('Total del documento', total),
     el('p', { class: 'hint' }, 'Vista previa del nombre: ', el('code', { id: 'namePreview' }, '…')),
     error,

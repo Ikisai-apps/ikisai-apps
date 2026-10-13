@@ -102,3 +102,15 @@ code{font-size:12.5px;word-break:break-all}
 .manual-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,.9fr);gap:8px;margin-bottom:8px}
 .manual-row>*{min-width:0;width:100%;box-sizing:border-box}
 #invoiceEditor .row2>*{min-width:0}
+/* FB_2026_031 · acciones de la ficha en una sola fila; en el móvil, solo iconos (la etiqueta queda como nombre accesible) */
+.inv-actions{display:flex;flex-wrap:nowrap;gap:6px}
+.inv-actions>button{flex:1 1 0;min-width:0;justify-content:center;white-space:nowrap;overflow:hidden;padding-inline:10px}
+.inv-actions .act-label{overflow:hidden;text-overflow:ellipsis}
+.inv-actions .act-short{display:none}
+@media (max-width:600px){.inv-actions .act-label{display:none}.inv-actions .act-short{display:inline}.inv-actions>button{padding-inline:6px;gap:4px}}
+@media (max-width:360px){.inv-actions .act-short{display:none}}
+/* FB_2026_029 · avisos de la ficha compactos: el texto fluye en un bloque y sus botones van debajo, en fila */
+.inv-head .banner{flex-wrap:wrap;align-items:flex-start;gap:6px 8px;padding:8px 10px;font-size:13px;font-weight:500;line-height:1.35;margin:8px 0 0}
+.inv-head .banner>span{flex:1 1 100%}
+.inv-head .banner>button{margin-left:0;flex:0 1 auto}
+.inv-head .banner .linkbtn.inline{display:inline;padding:0;min-height:0;font:inherit;font-weight:600;text-decoration:underline;vertical-align:baseline}
