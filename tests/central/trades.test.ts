@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { MERGE_PEOPLE_PROCEDURE, TABLES, TRADE_LEVEL_LABELS, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
+import { MERGE_PEOPLE_PROCEDURE, TABLES, TRADE_LEVEL_LABELS, planTradeImport, validateOperations } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -92,4 +92,40 @@ test('capacidades · una por persona y oficio; lecturas para Tasks solo con nive
   const after = await rows(`select trade_id, level, note from central.person_trades where deleted_at is null and person_id = $1 order by level desc`, [ana]);
   assert.deepEqual(after.map((r) => [r.trade_id, r.level, r.note]), [[pint, 2, 'Fachadas'], [old, 0, null]]);
   assert.equal((await rows(`select 1 from central.person_trades where deleted_at is null and person_id = $1`, [anaDup])).length, 0);
+});
+
+test('importar oficios · plan: junta las repetidas entre áreas, respeta el árbol, marca lo que ya existe y lo archivado', () => {
+  const L = (label_id: string, name: string, parent_id: string | null, tab_id: string | null, archived = false, position = 0) => ({ label_id, name, parent_id, tab_id, archived, position });
+  const labels = [
+    L('f1', 'Fontanería', null, 'A', false, 1), L('acs1', 'ACS', 'f1', 'A'), L('fria1', 'Agua fría', 'f1', 'A'),
+    L('f2', ' fontaneria ', null, 'B', false, 1), L('acs2', 'acs', 'f2', 'B'),
+    L('e0', 'Electricidad', null, null, false, 2), L('cuadro', 'Cuadro', 'e0', null),
+    L('viejo', 'Oficio viejo', null, 'A', true, 3),
+  ];
+  const plan = planTradeImport(labels, [{ id: 'T-E', parent_id: null, name: 'ELECTRICIDAD', source_label_id: null }]);
+  assert.deepEqual(plan.map((n) => [n.path, n.depth, n.areas, n.archived, n.existingId]), [
+    ['Fontanería', 0, 2, false, null], ['Fontanería › ACS', 1, 2, false, null], ['Fontanería › Agua fría', 1, 1, false, null],
+    ['Electricidad', 0, 1, false, 'T-E'], ['Electricidad › Cuadro', 1, 1, false, null],
+    ['Oficio viejo', 0, 1, true, null],
+  ]);
+  assert.deepEqual(plan[0]!.labelIds.sort(), ['f1', 'f2']);
+  assert.equal(plan[3]!.sourceLabelId, 'e0'); // la de General
+  // Una segunda vez, con lo ya importado (por su etiqueta de origen), no queda nada nuevo.
+  const again = planTradeImport(labels, plan.map((n, i) => ({ id: `t${i}`, parent_id: null, name: `otro ${i}`, source_label_id: n.sourceLabelId })));
+  assert.ok(again.every((n) => n.existingId));
+});
+
+test('importar oficios · Central lee `tasks.action_labels` (solo la familia «Tipo: Acción»)', async () => {
+  const db = app.t.db;
+  const tab = uuid(); const fam = uuid(); const other = uuid(); const parent = uuid();
+  await db.query(`insert into tasks.tabs (id, name) values ($1, 'Área de prueba')`, [tab]);
+  await db.query(`insert into tasks.families (id, tab_id, name, color) values ($1, $2, 'Tipo: Acción', '#336699'), ($3, $2, 'Zona: Espacio', '#336699')`, [fam, tab, other]);
+  await db.query(`insert into tasks.labels (id, tab_id, family_id, parent_id, name) values ($1, $2, $3, null, 'Pintura'), ($4, $2, $3, $1, 'Fachadas'), ($5, $2, $6, null, 'Albergue')`,
+    [parent, tab, fam, uuid(), uuid(), other]);
+  const out = await app.call('/api/v1/read/tasks.action_labels', { body: { limit: 2000 } });
+  assert.equal(out.status, 200, JSON.stringify(out.data));
+  const names = (out.data.rows as Array<{ name: string; parent_id: string | null }>).map((r) => r.name).sort();
+  assert.deepEqual(names, ['Fachadas', 'Pintura']);
+  const plan = planTradeImport(out.data.rows, []);
+  assert.deepEqual(plan.map((n) => n.path), ['Pintura', 'Pintura › Fachadas']);
 });

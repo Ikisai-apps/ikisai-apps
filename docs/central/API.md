@@ -353,6 +353,12 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
   - **Personas › Oficios:** el árbol (con archivados opcionales), nuevo oficio y «Añadir dentro», editar, archivar o reactivar, y papelera si nadie lo tiene. Al tocar un oficio, «Quién sabe hacerlo», ordenado por nivel, con disponibilidad.
   - **Ficha de la persona:** bloque «Oficios», con la estrella editable (pulsar cambia el nivel), la ruta y la nota; «Añadir oficio» y «Editar».
   - **Lista:** filtro «Oficio», que incluye lo que cuelga del elegido, y hasta 3 chips con los oficios de más nivel. Sin oficios en el catálogo, el filtro no se ve.
+- **Importar desde Tasks** (PR C; lectura `tasks.action_labels` de Tasks, #467; solo dirección): «Importar de Tasks», en Oficios, abre una vista previa del árbol de la familia «Tipo: Acción» (`planTradeImport`, en `_domain/central/trades.ts`).
+  - Las etiquetas repetidas entre áreas se juntan por su ruta de nombres, sin mirar mayúsculas, tildes ni espacios, y se ve «En N áreas».
+  - Lo que ya existe en Central, por `source_label_id` o por la misma ruta, sale como «Ya existe» y no se duplica.
+  - Las archivadas en Tasks salen sin marcar, y marcar una hija marca su madre.
+  - Cada oficio guarda una etiqueta de origen (la de General si la hay); P2 casará las demás por la ruta.
+  - **Las etiquetas de Tasks no se tocan.**
 
 ## 3. Procedimientos y lecturas
 

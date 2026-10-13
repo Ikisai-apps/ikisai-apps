@@ -114,3 +114,32 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   await page.locator('#tradesArchived').check();
   await expect(page.locator('.traderow', { hasText: 'Electricidad' })).toContainText('Archivado');
 });
+
+test('oficios · importar de Tasks con vista previa: repetidas juntas, archivadas sin marcar, sin duplicar al repetir', async ({ page }) => {
+  const db = api.app.t.db;
+  const [tabA, tabB, famA, famB, fA, fB, viejo] = Array.from({ length: 7 }, () => crypto.randomUUID());
+  await db.query(`insert into tasks.tabs (id, name) values ($1, 'Área A'), ($2, 'Área B')`, [tabA, tabB]);
+  await db.query(`insert into tasks.families (id, tab_id, name, color) values ($1, $2, 'Tipo: Acción', '#336699'), ($3, $4, 'Tipo: accion', '#336699')`, [famA, tabA, famB, tabB]);
+  await db.query(`insert into tasks.labels (id, tab_id, family_id, parent_id, name, archived) values
+    ($1, $2, $3, null, 'Carpintería', false), ($4, $2, $3, $1, 'Puertas', false), ($5, $6, $7, null, 'carpinteria', false), ($8, $2, $3, null, 'Oficio viejo', true)`,
+    [fA, tabA, famA, crypto.randomUUID(), fB, tabB, famB, viejo]);
+
+  await login(page);
+  await page.goto(`${baseURL}/#/personas/oficios`);
+  await page.locator('#importTrades').click();
+  const preview = page.locator('#importPreview');
+  await expect(preview).toContainText('Carpintería');
+  await expect(preview.locator('.importrow', { hasText: 'Carpintería' })).toContainText('En 2 áreas');
+  await expect(page.locator(`#imp-${viejo}`)).not.toBeChecked(); // archivada en Tasks: sin marcar
+  await page.locator('#applyImport').click();
+  await expect(page.getByText('2 oficios importados.')).toBeVisible();
+  await expect(page.locator('.traderow', { hasText: 'Puertas' })).toBeVisible();
+  const imported = (await db.query<{ p: string }>(`select central.trade_path(id) as p from central.trades where deleted_at is null and source_label_id is not null order by 1`)).rows.map((r) => r.p);
+  expect(imported).toEqual(['Carpintería', 'Carpintería › Puertas']);
+
+  // Repetir no duplica: todo sale como «Ya existe».
+  await page.locator('#importTrades').click();
+  await expect(page.locator('#importPreview .importrow', { hasText: 'Puertas' })).toContainText('Ya existe');
+  await page.locator('#applyImport').click();
+  await expect(page.getByText('No hay nada marcado para importar.')).toBeVisible();
+});
