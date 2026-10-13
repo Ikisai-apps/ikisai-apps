@@ -12,9 +12,9 @@ import { createTabOps, createTaskOps, emptyDataset, type Operation } from '../..
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
 const TAB = uuid(), RET = uuid(), P = uuid(), PS = uuid(), PR = uuid();
-const ZONA = uuid(), ALB = uuid(), HAB3 = uuid(), BANO = uuid(), SALAS = uuid(), ROBLE = uuid(), EXT = uuid(), PISCINA = uuid(), HUERFANA = uuid();
-const S_ALB = uuid(), S_HAB3 = uuid(), S_BANO = uuid(), S_SALAS = uuid(), S_ROBLE = uuid(), S_PISCINA = uuid(), S_NUEVO = uuid();
-const T_HAB = uuid(), T_ALB = uuid(), T_EXT = uuid(), T_PISC = uuid(), T_HUERF = uuid(), T_NADA = uuid(), T_RET = uuid();
+const ZONA = uuid(), ALB = uuid(), HAB3 = uuid(), BANO = uuid(), SALAS = uuid(), ROBLE = uuid(), EXT = uuid(), PISCINA = uuid(), HUERFANA = uuid(), JARD = uuid(), ROSA = uuid();
+const S_ALB = uuid(), S_HAB3 = uuid(), S_BANO = uuid(), S_SALAS = uuid(), S_ROBLE = uuid(), S_PISCINA = uuid(), S_NUEVO = uuid(), S_ROSA = uuid();
+const T_HAB = uuid(), T_ALB = uuid(), T_EXT = uuid(), T_PISC = uuid(), T_HUERF = uuid(), T_NADA = uuid(), T_RET = uuid(), T_JARD = uuid();
 const VIEW = uuid();
 let app: TestApp;
 let seq = 0;
@@ -43,27 +43,30 @@ test.before(async () => {
     { op: 'insert', table: 'tasks.labels', id: SALAS, fields: { tab_id: null, family_id: ZONA, name: 'Salas', position: 2 } },
     { op: 'insert', table: 'tasks.labels', id: EXT, fields: { tab_id: null, family_id: ZONA, name: 'Exteriores', position: 3 } },
     { op: 'insert', table: 'tasks.labels', id: HUERFANA, fields: { tab_id: null, family_id: ZONA, name: 'Trastero viejo', position: 4 } },
+    // Madre sin espacio que solo se usa con su hija (como «Exteriores» en los datos reales): no deja a nadie sin espacio.
+    { op: 'insert', table: 'tasks.labels', id: JARD, fields: { tab_id: null, family_id: ZONA, name: 'Jardines', position: 5 } },
   ]);
   await ok([
     { op: 'insert', table: 'tasks.labels', id: HAB3, fields: { tab_id: null, family_id: ZONA, parent_id: ALB, name: 'Hab 3', position: 1 } },
     { op: 'insert', table: 'tasks.labels', id: BANO, fields: { tab_id: null, family_id: ZONA, parent_id: ALB, name: 'Baño Hombres', position: 2 } },
     { op: 'insert', table: 'tasks.labels', id: ROBLE, fields: { tab_id: null, family_id: ZONA, parent_id: SALAS, name: 'Sala Roble', position: 1 } },
     { op: 'insert', table: 'tasks.labels', id: PISCINA, fields: { tab_id: null, family_id: ZONA, parent_id: EXT, name: 'Piscina', position: 1 } },
+    { op: 'insert', table: 'tasks.labels', id: ROSA, fields: { tab_id: null, family_id: ZONA, parent_id: JARD, name: 'Rosaleda', position: 1 } },
     { op: 'insert', table: 'tasks.projects', id: P, fields: { tab_id: TAB, title: 'Pintura', position: 2048 } },
     { op: 'insert', table: 'tasks.projects', id: PS, fields: { tab_id: TAB, title: 'Salas', position: 3072 } },
     { op: 'insert', table: 'tasks.projects', id: PR, fields: { tab_id: RET, title: 'Otoño', position: 2048 } },
   ]);
   const t = (id: string, tab: string, p: string, title: string) => ({ op: 'insert', table: 'tasks.tasks', id, fields: { tab_id: tab, project_id: p, title, position: 1024 } } as Operation);
   await ok([t(T_HAB, TAB, P, 'Pintar Hab 3'), t(T_ALB, TAB, P, 'Revisar albergue'), t(T_EXT, TAB, P, 'Barrer exteriores'), t(T_PISC, TAB, P, 'Limpiar piscina'),
-    t(T_HUERF, TAB, P, 'Vaciar trastero'), t(T_NADA, TAB, P, 'Comprar pintura'), t(T_RET, RET, PR, 'Preparar baño'),
+    t(T_HUERF, TAB, P, 'Vaciar trastero'), t(T_NADA, TAB, P, 'Comprar pintura'), t(T_RET, RET, PR, 'Preparar baño'), t(T_JARD, TAB, P, 'Podar rosales'),
     { op: 'insert', table: 'tasks.project_labels', id: uuid(), fields: { tab_id: TAB, project_id: PS, label_id: SALAS } },
     { op: 'insert', table: 'tasks.project_labels', id: uuid(), fields: { tab_id: TAB, project_id: PS, label_id: ROBLE } }]);
   await ok([tl(TAB, P, T_HAB, ALB), tl(TAB, P, T_HAB, HAB3), tl(TAB, P, T_ALB, ALB), tl(TAB, P, T_EXT, EXT), tl(TAB, P, T_PISC, EXT), tl(TAB, P, T_PISC, PISCINA),
-    tl(TAB, P, T_HUERF, HUERFANA), tl(RET, PR, T_RET, ALB), tl(RET, PR, T_RET, BANO)]);
+    tl(TAB, P, T_HUERF, HUERFANA), tl(RET, PR, T_RET, ALB), tl(RET, PR, T_RET, BANO), tl(TAB, P, T_JARD, JARD), tl(TAB, P, T_JARD, ROSA)]);
   await ok([{ op: 'insert', table: 'tasks.saved_views', id: VIEW, fields: { tab_id: TAB, name: 'Albergue sin Hab 3', filters: { [ZONA]: [ALB], _exclude: [HAB3] }, group_by: ZONA, position: 1 } }]);
   // Los espacios de Recursos (como los dejó R1 en producción): cada uno nombra en source_refs la etiqueta de la que viene.
   const altura = (await app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
-  let res = await resources([space(S_ALB, altura, 'edificio', 'Albergue', ALB), space(S_SALAS, altura, 'edificio', 'Edificio de salas', SALAS), space(S_PISCINA, altura, 'exterior', 'Piscina', PISCINA)]);
+  let res = await resources([space(S_ALB, altura, 'edificio', 'Albergue', ALB), space(S_SALAS, altura, 'edificio', 'Edificio de salas', SALAS), space(S_PISCINA, altura, 'exterior', 'Piscina', PISCINA), space(S_ROSA, altura, 'exterior', 'Rosaleda', ROSA)]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
   res = await resources([space(S_HAB3, S_ALB, 'habitacion', 'Hab 3', HAB3), space(S_BANO, S_ALB, 'bano', 'Baño Hombres', BANO), space(S_ROBLE, S_SALAS, 'sala', 'Sala Roble', ROBLE), space(S_NUEVO, S_SALAS, 'sala', 'Sala Olivo')]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
@@ -79,12 +82,16 @@ test('vista previa: lo que corresponde a cada zona, «Exteriores» y la huérfan
   assert.deepEqual(mapped.Albergue, [S_ALB, 1, 0], 'solo «Revisar albergue»: en «Pintar Hab 3» cuenta la hija');
   assert.deepEqual(mapped['Baño Hombres'], [S_BANO, 1, 0]);
   assert.deepEqual(mapped['Sala Roble'], [S_ROBLE, 0, 1]);
-  assert.deepEqual(out.doubtful.map((d: any) => [d.name, d.reason, d.tasks]).sort(), [['Exteriores', 'no_space', 1], ['Trastero viejo', 'no_space', 1]]);
-  assert.deepEqual(out.doubtful.find((d: any) => d.name === 'Exteriores').sample, ['Barrer exteriores']);
+  // Dudosas: dejan a alguien sin espacio. «Exteriores» cuenta sus dos usos (también el de «Limpiar piscina», con hija).
+  assert.deepEqual(out.doubtful.map((d: any) => [d.name, d.reason, d.tasks, d.withoutSpace]).sort(), [['Exteriores', 'no_space', 2, 1], ['Trastero viejo', 'no_space', 1, 1]]);
+  assert.deepEqual(out.doubtful.find((d: any) => d.name === 'Exteriores').sample, ['Barrer exteriores', 'Limpiar piscina']);
+  // Cubierta: «Jardines» sin espacio, pero su única tarea tiene «Rosaleda»: sale en quitadas, sin dejar a nadie sin espacio.
+  assert.deepEqual(out.removed.map((r: any) => [r.name, r.reason, r.tasks, r.withoutSpace]), [['Jardines', 'covered', 1, 0]]);
+  assert.equal(out.counts.withoutSpace, 2);
   assert.equal(out.counts.views, 1);
   const marked = (await preview({ remove: [EXT, HUERFANA] })).data;
   assert.deepEqual(marked.doubtful, []);
-  assert.deepEqual(marked.removed.map((r: any) => r.name).sort(), ['Exteriores', 'Trastero viejo']);
+  assert.deepEqual(marked.removed.map((r: any) => [r.name, r.reason]).sort(), [['Exteriores', 'marked'], ['Jardines', 'covered'], ['Trastero viejo', 'marked']]);
 });
 
 test('ida: no se aplica con dudosas; con ellas marcadas, cada tarea y proyecto recibe su espacio más hondo', async () => {
@@ -94,13 +101,14 @@ test('ida: no se aplica con dudosas; con ellas marcadas, cada tarea y proyecto r
   assert.equal((await zones('to-spaces', { remove: [EXT, HUERFANA] }, app.tokens.editor)).status, 403);
   const done = await zones('to-spaces', { remove: [EXT, HUERFANA] });
   assert.equal(done.status, 200, JSON.stringify(done.data));
-  assert.deepEqual(done.data.counts, { taskSpaces: 4, projectSpaces: 1, views: 1, labels: 8 });
+  assert.deepEqual(done.data.counts, { taskSpaces: 5, projectSpaces: 1, views: 1, labels: 10 });
 
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_HAB), [S_HAB3]);
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_ALB), [S_ALB]);
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_RET), [S_BANO]);
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_PISC), [S_PISCINA], 'la piscina sí; «Exteriores» a secas se quita');
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_EXT), []);
+  assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_JARD), [S_ROSA], 'la madre cubierta no impide la ida');
   assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', T_HUERF), []);
   assert.deepEqual(await liveSpaces('tasks.project_spaces', 'project_id', PS), [S_ROBLE]);
   assert.equal((await rows('tasks.task_spaces')).find((r) => r.task_id === T_RET).tab_id, RET);
