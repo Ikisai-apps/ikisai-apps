@@ -15,7 +15,8 @@ function refreshFilterSheet(){const sheet=document.getElementById('sheet');if(!s
 /* Barra de facetas siempre visible bajo el buscador, con desplegable por dimensión en escritorio, fila de filtros activos
    quitables y atajos a las vistas guardadas bajo las áreas. En móvil cada faceta abre el panel completo. */
 let openFacet=null;
-const FACET_FIXED=[{id:'_state',name:'Estado',options:[['pending','Pendientes'],['done','Completadas']]},{id:'_availability',name:'Disponibilidad',options:[['ready','Disponibles ahora'],['blocked','Bloqueadas']]}];
+const FACET_FIXED=[{id:'_state',name:'Estado',options:[['pending','Pendientes'],['done','Completadas']]},{id:'_availability',name:'Disponibilidad',options:[['ready','Disponibles ahora'],['blocked','Bloqueadas']]},
+  {id:'_priority',name:'Prioridad',options:[['critical','Crítica'],['high','Alta'],['normal','Normal']]}];
 /* Cada opción es [ids, nombre]: en la vista General, las etiquetas o proyectos con el mismo nombre en varias áreas se funden en una sola opción. */
 function mergeOptions(entries,merge=true){const byName=new Map();for(const [id,name] of entries){const key=merge?name.trim().toLocaleLowerCase():id;if(!byName.has(key))byName.set(key,{ids:[],name});byName.get(key).ids.push(id)}return [...byName.values()].map(o=>[o.ids,o.name])}
 function facetDefinitions(){const areas=areasForTasks(),defs=FACET_FIXED.map(d=>({...d,options:d.options.map(([v,name])=>[[v],name])}));
@@ -26,18 +27,26 @@ function optionOn(key,ids){const list=state.filters[key]||[];return ids.every(id
 function activeFilterCount(){return Object.values(state.filters||{}).flat().length}
 function activeFilterChips(){const defs=facetDefinitions(),out=[];for(const [key,values] of Object.entries(state.filters||{})){const def=defs.find(d=>d.id===key),left=new Set(values||[]);for(const [ids,name] of def?.options||[]){if(!ids.every(id=>left.has(id)))continue;ids.forEach(id=>left.delete(id));out.push(activeChip(key,ids,name,def))}for(const v of left)out.push(activeChip(key,[v],v,def))}return out.join('')}
 function activeChip(key,ids,name,def){const color=def?.color||(key==='_project'?'#777063':'#6f746d');return `<button class="chip activechip" style="background:${esc(color)}" data-facet-toggle="${esc(key)}" data-facet-value="${esc(ids.join(','))}" aria-label="Quitar filtro ${esc(name)}" data-feedback-id="tasks.filtros.activos.quitar" data-feedback-label="Quitar filtro">${esc(name)}<span class="x">×</span></button>`}
-function facetPanel(d){const current=state.filters[d.id]||[];return `<div class="facetpanel" role="group" aria-label="${esc(d.name)}">${d.options.map(([ids,name])=>{const probe=structuredClone(state.filters||{});probe[d.id]=ids;const n=filterCount(probe),on=optionOn(d.id,ids),blocked=!on&&n===0;return `<button class="filterchip ${on?'on':''} ${blocked?'unavailable':''}" data-facet-toggle="${d.id}" data-facet-value="${esc(ids.join(','))}" ${blocked?`disabled title="Sin ${filterNoun(0)} con los filtros actuales"`:''} ${d.color?`style="color:${esc(d.color)}"`:''} data-feedback-id="tasks.filtros.faceta.opcion" data-feedback-label="Opción de filtro">${esc(name)}<span class="chipcount">${n}</span></button>`}).join('')}<div class="facetfoot"><span class="small muted">Se aplica al instante · Esc cierra</span>${current.length?`<button class="ghost small" data-facet-clear="${d.id}" data-feedback-id="tasks.filtros.faceta.quitar" data-feedback-label="Quitar filtros de la faceta">Quitar ${esc(d.name)}</button>`:''}</div></div>`}
+function facetPanel(d){const current=state.filters[d.id]||[];return `<div class="facetpanel" role="group" aria-label="${esc(d.name)}">${d.options.map(([ids,name])=>{const probe=structuredClone(state.filters||{});probe[d.id]=ids;const n=filterCount(probe),on=optionOn(d.id,ids),out=!d.id.startsWith('_')&&excludedOn(ids),dim=!on&&!out&&n===0,blocked=dim&&d.id.startsWith('_');return `<button class="filterchip ${on?'on':''} ${out?'excluded':''} ${dim?'unavailable':''}" ${out?`aria-label="${esc(name)}: sin ella"`:''} data-facet-toggle="${d.id}" data-facet-value="${esc(ids.join(','))}" ${blocked?`disabled title="Sin ${filterNoun(0)} con los filtros actuales"`:''} ${d.color?`style="color:${esc(d.color)}"`:''} data-feedback-id="tasks.filtros.faceta.opcion" data-feedback-label="Opción de filtro">${esc(name)}<span class="chipcount">${n}</span></button>`}).join('')}<div class="facetfoot"><span class="small muted">Se aplica al instante · Esc cierra</span>${current.length?`<button class="ghost small" data-facet-clear="${d.id}" data-feedback-id="tasks.filtros.faceta.quitar" data-feedback-label="Quitar filtros de la faceta">Quitar ${esc(d.name)}</button>`:''}</div></div>`}
 function facetBar(){if(!['projects','tasks','project'].includes(state.view)||!tab())return'';const defs=facetDefinitions(),total=filterCount(state.filters||{}),all=filterCount({}),active=activeFilterCount();
   const facets=defs.map(d=>{const sel=d.options.filter(([ids])=>optionOn(d.id,ids)),open=openFacet===d.id;return `<div class="facet ${open?'open':''}"><button class="facetbtn ${sel.length?'active':''}" data-facet="${d.id}" aria-expanded="${open}" data-feedback-id="tasks.filtros.faceta.abrir" data-feedback-label="Abrir faceta de filtro">${d.color?`<span class="dot" style="background:${esc(d.color)}"></span>`:''}<span>${esc(d.name)}</span>${sel.length?`<span class="facetcount">${sel.length}</span>`:''}<span class="facetchev" aria-hidden="true"></span></button>${open?facetPanel(d):''}</div>`}).join('');
   return `<div class="facetbar"><div class="facets">${facets}</div><div class="facettotal"><span class="facetnumber"><strong>${total}</strong> ${filterNoun(total)}${total!==all?` <span class="muted">de ${all}</span>`:''}</span></div></div>${active?`<div class="activefilters"><span class="activelabel">Activos</span>${activeFilterChips()}<button class="ghost small" id="clearAllFilters" data-feedback-id="tasks.filtros.activos.limpiar" data-feedback-label="Limpiar filtros">Limpiar</button></div>`:''}`}
-function toggleFacetValue(key,value){const ids=String(value).split(',').filter(Boolean),list=state.filters[key]||[];state.filters[key]=ids.every(id=>list.includes(id))?list.filter(x=>!ids.includes(x)):[...new Set([...list,...ids])];if(!state.filters[key].length)delete state.filters[key];persistUI();render()}
+function excludedOn(ids){const list=state.filters?._exclude||[];return ids.length>0&&ids.every(id=>list.includes(id))}
+function cycleLabelFilter(key,ids){const list=state.filters[key]||[],out=state.filters._exclude||[];
+  if(ids.every(id=>list.includes(id))){state.filters[key]=list.filter(x=>!ids.includes(x));state.filters._exclude=[...new Set([...out,...ids])]}
+  else if(ids.every(id=>out.includes(id)))state.filters._exclude=out.filter(x=>!ids.includes(x));
+  else state.filters[key]=[...new Set([...list,...ids])];
+  for(const k of [key,'_exclude'])if(!(state.filters[k]||[]).length)delete state.filters[k]}
+function toggleFacetValue(key,value){const ids=String(value).split(',').filter(Boolean),list=state.filters[key]||[];
+  if(!key.startsWith('_')){cycleLabelFilter(key,ids);persistUI();render();return}state.filters[key]=ids.every(id=>list.includes(id))?list.filter(x=>!ids.includes(x)):[...new Set([...list,...ids])];if(!state.filters[key].length)delete state.filters[key];persistUI();render()}
 const searchBeforeFacets=searchbar;
 searchbar=function(){const n=activeFilterCount();return searchBeforeFacets().replace(/<p class="small muted">(Proyectos|Disponibilidad): [^<]*<\/p>/g,'').replace(/<button class="softbtn( active)?" id="filterBtn">☷( \d+)?<\/button>/,`<button class="softbtn filterbtn$1" id="filterBtn" aria-label="Filtros" data-feedback-id="tasks.filtros.abrir" data-feedback-label="Abrir filtros">${menuIcon('filter')}<span class="filterlabel">Filtros</span>${n?`<span class="facetcount">${n}</span>`:''}</button>`)+facetBar()};
 document.addEventListener('click',e=>{if(openFacet&&!e.target.closest('.facet')){openFacet=null;render()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&openFacet){openFacet=null;render()}});
 const bindBeforeFacets=bind;
 bind=function(){bindBeforeFacets();
-  document.querySelectorAll('[data-facet]').forEach(b=>b.onclick=()=>{if(!matchMedia('(min-width:1024px)').matches)return openFilters();openFacet=openFacet===b.dataset.facet?null:b.dataset.facet;render()});
+  document.querySelectorAll('[data-facet]').forEach(b=>b.onclick=e=>{e.stopPropagation();openFacet=openFacet===b.dataset.facet?null:b.dataset.facet;render()});
+  placeFacetPanel();
   document.querySelectorAll('[data-facet-toggle]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFacetValue(b.dataset.facetToggle,b.dataset.facetValue)});
   document.querySelectorAll('[data-facet-clear]').forEach(b=>b.onclick=e=>{e.stopPropagation();delete state.filters[b.dataset.facetClear];persistUI();render()});
   const clear=document.getElementById('clearAllFilters');if(clear)clear.onclick=()=>{state.filters={};openFacet=null;persistUI();render()};
@@ -55,3 +64,40 @@ const projectsBeforeFilters=filteredProjects;
    (aceptación V1, 4). Sigue existiendo y recibe lo que se añade sin elegir proyecto. */
 function quietInbox(p){return p.system==='inbox'&&['projects','tasks'].includes(state.view)&&!p.tasks.some(t=>!t.deleted&&!t.done)}
 filteredProjects=function(){const items=projectsBeforeFilters().filter(p=>!quietInbox(p));return projectsMode()?items.filter(projectMatchesFilters):items};
+
+/* FB_2026_037: en pantallas estrechas el desplegable de cada faceta se coloca fijo bajo su botón (la fila de facetas se
+   desplaza en horizontal y recortaría un panel posicionado dentro de ella). */
+function placeFacetPanel(){const panel=document.querySelector('.facet.open .facetpanel');if(!panel||matchMedia('(min-width:1024px)').matches)return;
+  const btn=panel.parentElement.querySelector('.facetbtn').getBoundingClientRect();
+  Object.assign(panel.style,{position:'fixed',left:'12px',right:'12px',top:`${Math.round(btn.bottom-1)}px`,minWidth:'0',maxWidth:'none',maxHeight:`${Math.max(200,innerHeight-btn.bottom-24)}px`,overflowY:'auto'})}
+addEventListener('resize',()=>placeFacetPanel());
+
+/* FB_2026_045 y 042: prioridad y «no la tiene» se aplican fuera de la base (que trataría cualquier clave como una familia). */
+const filteredTasksBeforeExtra=filteredTasks;
+filteredTasks=function(p){const pri=state.filters?._priority||[],out=state.filters?._exclude||[];if(!pri.length&&!out.length)return filteredTasksBeforeExtra(p);
+  const saved=state.filters;state.filters={...saved};delete state.filters._priority;delete state.filters._exclude;let base;try{base=filteredTasksBeforeExtra(p)}finally{state.filters=saved}
+  const prio=t=>typeof effectivePriority==='function'?effectivePriority(p,t):t.priority||'normal';
+  return base.filter(t=>(!pri.length||pri.includes(prio(t)))&&!out.some(id=>(t.labels||[]).includes(id)))};
+/* Filtros activos: «Sin <etiqueta>» tachada para las excluidas; la prioridad con su nombre. */
+const activeFilterChipsBeforeExtra=activeFilterChips;
+activeFilterChips=function(){const saved=state.filters,out=saved?._exclude||[];state.filters={...saved};delete state.filters._exclude;let html;try{html=activeFilterChipsBeforeExtra()}finally{state.filters=saved}
+  return html+out.map(id=>{const l=label(id);if(!l)return'';return `<button class="chip activechip excludedchip" style="background:${esc(familyColorByLabel(id))}" data-facet-toggle="_exclude" data-facet-value="${esc(id)}" aria-label="Quitar filtro: sin ${esc(labelName(l))}" data-feedback-id="tasks.filtros.activos.quitar" data-feedback-label="Quitar filtro">Sin ${esc(labelName(l))}<span class="x">×</span></button>`}).join('')};
+/* La hoja de filtros: prioridad, y las etiquetas con tres estados (la tiene, no la tiene, nada). */
+const chipFiltersBeforeExtra=chipFilters;
+chipFilters=function(chip){if(chip.dataset.priority){const probe=structuredClone(state.filters||{});probe._priority=[chip.dataset.priority];return probe}return chipFiltersBeforeExtra(chip)};
+const refreshFilterSheetBeforeExtra=refreshFilterSheet;
+// Con tres estados, una etiqueta siempre se puede pulsar (aunque incluirla dé 0, excluirla tiene sentido): solo se atenúa.
+refreshFilterSheet=function(){refreshFilterSheetBeforeExtra();document.querySelectorAll('#sheet [data-filter]').forEach(c=>{c.disabled=false;if(c.classList.contains('excluded'))c.classList.remove('unavailable')})};
+const filtersBeforeExtra=openFilters;
+openFilters=function(){filtersBeforeExtra();const sheet=document.getElementById('sheet');if(!sheet||!sheet.querySelector('.filterfamily'))return;
+  const box=document.createElement('div');box.className='filterfamily';
+  box.innerHTML=`<h4>Prioridad</h4>${[['critical','Crítica'],['high','Alta'],['normal','Normal']].map(([k,n])=>`<button class="filterchip ${(state.filters._priority||[]).includes(k)?'on':''}" data-priority="${k}" data-feedback-id="tasks.filtros.prioridad" data-feedback-label="Filtro de prioridad">${n}</button>`).join('')}`;
+  sheet.insertBefore(box,sheet.querySelector('.filterfamily'));
+  box.querySelectorAll('[data-priority]').forEach(b=>b.onclick=()=>{const ids=state.filters._priority||[],id=b.dataset.priority;state.filters._priority=ids.includes(id)?ids.filter(x=>x!==id):[...ids,id];if(!state.filters._priority.length)delete state.filters._priority;b.classList.toggle('on');refreshFilterSheet()});
+  sheet.querySelectorAll('[data-filter]').forEach(b=>{const [fid,lid]=b.dataset.filter.split('|');b.classList.toggle('excluded',excludedOn([lid]));
+    b.onclick=()=>{cycleLabelFilter(fid,[lid]);b.classList.toggle('on',(state.filters[fid]||[]).includes(lid));b.classList.toggle('excluded',excludedOn([lid]));refreshFilterSheet()}});
+  refreshFilterSheet()};
+/* Una chip de «Filtros activos» quita el filtro del todo (no pasa a «no la tiene», como en el desplegable). */
+const bindBeforeActiveRemoval=bind;
+bind=function(){bindBeforeActiveRemoval();document.querySelectorAll('.activefilters .activechip[data-facet-toggle]').forEach(b=>b.onclick=e=>{e.stopPropagation();const key=b.dataset.facetToggle,ids=String(b.dataset.facetValue).split(',').filter(Boolean);
+  for(const k of [key,'_exclude']){if(!state.filters[k])continue;state.filters[k]=state.filters[k].filter(x=>!ids.includes(x));if(!state.filters[k].length)delete state.filters[k]}persistUI();render()})};

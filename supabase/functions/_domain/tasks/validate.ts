@@ -55,8 +55,9 @@ const fileRef: Check = (v, field) => {
 const filters: Check = (v, field) => {
   if (!isObject(v)) reject(422, 'INVALID_VIEW', 'Filtros de vista inválidos.', { field });
   for (const [key, ids] of Object.entries(v)) {
-    const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : null;
-    if (!allowed && key !== '_project' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
+    const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : key === '_priority' ? ['normal', 'high', 'critical'] : null;
+    // `_exclude`: etiquetas que la tarea no debe tener (FB_2026_042).
+    if (!allowed && key !== '_project' && key !== '_exclude' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
     if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !UUID.test(id)))) {
       reject(422, 'INVALID_VIEW', 'Un filtro contiene valores inválidos.', { field, key });
     }

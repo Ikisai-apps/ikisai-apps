@@ -65,7 +65,7 @@ export function remapTabs(tabs: readonly LegacyTab[], map: ReadonlyMap<string, U
       labels: (tab.labels ?? []).map((l) => ({ ...l, id: get(l.id)!, family: family(l.family), parent: get(l.parent) })),
       views: (tab.views ?? []).map((v) => ({
         ...v, id: get(v.id)!, groupBy: ['project', 'state'].includes(v.groupBy) ? v.groupBy : family(v.groupBy),
-        filters: Object.fromEntries(Object.entries(v.filters ?? {}).map(([key, ids]) => (key === '_state' || key === '_availability' ? [key, ids] : key === '_project' ? [key, ids.map((x) => get(x)).filter(Boolean) as string[]] : [family(key), ids.map((x) => get(x)).filter(Boolean) as string[]]))),
+        filters: Object.fromEntries(Object.entries(v.filters ?? {}).map(([key, ids]) => (key === '_state' || key === '_availability' || key === '_priority' ? [key, ids] : key === '_project' || key === '_exclude' ? [key, ids.map((x) => get(x)).filter(Boolean) as string[]] : [family(key), ids.map((x) => get(x)).filter(Boolean) as string[]]))),
       })),
       projects: (tab.projects ?? []).map((p) => ({
         ...p, id: get(p.id)!, owner: get(p.owner), ownLabels: (p.ownLabels ?? []).map((x) => get(x)).filter(Boolean) as string[],
