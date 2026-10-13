@@ -57,14 +57,15 @@ const filters: Check = (v, field) => {
   for (const [key, ids] of Object.entries(v)) {
     const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : key === '_priority' ? ['normal', 'high', 'critical'] : null;
     // `_exclude`: etiquetas que la tarea no debe tener (FB_2026_042).
-    if (!allowed && key !== '_project' && key !== '_exclude' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
+    // `_space`: espacios de Recursos (R2); como los de `_exclude`, uuids que valida el hook.
+    if (!allowed && key !== '_project' && key !== '_exclude' && key !== '_space' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
     if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !UUID.test(id)))) {
       reject(422, 'INVALID_VIEW', 'Un filtro contiene valores inválidos.', { field, key });
     }
   }
 };
 const groupBy: Check = (v, field) => {
-  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
+  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || v === '_space' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
 };
 const mime: Check = (v, field) => {
   if (typeof v !== 'string' || !ATTACHMENT_MIME.includes(v.toLowerCase())) reject(422, 'INVALID_ATTACHMENT', 'Tipo de archivo no admitido.', { field, allowed: ATTACHMENT_MIME });
@@ -156,6 +157,14 @@ const RULES: Record<TableName, TableRules> = {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), label_id: uuid('INVALID_LABELS') },
     required: ['tab_id', 'project_id', 'task_id', 'label_id'],
   },
+  'tasks.project_spaces': {
+    fields: { tab_id: uuid(), project_id: uuid(), space_id: uuid('INVALID_SPACE') },
+    required: ['tab_id', 'project_id', 'space_id'],
+  },
+  'tasks.task_spaces': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), space_id: uuid('INVALID_SPACE') },
+    required: ['tab_id', 'project_id', 'task_id', 'space_id'],
+  },
   'tasks.task_dependencies': {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid('INVALID_DEPENDENCIES'), depends_on_id: uuid('INVALID_DEPENDENCIES'), position },
     required: ['tab_id', 'project_id', 'task_id', 'depends_on_id'],
@@ -219,6 +228,14 @@ const RULES: Record<TableName, TableRules> = {
       status: oneOf(['pending', 'routed', 'dismissed'], 'INVALID_STATUS', 'Estado de la petición desconocido.'),
       routed_by: nullable(oneOf(['rule', 'hint', 'manual'], 'INVALID_STATUS', 'Origen del enrutado desconocido.')),
       on_behalf_of: (_v, f) => reject(422, 'INVALID_REQUEST', 'Las peticiones solo llegan por requests/task.', { field: f }),
+    },
+    required: [],
+  },
+  // Ajustes: solo los cambian los procedimientos de la app («Pasar las zonas a espacios» y su marcha atrás).
+  'tasks.settings': {
+    fields: {
+      key: (_v, f) => reject(422, 'INVALID_SETTING', 'Los ajustes solo los cambian las acciones de la app.', { field: f }),
+      value: (_v, f) => reject(422, 'INVALID_SETTING', 'Los ajustes solo los cambian las acciones de la app.', { field: f }),
     },
     required: [],
   },

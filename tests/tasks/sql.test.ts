@@ -22,7 +22,7 @@ test('registro: todas las tablas con las columnas escribibles del dominio, hook,
   for (const table of TABLES) {
     const row = rows.find((r) => `tasks.${r.table_name}` === table)!;
     assert.deepEqual([...row.writable_columns].sort(), [...WRITABLE[table]].sort(), table);
-    assert.deepEqual(row.writable_roles, ['tasks.tabs', 'tasks.request_routes'].includes(table) ? ['owner'] : ['editor', 'owner'], table);
+    assert.deepEqual(row.writable_roles, ['tasks.tabs', 'tasks.request_routes', 'tasks.settings'].includes(table) ? ['owner'] : ['editor', 'owner'], table);
   }
   const count = async (sql: string) => Number((await db.t.db.query<{ n: number }>(sql)).rows[0]!.n);
   assert.equal(await count(`select count(*) n from core.validate_hooks where app = 'tasks' and procedure = 'tasks.validate_batch'`), 1);
