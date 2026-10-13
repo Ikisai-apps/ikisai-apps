@@ -117,8 +117,12 @@ function labelChildren(m){const scope=state.tabs.find(t=>(t.labels||[]).some(x=>
 function labelGroups(ids=[]){const groups=new Map();
   for(const id of [...new Set(ids)]){const l=label(id);if(!l||l.archived)continue;const m=labelMotherOf(l)||l;if(m.archived)continue;
     const g=groups.get(m.id)||{mother:m,kids:[]};if(m!==l)g.kids.push(l);groups.set(m.id,g)}
-  return [...groups.values()].map(g=>{const all=labelChildren(g.mother);const every=!g.kids.length||all.length&&all.every(c=>g.kids.some(k=>k.id===c.id));
-    return {...g,text:every?g.mother.text:`${g.mother.text}: ${g.kids.map(k=>k.text).join(', ')}`}})}
+  // Orden (FB_2026_038): por familia, en el orden de las familias del área, y dentro de cada una por posición.
+  const scopeOf=m=>state.tabs.find(t=>(t.labels||[]).some(x=>x.id===m.id));
+  const rank=l=>{const s=scopeOf(l),fi=(s?.families||[]).findIndex(f=>f.id===l.family),li=(s?.labels||[]).findIndex(x=>x.id===l.id);return [fi<0?1e6:fi,li<0?1e6:li]};
+  const order=(a,b)=>{const [fa,la]=rank(a),[fb,lb]=rank(b);return fa-fb||la-lb};
+  return [...groups.values()].sort((a,b)=>order(a.mother,b.mother)).map(g=>{const all=labelChildren(g.mother);const kids=[...g.kids].sort(order);const every=!kids.length||all.length&&all.every(c=>kids.some(k=>k.id===c.id));
+    return {...g,kids,text:every?g.mother.text:`${g.mother.text}: ${kids.map(k=>k.text).join(', ')}`}})}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function progress(p){const a=p.tasks.filter(t=>!t.deleted);if(!a.length)return 0;return Math.round(a.filter(t=>t.done).length/a.length*100)}
 function aggregatedLabels(p){const set=new Set(p.ownLabels||[]);p.tasks.filter(t=>!t.deleted).forEach(t=>(t.labels||[]).forEach(x=>set.add(x)));return [...set]}
