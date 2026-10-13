@@ -87,6 +87,9 @@ export interface AppRoute {
   handler: (req: RouteRequest) => Promise<unknown | Response>;
 }
 
+/** Módulos del núcleo que sirve cada Edge en `/api/v1/<módulo>/` (core.apps con kind 'module'). */
+export const MODULES = ['resources'] as const;
+
 export interface AppHandler {
   (request: Request): Promise<Response>;
 }
@@ -250,6 +253,25 @@ export function createApp(config: AppConfig): AppHandler {
     workerRoutes.push({ method: 'POST', pattern: 'files/gc', handler: () => filesGc.tick() });
   }
   const compiledWorkers = workerRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) }));
+  // Módulos del núcleo sin app propia (`resources`: espacios e inventario, RECURSOS.md §3): cada Edge los sirve en
+  // `/api/v1/<módulo>/…` con su propia sincronización. La pertenencia la deriva el núcleo de las apps de origen.
+  const modules = new Map<string, { sync: ReturnType<typeof createSync>; routes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown>; matcher: (path: string) => Record<string, string> | null }> }>(MODULES.map((name) => {
+    const moduleSync = createSync(supabase, name, {});
+    const moduleRoutes: Array<{ method: string; pattern: string; handler: (req: RouteRequest) => Promise<unknown> }> = [
+      { method: 'GET', pattern: 'bootstrap', handler: async ({ ctx }) => ({ ...ctx.bootstrap, release: config.release ?? 'development' }) },
+      { method: 'GET', pattern: 'snapshot', handler: ({ ctx, url }) => moduleSync.snapshot(ctx, url.searchParams) },
+      { method: 'GET', pattern: 'changes', handler: ({ ctx, url }) => moduleSync.changes(ctx, url.searchParams) },
+      { method: 'POST', pattern: 'commands', handler: async ({ ctx, json }) => moduleSync.commit(ctx, await json()) },
+      { method: 'GET', pattern: 'history', handler: ({ ctx, url }) => moduleSync.history(ctx, url.searchParams) },
+      { method: 'POST', pattern: 'history/:cursor/undo-plan', handler: ({ ctx, params }) => moduleSync.undoPlan(ctx, integer(params.cursor ?? null, 0)) },
+      { method: 'POST', pattern: 'history/:cursor/undo', handler: async ({ ctx, params, json }) => moduleSync.undo(ctx, integer(params.cursor ?? null, 0), await json()) },
+      { method: 'POST', pattern: 'trash/purge', handler: async ({ ctx, json }) => moduleSync.purgeDeleted(ctx, await json()) },
+      { method: 'GET', pattern: 'read/:name', handler: ({ ctx, params, url }) => moduleSync.read(ctx, params.name ?? '', readArgs(url.searchParams)) },
+      { method: 'POST', pattern: 'read/:name', handler: async ({ ctx, params, json }) => moduleSync.read(ctx, params.name ?? '', await json()) },
+      { method: 'POST', pattern: 'invoke/:name', handler: async ({ ctx, params, json }) => { if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN')); return moduleSync.invoke(ctx.user.id, params.name ?? '', await json()); } },
+    ];
+    return [name, { sync: moduleSync, routes: moduleRoutes.map((route) => ({ ...route, matcher: compile(route.pattern) })) }] as const;
+  }));
 
   return async (request: Request): Promise<Response> => {
     const origin = request.headers.get('origin');
@@ -355,8 +377,26 @@ export function createApp(config: AppConfig): AppHandler {
       if (!path.startsWith('/api/v1/')) fail(404, 'NOT_FOUND', 'Ruta desconocida.');
       const token = bearer(request);
       const user = await auth.identity(token);
-      const ctx = await sync.context(user, token!);
       const relative = path.slice('/api/v1/'.length);
+      const moduleName = relative.split('/', 1)[0]!;
+      const mounted = modules.get(moduleName);
+      if (mounted) {
+        const moduleCtx = await mounted.sync.context(user, token!);
+        const rest = relative.slice(moduleName.length + 1);
+        const moduleGrants = (moduleCtx.membership as any)?.scopes?.grants;
+        if (request.method !== 'GET' && Array.isArray(moduleGrants) && moduleGrants.length && moduleGrants.every((g: any) => g?.preview === true)
+            && !rest.startsWith('read/')) {
+          fail(403, 'PREVIEW_READ_ONLY', 'Es una vista previa: no se guardan cambios.');
+        }
+        for (const route of mounted.routes) {
+          if (route.method !== request.method) continue;
+          const params = route.matcher(rest);
+          if (!params) continue;
+          return json(await route.handler({ request, url, path, method: request.method, params, ctx: moduleCtx, json: readJson }));
+        }
+        fail(404, 'NOT_FOUND', 'Ruta desconocida.');
+      }
+      const ctx = await sync.context(user, token!);
       // MCP (JSON-RPC 2.0 sobre HTTP): admite lotes, así que no pasa por readJson; las notificaciones responden 202 sin cuerpo.
       if (relative === 'mcp') {
         if (request.method !== 'POST') return new Response(null, { status: 405, headers: { ...headers, Allow: 'POST' } });

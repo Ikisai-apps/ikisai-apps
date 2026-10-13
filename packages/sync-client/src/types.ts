@@ -138,15 +138,30 @@ export interface SyncClientOptions {
   clearOnLogout?: boolean | TableName[];
   /** Sesión única entre apps de ikisai.com: al arrancar sin sesión, intenta entrar con el pase común. Por defecto true. */
   sso?: boolean;
+  /**
+   * Cliente secundario (módulos del núcleo, p. ej. `resources` en `/api/v1/resources`): usa la sesión de otro cliente de la
+   * misma app en lugar de tener la suya. No inicia ni cierra sesión: refresca a través del principal y, cuando el principal
+   * cierra sesión, se cierra con él (aplicando `clearOnLogout`).
+   */
+  sessionFrom?: SessionSource;
   /** Inyectable para pruebas. */
   fetch?: typeof fetch;
   indexedDB?: IDBFactory;
   now?: () => number;
 }
 
+/** Lo que un cliente secundario necesita del principal (lo cumple cualquier `SyncClient`). */
+export interface SessionSource {
+  session(): Session | null;
+  refreshSessionNow(): Promise<boolean>;
+  onSessionEnd(listener: (userId: string) => void): () => void;
+}
+
 export interface SyncClient {
   /** Inicia sesión por email y contraseña (proxy de Supabase Auth). */
   login(email: string, password: string): Promise<Session>;
+  /** Refresca la sesión ya mismo (lo usan los clientes secundarios). true si se refrescó. */
+  refreshSessionNow(): Promise<boolean>;
   /** Portales (contrato §3.6): canjea el token de un enlace personal (`/i/<token>`) por una sesión. */
   loginWithLink(token: string): Promise<Session>;
   /** Entra con el pase de sesión única del dispositivo si existe (contrato §3.4); null si no hay pase o acceso. */

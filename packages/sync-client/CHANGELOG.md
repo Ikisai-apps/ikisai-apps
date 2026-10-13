@@ -1,5 +1,15 @@
 # Cambios de @ikisai/sync-client
 
+## 0.6.0 · 13 de octubre de 2026
+
+- **Cliente secundario con `sessionFrom`** para los módulos del núcleo, que cada Edge sirve en `/api/v1/<módulo>/` (el primero es `resources`, espacios e inventario: `docs/resources/API.md`).
+  - `createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: clientePrincipal, clearOnLogout: true })` usa la sesión del cliente de la app. No inicia sesión, ni con contraseña ni con la sesión única.
+  - Si recibe un 401, refresca a través del principal y reintenta.
+  - Cuando el principal cierra sesión, se para, aplica `clearOnLogout` y avisa por `onSessionEnd`.
+  - Su espejo y su cola van en otra base IndexedDB (`ikisai-resources-v1`).
+- **`refreshSessionNow()`** (nuevo, público): refresca la sesión ya mismo. Lo usan los secundarios.
+- Lo existente no cambia. Pruebas nuevas en `tests/sync-client/session-from.test.ts`.
+
 ## 0.5.2 · 9 de octubre de 2026
 
 - **Un `call` que choca ya no vuelve en bucle** (incidencia del usuario en Finance: «Se descartó una acción sobre FVR_2026_003…» una y otra vez, con «1 pendiente»).
