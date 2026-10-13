@@ -9,6 +9,7 @@ export const GUESTS: TableName = TABLES.guests;
 export const SPACES: TableName = TABLES.spaces;
 export const BEDS: TableName = TABLES.beds;
 export const ASSIGNMENTS: TableName = TABLES.roomAssignments;
+export const EXTRA_BEDS: TableName = TABLES.eventExtraBeds;
 export const STAFF: TableName = TABLES.staffAssignments;
 export const NEEDS: TableName = TABLES.staffNeeds;
 export const RATES: TableName = TABLES.rates;
@@ -194,6 +195,8 @@ export function describeError(error: unknown): string {
       return 'No se puede borrar: quedan datos vivos que dependen de esta reserva.';
     case 'BED_OVERBOOKED':
       return 'Esa cama ya está ocupada esas noches en otra reserva.';
+    case 'EXTRA_BED_TAKEN':
+      return 'Esa supletoria ya la usa otra reserva esas noches.';
     case 'BED_SPACE_MISMATCH':
       return 'La cama no es de esa habitación.';
     case 'GUEST_MISMATCH':

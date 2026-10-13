@@ -103,6 +103,10 @@ export function quantityFor(unit: string, persons: number, stay: { nights: numbe
   }
 }
 
+/** Descripción estable de la línea de supletorias en la propuesta (la leen los portales en `portal_proposals.lines`). */
+export const SUPLETORIAS_LINE = 'Plazas supletorias';
+const PER_NIGHT = new Set(['noche', 'persona_noche']);
+
 export interface SuggestedLine { rate_id: string; description: string; unit: string; quantity: number; unit_amount: number; position: number }
 
 /** Lo que la reserva usa además de sus datos: personas presupuestadas y supletorias activadas en el alojamiento. */
@@ -128,11 +132,12 @@ export function suggestLines(reservation: ReservationForRates, rates: readonly R
     .filter((r) => r.service === 'cama_supletoria' ? extraBeds > 0
       : r.layer !== 'extra' && (!r.service || reservation[SERVICE_FLAG[r.service] ?? 'uses_accommodation'] === true))
     .sort((a, b) => order.indexOf(a.layer) - order.indexOf(b.layer) || num(a.position) - num(b.position))
-    .map((r, i) => ({
-      rate_id: r.id, description: r.name, unit: r.unit, unit_amount: num(r.amount), position: i + 1,
-      // la supletoria se cobra por cama activada
-      quantity: r.service === 'cama_supletoria' ? extraBeds * quantityFor(r.unit, 1, stay) : quantityFor(r.unit, persons, stay),
-    }));
+    .map((r, i) => r.service === 'cama_supletoria'
+      // la supletoria se cobra por plaza activada; con tarifa por noche, la línea es estable para los portales:
+      // «Plazas supletorias» por persona y noche (Organizers, 13-10-2026)
+      ? { rate_id: r.id, description: SUPLETORIAS_LINE, unit: PER_NIGHT.has(r.unit) ? 'persona_noche' : r.unit, unit_amount: num(r.amount), position: i + 1,
+          quantity: extraBeds * quantityFor(PER_NIGHT.has(r.unit) ? 'persona_noche' : r.unit, 1, stay) }
+      : { rate_id: r.id, description: r.name, unit: r.unit, unit_amount: num(r.amount), position: i + 1, quantity: quantityFor(r.unit, persons, stay) });
 }
 
 export interface Refund { daysBefore: number; percent: number; amount: number; extraCosts: boolean }

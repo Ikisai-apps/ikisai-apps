@@ -1,8 +1,8 @@
 /** Editor de una propuesta (`#/propuesta/<id>`): cabecera, líneas reordenables, sugerencia desde el tarifario, extras y totales en vivo. */
 import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { confirmDialog, createSortableList, el, icon, openSheet, plural, positionBetween, renumber, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
-import { extraBedsInUse, lineAmount, quantityFor, stayLength, suggestLines } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, CONDITIONS, EVENTS, PROPOSALS, PROPOSAL_LINES, RATES, RESERVATIONS, canRead, canWrite, describeError, fullDay } from '../app/client.ts';
+import { extraBedsCharged, lineAmount, quantityFor, stayLength, suggestLines } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, BEDS, CONDITIONS, EVENTS, EXTRA_BEDS, PROPOSALS, PROPOSAL_LINES, RATES, RESERVATIONS, canRead, canWrite, describeError, fullDay } from '../app/client.ts';
 import { RATE_LABELS, RATE_OPTIONS } from '../app/labels.ts';
 import { amountText, byPosition, eur, figures, lineAmounts, pct, qty, signedPct, type Row } from '../app/rates.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
@@ -145,12 +145,13 @@ export function mountProposalEditor(id: string): ViewMount {
         return sortable.element;
       };
 
-      // Sugerencia desde el tarifario con lo que la reserva usa (y las camas supletorias asignadas a su evento).
+      // Sugerencia desde el tarifario con lo que la reserva usa (y las supletorias de su evento: activadas u ocupadas).
       async function extraBedsOfEvent(): Promise<number> {
         if (!canRead(client, ASSIGNMENTS) || !canRead(client, BEDS)) return 0;
         const event = ((await client.list(EVENTS)) as Row[]).find((e) => e.reservation_id === proposal!.reservation_id && e.deleted_at === null);
         if (!event) return 0;
-        return extraBedsInUse(event.id, await live(BEDS) as any, await live(ASSIGNMENTS) as any).length;
+        const activated = canRead(client, EXTRA_BEDS) ? await live(EXTRA_BEDS) : [];
+        return extraBedsCharged(event.id, await live(BEDS) as any, await live(ASSIGNMENTS) as any, activated as any).length;
       }
 
       async function suggest(): Promise<void> {

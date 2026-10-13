@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { portalTasksRequest } from '../../supabase/functions/booking-api/portal/notices.ts';
-import { PROCEDURES, TABLES, extraBedsCharged, extraBedsPending } from '../../supabase/functions/_domain/booking/mod.ts';
+import { PROCEDURES, TABLES, extraBedsCharged, extraBedsPending, suggestLines } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -74,12 +74,13 @@ test('supletorias · el organizador elige cuántas, el huésped y el reparto las
   // contador de partida y precio de la supletoria (su tarifa es visible en el portal)
   const start = await read('organizers', organizer, 'booking.portal_rooms', { reservation_id: res });
   assert.deepEqual(start.rooms[0].extra, { possible: 2, activated: 0, wanted: 0, requested: 0, release_requested: 0, occupied: 0 });
-  assert.deepEqual([start.extra_pending_mode, start.extra_rate], [false, { name: 'Plaza supletoria', unit: 'noche', amount: 15 }]);
+  assert.deepEqual([start.rooms[0].extra_max, start.rooms[0].extra_total, start.rooms[0].extra_occupied, start.rooms[0].extra_requested], [2, 0, 0, 0]);
+  assert.deepEqual([start.extra_pending_mode, start.extra_rate], [false, { name: 'Plaza supletoria', unit: 'noche', amount: 15, amount_with_vat: 15, vat_rate: null }]);
 
   // no más de las posibles; activar 2 es inmediato (sin propuesta aceptada) y Booking elige por orden
   await fails(invoke('organizers', organizer, 'booking.portal_extra_beds', { reservation_id: res, space_id: room, count: 3 }), 'EXTRA_BEDS_LIMIT');
   const two = await invoke('organizers', organizer, 'booking.portal_extra_beds', { reservation_id: res, space_id: room, count: 2 });
-  assert.deepEqual([two.activated, two.wanted, two.pending], [2, 2, false]);
+  assert.deepEqual([two.active, two.requested, two.wanted, two.pending, two.proposal], [2, 0, 2, false, null]);
   assert.deepEqual((await activations(event)).map((x) => [x.bed_id, x.status, x.source]).sort(), [[x1, 'active', 'organizer'], [x2, 'active', 'organizer']].sort());
 
   // BG13: el huésped las ve aparte; las fijas no cambian
@@ -105,6 +106,11 @@ test('supletorias · el organizador elige cuántas, el huésped y el reparto las
   // cobro: las activadas aunque nadie las ocupe, y las ocupadas sin activar (como hoy)
   const beds = await q('select * from booking.beds'); const assigns = await q('select * from booking.room_assignments'); const extras = await q('select * from booking.event_extra_beds');
   assert.deepEqual(extraBedsCharged(event, beds as any, assigns as any, extras as any).map((b) => b.id), [x2]);
+  // línea estable para los portales: «Plazas supletorias» por persona y noche (1 plaza × 3 noches)
+  const rate = { id: 'sup', name: 'Cama supletoria', layer: 'extra', unit: 'noche', amount: 15, service: 'cama_supletoria', active: true, deleted_at: null, position: 1,
+    min_persons: null, max_persons: null, event_types: null, valid_from: null, valid_to: null };
+  const line = suggestLines({ start_date: '2029-08-01', end_date: '2029-08-04', expected_guests: 3, event_type: null, uses_accommodation: true } as any, [rate] as any, { extraBeds: 1 })[0]!;
+  assert.deepEqual([line.description, line.unit, line.quantity, line.unit_amount], ['Plazas supletorias', 'persona_noche', 3, 15]);
   await invoke('guests', gAna, 'booking.portal_release_bed', { guest_id: ana });
   assert.equal(extraBedsCharged(event, await q('select * from booking.beds') as any, await q('select * from booking.room_assignments') as any, await q('select * from booking.event_extra_beds') as any).length, 1, 'activada sin ocupar: se cobra');
 
@@ -116,7 +122,8 @@ test('supletorias · el organizador elige cuántas, el huésped y el reparto las
   await ok([{ op: 'call', procedure: PROCEDURES.sendProposal, args: { proposal_id: proposal } }]);
   await ok([{ op: 'call', procedure: PROCEDURES.acceptProposal, args: { proposal_id: proposal } }]);
   const asked = await invoke('organizers', organizer, 'booking.portal_extra_beds', { reservation_id: res, space_id: room, count: 2 });
-  assert.deepEqual([asked.activated, asked.wanted, asked.requested, asked.pending], [1, 2, 1, true]);
+  assert.deepEqual([asked.active, asked.wanted, asked.requested, asked.pending, asked.proposal?.version, asked.proposal?.status], [1, 2, 1, true, 1, 'aceptada']);
+  assert.equal((await read('organizers', organizer, 'booking.portal_rooms', { reservation_id: res })).rooms[0].extra_requested, 1);
   assert.deepEqual((await activations(event)).map((x) => [x.bed_id, x.status]), [[x2, 'active'], [x1, 'requested']]);
   await fails(invoke('guests', gAna, 'booking.portal_choose_bed', { guest_id: ana, bed_id: x1 }), 'NOT_OFFERED');
   const down = await invoke('organizers', organizer, 'booking.portal_extra_beds', { reservation_id: res, space_id: room, count: 0 });

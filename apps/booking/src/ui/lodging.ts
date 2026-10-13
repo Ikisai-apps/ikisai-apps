@@ -1,8 +1,8 @@
 /** Bloque «Alojamiento» de la ficha (docs/booking/API.md §15.1): asignaciones del evento a habitaciones, camas, salas y zonas. */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
-import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsInUse, isBookable, isExtraBed, validateFields } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, RESERVATIONS, SPACES, canRead, describeError, shortDay } from '../app/client.ts';
+import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsCharged, isBookable, isExtraBed, validateFields } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
 import { settleBatch } from '../app/settle.ts';
 
@@ -16,6 +16,8 @@ export interface LodgingData {
   beds: Row[];
   /** Asignaciones vivas de este evento. */
   assignments: Row[];
+  /** Supletorias activadas de este evento (vacío si el rol no las lee). */
+  extraBeds: Row[];
 }
 
 const byPosition = (a: Row, b: Row) => Number(a.position) - Number(b.position) || String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id);
@@ -29,6 +31,7 @@ export async function loadLodging(client: SyncClient, eventId: string): Promise<
     spaces: live(await client.list(SPACES)).sort(byPosition),
     beds: live(await client.list(BEDS)).sort(byPosition),
     assignments: live(await client.list(ASSIGNMENTS)).filter((a) => a.event_id === eventId),
+    extraBeds: canRead(client, EXTRA_BEDS) ? live(await client.list(EXTRA_BEDS)).filter((x) => x.event_id === eventId) : [],
   };
 }
 
@@ -79,6 +82,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
   const from = input({ id: 'f-from_date', type: 'date' }) as HTMLInputElement;
   const to = input({ id: 'f-to_date', type: 'date' }) as HTMLInputElement;
   const conflict = el('p', { class: 'formerror', id: 'bedConflict', role: 'alert', hidden: true });
+  const activates = el('p', { class: 'hint', id: 'bedActivates', hidden: true }, 'Esta supletoria no está activada: al guardar se activa para este retiro y se cobra como extra.');
   const error = el('p', { class: 'formerror', role: 'alert', hidden: true });
 
   function fillBeds(keep: string | null): void {
@@ -129,11 +133,21 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     return `Esa cama ya está ocupada esas noches en «${title}». Elige otra cama o cambia las fechas.`;
   }
 
+  /** Asignar en una supletoria sin activar la activa en el mismo lote (se cobra como extra, como hoy). */
+  function activateOps(bedId: string | null): RowOperation[] {
+    const bed = bedId ? data.beds.find((b) => b.id === bedId) : null;
+    if (!bed || !isExtraBed(bed as any)) return [];
+    const row = data.extraBeds.find((x) => x.bed_id === bed.id);
+    if (!row) return [{ op: 'insert', table: EXTRA_BEDS, id: crypto.randomUUID(), fields: { event_id: event.id, bed_id: bed.id, status: 'active' } }];
+    return row.status === 'requested' ? [{ op: 'update', table: EXTRA_BEDS, id: row.id, expectedRevision: row.revision, fields: { status: 'active' } }] : [];
+  }
+
   function refresh(): void {
     error.hidden = true;
     const message = conflictMessage();
     conflict.hidden = message === null;
     conflict.textContent = message ?? '';
+    activates.hidden = activateOps(read().bed_id).length === 0;
     guard.dirtyEditor = JSON.stringify(read()) !== JSON.stringify(initial);
     sheet.setFootHidden(!!assignment && !guard.dirtyEditor);
   }
@@ -180,7 +194,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
     const operation: RowOperation = assignment
       ? { op: 'update', table: ASSIGNMENTS, id: assignment.id, expectedRevision: assignment.revision, fields }
       : { op: 'insert', table: ASSIGNMENTS, id: crypto.randomUUID(), fields };
-    await finish([operation], assignment ? 'Asignación guardada.' : 'Alojamiento asignado.', true);
+    await finish([operation, ...activateOps(values.bed_id)], assignment ? 'Asignación guardada.' : 'Alojamiento asignado.', true);
   }
 
   const field = (text: string, control: Child, key: string, hint?: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reserva.alojamiento.hoja.${key}`, 'data-feedback-label': text, ...(key === 'huesped' ? { 'data-feedback-ignore': '' } : {}) }, el('span', null, text), control, hint ? el('small', { class: 'hint' }, hint) : null);
@@ -205,7 +219,7 @@ export async function openAssignmentSheet(options: SheetOptions): Promise<Sheet>
         field('Nombre del grupo', group, 'grupo'), field('Personas', persons, 'personas'),
         el('div', { class: 'sectionlabel formsection' }, 'Fechas propias (opcional)'),
         field('Desde', from, 'desde', 'Si las dejas vacías, valen las de la reserva.'), field('Hasta', to, 'hasta'),
-        conflict, error),
+        activates, conflict, error),
       removeButton ? el('p', { style: 'margin-top:18px' }, removeButton) : null),
     foot: el('div', { class: 'choices' }, save, el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'booking.reserva.alojamiento.hoja.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet.close() }, 'Cancelar')),
     footHidden: !!assignment,
@@ -231,7 +245,7 @@ export interface LodgingBlockOptions {
 /** Tarjeta «Alojamiento»: ocupación por espacio con aviso si se pasa, y sus asignaciones. */
 export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
   const { data, guests } = o;
-  const occupancy = eventOccupancy(o.event.id, data.spaces as any, data.beds as any, data.assignments as any);
+  const occupancy = eventOccupancy(o.event.id, data.spaces as any, data.beds as any, data.assignments as any, data.extraBeds as any);
   const spaceById = new Map(data.spaces.map((s) => [s.id, s]));
   const bedById = new Map(data.beds.map((b) => [b.id, b]));
   const guestById = new Map(guests.map((g) => [g.id, g]));
@@ -240,7 +254,69 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
   const who = (a: Row): string => (a.guest_id ? (o.seesGuests ? guestName(guestById.get(a.guest_id) ?? {} as Row) || 'Huésped asignado' : 'Huésped asignado') : String(a.group_label ?? 'Grupo'));
   const dates = (a: Row): string | null => (a.from_date || a.to_date ? `${shortDay(a.from_date ?? o.reservation.start_date)} → ${shortDay(a.to_date ?? o.reservation.end_date)}` : null);
 
-  const extras = extraBedsInUse(o.event.id, data.beds as any, data.assignments as any).length;
+  const extras = extraBedsCharged(o.event.id, data.beds as any, data.assignments as any, data.extraBeds as any).length;
+
+  async function commitExtra(operations: RowOperation[], message: string): Promise<void> {
+    if (!operations.length) return;
+    try {
+      const { requestId } = await o.client.commit(operations);
+      const rejected = await settleBatch(o.client, requestId);
+      toast(rejected ? describeError(rejected.error) : navigator.onLine ? message : `${message} Se enviará al reconectar.`);
+    } catch (e) {
+      toast(describeError(e));
+    }
+  }
+
+  /**
+   * Supletorias de una habitación del retiro: cuántas se cobran (activadas u ocupadas), quién las activó y lo pendiente de
+   * Ikisai cuando el organizador las cambia con la propuesta ya aceptada. El personal sube o baja con «− / +».
+   */
+  function extraBedsRow(space: Row): HTMLElement | null {
+    const supletorias = data.beds.filter((b) => b.space_id === space.id && b.active && isExtraBed(b as any)).sort(byPosition);
+    if (!supletorias.length) return null;
+    const rowOf = new Map(data.extraBeds.filter((x) => supletorias.some((b) => b.id === x.bed_id)).map((x) => [x.bed_id, x]));
+    const occupied = new Set(data.assignments.filter((a) => a.bed_id).map((a) => a.bed_id));
+    const charged = supletorias.filter((b) => occupied.has(b.id) || ['active', 'release_requested'].includes(rowOf.get(b.id)?.status));
+    const byOrganizer = charged.filter((b) => rowOf.get(b.id)?.source === 'organizer').length;
+    const used = supletorias.filter((b) => occupied.has(b.id)).length;
+    const pending = [...rowOf.values()].filter((x) => x.status === 'requested' || x.status === 'release_requested');
+    const add = (): RowOperation[] => {
+      const requested = pending.find((x) => x.status === 'requested');
+      if (requested) return [{ op: 'update', table: EXTRA_BEDS, id: requested.id, expectedRevision: requested.revision, fields: { status: 'active' } }];
+      const bed = supletorias.find((b) => !rowOf.has(b.id) && !occupied.has(b.id));
+      return bed ? [{ op: 'insert', table: EXTRA_BEDS, id: crypto.randomUUID(), fields: { event_id: o.event.id, bed_id: bed.id, status: 'active' } }] : [];
+    };
+    const remove = (): RowOperation[] => {
+      const row = [...charged].reverse().map((b) => rowOf.get(b.id)).find((x) => x && !occupied.has(x.bed_id));
+      return row ? [{ op: 'delete', table: EXTRA_BEDS, id: row.id, expectedRevision: row.revision }] : [];
+    };
+    const canAdd = add().length > 0; const canRemove = remove().length > 0;
+    const label = (x: Row) => supletorias.find((b) => b.id === x.bed_id)?.label ?? 'Supletoria';
+    return el('div', { class: 'lodging-extra', dataset: { extra: space.name }, 'data-feedback-id': 'booking.reserva.alojamiento.supletorias', 'data-feedback-label': 'Supletorias' },
+      el('div', { class: 'row-meta' },
+        `Supletorias: ${charged.length} de ${supletorias.length}`,
+        byOrganizer ? ` · ${plural(byOrganizer, 'activada por el organizador', 'activadas por el organizador')}` : null,
+        used ? ` · ${plural(used, 'ocupada', 'ocupadas')}` : null,
+        o.editable ? el('span', { class: 'btnrow', style: 'display:inline-flex;margin-left:8px' },
+          el('button', { class: 'iconbtn', type: 'button', disabled: !canRemove, 'aria-label': `Una supletoria menos en ${space.name}`, 'data-feedback-id': 'booking.reserva.alojamiento.supletorias.menos', 'data-feedback-label': 'Una supletoria menos',
+            onclick: () => void commitExtra(remove(), 'Supletoria quitada.') }, '−'),
+          el('button', { class: 'iconbtn', type: 'button', disabled: !canAdd, 'aria-label': `Una supletoria más en ${space.name}`, 'data-feedback-id': 'booking.reserva.alojamiento.supletorias.mas', 'data-feedback-label': 'Una supletoria más',
+            onclick: () => void commitExtra(add(), 'Supletoria activada.') }, '+')) : null),
+      pending.length ? el('ul', { class: 'list', 'data-feedback-id': 'booking.reserva.alojamiento.supletorias.pendientes', 'data-feedback-label': 'Supletorias pendientes' }, pending.map((x) =>
+        el('li', { class: 'row', dataset: { extraPending: x.status } },
+          el('div', { class: 'row-title' }, el('span', { class: 'name' }, x.status === 'requested' ? `El organizador pide activar ${label(x)}` : `El organizador pide retirar ${label(x)}`)),
+          el('div', { class: 'row-meta' }, 'La propuesta ya está aceptada: cambia lo contratado.'),
+          o.editable ? el('div', { class: 'btnrow' },
+            el('button', { class: 'primary small', type: 'button', 'data-feedback-id': 'booking.reserva.alojamiento.supletorias.confirmar', 'data-feedback-label': 'Confirmar el cambio de supletorias',
+              onclick: () => void commitExtra([x.status === 'requested'
+                ? { op: 'update', table: EXTRA_BEDS, id: x.id, expectedRevision: x.revision, fields: { status: 'active' } }
+                : { op: 'delete', table: EXTRA_BEDS, id: x.id, expectedRevision: x.revision }], 'Cambio confirmado.') }, 'Confirmar'),
+            el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.reserva.alojamiento.supletorias.rechazar', 'data-feedback-label': 'Rechazar el cambio de supletorias',
+              onclick: () => void commitExtra([x.status === 'requested'
+                ? { op: 'delete', table: EXTRA_BEDS, id: x.id, expectedRevision: x.revision }
+                : { op: 'update', table: EXTRA_BEDS, id: x.id, expectedRevision: x.revision, fields: { status: 'active' } }], 'Cambio rechazado.') }, 'Rechazar')) : null))) : null);
+  }
+
   const sections = occupancy.sort((a, b) => Number(spaceById.get(a.spaceId)?.position) - Number(spaceById.get(b.spaceId)?.position)).map((occ) => {
     const space = spaceById.get(occ.spaceId)!;
     const own = data.assignments.filter((a) => a.space_id === space.id);
@@ -249,6 +325,7 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
         el('span', { class: `chip${occ.over ? ' alert' : ''}`, dataset: { role: 'occupancy' } }, `${occ.persons} / ${occ.capacity} plazas`),
         occ.over ? el('span', { class: 'chip alert', role: 'status' }, 'Sobreocupada') : null),
       occ.over ? el('p', { class: 'hint lodging-over' }, `Hay más personas (${occ.persons}) que plazas (${occ.capacity}). Es un aviso: se puede guardar igualmente.`) : null,
+      canRead(o.client, EXTRA_BEDS) ? extraBedsRow(space) : null,
       el('ul', { class: 'list', 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones', 'data-feedback-label': 'Asignaciones' }, own.map((a) => {
         const bed = a.bed_id ? bedById.get(a.bed_id) : null;
         return el('li', { class: 'row', dataset: { pending: String(a._pending === true) }, 'data-feedback-id': 'booking.reserva.alojamiento.asignaciones.fila', 'data-feedback-label': 'Asignación' },

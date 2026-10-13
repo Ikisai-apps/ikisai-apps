@@ -153,7 +153,9 @@ returns jsonb language sql stable as $$
               from booking.room_assignments a where a.bed_id = b.id and a.event_id = p_event and a.deleted_at is null limit 1), '{}'::jsonb) else '{}'::jsonb end
         order by b.kind = 'supletoria', b.position, b.label)
       from shown b), '[]'::jsonb))
-    || case when p_org then jsonb_build_object('extra', booking.portal_extra_counts(p_event, p_space)) else '{}'::jsonb end
+    -- al organizador, el contador (y, planos, lo que pinta Organizers: `extra_max` posibles, ocupadas y pendientes de Ikisai)
+    || case when p_org then (select jsonb_build_object('extra', c, 'extra_max', c->'possible', 'extra_occupied', c->'occupied', 'extra_requested', c->'requested')
+         from (select booking.portal_extra_counts(p_event, p_space) c) z) else '{}'::jsonb end
   from booking.spaces s left join booking.open_rooms o on o.space_id = s.id and o.event_id = p_event and o.deleted_at is null
   where s.id = p_space;
 $$;
@@ -177,8 +179,13 @@ begin
       from booking.guests g where g.event_id = v_e.id and g.deleted_at is null and not g.preview and (g.room_preference is not null or g.needs_ground_floor)), '[]'::jsonb),
     -- con la propuesta aceptada, activar o retirar queda pendiente de Ikisai
     'extra_pending_mode', booking.reservation_accepted(v_r.id),
-    'extra_rate', (select jsonb_build_object('name', coalesce(t.public_name, t.name), 'unit', t.unit, 'amount', t.amount)
-      from booking.rates t where t.deleted_at is null and t.active and t.portal_visible and t.service = 'cama_supletoria'
+    -- precio por plaza supletoria con IVA incluido, como el resto del portal (las condiciones por defecto dicen si la
+    -- tarifa ya lo lleva); el portal no escribe cifras propias
+    'extra_rate', (select jsonb_build_object('name', coalesce(t.public_name, t.name), 'unit', t.unit, 'amount', t.amount,
+        'amount_with_vat', case when c.id is null or c.prices_include_vat then t.amount else round(t.amount * (1 + coalesce(c.vat_rate, 0) / 100), 2) end,
+        'vat_rate', c.vat_rate)
+      from booking.rates t left join lateral (select * from booking.conditions k where k.is_default and k.active and k.deleted_at is null limit 1) c on true
+     where t.deleted_at is null and t.active and t.portal_visible and t.service = 'cama_supletoria'
         and (t.valid_from is null or t.valid_from <= v_r.start_date) and (t.valid_to is null or v_r.start_date <= t.valid_to)
       order by t.position limit 1));
 end $$;
@@ -246,7 +253,12 @@ begin
 
   if v_ops <> '[]'::jsonb then v_out := booking.portal_apply('organizer', v_ops); end if;
   if v_pending then insert into booking.portal_notices (reservation_id, kind, actor) values (v_e.reservation_id, 'supletorias', (p->>'actor')::uuid); end if;
-  return booking.portal_extra_counts(v_e.id, v_space) || jsonb_build_object('space_id', v_space, 'pending', v_pending, 'cursor', v_out->'cursor');
+  v_counts := booking.portal_extra_counts(v_e.id, v_space);
+  -- `active`: las que se cobran ahora · `proposal`: la versión afectada (la aceptada, o la que está en preparación o enviada)
+  return v_counts || jsonb_build_object('space_id', v_space, 'active', v_counts->'activated', 'pending', v_pending, 'cursor', v_out->'cursor',
+    'proposal', (select jsonb_build_object('id', pr.id, 'version', pr.version, 'status', pr.status) from booking.proposals pr
+      where pr.reservation_id = v_e.reservation_id and pr.deleted_at is null and pr.status in ('aceptada','enviada','borrador')
+      order by pr.status = 'aceptada' desc, pr.version desc limit 1));
 end $$;
 
 -- ---------------------------------------------------------------------------
