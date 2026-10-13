@@ -38,7 +38,10 @@ export interface Recipe extends SyncedColumns {
   freezable: boolean;
   regeneration: string | null;
   service_notes: string | null;
+  /** Antelación en minutos: 0 es «En el momento» (steps.ts). */
   prep_minutes: number | null;
+  /** Elaboración en pasos y subpasos (steps.ts); `method` guarda el mismo texto numerado. */
+  method_steps?: import('./steps.ts').MethodStep[] | null;
   status: RecipeStatus;
   diet_tags: DietTag[];
   allergens: Allergen[];

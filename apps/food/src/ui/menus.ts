@@ -13,6 +13,7 @@ import {
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
+import { methodStepsView } from './method-steps.ts';
 import { mountClosing } from './menu-closing.ts';
 import { mountOrganizer } from './menu-organizer.ts';
 import { mountPreparation } from './menu-preparation.ts';
@@ -442,7 +443,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           : el('p', { class: 'muted' }, 'La receta no tiene ingredientes.'),
         recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
         required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
-        recipe.method ? el('p', { class: 'pre' }, recipe.method) : null,
+        methodStepsView(recipe),
         recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null,
         purchases.fetchedAt ? costLine(item) : null);
     }

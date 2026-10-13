@@ -7,6 +7,7 @@ import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STA
 import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
 import { invalidCallArgument } from './procedures.ts';
+import { methodStepsProblem, PREP_MINUTES_MAX } from './steps.ts';
 import { UNITS } from './units.ts';
 
 export interface DomainOperation {
@@ -64,11 +65,12 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       category: { kind: 'enum', values: RECIPE_CATEGORIES },
       base_servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX },
       method: freeText,
+      method_steps: { kind: 'json', nullable: true },
       conservation: freeText,
       freezable: { kind: 'boolean' },
       regeneration: freeText,
       service_notes: freeText,
-      prep_minutes: { kind: 'number', min: 0, max: 2880, integer: true, nullable: true },
+      prep_minutes: { kind: 'number', min: 0, max: PREP_MINUTES_MAX, integer: true, nullable: true },
       status: { kind: 'enum', values: RECIPE_STATUSES },
       diet_tags: { kind: 'tags', values: DIET_TAGS },
       allergens: { kind: 'tags', values: ALLERGENS },
@@ -294,6 +296,10 @@ export function validateOperation(op: DomainOperation): Issue | null {
     for (const field of spec.insertOnly ?? []) {
       if (field in fields) return issue('IMMUTABLE_FIELD', `El campo ${field} no se puede cambiar.`, { table: op.table, field });
     }
+  }
+  if (op.table === 'food.recipes' && 'method_steps' in fields) {
+    const problem = methodStepsProblem(fields.method_steps);
+    if (problem) return issue('INVALID_FIELDS', `La elaboración ${problem}.`, { table: op.table, field: 'method_steps' });
   }
   if (op.table === 'food.shopping_list_items' && op.op === 'insert' && fields.manual !== true) {
     return issue('INVALID_FIELDS', 'Solo se añaden a mano líneas manuales; las calculadas las genera la lista.', { table: op.table, field: 'manual' });

@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  ingredientKey, lineCost, priceFor, validateOperations,
+  PREP_UNITS, formatMethodSteps, ingredientKey, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -13,6 +13,7 @@ import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { isBlobMarker, preparePhoto, showPhoto, stagePhoto, type PhotoRef, type PreparedPhoto } from '../app/photos.ts';
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
+import { createStepsEditor, methodStepsView } from './method-steps.ts';
 import type { ViewMount } from './shell.ts';
 
 /** Par de atributos de «Sugerencias y QA» que los helpers de esta vista reciben ya escrito en literal. */
@@ -217,7 +218,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
           })))
         : el('p', { class: 'muted' }, 'Sin ingredientes todavía.'),
         recipeCostLine(recipe, recipeLines)),
-      block({ 'data-feedback-id': 'food.recetario.ficha.elaboracion', 'data-feedback-label': 'Elaboración' }, 'Elaboración', recipe.method ? el('p', { class: 'pre' }, recipe.method) : null, para('Antelación', recipe.prep_minutes != null ? `${recipe.prep_minutes} minutos antes del servicio` : null)),
+      block({ 'data-feedback-id': 'food.recetario.ficha.elaboracion', 'data-feedback-label': 'Elaboración' }, 'Elaboración', methodStepsView(recipe), para('Antelación', prepLabel(recipe.prep_minutes))),
       block({ 'data-feedback-id': 'food.recetario.ficha.seguridad', 'data-feedback-label': 'Seguridad' }, 'Seguridad',
         el('p', null, el('strong', null, 'Alérgenos: '), recipe.allergens.length ? recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ') : 'ninguno declarado'),
         recipe.allergens_checked ? el('p', { class: 'muted' }, 'Alérgenos revisados.') : el('p', null, el('span', { class: 'chip alert' }, 'Alérgenos sin revisar'))),
@@ -284,8 +285,25 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const publicDescription = area('r-public-description', recipe?.public_description ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.descripcion_publica', 'data-feedback-label': 'Descripción pública' });
     const category = el('select', { 'data-feedback-id': 'food.recetario.formulario.categoria', 'data-feedback-label': 'Categoría', id: 'r-category' }, ...RECIPE_CATEGORIES.map((c) => el('option', { value: c, selected: (recipe?.category ?? 'principal') === c }, CATEGORY_LABELS[c])));
     const servings = input('r-servings', recipe ? formatQuantity(recipe.base_servings) : '', { 'data-feedback-id': 'food.recetario.formulario.raciones', 'data-feedback-label': 'Raciones base', inputmode: 'decimal', required: true });
-    const method = area('r-method', recipe?.method ?? null, 5, { 'data-feedback-id': 'food.recetario.formulario.elaboracion', 'data-feedback-label': 'Elaboración' });
-    const prep = input('r-prep', recipe?.prep_minutes != null ? String(recipe.prep_minutes) : '', { 'data-feedback-id': 'food.recetario.formulario.antelacion', 'data-feedback-label': 'Antelación', inputmode: 'numeric' });
+    // Elaboración por pasos; una receta con solo `method` (texto libre) se convierte a pasos sin perder nada.
+    const method = createStepsEditor(
+      recipe ? (Array.isArray(recipe.method_steps) && recipe.method_steps.length ? recipe.method_steps : methodStepsFromText(recipe.method)) : [],
+      () => { guard.dirtyEditor = true; });
+
+    // Antelación: sin indicar, en el momento (0) o número + unidad antes del servicio.
+    const prepParts = prepToParts(recipe?.prep_minutes);
+    const prepMode = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_modo', 'data-feedback-label': 'Tipo de antelación', id: 'r-prep-mode', 'aria-label': 'Antelación',
+      onchange: () => { paintPrep(); if (prepMode.value === 'antes') prep.focus(); } },
+    ...([['sin', 'Sin indicar'], ['momento', 'En el momento'], ['antes', 'Antes del servicio']] as const).map(([value, label]) => el('option', { value, selected: prepParts.mode === value }, label)));
+    const prep = input('r-prep', prepParts.amount != null ? formatQuantity(prepParts.amount) : '', { 'data-feedback-id': 'food.recetario.formulario.antelacion', 'data-feedback-label': 'Antelación', inputmode: 'decimal', 'aria-label': 'Tiempo de antelación', placeholder: 'Ej.: 2', class: 'compact' });
+    const PREP_UNIT_LABELS: Record<PrepUnit, string> = { minutos: 'minutos', horas: 'horas', dias: 'días' };
+    const prepUnit = el('select', { 'data-feedback-id': 'food.recetario.formulario.antelacion_unidad', 'data-feedback-label': 'Unidad de antelación', id: 'r-prep-unit', 'aria-label': 'Unidad de antelación', class: 'compact' },
+      ...PREP_UNITS.map((u) => el('option', { value: u, selected: prepParts.unit === u }, PREP_UNIT_LABELS[u])));
+    const prepAmount = el('span', { class: 'prepamount' }, prep, prepUnit, el('span', { class: 'muted' }, 'antes'));
+    const paintPrep = () => { prepAmount.hidden = prepMode.value !== 'antes'; };
+    paintPrep();
+    const prepField = el('div', { class: 'field' }, el('span', null, 'Antelación'), el('div', { class: 'prepline' }, prepMode, prepAmount),
+      el('span', { class: 'hint' }, 'Cuánto antes del servicio se prepara (hasta 7 días).'));
     const conservation = area('r-conservation', recipe?.conservation ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.conservacion', 'data-feedback-label': 'Conservación' });
     const freezable = check('r-freezable', 'Se puede congelar', recipe?.freezable ?? false, { 'data-feedback-id': 'food.recetario.formulario.congelable', 'data-feedback-label': 'Se puede congelar' });
     const regeneration = area('r-regeneration', recipe?.regeneration ?? null, 2, { 'data-feedback-id': 'food.recetario.formulario.regeneracion', 'data-feedback-label': 'Regeneración' });
@@ -347,14 +365,18 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       const base = parseQuantity(servings.value);
       if (!name.value.trim()) return { operations: [], problem: { message: 'El nombre es obligatorio.', focus: name } };
       if (base === null || base <= 0) return { operations: [], problem: { message: 'Indica las raciones base (por ejemplo, 20).', focus: servings } };
-      if (prep.value.trim() && !/^\d+$/.test(prep.value.trim())) return { operations: [], problem: { message: 'La antelación va en minutos enteros.', focus: prep } };
+      const prepMinutes = prepMode.value === 'momento' ? 0 : prepMode.value === 'antes' ? prepFromParts(prep.value, prepUnit.value as PrepUnit) : null;
+      if (prepMode.value === 'antes' && prepMinutes === null) return { operations: [], problem: { message: 'La antelación va entre 1 minuto y 7 días.', focus: prep } };
+      const steps = method.value();
       if (status.value === 'validada' && !checked.box.checked) return { operations: [], problem: { message: 'Revisa los alérgenos antes de validar la receta.', focus: checked.box } };
 
       const operations: RowOperation[] = [];
       const picked = new Set(tags.get());
       const fields: Record<string, unknown> = {
         name: name.value.trim(), public_name: text(publicName.value), public_description: text(publicDescription.value), category: category.value,
-        base_servings: base, method: text(method.value), prep_minutes: prep.value.trim() ? Number(prep.value.trim()) : null,
+        base_servings: base, prep_minutes: prepMinutes,
+        // Una receta antigua (solo `method`) que se abre y guarda sin tocar la elaboración no se reescribe.
+        ...(recipe && !method.changed() ? {} : { method_steps: steps.length ? steps : null, method: formatMethodSteps(steps) }),
         conservation: text(conservation.value), freezable: freezable.box.checked, regeneration: text(regeneration.value), service_notes: text(serviceNotes.value),
         diet_tags: DIET_TAGS.filter((d) => picked.has(`diet:${d}`)), allergens: ALLERGENS.filter((a) => picked.has(`allergen:${a}`)),
         allergens_checked: checked.box.checked, status: status.value, ...photo,
@@ -442,7 +464,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       section({ 'data-feedback-id': 'food.recetario.ingredientes', 'data-feedback-label': 'Bloque Ingredientes' }, 'Ingredientes', datalist, lineHost,
         el('button', { 'data-feedback-id': 'food.recetario.ingredientes.anadir', 'data-feedback-label': 'Añadir ingrediente', class: 'ghost', type: 'button', id: 'addIngredient', onclick: () => { addLine(null); lineForms.at(-1)?.name.focus(); } }, icon('plus', 18), 'Añadir ingrediente'),
         el('span', { class: 'hint' }, 'Si el ingrediente no existe, se crea al guardar.')),
-      section({ 'data-feedback-id': 'food.recetario.formulario.seccion_cocina', 'data-feedback-label': 'Bloque Cocina' }, 'Cocina', field('Elaboración', method), field('Antelación (minutos antes del servicio)', prep), field('Conservación', conservation), freezable.node,
+      section({ 'data-feedback-id': 'food.recetario.formulario.seccion_cocina', 'data-feedback-label': 'Bloque Cocina' }, 'Cocina', method.element, prepField, field('Conservación', conservation), freezable.node,
         field('Regeneración', regeneration), field('Notas de servicio', serviceNotes)),
       section({ 'data-feedback-id': 'food.recetario.formulario.seccion_seguridad', 'data-feedback-label': 'Bloque Seguridad' }, 'Seguridad',
         tags.element,

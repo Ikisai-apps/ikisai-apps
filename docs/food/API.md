@@ -49,12 +49,13 @@ food.recipes
   category             text not null            desayuno | entrante | principal | guarnicion | postre |
                                                 picnic | merienda | bebida | base | otro
   base_servings        numeric(8,2) not null    > 0; las cantidades de ingredientes se refieren a estas raciones
-  method               text                     elaboración
+  method               text                     elaboración ya numerada (1., 1.1.…), copia en texto de method_steps para quien no entienda los pasos
+  method_steps         jsonb                    pasos y subpasos [{id, text, steps?}], dos niveles, ≤ 100 pasos de ≤ 500 caracteres (FB_2026_028)
   conservation         text
   freezable            boolean not null default false
   regeneration         text
   service_notes        text
-  prep_minutes         integer                  0..2880; antelación para la propuesta de preparación
+  prep_minutes         integer                  0..10080 (siete días); 0 = «En el momento», null = sin indicar; antelación para la propuesta de preparación
   status               text not null default 'en_prueba'    en_prueba | validada | archivada
   diet_tags            text[] not null default '{}'         ⊆ {vegetariano, vegano, sin_gluten, sin_lactosa}
   allergens            text[] not null default '{}'         ⊆ los 14 del Reglamento UE 1169/2011 (ver abajo)
