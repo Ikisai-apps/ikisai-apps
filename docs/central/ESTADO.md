@@ -43,6 +43,7 @@
 - 2026-10-08 · **Una persona, una ficha, una cuenta:** el alta con un correo que ya tiene cuenta avisa y deja enlazar, fusionar fichas (`central.merge_people`, `1503`) o usar otro correo.
 - 2026-10-13 · **Fase P1 · nivel de casa** (`1504`): `house_level` con vista previa editable para dirección, interruptor por aplicar el nivel, Relación y Cobertura conservadas, `people_options` con el nivel sin cambiar de contenido. Antes, la caracterización de Personas (PR 0).
 - 2026-10-13 · **Fase P1 · oficios y capacidades** (`1505`): árbol de oficios, capacidades con la estrella del kit, pantalla Oficios, bloque en la ficha, filtro y chips en la lista, lecturas `trade_options` y `capability_options` para Tasks, kit del oficio previsto y fusión con capacidades.
+- 2026-10-13 · **Fase P1 · importar oficios de Tasks** con vista previa (`tasks.action_labels`): repetidas juntas, sin duplicar, archivadas sin marcar; Tasks no cambia.
 
 ## Pendiente
 

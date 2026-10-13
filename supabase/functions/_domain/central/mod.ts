@@ -6,3 +6,4 @@ export * from './kpis.ts';
 export * from './texts.ts';
 export * from './people.ts';
 export * from './validate.ts';
+export * from './trades.ts';

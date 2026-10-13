@@ -1,6 +1,6 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, renderLevelStar, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, validateOperations } from '@ikisai/domain-central';
+import { AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, planTradeImport, validateOperations, type ActionLabel } from '@ikisai/domain-central';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import type { Person } from './people.ts';
 import type { ViewMount } from './shell.ts';
@@ -65,7 +65,7 @@ async function commitTrades(client: SyncClient, operations: RowOperation[], ok: 
  * Oficios (fase P1, RECURSOS.md §13.3): catálogo en árbol de hasta tres niveles y, en cada oficio, quién sabe hacerlo con su
  * nivel (estrella) y su disponibilidad. Lo gestionan el owner y el editor con ámbito `people`; el resto lo ve.
  */
-export const mountTrades: ViewMount = ({ main, client, navigate }) => {
+export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
   const canManage = canSeeReserved(client.bootstrap()?.membership);
   let trades: Trade[] = [];
   let capabilities: PersonTrade[] = [];
@@ -78,7 +78,8 @@ export const mountTrades: ViewMount = ({ main, client, navigate }) => {
       el('p', null, 'Qué sabe hacer cada persona: fontanería, electricidad, pintura… Toca un oficio para ver quién sabe hacerlo.'))),
     el('div', { class: 'toolbar', 'data-feedback-id': 'central.oficios.barra', 'data-feedback-label': 'Barra de oficios' },
       el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'tradesArchived', 'data-feedback-id': 'central.oficios.mostrar_archivados', 'data-feedback-label': 'Mostrar archivados',
-        onchange: (e: Event) => { showArchived = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar archivados'))),
+        onchange: (e: Event) => { showArchived = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar archivados')),
+      isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'importTrades', 'data-feedback-id': 'central.oficios.importar', 'data-feedback-label': 'Importar de Tasks', onclick: () => void openImport() }, icon('download', 16), 'Importar de Tasks') : null),
     host,
     canManage ? el('button', { class: 'fab', type: 'button', id: 'newTrade', 'data-feedback-id': 'central.oficios.nuevo', 'data-feedback-label': 'Nuevo oficio', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo oficio') : null);
 
@@ -169,6 +170,59 @@ export const mountTrades: ViewMount = ({ main, client, navigate }) => {
         actions),
       panelAttrs: { 'data-feedback-id': 'central.oficios.ficha.hoja', 'data-feedback-label': 'Oficio' },
       closeAttrs: { 'data-feedback-id': 'central.oficios.ficha.cerrar', 'data-feedback-label': 'Cerrar' },
+    });
+  }
+
+  /**
+   * Importar desde la familia «Tipo: Acción» de Tasks, con vista previa (solo dirección). Las repetidas entre áreas son un solo
+   * oficio; lo que ya existe no se duplica; las archivadas en Tasks salen desmarcadas. Las etiquetas de Tasks no se tocan.
+   */
+  async function openImport(): Promise<void> {
+    if (!navigator.onLine) { toast('Importar de Tasks necesita conexión.'); return; }
+    let labels: ActionLabel[];
+    try { labels = (await client.api<{ rows: ActionLabel[] }>('/read/tasks.action_labels', { method: 'POST', json: { limit: 2000 } })).rows; } catch (e) { toast(describeError(e)); return; }
+    const plan = planTradeImport(labels, trades);
+    if (!plan.length) { toast('Tasks no tiene etiquetas de «Tipo: Acción».'); return; }
+    let sheet: Sheet | null = null;
+    const boxes = new Map<string, HTMLInputElement>();
+    const rows = plan.map((n) => {
+      const box = el('input', { type: 'checkbox', id: `imp-${n.labelIds[0]}`, 'data-key': n.key, checked: !n.existingId && !n.archived, disabled: !!n.existingId }) as HTMLInputElement;
+      boxes.set(n.key, box);
+      return el('label', { class: 'check importrow', style: `padding-left:${n.depth * 20}px`, 'data-feedback-id': 'central.oficios.importar.fila', 'data-feedback-label': 'Oficio que se importa' }, box,
+        el('span', null, n.name),
+        n.existingId ? el('span', { class: 'chip' }, 'Ya existe') : null,
+        n.archived ? el('span', { class: 'chip' }, 'Archivada en Tasks') : null,
+        n.areas > 1 ? el('span', { class: 'chip' }, `En ${n.areas} áreas`) : null);
+    });
+    // Marcar una hija marca su madre (no puede quedar suelta).
+    for (const n of plan) boxes.get(n.key)!.addEventListener('change', () => {
+      let parent = n.parentKey;
+      while (parent && boxes.get(n.key)!.checked) { const b = boxes.get(parent); if (b && !b.disabled) b.checked = true; parent = plan.find((x) => x.key === parent)?.parentKey ?? null; }
+    });
+    const apply = el('button', { class: 'primary', type: 'button', id: 'applyImport', 'data-feedback-id': 'central.oficios.importar.aplicar', 'data-feedback-label': 'Importar los marcados', onclick: async () => {
+      const ids = new Map<string, string>();
+      for (const n of plan) if (n.existingId) ids.set(n.key, n.existingId);
+      const ops: RowOperation[] = [];
+      for (const n of plan) {
+        if (n.existingId || !boxes.get(n.key)!.checked) continue;
+        const id = crypto.randomUUID();
+        ids.set(n.key, id);
+        ops.push({ op: 'insert', table: T.trades, id, fields: { name: n.name, parent_id: n.parentKey ? ids.get(n.parentKey) ?? null : null, position: n.position, source_label_id: n.sourceLabelId } });
+      }
+      if (!ops.length) { toast('No hay nada marcado para importar.'); return; }
+      apply.disabled = true;
+      const ok = await commitTrades(client, ops, ops.length === 1 ? '1 oficio importado.' : `${ops.length} oficios importados.`);
+      apply.disabled = false;
+      if (ok) await sheet?.close(true);
+    } }, 'Importar los marcados') as HTMLButtonElement;
+    sheet = openSheet({
+      title: 'Importar oficios de Tasks',
+      body: el('div', { id: 'importPreview', 'data-feedback-id': 'central.oficios.importar.contenido', 'data-feedback-label': 'Vista previa de la importación' },
+        el('p', { class: 'muted' }, 'Desde la familia «Tipo: Acción» de Tasks. Las repetidas entre áreas son un solo oficio. Lo que ya existe no se duplica, y las etiquetas de Tasks no cambian.'),
+        ...rows),
+      panelAttrs: { 'data-feedback-id': 'central.oficios.importar.hoja', 'data-feedback-label': 'Importar oficios' },
+      closeAttrs: { 'data-feedback-id': 'central.oficios.importar.cerrar', 'data-feedback-label': 'Cerrar' },
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.oficios.importar.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), apply],
     });
   }
 
