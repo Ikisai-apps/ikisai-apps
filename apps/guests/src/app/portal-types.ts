@@ -57,5 +57,7 @@ export interface Lodging {
   preference: { text: string | null; ground_floor: boolean } | null;
   rooms: Array<{ space_id: string; name: string; zone: string | null; kind?: string; capacity?: number | null; en_suite: boolean; small_en_suite?: boolean;
     option_key: string | null; open?: boolean; supplement?: boolean; beds_total: number; beds_free: number;
+    /** Supletorias activadas por el organizador (BG13): van en `beds` con `kind: 'supletoria'` y se cuentan aparte. */
+    extra_total?: number; extra_free?: number;
     beds: Array<{ bed_id: string; label: string; kind: string; free: boolean; mine?: boolean }> }>;
 }

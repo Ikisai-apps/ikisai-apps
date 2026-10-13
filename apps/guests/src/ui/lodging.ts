@@ -122,12 +122,14 @@ export function mountLodging(main: HTMLElement, ctx: GuestContext): () => void {
                 el('span', { class: 'muted small' }, option?.guest_note ?? (supplement ? t('lodging.supplement') : ''))) : null,
               ...list.map((room) => el('article', { class: 'card gcard glodging-card', dataset: { space: room.space_id } },
                 el('h4', null, room.name, room.zone ? el('span', { class: 'muted small' }, ` · ${room.zone}`) : null),
-                el('p', { class: 'muted small' }, room.en_suite ? `${t('lodging.enSuite')} · ` : '', t('lodging.free', { free: room.beds_free, total: room.beds_total })),
+                el('p', { class: 'muted small' }, room.en_suite ? `${t('lodging.enSuite')} · ` : '', t('lodging.free', { free: room.beds_free, total: room.beds_total }),
+                  room.extra_total ? ` · ${t('lodging.extraFree', { free: room.extra_free ?? 0, total: room.extra_total })}` : ''),
                 el('div', { class: 'glodging-beds' }, ...room.beds.map((bed) => el('button', {
                   type: 'button', class: bed.mine ? 'primary' : bed.free ? 'ghost' : 'ghost taken', disabled: bed.free && !bed.mine && !ctx.readOnly() ? null : '', dataset: { bed: bed.bed_id },
                   'data-feedback-id': 'guests.alojamiento.eleccion.elegir', 'data-feedback-label': 'Elegir cama',
                   onclick: () => void choose(data, bed.bed_id, room.name, bed.label),
-                }, bed.label, ' · ', bed.mine ? t('lodging.bedMine') : bed.free ? t('lodging.bedFree') : t('lodging.bedTaken')))))));
+                }, bed.label, bed.kind === 'supletoria' ? el('span', { class: 'chip small gextra' }, t('lodging.extraBed')) : null,
+                ' · ', bed.mine ? t('lodging.bedMine') : bed.free ? t('lodging.bedFree') : t('lodging.bedTaken')))))));
           }),
           data.rooms.length ? null : el('p', { class: 'muted', id: 'lodgingNoRooms' }, t('lodging.noRooms')));
       }

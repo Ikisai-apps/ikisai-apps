@@ -405,4 +405,6 @@ export const ES: Dictionary = {
   'allergen.sulfitos': 'sulfitos',
   'allergen.altramuces': 'altramuces',
   'allergen.moluscos': 'moluscos',
+  'lodging.extraBed': 'Supletoria',
+  'lodging.extraFree': '{free} de {total} supletorias libres',
 };
