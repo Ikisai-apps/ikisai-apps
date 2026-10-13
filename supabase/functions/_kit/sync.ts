@@ -4,7 +4,10 @@ import { sha256Hex, stable, type Supabase } from './supabase.ts';
 import type { Identity } from './auth.ts';
 import { assessRisk } from './agents.ts';
 
-export type Role = 'reader' | 'editor' | 'owner';
+export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
+
+/** Sin permisos de personal: el lector y el outsider (RECURSOS.md §14.2). El outsider solo escribe lo que cada app le abre. */
+export const isReadOnly = (role: string) => role === 'reader' || role === 'outsider';
 
 export interface Membership {
   role: Role;
@@ -17,7 +20,7 @@ export interface Bootstrap {
   cursor: number;
   serverTime: string;
   membership: Membership;
-  profile: { userId: string; displayName: string; kind: 'human' | 'agent' };
+  profile: { userId: string; displayName: string; kind: 'human' | 'agent'; houseLevel?: 'direccion' | 'staff' | 'outsider' | null };
   tables: Array<{ table: string; writableColumns: string[]; readable: boolean; writable: boolean }>;
   /** Política de agentes de la app (contrato §3): umbral de lote masivo y procedimientos/acciones que no exigen aprobación. */
   agentPolicy?: { bulkThreshold: number; safeProcedures: string[]; safeActions: string[] };
@@ -233,7 +236,7 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
   }
 
   async function undoPlan(ctx: RequestContext, cursor: number) {
-    if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    if (isReadOnly(ctx.membership.role)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     const plan = await supabase.rpc<{ cursor: number; operations: Operation[] }>('core_undo_plan', { p_app: app, p_cursor: cursor });
     return { ...plan, planHash: await sha256Hex(stable(plan.operations)) };
   }

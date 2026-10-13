@@ -15,6 +15,8 @@ export interface UploadsConfig {
   /** Segundos de validez de las URL firmadas de lectura. */
   readUrlSeconds?: number;
   /** Admite subidas de lectores (feedback: cualquier miembro puede adjuntar una imagen a su comentario). */
+  /** El outsider sube archivos (p. ej. fotos en comentarios de Tasks). Por defecto, no. */
+  allowOutsiders?: boolean;
   allowReaders?: boolean;
 }
 
@@ -42,7 +44,7 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   }
 
   async function create(ctx: RequestContext, body: any) {
-    if (ctx.membership.role === 'reader' && !config.allowReaders) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    if ((ctx.membership.role === 'reader' && !config.allowReaders) || (ctx.membership.role === 'outsider' && !config.allowOutsiders)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (typeof body?.filename !== 'string' || !body.filename || body.filename.length > 255) fail(422, 'INVALID_OPERATION', 'Nombre de archivo inválido.');
     if (typeof body?.mime !== 'string' || !/^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime)) fail(422, 'INVALID_OPERATION', 'Tipo MIME inválido.');
     if (config.allowedMime?.length && !config.allowedMime.includes(body.mime.toLowerCase())) fail(422, 'UNSUPPORTED_MEDIA', 'Tipo de archivo no admitido.', { allowed: config.allowedMime });

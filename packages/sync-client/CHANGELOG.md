@@ -1,5 +1,11 @@
 # Cambios de @ikisai/sync-client
 
+## 0.7.0 · 13 de octubre de 2026
+
+- **Rol `outsider`** (fase O1, migración 0092) en `Role`, y `bootstrap.profile.houseLevel` con el nivel de casa de la cuenta.
+- **Sugerencias**, propuestas de personas que staff o dirección aprueba o descarta (`docs/core/CONTRATO_SINCRONIZACION.md` §3.10): `suggest`, `suggestions`, `previewSuggestion`, `decideSuggestion` y `withdrawSuggestion`. Necesitan red; no pasan por la cola.
+- Lo existente no cambia.
+
 ## 0.6.0 · 13 de octubre de 2026
 
 - **Cliente secundario con `sessionFrom`** para los módulos del núcleo, que cada Edge sirve en `/api/v1/<módulo>/` (el primero es `resources`, espacios e inventario: `docs/resources/API.md`).

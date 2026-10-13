@@ -211,6 +211,39 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - El worker `files/gc` de central-api, diario, marca los huérfanos de más de 2 días. Borra del proveedor y de `core.files` los que siguen sin referencia a los 30 días, salvo que alguna vez fueran `legal` o `permanent`. Antes de borrar vuelve a comprobarlo.
 - **Medición (migración `0073`):** cada semana, `core.storage_snapshot()` guarda los tamaños de la base, los esquemas, `core.changes` y los objetos por bucket lógico y proveedor. Los umbrales están en `core.storage_thresholds`. `GET admin/storage` (owner de Central) devuelve el estado actual, el nivel de cada límite (`ok | warn | critical`) y medio año de historial.
 
+### 3.10 Rol `outsider`, nivel de casa y sugerencias (migración `0092`, diseño en `coordinacion/ampliacion/RECURSOS.md` §13–15)
+
+- **Rol `outsider`**, junto a `reader`, `editor` y `owner`, para la gente de fuera por trato personal (voluntarios incluidos).
+  - **Por defecto no lee ni escribe nada.** Cada app lo abre a propósito:
+    - tablas, con `readable_roles` y `writable_roles` en `core.register_table`;
+    - lecturas y acciones, con `roles` en `core.allow_read`;
+    - procedimientos (`call`), con `core.allow_outsider_procedure(app, procedimiento)`.
+  - Su rol llega a los hooks y procedimientos (`role = 'outsider'`).
+  - No deshace, no emite enlaces de portal ni sube archivos, salvo `UploadsConfig.allowOutsiders`. En MCP cuenta como lector.
+  - **No se da a mano** (`INVALID_ROLE`): lo deriva el nivel de casa.
+- **Nivel de casa → roles:**
+  - `core.apply_house_level(user, level, actor)`. Lo llama el trigger de Central sobre `central.people`.
+  - Qué da cada nivel está en `core.house_level_roles`. Hoy, solo el outsider: `tasks: outsider` y `guests: editor`, porque en Guests las lecturas de huésped piden editor y los `scopes` siguen mandando.
+  - **Nunca rebaja.** Orden: `reader < outsider < editor < owner`.
+  - Lo que dio queda en `core.house_grants` (`public.core_house_grants(user)`). Al quitar o cambiar el nivel se devuelve el rol anterior, solo si nadie lo cambió a mano después.
+  - El nivel vigente sale en `bootstrap.profile.houseLevel`.
+- **Sugerencias** (propuestas de personas; distintas de las de agentes, §3.1):
+  - **Tipos:** cada app los registra con `core.register_suggestion_kind(app, kind, label, tables, ops, procedures, submit_roles, submit_from, house_level)`.
+    - Qué tablas y operaciones, o qué procedimientos, admite el lote.
+    - Quién sugiere: `submit_roles` en la app, o `submit_from` = `{"otra_app": [roles]}`, opcionalmente con un nivel de casa.
+  - **Rutas de cada app:**
+    | Ruta | Para qué |
+    |---|---|
+    | `POST suggestions {requestId, kind, summary, detail?, operations, app?}` | Sugerir. Idempotente por `requestId`; como mucho 50 operaciones y 30 pendientes por persona y app |
+    | `GET suggestions?scope=mine\|pending\|all&app=&limit=&before=` | `mine`, cualquiera; `pending` y `all`, editor u owner humano, con `pendingCount` |
+    | `POST suggestions/:id/preview {operations?}` | Antes y después, sin escribir |
+    | `POST suggestions/:id/approve {comment?, operations?}` | Aplica el lote (o el corregido, con las mismas reglas del tipo) como `core.commit` de quien aprueba, con `requestId` `suggestion:<id>`. Si el lote ya no encaja, responde el error del núcleo o del hook y la sugerencia sigue pendiente |
+    | `POST suggestions/:id/reject {comment?}` | Descartar |
+    | `POST suggestions/:id/withdraw {app?}` | El autor retira una pendiente |
+  - **Estados:** `pending`, `approved`, `rejected` y `withdrawn`. No caducan y no hay «deshacer» de una decisión: lo aplicado se deshace desde el historial de la app.
+  - **Errores:** `SUGGESTION_NOT_ALLOWED 403`, `SUGGESTION_UNAVAILABLE 409`, `TOO_MANY_SUGGESTIONS 429`.
+  - **En el navegador** (`sync-client` 0.7.0): `suggest`, `suggestions`, `previewSuggestion`, `decideSuggestion` y `withdrawSuggestion`. Necesitan red.
+
 ## 4. Commit
 
 ### 4.1 Firma

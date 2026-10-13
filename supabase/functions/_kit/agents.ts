@@ -69,7 +69,7 @@ export function createAgents(supabase: Supabase, app: string, hooks: AppHooks, v
   // --- Propuestas ---------------------------------------------------------------
   async function prepare(ctx: RequestContext, body: any) {
     if (ctx.user.kind !== 'agent') fail(403, 'FORBIDDEN', 'Las propuestas las preparan los agentes; una persona guarda directamente.');
-    if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    if (ctx.membership.role !== 'editor') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (!body || typeof body.requestId !== 'string' || !REQUEST_ID.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
     const operations = validateOperations(body.operations);
     if (hooks.beforeCommit) await hooks.beforeCommit(operations, ctx);

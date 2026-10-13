@@ -9,7 +9,7 @@
 import { fail, messageFor } from './errors.ts';
 import { sha256Hex, type Supabase } from './supabase.ts';
 import { newPass } from './sso.ts';
-import type { RequestContext } from './sync.ts';
+import { isReadOnly, type RequestContext } from './sync.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -48,7 +48,7 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
     const person = body?.person ?? {};
     const name = typeof person.name === 'string' ? person.name.trim().slice(0, 120) : '';
     // Autoriza antes de crear la cuenta (la función SQL vuelve a comprobarlo todo en la transacción).
-    if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
+    if (isReadOnly(ctx.membership.role)) fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (issuerApp === 'organizers' && app !== 'guests') fail(403, 'FORBIDDEN', 'Un organizador solo genera enlaces de huésped.');
     const userId = await userFor(person, app, clean);
     // `replace`: el enlace nuevo deja sin efecto los anteriores de ese huésped (reenvío).

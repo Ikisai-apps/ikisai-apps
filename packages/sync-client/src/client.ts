@@ -9,6 +9,8 @@ import type {
   RowId,
   RowOperation,
   Session,
+  Suggestion,
+  SuggestionInput,
   SyncClient,
   SyncClientOptions,
   SyncStatus,
@@ -752,6 +754,31 @@ export class SyncClientImpl implements SyncClient {
   async fileUrl(fileId: string): Promise<string> {
     const data = await this.api<{ url: string; expiresAt?: string }>(`/files/${encodeURIComponent(fileId)}`);
     return data.url;
+  }
+
+  async suggest(input: SuggestionInput): Promise<Suggestion> {
+    const { requestId, ...rest } = input;
+    return this.api<Suggestion>('/suggestions', { json: { ...rest, requestId: requestId ?? crypto.randomUUID() } });
+  }
+
+  async suggestions(options: { scope?: 'mine' | 'pending' | 'all'; app?: string; limit?: number; before?: string } = {}): Promise<{ items: Suggestion[]; pendingCount: number | null }> {
+    const params = new URLSearchParams({ scope: options.scope ?? 'mine' });
+    if (options.app) params.set('app', options.app);
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.before) params.set('before', options.before);
+    return this.api(`/suggestions?${params}`);
+  }
+
+  async previewSuggestion(id: string, operations?: RowOperation[]): Promise<{ cursor: number; results: unknown[]; changes: unknown[] }> {
+    return this.api(`/suggestions/${encodeURIComponent(id)}/preview`, { json: operations ? { operations } : {} });
+  }
+
+  async decideSuggestion(id: string, decision: 'approve' | 'reject', options: { comment?: string; operations?: RowOperation[] } = {}): Promise<Suggestion> {
+    return this.api<Suggestion>(`/suggestions/${encodeURIComponent(id)}/${decision}`, { json: { ...options } });
+  }
+
+  async withdrawSuggestion(id: string, options: { app?: string } = {}): Promise<Suggestion> {
+    return this.api<Suggestion>(`/suggestions/${encodeURIComponent(id)}/withdraw`, { json: { ...options } });
   }
 
   private url(path: string): string {

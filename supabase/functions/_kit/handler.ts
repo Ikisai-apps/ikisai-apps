@@ -4,6 +4,7 @@ import { createSupabase, type SupabaseConfig } from './supabase.ts';
 import { createAuth } from './auth.ts';
 import { createSync, integer, type AppHooks, type RequestContext } from './sync.ts';
 import { createUploads, type UploadsConfig } from './uploads.ts';
+import { createSuggestions } from './suggestions.ts';
 import { createAgents } from './agents.ts';
 import { createMcp, type McpCore, type McpTool } from './mcp.ts';
 import { createSso, passCookie, passFrom } from './sso.ts';
@@ -112,6 +113,7 @@ export function createApp(config: AppConfig): AppHandler {
   });
   const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads, storage, config.hooks?.visible) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
+  const suggestions = createSuggestions(supabase, config.app, sync.validateOperations);
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
   const mcpCore = (ctx: RequestContext): McpCore => ({
@@ -170,6 +172,13 @@ export function createApp(config: AppConfig): AppHandler {
     { method: 'GET', pattern: 'proposals/:id', handler: ({ ctx, params }) => agents.get(ctx, params.id ?? '') },
     { method: 'POST', pattern: 'proposals/:id/approve', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'approve') },
     { method: 'POST', pattern: 'proposals/:id/reject', handler: ({ ctx, params }) => agents.decide(ctx, params.id ?? '', 'reject') },
+    // Sugerencias de personas (RECURSOS.md §14.1): staff o dirección aprueba o descarta; aprobar aplica el lote.
+    { method: 'GET', pattern: 'suggestions', handler: ({ ctx, url }) => suggestions.list(ctx, url.searchParams) },
+    { method: 'POST', pattern: 'suggestions', handler: async ({ ctx, json }) => suggestions.create(ctx, await json()) },
+    { method: 'POST', pattern: 'suggestions/:id/preview', handler: async ({ ctx, params, json }) => suggestions.preview(ctx, params.id ?? '', await json()) },
+    { method: 'POST', pattern: 'suggestions/:id/approve', handler: async ({ ctx, params, json }) => suggestions.decide(ctx, params.id ?? '', 'approve', await json()) },
+    { method: 'POST', pattern: 'suggestions/:id/reject', handler: async ({ ctx, params, json }) => suggestions.decide(ctx, params.id ?? '', 'reject', await json()) },
+    { method: 'POST', pattern: 'suggestions/:id/withdraw', handler: async ({ ctx, params, json }) => suggestions.withdraw(ctx, params.id ?? '', await json()) },
     { method: 'GET', pattern: 'agents', handler: ({ ctx }) => agents.listKeys(ctx) },
     { method: 'POST', pattern: 'agents', handler: async ({ ctx, json }) => agents.issue(ctx, await json()) },
     { method: 'DELETE', pattern: 'agents/:keyId', handler: ({ ctx, params, url }) => agents.revoke(ctx, params.keyId ?? '', ['1', 'true'].includes(url.searchParams.get('onlyMembership') ?? '')) },

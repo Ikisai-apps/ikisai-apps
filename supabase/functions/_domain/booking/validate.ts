@@ -11,7 +11,8 @@ import {
 import { missingForSes } from './guests.ts';
 import { dayNumber, isValidDate } from './rules.ts';
 
-export type Role = 'reader' | 'editor' | 'owner';
+/** Incluye `outsider` (núcleo, migración 0092): en Booking no se concede; las reglas miran `owner` y `editor`. */
+export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
 
 export interface Issue {
   status: 403 | 422;
