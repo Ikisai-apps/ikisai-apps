@@ -27,7 +27,7 @@ export interface GuestsTestServer {
   /** Acción de Booking invocada por un organizador de esa reserva (programa, ajustes de habitaciones…). */
   organizerInvoke(reservationId: string, name: string, args: Record<string, unknown>): Promise<any>;
   /** Habitación del retiro: espacio con camas, asignado al evento como grupo (así entra en el inventario del retiro). */
-  room(event: string, options: { name: string; enSuite: boolean; beds: string[]; zone?: string }): Promise<{ spaceId: string; bedIds: string[] }>;
+  room(event: string, options: { name: string; enSuite: boolean; beds: string[]; extraBeds?: string[]; zone?: string }): Promise<{ spaceId: string; bedIds: string[]; extraBedIds: string[] }>;
   /** Menú de Food validado y compartido, sembrado en la base: `[{date, type, time, dishes: [{name, allergens?, diet?}]}]`. */
   menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; diet?: string[] }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
@@ -130,15 +130,17 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       }
       return booking.t.rpc('core_invoke', { p_app: 'organizers', p_actor: user, p_name: name, p_args: { reservation_id: reservationId, ...args } });
     },
-    async room(event, { name, enSuite, beds, zone = 'Posada' }) {
+    async room(event, { name, enSuite, beds, extraBeds = [], zone = 'Posada' }) {
       const spaceId = uuid();
       const bedIds = beds.map(() => uuid());
+      const extraBedIds = extraBeds.map(() => uuid());
       await commit([
         { op: 'insert', table: TABLES.spaces, id: spaceId, fields: { name, kind: 'habitacion', zone, en_suite: enSuite } },
         ...beds.map((label, i) => ({ op: 'insert', table: TABLES.beds, id: bedIds[i], fields: { space_id: spaceId, label, kind: 'individual', capacity: 1 } })),
+        ...extraBeds.map((label, i) => ({ op: 'insert', table: TABLES.beds, id: extraBedIds[i], fields: { space_id: spaceId, label, kind: 'supletoria', capacity: 1 } })),
         { op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: event, space_id: spaceId, group_label: 'Grupo del retiro', persons: 1 } },
       ]);
-      return { spaceId, bedIds };
+      return { spaceId, bedIds, extraBedIds };
     },
     async menu(event, services) {
       const db = booking.t.db;
