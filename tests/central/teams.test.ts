@@ -88,7 +88,7 @@ test('personas · `central.people_options` para Tasks: vivas y activas, con o si
   const out = await app.t.rpc('core_read', { p_app: 'tasks', p_actor: tasksUser, p_name: 'central.people_options', p_args: {} }) as { rows: any[] };
   const mine = out.rows.filter((r) => String(r.name).startsWith('Opción'));
   assert.deepEqual(mine.map((r) => [r.name, r.user_id]).sort(), [['Opción con cuenta', account], ['Opción sin cuenta', null]]);
-  for (const r of out.rows) assert.deepEqual(Object.keys(r).sort(), ['active', 'name', 'person_id', 'user_id']);
+  for (const r of out.rows) assert.deepEqual(Object.keys(r).sort(), ['active', 'house_level', 'name', 'person_id', 'user_id']); // P1: + house_level
   assert.ok(out.rows.every((r) => r.active === true));
   assert.equal(JSON.stringify(out.rows).includes('reservado@example.invalid'), false);
   // Otra app sin permiso registrado no la lee.

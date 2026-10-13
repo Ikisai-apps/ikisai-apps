@@ -6,6 +6,7 @@ import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError } from '../app/client.ts';
 import { isStaffAccount, syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
+import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, relationForLevel, type HouseLevel } from '@ikisai/domain-central';
 import { describeScopes, EVENT_LABELS, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
 import type { Usage } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
@@ -35,7 +36,7 @@ function roleSelect(id: string, value: Role | null, options: { agent: boolean; a
 }
 
 /** Ficha de Personas, lo que Accesos necesita para enlazar cuentas (FB_2026_013: la ficha manda sobre el nombre). */
-interface PersonLite { id: string; revision: number; display_name: string; base_role: string; active: boolean; user_id: string | null; deleted_at: string | null; position: number }
+interface PersonLite { id: string; revision: number; display_name: string; base_role: string; active: boolean; user_id: string | null; deleted_at: string | null; position: number; house_level?: HouseLevel | null }
 async function loadPeopleLite(client: SyncClient): Promise<{ people: PersonLite[]; emails: Map<string, string> }> {
   const people = ((await client.list(T.people)) as unknown as PersonLite[]).filter((p) => !p.deleted_at)
     .sort((a, b) => a.display_name.localeCompare(b.display_name, 'es'));
@@ -48,8 +49,11 @@ async function loadPeopleLite(client: SyncClient): Promise<{ people: PersonLite[
   return { people, emails };
 }
 /** Ficha mínima para una cuenta del equipo que aún no la tenía (el resto se completa en Personas). */
-const newPersonFields = (name: string, userId: string) => ({
-  display_name: name, relation: 'equipo', base_role: 'otro', coverage: 'todo', availability: 'segun_calendario', committed_post: false, user_id: userId, position: Date.now() / 1000,
+/** Con el nivel de casa activo (fase P1), la ficha nace con su nivel y la relación que le corresponde; si no, como antes. */
+const levelsActive = (people: PersonLite[]) => people.some((p) => !!p.house_level);
+const newPersonFields = (name: string, userId: string, level?: HouseLevel | null) => ({
+  ...(level !== undefined ? { house_level: level, relation: relationForLevel(level) } : { relation: 'equipo' }),
+  display_name: name, base_role: 'otro', coverage: 'todo', availability: 'segun_calendario', committed_post: false, user_id: userId, position: Date.now() / 1000,
 });
 
 /** Accesos (API.md §9.4): solo owner de Central. Todo necesita red; la última lista se pinta sin red mientras dure la sesión. */
@@ -268,7 +272,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
             await client.commit([{ op: 'update', table: T.people, id: chosen.id, expectedRevision: chosen.revision, fields: { user_id: account.userId } }]);
             if (chosen.display_name !== account.displayName) await syncAccountName(admin, account.userId, chosen.display_name);
           } else {
-            await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(account.displayName || account.email || 'Sin nombre', account.userId) }]);
+            await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(account.displayName || account.email || 'Sin nombre', account.userId, levelsActive(people) ? 'staff' : undefined) }]);
           }
           toast(chosen ? 'Cuenta enlazada con su ficha.' : 'Ficha creada y enlazada.');
           await refresh();
@@ -366,6 +370,11 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
     el('option', { value: '' }, 'Persona nueva (se crea su ficha)'),
     ...free.map((p) => el('option', { value: p.id }, p.display_name))) as HTMLSelectElement;
   const nameHelp = el('span', { class: 'muted small' });
+  // Nivel de casa de la ficha nueva: solo con el nivel ya activo en Personas (si no, la ficha nace como antes).
+  const withLevels = levelsActive(people);
+  const level = el('select', { id: 'inviteLevel', 'aria-label': 'Nivel de casa' }, ...HOUSE_LEVELS.map((l) => el('option', { value: l, selected: l === 'staff' }, HOUSE_LEVEL_LABELS[l])),
+    el('option', { value: '' }, 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+  const levelField = withLevels ? el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nivel', 'data-feedback-label': 'Nivel de casa' }, el('span', null, 'Nivel de casa'), level) : null;
   const chosen = () => free.find((p) => p.id === person.value) ?? null;
   const syncFromPerson = () => {
     const p = chosen();
@@ -373,6 +382,7 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
     if (p) { name.value = p.display_name; if (emails.get(p.id) && !email.value.trim()) email.value = emails.get(p.id)!; }
     else if (name.readOnly === false && free.some((x) => x.display_name === name.value)) name.value = '';
     nameHelp.textContent = p ? 'El de su ficha. Para cambiarlo, edita la ficha en Personas.' : 'Será también el nombre de su ficha en Personas.';
+    if (levelField) levelField.hidden = !!p; // el nivel solo se elige para una ficha nueva
   };
   person.addEventListener('change', syncFromPerson);
   const appsHost = el('div', { id: 'inviteApps', 'data-feedback-id': 'central.accesos.alta.apps', 'data-feedback-label': 'Accesos iniciales por app' }, el('p', { class: 'muted' }, 'Cargando apps…'));
@@ -412,7 +422,7 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
         const fresh = current.find((x) => x.id === p.id) ?? p;
         await client.commit([{ op: 'update', table: T.people, id: p.id, expectedRevision: fresh.revision, fields: { user_id: out.userId } }]);
       } else {
-        await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(displayName, out.userId) }]);
+        await client.commit([{ op: 'insert', table: T.people, id: crypto.randomUUID(), fields: newPersonFields(displayName, out.userId, withLevels ? ((level.value || null) as HouseLevel | null) : undefined) }]);
       }
       if (out.temporaryPassword) {
         showSecret(out.temporaryPassword, out.email, () => navigate('#/accesos'));
@@ -431,6 +441,7 @@ async function mountInvite(body: HTMLElement, admin: AdminApi, client: SyncClien
   el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_persona', 'data-feedback-label': 'Persona del equipo' }, el('span', null, 'Persona del equipo'), person),
   el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_correo', 'data-feedback-label': 'Correo' }, el('span', null, 'Correo'), email),
   el('label', { class: 'field', 'data-feedback-id': 'central.accesos.alta.campo_nombre', 'data-feedback-label': 'Nombre visible' }, el('span', null, 'Nombre'), name, nameHelp),
+  levelField,
   el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.accesos.alta.accesos_iniciales', 'data-feedback-label': 'Accesos iniciales' }, 'Accesos iniciales'),
   appsHost,
   error,

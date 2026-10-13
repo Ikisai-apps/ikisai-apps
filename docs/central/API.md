@@ -55,7 +55,8 @@ Lectura `{reader, editor, owner}`. Sin datos de contacto ni laborales.
 |---|---|---|
 | `code` | `text unique not null` | `PER_AAAA_NNN` (`core.next_code('PER', año de alta)`), por trigger en el `insert`. No escribible. |
 | `display_name` | `text not null` | 1–80. Nombre con el que se le conoce («Marga»). |
-| `relation` | `text not null` | `equipo`, `colaborador`, `voluntario`, `practicas`, `otro`. Relación con Ikisai (encargo de Core). |
+| `house_level` | `text null` | **Nivel de casa** (fase P1, `1504`; RECURSOS.md §13): `direccion`, `staff`, `outsider` o `null` (sin nivel: fuera del directorio). Independiente del papel en cada evento (organizador, colaborador, huésped), que no vive en Central. **No da ni quita roles de acceso** en P1; eso será la fase O1, de Core. |
+| `relation` | `text not null` | `equipo`, `colaborador`, `voluntario`, `practicas`, `otro`. Relación con Ikisai (encargo de Core). **Desde P1 ya no se pide ni se ve** con el nivel activo, pero se conserva y se sigue escribiendo (en altas y cambios de nivel: `relationForLevel`, `equipo` para dirección y staff, `colaborador` para outsider y `otro` sin nivel) para lo que la lea. Se quitará solo si el usuario lo confirma. |
 | `base_role` | `text not null default 'otro'` | Lista de C05 `rol_base`: `direccion_general`, `direccion_operativa_comercial`, `cocina`, `mantenimiento_logistica`, `limpieza`, `apoyo_tecnico_sonido`, `apoyo_implantacion_alojativa`, `refuerzo_eventual`, `otro`. **No** es el rol de `core.memberships`. |
 | `coverage` | `text not null default 'todo'` | C05 `ambito_cobertura`: `todo`, `solo_eventos`, `solo_mantenimiento`, `solo_cocina`, `solo_limpieza`, `solo_tecnico`, `solo_comercial`. |
 | `availability` | `text not null default 'segun_calendario'` | C05: `alta`, `media`, `baja`, `segun_calendario`, `no_disponible`. |
@@ -65,7 +66,18 @@ Lectura `{reader, editor, owner}`. Sin datos de contacto ni laborales.
 | `user_id` | `uuid null references auth.users(id)` | Cuenta enlazada (opcional). Única entre filas vivas. Solo la escribe el `owner` (§4.1). |
 | `position` | `numeric null` | Orden manual (decisión del usuario del 6 oct). |
 
-`writable_columns`: `display_name, relation, base_role, coverage, availability, availability_notes, active, committed_post, user_id, position`. Índices: `unique (user_id) where deleted_at is null and user_id is not null`; `(active, relation)`.
+`writable_columns`: `display_name, relation, base_role, coverage, availability, availability_notes, active, committed_post, user_id, position, merged_into, house_level` (`merged_into` solo lo escribe la fusión, §3.1).
+
+**Nivel de casa en la pantalla (P1, con interruptor; RECURSOS.md §17):**
+- Mientras ninguna persona tenga nivel, Personas se ve como antes: Relación, Función y Cobertura. Lo fijan las pruebas de caracterización de `tests/central/people-list.spec.ts`.
+- Dirección ve el aviso «Nivel de casa: N personas no lo tienen · Revisar propuesta», con una vista previa editable. La propuesta es `proposeHouseLevel`: las funciones de dirección dan `direccion`; `equipo` y `practicas`, `staff`; `colaborador` y `voluntario`, `outsider`; `otro`, sin nivel. «Aplicar» lo guarda en un lote.
+- **Después:**
+  - la lista filtra por «Nivel» (en el sitio de «Relación»; «Sin nivel», solo para dirección) y solo enseña a quien tiene nivel;
+  - la fila dice «Área · Nivel»;
+  - la ficha y el editor piden «Nivel de casa» y «Área principal» (`base_role`, sin las funciones de dirección salvo la que ya tenga la ficha), y ya no «Relación» ni «Cobertura»;
+  - el Alta de Accesos con «Persona nueva» pide el nivel (por defecto, Staff).
+- **Marcha atrás:** vaciar los niveles vuelve a la pantalla de antes sin perder nada.
+- `central.people_options` gana `house_level` al final y **no cambia de contenido** en P1: Tasks decidirá en P2. Índices: `unique (user_id) where deleted_at is null and user_id is not null`; `(active, relation)`.
 
 **Lo que no se porta de C05** y por qué: `perfil_puntuable` (DENO, mayor de 45, **discapacidad**) es categoría especial o casi; si una licitación lo exige, va como documento (§2.3) y no como campo. `estado_documental` y `estado_formacion_minima` no se guardan: se **calculan** de §2.3 (§3.2). `fecha_alta` es `created_at`. `archivado` es `active = false` o la papelera.
 

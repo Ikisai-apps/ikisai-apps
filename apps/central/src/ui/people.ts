@@ -5,6 +5,7 @@ import {
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
+  DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, proposeHouseLevel, relationForLevel, type HouseLevel,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
@@ -20,6 +21,7 @@ type Base = { id: string; revision: number; updated_at: string; deleted_at: stri
 export type Person = Mirror<Base & {
   code: string; display_name: string; relation: string; base_role: string; coverage: string; availability: string;
   availability_notes: string | null; active: boolean; committed_post: boolean; user_id: string | null; position: number;
+  house_level: HouseLevel | null;
 }>;
 type Private = Mirror<Base & {
   person_id: string; legal_name: string | null; phone: string | null; email: string | null; engagement: string | null;
@@ -42,6 +44,15 @@ const ignoreSheetMeta = (sheet: Sheet): Sheet => { fbIgnoreWithin(sheet.element,
 export type Team = Mirror<Base & { name: string; color: string | null; position: number }>;
 export type PersonTeam = Mirror<Base & { person_id: string; team_id: string }>;
 
+/**
+ * Interruptor de la fase P1 (RECURSOS.md §17.5): mientras ninguna persona tenga nivel de casa, Personas se ve como antes
+ * (Relación, Función, Cobertura). Al aplicar la vista previa del nivel, pasa a «Nivel de casa» y «Área principal». Vaciar los
+ * niveles vuelve atrás sin perder nada: `relation` y `coverage` se conservan.
+ */
+let houseLevelsOn = false;
+const levelLabel = (level: string | null | undefined) => (level ? HOUSE_LEVEL_LABELS[level as HouseLevel] ?? level : 'Sin nivel');
+const areaLabel = (role: string) => BASE_ROLE_LABELS[role as keyof typeof BASE_ROLE_LABELS] ?? role;
+
 async function loadPeople(client: SyncClient): Promise<{ people: Person[]; privates: Private[]; records: PersonRecord[]; teams: Team[]; personTeams: PersonTeam[] }> {
   const reserved = canSeeReserved(client.bootstrap()?.membership);
   const [people, privates, records, teams, personTeams] = await Promise.all([
@@ -51,6 +62,7 @@ async function loadPeople(client: SyncClient): Promise<{ people: Person[]; priva
     client.list(T.teams),
     client.list(T.personTeams, { includeDeleted: true }),
   ]);
+  houseLevelsOn = (people as unknown as Person[]).some((p) => !p.deleted_at && p.house_level);
   return {
     people: people as unknown as Person[], privates: privates as unknown as Private[], records: records as unknown as PersonRecord[],
     teams: (teams as unknown as Team[]).sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name, 'es')),
@@ -110,6 +122,7 @@ export const mountPeople: ViewMount = (ctx) => {
   let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [] };
   let query = '';
   let relation = '';
+  let level = '';
   let team = '';
   let showInactive = false;
 
@@ -121,6 +134,11 @@ export const mountPeople: ViewMount = (ctx) => {
     oninput: (e: Event) => { query = (e.target as HTMLInputElement).value.trim().toLowerCase(); paint(); } });
   const relationFilter = el('select', { id: 'peopleRelation', 'aria-label': 'Relación', 'data-feedback-id': 'central.personas.filtro_relacion', 'data-feedback-label': 'Filtro por relación', onchange: (e: Event) => { relation = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(RELATIONS, RELATION_LABELS, '', 'Todas las relaciones'));
+  const levelFilter = el('select', { id: 'peopleLevel', 'aria-label': 'Nivel de casa', hidden: true, 'data-feedback-id': 'central.personas.filtro_nivel', 'data-feedback-label': 'Filtro por nivel de casa', onchange: (e: Event) => { level = (e.target as HTMLSelectElement).value; paint(); } },
+    ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, '', 'Todos los niveles'),
+    ...(ctx.isAdmin ? [el('option', { value: 'sin_nivel' }, 'Sin nivel')] : [])) as HTMLSelectElement;
+  // Solo antes de aplicar el nivel por primera vez: la vista previa para dirección.
+  const levelsNote = el('div', { 'data-feedback-id': 'central.personas.aviso_nivel', 'data-feedback-label': 'Aviso del nivel de casa' });
   const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
   const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
@@ -129,8 +147,9 @@ export const mountPeople: ViewMount = (ctx) => {
     main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.personas.cabecera', 'data-feedback-label': 'Cabecera de Personas' }, el('div', null, el('h2', null, 'Personas'),
       el('p', null, 'Quién trabaja o colabora con Ikisai, tenga o no cuenta en las apps.'))),
-    el('div', { class: 'toolbar', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, relationFilter, teamFilter, inactive,
+    el('div', { class: 'toolbar', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, relationFilter, levelFilter, teamFilter, inactive,
       el('a', { class: 'ghost btnlike', href: '#/personas/equipos', id: 'manageTeams', 'data-feedback-id': 'central.personas.equipos', 'data-feedback-label': 'Equipos' }, icon('people', 16), 'Equipos')),
+    levelsNote,
     host,
     trash,
     canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', 'data-feedback-id': 'central.personas.nueva', 'data-feedback-label': 'Nueva persona', onclick: () => openPersonEditor(ctx, null, (id) => navigate(`#/personas/${id}`)) }, icon('plus'), 'Nueva persona') : null,
@@ -147,14 +166,61 @@ export const mountPeople: ViewMount = (ctx) => {
     ];
     return el('button', { class: 'personrow', type: 'button', 'data-person': p.id, 'data-feedback-id': 'central.personas.lista.fila', 'data-feedback-label': 'Persona', onclick: () => navigate(`#/personas/${p.id}`) },
       el('span', { class: 'accountname', 'data-feedback-ignore': '' }, p.display_name, p.user_id ? el('span', { class: 'muted', title: 'Tiene cuenta' }, ' ', icon('user', 14)) : null),
-      el('span', { class: 'muted accountmeta', 'data-feedback-id': 'central.personas.lista.funcion', 'data-feedback-label': 'Función y relación' }, `${BASE_ROLE_LABELS[p.base_role as keyof typeof BASE_ROLE_LABELS] ?? p.base_role} · ${RELATION_LABELS[p.relation as keyof typeof RELATION_LABELS] ?? p.relation}`),
+      el('span', { class: 'muted accountmeta', 'data-feedback-id': 'central.personas.lista.funcion', 'data-feedback-label': 'Función y relación' }, houseLevelsOn
+        ? `${areaLabel(p.base_role)} · ${levelLabel(p.house_level)}`
+        : `${BASE_ROLE_LABELS[p.base_role as keyof typeof BASE_ROLE_LABELS] ?? p.base_role} · ${RELATION_LABELS[p.relation as keyof typeof RELATION_LABELS] ?? p.relation}`),
       chips.length ? el('span', { class: 'chips', 'data-feedback-id': 'central.personas.lista.etiquetas', 'data-feedback-label': 'Estado de la persona' }, ...chips) : null);
+  }
+
+  /** Aviso para dirección, solo hasta aplicar el nivel por primera vez: «N personas sin nivel de casa · Revisar propuesta». */
+  function paintLevelsNote(alive: Person[]): void {
+    if (houseLevelsOn || !ctx.isAdmin || !alive.length) { replace(levelsNote); return; }
+    replace(levelsNote, el('p', { class: 'note', id: 'levelsNote' }, `Nivel de casa: ${alive.length === 1 ? '1 persona no lo tiene' : `${alive.length} personas no lo tienen`}. `,
+      el('button', { class: 'linkbtn', type: 'button', id: 'reviewLevels', 'data-feedback-id': 'central.personas.revisar_nivel', 'data-feedback-label': 'Revisar la propuesta de nivel', onclick: () => openLevelsPreview(alive) }, 'Revisar propuesta')));
+  }
+
+  /** Vista previa editable del nivel de casa (aprobada por el usuario): una fila por persona, con el nivel propuesto. */
+  function openLevelsPreview(alive: Person[]): void {
+    let sheet: Sheet | null = null;
+    const error = el('p', { class: 'formerror', role: 'alert', 'data-feedback-id': 'central.personas.nivel.error', 'data-feedback-label': 'Error del nivel de casa' });
+    const rows = alive.map((p) => {
+      const select = el('select', { id: `lv-${p.id}`, 'aria-label': `Nivel de casa de ${p.display_name}`, 'data-person': p.id },
+        ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, proposeHouseLevel(p), 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+      return { p, select, node: el('div', { class: 'approw', 'data-feedback-id': 'central.personas.nivel.fila', 'data-feedback-label': 'Nivel de una persona' },
+        el('span', { class: 'appname' }, el('strong', { 'data-feedback-ignore': '' }, p.display_name),
+          el('span', { class: 'muted small' }, `${BASE_ROLE_LABELS[p.base_role as keyof typeof BASE_ROLE_LABELS] ?? p.base_role} · ${RELATION_LABELS[p.relation as keyof typeof RELATION_LABELS] ?? p.relation}${p.active ? '' : ' · inactiva'}`)),
+        select) };
+    });
+    const apply = el('button', { class: 'primary', type: 'button', id: 'applyLevels', 'data-feedback-id': 'central.personas.nivel.aplicar', 'data-feedback-label': 'Aplicar el nivel de casa', onclick: async () => {
+      error.textContent = '';
+      const operations: RowOperation[] = rows.filter((r) => r.select.value).map((r) => ({ op: 'update', table: T.people, id: r.p.id, expectedRevision: r.p.revision, fields: { house_level: r.select.value } }));
+      if (!operations.length) { error.textContent = 'Elige el nivel de al menos una persona.'; return; }
+      apply.disabled = true;
+      const ok = await commitSafely(client, operations, 'Nivel de casa aplicado.');
+      apply.disabled = false;
+      if (ok) await sheet?.close(true);
+    } }, 'Aplicar') as HTMLButtonElement;
+    sheet = openSheet({
+      title: 'Nivel de casa',
+      body: el('div', { id: 'levelsPreview', 'data-feedback-id': 'central.personas.nivel.contenido', 'data-feedback-label': 'Propuesta de nivel de casa' },
+        el('p', { class: 'muted' }, 'Propuesta por su función y su relación con Ikisai. Cámbiala donde haga falta. Quien quede sin nivel sale del directorio (lo sigues viendo con el filtro «Sin nivel»). Relación y cobertura se conservan.'),
+        ...rows.map((r) => r.node), error),
+      panelAttrs: { 'data-feedback-id': 'central.personas.nivel', 'data-feedback-label': 'Nivel de casa' },
+      closeAttrs: { 'data-feedback-id': 'central.personas.nivel.cerrar', 'data-feedback-label': 'Cerrar' },
+      foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.personas.nivel.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), apply],
+    });
   }
 
   function paint(): void {
     const alive = data.people.filter((p) => !p.deleted_at).sort((a, b) => (a.position - b.position) || a.display_name.localeCompare(b.display_name, 'es'));
     const inTeam = team ? new Set(data.personTeams.filter((x) => x.team_id === team && !x.deleted_at).map((x) => x.person_id)) : null;
-    const filtered = alive.filter((p) => (showInactive || p.active) && (!relation || p.relation === relation) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
+    relationFilter.hidden = houseLevelsOn;
+    levelFilter.hidden = !houseLevelsOn;
+    // Con el nivel activo, el directorio es de quien tiene nivel; «Sin nivel», solo para dirección.
+    const byLevel = (p: Person) => !houseLevelsOn ? (!relation || p.relation === relation)
+      : level === 'sin_nivel' ? !p.house_level : !!p.house_level && (!level || p.house_level === level);
+    const filtered = alive.filter((p) => (showInactive || p.active) && byLevel(p) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
+    paintLevelsNote(alive);
     if (teamFilter.options.length !== data.teams.length + 1) {
       replace(teamFilter, el('option', { value: '' }, 'Todos los equipos'), ...data.teams.map((t) => el('option', { value: t.id, selected: t.id === team }, t.name)));
     }
@@ -162,7 +228,7 @@ export const mountPeople: ViewMount = (ctx) => {
       replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.personas.vacio', 'data-feedback-label': 'Sin personas' },
         el('strong', null, alive.length ? 'Ninguna persona coincide' : 'Todavía no hay personas'),
         alive.length ? 'Cambia el filtro o la búsqueda.' : canEdit ? 'Añade a quien trabaja o colabora con Ikisai: con o sin cuenta.' : ''));
-    } else if (canEdit && !query && !relation && !team && showInactive) {
+    } else if (canEdit && !query && !relation && !level && !team && showInactive) {
       // Orden manual (decisión del usuario): solo con la lista completa, para que la posición tenga sentido.
       const sortable = createSortableList<Person>({
         items: filtered, key: (p) => p.id, render: (p) => row(p), name: (p) => p.display_name, label: 'Personas', id: 'peopleSortable',
@@ -216,17 +282,25 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.editar.error', 'data-feedback-label': 'Error del formulario' });
   const name = el('input', { id: 'p-name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
   const relation = el('select', { id: 'p-relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
-  const baseRole = el('select', { id: 'p-role' }, ...options(BASE_ROLES, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
+  const levelsOn = houseLevelsOn;
+  // «Área principal» sin las funciones de dirección (las sustituye el nivel), salvo la que ya tenga la ficha.
+  const areas = levelsOn ? BASE_ROLES.filter((r) => !DIRECTION_BASE_ROLES.includes(r) || r === person?.base_role) : BASE_ROLES;
+  const baseRole = el('select', { id: 'p-role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
+  const houseLevel = el('select', { id: 'p-level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
   const coverage = el('select', { id: 'p-coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
   const availability = el('select', { id: 'p-availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
   const notes = el('textarea', { id: 'p-notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
   notes.value = person?.availability_notes ?? '';
   const committed = el('input', { type: 'checkbox', id: 'p-committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
 
-  const values = (): Record<string, unknown> => ({
-    display_name: name.value.trim(), relation: relation.value, base_role: baseRole.value, coverage: coverage.value,
-    availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked,
-  });
+  const values = (): Record<string, unknown> => {
+    const common = { display_name: name.value.trim(), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };
+    if (!levelsOn) return { ...common, relation: relation.value, coverage: coverage.value };
+    // «Relación» y «Cobertura» ya no se piden; la relación se sigue escribiendo (la del nivel) solo si cambia el nivel o es nueva.
+    const lv = (houseLevel.value || null) as HouseLevel | null;
+    const keepRelation = person && (person.house_level ?? null) === lv;
+    return { ...common, house_level: lv, relation: keepRelation ? person.relation : relationForLevel(lv) };
+  };
   const changed = () => {
     const all = values();
     return person ? Object.fromEntries(Object.entries(all).filter(([k, v]) => (person[k] ?? null) !== (v ?? null))) : all;
@@ -260,12 +334,18 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
     if (!person) onCreated?.(id);
   } },
   el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre con el que se le conoce'), name),
-  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.relacion_funcion', 'data-feedback-label': 'Relación y función' },
-    el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_relacion', 'data-feedback-label': 'Relación con Ikisai' }, el('span', null, 'Relación con Ikisai'), relation),
-    el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_funcion', 'data-feedback-label': 'Función' }, el('span', null, 'Función'), baseRole)),
-  el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.cobertura_disponibilidad', 'data-feedback-label': 'Cobertura y disponibilidad' },
-    el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_cobertura', 'data-feedback-label': 'Cobertura' }, el('span', null, 'Cobertura'), coverage),
-    el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_disponibilidad', 'data-feedback-label': 'Disponibilidad' }, el('span', null, 'Disponibilidad'), availability)),
+  levelsOn
+    ? el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.nivel_area', 'data-feedback-label': 'Nivel de casa y área' },
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_nivel', 'data-feedback-label': 'Nivel de casa' }, el('span', null, 'Nivel de casa'), houseLevel),
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_area', 'data-feedback-label': 'Área principal' }, el('span', null, 'Área principal'), baseRole))
+    : el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.relacion_funcion', 'data-feedback-label': 'Relación y función' },
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_relacion', 'data-feedback-label': 'Relación con Ikisai' }, el('span', null, 'Relación con Ikisai'), relation),
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_funcion', 'data-feedback-label': 'Función' }, el('span', null, 'Función'), baseRole)),
+  levelsOn
+    ? el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_disponibilidad', 'data-feedback-label': 'Disponibilidad' }, el('span', null, 'Disponibilidad'), availability)
+    : el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.cobertura_disponibilidad', 'data-feedback-label': 'Cobertura y disponibilidad' },
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_cobertura', 'data-feedback-label': 'Cobertura' }, el('span', null, 'Cobertura'), coverage),
+      el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_disponibilidad', 'data-feedback-label': 'Disponibilidad' }, el('span', null, 'Disponibilidad'), availability)),
   el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_notas', 'data-feedback-label': 'Notas de disponibilidad' }, el('span', null, 'Notas de disponibilidad'), notes,
     el('span', { class: 'muted small' }, 'Sin datos de salud ni motivos personales: lo ve todo el equipo de Central.')),
   el('label', { class: 'check', 'data-feedback-id': 'central.persona.editar.campo_puesto', 'data-feedback-label': 'Puesto comprometido' }, committed, el('span', null, 'Puesto comprometido en la licitación')),
@@ -318,13 +398,19 @@ export function mountPerson(personId: string): ViewMount {
 
       const head = el('div', { class: 'pagehead', 'data-feedback-id': 'central.persona.cabecera', 'data-feedback-label': 'Cabecera de la persona' }, el('div', null,
         el('h2', { 'data-feedback-ignore': '' }, person.display_name),
-        el('p', { 'data-feedback-ignore': '' }, [person.code, BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS], RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]].filter(Boolean).join(' · ')),
+        el('p', { 'data-feedback-ignore': '' }, (houseLevelsOn ? [person.code, areaLabel(person.base_role), levelLabel(person.house_level)]
+          : [person.code, BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS], RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]]).filter(Boolean).join(' · ')),
         el('span', { class: 'chips', 'data-feedback-id': 'central.persona.cabecera.estado', 'data-feedback-label': 'Estado de la persona' }, ...(person.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]), ...(person.deleted_at ? [el('span', { class: 'chip alert' }, 'En la papelera')] : []), ...statusChips(data.records, personId, today))));
 
       const basic = block('Ficha', 'blockBasic', [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.persona.ficha.datos', 'data-feedback-label': 'Datos básicos' },
-        kv('Relación', RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]),
-        kv('Función', BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS]),
-        kv('Cobertura', COVERAGE_LABELS[person.coverage as keyof typeof COVERAGE_LABELS]),
+        ...(houseLevelsOn ? [
+          kv('Nivel de casa', levelLabel(person.house_level)),
+          kv('Área principal', areaLabel(person.base_role)),
+        ] : [
+          kv('Relación', RELATION_LABELS[person.relation as keyof typeof RELATION_LABELS]),
+          kv('Función', BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS]),
+          kv('Cobertura', COVERAGE_LABELS[person.coverage as keyof typeof COVERAGE_LABELS]),
+        ]),
         kv('Disponibilidad', [AVAILABILITY_LABELS[person.availability as keyof typeof AVAILABILITY_LABELS], person.availability_notes].filter(Boolean).join(' · ')),
         kv('Puesto comprometido', person.committed_post ? 'Sí' : null))],
       canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editPerson', 'data-feedback-id': 'central.persona.ficha.editar', 'data-feedback-label': 'Editar ficha', onclick: () => openPersonEditor(ctx, person) }, icon('edit', 16), 'Editar') : null);

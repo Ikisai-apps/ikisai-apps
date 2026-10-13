@@ -41,6 +41,7 @@
 - 2026-10-08 · Proyección `central.people_options` para Tasks (FB_2026_015, `1502`): personas activas, también sin cuenta, para ser responsables.
 - 2026-10-08 · Playwright: un solo `vite build` para todos los specs (`tests/central/e2e-build.ts`, huella y cerrojo entre workers, patrón de Tasks).
 - 2026-10-08 · **Una persona, una ficha, una cuenta:** el alta con un correo que ya tiene cuenta avisa y deja enlazar, fusionar fichas (`central.merge_people`, `1503`) o usar otro correo.
+- 2026-10-13 · **Fase P1 · nivel de casa** (`1504`): `house_level` con vista previa editable para dirección, interruptor por aplicar el nivel, Relación y Cobertura conservadas, `people_options` con el nivel sin cambiar de contenido. Antes, la caracterización de Personas (PR 0).
 
 ## Pendiente
 
