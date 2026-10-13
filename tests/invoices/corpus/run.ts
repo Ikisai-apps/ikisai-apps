@@ -22,6 +22,8 @@ function readField(found: PartialInvoice, field: keyof Expected): string | numbe
   }
 }
 function same(field: keyof Expected, read: string | number | null, want: string | number): boolean {
+  // Importes que no aparecen (retención o IVA): el lector da null y el esperado, 0. Es lo mismo (13-10-2026).
+  if (read === null && typeof want === 'number' && want === 0 && (field === 'withholding' || field === 'vat')) return true;
   if (read === null) return false;
   if (typeof want === 'number') return Math.abs(Number(read) - want) <= 0.005;
   if (field === 'supplier_tax_id') return (validSpanishTaxId(String(read)) ?? String(read)) === (validSpanishTaxId(want) ?? want.toUpperCase());
@@ -54,5 +56,8 @@ for (const id of ids) {
   }
   rows.push(`| ${id} | ${cells.join(' · ')} |`);
 }
-console.log(`### Corpus del lector: ${checks - fails} de ${checks} campos bien (${ids.length} documentos)\n\n| Documento | Resultado |\n|---|---|\n${rows.join('\n')}`);
+const report = `### Corpus del lector: ${checks - fails} de ${checks} campos bien (${ids.length} documentos)\n\n| Documento | Resultado |\n|---|---|\n${rows.join('\n')}`;
+console.log(report);
+// También al registro del job (stderr): el resumen no se puede leer por la API. Solo ids y acierto o fallo, sin valores.
+console.error(report);
 process.exit(fails ? 1 : 0);
