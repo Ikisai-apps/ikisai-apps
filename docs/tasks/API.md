@@ -1460,3 +1460,53 @@ Central siembra su catálogo de oficios, con vista previa, desde la familia «Ti
 
 - La familia se reconoce por el **nombre** («Tipo: Acción», sin distinguir mayúsculas, espacios de los lados ni tildes), no por la clave de sistema `trade`: en los datos reales hay claves equivocadas (§27 y migración `0318`), y las familias «Oficio» que crea cada área nueva no son el catálogo.
 - Solo lo vivo: sin etiquetas ni familias en la papelera, ni de áreas borradas.
+
+## 30. Espacios de Recursos en lugar de zonas (fase R2; plan aprobado por el usuario el 13-10-2026)
+
+Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios del módulo común Recursos (`docs/resources/API.md`). Diseño, tabla «hoy / después» y decisiones en `coordinacion/tasks/SALIDA.md` (13-10-2026). Caracterización previa: `tests/tasks/zonas.spec.ts`.
+
+**Modelo (migración `0322`):**
+
+| Tabla | Columnas | Notas |
+|---|---|---|
+| `tasks.task_spaces` | `tab_id, project_id, task_id, space_id` | Uno o varios por tarea. Se mueve y se restaura con la tarea, como `task_labels` |
+| `tasks.project_spaces` | `tab_id, project_id, space_id` | La tarea nueva hereda los de su proyecto (`createTaskOps`; decisión del usuario) |
+| `tasks.settings` | `key, value` | `zone_source`: `'labels'` (sin fila) o `'spaces'`. Solo la cambian los procedimientos |
+
+- `space_id` apunta a `resources.spaces` sin clave foránea. El hook comprueba al ponerlo que el espacio esté vivo y activo (`INVALID_SPACE`), que no se repita (`INVALID_SPACES`) y que las claves coincidan con su tarea o proyecto (`INCONSISTENT_KEYS`).
+- **Vistas guardadas:** el filtro `_space` (espacios) y `group_by = '_space'`. `_exclude` admite etiquetas y espacios.
+- **Ajustes:** cambiarlos fuera de un procedimiento da `INVALID_SETTING`.
+
+**Pasar las zonas a espacios** (propietaria con acceso completo, desde la app):
+
+1. **Vista previa:** `read/tasks.zones_preview {remove?}`.
+   - Con `zone_source = 'labels'`:
+     - `mapped`: zona → espacio, con las tareas y proyectos que la usan y una muestra de títulos;
+     - `removed`: las marcadas para quitar;
+     - `doubtful`: en uso y sin un único espacio activo (`no_space`, `several_spaces`, `space_inactive`);
+     - `counts`.
+   - Con `'spaces'`: lo que costaría volver atrás (`lost`: espacios puestos que no vienen de una zona).
+2. **Ida:** `POST zones/to-spaces {requestId, remove?}` → `tasks.zones_to_spaces`, en un lote y con historial.
+   - La correspondencia es el espacio vivo cuyo `source_refs` contiene `tasks.label:<id>`.
+   - Cada tarea y proyecto vivo recibe el espacio de su zona **más honda** (con madre e hija, la hija).
+   - Las zonas de `remove` se quitan («Exteriores» a secas).
+   - Con alguna dudosa sin marcar, falla con `ZONES_DOUBTFUL`.
+   - Las vistas guardadas se reescriben.
+   - La familia y sus etiquetas se **archivan**; cada etiqueta guarda en `archived_before_family` si ya lo estaba.
+   - `task_labels` y `project_labels` no se tocan: son la copia para volver.
+   - `zone_source` pasa a `'spaces'`. Una segunda vez da 409.
+3. **Vuelta:** `POST zones/to-labels {requestId, dropUnmapped?}` → `tasks.spaces_to_zones`.
+   - Las zonas de cada tarea y proyecto se recalculan desde sus espacios (la etiqueta y su madre), así que vuelve también lo cambiado mientras tanto.
+   - Lo que se quitó se borra (a la papelera).
+   - La familia y las etiquetas se desarchivan como estaban, y las vistas vuelven.
+   - Los espacios puestos van a la papelera y `zone_source` vuelve a `'labels'`.
+   - Si algún espacio no viene de una zona, falla con `SPACES_UNMAPPED`, salvo con `dropUnmapped`.
+
+**Fuera del cambio:**
+- Las copias de área de «Zona: Espacio» (Mejoras, Retiros).
+- Las tareas en la papelera o de áreas en la papelera: conservan la zona como etiqueta.
+
+**Pendiente (PR siguientes):**
+- **1b:** vaciar la papelera, «Convertir en proyecto», `requests/task` y `requests/project` (herencia del espacio) e importación portable con las tablas nuevas.
+- **2:** interfaz con el kit 0.30.0.
+- **3:** vista previa y botón «Pasar las zonas a espacios».

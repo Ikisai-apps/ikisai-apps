@@ -45,6 +45,11 @@ export interface LabelRow extends BaseRow {
 }
 export interface TaskLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; label_id: Uuid }
 export interface ProjectLabelRow extends BaseRow { tab_id: Uuid; project_id: Uuid; label_id: Uuid }
+/** Espacio de Recursos de una tarea o un proyecto (fase R2): `space_id` apunta a `resources.spaces`, sin clave foránea. */
+export interface TaskSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; space_id: Uuid }
+export interface ProjectSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uuid; space_id: Uuid }
+/** Ajustes de la app (fila por clave). `zone_source`: de dónde sale la zona, `'labels'` o `'spaces'` (R2). */
+export interface SettingRow extends BaseRow { key: string; value: unknown }
 export interface SavedViewRow extends BaseRow { tab_id: Uuid; name: string; search: string; filters: Record<string, string[]>; group_by: string; position: number }
 export interface AttachmentRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; task_id: Uuid | null; name: string; mime: string; size: number; sha256: string; file_id: Uuid; position: number;
@@ -85,19 +90,20 @@ export interface SupplyMovementRow extends BaseRow {
 /** Orden canónico: snapshot, importación y (en sentido inverso) purga. */
 export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
-  'tasks.project_labels', 'tasks.task_labels', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
+  'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
   'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
-  'tasks.request_routes', 'tasks.requests',
+  'tasks.request_routes', 'tasks.requests', 'tasks.settings',
 ] as const;
 export type TableName = (typeof TABLES)[number];
 
 export interface RowTypes {
   'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.tasks': TaskRow;
-  'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow; 'tasks.task_dependencies': TaskDependencyRow;
+  'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow;
+  'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow; 'tasks.task_dependencies': TaskDependencyRow;
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow;
   'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
   'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
-  'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow;
+  'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
 }
 
 /** Filas de todas las tablas, tal y como salen de `snapshot` o del espejo local (incluidas las borradas). */
@@ -116,6 +122,8 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
+  'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
+  'tasks.task_spaces': ['tab_id', 'project_id', 'task_id', 'space_id'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
@@ -126,6 +134,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
   'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of'],
+  'tasks.settings': ['key', 'value'],
 };
 
 /** Columnas que solo se escriben en el `insert` (trigger `tasks.guard_immutable`). */
@@ -138,6 +147,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.tasks': ['tab_id', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'task_id', 'label_id'],
+  'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
+  'tasks.task_spaces': ['tab_id', 'task_id', 'space_id'],
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
@@ -150,6 +161,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.request_routes': [],
   // Una petición solo la da de alta `tasks.request_task`; después solo cambia su estado (lo comprueba el hook).
   'tasks.requests': ['source', 'kind', 'external_ref', 'requested_by', 'on_behalf_of'],
+  // Los ajustes solo los cambian los procedimientos de la app (lo comprueba el hook).
+  'tasks.settings': ['key'],
 };
 
 /** Familias que el cliente crea con cada área nueva. */

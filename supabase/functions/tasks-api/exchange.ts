@@ -211,6 +211,32 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         return { generals: result?.generals ?? {}, counts: result?.counts ?? {}, cursor: committed.cursor };
       },
     },
+    /**
+     * Pasar las zonas a espacios de Recursos y su marcha atrás (R2, §30). Solo la propietaria con acceso completo, desde la
+     * app y tras la vista previa (`read/tasks.zones_preview`). En un lote y con historial.
+     * - `zones/to-spaces {requestId, remove?}`: `remove`, las zonas sin espacio que se quitan («Exteriores» a secas).
+     * - `zones/to-labels {requestId, dropUnmapped?}`: con `dropUnmapped`, se pierden los espacios que no vienen de una zona.
+     */
+    {
+      method: 'POST', pattern: 'zones/:direction', handler: async ({ ctx, params, json }) => {
+        admin(ctx);
+        const body = await json();
+        if (typeof body.requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId)) fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+        let operation;
+        if (params.direction === 'to-spaces') {
+          const remove = body.remove ?? [];
+          if (!Array.isArray(remove) || remove.length > 500 || !remove.every((id: unknown) => typeof id === 'string' && UUID.test(id))) fail(422, 'INVALID_OPERATION', 'remove es una lista de ids de zona.');
+          operation = { op: 'call' as const, procedure: 'tasks.zones_to_spaces', args: { remove: remove.map((id: string) => id.toLowerCase()) } };
+        } else if (params.direction === 'to-labels') {
+          operation = { op: 'call' as const, procedure: 'tasks.spaces_to_zones', args: { dropUnmapped: body.dropUnmapped === true } };
+        } else {
+          fail(404, 'NOT_FOUND', 'Ruta desconocida.');
+        }
+        const committed = await internal.commit(ctx, { requestId: body.requestId, operations: [operation!] });
+        const result = (committed.results[0] as { result?: { source: string; counts: Record<string, number> } })?.result;
+        return { source: result?.source, counts: result?.counts ?? {}, cursor: committed.cursor };
+      },
+    },
     { method: 'GET', pattern: 'portable', handler: async ({ ctx }) => zipResponse(await bundle(ctx), 'Ikisai-portable.zip') },
     { method: 'GET', pattern: 'backup', handler: async ({ ctx }) => { admin(ctx); return zipResponse(await bundle(ctx), 'Ikisai-respaldo.zip'); } },
     {

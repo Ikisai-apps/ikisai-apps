@@ -70,6 +70,8 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     case 'tasks.tasks':
     case 'tasks.project_labels':
     case 'tasks.task_labels':
+    case 'tasks.project_spaces':
+    case 'tasks.task_spaces':
     case 'tasks.task_dependencies':
     case 'tasks.attachments':
       return canProject(scopes, tab, String(row.project_id ?? ''));
@@ -86,6 +88,9 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
       return fullTab(scopes, tab);
     case 'tasks.requests':
       return allAccess(scopes);
+    // Ajustes de la app (de dónde sale la zona): los lee cualquiera con acceso a Tasks.
+    case 'tasks.settings':
+      return true;
     default:
       return false;
   }

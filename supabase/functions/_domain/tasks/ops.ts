@@ -49,6 +49,8 @@ export interface NewTask {
   /** Etiquetas elegidas; si no se indican, hereda las propias del proyecto. */
   labelIds?: Uuid[];
   dependsOnIds?: Uuid[];
+  /** Espacios de la tarea; sin ellos, los del proyecto. */
+  spaceIds?: readonly Uuid[];
 }
 
 /** Tarea nueva con sus etiquetas (las elegidas o las propias del proyecto) y dependencias. */
@@ -57,6 +59,8 @@ export function createTaskOps(data: Dataset, input: NewTask, newId: NewId = rand
   const id = input.id ?? newId();
   const siblings = data['tasks.tasks'].filter((t) => t.project_id === project.id);
   const labels = input.labelIds ?? live(data['tasks.project_labels']).filter((l) => l.project_id === project.id).map((l) => l.label_id);
+  // La tarea nueva hereda el espacio de su proyecto, como sus etiquetas (R2, decisión del usuario del 13-10-2026).
+  const spaces = input.spaceIds ?? live(data['tasks.project_spaces']).filter((s) => s.project_id === project.id).map((s) => s.space_id);
   const ops: Operation[] = [];
   const parent = input.parent_id ? must(data['tasks.tasks'].find((t) => t.id === input.parent_id), 'la tarea padre') : null;
   // Un padre hecho que recibe su primera hija viva vuelve a pendiente: su `done` deja de contar y no debe reaparecer.
@@ -67,6 +71,7 @@ export function createTaskOps(data: Dataset, input: NewTask, newId: NewId = rand
     cost: input.cost ?? null, position: input.position ?? nextPosition(siblings),
   }));
   for (const label of new Set(labels)) ops.push(insert('tasks.task_labels', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, label_id: label }));
+  for (const space of new Set(spaces)) ops.push(insert('tasks.task_spaces', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, space_id: space }));
   [...new Set(input.dependsOnIds ?? [])].forEach((dep, i) => ops.push(insert('tasks.task_dependencies', newId(), {
     tab_id: project.tab_id, project_id: project.id, task_id: id, depends_on_id: dep, position: (i + 1) * POSITION_STEP,
   })));
@@ -103,6 +108,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   const moved = new Set([task.id, ...children.map((c) => c.id)]);
   for (const child of children) ops.push(update('tasks.tasks', child, { project_id: project.id }));
   for (const row of live(data['tasks.task_labels'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_labels', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_spaces'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_spaces', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_dependencies'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
   for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
   return ops;
@@ -134,6 +140,7 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
     if (!above || above.project_id === t.project_id) { ops.push(restore('tasks.tasks', t)); continue; }
     ops.push(restore('tasks.tasks', t, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_labels'])) if (row.task_id === t.id) ops.push(update('tasks.task_labels', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_spaces'])) if (row.task_id === t.id) ops.push(update('tasks.task_spaces', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_dependencies'])) if (row.task_id === t.id) ops.push(update('tasks.task_dependencies', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
   }
@@ -180,6 +187,19 @@ export function setTaskLabelsOps(data: Dataset, taskId: Uuid, labelIds: readonly
   const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
   return reconcile('tasks.task_labels', data['tasks.task_labels'].filter((r) => r.task_id === taskId), (r) => r.label_id, labelIds,
     (label) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, label_id: label }), newId, (row) => row.project_id === task.project_id);
+}
+
+/** Espacios de una tarea (R2): uno o varios, como sus etiquetas. */
+export function setTaskSpacesOps(data: Dataset, taskId: Uuid, spaceIds: readonly Uuid[], newId: NewId = randomId): Operation[] {
+  const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
+  return reconcile('tasks.task_spaces', data['tasks.task_spaces'].filter((r) => r.task_id === taskId), (r) => r.space_id, spaceIds,
+    (space) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, space_id: space }), newId, (row) => row.project_id === task.project_id);
+}
+
+export function setProjectSpacesOps(data: Dataset, projectId: Uuid, spaceIds: readonly Uuid[], newId: NewId = randomId): Operation[] {
+  const project = must(data['tasks.projects'].find((p) => p.id === projectId), 'el proyecto');
+  return reconcile('tasks.project_spaces', data['tasks.project_spaces'].filter((r) => r.project_id === projectId), (r) => r.space_id, spaceIds,
+    (space) => ({ tab_id: project.tab_id, project_id: projectId, space_id: space }), newId);
 }
 
 export function setProjectLabelsOps(data: Dataset, projectId: Uuid, labelIds: readonly Uuid[], newId: NewId = randomId): Operation[] {

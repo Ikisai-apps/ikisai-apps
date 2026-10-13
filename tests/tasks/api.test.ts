@@ -47,11 +47,11 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('tasks-api · health y bootstrap con sus diecisiete tablas (diez de tareas, cinco de compras y dos de entradas)', async () => {
+test('tasks-api · health y bootstrap con sus veinte tablas (doce de tareas, cinco de compras, dos de entradas y los ajustes)', async () => {
   const health = await app.call('/api/v1/health', { token: null });
   assert.equal(health.data.app, 'tasks');
   const boot = await app.call('/api/v1/bootstrap');
-  assert.equal(boot.data.tables.length, 17);
+  assert.equal(boot.data.tables.length, 20);
   assert.equal(boot.data.tables.find((t: any) => t.table === 'tasks.tabs').writable, true);
   const asEditor = await app.call('/api/v1/bootstrap', { token: app.tokens.editor });
   assert.equal(asEditor.data.tables.find((t: any) => t.table === 'tasks.tabs').writable, false, 'solo el propietario escribe áreas');
