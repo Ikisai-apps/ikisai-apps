@@ -54,7 +54,7 @@ handleTopAction=function(action){if(action==='feedbackCenter')return openTasksFe
 function fbMark(node,mark){if(node&&mark){node.setAttribute('data-feedback-id',mark.feedbackId);node.setAttribute('data-feedback-label',mark.label)}return node}
 const SCREEN_MARKS={
   home:{feedbackId:'tasks.inicio',label:'Inicio'},projects:{feedbackId:'tasks.proyectos',label:'Proyectos'},project:{feedbackId:'tasks.proyecto',label:'Proyecto'},
-  tasks:{feedbackId:'tasks.tareas',label:'Todas las tareas'},labels:{feedbackId:'tasks.etiquetas',label:'Etiquetas'},archive:{feedbackId:'tasks.archivados',label:'Archivados'},
+  tasks:{feedbackId:'tasks.tareas',label:'Todas las tareas'},labels:{feedbackId:'tasks.etiquetas',label:'Etiquetas'},spaces:{feedbackId:'tasks.espacios',label:'Espacios'},archive:{feedbackId:'tasks.archivados',label:'Archivados'},
   trash:{feedbackId:'tasks.papelera',label:'Papelera'},inbox:{feedbackId:'tasks.entrada',label:'Entrada'},purchases:{feedbackId:'tasks.compras',label:'Solicitudes de compra'},
   supplies:{feedbackId:'tasks.suministros',label:'Suministros'},plans:{feedbackId:'tasks.planes',label:'Planes de compra'},triage:{feedbackId:'tasks.por_clasificar',label:'Por clasificar'},
   feedback:{feedbackId:'tasks.reporte',label:'Reporte de Feedback'},board:{feedbackId:'tasks.tablero',label:'Tablero'},calendar:{feedbackId:'tasks.calendario',label:'Calendario'},
@@ -64,7 +64,7 @@ function screenMark(){return SCREEN_MARKS[state.view]||OTHER_SCREEN}
 const MENU_MARKS={
   projects:{feedbackId:'tasks.menu.proyectos',label:'Proyectos'},tasks:{feedbackId:'tasks.menu.tareas',label:'Todas las tareas'},filters:{feedbackId:'tasks.menu.filtros',label:'Filtros'},
   views:{feedbackId:'tasks.menu.vistas',label:'Vistas guardadas'},archive:{feedbackId:'tasks.menu.archivados',label:'Archivados'},trash:{feedbackId:'tasks.menu.papelera',label:'Papelera'},
-  home:{feedbackId:'tasks.menu.inicio',label:'Inicio'},mine:{feedbackId:'tasks.menu.mis_tareas',label:'Mis tareas'},labels:{feedbackId:'tasks.menu.etiquetas',label:'Etiquetas'},
+  home:{feedbackId:'tasks.menu.inicio',label:'Inicio'},mine:{feedbackId:'tasks.menu.mis_tareas',label:'Mis tareas'},labels:{feedbackId:'tasks.menu.etiquetas',label:'Etiquetas'},spaces:{feedbackId:'tasks.menu.espacios',label:'Espacios'},
   areas:{feedbackId:'tasks.menu.areas',label:'Áreas de trabajo'},triage:{feedbackId:'tasks.menu.por_clasificar',label:'Por clasificar'},
   purchases:{feedbackId:'tasks.menu.compras',label:'Solicitudes de compra'},supplies:{feedbackId:'tasks.menu.suministros',label:'Suministros'},plans:{feedbackId:'tasks.menu.planes',label:'Planes de compra'},
   import:{feedbackId:'tasks.menu.importar_json',label:'Importar JSON'},export:{feedbackId:'tasks.menu.exportar_json',label:'Exportar JSON'},csvImport:{feedbackId:'tasks.menu.importar_csv',label:'Importar CSV'},

@@ -8,6 +8,8 @@ projectCard=function(p){
   const K=IkisaiKit,pr=progress(p),count=pending(p),urgency=projectPriority(p),pinned=!p.system&&activeProjects()[0]?.id===p.id;
   // Una chip por etiqueta madre, como en Tareas (FB_2026_036, 040): labelGroups() es la misma función que usa chips().
   const chips=labelGroups(aggregatedLabels(p)).map(g=>K.el('span',{class:'chip',style:`--chip:${familyColorByLabel(g.mother.id)}`,dataset:{label:g.mother.id,pastel:'1'}},K.el('span',null,g.text)));
+  // R2: una chip por espacio («Albergue › Hab 3»), delante, donde iba la zona.
+  if(typeof spacesMode==='function'&&spacesMode())chips.unshift(...aggregatedSpaces(p).filter(id=>spaceById(id)).map(id=>K.el('span',{class:'chip spacechip',style:`--chip:${zoneColor()}`,dataset:{space:id,pastel:'1'}},K.el('span',null,spaceShort(id)))));
   const cost=projectCost(p),budget=Number(p.budget)||0;
   // Mismo orden que antes: asa, fijar y el control invisible de ordenar por menú.
   const actions=[];
