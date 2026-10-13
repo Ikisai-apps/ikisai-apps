@@ -18,7 +18,7 @@
  */
 import {
   buildImportArgs, detectRectification, extractWithTemplates, negateDocument, findDuplicateImport, findDuplicateInvoice, importDocumentSha256, matchSupplier, softDuplicate,
-  keepHumanFields, partialFillOperations, readingMessage, readingSummary,
+  keepHumanFields, partialFillOperations, readingMessage, readingSummary, readPaymentFields, type ReadPayment,
   type ImportDocument, type InvoiceRow, type PdfTextItem, type SupplierRow, type TemplateLike,
 } from '../_domain/invoices/mod.ts';
 
@@ -206,6 +206,15 @@ const objectFromName = (name: string) => (name.replace(/\.[a-z0-9]{1,5}$/i, '').
 const codeOf = (error: unknown) => String((error as { code?: unknown })?.code ?? (error as Error)?.message ?? 'ERROR').slice(0, 60);
 const detailsOf = (error: unknown) => (error as { details?: Record<string, unknown> })?.details ?? {};
 
+/** Tras importar con `import_v1` (que no sabe del pago): el pago que dice el documento, si lo dice (FB_2026_027). */
+async function applyReadPayment(deps: Pick<DriveTickDeps, 'rows' | 'commit'>, invoiceId: string, payment: ReadPayment | null | undefined): Promise<void> {
+  if (!payment) return;
+  const invoice = (await deps.rows()).invoices.find((i) => i.id === invoiceId);
+  const fields = invoice ? readPaymentFields(payment, invoice.invoice_date, invoice) : null;
+  if (!invoice || !fields) return;
+  await deps.commit(`drive-payment-${invoiceId}-${invoice.revision}`, [{ op: 'update', table: 'invoices.invoices', id: invoiceId, expectedRevision: invoice.revision, fields }]).catch(() => undefined);
+}
+
 export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult> {
   const startedAt = new Date().toISOString();
   const result: DriveTickResult = { outcome: 'ok', listed: 0, imported: 0, read: 0, duplicates: 0, errors: 0, api_calls: 0, more: false, detail: null };
@@ -356,6 +365,7 @@ export async function runDriveTick(deps: DriveTickDeps): Promise<DriveTickResult
         try {
           await deps.commit(`drive-${file.id}`, [...base, { op: 'call', procedure: 'invoices.import_v1', args: importArgs }]);
           readOk = true;
+          await applyReadPayment(deps, invoiceId, extraction.found.payment);
         } catch (error) {
           const code = codeOf(error);
           if (code === 'DUPLICATE_INVOICE' || code === 'DUPLICATE_IMPORT') { await duplicate(String(detailsOf(error).invoice_id ?? '') || null, 'Ya está importada.', sha); continue; }
@@ -481,6 +491,7 @@ export async function rereadDriveDrafts(deps: Pick<DriveTickDeps, 'rows' | 'comm
       uuid: () => `${invoice.id.slice(0, 24)}${(++n).toString(16).padStart(12, '0')}` });
     try {
       await deps.commit(`drive-reread-${invoice.id}-${documentSha.slice(0, 12)}`, [{ op: 'call', procedure: 'invoices.import_v1', args }]);
+      await applyReadPayment(deps, invoice.id, extraction.found.payment);
       await deps.saveText(file.file_id, items).catch(() => undefined);
       result.read += 1;
       const total = document.document_totals.total.toFixed(2).replace('.', ',');

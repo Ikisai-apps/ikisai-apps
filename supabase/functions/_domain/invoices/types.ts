@@ -41,6 +41,10 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const PAYMENT_METHODS = ['transferencia', 'tarjeta', 'efectivo', 'bizum', 'domiciliacion', 'otro'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+/** De dónde sale el pago (0233): leído del documento, dado por hecho con la fecha de la factura o dicho por una persona. */
+export const PAYMENT_SOURCES = ['leido', 'sin_confirmar', 'confirmado'] as const;
+export type PaymentSource = (typeof PAYMENT_SOURCES)[number];
+
 export const INVOICE_SOURCES = ['manual', 'import_v1'] as const;
 export type InvoiceSource = (typeof INVOICE_SOURCES)[number];
 
@@ -117,6 +121,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
     'calculated_base', 'calculated_vat', 'calculated_other', 'calculated_withholding', 'calculated_total', 'totals_delta',
     'source', 'import_sha256', 'import_meta', 'notes', 'drive_file_id', 'drive_url',
     'invoice_kind', 'rectifies_invoice_id', 'rectifies_number', 'rectification_without_original', 'declared_period', 'delivered_elsewhere',
+    'payment_source',
   ],
   'invoices.invoice_files': ['invoice_id', 'file_id', 'original_filename', 'page_order', 'kind', 'mime_type', 'size_bytes', 'sha256'],
   'invoices.invoice_lines': [
@@ -188,6 +193,8 @@ export interface InvoiceRow extends SyncedColumns {
   payment_status: PaymentStatus;
   payment_method: PaymentMethod | null;
   paid_at: string | null;
+  /** 0233: null en las anteriores; el servidor pone `sin_confirmar` a la que llega con fecha y sin nada dicho del pago. */
+  payment_source?: PaymentSource | null;
   source_total: number | null;
   calculated_base: number;
   calculated_vat: number;
