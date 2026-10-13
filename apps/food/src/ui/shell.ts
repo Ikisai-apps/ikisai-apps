@@ -170,10 +170,12 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     // `#/menus/<id>` es la ficha de un menú y `#/menus/<id>/compra` una de sus pestañas; el resto son rutas fijas.
     const [, menuId, menuTab] = hash.match(/^#\/menus\/([0-9a-f-]{36})(?:\/(compra|preparacion|organizador|cierre))?$/i) ?? [];
-    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : ROUTES[hash] ?? ROUTES['#/']!;
+    // Las rutas fijas admiten parámetros tras «?» (p. ej. `#/recetario?receta=<id>` abre esa receta).
+    const path = hash.split('?')[0]!;
+    const entry = menuId ? { title: 'Menú', screen: 'food.menu', mount: mountMenu(menuId, (menuTab as MenuTab | undefined) ?? 'menu') } : ROUTES[path] ?? ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(menuId ? '#/menus' : hash);
+    shell.setRoute(menuId ? '#/menus' : path);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     screen = { id: entry.screen, label: entry.title };

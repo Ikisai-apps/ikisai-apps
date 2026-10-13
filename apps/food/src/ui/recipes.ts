@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  PREP_UNITS, formatMethodSteps, ingredientKey, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
+  PREP_UNITS, formatMethodSteps, ingredientKey, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -41,6 +41,9 @@ function tagLine(recipe: RecipeRow): string {
   return [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ');
 }
 
+/** Valor del filtro Estado para los platos rápidos por completar (no es un estado de la receta). */
+const QUICK_FILTER = 'rapida';
+
 /** Recetario visual: tarjetas con foto, ficha en lectura y edición por bloques (docs/food/API.md §9). */
 export const mountRecipes: ViewMount = ({ main, client }) => {
   let recipes: RecipeRow[] = [];
@@ -52,6 +55,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
   const filter = { query: '', category: '', diet: '', allergen: '', status: '' };
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
+  /** Plato rápido (O3a) al que aún le faltan los alérgenos revisados o algún ingrediente. */
+  const quickPending = (recipe: RecipeRow) => isQuickPending(recipe, lines);
 
   const select = (id: string, label: string, options: Array<[string, string]>, key: keyof typeof filter, mark: Mark) => {
     const node = el('select', { ...mark, id, class: 'compact', 'aria-label': label, onchange: () => { filter[key] = node.value; paint(); } },
@@ -77,7 +82,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       select('filterCategory', 'Categoría', RECIPE_CATEGORIES.map((c) => [c, CATEGORY_LABELS[c]]), 'category', { 'data-feedback-id': 'food.recetario.filtros.categoria', 'data-feedback-label': 'Filtrar por categoría' }),
       select('filterDiet', 'Dieta', DIET_TAGS.map((d) => [d, DIET_LABELS[d]]), 'diet', { 'data-feedback-id': 'food.recetario.filtros.dieta', 'data-feedback-label': 'Filtrar por dieta' }),
       select('filterAllergen', 'Alérgeno', ALLERGENS.map((a) => [a, ALLERGEN_LABELS[a]]), 'allergen', { 'data-feedback-id': 'food.recetario.filtros.alergeno', 'data-feedback-label': 'Filtrar por alérgeno' }),
-      select('filterStatus', 'Estado', RECIPE_STATUSES.map((s) => [s, RECIPE_STATUS_LABELS[s]]), 'status', { 'data-feedback-id': 'food.recetario.filtros.estado', 'data-feedback-label': 'Filtrar por estado' }),
+      select('filterStatus', 'Estado', [...RECIPE_STATUSES.map((s): [string, string] => [s, RECIPE_STATUS_LABELS[s]]), [QUICK_FILTER, 'Rápidas por completar']], 'status', { 'data-feedback-id': 'food.recetario.filtros.estado', 'data-feedback-label': 'Filtrar por estado' }),
     ),
     host,
     trash,
@@ -89,6 +94,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     if (filter.category && recipe.category !== filter.category) return false;
     if (filter.diet && !recipe.diet_tags.includes(filter.diet as DietTag)) return false;
     if (filter.allergen && !recipe.allergens.includes(filter.allergen as Allergen)) return false;
+    if (filter.status === QUICK_FILTER) return recipe.status !== 'archivada' && quickPending(recipe);
     if (filter.status ? recipe.status !== filter.status : recipe.status === 'archivada') return false; // las archivadas solo salen si se piden
     return true;
   }
@@ -98,6 +104,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
     const chips = [
       recipe.status !== 'validada' ? el('span', { class: recipe.status === 'archivada' ? 'chip trash' : 'chip' }, RECIPE_STATUS_LABELS[recipe.status]) : null,
+      quickPending(recipe) ? el('span', { class: 'chip warn quickchip' }, 'Rápida · por completar') : null,
       recipe._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null,
     ];
     return el('li', null,
@@ -132,7 +139,15 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       client.list(T.recipeEquipment, { includeDeleted: true }) as Promise<NeedRow[]>,
     ]);
     paint();
+    // `#/recetario?receta=<id>` (p. ej. desde «Completar en el Recetario» de un menú) abre esa receta una vez.
+    const wanted = new URLSearchParams(location.hash.split('?')[1] ?? '').get('receta');
+    if (wanted && !openedFromLink && !sheet) {
+      openedFromLink = true;
+      const recipe = recipes.find((r) => r.id === wanted && !r.deleted_at);
+      if (recipe) openCard(recipe);
+    }
   }
+  let openedFromLink = false;
 
   const linesOf = (recipeId: string) => lines.filter((l) => l.recipe_id === recipeId && !l.deleted_at).sort((a, b) => Number(a.position) - Number(b.position));
   const needsOf = (recipeId: string) => needs.filter((n) => n.recipe_id === recipeId && !n.deleted_at);
@@ -200,6 +215,9 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const recipeNeeds = needsOf(recipe.id);
 
     const body = el('div', { 'data-feedback-id': 'food.recetario.ficha', 'data-feedback-label': 'Ficha de receta', class: 'ficha' },
+      quickPending(recipe) ? el('div', { 'data-feedback-id': 'food.recetario.ficha.rapida', 'data-feedback-label': 'Plato rápido por completar', class: 'banner warn notice', id: 'quickNotice', role: 'status' },
+        el('div', null, el('strong', null, 'Plato rápido.'), ' Complétalo (alérgenos e ingredientes) para usarlo en un retiro.'),
+        canWrite() ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.recetario.ficha.completar', 'data-feedback-label': 'Completar plato rápido', class: 'ghost', type: 'button', id: 'completeQuick', onclick: () => openEditor(recipe) }, 'Completar')) : null) : null,
       recipe.photo_file_id ? el('div', { 'data-feedback-id': 'food.recetario.ficha.foto', 'data-feedback-label': 'Foto de la receta', class: 'ficha-photo' }, img) : null,
       // El nombre público solo se repite si es distinto del interno.
       (recipe.public_name && recipe.public_name.trim() !== recipe.name.trim()) || recipe.public_description

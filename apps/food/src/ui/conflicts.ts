@@ -33,6 +33,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: 'Nombre', public_name: 'Nombre público', public_description: 'Descripción pública', category: 'Categoría', base_servings: 'Raciones base',
   method: 'Elaboración', method_steps: 'Elaboración (pasos)', conservation: 'Conservación', freezable: 'Congelable', regeneration: 'Regeneración', service_notes: 'Notas de servicio',
   prep_minutes: 'Antelación', status: 'Estado', diet_tags: 'Dietas', allergens: 'Alérgenos', allergens_checked: 'Alérgenos revisados',
+  quick: 'Plato rápido', kind: 'Tipo de menú', house_servings: 'Personas en casa',
   photo_file_id: 'Foto', photo_thumb_file_id: 'Miniatura', preferred_unit: 'Unidad preferida', preferred_supplier: 'Proveedor habitual', active: 'Activo',
   quantity: 'Cantidad', unit: 'Unidad', notes: 'Notas', capacity: 'Capacidad', location: 'Ubicación', quantity_required: 'Unidades necesarias',
   servings: 'Raciones', position: 'Orden', service_date: 'Día', service_type: 'Servicio', service_time: 'Hora', closing_notes: 'Cierre de cocina',

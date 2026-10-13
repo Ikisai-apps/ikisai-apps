@@ -46,7 +46,9 @@ export interface QuickDishInput {
 export function quickDishOperations(input: QuickDishInput): Array<{ op: 'insert'; table: string; id: string; fields: Record<string, unknown> }> {
   return [
     { op: 'insert', table: 'food.recipes', id: input.recipeId, fields: {
-      name: input.name.trim(), category: quickRecipeCategory(input.serviceType), base_servings: input.servings, quick: true } },
+      name: input.name.trim(), category: quickRecipeCategory(input.serviceType), base_servings: input.servings, quick: true,
+      // Explícitos, como los pondría la base de datos: el espejo local pinta la fila antes de que llegue la del servidor.
+      status: 'en_prueba', diet_tags: [], allergens: [], allergens_checked: false } },
     { op: 'insert', table: 'food.menu_items', id: input.itemId, fields: {
       service_id: input.serviceId, recipe_id: input.recipeId, servings: input.servings, position: input.position } },
   ];
