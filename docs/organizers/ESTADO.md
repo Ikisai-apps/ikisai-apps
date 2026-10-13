@@ -56,7 +56,10 @@
 
 - 2026-10-08 · Playwright: un solo `vite build` aunque haya varios workers (`buildOrganizersApp()` en `tests/organizers/server.ts`, con huella en `dist/.e2e-stamp` y cerrojo entre procesos, como Tasks); solo se recompila si cambian las fuentes.
 
+- 2026-10-13 · Supletorias por retiro (tanda de Booking): caracterización de Alojamiento y Presupuesto antes del cambio (`tests/organizers/lodging.test.ts` y un recorrido en `portal.spec.ts`); capturas y bocetos en `coordinacion/organizers/capturas/2026-10-13-supletorias`. `freePort` desde el test-kit.
+
 ## Pendiente
+- Supletorias: programar el contador y el reparto cuando Booking publique `portal_extra_beds`.
 
 - Fase 1: cerrada salvo la cuenta permanente (Workspace). Icono propio de la PWA (de UI) desde el 8-10-2026.
 - Fase 2: cerrada (B14 hecha en #310: tipo de reserva, montaje, apoyo técnico y notas en el diseño).

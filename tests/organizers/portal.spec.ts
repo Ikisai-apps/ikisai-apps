@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
-import { freePort } from '../food/helpers.ts';
+import { freePort } from '../../packages/test-kit/src/net.ts';
 import { buildOrganizersApp, ORGANIZERS_VITE_CONFIG, startOrganizersServer, type OrganizersTestServer } from './server.ts';
 import { portalHelpRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 
@@ -538,4 +538,39 @@ test('organizers · experiencia (fases 4 y 5): programa por días, menú aún si
   const popup = context.waitForEvent('page');
   await page.locator('#expPreviewOpen').click();
   await expect.poll(async () => (await popup).url()).toMatch(/^https:\/\/guests\.ikisai\.com\/i\//);
+});
+
+test('organizers · caracterización antes de las supletorias: Alojamiento con camas fijas y reparto; Presupuesto sin supletorias', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con supletorias', confirm: true });
+  const room = await api.room(reservation, { name: 'Hab 1', beds: 2, extra: 2, enSuite: true });
+  await api.seedRates();
+  await api.sendProposal(reservation, 20);
+  const link = await api.organizerLink([reservation], 'supletorias-ui@example.invalid', 'Sara');
+
+  // Un asistente para repartir, dado de alta con una sesión propia del mismo enlace.
+  const post = async (path: string, body: unknown, bearer?: string) => (await fetch(`${api.url}/api/v1${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) })).json();
+  const session = await post('/auth/link', { token: link });
+  const guest = crypto.randomUUID();
+  await post('/invoke/booking.portal_add_guest', { reservation_id: reservation, guest_id: guest, fields: { first_name: 'Ana' }, declaration: true, declaration_version: 'org-v1' }, session.token);
+  await enter(page, link);
+
+  // Alojamiento: la habitación con sus dos camas fijas; ninguna supletoria.
+  await page.locator('#tab-experiencia').click();
+  await page.locator('#expnav-alojamiento').click();
+  const hab = page.locator(`.orgroom[data-space="${room.spaceId}"]`);
+  await expect(hab).toContainText('Hab 1');
+  await expect(hab.locator('.orgbed')).toHaveCount(2);
+  await expect(hab).not.toContainText('Supletoria');
+
+  // Reparto: la cama 1 para Ana.
+  await hab.locator(`.orgbed[data-bed="${room.beds[0]}"]`).click();
+  await page.locator('#bed-guest').selectOption(guest);
+  await page.locator('#bed-save').click();
+  await expect(hab.locator(`.orgbed[data-bed="${room.beds[0]}"]`)).toContainText('Ana');
+
+  // Presupuesto: solo la línea del personal.
+  await page.locator('#tab-propuesta').click();
+  await expect(page.locator('#proposal-1 .orgquote')).toContainText('Estancia con pensión completa');
+  await expect(page.locator('#proposal-1 .orgquote')).not.toContainText(/supletori/i);
 });
