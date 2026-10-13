@@ -150,3 +150,20 @@ test('espacios · el editor cambia datos y orden; crear, mover y archivar es del
   ]);
   assert.equal(garaje.status, 200, JSON.stringify(garaje.data));
 });
+
+test('camas · plazas fijas y supletorias, sofá cama en una sala; solo el owner las crea', async () => {
+  const a1 = await altura(1);
+  const salas = uuid(); const multiusos = uuid(); const hab = uuid();
+  const ok = await commit([
+    { op: 'insert', table: SPACES, id: salas, fields: { parent_id: a1, kind: 'edificio', name: 'Salas camas' } },
+    { op: 'insert', table: SPACES, id: multiusos, fields: { parent_id: salas, kind: 'sala', name: 'Multiusos' } },
+    { op: 'insert', table: SPACES, id: uuid(), fields: { parent_id: multiusos, kind: 'cama', name: 'Sofá 1', attributes: { bed_kind: 'sofa_cama', capacity: 0, extra_capacity: 1 } } },
+    { op: 'insert', table: SPACES, id: hab, fields: { parent_id: salas, kind: 'habitacion', name: 'Hab 4' } },
+    { op: 'insert', table: SPACES, id: uuid(), fields: { parent_id: hab, kind: 'cama', name: 'Litera 1', attributes: { bed_kind: 'litera', capacity: 1, extra_capacity: 1 } } },
+  ]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const bad = await commit([{ op: 'insert', table: SPACES, id: uuid(), fields: { parent_id: hab, kind: 'cama', name: 'Litera X', attributes: { extra_capacity: -1 } } }]);
+  assert.equal(bad.data?.error?.code, 'INVALID_SPACE_ATTRIBUTE');
+  const editor = await commit([{ op: 'insert', table: SPACES, id: uuid(), fields: { parent_id: hab, kind: 'cama', name: 'Litera 2' } }], app.tokens.editor);
+  assert.equal(editor.data?.error?.code, 'FORBIDDEN');
+});
