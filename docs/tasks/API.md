@@ -1511,7 +1511,18 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
 - **2a (hecha):** base de la interfaz, sin nada visible.
   - `legacy.ts`: `spaces` en la tarea y `ownSpaces` en el proyecto, solo cuando hay alguno; sin el campo, `decompose` no los toca.
   - `core.ts`: segundo `sync-client` de Recursos (`sessionFrom`), con `spaces` y `zoneSource()`.
-- **2b:** chips «Albergue › Hab 3», faceta en árbol con lo de dentro, agrupar, ficha con `createSpacePicker`, lote, pantalla «Espacios» (`createSpaceTree`) y copia portable, todo con el kit 0.32.0 y solo con `zone_source = 'spaces'`.
+- **2b (hecha):** la interfaz en modo espacios (`apps/tasks/public/spaces-ui.js`, kit 0.32.0). Solo actúa con `zone_source = 'spaces'`.
+  - **Chips:** «Albergue › Hab 3», una por espacio, en el sitio de la zona y con su color. Salen en la fila, el tablero y la tarjeta del proyecto.
+  - **Filtro:** clave `_space` con lo de dentro (`spaceDescendants`) y los tres estados. Lo excluido va en `_exclude`, como las vistas que reescribe la ida. La faceta y la hoja de filtros muestran el árbol de los espacios usados.
+  - **Buscar:** el nombre del espacio encuentra sus tareas y proyectos.
+  - **Agrupar:** `groupBy = '_space'`, cada tarea en su espacio más hondo.
+  - **Fichas:** `createSpacePicker` con los seis más usados, en la tarea y en el proyecto.
+  - **Lote:** botón «Espacio», que se añade a lo que ya tengan; uno más concreto sustituye al de encima.
+  - **Herencia:** las tareas nuevas creadas desde la interfaz heredan el espacio del proyecto.
+  - **Pantalla «Espacios»:** `createSpaceTree` en el menú «Organización».
+  - **Texto legible:** lleva «Espacio:».
+  - La caracterización se pasa también en este modo (`tests/tasks/zonas-espacios.spec.ts`).
+- **2c:** la copia portable y el CSV con espacios (`import_rows` de SQL solo admite hoy sus diez tablas).
 - **3:** vista previa y botón «Pasar las zonas a espacios».
 
 **Arreglo tras la vista previa real (migración `0323`):** cada zona cuenta todos sus usos, no solo aquellos en los que es la más honda, y dice en `withoutSpace` cuántas tareas y proyectos se quedarían sin ningún espacio (el total va en `counts.withoutSpace`). Una zona sin espacio que no deja a nadie sin espacio, como «Exteriores» usada siempre con una hija, sale en `removed` con `reason: 'covered'`, y la ida la quita sola. Las marcadas por la propietaria salen con `'marked'`. Solo es dudosa, y bloquea la ida, la que deja a alguien sin espacio.

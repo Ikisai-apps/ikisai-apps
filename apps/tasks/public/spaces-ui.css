@@ -1,0 +1,4 @@
+/* R2 · espacios (spaces-ui.js): la faceta y la hoja de filtros muestran el árbol, una opción por línea. */
+.spacefacet{display:flex;flex-direction:column;align-items:flex-start}
+.spacefacet .filterchip{max-width:100%}
+.spacefield .small{margin-top:6px}
