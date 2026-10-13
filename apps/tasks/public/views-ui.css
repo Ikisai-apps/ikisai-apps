@@ -375,4 +375,10 @@ html{overflow-x:hidden}
 .generalnew>*{flex:none}
 .generalgroups{display:grid;gap:8px;margin:12px 0}
 .generalgroup.child{padding-left:18px}
+/* Filtro de etiqueta «no la tiene» (FB_2026_042): tachada y en tono apagado. */
+.filterchip.excluded{text-decoration:line-through;text-decoration-thickness:2px;opacity:.75;border-style:dashed}
+.activechip.excludedchip{text-decoration:line-through}
 
+/* El desplegable de una faceta, por encima de la lista (FB_2026_037). */
+.facetbar{position:relative;z-index:35}
+.facet.open{z-index:40}
