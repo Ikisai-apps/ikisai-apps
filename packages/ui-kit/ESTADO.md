@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.30.0: espacios (R1): `createSpaceTree` (árbol con arrastre y reglas, ficha, duplicar, archivar) y `createSpacePicker` (más usados a un toque, búsqueda con la ruta), contra una `SpaceSource` inyectable.
 - v0.29.0: `createLevelStar` (estrella de nivel por pasos, como la prioridad de Tasks) para las capacidades de Central.
 - v0.28.1: conflicto de un `call` sin tabla («Un cambio pendiente»); humo de Food estable (pulsación larga tras la animación de la hoja).
 - v0.28.0: tarjeta de conflicto con decisiones arriba («Quedarme con lo del servidor», «Reintentar con lo mío», «Ver diferencias»), título legible (`rowName`, `tableLabels`, nunca el id) y quién lo cambió (`currentUserId`, `conflictIntro`).

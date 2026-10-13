@@ -1,5 +1,48 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.30.0 · 13 de octubre de 2026
+
+**Espacios comunes (fase R1 de RECURSOS.md).** Lo que se ve en Tasks y Booking lo enseñan sus equipos en R2, con las capturas de `coordinacion/ui/r1-espacios/`.
+
+- **`createSpaceTree({ source, kinds, permissions: { edit, structure }, filter, feedbackId, container, storageKey })`**
+  - **Niveles:** Altura › Edificio o Exterior › Espacio › Subespacio.
+  - **Ver:** desplegado hasta los edificios por defecto (se recuerda con `storageKey`). Búsqueda por palabras en el nombre, el nombre público, el código o la ruta. Los datos del tipo salen en la fila, y la descripción de cada altura va de subtítulo.
+  - **Migración:** grupo «Sin altura» para lo que aún no está colocado. Se pueden ver los archivados.
+  - **Editar** (`edit`): ficha con nombre, nombre público, código, notas y datos del tipo. El nombre avisa si ya hay uno igual al lado (campo con sugerencias de la 0.27).
+  - **Estructura** (`structure`):
+    - «+» para crear dentro, con los tipos válidos;
+    - asa de 44×44 para arrastrar. Encima o debajo = al lado; en el centro = dentro. En el borde de un padre posible también entra dentro. Lo no válido se marca en rojo con su motivo y no se mueve;
+    - subir y bajar con botones o con las flechas en el asa;
+    - «Mover a…» con el selector limitado a padres válidos;
+    - «Duplicar» con lo de dentro (`createMany`);
+    - «Archivar con todo lo de dentro», con el recuento. Si el servidor se niega (reservas futuras, stock o tareas abiertas), se enseña su motivo tal cual;
+    - «Recuperar».
+- **`createSpacePicker({ source | rows, multiple, value, onChange, kindFilter, filter, quick, recentKey, feedbackId })`**
+  - **A un toque:** los más usados (`quick`, los da la app) o, si no, los recientes del navegador.
+  - **Búsqueda:** sin mayúsculas ni tildes, por palabras y también por la ruta. Primero los nombres que empiezan por lo buscado. Cada resultado lleva su ruta y su tipo. Teclado: flechas, Intro y Escape.
+  - **Elegidos:** chips con la ruta corta («Albergue › Hab 3») y «×».
+  - **Filtro:** por tipos o con una función (p. ej. solo lo reservable).
+- **Modelo y reglas** (`src/spaces/model.ts`):
+  - **Forma de la fila:** `SpaceRow` (`{ id, parentId, kind, name, publicName, code, position, active, notes, attributes }`).
+  - **Tipos:** `DEFAULT_SPACE_KINDS` (§11.1, con los padres y los datos de cada tipo) mientras `resources-api` no dé `space_kinds`.
+  - **Reglas** (`canPlace`): el tipo fija el nivel; una altura solo en la raíz; una cama solo en una habitación; una ubicación en almacén, cocina, instalación, comedor u otro; sin ciclos; edificio o exterior en la raíz solo durante la migración.
+  - **Ayudas:** `spacePath`, `spaceDescendants` (para filtrar con lo de dentro), `spaceMatches` y `nextAltura`.
+  - **Fuente de datos** (`SpaceSource`): `{ list, subscribe, create, createMany, update, archive, restore }`.
+  - **Demo:** `createMemorySpaceSource` y `demoSpaces` (las cinco alturas del usuario con su descripción).
+- **Fuente real: `createSyncSpaceSource(resources)`.** Es un adaptador sobre el `sync-client` del módulo `resources` (docs/resources/API.md, #473):
+  ```ts
+  const resources = createSyncSpaceSource(createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: client, clearOnLogout: true }));
+  createSpaceTree({ source: resources, permissions: { edit: role !== 'reader', structure: role === 'owner' } });
+  ```
+  - **Lectura:** lee el espejo local (sin red) y marca las filas sin confirmar.
+  - **Escritura:** cada operación es un lote con la revisión de la fila. Archivar o recuperar con todo lo de dentro va junto, como exige `ORPHAN_CHILD`.
+  - **Tipos:** salen de `resources.space_kinds` (`listKinds` y `subscribeKinds`; el árbol y el selector los usan si la app no fija `kinds`).
+  - **Rechazos:** si el servidor rechaza un lote de esta fuente (`FORBIDDEN`, `INVALID_SPACE_PARENT`…), se enseña su mensaje tal cual, por `onError` o con un aviso.
+  - El edificio admite también `bookable`, `capacity` y `accessible`, como el servidor.
+- Marcas de feedback de todos los controles (`SPACE_TREE_MARKS`, `SPACE_PICKER_MARKS`), también en el catálogo. En español e inglés.
+- **Nada existente cambia:** solo se añaden archivos, estilos `.space-*` y textos.
+- Prueba `v37` (20 pruebas, con `@smoke`): reglas, búsqueda, arrastre al lado, dentro y no válido, flechas, crear, editar, duplicar, «Mover a…», archivar y recuperar, la negativa del servidor y el selector.
+
 ## 0.29.0 · 13 de octubre de 2026
 
 - **Estrella de nivel** (petición de Central, para el nivel de las capacidades; Tasks la adoptará en P2 para la prioridad):
