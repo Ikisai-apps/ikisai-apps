@@ -1,7 +1,7 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { createApp, createSupabase, fail, isFault, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
-  eventSnapshot, FOOD_PROCEDURES, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
+  eventSnapshot, FOOD_PROCEDURES, isHouseMenu, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
   type AcknowledgedWarning, type FoodEvent, type Menu, type MenuGraph,
 } from '../_domain/food/mod.ts';
 
@@ -65,10 +65,10 @@ async function checkRecipePhotos(supabase: Supabase, operations: Operation[], ct
   }
 }
 
-/** Un menú nace contra un evento que existe y contra una revisión que el evento ya ha alcanzado. */
+/** Un menú de retiro nace contra un evento que existe y contra una revisión que el evento ya ha alcanzado. El de casa no tiene evento. */
 async function checkNewMenus(events: EventReader, operations: Operation[], ctx: RequestContext): Promise<void> {
   for (const [index, op] of operations.entries()) {
-    if (op.op !== 'insert' || op.table !== 'food.menus' || !op.fields) continue;
+    if (op.op !== 'insert' || op.table !== 'food.menus' || !op.fields || op.fields.kind === 'casa') continue;
     const event = await events.get(ctx, String(op.fields.event_id));
     if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: op.fields.event_id });
     if ((op.fields.source_event_revision as number) > event.event_revision) {
@@ -90,6 +90,7 @@ async function checkMenuCalls(supabase: Supabase, events: EventReader, operation
       p_app: ctx.app, p_actor: ctx.user.id, p_name: 'food.menu_graph', p_args: { menu_id: args.menu_id },
     });
     if (!graph.menu) fail(422, 'MENU_NOT_FOUND', 'El menú no existe o está en la papelera.', { index, menu_id: args.menu_id });
+    if (isHouseMenu(graph.menu) || !graph.menu.event_id) fail(422, 'HOUSE_MENU', 'El menú de casa no tiene evento: no se revisa ni se valida.', { index, menu_id: args.menu_id, action: 'status' });
     const event = await events.get(ctx, graph.menu.event_id);
     if (!event) fail(422, 'EVENT_NOT_FOUND', 'El evento no existe o ya no está disponible para cocina.', { index, event_id: graph.menu.event_id });
     if (args.event_revision !== event.event_revision || stable(args.event_snapshot) !== stable(eventSnapshot(event))) {

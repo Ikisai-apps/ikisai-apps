@@ -4,7 +4,7 @@
  * Todo lo que PostgreSQL rechazaría con un check o un error de conversión se rechaza aquí con el campo en `details`.
  */
 import { ALLERGENS, DIET_TAGS, EQUIPMENT_STATUSES, RECIPE_CATEGORIES, RECIPE_STATUSES } from './catalog.ts';
-import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
+import { MENU_COMMENT_KINDS, MENU_COMMENT_STATUSES, MENU_KINDS, MENU_STATUSES, SERVICE_TYPES } from './menus.ts';
 import { SHOPPING_ITEM_STATUSES, SHOPPING_LIST_STATUSES } from './planning.ts';
 import { invalidCallArgument } from './procedures.ts';
 import { methodStepsProblem, PREP_MINUTES_MAX } from './steps.ts';
@@ -58,6 +58,7 @@ const freeText: FieldSpec = { kind: 'text', max: LONG_TEXT, nullable: true };
 export const TABLE_SPECS: Record<string, TableSpec> = {
   'food.recipes': {
     required: ['name', 'category', 'base_servings'],
+    insertOnly: ['quick'],
     fields: {
       name: { kind: 'text', max: 160, required: true },
       public_name: { kind: 'text', max: 160, nullable: true },
@@ -77,6 +78,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       allergens_checked: { kind: 'boolean' },
       photo_file_id: { kind: 'uuid', nullable: true },
       photo_thumb_file_id: { kind: 'uuid', nullable: true },
+      quick: { kind: 'boolean' },
     },
   },
   'food.ingredients': {
@@ -123,10 +125,12 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
     },
   },
   'food.menus': {
-    required: ['event_id', 'source_event_revision'],
-    insertOnly: ['event_id', 'source_event_revision', 'source_event_snapshot'],
+    // event_id y source_event_revision son obligatorios solo en un retiro (abajo, en validateOperation).
+    required: [],
+    insertOnly: ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot'],
     reserved: ['status', 'validated_at', 'validated_by', 'validated_warnings', 'preparation_generated_at', 'preparation_source_revisions'],
     fields: {
+      kind: { kind: 'enum', values: MENU_KINDS },
       event_id: { kind: 'uuid' },
       source_event_revision: { kind: 'number', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true },
       source_event_snapshot: { kind: 'json', nullable: true },
@@ -139,6 +143,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       notes: freeText,
       closing_notes: freeText,
       organizer_shared: { kind: 'boolean' },
+      house_servings: { kind: 'number', min: 0, exclusiveMin: true, max: SERVINGS_MAX, nullable: true },
     },
   },
   // Los comentarios del organizador los crea solo la acción de portal (food.portal_menu_comment); en Food se marcan
@@ -269,6 +274,21 @@ function checkField(field: string, value: unknown, spec: FieldSpec): string | nu
   }
 }
 
+/** Un retiro nace con su evento y su revisión; el menú de casa, sin nada del evento y con raciones propias. */
+function menuKindProblem(fields: Record<string, unknown>): { field: string; message: string } | null {
+  if ((fields.kind ?? 'retiro') === 'retiro') {
+    for (const field of ['event_id', 'source_event_revision']) {
+      if (fields[field] === undefined) return { field, message: `Falta el campo ${field}.` };
+    }
+    if (fields.house_servings !== undefined && fields.house_servings !== null) return { field: 'house_servings', message: 'Las personas en casa solo van en el menú de casa.' };
+    return null;
+  }
+  for (const field of ['event_id', 'source_event_revision', 'source_event_snapshot']) {
+    if (fields[field] !== undefined && fields[field] !== null) return { field, message: 'El menú de casa no tiene evento.' };
+  }
+  return null;
+}
+
 /** Valida una operación de fila sobre una tabla de Food. Devuelve el primer problema o `null`. */
 export function validateOperation(op: DomainOperation): Issue | null {
   if (op.op === 'call') {
@@ -296,6 +316,10 @@ export function validateOperation(op: DomainOperation): Issue | null {
     for (const field of spec.insertOnly ?? []) {
       if (field in fields) return issue('IMMUTABLE_FIELD', `El campo ${field} no se puede cambiar.`, { table: op.table, field });
     }
+  }
+  if (op.table === 'food.menus' && op.op === 'insert') {
+    const problem = menuKindProblem(fields);
+    if (problem) return issue('INVALID_FIELDS', problem.message, { table: op.table, field: problem.field });
   }
   if (op.table === 'food.recipes' && 'method_steps' in fields) {
     const problem = methodStepsProblem(fields.method_steps);
