@@ -392,4 +392,19 @@ html{overflow-x:hidden}
 .childtext{flex:1;text-align:left;border:0;background:transparent;padding:6px 0;color:inherit;min-width:0}
 .childadd input{flex:1;min-width:0}
 .stepinfo{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+/* Asa de arrastrar más fácil de pulsar con el dedo (incidencia del usuario, 13-10-2026): zona táctil de al menos 44×44 en
+   tareas, proyectos y áreas, sin que crezca la fila (la zona se amplía con ::after hacia fuera, no hacia la casilla), y el
+   icono más alto. */
+.draghandle{position:relative}
+.draghandle::before{width:18px!important;height:26px!important}
+.task .draghandle{width:34px;min-width:34px;height:44px}
+.task .draghandle::after{content:'';position:absolute;top:0;bottom:0;left:-10px;right:0}
+.projectsection .draghandle{width:32px;min-width:32px;height:32px}
+.projectsection .draghandle::after{content:'';position:absolute;inset:-6px -6px -6px -6px}
+.area-row .draghandle{width:44px;height:44px}
+.project [data-project-drag],[data-project-drag]{width:32px;min-width:32px;height:32px}
+[data-project-drag]::after{content:'';position:absolute;inset:-6px -6px -6px -6px}
+/* Selección de varias: icono en la fila de facetas (como la lupa y el filtro). */
+.facettools .batchtoggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.task.longpress{background:var(--paper-2)}
 
