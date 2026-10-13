@@ -108,8 +108,9 @@ Un mismo ingrediente puede aparecer dos veces en una receta: no hay único sobre
 
 ```text
 food.menus
-  event_id                      uuid not null → booking.events(id)   on delete restrict, inmutable
-  source_event_revision         bigint not null   ≥ 1; revisión del evento contra la que se revisó el menú (§2.4)
+  kind                          text not null default 'retiro'   retiro | casa (§2.6), inmutable
+  event_id                      uuid → booking.events(id)   on delete restrict, inmutable; obligatorio en un retiro, nulo en casa
+  source_event_revision         bigint   ≥ 1; revisión del evento contra la que se revisó el menú (§2.4); obligatorio en un retiro, nulo en casa
   source_event_snapshot         jsonb             lo que se revisó: {guest_count, start_date, end_date, meal_plan, menu_style, restrictions[]}
   status                        text not null default 'borrador'     borrador | revisar | validado | cerrado   ®
   validated_at                  timestamptz   ®
@@ -120,8 +121,10 @@ food.menus
   notes                         text
   closing_notes                 text              cierre de cocina (canon §31): raciones reales, sobras, reposición, mejoras
   organizer_shared              boolean not null default false   cocina lo comparte con el organizador (§7.5)
-writable: event_id, source_event_revision, source_event_snapshot, notes, closing_notes, organizer_shared + reservadas.
-Único: event_id where deleted_at is null   (un menú por evento en V1)
+  house_servings                numeric(8,2)   > 0; solo en casa: personas en casa, raciones por defecto (§2.6)
+writable: kind, event_id, source_event_revision, source_event_snapshot, notes, closing_notes, organizer_shared, house_servings + reservadas.
+Único: event_id where deleted_at is null   (un menú por evento); kind where kind = 'casa' and deleted_at is null   (un menú de casa)
+Check: retiro ⇔ con event_id y source_event_revision; casa ⇔ sin nada del evento; house_servings solo en casa.
 
 food.menu_services
   menu_id       uuid not null → food.menus   on delete cascade, inmutable
@@ -155,6 +158,17 @@ Los crea solo food.portal_menu_comment; en Food solo cambian status y reply (lo 
 `source_event_revision` y `source_event_snapshot` se escriben con `insert` al crear el menú; después solo las cambian `food.acknowledge_event` y `food.validate_menu`.
 
 Las adaptaciones alimentarias son recetas propias y platos propios del servicio («Curry normal 16», «Curry adaptado 2»). No hay variantes.
+
+### 2.6 Menú de casa y plato rápido (O3a, 13 de octubre de 2026)
+
+`coordinacion/ampliacion/RECURSOS.md` §15.3, con las respuestas del usuario del 13-10-2026. Dominio en `_domain/food/house.ts`; migración `20261013_0194_food_house_menu.sql`.
+
+- **Menú de casa:** `menus.kind = 'casa'`, sin evento. Hay uno solo, con id fijo `HOUSE_MENU_ID` (`f00dca5a-0000-4000-8000-000000000001`), que la app crea la primera vez que alguien con permiso de escritura lo abre. Siempre está en `borrador`: no se revisa, no se valida, no se cierra ni se borra (`HOUSE_MENU`, 422, con `action: 'status' | 'delete'`; también `validate_menu` y `acknowledge_event` en la Edge). Servicios y platos son los de siempre (`menu_services`, `menu_items`). `house_servings` («Personas en casa») son las raciones por defecto de cada plato; con O2 se usarán las personas que Booking tenga en casa ese día, con este número como respaldo.
+- **Plato rápido:** una receta con `quick = true` creada con solo el nombre, en el mismo lote que el plato (`quickDishOperations`): categoría deducida del servicio (desayuno, merienda o picnic; si no, principal), raciones base = las del plato, en prueba y sin alérgenos revisados. `recipes.quick` se fija al crearla y no cambia (`IMMUTABLE_FIELD`).
+- **Por completar** = `quick` y le faltan los alérgenos revisados o al menos un ingrediente vivo (`food.recipe_quick_pending` en SQL, `isQuickPending` en el dominio). Se calcula siempre a partir de la receta y sus líneas en vez de apagar la marca desde un trigger: así no hay escrituras fuera de `core.commit` y todos los dispositivos ven lo mismo. Si alguien quita los alérgenos revisados o el último ingrediente, vuelve a estar por completar.
+- **Salvaguarda:** `food.guard_menu_item` rechaza con `QUICK_RECIPE_IN_RETREAT` (422, `recipe_id`, `menu_id`) un plato de un retiro cuya receta está por completar, al insertarlo, restaurarlo o cambiarle la receta. En casa entra siempre. Una receta normal en prueba sigue entrando en un retiro como antes (con su aviso al validar).
+- Indicadores (§7.4) y portales (§7.5) solo ven retiros: el menú de casa no tiene evento ni foto del evento.
+- **Pendiente:** O3b (compra y preparación de casa por un rango de fechas elegido al generarlas) y O3c (sugerencias de plato de los outsiders, `plato_casa`, cuando esté O1).
 
 ### 2.3 Compra, preparación y stock
 
