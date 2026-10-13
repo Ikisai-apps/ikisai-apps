@@ -12,7 +12,7 @@ import sys
 ZONE = 'ikisai.com'
 PROJECT_REF = 'ctytaorylbninfyupfsn'
 # Esquemas propios de cada app (los portales guests y organizers incluidos).
-ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers')
+ALL_SCHEMAS = ('core', 'tasks', 'invoices', 'booking', 'food', 'central', 'guests', 'organizers', 'resources')
 
 # Dominios adicionales que sirve el mismo proyecto Pages (mismo contenido, sin redirección). Los alias que solo
 # redirigen viven en Cloudflare (fase http_request_dynamic_redirect).

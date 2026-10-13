@@ -1,6 +1,8 @@
 # Core (compartido)
 *                                   @VGCif
 /supabase/migrations/*_core_*       @VGCif
+/supabase/migrations/*_resources_*  @VGCif
+/docs/resources/                   @VGCif
 /supabase/functions/_kit/           @VGCif
 /packages/sync-client/              @VGCif
 /packages/test-kit/                 @VGCif

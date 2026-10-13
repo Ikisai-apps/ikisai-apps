@@ -276,7 +276,14 @@ export class SyncClientImpl implements SyncClient {
   private readonly configuredTables: TableName[] | null;
   private readonly db: Database;
 
-  private sess: Session | null = null;
+  private ownSess: Session | null = null;
+  /** La sesión propia o, en un cliente secundario (`sessionFrom`), la del principal. */
+  private get sess(): Session | null {
+    return this.options.sessionFrom ? this.options.sessionFrom.session() : this.ownSess;
+  }
+  private set sess(value: Session | null) {
+    this.ownSess = value;
+  }
   private boot: Bootstrap | null = null;
   private cursor: number | null = null;
   private lastPullAt: string | null = null;
@@ -344,6 +351,8 @@ export class SyncClientImpl implements SyncClient {
     this.pullIntervalMs = options.pullIntervalMs ?? 30000;
     this.configuredTables = options.tables ? [...options.tables] : null;
     this.db = new Database(resolveIndexedDB(options.indexedDB), options.databaseName ?? `ikisai-${options.app}-v1`);
+    // Secundario: cuando el principal cierra sesión, este se cierra con él.
+    options.sessionFrom?.onSessionEnd((userId) => this.endBorrowedSession(userId));
     this.state = {
       network: this.hasNetwork() ? 'online' : 'offline',
       cursor: 0,
@@ -519,6 +528,7 @@ export class SyncClientImpl implements SyncClient {
   }
 
   private async setSession(session: Session | null): Promise<void> {
+    if (this.options.sessionFrom) return; // la sesión es del principal
     this.sess = session;
     await this.ensureReady();
     if (session) await this.saveMeta('session', session);
@@ -611,6 +621,7 @@ export class SyncClientImpl implements SyncClient {
   }
 
   async login(email: string, password: string): Promise<Session> {
+    this.assertOwnSession();
     await this.ensureReady();
     const res = await this.rawFetch(this.url('/auth/login'), {
       method: 'POST',
@@ -626,6 +637,7 @@ export class SyncClientImpl implements SyncClient {
   }
 
   async loginWithLink(token: string): Promise<Session> {
+    this.assertOwnSession();
     await this.ensureReady();
     const res = await this.rawFetch(this.url('/auth/link'), {
       method: 'POST',
@@ -646,6 +658,7 @@ export class SyncClientImpl implements SyncClient {
    */
   async trySso(): Promise<Session | null> {
     await this.ensureReady();
+    if (this.options.sessionFrom) return this.sess ? { ...this.sess } : null;
     if (this.sess || !this.hasNetwork()) return this.sess ? { ...this.sess } : null;
     try {
       const res = await this.rawFetch(this.url('/auth/sso'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', credentials: 'same-origin' });
@@ -662,7 +675,7 @@ export class SyncClientImpl implements SyncClient {
   async logout(): Promise<void> {
     await this.ensureReady();
     const endingUserId = (await this.db.get<MetaRecord<string>>(META_STORE, 'userId'))?.value ?? this.boot?.profile.userId ?? null;
-    if (this.sess && this.hasNetwork()) {
+    if (this.sess && this.hasNetwork() && !this.options.sessionFrom) {
       try {
         await this.api('/auth/logout', { method: 'POST' });
       } catch {
@@ -677,6 +690,32 @@ export class SyncClientImpl implements SyncClient {
     if (clear === true) await this.clearLocalData();
     else if (Array.isArray(clear) && clear.length > 0) await this.clearTables(clear);
     await this.emitSessionEnd(endingUserId);
+  }
+
+  /** Refresca la sesión ya mismo; los clientes secundarios lo piden a su principal. */
+  async refreshSessionNow(): Promise<boolean> {
+    await this.ensureReady();
+    try {
+      return await this.refreshSession();
+    } catch (error) {
+      if (isNetworkError(error)) throw error;
+      return false;
+    }
+  }
+
+  private assertOwnSession(): void {
+    if (this.options.sessionFrom) throw new Error('Este cliente usa la sesión de otro (`sessionFrom`): inicia sesión en el principal.');
+  }
+
+  /** El principal ha cerrado sesión: se para el ciclo, se aplica `clearOnLogout` y se avisa a los oyentes. */
+  private async endBorrowedSession(userId: string): Promise<void> {
+    await this.ensureReady();
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.running) await this.running.catch(() => undefined);
+    const clear = this.options.clearOnLogout ?? false;
+    if (clear === true) await this.clearLocalData();
+    else if (Array.isArray(clear) && clear.length > 0) await this.clearTables(clear);
+    await this.emitSessionEnd(userId);
   }
 
   async api<T = unknown>(path: string, init: ApiInit = {}): Promise<T> {
@@ -767,6 +806,7 @@ export class SyncClientImpl implements SyncClient {
   }
 
   private refreshSession(): Promise<boolean> {
+    if (this.options.sessionFrom) return this.options.sessionFrom.refreshSessionNow();
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
       const sess = this.sess;
