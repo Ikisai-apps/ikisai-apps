@@ -308,4 +308,66 @@ test('elaboración por pasos y subpasos, reordenable, y antelación con unidad (
     await expect(dialog.locator('#r-prep-unit')).toHaveValue('horas');
     await expect(dialog.locator('#r-method .stepnum')).toHaveText(['1', '1.1', '2']);
   });
+
+  await test.step('subpasos sin restricción: a otro paso con el teclado, sacar y meter de nivel, y arrastre con el ratón', async () => {
+    const dialog = page.getByRole('dialog', { name: 'Editar receta' });
+    const nums = dialog.locator('#r-method .stepnum');
+    const live = dialog.locator('#r-method [aria-live]');
+
+    // Teclado sobre el asa: ↓ lleva el subpaso 1.1 al paso siguiente.
+    await dialog.getByRole('button', { name: 'Mover subpaso 1.1', exact: true }).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(nums).toHaveText(['1', '2', '2.1']);
+    await expect(dialog.getByLabel('Subpaso 2.1', { exact: true })).toHaveValue('Colar');
+    await expect(live).toHaveText('Subpaso 1.1, ahora subpaso 2.1.');
+    await expect(dialog.getByRole('button', { name: 'Mover subpaso 2.1', exact: true })).toBeFocused();
+
+    // Botón: sacar de nivel (pasa a paso detrás del suyo).
+    await dialog.getByRole('button', { name: 'Sacar subpaso 2.1 de nivel', exact: true }).click();
+    await expect(nums).toHaveText(['1', '2', '3']);
+    await expect(dialog.getByLabel('Paso 3', { exact: true })).toHaveValue('Colar');
+    await expect(live).toHaveText('Subpaso 2.1, ahora paso 3.');
+    // El primer paso no se puede meter de nivel.
+    await expect(dialog.getByRole('button', { name: 'Meter paso 1 en el paso anterior', exact: true })).toBeDisabled();
+
+    // Teclado: → mete el paso 2 (sin subpasos) en el paso 1.
+    await dialog.getByRole('button', { name: 'Mover paso 2', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(nums).toHaveText(['1', '1.1', '2']);
+    await expect(dialog.getByLabel('Subpaso 1.1', { exact: true })).toHaveValue('Asar la calabaza');
+    await expect(dialog.getByLabel('Paso 2', { exact: true })).toHaveValue('Colar');
+    await expect(live).toHaveText('Paso 2, ahora subpaso 1.1.');
+    // Un subpaso no baja a un tercer nivel.
+    await page.keyboard.press('ArrowRight');
+    await expect(live).toHaveText('Ya es un subpaso: solo hay dos niveles.');
+    await expect(nums).toHaveText(['1', '1.1', '2']);
+
+    // Ratón: arrastrar el subpaso 1.1 por el asa hasta debajo del paso 2 lo convierte en su subpaso.
+    const handle = dialog.getByRole('button', { name: 'Mover subpaso 1.1', exact: true });
+    await handle.scrollIntoViewIfNeeded();
+    const from = (await handle.boundingBox())!;
+    const to = (await dialog.getByLabel('Paso 2', { exact: true }).boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 12, { steps: 3 });
+    await page.mouse.move(from.x + from.width / 2, to.y + to.height * 0.8, { steps: 8 });
+    await expect(dialog.locator('#r-method .stepdrop')).toHaveText('Subpaso 2.1');
+    await page.mouse.up();
+    await expect(nums).toHaveText(['1', '2', '2.1']);
+    await expect(dialog.getByLabel('Subpaso 2.1', { exact: true })).toHaveValue('Asar la calabaza');
+    await expect(dialog.locator('#r-method .stepdrop')).toBeHidden();
+
+    await page.locator('#saveRecipe').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => api.rows(RECIPES).find((r) => r.name === 'Crema de calabaza')?.revision).toBe(2);
+    const row = api.rows(RECIPES).find((r) => r.name === 'Crema de calabaza')!;
+    expect(row.method_steps).toMatchObject([{ text: 'Triturar con el caldo' }, { text: 'Colar', steps: [{ text: 'Asar la calabaza' }] }]);
+    expect((row.method_steps as Array<{ steps?: unknown }>)[0]!.steps).toBeUndefined();
+    expect(row.method).toBe('1. Triturar con el caldo\n2. Colar\n   2.1. Asar la calabaza');
+
+    const ficha = page.getByRole('dialog', { name: 'Crema de calabaza' });
+    if (!(await ficha.isVisible())) await page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).click();
+    await expect(ficha.locator('.methodsteps .stepnum')).toHaveText(['1', '2', '2.1']);
+    await expect(ficha.locator('.methodsteps .steptext')).toHaveText(['Triturar con el caldo', 'Colar', 'Asar la calabaza']);
+  });
 });

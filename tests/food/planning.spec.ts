@@ -126,6 +126,9 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect(curry.locator('.cookdetails')).toContainText('550');
     await expect(curry.locator('.cookdetails')).toContainText('Alérgenos: Apio');
     await expect(curry.locator('.cookdetails')).toContainText('Sofreír, añadir el tomate');
+    // Antelación de la receta (prep_minutes 90) en la vista de cocinero; sin indicar, no se enseña.
+    await expect(curry.locator('.cookdetails .cookprep')).toHaveText('Antelación: 90 minutos antes');
+    await expect(page.locator('.dish', { hasText: 'Arroz especiado' }).locator('.cookdetails .cookprep')).toHaveCount(0);
     await expect(curry.locator('.cookdetails')).toContainText('Coste estimado: 6,88');
     await expect(page.getByRole('button', { name: 'Añadir plato' })).toHaveCount(0);
     await page.locator('#cookView').click();

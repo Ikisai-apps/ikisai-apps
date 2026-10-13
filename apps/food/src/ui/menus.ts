@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
@@ -433,6 +433,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     function cookDetails(item: ItemRow): HTMLElement | null {
       const recipe = recipeOf(item);
       if (!recipe) return null;
+      const prep = prepLabel(recipe.prep_minutes);
       const names = new Map(ingredients.map((i) => [i.id, i.name]));
       const machines = new Map(equipment.map((m) => [m.id, m]));
       const scaled = scaledIngredients(graph(), item.id);
@@ -443,6 +444,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
           : el('p', { class: 'muted' }, 'La receta no tiene ingredientes.'),
         recipe.allergens.length ? el('p', { class: 'warnline' }, `Alérgenos: ${recipe.allergens.map((a) => ALLERGEN_LABELS[a]).join(', ')}`) : null,
         required.length ? el('p', null, el('strong', null, 'Maquinaria: '), required.map((n) => `${n.quantity_required} × ${machines.get(n.equipment_id)?.name ?? 'máquina retirada'}`).join(', ')) : null,
+        prep ? el('p', { class: 'cookprep' }, el('strong', null, 'Antelación: '), prep) : null,
         methodStepsView(recipe),
         recipe.service_notes ? el('p', null, el('strong', null, 'Servicio: '), recipe.service_notes) : null,
         purchases.fetchedAt ? costLine(item) : null);
