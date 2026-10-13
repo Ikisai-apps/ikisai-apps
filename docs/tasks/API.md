@@ -1507,7 +1507,7 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
 - Las tareas en la papelera o de áreas en la papelera: conservan la zona como etiqueta.
 
 **Pendiente (PR siguientes):**
-- **1b:** vaciar la papelera, «Convertir en proyecto», `requests/task` y `requests/project` (herencia del espacio) e importación portable con las tablas nuevas.
+- **1b (hecha, migración `0324`):** vaciar la papelera, «Convertir en proyecto» y `requests/task` (herencia del espacio del proyecto, también en el buzón). La copia portable lleva los espacios en la PR 2, con el formato de la interfaz (`legacy.ts`).
 - **2:** interfaz con el kit 0.30.0.
 - **3:** vista previa y botón «Pasar las zonas a espacios».
 

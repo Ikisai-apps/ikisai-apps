@@ -171,3 +171,30 @@ test('vuelta atrás: avisa de lo que no viene de una zona; vuelve a etiquetas co
   assert.equal(view.group_by, ZONA);
   assert.deepEqual((await rows('tasks.settings')).map((s) => s.value), ['labels']);
 });
+
+test('lo que mueve o crea tareas conoce sus espacios: petición de otra app, convertir un área y vaciar la papelera (0324)', async () => {
+  // Petición de otra app a un proyecto con espacio: la tarea lo hereda.
+  await ok([{ op: 'insert', table: 'tasks.project_spaces', id: uuid(), fields: { tab_id: TAB, project_id: PS, space_id: S_ROBLE } }]);
+  const asked = await app.call('/api/v1/requests/task', { body: { source: 'central', external_ref: 'LEG_R2_001', title: 'Revisar extintor', project_id: PS } });
+  assert.equal(asked.status, 200, JSON.stringify(asked.data));
+  assert.deepEqual(await liveSpaces('tasks.task_spaces', 'task_id', asked.data.task.id), [S_ROBLE]);
+
+  // Convertir un área en proyecto de otra: los espacios de sus tareas pasan con ellas.
+  const OLD = uuid(), OP = uuid(), OT = uuid(), NEWP = uuid();
+  await ok(createTabOps({ id: OLD, name: 'Jardinería', position: 9000 }));
+  await ok([{ op: 'insert', table: 'tasks.projects', id: OP, fields: { tab_id: OLD, title: 'Setos', position: 2048 } }]);
+  await ok([{ op: 'insert', table: 'tasks.tasks', id: OT, fields: { tab_id: OLD, project_id: OP, title: 'Recortar', position: 1024 } }]);
+  await ok([{ op: 'insert', table: 'tasks.task_spaces', id: uuid(), fields: { tab_id: OLD, project_id: OP, task_id: OT, space_id: S_ROSA } }]);
+  const converted = await app.call(`/api/v1/tabs/${OLD}/convert`, { body: { requestId: `cv-${++seq}`, targetTabId: TAB, projectId: NEWP, title: 'Jardinería' } });
+  assert.equal(converted.status, 200, JSON.stringify(converted.data));
+  const moved = (await rows('tasks.task_spaces')).find((r) => r.task_id === OT && !r.deleted_at);
+  assert.deepEqual([moved.tab_id, moved.project_id, moved.space_id], [TAB, NEWP, S_ROSA]);
+
+  // Vaciar la papelera con una tarea con espacio en ella: el espacio va antes a la papelera y la purga no falla.
+  const gone = (await rows('tasks.tasks')).find((t) => t.id === OT);
+  await ok([{ op: 'delete', table: 'tasks.tasks', id: OT, expectedRevision: gone.revision }]);
+  const emptied = await app.call('/api/v1/trash/empty', { body: { requestId: `tr-${++seq}` } });
+  assert.equal(emptied.status, 200, JSON.stringify(emptied.data));
+  assert.equal((await rows('tasks.tasks')).some((t) => t.id === OT), false);
+  assert.equal((await rows('tasks.task_spaces')).some((r) => r.task_id === OT), false);
+});
