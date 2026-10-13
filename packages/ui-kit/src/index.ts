@@ -48,6 +48,13 @@ export { installBackNavigation, trackOverlay, type BackNavigationOptions, type O
 export { initAppUpdates, shouldAutoApply, type AppUpdates, type AppUpdatesOptions } from './sync/updates.ts';
 export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';
+export {
+  DEFAULT_SPACE_KINDS, canPlace, kindsFor, kindOf, kindLabel, spacePath, spaceDescendants, ancestorsOf, childrenOf, indexSpaces, spaceMatches,
+  nextAltura, newSpaceId, createMemorySpaceSource, demoSpaces,
+  type SpaceRow, type SpaceKind, type SpaceAttribute, type SpaceSource, type Placement,
+} from './spaces/model.ts';
+export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions } from './spaces/tree.ts';
+export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions } from './spaces/picker.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';

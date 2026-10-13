@@ -140,6 +140,9 @@ const KIT_CHILDREN = {
   renderConflict: [['mantener_mia', 'Reintentar con lo mío', 'button'], ['tomar_servidor', 'Quedarme con lo del servidor', 'button'], ['diferencias', 'Ver diferencias', 'button'], ['combinar', 'Combinar campo a campo', 'button'], ['guardar_combinacion', 'Guardar combinación', 'button'], ['volver', 'Volver', 'button']],
 };
 KIT_CHILDREN.renderConflicts = KIT_CHILDREN.renderConflict;
+// Mantener al día con `SPACE_TREE_MARKS` (src/spaces/tree.ts) y `SPACE_PICKER_MARKS` (src/spaces/picker.ts).
+KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_altura', 'Nueva altura', 'button'], ['ver_archivados', 'Ver archivados', 'input'], ['fila', 'Espacio', 'button'], ['desplegar', 'Desplegar o plegar', 'button'], ['mover', 'Arrastrar para mover', 'button'], ['anadir', 'Añadir dentro', 'button'], ['editar', 'Editar espacio', 'button'], ['subir', 'Subir', 'button'], ['bajar', 'Bajar', 'button'], ['guardar', 'Guardar espacio', 'button'], ['duplicar', 'Duplicar', 'button'], ['archivar', 'Archivar', 'button'], ['recuperar', 'Recuperar', 'button']];
+KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['buscar', 'Buscar espacio', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['quitar', 'Quitar espacio', 'button']];
 
 /** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
 function enclosingCall(text, at) {
@@ -182,7 +185,7 @@ export function extractFeatures(text, file = '') {
     const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
     const children = call ? KIT_CHILDREN[call] : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? 'Conflicto', kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }
