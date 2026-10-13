@@ -129,6 +129,7 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Lector v4 (FVR_2026_005): nombre con letras sueltas y sin «Cliente», líneas por cercanía (IVA un punto por encima) y la «Base imponible» rotulada manda sobre el subtotal de la tabla.
 - «Mi nombre» del proveedor (0232): nombre comercial que la app enseña en lugar de la razón social; la gestoría sigue recibiendo la razón social.
 - «Datos de la factura» editables en la propia ficha (lo leído pintado con «leído/revísalo/falta», autoguardado de cabecera, «Guardar importes», «Leer de nuevo el PDF» con «Guardar lo leído»); sustituye a «Rellenar a mano».
+- Ficha compacta en el móvil (FB_2026_029, FB_2026_031): acciones en una sola fila (solo iconos con nombre accesible si no caben) y avisos en un bloque corto con los enlaces dentro. «Nueva factura» a mano (FB_2026_026): objeto opcional y «+ Añadir artículo» opcional (descripción, base y tipo de IVA). Prueba en 484×686 de que los datos leídos se editan en la ficha (FB_2026_032).
 
 ## En curso
 
