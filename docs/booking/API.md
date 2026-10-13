@@ -1442,6 +1442,23 @@ Decisión del usuario (8-10-2026): el texto no repite las cifras de los campos; 
 
 Todas las llamadas de Booking a Tasks (proyecto del retiro y extras, avisos del portal, aviso de plazo de SES) van a `<SUPABASE_URL>/functions/v1/tasks-api/api/v1/worker/…` con `X-Ikisai-Worker-Key` (`tasksWorkerBase` en `booking-api/tasks/sync.ts`). Nunca a `tasks.ikisai.com`: su proxy de Pages solo reenvía unas cabeceras y perdía la clave (401; en producción no llegó ninguna). `TASKS_WORKER_BASE_URL` solo como sustitución explícita (p. ej. `tasks-api-qa`). La migración 0463 reactiva los avisos del portal que agotaron sus 20 intentos; los proyectos y los avisos de SES reintentan sin límite.
 
+## 24. Fase R2 de Recursos · espacios y camas desde `resources.spaces` (migraciones 0464 y 0465)
+
+Plan aprobado por el usuario el 13-10-2026 (`coordinacion/ampliacion/RECURSOS.md` §4.2 y §17): interruptor, escritura doble, vista previa y vuelta atrás. Con el interruptor apagado, todo es como antes.
+
+- **Interruptor:** `booking.module_settings.spaces_source` (`booking` por defecto, o `resources`); una fila, solo el owner la cambia, desde la tarjeta «Espacios desde Recursos» de `#/espacios`.
+- **Escritura doble:** `room_assignments.resource_space_id` y `resource_bed_id`, `open_rooms.resource_space_id` y `program_items.resource_space_id` junto a los de siempre. El lado que cambia manda y el otro se deduce por `source_refs` (`booking.space:<uuid>`, `booking.bed:<uuid>`) o por el enlace del espejo (`spaces.resource_id`, `beds.resource_id` y `resource_part`). `space_id` puede faltar si el espacio solo está en Recursos. Al final del lote, los espacios de Recursos referidos existen y la cama cuelga de su espacio.
+- **Vista previa** `booking.r2_preview` (owner): filas `enlazada`, `por_enlazar`, `sin_pareja` y `tipo_distinto`, y espacios o camas de Booking sin pareja. «Enlazar» manda lo `por_enlazar` con un lote normal: queda en el historial y se puede deshacer.
+- **Espejo** (interruptor en `resources`): `booking.spaces` y `beds` se rellenan desde Recursos:
+  - edificios reservables, habitaciones, salas y exteriores; `zona` = el padre (o la descripción de la altura);
+  - las camas, por partes: la fija, con su tipo, y la supletoria (`extra_capacity`, como `supletoria`, que no cuenta en las plazas y se cobra como extra);
+  - lo hace el tick `spaces/tick` (cada minuto, sonda `booking.spaces_mirror_has_work`) y, al momento, la app del owner con `booking.spaces_mirror_pending`;
+  - un cambio a mano que se aparte de Recursos da `SPACES_IN_RESOURCES`.
+  Todas las lecturas (portales, alojamiento, disponibilidad, indicadores, `BED_OVERBOOKED`) siguen igual: la misma caracterización pasa con las dos fuentes (`tests/booking/spaces-characterization.shared.ts`).
+- **Pantalla «Espacios y camas»** con Recursos: árbol común del kit (`createSpaceTree`), con «Añadir cama» y «Duplicar» a un toque en la fila y las plazas calculadas por las camas.
+- **Permisos (decisión del usuario):** crear, cambiar o quitar espacios y camas, solo el owner, con las dos fuentes. El editor cambia el nombre y las notas de un espacio.
+- **Vuelta atrás:** interruptor a `booking`; el espejo se queda como esté y se vuelve a editar en Booking.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.
