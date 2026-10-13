@@ -253,8 +253,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (op.expectedRevision !== row.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
-        const previousDate = row.invoice_date ?? null;
-        const previousSource = row.payment_source ?? null;
+        const previousDate = (row.invoice_date as string | null | undefined) ?? null;
+        const previousSource = (row.payment_source as string | null | undefined) ?? null;
         if (op.op === 'update') Object.assign(row, fields);
         if (op.op === 'update' && op.table === 'invoices.invoices') paymentDefault(row, previousDate, previousSource);
         if (op.op === 'delete') row.deleted_at = now;
