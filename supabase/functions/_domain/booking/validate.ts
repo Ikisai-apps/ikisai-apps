@@ -358,6 +358,11 @@ FIELDS[TABLES.openRooms] = {
   option_key: text(40),
   supplement: { kind: 'bool' },
 };
+FIELDS[TABLES.eventExtraBeds] = {
+  event_id: { kind: 'uuid' },
+  bed_id: { kind: 'uuid' },
+  status: choice(['active', 'requested', 'release_requested'], false),
+};
 FIELDS[TABLES.moduleSettings] = {
   spaces_source: choice(['booking', 'resources'], false),
 };
@@ -384,6 +389,7 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.programItems]: 'event_id',
   [TABLES.lodgingSettings]: 'event_id',
   [TABLES.openRooms]: 'event_id',
+  [TABLES.eventExtraBeds]: 'event_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -408,6 +414,7 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.programItems]: ['event_id', 'day', 'title'],
   [TABLES.lodgingSettings]: ['event_id'],
   [TABLES.openRooms]: ['event_id'],
+  [TABLES.eventExtraBeds]: ['event_id', 'bed_id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

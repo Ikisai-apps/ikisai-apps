@@ -42,15 +42,36 @@ export function extraBedsInUse(eventId: string, beds: readonly BedLike[], assign
   return live(beds).filter((b) => isExtraBed(b) && used.has(b.id));
 }
 
+/** Supletoria activada para un evento (`booking.event_extra_beds`): por el organizador desde su portal o por el personal. */
+export interface ExtraBedLike { id: string; event_id: string; bed_id: string; status: string; source?: string; deleted_at?: string | null }
+
+/** Activadas que se cobran: `active` y, mientras Ikisai no la quite, `release_requested`. Las `requested` aún no. */
+const CHARGED = new Set(['active', 'release_requested']);
+
+/**
+ * Supletorias que se cobran a un evento: las activadas (aunque nadie las ocupe) y las ocupadas sin activar, como hoy
+ * (decisión del usuario, 13-10-2026). Sin filas de activación, igual que `extraBedsInUse`.
+ */
+export function extraBedsCharged(eventId: string, beds: readonly BedLike[], assignments: readonly AssignmentLike[], extraBeds: readonly ExtraBedLike[] = []): BedLike[] {
+  const activated = new Set(live(extraBeds).filter((x) => x.event_id === eventId && CHARGED.has(x.status)).map((x) => x.bed_id));
+  const used = new Set(extraBedsInUse(eventId, beds, assignments).map((b) => b.id));
+  return live(beds).filter((b) => isExtraBed(b) && (activated.has(b.id) || used.has(b.id)));
+}
+
+/** Activaciones del evento pendientes de Ikisai (pedidas, o con la retirada pedida, tras aceptar la propuesta). */
+export function extraBedsPending(eventId: string, extraBeds: readonly ExtraBedLike[]): ExtraBedLike[] {
+  return live(extraBeds).filter((x) => x.event_id === eventId && (x.status === 'requested' || x.status === 'release_requested'));
+}
+
 export interface Occupancy { spaceId: string; persons: number; capacity: number; over: boolean }
 
 /** Ocupación de cada espacio en un evento (personas asignadas frente a plazas). Pasarse es un aviso, no un error. */
-export function eventOccupancy(eventId: string, spaces: readonly SpaceLike[], beds: readonly BedLike[], assignments: readonly AssignmentLike[]): Occupancy[] {
+export function eventOccupancy(eventId: string, spaces: readonly SpaceLike[], beds: readonly BedLike[], assignments: readonly AssignmentLike[], extraBeds: readonly ExtraBedLike[] = []): Occupancy[] {
   const mine = live(assignments).filter((a) => a.event_id === eventId);
   return live(spaces).filter((s) => mine.some((a) => a.space_id === s.id)).map((space) => {
     const persons = mine.filter((a) => a.space_id === space.id).reduce((sum, a) => sum + a.persons, 0);
-    // las supletorias asignadas en este evento suman a la capacidad base
-    const extra = extraBedsInUse(eventId, beds, mine).filter((b) => b.space_id === space.id).reduce((sum, b) => sum + b.capacity, 0);
+    // las supletorias activadas u ocupadas en este evento suman a la capacidad base
+    const extra = extraBedsCharged(eventId, beds, mine, extraBeds).filter((b) => b.space_id === space.id).reduce((sum, b) => sum + b.capacity, 0);
     const capacity = spaceCapacity(space, beds) + extra;
     return { spaceId: space.id, persons, capacity, over: persons > capacity };
   });
