@@ -65,6 +65,8 @@
 
 - 2026-10-08 · Un solo `vite build` para las pruebas de Playwright aunque haya varios workers (`tests/guests/build.ts`, patrón de Tasks): huella en `dist/.e2e-stamp` y cerrojo entre procesos. Probado tres veces seguidas con `--workers=2`.
 
+- 2026-10-13 · Pruebas de caracterización antes de O4 (`tests/guests/caracterizacion.spec.ts`, RECURSOS.md §17.1): entrada y enlaces directos, cambio de retiro, alojamiento, menú y horario. Preparación de O4 (sin programar) en `coordinacion/guests/o4/O4_PREPARACION.md`.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
