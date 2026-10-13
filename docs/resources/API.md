@@ -71,7 +71,7 @@ Altura 1–5 › Edificio | Exterior › Habitación, Sala, Baño, Cocina, Comed
 | 1 | `altura` | raíz | — |
 | 2 | `edificio`, `exterior` | `altura` o raíz | `bookable`, `capacity`, `accessible` (Booking reserva el albergue entero) |
 | 3 | `habitacion`, `sala`, `bano`, `cocina`, `comedor`, `oficina`, `zona_paso`, `instalacion`, `almacen`, `otro` | `edificio`, `exterior` | Según el tipo: `bookable`, `capacity`, `accessible`, `en_suite`, `storage` |
-| 4 | `cama` | `habitacion` | `bed_kind`, `capacity` |
+| 4 | `cama` | `habitacion`, `sala` | `bed_kind`, `capacity`, `extra_capacity` |
 | 4 | `ubicacion` | `almacen`, `cocina`, `comedor`, `instalacion`, `otro` | `storage` |
 
 ### 2.3 Datos propios (`attributes`)
@@ -79,8 +79,9 @@ Altura 1–5 › Edificio | Exterior › Habitación, Sala, Baño, Cocina, Comed
 | Clave | Valor |
 |---|---|
 | `bookable`, `accessible`, `en_suite` | booleano |
-| `capacity` | entero entre 0 y 999 |
-| `bed_kind` | `individual`, `doble` o `litera` |
+| `capacity` | entero entre 0 y 999 (en una cama, las plazas fijas) |
+| `extra_capacity` | entero entre 0 y 999: plazas supletorias que se pueden activar (litera partida 1 + 1; litera o sofá cama supletorio 0 + 2 o 0 + 1) |
+| `bed_kind` | `individual`, `doble`, `litera` o `sofa_cama` |
 | `storage` | `ambiente`, `frio` o `congelado` |
 
 Una clave que el tipo no admite, o con otra forma, da `INVALID_SPACE_ATTRIBUTE`.
