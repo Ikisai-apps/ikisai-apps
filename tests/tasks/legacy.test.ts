@@ -258,3 +258,32 @@ test('legacy · papelera: restaurar una hija cuyo padre cambió de proyecto sale
   const row = (await db.data())['tasks.tasks'].find((t) => t.id === borrada.id)!;
   assert.deepEqual([row.deleted_at, row.parent_id, row.project_id], [null, null, area.projects[0]!.id]);
 });
+
+test('legacy · espacios (R2): componer los trae, cambiarlos los guarda y un modelo sin el campo no los toca', async () => {
+  const altura = (await db.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
+  const albergue = newId(), salas = newId();
+  await db.t.db.query(`insert into resources.spaces (id, parent_id, kind, name, position) values ($1, $3, 'edificio', 'Albergue', 1), ($2, $3, 'edificio', 'Salas', 2)`, [albergue, salas, altura]);
+  await db.area('Espacios');
+  let tabs = await model();
+  const tab = tabs.find((t) => t.name === 'Espacios')!;
+  const project = tab.projects[0]!;
+  const task = newTask('Pintar', { spaces: [albergue] });
+  project.tasks.push(task);
+  project.ownSpaces = [salas];
+  await save(tabs);
+  tabs = await model();
+  const again = find(tabs, tab.id).projects[0]!;
+  assert.deepEqual(again.tasks.find((t) => t.id === task.id)!.spaces, [albergue]);
+  assert.deepEqual(again.ownSpaces, [salas]);
+  // Sin el campo (copias y modelos de antes de R2): no se tocan los espacios.
+  delete again.tasks.find((t) => t.id === task.id)!.spaces;
+  assert.deepEqual(decompose(await db.data(), tabs), []);
+  // Cambiar y quitar.
+  again.tasks.find((t) => t.id === task.id)!.spaces = [salas];
+  again.ownSpaces = [];
+  const sent = (await save(tabs)).flat();
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.task_spaces').map((o) => o.op).sort(), ['delete', 'insert']);
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.project_spaces').map((o) => o.op), ['delete']);
+  const after = find(await model(), tab.id).projects[0]!;
+  assert.deepEqual([after.tasks.find((t) => t.id === task.id)!.spaces, after.ownSpaces], [[salas], undefined]);
+});

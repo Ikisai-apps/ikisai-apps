@@ -204,5 +204,8 @@ test('General frente a un área: la zona General vale en todas las áreas y en l
   await page.evaluate(([f, l]) => { state.filters = { [f as string]: [l] }; render(); }, [ZONA, ALBERGUE]);
   await expect.poll(titles).toEqual(['Arreglar la ventana', 'Comprar pintura', 'Pintar Hab 3', 'Preparar el baño', 'Revisar el albergue']);
   await page.evaluate(() => { state.taskScope = 'area'; state.filters = {}; render(); });
+  // R2: el segundo cliente (Recursos) arranca con la sesión de Tasks y trae los espacios (al menos las cinco alturas).
+  await expect.poll(() => page.evaluate(() => (window as any).eval('Sync.core.spaces.length'))).toBeGreaterThanOrEqual(5);
+  expect(await page.evaluate(() => (window as any).eval('Sync.core.zoneSource()'))).toBe('labels');
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
 });

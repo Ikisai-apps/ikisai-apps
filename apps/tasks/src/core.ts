@@ -25,6 +25,13 @@ const BLOCKERS_KEY = 'ikisai-tasks-blockers';
 
 export class TasksCore {
   readonly client: SyncClient;
+  /**
+   * Módulo común Recursos (R2, docs/resources/API.md): segundo cliente con la sesión del principal y su propio espejo
+   * (`ikisai-resources-v1`). Lo usan los componentes de espacios del kit y, sin red, sigue sirviendo lo último leído.
+   */
+  resources: SyncClient | null = null;
+  /** Espacios vivos del espejo de Recursos (para chips, filtros y agrupar, que se pintan sin esperar). */
+  spaces: Array<Record<string, unknown>> = [];
   /** Copia en memoria del espejo (incluida la papelera), con los cambios locales aún sin encolar aplicados. */
   data: Dataset = emptyDataset();
   /** Lotes locales entregados a `commit()` cuya escritura en la cola todavía no ha terminado. */
@@ -77,8 +84,37 @@ export class TasksCore {
     }
     const boot = this.options.readOnly ? this.client.bootstrap() : await this.client.start();
     await this.reload();
+    if (!this.options.readOnly) void this.startResources();
     if (!this.options.readOnly) void this.refreshBlockers();
     return boot ?? this.client.bootstrap();
+  }
+
+  /** De dónde sale la zona: `'labels'` (familia «Zona: Espacio») o `'spaces'` (Recursos), según `tasks.settings`. */
+  zoneSource(): 'labels' | 'spaces' {
+    const row = (this.data['tasks.settings'] ?? []).find((r) => r.key === 'zone_source' && !r.deleted_at);
+    return row?.value === 'spaces' ? 'spaces' : 'labels';
+  }
+
+  /** Arranca el cliente de Recursos (una vez por sesión). Un fallo no impide usar Tasks: los espacios salen vacíos. */
+  async startResources(): Promise<void> {
+    try {
+      if (!this.resources) {
+        this.resources = createSyncClient({
+          app: 'resources', apiBase: `${this.options.apiBase ?? '/api/v1'}/resources`, sessionFrom: this.client, clearOnLogout: true,
+          tables: ['resources.spaces', 'resources.space_kinds'] as TableName[],
+          pullIntervalMs: this.options.pullIntervalMs ?? 20000,
+        });
+        this.resources.onTable('resources.spaces' as TableName, () => void this.readSpaces());
+      }
+      await this.resources.start();
+      await this.readSpaces();
+    } catch (error) { console.warn('Recursos no disponible', error); }
+  }
+
+  private async readSpaces(): Promise<void> {
+    if (!this.resources) return;
+    this.spaces = (await this.resources.list('resources.spaces' as TableName)) as unknown as Array<Record<string, unknown>>;
+    this.emit('data');
   }
 
   session(): Session | null { return this.client.session(); }
@@ -96,6 +132,7 @@ export class TasksCore {
   async logout(): Promise<void> {
     await this.client.logout();
     this.data = emptyDataset();
+    this.spaces = [];
     this.hidden = undefined;
     try { localStorage.removeItem(BLOCKERS_KEY); } catch { /* sin almacenamiento */ }
     this.emit('data');
