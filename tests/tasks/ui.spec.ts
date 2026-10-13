@@ -396,7 +396,7 @@ test('[52][53] copia JSON: remapea dependencias y etiquetas, y rechaza dependenc
 });
 
 test('[54][55] filtros con recuento en vivo y «Todas las tareas» entre áreas', async () => {
-  await test.step('[54] la hoja de filtros cuenta en vivo y bloquea las etiquetas que dejarían cero tareas', async () => {
+  await test.step('[54] la hoja de filtros cuenta en vivo; lo que dejaría cero tareas se atenúa (las etiquetas siguen pulsables para «no la tiene», FB_2026_042)', async () => {
     await b.setViewportSize({ width: 1440, height: 1000 });
     await b.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.search = ''; navigateView('tasks'); });
     await b.locator('#filterBtn').click();
@@ -406,7 +406,8 @@ test('[54][55] filtros con recuento en vivo y «Todas las tareas» entre áreas'
     expect(juanCount).toBeGreaterThan(0);
     expect((await b.locator('#filterCount').innerText()).startsWith(String(juanCount))).toBe(true);
     expect(await b.locator('.filterchip.unavailable').count()).toBeGreaterThan(0);
-    await expect(b.locator('.filterchip.unavailable:not(:disabled)')).toHaveCount(0);
+    await expect(b.locator('.filterchip.unavailable:not(:disabled):not([data-filter])')).toHaveCount(0);
+    await expect(b.locator('[data-filter].filterchip:disabled')).toHaveCount(0);
     await expect(b.locator('.filterchip:not(.unavailable):not(.on):disabled')).toHaveCount(0);
     expect(await b.locator(`[data-filter="${ID.person}|${ID.juan}"]`).evaluate((el: HTMLButtonElement) => el.classList.contains('on') && !el.disabled)).toBe(true);
     await b.locator('#applyFilterSheet').click();
@@ -591,9 +592,11 @@ test('[61][62] barra de facetas en escritorio y acciones en lote', async () => {
     expect(await b.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
     await b.setViewportSize({ width: 390, height: 844 });
     await expect(b.locator('.facetbar')).toHaveCount(1);
+    // En el móvil, cada faceta abre su desplegable, no la hoja de filtros (FB_2026_037).
     await b.locator('[data-facet="_state"]').first().click();
-    expect(await b.locator('#filterCount').count()).toBeGreaterThan(0);
-    await b.evaluate(() => closeSheet());
+    await expect(b.locator('.facet.open .facetpanel')).toBeVisible();
+    await expect(b.locator('#filterCount')).toHaveCount(0);
+    await b.keyboard.press('Escape');
   });
 
   await test.step('[62] la selección múltiple cambia la prioridad y mueve varias tareas en un solo lote', async () => {

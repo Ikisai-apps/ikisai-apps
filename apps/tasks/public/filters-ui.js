@@ -97,3 +97,7 @@ openFilters=function(){filtersBeforeExtra();const sheet=document.getElementById(
   sheet.querySelectorAll('[data-filter]').forEach(b=>{const [fid,lid]=b.dataset.filter.split('|');b.classList.toggle('excluded',excludedOn([lid]));
     b.onclick=()=>{cycleLabelFilter(fid,[lid]);b.classList.toggle('on',(state.filters[fid]||[]).includes(lid));b.classList.toggle('excluded',excludedOn([lid]));refreshFilterSheet()}});
   refreshFilterSheet()};
+/* Una chip de «Filtros activos» quita el filtro del todo (no pasa a «no la tiene», como en el desplegable). */
+const bindBeforeActiveRemoval=bind;
+bind=function(){bindBeforeActiveRemoval();document.querySelectorAll('.activefilters .activechip[data-facet-toggle]').forEach(b=>b.onclick=e=>{e.stopPropagation();const key=b.dataset.facetToggle,ids=String(b.dataset.facetValue).split(',').filter(Boolean);
+  for(const k of [key,'_exclude']){if(!state.filters[k])continue;state.filters[k]=state.filters[k].filter(x=>!ids.includes(x));if(!state.filters[k].length)delete state.filters[k]}persistUI();render()})};
