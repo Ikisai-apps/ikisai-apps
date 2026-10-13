@@ -46,6 +46,11 @@ export interface OrganizersTestServer {
    * prueba de Finance (tests/invoices/sql.test.ts). `collected` la marca cobrada.
    */
   registeredInvoice(reservationId: string, number: string, amount: number, collected: boolean): Promise<string>;
+  /**
+   * Habitación del retiro (la asigna el personal a un grupo, sin cama): `beds` camas fijas individuales y `extra` supletorias.
+   * Devuelve los ids de la habitación, de sus camas fijas y de sus supletorias.
+   */
+  room(reservationId: string, options: { name: string; beds: number; extra?: number; enSuite?: boolean }): Promise<{ spaceId: string; beds: string[]; extra: string[] }>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -239,6 +244,19 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
     async acceptProposal(proposalId) {
       const revision = Number((await booking.t.db.query<{ revision: string }>('select revision from booking.proposals where id = $1', [proposalId])).rows[0]!.revision);
       await commit([{ op: 'call', procedure: PROCEDURES.acceptProposal, args: { proposal_id: proposalId, expectedRevision: revision } }]);
+    },
+    async room(reservationId, { name, beds, extra = 0, enSuite = false }) {
+      const spaceId = uuid();
+      const fixed = Array.from({ length: beds }, () => uuid());
+      const extras = Array.from({ length: extra }, () => uuid());
+      await commit([
+        { op: 'insert', table: TABLES.spaces, id: spaceId, fields: { name, kind: 'habitacion', en_suite: enSuite } },
+        ...fixed.map((id, i) => ({ op: 'insert', table: TABLES.beds, id, fields: { space_id: spaceId, label: `Cama ${i + 1}`, kind: 'individual', capacity: 1, position: i + 1 } })),
+        ...extras.map((id, i) => ({ op: 'insert', table: TABLES.beds, id, fields: { space_id: spaceId, label: `Supletoria ${i + 1}`, kind: 'supletoria', capacity: 1, position: beds + i + 1 } })),
+      ]);
+      const event = (await booking.t.db.query<{ id: string }>('select id from booking.events where reservation_id = $1', [reservationId])).rows[0]!.id;
+      await commit([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: event, space_id: spaceId, group_label: 'Grupo', persons: 1 } }]);
+      return { spaceId, beds: fixed, extra: extras };
     },
     setOffline(on) { offline = on; },
     close: async () => {
