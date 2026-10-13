@@ -1,20 +1,20 @@
 import type { PendingConflict, SyncedRow } from '@ikisai/sync-client';
 import { confirmDialog, el, formatDate, renderConflicts, renderRejectedList, replace, toast } from '@ikisai/ui-kit';
-import { AVAILABILITY_LABELS, BASE_ROLE_LABELS, ENGAGEMENT_LABELS, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATION_LABELS } from '@ikisai/domain-central';
+import { AVAILABILITY_LABELS, BASE_ROLE_LABELS, ENGAGEMENT_LABELS, HOUSE_LEVEL_LABELS, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATION_LABELS } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
 
 const FIELD_LABELS: Record<string, string> = {
   display_name: 'Nombre', relation: 'Relación', base_role: 'Función', coverage: 'Cobertura', availability: 'Disponibilidad',
-  availability_notes: 'Notas de disponibilidad', active: 'Activa', committed_post: 'Puesto comprometido', user_id: 'Cuenta', position: 'Orden',
+  availability_notes: 'Notas de disponibilidad', active: 'Activa', committed_post: 'Puesto comprometido', user_id: 'Cuenta', position: 'Orden', house_level: 'Nivel de casa',
   legal_name: 'Nombre completo', phone: 'Teléfono', email: 'Correo', engagement: 'Vinculación', engaged_from: 'Desde', engaged_until: 'Hasta',
   emergency_contact: 'Contacto de emergencia', notes: 'Notas', kind: 'Clase', record_type: 'Tipo', title: 'Título', status: 'Estado',
   issued_on: 'Fecha', expires_on: 'Caduca', reviewed_on: 'Revisado', file_id: 'Archivo', deleted_at: 'Borrado',
 };
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
-  relation: RELATION_LABELS, base_role: BASE_ROLE_LABELS, availability: AVAILABILITY_LABELS, engagement: ENGAGEMENT_LABELS,
+  relation: RELATION_LABELS, base_role: BASE_ROLE_LABELS, house_level: HOUSE_LEVEL_LABELS, availability: AVAILABILITY_LABELS, engagement: ENGAGEMENT_LABELS,
   record_type: RECORD_TYPE_LABELS, status: RECORD_STATUS_LABELS,
 };
 

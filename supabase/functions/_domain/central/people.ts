@@ -41,6 +41,29 @@ export type Engagement = typeof ENGAGEMENTS[number];
 export type RecordKind = typeof RECORD_KINDS[number];
 export type RecordStatus = typeof RECORD_STATUSES[number];
 
+/**
+ * Nivel de casa (fase P1, RECURSOS.md §13): un solo nivel por persona, o ninguno (fuera del directorio). Es independiente del
+ * papel en cada evento (organizador, colaborador, huésped), que vive en Booking, Organizers y Guests.
+ */
+export const HOUSE_LEVELS = ['direccion', 'staff', 'outsider'] as const;
+export type HouseLevel = typeof HOUSE_LEVELS[number];
+export const HOUSE_LEVEL_LABELS: Record<HouseLevel, string> = { direccion: 'Dirección', staff: 'Staff', outsider: 'Outsider' };
+/** Funciones que el nivel de casa sustituye: dejan de ofrecerse en «Área principal», pero se enseñan si una ficha las tiene. */
+export const DIRECTION_BASE_ROLES: readonly string[] = ['direccion_general', 'direccion_operativa_comercial'];
+
+/** Propuesta inicial del nivel (aprobada por el usuario): por la función de dirección, si no, por la relación. */
+export function proposeHouseLevel(p: { relation?: string | null; base_role?: string | null }): HouseLevel | null {
+  if (p.base_role && DIRECTION_BASE_ROLES.includes(p.base_role)) return 'direccion';
+  if (p.relation === 'equipo' || p.relation === 'practicas') return 'staff';
+  if (p.relation === 'colaborador' || p.relation === 'voluntario') return 'outsider';
+  return null;
+}
+
+/** `relation` ya no se pide, pero se sigue escribiendo para lo que la lea (sección 17): la que corresponde al nivel. */
+export function relationForLevel(level: HouseLevel | null | undefined): Relation {
+  return level === 'direccion' || level === 'staff' ? 'equipo' : level === 'outsider' ? 'colaborador' : 'otro';
+}
+
 export const RELATION_LABELS: Record<Relation, string> = {
   equipo: 'Equipo', colaborador: 'Colaborador', voluntario: 'Voluntariado', practicas: 'Prácticas', otro: 'Otra',
 };

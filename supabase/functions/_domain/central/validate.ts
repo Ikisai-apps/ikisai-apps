@@ -5,7 +5,7 @@
  */
 import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
-  recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
+  HOUSE_LEVELS, recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
 } from './people.ts';
 import { ENTITY_TABLE, VENUE_MAP_URL, ibanProblem, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
@@ -69,6 +69,7 @@ const SPECS: Record<string, TableSpec> = {
       committed_post: { kind: 'boolean' },
       user_id: { kind: 'uuid', nullable: true },
       position: { kind: 'number' },
+      house_level: { kind: 'enum', values: HOUSE_LEVELS, nullable: true },
     },
     required: ['display_name', 'relation'],
   },
