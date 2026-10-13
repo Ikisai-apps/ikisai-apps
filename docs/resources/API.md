@@ -99,6 +99,11 @@ Una clave que el tipo no admite, o con otra forma, da `INVALID_SPACE_ATTRIBUTE`.
 
 En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futuras, stock o tareas abiertas.
 
+## 2.5 Lectura desde otras apps
+
+- **Hooks y vistas:** las migraciones de cualquier app pueden **leer** `resources.spaces` y `resources.space_kinds`, por ejemplo para validar un `space_id` (lo permite el lint). Nunca escriben en ellas.
+- **Referencias:** `space_id` es un uuid sin clave foránea entre schemas; lo valida el hook de la app (que esté vivo y activo).
+
 ## 3. Lo que viene
 
 - **R1, segunda parte:** migración inicial con vista previa: zonas de Tasks («Zona: Espacio») y espacios y camas de Booking, cada zona en su altura.
