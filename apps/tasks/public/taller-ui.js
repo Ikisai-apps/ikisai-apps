@@ -48,7 +48,10 @@ searchbar=function(){const html=searchbarBeforeCompact(),holder=document.createE
   const open=searchOpen||!!(state.search||'').trim();
   const tools=document.createElement('div');tools.className='facettools';
   tools.innerHTML=`<button type="button" class="softbtn searchtoggle ${open?'active':''}" id="searchToggle" aria-expanded="${open}" aria-controls="searchInput" aria-label="${open?'Cerrar la búsqueda':'Buscar'}" data-feedback-id="tasks.busqueda.abrir" data-feedback-label="Buscar">${menuIcon('search')}</button>`;
-  filter.classList.add('iconfilter');tools.appendChild(filter);facets.prepend(tools);
+  filter.classList.add('iconfilter');tools.appendChild(filter);
+  // Seleccionar varias (batch-ui.js), junto a la lupa y el filtro, donde se puede seleccionar.
+  if(typeof batchToggleButton==='function'){const sel=batchToggleButton();if(sel)tools.insertAdjacentHTML('beforeend',sel)}
+  facets.prepend(tools);
   bar.classList.add('collapsible');if(!open)bar.hidden=true;
   return [...holder.content.childNodes].map(n=>n.outerHTML??n.textContent).join('')};
 function setSearchOpen(open){searchOpen=open;if(!open&&state.search){state.search='';persistUI()}render();if(open)setTimeout(()=>{const s=document.getElementById('searchInput');s?.focus();s?.select()},0)}
