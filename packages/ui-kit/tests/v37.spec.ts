@@ -202,3 +202,54 @@ test.describe('ui-kit v0.30 · createSpacePicker', () => {
     await expect(page.locator('#spacePickerBookable').getByRole('button', { name: 'Hab 3' })).toBeVisible();
   });
 });
+
+test.describe('ui-kit v0.30 · createSyncSpaceSource (adaptador sobre el sync-client de resources)', () => {
+  test('lee el espejo, escribe en un lote con la revisión, archiva todo junto, tipos de space_kinds y rechazos tal cual', async () => {
+    const { createSyncSpaceSource } = await import('../src/spaces/sync-source.ts');
+    const now = '2026-10-13T10:00:00Z';
+    const base = { created_at: now, updated_at: now, updated_by: 'u1', deleted_at: null };
+    const spaces = [
+      { ...base, id: 'a', revision: 3, parent_id: null, kind: 'altura', name: 'Altura 3', public_name: null, code: null, position: 1, active: true, notes: 'Albergue', attributes: {} },
+      { ...base, id: 'b', revision: 7, parent_id: 'a', kind: 'edificio', name: 'Albergue', public_name: null, code: 'ALB', position: 1, active: true, notes: null, attributes: { bookable: true }, _pending: true },
+      { ...base, id: 'c', revision: 2, parent_id: 'b', kind: 'habitacion', name: 'Hab 3', public_name: 'Habitación 3', code: null, position: 1, active: true, notes: null, attributes: {} },
+    ];
+    const kinds = [
+      { ...base, id: 'k1', revision: 1, kind: 'cama', label: 'Cama', level: 4, parents: ['habitacion'], attribute_keys: ['bed_kind', 'capacity'], position: 20, active: true },
+      { ...base, id: 'k2', revision: 1, kind: 'edificio', label: 'Edificio', level: 2, parents: ['altura', 'root'], attribute_keys: ['bookable', 'capacity', 'accessible'], position: 2, active: true },
+    ];
+    const commits: unknown[][] = [];
+    let statusListener: ((s: { rejected: number }) => void) | null = null;
+    const errors: string[] = [];
+    const client = {
+      list: async (table: string) => (table === 'resources.spaces' ? spaces : kinds),
+      get: async (_t: string, id: string) => spaces.find((s) => s.id === id) ?? null,
+      onTable: () => () => undefined,
+      commit: async (ops: unknown[]) => { commits.push(ops); return { requestId: `req-${commits.length}` }; },
+      onStatus: (l: (s: { rejected: number }) => void) => { statusListener = l; return () => undefined; },
+      rejected: async () => [{ requestId: 'req-2', operations: [], baseRows: {}, rejectedAt: now, error: { status: 403, code: 'FORBIDDEN', message: 'Mover espacios es solo para administradores.', details: null } }],
+    };
+    const source = createSyncSpaceSource(client as never, { onError: (m) => errors.push(m) });
+    const rows = await source.list();
+    expect(rows[1]).toMatchObject({ id: 'b', parentId: 'a', code: 'ALB', pending: true, attributes: { bookable: true } });
+    expect(rows[2]!.publicName).toBe('Habitación 3');
+    await source.update('c', { name: 'Hab 3B', publicName: null });
+    expect(commits[0]).toEqual([{ op: 'update', table: 'resources.spaces', id: 'c', expectedRevision: 2, fields: { name: 'Hab 3B', public_name: null } }]);
+    await source.archive(['b', 'c']);
+    expect(commits[1]).toEqual([
+      { op: 'update', table: 'resources.spaces', id: 'b', expectedRevision: 7, fields: { active: false } },
+      { op: 'update', table: 'resources.spaces', id: 'c', expectedRevision: 2, fields: { active: false } },
+    ]);
+    await source.createMany([{ id: 'n1', parentId: 'b', kind: 'habitacion', name: 'Hab 9', publicName: null, code: null, position: 2, active: true, notes: null, attributes: {} }]);
+    expect((commits[2]![0] as { op: string; fields: Record<string, unknown> }).op).toBe('insert');
+    expect((commits[2]![0] as { fields: Record<string, unknown> }).fields).toMatchObject({ parent_id: 'b', kind: 'habitacion', name: 'Hab 9' });
+    const k = await source.listKinds();
+    expect(k.map((x) => x.kind)).toEqual(['edificio', 'cama']);
+    expect(k[0]).toMatchObject({ level: 2, parents: ['altura'] });
+    expect(k[1]!.attributes!.map((a) => a.label)).toEqual(['Tipo de cama', 'Plazas']);
+    statusListener!({ rejected: 1 });
+    await expect.poll(() => errors).toEqual(['Mover espacios es solo para administradores.']);
+    statusListener!({ rejected: 1 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(errors).toHaveLength(1);
+  });
+});

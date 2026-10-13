@@ -91,7 +91,7 @@ function readExpanded(key: string | undefined): Set<string> | null {
 }
 
 export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
-  const kinds = options.kinds ?? DEFAULT_SPACE_KINDS;
+  let kinds = options.kinds ?? DEFAULT_SPACE_KINDS;
   const canEdit = options.permissions?.edit ?? true;
   const canStructure = options.permissions?.structure ?? false;
   const base = options.feedbackId;
@@ -583,12 +583,16 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
   async function refresh(): Promise<void> { setRows(await options.source.list()); }
 
   unsubscribe = options.source.subscribe(setRows);
+  // Tipos como datos (`space_kinds`) si la fuente los da y la app no fijó `kinds`.
+  const setKinds = (next: SpaceKind[]) => { if (next.length) { kinds = next; paint(); } };
+  const offKinds = !options.kinds && options.source.subscribeKinds ? options.source.subscribeKinds(setKinds) : null;
+  if (!options.kinds && options.source.listKinds) void Promise.resolve(options.source.listKinds()).then(setKinds);
   void refresh();
   return {
     element,
     refresh,
     expand: (id) => setOpen(id, true),
     collapse: (id) => setOpen(id, false),
-    destroy() { unsubscribe?.(); element.remove(); },
+    destroy() { unsubscribe?.(); offKinds?.(); element.remove(); },
   };
 }

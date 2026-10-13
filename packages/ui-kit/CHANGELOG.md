@@ -29,6 +29,16 @@
   - **Ayudas:** `spacePath`, `spaceDescendants` (para filtrar con lo de dentro), `spaceMatches` y `nextAltura`.
   - **Fuente de datos** (`SpaceSource`): `{ list, subscribe, create, createMany, update, archive, restore }`.
   - **Demo:** `createMemorySpaceSource` y `demoSpaces` (las cinco alturas del usuario con su descripción).
+- **Fuente real: `createSyncSpaceSource(resources)`.** Es un adaptador sobre el `sync-client` del módulo `resources` (docs/resources/API.md, #473):
+  ```ts
+  const resources = createSyncSpaceSource(createSyncClient({ app: 'resources', apiBase: '/api/v1/resources', sessionFrom: client, clearOnLogout: true }));
+  createSpaceTree({ source: resources, permissions: { edit: role !== 'reader', structure: role === 'owner' } });
+  ```
+  - **Lectura:** lee el espejo local (sin red) y marca las filas sin confirmar.
+  - **Escritura:** cada operación es un lote con la revisión de la fila. Archivar o recuperar con todo lo de dentro va junto, como exige `ORPHAN_CHILD`.
+  - **Tipos:** salen de `resources.space_kinds` (`listKinds` y `subscribeKinds`; el árbol y el selector los usan si la app no fija `kinds`).
+  - **Rechazos:** si el servidor rechaza un lote de esta fuente (`FORBIDDEN`, `INVALID_SPACE_PARENT`…), se enseña su mensaje tal cual, por `onError` o con un aviso.
+  - El edificio admite también `bookable`, `capacity` y `accessible`, como el servidor.
 - Marcas de feedback de todos los controles (`SPACE_TREE_MARKS`, `SPACE_PICKER_MARKS`), también en el catálogo. En español e inglés.
 - **Nada existente cambia:** solo se añaden archivos, estilos `.space-*` y textos.
 - Prueba `v37` (20 pruebas, con `@smoke`): reglas, búsqueda, arrastre al lado, dentro y no válido, flechas, crear, editar, duplicar, «Mover a…», archivar y recuperar, la negativa del servidor y el selector.

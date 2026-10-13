@@ -67,7 +67,7 @@ function writeRecent(key: string | undefined, ids: string[]): void {
 const asIds = (value: string[] | string | null | undefined): string[] => (Array.isArray(value) ? value.slice() : value ? [value] : []);
 
 export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
-  const kinds = options.kinds ?? DEFAULT_SPACE_KINDS;
+  let kinds = options.kinds ?? DEFAULT_SPACE_KINDS;
   const multiple = !!options.multiple;
   const limit = options.quickLimit ?? 6;
   const base = options.feedbackId;
@@ -186,6 +186,9 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   }
 
   const unsubscribe = options.source?.subscribe(setRows);
+  const setKinds = (next: SpaceKind[]) => { if (next.length) kinds = next; };
+  const offKinds = !options.kinds && options.source?.subscribeKinds ? options.source.subscribeKinds(setKinds) : null;
+  if (!options.kinds && options.source?.listKinds) void Promise.resolve(options.source.listKinds()).then(setKinds);
   if (options.source) void Promise.resolve(options.source.list()).then(setRows);
   paint();
   return {
@@ -193,6 +196,6 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
     get: () => selected.slice(),
     set(ids) { selected = asIds(ids); paint(); },
     setRows,
-    destroy() { unsubscribe?.(); element.remove(); },
+    destroy() { unsubscribe?.(); offKinds?.(); element.remove(); },
   };
 }

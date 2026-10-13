@@ -47,7 +47,7 @@ const STORAGE: SpaceAttribute = { key: 'storage', label: 'Conservación', type: 
 /** Tipos de partida (RECURSOS.md §11.1). `resources-api` los dará como datos (`space_kinds`); hasta entonces, estos. */
 export const DEFAULT_SPACE_KINDS: SpaceKind[] = [
   { kind: 'altura', label: 'Altura', level: 1 },
-  { kind: 'edificio', label: 'Edificio', level: 2 },
+  { kind: 'edificio', label: 'Edificio', level: 2, attributes: BOOKING },
   { kind: 'exterior', label: 'Exterior', level: 2, attributes: BOOKING },
   { kind: 'habitacion', label: 'Habitación', level: 3, attributes: [...BOOKING, { key: 'en_suite', label: 'Baño propio', type: 'boolean' }] },
   { kind: 'sala', label: 'Sala', level: 3, attributes: BOOKING },
@@ -76,6 +76,9 @@ export interface SpaceSource {
   /** Archivar (el servidor puede negarse y devolver el motivo: reservas futuras, stock, tareas abiertas). */
   archive(ids: string[]): Promise<void> | void;
   restore(ids: string[]): Promise<void> | void;
+  /** Tipos como datos (`resources.space_kinds`); sin ellos, los de partida o los de la opción `kinds`. */
+  listKinds?(): SpaceKind[] | Promise<SpaceKind[]>;
+  subscribeKinds?(listener: (kinds: SpaceKind[]) => void): () => void;
 }
 
 export const kindOf = (kinds: readonly SpaceKind[], kind: string): SpaceKind | undefined => kinds.find((k) => k.kind === kind);

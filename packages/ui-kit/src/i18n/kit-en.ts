@@ -256,6 +256,8 @@ export const KIT_EN: Dictionary = {
   'Un cambio pendiente': 'A pending change',
   'Nivel': 'Level',
   // Espacios (createSpaceTree, createSpacePicker)
+  'No se ha guardado: {message}': 'Not saved: {message}',
+  'El servidor no lo ha aceptado.': 'The server did not accept it.',
   'Tipo desconocido: {kind}.': 'Unknown type: {kind}.',
   'Un edificio o un exterior va dentro de una altura.': 'A building or an outdoor area goes inside a level.',
   '«{kind}» no puede ir fuera de un edificio o exterior.': '«{kind}» cannot go outside a building or outdoor area.',
