@@ -1061,7 +1061,14 @@ const spaceSource = createMemorySpaceSource(demoSpaces(), {
   failArchive: (ids) => (ids.includes('piscina') ? 'No se puede archivar «Piscina»: tiene reservas futuras (retiro del 20 de octubre).' : null),
 });
 (window as unknown as { spaceSource: typeof spaceSource }).spaceSource = spaceSource;
-const spaceTree = createSpaceTree({ source: spaceSource, permissions: { edit: true, structure: true }, feedbackId: 'demo.espacios.arbol', label: 'Espacios de la casa' });
+// Como Booking: «Añadir cama» y «Duplicar» en la propia fila, a un toque.
+const spaceTree: ReturnType<typeof createSpaceTree> = createSpaceTree({
+  source: spaceSource, permissions: { edit: true, structure: true }, feedbackId: 'demo.espacios.arbol', label: 'Espacios de la casa',
+  rowActions: (r) => (r.kind === 'habitacion' ? [
+    { label: 'Añadir cama', icon: 'bed', onClick: (row) => spaceTree.create(row.id, 'cama'), feedbackId: 'demo.espacios.anadir_cama' },
+    { label: 'Duplicar', icon: 'copy', onClick: (row) => void spaceTree.duplicate(row.id), feedbackId: 'demo.espacios.duplicar' },
+  ] : []),
+});
 spaceTree.element.id = 'spaceTreeHost';
 const pickedOut = el('output', { id: 'spacePickedOut' }, '—');
 const spacePickerMany = createSpacePicker({ source: spaceSource, label: 'Espacio de la tarea', multiple: true, quick: ['cocina', 'hab-3', 'sala-roble', 'jardin'], feedbackId: 'demo.tarea.espacio', onChange: (ids) => { pickedOut.textContent = ids.join(', ') || '—'; } });
