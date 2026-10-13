@@ -114,6 +114,7 @@ async function processOne(ctx: ViewContext, mirror: Mirror, file: File): Promise
       supplier: existing ? { mode: 'existing', row: existing } : { mode: 'create', id: crypto.randomUUID() },
       overrides: rectification?.isRectification ? { invoice_kind: 'rectificativa', rectifies_number: rectification.number } : {},
       files: [fileArg],
+      payment: partial?.found.payment,
     });
     const ok = await commitSafely(client, operations as RowOperation[], `Leída: ${file.name}`);
     if (!ok) return { outcome: 'error', detail: '' };

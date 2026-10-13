@@ -7,7 +7,7 @@ import { closeSheet, confirmDialog, createSortableList, el, icon, openSheet, ren
 import { fbRows } from './feedback.ts';
 import { usage } from '../app/usage.ts';
 import {
-  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, MISSING_LABELS, validationMissing, type MissingKey, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, recalculate,
+  DEDUCTIBILITIES, EXTRACTION_PROMPT, PAYMENT_METHODS, periodOfDate, detectRectification, negateDocument, proposeRectificationAllocations, TAX_TYPES, ITEM_TYPES, importDocumentSha256, importOperations, matchSupplier, normalizedFilename, parseExternalResult, proposeImport, importDateChoice, confirmedFromInvoice, emptyPartial, MISSING_LABELS, validationMissing, type MissingKey, knownFieldsText, missingLabels, readingMessage, readingText, type ReadLevel, learnFromConfirmation, linesFromItems, templateOperation, softDuplicate, type FieldProvenance, type PdfTextItem, type ReadPayment, recalculate,
   slugify, sumCents, fromCents, toCents, type ImportDocument, type SchemaError, type Deductibility,
 } from '@ikisai/domain-invoices';
 import {
@@ -150,7 +150,7 @@ export const mountInvoices: ViewMount = (ctx) => {
     const m = mirror!;
     const hasFile = (m.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
     const chips = [el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice))];
-    if (invoice.payment_status === 'pagada') chips.push(el('span', { class: 'chip ok' }, 'Pagada'));
+    if (invoice.payment_status === 'pagada') chips.push(invoice.payment_source === 'sin_confirmar' ? el('span', { class: 'chip' }, 'Pagada (sin confirmar)') : el('span', { class: 'chip ok' }, 'Pagada'));
     if (!hasFile && invoice.status !== 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Sin documento'));
     if (isLate(invoice)) chips.push(el('span', { class: 'chip warn' }, `Atrasada (${quarterName(periodOfDate(invoice.invoice_date))})`));
     if (invoice.invoice_kind === 'rectificativa') chips.push(el('span', { class: invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'chip' : 'chip warn' }, invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'Rectificativa' : 'Rectificativa sin enlazar'));
@@ -322,6 +322,16 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const delta = invoice.totals_delta === null ? null : Number(invoice.totals_delta);
   const outside = delta !== null && Math.abs(toCents(delta)) > 2;
 
+  const unconfirmedPaid = invoice.payment_status === 'pagada' && invoice.payment_source === 'sin_confirmar';
+  /** «Pagada · Tarjeta · 05/10/2026 · leído», «Pagada (sin confirmar) · 05/10/2026» o «Pendiente de pago». */
+  const paymentText = (): string[] => {
+    if (invoice.payment_status !== 'pagada') return ['Pendiente de pago'];
+    const parts = [unconfirmedPaid ? 'Pagada (sin confirmar)' : 'Pagada'];
+    if (invoice.payment_method) parts.push(PAYMENT_METHOD_LABELS[invoice.payment_method] ?? invoice.payment_method);
+    if (invoice.paid_at) parts.push(shortDate(invoice.paid_at));
+    if (invoice.payment_source === 'leido') parts.push('leído del documento');
+    return [parts.join(' · ')];
+  };
   const update = (fields: Record<string, unknown>, message = 'Guardado en este dispositivo.') =>
     commitSafely(client, [{ op: 'update', table: INVOICES, id: invoice.id, expectedRevision: invoice.revision, fields }], message);
   // Lo que falta para validar (incidencia del usuario, 9-10-2026): lo mismo que comprueba el servidor, antes de enviar.
@@ -369,19 +379,24 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
     }
   }
   if (canEdit && invoice.status !== 'anulada') {
-    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago', 'data-feedback-label': 'Pago', class: 'softbtn', type: 'button', id: 'togglePaid', onclick: () => void togglePaid() }, icon('euro', 18), invoice.payment_status === 'pagada' ? 'Marcar pendiente de pago' : 'Marcar pagada'));
+    actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago', 'data-feedback-label': 'Pago', class: 'softbtn', type: 'button', id: unconfirmedPaid ? 'confirmPaid' : 'togglePaid', onclick: () => void (unconfirmedPaid ? confirmPaid() : togglePaid()) }, icon(unconfirmedPaid ? 'check' : 'euro', 18), unconfirmedPaid ? 'Confirmar pago' : invoice.payment_status === 'pagada' ? 'Marcar pendiente de pago' : 'Marcar pagada'));
   }
   if (role === 'owner' && invoice.status === 'validada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.archivar', 'data-feedback-label': 'Archivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'archivada' }, 'Factura archivada.') }, icon('briefcase', 18), 'Archivar'));
   if (role === 'owner' && invoice.status === 'archivada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.desarchivar', 'data-feedback-label': 'Desarchivar', class: 'ghost', type: 'button', onclick: () => void update({ status: 'validada' }, 'Factura desarchivada.') }, icon('undo', 18), 'Desarchivar'));
   if (canEdit && invoice.status !== 'anulada') actions.push(el('button', { 'data-feedback-id': 'invoices.facturas.ficha.anular', 'data-feedback-label': 'Anular', class: 'danger', type: 'button', id: 'annulInvoice', onclick: () => void annul() }, icon('trash', 18), 'Anular'));
 
+  // FB_2026_027 y FB_2026_030: la fecha de pago nunca es la del clic. Sin confirmar, un toque la confirma tal cual.
+  async function confirmPaid(): Promise<void> {
+    await update({ payment_source: 'confirmado' }, 'Pago confirmado.');
+  }
   async function togglePaid(): Promise<void> {
-    if (invoice.payment_status === 'pagada') { await update({ payment_status: 'pendiente', paid_at: null }, 'Pago marcado como pendiente.'); return; }
-    const date = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', value: todayIso(), id: 'paidAt' });
+    if (invoice.payment_status === 'pagada') { await update({ payment_status: 'pendiente', paid_at: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.'); return; }
+    const date = el('input', { 'data-feedback-id': 'invoices.facturas.ficha.pago.fecha', 'data-feedback-label': 'Fecha de pago', type: 'date', value: invoice.paid_at ?? invoice.invoice_date ?? '', id: 'paidAt' });
     const method = select('paidMethod', [['', 'Sin indicar'], ...PAYMENT_METHODS.map((m) => [m, PAYMENT_METHOD_LABELS[m] ?? m] as [string, string])], invoice.payment_method, { 'data-feedback-id': 'invoices.facturas.ficha.pago.metodo', 'data-feedback-label': 'Método de pago' });
     const ok = await confirmDialog({ title: 'Marcar como pagada', text: el('div', null, field('Fecha de pago', date), field('Método', method)), confirmLabel: 'Marcar pagada' });
     if (!ok) return;
-    await update({ payment_status: 'pagada', paid_at: date.value || todayIso(), payment_method: method.value || null }, 'Factura marcada como pagada.');
+    if (!date.value) { toast('Indica la fecha de pago.'); return; }
+    await update({ payment_status: 'pagada', paid_at: date.value, payment_method: method.value || null, payment_source: 'confirmado' }, 'Factura marcada como pagada.');
   }
 
   async function annul(): Promise<void> {
@@ -411,7 +426,8 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const header = el('div', { class: 'inv-head', 'data-feedback-id': 'invoices.facturas.ficha', 'data-feedback-label': 'Ficha de factura' },
     el('div', { class: 'chips' },
       el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice)),
-      invoice.payment_status === 'pagada' ? el('span', { class: 'chip ok' }, `Pagada${invoice.paid_at ? ' ' + shortDate(invoice.paid_at) : ''}`) : el('span', { class: 'chip' }, 'Pendiente de pago'),
+      invoice.payment_status !== 'pagada' ? el('span', { class: 'chip' }, 'Pendiente de pago')
+        : unconfirmedPaid ? el('span', { class: 'chip warn' }, 'Pagada (sin confirmar)') : el('span', { class: 'chip ok' }, `Pagada${invoice.paid_at ? ' ' + shortDate(invoice.paid_at) : ''}`),
       invoice.source === 'import_v1' ? el('span', { class: 'chip', title: 'Datos importados del JSON de ChatGPT' }, 'Desde JSON') : null,
       invoice.invoice_kind === 'rectificativa' ? el('span', { class: 'chip warn', id: 'rectChip' }, 'Rectificativa') : null,
     ),
@@ -420,6 +436,9 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('dt', null, 'Fecha'), el('dd', null, invoice.invoice_date ? [shortDate(invoice.invoice_date), ` · periodo ${invoice.fiscal_period ?? periodOf(invoice.invoice_date)}`] : 'Sin fecha: léela del PDF o escríbela para poder validar'),
       el('dt', null, 'Número'), el('dd', null, invoice.invoice_number ?? '—'),
       el('dt', null, 'Objeto'), el('dd', null, invoice.object),
+      el('dt', null, 'Pago'), el('dd', { id: 'invPayment' }, ...paymentText(),
+        unconfirmedPaid && canEdit ? [' · ', el('button', { 'data-feedback-id': 'invoices.facturas.ficha.pago.no_pagada', 'data-feedback-label': 'No está pagada', class: 'linkbtn inline', type: 'button', id: 'notPaid',
+          onclick: () => void update({ payment_status: 'pendiente', paid_at: null, payment_method: null, payment_source: 'confirmado' }, 'Pago marcado como pendiente.') }, 'No está pagada')] : []),
       ...rectificationRows(ctx, invoice, mirror),
       el('dt', null, 'Se declara en'), el('dd', { id: 'declaredPeriod' }, invoice.invoice_date || invoice.declared_period
         ? `${quarterName(invoice.declared_period ?? periodOfDate(invoice.invoice_date))}${invoice.delivered_elsewhere ? ' · ya pasada a la gestoría' : isLate(invoice) ? ` · atrasada (la fecha es del ${quarterName(periodOfDate(invoice.invoice_date))})` : ''}` : 'Sin fecha'),
@@ -1039,7 +1058,7 @@ export function openNewInvoice(ctx: ViewContext, mirror: Mirror): void {
 // Importar JSON ikisai.invoice.v1 · API.md §6.1 pasos 3-4
 // ---------------------------------------------------------------------------
 /** Lo que llega de «Extraer» a la hoja de importación: documento (si lo hubo), avisos y errores del modelo, y coste. */
-export interface ExtractionPrefill { rectification?: { isRectification: boolean; number: string | null; evidence: string | null }; document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null; provenance?: Record<string, FieldProvenance>; origin?: 'api' | 'pdf_text' }
+export interface ExtractionPrefill { rectification?: { isRectification: boolean; number: string | null; evidence: string | null }; document?: ImportDocument; warnings: string[]; errors?: unknown[]; usage?: ExtractionUsage | null; provenance?: Record<string, FieldProvenance>; origin?: 'api' | 'pdf_text'; payment?: ReadPayment | null }
 
 const PROVENANCE_LABELS: Record<string, string> = {
   'invoice.supplier_name': 'Proveedor', 'invoice.supplier_tax_id': 'NIF', 'invoice.invoice_date': 'Fecha', 'invoice.invoice_number': 'Número',
@@ -1114,7 +1133,7 @@ async function readPdfInto(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
   const templateNote = result.template ? `Plantilla del proveedor v${result.template.version} · ${result.template.confirmations} factura${result.template.confirmations === 1 ? '' : 's'}${result.template.status === 'aprendiendo' ? ' (aprendiendo)' : ''}.` : null;
   const rectification = detectRectification({ text: items.map((i) => i.str).join('\n'), document: result.document });
   const documentForImport = rectification.isRectification && result.document.document_totals.total > 0 ? negateDocument(result.document) : result.document;
-  openImport(ctx, mirror, target, { document: documentForImport, rectification, warnings: [...(rectification.isRectification ? [`Parece una rectificativa (${rectification.evidence}): revisa el número de la original.`] : []), ...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text' }, files?.length ? { files } : {});
+  openImport(ctx, mirror, target, { document: documentForImport, rectification, warnings: [...(rectification.isRectification ? [`Parece una rectificativa (${rectification.evidence}): revisa el número de la original.`] : []), ...(templateNote ? [templateNote] : []), ...result.warnings], provenance: result.provenance, origin: 'pdf_text', payment: result.found.payment }, files?.length ? { files } : {});
 }
 
 /** Tras «Rellenar a mano» con «Guardar y validar»: valida con aprendizaje y vuelve a abrir la ficha. */
@@ -1401,6 +1420,7 @@ export function openImport(ctx: ViewContext, mirror: Mirror, target: LocalInvoic
         overrides: { object: objectInput?.value.trim() || null, invoice_date: dateInput?.value || null, expense_category: (categorySelect?.value || null) as never, is_investment: investmentInput?.checked ?? null, deductibility: (deductibilitySelect?.value || null) as Deductibility | null,
           invoice_kind: kindSelect?.value === 'rectificativa' ? 'rectificativa' : 'ordinaria', rectifies_number: rectNumberInput?.value.trim() || null },
         files: staged.map((s, i) => ({ file_id: s.marker, original_filename: s.filename, page_order: i + 1, mime_type: s.mime, size_bytes: s.size, sha256: s.sha256 })),
+        payment: prefill?.payment, currentPayment: target,
       });
       const imported = await commitSafely(client, operations as RowOperation[], 'Factura importada en este dispositivo. Queda pendiente de revisión.');
       usage.track('invoices.facturas.importar', imported ? 'success' : 'error');
