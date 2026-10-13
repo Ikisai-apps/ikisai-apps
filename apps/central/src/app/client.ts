@@ -15,6 +15,9 @@ export const T = {
   decisions: 'central.decisions',
   teams: 'central.teams',
   personTeams: 'central.person_teams',
+  trades: 'central.trades',
+  personTrades: 'central.person_trades',
+  tradeKit: 'central.trade_kit',
   texts: 'central.texts',
 } as const satisfies Record<string, TableName>;
 

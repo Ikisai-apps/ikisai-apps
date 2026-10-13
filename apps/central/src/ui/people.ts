@@ -16,6 +16,9 @@ import { syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
+import { createLevelStar } from '@ikisai/ui-kit';
+import { TRADE_LEVEL_LABELS } from '@ikisai/domain-central';
+import { levelLabel as tradeLevelLabel, levelStar, loadTrades, markLevelStar, tradeTree, tradeWithDescendants, type PersonTrade, type Trade } from './trades.ts';
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null };
 export type Person = Mirror<Base & {
@@ -53,7 +56,7 @@ let houseLevelsOn = false;
 const levelLabel = (level: string | null | undefined) => (level ? HOUSE_LEVEL_LABELS[level as HouseLevel] ?? level : 'Sin nivel');
 const areaLabel = (role: string) => BASE_ROLE_LABELS[role as keyof typeof BASE_ROLE_LABELS] ?? role;
 
-async function loadPeople(client: SyncClient): Promise<{ people: Person[]; privates: Private[]; records: PersonRecord[]; teams: Team[]; personTeams: PersonTeam[] }> {
+async function loadPeople(client: SyncClient): Promise<{ people: Person[]; privates: Private[]; records: PersonRecord[]; teams: Team[]; personTeams: PersonTeam[]; trades: Trade[]; capabilities: PersonTrade[] }> {
   const reserved = canSeeReserved(client.bootstrap()?.membership);
   const [people, privates, records, teams, personTeams] = await Promise.all([
     client.list(T.people, { includeDeleted: true }),
@@ -63,7 +66,9 @@ async function loadPeople(client: SyncClient): Promise<{ people: Person[]; priva
     client.list(T.personTeams, { includeDeleted: true }),
   ]);
   houseLevelsOn = (people as unknown as Person[]).some((p) => !p.deleted_at && p.house_level);
+  const { trades, capabilities } = await loadTrades(client);
   return {
+    trades, capabilities,
     people: people as unknown as Person[], privates: privates as unknown as Private[], records: records as unknown as PersonRecord[],
     teams: (teams as unknown as Team[]).sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name, 'es')),
     personTeams: personTeams as unknown as PersonTeam[],
@@ -119,10 +124,11 @@ export const mountPeople: ViewMount = (ctx) => {
   const { main, client, navigate } = ctx;
   const role = client.bootstrap()?.membership.role ?? 'reader';
   const canEdit = role !== 'reader';
-  let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [] };
+  let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [], trades: [], capabilities: [] };
   let query = '';
   let relation = '';
   let level = '';
+  let trade = '';
   let team = '';
   let showInactive = false;
 
@@ -137,6 +143,9 @@ export const mountPeople: ViewMount = (ctx) => {
   const levelFilter = el('select', { id: 'peopleLevel', 'aria-label': 'Nivel de casa', hidden: true, 'data-feedback-id': 'central.personas.filtro_nivel', 'data-feedback-label': 'Filtro por nivel de casa', onchange: (e: Event) => { level = (e.target as HTMLSelectElement).value; paint(); } },
     ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, '', 'Todos los niveles'),
     ...(ctx.isAdmin ? [el('option', { value: 'sin_nivel' }, 'Sin nivel')] : [])) as HTMLSelectElement;
+  // Oficio (P1): filtra por un oficio y todo lo que cuelga de él. Sin oficios, no se ve (la pantalla queda como antes).
+  const tradeFilter = el('select', { id: 'peopleTrade', 'aria-label': 'Oficio', hidden: true, 'data-feedback-id': 'central.personas.filtro_oficio', 'data-feedback-label': 'Filtro por oficio', onchange: (e: Event) => { trade = (e.target as HTMLSelectElement).value; paint(); } },
+    el('option', { value: '' }, 'Todos los oficios')) as HTMLSelectElement;
   // Solo antes de aplicar el nivel por primera vez: la vista previa para dirección.
   const levelsNote = el('div', { 'data-feedback-id': 'central.personas.aviso_nivel', 'data-feedback-label': 'Aviso del nivel de casa' });
   const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
@@ -147,13 +156,22 @@ export const mountPeople: ViewMount = (ctx) => {
     main,
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.personas.cabecera', 'data-feedback-label': 'Cabecera de Personas' }, el('div', null, el('h2', null, 'Personas'),
       el('p', null, 'Quién trabaja o colabora con Ikisai, tenga o no cuenta en las apps.'))),
-    el('div', { class: 'toolbar', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, relationFilter, levelFilter, teamFilter, inactive,
-      el('a', { class: 'ghost btnlike', href: '#/personas/equipos', id: 'manageTeams', 'data-feedback-id': 'central.personas.equipos', 'data-feedback-label': 'Equipos' }, icon('people', 16), 'Equipos')),
+    el('div', { class: 'toolbar', 'data-feedback-id': 'central.personas.barra', 'data-feedback-label': 'Búsqueda y filtros' }, search, relationFilter, levelFilter, tradeFilter, teamFilter, inactive,
+      el('a', { class: 'ghost btnlike', href: '#/personas/equipos', id: 'manageTeams', 'data-feedback-id': 'central.personas.equipos', 'data-feedback-label': 'Equipos' }, icon('people', 16), 'Equipos'),
+      el('a', { class: 'ghost btnlike', href: '#/personas/oficios', id: 'manageTrades', 'data-feedback-id': 'central.personas.oficios', 'data-feedback-label': 'Oficios' }, icon('tag', 16), 'Oficios')),
     levelsNote,
     host,
     trash,
     canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', 'data-feedback-id': 'central.personas.nueva', 'data-feedback-label': 'Nueva persona', onclick: () => openPersonEditor(ctx, null, (id) => navigate(`#/personas/${id}`)) }, icon('plus'), 'Nueva persona') : null,
   );
+
+  /** Hasta tres oficios de la persona, los de más nivel, con su estrella. */
+  function topTrades(personId: string): HTMLElement[] {
+    const names = new Map(data.trades.filter((t) => !t.deleted_at && t.active).map((t) => [t.id, t.name]));
+    return data.capabilities.filter((c) => c.person_id === personId && names.has(c.trade_id))
+      .sort((a, b) => (b.level - a.level) || names.get(a.trade_id)!.localeCompare(names.get(b.trade_id)!, 'es')).slice(0, 3)
+      .map((c) => el('span', { class: 'chip tradechip' }, levelStar(c.level), names.get(c.trade_id)!));
+  }
 
   function row(p: Person): HTMLElement {
     const today = todayInMadrid();
@@ -161,6 +179,7 @@ export const mountPeople: ViewMount = (ctx) => {
       ...(p.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]),
       ...(p.committed_post ? [el('span', { class: 'chip' }, 'Puesto comprometido')]: []),
       ...teamsOf(data, p.id).map(teamChip),
+      ...topTrades(p.id),
       ...statusChips(data.records, p.id, today),
       ...(p._pending ? [el('span', { class: 'chip pending' }, 'Pendiente de sincronizar')] : []),
     ];
@@ -219,7 +238,13 @@ export const mountPeople: ViewMount = (ctx) => {
     // Con el nivel activo, el directorio es de quien tiene nivel; «Sin nivel», solo para dirección.
     const byLevel = (p: Person) => !houseLevelsOn ? (!relation || p.relation === relation)
       : level === 'sin_nivel' ? !p.house_level : !!p.house_level && (!level || p.house_level === level);
-    const filtered = alive.filter((p) => (showInactive || p.active) && byLevel(p) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
+    const tree = tradeTree(data.trades);
+    tradeFilter.hidden = !tree.length;
+    if (tradeFilter.options.length !== tree.length + 1) {
+      replace(tradeFilter, el('option', { value: '' }, 'Todos los oficios'), ...tree.map((x) => el('option', { value: x.trade.id, selected: x.trade.id === trade }, `${'· '.repeat(x.depth)}${x.trade.name}`)));
+    }
+    const knows = trade ? new Set(data.capabilities.filter((c) => tradeWithDescendants(data.trades, trade).has(c.trade_id)).map((c) => c.person_id)) : null;
+    const filtered = alive.filter((p) => (showInactive || p.active) && byLevel(p) && (!knows || knows.has(p.id)) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
     paintLevelsNote(alive);
     if (teamFilter.options.length !== data.teams.length + 1) {
       replace(teamFilter, el('option', { value: '' }, 'Todos los equipos'), ...data.teams.map((t) => el('option', { value: t.id, selected: t.id === team }, t.name)));
@@ -228,7 +253,7 @@ export const mountPeople: ViewMount = (ctx) => {
       replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.personas.vacio', 'data-feedback-label': 'Sin personas' },
         el('strong', null, alive.length ? 'Ninguna persona coincide' : 'Todavía no hay personas'),
         alive.length ? 'Cambia el filtro o la búsqueda.' : canEdit ? 'Añade a quien trabaja o colabora con Ikisai: con o sin cuenta.' : ''));
-    } else if (canEdit && !query && !relation && !level && !team && showInactive) {
+    } else if (canEdit && !query && !relation && !level && !trade && !team && showInactive) {
       // Orden manual (decisión del usuario): solo con la lista completa, para que la posición tenga sentido.
       const sortable = createSortableList<Person>({
         items: filtered, key: (p) => p.id, render: (p) => row(p), name: (p) => p.display_name, label: 'Personas', id: 'peopleSortable',
@@ -258,7 +283,7 @@ export const mountPeople: ViewMount = (ctx) => {
   }
 
   void load();
-  const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams].map((t) => client.onTable(t, () => void load()));
+  const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams, T.trades, T.personTrades].map((t) => client.onTable(t, () => void load()));
   return () => offs.forEach((off) => off());
 };
 
@@ -373,7 +398,7 @@ export function mountPerson(personId: string): ViewMount {
     const membership = client.bootstrap()?.membership;
     const canEdit = membership?.role !== 'reader';
     const reserved = canSeeReserved(membership);
-    let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [] };
+    let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [], trades: [], capabilities: [] };
     let accounts: Account[] | null = null;
     const host = el('div', { id: 'personView', 'data-feedback-id': 'central.persona.contenido', 'data-feedback-label': 'Ficha de la persona' });
     replace(main, el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.persona.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'), host);
@@ -447,6 +472,13 @@ export function mountPerson(personId: string): ViewMount {
       const mine = teamsOf(data, person.id);
       const teamsBlock = block('Equipos', 'blockTeams', [mine.length ? el('span', { class: 'chips', id: 'personTeams', 'data-feedback-id': 'central.persona.equipos.lista', 'data-feedback-label': 'Equipos de la persona' }, ...mine.map(teamChip)) : el('p', { class: 'muted' }, 'Sin equipo.')],
         reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', id: 'editTeams', 'data-feedback-id': 'central.persona.equipos.cambiar', 'data-feedback-label': 'Cambiar equipos', onclick: () => openTeamsEditor(person) }, icon('edit', 16), 'Cambiar') : null);
+      const paths = new Map(tradeTree(data.trades, true).map((x) => [x.trade.id, x.path]));
+      const caps = data.capabilities.filter((c) => c.person_id === person.id && paths.has(c.trade_id))
+        .sort((a, b) => (b.level - a.level) || paths.get(a.trade_id)!.localeCompare(paths.get(b.trade_id)!, 'es'));
+      const tradesBlock = block('Oficios', 'blockTrades', [caps.length
+        ? el('ul', { class: 'list tradecaps', id: 'personTrades', 'data-feedback-id': 'central.persona.oficios.lista', 'data-feedback-label': 'Oficios de la persona' }, ...caps.map((c) => capabilityRow(person, c, paths.get(c.trade_id)!)))
+        : el('p', { class: 'muted' }, 'Sin oficios.')],
+        reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', id: 'addTrade', 'data-feedback-id': 'central.persona.oficios.anadir', 'data-feedback-label': 'Añadir oficio', onclick: () => openCapabilityEditor(person, null) }, icon('plus', 16), 'Añadir oficio') : null);
       const accountBlock = isAdmin ? block('Cuenta', 'blockAccount', accountBody(person, priv)) : null;
 
       const danger = canEdit && !person.deleted_at ? el('div', { class: 'zone', 'data-feedback-id': 'central.persona.acciones', 'data-feedback-label': 'Acciones de la persona' },
@@ -454,12 +486,63 @@ export function mountPerson(personId: string): ViewMount {
           person.active ? 'Marcar inactiva' : 'Marcar activa'),
         el('button', { class: 'danger', type: 'button', id: 'deletePerson', 'data-feedback-id': 'central.persona.acciones.papelera', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deletePerson(person) }, icon('trash', 18), 'Enviar a papelera')) : null;
 
-      replace(host, head, basic, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
+      replace(host, head, basic, tradesBlock, teamsBlock, privateBlock, recordsBlock, accountBlock, danger);
+      fbMark(host.querySelector('#blockTrades'), 'central.persona.oficios', 'Oficios');
       fbMark(host.querySelector('#blockBasic'), 'central.persona.ficha', 'Ficha');
       fbMark(host.querySelector('#blockTeams'), 'central.persona.equipos', 'Equipos');
       fbMark(host.querySelector('#blockPrivate'), 'central.persona.contacto', 'Contacto y vinculación');
       fbMark(host.querySelector('#blockRecords'), 'central.persona.documentacion', 'Documentación y formación');
       fbMark(host.querySelector('#blockAccount'), 'central.persona.cuenta', 'Cuenta');
+    }
+
+    /** Una capacidad: estrella (editable para quien gestiona personas: pulsar cambia el nivel), ruta del oficio y nota. */
+    function capabilityRow(person: Person, c: PersonTrade, path: string): HTMLElement {
+      let star: HTMLElement;
+      if (reserved && !person.deleted_at) {
+        const control = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: c.level, name: `Nivel en ${path}`,
+          onChange: (level) => void commitSafely(client, [{ op: 'update', table: T.personTrades, id: c.id, expectedRevision: c.revision, fields: { level } }], `Nivel: ${tradeLevelLabel(level)}.`) });
+        markLevelStar(control.element.querySelector('button'));
+        star = control.element;
+      } else star = levelStar(c.level);
+      return el('li', { class: 'caprow', 'data-trade': c.trade_id, 'data-feedback-id': 'central.persona.oficios.fila', 'data-feedback-label': 'Oficio de la persona' },
+        star,
+        el('span', { class: 'capname' }, el('strong', null, path), el('span', { class: 'muted small' }, ` · ${tradeLevelLabel(c.level)}`)),
+        c.note ? el('span', { class: 'muted small capnote', 'data-feedback-ignore': '' }, c.note) : null,
+        reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.persona.oficios.editar', 'data-feedback-label': 'Editar oficio de la persona', onclick: () => openCapabilityEditor(person, c) }, 'Editar') : null);
+    }
+
+    /** Añadir o editar una capacidad: oficio (del árbol), nivel con la estrella y nota opcional. */
+    function openCapabilityEditor(person: Person, c: PersonTrade | null): void {
+      let sheet: Sheet | null = null;
+      const taken = new Set(data.capabilities.filter((x) => x.person_id === person.id).map((x) => x.trade_id));
+      const tree = tradeTree(data.trades).filter((x) => c ? x.trade.id === c.trade_id : !taken.has(x.trade.id));
+      if (!c && !tree.length) { toast(data.trades.some((t) => !t.deleted_at) ? 'Ya tiene todos los oficios del catálogo.' : 'Todavía no hay oficios: créalos en Personas › Oficios.'); return; }
+      const tradeSelect = el('select', { id: 'pt-trade', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
+      let level = c?.level ?? 1;
+      const star = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: level, name: 'Nivel', showLabel: true, onChange: (v) => { level = v; } });
+      markLevelStar(star.element.querySelector('button'));
+      const note = el('input', { id: 'pt-note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
+      const save = el('button', { class: 'primary', type: 'button', id: 'savePersonTrade', 'data-feedback-id': 'central.persona.oficios.editor.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
+        const fields = { level, note: note.value.trim() || null };
+        const ops: RowOperation[] = c ? [{ op: 'update', table: T.personTrades, id: c.id, expectedRevision: c.revision, fields }]
+          : [{ op: 'insert', table: T.personTrades, id: crypto.randomUUID(), fields: { ...fields, person_id: person.id, trade_id: tradeSelect.value } }];
+        if (await commitSafely(client, ops, c ? 'Oficio guardado.' : 'Oficio añadido.')) await sheet?.close(true);
+      } }, 'Guardar');
+      sheet = ignoreSheetMeta(openSheet({
+        title: c ? 'Editar oficio' : 'Añadir oficio', meta: person.display_name,
+        body: el('div', { 'data-feedback-id': 'central.persona.oficios.editor', 'data-feedback-label': 'Oficio de la persona' },
+          el('label', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_oficio', 'data-feedback-label': 'Oficio' }, el('span', null, 'Oficio'), tradeSelect),
+          el('div', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_nivel', 'data-feedback-label': 'Nivel' }, el('span', null, 'Nivel'), star.element,
+            el('span', { class: 'muted small' }, 'Pulsa la estrella para cambiar: aprende, sabe, experto.')),
+          el('label', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_nota', 'data-feedback-label': 'Nota' }, el('span', null, 'Nota (opcional)'), note)),
+        panelAttrs: { 'data-feedback-id': 'central.persona.oficios.editor.hoja', 'data-feedback-label': 'Oficio de la persona' },
+        closeAttrs: { 'data-feedback-id': 'central.persona.oficios.editor.cerrar', 'data-feedback-label': 'Cerrar' },
+        foot: [
+          c ? el('button', { class: 'danger', type: 'button', id: 'deletePersonTrade', 'data-feedback-id': 'central.persona.oficios.editor.quitar', 'data-feedback-label': 'Quitar oficio', onclick: async () => {
+            if (await commitSafely(client, [{ op: 'delete', table: T.personTrades, id: c.id, expectedRevision: c.revision }], 'Oficio quitado.')) await sheet?.close(true);
+          } }, 'Quitar') : el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.oficios.editor.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'),
+          save],
+      }));
     }
 
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
@@ -789,7 +872,7 @@ export function mountPerson(personId: string): ViewMount {
     }
 
     void load().then(() => loadAccounts());
-    const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams].map((t) => client.onTable(t, () => void load()));
+    const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams, T.trades, T.personTrades].map((t) => client.onTable(t, () => void load()));
     return () => offs.forEach((off) => off());
   };
 }

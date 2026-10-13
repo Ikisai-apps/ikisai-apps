@@ -5,7 +5,7 @@
  */
 import {
   AVAILABILITIES, BASE_ROLES, canSeeReserved, COVERAGES, ENGAGEMENTS, FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES,
-  HOUSE_LEVELS, recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, type RecordKind,
+  HOUSE_LEVELS, recordTypesFor, RELATIONS, RESERVED_TABLES, TABLES, TEAM_TABLES, TRADE_TABLES, type RecordKind,
 } from './people.ts';
 import { ENTITY_TABLE, VENUE_MAP_URL, ibanProblem, taxIdProblem } from './entity.ts';
 import { KPI_TARGETS_TABLE } from './kpis.ts';
@@ -186,6 +186,27 @@ const SPECS: Record<string, TableSpec> = {
     required: ['person_id', 'team_id'],
     immutable: ['person_id', 'team_id'],
   },
+  [TABLES.trades]: {
+    fields: {
+      parent_id: { kind: 'uuid', nullable: true },
+      name: { kind: 'text', min: 1, max: 80 },
+      position: { kind: 'number' },
+      active: { kind: 'boolean' },
+      notes: { kind: 'text', max: 500, nullable: true },
+      source_label_id: { kind: 'uuid', nullable: true },
+    },
+    required: ['name'],
+  },
+  [TABLES.personTrades]: {
+    fields: { person_id: { kind: 'uuid' }, trade_id: { kind: 'uuid' }, level: { kind: 'number' }, note: { kind: 'text', max: 300, nullable: true } },
+    required: ['person_id', 'trade_id'],
+    immutable: ['person_id', 'trade_id'],
+  },
+  [TABLES.tradeKit]: {
+    fields: { trade_id: { kind: 'uuid' }, item_id: { kind: 'uuid' }, quantity: { kind: 'number', nullable: true }, note: { kind: 'text', max: 300, nullable: true } },
+    required: ['trade_id', 'item_id'],
+    immutable: ['trade_id'],
+  },
   [TEXTS_TABLE]: {
     fields: {
       key: { kind: 'text', min: 3, max: 60, pattern: TEXT_KEY, patternText: 'clave como «portal.privacy»: minúsculas, puntos y guiones bajos' },
@@ -298,9 +319,15 @@ export function validateOperations(operations: readonly DomainOperation[], actor
     if (TEAM_TABLES.includes(table) && !canSeeReserved(actor)) {
       return { code: 'FORBIDDEN', message: 'Solo quien administra o gestiona personas puede cambiar los equipos.', details: { index, table } };
     }
+    if (TRADE_TABLES.includes(table) && !canSeeReserved(actor)) {
+      return { code: 'FORBIDDEN', message: 'Solo quien administra o gestiona personas puede cambiar los oficios.', details: { index, table } };
+    }
     if (op.op !== 'insert' && op.op !== 'update' && op.op !== 'restore') continue;
     const fields = op.fields ?? {};
     if (table === TABLES.people && 'merged_into' in fields) return fieldIssue(index, table, 'merged_into', 'solo lo escribe la fusión de fichas');
+    if (table === TABLES.personTrades && 'level' in fields && !(Number.isInteger(fields.level) && (fields.level as number) >= 0 && (fields.level as number) <= 2)) {
+      return fieldIssue(index, table, 'level', 'debe ser 0 (aprende), 1 (sabe) o 2 (experto)');
+    }
     for (const [field, value] of Object.entries(fields)) {
       const fieldSpec = spec.fields[field];
       if (!fieldSpec) continue; // el núcleo responde INVALID_FIELDS con su lista blanca

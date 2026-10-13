@@ -9,6 +9,9 @@ export const TABLES = {
   personRecords: 'central.person_records',
   teams: 'central.teams',
   personTeams: 'central.person_teams',
+  trades: 'central.trades',
+  personTrades: 'central.person_trades',
+  tradeKit: 'central.trade_kit',
 } as const;
 
 /** Equipos que propone la interfaz cuando no hay ninguno (sin datos reales en Git). */
@@ -16,6 +19,11 @@ export const SUGGESTED_TEAMS = ['Cocina', 'Mantenimiento', 'Limpieza', 'Direcci�
 
 /** Equipos y pertenencia: escriben el owner y el editor con ámbito `people` (los mismos que ven lo reservado). */
 export const TEAM_TABLES: readonly string[] = ['central.teams', 'central.person_teams'];
+/** Oficios y capacidades (fase P1): los gestionan los mismos que los equipos (owner, o editor con ámbito `people`). */
+export const TRADE_TABLES: readonly string[] = ['central.trades', 'central.person_trades', 'central.trade_kit'];
+/** Nivel de una capacidad: tres pasos de la estrella de nivel del kit (la de la prioridad de Tasks), de 0 a 2. */
+export const TRADE_LEVEL_LABELS = ['Aprende', 'Sabe', 'Experto'] as const;
+export const TRADE_MAX_DEPTH = 3;
 
 /** Tablas reservadas: solo owner, o editor con ámbito `people`. */
 export const RESERVED_TABLES: readonly string[] = [TABLES.personPrivate, TABLES.personRecords];

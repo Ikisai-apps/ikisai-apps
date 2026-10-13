@@ -127,3 +127,9 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .markerbtn{cursor:pointer;font:inherit}
 .textversion{margin:6px 0;padding-left:10px;border-left:3px solid var(--line)}
 .textversion > summary{cursor:pointer}
+/* Oficios y capacidades (P1) */
+.caprow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0}
+.caprow .capname{flex:1;min-width:0}
+.caprow .capnote{flex-basis:100%;padding-left:52px}
+.tradechip{display:inline-flex;align-items:center;gap:4px}
+.tradetree .traderow{width:100%}

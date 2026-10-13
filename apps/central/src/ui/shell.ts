@@ -13,6 +13,7 @@ import { mountEntity } from './entity.ts';
 import { mountDecisions } from './decisions.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountTeams } from './teams.ts';
+import { mountTrades } from './trades.ts';
 import { mountTexts } from './texts.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
 import { fbMark } from './feedback.ts';
@@ -44,7 +45,7 @@ function navFor(isAdmin: boolean): NavItem[] {
     // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
     { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos'] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
-    { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos'] },
+    { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos', '#/personas/oficios'] },
   ];
   if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
   return items;
@@ -58,6 +59,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/decisiones': { title: 'Decisiones', slug: 'decisiones', mount: mountDecisions },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
   '#/personas/equipos': { title: 'Equipos', slug: 'equipos', mount: mountTeams },
+  '#/personas/oficios': { title: 'Oficios', slug: 'oficios', mount: mountTrades },
   '#/cumplimiento': { title: 'Vencimientos', slug: 'cumplimiento', mount: mountCompliance('vencimientos') },
   '#/cumplimiento/requisitos': { title: 'Obligaciones', slug: 'cumplimiento', mount: mountCompliance('requisitos') },
   '#/cumplimiento/documentos': { title: 'Documentos clave', slug: 'cumplimiento', mount: mountCompliance('documentos') },
@@ -78,6 +80,7 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
     case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
     case 'equipos': fbMark(main, 'central.equipos', 'Equipos'); break;
+    case 'oficios': fbMark(main, 'central.oficios', 'Oficios'); break;
     case 'cumplimiento': fbMark(main, 'central.cumplimiento', 'Cumplimiento'); break;
     case 'obligacion': fbMark(main, 'central.obligacion', 'Obligación'); break;
     case 'accesos': fbMark(main, 'central.accesos', 'Accesos'); break;
