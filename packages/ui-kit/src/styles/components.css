@@ -967,3 +967,18 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .hint.suggest:empty{display:none}
 .hint.suggest.warn{color:var(--warn-ink,#8a5a00)}
 .hint.suggest .linkbtn{font-size:inherit}
+
+/* Estrella de nivel (createLevelStar): una estrella que se rellena por pasos, como la prioridad de Tasks. */
+.level-star-wrap{display:inline-flex;align-items:center}
+.level-star{--star:#c58b2a;display:inline-flex;align-items:center;justify-content:center;gap:9px;min-width:44px;min-height:44px;padding:0 10px;border:0;background:transparent;border-radius:12px;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.level-star:hover:not(.readonly){background:var(--hover)}
+.level-star:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.level-star.readonly{cursor:default}
+.level-star.with-label{border:1px solid var(--line);background:var(--paper);justify-content:flex-start;padding:0 12px}
+.level-star-icon{width:22px;height:22px;flex:none;overflow:visible}
+.level-star.static{--star:#c58b2a;display:inline-flex;vertical-align:-4px}
+.level-star.static .level-star-icon{width:18px;height:18px}
+.level-star-outline{fill:none;stroke:var(--star);stroke-width:1.8;stroke-linejoin:round}
+.level-star-fill{fill:var(--star);stroke:var(--star);stroke-width:1.8;stroke-linejoin:round}
+:root[data-theme="dark"] .level-star{--star:#e2b45c}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .level-star{--star:#e2b45c}}

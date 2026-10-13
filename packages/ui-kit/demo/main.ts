@@ -12,6 +12,8 @@ import {
   createSaveState,
   createDayTabs,
   createSuggestField,
+  createLevelStar,
+  renderLevelStar,
   initAppUpdates,
   setKitLayer,
   installBackNavigation,
@@ -1040,6 +1042,15 @@ const moneySection = section('money', 'Desglose de importes', 'Total frente a un
   el('div', { class: 'cardgrid' }, moneyHost, moneyOver, moneyEmpty),
 );
 
+const levelOut = el('output', { id: 'levelOut' }, 'Sabe');
+const levelStar = createLevelStar({ levels: 3, labels: ['Aprendiz', 'Sabe', 'Experto'], value: 1, name: 'Nivel en fontanería', showLabel: true, feedbackId: 'demo.capacidad.nivel', onChange: (v) => { levelOut.textContent = ['Aprendiz', 'Sabe', 'Experto'][v]!; } });
+levelStar.element.id = 'levelStarHost';
+const levelBare = createLevelStar({ levels: 3, labels: ['Normal', 'Alta', 'Crítica'], name: 'Prioridad' });
+levelBare.element.id = 'levelStarBare';
+const levelSection = section('levelstar', 'Estrella de nivel', 'createLevelStar: una sola estrella que se rellena por pasos (como la prioridad de Tasks). Pulsar pasa al siguiente nivel; flechas, Inicio y Fin; 44×44. Para el nivel de las capacidades en Central.',
+  el('div', { style: 'display:flex;gap:16px;align-items:center;flex-wrap:wrap' }, levelStar.element, levelBare.element, el('span', { id: 'levelStatic' }, renderLevelStar(0, 3, 'Aprendiz'), renderLevelStar(1, 3, 'Sabe'), renderLevelStar(2, 3, 'Experto'))),
+  el('p', null, 'Elegido: ', levelOut),
+);
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
@@ -1054,5 +1065,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
