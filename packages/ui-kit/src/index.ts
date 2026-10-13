@@ -50,10 +50,10 @@ export { installKeyboardInsets } from './overlay/keyboard.ts';
 export { createDayTabs, type DayTabs, type DayTabsOptions } from './calendar/day-tabs.ts';
 export {
   DEFAULT_SPACE_KINDS, canPlace, kindsFor, kindOf, kindLabel, spacePath, spaceDescendants, ancestorsOf, childrenOf, indexSpaces, spaceMatches,
-  nextAltura, newSpaceId, createMemorySpaceSource, demoSpaces,
+  nextAltura, newSpaceId, createMemorySpaceSource, demoSpaces, spaceSeats, seatsLabel, EXTRA_BED_KINDS,
   type SpaceRow, type SpaceKind, type SpaceAttribute, type SpaceSource, type Placement,
 } from './spaces/model.ts';
-export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions } from './spaces/tree.ts';
+export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions, type SpaceRowAction } from './spaces/tree.ts';
 export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
 export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions } from './spaces/picker.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';

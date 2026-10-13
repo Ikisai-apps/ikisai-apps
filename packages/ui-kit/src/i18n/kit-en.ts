@@ -257,6 +257,10 @@ export const KIT_EN: Dictionary = {
   'Nivel': 'Level',
   // Espacios (createSpaceTree, createSpacePicker)
   'No se ha guardado: {message}': 'Not saved: {message}',
+  '1 plaza': '1 place',
+  '{n} plazas': '{n} places',
+  '1 supletoria': '1 extra bed',
+  '{n} supletorias': '{n} extra beds',
   'El servidor no lo ha aceptado.': 'The server did not accept it.',
   'Tipo desconocido: {kind}.': 'Unknown type: {kind}.',
   'Un edificio o un exterior va dentro de una altura.': 'A building or an outdoor area goes inside a level.',
