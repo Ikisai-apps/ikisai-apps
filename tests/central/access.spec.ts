@@ -106,6 +106,8 @@ test('accesos · el owner administra cuentas, altas, agentes y registro', async 
   await page.getByRole('button', { name: 'Hecho' }).click();
   await expect(page.getByRole('heading', { name: 'Contraseña temporal' })).toHaveCount(0);
   await expect(page.locator('.accountrow', { hasText: 'Nueva' })).toContainText('Tasks · Editor');
+  // Caracterización (P1): la ficha que crea el alta nace con relación «equipo».
+  expect((await api.app.t.db.query<{ r: string }>(`select relation as r from central.people where display_name = 'Nueva' and deleted_at is null`)).rows[0]?.r).toBe('equipo');
 
   // Agentes: revocar la clave.
   await page.goto(`${baseURL}/#/accesos/agentes`);
