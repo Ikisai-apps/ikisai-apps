@@ -113,7 +113,7 @@ class Fault extends Error {
 
 const DEFAULT_TABLES: Record<string, string[]> = {
   'food.recipes': ['name', 'public_name', 'public_description', 'category', 'base_servings', 'method', 'conservation', 'freezable', 'regeneration',
-    'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id'],
+    'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps'],
   'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active'],
   'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
   'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes'],

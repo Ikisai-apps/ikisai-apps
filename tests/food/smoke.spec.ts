@@ -243,3 +243,69 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await expect.poll(() => api.rows('food.recipe_ingredients').filter((l) => !l.deleted_at).length).toBe(2);
   });
 });
+
+test('elaboración por pasos y subpasos, reordenable, y antelación con unidad (FB_2026_028)', async ({ page }) => {
+  const old = api.seed(RECIPES, { name: 'Gazpacho de la casa', category: 'entrante', base_servings: 10, method: 'Uno\nDos' });
+  await login(page);
+  await page.goto(`${baseURL}/#/recetario`);
+
+  await test.step('una receta antigua con solo «method» se abre con un paso por línea y no se reescribe', async () => {
+    await page.locator('#recipeGrid .recipecard', { hasText: 'Gazpacho de la casa' }).click();
+    await page.locator('#editRecipe').click();
+    const dialog = page.getByRole('dialog', { name: 'Editar receta' });
+    const areas = dialog.locator('#r-method textarea.steparea');
+    await expect(areas).toHaveCount(2);
+    await expect(areas.nth(0)).toHaveValue('Uno');
+    await expect(areas.nth(1)).toHaveValue('Dos');
+    await expect(dialog.getByLabel('Paso 2', { exact: true })).toHaveValue('Dos');
+    await expect(dialog.locator('#r-prep-mode')).toHaveValue('sin');
+    await page.locator('#saveRecipe').click(); // sin cambios: se cierra sin escribir
+    await expect(dialog).toBeHidden();
+    expect(api.rows(RECIPES).find((r) => r.id === old.id)).toMatchObject({ revision: 1, method: 'Uno\nDos', method_steps: null });
+  });
+
+  await test.step('dos pasos y un subpaso, se sube el segundo paso y se guarda con 2 horas de antelación', async () => {
+    await page.getByRole('button', { name: 'Nueva receta' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Nueva receta' });
+    await dialog.getByLabel('Nombre', { exact: true }).fill('Crema de calabaza');
+    await dialog.getByLabel('Raciones base').fill('10');
+    await dialog.getByLabel('Paso 1', { exact: true }).fill('Asar la calabaza');
+    await dialog.getByRole('button', { name: 'Añadir paso' }).click();
+    await dialog.getByLabel('Paso 2', { exact: true }).fill('Triturar con el caldo');
+    await dialog.getByRole('button', { name: 'Añadir subpaso al paso 2' }).click();
+    await dialog.getByLabel('Subpaso 2.1', { exact: true }).fill('Colar');
+    await expect(dialog.locator('#r-method .stepnum')).toHaveText(['1', '2', '2.1']);
+    await dialog.getByRole('button', { name: 'Subir paso 2', exact: true }).click();
+    await expect(dialog.locator('#r-method .stepnum')).toHaveText(['1', '1.1', '2']);
+    await expect(dialog.getByLabel('Paso 1', { exact: true })).toHaveValue('Triturar con el caldo');
+    await expect(dialog.getByLabel('Subpaso 1.1', { exact: true })).toHaveValue('Colar');
+
+    // Antelación: «Antes del servicio» con número y unidad; fuera de rango, aviso claro.
+    await dialog.locator('#r-prep-mode').selectOption('antes');
+    await dialog.locator('#r-prep').fill('8');
+    await dialog.locator('#r-prep-unit').selectOption('dias');
+    await page.locator('#saveRecipe').click();
+    await expect(dialog.getByRole('alert')).toContainText('La antelación va entre 1 minuto y 7 días.');
+    await dialog.locator('#r-prep').fill('2');
+    await dialog.locator('#r-prep-unit').selectOption('horas');    await page.locator('#saveRecipe').click();
+    await expect(dialog).toBeHidden();
+
+    await expect.poll(() => api.rows(RECIPES).find((r) => r.name === 'Crema de calabaza')?.prep_minutes).toBe(120);
+    const row = api.rows(RECIPES).find((r) => r.name === 'Crema de calabaza')!;
+    expect(row.method_steps).toMatchObject([{ text: 'Triturar con el caldo', steps: [{ text: 'Colar' }] }, { text: 'Asar la calabaza' }]);
+    expect(row.method).toBe('1. Triturar con el caldo\n   1.1. Colar\n2. Asar la calabaza');
+  });
+
+  await test.step('la ficha numera 1, 1.1, 2 y dice «2 horas antes»; el formulario vuelve con número y unidad', async () => {
+    await page.locator('#recipeGrid .recipecard', { hasText: 'Crema de calabaza' }).click();
+    const ficha = page.getByRole('dialog', { name: 'Crema de calabaza' });
+    await expect(ficha.locator('.methodsteps .stepnum')).toHaveText(['1', '1.1', '2']);
+    await expect(ficha.locator('.methodsteps .steptext')).toHaveText(['Triturar con el caldo', 'Colar', 'Asar la calabaza']);
+    await expect(ficha).toContainText('Antelación: 2 horas antes');    await page.locator('#editRecipe').click();
+    const dialog = page.getByRole('dialog', { name: 'Editar receta' });
+    await expect(dialog.locator('#r-prep-mode')).toHaveValue('antes');
+    await expect(dialog.locator('#r-prep')).toHaveValue('2');
+    await expect(dialog.locator('#r-prep-unit')).toHaveValue('horas');
+    await expect(dialog.locator('#r-method .stepnum')).toHaveText(['1', '1.1', '2']);
+  });
+});

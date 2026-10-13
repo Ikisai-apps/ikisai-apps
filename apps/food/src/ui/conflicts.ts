@@ -1,4 +1,5 @@
 import type { PendingConflict, SyncedRow } from '@ikisai/sync-client';
+import { formatMethodSteps, prepLabel, type MethodStep } from '@ikisai/domain-food';
 import { confirmDialog, el, formatDate, renderConflicts, renderRejectedList, replace, toast } from '@ikisai/ui-kit';
 import { T, describeError, formatQuantity } from '../app/client.ts';
 import { shortDay } from '../app/events.ts';
@@ -30,8 +31,8 @@ function markCard(card: HTMLElement, mark: FbMark): HTMLElement {
 
 const FIELD_LABELS: Record<string, string> = {
   name: 'Nombre', public_name: 'Nombre público', public_description: 'Descripción pública', category: 'Categoría', base_servings: 'Raciones base',
-  method: 'Elaboración', conservation: 'Conservación', freezable: 'Congelable', regeneration: 'Regeneración', service_notes: 'Notas de servicio',
-  prep_minutes: 'Antelación (min)', status: 'Estado', diet_tags: 'Dietas', allergens: 'Alérgenos', allergens_checked: 'Alérgenos revisados',
+  method: 'Elaboración', method_steps: 'Elaboración (pasos)', conservation: 'Conservación', freezable: 'Congelable', regeneration: 'Regeneración', service_notes: 'Notas de servicio',
+  prep_minutes: 'Antelación', status: 'Estado', diet_tags: 'Dietas', allergens: 'Alérgenos', allergens_checked: 'Alérgenos revisados',
   photo_file_id: 'Foto', photo_thumb_file_id: 'Miniatura', preferred_unit: 'Unidad preferida', preferred_supplier: 'Proveedor habitual', active: 'Activo',
   quantity: 'Cantidad', unit: 'Unidad', notes: 'Notas', capacity: 'Capacidad', location: 'Ubicación', quantity_required: 'Unidades necesarias',
   servings: 'Raciones', position: 'Orden', service_date: 'Día', service_type: 'Servicio', service_time: 'Hora', closing_notes: 'Cierre de cocina',
@@ -44,6 +45,8 @@ function show(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (field === 'deleted_at') return formatDate(String(value));
   if (field === 'photo_file_id' || field === 'photo_thumb_file_id') return 'Foto';
+  if (field === 'method_steps' && Array.isArray(value)) return formatMethodSteps(value as MethodStep[]) ?? '—';
+  if (field === 'prep_minutes' && typeof value === 'number') return prepLabel(value) ?? '—';
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
   if (typeof value === 'number') return formatQuantity(value);
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
