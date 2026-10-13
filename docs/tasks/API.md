@@ -1444,3 +1444,19 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - `tasks.tasks.step_free` (en una hija, «Soltar de la cadena» en su editor): fuera de la cadena, ni espera ni bloquea. Se mantiene al reordenar.
 - El servidor (`tasks.step_blocker`, `tasks.validate_batch`, migración `0320`) y el dominio (`stepBefore` en `graph.ts`) calculan lo mismo. Convive con las dependencias manuales: `TASK_BLOCKED` devuelve las dos.
 - En el editor de una tarea principal salen sus hijas (marcar, abrir) y «+ Nueva hija» (FB_2026_044).
+
+## 29. Oficios para Central: lectura `tasks.action_labels` (fase P1 de `coordinacion/ampliacion/RECURSOS.md` §13.3, 13-10-2026)
+
+Central siembra su catálogo de oficios, con vista previa, desde la familia «Tipo: Acción». Es una vista de solo lectura (migración `0321`, `core.allow_read('central', 'tasks.action_labels', 'view')`) y no cambia nada en Tasks.
+
+| Columna | Qué es |
+|---|---|
+| `label_id` | Id de la etiqueta |
+| `parent_id` | Su madre dentro de la familia (nulo en las de primer nivel; como mucho dos niveles) |
+| `name`, `position` | Nombre y orden manual |
+| `archived` | Archivada (ella o su familia) |
+| `tab_id` | Área de la etiqueta; nulo = catálogo General. La misma etiqueta puede repetirse en varias áreas: Central las junta por nombre |
+| `family_id` | Familia de la que sale (una por área, o la General) |
+
+- La familia se reconoce por el **nombre** («Tipo: Acción», sin distinguir mayúsculas, espacios de los lados ni tildes), no por la clave de sistema `trade`: en los datos reales hay claves equivocadas (§27 y migración `0318`), y las familias «Oficio» que crea cada área nueva no son el catálogo.
+- Solo lo vivo: sin etiquetas ni familias en la papelera, ni de áreas borradas.

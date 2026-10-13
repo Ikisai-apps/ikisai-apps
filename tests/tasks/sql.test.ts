@@ -520,6 +520,43 @@ test('indicadores para Central (§21): agregados de hoy, solo lo vivo, y registr
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.allowed_reads where app = 'central' and name = 'tasks.central_kpi_projection' and kind = 'view'`)).rows[0]!.n), 1);
 });
 
+test('oficios para Central (RECURSOS §13.3): la familia «Tipo: Acción» de las áreas y de General, solo lo vivo, y registrada como lectura de Central', async () => {
+  const { tab, families } = await db.area('Oficios');
+  const { tab: gone } = await db.area('Borrada');
+  const accion = newId(), general = newId(), enBorrada = newId(), borradaFam = newId();
+  const fonta = newId(), acs = newId(), pintura = newId(), quitada = newId(), elec = newId(), oficio = newId(), fuera = newId(), deFamBorrada = newId();
+  await db.commit([
+    insert('tasks.families', accion, { tab_id: tab, name: ' tipo: accion ', color: '#5a7a8a', position: 10 }),
+    insert('tasks.families', general, { tab_id: null, name: 'Tipo: Acción', color: '#5a7a8a', position: 10 }),
+    insert('tasks.families', enBorrada, { tab_id: gone, name: 'Tipo: Acción', color: '#5a7a8a', position: 10 }),
+    insert('tasks.families', borradaFam, { tab_id: tab, name: 'Tipo: Acción', color: '#5a7a8a', position: 11 }),
+  ]);
+  await db.commit([
+    insert('tasks.labels', fonta, { tab_id: tab, family_id: accion, name: 'Fontanería', position: 1 }),
+    insert('tasks.labels', pintura, { tab_id: tab, family_id: accion, name: 'Pintura', position: 2 }),
+    insert('tasks.labels', quitada, { tab_id: tab, family_id: accion, name: 'Quitada', position: 3 }),
+    insert('tasks.labels', elec, { tab_id: null, family_id: general, name: 'Electricidad', position: 1 }),
+    insert('tasks.labels', oficio, { tab_id: tab, family_id: families.trade!, name: 'Limpieza', position: 1 }),
+    insert('tasks.labels', fuera, { tab_id: gone, family_id: enBorrada, name: 'Carpintería', position: 1 }),
+    insert('tasks.labels', deFamBorrada, { tab_id: tab, family_id: borradaFam, name: 'Jardinería', position: 1 }),
+  ]);
+  await db.commit([
+    insert('tasks.labels', acs, { tab_id: tab, family_id: accion, parent_id: fonta, name: 'ACS', position: 1 }),
+    update('tasks.labels', pintura, 1, { archived: true }),
+    remove('tasks.labels', quitada, 1),
+    remove('tasks.labels', deFamBorrada, 1),
+  ]);
+  await db.commit([remove('tasks.families', borradaFam, 1), remove('tasks.tabs', gone, 1)]);
+  const rows = (await db.t.db.query<Record<string, unknown>>(`select label_id, parent_id, name, position, archived, tab_id, family_id from tasks.action_labels order by tab_id nulls first, position, name`)).rows;
+  assert.deepEqual(rows.map((r) => [r.name, r.parent_id, Number(r.position), r.archived, r.tab_id, r.family_id]), [
+    ['Electricidad', null, 1, false, null, general],
+    ['ACS', fonta, 1, false, tab, accion],
+    ['Fontanería', null, 1, false, tab, accion],
+    ['Pintura', null, 2, true, tab, accion],
+  ], 'ni «Oficio» (clave trade con otro nombre), ni borradas, ni de una familia o un área borradas');
+  assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.allowed_reads where app = 'central' and name = 'tasks.action_labels' and kind = 'view'`)).rows[0]!.n), 1);
+});
+
 test('almacenamiento: los adjuntos son el campo de archivo de Tasks (operativo) y la recogida de huérfanos está activa', async () => {
   const fields = (await db.t.db.query<{ schema_name: string; table_name: string; column_name: string; retention: string }>(
     `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks'`)).rows;
