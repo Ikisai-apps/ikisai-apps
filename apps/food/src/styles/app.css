@@ -53,21 +53,40 @@
 .linerow input,.linerow select,.machinerow .qty{min-width:0;width:100%}
 .checkline{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer}
 .checkline input{width:18px;height:18px;flex:none}
-/* Elaboración por pasos (FB_2026_028): bloques de dos líneas con número; subpasos sangrados dentro de su paso. */
-.stepsfield .sortable{border:0;border-radius:0;box-shadow:none;background:transparent;overflow:visible}
-.stepsfield .sortable .sortable-row.steprow{padding:6px 0;gap:2px;align-items:start;border-bottom:1px dashed var(--line)}
-.stepsfield .sortable .sortable-row.steprow:last-child{border-bottom:0}
-.stepsfield .steprow>.sortable-handle{width:30px;height:40px}
-.stepsfield .steprow>.sortable-moves{margin-top:2px}
-.stepsfield .sortable .sortable-row.steprow.sub{padding:4px 0;border-bottom:0}
-.stepedit{display:flex;flex-direction:column;gap:4px;min-width:0}
-.stephead{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px;align-items:start}
+/* Elaboración por pasos (FB_2026_028): una lista plana de filas con profundidad; los subpasos, sangrados bajo su paso.
+   Asa para arrastrar (también flechas), botones subir/bajar y meter/sacar de nivel, y una línea que marca dónde cae. */
+.stepslist-wrap{position:relative}
+.stepslist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.steprow{display:grid;grid-template-columns:30px auto minmax(0,1fr) auto auto;gap:4px;align-items:start;padding:6px 0;border-top:1px dashed var(--line)}
+.steprow:first-child{border-top:0}
+.steprow.sub{margin-left:22px;padding:3px 0 3px 4px;border-top:0;border-left:2px solid var(--line)}
+.stepaddsub{margin-left:30px}
+.steprow.sub+.stepaddsub{margin-left:22px;padding-left:6px;border-left:2px solid var(--line)}
+.stephandle{border:0;background:transparent;width:30px;height:40px;border-radius:10px;display:grid;place-items:center;color:var(--muted);cursor:grab;touch-action:none;padding:0;-webkit-user-select:none;user-select:none}
+.stephandle:hover{background:var(--hover);color:var(--accent-deep)}
+.stephandle:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.dragging .stephandle{cursor:grabbing}
+.stepmoves{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.stepmoves .iconbtn.stepmove{width:28px;height:26px;border-radius:7px}
+.stepmoves .iconbtn.stepmove[hidden]{display:none}
+.stepmoves .iconbtn.stepmove:disabled{opacity:.3;cursor:default}
+.steprow.lifting,.stepaddsub.lifting{position:relative;z-index:2;background:var(--paper);box-shadow:var(--shadow-2);border-radius:10px}
+.stepdrop{position:absolute;left:0;right:0;height:0;border-top:3px solid var(--accent);border-radius:3px;pointer-events:none;z-index:3}
+.stepdrop[data-depth="2"]{left:22px}
+.stepdrop[hidden]{display:none}
+.stepdrop-label{position:absolute;right:4px;top:-12px;font-size:11.5px;font-weight:700;line-height:1.5;background:var(--accent);color:var(--accent-ink,#fff);padding:0 8px;border-radius:var(--radius-pill,999px)}
 .stepnum{min-width:2.2em;padding-top:10px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent-deep,var(--ink))}
-.stepedit.sub .stepnum{font-weight:600;color:var(--muted)}
-.field .stepedit textarea.steparea{min-height:0;padding:8px 10px;line-height:1.35}
-.stepedit>.sortable-wrap{margin-left:14px;padding-left:6px;border-left:2px solid var(--line)}
-.stepedit>.sortable-wrap[hidden]{display:none}
-.addsub{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;margin-left:36px;font-size:var(--text-sm,.875rem)}
+.steprow.sub .stepnum{font-weight:600;color:var(--muted)}
+.field .steprow textarea.steparea{min-height:0;padding:8px 10px;line-height:1.35}
+.addsub{display:inline-flex;align-items:center;gap:4px;font-size:var(--text-sm,.875rem)}
+@media (max-width:420px){
+  .steprow{grid-template-columns:26px auto minmax(0,1fr) auto auto;gap:2px}
+  .steprow.sub{margin-left:12px}
+  .steprow.sub+.stepaddsub{margin-left:12px}
+  .stepdrop[data-depth="2"]{left:12px}
+  .stephandle{width:26px}
+  .steprow .stepnum{min-width:1.9em}
+}
 .stepsfield>#addStep{justify-self:start;display:inline-flex;align-items:center;gap:6px}
 .stepsempty{margin:0}
 .prepline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
