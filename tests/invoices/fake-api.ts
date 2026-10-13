@@ -108,6 +108,16 @@ class Fault extends Error {
 }
 
 /** Todas las tablas de Invoices con sus columnas escribibles (las mismas que registra la migración). */
+/** Trigger invoices.payment_default (0233): con fecha y sin nada dicho del pago, «Pagada (sin confirmar)» con la fecha de la factura. */
+function paymentDefault(row: Record<string, any>, previousDate: string | null, previousSource: string | null): void {
+  if (row.status === 'anulada') return;
+  if (!row.payment_source && (row.payment_status ?? 'pendiente') === 'pendiente' && row.invoice_date && !previousDate) {
+    Object.assign(row, { payment_status: 'pagada', paid_at: row.invoice_date, payment_source: 'sin_confirmar' });
+  } else if (row.payment_source === 'sin_confirmar' && previousSource === 'sin_confirmar' && row.payment_status === 'pagada' && row.invoice_date && row.invoice_date !== previousDate) {
+    row.paid_at = row.invoice_date;
+  }
+}
+
 const DEFAULT_TABLES: Record<string, string[]> = Object.fromEntries(Object.values(TABLES).map((t) => [t, [...WRITABLE[t]]]));
 let invoiceSeq = 0;
 
@@ -236,13 +246,17 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         row = { id: op.id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
         for (const column of allowed) row[column] = fields[column] ?? null;
         applyInsertDefaults(op.table, row, staged);
+        if (op.table === 'invoices.invoices') paymentDefault(row, null, null);
         store.set(op.id, row);
       } else {
         if (!row) throw new Fault(404, 'NOT_FOUND', 'La fila no existe.', { table: op.table, id: op.id });
         if (op.expectedRevision !== row.revision) {
           throw new Fault(409, 'VERSION_CONFLICT', 'La fila ha cambiado.', { table: op.table, id: op.id, expectedRevision: op.expectedRevision, currentRevision: row.revision, current: { ...row } });
         }
+        const previousDate = row.invoice_date ?? null;
+        const previousSource = row.payment_source ?? null;
         if (op.op === 'update') Object.assign(row, fields);
+        if (op.op === 'update' && op.table === 'invoices.invoices') paymentDefault(row, previousDate, previousSource);
         if (op.op === 'delete') row.deleted_at = now;
         if (op.op === 'restore') {
           if (!row.deleted_at) throw new Fault(409, 'ROW_NOT_DELETED', 'La fila no está borrada.');
