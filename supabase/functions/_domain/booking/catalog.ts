@@ -25,6 +25,7 @@ export const TABLES = {
   programItems: 'booking.program_items',
   lodgingSettings: 'booking.lodging_settings',
   openRooms: 'booking.open_rooms',
+  moduleSettings: 'booking.module_settings',
 } as const;
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */

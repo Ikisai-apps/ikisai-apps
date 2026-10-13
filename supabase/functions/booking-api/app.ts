@@ -77,6 +77,14 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     handler: () => sesTlsPing(),
   }, {
     // Conservación del registro de viajeros (API.md §20): anonimiza a los huéspedes vencidos, una vuelta por llamada.
+    // R2: con el interruptor en `resources`, espejo de espacios y camas desde Recursos (cambios hechos desde otras apps).
+    method: 'POST', pattern: 'spaces/tick',
+    handler: async () => {
+      if (!supabase) return { applied: 0 };
+      await ensureServiceActor(supabase, 'booking');
+      return supabase.rpc('core_invoke', { p_app: 'booking', p_actor: null, p_name: 'booking.spaces_mirror_apply', p_args: {} });
+    },
+  }, {
     method: 'POST', pattern: 'retention/tick',
     handler: async () => {
       if (!supabase) return { anonymized: 0 };

@@ -198,7 +198,10 @@ FIELDS[TABLES.beds] = {
 };
 FIELDS[TABLES.roomAssignments] = {
   event_id: { kind: 'uuid' },
-  space_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid', nullable: true },
+  // R2: espacio y cama de Recursos (escritura doble con `space_id` y `bed_id`)
+  resource_space_id: { kind: 'uuid', nullable: true },
+  resource_bed_id: { kind: 'uuid', nullable: true },
   bed_id: { kind: 'uuid', nullable: true },
   guest_id: { kind: 'uuid', nullable: true },
   group_label: text(120),
@@ -334,6 +337,7 @@ FIELDS[TABLES.programItems] = {
   ends_at: { kind: 'time' },
   title: text(120, false),
   space_id: { kind: 'uuid', nullable: true },
+  resource_space_id: { kind: 'uuid', nullable: true },
   place_text: text(80),
   public_note: text(500),
   internal_note: text(2000),
@@ -349,9 +353,13 @@ FIELDS[TABLES.lodgingSettings] = {
 };
 FIELDS[TABLES.openRooms] = {
   event_id: { kind: 'uuid' },
-  space_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid', nullable: true },
+  resource_space_id: { kind: 'uuid', nullable: true },
   option_key: text(40),
   supplement: { kind: 'bool' },
+};
+FIELDS[TABLES.moduleSettings] = {
+  spaces_source: choice(['booking', 'resources'], false),
 };
 FIELDS[TABLES.dateBlocks] = {
   start_date: { kind: 'date' },
@@ -387,7 +395,7 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.checklist]: ['event_id', 'checklist_type', 'label'],
   [TABLES.spaces]: ['name', 'kind'],
   [TABLES.beds]: ['space_id', 'label'],
-  [TABLES.roomAssignments]: ['event_id', 'space_id'],
+  [TABLES.roomAssignments]: ['event_id'],
   [TABLES.staffAssignments]: ['event_id', 'person_name', 'function'],
   [TABLES.staffNeeds]: ['event_id', 'need_type'],
   [TABLES.rates]: ['name', 'layer', 'unit', 'amount'],
@@ -399,7 +407,7 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.dateBlocks]: ['start_date', 'end_date'],
   [TABLES.programItems]: ['event_id', 'day', 'title'],
   [TABLES.lodgingSettings]: ['event_id'],
-  [TABLES.openRooms]: ['event_id', 'space_id'],
+  [TABLES.openRooms]: ['event_id'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -571,6 +579,7 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
 
   if (table === TABLES.roomAssignments) {
     const has = (field: string) => fields[field] !== undefined;
+    if (mode === 'insert' && !fields.space_id && !fields.resource_space_id) issues.push(invalid(table, 'space_id', 'indica el espacio'));
     if (mode === 'insert' || has('guest_id') || has('group_label')) {
       const guest = fields.guest_id ?? null;
       const group = typeof fields.group_label === 'string' ? fields.group_label.trim() : null;
