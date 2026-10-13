@@ -17,6 +17,8 @@ export interface LegacyLabel { id: Uuid; text: string; family: Uuid; parent: Uui
 export interface LegacyView { id: Uuid; name: string; search: string; filters: Record<string, string[]>; groupBy: string; deleted: boolean; version: number }
 export interface LegacyTask {
   id: Uuid; text: string; note: string; done: boolean; priority: Priority; due: string; labels: Uuid[]; owner: Uuid | null; parentId: Uuid | null;
+  /** FB_2026_041: pasos en orden (en la madre) y fuera de la cadena (en una hija). */
+  stepsInOrder?: boolean; stepFree?: boolean;
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
   /** Calculados al componer; `decompose` los ignora. */
@@ -99,6 +101,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
         const hidden = options.hiddenBlockers ? options.hiddenBlockers[t.id] ?? 0 : status.blockedBy.length - visibleBlockers.length;
         return {
           id: t.id, text: t.title, note: t.note, done: status.done, priority: t.priority, due: t.due ?? '', owner: t.owner_label_id, parentId: t.parent_id,
+          ...(t.steps_in_order ? { stepsInOrder: true } : {}), ...(t.step_free ? { stepFree: true } : {}),
           labels: (taskLabels.get(t.id) ?? []).sort(byCreation).map((l) => l.label_id),
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
@@ -246,6 +249,9 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           // El `done` de un contenedor se calcula: se guarda como pendiente y no se compara con el valor mostrado.
           done: container ? false : !!t.done,
           priority: t.priority ?? 'normal', due: orNull(t.due), owner_label_id: orNull(t.owner), cost: amount(t.cost),
+          // Solo si hay algo que guardar: un espejo de antes de la columna (0320) no la trae, y no debe reescribir cada tarea.
+          ...(t.stepsInOrder || taskRow?.steps_in_order ? { steps_in_order: !!t.stepsInOrder } : {}),
+          ...(t.stepFree || taskRow?.step_free ? { step_free: !!t.stepFree } : {}),
           position: typeof t.order === 'number' ? t.order : (taskIndex + 1) * POSITION_STEP,
           ...(taskRow ? {} : { tab_id: tab.id }),
         }, deletedWanted.get(t.id) ?? false);

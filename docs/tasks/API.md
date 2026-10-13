@@ -1437,3 +1437,10 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - **Madres distintas** (VG en la raíz en unas áreas y bajo «Staff» en otra): el grupo se ofrece igual y la General queda en la raíz (`{ids, root: true}`).
 - **Claves por corregir:** familias cuya marca de sistema no casa con su nombre y sí con otra, o que otra área llama igual sin esa marca. Ejemplos: «Zona: Espacio» marcada como responsables y «Persona» marcada como fases. Se corrigen antes de fusionar: se quita la marca y, si eran responsables, esos responsables se quedan vacíos.
 - `tasks.guard_family_key` deja ahora quitar cualquier marca. Poner una que no sea `person` sigue sin poderse.
+
+## 28. Pasos en orden (FB_2026_041; decisión del usuario del 13-10-2026)
+
+- `tasks.tasks.steps_in_order` (en la tarea madre, casilla «Pasos en orden» en su editor): sus hijas son pasos. Cada hija queda bloqueada por la anterior (por posición) mientras esta no esté hecha. Reordenar las hijas recalcula la cadena; las hechas no bloquean.
+- `tasks.tasks.step_free` (en una hija, «Soltar de la cadena» en su editor): fuera de la cadena, ni espera ni bloquea. Se mantiene al reordenar.
+- El servidor (`tasks.step_blocker`, `tasks.validate_batch`, migración `0320`) y el dominio (`stepBefore` en `graph.ts`) calculan lo mismo. Convive con las dependencias manuales: `TASK_BLOCKED` devuelve las dos.
+- En el editor de una tarea principal salen sus hijas (marcar, abrir) y «+ Nueva hija» (FB_2026_044).

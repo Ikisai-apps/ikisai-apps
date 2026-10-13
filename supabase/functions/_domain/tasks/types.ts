@@ -34,6 +34,9 @@ export interface TaskRow extends BaseRow {
   external_url?: string | null;
   /** §22: quién informó del reporte de Feedback que la originó (metadato, nunca el actor). */
   external_on_behalf?: 'internal' | 'organizer' | 'guest' | null;
+  /** FB_2026_041: en la madre, sus hijas son pasos en orden; en una hija, `step_free` la deja fuera de la cadena. */
+  steps_in_order?: boolean;
+  step_free?: boolean;
 }
 export interface TaskDependencyRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; depends_on_id: Uuid; position: number }
 export interface FamilyRow extends BaseRow { tab_id: Uuid | null; name: string; color: string; archived: boolean; position: number; system_key: FamilySystemKey | null }
@@ -110,7 +113,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
   'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
