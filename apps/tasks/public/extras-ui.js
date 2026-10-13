@@ -86,3 +86,33 @@ openTaskEditor=function(id,...rest){taskEditorBeforeOrigin(id,...rest);const ori
   const text=()=>[behalf||'Pedida desde '+appName(origin.source),kind,origin.reference].filter(Boolean).join(' · ');
   title.insertAdjacentHTML('afterend',`<p class="notice" id="taskOrigin"><span id="taskOriginText">${esc(text())}</span>${row?.external_url?` · <a href="${esc(row.external_url)}" target="_blank" rel="noopener" data-feedback-id="tasks.editor_tarea.origen.abrir" data-feedback-label="Abrir origen de la petición">Abrir</a>`:''}</p>`);
   if(!appNames&&Sync.core&&navigator.onLine)Sync.core.api('/apps').then(out=>{appNames=new Map((out?.items||out?.apps||[]).map(a=>[a.id,a.name]));const el=document.getElementById('taskOriginText');if(el)el.textContent=text()}).catch(()=>{appNames=new Map()})};
+
+/* Editor de una tarea principal (FB_2026_044 y 041): sus hijas en una lista sencilla (marcar, abrir) con «+ Nueva hija», y
+   «Pasos en orden»: cada hija queda bloqueada por la de arriba mientras no esté hecha (se recalcula al reordenarlas). En una
+   hija encadenada, su paso anterior y «Soltar de la cadena» (se mantiene al reordenar). */
+function childrenSectionHtml(t,p){const kids=p.tasks.filter(c=>c.parentId===t.id&&!c.deleted).sort((a,b)=>(a.order||0)-(b.order||0)),index=dependencyIndex(),edit=canEdit();
+  return `<section class="childsection" id="taskChildren"><h3 class="sectionlabel">Tareas hijas <span class="count">${kids.length}</span></h3>
+    <label class="checkline"><input type="checkbox" id="stepsInOrder" ${t.stepsInOrder?'checked':''} ${edit?'':'disabled'} data-feedback-id="tasks.editor_tarea.hijas.pasos_en_orden" data-feedback-label="Pasos en orden"><span><strong>Pasos en orden</strong> <span class="small muted">· cada hija espera a que esté hecha la de arriba</span></span></label>
+    <div class="childlist">${kids.map(c=>{const blocker=stepBefore(c,index);return `<div class="childrow ${c.done?'done':''}"><button class="childcheck" type="button" data-child-toggle="${c.id}" aria-pressed="${!!c.done}" aria-label="${c.done?'Marcar pendiente':'Marcar hecha'}: ${esc(c.text)}" ${edit?'':'disabled'} data-feedback-id="tasks.editor_tarea.hijas.marcar" data-feedback-label="Marcar hija">${c.done?'✓':''}</button><button class="childtext" type="button" data-child-open="${c.id}" data-feedback-id="tasks.editor_tarea.hijas.abrir" data-feedback-label="Abrir hija">${esc(c.text)}${c.stepFree&&t.stepsInOrder?' <span class="small muted">· fuera de la cadena</span>':blocker&&!c.done?' <span class="small muted">· espera al paso anterior</span>':''}</button></div>`}).join('')||'<p class="small muted">Sin hijas.</p>'}</div>
+    ${edit?`<div class="row childadd"><input id="newChildText" maxlength="1000" placeholder="Nueva hija…" data-feedback-id="tasks.editor_tarea.hijas.nueva_texto" data-feedback-label="Texto de la nueva hija"><button class="ghost" id="newChildAdd" type="button" data-feedback-id="tasks.editor_tarea.hijas.nueva" data-feedback-label="Nueva hija">+ Nueva hija</button></div>`:''}</section>`}
+function stepInfoHtml(t,p){const parent=p.tasks.find(x=>x.id===t.parentId);if(!parent?.stepsInOrder)return '';const before=stepBefore(t,dependencyIndex()),edit=canEdit();
+  return `<div class="notice stepinfo" id="stepInfo">${t.stepFree?`Fuera de la cadena de «${esc(parent.text)}»: no espera a ningún paso.`:before?`Paso anterior: <strong>${esc(dependencyText(before))}</strong> (pasos en orden de «${esc(parent.text)}»).`:`Primer paso de «${esc(parent.text)}».`}
+    ${edit?`<button class="ghost small" id="stepFreeToggle" type="button" data-feedback-id="tasks.editor_tarea.pasos.soltar" data-feedback-label="Soltar o volver a la cadena">${t.stepFree?'Volver a la cadena':'Soltar de la cadena'}</button>`:''}</div>`}
+function refreshChildSection(id){const loc=taskLocation(id);const box=document.getElementById('taskChildren');if(!loc||!box)return;box.outerHTML=childrenSectionHtml(loc.t,loc.p);bindChildSection(id)}
+function bindChildSection(id){
+  const loc=()=>taskLocation(id);
+  const steps=document.getElementById('stepsInOrder');if(steps)steps.onchange=()=>{const l=loc();if(!l)return;l.t.stepsInOrder=steps.checked;if(typeof touch==='function')touch(l.t);if(save()!==false){render();refreshChildSection(id);toast(steps.checked?'Pasos en orden: cada hija espera a la anterior.':'Las hijas ya no van en orden.')}};
+  document.querySelectorAll('[data-child-toggle]').forEach(b=>b.onclick=()=>{toggleTask(b.dataset.childToggle);setTimeout(()=>refreshChildSection(id),0)});
+  document.querySelectorAll('[data-child-open]').forEach(b=>b.onclick=()=>openTaskEditor(b.dataset.childOpen));
+  const input=document.getElementById('newChildText'),add=document.getElementById('newChildAdd');
+  const create=()=>{const text=input.value.trim();if(!text)return input.focus();const l=loc();if(!l||l.t.parentId)return;const {p,t}=l;
+    const task={id:uid('t'),text,note:'',done:false,priority:'normal',due:'',owner:null,parentId:t.id,labels:[...(p.ownLabels||[])],attachments:[],dependsOn:[],order:Math.max(0,...p.tasks.map(x=>x.order||0))+1024,version:1};
+    p.tasks.push(task);syncParent(p,t.id);syncAll(p);record('create',[task.id]);if(save()!==false){render();refreshChildSection(id);setTimeout(()=>document.getElementById('newChildText')?.focus(),0)}};
+  if(add)add.onclick=create;if(input)input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();create()}};
+}
+const taskEditorBeforeChildren=openTaskEditor;
+openTaskEditor=function(id,...rest){taskEditorBeforeChildren(id,...rest);if(!id)return;const loc=taskLocation(id);if(!loc)return;const actions=document.querySelector('#sheet .actions');if(!actions)return;
+  if(!loc.t.parentId&&!document.getElementById('taskChildren')){actions.insertAdjacentHTML('beforebegin',childrenSectionHtml(loc.t,loc.p));bindChildSection(id)}
+  if(loc.t.parentId&&!document.getElementById('stepInfo')){const html=stepInfoHtml(loc.t,loc.p);if(html){actions.insertAdjacentHTML('beforebegin',html);
+    document.getElementById('stepFreeToggle')?.addEventListener('click',()=>{const l=taskLocation(id);if(!l)return;l.t.stepFree=!l.t.stepFree;if(typeof touch==='function')touch(l.t);if(save()!==false){render();openTaskEditor(id)}})}}};
+

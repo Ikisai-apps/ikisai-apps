@@ -382,3 +382,14 @@ html{overflow-x:hidden}
 /* El desplegable de una faceta, por encima de la lista (FB_2026_037). */
 .facetbar{position:relative;z-index:35}
 .facet.open{z-index:40}
+/* Hijas en el editor de la madre (FB_2026_044) y pasos en orden (FB_2026_041). */
+.childsection{margin:14px 0;display:grid;gap:8px}
+.childlist{display:grid;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)}
+.childrow{display:flex;align-items:center;gap:10px;padding:6px 10px;border-top:1px solid var(--line)}
+.childrow:first-child{border-top:0}
+.childcheck{width:26px;height:26px;flex:none;border:2px solid var(--line);border-radius:8px;background:transparent;display:grid;place-items:center;font-weight:800;color:var(--accent)}
+.childrow.done .childtext{text-decoration:line-through;color:var(--muted)}
+.childtext{flex:1;text-align:left;border:0;background:transparent;padding:6px 0;color:inherit;min-width:0}
+.childadd input{flex:1;min-width:0}
+.stepinfo{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+
