@@ -174,6 +174,36 @@ export function kindsFor(kinds: readonly SpaceKind[], parent: SpaceRow | null): 
   return kinds.filter((k) => canPlace(kinds, k.kind, parent).ok);
 }
 
+/** Tipos de cama que no cuentan como plaza: van aparte como supletorias (pendiente de que el usuario los apruebe). */
+export const EXTRA_BED_KINDS: readonly string[] = ['supletoria', 'sofa_cama'];
+
+/**
+ * Plazas de un espacio (para Booking y la fila del árbol). Una habitación con camas suma las de sus camas activas
+ * (`capacity` de cada una, 1 si no lo tiene), con las supletorias aparte. Sin camas, el `capacity` escrito.
+ */
+export function spaceSeats(row: SpaceRow, rows: readonly SpaceRow[]): { seats: number; extras: number; fromBeds: boolean } {
+  const beds = rows.filter((r) => r.parentId === row.id && r.active && r.kind === 'cama');
+  if (!beds.length) {
+    const capacity = Number(row.attributes?.capacity);
+    return { seats: Number.isFinite(capacity) && capacity > 0 ? capacity : 0, extras: 0, fromBeds: false };
+  }
+  let seats = 0;
+  let extras = 0;
+  for (const bed of beds) {
+    const capacity = Number(bed.attributes?.capacity);
+    const n = Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
+    if (EXTRA_BED_KINDS.includes(String(bed.attributes?.bed_kind ?? ''))) extras += n; else seats += n;
+  }
+  return { seats, extras, fromBeds: true };
+}
+
+/** «3 plazas + 1 supletoria». */
+export function seatsLabel(seats: { seats: number; extras: number }): string {
+  const main = seats.seats === 1 ? kt('1 plaza') : kt('{n} plazas', { n: String(seats.seats) });
+  if (!seats.extras) return main;
+  return `${main} + ${seats.extras === 1 ? kt('1 supletoria') : kt('{n} supletorias', { n: String(seats.extras) })}`;
+}
+
 /** Primer número libre de altura (1–5), o null si ya están las cinco. */
 export function nextAltura(rows: readonly SpaceRow[]): number | null {
   const used = new Set(rows.filter((r) => r.kind === 'altura' && r.active).map((r) => Number(/(\d+)/.exec(r.name)?.[1])));

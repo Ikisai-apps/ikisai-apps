@@ -60,7 +60,7 @@ test.describe('ui-kit v0.30 · createSpaceTree', () => {
     await page.locator('#spaceTreeHost .space-tree-search').fill('nada parecido');
     await expect(page.locator('#spaceTreeHost .space-tree-list')).toContainText('Ningún espacio coincide');
     await page.locator('#spaceTreeHost .space-tree-search').fill('');
-    await expect(row(page, 'hab-1').locator('.space-sub')).toContainText('Capacidad 2');
+    await expect(row(page, 'hab-1').locator('.space-sub')).toContainText('2 plazas');
     await row(page, 'hab-1').locator('.space-toggle').click();
     await expect(row(page, 'hab-1-c1').locator('.space-sub')).toContainText('Doble');
     const box = (await row(page, 'alt-1').locator('.space-handle').boundingBox())!;
@@ -131,7 +131,7 @@ test.describe('ui-kit v0.30 · createSpaceTree', () => {
 
   test('«Duplicar» copia con lo de dentro; «Mover a…» lleva a un padre válido', async ({ page }) => {
     await row(page, 'hab-3').locator('.space-body').click();
-    await page.getByRole('button', { name: 'Duplicar' }).click();
+    await page.locator('.sheet').last().getByRole('button', { name: 'Duplicar', exact: true }).click();
     await expect.poll(async () => (await rowsOf(page)).filter((r) => r.name === 'Hab 3 (copia)').length).toBe(1);
     const all = await rowsOf(page);
     const copy = all.find((r) => r.name === 'Hab 3 (copia)')!;

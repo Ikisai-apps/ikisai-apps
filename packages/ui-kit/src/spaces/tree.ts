@@ -19,7 +19,7 @@ import { positionBetween } from '../sortable.ts';
 import { attachSuggestions } from '../fields/suggest.ts';
 import {
   DEFAULT_SPACE_KINDS, canPlace, childrenOf, indexSpaces, kindLabel, kindOf, kindsFor, newSpaceId, nextAltura, spaceDescendants,
-  spaceMatches, spacePath, ancestorsOf, type SpaceKind, type SpaceRow, type SpaceSource,
+  spaceMatches, spacePath, ancestorsOf, spaceSeats, seatsLabel, type SpaceKind, type SpaceRow, type SpaceSource,
 } from './model.ts';
 import { createSpacePicker } from './picker.ts';
 
@@ -39,6 +39,19 @@ export interface SpaceTreeOptions {
   container?: HTMLElement;
   /** Clave para recordar qué está desplegado (en el navegador). */
   storageKey?: string;
+  /**
+   * Acciones propias de la app en cada fila, a un toque (Booking: «Añadir cama», «Duplicar»). Con `icon`, botón de icono
+   * de 44×44 con `label` como nombre accesible; sin él, botón con texto. Pueden usar `tree.create` y `tree.duplicate`.
+   */
+  rowActions?: (row: SpaceRow) => SpaceRowAction[];
+}
+
+export interface SpaceRowAction {
+  label: string;
+  icon?: string;
+  onClick: (row: SpaceRow) => void;
+  /** Marca de feedback y uso del botón. */
+  feedbackId?: string;
 }
 
 export interface SpaceTree {
@@ -47,6 +60,10 @@ export interface SpaceTree {
   refresh(): Promise<void>;
   expand(id: string): void;
   collapse(id: string): void;
+  /** Abre la hoja de crear dentro de `parentId` (null = nueva altura), con `kind` elegido si se da. */
+  create(parentId: string | null, kind?: string): void;
+  /** Duplica un espacio con todo lo de dentro (como «Duplicar» de la ficha). */
+  duplicate(id: string): Promise<void>;
   destroy(): void;
 }
 
@@ -72,10 +89,13 @@ const LEGACY = '__sin_altura__';
 
 type Drop = { mode: 'before' | 'after' | 'inside'; target: SpaceRow; parent: SpaceRow | null; position: number } | null;
 
-function summary(kinds: readonly SpaceKind[], row: SpaceRow): string {
+function summary(kinds: readonly SpaceKind[], row: SpaceRow, rows: readonly SpaceRow[]): string {
   const k = kindOf(kinds, row.kind);
   const parts: string[] = [];
+  // Con camas dentro, las plazas salen de ellas («3 plazas + 1 supletoria»), no del `capacity` escrito.
+  const seats = row.kind === 'cama' ? null : spaceSeats(row, rows);
   for (const attr of k?.attributes ?? []) {
+    if (attr.key === 'capacity' && seats?.fromBeds) { parts.push(seatsLabel(seats)); continue; }
     const value = row.attributes?.[attr.key];
     if (value === undefined || value === null || value === '' || value === false) continue;
     if (attr.type === 'boolean') parts.push(kt(attr.label));
@@ -177,7 +197,7 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
   function rowEl(r: SpaceRow, depth: number, hasKids: boolean, open: boolean, index: number, count: number): HTMLElement {
     const k = kindOf(kinds, r.kind);
     const childKinds = canStructure && r.active ? kindsFor(kinds, r) : [];
-    const sub = r.kind === 'altura' ? r.notes : summary(kinds, r);
+    const sub = r.kind === 'altura' ? r.notes : summary(kinds, r, rows);
     const path = spacePath(byId, r.id);
     const handle = canStructure && r.active && !query.trim()
       ? el('button', { type: 'button', class: 'space-handle', 'aria-label': kt('Mover {name}. Flechas para subir o bajar; arrastrar para llevarlo a otro sitio.', { name: path }), ...mark('handle'),
@@ -193,7 +213,13 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
       sub ? el('span', { class: 'space-sub' }, sub) : null,
       r.pending ? el('span', { class: 'space-pending', title: kt('Sin enviar todavía') }, kt('Sin enviar')) : null,
     );
+    const appActions = r.active ? (options.rowActions?.(r) ?? []) : [];
     const actions = el('div', { class: 'space-actions' },
+      ...appActions.map((a) => el('button', {
+        type: 'button', class: a.icon ? 'iconbtn space-app-action' : 'ghost small space-app-action', 'aria-label': `${a.label}: ${r.name}`, title: a.label,
+        ...(a.feedbackId ? { 'data-feedback-id': a.feedbackId, 'data-feedback-label': a.label } : {}),
+        onclick: () => a.onClick(r),
+      }, a.icon ? icon(a.icon, 18) : a.label)),
       childKinds.length ? el('button', { type: 'button', class: 'iconbtn', 'aria-label': kt('Añadir dentro de {name}', { name: r.name }), ...mark('add'), onclick: () => openCreate(r) }, icon('plus', 18)) : null,
       canEdit ? el('button', { type: 'button', class: 'iconbtn', 'aria-label': kt('Editar {name}', { name: r.name }), ...mark('edit'), onclick: () => openEdit(r) }, icon('edit', 18)) : null,
       canStructure && r.active && !query.trim() ? el('div', { class: 'space-moves' },
@@ -474,10 +500,12 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
     });
   }
 
-  function openCreate(parent: SpaceRow | null): void {
+  function openCreate(parent: SpaceRow | null, preferred?: string): void {
     const options2 = parent ? kindsFor(kinds, parent) : kinds.filter((k) => k.level === 1);
     if (!options2.length) return;
-    let kind = options2[0]!;
+    // Lo habitual dentro de cada padre: en una habitación, una cama.
+    const usual = preferred ?? (parent?.kind === 'habitacion' ? 'cama' : undefined);
+    let kind = options2.find((k) => k.kind === usual) ?? options2[0]!;
     const siblings = childrenOf(rows, parent?.id ?? null);
     const altura = !parent ? nextAltura(rows) : null;
     if (!parent && altura === null) { void alertDialog(kt('Ya están las cinco alturas'), kt('Recupera una archivada o cambia la descripción de una que ya existe.')); return; }
@@ -486,6 +514,7 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
     const paintAttrs = () => replace(attrsHost, ...attributeField(kind, {}, false));
     const kindSelect = el('select', { name: 'kind', onchange: () => { kind = options2.find((k) => k.kind === kindSelect.value) ?? kind; paintAttrs(); } },
       ...options2.map((k) => el('option', { value: k.kind }, kt(k.label)))) as HTMLSelectElement;
+    kindSelect.value = kind.kind;
     paintAttrs();
     const form = el('form', { class: 'space-form', novalidate: true },
       el('p', { class: 'hint' }, parent ? kt('Dentro de {path}', { path: spacePath(byId, parent.id) }) : kt('Nivel superior')),
@@ -593,6 +622,8 @@ export function createSpaceTree(options: SpaceTreeOptions): SpaceTree {
     refresh,
     expand: (id) => setOpen(id, true),
     collapse: (id) => setOpen(id, false),
+    create(parentId, kind) { openCreate(parentId ? byId.get(parentId) ?? null : null, kind); },
+    async duplicate(id) { const row = byId.get(id); if (row) await duplicate(row); },
     destroy() { unsubscribe?.(); offKinds?.(); element.remove(); },
   };
 }

@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.31.0 · 13 de octubre de 2026
+
+**El árbol de espacios, para que Booking no pierda nada** (sección 17 de RECURSOS.md; comparación de Booking entre su pantalla de hoy y las capturas de «después»).
+
+- **`rowActions: (row) => [{ label, icon, onClick, feedbackId }]`:** acciones propias de la app en cada fila, a un toque.
+  - Con `icon`, botón de icono de 44×44 y nombre accesible «<label>: <espacio>»; sin él, botón con texto de 44 de alto.
+  - El árbol expone `tree.create(parentId, kind)` y `tree.duplicate(id)` para usarlos desde ahí. Booking: «Añadir cama» y «Duplicar» en la fila de cada habitación, como hoy.
+- **Plazas calculadas:** `spaceSeats(row, rows)` → `{ seats, extras, fromBeds }` y `seatsLabel` («3 plazas + 1 supletoria»).
+  - Una habitación con camas suma las de sus camas activas (`capacity` de cada una, 1 si no lo tiene).
+  - Las supletorias (`bed_kind` en `EXTRA_BED_KINDS`: `supletoria`, `sofa_cama`, cuando el usuario los apruebe) van aparte.
+  - Sin camas, la capacidad escrita. La fila del árbol lo enseña así.
+- **«+» en una habitación** trae «Cama» como tipo. `tree.create` acepta el tipo que se quiera.
+- **Fila que no estruja el nombre:** si no cabe junto a los botones (móvil, habitación con acciones de la app), los botones bajan a una segunda línea.
+- La cabecera que se colaba en `despues/arbol-light.png` era de la captura (la cabecera de la demo es fija), no del componente. Capturas rehechas.
+- Prueba `v38` (con `@smoke`).
+
 ## 0.30.0 · 13 de octubre de 2026
 
 **Espacios comunes (fase R1 de RECURSOS.md).** Lo que se ve en Tasks y Booking lo enseñan sus equipos en R2, con las capturas de `coordinacion/ui/r1-espacios/`.
