@@ -1510,3 +1510,5 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
 - **1b:** vaciar la papelera, «Convertir en proyecto», `requests/task` y `requests/project` (herencia del espacio) e importación portable con las tablas nuevas.
 - **2:** interfaz con el kit 0.30.0.
 - **3:** vista previa y botón «Pasar las zonas a espacios».
+
+**Arreglo tras la vista previa real (migración `0323`):** cada zona cuenta todos sus usos, no solo aquellos en los que es la más honda, y dice en `withoutSpace` cuántas tareas y proyectos se quedarían sin ningún espacio (el total va en `counts.withoutSpace`). Una zona sin espacio que no deja a nadie sin espacio, como «Exteriores» usada siempre con una hija, sale en `removed` con `reason: 'covered'`, y la ida la quita sola. Las marcadas por la propietaria salen con `'marked'`. Solo es dudosa, y bloquea la ida, la que deja a alguien sin espacio.
