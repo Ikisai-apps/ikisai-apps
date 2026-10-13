@@ -339,6 +339,21 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 
 ---
 
+### 2.13 Oficios y capacidades (fase P1, RECURSOS.md §13.3, migración `1505`)
+
+- **`central.trades`:** catálogo en árbol de hasta 3 niveles («Fontanería › ACS › Calentador»).
+  - Campos: `parent_id`, `name` (1–80, único entre hermanos sin mirar mayúsculas), `position`, `active` (archivar), `notes` y `source_label_id` (la etiqueta «Tipo: Acción» de Tasks de la que viene, para P2; única).
+  - El hook `central.check_trades` impide ciclos, más de 3 niveles y madres en la papelera.
+  - Un oficio con hijas o capacidades vivas no se borra: se archiva.
+- **`central.person_trades`:** capacidad = persona × oficio, una viva por par. `level` va de 0 a 2: «Aprende», «Sabe», «Experto», con la estrella de nivel del kit (`createLevelStar`, tres pasos, la de la prioridad de Tasks). `note` es opcional (≤ 300). `person_id` y `trade_id` no se pueden cambiar.
+- **`central.trade_kit`:** el kit del oficio (`trade_id`, `item_id` de `resources.items` sin FK, `quantity` y `note`). Es solo el sitio previsto: sin pantalla hasta R3.
+- **Permisos:** como los equipos. Escriben el owner y el editor con ámbito `people` (Edge y hook); leen todos los miembros.
+- **Fusión de fichas:** `central.merge_people` (redefinida en `1505`) pasa también las capacidades. Si las dos fichas sabían el mismo oficio, se queda el nivel más alto y la nota que haya.
+- **Pantallas:**
+  - **Personas › Oficios:** el árbol (con archivados opcionales), nuevo oficio y «Añadir dentro», editar, archivar o reactivar, y papelera si nadie lo tiene. Al tocar un oficio, «Quién sabe hacerlo», ordenado por nivel, con disponibilidad.
+  - **Ficha de la persona:** bloque «Oficios», con la estrella editable (pulsar cambia el nivel), la ruta y la nota; «Añadir oficio» y «Editar».
+  - **Lista:** filtro «Oficio», que incluye lo que cuelga del elegido, y hasta 3 chips con los oficios de más nivel. Sin oficios en el catálogo, el filtro no se ve.
+
 ## 3. Procedimientos y lecturas
 
 ### 3.1 Procedimientos (`call`)
@@ -365,6 +380,8 @@ Lecturas registradas que sí existen:
 | `central.requirement_brief` | editor | Código, nombre, vencimiento y riesgo de una obligación, para pedir su tarea a Tasks. |
 | `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
 | `central.people_options` | todos | Personas vivas y activas, con o sin cuenta, para elegir responsable (§7.1). |
+| `central.trade_options` | todos | Oficios activos con su ruta (§2.13). |
+| `central.capability_options` | todos | Capacidades de personas activas con nivel de casa en oficios activos (§2.13). |
 | `central.portal_place_projection` | todos | El lugar para los portales: nombre, dirección, mapa y plano (§2.9). |
 
 La **regla de estado derivado** vive en `_domain/central` (la usa el cliente sin red) y se repite en SQL para las lecturas:
@@ -466,6 +483,8 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 | `central.booking_blocking_projection` (V2) | booking, tasks | `requirement_id, code, name, blocks_operation, state, expires_on` de requisitos vencidos que bloquean la operación | C09 «bloquea operación»: aviso en Booking y Tasks. Se propone; no entra en V1. |
 | `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
 | `central.people_options` | tasks, central | `person_id, name, user_id, active` | Personas del equipo vivas y activas, **también sin cuenta** (`user_id` null), para elegir responsable en Tasks (FB_2026_015, migración `1502`). El nombre es el de la ficha. Sin datos reservados. |
+| `central.trade_options` | tasks, central | `trade_id, parent_id, name, path, position, source_label_id` | Oficios activos para el campo Oficio de las tareas (P2). |
+| `central.capability_options` | tasks, central | `person_id, trade_id, level` | Quién sabe hacer cada oficio (personas vivas, activas y con nivel de casa), para sugerir responsables (P2). Sin datos reservados. |
 | `central.portal_place_projection` | organizers, guests, central | §2.9 | Nombre, dirección, enlace del mapa y plano del lugar (cartel de Organizers, portal de huéspedes). |
 | `central.<destino>_kpi_projection` de Central | central | Como §7.2 | Vencimientos y riesgos también son KPIs del panel. |
 
