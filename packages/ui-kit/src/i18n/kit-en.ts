@@ -258,6 +258,10 @@ export const KIT_EN: Dictionary = {
   // Espacios (createSpaceTree, createSpacePicker)
   'No se ha guardado: {message}': 'Not saved: {message}',
   '1 plaza': '1 place',
+  'Una cama solo va dentro de una habitación o una sala.': 'A bed only goes inside a bedroom or a room.',
+  'Sofá cama': 'Sofa bed',
+  'Plazas fijas': 'Fixed places',
+  'Plazas supletorias': 'Extra places',
   '{n} plazas': '{n} places',
   '1 supletoria': '1 extra bed',
   '{n} supletorias': '{n} extra beds',

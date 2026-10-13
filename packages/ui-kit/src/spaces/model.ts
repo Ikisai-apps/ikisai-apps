@@ -59,7 +59,7 @@ export const DEFAULT_SPACE_KINDS: SpaceKind[] = [
   { kind: 'instalacion', label: 'Instalación', level: 3 },
   { kind: 'almacen', label: 'Almacén', level: 3, attributes: [STORAGE] },
   { kind: 'otro', label: 'Otro', level: 3 },
-  { kind: 'cama', label: 'Cama', level: 4, parents: ['habitacion'], attributes: [{ key: 'bed_kind', label: 'Tipo de cama', type: 'choice', options: [{ value: 'individual', label: 'Individual' }, { value: 'doble', label: 'Doble' }, { value: 'litera', label: 'Litera' }] }, { key: 'capacity', label: 'Plazas', type: 'number', min: 0 }] },
+  { kind: 'cama', label: 'Cama', level: 4, parents: ['habitacion', 'sala'], attributes: [{ key: 'bed_kind', label: 'Tipo de cama', type: 'choice', options: [{ value: 'individual', label: 'Individual' }, { value: 'doble', label: 'Doble' }, { value: 'litera', label: 'Litera' }, { value: 'sofa_cama', label: 'Sofá cama' }] }, { key: 'capacity', label: 'Plazas fijas', type: 'number', min: 0 }, { key: 'extra_capacity', label: 'Plazas supletorias', type: 'number', min: 0 }] },
   { kind: 'ubicacion', label: 'Ubicación', level: 4, parents: ['almacen', 'cocina', 'instalacion', 'otro', 'comedor'], attributes: [STORAGE] },
 ];
 
@@ -160,7 +160,7 @@ export function canPlace(kinds: readonly SpaceKind[], kind: string, parent: Spac
   if (k.level === 1) return { ok: false, reason: kt('Una altura solo va en la raíz.') };
   if (k.parents?.length) {
     if (!k.parents.includes(parent.kind)) {
-      if (kind === 'cama') return { ok: false, reason: kt('Una cama solo va dentro de una habitación.') };
+      if (kind === 'cama') return { ok: false, reason: kt('Una cama solo va dentro de una habitación o una sala.') };
       return { ok: false, reason: kt('«{kind}» no puede ir dentro de «{parent}».', { kind: kt(k.label), parent: kt(p?.label ?? parent.kind) }) };
     }
     return { ok: true };
@@ -174,30 +174,26 @@ export function kindsFor(kinds: readonly SpaceKind[], parent: SpaceRow | null): 
   return kinds.filter((k) => canPlace(kinds, k.kind, parent).ok);
 }
 
-/** Tipos de cama que no cuentan como plaza: van aparte como supletorias (pendiente de que el usuario los apruebe). */
-export const EXTRA_BED_KINDS: readonly string[] = ['supletoria', 'sofa_cama'];
-
 /**
- * Plazas de un espacio (para Booking y la fila del árbol). Una habitación con camas suma las de sus camas activas
- * (`capacity` de cada una, 1 si no lo tiene), con las supletorias aparte. Sin camas, el `capacity` escrito.
+ * Plazas de un espacio (para Booking y la fila del árbol). Con camas activas dentro (habitación o sala), suma las de las
+ * camas: `capacity` son las fijas (1 si la cama no lo dice; 0 vale, p. ej. un sofá cama solo supletorio) y
+ * `extra_capacity` las supletorias que se pueden activar (litera partida 1 + 1, sofá cama 0 + 1). Sin camas, el
+ * `capacity` escrito.
  */
 export function spaceSeats(row: SpaceRow, rows: readonly SpaceRow[]): { seats: number; extras: number; fromBeds: boolean } {
+  const count = (value: unknown, fallback: number) => { const n = Number(value); return value !== undefined && value !== null && value !== '' && Number.isFinite(n) && n >= 0 ? n : fallback; };
   const beds = rows.filter((r) => r.parentId === row.id && r.active && r.kind === 'cama');
-  if (!beds.length) {
-    const capacity = Number(row.attributes?.capacity);
-    return { seats: Number.isFinite(capacity) && capacity > 0 ? capacity : 0, extras: 0, fromBeds: false };
-  }
+  if (!beds.length) return { seats: count(row.attributes?.capacity, 0), extras: 0, fromBeds: false };
   let seats = 0;
   let extras = 0;
   for (const bed of beds) {
-    const capacity = Number(bed.attributes?.capacity);
-    const n = Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
-    if (EXTRA_BED_KINDS.includes(String(bed.attributes?.bed_kind ?? ''))) extras += n; else seats += n;
+    seats += count(bed.attributes?.capacity, 1);
+    extras += count(bed.attributes?.extra_capacity, 0);
   }
   return { seats, extras, fromBeds: true };
 }
 
-/** «3 plazas + 1 supletoria». */
+/** «12 plazas + 4 supletorias». */
 export function seatsLabel(seats: { seats: number; extras: number }): string {
   const main = seats.seats === 1 ? kt('1 plaza') : kt('{n} plazas', { n: String(seats.seats) });
   if (!seats.extras) return main;
@@ -263,6 +259,8 @@ export function demoSpaces(): SpaceRow[] {
     row('ed-salas', 'alt-1', 'edificio', 'Edificio de salas', 1024),
     row('sala-roble', 'ed-salas', 'sala', 'Sala Roble', 1024, { attributes: { bookable: true, capacity: 30, accessible: true } }),
     row('sala-olivo', 'ed-salas', 'sala', 'Sala Olivo', 2048, { attributes: { bookable: true, capacity: 12 } }),
+    row('multiusos', 'ed-salas', 'sala', 'Sala multiusos', 2560, { attributes: { bookable: true, capacity: 20 } }),
+    row('multiusos-sofa', 'multiusos', 'cama', 'Sofá cama', 1024, { attributes: { bed_kind: 'sofa_cama', capacity: 0, extra_capacity: 1 } }),
     row('cocina', 'ed-salas', 'cocina', 'Cocina', 3072),
     row('despensa', 'cocina', 'ubicacion', 'Despensa', 1024, { attributes: { storage: 'ambiente' } }),
     row('camara', 'cocina', 'ubicacion', 'Cámara', 2048, { attributes: { storage: 'frio' } }),
@@ -272,7 +270,7 @@ export function demoSpaces(): SpaceRow[] {
     row('hab-1-c1', 'hab-1', 'cama', 'Cama 1', 1024, { attributes: { bed_kind: 'doble', capacity: 2 } }),
     row('hab-3', 'albergue', 'habitacion', 'Hab 3', 2048, { publicName: 'Habitación 3', attributes: { bookable: true, capacity: 4 } }),
     row('hab-3-c1', 'hab-3', 'cama', 'Cama 1', 1024, { attributes: { bed_kind: 'litera', capacity: 2 } }),
-    row('hab-3-c2', 'hab-3', 'cama', 'Cama 2', 2048, { attributes: { bed_kind: 'litera', capacity: 2 } }),
+    row('hab-3-c2', 'hab-3', 'cama', 'Cama 2', 2048, { attributes: { bed_kind: 'litera', capacity: 1, extra_capacity: 1 } }),
     row('banos-alb', 'albergue', 'bano', 'Baños', 3072),
     row('piscina', 'alt-4', 'exterior', 'Piscina', 1024),
     row('ext-deposito', 'alt-5', 'exterior', 'Zona del depósito', 1024),

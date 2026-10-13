@@ -29,7 +29,8 @@ const ATTRIBUTES: Record<string, SpaceAttribute> = {
   capacity: { key: 'capacity', label: 'Capacidad', type: 'number', min: 0 },
   accessible: { key: 'accessible', label: 'Accesible', type: 'boolean' },
   en_suite: { key: 'en_suite', label: 'Baño propio', type: 'boolean' },
-  bed_kind: { key: 'bed_kind', label: 'Tipo de cama', type: 'choice', options: [{ value: 'individual', label: 'Individual' }, { value: 'doble', label: 'Doble' }, { value: 'litera', label: 'Litera' }] },
+  bed_kind: { key: 'bed_kind', label: 'Tipo de cama', type: 'choice', options: [{ value: 'individual', label: 'Individual' }, { value: 'doble', label: 'Doble' }, { value: 'litera', label: 'Litera' }, { value: 'sofa_cama', label: 'Sofá cama' }] },
+  extra_capacity: { key: 'extra_capacity', label: 'Plazas supletorias', type: 'number', min: 0 },
   storage: { key: 'storage', label: 'Conservación', type: 'choice', options: [{ value: 'ambiente', label: 'Ambiente' }, { value: 'frio', label: 'Frío' }, { value: 'congelado', label: 'Congelado' }] },
 };
 
@@ -64,7 +65,7 @@ export function kindFromRow(row: SyncedRow): SpaceKind {
   const level = Math.min(4, Math.max(1, Number(row.level ?? 1))) as SpaceKind['level'];
   const attributes = ((row.attribute_keys as string[] | null) ?? []).map((key) => {
     const def = ATTRIBUTES[key] ?? { key, label: key, type: 'boolean' as const };
-    return row.kind === 'cama' && key === 'capacity' ? { ...def, label: 'Plazas' } : def;
+    return row.kind === 'cama' && key === 'capacity' ? { ...def, label: 'Plazas fijas' } : def;
   });
   return { kind: String(row.kind), label: String(row.label ?? row.kind), level, ...(parents.length && level > 1 ? { parents } : {}), attributes };
 }

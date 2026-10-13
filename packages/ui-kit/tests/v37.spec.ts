@@ -19,7 +19,8 @@ test.describe('ui-kit v0.30 · reglas de espacios (RECURSOS.md §4.1)', () => {
   const byId = (id: string) => rows.find((r) => r.id === id)!;
   test('el tipo fija el nivel; cama solo en habitación; altura solo en la raíz; sin ciclos; «Sin altura» solo en la migración', () => {
     expect(canPlace(K, 'cama', byId('hab-1')).ok).toBe(true);
-    expect(canPlace(K, 'cama', byId('sala-roble'))).toEqual({ ok: false, reason: 'Una cama solo va dentro de una habitación.' });
+    expect(canPlace(K, 'cama', byId('sala-roble')).ok).toBe(true);
+    expect(canPlace(K, 'cama', byId('cocina'))).toEqual({ ok: false, reason: 'Una cama solo va dentro de una habitación o una sala.' });
     expect(canPlace(K, 'altura', null).ok).toBe(true);
     expect(canPlace(K, 'altura', byId('albergue')).ok).toBe(false);
     expect(canPlace(K, 'edificio', null).ok).toBe(false);
@@ -70,10 +71,10 @@ test.describe('ui-kit v0.30 · createSpaceTree', () => {
 
   test('arrastrar: al lado y dentro; una colocación no válida se marca con su motivo y no mueve nada', async ({ page }) => {
     await row(page, 'hab-3').locator('.space-toggle').click();
-    // Una cama sobre una sala: no válido, con el motivo.
-    await drag(page, 'hab-3-c1', 'sala-roble', 0.5);
-    await expect(row(page, 'sala-roble')).toHaveClass(/drop-invalid/);
-    await expect(page.locator('.space-ghost')).toContainText('Una cama solo va dentro de una habitación.');
+    // Una cama sobre la cocina: no válido, con el motivo.
+    await drag(page, 'hab-3-c1', 'cocina', 0.5);
+    await expect(row(page, 'cocina')).toHaveClass(/drop-invalid/);
+    await expect(page.locator('.space-ghost')).toContainText('Una cama solo va dentro de una habitación o una sala.');
     await page.mouse.up();
     expect((await rowsOf(page)).find((r) => r.id === 'hab-3-c1')!.parentId).toBe('hab-3');
     // Una cama en el centro de otra habitación: dentro.
@@ -194,7 +195,7 @@ test.describe('ui-kit v0.30 · createSpacePicker', () => {
     const picker = page.locator('#spacePickerBookable');
     await picker.getByRole('combobox').fill('a');
     const names = await picker.locator('.space-result-name').allTextContents();
-    expect(names.sort()).toEqual(['Hab 1', 'Hab 3', 'Sala Olivo', 'Sala Roble'].sort());
+    expect(names.sort()).toEqual(['Hab 1', 'Hab 3', 'Sala multiusos', 'Sala Olivo', 'Sala Roble'].sort());
     await picker.getByRole('option', { name: /Hab 3/ }).click();
     await expect(picker.locator('.space-chip')).toHaveText(/Albergue › Hab 3/);
     await page.reload();
@@ -245,7 +246,7 @@ test.describe('ui-kit v0.30 · createSyncSpaceSource (adaptador sobre el sync-cl
     const k = await source.listKinds();
     expect(k.map((x) => x.kind)).toEqual(['edificio', 'cama']);
     expect(k[0]).toMatchObject({ level: 2, parents: ['altura'] });
-    expect(k[1]!.attributes!.map((a) => a.label)).toEqual(['Tipo de cama', 'Plazas']);
+    expect(k[1]!.attributes!.map((a) => a.label)).toEqual(['Tipo de cama', 'Plazas fijas']);
     statusListener!({ rejected: 1 });
     await expect.poll(() => errors).toEqual(['Mover espacios es solo para administradores.']);
     statusListener!({ rejected: 1 });

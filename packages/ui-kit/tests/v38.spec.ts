@@ -5,25 +5,30 @@ const row = (page: Page, id: string) => page.locator(`#spaceTreeHost .space-row[
 const rowsOf = (page: Page) => page.evaluate(() => (window as unknown as { spaceSource: { rows(): SpaceRow[] } }).spaceSource.rows());
 
 test.describe('ui-kit v0.31 · el árbol de espacios para Booking (§17: no perder nada)', () => {
-  test('plazas: suma de las camas (1 si no lo dicen), supletorias aparte; sin camas, la capacidad escrita', () => {
+  test('plazas: fijas (1 si la cama no lo dice; 0 vale) y supletorias de cada cama; sin camas, la capacidad escrita', () => {
     const rows = demoSpaces();
-    const hab3 = rows.find((r) => r.id === 'hab-3')!;
-    expect(spaceSeats(hab3, rows)).toEqual({ seats: 4, extras: 0, fromBeds: true });
+    const at = (id: string) => rows.find((r) => r.id === id)!;
+    // Hab 3: litera de 2 y litera partida 1 + 1.
+    expect(spaceSeats(at('hab-3'), rows)).toEqual({ seats: 3, extras: 1, fromBeds: true });
+    // Sala multiusos: un sofá cama solo supletorio (0 + 1), aunque la sala diga 20.
+    expect(spaceSeats(at('multiusos'), rows)).toEqual({ seats: 0, extras: 1, fromBeds: true });
     const bed = (id: string, attrs: Record<string, unknown>): SpaceRow => ({ id, parentId: 'hab-3', kind: 'cama', name: id, publicName: null, code: null, position: 9, active: true, notes: null, attributes: attrs });
-    const more = [...rows, bed('x1', {}), bed('x2', { bed_kind: 'supletoria' }), { ...bed('x3', { capacity: 2 }), active: false }];
-    expect(spaceSeats(hab3, more)).toEqual({ seats: 5, extras: 1, fromBeds: true });
-    expect(seatsLabel(spaceSeats(hab3, more))).toBe('5 plazas + 1 supletoria');
-    expect(seatsLabel({ seats: 1, extras: 2 })).toBe('1 plaza + 2 supletorias');
-    expect(spaceSeats(rows.find((r) => r.id === 'sala-roble')!, rows)).toEqual({ seats: 30, extras: 0, fromBeds: false });
+    const more = [...rows, bed('x1', {}), bed('x2', { capacity: 0, extra_capacity: 2 }), { ...bed('x3', { capacity: 2 }), active: false }];
+    expect(spaceSeats(at('hab-3'), more)).toEqual({ seats: 4, extras: 3, fromBeds: true });
+    expect(seatsLabel({ seats: 12, extras: 4 })).toBe('12 plazas + 4 supletorias');
+    expect(seatsLabel({ seats: 1, extras: 1 })).toBe('1 plaza + 1 supletoria');
+    expect(seatsLabel({ seats: 2, extras: 0 })).toBe('2 plazas');
+    expect(spaceSeats(at('sala-roble'), rows)).toEqual({ seats: 30, extras: 0, fromBeds: false });
   });
 
   test('@smoke la fila de la habitación enseña las plazas de sus camas y se actualiza al añadir una supletoria', async ({ page }) => {
     await page.goto('/#spaces');
-    await expect(row(page, 'hab-3').locator('.space-sub')).toContainText('4 plazas');
+    await expect(row(page, 'hab-3').locator('.space-sub')).toContainText('3 plazas + 1 supletoria');
     await expect(row(page, 'hab-3').locator('.space-sub')).not.toContainText('Capacidad');
     await expect(row(page, 'sala-roble').locator('.space-sub')).toContainText('Capacidad 30');
-    await page.evaluate(() => (window as unknown as { spaceSource: { create(r: unknown): Promise<void> } }).spaceSource.create({ id: 'sup', parentId: 'hab-3', kind: 'cama', name: 'Supletoria', publicName: null, code: null, position: 9000, active: true, notes: null, attributes: { bed_kind: 'supletoria' } }));
-    await expect(row(page, 'hab-3').locator('.space-sub')).toContainText('4 plazas + 1 supletoria');
+    await expect(row(page, 'multiusos').locator('.space-sub')).toContainText('0 plazas + 1 supletoria');
+    await page.evaluate(() => (window as unknown as { spaceSource: { create(r: unknown): Promise<void> } }).spaceSource.create({ id: 'sofa2', parentId: 'hab-3', kind: 'cama', name: 'Sofá', publicName: null, code: null, position: 9000, active: true, notes: null, attributes: { bed_kind: 'sofa_cama', capacity: 0, extra_capacity: 2 } }));
+    await expect(row(page, 'hab-3').locator('.space-sub')).toContainText('3 plazas + 3 supletorias');
   });
 
   test('acciones de la app en la fila, a un toque y de 44×44: «Añadir cama» y «Duplicar»', async ({ page }) => {
@@ -44,6 +49,15 @@ test.describe('ui-kit v0.31 · el árbol de espacios para Booking (§17: no perd
     await page.getByRole('button', { name: 'Crear' }).click();
     await expect.poll(async () => (await rowsOf(page)).find((r) => r.name === 'Cama 2' && r.parentId === 'hab-1')?.kind).toBe('cama');
     await expect(row(page, 'hab-1').locator('.space-sub')).toContainText('3 plazas');
+    // La ficha de la cama tiene las plazas fijas, las supletorias y el sofá cama.
+    // Crear la cama ha desplegado la Hab 1.
+    await row(page, 'hab-1-c1').locator('.space-body').click();
+    const bedSheet = page.locator('.sheet').last();
+    await expect(bedSheet.getByLabel('Plazas fijas')).toHaveValue('2');
+    await bedSheet.getByLabel('Plazas supletorias').fill('1');
+    await bedSheet.getByLabel('Tipo de cama').selectOption('sofa_cama');
+    await bedSheet.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await expect(row(page, 'hab-1').locator('.space-sub')).toContainText('3 plazas + 1 supletoria');
   });
 
   test('«+» en una habitación trae «Cama» como tipo; en un edificio, el primero de la lista', async ({ page }) => {

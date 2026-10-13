@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.32.0: camas con plazas fijas y supletorias (`extra_capacity`), sofá cama y camas en salas; `spaceSeats` suma fijas y supletorias.
 - v0.31.0: árbol de espacios para Booking: `rowActions`, plazas calculadas por camas (`spaceSeats`), «+» con cama en una habitación, fila que no estruja el nombre.
 - v0.30.0: espacios (R1): `createSpaceTree` (árbol con arrastre y reglas, ficha, duplicar, archivar) y `createSpacePicker` (más usados a un toque, búsqueda con la ruta), contra una `SpaceSource` inyectable.
 - v0.29.0: `createLevelStar` (estrella de nivel por pasos, como la prioridad de Tasks) para las capacidades de Central.

@@ -1,5 +1,19 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.32.0 · 13 de octubre de 2026
+
+**Camas con plazas fijas y supletorias** (decisión del usuario; servidor en Core #479, docs/resources/API.md §2.3).
+
+- **Datos de la cama:** «Tipo de cama» (individual, doble, litera o **sofá cama**), **«Plazas fijas»** (`capacity`; 0 vale) y **«Plazas supletorias»** (`extra_capacity`). Ejemplos: litera partida 1 + 1, sofá cama 0 + 1. Están en los tipos de partida y en el adaptador `createSyncSpaceSource`.
+- **Una cama puede ir también en una sala** (sofás cama de la Sala multiusos). El motivo al rechazarla dice «…dentro de una habitación o una sala».
+- **`spaceSeats(row, rows)`:**
+  - **Con camas:** `{ seats: Σ capacity, extras: Σ extra_capacity }`. Una cama sin `capacity` cuenta 1, y 0 cuenta 0.
+  - **Texto:** «12 plazas + 4 supletorias».
+  - **Sin camas:** la capacidad escrita, como antes.
+- **Quitado `EXTRA_BED_KINDS`** (0.31.0): las supletorias ya no son un tipo de cama, sino plazas de cada cama. Nadie lo usaba todavía.
+- **`createInside` no se hace** (decisión del usuario): crear y cambiar camas y espacios sigue siendo de `structure` (owner).
+- **Demo:** la Hab 3 con una litera partida y la Sala multiusos con un sofá cama 0 + 1. Pruebas `v37` y `v38` al día.
+
 ## 0.31.0 · 13 de octubre de 2026
 
 **El árbol de espacios, para que Booking no pierda nada** (sección 17 de RECURSOS.md; comparación de Booking entre su pantalla de hoy y las capturas de «después»).
