@@ -1,5 +1,18 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.29.0 · 13 de octubre de 2026
+
+- **Estrella de nivel** (petición de Central, para el nivel de las capacidades; Tasks la adoptará en P2 para la prioridad):
+  - `createLevelStar({ levels, labels, value, onChange, readonly, name, showLabel, feedbackId })` → `{ element, get, set, setReadonly }`.
+  - **Aspecto:** una sola estrella que se rellena por pasos, como la prioridad de Tasks. Con 3 niveles: vacía, media y llena. Mismo dorado en claro y en oscuro.
+  - **Uso:** pulsar pasa al siguiente nivel y vuelve al primero.
+  - **Teclado:** las flechas suben y bajan, e Inicio y Fin van a los extremos.
+  - **Lector de pantalla:** el nombre accesible incluye el nivel («Nivel en fontanería: Sabe. Pulsa para cambiar…») y el cambio se anuncia.
+  - **Tamaño:** objetivo táctil de al menos 44×44. Con `showLabel`, el nombre del nivel va al lado, como el botón de prioridad de la ficha de Tasks.
+  - **Solo lectura:** `renderLevelStar(value, levels, label)` para filas y tarjetas (`role="img"`). `levelFill(value, levels)` da la proporción rellena.
+- **Nada existente cambia:** solo se añaden un archivo, sus estilos (`.level-star*`) y textos en inglés. La prioridad de Tasks sigue como estaba.
+- Prueba `v36` (con `@smoke`).
+
 ## 0.28.1 · 9 de octubre de 2026
 
 - **Conflicto de un `call` aparcado** (p. ej. validar una factura): no lleva tabla, y la 0.28.0 la usaba para el título.
