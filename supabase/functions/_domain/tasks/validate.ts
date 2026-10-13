@@ -144,6 +144,7 @@ const RULES: Record<TableName, TableRules> = {
       external_ref: text(3, 182, 'INVALID_FIELDS', 'Referencia de origen inválida.'), external_kind: nullable(text(3, 100, 'INVALID_FIELDS', 'Tipo de origen inválido.')),
       external_url: nullable(externalUrl),
       external_on_behalf: nullable(oneOf(['internal', 'organizer', 'guest'], 'INVALID_FIELDS', 'Origen del reporte desconocido.')),
+      steps_in_order: flag('INVALID_FLAG'), step_free: flag('INVALID_FLAG'),
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
   },

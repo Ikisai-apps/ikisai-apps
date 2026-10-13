@@ -44,11 +44,23 @@ function index(input: GraphInput): Index {
   return { tasks, liveChildren, deps, deletedProjects };
 }
 
-/** Dependencias efectivas: las propias más las de su padre. */
+/** Dependencias efectivas: las propias, las de su padre y, si la madre lleva «pasos en orden», la hija anterior. */
 function effective(task: TaskRow, ix: Index): string[] {
   const own = ix.deps.get(task.id) ?? [];
   const inherited = task.parent_id ? ix.deps.get(task.parent_id) ?? [] : [];
-  return [...new Set([...own, ...inherited])];
+  const step = stepBefore(task, ix);
+  return [...new Set([...own, ...inherited, ...(step ? [step] : [])])];
+}
+
+/** Pasos en orden (FB_2026_041): la hija anterior de la cadena (por posición), sin las sueltas. Como cualquier condición, solo
+ *  bloquea mientras no está hecha. */
+export function stepBefore(task: TaskRow, ix: { tasks: Map<string, TaskRow>; liveChildren: Map<string, TaskRow[]> }): string | null {
+  if (!task.parent_id || task.deleted_at || task.step_free) return null;
+  const parent = ix.tasks.get(task.parent_id);
+  if (!parent?.steps_in_order || parent.deleted_at) return null;
+  const chain = (ix.liveChildren.get(parent.id) ?? []).filter((c) => !c.step_free).sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : 1));
+  const at = chain.findIndex((c) => c.id === task.id);
+  return at > 0 ? chain[at - 1]!.id : null;
 }
 
 function doneOf(task: TaskRow, ix: Index): boolean {
