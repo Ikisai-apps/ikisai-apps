@@ -13,6 +13,10 @@ import {
   createDayTabs,
   createSuggestField,
   createLevelStar,
+  createSpaceTree,
+  createSpacePicker,
+  createMemorySpaceSource,
+  demoSpaces,
   renderLevelStar,
   initAppUpdates,
   setKitLayer,
@@ -1051,6 +1055,22 @@ const levelSection = section('levelstar', 'Estrella de nivel', 'createLevelStar:
   el('div', { style: 'display:flex;gap:16px;align-items:center;flex-wrap:wrap' }, levelStar.element, levelBare.element, el('span', { id: 'levelStatic' }, renderLevelStar(0, 3, 'Aprendiz'), renderLevelStar(1, 3, 'Sabe'), renderLevelStar(2, 3, 'Experto'))),
   el('p', null, 'Elegido: ', levelOut),
 );
+// --- Espacios (R1) -----------------------------------------------------------------
+const spaceSource = createMemorySpaceSource(demoSpaces(), {
+  // Simula la negativa del servidor: dentro de la Piscina hay reservas futuras.
+  failArchive: (ids) => (ids.includes('piscina') ? 'No se puede archivar «Piscina»: tiene reservas futuras (retiro del 20 de octubre).' : null),
+});
+(window as unknown as { spaceSource: typeof spaceSource }).spaceSource = spaceSource;
+const spaceTree = createSpaceTree({ source: spaceSource, permissions: { edit: true, structure: true }, feedbackId: 'demo.espacios.arbol', label: 'Espacios de la casa' });
+spaceTree.element.id = 'spaceTreeHost';
+const pickedOut = el('output', { id: 'spacePickedOut' }, '—');
+const spacePickerMany = createSpacePicker({ source: spaceSource, label: 'Espacio de la tarea', multiple: true, quick: ['cocina', 'hab-3', 'sala-roble', 'jardin'], feedbackId: 'demo.tarea.espacio', onChange: (ids) => { pickedOut.textContent = ids.join(', ') || '—'; } });
+spacePickerMany.element.id = 'spacePickerMany';
+const spacePickerBookable = createSpacePicker({ source: spaceSource, label: 'Sala o habitación reservable', filter: (r) => r.attributes.bookable === true, recentKey: 'demo-reservable' });
+spacePickerBookable.element.id = 'spacePickerBookable';
+const spaceSection = section('spaces', 'Espacios (R1)', 'createSpaceTree: Altura › Edificio o Exterior › Espacio › Subespacio; buscar, desplegar, ficha, «+» dentro, asa de 44×44 para arrastrar (encima o debajo = al lado, centro = dentro; lo no válido se marca con su motivo), subir y bajar, «Mover a…», «Duplicar», «Archivar con todo lo de dentro» y «Sin altura». createSpacePicker: más usados a un toque, búsqueda con la ruta y filtro por tipos o reservables.',
+  el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element)),
+);
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
@@ -1065,5 +1085,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
