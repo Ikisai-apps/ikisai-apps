@@ -60,6 +60,7 @@ Altura 1–5 › Edificio | Exterior › Habitación, Sala, Baño, Cocina, Comed
 | `active` | boolean | false = archivado |
 | `notes` | text o null, hasta 1000 | Descripción (en las alturas, el subtítulo) |
 | `attributes` | jsonb | Datos propios del tipo (2.3) |
+| `source_refs` | text[] | De dónde viene: `tasks.label:<uuid>`, `booking.space:<uuid>`, `booking.bed:<uuid>`. Lo usa la fase R2 para enlazar; solo lo cambia el owner |
 
 ### 2.2 `resources.space_kinds` (tipos ampliables)
 
@@ -68,7 +69,7 @@ Altura 1–5 › Edificio | Exterior › Habitación, Sala, Baño, Cocina, Comed
 | Nivel | Tipos | Cuelgan de | Datos propios |
 |---|---|---|---|
 | 1 | `altura` | raíz | — |
-| 2 | `edificio`, `exterior` | `altura` o raíz | `accessible` (exterior: también `bookable`, `capacity`) |
+| 2 | `edificio`, `exterior` | `altura` o raíz | `bookable`, `capacity`, `accessible` (Booking reserva el albergue entero) |
 | 3 | `habitacion`, `sala`, `bano`, `cocina`, `comedor`, `oficina`, `zona_paso`, `instalacion`, `almacen`, `otro` | `edificio`, `exterior` | Según el tipo: `bookable`, `capacity`, `accessible`, `en_suite`, `storage` |
 | 4 | `cama` | `habitacion` | `bed_kind`, `capacity` |
 | 4 | `ubicacion` | `almacen`, `cocina`, `comedor`, `instalacion`, `otro` | `storage` |
@@ -94,7 +95,7 @@ Una clave que el tipo no admite, o con otra forma, da `INVALID_SPACE_ATTRIBUTE`.
 | Nada vivo dentro de algo borrado, ni activo dentro de algo archivado: se archiva o se borra **con todo lo de dentro en el mismo lote** | `ORPHAN_CHILD` |
 | Un tipo en uso no se borra ni se archiva | `SPACE_KIND_IN_USE` |
 | Nombre repetido entre hermanos, código repetido | `CONSTRAINT_VIOLATION` |
-| **Editor:** cambia `name`, `public_name`, `code`, `notes`, `attributes` y `position`. **Crear, borrar, restaurar, mover (`parent_id`), cambiar `kind` o archivar (`active`): owner** | `FORBIDDEN` |
+| **Editor:** cambia `name`, `public_name`, `code`, `notes`, `attributes` y `position`. **Crear, borrar, restaurar, mover (`parent_id`), cambiar `kind`, archivar (`active`) o tocar `source_refs`: owner** | `FORBIDDEN` |
 
 En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futuras, stock o tareas abiertas.
 

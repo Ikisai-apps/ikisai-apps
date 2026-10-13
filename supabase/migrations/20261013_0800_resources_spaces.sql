@@ -38,7 +38,7 @@ select core.register_table('resources', 'resources', 'space_kinds',
 
 insert into resources.space_kinds (kind, label, level, parents, attribute_keys, position) values
   ('altura', 'Altura', 1, '{root}', '{}', 10),
-  ('edificio', 'Edificio', 2, '{altura,root}', '{accessible}', 20),
+  ('edificio', 'Edificio', 2, '{altura,root}', '{bookable,capacity,accessible}', 20),
   ('exterior', 'Exterior', 2, '{altura,root}', '{bookable,capacity,accessible}', 30),
   ('habitacion', 'Habitación', 3, '{edificio,exterior}', '{bookable,capacity,accessible,en_suite}', 40),
   ('sala', 'Sala', 3, '{edificio,exterior}', '{bookable,capacity,accessible}', 50),
@@ -73,6 +73,8 @@ create table resources.spaces (
   active boolean not null default true,
   notes text check (notes is null or length(notes) <= 1000),
   attributes jsonb not null default '{}'::jsonb check (jsonb_typeof(attributes) = 'object'),
+  -- De dónde viene (migración inicial y fase R2): `tasks.label:<uuid>`, `booking.space:<uuid>`, `booking.bed:<uuid>`.
+  source_refs text[] not null default '{}',
   check (parent_id is null or parent_id <> id)
 );
 create index spaces_parent_idx on resources.spaces (parent_id) where deleted_at is null;
@@ -81,7 +83,8 @@ create unique index spaces_sibling_name_idx on resources.spaces
 create unique index spaces_code_idx on resources.spaces (lower(code)) where deleted_at is null and code is not null;
 
 select core.register_table('resources', 'resources', 'spaces',
-  array['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes']);
+  array['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes', 'source_refs']);
+create index spaces_source_refs_idx on resources.spaces using gin (source_refs);
 
 -- Las cinco alturas (usuario, 13-10-2026): el nombre es el número; la descripción, en las notas.
 insert into resources.spaces (kind, name, position, notes) values
@@ -122,7 +125,8 @@ begin
       if v_change.op in ('insert', 'delete', 'restore')
          or (v_change.op = 'update' and ((v_change.before->>'parent_id') is distinct from (v_change.after->>'parent_id')
                                        or (v_change.before->>'kind') is distinct from (v_change.after->>'kind')
-                                       or (v_change.before->>'active') is distinct from (v_change.after->>'active'))) then
+                                       or (v_change.before->>'active') is distinct from (v_change.after->>'active')
+                                       or (v_change.before->'source_refs') is distinct from (v_change.after->'source_refs'))) then
         perform core.fail('FORBIDDEN', 403, jsonb_build_object('table', 'resources.spaces', 'reason', 'structure changes need owner'));
       end if;
     end loop;
