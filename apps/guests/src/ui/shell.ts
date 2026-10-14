@@ -20,7 +20,7 @@ import { commonText, loadCommonTexts } from '../app/common-texts.ts';
 import { openGuest, type GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import { fieldLabel } from '../app/labels.ts';
-import { createOutsiderApi, isOutsider, openRetreats } from '../app/outsider.ts';
+import { createOutsiderApi, isOutsider, joinSuggestions, openRetreats, sendJoin, type JoinPerson } from '../app/outsider.ts';
 import { createPortalReads } from '../app/portal.ts';
 import { buildRoster, defaultRetreat, entriesFor, entryRetreat, loadRoster, type Retreat, type Roster, type Selection } from '../app/roster.ts';
 import { openAccess, openInstall } from './access.ts';
@@ -287,6 +287,16 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView = mountCalendar(view, r, selection, {
       href: (retreat) => hrefFor(retreat), navigate, who,
       openRetreats: (range) => openRetreats(client, range),
+      join: {
+        persons: (): JoinPerson[] => (r.persons.length
+          ? r.persons.map((p) => ({ name: p.name, personKey: p.personKey, guestIds: p.guestIds }))
+          : [{ name: client.bootstrap()?.profile.displayName ?? '', personKey: null, guestIds: [] }]),
+        mine: () => joinSuggestions(client),
+        send: async (retreat, people, message) => {
+          await sendJoin(client, retreat, people, message, t('calendar.joinSummary', { title: retreat.title, names: people.map((p) => p.name).join(', ') }));
+        },
+        withdraw: async (id) => { await client.withdrawSuggestion(id, { app: 'booking' }); },
+      },
       ...(outsider ? { outsider, newStay: location.hash === NEW_STAY } : {}),
     }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
   }

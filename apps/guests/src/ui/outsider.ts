@@ -4,7 +4,7 @@
  *   (decisión del usuario: aviso, no bloqueo). Sin estancias, la cama habitual. «Nueva estancia» abre el calendario
  *   para elegir los días.
  * - **Comidas:** «Sugerir un plato» para el menú de casa (Food, sugerencia `plato_casa` que aprueba cocina) y «Mis
- *   propuestas» (`createSuggestionSource` del kit 0.34, modo `mine`).
+ *   propuestas» (`createSuggestionSource` del kit 0.34, modo `mine`), con los platos y los «Apuntarme» (Booking).
  * - **Cómo llegar:** la información práctica.
  * «Mis tareas» llega cuando Tasks publique el rol outsider; el menú de casa, cuando Food publique su lectura de portal.
  */
@@ -37,10 +37,15 @@ export function stayText(stay: Pick<Stay, 'space_name' | 'zone' | 'bed_label'>):
 export function mountOutsider(main: HTMLElement, header: HTMLElement | null, actions: OutsiderActions): () => void {
   let alive = true;
   const stayBox = el('div', { id: 'outsiderStay' }, loading());
-  const mine = createSuggestionSource(actions.client, { scope: 'mine', app: 'food' });
+  // «Mis propuestas»: los platos sugeridos (Food) y los «Apuntarme» (Booking), juntos.
+  const sources = { food: createSuggestionSource(actions.client, { scope: 'mine', app: 'food' }), booking: createSuggestionSource(actions.client, { scope: 'mine', app: 'booking' }) };
+  const mine = {
+    list: async () => (await Promise.all([sources.food.list(), sources.booking.list().catch(() => [])])).flat(),
+    withdraw: (item: Parameters<typeof sources.food.withdraw>[0]) => (item.app === 'booking' ? sources.booking : sources.food).withdraw(item),
+  };
   const proposals = createProposalList({
     mode: 'mine', source: mine, onWithdraw: mine.withdraw,
-    kinds: { plato_casa: { label: t('outsider.dishKind'), icon: 'chef' } },
+    kinds: { plato_casa: { label: t('outsider.dishKind'), icon: 'chef' }, apuntarme: { label: t('outsider.joinKind'), icon: 'calendar' } },
     title: t('outsider.mine'), emptyText: t('outsider.mineEmpty'), feedbackId: 'guests.outsider.propuestas',
   });
   proposals.element.id = 'outsiderProposals';

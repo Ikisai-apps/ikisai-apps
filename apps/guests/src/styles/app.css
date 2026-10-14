@@ -164,3 +164,5 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gday-who{margin:0 0 6px}
 #whoList{border:0;margin:0 0 12px;padding:0}
 #whoList legend{font-weight:700;margin-bottom:6px}
+.gjoin{display:grid;gap:6px;justify-items:start;margin-top:6px}
+.gjoin p{margin:0}
