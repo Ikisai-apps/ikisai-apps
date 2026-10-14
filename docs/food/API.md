@@ -172,7 +172,11 @@ Las adaptaciones alimentarias son recetas propias y platos propios del servicio 
   - Cada lista del menú de casa lleva `period_start` y `period_end`. Sus listas vivas no se solapan (`PERIOD_OVERLAP`, 422, con los días de la otra lista). Regenerar el mismo rango reutiliza su lista.
   - `regenerate_shopping` y `regenerate_preparation` reciben `period_start` y `period_end`: obligatorios en casa y prohibidos en un retiro (`INVALID_PERIOD`, con `reason: 'required' | 'not_allowed'`). Solo miran los servicios de esos días (§3.2 y §3.3).
   - En casa no se escribe la marca de obsolescencia de la preparación del menú (`preparation_generated_at` y `preparation_source_revisions` son de los retiros). La lista de compra sí la lleva, calculada con los días de la lista (`shoppingSources(graph, period)`).
-- **Pendiente:** O3c (sugerencias de plato de los outsiders, `plato_casa`, cuando esté O1).
+- **Platos sugeridos (O3c, 14 de octubre de 2026; migración `20261014_0196_food_house_suggestion.sql`; contrato §3.10):**
+  - Tipo de sugerencia `plato_casa` («Plato para el menú de casa»). Lo sugiere desde Guests quien tenga nivel de casa `outsider` (en Guests es `editor`; `submit_from = {"guests": ["editor"]}`, `submit_roles = {}`). Lo aprueba o descarta un editor u owner de Food.
+  - El lote es una sola llamada: `[{op: 'call', procedure: 'food.house_dish_from_suggestion', args: {name, date, service}}]` (`houseDishSuggestionOperations` en el dominio). Se aplica al aprobar, como un `core.commit` de quien aprueba. El outsider no puede llamar al procedimiento.
+  - Al aprobar: usa la receta viva y no archivada con el mismo nombre (sin distinguir mayúsculas; primero la validada) o crea una rápida «por completar»; usa el primer servicio de ese tipo ese día o lo crea con su hora de siempre; añade el plato al final con las personas en casa como raciones, sin repetirlo si ya estaba. Si nadie ha abierto aún el menú de casa, lo crea con `HOUSE_MENU_ID`.
+  - En la app: «Platos sugeridos» en Menús (bajo el menú de casa, si hay alguna sugerencia y se puede decidir) y un aviso en la cabecera del menú de casa con las pendientes; la cola es `createProposalList` del kit en `#/menus/sugerencias`.
 
 ### 2.3 Compra, preparación y stock
 
@@ -285,6 +289,7 @@ Un lote con `call` no se puede deshacer desde el historial (`UNDO_UNAVAILABLE`, 
 | `food.set_menu_status` | `menu_id`, `expectedRevision`, `status` | `menus` | `{menu_id, status}` | `VERSION_CONFLICT`, `INVALID_TRANSITION` |
 | `food.regenerate_shopping` | `menu_id`, `list_id`; en casa, `period_start` y `period_end` | `shopping_lists`, `shopping_list_items` | `{list_id, created, inserted, updated, deleted, kept, status}` | `MENU_NOT_FOUND`, `LIST_CLOSED`, `INVALID_PERIOD`, `PERIOD_OVERLAP` |
 | `food.regenerate_preparation` | `menu_id`; en casa, `period_start` y `period_end` | `preparation_items`, `menus` (solo retiros) | `{inserted, updated, deleted, kept}` | `MENU_NOT_FOUND`, `INVALID_PERIOD` |
+| `food.house_dish_from_suggestion` | `name` (1–160), `date` (`YYYY-MM-DD`), `service` (tipo de servicio). Solo por una sugerencia `plato_casa` aprobada (§2.6) | `menus` (si falta el de casa), `menu_services`, `recipes`, `menu_items` | `{menu_id, service_id, recipe_id, item_id, created_menu, created_service, created_recipe, created_item}` | `INVALID_OPERATION` con `argument` |
 
 ### 3.1 Estados del menú
 

@@ -8,7 +8,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { computeShopping, defaultPurchase, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
+import { HOUSE_MENU_ID, computeShopping, defaultPurchase, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
 
 export interface FakeRow {
   id: string;
@@ -102,7 +102,16 @@ export interface FakeApi {
   usageItems(): FakeUsageItem[];
   /** Da por aceptado (o no) el aviso de medición de uso. */
   setUsageConsent(consented: boolean): void;
+  /** Una sugerencia `plato_casa` pendiente, como la mandaría un outsider desde Guests (O3c). */
+  seedSuggestion(input: { name: string; date: string; service: string; author?: string }): string;
+  suggestions(): FakeSuggestion[];
   close(): Promise<void>;
+}
+
+export interface FakeSuggestion {
+  id: string; app: 'food'; kind: string; label: string; summary: string; detail: Record<string, unknown> | null; operations: unknown[];
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'; comment: string | null; author: { id: string; name: string };
+  decidedBy: { id: string; name: string } | null; decidedAt: string | null; appliedCursor: number | null; result: unknown; createdAt: string; updatedAt: string;
 }
 
 class Fault extends Error {
@@ -161,6 +170,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const feedbackByRequest = new Map<string, string>();
   const usage = new Map<string, FakeUsageItem>();
   const faults: Array<{ id: string; body: Record<string, unknown> }> = [];
+  const suggestionStore: FakeSuggestion[] = [];
   let consentedAt: string | null = options.usageConsent === false ? null : new Date().toISOString();
   let cursor = 0;
 
@@ -245,6 +255,32 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (op.op === 'call') {
         // Versión mínima de los procedimientos de estado; las reglas completas se prueban contra PGlite.
         const { procedure, args = {} } = op as unknown as { procedure: string; args?: Record<string, any> };
+        if (procedure === 'food.house_dish_from_suggestion') {
+          // Como el procedimiento SQL de O3c (probado contra PGlite): receta del mismo nombre o rápida, servicio y plato.
+          let seq = 0;
+          const all = (table: string) => Array.from(stagedTable(table).values()).filter((r) => !r.deleted_at);
+          const insert = (table: string, fields: Record<string, unknown>, id: string = randomUUID()): FakeRow => {
+            const row: FakeRow = { id, revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };
+            for (const column of tables[table]!) row[column] = fields[column] ?? DEFAULTS[table]?.[column] ?? null;
+            stagedTable(table).set(row.id, row);
+            batchChanges.push(record(table, 'insert', row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
+            return row;
+          };
+          const name = String(args.name ?? '').trim();
+          const menu = all('food.menus').find((m) => m.kind === 'casa') ?? insert('food.menus', { kind: 'casa' }, HOUSE_MENU_ID);
+          const servings = Number(menu.house_servings ?? 0) || 1;
+          const service = all('food.menu_services').filter((r) => r.menu_id === menu.id && r.service_date === args.date && r.service_type === args.service)
+            .sort((a, b) => Number(a.position) - Number(b.position))[0]
+            ?? insert('food.menu_services', { menu_id: menu.id, service_date: args.date, service_type: args.service, service_time: args.service === 'comida' ? '14:00' : args.service === 'cena' ? '20:30' : null,
+              position: Math.max(0, ...all('food.menu_services').filter((r) => r.menu_id === menu.id && r.service_date === args.date).map((r) => Number(r.position))) + 1 });
+          const recipe = all('food.recipes').find((r) => String(r.name).trim().toLowerCase() === name.toLowerCase() && r.status !== 'archivada')
+            ?? insert('food.recipes', { name, category: 'principal', base_servings: servings, quick: true });
+          const existing = all('food.menu_items').find((i) => i.service_id === service.id && i.recipe_id === recipe.id);
+          const item = existing ?? insert('food.menu_items', { service_id: service.id, recipe_id: recipe.id, servings,
+            position: Math.max(0, ...all('food.menu_items').filter((i) => i.service_id === service.id).map((i) => Number(i.position))) + 1 });
+          results.push({ op: 'call', procedure, result: { menu_id: menu.id, service_id: service.id, recipe_id: recipe.id, item_id: item.id, created_item: !existing } });
+          return;
+        }
         const menu = stagedTable('food.menus').get(args.menu_id);
         if (!menu || menu.deleted_at) throw new Fault(422, 'MENU_NOT_FOUND', 'El menú no existe.', { index });
         if (procedure === 'food.regenerate_shopping' || procedure === 'food.regenerate_preparation') {
@@ -585,6 +621,28 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
       if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      // Sugerencias del núcleo (contrato §3.10), lo justo para la cola de Food: listar, ver, aprobar y descartar.
+      if (path === 'suggestions' && method === 'GET') {
+        const scope = url.searchParams.get('scope') ?? 'mine';
+        const limit = Number(url.searchParams.get('limit') ?? 50);
+        const items = suggestionStore.filter((x) => (scope === 'pending' ? x.status === 'pending' : scope === 'all' ? x.status !== 'withdrawn' : false))
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+        return json(res, 200, { items, pendingCount: scope === 'mine' ? null : suggestionStore.filter((x) => x.status === 'pending').length });
+      }
+      const decide = /^suggestions\/([0-9a-f-]{36})\/(approve|reject|preview)$/.exec(path);
+      if (decide && method === 'POST') {
+        const item = suggestionStore.find((x) => x.id === decide[1]);
+        if (!item) throw new Fault(404, 'NOT_FOUND', 'Sugerencia no encontrada.');
+        const body = await readJson(req);
+        if (decide[2] === 'preview') return json(res, 200, { changes: [] });
+        if (item.status !== 'pending') throw new Fault(409, 'SUGGESTION_UNAVAILABLE', 'Ya no está pendiente.');
+        const decided = { comment: typeof body.comment === 'string' && body.comment.trim() ? body.comment.trim() : null, decidedBy: { id: session.userId, name: session.displayName }, decidedAt: nowIso(), updatedAt: nowIso() };
+        if (decide[2] === 'approve') {
+          const applied = commit({ requestId: `suggestion:${item.id}`, operations: item.operations }, session.userId) as { cursor: number; results: unknown };
+          Object.assign(item, decided, { status: 'approved', appliedCursor: applied.cursor, result: applied.results });
+        } else Object.assign(item, decided, { status: 'rejected' });
+        return json(res, 200, item);
+      }
       throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
     } catch (error) {
       if (error instanceof Fault) return json(res, error.status, { error: { code: error.code, message: error.message, details: error.details } });
@@ -604,6 +662,17 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     faults: () => faults.map((f) => ({ ...f, body: { ...f.body } })),
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
     setUsageConsent: (consented) => { consentedAt = consented ? new Date().toISOString() : null; },
+    seedSuggestion({ name, date, service, author = 'Marta' }) {
+      const id = randomUUID();
+      suggestionStore.push({
+        id, app: 'food', kind: 'plato_casa', label: 'Plato para el menú de casa', summary: name, detail: null,
+        operations: [{ op: 'call', procedure: 'food.house_dish_from_suggestion', args: { name, date, service } }],
+        status: 'pending', comment: null, author: { id: randomUUID(), name: author }, decidedBy: null, decidedAt: null, appliedCursor: null, result: null,
+        createdAt: new Date(Date.now() - (suggestionStore.length + 1) * 3_600_000).toISOString(), updatedAt: nowIso(),
+      });
+      return id;
+    },
+    suggestions: () => suggestionStore.map((x) => ({ ...x })),
     usageItems: () => Array.from(usage.values()).map((u) => ({ ...u })),
     rows: (table) => Array.from(data.get(table)?.values() ?? []),
     serverUpdate(table, id, fields) {

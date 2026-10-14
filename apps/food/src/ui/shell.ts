@@ -11,6 +11,7 @@ import { mountRecipes } from './recipes.ts';
 import { mountEquipment } from './equipment.ts';
 import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
+import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
 import { mountConflicts } from './conflicts.ts';
 
 export interface ShellContext {
@@ -30,7 +31,7 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
   { hash: '#/eventos', label: 'Eventos', icon: 'calendar' },
-  { hash: '#/menus', label: 'Menús', icon: 'menu' },
+  { hash: '#/menus', label: 'Menús', icon: 'menu', matches: ['#/menus', HOUSE_SUGGESTIONS_HASH] },
   { hash: '#/recetario', label: 'Recetario', icon: 'chef' },
   { hash: '#/maquinaria', label: 'Maquinaria', icon: 'settings' },
 ];
@@ -43,6 +44,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/conflictos': { title: 'Conflictos', screen: 'food.conflictos', mount: mountConflicts },
   '#/eventos': { title: 'Eventos', screen: 'food.eventos', mount: mountEvents },
   '#/menus': { title: 'Menús', screen: 'food.menus', mount: mountMenus },
+  [HOUSE_SUGGESTIONS_HASH]: { title: 'Platos sugeridos', screen: 'food.menus.sugeridos', mount: mountHouseSuggestions },
 };
 
 const NAV_MARKS: Record<string, Record<'feedbackId' | 'feedbackLabel', string>> = {

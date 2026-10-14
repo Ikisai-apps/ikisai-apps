@@ -1,5 +1,5 @@
 /** Ikisai Food · procedimientos `call` y validación de sus argumentos (docs/food/API.md §3). */
-import { MENU_STATUSES, type EventSnapshot, type MenuStatus } from './menus.ts';
+import { MENU_STATUSES, SERVICE_TYPES, type EventSnapshot, type MenuStatus } from './menus.ts';
 
 export const FOOD_PROCEDURES = {
   setMenuStatus: 'food.set_menu_status',
@@ -7,6 +7,7 @@ export const FOOD_PROCEDURES = {
   validateMenu: 'food.validate_menu',
   regenerateShopping: 'food.regenerate_shopping',
   regeneratePreparation: 'food.regenerate_preparation',
+  houseDishFromSuggestion: 'food.house_dish_from_suggestion',
 } as const;
 
 export interface AcknowledgedWarning {
@@ -37,9 +38,18 @@ function periodArgument(args: Record<string, unknown>): string | null {
   return days < 0 || days > PERIOD_MAX_DAYS - 1 ? 'period_end' : null;
 }
 
+/** Sugerencia de plato del menú de casa (O3c): `name` (1–160), `date` y `service`. */
+function houseDishArgument(args: Record<string, unknown>): string | null {
+  if (typeof args.name !== 'string' || args.name.trim().length < 1 || args.name.trim().length > 160) return 'name';
+  // Fecha real (el 30 de febrero no existe, aunque `Date.parse` lo acepte).
+  if (typeof args.date !== 'string' || !DATE.test(args.date) || Number.isNaN(Date.parse(args.date)) || new Date(Date.parse(args.date)).toISOString().slice(0, 10) !== args.date) return 'date';
+  return typeof args.service === 'string' && (SERVICE_TYPES as readonly string[]).includes(args.service) ? null : 'service';
+}
+
 /** Devuelve el nombre del argumento inválido de una llamada a un procedimiento de Food, o `null`. */
 export function invalidCallArgument(procedure: string, args: Record<string, unknown>): string | null {
   if (!(Object.values(FOOD_PROCEDURES) as string[]).includes(procedure)) return null; // lo decide core.allowed_procedures
+  if (procedure === FOOD_PROCEDURES.houseDishFromSuggestion) return houseDishArgument(args);
   if (typeof args.menu_id !== 'string' || !UUID.test(args.menu_id)) return 'menu_id';
   if (procedure === FOOD_PROCEDURES.regeneratePreparation || procedure === FOOD_PROCEDURES.regenerateShopping) {
     // Rango del menú de casa (O3b): los dos días o ninguno; que sea obligatorio en casa lo decide el servidor.

@@ -54,6 +54,24 @@ export function quickDishOperations(input: QuickDishInput): Array<{ op: 'insert'
   ];
 }
 
+/** Tipo de sugerencia del núcleo para proponer un plato del menú de casa desde Guests (O3c; contrato §3.10). */
+export const HOUSE_DISH_SUGGESTION_KIND = 'plato_casa';
+
+export interface HouseDishSuggestion {
+  name: string;
+  /** `YYYY-MM-DD`. */
+  date: string;
+  service: ServiceType;
+}
+
+/**
+ * Lote de una sugerencia `plato_casa`: una sola llamada que, al aprobarla, usa la receta del mismo nombre (o crea una
+ * rápida), el servicio de ese día (o lo crea) y añade el plato. Se aplica como quien aprueba.
+ */
+export function houseDishSuggestionOperations(input: HouseDishSuggestion): Array<{ op: 'call'; procedure: string; args: Record<string, unknown> }> {
+  return [{ op: 'call', procedure: 'food.house_dish_from_suggestion', args: { name: input.name.trim(), date: input.date, service: input.service } }];
+}
+
 /** Los siete días (lunes a domingo, `YYYY-MM-DD`) de la semana de `date`, desplazada `offset` semanas. */
 export function weekDays(date: string, offset = 0): string[] {
   const base = Date.parse(`${date}T00:00:00Z`);
