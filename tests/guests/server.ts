@@ -44,6 +44,16 @@ export interface GuestsTestServer {
   question(reservationId: string, q: { id?: string; type: string; label: string; help?: string; options?: Array<{ value: string; label: string }>; required?: boolean; closes_at?: string; opens_at?: string }): Promise<string>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
+  /** Cuenta de Guests que tiene la ficha de un huésped (tras emitir su enlace). */
+  accountOf(guestId: string): Promise<string>;
+  /** Nivel de casa `outsider` para esa cuenta (Central lo da en producción); `noRetreats` le quita sus entradas de huésped. */
+  makeOutsider(guestId: string, options?: { noRetreats?: boolean }): Promise<string>;
+  /** Cama habitual de un outsider (Booking, solo el personal). */
+  outsiderBed(account: string, bedId: string): Promise<void>;
+  /** Estancia del staff (para «hay alguien»): noches [from, to). */
+  staffStay(from: string, to: string): Promise<void>;
+  /** Nota del personal en la cuenta del outsider. */
+  staffNote(account: string, at: string, text: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -63,6 +73,14 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
   async function commit(operations: unknown[]): Promise<void> {
     const res = await booking.call('/api/v1/commands', { body: { requestId: `ui-${++seq}-${uuid()}`, operations } });
     if (res.status !== 200) throw new Error(`commit ${res.status}: ${JSON.stringify(res.data)}`);
+  }
+
+  /** Cuenta de Guests que tiene la ficha de un huésped (tras emitir su enlace). */
+  async function accountOf(guestId: string): Promise<string> {
+    const rows = (await booking.t.db.query<{ user_id: string }>(
+      `select user_id from core.memberships where app = 'guests' and scopes->'grants' @> jsonb_build_array(jsonb_build_object('guest_id', $1::text))`, [guestId])).rows;
+    if (!rows[0]) throw new Error(`sin cuenta de Guests para ${guestId}`);
+    return rows[0].user_id;
   }
 
   const server: Server = createServer(async (req, res) => {
@@ -204,6 +222,23 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
       await booking.t.db.query('select central.seed_contact_audiences()'); // correo por público (Central #341): Guests, ven@
     },
     setOffline(on) { offline = on; },
+    accountOf,
+    async makeOutsider(guestId, options = {}) {
+      const account = await accountOf(guestId);
+      await booking.t.db.query(`insert into core.house_levels (user_id, level) values ($1, 'outsider') on conflict (user_id) do update set level = 'outsider'`, [account]);
+      if (options.noRetreats) await booking.t.db.query(`update core.memberships set scopes = '{"grants": []}'::jsonb where app = 'guests' and user_id = $1`, [account]);
+      return account;
+    },
+    async outsiderBed(account, bedId) {
+      await commit([{ op: 'insert', table: TABLES.outsiderDefaults, id: uuid(), fields: { account_id: account, bed_id: bedId } }]);
+    },
+    async staffStay(from, to) {
+      const staff = await booking.t.createUser();
+      await commit([{ op: 'insert', table: TABLES.stays, id: uuid(), fields: { kind: 'staff', account_id: staff, from_date: from, to_date: to } }]);
+    },
+    async staffNote(account, at, text) {
+      await commit([{ op: 'insert', table: TABLES.stayNotes, id: uuid(), fields: { account_id: account, at, note: text } }]);
+    },
     close: async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await booking.close();

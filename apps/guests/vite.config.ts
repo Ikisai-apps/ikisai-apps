@@ -8,6 +8,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const syncClientEntry = path.resolve(root, '../../packages/sync-client/src/index.ts');
 const uiKitEntry = path.resolve(root, '../../packages/ui-kit/src/index.ts');
 const domainEntry = path.resolve(root, '../../packages/domain-booking/src/index.ts');
+// Dominio de Food (O4b): solo el lote de la sugerencia `plato_casa` y los tipos de servicio.
+const domainFoodEntry = path.resolve(root, '../../packages/domain-food/src/index.ts');
 
 /** Archivos de `public/` que forman parte del shell (todo menos lo que es del despliegue). */
 function publicShellFiles(dir: string, prefix = '/'): string[] {
@@ -65,6 +67,7 @@ export default defineConfig(({ mode }) => {
         { find: '@ikisai/sync-client', replacement: syncClientEntry },
         { find: /^@ikisai\/ui-kit$/, replacement: uiKitEntry },
         { find: '@ikisai/domain-booking', replacement: domainEntry },
+        { find: '@ikisai/domain-food', replacement: domainFoodEntry },
       ],
     },
     server: { port: 5180, strictPort: false, proxy },

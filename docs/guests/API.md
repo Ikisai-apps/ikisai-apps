@@ -397,6 +397,31 @@ Primera parte de O4 (RECURSOS.md §17; aprobada por el usuario el 13-10-2026), c
 - **Pruebas:** `tests/guests/personas.spec.ts`. Las de caracterización siguen en verde con los cambios a propósito marcados «O4a».
 - **Capturas** de antes y después: `docs/guests/capturas/o4a/` (las de antes, en `coordinacion/guests/o4/capturas/`).
 
+### 9.13 Outsider en Guests (O4b, primera parte, 14-10-2026)
+
+Para quien tiene nivel de casa `outsider` (`bootstrap.profile.houseLevel`; en Guests es `editor` y sus lecturas van por su cuenta, Booking §26). Sin ese nivel, nada de esto se ve.
+
+- **Pestaña Outsider** (`#/outsider`):
+  - en la tira de retiros, entre los pasados y los demás (boceto de O4 §2.2);
+  - regla de entrada: el enlace, el retiro en curso, el próximo, **la Outsider** y el calendario;
+  - un outsider sin retiros entra directamente en ella, sin pestañas.
+  - **Tu estancia:** la que está en curso o la próxima, con habitación, cama y zona. Si coincide con un retiro, sale un aviso, nunca un bloqueo (decisión del usuario). Sin estancias, la cama habitual. «Nueva estancia» abre el calendario eligiendo días (`#/calendario/nueva`).
+  - **Cómo llegar:** la información práctica (`#/outsider/info`, también en «Más»).
+  - **Comidas:** «Sugerir un plato» (nombre, día y comida) envía una sugerencia `plato_casa` a Food (`client.suggest` con `houseDishSuggestionOperations`, Food §2.6) que aprueba cocina. Debajo, «Mis propuestas» con `createSuggestionSource(client, { scope: 'mine', app: 'food' })` y «Retirar».
+  - El menú de casa saldrá cuando Food publique su lectura de portal (petición FD2), y «Mis tareas» cuando Tasks publique el rol outsider (TK1).
+- **Calendario** con nivel outsider:
+  - capas «Mis retiros» y «Mis estancias», con leyenda;
+  - días rayados «Hay alguien del staff» (`portal_staff_presence`, sin nombres);
+  - **notas con hora** (`portal_stay_notes`), en hora de Madrid, del equipo y propias.
+  - **Estancias** (`portal_my_stays`, `portal_stay_save` y `portal_stay_remove`):
+    - se crean eligiendo la llegada y la salida (noches `[desde, hasta)`, de 1 a 180), con la cama habitual;
+    - se cambian de fechas y se quitan desde el panel del día;
+    - las que puso el personal solo se ven.
+  - **Notas:** «Añadir nota» (hora y texto) en el panel del día, y «Borrar» en las propias.
+  - Todo esto necesita red: sin ella se avisa, y las lecturas salen de la caché.
+- **Pruebas:** `tests/guests/outsider.spec.ts`, contra Booking y Food reales: sin nivel no hay pestaña; outsider y huésped; outsider sin retiros (presencia, notas y plato sugerido). Capturas en `docs/guests/capturas/o4b/`.
+- **Siguiente parte:** clave de persona (`portal_my_retreats`), estancias en familia (`persons` y «Separar»), retiros abiertos y, al final, «Apuntarme».
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:

@@ -43,3 +43,5 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | BG13 | Booking | supletorias activadas en `portal_lodging` (con `kind: 'supletoria'`, `extra_total` y `extra_free`) y en `portal_choose_bed` | hecha (#491), en uso |
 | C10 | Core | `POST auth/link` y `loginWithLink` devuelven la entrada del enlace (`grant: {reservation_id, guest_id}`), para abrir ese retiro cuando la cuenta tiene varios (regla de entrada de O4a) | hecha (#508, `sync-client` 0.7.1), en uso |
 | U6 | UI | textos del calendario en el idioma del kit: «Hoy», «Anterior», «Siguiente» y «Vista» salen siempre en español | abierta |
+| FD2 | Food | lectura de portal del menú de casa para el outsider: `food.portal_house_menu({from?, to?})` → `{services: [{date, type, time, dishes: [{name, quick, allergens_checked}]}]}` (preparación de O4 §3) | abierta |
+| TK1 | Tasks | resumen de tareas del outsider para Guests: `tasks.portal_my_summary` → `{assigned}` (preparación de O4 §3), cuando Tasks tenga el rol outsider | abierta |

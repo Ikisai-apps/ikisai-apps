@@ -6,7 +6,9 @@
  * - `#/calendario`: el calendario de la persona con sus retiros;
  * - `#/p/<guestId>[/datos|/alimentacion|/firma|/info|/programa|/menu|/alojamiento|/materiales|/preguntas]`: una persona
  *   en un retiro, como antes (los enlaces directos siguen valiendo);
- * - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta.
+ * - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta;
+ * - `#/outsider[/info]`: la pestaña Outsider (O4b), con nivel de casa `outsider`; `#/calendario/nueva` abre el calendario
+ *   eligiendo los días de una estancia nueva.
  * En la vista previa del organizador, franja de solo lectura.
  */
 import type { SyncClient } from '@ikisai/sync-client';
@@ -18,6 +20,7 @@ import { commonText, loadCommonTexts } from '../app/common-texts.ts';
 import { openGuest, type GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import { fieldLabel } from '../app/labels.ts';
+import { createOutsiderApi, isOutsider } from '../app/outsider.ts';
 import { createPortalReads } from '../app/portal.ts';
 import { buildRoster, defaultRetreat, entriesFor, entryRetreat, loadRoster, type Retreat, type Roster, type Selection } from '../app/roster.ts';
 import { openAccess, openInstall } from './access.ts';
@@ -34,6 +37,7 @@ import { barItems, modulesOf, moreItems, sectionsOf, type Modules, type Section 
 import { mountMenu, mountProgram } from './program.ts';
 import { mountQuestions } from './questions.ts';
 import { languageSelect } from './language.ts';
+import { mountOutsider } from './outsider.ts';
 import { needsPrivacy, renderPrivacy } from './privacy.ts';
 import { personSelector, retreatTabs, sectionLinks } from './retreats.ts';
 import { mountSign } from './sign.ts';
@@ -51,13 +55,17 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const PERSON = new RegExp(`^#/p/(${UUID})(?:/(datos|alimentacion|firma|info|programa|menu|alojamiento|materiales|preguntas))?$`, 'i');
 const FAMILY = new RegExp(`^#/r/(${UUID})(?:/(programa|menu|alojamiento))?$`, 'i');
 const CALENDAR = '#/calendario';
-type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas' | 'calendario';
+const NEW_STAY = '#/calendario/nueva';
+const OUTSIDER = '#/outsider';
+const OUTSIDER_INFO = '#/outsider/info';
+type Page = 'inicio' | 'datos' | 'alimentacion' | 'firma' | 'info' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas' | 'calendario' | 'outsider';
 /** Ids literales de cada pantalla (el catálogo de la publicación los recoge del código). */
 const PAGE_IDS: Record<Page, [string, string]> = {
   inicio: ['guests.inicio', 'Inicio'], datos: ['guests.datos', 'Mis datos'], alimentacion: ['guests.alimentacion', 'Alimentación'],
   firma: ['guests.firma', 'Firma'], info: ['guests.info', 'Información práctica'], programa: ['guests.programa', 'Programa'],
   menu: ['guests.menu', 'Menú'], alojamiento: ['guests.alojamiento', 'Alojamiento'], materiales: ['guests.materiales', 'Materiales'],
   preguntas: ['guests.preguntas', 'Preguntas del organizador'], calendario: ['guests.calendario', 'Calendario'],
+  outsider: ['guests.outsider', 'Outsider'],
 };
 /** Páginas de un módulo del organizador: solo existen si está activo (si no, se vuelve al Resumen). */
 const MODULE_OF: Partial<Record<Page, keyof Modules>> = { programa: 'program', menu: 'menu', alojamiento: 'lodging', materiales: 'materials', preguntas: 'questions' };
@@ -75,6 +83,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const usage = createUsage({ app: 'guests', api: apiCall, userId: () => userId, notice: false });
   const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); void clearOfflineMaterials(id); });
   const texts = loadCommonTexts(client);
+  /** Nivel de casa `outsider` (O4b): pestaña Outsider, estancias, «hay alguien» y notas en el calendario. */
+  const outsider = isOutsider(client) ? createOutsiderApi(client) : null;
   /** Fichas abiertas (una persona en un retiro); con la familia junta, varias a la vez. */
   const open = new Map<string, Promise<GuestContext>>();
   const opened = new Map<string, GuestContext>();
@@ -216,8 +226,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const r = roster!;
     if (current && entriesFor(current.retreat, next).length) { navigate(hrefFor(current.retreat, current.section)); return; }
     if (!current) { void route(); return; }
-    const target = entryRetreat(r, next, todayMadrid()) ?? defaultRetreat(r, next, todayMadrid());
-    navigate(target ? hrefFor(target) : CALENDAR);
+    const target = entryRetreat(r, next, todayMadrid()) ?? (outsider ? null : defaultRetreat(r, next, todayMadrid()));
+    navigate(target ? hrefFor(target) : outsider ? OUTSIDER : CALENDAR);
   }
 
   function setPageMarks(page: Page): void {
@@ -226,17 +236,47 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     document.title = `${t(`page.${page}`)} · Ikisai Guests`;
   }
 
+  /** «Más» de la pestaña Outsider: la información práctica («Cómo llegar»). */
+  const outsiderMore = () => [{ hash: OUTSIDER_INFO, label: t('home.info'), icon: 'info' as const }];
+
   /** Barra y «Más» del retiro que se ve (o del último visto, desde el calendario). */
   function paintNav(route: string, current: { base: string; hash: string; family: boolean; ctx: GuestContext; mods: Modules; sections: Section[] } | null): void {
     const r = roster!;
-    const fallback = !current && !lastRetreat ? defaultRetreat(r, selection, todayMadrid()) : null;
+    const onOutsider = route === OUTSIDER || route === OUTSIDER_INFO || (!current && lastRetreat?.hash === OUTSIDER);
+    const fallback = !current && !lastRetreat ? entryRetreat(r, selection, todayMadrid()) ?? (outsider ? null : defaultRetreat(r, selection, todayMadrid())) : null;
     const retreats = current
       ? { hash: current.hash, matches: current.sections.map((s) => (s === 'inicio' ? current.hash : `${current.hash}/${s}`)) }
-      : lastRetreat ? { hash: lastRetreat.hash, matches: [] } : fallback ? { hash: hrefFor(fallback), matches: [] } : null;
-    const moreCtx = current?.ctx ?? (lastRetreat ? opened.get(primary?.grant.guest_id ?? '') ?? null : null);
-    const more = moreCtx ? moreItems(moreCtx, current?.base ?? lastRetreat!.base, current?.mods ?? modulesOf(moreCtx), current?.family ?? lastRetreat!.family) : [];
+      : onOutsider ? { hash: OUTSIDER, matches: [OUTSIDER] }
+      : lastRetreat ? { hash: lastRetreat.hash, matches: [] } : fallback ? { hash: hrefFor(fallback), matches: [] }
+      : outsider ? { hash: OUTSIDER, matches: [] } : null;
+    const moreCtx = current?.ctx ?? (lastRetreat && !onOutsider ? opened.get(primary?.grant.guest_id ?? '') ?? null : null);
+    const more = onOutsider ? outsiderMore()
+      : moreCtx ? moreItems(moreCtx, current?.base ?? lastRetreat!.base, current?.mods ?? modulesOf(moreCtx), current?.family ?? lastRetreat!.family) : [];
     shell.setNav(barItems(retreats), more);
     shell.setRoute(route);
+  }
+
+  /** Pestaña Outsider en la tira de retiros (solo con nivel de casa `outsider`). */
+  const outsiderTabOf = (on: boolean) => (outsider ? { href: OUTSIDER, on, today: todayMadrid() } : undefined);
+
+  function showOutsider(view: HTMLElement, info: boolean): void {
+    const r = roster!;
+    primary = null;
+    previewBand.hidden = true;
+    lastRetreat = { reservation_id: '', hash: OUTSIDER, base: OUTSIDER, family: false };
+    if (info) {
+      setPageMarks('info');
+      paintNav(OUTSIDER_INFO, null);
+      replace(main, view);
+      unmountView = mountInfo(view, OUTSIDER, false, reads);
+      return;
+    }
+    setPageMarks('outsider');
+    paintNav(OUTSIDER, null);
+    const tabs = retreatTabs({ retreats: r.retreats.filter((x) => entriesFor(x, selection).length), current: null, href: (x) => hrefFor(x), who, outsider: outsiderTabOf(true) });
+    const header = el('div', { class: 'gframe', id: 'retreatFrame' }, personSelector(r.persons, selection, (next) => pickPerson(next, null)), tabs);
+    replace(main, view);
+    unmountView = mountOutsider(view, header.childElementCount ? header : null, { api: outsider!, client, newStay: () => navigate(NEW_STAY), infoHash: OUTSIDER_INFO });
   }
 
   async function showCalendar(view: HTMLElement): Promise<void> {
@@ -244,7 +284,10 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     setPageMarks('calendario');
     previewBand.hidden = true;
     paintNav(CALENDAR, null);
-    unmountView = mountCalendar(view, r, selection, { href: (retreat) => hrefFor(retreat), navigate, who }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
+    unmountView = mountCalendar(view, r, selection, {
+      href: (retreat) => hrefFor(retreat), navigate, who,
+      ...(outsider ? { outsider, newStay: location.hash === NEW_STAY } : {}),
+    }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
   }
 
   async function route(): Promise<void> {
@@ -252,7 +295,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     unmountView?.();
     unmountView = null;
     const grants = api.grants();
-    if (!grants.length) {
+    if (!grants.length && !outsider) {
       shell.setNav([], []);
       replace(main, el('p', { class: 'card gcard', id: 'noAccess' }, t('error.noAccess')));
       return;
@@ -269,7 +312,14 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const view = el('div', { class: 'gview', id: 'view' });
     const today = todayMadrid();
 
-    if (hash.toLowerCase() === CALENDAR) {
+    if (outsider && (hash === OUTSIDER || hash === OUTSIDER_INFO)) {
+      showOutsider(view, hash === OUTSIDER_INFO);
+      main.focus({ preventScroll: true });
+      window.scrollTo({ top: 0 });
+      return;
+    }
+
+    if (hash.toLowerCase() === CALENDAR || (outsider && hash === NEW_STAY)) {
       replace(main, view);
       await showCalendar(view);
       main.focus({ preventScroll: true });
@@ -284,8 +334,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     if (!grant && !(familyRetreat && familyRetreat.entries.length > 1)) {
       // `#/` o una ruta que ya no vale: el retiro de entrada o, si no hay, el calendario.
       if (familyRetreat) { navigate(hrefFor(familyRetreat, (fm![2]?.toLowerCase() ?? 'inicio') as Section, 'all'), true); return; }
+      // Sin retiro del enlace, en curso ni próximo: la pestaña Outsider (O4b) o el calendario.
       const target = entryRetreat(r, selection, today, ctx.linkedGuestId);
-      navigate(target ? hrefFor(target) : CALENDAR, true);
+      navigate(target ? hrefFor(target) : outsider ? OUTSIDER : CALENDAR, true);
       return;
     }
 
@@ -339,6 +390,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
         current: retreat.reservation_id,
         href: (x) => hrefFor(x, page as Section),
         who,
+        outsider: outsiderTabOf(false),
       }),
       sectionLinks(sections, page as Section, (s) => (s === 'inicio' ? base : `${base}/${s}`))) : null;
     replace(main, frame && frame.childElementCount ? frame : null, view);
