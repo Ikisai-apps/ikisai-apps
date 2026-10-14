@@ -77,9 +77,11 @@
 
 - 2026-10-14 · **O4b, segunda parte** (§9.13): clave de persona de Booking en el selector, estancias en familia («para quién» y «Separar») y retiros abiertos en el calendario.
 
+- 2026-10-14 · **O4b, última parte:** «Apuntarme» en los retiros abiertos (sugerencia a Booking), con su estado y «Retirar»; «Mis propuestas» junta platos y «Apuntarme». O4 completa salvo lo que espera a otros equipos.
+
 ## Pendiente
 
-- **O4b, última parte:** «Apuntarme» (Booking #518 ya en main). El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
+- El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

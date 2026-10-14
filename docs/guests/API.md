@@ -424,7 +424,12 @@ Para quien tiene nivel de casa `outsider` (`bootstrap.profile.houseLevel`; en Gu
   - **Clave de persona** (`portal_my_retreats`, Booking §26): la misma persona en dos retiros se reconoce por su `person_key`. Una ficha sin clave se une a la única clave de su nombre y, si no hay ninguna, se agrupa por nombre y primer apellido, como en O4a.
   - **Estancias en familia** (con nivel outsider y más de una persona en la cuenta): una estancia nueva es para todos por defecto, con casillas para quitar a alguien. Las personas van con su clave de Booking (`portal_person_link` une sus fichas si aún no la tienen). El panel del día dice para quién es y ofrece «Separar» (`portal_stay_split`): unas personas con otras fechas y la misma cama. Una estancia que no es de todos lleva los nombres en el calendario.
   - **Retiros abiertos** (`portal_open_retreats`, §26.1), para cualquier huésped: capa «Retiros abiertos» (borde discontinuo) con su resumen en el panel del día, sin precio. Los que ya son suyos no se repiten.
-- **Última parte:** «Apuntarme» (Booking #518, §26.3).
+- **Última parte: «Apuntarme»** (Booking #518, §26.3), en el panel del día de un retiro abierto:
+  - es para todas las personas de la cuenta por defecto (o el titular), con casillas para quitar a alguien y un mensaje opcional;
+  - se envía como sugerencia `apuntarme` a Booking (`client.suggest` con `booking.join_from_suggestion`), con la clave de persona de cada una (`portal_person_link` si aún no la tienen);
+  - después, el estado: «Solicitud enviada» (con «Retirar»), «con el organizador», aceptada o descartada, con el comentario (`portal_open_retreats.request` y `client.suggestions({scope: 'mine', app: 'booking'})`);
+  - al aceptarla, la cuenta recibe la entrada y el retiro pasa a sus pestañas;
+  - «Mis propuestas» de la pestaña Outsider junta los platos (Food) y los «Apuntarme» (Booking).
 
 ## 10. Offline
 
