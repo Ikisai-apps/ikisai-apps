@@ -1580,6 +1580,9 @@ Con las sugerencias del núcleo (contrato §3.10), no con una cola propia. Así 
 - **Booking (app):**
   - en la ficha, «Solicitudes para apuntarse», con Aceptar, Pasar al organizador y Descartar. Necesita red;
   - en Inicio, el aviso con el número de solicitudes.
+- **Aviso al comercial** (migración 0471, `on_submit` del núcleo, 0095):
+  - al sugerir, `booking.join_on_submit` deja un aviso `apuntarme` en `portal_notices`, y el tick del portal lo lleva a Tasks como `booking.proposal_comment` con la etiqueta «Huésped · Quiere apuntarse» (ref. `RES<código>-APUNTARME-<n>`);
+  - nunca falla: si la reserva no existe, no avisa, pero la sugerencia se crea. Llamado desde un lote, no hace nada.
 
 ## Anexo · Campos de C03 y C04 que no se portan
 

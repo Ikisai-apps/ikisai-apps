@@ -3,7 +3,7 @@
  * «Quiero confirmar» y comentarios sobre la propuesta. La acción del portal los deja en `booking.portal_notices` y este tick
  * los convierte en peticiones a Tasks (T3) con la cuenta de servicio de Booking. Idempotente por aviso.
  */
-export type PortalNoticeKind = 'fechas' | 'quiere_confirmar' | 'comentario' | 'supletorias';
+export type PortalNoticeKind = 'fechas' | 'quiere_confirmar' | 'comentario' | 'supletorias' | 'apuntarme';
 
 export interface PortalTasksRequest {
   source: 'booking';
@@ -24,6 +24,8 @@ const KINDS: Record<PortalNoticeKind, { kind: PortalTasksRequest['kind']; label:
   // con la propuesta aceptada, activar o retirar supletorias cambia lo contratado: lo confirma el comercial. Va con el tipo
   // de los comentarios a la propuesta (Tasks admite estos tipos de Booking) y su propia etiqueta.
   supletorias: { kind: 'booking.proposal_comment', label: 'Organizador · Supletorias por confirmar', title: (r) => `Cambio de supletorias pendiente de confirmar · ${r}`, priority: 'normal', ref: (c, n) => `RES${c}-SUPLETORIAS-${n}` },
+  // O2: un huésped de Guests pide apuntarse a un retiro abierto; se decide en la ficha (Aceptar, Pasar al organizador o Descartar)
+  apuntarme: { kind: 'booking.proposal_comment', label: 'Huésped · Quiere apuntarse', title: (r) => `Solicitud para apuntarse · ${r}`, priority: 'normal', ref: (c, n) => `RES${c}-APUNTARME-${n}` },
 };
 
 export function portalTasksRequest(n: { id: string; kind: PortalNoticeKind; reservation_id: string; code: string | null; title: string }): PortalTasksRequest {
