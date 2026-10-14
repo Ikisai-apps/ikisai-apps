@@ -1,7 +1,7 @@
 /* Muestra de @ikisai/ui-kit: tokens, componentes, barra de estado, login y shell. Sin red ni cliente real. */
 import '../src/styles/ui-kit.css';
 import './demo.css';
-import type { PendingConflict, RejectedBatch, SyncStatus } from '@ikisai/sync-client';
+import type { PendingConflict, RejectedBatch, SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
   createFeedback,
   createFeedbackProgressiveForm,
@@ -36,6 +36,7 @@ import {
   compressImage,
   createCalendar,
   createProposalList,
+  createSuggestionSource,
   daysBetween,
   type CalendarNote,
   type CalendarEvent,
@@ -1137,47 +1138,61 @@ const personSection = section('personcal', 'Calendario de persona (O2 y O4)', 'c
 
 // --- Cola de propuestas (O1) -----------------------------------------------------------------------------
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-const proposalStore: ProposalItem[] = [
-  { id: 'sg-1', app: 'tasks', kind: 'task', summary: 'Pintar la barandilla del porche', detail: { area: 'Mantenimiento', space: 'Altura 3 › Albergue › Porche', note: 'La pintura se levanta junto a la escalera.' }, author: { id: 'u-me', name: 'Lucía' }, created_at: hoursAgo(2), status: 'pending' },
-  { id: 'sg-2', app: 'food', kind: 'dish', summary: 'Lentejas con verduras', author: { id: 'u-2', name: 'Marco' }, created_at: hoursAgo(20), status: 'pending' },
-  { id: 'sg-3', app: 'booking', kind: 'join', summary: 'Yoga y huerto · 2 personas', author: { id: 'u-3', name: 'Inés' }, created_at: hoursAgo(26), status: 'pending' },
-  { id: 'sg-4', app: 'food', kind: 'dish', summary: 'Barbacoa el domingo', author: { id: 'u-me', name: 'Lucía' }, created_at: hoursAgo(170), status: 'rejected', comment: 'Este mes no se puede hacer fuego.', decided_by: { name: 'Dirección' }, decided_at: hoursAgo(150) },
+// Cliente simulado con la API de sugerencias de sync-client 0.7.0 (sin red ni servidor): lo usa `createSuggestionSource`.
+type DemoSuggestion = Omit<ProposalItem, 'detail'> & { detail: Record<string, unknown> | null; label: string; operations: unknown[] };
+const sg = (s: Partial<DemoSuggestion> & Pick<DemoSuggestion, 'id' | 'app' | 'kind' | 'label' | 'summary' | 'author' | 'createdAt' | 'status'>): DemoSuggestion => ({ detail: null, operations: [], comment: null, decidedBy: null, decidedAt: null, result: null, ...s });
+const proposalStore: DemoSuggestion[] = [
+  sg({ id: 'sg-1', app: 'tasks', kind: 'task', label: 'Tarea', summary: 'Pintar la barandilla del porche', detail: { area: 'Mantenimiento', space: 'Altura 3 › Albergue › Porche', note: 'La pintura se levanta junto a la escalera.' }, author: { id: 'u-me', name: 'Lucía' }, createdAt: hoursAgo(2), status: 'pending' }),
+  sg({ id: 'sg-2', app: 'food', kind: 'dish', label: 'Plato', summary: 'Lentejas con verduras', author: { id: 'u-2', name: 'Marco' }, createdAt: hoursAgo(20), status: 'pending' }),
+  sg({ id: 'sg-3', app: 'booking', kind: 'join', label: 'Apuntarme', summary: 'Yoga y huerto · 2 personas', author: { id: 'u-3', name: 'Inés' }, createdAt: hoursAgo(26), status: 'pending' }),
+  sg({ id: 'sg-4', app: 'food', kind: 'dish', label: 'Plato', summary: 'Barbacoa el domingo', author: { id: 'u-me', name: 'Lucía' }, createdAt: hoursAgo(170), status: 'rejected', comment: 'Este mes no se puede hacer fuego.', decidedBy: { id: 'u-9', name: 'Dirección' }, decidedAt: hoursAgo(150) }),
 ];
-const proposalListeners = new Set<() => void>();
-const proposalSource = (filter: (i: ProposalItem) => boolean) => ({
-  list: async () => proposalStore.filter(filter).map((i) => ({ ...i })),
-  subscribe(listener: (items: ProposalItem[]) => void) {
-    const fn = () => listener(proposalStore.filter(filter).map((i) => ({ ...i })));
-    proposalListeners.add(fn);
-    return () => { proposalListeners.delete(fn); };
-  },
-});
-const setProposal = (id: string, patch: Partial<ProposalItem>) => {
-  const item = proposalStore.find((p) => p.id === id);
-  if (item) Object.assign(item, patch);
-  proposalListeners.forEach((fn) => fn());
+const PREVIEWS: Record<string, unknown[]> = {
+  'sg-2': [{ table: 'food.menu_items', id: 'mi-1', op: 'insert', before: null, after: { name: 'Lentejas con verduras', quick: true, allergens_reviewed: false } }],
+  'sg-3': [{ table: 'booking.requests', id: 'rq-1', op: 'insert', before: null, after: { name: 'Inés', retreat: 'Yoga y huerto', people: 2 } }],
 };
+const apiError = (code: string, message: string) => Object.assign(new Error(message), { code, status: 409 });
+const demoSuggestionClient = {
+  async suggestions(o: { scope?: string } = {}) {
+    const items = proposalStore.filter((s) => (o.scope === 'mine' ? s.author.id === 'u-me' : o.scope === 'pending' ? s.status === 'pending' : s.status !== 'withdrawn')).map((s) => ({ ...s }));
+    return { items, pendingCount: o.scope === 'mine' ? null : proposalStore.filter((s) => s.status === 'pending').length };
+  },
+  async decideSuggestion(id: string, decision: 'approve' | 'reject', o: { comment?: string } = {}) {
+    const s = proposalStore.find((x) => x.id === id);
+    if (!s || s.status !== 'pending') throw apiError('SUGGESTION_UNAVAILABLE', 'No está pendiente');
+    if (/fallo/i.test(o.comment ?? '')) throw apiError('NOT_FOUND', 'El lote ya no encaja: la fila ya no existe.');
+    Object.assign(s, { status: decision === 'approve' ? 'approved' : 'rejected', comment: o.comment ?? null, decidedBy: { id: 'u-7', name: 'Staff' }, decidedAt: new Date().toISOString(), ...(decision === 'approve' ? { result: ['t-99'] } : {}) });
+    return { ...s };
+  },
+  async withdrawSuggestion(id: string) {
+    const s = proposalStore.find((x) => x.id === id);
+    if (!s || s.status !== 'pending') throw apiError('SUGGESTION_UNAVAILABLE', 'No está pendiente');
+    s.status = 'withdrawn';
+    return { ...s };
+  },
+  async previewSuggestion(id: string) { return { cursor: 0, results: [], changes: PREVIEWS[id] ?? [] }; },
+} as unknown as SyncClient;
 const proposalKinds = { task: { label: 'Tarea' }, dish: { label: 'Plato' }, join: { label: 'Apuntarme' } };
 const proposalApps = { tasks: 'Tasks', food: 'Food', booking: 'Booking' };
+const reviewSource = createSuggestionSource(demoSuggestionClient, {
+  scope: 'all',
+  tables: { 'food.menu_items': { one: 'plato', many: 'platos' }, 'booking.requests': { one: 'solicitud', many: 'solicitudes' } },
+  fields: { name: 'Nombre', quick: 'Plato rápido', allergens_reviewed: 'Alérgenos revisados', retreat: 'Retiro', people: 'Personas' },
+});
 const reviewList = createProposalList({
   mode: 'review', title: 'Propuestas', feedbackId: 'demo.propuestas', kinds: proposalKinds, apps: proposalApps,
-  source: proposalSource((i) => i.status !== 'withdrawn'),
-  onApprove: async (item, comment) => {
-    if (/fallo/i.test(comment ?? '')) throw new Error('El servidor no lo ha aceptado.');
-    setProposal(item.id, { status: 'approved', comment, decided_by: { name: 'Staff' }, decided_at: new Date().toISOString(), result: { ids: ['t-99'] } });
-  },
-  onReject: async (item, comment) => { setProposal(item.id, { status: 'rejected', comment, decided_by: { name: 'Staff' }, decided_at: new Date().toISOString() }); },
+  source: reviewSource, onApprove: reviewSource.approve, onReject: reviewSource.reject,
+  // Tareas: el detalle propio de la app. Lo demás: el antes y después del lote (vista previa del servidor).
   renderDetail: (item) => {
-    const d = item.detail as { area?: string; space?: string; note?: string } | undefined;
-    return d
-      ? el('dl', { class: 'kv' }, el('dt', null, 'Área'), el('dd', null, d.area ?? ''), el('dt', null, 'Espacio'), el('dd', null, d.space ?? ''), el('dt', null, 'Nota'), el('dd', null, d.note ?? ''))
-      : el('p', { class: 'hint' }, 'Sin más datos.');
+    const d = item.detail as { area?: string; space?: string; note?: string } | null | undefined;
+    if (!d) return reviewSource.renderPreview(item);
+    return el('dl', { class: 'kv' }, el('dt', null, 'Área'), el('dd', null, d.area ?? ''), el('dt', null, 'Espacio'), el('dd', null, d.space ?? ''), el('dt', null, 'Nota'), el('dd', null, d.note ?? ''));
   },
 });
+const mineSource = createSuggestionSource(demoSuggestionClient, { scope: 'mine' });
 const mineList = createProposalList({
   mode: 'mine', title: 'Mis propuestas', feedbackId: 'demo.mis_propuestas', kinds: proposalKinds, apps: proposalApps,
-  source: proposalSource((i) => i.author.id === 'u-me'),
-  onWithdraw: async (item) => { setProposal(item.id, { status: 'withdrawn' }); },
+  source: mineSource, onWithdraw: mineSource.withdraw,
   onCreate: () => toast('Proponer: lo abre la app'),
   link: (item) => (item.kind === 'task' ? { label: 'Ver la tarea', href: '#proposals' } : null),
 });
@@ -1187,7 +1202,9 @@ const proposalSwitch = el('div', { class: 'segmented', role: 'group', 'aria-labe
   el('button', { type: 'button', id: 'showMine', 'aria-pressed': 'false', onclick: () => showProposals('mine') }, 'Mis propuestas'));
 function showProposals(which: 'review' | 'mine'): void {
   proposalSwitch.querySelectorAll('button').forEach((b, i) => { const on = (i === 0) === (which === 'review'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
-  replace(proposalPanes, which === 'review' ? reviewList.element : mineList.element);
+  const list = which === 'review' ? reviewList : mineList;
+  replace(proposalPanes, list.element);
+  void list.refresh();
 }
 const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalList: la cola para quien decide (pendientes, aprobadas y descartadas; filtro por tipo; aprobar o descartar confirmando, con comentario opcional; detalle a la derecha en escritorio, ↑ ↓ y paso a la siguiente) y «Mis propuestas» para quien propone (pendientes y resueltas, con el comentario y «Retirar»). Un comentario con «fallo» simula un rechazo del servidor.',
   proposalSwitch, proposalPanes,
