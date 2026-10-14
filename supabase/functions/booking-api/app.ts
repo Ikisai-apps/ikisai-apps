@@ -6,7 +6,7 @@ import { createSesTransport, sesTlsPing, type SesTransport } from './ses/transpo
 import { portalTick, type PortalTasksRequest } from './portal/notices.ts';
 import { createTasksPost, tasksTick, type TasksPost } from './tasks/sync.ts';
 import { createTasksNotifier, sesCancel, sesCommunicateGuestReport, sesCommunicateReservation, sesTick, type SesDeps } from './ses/service.ts';
-import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, type CalendarHealth, type CalendarInvoke } from './calendar/worker.ts';
+import { CALENDAR_RETRY, CALENDAR_STATUS, healthForCode, runCalendarTick, runStayCalendarTick, type CalendarHealth, type CalendarInvoke, type StayCalendarAdapters } from './calendar/worker.ts';
 
 export const BOOKING_ORIGINS = ['https://booking.ikisai.com', 'https://ikisai-booking.pages.dev'];
 
@@ -56,6 +56,8 @@ export interface BookingCalendarConfig {
   adapter?: CalendarAdapter | null;
   /** Tras cada commit que toque reservas o eventos, procesa su cola sin esperar al planificador. */
   syncOnCommit?: boolean;
+  /** Estancias (O2): calendario de outsiders y del staff. Sin ellos, las estancias no se proyectan. */
+  stays?: StayCalendarAdapters;
 }
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined;
@@ -69,7 +71,10 @@ export function bookingWorkerRoutes(calendar: BookingCalendarConfig = {}, supaba
     handler: async ({ invoke, json }) => {
       const body = await json().catch(() => ({}));
       const limit = Number.isInteger(body?.limit) ? Math.min(Math.max(body.limit, 1), 50) : 10;
-      return runCalendarTick({ invoke: (name, args) => invoke(name, args), adapter: calendar.adapter ?? null, limit });
+      const result = await runCalendarTick({ invoke: (name, args) => invoke(name, args), adapter: calendar.adapter ?? null, limit });
+      // las estancias, solo si hay algún calendario suyo (la respuesta de siempre no cambia)
+      if (!calendar.stays?.outsider && !calendar.stays?.staff) return result;
+      return { ...result, stays: await runStayCalendarTick({ invoke: (name, args) => invoke(name, args), adapters: calendar.stays, limit }) };
     },
   }, {
     // Prueba de TLS contra SES PRE sin credenciales (API.md §17.3): dice qué vía del runtime acepta el intermedio de la FNMT.
@@ -195,7 +200,9 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
         // La salud sale de lo que la cola dejó anotado: si algún trabajo está bloqueado por el acceso al calendario, se ve aquí.
         let health: CalendarHealth = adapter ? 'ok' : 'not_configured';
         if (adapter) for (const item of out.items) health = healthForCode(item.lastError) ?? health;
-        return { configured: !!adapter, calendarId: adapter?.calendarId ?? null, health, items: out.items };
+        return { configured: !!adapter, calendarId: adapter?.calendarId ?? null, health, items: out.items,
+          // O2: calendarios de las estancias (null = sin configurar)
+          stays: { outsider: calendar.stays?.outsider?.calendarId ?? null, staff: calendar.stays?.staff?.calendarId ?? null } };
       },
     },
     {

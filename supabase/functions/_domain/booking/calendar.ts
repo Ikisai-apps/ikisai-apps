@@ -56,7 +56,8 @@ export interface CalendarPayload {
   colorId: string;
   start: CalendarMoment;
   end: CalendarMoment;
-  extendedProperties: { private: { ikisaiReservationId: string; ikisaiReservationCode: string } };
+  /** Reservas: `ikisaiReservationId` e `ikisaiReservationCode`. Estancias (O2): `ikisaiStayId`. */
+  extendedProperties: { private: Record<string, string> };
 }
 
 export interface CalendarProjection {
@@ -184,4 +185,58 @@ export async function calendarProjection(reservation: CalendarReservation, event
   if (desired !== 'present') return { desired, eventId };
   const payload = buildCalendarPayload(reservation, event && !event.deleted_at ? event : null);
   return { desired, eventId, payload, payloadHash: await calendarPayloadHash(payload) };
+}
+
+// ---------------------------------------------------------------------------
+// Estancias (O2): outsiders en un segundo calendario y staff en un tercero
+// ---------------------------------------------------------------------------
+/** `colorId` de Google por calendario: uva para outsiders y grafito para el staff. */
+export const STAY_CALENDAR_COLOR: Record<string, string> = { outsider: '3', staff: '8' };
+
+export interface CalendarStay {
+  id: string;
+  kind: 'outsider' | 'staff';
+  from_date: string;
+  to_date: string;
+  deleted_at?: string | null;
+  /** Nombre de pila de la primera persona (o de la cuenta). */
+  first?: string | null;
+  /** Personas de la estancia. */
+  count?: number | null;
+}
+
+/** Marcador que identifica el evento de una estancia. */
+export function calendarStayMarker(stayId: string): string {
+  return `[[ID_ESTANCIA=${stayId}]]`;
+}
+
+/** `iks` + uuid sin guiones + `g` + generación (base32hex, como las reservas). */
+export function calendarStayEventId(stayId: string, generation = 1): string {
+  return `iks${stayId.replace(/-/g, '').toLowerCase()}g${generation}`;
+}
+
+/** Título aprobado por el usuario: «Marta (+1)». Sin nombre, «Outsider» o «Staff». */
+export function stayCalendarTitle(stay: Pick<CalendarStay, 'kind' | 'first' | 'count'>): string {
+  const name = stay.first?.trim() || (stay.kind === 'staff' ? 'Staff' : 'Outsider');
+  const more = Math.max((stay.count ?? 0) - 1, 0);
+  return more > 0 ? `${name} (+${more})` : name;
+}
+
+/** Día completo, de la llegada al día de salida incluido (como las reservas). Sin contacto ni notas. */
+export function buildStayCalendarPayload(stay: CalendarStay): CalendarPayload {
+  return {
+    summary: stayCalendarTitle(stay),
+    description: [CALENDAR_SYNC_MARKER, calendarStayMarker(stay.id)].join('\n'),
+    colorId: STAY_CALENDAR_COLOR[stay.kind] ?? STAY_CALENDAR_COLOR.outsider!,
+    start: { date: stay.from_date },
+    end: { date: addDays(stay.to_date, 1) },
+    extendedProperties: { private: { ikisaiStayId: stay.id } },
+  };
+}
+
+export async function stayCalendarProjection(stay: CalendarStay, generation = 1): Promise<CalendarProjection> {
+  const eventId = calendarStayEventId(stay.id, generation);
+  if (stay.deleted_at) return { desired: 'absent', eventId };
+  const payload = buildStayCalendarPayload(stay);
+  return { desired: 'present', eventId, payload, payloadHash: await calendarPayloadHash(payload) };
 }
