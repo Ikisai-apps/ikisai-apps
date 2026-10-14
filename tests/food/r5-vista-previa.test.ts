@@ -32,7 +32,8 @@ test.before(async () => {
 test.after(async () => { await app.close(); });
 
 test('R5 · vista previa: recuentos, propuesta por fila y dudas, sin escribir nada', async () => {
-  const [tomato, tomatoes, salt, parsley, old, unused, oven, pot, chiller, broken] = Array.from({ length: 10 }, uuid);
+  const tomato = uuid(), tomatoes = uuid(), salt = uuid(), parsley = uuid(), old = uuid(), unused = uuid();
+  const oven = uuid(), pot = uuid(), chiller = uuid(), broken = uuid();
   const recipe = uuid();
   await ok([
     insert('food.ingredients', tomato, { name: 'Tomate', preferred_unit: 'kg', preferred_supplier: 'Frutería' }),
