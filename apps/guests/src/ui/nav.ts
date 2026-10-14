@@ -1,7 +1,10 @@
 /**
- * Módulos visibles y navegación (API.md §13.1) con la barra del kit 0.21 (U5): Inicio y los módulos que el organizador
- * haya activado en su ventana (antes, durante o después) van en la barra; el resto, en «Más» (como mucho cinco entradas en
- * el móvil). Sin módulos del organizador no hay barra (fase 1).
+ * Módulos visibles y navegación (API.md §13.1; O4a, decisión del usuario del 13-10-2026).
+ * - **Barra inferior:** «Calendario · Retiros · Más».
+ * - **Secciones de cada retiro:** Resumen y los módulos que el organizador haya activado en su ventana (antes, durante o
+ *   después): Programa, Menú y Alojamiento, en el mismo orden que la barra de antes.
+ * - **«Más»:** lo del retiro que se está viendo, como antes (información práctica, materiales, preguntas, datos,
+ *   alimentación y firma).
  */
 import type { NavItem } from '@ikisai/ui-kit';
 import type { GuestContext } from '../app/context.ts';
@@ -24,27 +27,34 @@ export function modulesOf(ctx: GuestContext): Modules {
   };
 }
 
-export function hasNav(mods: Modules): boolean {
-  return mods.program || mods.menu || mods.lodging || mods.materials || mods.questions;
+export type Section = 'inicio' | 'programa' | 'menu' | 'alojamiento';
+
+/** Secciones de la pestaña de un retiro. Solo Resumen si el organizador no ha activado módulos (fase 1). */
+export function sectionsOf(mods: Modules): Section[] {
+  return ['inicio', ...(mods.program ? ['programa' as const] : []), ...(mods.menu ? ['menu' as const] : []), ...(mods.lodging ? ['alojamiento' as const] : [])];
 }
 
-/** Secciones de la barra y de «Más» para una persona. Vacías sin módulos del organizador. */
-export function navItems(ctx: GuestContext, base: string, mods: Modules): { nav: NavItem[]; more: NavItem[] } {
-  if (!hasNav(mods)) return { nav: [], more: [] };
-  const g = ctx.guest();
-  const nav: NavItem[] = [
-    { hash: base, label: t('nav.home'), icon: 'home', matches: [base] },
-    ...(mods.program ? [{ hash: `${base}/programa`, label: t('nav.program'), icon: 'calendar' } as NavItem] : []),
-    ...(mods.menu ? [{ hash: `${base}/menu`, label: t('nav.menu'), icon: 'chef' } as NavItem] : []),
-    ...(mods.lodging ? [{ hash: `${base}/alojamiento`, label: t('nav.lodging'), icon: 'bed' } as NavItem] : []),
+export function sectionLabel(section: Section): string {
+  return section === 'inicio' ? t('nav.summary') : section === 'programa' ? t('nav.program') : section === 'menu' ? t('nav.menu') : t('nav.lodging');
+}
+
+/** Barra inferior: Calendario y Retiros (la pestaña del retiro que se está viendo o el de entrada). */
+export function barItems(retreats: { hash: string; matches: string[] } | null): NavItem[] {
+  return [
+    { hash: '#/calendario', label: t('nav.calendar'), icon: 'calendar', matches: ['#/calendario'] },
+    ...(retreats ? [{ hash: retreats.hash, label: t('nav.retreats'), icon: 'home', matches: retreats.matches } as NavItem] : []),
   ];
-  const more: NavItem[] = [
+}
+
+/** «Más» del retiro que se está viendo. Con la familia junta (`family`), solo lo común; lo de cada persona sale en su Resumen. */
+export function moreItems(ctx: GuestContext, base: string, mods: Modules, family = false): NavItem[] {
+  const g = ctx.guest();
+  return [
     { hash: `${base}/info`, label: t('home.info'), icon: 'info' },
     ...(mods.materials ? [{ hash: `${base}/materiales`, label: t('materials.title'), icon: 'attach' } as NavItem] : []),
-    ...(mods.questions ? [{ hash: `${base}/preguntas`, label: t('questions.title'), icon: 'help' } as NavItem] : []),
-    ...(g.mode !== 'ninguno' ? [{ hash: `${base}/datos`, label: t('home.data'), icon: 'user' } as NavItem] : []),
-    { hash: `${base}/alimentacion`, label: t('home.diet'), icon: 'chef' },
-    ...(g.mode === 'ses' ? [{ hash: `${base}/firma`, label: t('home.sign'), icon: 'edit' } as NavItem] : []),
+    ...(mods.questions && !family ? [{ hash: `${base}/preguntas`, label: t('questions.title'), icon: 'help' } as NavItem] : []),
+    ...(g.mode !== 'ninguno' && !family ? [{ hash: `${base}/datos`, label: t('home.data'), icon: 'user' } as NavItem] : []),
+    ...(!family ? [{ hash: `${base}/alimentacion`, label: t('home.diet'), icon: 'chef' } as NavItem] : []),
+    ...(g.mode === 'ses' && !family ? [{ hash: `${base}/firma`, label: t('home.sign'), icon: 'edit' } as NavItem] : []),
   ];
-  return { nav, more };
 }

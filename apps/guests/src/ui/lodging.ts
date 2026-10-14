@@ -146,3 +146,32 @@ export function mountLodging(main: HTMLElement, ctx: GuestContext): () => void {
   void load();
   return () => { alive = false; if (timer) clearTimeout(timer); };
 }
+
+/**
+ * Alojamiento de la familia junta (O4a, «Todos» con varias personas en el retiro): la cama de cada una, con su nombre, y
+ * un toque para verla o elegirla en su ficha (`#/p/<id>/alojamiento`).
+ */
+export function mountFamilyLodging(main: HTMLElement, people: Array<{ ctx: GuestContext; base: string }>): () => void {
+  let alive = true;
+  replace(main, loading());
+  void Promise.all(people.map(async ({ ctx, base }) => ({ ctx, base, data: (await ctx.reads.lodging(ctx.grant.guest_id).catch(() => null))?.value ?? null }))).then((rows) => {
+    if (!alive) return;
+    replace(main,
+      el('div', { class: 'pagehead' }, el('h2', null, t('lodging.title'))),
+      fbIgnore(el('div', { class: 'gcards', id: 'lodgingFamily' }, ...rows.map(({ ctx, base, data }) => {
+        const name = String(ctx.guest().fields.first_name ?? '') || t('picker.unknown');
+        const mine = data?.mine;
+        const open = data ? (data.choice === 'choose' || data.choice === 'request') && choiceOpen(data) : false;
+        return el('a', { class: 'card gcard glink', href: `${base}/alojamiento`, dataset: { guest: ctx.grant.guest_id },
+          'data-feedback-id': 'guests.alojamiento.persona.abrir', 'data-feedback-label': 'Alojamiento de una persona' },
+        icon('bed', 20),
+        el('span', null,
+          el('strong', null, name),
+          el('span', { class: 'muted small' }, mine
+            ? [mine.space_name, mine.zone, mine.bed_label].filter(Boolean).join(' · ') + (mine.status === 'requested' ? ` · ${t('lodging.pending')}` : '')
+            : t(open ? 'lodging.noneChoose' : 'lodging.none'))),
+        icon('chevronRight', 16));
+      }))));
+  });
+  return () => { alive = false; };
+}

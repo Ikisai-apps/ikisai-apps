@@ -6,8 +6,12 @@
  * - el alojamiento;
  * - el menú;
  * - el horario (programa) y «Hoy».
- * Todo contra la API real sobre PGlite. Con `GUESTS_CAPTURAS=<carpeta>` guarda además las capturas «hoy» de la tabla «hoy /
- * después» (coordinacion/guests/o4).
+ * Todo contra la API real sobre PGlite. Con `GUESTS_CAPTURAS=<carpeta>` guarda además las capturas de la tabla «hoy / después»
+ * (coordinacion/guests/o4), con el prefijo de `GUESTS_CAPTURAS_PREFIJO` (por defecto `despues`).
+ *
+ * O4a (14-10-2026) cambia a propósito, y solo eso: la barra («Calendario · Retiros · Más»), Programa, Menú y Alojamiento
+ * como secciones de la pestaña del retiro (mismo número de toques) y el cambio de retiro con pestañas en lugar de la
+ * lista «¿Qué quieres ver?». Cada cambio va marcado con «O4a».
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -21,6 +25,7 @@ import { buildGuestsApp } from './build.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/guests/vite.config.ts');
 const CAPTURAS = process.env.GUESTS_CAPTURAS ?? '';
+const PREFIJO = process.env.GUESTS_CAPTURAS_PREFIJO ?? 'despues';
 
 let api: GuestsTestServer;
 let server: PreviewServer;
@@ -48,10 +53,11 @@ test.afterAll(async () => {
 const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
 
 async function capture(page: Page, name: string): Promise<void> {
-  if (CAPTURAS) await page.screenshot({ path: path.join(CAPTURAS, `hoy-${name}.png`), fullPage: true });
+  if (CAPTURAS) await page.screenshot({ path: path.join(CAPTURAS, `${PREFIJO}-${name}.png`), fullPage: true });
 }
 
 const navMain = (page: Page) => page.locator('nav.nav > a.navbtn:not(.navextra)');
+const sections = (page: Page) => page.locator('#sections a');
 
 test('caracterización · entrada: aviso, Inicio del retiro en #/p/<id>, recarga sin repetir el aviso y enlaces directos', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro de otoño', start: day(20), end: day(22) });
@@ -64,7 +70,9 @@ test('caracterización · entrada: aviso, Inicio del retiro en #/p/<id>, recarga
   // Con una sola entrada de ámbito se abre directamente su Inicio.
   await expect(page).toHaveURL(new RegExp(`#/p/${ana}$`));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de otoño');
-  await expect(navMain(page)).toHaveText(['Inicio', 'Programa', 'Menú', 'Alojamiento']);
+  // O4a: antes la barra era «Inicio · Programa · Menú · Alojamiento»; ahora son las secciones del retiro, en el mismo orden.
+  await expect(sections(page)).toHaveText(['Resumen', 'Programa', 'Menú', 'Alojamiento']);
+  await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
   await capture(page, 'inicio-antes');
   // Al recargar sigue en Inicio y el aviso ya no vuelve a salir.
   await expect.poll(async () => (await api.row(ana)).privacy_ack_version).not.toBeNull();
@@ -78,7 +86,7 @@ test('caracterización · entrada: aviso, Inicio del retiro en #/p/<id>, recarga
   }
 });
 
-test('caracterización · cambio de retiro: la misma persona en dos retiros elige en «¿Qué quieres ver?» y #/ vuelve a la lista', async ({ page }) => {
+test('caracterización · cambio de retiro: la misma persona en dos retiros cambia con las pestañas y #/ vuelve al de entrada', async ({ page }) => {
   const pasado = await api.reservation({ title: 'Retiro de primavera', start: day(-30), end: day(-28) });
   const futuro = await api.reservation({ title: 'Retiro de invierno', start: day(40), end: day(42) });
   const g1 = await api.guest(pasado.event, { first_name: 'Marta' });
@@ -86,20 +94,21 @@ test('caracterización · cambio de retiro: la misma persona en dos retiros elig
   // Mismo correo: la misma cuenta acumula las dos entradas de ámbito (#278).
   await api.guestLink(pasado.id, g1, 'Marta', 'marta@example.invalid');
   await page.goto(`${baseURL}/i/${await api.guestLink(futuro.id, g2, 'Marta', 'marta@example.invalid')}`);
-  await expect(page.locator('#people a')).toHaveCount(2);
-  await expect(page.locator('#people')).toContainText('Retiro de primavera');
-  await expect(page.locator('#people')).toContainText('Retiro de invierno');
-  await capture(page, 'cambio-de-retiro');
-  // Hoy no hay barra ni pestañas en la lista: se elige una tarjeta.
-  await expect(page.locator('nav.nav')).toBeHidden();
-  await page.locator('#people a', { hasText: 'Retiro de invierno' }).click();
-  // El aviso legal se acepta por cada ficha de huésped (cada retiro es una ficha de Booking).
+  // O4a: sin retiro en curso, se entra en el próximo (antes, la lista «¿Qué quieres ver?»; ahora, sin toques).
+  // El aviso legal se acepta por cada retiro (cada retiro es una ficha de Booking).
   await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de invierno');
-  // Hoy, para cambiar de retiro se vuelve a #/ (no hay un control visible dentro del retiro).
+  // O4a: los dos retiros, en pestañas por fecha, siempre visibles dentro del retiro (antes no había control para cambiar).
+  await expect(page.locator('#retreatTabs a')).toHaveCount(2);
+  await expect(page.locator('#retreatTabs a').first()).toContainText('Retiro de primavera');
+  await expect(page.locator('#retreatTabs a').nth(1)).toContainText('Retiro de invierno');
+  await expect(page.locator('#retreatTabs a[aria-current="page"]')).toContainText('Retiro de invierno');
+  await capture(page, 'cambio-de-retiro');
+  // #/ vuelve al retiro de entrada.
   await page.goto(`${baseURL}/#/`);
-  await expect(page.locator('#people a')).toHaveCount(2);
-  await page.locator('#people a', { hasText: 'Retiro de primavera' }).click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro de invierno');
+  // Un toque en la pestaña cambia de retiro (antes: #/ y elegir la tarjeta).
+  await page.locator('#retreatTabs a', { hasText: 'Retiro de primavera' }).click();
   await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de primavera');
   // Un retiro pasado enseña «Gracias por venir».
@@ -107,7 +116,7 @@ test('caracterización · cambio de retiro: la misma persona en dos retiros elig
   await capture(page, 'inicio-despues');
 });
 
-test('caracterización · alojamiento: «Tu habitación» con zona y cama, en la 4.ª posición de la barra', async ({ page }) => {
+test('caracterización · alojamiento: «Tu habitación» con zona y cama, en la 4.ª sección del retiro', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con cuarto', start: day(20), end: day(22) });
   const leo = await api.guest(event, { first_name: 'Leo' });
   await api.experience(reservation, { program_visible: true, menu_visible: true, lodging_visible: true });
@@ -115,8 +124,9 @@ test('caracterización · alojamiento: «Tu habitación» con zona y cama, en la
   await api.assign(event, room.spaceId, room.bedIds[0]!, leo);
   await page.goto(`${baseURL}/i/${await api.guestLink(reservation, leo, 'Leo')}`);
   await page.locator('#privacyOk').click();
-  await expect(navMain(page).nth(3)).toHaveText('Alojamiento');
-  await navMain(page).nth(3).click();
+  // O4a: antes, 4.ª posición de la barra; ahora, 4.ª sección de la pestaña del retiro (un toque, igual que antes).
+  await expect(sections(page).nth(3)).toHaveText('Alojamiento');
+  await sections(page).nth(3).click();
   await expect(page).toHaveURL(new RegExp(`#/p/${leo}/alojamiento$`));
   await expect(page.locator('#lodgingMine')).toContainText('Habitación 5');
   await expect(page.locator('#lodgingMine')).toContainText('Casa principal');
@@ -135,7 +145,7 @@ test('caracterización · menú: un día por pestaña (el primero si el retiro n
   ]);
   await page.goto(`${baseURL}/i/${await api.guestLink(reservation, eva, 'Eva')}`);
   await page.locator('#privacyOk').click();
-  await page.locator(`nav.nav > a.navbtn[data-hash$="/menu"]`).click();
+  await page.locator('#sections a[data-section="menu"]').click(); // O4a: sección del retiro (antes, la barra)
   await expect(page.locator('#menuDays [role="tab"]')).toHaveCount(2);
   await expect(page.locator('#menuDays [role="tab"]').first()).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#menuList .gservice h3')).toHaveText([/^Comida/, /^Cena/]);
@@ -157,7 +167,7 @@ test('caracterización · horario: días en pestañas, actividades por hora, «D
   await page.goto(`${baseURL}/i/${await api.guestLink(reservation, zoe, 'Zoe')}`);
   await page.locator('#privacyOk').click();
   await expect(page.locator('#today')).toHaveCount(0); // «Hoy en Ikisai» solo durante el retiro
-  await page.locator(`nav.nav > a.navbtn[data-hash$="/programa"]`).click();
+  await page.locator('#sections a[data-section="programa"]').click(); // O4a: sección del retiro (antes, la barra)
   await expect(page.locator('#programDays [role="tab"]').first()).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#programList .gslot-body strong')).toHaveText(['Llegadas', 'Bienvenida']);
   await capture(page, 'horario');

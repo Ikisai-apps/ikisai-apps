@@ -75,8 +75,6 @@ export const ES: Dictionary = {
   'home.helpText': 'Un problema o una idea sobre la app, tu retiro o un espacio',
 
   // Selector de persona
-  'picker.title': '¿Qué quieres ver?',
-  'picker.intro': 'Tienes acceso a más de una persona o retiro.',
   'picker.unknown': 'Sin conexión',
 
   // Guardado
@@ -319,6 +317,22 @@ export const ES: Dictionary = {
   'nav.menu': 'Menú',
   'nav.lodging': 'Alojamiento',
   'nav.more': 'Más',
+  // Guests por persona (O4a): barra, retiros, familia y calendario
+  'nav.calendar': 'Calendario',
+  'nav.retreats': 'Retiros',
+  'nav.summary': 'Resumen',
+  'page.calendario': 'Calendario',
+  'family.label': 'Ver a',
+  'family.all': 'Todos',
+  'retreats.label': 'Tus retiros',
+  'sections.label': 'Secciones del retiro',
+  'calendar.title': 'Calendario',
+  'calendar.mine': 'Mis retiros',
+  'calendar.list': 'Todos tus retiros',
+  'calendar.empty': 'Aún no tienes ningún retiro.',
+  'calendar.before': 'Próximo',
+  'calendar.during': 'En curso',
+  'calendar.after': 'Pasado',
   'preview.band': 'Vista previa de tu organizador: así lo verán tus asistentes. No se guarda nada.',
   'preview.readOnly': 'Es una vista previa: no se guarda nada.',
   'home.organizerMessage': 'Mensaje de tu organizador',

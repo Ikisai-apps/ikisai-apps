@@ -247,20 +247,27 @@ test('guests · conflicto: el organizador cambia un dato mientras el huésped lo
   expect((await api.row(iris)).field_sources.phone.by).toBe('guest');
 });
 
-test('guests · una cuenta con dos personas: elige a quién ver y nunca ve a otros huéspedes', async ({ page }) => {
+test('guests · una cuenta con dos personas: la familia junta por defecto, se elige a quién ver y nunca ve a otros huéspedes', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con hijos' });
   const madre = await api.guest(event, { first_name: 'Marta' });
   const hijo = await api.guest(event, { first_name: 'Nico' });
   await api.guest(event, { first_name: 'Ajena', last_name_1: 'Nadie' });
   await api.guestLink(reservation, hijo, 'Nico', 'marta@example.invalid');
   await enter(page, await api.guestLink(reservation, madre, 'Marta', 'marta@example.invalid'));
-  await expect(page.locator('#people a')).toHaveCount(2);
-  await expect(page.locator('#people')).toContainText('Marta');
-  await expect(page.locator('#people')).toContainText('Nico');
-  await expect(page.locator('body')).not.toContainText('Ajena');
-  await page.locator('#people a', { hasText: 'Nico' }).click();
+  // O4a: «Todos» por defecto; un solo aviso legal para el retiro y lo que falta de cada persona, con su nombre.
   await acceptPrivacy(page);
+  await expect(page).toHaveURL(new RegExp(`#/r/${reservation}$`));
+  await expect(page.locator('#persons button')).toHaveText(['Todos', 'Marta', 'Nico']);
+  await expect(page.locator('#persons button[aria-pressed="true"]')).toHaveText('Todos');
+  await expect(page.locator('#hello')).toHaveText('Hola, Marta y Nico');
+  await expect(page.locator('#todoFamily .gperson')).toHaveCount(2);
+  await expect(page.locator('body')).not.toContainText('Ajena');
+  await expect.poll(async () => [(await api.row(madre)).privacy_ack_version, (await api.row(hijo)).privacy_ack_version].every(Boolean)).toBe(true);
+  // Un toque en «Nico» y solo lo suyo, como antes.
+  await page.locator('#persons button', { hasText: 'Nico' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/p/${hijo}$`));
   await expect(page.locator('#hello')).toHaveText('Hola, Nico');
+  await expect(page.locator('#todo')).toBeVisible();
 });
 
 const reportsWith = async (text: string) =>

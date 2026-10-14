@@ -11,7 +11,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .backlink{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px;color:var(--muted);text-decoration:none;font-weight:600}
 .backlink:hover{color:var(--ink)}
 
-/* Sin navegación inferior en la fase 1 (Inicio es el centro): el kit pinta la barra vacía. */
+/* Sin barra (cuenta sin retiros): el kit la pinta vacía. */
 .nonav>.nav{display:none}
 .nonav .main{padding-bottom:48px}
 @media (min-width:1024px){ .main{max-width:720px;margin-inline:auto} }
@@ -127,3 +127,21 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gdish:last-child{border-bottom:0}
 .gdish-photo{width:100%;max-height:160px;object-fit:cover;border-radius:var(--radius-sm,8px);margin-bottom:4px}
 .gtags{display:flex;flex-wrap:wrap;gap:4px}
+
+/* Guests por persona (O4a): selector de persona, pestañas de retiros y secciones de cada retiro */
+.gframe{display:grid;gap:8px;margin:0 0 14px}
+.gpersons{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%}
+.gpersons button{min-height:36px}
+.gretreats{margin:0 -4px}
+.gretreat{justify-items:start;min-width:132px;max-width:220px;padding:8px 12px;text-decoration:none;text-align:left}
+.gretreat-title{font-weight:700;font-size:.95rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.gretreat.on .daytab-m{color:inherit;opacity:.85}
+.gsections{display:flex;width:100%;overflow-x:auto;scrollbar-width:none}
+.gsections::-webkit-scrollbar{display:none}
+.gsections a{flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 12px;border-radius:8px;color:var(--muted);font-size:var(--text-sm,.875rem);font-weight:700;text-decoration:none}
+.gsections a:hover{color:var(--ink)}
+.gsections a.on{background:var(--paper);color:var(--accent-deep,var(--ink));box-shadow:var(--shadow-1)}
+.gsections a:focus-visible,.gpersons button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.gperson h3{display:flex;flex-wrap:wrap;gap:4px}
+.gcalendar-list{margin:16px 0 24px}
+.gcalendar-list h3{margin:0 0 8px;font-size:1rem}

@@ -54,8 +54,8 @@ Así el aviso sale en el formulario y no tras el viaje al servidor.
 **Ámbito por huésped.** La pertenencia `editor` de la cuenta al portal lleva `scopes.grants = [{reservation_id, guest_id}, …]`. Lo comprueban las funciones de Booking en cada llamada (`booking.portal_in_scope` exige el `guest_id` en Guests). Fuera de ámbito o inexistente: `403 OUT_OF_SCOPE`. `GET members` solo devuelve al propio miembro (contrato §3.6).
 
 **Varias entradas de ámbito en una misma cuenta.** Con la reutilización de cuentas de la PR #278 (mismo correo o mismo `guest_id`), una cuenta puede acumular varias entradas: la misma persona en dos retiros, o una madre que rellena también los datos de su hijo con su propio correo. Guests lo contempla desde el principio:
-- con una sola entrada abre directamente Inicio;
-- con varias, muestra primero «¿Qué quieres ver?», con una tarjeta por persona y retiro (nombre, título del retiro y fechas).
+- con una sola entrada abre directamente su retiro;
+- con varias, Guests las agrupa por retiro y por persona (O4a, §9.12): pestañas de retiros, selector «Todos · Marta · Nico» y calendario. Hasta que Booking publique una clave de persona (O2), la misma persona en dos retiros se reconoce por su nombre y primer apellido.
 
 Cada entrada solo enseña su propia ficha.
 
@@ -151,7 +151,7 @@ Las imágenes de «Ayuda y sugerencias» van por `feedback/uploads` (bucket `fee
 
 PWA `apps/guests` sobre `createAppShell` del kit 0.18.x, móvil primero; en escritorio, columna central de lectura cómoda.
 - **Cabecera:** marca «Guests» con lanzador (sesión única) y el selector de idioma (ES · EN).
-- **Navegación:** en la fase 1, sin barra inferior: Inicio es el centro y cada tarea es una pantalla con «Volver». En la fase 4, la barra inferior se construye con los módulos que habilite el organizador (§13.1).
+- **Navegación (O4a, §9.12):** barra inferior «Calendario · Retiros · Más». En la pestaña de cada retiro, sus secciones: Resumen (antes, Inicio) y los módulos que habilite el organizador (§13.1). Cada tarea es una pantalla con «Volver».
 
 Llevan `data-feedback-ignore` los datos personales, el número de documento y la firma.
 
@@ -372,6 +372,31 @@ guests.app.instalar.abrir                guests.cuenta.dispositivo.salir
 
 `usage.run` en guardar un campo, guardar la alimentación, el consentimiento, el acuse del aviso, firmar y enviar una sugerencia.
 
+### 9.12 Guests por persona: calendario y pestañas (O4a, 14-10-2026)
+
+Primera parte de O4 (RECURSOS.md §17; aprobada por el usuario el 13-10-2026), con los datos de hoy. La pestaña Outsider, las estancias, «hay alguien», las notas, los retiros abiertos con «Apuntarme» y «Mis propuestas» son O4b (después de O2 y O3c).
+
+- **Barra inferior:** «Calendario · Retiros · Más».
+  - «Retiros» abre la pestaña del retiro que se está viendo; desde el calendario, la del último visto (o la de entrada).
+  - «Más» es lo del retiro que se ve, como antes.
+- **Rutas:**
+  - `#/`: el retiro de entrada.
+  - `#/calendario`: el calendario.
+  - `#/p/<guestId>[/<sección>]`: una persona en un retiro, como antes; **los enlaces directos siguen valiendo**.
+  - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta.
+- **Retiro de entrada:** el del enlace; si no, el que está en curso; si no, el próximo; si no, el calendario. Con una sola ficha, esa. Hoy Guests no sabe de qué entrada era un enlace si la cuenta tiene varias (petición C10).
+- **Pestañas de retiros:** deslizables, por fecha (pasados, en curso y próximos), con la elegida centrada; solo con más de uno. Cambiar de pestaña **conserva la sección** (Programa en uno → Programa en otro).
+- **Secciones del retiro:** Resumen · Programa · Menú · Alojamiento (las activas). Solo en el Resumen y en las secciones; las demás pantallas tienen su «Volver».
+- **Familia (varias personas en una cuenta):**
+  - selector «Todos · Marta · Nico» encima de las pestañas, solo si hay más de una, ordenado por nombre;
+  - por defecto, **Todos**: las pestañas de todos los retiros; uno que no es de todos lleva el nombre de a quién toca;
+  - en un retiro con varias personas, con «Todos»: Resumen con lo que falta de cada una (una tarjeta con su nombre), Programa y Menú comunes, Alojamiento con la cama de cada una (un toque lleva a la suya);
+  - un solo «Entendido» del aviso legal vale para las fichas de ese retiro (se sigue aceptando en cada retiro);
+  - con una persona elegida, solo lo suyo, como antes. Una ruta `#/p/<id>` de un retiro compartido elige a esa persona.
+- **Calendario** (`createCalendar` del kit 0.33, capa «Mis retiros»): un mes de lunes a domingo con hoy en hora de Madrid. Tocar un retiro abre su pestaña. Debajo, «Todos tus retiros» con sus fechas y su momento (pasado, en curso o próximo): así se llega a uno lejano sin pasar meses, y se lee bien con lector de pantalla.
+- **Pruebas:** `tests/guests/personas.spec.ts`. Las de caracterización siguen en verde con los cambios a propósito marcados «O4a».
+- **Capturas** de antes y después: `docs/guests/capturas/o4a/` (las de antes, en `coordinacion/guests/o4/capturas/`).
+
 ## 10. Offline
 
 Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking no van por la cola de `sync-client`. Comportamiento:
@@ -404,7 +429,7 @@ Guests **no tiene espejo**: no tiene tablas propias, y las acciones de Booking n
 10. Sin red: rellena dos campos («Se guardará al volver la conexión») y la información práctica se ve con el aviso de la hora. Al volver la red se guardan solos.
 11. El organizador cambia el teléfono mientras el huésped lo edita: el huésped ve los dos valores y elige.
 12. Con el teléfono en inglés todo sale en inglés, incluidas las fechas. Un texto de Central sin traducir sale en español con la nota.
-13. Una cuenta con dos entradas (madre e hijo) ve «¿Qué quieres ver?» y cada ficha por separado; nunca a otros huéspedes.
+13. Una cuenta con dos entradas (madre e hijo) ve a la familia junta («Todos»: lo que falta de cada una) y cada ficha por separado con el selector; nunca a otros huéspedes.
 14. «Necesito ayuda» durante la estancia: un «Baños · Agua o electricidad» llega a Tasks; un «Mi retiro · Horarios» va al organizador. Los dos se ven en «Lo que me has enviado».
 15. Enlace revocado o caducado: pantalla con el motivo y el contacto de Ikisai.
 
@@ -533,9 +558,9 @@ options[]   = [{ key, label, guest_note }]                   tipos de habitació
 
 - **Sin configuración**, Guests se queda como la fase 1: Inicio, Mis datos, Alimentación, Firma, Información y Ayuda.
 - **Ventanas:** se calculan con las fechas de la reserva en hora de Madrid (`momentOf` de Inicio): antes, durante y después del retiro.
-- **Navegación:** con algún módulo visible aparece una barra inferior con como mucho cinco entradas: **Inicio** · **Programa** · **Menú** · **Alojamiento** · **Más**.
-  - Lo que no está activo no aparece.
-  - «Más» agrupa Información, Materiales, Preguntas, Mis datos, Alimentación, Firma y Ayuda.
+- **Navegación:** desde O4a (§9.12), los módulos visibles son **secciones de la pestaña del retiro**: **Resumen** · **Programa** · **Menú** · **Alojamiento**, en el mismo orden que la barra de antes y con los mismos toques.
+  - Lo que no está activo no aparece; sin módulos, solo el Resumen y sin secciones.
+  - «Más» (en la barra «Calendario · Retiros · Más») agrupa Información, Materiales, Preguntas, Mis datos, Alimentación y Firma del retiro que se ve.
   - En escritorio, la barra pasa a lateral (`createAppShell` con `nav`).
 - **Inicio según el momento:**
   - **Antes:** la lista de lo que falta, más «Preguntas de tu organizador» si hay preguntas obligatorias sin responder y «Elige tu habitación» si hay elección abierta. Debajo, «Tu retiro» con lo que esté publicado.
