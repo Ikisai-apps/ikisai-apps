@@ -27,7 +27,15 @@ export const TABLES = {
   openRooms: 'booking.open_rooms',
   eventExtraBeds: 'booking.event_extra_beds',
   moduleSettings: 'booking.module_settings',
+  stays: 'booking.stays',
+  stayPersons: 'booking.stay_persons',
+  outsiderDefaults: 'booking.outsider_defaults',
+  stayNotes: 'booking.stay_notes',
 } as const;
+
+/** Estancias (O2): `outsider`, gente de fuera por trato personal; `staff`, presencia de quien trabaja en casa. */
+export const STAY_KINDS = ['outsider', 'staff'] as const;
+export type StayKind = (typeof STAY_KINDS)[number];
 
 /** Lecturas registradas con `core.allow_read` (ruta `/api/v1/read/:name`). */
 export const READS = {
