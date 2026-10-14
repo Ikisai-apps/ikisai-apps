@@ -31,14 +31,16 @@ export function createAdmin(supabase: Supabase) {
     });
   }
 
-  /** Alta de una persona con contraseña temporal y sus accesos iniciales: `{email, displayName?, memberships: [{app, role, scopes?}]}`. */
+  /** Alta de una persona con contraseña temporal y sus accesos iniciales: `{email, displayName?, memberships: [{app, role, scopes?}]}`.
+   *  Sin accesos (`memberships: []`, P9 de Central): solo la cuenta y su perfil, y entonces `displayName` es obligatorio. */
   async function invite(ctx: RequestContext, body: any) {
     human(ctx);
     await supabase.rpc('core_admin_accounts', { p_actor: ctx.user.id }); // autoriza antes de crear nada
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) fail(422, 'INVALID_OPERATION', 'Correo inválido.');
     const memberships: Array<{ app: string; role: string; scopes?: unknown }> = Array.isArray(body.memberships) ? body.memberships : [];
-    if (!memberships.length) fail(422, 'INVALID_OPERATION', 'Indica al menos un acceso.');
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+    if (!memberships.length && !displayName) fail(422, 'INVALID_OPERATION', 'Sin accesos, indica al menos el nombre.');
     for (const m of memberships) {
       if (typeof m?.app !== 'string' || !APP_ID.test(m.app) || !ROLES.includes(m.role)) fail(422, 'INVALID_OPERATION', 'Acceso inválido.', { membership: m });
     }
@@ -64,6 +66,7 @@ export function createAdmin(supabase: Supabase) {
         p_display_name: typeof body.displayName === 'string' ? body.displayName : null,
       }));
     }
+    if (!memberships.length) await supabase.rpc('core_admin_set_display_name', { p_actor: ctx.user.id, p_user: userId, p_name: displayName });
     return { userId, email, created, temporaryPassword: created ? temporaryPassword : null, memberships: results };
   }
 
