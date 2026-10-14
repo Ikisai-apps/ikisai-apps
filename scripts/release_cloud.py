@@ -28,8 +28,9 @@ def fetch_json(url):
     return json.loads(response.read())
 
 
-def verify(domain, version, attempts=30, wait=10):
-  # ~5 min: la Edge nueva tarda a veces más de 2 min en dar la versión nueva (falsos RELEASE_VERIFICATION_FAILED de Food, 8-10-2026).
+def verify(domain, version, attempts=60, wait=10):
+  # ~10 min: la Edge nueva tarda a veces más de 2 min en dar la versión nueva (falsos RELEASE_VERIFICATION_FAILED de Food, 8-10-2026),
+  # y con varias releases seguidas, más de 5 (Food y Organizers, 14-10-2026; relanzadas, en verde).
   # El cuerpo sigue igual.
   base = 'https://' + domain
   last = None
