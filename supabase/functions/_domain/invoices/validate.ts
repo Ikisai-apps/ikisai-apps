@@ -91,6 +91,13 @@ function date(fields: Fields, key: string, { nullable = true }: { nullable?: boo
   if (typeof v !== 'string' || !ISO_DATE.test(v) || Number.isNaN(Date.parse(v + 'T00:00:00Z'))) domainFail('INVALID_FIELDS', `El campo ${key} debe ser una fecha AAAA-MM-DD.`, { field: key });
 }
 
+/** Factor de conversión hacia la unidad base del artículo (R4): positivo o null. */
+function positiveFactor(fields: Fields, key: string): void {
+  if (!has(fields, key) || fields[key] === null) return;
+  const v = fields[key];
+  if (!isFiniteNumber(v) || v <= 0 || v > 1_000_000) domainFail('INVALID_FIELDS', `El campo ${key} debe ser un número mayor que 0.`, { field: key });
+}
+
 function uuid(fields: Fields, key: string, { nullable = false }: { nullable?: boolean } = {}): void {
   if (!has(fields, key)) return;
   const v = fields[key];
@@ -209,6 +216,9 @@ export function validateInvoiceLineFields(fields: Fields, op: 'insert' | 'update
   integer(fields, 'position', { min: 0 });
   text(fields, 'description', { required: true, max: 500 });
   text(fields, 'label', { max: 120 });
+  uuid(fields, 'item_id', { nullable: true });
+  uuid(fields, 'space_id', { nullable: true });
+  positiveFactor(fields, 'item_factor');
   text(fields, 'unit', { max: 16 });
   text(fields, 'match_name', { max: 200 });
   text(fields, 'notes', { max: 2000 });
@@ -485,7 +495,14 @@ export function validateRowFields(table: string, op: 'insert' | 'update', fields
     case TABLES.itemLabels:
       if (op === 'insert') return domainFail('INVALID_OPERATION', 'La memoria de nombres la escribe el servidor al validar; aquí solo se corrige el nombre.', { table });
       onlyWritable(TABLES.itemLabels, fields);
-      return text(fields, 'label', { required: true, max: 120 });
+      text(fields, 'label', { max: 120 });
+      uuid(fields, 'item_id', { nullable: true });
+      return positiveFactor(fields, 'item_factor');
+    case TABLES.settings:
+      onlyWritable(TABLES.settings, fields);
+      if (has(fields, 'key') && fields.key !== 'resources_links') domainFail('INVALID_SETTING', 'Ese ajuste no existe.', { field: 'key' });
+      if (has(fields, 'value') && typeof fields.value !== 'boolean') domainFail('INVALID_SETTING', 'El ajuste vale sí o no.', { field: 'value' });
+      return;
     default: return;
   }
 }
@@ -532,6 +549,8 @@ export const DOMAIN_MESSAGES: Record<string, string> = {
   ANNUL_REASON_REQUIRED: 'Indica el motivo de la anulación.',
   PAID_AT_REQUIRED: 'Indica la fecha de pago.',
   TARGET_NOT_FOUND: 'El destino ya no existe en Tareas.',
+  INVALID_RESOURCE_LINK: 'El artículo o el sitio ya no existe en Recursos.',
+  INVALID_SETTING: 'Ese ajuste no es válido.',
   TARGET_FORBIDDEN: 'No tienes acceso a ese destino en Tareas.',
   TARGET_UNAVAILABLE: 'No se pudo consultar Tareas. Se reintentará.',
   TARGET_APP_NOT_AVAILABLE: 'Ese tipo de destino llegará en la fase 2.',

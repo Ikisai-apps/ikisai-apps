@@ -1606,3 +1606,23 @@ En «Pendiente de datos» y «Pendiente de revisión», la ficha abre arriba el 
   - en `core.changes`, si el cambio que la marcó pagada puso como fecha de pago el día en que se hizo (hora de Madrid) y sigue siendo esa, pasa a la fecha de la factura y queda `confirmado`;
   - las demás no se tocan.
 - **Gestoría:** el CSV y el manifest de la entrega las cuentan como pagadas con la fecha de la factura.
+
+
+### 16.16 R4 · líneas enlazadas con artículos de Recursos (0234, PR 1; diseño aprobado por el usuario, 14-10-2026)
+Diseño en `coordinacion/invoices/R4_PREPARACION.md`. Esta PR trae solo el modelo; las entradas al inventario y la pantalla vienen después.
+- **`invoice_lines`:**
+  - `item_id`: el artículo de `resources.items`;
+  - `item_factor`: el factor hacia su unidad base, copiado al enlazar; null = la unidad de la línea ya es la base;
+  - `space_id`: dónde entra; null = el sitio habitual del artículo;
+  - `item_source`: `manual` o `recordado`. Lo pone el disparador, como `label_source`.
+- **La memoria (`item_labels`)** recuerda también `item_id` e `item_factor`, y `label` pasa a ser opcional (al menos uno de los dos).
+  - Se aprende al validar y se aplica al insertar, igual que «Mi nombre».
+  - Lo que trae la línea manda.
+  - Validar una línea sin artículo no borra el artículo recordado.
+  - El cliente puede corregir `label`, `item_id` e `item_factor` de una entrada.
+- **Cambiar solo el enlace** (`item_id`, `item_factor`, `space_id`) no devuelve una validada a revisión (`label_only_change`).
+- **Hook `invoices.check_resource_links`:**
+  - el artículo existe y no está borrado;
+  - el sitio está vivo y activo;
+  - si no, falla con `INVALID_RESOURCE_LINK` (422).
+- **Interruptor:** `invoices.settings`, con la clave `resources_links` y el valor `true` o `false` (`INVALID_SETTING`). Solo lo escribe el owner y está apagado sin fila (`invoices.resources_links()`). Mientras esté apagado, la app se ve igual y no se crean entradas en Recursos.
