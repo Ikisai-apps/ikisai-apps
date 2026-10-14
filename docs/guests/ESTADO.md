@@ -69,7 +69,11 @@
 
 - 2026-10-14 · Supletorias activadas en la elección de cama (BG13, Booking #491): marca «Supletoria» y recuento aparte (`extra_total` y `extra_free`); prueba real en `modules.spec.ts`.
 
+- 2026-10-14 · **O4a: Guests por persona** (§9.12): barra «Calendario · Retiros · Más», pestañas de retiros que conservan la sección, Resumen · Programa · Menú · Alojamiento dentro del retiro, regla de entrada, la familia junta («Todos») con el selector y el calendario del kit 0.33 con «Todos tus retiros». Enlaces directos intactos. Prueba nueva `personas.spec.ts` y caracterización en verde.
+
 ## Pendiente
+
+- **O4b** (después de O2 de Booking y O3c de Food): pestaña Outsider, estancias con «hay alguien» y notas, retiros abiertos con «Apuntarme» y «Mis propuestas».
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

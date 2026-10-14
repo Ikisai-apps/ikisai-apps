@@ -41,3 +41,5 @@ Detalle en `API.md` §14. Core responde aquí y resume en `docs/core/RESPUESTAS.
 | U5 | UI | barra inferior con «Más» y lista de días para el programa | hecha (kit 0.21), en uso |
 | K6 | Core | que una acción de Organizers invocada desde Guests escriba en `organizers.*` (`apply_portal_operations` rechaza hoy un destino portal); sin ello no se guardan las respuestas | hecha (#334), en uso |
 | BG13 | Booking | supletorias activadas en `portal_lodging` (con `kind: 'supletoria'`, `extra_total` y `extra_free`) y en `portal_choose_bed` | hecha (#491), en uso |
+| C10 | Core | `POST auth/link` y `loginWithLink` devuelven la entrada del enlace (`grant: {reservation_id, guest_id}`), para abrir ese retiro cuando la cuenta tiene varios (regla de entrada de O4a) | abierta |
+| U6 | UI | textos del calendario en el idioma del kit: «Hoy», «Anterior», «Siguiente» y «Vista» salen siempre en español | abierta |
