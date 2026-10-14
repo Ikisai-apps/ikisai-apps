@@ -8,7 +8,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { HOUSE_MENU_ID, computeShopping, defaultPurchase, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
+import { HOUSE_MENU_ID, computeShopping, defaultPurchase, fromItemBase, foodUnitFromBase, kitchenSpaceIds, kitchenStock, preparationSources, shoppingSources, unitFamily, type MenuGraph, type Unit } from '../../supabase/functions/_domain/food/mod.ts';
 
 export interface FakeRow {
   id: string;
@@ -134,7 +134,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
   'food.shopping_lists': ['menu_id', 'status', 'generated_at', 'source_revisions', 'notes', 'period_start', 'period_end'],
   'food.shopping_list_items': ['shopping_list_id', 'ingredient_id', 'required_quantity', 'unit', 'stock_quantity', 'purchase_quantity', 'supplier', 'status',
-    'manual_override', 'manual', 'notes'],
+    'manual_override', 'manual', 'notes', 'min_quantity', 'restock'],
   'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
@@ -157,7 +157,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.menu_services': { position: 0 },
   'food.menu_items': { position: 0 },
   'food.shopping_lists': { status: 'borrador', source_revisions: {} },
-  'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false },
+  'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false, restock: false },
   'food.preparation_items': { done: false, position: 0, manual: false },
   'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
   'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
@@ -323,11 +323,33 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             if (!list) { list = { ...fresh(), id: args.list_id }; write('food.shopping_lists', 'insert', list, { menu_id: menu.id, generated_at: nowIso(), source_revisions: shoppingSources(graph, period), period_start: period?.start ?? null, period_end: period?.end ?? null }); }
             const lines = all('food.shopping_list_items').filter((i) => i.shopping_list_id === list!.id && !i.deleted_at && !i.manual);
             const seen = new Set<string>();
+            // Stock de cocina, mínimos y «Reponer» (R5b), como food.regenerate_shopping en 0198.
+            const committed = (t: string) => Array.from(data.get(t)?.values() ?? []).filter((r) => !r.deleted_at);
+            const kitchen = kitchenSpaceIds(committed('resources.spaces') as never);
+            const on = [new Date().toISOString().slice(0, 10), period?.start ?? ''].sort().at(-1)!;
+            const articleOf = (ingredientId: string) => {
+              const g = graph.ingredients.find((i) => i.id === ingredientId) as unknown as FakeRow | undefined;
+              return g?.item_id ? committed('resources.items').find((i) => i.id === g.item_id) : undefined;
+            };
+            const stockOf = (ingredientId: string, unit: Unit) => {
+              const it = articleOf(ingredientId);
+              const base = it ? kitchenStock(it.id, committed('resources.movements') as never, committed('resources.lots') as never, kitchen, on) : null;
+              return it && base !== null ? fromItemBase(base, String(it.base_unit), unit) : null;
+            };
+            const minOf = (ingredientId: string, unit: Unit) => {
+              const it = articleOf(ingredientId);
+              return it && it.min_quantity !== null && it.min_quantity !== undefined ? fromItemBase(Number(it.min_quantity), String(it.base_unit), unit) : null;
+            };
+            const wanted = new Set<string>();
             for (const need of computeShopping(graph, period)) {
+              wanted.add(need.ingredient_id);
+              const stockNow = stockOf(need.ingredient_id, need.unit);
+              const minNow = minOf(need.ingredient_id, need.unit);
               const line = lines.find((i) => i.ingredient_id === need.ingredient_id && unitFamily(i.unit as Unit) === need.family);
               if (!line) {
                 const supplier = graph.ingredients.find((g) => g.id === need.ingredient_id)?.preferred_supplier ?? null;
-                write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: need.ingredient_id, required_quantity: need.required_quantity, unit: need.unit, purchase_quantity: need.required_quantity, supplier });
+                write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: need.ingredient_id, required_quantity: need.required_quantity, unit: need.unit,
+                  purchase_quantity: defaultPurchase(need.required_quantity, stockNow, minNow), supplier, stock_quantity: stockNow, min_quantity: minNow });
                 counts.inserted += 1;
                 continue;
               }
@@ -335,9 +357,28 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               const fields: Record<string, unknown> = {};
               if (line.unit !== need.unit) fields.unit = need.unit;
               if (Number(line.required_quantity) !== need.required_quantity) fields.required_quantity = need.required_quantity;
-              const purchase = defaultPurchase(need.required_quantity, line.stock_quantity === null ? null : Number(line.stock_quantity));
+              if (stockNow !== null && Number(line.stock_quantity) !== stockNow) { fields.stock_quantity = stockNow; line.stock_quantity = stockNow; }
+              if ((line.min_quantity ?? null) !== minNow) fields.min_quantity = minNow;
+              if (line.restock) fields.restock = false;
+              const purchase = defaultPurchase(need.required_quantity, line.stock_quantity === null ? null : Number(line.stock_quantity), minNow);
               if (!line.manual_override && Number(line.purchase_quantity) !== purchase) fields.purchase_quantity = purchase;
               if (Object.keys(fields).length) { write('food.shopping_list_items', 'update', line, fields); counts.updated += 1; } else counts.kept += 1;
+            }
+            for (const g of graph.ingredients as unknown as FakeRow[]) {
+              const it = articleOf(g.id);
+              const unit = it ? foodUnitFromBase(String(it.base_unit)) : null;
+              if (g.deleted_at || g.active === false || !it || !unit || !(Number(it.min_quantity) > 0) || wanted.has(g.id)) continue;
+              const stockNow = stockOf(g.id, unit);
+              const min = Number(it.min_quantity);
+              if ((stockNow ?? 0) >= min) continue;
+              const elsewhere = all('food.shopping_list_items').some((o) => o.ingredient_id === g.id && o.restock && !o.deleted_at && o.shopping_list_id !== list!.id
+                && all('food.shopping_lists').some((l) => l.id === o.shopping_list_id && !l.deleted_at && l.status !== 'cerrada'));
+              if (elsewhere) continue;
+              const purchase = defaultPurchase(0, stockNow, min);
+              const line = lines.find((i) => i.ingredient_id === g.id && i.restock);
+              if (!line) { write('food.shopping_list_items', 'insert', fresh(), { shopping_list_id: list.id, ingredient_id: g.id, required_quantity: 0, unit, purchase_quantity: purchase, supplier: g.preferred_supplier ?? null, stock_quantity: stockNow, min_quantity: min, restock: true }); counts.inserted += 1; continue; }
+              seen.add(line.id);
+              if (!line.manual_override && Number(line.purchase_quantity) !== purchase) { write('food.shopping_list_items', 'update', line, { purchase_quantity: purchase, stock_quantity: stockNow }); counts.updated += 1; } else counts.kept += 1;
             }
             for (const line of lines.filter((i) => !seen.has(i.id))) {
               if (line.status === 'pendiente' && !line.manual_override) { write('food.shopping_list_items', 'delete', line); counts.deleted += 1; }

@@ -217,13 +217,15 @@ food.shopping_list_items
   ingredient_id      uuid not null → food.ingredients      on delete restrict
   required_quantity  numeric(12,3) not null default 0   ®   calculada
   unit               text not null                      ®   salvo al insertar una línea manual
-  stock_quantity     numeric(12,3)                          lo que ya hay en casa; a mano en V1
+  stock_quantity     numeric(12,3)                          lo que ya hay en casa: del inventario de Recursos al generar (R5b) o a mano
   purchase_quantity  numeric(12,3) not null                 lo que se compra
   supplier           text
   status             text not null default 'pendiente'      pendiente | comprado | recibido
   manual_override    boolean not null default false         purchase_quantity fijada a mano
   manual             boolean not null default false         línea añadida a mano, ajena al cálculo
   notes              text
+  min_quantity       numeric(12,3)                      ®   mínimo del artículo de Recursos, en la unidad de la línea (R5b)
+  restock            boolean not null default false     ®   «Reponer»: bajo mínimo y sin menú de la lista que lo pida (R5b)
 writable: shopping_list_id, ingredient_id, unit, stock_quantity, purchase_quantity, supplier, status,
           manual_override, manual, notes + reservadas.
 Único: (shopping_list_id, ingredient_id, unit) where deleted_at is null and not manual.
@@ -331,6 +333,14 @@ borrador ⇄ revisar ──validate_menu──▶ validado ⇄ cerrado
 4. Unidad de salida: en masa y volumen, la `preferred_unit` del ingrediente si es de esa familia; si no, `kg` o `l` a partir de 1000 y `g` o `ml` por debajo. `required_quantity` se redondea a tres decimales al final.
 5. Línea calculada existente (mismo ingrediente y familia, `manual = false`): actualiza `required_quantity` y `unit`. Si cambia la unidad dentro de la familia convierte `stock_quantity` y `purchase_quantity`. Si `manual_override` es falso recalcula `purchase_quantity`. No toca `supplier`, `status` ni `notes`.
 6. Línea nueva: `supplier = preferred_supplier`, `purchase_quantity = required_quantity`, `status = pendiente`.
+6b. **Stock y mínimos (R5b, migración `20261014_0198_food_shopping_stock.sql`; decisiones del usuario del 14-10-2026):**
+   - `stock_quantity` = el stock de Recursos del artículo del ingrediente (§2.7). Cuenta solo la cocina, sus despensas y sus cámaras (`food.kitchen_spaces`: espacios de tipo cocina; almacenes y ubicaciones llamados despensa, cámara, nevera, frigorífico o congelador o con `storage` frío o congelado; y todo lo que cuelga de ellos).
+     - No cuentan los lotes que caducan antes del primer día de la lista (en casa, `period_start`; en un retiro, el primer servicio; nunca antes de hoy).
+     - Se pasa a la unidad de la línea si es de la misma familia.
+     - Si el artículo nunca tuvo movimientos en la cocina, se queda como antes (vacío al crear la línea, lo escrito a mano al regenerar).
+   - `min_quantity` = el mínimo del artículo. `purchase_quantity = máx(necesario + mínimo − en casa, 0)` mientras no esté fijada a mano (`defaultPurchase(required, stock, min)` en el dominio).
+   - **Reponer** (`restock = true`): cada ingrediente activo con artículo bajo mínimo en la cocina que ningún menú de la lista pide, salvo si ya lo lleva otra lista abierta. `required_quantity = 0` y comprar = mínimo − en casa. Si un menú pasa a pedirlo, la línea vuelve a ser normal; si deja de estar bajo mínimo, se retira como cualquier línea que ya no hace falta.
+   - **«Comprado»** (en la app): marcar una línea como comprada o recibida da entrada al stock en ese momento, sin coste: un `entrada_manual` con `source_app = 'food'` y `source_ref = 'shopping_item:<id>'`, en el sitio habitual del artículo o en la despensa de la cocina. Volver a «pendiente» la saca (`salida_manual`, motivo `otro`). Finance (R4) añade después el coste a esa entrada con `resources.movement_costs`, sin contarla dos veces. Sin sitios de cocina en Recursos no se anota nada.
 7. Línea calculada que ya no hace falta: se borra si está `pendiente` y sin `manual_override`; si no, se conserva con `required_quantity = 0` para no perder que ya se compró.
 8. Las líneas `manual = true` no se tocan.
 9. Actualiza la lista: `generated_at`, `source_revisions` y, si estaba `revisada`, vuelve a `borrador`.

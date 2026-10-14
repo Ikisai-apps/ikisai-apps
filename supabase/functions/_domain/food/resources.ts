@@ -161,3 +161,78 @@ export function sharedIngredientItems(items: ResourceItem[], ingredients: Array<
     .filter((i) => !i.deleted_at && i.active && (INGREDIENT_ITEM_KINDS as readonly string[]).includes(i.kind) && !linked.has(i.id) && !names.has(key(i.name)))
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Stock de cocina (R5b; mismas reglas que `food.kitchen_spaces` y `food.kitchen_stock` en SQL)
+// ---------------------------------------------------------------------------------------------------------------------
+
+export interface SpaceLike { id: string; parent_id: string | null; kind: string; name: string; active?: boolean; attributes?: Record<string, unknown> | null; deleted_at: string | null }
+export interface MovementLike { item_id: string; space_id: string; lot_id: string | null; quantity: number | string; source_ref?: string | null; deleted_at: string | null }
+export interface LotLike { id: string; expires_on: string | null }
+
+const KITCHEN_NAME = /(despensa|c[aá]mara|nevera|frigor[ií]fico|congelador)/i;
+
+/** Decisión del usuario (14-10-2026): el stock de la compra es el de la cocina, sus despensas y sus cámaras. */
+export function kitchenSpaceIds(spaces: SpaceLike[]): Set<string> {
+  const live = spaces.filter((s) => !s.deleted_at);
+  const roots = live.filter((s) => s.active !== false && (s.kind === 'cocina'
+    || ((s.kind === 'almacen' || s.kind === 'ubicacion') && (KITCHEN_NAME.test(s.name) || ['frio', 'congelado'].includes(String(s.attributes?.storage ?? ''))))));
+  const ids = new Set(roots.map((s) => s.id));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of live) if (s.parent_id && ids.has(s.parent_id) && !ids.has(s.id)) { ids.add(s.id); grew = true; }
+  }
+  return ids;
+}
+
+/** Stock de cocina en la unidad base, sin lotes que caducan antes de `on`; `null` si nunca hubo movimientos allí. */
+export function kitchenStock(itemId: string, movements: MovementLike[], lots: LotLike[], kitchen: Set<string>, on: string): number | null {
+  const expired = new Set(lots.filter((l) => l.expires_on && l.expires_on < on).map((l) => l.id));
+  const rows = movements.filter((m) => !m.deleted_at && m.item_id === itemId && kitchen.has(m.space_id));
+  if (!rows.length) return null;
+  const total = rows.filter((m) => !m.lot_id || !expired.has(m.lot_id)).reduce((sum, m) => sum + Number(m.quantity), 0);
+  return Math.max(Math.round(total * 1000) / 1000, 0);
+}
+
+const FACTOR: Record<string, number> = { kg: 1000, l: 1000 };
+const FAMILY: Record<string, string> = { g: 'masa', kg: 'masa', ml: 'volumen', l: 'volumen' };
+const family = (unit: string) => FAMILY[unit] ?? unit;
+
+/** De la unidad base del artículo a una unidad de Food de la misma familia (y al revés); `null` si no se puede. */
+export function fromItemBase(quantity: number, base: string, unit: Unit): number | null {
+  const own = foodUnitFromBase(base);
+  if (!own || family(own) !== family(unit)) return null;
+  return Math.round((quantity * (FACTOR[own] ?? 1)) / (FACTOR[unit] ?? 1) * 1000) / 1000;
+}
+export function toItemBase(quantity: number, unit: Unit, base: string): number | null {
+  const own = foodUnitFromBase(base);
+  if (!own || family(own) !== family(unit)) return null;
+  return Math.round((quantity * (FACTOR[unit] ?? 1)) / (FACTOR[own] ?? 1) * 1000) / 1000;
+}
+
+/** Referencia de la entrada al stock de una línea de compra: Finance (R4) le añade el coste con ella. No cambiarla. */
+export const shoppingItemRef = (id: string) => `shopping_item:${id}`;
+
+/**
+ * «Comprado» entra al stock en ese momento, sin coste (decisión del usuario, 14-10-2026); desmarcarlo lo saca. Devuelve
+ * el movimiento que deja el stock como debe estar (o `null` si ya lo está), mirando los que ya llevan la referencia.
+ */
+export function purchaseMovement(args: { itemId: string; lineId: string; bought: boolean; quantityBase: number; spaceId: string; supplier: string | null; movements: MovementLike[] }): Record<string, unknown> | null {
+  const ref = shoppingItemRef(args.lineId);
+  const already = args.movements.filter((m) => !m.deleted_at && m.source_ref === ref).reduce((sum, m) => sum + Number(m.quantity), 0);
+  const delta = Math.round(((args.bought ? args.quantityBase : 0) - already) * 1000) / 1000;
+  if (delta === 0) return null;
+  return delta > 0
+    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', source_app: 'food', source_ref: ref, note: args.supplier ? `Compra · ${args.supplier}` : 'Compra' }
+    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', source_app: 'food', source_ref: ref, note: 'Desmarcado como comprado' };
+}
+
+/** Dónde entra lo comprado: el sitio habitual del artículo; si no tiene, una despensa o la cocina. */
+export function purchaseSpace(item: Pick<ResourceItem, 'id'> & { default_space_id?: string | null }, spaces: SpaceLike[]): string | null {
+  const live = spaces.filter((s) => !s.deleted_at && s.active !== false);
+  if (item.default_space_id && live.some((s) => s.id === item.default_space_id)) return item.default_space_id;
+  const kitchen = kitchenSpaceIds(spaces);
+  const pick = (test: (s: SpaceLike) => boolean) => live.filter((s) => kitchen.has(s.id) && test(s)).sort((a, b) => a.name.localeCompare(b.name, 'es'))[0]?.id;
+  return pick((s) => /despensa/i.test(s.name)) ?? pick((s) => s.kind === 'cocina') ?? pick(() => true) ?? null;
+}
