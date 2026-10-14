@@ -17,7 +17,10 @@
   - mantener pulsado mientras se eligen días no selecciona texto ni abre el menú;
   - la vista previa del rango al pasar por encima solo sale con ratón.
 - **La barra de elegir días queda encima de la barra inferior de la app** (`.nav` o `.tabbar`) en móvil y tableta, en vez de quedar tapada.
-- **Pruebas:** `v39` amplía con toque real por CDP, que pasa por el reconocedor de gestos de Chromium. La de deslizar falla sin el arreglo.
+- **U6 (Guests): textos del calendario en inglés.**
+  - «Hoy», «Anterior», «Siguiente», «Vista», «Mes», «Semana» y «N eventos» pasan por `kt`.
+  - Al cambiar el idioma del kit en vivo (`onKitLocaleChange`), el calendario se reetiqueta sin rehacerse.
+- **Pruebas:** `v39` amplía con toque real por CDP, que pasa por el reconocedor de gestos de Chromium. La de deslizar falla sin el arreglo. También prueba el cambio a inglés y la vuelta a español en vivo.
 
 ## 0.34.0 · 14 de octubre de 2026
 

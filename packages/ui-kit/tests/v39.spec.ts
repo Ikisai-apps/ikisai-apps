@@ -153,6 +153,23 @@ async function touchSwipe(page: Page, from: { x: number; y: number }, dx: number
   await cdp.detach();
 }
 
+test('@smoke U6: en inglés, la cabecera y las etiquetas del calendario no salen en español', async ({ page }) => {
+  await page.goto('/#calendar');
+  // Cambio en vivo: el calendario ya estaba pintado en español.
+  await page.evaluate(() => (window as any).ikisaiI18n.start().setLocale('en'));
+  const cal = page.locator('#calendarHost .calendar');
+  await expect(cal.getByRole('button', { name: 'Today' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Previous' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Next' })).toBeVisible();
+  await expect(cal.getByRole('group', { name: 'View' })).toContainText('Month');
+  await expect(cal.getByRole('group', { name: 'View' })).toContainText('Week');
+  await expect(cal.locator('.cal-day.has').first()).toHaveAttribute('aria-label', /\d+ events?/);
+  await expect(cal).not.toContainText('Hoy');
+  await page.evaluate(() => (window as any).ikisaiI18n.get().setLocale('es'));
+  await expect(cal.getByRole('button', { name: 'Hoy' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Anterior' })).toBeVisible();
+});
+
 test.describe('ui-kit v0.35 · elegir días en Android', () => {
   test.beforeEach(({}, info) => { test.skip(info.project.name !== 'movil', 'pantalla táctil'); });
 

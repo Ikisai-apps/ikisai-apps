@@ -30,6 +30,13 @@ export const KIT_EN: Dictionary = {
   '{count} avisos': '{count} alerts',
   'Días': 'Days',
   'Hoy': 'Today',
+  'Anterior': 'Previous',
+  'Siguiente': 'Next',
+  'Vista': 'View',
+  'Mes': 'Month',
+  'Semana': 'Week',
+  '1 evento': '1 event',
+  '{n} eventos': '{n} events',
 
   // Estado de guardado
   'Guardando…': 'Saving…',

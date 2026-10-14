@@ -1,6 +1,6 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
-import { kt } from '../i18n/i18n.ts';
+import { kt, onKitLocaleChange } from '../i18n/i18n.ts';
 
 /** Fecha local `YYYY-MM-DD`. */
 export type DayKey = string;
@@ -232,12 +232,12 @@ export function createCalendar(options: CalendarOptions): Calendar {
   const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
   const title = el('h3', { class: 'cal-title', 'aria-live': 'polite' });
-  const prev = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Anterior', onclick: () => move(-1) }, icon('chevronLeft'));
-  const next = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Siguiente', onclick: () => move(1) }, icon('chevronRight'));
-  const today = el('button', { class: 'ghost small', type: 'button', onclick: () => { cursor = todayKey(); focused = cursor; void load(); } }, 'Hoy');
-  const switcher = options.viewSwitch === false ? null : el('div', { class: 'segmented cal-switch', role: 'group', 'aria-label': 'Vista' },
-    el('button', { type: 'button', dataset: { view: 'month' }, onclick: () => setView('month') }, 'Mes'),
-    el('button', { type: 'button', dataset: { view: 'week' }, onclick: () => setView('week') }, 'Semana'),
+  const prev = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': kt('Anterior'), onclick: () => move(-1) }, icon('chevronLeft'));
+  const next = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': kt('Siguiente'), onclick: () => move(1) }, icon('chevronRight'));
+  const today = el('button', { class: 'ghost small', type: 'button', onclick: () => { cursor = todayKey(); focused = cursor; void load(); } }, kt('Hoy'));
+  const switcher = options.viewSwitch === false ? null : el('div', { class: 'segmented cal-switch', role: 'group', 'aria-label': kt('Vista') },
+    el('button', { type: 'button', dataset: { view: 'month' }, onclick: () => setView('month') }, kt('Mes')),
+    el('button', { type: 'button', dataset: { view: 'week' }, onclick: () => setView('week') }, kt('Semana')),
   );
   const head = el('div', { class: 'cal-head' }, el('div', { class: 'cal-nav' }, prev, title, next), el('div', { class: 'cal-tools' }, today, switcher));
   const grid = el('div', { class: 'cal-grid', role: 'grid' });
@@ -250,7 +250,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
   const bar = options.select ? el('div', { class: 'cal-selectbar', role: 'region', 'aria-label': options.select.label, hidden: true },
     el('div', { class: 'cal-selectbar-info' }, barText, barSub),
     el('div', { class: 'cal-selectbar-actions' },
-      el('button', { type: 'button', class: 'ghost', ...mark('cancel'), onclick: () => cancelSelect() }, kt('Cancelar')),
+      el('button', { type: 'button', class: 'ghost cal-cancel', ...mark('cancel'), onclick: () => cancelSelect() }, kt('Cancelar')),
       saveBtn),
   ) : null;
   const body = agenda ? el('div', { class: 'cal-body' }, grid, agenda) : grid;
@@ -431,7 +431,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     const more = dayEvents.length - visibleEvents.length;
     const said = [
       label,
-      dayEvents.length ? `${dayEvents.length} ${dayEvents.length === 1 ? 'evento' : 'eventos'}` : '',
+      dayEvents.length ? (dayEvents.length === 1 ? kt('1 evento') : kt('{n} eventos', { n: String(dayEvents.length) })) : '',
       extra.shaded ? (extra.shadeLabel ?? kt('sombreado')) : '',
       notes.length ? (notes.length === 1 ? kt('1 nota') : kt('{n} notas', { n: String(notes.length) })) : '',
     ].filter(Boolean).join(', ');
@@ -632,6 +632,22 @@ export function createCalendar(options: CalendarOptions): Calendar {
     paintAgenda();
   }
 
+  // Bilingües (Guests, Organizers): al cambiar el idioma del kit, se reetiqueta sin rehacer el calendario.
+  const stopLocale = onKitLocaleChange(() => {
+    prev.setAttribute('aria-label', kt('Anterior'));
+    next.setAttribute('aria-label', kt('Siguiente'));
+    today.textContent = kt('Hoy');
+    switcher?.setAttribute('aria-label', kt('Vista'));
+    switcher?.querySelectorAll<HTMLElement>('button').forEach((b) => { b.textContent = b.dataset.view === 'week' ? kt('Semana') : kt('Mes'); });
+    legend?.setAttribute('aria-label', kt('Capas'));
+    agenda?.setAttribute('aria-label', kt('Día elegido'));
+    const cancel = bar?.querySelector<HTMLElement>('.cal-cancel');
+    if (cancel) cancel.textContent = kt('Cancelar');
+    if (!options.select?.label) saveBtn.textContent = kt('Guardar');
+    paintLegend();
+    paint();
+  });
+
   paintLegend();
   void load();
 
@@ -649,6 +665,6 @@ export function createCalendar(options: CalendarOptions): Calendar {
       const r = range();
       if (day < r.from || day > r.to) { cursor = day; void load(); } else paint();
     },
-    destroy() { document.removeEventListener('pointerup', endPointer); element.remove(); },
+    destroy() { document.removeEventListener('pointerup', endPointer); stopLocale(); element.remove(); },
   };
 }
