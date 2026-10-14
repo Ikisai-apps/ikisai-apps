@@ -228,3 +228,10 @@
 .recipecard.disabled:hover{border-color:var(--line)}
 .recipecard.disabled .linkbtn{margin-top:6px;align-self:flex-start}
 .housecard ul{margin-top:6px}
+
+/* O3b · días de la compra y la preparación de casa */
+.periodbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:12px 0}
+.periodbar label{display:inline-flex;align-items:center;gap:6px}
+.periodbar .chips{flex-basis:100%}
+.periodbar button.chip,.houselists button.chip{border:0;cursor:pointer;font:inherit;font-size:.8rem}
+.houselists{align-items:center;margin-bottom:12px}

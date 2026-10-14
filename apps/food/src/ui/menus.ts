@@ -774,7 +774,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function paintActionsAndRest(): void {
-      tabs.hidden = house();
+      // En casa: Menú, Compra y Preparación (O3b); sin Organizador ni Cierre.
+      for (const link of tabs.querySelectorAll<HTMLAnchorElement>('a[data-tab="organizador"], a[data-tab="cierre"]')) link.hidden = house();
       paintHead(); paintBanner(); paintCommentsNotice(); paintRestrictions();
       if (tab === 'menu') {
         paintActions(); paintShare(); paintComments(); paintBuilder(); paintCost();
@@ -782,7 +783,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         return;
       }
       if (!unmountTab) {
-        const context = { client, menuId, host: tabHost, canWrite };
+        const context = { client, menuId, host: tabHost, canWrite, house: house() };
         unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
       }
     }

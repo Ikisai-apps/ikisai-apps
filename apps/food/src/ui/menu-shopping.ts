@@ -9,6 +9,7 @@ import { T, UNITS, UNIT_LABELS, describeError, formatQuantity, parseQuantity, ty
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import { usage } from '../app/usage.ts';
 import { fb, type FbMark } from './feedback.ts';
+import { housePeriod, periodBar, periodLabel, samePeriod, setHousePeriod } from './house-period.ts';
 
 type ListRow = Mirror<ShoppingList>;
 type ItemRow = Mirror<ShoppingListItem>;
@@ -23,12 +24,15 @@ export interface TabContext {
   menuId: string;
   host: HTMLElement;
   canWrite(): boolean;
+  /** Menú de casa (O3b): compra y preparación por un rango de días que se elige al generar. */
+  house?: boolean;
 }
 
 /** Lista de compra del menú: generar y regenerar (con red), «en casa», «comprar», estado y líneas a mano (también sin red). */
-export function mountShopping({ client, menuId, host, canWrite }: TabContext): () => void {
+export function mountShopping({ client, menuId, host, canWrite, house = false }: TabContext): () => void {
   let data: MenuData | null = null;
   let list: ListRow | null = null;
+  let houseLists: ListRow[] = []; // en casa: las listas vivas del menú, cada una con sus días
   let items: ItemRow[] = [];
   let sheet: Sheet | null = null;
   let busy = false;
@@ -51,7 +55,8 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     busy = true;
     paint();
     try {
-      const result = await usage.run('food.compra.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regenerateShopping, { menu_id: menuId, list_id: list?.id ?? crypto.randomUUID() }));
+      const result = await usage.run('food.compra.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regenerateShopping, {
+        menu_id: menuId, list_id: list?.id ?? crypto.randomUUID(), ...(house ? { period_start: housePeriod().start, period_end: housePeriod().end } : {}) }));
       toast(result.created
         ? `Lista generada: ${result.inserted} productos.`
         : `Lista regenerada: ${result.inserted} nuevos, ${result.updated} actualizados, ${result.deleted} retirados.`);
@@ -158,19 +163,28 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     if (!data?.menu) { replace(host); return; }
     const writable = canWrite();
     const generate = (label: string, id: string) => el('button', { 'data-feedback-id': 'food.menu.compra.generar', 'data-feedback-label': 'Generar lista de compra', class: 'primary', type: 'button', id, disabled: busy, onclick: () => void regenerate() }, label);
-    const provisional = data.menu.status === 'validado' || data.menu.status === 'cerrado' ? null
+    const provisional = house || data.menu.status === 'validado' || data.menu.status === 'cerrado' ? null
       : el('p', { class: 'muted' }, 'El menú todavía no está validado: la lista es provisional.');
+    // En casa: los días de la lista y las otras listas, para saltar a ellas.
+    const houseHead = house ? el('div', { class: 'househead' }, periodBar(() => void load()),
+      houseLists.length ? el('div', { 'data-feedback-id': 'food.menu.casa.listas', 'data-feedback-label': 'Listas de casa', class: 'chips houselists' }, el('span', { class: 'muted' }, 'Listas:'),
+        ...houseLists.map((l) => el('button', { 'data-feedback-id': 'food.menu.casa.listas.lista', 'data-feedback-label': 'Abrir lista', type: 'button', class: l.id === list?.id ? 'chip ok' : 'chip',
+          onclick: () => { setHousePeriod({ start: l.period_start!, end: l.period_end! }); void load(); } }, `${periodLabel({ start: l.period_start!, end: l.period_end! })}${l.status === 'cerrada' ? ' · cerrada' : ''}`))) : null) : null;
 
     if (!list) {
-      replace(host, el('div', { 'data-feedback-id': 'food.menu.compra.vacia', 'data-feedback-label': 'Sin lista de compra', class: 'empty', id: 'shoppingEmpty' }, el('strong', null, 'Todavía no hay lista de compra'),
-        'Se calcula a partir de los platos del menú: raciones × cantidad de cada ingrediente ÷ raciones base de la receta.',
-        provisional, writable ? el('p', { style: 'margin-top:10px' }, generate('Generar lista de compra', 'generateShopping')) : null,
+      const overlap = house ? houseLists.find((l) => l.period_start! <= housePeriod().end && housePeriod().start <= l.period_end!) : undefined;
+      replace(host, houseHead, el('div', { 'data-feedback-id': 'food.menu.compra.vacia', 'data-feedback-label': 'Sin lista de compra', class: 'empty', id: 'shoppingEmpty' },
+        el('strong', null, house ? `Todavía no hay lista para ${periodLabel(housePeriod())}` : 'Todavía no hay lista de compra'),
+        house ? 'Se calcula con los platos de esos días: raciones × cantidad de cada ingrediente ÷ raciones base de la receta.'
+          : 'Se calcula a partir de los platos del menú: raciones × cantidad de cada ingrediente ÷ raciones base de la receta.',
+        overlap ? el('p', { class: 'warnline', id: 'periodOverlap' }, `Se solapa con la lista de ${periodLabel({ start: overlap.period_start!, end: overlap.period_end! })}: elige otros días o abre esa lista.`) : null,
+        provisional, writable && !overlap ? el('p', { style: 'margin-top:10px' }, generate(house ? `Generar la lista de ${periodLabel(housePeriod())}` : 'Generar lista de compra', 'generateShopping')) : null,
         el('span', { class: 'hint' }, 'Generar necesita conexión.')));
       return;
     }
 
     const closed = list.status === 'cerrada';
-    const current = shoppingSources(data.graph);
+    const current = shoppingSources(data.graph, house ? housePeriod() : null);
     const diff = sourceChanges(list.source_revisions, current);
     const stale = data.pending || isStale(list.source_revisions, current);
     const names = new Map(data.ingredients.map((i) => [i.id, i.name]));
@@ -179,7 +193,7 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
     const button = (id: string, label: string, onclick: () => void, mark: FbMark) => fb(el('button', { class: 'ghost', type: 'button', id, onclick }, label), mark);
     const pendingBuy = sorted.filter((i) => i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length;
 
-    replace(host,
+    replace(host, houseHead,
       stale ? el('div', { 'data-feedback-id': 'food.menu.compra.aviso_cambios', 'data-feedback-label': 'Aviso de cambios', class: 'banner warn notice', id: 'shoppingStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú o sus recetas han cambiado desde que se generó la lista.'),
           ` ${diff.added.length + diff.removed.length + diff.changed.length || 'Hay'} cambios${data.pending ? ' (algunos aún sin sincronizar)' : ''}. Regenerar conserva lo que hayas tocado a mano.`),
@@ -205,8 +219,9 @@ export function mountShopping({ client, menuId, host, canWrite }: TabContext): (
 
   async function load(): Promise<void> {
     data = await loadMenuData(client, menuId);
-    const lists = (await client.list(T.shoppingLists)) as ListRow[];
-    list = lists.find((l) => l.menu_id === menuId) ?? null;
+    const lists = ((await client.list(T.shoppingLists)) as ListRow[]).filter((l) => l.menu_id === menuId && !l.deleted_at);
+    houseLists = house ? lists.filter((l) => l.period_start).sort((a, b) => b.period_start!.localeCompare(a.period_start!)) : [];
+    list = (house ? lists.find((l) => samePeriod(housePeriod(), l)) : lists.find((l) => !l.period_start)) ?? null;
     items = list ? ((await client.list(T.shoppingItems)) as ItemRow[]).filter((i) => i.shopping_list_id === list!.id) : [];
     paint();
   }

@@ -123,7 +123,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.menu_comments': ['menu_id', 'service_id', 'menu_item_id', 'kind', 'message', 'author_id', 'status', 'reply'],
   'food.menu_services': ['menu_id', 'service_date', 'service_type', 'service_time', 'position', 'notes'],
   'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
-  'food.shopping_lists': ['menu_id', 'status', 'generated_at', 'source_revisions', 'notes'],
+  'food.shopping_lists': ['menu_id', 'status', 'generated_at', 'source_revisions', 'notes', 'period_start', 'period_end'],
   'food.shopping_list_items': ['shopping_list_id', 'ingredient_id', 'required_quantity', 'unit', 'stock_quantity', 'purchase_quantity', 'supplier', 'status',
     'manual_override', 'manual', 'notes'],
   'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
@@ -263,16 +263,22 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             recipe_ingredients: all('food.recipe_ingredients'), ingredients: all('food.ingredients'),
           } as unknown as MenuGraph;
           graph.items = graph.items.filter((i) => graph.services.some((sv) => sv.id === i.service_id));
+          // Rango del menú de casa (O3b): obligatorio en casa y prohibido en un retiro, como food.call_period.
+          const period = args.period_start ? { start: args.period_start as string, end: args.period_end as string } : null;
+          if ((menu.kind === 'casa') !== !!period) throw new Fault(422, 'INVALID_PERIOD', 'Rango de días inválido.', { index, reason: menu.kind === 'casa' ? 'required' : 'not_allowed' });
+          const inPeriod = (date: string | null | undefined) => !period || (!!date && date >= period.start && date <= period.end);
           const counts = { inserted: 0, updated: 0, deleted: 0, kept: 0 };
 
           if (procedure === 'food.regenerate_shopping') {
-            let list = all('food.shopping_lists').find((l) => l.menu_id === menu.id && !l.deleted_at);
+            let list = all('food.shopping_lists').find((l) => l.menu_id === menu.id && !l.deleted_at && (l.period_start ?? null) === (period?.start ?? null) && (l.period_end ?? null) === (period?.end ?? null));
+            const overlap = period && all('food.shopping_lists').find((l) => l.menu_id === menu.id && !l.deleted_at && l.period_start && l.id !== list?.id && (l.period_start as string) <= period.end && period.start <= (l.period_end as string));
+            if (overlap) throw new Fault(422, 'PERIOD_OVERLAP', 'Se solapa con otra lista.', { index, list_id: overlap.id, period_start: overlap.period_start, period_end: overlap.period_end });
             const created = !list;
             if (list?.status === 'cerrada') throw new Fault(422, 'LIST_CLOSED', 'La lista está cerrada.', { index });
-            if (!list) { list = { ...fresh(), id: args.list_id }; write('food.shopping_lists', 'insert', list, { menu_id: menu.id, generated_at: nowIso(), source_revisions: shoppingSources(graph) }); }
+            if (!list) { list = { ...fresh(), id: args.list_id }; write('food.shopping_lists', 'insert', list, { menu_id: menu.id, generated_at: nowIso(), source_revisions: shoppingSources(graph, period), period_start: period?.start ?? null, period_end: period?.end ?? null }); }
             const lines = all('food.shopping_list_items').filter((i) => i.shopping_list_id === list!.id && !i.deleted_at && !i.manual);
             const seen = new Set<string>();
-            for (const need of computeShopping(graph)) {
+            for (const need of computeShopping(graph, period)) {
               const line = lines.find((i) => i.ingredient_id === need.ingredient_id && unitFamily(i.unit as Unit) === need.family);
               if (!line) {
                 const supplier = graph.ingredients.find((g) => g.id === need.ingredient_id)?.preferred_supplier ?? null;
@@ -294,13 +300,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
               else counts.kept += 1;
             }
             const status = list.status === 'revisada' ? 'borrador' : list.status;
-            if (!created) write('food.shopping_lists', 'update', list, { generated_at: nowIso(), source_revisions: shoppingSources(graph), status });
+            if (!created) write('food.shopping_lists', 'update', list, { generated_at: nowIso(), source_revisions: shoppingSources(graph, period), status });
             results.push({ op: 'call', procedure, result: { list_id: list.id, created, ...counts, status } });
             return;
           }
 
           const steps = all('food.preparation_items').filter((p) => p.menu_id === menu.id && !p.deleted_at);
-          const live = graph.items.filter((i) => !i.deleted_at && graph.services.some((sv) => sv.id === i.service_id && !sv.deleted_at));
+          const live = graph.items.filter((i) => !i.deleted_at && graph.services.some((sv) => sv.id === i.service_id && !sv.deleted_at && inPeriod(sv.service_date)));
           for (const item of live) {
             const service = graph.services.find((sv) => sv.id === item.service_id)!;
             const recipe = graph.recipes.find((r) => r.id === item.recipe_id)!;
@@ -319,8 +325,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             else if (!step.manual && !step.done && (step.text !== text || step.scheduled_date !== date || step.scheduled_time !== time)) { write('food.preparation_items', 'update', step, { scheduled_date: date, scheduled_time: time, text }); counts.updated += 1; }
             else counts.kept += 1;
           }
-          for (const step of steps.filter((p) => !p.manual && !p.done && p.menu_item_id && !live.some((i) => i.id === p.menu_item_id))) { write('food.preparation_items', 'delete', step); counts.deleted += 1; }
-          write('food.menus', 'update', menu, { preparation_generated_at: nowIso(), preparation_source_revisions: preparationSources(graph) });
+          const gone = (p: FakeRow) => !graph.items.some((i) => i.id === p.menu_item_id && !i.deleted_at && graph.services.some((sv) => sv.id === i.service_id && !sv.deleted_at));
+          for (const step of steps.filter((p) => !p.manual && !p.done && p.menu_item_id && (period ? gone(p) && inPeriod(p.scheduled_date as string) : !live.some((i) => i.id === p.menu_item_id)))) { write('food.preparation_items', 'delete', step); counts.deleted += 1; }
+          if (!period) write('food.menus', 'update', menu, { preparation_generated_at: nowIso(), preparation_source_revisions: preparationSources(graph) });
           results.push({ op: 'call', procedure, result: counts });
           return;
         }
