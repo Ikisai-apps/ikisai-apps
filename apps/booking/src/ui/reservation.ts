@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { PROGRAM, loadProgram, renderProgram } from './program.ts';
@@ -340,6 +340,20 @@ export function mountReservation(id: string): ViewMount {
             editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', 'data-feedback-id': 'booking.reserva.operacion.cierre', 'data-feedback-label': 'Cierre operativo', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
           ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.', feedbackId: 'booking.reserva.operacion.hoja', feedbackLabel: 'Editar operación' })));
 
+      // O2 · retiro abierto: visible para los huéspedes de Guests con título, fechas y este resumen, sin precio.
+      const visible = reservation.guests_visible === true;
+      const openCard = el('article', { class: 'card', id: 'blockOpenRetreat', 'data-feedback-id': 'booking.reserva.abierto', 'data-feedback-label': 'Visible para huéspedes' },
+        el('div', { class: 'cardhead' }, el('h3', null, 'Visible para huéspedes'),
+          editable ? el('button', { class: 'linkbtn', type: 'button', id: 'editOpenRetreat', 'data-feedback-id': 'booking.reserva.abierto.editar', 'data-feedback-label': 'Editar', onclick: () => openRowSheet({
+            client, title: 'Visible para huéspedes', table: RESERVATIONS, row: reservation, savedMessage: 'Guardado.', feedbackId: 'booking.reserva.abierto.hoja', feedbackLabel: 'Visible para huéspedes',
+            specs: [
+              { key: 'guests_visible', label: 'Visible para huéspedes', type: 'check', hint: 'Lo ven en Guests con el título, las fechas y el resumen. Nunca el precio.' },
+              { key: 'public_summary', label: 'Resumen público', type: 'textarea', max: 500, optional: true },
+            ] }) }, 'Editar') : null),
+        el('p', { id: 'openRetreatState' }, el('span', { class: `chip${visible ? ' ok' : ''}` }, visible ? 'Visible' : 'No visible'),
+          visible && !['pre_reservada', 'confirmada', 'en_ejecucion'].includes(reservation.status) ? el('span', { class: 'hint' }, ' · se verá cuando esté en pre-reserva o confirmada') : null),
+        reservation.public_summary ? el('p', { class: 'hint', 'data-feedback-ignore': '' }, reservation.public_summary) : null);
+
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 
       const datesCard = dateOptions ? datesBlock.render({ client, reservation, options: dateOptions, editable, run }) : null;
@@ -556,14 +570,14 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
+        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
       );
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAYS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));

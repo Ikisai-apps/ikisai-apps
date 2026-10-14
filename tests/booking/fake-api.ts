@@ -47,6 +47,8 @@ const SERVER_COLUMNS: Record<string, Record<string, unknown>> = {
   'booking.dietary_restrictions': { source: 'staff' },
   'booking.event_extra_beds': { source: 'staff' },
   'booking.reservation_finance': { payment_registered_at: null },
+  'booking.stays': { source: 'staff' },
+  'booking.stay_notes': { author_kind: 'staff', author_id: null },
 };
 /** PNG de 1x1 que sirve de firma en `GET /guest-signature/:id`. */
 const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -174,6 +176,8 @@ export interface FakeApi {
   failCosts(status: number | null): void;
   /** Fija lo que devolverá `GET /calendar/status`. */
   setCalendarStatus(status: FakeCalendarStatus): void;
+  /** Cuentas con nivel de casa de `POST /read/booking.house_people` (O2). */
+  setHousePeople(items: Array<{ account_id: string; name: string; level: 'outsider' | 'staff' | 'direccion' }>): void;
   /** Identificadores de reserva para los que llegó `POST /calendar/:id/retry`. */
   calendarRetries(): string[];
   cursor(): number;
@@ -526,6 +530,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return { reservation: { id: reservationId, start_date: reservation.start_date, end_date: reservation.end_date }, guests };
   }
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
+  let housePeople: Array<{ account_id: string; name: string; level: string }> = [];
   const calendarRetries: string[] = [];
   let costRows: FakeCostRow[] = [];
   let costFailure: number | null = null;
@@ -631,6 +636,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const last = items.length ? items[items.length - 1]!.cursor : after;
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
+      if (path === 'read/booking.house_people' && method === 'POST') return json(res, 200, { items: housePeople });
       if (path === 'read/invoices.booking_cost_projection' && method === 'GET') {
         if (costFailure !== null) throw new Fault(costFailure, costFailure === 403 ? 'FORBIDDEN' : 'VALIDATION', 'Lectura no permitida.', {});
         const target = url.searchParams.get('where[target_id]');
@@ -826,6 +832,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     url: `http://127.0.0.1:${port}`,
     cursor: () => cursor,
     setCalendarStatus: (status) => { calendarStatus = status; },
+    setHousePeople: (items) => { housePeople = items; },
     setCostRows: (rows) => { costRows = rows; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],

@@ -1542,7 +1542,25 @@ Decisiones del usuario:
   - **evento:** día completo de la llegada al día de salida incluido, con el título «Marta (+1)» (`stayCalendarTitle`: el nombre de pila de la primera persona o de la cuenta, y cuántos más). Sin contacto ni notas. Color 3 (uva) para outsiders y 8 (grafito) para el staff. Id `iks<uuid>g<n>` y `extendedProperties.private.ikisaiStayId`;
   - sin calendario configurado no se proyecta nada y las reservas siguen igual. El guardado nunca depende de Google.
 
-Siguen en O2: «Apuntarme» (con las sugerencias del núcleo; espera P23 y P24) y las pantallas de Booking.
+### 26.2 Pantallas de Booking (migración 0469)
+
+Según la tabla «hoy / después» aprobada. Al personal no le cambia nada de lo que ya hace.
+- **Estancias** (`#/estancias`, tarjeta en Inicio):
+  - próximas estancias de outsiders y staff, con «Marta (+1)», la cama y el choque con un retiro (aviso con enlace a la reserva);
+  - «Nueva estancia» y «Cambiar», con persona, llegada, salida y cama. La habitación sale de la cama también sin red;
+  - camas por defecto de cada outsider;
+  - notas con día y hora.
+  - Las personas salen de `booking.house_people({})` → `{items: [{account_id, name, level}]}` (cuentas con nivel de casa y su nombre). Se piden con red y solo se guardan en memoria.
+- **Calendario:** capas «Estancias de outsiders» (uva) y «Presencia del staff» (sombreada), con interruptores que se recuerdan en el dispositivo. Tocar una estancia abre Estancias.
+- **Inicio:** el aviso «estancias que chocan con un retiro» enlaza a Estancias.
+- **Ficha:**
+  - bloque «Visible para huéspedes», con interruptor y «Resumen público», que solo cambia el personal;
+  - en Alojamiento, «Cama 1: la usa una estancia del … al … (outsider)».
+- **Reservas:** chip «Visible para huéspedes».
+- **Sin datos en el dispositivo al salir:** estancias, personas y notas van en `clearOnLogout`.
+- **El mismo cálculo en los dos lados:** el choque lo calcula el dominio, `stayClashes` (`_domain/booking/stays.ts`), que es espejo de `booking.stay_clashes`; una prueba compara los dos.
+
+Sigue en O2: «Apuntarme» (P23 y P24 ya en main).
 
 ## Anexo · Campos de C03 y C04 que no se portan
 

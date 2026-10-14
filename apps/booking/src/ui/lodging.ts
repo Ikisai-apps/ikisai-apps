@@ -1,8 +1,8 @@
 /** Bloque «Alojamiento» de la ficha (docs/booking/API.md §15.1): asignaciones del evento a habitaciones, camas, salas y zonas. */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
 import { el, icon, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
-import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsCharged, isBookable, isExtraBed, validateFields } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, canRead, describeError, shortDay } from '../app/client.ts';
+import { TABLES, assignmentNights, bedConflicts, dayNumber, eventOccupancy, extraBedsCharged, isBookable, isExtraBed, staysOnBed, validateFields } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, BEDS, EVENTS, EXTRA_BEDS, RESERVATIONS, SPACES, STAYS, canRead, describeError, shortDay } from '../app/client.ts';
 import { guard } from '../app/guard.ts';
 import { settleBatch } from '../app/settle.ts';
 
@@ -18,6 +18,8 @@ export interface LodgingData {
   assignments: Row[];
   /** Supletorias activadas de este evento (vacío si el rol no las lee). */
   extraBeds: Row[];
+  /** Estancias vivas con cama (O2): una que coincide con el retiro se avisa en su asignación. */
+  stays?: Row[];
 }
 
 const byPosition = (a: Row, b: Row) => Number(a.position) - Number(b.position) || String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id);
@@ -32,6 +34,7 @@ export async function loadLodging(client: SyncClient, eventId: string): Promise<
     beds: live(await client.list(BEDS)).sort(byPosition),
     assignments: live(await client.list(ASSIGNMENTS)).filter((a) => a.event_id === eventId),
     extraBeds: canRead(client, EXTRA_BEDS) ? live(await client.list(EXTRA_BEDS)).filter((x) => x.event_id === eventId) : [],
+    stays: canRead(client, STAYS) ? live(await client.list(STAYS)).filter((s) => s.bed_id) : [],
   };
 }
 
@@ -332,6 +335,11 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
           el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, who(a))),
           el('div', { class: 'row-meta' }, [plural(Number(a.persons), 'persona', 'personas'), bed ? `cama ${bed.label}` : null, dates(a),
             a.status === 'requested' ? 'pendiente de que la apruebe el organizador' : null, a.source === 'guest' ? 'elegida por el huésped' : a.source === 'organizer' ? 'asignada por el organizador' : null].filter(Boolean).join(' · ')),
+          // O2: una estancia en la misma cama esas noches (aviso; se guardó igual)
+          bed ? staysOnBed(bed.id, a.from_date ?? o.reservation.start_date, a.to_date ?? o.reservation.end_date, (data.stays ?? []) as any).map((s) =>
+            el('p', { class: 'hint lodging-stay', dataset: { stayClash: s.id }, 'data-feedback-id': 'booking.reserva.alojamiento.estancia', 'data-feedback-label': 'Choque con una estancia' },
+              `${bed.label}: la usa una estancia del ${shortDay(s.from_date)} al ${shortDay(s.to_date)} (${s.kind === 'staff' ? 'staff' : 'outsider'}). `,
+              el('a', { href: '#/estancias' }, 'Ver estancias'))) : null,
           // preferencia de compañeros que dejó el huésped en Guests (la ven el personal y el organizador)
           a.guest_id && o.seesGuests && (guestById.get(a.guest_id)?.room_preference || guestById.get(a.guest_id)?.needs_ground_floor)
             ? el('div', { class: 'row-meta', 'data-feedback-ignore': '' }, [guestById.get(a.guest_id)?.room_preference ? `Prefiere: ${guestById.get(a.guest_id)!.room_preference}` : null, guestById.get(a.guest_id)?.needs_ground_floor ? 'Necesita planta baja o accesible' : null].filter(Boolean).join(' · '))

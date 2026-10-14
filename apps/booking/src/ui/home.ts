@@ -1,8 +1,9 @@
 import type { SyncStatus } from '@ikisai/sync-client';
 import { el, formatDate, listRow, plural, replace } from '@ikisai/ui-kit';
-import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, uncoveredNeedsSoon } from '@ikisai/domain-booking';
-import { EVENTS, FINANCE, GUESTS, NEEDS, PORTAL_REQUESTS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
+import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, stayClashes, uncoveredNeedsSoon, type ClashAssignment, type ClashReservation } from '@ikisai/domain-booking';
+import { ASSIGNMENTS, EVENTS, FINANCE, GUESTS, NEEDS, STAYS, PORTAL_REQUESTS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import { COMMUNICABLE_STATUSES, HOUR, acceptedReservationComm, fetchSes } from '../app/ses.ts';
+import { liveStays } from '../app/stays.ts';
 import type { ViewMount } from './shell.ts';
 import { fbMark } from './feedback.ts';
 
@@ -131,6 +132,14 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       if (targets.size === 1) needsHref = `#/reservas/${[...targets][0]}`;
       notices.push([uncovered.length, 'refuerzo sin cubrir en los próximos 7 días', 'refuerzos sin cubrir en los próximos 7 días', needsHref]);
     }
+    // Estancias próximas que coinciden con un retiro en la misma cama (O2): un aviso, se guardaron igual.
+    const stays = await liveStays(client);
+    if (stays.length) {
+      const data = { assignments: (await client.list(ASSIGNMENTS)) as unknown as ClashAssignment[], events: events as unknown as Array<{ id: string; reservation_id: string; deleted_at: string | null }>, reservations: reservations as unknown as ClashReservation[], stays };
+      const todayIso = today();
+      const clashing = stays.filter((s) => s.to_date > todayIso && stayClashes(s, data).some((c) => c.kind === 'retiro')).length;
+      notices.push([clashing, 'estancia que choca con un retiro', 'estancias que chocan con un retiro', '#/estancias', 'stays']);
+    }
     const visible = notices.filter(([n]) => n > 0);
     replace(noticesHost, visible.length === 0
       ? null
@@ -157,6 +166,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', null, 'Habitaciones con sus camas, salas y zonas exteriores, para asignar el alojamiento de cada reserva.'),
         el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openSpacesHome', 'data-feedback-id': 'booking.inicio.espacios.abrir', 'data-feedback-label': 'Abrir Espacios y camas', onclick: () => navigate('#/espacios') }, 'Espacios y camas')),
       ),
+      canRead(client, STAYS) ? el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.estancias', 'data-feedback-label': 'Estancias' },
+        el('h3', null, 'Estancias'),
+        el('p', null, 'Quién duerme en casa fuera de los retiros: outsiders, con su cama por defecto, y staff.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost', type: 'button', id: 'openStaysHome', 'data-feedback-id': 'booking.inicio.estancias.abrir', 'data-feedback-label': 'Abrir Estancias', onclick: () => navigate('#/estancias') }, 'Estancias')),
+      ) : null,
       canWrite(client) && canRead(client, RATES) ? el('article', { class: 'card', 'data-feedback-id': 'booking.inicio.tarifas', 'data-feedback-label': 'Tarifas y condiciones' },
         el('h3', null, 'Tarifas y condiciones'),
         el('p', null, 'Tarifario, condiciones comerciales y tramos de cancelación para preparar las propuestas.'),
@@ -191,6 +205,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     client.onTable(EVENTS, () => void paintData()),
     client.onTable(GUESTS, () => void paintData()),
     ...(canRead(client, NEEDS) ? [client.onTable(NEEDS, () => void paintData())] : []),
+    ...(canRead(client, STAYS) ? [client.onTable(STAYS, () => void paintData())] : []),
     ...(canWrite(client) && canRead(client, PORTAL_REQUESTS) ? [client.onTable(PORTAL_REQUESTS, () => void paintData())] : []),
   ];
   return () => { disposed = true; offs.forEach((off) => off()); };

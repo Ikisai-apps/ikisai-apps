@@ -22,6 +22,10 @@ export const DATE_OPTIONS: TableName = TABLES.dateOptions;
 export const DATE_BLOCKS: TableName = TABLES.dateBlocks;
 export const EXTRA_REQUESTS: TableName = TABLES.extraRequests;
 export const PORTAL_REQUESTS: TableName = TABLES.portalRequests;
+export const STAYS: TableName = TABLES.stays;
+export const STAY_PERSONS: TableName = TABLES.stayPersons;
+export const OUTSIDER_DEFAULTS: TableName = TABLES.outsiderDefaults;
+export const STAY_NOTES: TableName = TABLES.stayNotes;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -43,6 +47,9 @@ export interface ReservationRow extends SyncedRow {
   collect_guest_data?: boolean;
   /** Fecha fija: el organizador la ve cerrada y no propone otras (ausente en filas antiguas = provisional). */
   dates_definitive?: boolean;
+  /** Retiro abierto (O2): lo ven los huéspedes de Guests, sin precio. */
+  guests_visible?: boolean;
+  public_summary?: string | null;
   _pending?: boolean;
 }
 
@@ -82,7 +89,8 @@ export function createClient(): SyncClient {
     // Sin `tables`: el espejo guarda las tablas legibles para el rol (un lector no recibe importes ni huéspedes).
     pullIntervalMs: 30_000,
     // Datos personales e importes no se quedan en el dispositivo al cerrar sesión (docs/booking/API.md §5.3).
-    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES, EXTRA_REQUESTS, PORTAL_REQUESTS],
+    // (las estancias llevan nombres y notas de personas de fuera: tampoco se quedan)
+    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES, EXTRA_REQUESTS, PORTAL_REQUESTS, STAYS, STAY_PERSONS, STAY_NOTES],
   });
 }
 

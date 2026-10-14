@@ -78,6 +78,15 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .date-check input { flex: 0 0 auto; margin-top: 3px; }
 .date-check .hint { margin: 2px 0 0; }
 #calendarHost [data-status='bloqueo'] { background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255, 255, 255, .35) 5px 10px); cursor: default; }
+/* O2: capas de estancias. El staff, sombreado y más suave, para que no compita con las reservas. */
+#calendarHost [data-status='staff'] { opacity: .7; background-image: repeating-linear-gradient(90deg, transparent 0 3px, rgba(255, 255, 255, .25) 3px 6px); }
+.layers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+.layers .layer { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+.layers .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.clashlist { margin: 4px 0 0; padding-left: 18px; }
+.lodging-stay { color: var(--warn, #8a5a00); margin: 4px 0 0; }
+.chip[data-stay='outsider'] { background: #f3e8fa; color: #6c3483; }
+.chip[data-open] { background: #e6f2ec; color: #1f6b46; }
 
 
 /* Acciones de la ficha: «Más» plegado en móvil, todo visible desde 1024 px. */

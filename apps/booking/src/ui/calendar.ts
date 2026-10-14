@@ -1,7 +1,8 @@
 /** Calendario (API §9.3): ocupación mensual de días completos y estado de la sincronización con Google Calendar. */
 import { confirmDialog, createCalendar, el, replace, toast, type CalendarEvent } from '@ikisai/ui-kit';
 import type { SyncedRow } from '@ikisai/sync-client';
-import { DATE_BLOCKS, RESERVATIONS, canRead, canWrite, dateRange, describeError, type ReservationRow } from '../app/client.ts';
+import { DATE_BLOCKS, RESERVATIONS, STAYS, STAY_PERSONS, canRead, canWrite, dateRange, describeError, type ReservationRow } from '../app/client.ts';
+import { housePeople, liveStays, personsByStay, stayTitle, type HousePerson, type StayPersonRow, type StayRow } from '../app/stays.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarHealth as Health, type CalendarStatus } from '../app/calendarStatus.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
 import { checkDateRange } from './dates.ts';
@@ -42,6 +43,26 @@ export function toCalendarEvent(row: ReservationRow): CalendarEvent | null {
   return { id: row.id, title: pre ? `[PRE] ${row.title}` : row.title, start: row.start_date, end: row.end_date, color, status: row.status };
 }
 
+/** Capas de estancias (O2): outsiders en uva y staff en gris azulado, de la llegada al día de salida, como las reservas. */
+export const STAY_COLORS: Record<string, string> = { outsider: '#8e44ad', staff: '#5b7083' };
+export function stayToCalendarEvent(row: StayRow, persons: readonly StayPersonRow[] | undefined, people: readonly HousePerson[]): CalendarEvent | null {
+  if (row.deleted_at !== null) return null;
+  return { id: row.id, title: stayTitle(row, persons, people), start: row.from_date, end: row.to_date, color: STAY_COLORS[row.kind] ?? STAY_COLORS.outsider!, status: row.kind === 'staff' ? 'staff' : 'estancia' };
+}
+
+const LAYERS_KEY = 'booking.calendario.capas';
+type Layers = { outsider: boolean; staff: boolean };
+function readLayers(): Layers {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAYERS_KEY) ?? 'null');
+    if (v && typeof v === 'object') return { outsider: v.outsider !== false, staff: v.staff !== false };
+  } catch { /* sin almacenamiento */ }
+  return { outsider: true, staff: true };
+}
+function saveLayers(layers: Layers): void {
+  try { localStorage.setItem(LAYERS_KEY, JSON.stringify(layers)); } catch { /* sin almacenamiento: dura lo que la pantalla */ }
+}
+
 /** Tramo bloqueado como evento de día completo; el estado `bloqueo` lo distingue de las reservas (rayado por CSS). */
 export function blockToCalendarEvent(row: Block): CalendarEvent | null {
   if (row.deleted_at !== null || !row.start_date || !row.end_date) return null;
@@ -60,9 +81,20 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const panel = el('details', { class: 'card more-panel', id: 'calendarSync', open: true, 'data-feedback-id': 'booking.calendario.google', 'data-feedback-label': 'Google Calendar' },
     el('summary', null, 'Google Calendar'), panelBody);
 
+  // Capas de estancias (O2), encima de las reservas; cada interruptor se recuerda en el dispositivo.
+  const showStays = canRead(client, STAYS);
+  const layers = readLayers();
+  let people: HousePerson[] = [];
+  const layerSwitch = (key: keyof Layers, label: string, id: string) => el('label', { class: 'layer', dataset: { layer: key }, 'data-feedback-id': `booking.calendario.capas.${key}`, 'data-feedback-label': label },
+    el('input', { type: 'checkbox', id, checked: layers[key], onchange: (event: Event) => { layers[key] = (event.target as HTMLInputElement).checked; saveLayers(layers); void calendar.refresh(); } }),
+    el('span', { class: 'swatch', style: `background:${STAY_COLORS[key]}` }), label);
+  const layersBar = showStays ? el('div', { class: 'layers', id: 'calendarLayers', 'data-feedback-id': 'booking.calendario.capas', 'data-feedback-label': 'Capas' },
+    layerSwitch('outsider', 'Estancias de outsiders', 'layerOutsider'), layerSwitch('staff', 'Presencia del staff', 'layerStaff'),
+    el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.calendario.capas.estancias', 'data-feedback-label': 'Abrir Estancias', onclick: () => navigate('#/estancias') }, 'Estancias')) : null;
+
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Calendario'), el('p', null, 'Ocupación por meses y estado de la sincronización con Google Calendar.'))),
-    calendarHost, blocksCard, panel);
+    layersBar, calendarHost, blocksCard, panel);
 
   const calendar = createCalendar({
     view: 'month',
@@ -71,9 +103,13 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
       const rows = (await client.list(RESERVATIONS)) as ReservationRow[];
       titles = new Map(rows.map((row) => [row.id, row.title]));
       const blocks = showBlocks ? ((await client.list(DATE_BLOCKS)) as Block[]).map(blockToCalendarEvent) : [];
-      return [...rows.map(toCalendarEvent), ...blocks].filter((event): event is CalendarEvent => event !== null);
+      const stays = showStays ? (await liveStays(client)).filter((s) => layers[s.kind]) : [];
+      const persons = stays.length ? await personsByStay(client) : new Map<string, StayPersonRow[]>();
+      return [...rows.map(toCalendarEvent), ...blocks, ...stays.map((s) => stayToCalendarEvent(s, persons.get(s.id), people))]
+        .filter((event): event is CalendarEvent => event !== null);
     },
-    onSelectEvent: (event) => event.status === 'bloqueo' ? undefined : navigate(`#/reservas/${event.id}`),
+    onSelectEvent: (event) => event.status === 'bloqueo' ? undefined
+      : event.status === 'estancia' || event.status === 'staff' ? navigate('#/estancias') : navigate(`#/reservas/${event.id}`),
   });
   calendarHost.append(calendar.element);
 
@@ -145,12 +181,15 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   const onOnline = () => void loadStatus();
   window.addEventListener('online', onOnline);
   const off = client.onTable(RESERVATIONS, () => void calendar.refresh().then(loadStatus));
+  const offStays = showStays ? [STAYS, STAY_PERSONS].map((t) => client.onTable(t, () => void calendar.refresh())) : [];
+  if (showStays) void housePeople(client).then((p) => { people = p; void calendar.refresh(); });
   const offBlocks = showBlocks ? client.onTable(DATE_BLOCKS, () => void calendar.refresh().then(paintBlocks)) : () => undefined;
   void paintBlocks();
   void loadStatus();
   return () => {
     off();
     offBlocks();
+    offStays.forEach((o) => o());
     window.removeEventListener('online', onOnline);
     calendar.destroy();
   };
