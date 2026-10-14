@@ -142,6 +142,11 @@ Sin red, el cliente puede sumar `movements` de su espejo.
   - Lo que falta se apunta sin lote en `default_space_id` (o en el primer sitio pedido, o en el habitual del artículo), con `shortfall: true`.
 - **`movement_costs`** (`movement_id`, `unit_cost`, `source_app`, `source_ref`): el coste que llega después a una entrada que entró sin él. Uno por entrada y solo se añade. `item_costs` lo usa.
 - **`attributes.status`** de un artículo: `operativo`, `limitado`, `averiado` o `fuera_de_servicio` (`INVALID_ITEM_ATTRIBUTE`).
+- **Cuadre de entradas (0804, R4):** `{op: 'call', procedure: 'resources.reconcile_entries', args: {source_app, entries: [{source_ref, item_id, space_id, quantity, unit_cost?, at?}], refs?}}`.
+  - Deja cada `source_ref` y artículo con la cantidad neta pedida, creando la diferencia. Es idempotente.
+  - El contrario (una `entrada_factura` negativa, con el coste y el sitio de lo que deshace) solo lo crea este procedimiento.
+  - Un ref de `refs` sin entrada queda a 0 (anulación o vuelta a revisión).
+  - `item_costs` cuenta los contrarios.
 - **Lectura desde otras apps:** sus migraciones pueden leer `items`, `item_kinds`, `item_units`, `lots`, `movements`, `movement_costs`, `stock_levels` e `item_costs`, como los espacios.
 
 ## 4. Lo que viene

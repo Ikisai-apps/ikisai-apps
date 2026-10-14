@@ -192,3 +192,32 @@ test('consumo por lotes y coste añadido después · primero lo que caduca antes
   assert.equal(code(await commit([{ op: 'insert', table: 'resources.items', id: uuid(), fields: { name: 'Horno', kind: 'maquina', base_unit: 'ud', attributes: { status: 'roto' } } }], app.tokens.editor)), 'INVALID_ITEM_ATTRIBUTE');
   assert.equal((await commit([{ op: 'insert', table: 'resources.items', id: uuid(), fields: { name: 'Horno', kind: 'maquina', base_unit: 'ud', attributes: { status: 'averiado' } } }], app.tokens.editor)).status, 200);
 });
+
+test('cuadre de entradas de Finance · idempotente por línea; el contrario usa su coste; cambiar de artículo deja el anterior a 0', async () => {
+  const cafe = uuid(); const te = uuid();
+  await commit([
+    { op: 'insert', table: 'resources.items', id: cafe, fields: { name: 'Café', kind: 'bebida', base_unit: 'g' } },
+    { op: 'insert', table: 'resources.items', id: te, fields: { name: 'Té', kind: 'bebida', base_unit: 'g' } },
+  ], app.tokens.editor);
+  const rec = (entries: unknown[], refs: string[] = []) =>
+    commit([{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: 'invoices', entries, refs } }], app.tokens.editor);
+  const line = { source_ref: 'line:A', item_id: cafe, space_id: despensa, quantity: 1000, unit_cost: 0.02 };
+  const first = await rec([line]);
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.equal(first.data.results[0].result.movements.length, 1);
+  assert.equal((await rec([line])).data.results[0].result.movements.length, 0, 'repetir no crea nada');
+  assert.equal(await stock(cafe), 1000);
+  // Rectificativa: queda en 400 → contrario de −600 con el mismo coste.
+  await rec([{ ...line, quantity: 400 }]);
+  assert.equal(await stock(cafe), 400);
+  assert.equal(Number((await read('resources.item_costs', { item_id: cafe })).rows[0].average_cost), 0.02);
+  // La línea pasa a otro artículo: el anterior a 0.
+  await rec([{ ...line, item_id: te, quantity: 400 }]);
+  assert.equal(await stock(cafe), 0);
+  assert.equal(await stock(te), 400);
+  // Anular: la línea ya no viene en entries pero sí en refs → a 0.
+  await rec([], ['line:A']);
+  assert.equal(await stock(te), 0);
+  // Fuera del procedimiento, una entrada_factura negativa sigue prohibida.
+  assert.equal(code(await commit([{ op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: cafe, space_id: despensa, quantity: -1, kind: 'entrada_factura', unit_cost: 1, source_app: 'invoices', source_ref: 'x' } }], app.tokens.editor)), 'INVALID_MOVEMENT');
+});
