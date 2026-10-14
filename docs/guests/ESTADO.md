@@ -73,9 +73,11 @@
 
 - 2026-10-14 · Por enlace, ese retiro (C10, #508): el `grant` de `loginWithLink` decide el retiro de entrada aunque la cuenta tenga varios; prueba en `personas.spec.ts`.
 
+- 2026-10-14 · **O4b, primera parte** (§9.13): pestaña Outsider (estancia, cama habitual, cómo llegar, «Sugerir un plato» y «Mis propuestas»); en el calendario, estancias (crear, cambiar fechas y quitar), «hay alguien del staff» y notas con hora. Prueba `outsider.spec.ts`.
+
 ## Pendiente
 
-- **O4b** (después de O2 de Booking y O3c de Food): pestaña Outsider, estancias con «hay alguien» y notas, retiros abiertos con «Apuntarme» y «Mis propuestas».
+- **O4b, resto:** clave de persona y estancias en familia, retiros abiertos y, al final, «Apuntarme» (cuando Booking publique `join_from_suggestion`). El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 
