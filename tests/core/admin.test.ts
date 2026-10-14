@@ -49,6 +49,14 @@ test('admin · alta de una persona con contraseña temporal y accesos iniciales'
   const again = await app.call('/api/v1/admin/invite', { body: { email: 'nueva@example.invalid', memberships: [{ app: 'booking', role: 'reader' }] } });
   assert.equal(again.data.created, false); assert.equal(again.data.temporaryPassword, null);
   assert.equal((await app.call('/api/v1/admin/invite', { token: app.tokens.editor, body: { email: 'x@example.invalid', memberships: [{ app: 'tasks', role: 'editor' }] } })).status, 403);
+  // Sin accesos (P9): solo la cuenta y su perfil; sin nombre, no.
+  assert.equal((await app.call('/api/v1/admin/invite', { body: { email: 'sin@example.invalid', memberships: [] } })).status, 422);
+  const bare = await app.call('/api/v1/admin/invite', { body: { email: 'sin@example.invalid', displayName: 'Marta', memberships: [] } });
+  assert.equal(bare.status, 200, JSON.stringify(bare.data));
+  assert.deepEqual(bare.data.memberships, []);
+  const profile = (await app.t.db.query<{ display_name: string }>(`select display_name from core.profiles where user_id = $1`, [bare.data.userId])).rows[0];
+  assert.equal(profile?.display_name, 'Marta');
+  assert.equal((await app.t.db.query(`select 1 from core.memberships where user_id = $1`, [bare.data.userId])).rows.length, 0);
 });
 
 test('admin · agentes de todas las apps, revocación y registro de accesos transversal', async () => {
