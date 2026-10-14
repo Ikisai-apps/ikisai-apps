@@ -4,9 +4,11 @@
  * dispositivo: lleva correos) para pintarla sin red mientras dure la sesión.
  */
 import type { SyncClient } from '@ikisai/sync-client';
+import type { HouseGrant } from '@ikisai/domain-central';
 import { offlineError } from './client.ts';
 
-export type Role = 'reader' | 'editor' | 'owner';
+/** `outsider` (núcleo 0092) no se da a mano: lo deriva el nivel de casa de Personas. */
+export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
 
 export interface CatalogApp {
   id: string;
@@ -67,7 +69,12 @@ export interface InviteResult {
   temporaryPassword: string | null;
 }
 
-export const ROLE_LABELS: Record<Role, string> = { reader: 'Lector', editor: 'Editor', owner: 'Propietario' };
+export const ROLE_LABELS: Record<Role, string> = { reader: 'Lector', outsider: 'Outsider', editor: 'Editor', owner: 'Propietario' };
+
+/** El acceso de esta cuenta a esta app lo da el nivel de casa (y sigue siendo el que dio): se cambia en Personas. */
+export function grantFor(grants: readonly HouseGrant[], userId: string, app: string, role: string | null | undefined): HouseGrant | null {
+  return grants.find((g) => g.userId === userId && g.app === app && g.role === role) ?? null;
+}
 
 /** Lo que significa cada evento del registro de accesos de Core. */
 export const EVENT_LABELS: Record<string, string> = {
@@ -85,7 +92,7 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 
 export function createAdminApi(client: SyncClient) {
-  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] } } = {};
+  const memory: { accounts?: { at: string; items: Account[] }; catalog?: CatalogApp[]; agents?: { at: string; items: AgentKey[] }; grants?: HouseGrant[] } = {};
 
   async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
     if (!navigator.onLine) throw offlineError();
@@ -103,6 +110,12 @@ export function createAdminApi(client: SyncClient) {
     async accounts(): Promise<Account[]> {
       const out = await call<{ items: Account[] }>('/admin/accounts');
       memory.accounts = { at: new Date().toISOString(), items: out.items };
+      return out.items;
+    },
+    /** Accesos que ha dado el nivel de casa (fase O4), para marcarlos «por nivel de casa». Solo owners de Central. */
+    async houseGrants(): Promise<HouseGrant[]> {
+      const out = await call<{ items: HouseGrant[] }>('/people/house-grants');
+      memory.grants = out.items;
       return out.items;
     },
     setMembership: (body: { app: string; userId: string; role: Role | null; scopes?: unknown; displayName?: string }) =>
@@ -128,7 +141,7 @@ export function createAdminApi(client: SyncClient) {
       return call<{ items: AccessEvent[]; hasMore: boolean; nextBefore: number | null }>(`/admin/access-log?${q}`);
     },
     clear(): void {
-      delete memory.accounts; delete memory.catalog; delete memory.agents;
+      delete memory.accounts; delete memory.catalog; delete memory.agents; delete memory.grants;
     },
   };
 }
