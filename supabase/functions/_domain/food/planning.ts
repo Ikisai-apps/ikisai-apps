@@ -38,6 +38,10 @@ export interface ShoppingListItem extends SyncedColumns {
   manual_override: boolean;
   manual: boolean;
   notes: string | null;
+  /** Mínimo del artículo de Recursos en la unidad de la línea (R5b); lo escribe el servidor. */
+  min_quantity?: number | null;
+  /** Línea de «Reponer»: bajo mínimo y sin menú que la pida (R5b). */
+  restock?: boolean;
 }
 
 export interface PreparationItem extends SyncedColumns {
@@ -100,9 +104,9 @@ export function computeShopping(graph: MenuGraph, period?: Period | null): Shopp
     .sort((a, b) => a.ingredient_id.localeCompare(b.ingredient_id) || a.family.localeCompare(b.family));
 }
 
-/** Lo que se compra mientras nadie lo fije a mano: lo necesario menos lo que ya hay en casa. */
-export function defaultPurchase(required: number, stock: number | null): number {
-  return round3(Math.max(required - (stock ?? 0), 0));
+/** Lo que se compra mientras nadie lo fije a mano: lo necesario más el mínimo del artículo, menos lo que ya hay en casa. */
+export function defaultPurchase(required: number, stock: number | null, min: number | null = null): number {
+  return round3(Math.max(required + (min ?? 0) - (stock ?? 0), 0));
 }
 
 /** Ingredientes de un plato escalados a sus raciones, en la unidad de la receta (vista de cocinero). */

@@ -1,12 +1,13 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, shoppingSources, sourceChanges, validateOperations,
-  type ShoppingItemStatus, type ShoppingList, type ShoppingListItem, type ShoppingListStatus, type Unit,
+  FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, purchaseMovement, purchaseSpace, shoppingSources, sourceChanges, toItemBase, validateOperations,
+  type MovementLike, type ResourceItem, type ShoppingItemStatus, type ShoppingList, type ShoppingListItem, type ShoppingListStatus, type SpaceLike, type Unit,
 } from '@ikisai/domain-food';
-import { el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { el, formatDate, icon, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
 import { T, UNITS, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
+import { R, resourcesClient } from '../app/resources.ts';
 import { usage } from '../app/usage.ts';
 import { fb, type FbMark } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel, samePeriod, setHousePeriod } from './house-period.ts';
@@ -58,8 +59,8 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
       const result = await usage.run('food.compra.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regenerateShopping, {
         menu_id: menuId, list_id: list?.id ?? crypto.randomUUID(), ...(house ? { period_start: housePeriod().start, period_end: housePeriod().end } : {}) }));
       toast(result.created
-        ? `Lista generada: ${result.inserted} productos.`
-        : `Lista regenerada: ${result.inserted} nuevos, ${result.updated} actualizados, ${result.deleted} retirados.`);
+        ? `Lista generada: ${plural(result.inserted, 'producto', 'productos')}.`
+        : `Lista regenerada: ${plural(result.inserted, 'nuevo', 'nuevos')}, ${plural(result.updated, 'actualizado', 'actualizados')}, ${plural(result.deleted, 'retirado', 'retirados')}.`);
     } catch (error) {
       toast(describeError(error));
     } finally {
@@ -70,6 +71,41 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
 
   const update = (item: ItemRow, fields: Record<string, unknown>) =>
     commitSafely([{ op: 'update', table: T.shoppingItems, id: item.id, expectedRevision: item.revision, fields }]);
+
+  /**
+   * «Comprado» (o «recibido») entra al stock de Recursos en ese momento, sin coste; volver a «pendiente» lo saca
+   * (decisión del usuario, 14-10-2026). Finance (R4) añade después el coste a esa entrada por su referencia
+   * `shopping_item:<id>`. Si el ingrediente aún no tiene artículo o no hay ningún sitio de cocina, la lista sigue como
+   * siempre; si la unidad no se puede pasar a la del artículo, se avisa.
+   */
+  async function recordPurchase(item: ItemRow, status: string): Promise<void> {
+    const ingredient = data?.ingredients.find((i) => i.id === item.ingredient_id);
+    if (!ingredient?.item_id) return;
+    const r = resourcesClient(client);
+    try {
+      const [items, spaces, movements] = await Promise.all([
+        r.list(R.items) as unknown as Promise<Array<ResourceItem & { default_space_id: string | null }>>,
+        r.list(R.spaces) as unknown as Promise<SpaceLike[]>,
+        r.list(R.movements) as unknown as Promise<MovementLike[]>,
+      ]);
+      const article = items.find((i) => i.id === ingredient.item_id);
+      if (!article) return;
+      const quantity = toItemBase(Number(item.purchase_quantity), item.unit, article.base_unit);
+      const space = purchaseSpace(article, spaces);
+      // Sin sitios de cocina en Recursos todavía no se lleva inventario: la lista funciona como siempre, sin avisos.
+      if (!space) return;
+      if (quantity === null) { toast(`No se ha dado entrada a ${ingredient.name} en el inventario: su unidad no se puede pasar a ${article.base_unit}.`); return; }
+      const movement = purchaseMovement({ itemId: article.id, lineId: item.id, bought: status !== 'pendiente', quantityBase: quantity, spaceId: space, supplier: item.supplier, movements });
+      if (movement) await r.commit([{ op: 'insert', table: R.movements, id: crypto.randomUUID(), fields: movement }]);
+    } catch (error) {
+      toast(`No se ha anotado en el inventario: ${describeError(error)}`);
+    }
+  }
+  const setItemStatus = async (item: ItemRow, status: string) => {
+    const ok = await update(item, { status });
+    usage.track('food.compra.marcar', ok ? 'success' : 'error');
+    if (ok && (status === 'pendiente') !== (item.status === 'pendiente')) await recordPurchase(item, status);
+  };
 
   function quantityInput(item: ItemRow, value: number | null, label: string, onValue: (value: number | null) => void, disabled: boolean, mark: FbMark): HTMLInputElement {
     const input = fb(el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(value), 'aria-label': label, disabled,
@@ -87,34 +123,36 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     const disabled = closed || !canWrite();
     const required = Number(item.required_quantity);
     const stock = item.stock_quantity === null ? null : Number(item.stock_quantity);
+    const min = item.min_quantity === null || item.min_quantity === undefined ? null : Number(item.min_quantity);
     const stockInput = quantityInput(item, stock, `En casa de ${name}`, (value) => {
       // «Comprar» sigue a «en casa» mientras nadie lo haya fijado a mano.
-      void update(item, item.manual_override || item.manual ? { stock_quantity: value } : { stock_quantity: value, purchase_quantity: defaultPurchase(required, value) });
+      void update(item, item.manual_override || item.manual ? { stock_quantity: value } : { stock_quantity: value, purchase_quantity: defaultPurchase(required, value, min) });
     }, disabled, { feedbackId: 'food.menu.compra.linea.en_casa', feedbackLabel: 'En casa' });
     const purchaseInput = quantityInput(item, Number(item.purchase_quantity), `Comprar de ${name}`, (value) => {
       void update(item, item.manual ? { purchase_quantity: value ?? 0 } : { purchase_quantity: value ?? 0, manual_override: true });
     }, disabled, { feedbackId: 'food.menu.compra.linea.comprar', feedbackLabel: 'Cantidad a comprar' });
     const bought = el('input', { 'data-feedback-id': 'food.menu.compra.linea.comprado', 'data-feedback-label': 'Comprado', type: 'checkbox', class: 'bigcheck', checked: item.status !== 'pendiente', disabled, 'aria-label': `${name} comprado`,
-      onchange: () => void update(item, { status: bought.checked ? 'comprado' : 'pendiente' }).then((ok) => usage.track('food.compra.marcar', ok ? 'success' : 'error')) });
-    const status = el('select', { 'data-feedback-id': 'food.menu.compra.linea.estado', 'data-feedback-label': 'Estado del producto', class: 'compact', 'aria-label': `Estado de ${name}`, disabled, onchange: () => void update(item, { status: status.value }).then((ok) => usage.track('food.compra.marcar', ok ? 'success' : 'error')) },
+      onchange: () => void setItemStatus(item, bought.checked ? 'comprado' : 'pendiente') });
+    const status = el('select', { 'data-feedback-id': 'food.menu.compra.linea.estado', 'data-feedback-label': 'Estado del producto', class: 'compact', 'aria-label': `Estado de ${name}`, disabled, onchange: () => void setItemStatus(item, status.value) },
       ...SHOPPING_ITEM_STATUSES.map((s) => el('option', { value: s, selected: item.status === s }, ITEM_STATUS_LABELS[s])));
     const chips = [
       item.manual ? el('span', { class: 'chip' }, 'A mano') : null,
       !item.manual && item.manual_override ? el('span', { class: 'chip' }, 'Compra fijada') : null,
-      !item.manual && required === 0 ? el('span', { class: 'chip trash' }, 'Ya no hace falta') : null,
+      !item.manual && !item.restock && required === 0 ? el('span', { class: 'chip trash' }, 'Ya no hace falta') : null,
       item._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null,
     ];
     return el('li', { 'data-feedback-id': 'food.menu.compra.linea', 'data-feedback-label': 'Producto', class: 'buyrow', 'data-id': item.id, 'data-status': item.status, 'data-pending': String(item._pending === true) },
       bought,
       el('div', { class: 'buyname' }, el('strong', null, name),
-        el('span', { class: 'recipemeta' }, item.manual ? 'Añadido a mano' : `Necesario: ${formatQuantity(required)} ${UNIT_LABELS[item.unit]}`, item.supplier ? ` · ${item.supplier}` : ''),
+        el('span', { class: 'recipemeta' }, item.manual ? 'Añadido a mano' : item.restock ? `Bajo mínimo: ${formatQuantity(min)} ${UNIT_LABELS[item.unit]}` : `Necesario: ${formatQuantity(required)} ${UNIT_LABELS[item.unit]}`, item.supplier ? ` · ${item.supplier}` : '',
+          !item.restock && min ? ` · Mínimo ${formatQuantity(min)} ${UNIT_LABELS[item.unit]}` : ''),
         el('span', { class: 'chips' }, ...chips)),
       el('label', { class: 'buyfield' }, el('span', null, 'En casa'), stockInput),
       el('label', { class: 'buyfield' }, el('span', null, `Comprar (${UNIT_LABELS[item.unit]})`), purchaseInput),
       el('div', { class: 'buyactions' }, status,
         !disabled && !item.manual && item.manual_override
           ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.recalcular', 'data-feedback-label': 'Recalcular', class: 'linkbtn', type: 'button', 'aria-label': `Volver a calcular la compra de ${name}`,
-              onclick: () => void update(item, { manual_override: false, purchase_quantity: defaultPurchase(required, stock) }) }, 'Recalcular')
+              onclick: () => void update(item, { manual_override: false, purchase_quantity: defaultPurchase(required, stock, min) }) }, 'Recalcular')
           : null,
         !disabled && item.manual
           ? el('button', { 'data-feedback-id': 'food.menu.compra.linea.quitar', 'data-feedback-label': 'Quitar producto', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${name}`, onclick: () => void commitSafely([{ op: 'delete', table: T.shoppingItems, id: item.id, expectedRevision: item.revision }]) }, icon('close', 18))
@@ -188,10 +226,13 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     const diff = sourceChanges(list.source_revisions, current);
     const stale = data.pending || isStale(list.source_revisions, current);
     const names = new Map(data.ingredients.map((i) => [i.id, i.name]));
-    const sorted = [...items].sort((a, b) => Number(a.manual) - Number(b.manual) || (names.get(a.ingredient_id) ?? '').localeCompare(names.get(b.ingredient_id) ?? '', 'es'));
+    const byName = (a: ItemRow, b: ItemRow) => (names.get(a.ingredient_id) ?? '').localeCompare(names.get(b.ingredient_id) ?? '', 'es');
+    const sorted = items.filter((i) => !i.restock).sort((a, b) => Number(a.manual) - Number(b.manual) || byName(a, b));
+    // «Reponer» (R5b): lo que está bajo mínimo en la cocina y ningún menú de la lista pide, aparte.
+    const restock = items.filter((i) => i.restock).sort(byName);
     const setStatus = (status: ShoppingListStatus) => commitSafely([{ op: 'update', table: T.shoppingLists, id: list!.id, expectedRevision: list!.revision, fields: { status } }]);
     const button = (id: string, label: string, onclick: () => void, mark: FbMark) => fb(el('button', { class: 'ghost', type: 'button', id, onclick }, label), mark);
-    const pendingBuy = sorted.filter((i) => i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length;
+    const pendingBuy = items.filter((i) => i.status === 'pendiente' && Number(i.purchase_quantity) > 0).length;
 
     replace(host, houseHead,
       stale ? el('div', { 'data-feedback-id': 'food.menu.compra.aviso_cambios', 'data-feedback-label': 'Aviso de cambios', class: 'banner warn notice', id: 'shoppingStale', role: 'status' },
@@ -214,6 +255,10 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
       sorted.length
         ? el('ul', { 'data-feedback-id': 'food.menu.compra.lista', 'data-feedback-label': 'Lista de compra', class: 'buylist', id: 'shoppingList' }, ...sorted.map((item) => itemRow(item, names.get(item.ingredient_id) ?? 'Ingrediente retirado', closed)))
         : el('div', { class: 'empty plain' }, 'La lista está vacía: el menú no tiene platos con ingredientes.'),
+      restock.length ? el('div', { 'data-feedback-id': 'food.menu.compra.reponer', 'data-feedback-label': 'Reponer', class: 'restock' },
+        el('h3', { class: 'sectionlabel' }, 'Reponer', el('span', { class: 'count' }, String(restock.length))),
+        el('p', { class: 'muted' }, 'Bajo mínimo en la cocina y sin menú que lo pida.'),
+        el('ul', { class: 'buylist', id: 'restockList' }, ...restock.map((item) => itemRow(item, names.get(item.ingredient_id) ?? 'Ingrediente retirado', closed)))) : null,
     );
   }
 
