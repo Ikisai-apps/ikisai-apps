@@ -1626,3 +1626,20 @@ Diseño en `coordinacion/invoices/R4_PREPARACION.md`. Esta PR trae solo el model
   - el sitio está vivo y activo;
   - si no, falla con `INVALID_RESOURCE_LINK` (422).
 - **Interruptor:** `invoices.settings`, con la clave `resources_links` y el valor `true` o `false` (`INVALID_SETTING`). Solo lo escribe el owner y está apagado sin fila (`invoices.resources_links()`). Mientras esté apagado, la app se ve igual y no se crean entradas en Recursos.
+
+
+### 16.17 R4 · entradas al inventario al validar (0235, PR 2; respuestas de Core del 14-10-2026)
+- **Lectura `invoices.resource_entries`** (función, editor y owner): devuelve los argumentos de `resources.reconcile_entries` (0804) para las facturas dadas y las que rectifican. Con el interruptor apagado, vacío.
+- **Le toca a cada línea** (`source_ref = 'invoice_line:<id>'`), en unidad base:
+  - viva, enlazada, con cantidad e importe positivos y factura validada o archivada: `quantity × item_factor` (null = 1), menos lo devuelto por las rectificativas validadas que la rectifican (`rectifies_line_id`), nunca por debajo de 0;
+  - si no, 0: al volver a revisión, al anular, al borrarla o al desenlazarla sale el contrario;
+  - las líneas de una rectificativa no tienen entrada propia: `reconcile_entries` no admite cantidades negativas, así que lo devuelto rebaja la original.
+- **Datos de la entrada:**
+  - coste por unidad base = base sin IVA / cantidad en base;
+  - sitio = el de la línea o el habitual del artículo;
+  - `at` = la fecha de la factura a mediodía en Madrid;
+  - cambiar el artículo de una validada deja el anterior a 0 y crea la entrada del nuevo.
+- **`skipped`:** la línea que debería entrar sin cantidad (`sin_cantidad`) o sin sitio (`sin_sitio`) se aparta y no bloquea la validación.
+- **Edge (`afterCommit`):**
+  - tras cada commit de `POST commands` que toca facturas o líneas, lee la lectura y manda `{op:'call', procedure:'resources.reconcile_entries'}` en un lote de Recursos con el mismo usuario (`requestId` `invoices-entries-<cursor>`);
+  - si falla, lo registra y no deshace el commit de Finance; el siguiente commit de esa factura lo cuadra, porque es idempotente.
