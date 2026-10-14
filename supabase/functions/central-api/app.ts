@@ -2,7 +2,7 @@
 import { createApp, createStorage, createSupabase, createUploads, fail, r2ConfigFromEnv, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type StorageAccess, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   COMPLIANCE_TABLES, ENTITY_TABLE, KPI_SOURCES, LOGO_MIME, SITE_PLAN_MIME, canSeeKpi, TABLES, TASK_KIND, TASK_KIND_LABEL, kpiState, targetFor, taskExternalRef, validateOperations, visibleRow,
-  type KpiRow, type KpiTarget,
+  type HouseGrant, type KpiRow, type KpiTarget,
 } from '../_domain/central/mod.ts';
 
 export const CENTRAL_ORIGINS = ['https://central.ikisai.com', 'https://ikisai-central.pages.dev'];
@@ -170,6 +170,13 @@ function centralRoutes(supabase: Supabase, uploads: UploadsConfig, options: Cent
     },
     // Catálogo completo de apps para la pantalla Accesos (solo owner de Central).
     { method: 'GET', pattern: 'catalog/apps', handler: ({ ctx }) => read(ctx, 'central.app_catalog') },
+    // Accesos que ha dado el nivel de casa (O4, núcleo 0092): para marcarlos «por nivel de casa» en Personas y Accesos.
+    {
+      method: 'GET', pattern: 'people/house-grants', handler: async ({ ctx }) => {
+        if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo dirección ve los accesos que da el nivel de casa.');
+        return { items: (await supabase.rpc<HouseGrant[]>('core_house_grants', { p_user: null })) ?? [] };
+      },
+    },
     // Archivo de un registro de documentación: solo para quien ve los datos reservados (API.md §8, mientras falte P1).
     {
       method: 'GET', pattern: 'people/records/:id/file', handler: async ({ ctx, params }) => {

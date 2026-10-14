@@ -72,6 +72,15 @@ export function relationForLevel(level: HouseLevel | null | undefined): Relation
   return level === 'direccion' || level === 'staff' ? 'equipo' : level === 'outsider' ? 'colaborador' : 'otro';
 }
 
+/**
+ * Fase O4: acceso que ha dado el nivel de casa a una cuenta (núcleo 0092, `core_house_grants`). `previousRole` es el que tenía
+ * antes (null = sin acceso), y es el que se le devuelve al quitar el nivel.
+ */
+export interface HouseGrant { userId: string; app: string; level: string; role: string; previousRole: string | null }
+
+/** Lo que se explica al convertir o quitar (semilla del núcleo, 0092). Solo el outsider da accesos; dirección y staff, no. */
+export const OUTSIDER_ACCESS_TEXT = 'Guests (sus estancias, notas y comidas) y Tasks (las tareas que se le abran: comentar, marcar hechas y proponer)';
+
 export const RELATION_LABELS: Record<Relation, string> = {
   equipo: 'Equipo', colaborador: 'Colaborador', voluntario: 'Voluntariado', practicas: 'Prácticas', otro: 'Otra',
 };
