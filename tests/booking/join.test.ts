@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { JOIN_PROCEDURE, JOIN_SUGGESTION_KIND, TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
+import { portalTasksRequest } from '../../supabase/functions/booking-api/portal/notices.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -82,6 +83,23 @@ test('la cuenta autora sale del núcleo; claves ajenas y retiros no visibles se 
   assert.equal(direct.status, 422);
   const byHand = await commit([{ op: 'insert', table: TABLES.joinRequests, id: uuid(), fields: { reservation_id: res, account_id: marta, persons: [{ name: 'X' }] } }]);
   assert.equal(byHand.status, 422, 'el personal no escribe solicitudes a mano');
+});
+
+test('aviso al comercial al sugerir (on_submit): un aviso por solicitud, con su etiqueta para Tasks; nunca impide sugerir', async () => {
+  const { res } = await retreat('Verano abierto');
+  const marta = await member('guests');
+  const s = await suggest(marta, { reservation_id: res, persons: [{ name: 'Marta' }] });
+  const notices = await app.t.db.query<{ kind: string; actor: string }>(`select kind, actor from booking.portal_notices where reservation_id = $1`, [res]);
+  assert.deepEqual(notices.rows.map((n) => [n.kind, n.actor]), [['apuntarme', marta]]);
+  const request = portalTasksRequest({ id: s.id, kind: 'apuntarme', reservation_id: res, code: 'R-1', title: 'Verano abierto' });
+  assert.deepEqual([request.kind, request.kind_label, request.title], ['booking.proposal_comment', 'Huésped · Quiere apuntarse', 'Solicitud para apuntarse · R-1 Verano abierto']);
+  // una reserva que no existe no avisa, pero la sugerencia se crea (y al aprobarla, el procedimiento la rechazará)
+  const ghost = await suggest(marta, { reservation_id: uuid(), persons: [{ name: 'Marta' }] });
+  assert.equal(ghost.status, 'pending');
+  // llamado desde un lote del personal, no hace nada
+  const staffCall = await commit([{ op: 'call', procedure: 'booking.join_on_submit', args: {} }]);
+  assert.equal(staffCall.status, 200);
+  assert.equal((await app.t.db.query(`select 1 from booking.portal_notices where kind = 'apuntarme' and reservation_id = $1`, [res])).rows.length, 1);
 });
 
 test('pasar al organizador: lote corregido, solicitud en su portal y aceptarla', async () => {
