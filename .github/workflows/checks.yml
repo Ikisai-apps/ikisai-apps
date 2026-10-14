@@ -3,7 +3,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore: ['docs/**', '**.md', 'CODEOWNERS']
+    # Sin filtro de rutas: con main protegida (14-10-2026) las comprobaciones obligatorias tienen que informar siempre.
+    # En una PR solo de documentación, «Qué ha cambiado» decide `code=false` y el job pesado queda saltado (cuenta como verde).
   workflow_call:
   # Completa cada noche (solo si main cambió en las últimas 24 h) y a mano: en las PR, de lo compartido solo va el humo.
   schedule:
@@ -24,6 +25,7 @@ jobs:
     outputs:
       e2e: ${{ steps.detect.outputs.e2e }}
       uikit: ${{ steps.detect.outputs.uikit }}
+      code: ${{ steps.detect.outputs.code }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,9 +38,11 @@ jobs:
           #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
           #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
           apps="invoices booking food tasks central organizers guests"
-          full=""; smoke=false; uikit=false
+          full=""; smoke=false; uikit=false; code=true
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+            # Solo documentación (lo que antes ignoraba `paths-ignore`): sin job pesado ni Playwright.
+            if [ -n "$files" ] && ! echo "$files" | grep -Evq '^(docs/.*|CODEOWNERS|.*\.md)$'; then code=false; fi
             if echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then smoke=true; fi
             if echo "$files" | grep -Eq '^(packages/ui-kit/|package-lock\.json)'; then uikit=true; fi
             # Historia, cáscara, hojas y diálogos del kit («atrás», FB_2026_025): cambian el recorrido de todas las apps, así
@@ -64,9 +68,13 @@ jobs:
           done
           echo "e2e=[${items%,}]" >> "$GITHUB_OUTPUT"
           echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
-          echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit  code=$code"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
+    needs: cambios
+    # Saltado solo en una PR de documentación; en código, migraciones, workflows, scripts, manual o programado, corre siempre.
+    if: needs.cambios.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
