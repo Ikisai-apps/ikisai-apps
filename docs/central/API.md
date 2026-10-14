@@ -55,7 +55,7 @@ Lectura `{reader, editor, owner}`. Sin datos de contacto ni laborales.
 |---|---|---|
 | `code` | `text unique not null` | `PER_AAAA_NNN` (`core.next_code('PER', año de alta)`), por trigger en el `insert`. No escribible. |
 | `display_name` | `text not null` | 1–80. Nombre con el que se le conoce («Marga»). |
-| `house_level` | `text null` | **Nivel de casa** (fase P1, `1504`; RECURSOS.md §13): `direccion`, `staff`, `outsider` o `null` (sin nivel: fuera del directorio). Independiente del papel en cada evento (organizador, colaborador, huésped), que no vive en Central. **No da ni quita roles de acceso** en P1; eso será la fase O1, de Core. |
+| `house_level` | `text null` | **Nivel de casa** (fase P1, `1504`; RECURSOS.md §13): `direccion`, `staff`, `outsider` o `null` (sin nivel: fuera del directorio). Independiente del papel en cada evento (organizador, colaborador, huésped), que no vive en Central. **Da roles desde O4** (`1506`): el trigger `people_house_level` llama a `core.apply_house_level` (núcleo 0092) con el nivel que cuenta (ficha viva, activa y no fusionada; si no, `null`) al cambiar `house_level`, `user_id`, `active`, `deleted_at` o `merged_into`; si cambia la cuenta, la vieja se queda primero sin nivel. Hoy solo deriva el outsider: Tasks `outsider` y Guests `editor`. Nunca rebaja; al quitarlo vuelve el rol de antes, salvo si alguien lo cambió a mano después. Dirección y staff no derivan nada (decisión del usuario). Central solo escribe el nivel. |
 | `relation` | `text not null` | `equipo`, `colaborador`, `voluntario`, `practicas`, `otro`. Relación con Ikisai (encargo de Core). **Desde P1 ya no se pide ni se ve** con el nivel activo, pero se conserva y se sigue escribiendo (en altas y cambios de nivel: `relationForLevel`, `equipo` para dirección y staff, `colaborador` para outsider y `otro` sin nivel) para lo que la lea. Se quitará solo si el usuario lo confirma. |
 | `base_role` | `text not null default 'otro'` | Lista de C05 `rol_base`: `direccion_general`, `direccion_operativa_comercial`, `cocina`, `mantenimiento_logistica`, `limpieza`, `apoyo_tecnico_sonido`, `apoyo_implantacion_alojativa`, `refuerzo_eventual`, `otro`. **No** es el rol de `core.memberships`. |
 | `coverage` | `text not null default 'todo'` | C05 `ambito_cobertura`: `todo`, `solo_eventos`, `solo_mantenimiento`, `solo_cocina`, `solo_limpieza`, `solo_tecnico`, `solo_comercial`. |
@@ -471,6 +471,7 @@ function visible(table, row, ctx) {
 |---|---|---|---|
 | `POST requirements/:id/task` | editor | `{requestId, title?, due?, note?}` → `{requirementTaskId, created, routed, task}`. Pide la tarea a Tasks (`POST /api/v1/requests/task`) con el token de la persona: `source: 'central'`, `external_ref: '<LEG_…>:<requestId>'`, `kind: 'central.compliance_due'` con `kind_label`, `external_url` a la ficha (`https://central.ikisai.com/#/cumplimiento/<id>`), prioridad por el riesgo (crítico → `critical`, alto → `high`); **sin área ni proyecto** (las reglas de Tasks deciden o queda «Por clasificar»). Después inserta el enlace en `requirement_tasks`. Idempotente: el mismo `requestId` da la misma tarea y el mismo enlace. | `NOT_FOUND`, `TASKS_FORBIDDEN 403`, `EXTERNAL_REF_IN_USE 409`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` |
 | `POST requirements/tasks-status` | reader | `{ids: [id de tarea]}` (hasta 200) → `{items, missing}` de `tasks.targets` con el token de quien mira (`pending`, `request`, `visible`, `done`, `deleted`). | `TASKS_*` |
+| `GET people/house-grants` | owner | → `{items: [{userId, app, level, role, previousRole}]}`: lo que el nivel de casa ha dado a cada cuenta (`core_house_grants`, núcleo 0092). Personas y Accesos lo marcan «por nivel de casa». | `FORBIDDEN` |
 | `GET catalog/apps` | owner | Catálogo completo de apps (`central.app_catalog`) para la pantalla Accesos; `GET apps` del kit solo da las de la cuenta. | `FORBIDDEN` |
 | `GET dashboard` | reader | `{computedAt, items: [{app, kpi, label, value, unit, period, periodStart, periodEnd, direction, link, computedAt, target, state}], unavailable: [app]}`. Lee las proyecciones de §7.2 (`KPI_SOURCES`) y aplica `kpi_targets`. Una app sin proyección o caída va en `unavailable`, no rompe el panel. | — |
 | — | owner | **Dar cuenta** desde la ficha no tiene ruta propia: la interfaz llama a `admin/invite` (correo propuesto desde `person_private.email`, accesos iniciales) y después enlaza `people.user_id` con un `update` normal. «Enlazar cuenta existente» y «Desenlazar» son también un `update`. | los de `admin/invite` |
@@ -587,7 +588,12 @@ Lista con buscador y filtros (relación, función, activo), orden manual. Ficha:
 - **Básico** (todos): nombre, relación, función, cobertura, disponibilidad, puesto comprometido.
 - **Contacto y vinculación** (plegable; solo quien ve datos reservados).
 - **Documentación y formación** (plegable; ídem): lista con estado derivado y fecha; adjuntar foto o PDF.
-- **Cuenta** (solo owner): cuenta enlazada y sus accesos por app, con «Dar cuenta» (alta con contraseña temporal y accesos iniciales; correo propuesto desde el contacto) o «Enlazar cuenta existente».
+- **Cuenta** (solo owner): cuenta enlazada y sus accesos por app, con «Dar cuenta» (alta con contraseña temporal y accesos iniciales; correo propuesto desde el contacto) o «Enlazar cuenta existente». Los accesos que da el nivel de casa salen marcados «por nivel de casa», con lo que tenía antes (lo que vuelve al quitar el nivel).
+- **Outsider (O4, tabla «hoy / después» aprobada el 13-10-2026; solo owner y con los niveles aplicados):**
+  - **«Convertir en outsider»** junto a Editar, en una ficha sin nivel. La hoja explica qué ve en Guests y Tasks y en qué apps no entra. Con cuenta: «Convertir». Sin cuenta: «Convertir sin cuenta» (se permite, con el aviso) o «Convertir y dar cuenta» (correo y, como en «Dar cuenta», otros accesos opcionales; Tasks y Guests no se ofrecen: los da el nivel al enlazar). Comprueba antes si el correo ya tiene cuenta, como «Dar cuenta».
+  - **«Quitar de outsider»** en una ficha outsider: pregunta a qué nivel pasa (Sin nivel por defecto, o Staff). No borra nada.
+  - **Editor:** bajo «Nivel de casa», una línea dice qué accesos da o quita el nivel elegido antes de guardar.
+  - **Lista:** cada outsider enseña en qué apps entra por su nivel, o «Sin cuenta: no entra en ninguna app». Con el filtro «Outsider», el botón flotante pasa a «Nuevo outsider» (la ficha nace con ese nivel).
 
 ### 9.3 Cumplimiento
 
@@ -612,6 +618,7 @@ Pestañas **Vencimientos** (C09 `vencimientos` + documentación de personas, por
 - **Cuentas del equipo sin ficha o con otro nombre:** son del equipo las cuentas con acceso a alguna app interna; las de portal (organizadores y huéspedes) y los agentes no tienen ficha.
   - En la lista, los chips «Sin ficha» y «Nombre distinto de la ficha», con un aviso que cuenta cuántas hay y deja ver solo esas.
   - En la hoja de la cuenta, la sección «Ficha de Personas» permite enlazar con una persona sin cuenta (o crear su ficha) y tiene el botón «Usar el nombre de la ficha». La ficha de una persona tiene el mismo botón.
+- **Rol `outsider`** (O4): no se da a mano (el núcleo lo rechaza con `INVALID_ROLE`) y el selector no lo ofrece. Lo que da el nivel de casa sale en la lista con la marca «por nivel de casa» y, en la hoja de la cuenta, fijo, con «Lo da el nivel de casa: cámbialo en Personas».
 - **Agentes:** claves de todas las apps, último uso, caducidad, revocar.
 - **Registro:** registro de accesos de todas las apps, filtrable por app, paginado.
 

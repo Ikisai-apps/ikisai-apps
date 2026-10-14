@@ -45,10 +45,11 @@
 - 2026-10-13 · **Fase P1 · oficios y capacidades** (`1505`): árbol de oficios, capacidades con la estrella del kit, pantalla Oficios, bloque en la ficha, filtro y chips en la lista, lecturas `trade_options` y `capability_options` para Tasks, kit del oficio previsto y fusión con capacidades.
 - 2026-10-13 · **Fase P1 · importar oficios de Tasks** con vista previa (`tasks.action_labels`): repetidas juntas, sin duplicar, archivadas sin marcar; Tasks no cambia.
 - 2026-10-13 · **O4 · caracterización (PR 0)** antes de «Convertir en outsider»: `outsider.test.ts` (hoy el nivel de casa no toca `core.memberships`; la fusión conserva el nivel de la ficha de destino) y `people-outsider.spec.ts` (filtro Outsider, ficha con su cuenta, Accesos y desenlazar). Lo marcado «hoy» cambia a propósito con O4.
+- 2026-10-14 · **O4 · «Convertir en outsider»** (`1506`, núcleo 0092): el nivel de casa da los roles del outsider (Tasks `outsider`, Guests `editor`) mediante un trigger que llama a `core.apply_house_level`, y se aplica a los outsiders que ya tienen cuenta. `GET people/house-grants`. Ficha con «Convertir en outsider» (con o sin cuenta, o dándosela) y «Quitar de outsider» (Sin nivel o Staff); editor que avisa de lo que da el nivel; lista con los accesos de cada outsider, el aviso «Sin cuenta» y «Nuevo outsider»; Accesos con la marca «por nivel de casa» y el selector fijo.
 
 ## Pendiente
 
-- O4 · «Convertir en outsider» (tabla «hoy / después» aprobada el 13-10-2026): se programa cuando la migración 0092 del núcleo (rol `outsider`, `core.apply_house_level`, `core.house_grants`) esté en main.
+- O4 · «Convertir y dar cuenta» sin otros accesos espera a que `admin/invite` admita `memberships: []` (PETICIONES P9).
 - R7 · indicadores: hay lista en `coordinacion/central/SALIDA.md` (13-10-2026), sin diseño.
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.
