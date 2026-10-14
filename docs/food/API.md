@@ -196,7 +196,36 @@ Migración `20261014_0197_food_resource_links.sql`; diseño en `coordinacion/amp
   - Unidad base del artículo: la preferida del ingrediente («unidad» es «ud»); las máquinas, «ud».
   - Si el nombre ya lo usa un artículo de otro tipo, el nuevo se llama «… (cocina)».
 - **Recetario:** también sugiere los ingredientes de Recursos que Food aún no usa (creados en Finance, en Tasks o a mano). Elegir uno crea el ingrediente ya enlazado, con su nombre y su unidad, sin duplicar el artículo.
-- **Siguiente:** compra con stock (R5b) y consumo al acabar el servicio (R5c).
+- **Hecho después:** compra con stock (R5b, §3.2 paso 6b) y consumo al acabar el servicio (R5c, §2.8).
+
+### 2.8 Consumo al acabar el servicio (R5c, 14 de octubre de 2026)
+
+Migración `20261014_0199_food_consumptions.sql`; decisión del usuario del 14-10-2026; dominio en `_domain/food/consumption.ts`.
+
+```text
+food.consumptions
+  menu_item_id  uuid not null → food.menu_items   on delete cascade, inmutable; un consumo vivo por plato
+  status        text not null      confirmado (se descontó) | omitido (no se hizo)
+  automatic     boolean not null default false   descontado solo a las 24 h
+  notes         text  ≤ 500
+writable: menu_item_id, status, automatic, notes.
+```
+
+- **Cuándo:**
+  - a las 2 h de la hora del servicio (sin hora, a las 23:59 de ese día) su consumo queda **por confirmar** (`consumptionDue`, `serviceConsumption`);
+  - si nadie lo confirma, a las 24 h se descuenta solo con lo previsto.
+  - Solo desde `CONSUMPTION_SINCE` (2026-10-15): los servicios anteriores no se descuentan nunca.
+- **Qué se descuenta:** los ingredientes de cada plato escalados a sus raciones (`consumptionLines`), en la unidad base del artículo.
+  - Las líneas sin artículo o cuya unidad no pasa a la del artículo se ven, pero no se descuentan.
+  - Llamada `resources.consume` por línea (`consumeCall`): `kind: 'consumo_servicio'`, `source_app: 'food'`, `source_ref: 'menu_item:<id>'`; sitios de cocina (`kitchenSpaceIds`), y lo que falte se apunta en el sitio de compra del artículo con `shortfall`.
+  - Primero el lote de Recursos y después el de Food. Un plato con movimientos de su referencia ya cuenta como hecho, así que nada se descuenta dos veces.
+- **Es una tabla aparte, no un campo del plato:** así un retiro validado o cerrado, cuyos platos no se tocan (`MENU_LOCKED`), puede anotar su consumo.
+- **En la app:**
+  - «Confirmar consumo» en cada servicio por confirmar, con una hoja para corregir lo gastado o desmarcar «se hizo»;
+  - «Consumo anotado» cuando ya está;
+  - en Inicio, la tarjeta «Consumo por confirmar».
+  - Solo para editor u owner y solo si en Recursos hay sitios de cocina (si no, no se lleva inventario y no se enseña nada).
+- **El descuento automático** lo hace hoy la app de un editor al abrirse o al volver la red (`autoConsume`). Si nadie abre Food, espera a que alguien lo haga. Pedido a Core un worker para hacerlo en el servidor (`PETICIONES.md`).
 
 ### 2.3 Compra, preparación y stock
 

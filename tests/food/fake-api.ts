@@ -136,6 +136,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.shopping_list_items': ['shopping_list_id', 'ingredient_id', 'required_quantity', 'unit', 'stock_quantity', 'purchase_quantity', 'supplier', 'status',
     'manual_override', 'manual', 'notes', 'min_quantity', 'restock'],
   'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
+  'food.consumptions': ['menu_item_id', 'status', 'automatic', 'notes'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
@@ -159,6 +160,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.shopping_lists': { status: 'borrador', source_revisions: {} },
   'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false, restock: false },
   'food.preparation_items': { done: false, position: 0, manual: false },
+  'food.consumptions': { automatic: false },
   'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
   'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
 };
@@ -264,6 +266,34 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (op.op === 'call') {
         // Versión mínima de los procedimientos de estado; las reglas completas se prueban contra PGlite.
         const { procedure, args = {} } = op as unknown as { procedure: string; args?: Record<string, any> };
+        if (procedure === 'resources.consume' && scope === 'resources') {
+          // Como resources.consume (0803): primero lo que caduca antes; lo que falte, sin lote en el sitio por defecto.
+          let seq = 0;
+          const movements = Array.from(stagedTable('resources.movements').values()).filter((m) => !m.deleted_at && m.item_id === args.item_id);
+          const lots = new Map(Array.from(stagedTable('resources.lots').values()).map((l) => [l.id, l]));
+          const levels = new Map<string, { space_id: string; lot_id: string | null; quantity: number }>();
+          for (const m of movements) {
+            const key = `${m.space_id}|${m.lot_id ?? ''}`;
+            const level = levels.get(key) ?? { space_id: m.space_id as string, lot_id: (m.lot_id as string | null) ?? null, quantity: 0 };
+            level.quantity += Number(m.quantity);
+            levels.set(key, level);
+          }
+          const spaces: string[] | null = Array.isArray(args.space_ids) ? args.space_ids : null;
+          const order = [...levels.values()].filter((l) => l.quantity > 0 && (!spaces || spaces.includes(l.space_id)))
+            .sort((a, b) => String(lots.get(a.lot_id ?? '')?.expires_on ?? '9999').localeCompare(String(lots.get(b.lot_id ?? '')?.expires_on ?? '9999')));
+          let left = Number(args.quantity);
+          const take = (space: string, lot: string | null, quantity: number) => {
+            const row: FakeRow = { id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };
+            for (const column of tables['resources.movements']!) row[column] = null;
+            Object.assign(row, { item_id: args.item_id, space_id: space, lot_id: lot, quantity: -quantity, kind: args.kind, source_app: args.source_app, source_ref: args.source_ref, note: args.note ?? null });
+            stagedTable('resources.movements').set(row.id, row);
+            batchChanges.push(record('resources.movements', 'insert', row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
+          };
+          for (const level of order) { if (left <= 0) break; const q = Math.min(left, level.quantity); take(level.space_id, level.lot_id, q); left = Math.round((left - q) * 1000) / 1000; }
+          if (left > 0) take(args.default_space_id ?? spaces?.[0], null, left);
+          results.push({ op: 'call', procedure, result: { itemId: args.item_id } });
+          return;
+        }
         if (procedure === 'food.house_dish_from_suggestion') {
           // Como el procedimiento SQL de O3c (probado contra PGlite): receta del mismo nombre o rápida, servicio y plato.
           let seq = 0;

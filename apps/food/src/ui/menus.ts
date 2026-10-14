@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, HOUSE_MENU_ID, LOCKED_MENU_STATUSES, SERVICE_TYPES, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, HOUSE_MENU_ID, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
@@ -11,6 +11,7 @@ import {
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
 } from '../app/events.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
+import { confirmConsumption, loadInventory, type DishDecision, type InventoryData } from '../app/consumption.ts';
 import { HOUSE_SUGGESTIONS_HASH, houseSuggestionsSummary, pendingDishesText } from './house-suggestions.ts';
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
@@ -149,6 +150,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     let equipment: Mirror<Equipment>[] = [];
     let needs: Mirror<RecipeEquipment>[] = [];
     let menuGraph: MenuGraph = { services: [], items: [], recipes: [], recipe_ingredients: [], ingredients: [] };
+    // Consumo al acabar el servicio (R5c): solo con inventario, es decir, con sitios de cocina en Recursos.
+    let inventory: InventoryData | null = null;
+    let consumptions: Array<Mirror<Consumption>> = [];
+    const consumptionOf = (service: ServiceRow) => (inventory?.kitchen.size ? serviceConsumption(service, menuGraph, consumptions, inventory.movements, new Date()) : null);
     let sheet: Sheet | null = null;
     let busy = false;
     // Listas reordenables del constructor (kit): servicios de cada día y, dentro, platos de cada servicio.
@@ -615,6 +620,13 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const dishes = dishesOf(service);
       const time = el('input', { 'data-feedback-id': 'food.menu.servicios.hora', 'data-feedback-label': 'Hora del servicio', type: 'time', class: 'compact', value: shortTime(service.service_time), 'aria-label': `Hora de ${label}`, disabled: !canEdit,
         onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
+      const consumption = consumptionOf(service);
+      const consumeBar = !consumption ? null
+        : (consumption.state === 'por_confirmar' || consumption.state === 'automatico') && canWrite()
+          ? el('div', { class: 'consumebar' },
+              el('button', { 'data-feedback-id': 'food.menu.servicios.confirmar_consumo', 'data-feedback-label': 'Confirmar consumo', class: 'ghost consumebtn', type: 'button', 'aria-label': `Confirmar consumo de ${label}`, onclick: () => openConsumption(service) }, icon('check', 18), 'Confirmar consumo'),
+              el('span', { class: 'hint' }, 'Si nadie lo confirma, se descuenta solo a las 24 h.'))
+          : consumption.state === 'hecho' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip ok' }, 'Consumo anotado')) : null;
       return el('section', { 'data-feedback-id': 'food.menu.servicios.servicio', 'data-feedback-label': 'Servicio', class: 'service', 'data-id': service.id, 'data-type': service.service_type },
         el('header', null, el('h4', null, label), time,
           canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.quitar', 'data-feedback-label': 'Quitar servicio', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${label}`,
@@ -622,9 +634,70 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
               if (dishes.length && !(await confirmDialog({ title: `¿Quitar ${label.toLowerCase()}?`, text: `Se quitan también sus ${dishes.length} platos.`, confirmLabel: 'Quitar', danger: true }))) return;
               await commitSafely([...dishes.map((d) => removeOp(T.menuItems, d)), removeOp(T.menuServices, service)]);
             } }, icon('trash', 18)) : null),
+        consumeBar,
         dishes.length ? dishList(service, dishes) : el('p', { class: 'muted' }, 'Sin platos todavía.'),
         canEdit ? el('button', { 'data-feedback-id': 'food.menu.platos.anadir', 'data-feedback-label': 'Añadir plato', class: 'ghost addDish', type: 'button', onclick: () => pickRecipe(service, Math.max(0, ...dishesOf(service).map((d) => Number(d.position)))) }, icon('plus', 18), 'Añadir plato') : null,
       );
+    }
+
+    /**
+     * «Confirmar consumo» (R5c): cada plato pendiente con lo que gasta a sus raciones, para corregir cantidades o marcar
+     * que no se hizo. Al confirmar se descuenta en Recursos (primero lo que caduca antes) y se anota.
+     */
+    function openConsumption(service: ServiceRow): void {
+      const state = consumptionOf(service);
+      if (!state || !inventory) return;
+      const label = `${SERVICE_LABELS[service.service_type]} del ${longDay(service.service_date)}`;
+      const forms = state.pending.map((menuItemId) => {
+        const dish = items.find((i) => i.id === menuItemId)!;
+        const recipe = recipes.find((r) => r.id === dish.recipe_id);
+        const lines = consumptionLines(menuGraph, menuItemId, inventory!.items);
+        const done = el('input', { type: 'checkbox', checked: true, 'aria-label': `${recipe?.name ?? 'Plato'}: se hizo` }) as HTMLInputElement;
+        const inputs = lines.map((line) => el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(line.quantity), 'aria-label': `${line.name} gastado en ${recipe?.name ?? 'el plato'}`, disabled: line.reason !== null }) as HTMLInputElement);
+        const node = el('div', { 'data-feedback-id': 'food.menu.consumo.plato', 'data-feedback-label': 'Plato del consumo', class: 'consumedish' },
+          el('label', { class: 'checkline' }, done, el('strong', null, recipe?.name ?? 'Plato'), el('span', { class: 'muted' }, ` · ${formatQuantity(dish.servings)} raciones`)),
+          lines.length ? el('table', { class: 'ingredients' }, el('tbody', null, ...lines.map((line, index) => el('tr', null,
+            el('td', null, line.name, line.reason ? el('span', { class: 'consumewhy' }, line.reason === 'sin_articulo' ? 'no se descuenta: sin artículo' : `no se descuenta: no se pasa a ${line.baseUnit}`) : null),
+            el('td', { class: 'num' }, inputs[index]!), el('td', null, UNIT_LABELS[line.unit])))))
+            : el('p', { class: 'muted' }, 'La receta no tiene ingredientes: no se descuenta nada.'));
+        done.addEventListener('change', () => { inputs.forEach((input, index) => { input.disabled = !done.checked || lines[index]!.reason !== null; }); });
+        return { menuItemId, recipe, done, inputs, lines, node };
+      });
+      const error = el('p', { class: 'formerror', role: 'alert' });
+      const confirm = el('button', { 'data-feedback-id': 'food.menu.consumo.confirmar', 'data-feedback-label': 'Confirmar consumo', class: 'primary', type: 'button', id: 'confirmConsumption',
+        onclick: async () => {
+          const decisions: DishDecision[] = [];
+          for (const form of forms) {
+            const quantities: number[] = [];
+            for (const [index, input] of form.inputs.entries()) {
+              const value = parseQuantity(input.value);
+              if (form.done.checked && form.lines[index]!.reason === null && (value === null || value < 0)) { error.textContent = `Revisa la cantidad de ${form.lines[index]!.name}.`; input.focus(); return; }
+              quantities.push(value ?? 0);
+            }
+            decisions.push({ menuItemId: form.menuItemId, done: form.done.checked, quantities });
+          }
+          confirm.disabled = true;
+          try {
+            await usage.run('food.menu.consumo.confirmar', () => confirmConsumption(client, menuGraph, inventory!, decisions, {
+              noteOf: (id) => `${forms.find((f) => f.menuItemId === id)?.recipe?.name ?? 'Plato'} · ${label.toLowerCase()}`,
+            }));
+            toast('Consumo anotado: el inventario de cocina se ha actualizado.');
+            await sheet?.close(true);
+            await load();
+          } catch (failure) {
+            error.textContent = describeError(failure);
+            confirm.disabled = false;
+          }
+        } }, 'Confirmar');
+      sheet = openSheet({
+        title: 'Confirmar consumo',
+        meta: label,
+        body: el('div', { 'data-feedback-id': 'food.menu.consumo', 'data-feedback-label': 'Confirmar consumo', id: 'consumptionSheet' },
+          el('p', { class: 'muted' }, 'Lo que piden los platos a sus raciones. Corrige lo que se gastó de verdad o desmarca lo que no se hizo.'),
+          ...forms.map((f) => f.node), error),
+        foot: [el('button', { 'data-feedback-id': 'food.menu.consumo.cancelar', 'data-feedback-label': 'Cancelar', class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), confirm],
+        onClose: () => { sheet = null; },
+      });
     }
 
     /** Servicios de un día. Con más de uno y el constructor abierto: lista del kit (los platos van anidados dentro). */
@@ -657,6 +730,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         canEdit, cook, days, guests: e?.guest_count ?? null, house: house() ? Number(menu?.house_servings ?? 0) : null,
         quick: recipes.filter((r) => used.has(r.id) && isQuickPending(r, recipeLines)).map((r) => r.id).sort(),
         recipes: recipes.filter((r) => used.has(r.id)).map((r) => `${r.id}:${r.revision}`).sort(),
+        consumption: sorted.map((s) => consumptionOf(s)?.state ?? ''),
         services: days.map((day) => {
           const ofDay = sorted.filter((s) => s.service_date === day);
           return [ofDay.length > 1 ? ofDay.map((s) => s.id).sort() : rowSig(ofDay), ofDay.map((service) => {
@@ -835,13 +909,15 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
       recipeLines = data.lines;
       menuGraph = data.graph;
+      consumptions = (await client.list(T.consumptions)) as Array<Mirror<Consumption>>;
+      inventory = await loadInventory(client).catch(() => null);
       if (tab === 'menu') void loadPurchases(client).then((next) => { const changed = next.fetchedAt !== purchases.fetchedAt; purchases = next; if (changed) { builderShape = ''; paintActionsAndRest(); } });
       paintActionsAndRest();
     }
 
     void load();
     const offEvents = watchEvents(client, (next) => { snapshot = next; if (menu) paintActionsAndRest(); });
-    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
+    const offs = [T.menus, T.menuServices, T.menuItems, T.recipes, T.menuComments, T.consumptions].map((table) => client.onTable(table, () => { if (!sheet) void load(); }));
     const offStatus = client.onStatus(() => void refreshEvents(client));
     return () => {
       offEvents();
