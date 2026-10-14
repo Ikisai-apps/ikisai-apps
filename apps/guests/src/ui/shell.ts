@@ -20,7 +20,7 @@ import { commonText, loadCommonTexts } from '../app/common-texts.ts';
 import { openGuest, type GuestContext } from '../app/context.ts';
 import { t } from '../app/i18n.ts';
 import { fieldLabel } from '../app/labels.ts';
-import { createOutsiderApi, isOutsider } from '../app/outsider.ts';
+import { createOutsiderApi, isOutsider, openRetreats } from '../app/outsider.ts';
 import { createPortalReads } from '../app/portal.ts';
 import { buildRoster, defaultRetreat, entriesFor, entryRetreat, loadRoster, type Retreat, type Roster, type Selection } from '../app/roster.ts';
 import { openAccess, openInstall } from './access.ts';
@@ -190,7 +190,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
             paintSaveState();
             if (reason === 'conflict') showConflicts(c);
             if (reason === 'rejected') toast((c.lastRejected()?.error as { code?: string })?.code === 'PREVIEW_READ_ONLY' ? t('preview.readOnly') : describeError(c.lastRejected()?.error));
-            if (reason === 'guest' && roster) roster = buildRoster(roster.entries.map((e) => (e.grant.guest_id === grant.guest_id ? { grant: e.grant, guest: c.guest() } : e)));
+            if (reason === 'guest' && roster) roster = buildRoster(roster.entries.map((e) => ({ grant: e.grant, guest: e.grant.guest_id === grant.guest_id ? c.guest() : e.guest, personKey: e.personKey ?? null })));
           });
           paintSaveState();
           return c;
@@ -203,7 +203,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   function getRoster(): Promise<Roster> {
-    rosterLoad ??= loadRoster(api).then((r) => (roster = r));
+    rosterLoad ??= loadRoster(api, client).then((r) => (roster = r));
     return rosterLoad;
   }
 
@@ -286,6 +286,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     paintNav(CALENDAR, null);
     unmountView = mountCalendar(view, r, selection, {
       href: (retreat) => hrefFor(retreat), navigate, who,
+      openRetreats: (range) => openRetreats(client, range),
       ...(outsider ? { outsider, newStay: location.hash === NEW_STAY } : {}),
     }, personSelector(r.persons, selection, (next) => pickPerson(next, null)));
   }

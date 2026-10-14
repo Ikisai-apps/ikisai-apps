@@ -75,9 +75,11 @@
 
 - 2026-10-14 · **O4b, primera parte** (§9.13): pestaña Outsider (estancia, cama habitual, cómo llegar, «Sugerir un plato» y «Mis propuestas»); en el calendario, estancias (crear, cambiar fechas y quitar), «hay alguien del staff» y notas con hora. Prueba `outsider.spec.ts`.
 
+- 2026-10-14 · **O4b, segunda parte** (§9.13): clave de persona de Booking en el selector, estancias en familia («para quién» y «Separar») y retiros abiertos en el calendario.
+
 ## Pendiente
 
-- **O4b, resto:** clave de persona y estancias en familia, retiros abiertos y, al final, «Apuntarme» (cuando Booking publique `join_from_suggestion`). El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
+- **O4b, última parte:** «Apuntarme» (Booking #518 ya en main). El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.
 

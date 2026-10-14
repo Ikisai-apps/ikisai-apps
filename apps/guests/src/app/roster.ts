@@ -3,13 +3,21 @@
  * persona en un retiro (una ficha de Booking). Aquí se agrupan:
  * - por **retiro** (`reservation_id`), para las pestañas y el calendario;
  * - por **persona**, para el selector «Todos · Marta · Nico».
- * Hasta que Booking publique una clave de persona (O2: la persona de Central o una `person_key`), la misma persona en dos
- * retiros se reconoce por su nombre y primer apellido (sin mayúsculas ni tildes). Sin nombre, cada ficha es su persona.
+ * La misma persona en dos retiros se reconoce por la **clave de persona de Booking** (`person_key`, O2, Booking §26, en
+ * `portal_my_retreats`). Las fichas sin clave se reconocen por su nombre y primer apellido (sin mayúsculas ni tildes) y, si
+ * en la cuenta solo hay una clave para ese nombre, se unen a ella. Sin nombre, cada ficha es su persona.
  */
+import type { SyncClient } from '@ikisai/sync-client';
 import type { Grant, GuestApi, MyGuest } from './api.ts';
 
-export interface RosterEntry { grant: Grant; guest: MyGuest | null; person: string }
-export interface Person { key: string; name: string; initials: string }
+export interface RosterEntry { grant: Grant; guest: MyGuest | null; person: string; personKey?: string | null }
+export interface Person {
+  key: string; name: string; initials: string;
+  /** Clave de persona de Booking, si ya la tiene (para las estancias de la familia). */
+  personKey: string | null;
+  /** Sus fichas de huésped (una por retiro). */
+  guestIds: string[];
+}
 export interface Retreat {
   reservation_id: string;
   title: string | null;
@@ -25,18 +33,30 @@ export type Selection = 'all' | string;
 
 const fold = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-function personKey(entry: { grant: Grant; guest: MyGuest | null }): string {
+function nameKey(entry: { grant: Grant; guest: MyGuest | null }): string {
   const first = fold(entry.guest?.fields.first_name);
   if (!first) return `ficha:${entry.grant.guest_id}`;
   return `nombre:${first}|${fold(entry.guest?.fields.last_name_1)}`;
 }
 
-export function buildRoster(loaded: Array<{ grant: Grant; guest: MyGuest | null }>): Roster {
-  const entries: RosterEntry[] = loaded.map((item) => ({ ...item, person: personKey(item) }));
+export function buildRoster(loaded: Array<{ grant: Grant; guest: MyGuest | null; personKey?: string | null }>): Roster {
+  // Claves de Booking por nombre: una ficha sin clave se une a la única clave de su nombre.
+  const keysByName = new Map<string, Set<string>>();
+  for (const item of loaded) {
+    if (!item.personKey) continue;
+    const n = nameKey(item);
+    keysByName.set(n, (keysByName.get(n) ?? new Set()).add(item.personKey));
+  }
+  const entries: RosterEntry[] = loaded.map((item) => {
+    const named = keysByName.get(nameKey(item));
+    const key = item.personKey ?? (named?.size === 1 ? [...named][0]! : null);
+    return { ...item, person: key ? `clave:${key}` : nameKey(item), personKey: key };
+  });
   const persons: Person[] = [];
   for (const entry of entries) {
-    if (persons.some((p) => p.key === entry.person)) continue;
-    persons.push({ key: entry.person, name: String(entry.guest?.fields.first_name ?? '').trim(), initials: '' });
+    const known = persons.find((p) => p.key === entry.person);
+    if (known) { known.guestIds.push(entry.grant.guest_id); continue; }
+    persons.push({ key: entry.person, name: String(entry.guest?.fields.first_name ?? '').trim(), initials: '', personKey: entry.personKey ?? null, guestIds: [entry.grant.guest_id] });
   }
   // Mismo nombre de pila en dos personas: se añade el apellido para distinguirlas.
   for (const person of persons) {
@@ -65,12 +85,25 @@ export function buildRoster(loaded: Array<{ grant: Grant; guest: MyGuest | null 
   return { entries, persons, retreats };
 }
 
-export async function loadRoster(api: GuestApi): Promise<Roster> {
+export async function loadRoster(api: GuestApi, client?: SyncClient): Promise<Roster> {
   const grants = api.grants();
-  const loaded = await Promise.all(grants.map(async (grant) => {
-    try { return { grant, guest: (await api.myGuest(grant.guest_id)).value }; } catch { return { grant, guest: null }; }
-  }));
-  return buildRoster(loaded);
+  const [loaded, keys] = await Promise.all([
+    Promise.all(grants.map(async (grant) => {
+      try { return { grant, guest: (await api.myGuest(grant.guest_id)).value }; } catch { return { grant, guest: null }; }
+    })),
+    grants.length > 1 && client ? personKeys(client) : Promise.resolve(new Map<string, string>()),
+  ]);
+  return buildRoster(loaded.map((item) => ({ ...item, personKey: keys.get(item.grant.guest_id) ?? null })));
+}
+
+/** Claves de persona de las fichas de la cuenta (`portal_my_retreats`); sin red o sin la lectura, ninguna. */
+async function personKeys(client: SyncClient): Promise<Map<string, string>> {
+  try {
+    const out = await client.api<{ items?: Array<{ guest_id: string; person_key: string | null }> }>('/read/booking.portal_my_retreats', { method: 'POST', json: {} });
+    return new Map((out.items ?? []).filter((i) => i.person_key).map((i) => [i.guest_id, i.person_key!]));
+  } catch {
+    return new Map();
+  }
 }
 
 /** Retiros que se ven con la selección: todos con «Todos», o los de esa persona. */
