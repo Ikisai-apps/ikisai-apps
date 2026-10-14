@@ -165,7 +165,8 @@ export function renderDesign(ctx: ViewContext, reservationId: string, detail: Re
       el('select', { id: `d-${key}`, onchange: (e: Event) => change({ [key]: (e.target as HTMLSelectElement).value || null } as DraftFields) },
         el('option', { value: '' }, '—'), ...options.map(([v, l]) => el('option', { value: v, selected: state[key] === v ? '' : null }, t(l)))));
 
-    const extraRates = rates.rates.filter((r) => r.layer === 'extra');
+    // Las supletorias no se piden aquí: se activan por habitación en Experiencia › Alojamiento (Booking §25).
+    const extraRates = rates.rates.filter((r) => r.layer === 'extra' && r.service !== 'cama_supletoria');
     const extraRows = extraRates.map((r) => {
       const current = extras.find((e) => e.rate_id === r.id);
       const qty = el('input', { type: 'number', min: '1', step: '1', class: 'orgextraqty', value: String(current?.quantity ?? 1), hidden: current ? null : '',

@@ -466,7 +466,14 @@ Desde la prerreserva, con seis apartados en una tira desplazable. Se recuerda el
 - **Alojamiento** (Booking #328):
   - «Qué pueden hacer»: se guarda en la experiencia (lo que lee Guests) y en `portal_room_settings`. La correspondencia es `view` → `off`; `prefer` → `off` con preferencias; `choose` y `request` → igual, con preferencias;
   - tipos de habitación con la nota de precio para el huésped (`lodging_options`), y las habitaciones con baño que se pueden elegir, con su tipo (`option_key`);
-  - reparto de camas (`portal_assign_bed`), plazas pendientes de aprobar (`portal_approve_bed`) y preferencias de compañeros.
+  - reparto de camas (`portal_assign_bed`), plazas pendientes de aprobar (`portal_approve_bed`) y preferencias de compañeros;
+  - **supletorias por habitación** (Booking #491, API de Booking §25):
+    - «Supletorias N de M» con − / + (`extra.wanted` de `extra.possible`), que llama a `portal_extra_beds` con el número; Booking elige cuáles;
+    - debajo, el precio de Ikisai por plaza (`extra_rate.amount_with_vat`, «por noche» si la unidad es por noche) y «Se añade a tu presupuesto»; ninguna cifra escrita en el portal;
+    - con la propuesta aceptada (`extra_pending_mode`), aviso de que los cambios quedan pendientes de Ikisai, y «Pendiente de Ikisai» si la habitación tiene alguno;
+    - las activadas salen en el reparto con la marca «supletoria» y se asignan como cualquier cama;
+    - errores: `EXTRA_BEDS_LIMIT`, `EXTRA_BED_IN_USE` (ocupadas) y `EXTRA_BED_TAKEN`;
+    - en «Diseño», la tarifa `cama_supletoria` no sale entre los extras: se activa aquí.
 - **Materiales:** archivos, enlaces y textos, con «Publicado», la ventana, el logotipo y «De otros retiros».
 - **Preguntas:** seis tipos, aviso de datos sensibles (O7), respuestas con el `display_name` de cada asistente y CSV.
 

@@ -652,4 +652,18 @@ export const EN: Dictionary = {
   'La hora de fin tiene que ser posterior a la de inicio.': 'The end time must be after the start time.',
   'Ese día queda fuera de las fechas del retiro.': 'That day is outside the retreat dates.',
   '¿Quitar esta actividad?': 'Remove this activity?',
+  // Supletorias por habitación (lodging.ts, Booking §25)
+  'No caben más supletorias en esta habitación.': 'No more extra beds fit in this room.',
+  'Hay supletorias ocupadas: déjalas libres en el reparto antes de quitarlas.': 'Some extra beds are taken: free them in the bed allocation before removing them.',
+  'Otro retiro en esas fechas usa esa supletoria. Habla con Ikisai.': 'Another retreat on those dates is using that extra bed. Talk to Ikisai.',
+  'Plaza supletoria: {importe} por noche · Se añade a tu presupuesto': 'Extra bed: {importe} per night · Added to your quote',
+  'Plaza supletoria: {importe} · Se añade a tu presupuesto': 'Extra bed: {importe} · Added to your quote',
+  'Se añade a tu presupuesto.': 'It is added to your quote.',
+  'Supletorias': 'Extra beds',
+  'Quitar una supletoria': 'Remove an extra bed',
+  '{n} de {total}': '{n} of {total}',
+  'Añadir una supletoria': 'Add an extra bed',
+  'Pendiente de Ikisai: tu propuesta ya está aceptada. Te avisaremos cuando la actualicen.': 'Pending with Ikisai: your proposal has already been accepted. We will let you know when it is updated.',
+  'Tu propuesta ya está aceptada: los cambios quedarán pendientes de Ikisai.': 'Your proposal has already been accepted: changes will be pending until Ikisai confirms them.',
+  'supletoria': 'extra bed',
 };

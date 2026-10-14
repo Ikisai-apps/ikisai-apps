@@ -3,18 +3,26 @@
  * - qué pueden hacer los asistentes: ver, además dar su preferencia, elegir o pedir cama. Se guarda en los dos lados: en
  *   la experiencia de Organizers (lo que lee Guests) y en los ajustes de Booking (lo que aplica su reserva atómica);
  * - qué habitaciones con baño (ya contratadas) se pueden elegir y cómo se llaman para ellos, con su nota de precio;
- * - reparto de camas, plazas pendientes de aprobar y preferencias de compañeros.
+ * - reparto de camas, plazas pendientes de aprobar y preferencias de compañeros;
+ * - supletorias por habitación (Booking #491, API §25): «Supletorias N de M» con − / +, el precio de Ikisai por plaza y noche
+ *   y, con la propuesta aceptada, «Pendiente de Ikisai». Las activadas salen en el reparto marcadas «supletoria».
  */
 import { el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
-import { L, t } from '../app/i18n.ts';
+import { i18n, L, t } from '../app/i18n.ts';
 import type { Row } from '../app/own.ts';
 import { failure, fbIgnore, loading, section, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 interface Bed { bed_id: string; label: string; kind: string; free: boolean; assignment_id?: string; guest_id?: string | null; group_label?: string | null; status?: string; source?: string }
-interface Room { space_id: string; name: string; zone: string | null; capacity: number | null; en_suite: boolean; small_en_suite: boolean; option_key: string | null; open: boolean; supplement: boolean; beds: Bed[] }
+interface ExtraBeds { possible: number; activated: number; wanted: number; requested: number; release_requested: number; occupied: number }
+interface Room { space_id: string; name: string; zone: string | null; capacity: number | null; en_suite: boolean; small_en_suite: boolean; option_key: string | null; open: boolean; supplement: boolean; beds: Bed[]; extra?: ExtraBeds }
+interface ExtraRate { name: string; unit: string; amount: number | string; amount_with_vat: number | string; vat_rate: number | string }
 interface PortalRooms {
+  /** La propuesta está aceptada: activar o quitar supletorias queda pendiente de Ikisai. */
+  extra_pending_mode?: boolean;
+  /** Tarifa `cama_supletoria` visible en el portal (IVA incluido en `amount_with_vat`), o null. */
+  extra_rate?: ExtraRate | null;
   settings: { revision: number | null; choice: 'off' | 'choose' | 'request'; choose_until: string | null; preferences: boolean; open: boolean };
   rooms: Room[];
   pending: Array<{ assignment_id: string; revision: number; guest_id: string; space_id: string; bed_id: string }>;
@@ -73,7 +81,14 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
       return true;
     } catch (e) {
       const code = errorCode(e);
-      toast(code === 'BED_TAKEN' ? t('Esa cama acaba de ocuparse. Elige otra.') : code === 'NOT_OFFERED' ? t('Esa habitación no se puede abrir: solo las de tu retiro con baño.') : describeError(e));
+      const messages: Record<string, string> = {
+        BED_TAKEN: t('Esa cama acaba de ocuparse. Elige otra.'),
+        NOT_OFFERED: t('Esa habitación no se puede abrir: solo las de tu retiro con baño.'),
+        EXTRA_BEDS_LIMIT: t('No caben más supletorias en esta habitación.'),
+        EXTRA_BED_IN_USE: t('Hay supletorias ocupadas: déjalas libres en el reparto antes de quitarlas.'),
+        EXTRA_BED_TAKEN: t('Otro retiro en esas fechas usa esa supletoria. Habla con Ikisai.'),
+      };
+      toast(messages[code] ?? describeError(e));
       await load();
       return false;
     }
@@ -122,20 +137,45 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     const openRows = enSuite.map((r) => el('div', { class: 'orgitem', 'data-room': r.space_id },
       el('label', { class: 'field check orgitem-main' },
         el('input', { type: 'checkbox', checked: r.open ? '' : null, onchange: (e: Event) => void saveRooms(enSuite.map((x) => (x.space_id === r.space_id ? { ...x, open: (e.target as HTMLInputElement).checked } : x))) }),
-        el('span', null, el('strong', null, r.name), el('span', { class: 'muted small' }, ` · ${t('{n} camas', { n: r.beds.length })}${r.zone ? ` · ${r.zone}` : ''}`))),
+        el('span', null, el('strong', null, r.name), el('span', { class: 'muted small' }, ` · ${t('{n} camas', { n: r.beds.filter((b) => b.kind !== 'supletoria').length })}${r.zone ? ` · ${r.zone}` : ''}`))),
       list.length ? el('select', { 'aria-label': t('Tipo de habitación'), disabled: r.open ? null : '',
         onchange: (e: Event) => void saveRooms(enSuite.map((x) => (x.space_id === r.space_id ? { ...x, option_key: (e.target as HTMLSelectElement).value || null } : x))) },
         el('option', { value: '' }, '—'), ...list.map((o) => el('option', { value: o.key, selected: o.key === r.option_key ? '' : null }, o.label))) : null));
 
+    // --- Supletorias por habitación (Booking §25): cuántas quiere el organizador; Booking elige cuáles ---
+    const rate = d.extra_rate ?? null;
+    const perNight = rate && (rate.unit === 'persona_noche' || rate.unit === 'noche');
+    const priceText = rate
+      ? (perNight
+        ? t('Plaza supletoria: {importe} por noche · Se añade a tu presupuesto', { importe: i18n.formatMoney(Number(rate.amount_with_vat)) })
+        : t('Plaza supletoria: {importe} · Se añade a tu presupuesto', { importe: i18n.formatMoney(Number(rate.amount_with_vat)) }))
+      : t('Se añade a tu presupuesto.');
+    const extraControl = (room: Room, x: ExtraBeds) => {
+      const set = (count: number) => void act(() => ctx.usage.run('organizers.alojamiento.supletorias', () =>
+        ctx.api.invokeAny('booking.portal_extra_beds', { reservation_id: reservationId, space_id: room.space_id, count })));
+      const pendingHere = x.requested + x.release_requested > 0;
+      return el('div', { class: 'orgextra-beds', 'data-extra': room.space_id },
+        el('div', { class: 'orgextra-row' },
+          el('strong', null, t('Supletorias')),
+          el('button', { type: 'button', class: 'orgstep', 'data-action': 'extra-minus', 'aria-label': t('Quitar una supletoria'), disabled: x.wanted <= 0 ? '' : null, onclick: () => set(x.wanted - 1) }, '−'),
+          el('span', { class: 'orgextra-count', 'aria-live': 'polite' }, t('{n} de {total}', { n: x.wanted, total: x.possible })),
+          el('button', { type: 'button', class: 'orgstep', 'data-action': 'extra-plus', 'aria-label': t('Añadir una supletoria'), disabled: x.wanted >= x.possible ? '' : null, onclick: () => set(x.wanted + 1) }, '+')),
+        el('p', { class: 'muted small' }, priceText),
+        pendingHere
+          ? el('p', { class: 'banner warn small orgextra-pending' }, t('Pendiente de Ikisai: tu propuesta ya está aceptada. Te avisaremos cuando la actualicen.'))
+          : d.extra_pending_mode ? el('p', { class: 'muted small' }, t('Tu propuesta ya está aceptada: los cambios quedarán pendientes de Ikisai.')) : null);
+    };
+
     // --- Reparto de camas ---
     const bedButton = (room: Room, bed: Bed) => el('button', { type: 'button', class: `orgbed${bed.guest_id || bed.group_label ? ' taken' : ''}${bed.status === 'requested' ? ' pending' : ''}`, 'data-bed': bed.bed_id,
       onclick: () => assign(room, bed) },
-      el('span', { class: 'orgbed-label' }, bed.label),
+      el('span', { class: 'orgbed-label' }, bed.label, bed.kind === 'supletoria' ? el('span', { class: 'chip small orgextra-tag' }, t('supletoria')) : null),
       fbIgnore(el('span', { class: 'small' }, bed.guest_id ? nameOf(bed.guest_id) : bed.group_label ?? t('Libre'))),
       bed.status === 'requested' ? el('span', { class: 'chip small warn' }, t('Pendiente')) : null);
     const roomsBlock = d.rooms.length
       ? el('div', { class: 'orgrooms' }, ...d.rooms.map((room) => el('div', { class: 'orgroom', 'data-space': room.space_id },
         el('h5', null, room.name, room.en_suite ? el('span', { class: 'muted small' }, ` · ${t('con baño')}`) : null),
+        room.extra && room.extra.possible > 0 ? extraControl(room, room.extra) : null,
         el('div', { class: 'orgbeds' }, ...room.beds.map((b) => bedButton(room, b))))))
       : el('p', { class: 'muted', id: 'lodgingNoRooms' }, t('Ikisai aún no ha asignado habitaciones a tu retiro.'));
 
