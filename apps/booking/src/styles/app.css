@@ -84,6 +84,7 @@ canvas.signature { display: block; width: 100%; height: auto; aspect-ratio: 5 / 
 .layers .layer { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
 .layers .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .clashlist { margin: 4px 0 0; padding-left: 18px; }
+.stay-note { color: var(--ink, inherit); white-space: pre-wrap; }
 .lodging-stay { color: var(--warn, #8a5a00); margin: 4px 0 0; }
 .chip[data-stay='outsider'] { background: #f3e8fa; color: #6c3483; }
 .chip[data-open] { background: #e6f2ec; color: #1f6b46; }
