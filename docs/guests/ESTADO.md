@@ -71,6 +71,8 @@
 
 - 2026-10-14 · **O4a: Guests por persona** (§9.12): barra «Calendario · Retiros · Más», pestañas de retiros que conservan la sección, Resumen · Programa · Menú · Alojamiento dentro del retiro, regla de entrada, la familia junta («Todos») con el selector y el calendario del kit 0.33 con «Todos tus retiros». Enlaces directos intactos. Prueba nueva `personas.spec.ts` y caracterización en verde.
 
+- 2026-10-14 · Por enlace, ese retiro (C10, #508): el `grant` de `loginWithLink` decide el retiro de entrada aunque la cuenta tenga varios; prueba en `personas.spec.ts`.
+
 ## Pendiente
 
 - **O4b** (después de O2 de Booking y O3c de Food): pestaña Outsider, estancias con «hay alguien» y notas, retiros abiertos con «Apuntarme» y «Mis propuestas».
