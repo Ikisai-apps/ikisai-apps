@@ -420,7 +420,11 @@ Para quien tiene nivel de casa `outsider` (`bootstrap.profile.houseLevel`; en Gu
   - **Notas:** «Añadir nota» (hora y texto) en el panel del día, y «Borrar» en las propias.
   - Todo esto necesita red: sin ella se avisa, y las lecturas salen de la caché.
 - **Pruebas:** `tests/guests/outsider.spec.ts`, contra Booking y Food reales: sin nivel no hay pestaña; outsider y huésped; outsider sin retiros (presencia, notas y plato sugerido). Capturas en `docs/guests/capturas/o4b/`.
-- **Siguiente parte:** clave de persona (`portal_my_retreats`), estancias en familia (`persons` y «Separar»), retiros abiertos y, al final, «Apuntarme».
+- **Segunda parte (14-10-2026):**
+  - **Clave de persona** (`portal_my_retreats`, Booking §26): la misma persona en dos retiros se reconoce por su `person_key`. Una ficha sin clave se une a la única clave de su nombre y, si no hay ninguna, se agrupa por nombre y primer apellido, como en O4a.
+  - **Estancias en familia** (con nivel outsider y más de una persona en la cuenta): una estancia nueva es para todos por defecto, con casillas para quitar a alguien. Las personas van con su clave de Booking (`portal_person_link` une sus fichas si aún no la tienen). El panel del día dice para quién es y ofrece «Separar» (`portal_stay_split`): unas personas con otras fechas y la misma cama. Una estancia que no es de todos lleva los nombres en el calendario.
+  - **Retiros abiertos** (`portal_open_retreats`, §26.1), para cualquier huésped: capa «Retiros abiertos» (borde discontinuo) con su resumen en el panel del día, sin precio. Los que ya son suyos no se repiten.
+- **Última parte:** «Apuntarme» (Booking #518, §26.3).
 
 ## 10. Offline
 
