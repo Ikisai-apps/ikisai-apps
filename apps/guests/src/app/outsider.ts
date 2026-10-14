@@ -18,8 +18,14 @@ export interface Stay {
 export interface MyStays { items: Stay[]; default_bed: { space_name: string; bed_label: string | null } | null }
 export interface StayNote { id: string; revision: number; at: string; text: string; mine: boolean; by: 'outsider' | 'staff' }
 export interface Range { from: string; to: string }
-/** Retiro abierto a huéspedes (Booking §26.1): visible, vivo y sin precio. `joined`: ya tiene una entrada en él. */
-export interface OpenRetreat { reservation_id: string; title: string; start_date: string | null; end_date: string | null; summary: string | null; joined: boolean }
+/**
+ * Retiro abierto a huéspedes (Booking §26.1): visible, vivo y sin precio. `joined`: ya tiene una entrada en él. `request`:
+ * su «Apuntarme» una vez que el personal lo pasó al organizador (§26.3); lo pendiente con Ikisai es la propia sugerencia.
+ */
+export interface OpenRetreat {
+  reservation_id: string; title: string; start_date: string | null; end_date: string | null; summary: string | null; joined: boolean;
+  request?: { status: 'con_el_organizador' | 'aceptada' | 'descartada'; comment: string | null } | null;
+}
 
 export function isOutsider(client: SyncClient): boolean {
   return client.bootstrap()?.profile.houseLevel === 'outsider';
@@ -33,7 +39,7 @@ export interface OutsiderApi {
   /** Separa a unas personas de una estancia, con sus fechas (la misma cama). */
   splitStay(input: { id: string; person_keys: string[]; from: string; to: string }): Promise<Stay>;
   /** Une las fichas de una persona (de retiros distintos) bajo una clave y la devuelve. */
-  personLink(guestIds: string[], personKey?: string | null): Promise<{ person_key: string }>;
+  personLink(guestIds: string[]): Promise<{ person_key: string }>;
   removeStay(id: string, expectedRevision?: number): Promise<unknown>;
   saveNote(input: { id: string; at: string; text: string; expectedRevision?: number }): Promise<{ id: string; revision: number }>;
   removeNote(id: string, expectedRevision?: number): Promise<unknown>;
@@ -63,7 +69,7 @@ export function createOutsiderApi(client: SyncClient): OutsiderApi {
     notes: (range) => read('booking.portal_stay_notes', { ...range }),
     saveStay: (input) => invoke('booking.portal_stay_save', { ...input }),
     splitStay: (input) => invoke('booking.portal_stay_split', { ...input }),
-    personLink: (guestIds, personKey) => invoke('booking.portal_person_link', { guest_ids: guestIds, ...(personKey ? { person_key: personKey } : {}) }),
+    personLink: (guestIds) => personLink(client, guestIds),
     removeStay: (id, expectedRevision) => invoke('booking.portal_stay_remove', { id, ...(expectedRevision ? { expectedRevision } : {}) }),
     saveNote: (input) => invoke('booking.portal_stay_note_save', { ...input }),
     removeNote: (id, expectedRevision) => invoke('booking.portal_stay_note_remove', { id, ...(expectedRevision ? { expectedRevision } : {}) }),
@@ -95,5 +101,46 @@ export async function openRetreats(client: SyncClient, range: Range): Promise<Op
     return out.items ?? [];
   } catch {
     return [];
+  }
+}
+
+/** Une las fichas de una persona bajo una clave de Booking (cualquier huésped, `portal_person_link`) y la devuelve. */
+export function personLink(client: SyncClient, guestIds: string[]): Promise<{ person_key: string }> {
+  return client.api(`/invoke/booking.portal_person_link`, { method: 'POST', json: { guest_ids: guestIds } });
+}
+
+/** Tipo de sugerencia de Booking para «Apuntarme» (§26.3). */
+export const JOIN_KIND = 'apuntarme';
+
+export interface JoinPerson { name: string; personKey: string | null; guestIds: string[] }
+
+/**
+ * «Apuntarme» a un retiro abierto: una sugerencia `apuntarme` a Booking que acepta el personal (o pasa al organizador).
+ * Las personas van con su clave de Booking; una sin fichas (el titular sin retiros) va solo con su nombre.
+ */
+export async function sendJoin(client: SyncClient, retreat: Pick<OpenRetreat, 'reservation_id' | 'title'>, people: JoinPerson[], message: string | null, summary: string): Promise<Suggestion> {
+  const persons = await Promise.all(people.map(async (p) => {
+    const key = p.personKey ?? (p.guestIds.length ? (await personLink(client, p.guestIds)).person_key : null);
+    return { ...(key ? { person_key: key } : {}), name: p.name };
+  }));
+  return client.suggest({
+    app: 'booking', kind: JOIN_KIND, summary,
+    detail: { reservation_id: retreat.reservation_id, title: retreat.title, persons: persons.map((p) => p.name), ...(message ? { message } : {}) },
+    operations: [{ op: 'call', procedure: 'booking.join_from_suggestion', args: { reservation_id: retreat.reservation_id, persons, ...(message ? { message } : {}) } }],
+  });
+}
+
+/** Sus «Apuntarme» por retiro: la última sugerencia de cada uno (sin red, ninguna). */
+export async function joinSuggestions(client: SyncClient): Promise<Map<string, Suggestion>> {
+  try {
+    const { items } = await client.suggestions({ scope: 'mine', app: 'booking' });
+    const out = new Map<string, Suggestion>();
+    for (const s of items.filter((x) => x.kind === JOIN_KIND).sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      const id = (s.detail?.reservation_id as string | undefined) ?? ((s.operations[0] as { args?: { reservation_id?: string } } | undefined)?.args?.reservation_id);
+      if (id) out.set(id, s);
+    }
+    return out;
+  } catch {
+    return new Map();
   }
 }

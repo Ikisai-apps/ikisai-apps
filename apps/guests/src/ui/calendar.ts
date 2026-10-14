@@ -13,13 +13,16 @@
  *   para quitar a alguien, y «Separar» deja a unas personas con otras fechas (`portal_stay_split`).
  *
  * Para cualquier huésped, los **retiros abiertos** (Booking §26.1): visibles, vivos y sin precio, con su resumen en el
- * panel del día. «Apuntarme» llega con la última parte de O4b.
+ * panel del día y **«Apuntarme»** (§26.3): una sugerencia a Booking para todas las personas de la cuenta por defecto, con
+ * casillas para quitar a alguien y un mensaje opcional. Después, su estado: enviada (con «Retirar»), con el organizador,
+ * aceptada o descartada (con el comentario).
  */
 import { confirmDialog, createCalendar, daysBetween, el, icon, openSheet, replace, toast, type CalendarDayInfo, type CalendarEvent } from '@ikisai/ui-kit';
+import type { Suggestion } from '@ikisai/sync-client';
 import { describeError, isNetworkError, online } from '../app/client.ts';
 import { localeTag, t } from '../app/i18n.ts';
 import { dateRange } from '../app/labels.ts';
-import { madridInstant, madridParts, type OpenRetreat, type OutsiderApi, type Stay, type StayNote, type StayPerson } from '../app/outsider.ts';
+import { madridInstant, madridParts, type JoinPerson, type OpenRetreat, type OutsiderApi, type Stay, type StayNote, type StayPerson } from '../app/outsider.ts';
 import { retreatsFor, whenOf, type Person, type Retreat, type Roster, type Selection } from '../app/roster.ts';
 import { fbIgnore } from './common.ts';
 import { todayMadrid } from './home.ts';
@@ -36,6 +39,15 @@ export interface CalendarActions {
   newStay?: boolean;
   /** Retiros abiertos a huéspedes del rango visible (Booking §26.1). */
   openRetreats?: (range: { from: string; to: string }) => Promise<OpenRetreat[]>;
+  /** «Apuntarme» (Booking §26.3). */
+  join?: {
+    /** Quién puede ir: las personas de la cuenta (o el titular). */
+    persons(): JoinPerson[];
+    /** Sus «Apuntarme» por retiro. */
+    mine(): Promise<Map<string, Suggestion>>;
+    send(retreat: OpenRetreat, people: JoinPerson[], message: string | null): Promise<void>;
+    withdraw(id: string): Promise<void>;
+  };
 }
 
 const STAY_PREFIX = 'estancia:';
@@ -53,6 +65,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   let stays = new Map<string, Stay>();
   let notes = new Map<string, StayNote>();
   let open = new Map<string, OpenRetreat>();
+  let joins = new Map<string, Suggestion>();
   /** La familia: las personas de la cuenta, si son más de una (sin retiros, solo el titular y no se pregunta). */
   const family: Person[] = roster.persons.length > 1 ? roster.persons : [];
 
@@ -63,10 +76,12 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   }
 
   async function events(range: { from: string; to: string }): Promise<CalendarEvent[]> {
-    const [, opened] = await Promise.all([
+    const [, opened, mine] = await Promise.all([
       out ? out.stays(range).then((loaded) => { stays = new Map(loaded.value.items.map((s) => [s.id, s])); }).catch((error) => { if (!isNetworkError(error)) toast(describeError(error)); }) : null,
       actions.openRetreats ? actions.openRetreats(range) : [],
+      actions.join ? actions.join.mine() : new Map<string, Suggestion>(),
     ]);
+    joins = mine as Map<string, Suggestion>;
     // Los abiertos en los que ya tiene una entrada salen como suyos, no repetidos.
     open = new Map((opened as OpenRetreat[]).filter((o) => !o.joined && o.start_date && !byId.has(o.reservation_id)).map((o) => [o.reservation_id, o]));
     return [
@@ -80,7 +95,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
   }
 
   /** Hoja con una casilla por persona; devuelve las marcadas (o null si se cierra). */
-  function pickPersons(title: string, people: Array<{ key: string; name: string }>, checked: boolean, extra: HTMLElement[] = []): Promise<{ keys: string[]; form: HTMLFormElement } | null> {
+  function pickPersons(title: string, people: Array<{ key: string; name: string }>, checked: boolean, extra: HTMLElement[] = [], okLabel = t('calendar.stayForOk')): Promise<{ keys: string[]; form: HTMLFormElement } | null> {
     return new Promise((resolve) => {
       let done = false;
       const boxes = people.map((p) => el('input', { type: 'checkbox', value: p.key, checked: checked ? '' : null, id: `who-${p.key.replace(/[^a-z0-9]/gi, '')}` }) as HTMLInputElement);
@@ -95,7 +110,7 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
       el('fieldset', { class: 'gchoices', id: 'whoList' }, el('legend', null, t('calendar.stayFor')),
         ...people.map((p, i) => el('label', { class: 'gswitch' }, boxes[i]!, el('span', null, p.name || t('picker.unknown'))))),
       ...extra,
-      el('button', { type: 'submit', class: 'primary wide', id: 'whoOk', 'data-feedback-id': 'guests.calendario.estancia.personas', 'data-feedback-label': 'Para quién es la estancia' }, t('calendar.stayForOk'))) as HTMLFormElement;
+      el('button', { type: 'submit', class: 'primary wide', id: 'whoOk', 'data-feedback-id': 'guests.calendario.estancia.personas', 'data-feedback-label': 'Para quién es' }, okLabel)) as HTMLFormElement;
       const sheet = openSheet({ title, body: form, onClose: () => { if (!done) resolve(null); } });
     });
   }
@@ -207,13 +222,62 @@ export function mountCalendar(main: HTMLElement, roster: Roster, selection: Sele
     await calendar.refresh();
   }
 
-  /** Retiros abiertos del día: título, fechas y resumen (sin precio). */
+  /** «Apuntarme»: para quién (todos por defecto) y un mensaje opcional; se envía como sugerencia a Booking. */
+  async function join(o: OpenRetreat): Promise<void> {
+    if (!actions.join) return;
+    if (!online()) { toast(t('outsider.needsNetwork')); return; }
+    const people = actions.join.persons();
+    const message = el('textarea', { id: 'joinMessage', rows: '3', maxlength: '500' }) as HTMLTextAreaElement;
+    const picked = await pickPersons(t('calendar.joinTitle', { title: o.title }), people.map((p, i) => ({ key: `p${i}`, name: p.name })), true, [
+      el('p', { class: 'muted small' }, dateRange(o.start_date, o.end_date)),
+      el('div', { class: 'gfield' }, el('label', { for: 'joinMessage' }, t('calendar.joinMessage')), message),
+    ], people.length > 1 ? t('calendar.joinOkMany') : t('calendar.joinOk'));
+    if (!picked) return;
+    try {
+      await actions.join.send(o, people.filter((_, i) => picked.keys.includes(`p${i}`)), message.value.trim() || null);
+      toast(t('calendar.joinSent'));
+    } catch (error) {
+      toast(isNetworkError(error) ? t('outsider.needsNetwork') : describeError(error));
+    }
+    await calendar.refresh();
+  }
+
+  async function withdrawJoin(s: Suggestion): Promise<void> {
+    if (!actions.join) return;
+    const ok = await confirmDialog({ title: t('calendar.joinWithdrawTitle'), text: t('calendar.joinWithdrawText'), confirmLabel: t('calendar.joinWithdraw') });
+    if (!ok) return;
+    try { await actions.join.withdraw(s.id); toast(t('calendar.joinWithdrawn')); } catch (error) { toast(describeError(error)); }
+    await calendar.refresh();
+  }
+
+  /** Estado de su «Apuntarme» en un retiro abierto, o el botón para apuntarse. */
+  function joinState(o: OpenRetreat): HTMLElement | null {
+    if (!actions.join) return null;
+    const req = o.request;
+    const s = joins.get(o.reservation_id);
+    const comment = (text: string | null | undefined) => (text ? el('p', { class: 'small muted' }, t('calendar.joinComment', { comment: text })) : null);
+    if (req) {
+      const key = req.status === 'aceptada' ? 'calendar.joinAccepted' : req.status === 'descartada' ? 'calendar.joinRejected' : 'calendar.joinOrganizer';
+      return el('div', { class: 'gjoin', dataset: { state: req.status } }, el('p', { class: 'small' }, el('strong', null, t(key))), comment(req.comment));
+    }
+    if (s?.status === 'pending') {
+      return el('div', { class: 'gjoin', dataset: { state: 'pendiente' } },
+        el('p', { class: 'small' }, el('strong', null, t('calendar.joinPending'))),
+        el('button', { type: 'button', class: 'ghost small', 'data-feedback-id': 'guests.calendario.apuntarme.retirar', 'data-feedback-label': 'Retirar «Apuntarme»', onclick: () => void withdrawJoin(s) }, t('calendar.joinWithdraw')));
+    }
+    return el('div', { class: 'gjoin', dataset: { state: s?.status === 'rejected' ? 'descartada' : 'libre' } },
+      s?.status === 'rejected' ? el('p', { class: 'small' }, el('strong', null, t('calendar.joinRejected'))) : null,
+      s?.status === 'rejected' ? comment(s.comment) : null,
+      el('button', { type: 'button', class: 'primary small', 'data-feedback-id': 'guests.calendario.apuntarme', 'data-feedback-label': 'Apuntarme', onclick: () => void join(o) }, t('calendar.join')));
+  }
+
+  /** Retiros abiertos del día: título, fechas, resumen (sin precio) y «Apuntarme». */
   function openOfDay(dayEvents: CalendarEvent[]): HTMLElement[] {
     return dayEvents.filter((e) => e.layer === 'open').map((e) => open.get(e.id.slice(OPEN_PREFIX.length))).filter((o): o is OpenRetreat => Boolean(o))
       .map((o) => el('div', { class: 'gday-open', dataset: { open: o.reservation_id } },
         el('p', { class: 'small' }, el('strong', null, o.title), ` · ${dateRange(o.start_date, o.end_date)}`),
         o.summary ? el('p', { class: 'small gtext' }, o.summary) : null,
-        el('p', { class: 'muted small' }, t('calendar.openSoon'))));
+        joinState(o) ?? el('p', { class: 'muted small' }, t('calendar.openSoon'))));
   }
 
   /** Lo de la app en el panel del día: retiros abiertos y, con nivel outsider, sus estancias, «Añadir nota» y sus notas. */

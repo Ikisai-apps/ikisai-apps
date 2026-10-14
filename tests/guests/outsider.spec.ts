@@ -5,7 +5,8 @@
  * - **«hay alguien del staff»** y **notas con hora** (las del equipo y las propias);
  * - **«Sugerir un plato»** para el menú de casa: una sugerencia `plato_casa` de Food que sale en «Mis propuestas»;
  * - **la familia**: estancia para todos por defecto (con la clave de persona de sus fichas) y «Separar»;
- * - **retiros abiertos** para cualquier huésped, con su resumen y sin precio.
+ * - **retiros abiertos** para cualquier huésped, con su resumen y sin precio;
+ * - **«Apuntarme»**: sugerencia a Booking (§26.3) que acepta el personal; el retiro pasa a ser suyo.
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -243,4 +244,44 @@ test('O4b · retiros abiertos: cualquier huésped los ve en el calendario, con s
   await expect(page.locator('#dayActions')).not.toContainText('€');
   // Sin nivel outsider, nada de estancias.
   await expect(page.locator('#calendarNewStay')).toHaveCount(0);
+});
+
+test('O4b · «Apuntarme»: sugerencia a Booking con la persona y su mensaje; el personal la acepta y el retiro pasa a ser suyo', async ({ page }) => {
+  const mio = await api.reservation({ title: 'Retiro de Ana', start: day(30), end: day(31) });
+  const abierto = await api.reservation({ title: 'Silencio y bosque', start: nextMonthDay(16), end: nextMonthDay(18) });
+  await api.booking.t.db.query(`update booking.reservations set guests_visible = true, public_summary = 'Un fin de semana en silencio.' where id = $1`, [abierto.id]);
+  const ana = await api.guest(mio.event, { first_name: 'Ana', last_name_1: 'Mora' });
+  await page.goto(`${baseURL}/i/${await api.guestLink(mio.id, ana, 'Ana', 'ana.mora@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  const account = await api.accountOf(ana);
+  await bar(page, 'Calendario').click();
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
+  await cell(page, nextMonthDay(16)).click();
+  await page.locator('#dayActions .gday-open button', { hasText: 'Apuntarme' }).click();
+  await expect(page.locator('#whoList input:checked')).toHaveCount(1);
+  await page.locator('#joinMessage').fill('Vendría con mucha ilusión');
+  await page.locator('#whoOk').click();
+  await expect(page.getByText('Solicitud enviada: te avisaremos.').first()).toBeVisible();
+  await expect(page.locator(`#dayActions [data-open="${abierto.id}"] .gjoin`)).toHaveAttribute('data-state', 'pendiente');
+  await capture(page, 'apuntarme');
+  const suggestion = (await api.booking.t.db.query<{ id: string; app: string; kind: string; status: string; operations: any }>(
+    `select id, app, kind, status, operations from core.suggestions where author_id = $1 and kind = 'apuntarme'`, [account])).rows;
+  expect(suggestion).toHaveLength(1);
+  expect(suggestion[0]).toMatchObject({ app: 'booking', status: 'pending' });
+  const args = suggestion[0]!.operations[0].args;
+  expect(args).toMatchObject({ reservation_id: abierto.id, message: 'Vendría con mucha ilusión' });
+  expect(args.persons).toHaveLength(1);
+  expect(args.persons[0]).toMatchObject({ name: 'Ana' });
+  expect(args.persons[0].person_key).toBeTruthy(); // su clave de Booking (unida a su ficha)
+
+  // El personal de Booking la acepta: la cuenta recibe la entrada y el retiro pasa a sus pestañas.
+  const approved = await api.booking.call(`/api/v1/suggestions/${suggestion[0]!.id}/approve`, { token: api.booking.tokens.editor, body: {} });
+  expect(approved.status, JSON.stringify(approved.data)).toBe(200);
+  await page.goto(`${baseURL}/#/`);
+  await page.reload();
+  await expect(page.locator('#retreatTabs a', { hasText: 'Silencio y bosque' })).toHaveCount(1);
+  await bar(page, 'Calendario').click();
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
+  await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${abierto.id}"]`)).toHaveCount(0);
+  await expect(page.locator(`#calendar .cal-event[data-event-id="${abierto.id}"]`).first()).toBeVisible();
 });
