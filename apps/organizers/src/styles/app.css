@@ -141,6 +141,16 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgbed.pending{border-color:var(--warn,#b7791f)}
 .orgbed-label{font-weight:700}
 
+/* Solicitudes para apuntarse (Booking §26.3) */
+.orgjoins{display:grid;gap:10px}
+.orgjoin{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line,rgb(0 0 0 / 10%));border-radius:12px;background:var(--paper)}
+.orgjoin strong{overflow-wrap:anywhere}
+.orgjoin .btnrow{justify-content:flex-end}
+.orgjoin-message{margin:6px 0 0;padding:6px 10px;border-left:3px solid var(--line,rgb(0 0 0 / 20%));white-space:pre-line;overflow-wrap:anywhere}
+.orgjoin-history{margin-top:10px}
+.orgjoin-history summary{cursor:pointer}
+.orgtab-count{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:999px;background:var(--warn,#b7791f);color:#fff;font-size:.75rem;line-height:18px;text-align:center}
+
 /* Supletorias por habitación (Booking §25) */
 .orgextra-beds{margin:4px 0 8px}
 .orgextra-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px dashed var(--line,rgb(0 0 0 / 20%));border-radius:10px;background:var(--paper)}

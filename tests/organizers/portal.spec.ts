@@ -594,3 +594,49 @@ test('organizers · supletorias (Booking §25): «N de M» con − / + y su prec
   await expect(counter).toHaveText('2 de 2');
   await expect(hab.locator('.orgextra-pending')).toContainText('Pendiente de Ikisai: 1 supletoria más.');
 });
+
+test('organizers · solicitudes para apuntarse (Booking §26.3): aviso en Resumen, aceptar con mensaje y descartar', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro abierto a huéspedes', confirm: true, guests: 12 });
+  await api.joinRequest(reservation, ['Marta', 'Nico'], '¿Queda sitio para dos?');
+  await api.joinRequest(reservation, ['Iker']);
+  const link = await api.organizerLink([reservation], 'apuntarme-ui@example.invalid', 'Sara');
+  await enter(page, link);
+
+  // Resumen: el aviso con cuántas personas, y el número en la pestaña.
+  await expect(page.locator('#summaryJoins')).toContainText('3 personas piden apuntarse a tu retiro.');
+  await expect(page.locator('#tab-asistentes .orgtab-count')).toHaveText('2');
+  await page.locator('#goJoins').click();
+  const joins = page.locator('#joinRequests');
+  await expect(joins.locator('.orgjoin')).toHaveCount(2);
+  const pair = joins.locator('.orgjoin', { hasText: 'Marta y Nico' });
+  await expect(pair).toContainText('2 personas');
+  await expect(pair.locator('.orgjoin-message')).toHaveText('¿Queda sitio para dos?');
+
+  // Aceptar con mensaje: el aviso de plazas, y las dos personas pasan a la lista.
+  await pair.locator('[data-action="join-accept"]').click();
+  await expect(page.locator('#joinSheet')).toContainText('¿Aceptar a Marta y Nico?');
+  await expect(page.locator('#join-seats')).toContainText('Ahora tienes 0 asistentes de 12 plazas; con esta solicitud serían 2.');
+  await page.locator('#join-comment').fill('¡Bienvenidos!');
+  await page.locator('#join-confirm').click();
+  await expect(page.locator('.toast.show')).toContainText('ya están en tus asistentes');
+  await expect(page.locator('#guestRows')).toContainText('Marta');
+  await expect(page.locator('#guestRows')).toContainText('Nico');
+  await expect(page.locator('#tab-asistentes .orgtab-count')).toHaveText('1');
+
+  // Descartar: nadie entra, y queda en «Ya decididas» con su estado.
+  await joins.locator('.orgjoin', { hasText: 'Iker' }).locator('[data-action="join-discard"]').click();
+  await expect(page.locator('#joinSheet')).toContainText('¿Descartar la solicitud de Iker?');
+  await page.locator('#join-confirm').click();
+  await expect(joins.locator('#joinNone')).toBeVisible();
+  await expect(page.locator('#tab-asistentes .orgtab-count')).toHaveCount(0);
+  await expect(page.locator('#guestRows')).not.toContainText('Iker');
+  await joins.locator('#joinHistory summary').click();
+  await expect(joins.locator('#joinHistory')).toContainText('Ya decididas (2)');
+  await expect(joins.locator('#joinHistory li', { hasText: 'Marta y Nico' })).toContainText('Aceptada · ¡Bienvenidos!');
+  await expect(joins.locator('#joinHistory li', { hasText: 'Iker' })).toContainText('Descartada');
+
+  // En Resumen ya no hay aviso.
+  await page.locator('#tab-resumen').click();
+  await expect(page.locator('#summaryGuests')).toBeVisible();
+  await expect(page.locator('#summaryJoins')).toHaveCount(0);
+});

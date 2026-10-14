@@ -13,7 +13,7 @@ import { build } from 'vite';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
 import { createOrganizersApp, ORGANIZERS_ORIGINS } from '../../supabase/functions/organizers-api/app.ts';
-import { PROCEDURES, TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
+import { JOIN_PROCEDURE, JOIN_SUGGESTION_KIND, PROCEDURES, TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
 
 export interface OrganizersTestServer {
   url: string;
@@ -51,6 +51,11 @@ export interface OrganizersTestServer {
    * Devuelve los ids de la habitación, de sus camas fijas y de sus supletorias.
    */
   room(reservationId: string, options: { name: string; beds: number; extra?: number; enSuite?: boolean }): Promise<{ spaceId: string; beds: string[]; extra: string[] }>;
+  /**
+   * Solicitud para apuntarse que Ikisai pasa al organizador (Booking §26.3), por el camino real: el personal hace visible el
+   * retiro, una cuenta de Guests sugiere «Apuntarme» y el personal la aprueba con `mode: 'organizer'`. Devuelve la cuenta.
+   */
+  joinRequest(reservationId: string, persons: string[], message?: string): Promise<{ account: string }>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -259,6 +264,24 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
       const event = (await booking.t.db.query<{ id: string }>('select id from booking.events where reservation_id = $1', [reservationId])).rows[0]!.id;
       await commit([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: event, space_id: spaceId, group_label: 'Grupo', persons: 1 } }]);
       return { spaceId, beds: fixed, extra: extras };
+    },
+    async joinRequest(reservationId, persons, message) {
+      const visible = (await booking.t.db.query<{ guests_visible: boolean; revision: string }>('select guests_visible, revision from booking.reservations where id = $1', [reservationId])).rows[0]!;
+      if (!visible.guests_visible) await commit([{ op: 'update', table: TABLES.reservations, id: reservationId, expectedRevision: Number(visible.revision), fields: { guests_visible: true } }]);
+      const member = async (app: string) => {
+        const user = await booking.t.createUser();
+        await booking.t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'editor')`, [app, user]);
+        return user;
+      };
+      const account = await member('guests');
+      const staff = await member('booking');
+      const args = { reservation_id: reservationId, persons: persons.map((name) => ({ name })), ...(message ? { message } : {}) };
+      const suggestion = await booking.t.rpc('core_suggest', { p_app: 'booking', p_actor: account, p_request_id: `s-${uuid()}`, p_kind: JOIN_SUGGESTION_KIND,
+        p_summary: 'Apuntarme', p_detail: null, p_operations: [{ op: 'call', procedure: JOIN_PROCEDURE, args }] }) as { id: string };
+      const decided = await booking.t.rpc('core_suggestion_decide', { p_app: 'booking', p_actor: staff, p_id: suggestion.id, p_decision: 'approve', p_comment: null,
+        p_operations: [{ op: 'call', procedure: JOIN_PROCEDURE, args: { ...args, mode: 'organizer' } }] }) as { status: string };
+      if (decided.status !== 'approved') throw new Error(`apuntarme: ${JSON.stringify(decided)}`);
+      return { account };
     },
     setOffline(on) { offline = on; },
     close: async () => {
