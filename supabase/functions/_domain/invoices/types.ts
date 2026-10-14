@@ -109,6 +109,7 @@ export const TABLES = {
   customers: 'invoices.customers',
   // «Mi nombre» de los artículos recordado por proveedor (0230)
   itemLabels: 'invoices.item_labels',
+  settings: 'invoices.settings',
 } as const;
 export type InvoicesTable = (typeof TABLES)[keyof typeof TABLES];
 
@@ -127,6 +128,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.invoice_lines': [
     'invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount',
     'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes', 'rectifies_line_id', 'label',
+    'item_id', 'item_factor', 'space_id',
   ],
   'invoices.tax_lines': ['invoice_id', 'position', 'tax_type', 'rate', 'taxable_base', 'amount', 'notes'],
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
@@ -150,7 +152,8 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.issued_allocations': ['issued_invoice_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_amount', 'notes'],
   'invoices.customers': ['name', 'tax_id', 'id_type', 'country', 'kind', 'address'],
   'invoices.supplier_templates': ['supplier_id', 'version', 'status', 'layout_tokens', 'layout_hash', 'page_size', 'fields', 'confirmations', 'uses', 'full_hits', 'last_confirmed_invoice_id'],
-  'invoices.item_labels': ['label'],
+  'invoices.item_labels': ['label', 'item_id', 'item_factor'],
+  'invoices.settings': ['key', 'value'],
 };
 
 /** Columnas comunes del contrato §2.1. */
@@ -260,15 +263,30 @@ export interface InvoiceLineRow extends SyncedColumns {
   label?: string | null;
   /** «manual» o «recordado» (puesto solo desde la memoria del proveedor). Lo pone el servidor. */
   label_source?: 'manual' | 'recordado' | null;
+  /** R4 (0234): artículo de Recursos, factor hacia su unidad base (null = ya es la base) y sitio de entrada (null = el habitual). */
+  item_id?: string | null;
+  item_factor?: number | null;
+  space_id?: string | null;
+  /** «manual» o «recordado», como `label_source`. Lo pone el servidor. */
+  item_source?: 'manual' | 'recordado' | null;
 }
 
 /** Memoria de «Mi nombre» por proveedor y artículo (0230). La escribe el servidor al validar; el cliente corrige `label`. */
 export interface ItemLabelRow extends SyncedColumns {
   supplier_id: string;
   match_key: string;
-  label: string;
+  label: string | null;
   uses: number;
   last_invoice_id: string | null;
+  /** R4 (0234): el artículo y el factor recordados. */
+  item_id?: string | null;
+  item_factor?: number | null;
+}
+
+/** Ajustes de la app (0234). `resources_links`: enlace de las líneas con Recursos (apagado sin fila). */
+export interface InvoiceSettingRow extends SyncedColumns {
+  key: 'resources_links';
+  value: unknown;
 }
 
 export interface TaxLineRow extends SyncedColumns {
