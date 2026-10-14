@@ -29,7 +29,7 @@ Actualizado: 6 de octubre de 2026. **Puerta G1 cerrada: núcleo funcionando y pr
 
 ## Pendiente (fase 1 y siguientes)
 
-- `checks.yml` ya corre en PR (#6, #7, #8 en verde). Pendiente el primer run de `backup.yml` y la restauración real del backup (hoy solo plan).
+- `checks.yml` ya corre en PR (#6, #7, #8 en verde). `backup.yml` corre a diario (copia cifrada y verificada). La restauración está implementada y probada contra un destino simulado; falta el ensayo real en un proyecto de ensayo.
 - **Releases automáticas desde GitHub Actions fallan desde el 6 de octubre**: la Management API de Supabase devuelve 500 «FGA Authentication Error» a los runners (EE. UU. Este) en `/database/migrations` y `/database/query`, mientras el mismo token funciona desde España. Se añadieron reintentos con espera creciente (#7, #8) sin efecto. Mientras dure, Core publica desde su PC con `release_cloud.py --apply`. Revisar en unos días; si persiste, abrir incidencia a Supabase o mover la release a un runner propio.
 - Equipos de app: `docs/<app>/API.md` (G2) antes de código.
 - Retirar la función QA `invoices-api-qa` cuando deje de usarse.
