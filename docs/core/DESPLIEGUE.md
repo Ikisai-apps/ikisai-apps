@@ -86,6 +86,6 @@ Ensayo local sin tocar nada: `python scripts/release_cloud.py --app invoices --v
 
 ## Pendiente
 
-- `cloud_backup.py restore` solo ofrece `--plan`; la restauración real (carga ordenada con triggers desactivados y recálculo de cursores) y su ensayo en un proyecto vacío quedan por implementar.
+- **Restauración:** `cloud_backup.py restore --apply` (`scripts/backup_restore.py`) restaura en el proyecto de ensayo de `private/restore-target.json` y nunca en producción. Carga ordenada sin disparadores, cuentas con contraseña aleatoria, objetos con su huella y recálculo de cursores, con prueba contra un destino simulado (`tests/scripts/test_backup_restore.py`). **Falta el ensayo real:** no hay proyecto de ensayo todavía (tarea del usuario 2.3).
 - `encrypted_backup.py --skip-unchanged` requiere `actions: read` en el token del workflow (ya concedido en `backup.yml`).
 - El `_worker.js` generado reenvía `/api/v1/*` y `/health`; si una app necesita más rutas en el worker, debe traer el suyo en `apps/<app>/public/_worker.js`.
