@@ -188,12 +188,14 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
   // La lista la crea food.regenerate_shopping; a mano solo cambian su estado y sus notas.
   'food.shopping_lists': {
     required: ['menu_id'],
-    reserved: ['menu_id', 'generated_at', 'source_revisions'],
+    reserved: ['menu_id', 'generated_at', 'source_revisions', 'period_start', 'period_end'],
     fields: {
       menu_id: { kind: 'uuid' },
       status: { kind: 'enum', values: SHOPPING_LIST_STATUSES },
       generated_at: { kind: 'text', max: 40 },
       source_revisions: { kind: 'json' },
+      period_start: { kind: 'date', nullable: true },
+      period_end: { kind: 'date', nullable: true },
       notes: freeText,
     },
   },

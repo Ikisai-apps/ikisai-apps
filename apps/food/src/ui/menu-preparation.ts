@@ -8,6 +8,7 @@ import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import type { TabContext } from './menu-shopping.ts';
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
+import { housePeriod, periodBar, periodLabel } from './house-period.ts';
 
 type PrepRow = Mirror<PreparationItem>;
 
@@ -17,7 +18,7 @@ interface RegenerateResult { inserted: number; updated: number; deleted: number;
  * Plan de preparación: propuesta por plato (con red) y, sin red, marcar hecho, asignar responsable, pasos propios y orden a mano.
  * Dentro de cada día los pasos van por hora hasta que alguien los ordena a mano; desde entonces manda ese orden (`position`).
  */
-export function mountPreparation({ client, menuId, host, canWrite }: TabContext): () => void {
+export function mountPreparation({ client, menuId, host, canWrite, house = false }: TabContext): () => void {
   let data: MenuData | null = null;
   let steps: PrepRow[] = [];
   let sheet: Sheet | null = null;
@@ -54,7 +55,8 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     busy = true;
     paint();
     try {
-      const result = await usage.run('food.preparacion.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regeneratePreparation, { menu_id: menuId }));
+      const result = await usage.run('food.preparacion.generar', () => runCall<RegenerateResult>(client, FOOD_PROCEDURES.regeneratePreparation, {
+        menu_id: menuId, ...(house ? { period_start: housePeriod().start, period_end: housePeriod().end } : {}) }));
       toast(`Propuesta lista: ${result.inserted} pasos nuevos, ${result.updated} actualizados, ${result.deleted} retirados.`);
     } catch (error) {
       toast(describeError(error));
@@ -149,10 +151,13 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     if (!data?.menu) { dropLists(); replace(host); return; }
     const writable = canWrite();
     const menu = data.menu;
-    const generated = menu.preparation_generated_at;
+    // En casa no hay marca de «generada» del menú entero: cuenta lo que haya en los días elegidos.
+    const generated = house ? null : menu.preparation_generated_at;
+    const houseHead = house ? periodBar(() => { dropLists(); void load(); }) : null;
     if (!generated && steps.length === 0) {
       dropLists();
-      replace(host, el('div', { 'data-feedback-id': 'food.menu.preparacion.vacia', 'data-feedback-label': 'Sin plan de preparación', class: 'empty', id: 'preparationEmpty' }, el('strong', null, 'Todavía no hay plan de preparación'),
+      replace(host, houseHead, el('div', { 'data-feedback-id': 'food.menu.preparacion.vacia', 'data-feedback-label': 'Sin plan de preparación', class: 'empty', id: 'preparationEmpty' },
+        el('strong', null, house ? `Todavía no hay pasos para ${periodLabel(housePeriod())}` : 'Todavía no hay plan de preparación'),
         'La propuesta pone un paso por plato a la hora del servicio menos la antelación de cada receta. Después se edita y se ordena a mano.',
         writable ? el('p', { style: 'margin-top:10px' },
           el('button', { 'data-feedback-id': 'food.menu.preparacion.generar', 'data-feedback-label': 'Generar propuesta', class: 'primary', type: 'button', id: 'generatePreparation', disabled: busy, onclick: () => void regenerate() }, 'Generar propuesta'), ' ',
@@ -166,7 +171,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
     const doneCount = sorted.filter((s) => s.done).length;
     const ofDay = (day: string) => sorted.filter((s) => (s.scheduled_date ?? '') === day);
 
-    replace(top,
+    replace(top, houseHead,
       stale ? el('div', { 'data-feedback-id': 'food.menu.preparacion.aviso_cambios', 'data-feedback-label': 'Aviso de cambios', class: 'banner warn notice', id: 'preparationStale', role: 'status' },
         el('div', null, el('strong', null, 'El menú ha cambiado desde que se generó la propuesta.'), ' Regenerar no toca tus pasos ni lo ya hecho.'),
         writable ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'ghost', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, 'Regenerar propuesta')) : null) : null,
@@ -175,7 +180,7 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
         generated ? el('p', { class: 'muted' }, `Propuesta generada el ${formatDate(generated)}.`) : null),
       writable ? el('div', { 'data-feedback-id': 'food.menu.preparacion.acciones', 'data-feedback-label': 'Acciones de preparación', class: 'btnrow menuactions' },
         el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
-        !stale ? el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
+        !stale ? el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated || house ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
 
@@ -196,6 +201,15 @@ export function mountPreparation({ client, menuId, host, canWrite }: TabContext)
   async function load(): Promise<void> {
     data = await loadMenuData(client, menuId);
     steps = ((await client.list(T.preparation)) as PrepRow[]).filter((s) => s.menu_id === menuId);
+    if (house && data.menu) {
+      // En casa, los pasos de los días elegidos: los de un plato, por el día de su servicio; los propios, por su día.
+      const { start, end } = housePeriod();
+      const serviceDay = new Map(data.items.map((i) => [i.id, data!.services.find((s) => s.id === i.service_id)?.service_date ?? null]));
+      steps = steps.filter((s) => {
+        const day = (s.menu_item_id ? serviceDay.get(s.menu_item_id) : null) ?? s.scheduled_date;
+        return !!day && day >= start && day <= end;
+      });
+    }
     paint();
   }
 

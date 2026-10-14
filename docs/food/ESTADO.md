@@ -1,6 +1,6 @@
 # Food · estado
 
-Actualizado: 13 de octubre de 2026. **Backend e interfaz del recorrido F–H completos y publicados en `food.ikisai.com`.**
+Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H completos y publicados en `food.ikisai.com`.**
 
 ## Hecho
 
@@ -35,7 +35,8 @@ Actualizado: 13 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - **Salvaguarda:** en un retiro, el plato rápido por completar sale atenuado con «Completar en el Recetario» (abre su ficha); el servidor lo rechaza igualmente.
   - **Recetario:** chip «Rápida · por completar», opción «Rápidas por completar» en el filtro Estado y aviso con «Completar» en la ficha.
   - **Inicio:** tarjeta «Hoy en casa».
-  - Pruebas: `house.test.ts` (PGlite) y `house.spec.ts` (Playwright, con capturas a 390 px si se pide `FOOD_CAPTURAS`).
+  - **Compra y Preparación del menú de casa** (O3b, 14 de octubre de 2026): por los días que se eligen al generarlas, «Del … al …» con «Esta semana» y «La que viene». Hay una lista por rango, sin solaparse, y chips para abrir las anteriores. La preparación enseña y regenera solo los pasos de esos días.
+  - Pruebas: `house.test.ts` y `house-planning.test.ts` (PGlite), y `house.spec.ts` (Playwright, con capturas a 390 px si se pide `FOOD_CAPTURAS`).
 - Kit 0.3 adoptado: `compressImage` para las fotos y `parseQuantity`/`formatQuantity` para las cantidades.
 - Pruebas: 44 en PGlite y en `domain.test.ts` el cálculo de coste (`tests/food/*.test.ts`) y cuatro de extremo a extremo en Playwright con una API falsa propia: `smoke.spec.ts` (receta con foto, sin red, sincronización, papelera), `menus.spec.ts` (recorrido G–H: evento, menú, orden a mano, avisos, validar, hoja del organizador con PDF en A4, cambio del evento, reabrir y validar de nuevo) `planning.spec.ts` (vista de cocinero, compra, preparación y cierre, con sus casos sin red) y `offline.spec.ts` (dos dispositivos: fusión automática en preparación, conflicto con decisión en compra y rechazo `MENU_LOCKED` sin bloquear la cola).
 
@@ -45,7 +46,7 @@ Actualizado: 13 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 
 ## Pendiente
 
-- O3b: compra y preparación del menú de casa por un rango de fechas elegido al generarlas. O3c: sugerencias de plato de los outsiders (`plato_casa`), con el contrato de O1.
+- O3c: sugerencias de plato de los outsiders (`plato_casa`), con el contrato de O1.
 - Agentes de IA (núcleo, contrato §3.1): solo `food.regenerate_preparation` está marcado como seguro sin aprobación; el resto de procedimientos la exige.
 
 - Recorrido de aceptación en un Android real y con una cuenta real (hasta ahora todo se ha probado con Playwright y una API falsa, y con PGlite).

@@ -168,7 +168,11 @@ Las adaptaciones alimentarias son recetas propias y platos propios del servicio 
 - **Por completar** = `quick` y le faltan los alérgenos revisados o al menos un ingrediente vivo (`food.recipe_quick_pending` en SQL, `isQuickPending` en el dominio). Se calcula siempre a partir de la receta y sus líneas en vez de apagar la marca desde un trigger: así no hay escrituras fuera de `core.commit` y todos los dispositivos ven lo mismo. Si alguien quita los alérgenos revisados o el último ingrediente, vuelve a estar por completar.
 - **Salvaguarda:** `food.guard_menu_item` rechaza con `QUICK_RECIPE_IN_RETREAT` (422, `recipe_id`, `menu_id`) un plato de un retiro cuya receta está por completar, al insertarlo, restaurarlo o cambiarle la receta. En casa entra siempre. Una receta normal en prueba sigue entrando en un retiro como antes (con su aviso al validar).
 - Indicadores (§7.4) y portales (§7.5) solo ven retiros: el menú de casa no tiene evento ni foto del evento.
-- **Pendiente:** O3b (compra y preparación de casa por un rango de fechas elegido al generarlas) y O3c (sugerencias de plato de los outsiders, `plato_casa`, cuando esté O1).
+- **Compra y preparación de casa (O3b, 14 de octubre de 2026; migración `20261014_0195_food_house_planning.sql`):** por un rango de días que se elige al generarlas (decisión del usuario; por defecto, esta semana), de como mucho 63 días.
+  - Cada lista del menú de casa lleva `period_start` y `period_end`. Sus listas vivas no se solapan (`PERIOD_OVERLAP`, 422, con los días de la otra lista). Regenerar el mismo rango reutiliza su lista.
+  - `regenerate_shopping` y `regenerate_preparation` reciben `period_start` y `period_end`: obligatorios en casa y prohibidos en un retiro (`INVALID_PERIOD`, con `reason: 'required' | 'not_allowed'`). Solo miran los servicios de esos días (§3.2 y §3.3).
+  - En casa no se escribe la marca de obsolescencia de la preparación del menú (`preparation_generated_at` y `preparation_source_revisions` son de los retiros). La lista de compra sí la lleva, calculada con los días de la lista (`shoppingSources(graph, period)`).
+- **Pendiente:** O3c (sugerencias de plato de los outsiders, `plato_casa`, cuando esté O1).
 
 ### 2.3 Compra, preparación y stock
 
@@ -179,7 +183,10 @@ food.shopping_lists
   generated_at      timestamptz not null   ®
   source_revisions  jsonb not null         ®   §2.4
   notes             text
-writable: status, notes + reservadas.  Único: menu_id where deleted_at is null.
+  period_start      date   ®   solo en el menú de casa: primer día de la lista (§2.6)
+  period_end        date   ®   último día; como mucho 63 días en total
+writable: status, notes + reservadas.  Único: menu_id where deleted_at is null and period_start is null (un retiro, una lista);
+(menu_id, period_start, period_end) en casa, sin solaparse (PERIOD_OVERLAP).
 
 food.shopping_list_items
   shopping_list_id   uuid not null → food.shopping_lists   on delete cascade, inmutable
@@ -276,8 +283,8 @@ Un lote con `call` no se puede deshacer desde el historial (`UNDO_UNAVAILABLE`, 
 | `food.acknowledge_event` | `menu_id`, `expectedRevision`, `event_revision`, `event_snapshot` | `menus` | `{menu_id, source_event_revision}` | `VERSION_CONFLICT`, `MENU_LOCKED`, `EVENT_CHANGED` |
 | `food.validate_menu` | `menu_id`, `expectedRevision`, `event_revision`, `event_snapshot`, `acknowledged[]` | `menus` | `{menu_id, status, validated_at}` | `VERSION_CONFLICT`, `INVALID_TRANSITION`, `MENU_EMPTY`, `EVENT_CHANGED`, `MENU_WARNINGS_UNACKNOWLEDGED` |
 | `food.set_menu_status` | `menu_id`, `expectedRevision`, `status` | `menus` | `{menu_id, status}` | `VERSION_CONFLICT`, `INVALID_TRANSITION` |
-| `food.regenerate_shopping` | `menu_id`, `list_id` | `shopping_lists`, `shopping_list_items` | `{list_id, created, inserted, updated, deleted, kept, status}` | `MENU_NOT_FOUND`, `LIST_CLOSED` |
-| `food.regenerate_preparation` | `menu_id` | `preparation_items`, `menus` | `{inserted, updated, deleted, kept}` | `MENU_NOT_FOUND` |
+| `food.regenerate_shopping` | `menu_id`, `list_id`; en casa, `period_start` y `period_end` | `shopping_lists`, `shopping_list_items` | `{list_id, created, inserted, updated, deleted, kept, status}` | `MENU_NOT_FOUND`, `LIST_CLOSED`, `INVALID_PERIOD`, `PERIOD_OVERLAP` |
+| `food.regenerate_preparation` | `menu_id`; en casa, `period_start` y `period_end` | `preparation_items`, `menus` (solo retiros) | `{inserted, updated, deleted, kept}` | `MENU_NOT_FOUND`, `INVALID_PERIOD` |
 
 ### 3.1 Estados del menú
 
@@ -293,8 +300,8 @@ borrador ⇄ revisar ──validate_menu──▶ validado ⇄ cerrado
 
 ### 3.2 `food.regenerate_shopping`
 
-1. Lee el menú. Si no hay lista viva la crea con `list_id` (uuid del cliente). Si la lista está `cerrada` falla con `LIST_CLOSED`.
-2. Para cada plato vivo de cada servicio vivo: `factor = servings / base_servings` de su receta; para cada línea viva de `recipe_ingredients`, `cantidad = quantity × factor`.
+1. Lee el menú. Si no hay lista viva la crea con `list_id` (uuid del cliente). Si la lista está `cerrada` falla con `LIST_CLOSED`. En el menú de casa, «la lista» es la de esos días (`period_start`, `period_end`; §2.6).
+2. Para cada plato vivo de cada servicio vivo (en casa, solo de los servicios de esos días): `factor = servings / base_servings` de su receta; para cada línea viva de `recipe_ingredients`, `cantidad = quantity × factor`.
 3. Agrupa por ingrediente y familia de unidad. Masa se suma en gramos y volumen en mililitros; `unidad`, `paquete`, `manojo` y `otro` son cada una su propia familia y no se mezclan.
 4. Unidad de salida: en masa y volumen, la `preferred_unit` del ingrediente si es de esa familia; si no, `kg` o `l` a partir de 1000 y `g` o `ml` por debajo. `required_quantity` se redondea a tres decimales al final.
 5. Línea calculada existente (mismo ingrediente y familia, `manual = false`): actualiza `required_quantity` y `unit`. Si cambia la unidad dentro de la familia convierte `stock_quantity` y `purchase_quantity`. Si `manual_override` es falso recalcula `purchase_quantity`. No toca `supplier`, `status` ni `notes`.
@@ -316,6 +323,7 @@ Propuesta determinista y deliberadamente simple: una fila por plato vivo, «Prep
 - Fila propuesta cuyo plato ya no existe: se borra, salvo que esté hecha.
 - Filas con `manual = true` o `done = true`: no se tocan. La interfaz pone `manual = true` cuando el cocinero cambia el texto o el horario de una fila propuesta; marcar `done` o `responsible` no la convierte en manual.
 - Escribe `preparation_generated_at` y `preparation_source_revisions` en el menú.
+- En el menú de casa (§2.6) solo mira los platos de los servicios de esos días, solo retira propuestas programadas en esos días (o hasta siete días antes, la antelación máxima) y no escribe nada en el menú.
 
 Los pasos no se envían a Tareas. «Crear tarea en Ikisai» para necesidades permanentes queda fuera de V1.
 

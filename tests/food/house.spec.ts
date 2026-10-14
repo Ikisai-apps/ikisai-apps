@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HOUSE_MENU_ID } from '../../supabase/functions/_domain/food/mod.ts';
+import { HOUSE_MENU_ID, weekDays } from '../../supabase/functions/_domain/food/mod.ts';
 import { freePort, day, TIME_ZONE, buildFoodApp } from './helpers.ts';
 import { startFakeApi, type FakeApi } from './fake-api.ts';
 
@@ -38,7 +38,9 @@ test.beforeAll(async () => {
       menu_style: null, reservation_status: 'confirmada', requires_meals: true, meal_notes: null, event_revision: 1, dietary_restrictions: [],
     }],
   });
-  api.seed('food.recipes', { name: 'Curry de verduras', category: 'principal', base_servings: 10, status: 'validada', diet_tags: [], allergens: [], allergens_checked: true });
+  const curry = api.seed('food.recipes', { name: 'Curry de verduras', category: 'principal', base_servings: 10, status: 'validada', diet_tags: [], allergens: [], allergens_checked: true, prep_minutes: 60 }).id;
+  const rice = api.seed('food.ingredients', { name: 'Arroz', preferred_unit: 'kg' }).id;
+  api.seed('food.recipe_ingredients', { recipe_id: curry, ingredient_id: rice, quantity: 1, unit: 'kg', position: 1 });
   retreatMenu = api.seed('food.menus', { event_id: RETREAT, source_event_revision: 1, status: 'borrador' }).id;
   api.seed('food.menu_services', { menu_id: retreatMenu, service_date: day(10), service_type: 'cena', service_time: '20:30:00', position: 1 });
   process.env.VITE_API_PROXY = api.url;
@@ -84,7 +86,8 @@ test('menú de casa · por semanas, «+ Comida» y plato rápido; en un retiro, 
     await expect(page.getByRole('heading', { name: 'Menú de casa', level: 2 })).toBeVisible();
     await expect.poll(() => house()?.kind).toBe('casa');
     expect(house()).toMatchObject({ event_id: null, status: 'borrador' });
-    await expect(page.locator('.menutabs')).toBeHidden();
+    // Menú, Compra y Preparación (O3b); sin Organizador ni Cierre.
+    await expect(page.locator('.menutabs a:visible')).toHaveText(['Menú', 'Compra', 'Preparación']);
     await expect(page.locator('#validateMenu')).toHaveCount(0);
     await expect(page.locator('#menuRestrictions')).toBeHidden();
     await expect(page.locator('#menuShare')).toBeHidden();
@@ -169,5 +172,38 @@ test('menú de casa · por semanas, «+ Comida» y plato rápido; en un retiro, 
     await expect(cards.filter({ hasText: 'Gazpacho' })).toContainText('Rápida · por completar');
     await page.locator('#filterStatus').selectOption('rapida');
     await expect(cards.locator('strong')).toHaveText(['Gazpacho']);
+  });
+
+  await test.step('O3b · compra y preparación de casa por los días elegidos (por defecto, esta semana)', async () => {
+    await page.goto(`${baseURL}/#/menus/${HOUSE_MENU_ID}`);
+    const today = page.locator(`.menuday[data-day="${day(0)}"]`);
+    await today.getByRole('button', { name: 'Añadir plato' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Añadir Curry de verduras' }).click();
+    await expect(today.locator('.dish', { hasText: 'Curry de verduras' }).locator('.servings')).toHaveValue('5');
+
+    await page.locator('.menutabs').getByRole('link', { name: 'Compra', exact: true }).click();
+    await expect(page.locator('#periodThisWeek')).toHaveClass(/ok/);
+    await expect(page.locator('#shoppingEmpty')).toContainText('Todavía no hay lista para');
+    await page.locator('#generateShopping').click();
+    await expect(page.locator('#shoppingList')).toContainText('Arroz');
+    const list = () => api.rows('food.shopping_lists').find((l) => l.menu_id === HOUSE_MENU_ID)!;
+    const week = weekDays(day(0));
+    await expect.poll(() => [list()?.period_start, list()?.period_end]).toEqual([week[0], week[6]]);
+    await capture(page, '16-compra-casa');
+    // Otros días: otra lista; la de esta semana sigue ahí, en las chips.
+    await page.locator('#periodNextWeek').click();
+    await expect(page.locator('#shoppingEmpty')).toContainText('Todavía no hay lista para');
+    await expect(page.locator('.houselists button')).toHaveCount(1);
+    await page.locator('.houselists button').first().click();
+    await expect(page.locator('#shoppingList')).toContainText('Arroz');
+
+    await page.locator('.menutabs').getByRole('link', { name: 'Preparación', exact: true }).click();
+    await expect(page.locator('#preparationEmpty')).toContainText('Todavía no hay pasos para');
+    await page.locator('#generatePreparation').click();
+    await expect(page.locator('#preparationDays')).toContainText('Preparar Curry de verduras');
+    await expect(page.locator('#preparationDays')).toContainText('Preparar Gazpacho');
+    await capture(page, '17-preparacion-casa');
+    await page.locator('#periodNextWeek').click();
+    await expect(page.locator('#preparationEmpty')).toBeVisible();
   });
 });
