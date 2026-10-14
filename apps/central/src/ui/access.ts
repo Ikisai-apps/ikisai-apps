@@ -6,8 +6,8 @@ import type { SyncClient } from '@ikisai/sync-client';
 import { T, describeError } from '../app/client.ts';
 import { isStaffAccount, syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
-import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, relationForLevel, type HouseLevel } from '@ikisai/domain-central';
-import { describeScopes, EVENT_LABELS, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
+import { HOUSE_LEVELS, HOUSE_LEVEL_LABELS, relationForLevel, type HouseGrant, type HouseLevel } from '@ikisai/domain-central';
+import { describeScopes, EVENT_LABELS, grantFor, ROLE_LABELS, type Account, type AccessEvent, type AdminApi, type AgentKey, type CatalogApp, type Role } from '../app/admin.ts';
 import type { Usage } from '@ikisai/ui-kit';
 import type { ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
@@ -32,7 +32,9 @@ function roleSelect(id: string, value: Role | null, options: { agent: boolean; a
   const allowed = ROLES.filter((r) => !(options.agent && (r === 'owner' || options.app === 'central')));
   return el('select', { id, 'aria-label': 'Acceso' },
     el('option', { value: '', selected: value === null }, 'Sin acceso'),
-    ...allowed.map((r) => el('option', { value: r, selected: value === r }, ROLE_LABELS[r]))) as HTMLSelectElement;
+    ...allowed.map((r) => el('option', { value: r, selected: value === r }, ROLE_LABELS[r])),
+    // Un rol que no se da a mano (outsider, por el nivel de casa) se enseña igual, sin ofrecerlo a las demás.
+    ...(value && !allowed.includes(value) ? [el('option', { value, selected: true }, ROLE_LABELS[value])] : [])) as HTMLSelectElement;
 }
 
 /** Ficha de Personas, lo que Accesos necesita para enlazar cuentas (FB_2026_013: la ficha manda sobre el nombre). */
@@ -99,6 +101,7 @@ export function mountAccess(tab: AccessTab): ViewMount {
 async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncClient, me: string, state: { alive: boolean }, navigate: (hash: string) => void, usage: Usage): Promise<void> {
   let catalog: CatalogApp[] = admin.cached.catalog ?? [];
   let accounts: Account[] = admin.cached.accounts?.items ?? [];
+  let grants: HouseGrant[] = admin.cached.grants ?? [];
   let people: PersonLite[] = [];
   let query = '';
   let showAgents = false;
@@ -133,8 +136,11 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
       return;
     }
     replace(list, ...visible.map((a) => {
-      const chips = a.memberships.map((m) => el('span', { class: `chip role-${m.role}`, title: describeScopes(m.app, m.scopes) ?? '' },
-        `${appName(m.app)} · ${ROLE_LABELS[m.role]}`, describeScopes(m.app, m.scopes) ? ' *' : ''));
+      const chips = a.memberships.map((m) => {
+        const derived = grantFor(grants, a.userId, m.app, m.role);
+        return el('span', { class: `chip role-${m.role}${derived ? ' derived' : ''}`, title: derived ? 'Lo da el nivel de casa: se cambia en Personas' : describeScopes(m.app, m.scopes) ?? '', ...(derived ? { 'data-derived': '' } : {}) },
+          `${appName(m.app)} · ${ROLE_LABELS[m.role]}`, derived ? el('span', { class: 'muted' }, ' · por nivel de casa') : describeScopes(m.app, m.scopes) ? ' *' : '');
+      });
       if (a.disabled) chips.unshift(el('span', { class: 'chip alert' }, 'Desactivada'));
       if (a.kind === 'agent') chips.unshift(el('span', { class: 'chip' }, icon('bot', 14), 'Agente'));
       const issue = issueOf(a);
@@ -161,7 +167,7 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
 
   async function load(): Promise<void> {
     try {
-      [catalog, accounts] = await Promise.all([admin.catalog(), admin.accounts()]);
+      [catalog, accounts, grants] = await Promise.all([admin.catalog(), admin.accounts(), admin.houseGrants().catch(() => grants)]);
       people = (await loadPeopleLite(client)).people;
       replace(note);
       paintIssues();
@@ -293,8 +299,16 @@ async function mountAccounts(body: HTMLElement, admin: AdminApi, client: SyncCli
         select.addEventListener('change', () => void change(app, select));
         if (isMe && app.id === 'central') select.disabled = true;
         const scopes = m ? describeScopes(app.id, m.scopes) : null;
+        const derived = m ? grantFor(grants, account.userId, app.id, m.role) : null;
         let extra: HTMLElement | null = null;
-        if (app.id === 'central' && m?.role === 'editor') {
+        if (derived) {
+          // Lo da el nivel de casa (O4): fijo aquí; se cambia en la ficha de Personas.
+          select.disabled = true;
+          const person = personOf(account);
+          extra = el('p', { class: 'muted small', 'data-derived': app.id, 'data-feedback-id': 'central.accesos.cuenta.por_nivel', 'data-feedback-label': 'Acceso por nivel de casa' },
+            `Lo da el nivel de casa «${HOUSE_LEVEL_LABELS[derived.level as HouseLevel] ?? derived.level}»: cámbialo en `,
+            person ? el('a', { href: `#/personas/${person.id}`, 'data-feedback-id': 'central.accesos.cuenta.ir_a_personas', 'data-feedback-label': 'Ir a la ficha de Personas' }, 'Personas') : 'Personas', '.');
+        } else if (app.id === 'central' && m?.role === 'editor') {
           const box = el('input', { type: 'checkbox', id: 'scope-people', 'data-feedback-id': 'central.accesos.cuenta.datos_reservados', 'data-feedback-label': 'Ve datos reservados de personas', checked: (m.scopes as { people?: unknown } | null)?.people === true }) as HTMLInputElement;
           box.addEventListener('change', () => void togglePeopleScope(box));
           extra = el('label', { class: 'check' }, box, el('span', null, 'Ve datos reservados de personas (contacto, documentos)'));

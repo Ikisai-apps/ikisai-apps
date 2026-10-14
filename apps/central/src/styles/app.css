@@ -65,6 +65,7 @@
 .personblock{display:flex;flex-direction:column;gap:10px;padding:14px 16px;margin:0 0 12px;border:1px solid var(--line);border-radius:var(--radius-card,16px);background:var(--paper);max-width:760px}
 .blockhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .blockhead h3{margin:0;font-size:1rem}
+.blockactions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 12px}
 .records{list-style:none;margin:0;padding:0}
 .recordrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .recordrow:last-child{border-bottom:0}
@@ -132,4 +133,5 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .caprow .capname{flex:1;min-width:0}
 .caprow .capnote{flex-basis:100%;padding-left:52px}
 .tradechip{display:inline-flex;align-items:center;gap:4px}
+.chip.derived{border-style:dashed}
 .tradetree .traderow{width:100%}

@@ -5,12 +5,12 @@ import {
 import {
   AVAILABILITIES, AVAILABILITY_LABELS, BASE_ROLES, BASE_ROLE_LABELS, COVERAGES, COVERAGE_LABELS, ENGAGEMENTS, ENGAGEMENT_LABELS,
   FREE_RECORD_TYPES, RECORD_KINDS, RECORD_STATUSES, RECORD_STATUS_LABELS, RECORD_TYPE_LABELS, RELATIONS, RELATION_LABELS,
-  DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, proposeHouseLevel, relationForLevel, type HouseLevel,
+  DIRECTION_BASE_ROLES, HOUSE_LEVELS, HOUSE_LEVEL_LABELS, OUTSIDER_ACCESS_TEXT, proposeHouseLevel, relationForLevel, type HouseGrant, type HouseLevel,
   canSeeReserved, dueState, personStatus, recordTypesFor, todayInMadrid, validateOperations, type RecordKind,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
-import { ROLE_LABELS, type Account, type Role } from '../app/admin.ts';
+import { grantFor, ROLE_LABELS, type Account, type Role } from '../app/admin.ts';
 import { showSecret } from './access.ts';
 import { syncAccountName } from '../app/account-names.ts';
 import { checkExistingAccount, mergePeople } from './account-conflict.ts';
@@ -131,6 +131,9 @@ export const mountPeople: ViewMount = (ctx) => {
   let trade = '';
   let team = '';
   let showInactive = false;
+  // Fase O4: lo que el nivel de casa ha dado a cada cuenta (solo dirección y con red), para las chips de los outsiders.
+  let grants: HouseGrant[] = ctx.isAdmin ? ctx.admin.cached.grants ?? [] : [];
+  const appName = (id: string) => ctx.admin.cached.catalog?.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
 
   const host = el('div', { id: 'peopleList', 'data-feedback-id': 'central.personas.lista', 'data-feedback-label': 'Lista de personas' });
   const trashList = el('ul', { class: 'list', 'aria-label': 'Personas en la papelera', 'data-feedback-id': 'central.personas.papelera.lista', 'data-feedback-label': 'Personas en la papelera' });
@@ -150,6 +153,7 @@ export const mountPeople: ViewMount = (ctx) => {
   const levelsNote = el('div', { 'data-feedback-id': 'central.personas.aviso_nivel', 'data-feedback-label': 'Aviso del nivel de casa' });
   const teamFilter = el('select', { id: 'peopleTeam', 'aria-label': 'Equipo', 'data-feedback-id': 'central.personas.filtro_equipo', 'data-feedback-label': 'Filtro por equipo', onchange: (e: Event) => { team = (e.target as HTMLSelectElement).value; paint(); } },
     el('option', { value: '' }, 'Todos los equipos')) as HTMLSelectElement;
+  const fabLabel = el('span', null, 'Nueva persona');
   const inactive = el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'peopleInactive', 'data-feedback-id': 'central.personas.mostrar_inactivas', 'data-feedback-label': 'Mostrar inactivas', onchange: (e: Event) => { showInactive = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar inactivas'));
 
   replace(
@@ -162,7 +166,9 @@ export const mountPeople: ViewMount = (ctx) => {
     levelsNote,
     host,
     trash,
-    canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', 'data-feedback-id': 'central.personas.nueva', 'data-feedback-label': 'Nueva persona', onclick: () => openPersonEditor(ctx, null, (id) => navigate(`#/personas/${id}`)) }, icon('plus'), 'Nueva persona') : null,
+    canEdit ? el('button', { class: 'fab', type: 'button', id: 'newPerson', 'data-feedback-id': 'central.personas.nueva', 'data-feedback-label': 'Nueva persona',
+      // Con el filtro «Outsider», la ficha nueva nace con ese nivel (O4, uno menos).
+      onclick: () => openPersonEditor(ctx, null, (id) => navigate(`#/personas/${id}`), { level: houseLevelsOn && level === 'outsider' ? 'outsider' : undefined }) }, icon('plus'), fabLabel) : null,
   );
 
   /** Hasta tres oficios de la persona, los de más nivel, con su estrella. */
@@ -173,9 +179,18 @@ export const mountPeople: ViewMount = (ctx) => {
       .map((c) => el('span', { class: 'chip tradechip' }, levelStar(c.level), names.get(c.trade_id)!));
   }
 
+  /** Outsider (O4): en qué apps entra por su nivel, o el aviso de que sin cuenta no entra en ninguna. */
+  function outsiderChips(p: Person): HTMLElement[] {
+    if (!houseLevelsOn || p.house_level !== 'outsider') return [];
+    if (!p.user_id) return [el('span', { class: 'chip warn', 'data-issue': 'sin_cuenta' }, 'Sin cuenta: no entra en ninguna app')];
+    return grants.filter((g) => g.userId === p.user_id).map((g) => el('span', { class: `chip role-${g.role} derived`, 'data-derived': '', title: 'Lo da el nivel de casa' },
+      `${appName(g.app)} · ${ROLE_LABELS[g.role as Role] ?? g.role}`));
+  }
+
   function row(p: Person): HTMLElement {
     const today = todayInMadrid();
     const chips = [
+      ...outsiderChips(p),
       ...(p.active ? [] : [el('span', { class: 'chip' }, 'Inactiva')]),
       ...(p.committed_post ? [el('span', { class: 'chip' }, 'Puesto comprometido')]: []),
       ...teamsOf(data, p.id).map(teamChip),
@@ -235,6 +250,7 @@ export const mountPeople: ViewMount = (ctx) => {
     const inTeam = team ? new Set(data.personTeams.filter((x) => x.team_id === team && !x.deleted_at).map((x) => x.person_id)) : null;
     relationFilter.hidden = houseLevelsOn;
     levelFilter.hidden = !houseLevelsOn;
+    fabLabel.textContent = houseLevelsOn && level === 'outsider' ? 'Nuevo outsider' : 'Nueva persona';
     // Con el nivel activo, el directorio es de quien tiene nivel; «Sin nivel», solo para dirección.
     const byLevel = (p: Person) => !houseLevelsOn ? (!relation || p.relation === relation)
       : level === 'sin_nivel' ? !p.house_level : !!p.house_level && (!level || p.house_level === level);
@@ -283,6 +299,9 @@ export const mountPeople: ViewMount = (ctx) => {
   }
 
   void load();
+  if (ctx.isAdmin && navigator.onLine) {
+    void Promise.all([ctx.admin.houseGrants(), ctx.admin.catalog()]).then(([items]) => { grants = items; paint(); }).catch(() => undefined);
+  }
   const offs = [T.people, T.personPrivate, T.personRecords, T.teams, T.personTeams, T.trades, T.personTrades].map((t) => client.onTable(t, () => void load()));
   return () => offs.forEach((off) => off());
 };
@@ -301,7 +320,7 @@ async function restorePerson(client: SyncClient, data: Awaited<ReturnType<typeof
 // ---------------------------------------------------------------------------
 // Editor de la ficha básica (alta y edición)
 // ---------------------------------------------------------------------------
-function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (id: string) => void): void {
+function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (id: string) => void, defaults: { level?: HouseLevel } = {}): void {
   const { client } = ctx;
   let sheet: Sheet | null = null;
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.editar.error', 'data-feedback-label': 'Error del formulario' });
@@ -311,7 +330,18 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   // «Área principal» sin las funciones de dirección (las sustituye el nivel), salvo la que ya tenga la ficha.
   const areas = levelsOn ? BASE_ROLES.filter((r) => !DIRECTION_BASE_ROLES.includes(r) || r === person?.base_role) : BASE_ROLES;
   const baseRole = el('select', { id: 'p-role' }, ...options(areas, BASE_ROLE_LABELS, person?.base_role ?? 'otro')) as HTMLSelectElement;
-  const houseLevel = el('select', { id: 'p-level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+  const houseLevel = el('select', { id: 'p-level' }, ...options(HOUSE_LEVELS, HOUSE_LEVEL_LABELS, person ? person.house_level : defaults.level ?? 'staff', 'Sin nivel (fuera del directorio)')) as HTMLSelectElement;
+  // O4: qué accesos da o quita el nivel elegido, antes de guardar.
+  const levelHint = el('p', { class: 'muted small', id: 'p-level-hint', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.editar.aviso_nivel', 'data-feedback-label': 'Qué da el nivel de casa' });
+  const paintLevelHint = () => {
+    const was = person?.house_level ?? null;
+    const now = houseLevel.value || null;
+    levelHint.textContent = now === 'outsider' && was !== 'outsider'
+      ? `Como outsider entrará en ${OUTSIDER_ACCESS_TEXT}.${person?.user_id ? '' : ' Sin cuenta no entra en ninguna app.'}`
+      : was === 'outsider' && now !== 'outsider' ? 'Deja de ser outsider: pierde lo que le daba el nivel en Guests y Tasks. Su ficha, sus oficios y lo que hizo se conservan.' : '';
+  };
+  houseLevel.addEventListener('change', paintLevelHint);
+  paintLevelHint();
   const coverage = el('select', { id: 'p-coverage' }, ...options(COVERAGES, COVERAGE_LABELS, person?.coverage ?? 'todo')) as HTMLSelectElement;
   const availability = el('select', { id: 'p-availability' }, ...options(AVAILABILITIES, AVAILABILITY_LABELS, person?.availability ?? 'segun_calendario')) as HTMLSelectElement;
   const notes = el('textarea', { id: 'p-notes', rows: '2', maxlength: '300', placeholder: 'Solo fines de semana, julio y agosto…' }) as HTMLTextAreaElement;
@@ -366,6 +396,7 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
     : el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.relacion_funcion', 'data-feedback-label': 'Relación y función' },
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_relacion', 'data-feedback-label': 'Relación con Ikisai' }, el('span', null, 'Relación con Ikisai'), relation),
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_funcion', 'data-feedback-label': 'Función' }, el('span', null, 'Función'), baseRole)),
+  levelsOn ? levelHint : null,
   levelsOn
     ? el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_disponibilidad', 'data-feedback-label': 'Disponibilidad' }, el('span', null, 'Disponibilidad'), availability)
     : el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.cobertura_disponibilidad', 'data-feedback-label': 'Cobertura y disponibilidad' },
@@ -400,6 +431,7 @@ export function mountPerson(personId: string): ViewMount {
     const reserved = canSeeReserved(membership);
     let data: Awaited<ReturnType<typeof loadPeople>> = { people: [], privates: [], records: [], teams: [], personTeams: [], trades: [], capabilities: [] };
     let accounts: Account[] | null = null;
+    let grants: HouseGrant[] = isAdmin ? admin.cached.grants ?? [] : [];
     const host = el('div', { id: 'personView', 'data-feedback-id': 'central.persona.contenido', 'data-feedback-label': 'Ficha de la persona' });
     replace(main, el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.persona.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'), host);
 
@@ -438,7 +470,9 @@ export function mountPerson(personId: string): ViewMount {
         ]),
         kv('Disponibilidad', [AVAILABILITY_LABELS[person.availability as keyof typeof AVAILABILITY_LABELS], person.availability_notes].filter(Boolean).join(' · ')),
         kv('Puesto comprometido', person.committed_post ? 'Sí' : null))],
-      canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editPerson', 'data-feedback-id': 'central.persona.ficha.editar', 'data-feedback-label': 'Editar ficha', onclick: () => openPersonEditor(ctx, person) }, icon('edit', 16), 'Editar') : null);
+      canEdit || outsiderAction(person) ? el('span', { class: 'blockactions' },
+        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editPerson', 'data-feedback-id': 'central.persona.ficha.editar', 'data-feedback-label': 'Editar ficha', onclick: () => openPersonEditor(ctx, person) }, icon('edit', 16), 'Editar') : null,
+        outsiderAction(person)) : null);
 
       const privateBlock = reserved ? block('Contacto y vinculación', 'blockPrivate', priv ? [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.persona.contacto.datos', 'data-feedback-label': 'Datos de contacto', 'data-feedback-ignore': '' },
         kv('Nombre completo', priv.legal_name), kv('Teléfono', priv.phone), kv('Correo', priv.email),
@@ -545,6 +579,135 @@ export function mountPerson(personId: string): ViewMount {
       }));
     }
 
+    /** O4 · «Convertir en outsider» (sin nivel) o «Quitar de outsider»: solo dirección y con los niveles ya aplicados. */
+    function outsiderAction(person: Person): HTMLElement | null {
+      if (!isAdmin || !houseLevelsOn || person.deleted_at) return null;
+      if (!person.house_level) {
+        return el('button', { class: 'ghost', type: 'button', id: 'convertOutsider', 'data-feedback-id': 'central.persona.outsider.convertir', 'data-feedback-label': 'Convertir en outsider', onclick: () => void openConvertOutsider(person) }, 'Convertir en outsider');
+      }
+      if (person.house_level === 'outsider') {
+        return el('button', { class: 'ghost', type: 'button', id: 'removeOutsider', 'data-feedback-id': 'central.persona.outsider.quitar', 'data-feedback-label': 'Quitar de outsider', onclick: () => openRemoveOutsider(person) }, 'Quitar de outsider');
+      }
+      return null;
+    }
+
+    const toOutsider = (person: Person, extra: Record<string, unknown> = {}): RowOperation =>
+      ({ op: 'update', table: T.people, id: person.id, expectedRevision: person.revision, fields: { house_level: 'outsider', relation: relationForLevel('outsider'), ...extra } });
+
+    /** Hoja «Convertir en outsider»: qué ve y dónde entra; sin cuenta, se la puede dar en el mismo paso o dejarla para después. */
+    async function openConvertOutsider(person: Person): Promise<void> {
+      let sheet: Sheet | null = null;
+      const priv = data.privates.find((x) => x.person_id === person.id && !x.deleted_at) ?? null;
+      const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.outsider.error', 'data-feedback-label': 'Error al convertir' });
+      const intro = el('p', { class: 'note', 'data-feedback-id': 'central.persona.outsider.explicacion', 'data-feedback-label': 'Qué da ser outsider' },
+        `Entrará como outsider en ${OUTSIDER_ACCESS_TEXT}. No entra en Booking, Food ni Central. Sale en Personas con el nivel «Outsider» y sus datos no cambian.`);
+      const done = async (message: string) => {
+        await sheet?.close(true);
+        toast(message);
+        accounts = null;
+        void loadAccounts();
+      };
+      const convert = async (button: HTMLButtonElement) => {
+        button.disabled = true;
+        const ok = await commitSafely(client, [toOutsider(person)], person.user_id ? 'Ahora es outsider: entra en Guests y Tasks.' : 'Ahora es outsider. Sin cuenta no entra en ninguna app.');
+        button.disabled = false;
+        if (ok) { await sheet?.close(true); accounts = null; void loadAccounts(); }
+      };
+      if (person.user_id) {
+        const submit = el('button', { class: 'primary', type: 'button', id: 'convertSubmit', 'data-feedback-id': 'central.persona.outsider.confirmar', 'data-feedback-label': 'Convertir', onclick: () => void convert(submit) }, 'Convertir') as HTMLButtonElement;
+        sheet = ignoreSheetMeta(openSheet({
+          title: 'Convertir en outsider', meta: person.display_name, body: el('div', { id: 'convertSheet' }, intro, error),
+          panelAttrs: { 'data-feedback-id': 'central.persona.outsider.hoja', 'data-feedback-label': 'Convertir en outsider' },
+          closeAttrs: { 'data-feedback-id': 'central.persona.outsider.cerrar', 'data-feedback-label': 'Cerrar' },
+          foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.outsider.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), submit],
+        }));
+        return;
+      }
+      // Sin cuenta: correo para dársela ahora (los accesos de outsider llegan solos al enlazarla) y, como hoy, otros accesos opcionales.
+      let catalog: Awaited<ReturnType<typeof admin.catalog>> = [];
+      if (navigator.onLine) { try { catalog = await admin.catalog(); } catch { catalog = []; } }
+      const email = el('input', { id: 'co-email', 'data-feedback-ignore': '', type: 'email', maxlength: '320', value: priv?.email ?? '' }) as HTMLInputElement;
+      const selects = new Map<string, HTMLSelectElement>();
+      const rows = catalog.filter((app) => app.id !== 'guests' && app.id !== 'tasks').map((app) => {
+        const s = el('select', { id: `co-${app.id}`, 'aria-label': `Acceso a ${app.name}` }, el('option', { value: '' }, 'Sin acceso'),
+          ...(['reader', 'editor', 'owner'] as Role[]).map((r) => el('option', { value: r }, ROLE_LABELS[r]))) as HTMLSelectElement;
+        selects.set(app.id, s);
+        fbMark(s, 'central.persona.outsider.otro_acceso', 'Otro acceso').setAttribute('data-feedback-label', `Acceso a ${app.name.replace(/^Ikisai /, '')}`);
+        return el('label', { class: 'approw', 'data-feedback-id': 'central.persona.outsider.app', 'data-feedback-label': 'Otro acceso' }, el('span', { class: 'appname' }, el('strong', null, app.name.replace(/^Ikisai /, ''))), s);
+      });
+      const later = el('button', { class: 'ghost', type: 'button', id: 'convertNoAccount', 'data-feedback-id': 'central.persona.outsider.sin_cuenta', 'data-feedback-label': 'Convertir sin cuenta', onclick: () => void convert(later) }, 'Convertir sin cuenta') as HTMLButtonElement;
+      const submit = el('button', { class: 'primary', type: 'button', id: 'convertSubmit', 'data-feedback-id': 'central.persona.outsider.con_cuenta', 'data-feedback-label': 'Convertir y dar cuenta', onclick: async () => {
+        error.textContent = '';
+        if (!navigator.onLine) { error.textContent = 'Dar cuenta necesita conexión. Puedes convertir sin cuenta y dársela después.'; return; }
+        const mail = email.value.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { error.textContent = 'Escribe un correo válido.'; email.focus(); return; }
+        const memberships = [...selects].filter(([, x]) => x.value).map(([app, x]) => ({ app, role: x.value as Role }));
+        submit.disabled = true;
+        try {
+          // Una persona, una ficha, una cuenta: como en «Dar cuenta».
+          const choice = await checkExistingAccount({ admin, client, email: mail, person, appName });
+          if (choice.kind === 'abort' || choice.kind === 'use_existing') {
+            if (choice.kind === 'abort' && choice.otherEmail) { email.focus(); email.select(); error.textContent = 'Escribe el correo de esta persona.'; }
+            return;
+          }
+          const into = choice.kind === 'merge' ? choice.into : null;
+          const out = await usage.run('central.persona.outsider.con_cuenta', () => admin.invite({ email: mail, displayName: into ? into.display_name : person.display_name, memberships }));
+          if (into) {
+            // Ya tenía ficha con esa cuenta: se fusionan y queda el nivel de esa ficha (se cambia desde ella).
+            await mergePeople(client, person.id, into.id);
+            await sheet?.close(true);
+            toast(`Fichas fusionadas: queda «${into.display_name}». Ponle el nivel desde su ficha.`);
+            navigate(`#/personas/${into.id}`);
+            return;
+          }
+          const fresh = data.people.find((x) => x.id === person.id) ?? person;
+          await client.commit([toOutsider(fresh, { user_id: out.userId })]);
+          if (out.temporaryPassword) { await sheet?.close(true); accounts = null; void loadAccounts(); showSecret(out.temporaryPassword, out.email); }
+          else await done('Ya tenía cuenta con ese correo: queda enlazada y es outsider.');
+        } catch (e) {
+          error.textContent = describeError(e);
+        } finally {
+          submit.disabled = false;
+        }
+      } }, 'Convertir y dar cuenta') as HTMLButtonElement;
+      sheet = ignoreSheetMeta(openSheet({
+        title: 'Convertir en outsider', meta: person.display_name,
+        body: el('div', { id: 'convertSheet' }, intro,
+          el('p', { class: 'note warn', 'data-feedback-id': 'central.persona.outsider.aviso_sin_cuenta', 'data-feedback-label': 'Aviso sin cuenta' }, 'No tiene cuenta: sin ella no entra en ninguna app. Puedes dársela ahora o después.'),
+          el('label', { class: 'field', 'data-feedback-id': 'central.persona.outsider.campo_correo', 'data-feedback-label': 'Correo para su cuenta' }, el('span', null, 'Correo para su cuenta'), email),
+          rows.length ? el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.persona.outsider.otros_accesos', 'data-feedback-label': 'Otros accesos' }, 'Otros accesos (opcional)') : null, ...rows, error),
+        panelAttrs: { 'data-feedback-id': 'central.persona.outsider.hoja', 'data-feedback-label': 'Convertir en outsider' },
+        closeAttrs: { 'data-feedback-id': 'central.persona.outsider.cerrar', 'data-feedback-label': 'Cerrar' },
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.outsider.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), later, submit],
+        initialFocus: email,
+      }));
+    }
+
+    /** «Quitar de outsider» (decisión del usuario): se pregunta a qué nivel pasa, con «Sin nivel» por defecto. No se borra nada. */
+    function openRemoveOutsider(person: Person): void {
+      let sheet: Sheet | null = null;
+      const target = el('select', { id: 'ro-level', 'aria-label': 'Pasa a' },
+        el('option', { value: '' }, 'Sin nivel (fuera del directorio)'), el('option', { value: 'staff' }, HOUSE_LEVEL_LABELS.staff)) as HTMLSelectElement;
+      const submit = el('button', { class: 'primary', type: 'button', id: 'removeOutsiderSubmit', 'data-feedback-id': 'central.persona.outsider.quitar_confirmar', 'data-feedback-label': 'Quitar', onclick: async () => {
+        const lv = (target.value || null) as HouseLevel | null;
+        submit.disabled = true;
+        const ok = await commitSafely(client, [{ op: 'update', table: T.people, id: person.id, expectedRevision: person.revision, fields: { house_level: lv, relation: relationForLevel(lv) } }],
+          lv ? 'Ya no es outsider: ahora es Staff.' : 'Ya no es outsider.');
+        submit.disabled = false;
+        if (ok) { await sheet?.close(true); accounts = null; void loadAccounts(); }
+      } }, 'Quitar') as HTMLButtonElement;
+      sheet = ignoreSheetMeta(openSheet({
+        title: '¿Quitar de outsider?', meta: person.display_name,
+        body: el('div', { id: 'removeOutsiderSheet' },
+          el('p', { 'data-feedback-id': 'central.persona.outsider.quitar_explicacion', 'data-feedback-label': 'Qué pasa al quitarlo' },
+            'Pierde lo que le daba el nivel en Guests y Tasks; lo que tuviera antes vuelve. Sus estancias, notas, comentarios, oficios y la ficha se conservan.'),
+          el('label', { class: 'field', 'data-feedback-id': 'central.persona.outsider.quitar_pasa_a', 'data-feedback-label': 'Pasa a' }, el('span', null, 'Pasa a'), target)),
+        panelAttrs: { 'data-feedback-id': 'central.persona.outsider.quitar_hoja', 'data-feedback-label': 'Quitar de outsider' },
+        closeAttrs: { 'data-feedback-id': 'central.persona.outsider.quitar_cerrar', 'data-feedback-label': 'Cerrar' },
+        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.persona.outsider.quitar_cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), submit],
+      }));
+    }
+
     function accountBody(person: Person, priv: Private | null): HTMLElement[] {
       if (!person.user_id) {
         return [el('p', { class: 'muted' }, 'Sin cuenta: no entra en ninguna app.'),
@@ -561,7 +724,10 @@ export function mountPerson(personId: string): ViewMount {
             if (await syncAccountName(admin, account.userId, person.display_name)) { toast('La cuenta usa ya el nombre de la ficha.'); accounts = null; void loadAccounts(); }
           } }, 'Usar el nombre de la ficha')) : null,
         account ? el('span', { class: 'chips', 'data-feedback-id': 'central.persona.cuenta.accesos', 'data-feedback-label': 'Accesos de la cuenta' }, ...(account.disabled ? [el('span', { class: 'chip alert' }, 'Desactivada')] : []),
-          ...account.memberships.map((m) => el('span', { class: `chip role-${m.role}` }, `${appName(m.app)} · ${ROLE_LABELS[m.role]}`))) : null,
+          ...account.memberships.map((m) => grantFor(grants, account.userId, m.app, m.role)
+            ? el('span', { class: `chip role-${m.role} derived`, 'data-derived': '' }, `${appName(m.app)} · ${ROLE_LABELS[m.role]}`, el('span', { class: 'muted' }, ' · por nivel de casa'))
+            : el('span', { class: `chip role-${m.role}` }, `${appName(m.app)} · ${ROLE_LABELS[m.role]}`))) : null,
+        account ? derivedNote(account) : null,
         el('div', { class: 'zone', 'data-feedback-id': 'central.persona.cuenta.acciones', 'data-feedback-label': 'Acciones de la cuenta' },
           el('a', { class: 'ghost btnlike', href: '#/accesos', 'data-feedback-id': 'central.persona.cuenta.cambiar_accesos', 'data-feedback-label': 'Cambiar accesos en Accesos' }, 'Cambiar accesos en Accesos'),
           el('button', { class: 'ghost', type: 'button', id: 'unlinkAccount', 'data-feedback-id': 'central.persona.cuenta.desenlazar', 'data-feedback-label': 'Desenlazar cuenta', onclick: async () => {
@@ -860,9 +1026,19 @@ export function mountPerson(personId: string): ViewMount {
 
     const appName = (id: string) => admin.cached.catalog?.find((a) => a.id === id)?.name.replace(/^Ikisai /, '') ?? id;
 
+    /** Qué le da el nivel y qué tenía antes, que es lo que vuelve al quitarlo. */
+    function derivedNote(account: Account): HTMLElement | null {
+      const mine = grants.filter((g) => g.userId === account.userId && account.memberships.some((m) => m.app === g.app && m.role === g.role));
+      if (!mine.length) return null;
+      const before = mine.filter((g) => g.previousRole).map((g) => `${appName(g.app)} · ${ROLE_LABELS[g.previousRole as Role] ?? g.previousRole}`);
+      return el('p', { class: 'muted small', id: 'derivedNote', 'data-feedback-id': 'central.persona.cuenta.por_nivel', 'data-feedback-label': 'Accesos por nivel de casa' },
+        `Lo marcado «por nivel de casa» lo da el nivel «${HOUSE_LEVEL_LABELS[mine[0]!.level as HouseLevel] ?? mine[0]!.level}» y se cambia aquí, no en Accesos.`,
+        before.length ? ` Antes tenía ${before.join(', ')}: vuelve si se quita el nivel.` : ' Al quitar el nivel, se retira.');
+    }
+
     async function loadAccounts(): Promise<void> {
       if (!isAdmin) return;
-      try { [accounts] = await Promise.all([admin.accounts(), admin.catalog()]); } catch { accounts = admin.cached.accounts?.items ?? null; }
+      try { [accounts, , grants] = await Promise.all([admin.accounts(), admin.catalog(), admin.houseGrants().catch(() => grants)]); } catch { accounts = admin.cached.accounts?.items ?? null; }
       paint();
     }
 

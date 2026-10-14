@@ -1,7 +1,8 @@
 /**
- * Central · O4, caracterización (PR 0): Personas, la ficha y Accesos de un outsider tal como están tras P1, antes de
- * «Convertir en outsider». Debe seguir en verde después de O4, salvo lo marcado «hoy» (los accesos que dará el nivel y el
- * selector de rol, que enseñará «Outsider» fijo). Datos ficticios.
+ * Central · fase O4: «Convertir en outsider» (tabla «hoy / después» aprobada el 13-10-2026). Empezó como caracterización
+ * (PR 0, #489); lo que sigue igual se comprueba igual (filtro, fila, ficha, desenlazar) y lo marcado «hoy» pasa a lo nuevo:
+ * los accesos que da el nivel, el selector fijo en Accesos, el aviso «Sin cuenta», «Nuevo outsider», convertir y quitar.
+ * Datos ficticios.
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -18,7 +19,7 @@ let api: CentralTestServer;
 let server: PreviewServer;
 let baseURL: string;
 let beaUser: string;
-const ids = { ana: crypto.randomUUID(), bea: crypto.randomUUID(), ciro: crypto.randomUUID(), eva: crypto.randomUUID(), fon: crypto.randomUUID() };
+const ids = { ana: crypto.randomUUID(), bea: crypto.randomUUID(), ciro: crypto.randomUUID(), eva: crypto.randomUUID(), gil: crypto.randomUUID(), fon: crypto.randomUUID() };
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
@@ -29,6 +30,7 @@ test.beforeAll(async () => {
     person(ids.bea, 'Bea Ficticia', { relation: 'colaborador', base_role: 'mantenimiento_logistica', house_level: 'outsider', position: 2 }),
     person(ids.ciro, 'Ciro Ficticio', { relation: 'colaborador', base_role: 'otro', house_level: 'outsider', active: false, position: 3 }),
     person(ids.eva, 'Eva Ficticia', { relation: 'otro', base_role: 'otro', position: 4 }),
+    person(ids.gil, 'Gil Ficticio', { relation: 'otro', base_role: 'otro', position: 5 }),
     { op: 'insert', table: 'central.trades', id: ids.fon, fields: { name: 'Fontanería' } },
     { op: 'insert', table: 'central.person_trades', id: crypto.randomUUID(), fields: { person_id: ids.bea, trade_id: ids.fon, level: 1 } },
   ] } });
@@ -63,54 +65,106 @@ async function login(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Hola, Owner' })).toBeVisible();
 }
 const rowOf = (page: Page, name: string) => page.locator('.personrow', { hasText: name });
-const memberships = async () => (await api.app.t.db.query<{ app: string; role: string }>(`select app, role from core.memberships where user_id = $1 order by app`, [beaUser])).rows.map((m) => `${m.app}:${m.role}`);
+const memberships = async (user: string) => (await api.app.t.db.query<{ app: string; role: string }>(`select app, role from core.memberships where user_id = $1 and app in ('booking', 'guests', 'tasks') order by app`, [user])).rows.map((m) => `${m.app}:${m.role}`);
+const personRow = async (id: string) => (await api.app.t.db.query<{ l: string | null; u: string | null; r: string }>(`select house_level as l, user_id as u, relation as r from central.people where id = $1`, [id])).rows[0]!;
 
-test('outsider (caracterización) · lista con el filtro Outsider, ficha con su cuenta, Accesos y desenlazar', async ({ page }) => {
+test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel, quitar y volver a convertir, desenlazar', async ({ page }) => {
   await login(page);
-  const before = await memberships();
-  expect(before).toContain('tasks:reader');
+  expect(await memberships(beaUser)).toEqual(['guests:editor', 'tasks:outsider']); // el nivel ya le dio lo suyo
 
-  // Lista: el filtro «Outsider» deja solo a los outsiders; los inactivos, con «Mostrar inactivas».
+  // Lista: el filtro «Outsider» deja solo a los outsiders, con dónde entran o el aviso de que sin cuenta no entran.
   await page.goto(`${baseURL}/#/personas`);
   await page.locator('#peopleLevel').selectOption('outsider');
   await expect(page.locator('.personrow')).toHaveCount(1);
-  await expect(rowOf(page, 'Bea Ficticia')).toContainText('Mantenimiento y logística · Outsider');
-  await expect(rowOf(page, 'Bea Ficticia')).toContainText('Fontanería');
+  const bea = rowOf(page, 'Bea Ficticia');
+  await expect(bea).toContainText('Mantenimiento y logística · Outsider');
+  await expect(bea).toContainText('Fontanería');
+  await expect(bea).toContainText('Tasks · Outsider');
+  await expect(bea).toContainText('Guests · Editor');
   await page.locator('#peopleInactive').check();
   await expect(page.locator('.personrow')).toHaveCount(2);
   await expect(rowOf(page, 'Ciro Ficticio')).toContainText('Inactiva');
+  await expect(rowOf(page, 'Ciro Ficticio')).toContainText('Sin cuenta: no entra en ninguna app');
   await expect(rowOf(page, 'Ana Ficticia')).toHaveCount(0);
-  // Hoy, el botón flotante es «Nueva persona» con cualquier filtro.
+  // Con el filtro puesto, el botón flotante crea un outsider (la ficha nace con el nivel y dice qué da).
+  await expect(page.locator('#newPerson')).toContainText('Nuevo outsider');
+  await page.locator('#newPerson').click();
+  await expect(page.locator('#p-level')).toHaveValue('outsider');
+  await expect(page.locator('#p-level-hint')).toContainText('Como outsider entrará en Guests');
+  await page.keyboard.press('Escape');
+  await page.locator('#peopleLevel').selectOption('');
   await expect(page.locator('#newPerson')).toContainText('Nueva persona');
 
-  // Ficha: la cabecera dice el nivel; el bloque Cuenta enseña los accesos dados a mano.
-  await rowOf(page, 'Bea Ficticia').click();
+  // Ficha: la cabecera dice el nivel; el bloque Cuenta marca lo que da el nivel y lo que tenía antes.
+  await page.goto(`${baseURL}/#/personas/${ids.bea}`);
   await expect(page.locator('.pagehead p').first()).toContainText('Outsider');
-  await expect(page.locator('#blockBasic')).toContainText('Outsider');
   const account = page.locator('#blockAccount');
   await expect(account).toContainText('bea-outsider@example.invalid');
-  await expect(account).toContainText('Tasks · Lector'); // hoy: el nivel no da nada (con O4, «Tasks · Outsider»)
+  await expect(account.locator('[data-derived]', { hasText: 'Tasks · Outsider' })).toContainText('por nivel de casa');
+  await expect(page.locator('#derivedNote')).toContainText('Antes tenía Tasks · Lector');
   await expect(page.locator('a', { hasText: 'Cambiar accesos en Accesos' })).toHaveAttribute('href', '#/accesos');
+  await expect(page.locator('#convertOutsider')).toHaveCount(0);
 
-  // Accesos › Cuentas: sus chips y el selector de rol de hoy (sin «Outsider»).
+  // Accesos › Cuentas: lo que da el nivel sale marcado y fijo; «Outsider» no se ofrece a mano en ninguna app.
   await page.goto(`${baseURL}/#/accesos`);
   const accountRow = page.locator('.accountrow', { hasText: 'Bea Ficticia' });
-  await expect(accountRow).toContainText('Tasks · Lector');
+  await expect(accountRow.locator('[data-derived]', { hasText: 'Tasks · Outsider' })).toContainText('por nivel de casa');
   await accountRow.click();
-  await expect(page.locator('#role-tasks')).toHaveValue('reader');
-  await expect(page.locator('#role-tasks option')).toHaveText(['Sin acceso', 'Lector', 'Editor', 'Propietario']);
+  await expect(page.locator('#role-tasks')).toHaveValue('outsider');
+  await expect(page.locator('#role-tasks')).toBeDisabled();
+  await expect(page.locator('[data-derived="tasks"]')).toContainText('cámbialo en Personas');
+  await expect(page.locator('#role-booking option')).toHaveText(['Sin acceso', 'Lector', 'Editor', 'Propietario']);
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
 
-  // Desenlazar: la ficha se queda sin cuenta y la cuenta conserva sus accesos.
+  // Quitar de outsider: se pregunta a qué nivel pasa («Sin nivel» por defecto) y vuelve lo de antes.
   await page.goto(`${baseURL}/#/personas/${ids.bea}`);
+  await page.locator('#removeOutsider').click();
+  await expect(page.locator('#ro-level')).toHaveValue('');
+  await expect(page.locator('#removeOutsiderSheet')).toContainText('se conservan');
+  await page.locator('#removeOutsiderSubmit').click();
+  await expect(page.getByText('Ya no es outsider.')).toBeVisible();
+  await expect.poll(() => memberships(beaUser)).toEqual(['tasks:reader']);
+  expect(await personRow(ids.bea)).toMatchObject({ l: null, r: 'otro' });
+
+  // Convertir en outsider (con cuenta): un toque más «Convertir».
+  await page.locator('#convertOutsider').click();
+  await expect(page.locator('#convertSheet')).toContainText('No entra en Booking, Food ni Central');
+  await page.locator('#convertSubmit').click();
+  await expect(page.getByText('Ahora es outsider: entra en Guests y Tasks.')).toBeVisible();
+  await expect.poll(() => memberships(beaUser)).toEqual(['guests:editor', 'tasks:outsider']);
+  expect(await personRow(ids.bea)).toMatchObject({ l: 'outsider', r: 'colaborador' });
+
+  // Desenlazar: la ficha se queda sin cuenta y la cuenta vuelve a lo que tenía antes del nivel.
   await page.locator('#unlinkAccount').click();
   await page.getByRole('button', { name: 'Desenlazar', exact: true }).last().click();
   await expect(page.getByText('Cuenta desenlazada.')).toBeVisible();
   await expect(page.locator('#blockAccount')).toContainText('Sin cuenta: no entra en ninguna app.');
-  await expect.poll(async () => (await api.app.t.db.query<{ u: string | null }>(`select user_id as u from central.people where id = $1`, [ids.bea])).rows[0]?.u).toBeNull();
-  expect(await memberships()).toEqual(before);
-  // Hoy, la fila no avisa de que un outsider no tiene cuenta.
-  await page.goto(`${baseURL}/#/personas`);
-  await page.locator('#peopleLevel').selectOption('outsider');
-  await expect(rowOf(page, 'Bea Ficticia')).not.toContainText('Sin cuenta');
+  await expect.poll(() => memberships(beaUser)).toEqual(['tasks:reader']);
+});
+
+test('outsider · convertir sin cuenta y convertir dándole cuenta en el mismo paso', async ({ page }) => {
+  await login(page);
+  // Sin cuenta: se permite, con el aviso.
+  await page.goto(`${baseURL}/#/personas/${ids.eva}`);
+  await page.locator('#convertOutsider').click();
+  await expect(page.locator('#convertSheet')).toContainText('No tiene cuenta');
+  await page.locator('#convertNoAccount').click();
+  await expect(page.getByText('Ahora es outsider. Sin cuenta no entra en ninguna app.')).toBeVisible();
+  await expect.poll(async () => (await personRow(ids.eva)).l).toBe('outsider');
+  await expect(page.locator('#removeOutsider')).toBeVisible();
+
+  // Con cuenta nueva: correo y, como hoy, otros accesos opcionales; los de outsider llegan solos al enlazarla.
+  await page.goto(`${baseURL}/#/personas/${ids.gil}`);
+  await page.locator('#convertOutsider').click();
+  await expect(page.locator('#co-tasks')).toHaveCount(0); // Tasks y Guests los da el nivel
+  await page.locator('#co-email').fill('gil-outsider@example.invalid');
+  await page.locator('#co-booking').selectOption('reader');
+  await page.locator('#convertSubmit').click();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  await page.getByLabel('La he guardado en un lugar seguro').check();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  await expect.poll(async () => (await personRow(ids.gil)).l).toBe('outsider');
+  const gil = (await personRow(ids.gil)).u!;
+  expect(gil).toBeTruthy();
+  await expect.poll(() => memberships(gil)).toEqual(['booking:reader', 'guests:editor', 'tasks:outsider']);
 });
