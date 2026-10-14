@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.33.0: calendario de persona (capas con leyenda, sombreado, notas, panel del día, elegir días, deslizar entre meses; nombre corto solo en el primer día de cada tramo) y cola de propuestas `createProposalList` (revisar y «Mis propuestas»; confirmar siempre). `confirmDialog` admite `body`.
 - v0.32.0: camas con plazas fijas y supletorias (`extra_capacity`), sofá cama y camas en salas; `spaceSeats` suma fijas y supletorias.
 - v0.31.0: árbol de espacios para Booking: `rowActions`, plazas calculadas por camas (`spaceSeats`), «+» con cama en una habitación, fila que no estruja el nombre.
 - v0.30.0: espacios (R1): `createSpaceTree` (árbol con arrastre y reglas, ficha, duplicar, archivar) y `createSpacePicker` (más usados a un toque, búsqueda con la ruta), contra una `SpaceSource` inyectable.

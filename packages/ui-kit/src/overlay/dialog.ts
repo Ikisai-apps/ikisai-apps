@@ -17,6 +17,10 @@ export interface DialogOptions {
   noCancel?: boolean;
   /** Dónde montarlo; por defecto `document.body`. */
   container?: HTMLElement;
+  /** Contenido extra bajo el texto (p. ej. un campo de comentario). El foco va a su primer campo. */
+  body?: Child;
+  /** Pasar el foco al primer campo de `body` (por defecto, sí si hay `body`). */
+  focusBody?: boolean;
 }
 
 /** Diálogo de confirmación modal: resuelve `true` al confirmar; Escape, fondo o «Cancelar» resuelven `false`. */
@@ -30,6 +34,7 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
     const panel = el('section', { class: 'dialog', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, 'aria-describedby': options.text ? 'dialogText' : null, tabindex: '-1' },
       el('h2', { id: titleId }, options.title),
       options.text ? el('p', { id: 'dialogText' }, options.text) : null,
+      options.body ? el('div', { class: 'dialog-body' }, options.body) : null,
       el('div', { class: 'choices' }, cancel, confirm),
     );
     const back = el('div', { class: 'dialogback' }, panel);
@@ -56,7 +61,8 @@ export function confirmDialog(options: DialogOptions): Promise<boolean> {
     back.addEventListener('click', (e) => { if (e.target === back) finish(false); });
     document.addEventListener('keydown', onKey);
     kitLayer(options.container).appendChild(back);
-    focusFirst(panel, options.danger && cancel ? cancel : confirm);
+    const field = options.body && options.focusBody !== false ? panel.querySelector<HTMLElement>('.dialog-body textarea, .dialog-body input, .dialog-body select') : null;
+    focusFirst(panel, field ?? (options.danger && cancel ? cancel : confirm));
   });
 }
 

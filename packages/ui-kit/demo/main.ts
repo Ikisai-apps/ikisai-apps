@@ -35,6 +35,12 @@ import {
   closeSheet,
   compressImage,
   createCalendar,
+  createProposalList,
+  daysBetween,
+  type CalendarNote,
+  type CalendarEvent,
+  type CalendarDayInfo,
+  type ProposalItem,
   createDateField,
   createLabelPicker,
   labelChips,
@@ -1078,6 +1084,116 @@ spacePickerBookable.element.id = 'spacePickerBookable';
 const spaceSection = section('spaces', 'Espacios (R1)', 'createSpaceTree: Altura › Edificio o Exterior › Espacio › Subespacio; buscar, desplegar, ficha, «+» dentro, asa de 44×44 para arrastrar (encima o debajo = al lado, centro = dentro; lo no válido se marca con su motivo), subir y bajar, «Mover a…», «Duplicar», «Archivar con todo lo de dentro» y «Sin altura». createSpacePicker: más usados a un toque, búsqueda con la ruta y filtro por tipos o reservables.',
   el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element)),
 );
+// --- Calendario de persona (O2/O4) -----------------------------------------------------------------------
+const tp = todayKey();
+const personEvents: CalendarEvent[] = [
+  { id: 'est-1', title: 'Mi estancia', abbr: 'Estancia', start: addDays(tp, -1), end: addDays(tp, 2), layer: 'estancia' },
+  { id: 'ret-1', title: 'Retiro de silencio', abbr: 'Silencio', start: addDays(tp, 4), end: addDays(tp, 6), layer: 'apuntado' },
+  { id: 'abi-1', title: 'Yoga y huerto', abbr: 'Yoga', start: addDays(tp, 10), end: addDays(tp, 12), layer: 'abierto' },
+];
+const personShaded = new Set([0, 1, 2, 3, 7, 8, 9].map((n) => addDays(tp, n)));
+const personNotes: Record<string, CalendarNote[]> = { [tp]: [{ id: 'n1', time: '18:00', text: 'Llego en el tren de las 17:20', author: 'Tú' }] };
+const personCal: ReturnType<typeof createCalendar> = createCalendar({
+  label: 'Mi calendario', feedbackId: 'demo.calendario_persona', viewSwitch: false,
+  layers: [
+    { id: 'apuntado', label: 'Mis retiros', color: '#3a6ea5' },
+    { id: 'abierto', label: 'Retiros abiertos', color: '#8a5fb0', style: 'outline' },
+    { id: 'estancia', label: 'Mis estancias', color: '#c27c2c' },
+  ],
+  legend: true,
+  shadeLegend: 'Hay alguien',
+  events: () => personEvents,
+  dayInfo: (r) => {
+    const out: Record<string, CalendarDayInfo> = {};
+    for (let d = r.from; d <= r.to; d = addDays(d, 1)) {
+      const notes = personNotes[d];
+      if (personShaded.has(d) || notes) out[d] = { ...(personShaded.has(d) ? { shaded: true, shadeLabel: 'Hay alguien del staff' } : {}), ...(notes ? { notes } : {}) };
+    }
+    return out;
+  },
+  agenda: {
+    renderDay: (day, events) => el('div', { class: 'btnrow', style: 'display:flex;gap:8px;flex-wrap:wrap' },
+      ...events.filter((e) => e.layer === 'estancia').map((e) => el('button', { type: 'button', class: 'ghost small', onclick: () => personCal.selectRange({ from: e.start, to: e.end ?? e.start, eventId: e.id }) }, 'Cambiar fechas')),
+      ...events.filter((e) => e.layer === 'abierto').map((e) => el('button', { type: 'button', class: 'primary small', onclick: () => toast(`Solicitud enviada: ${e.title}`) }, 'Apuntarme')),
+      el('button', { type: 'button', class: 'linkbtn', onclick: () => toast(`Añadir nota el ${day}`) }, icon('plus', 16), 'Añadir nota')),
+  },
+  select: {
+    label: 'Guardar estancia',
+    describe: (r) => `${daysBetween(r.from, r.to) + 1} días · Hab 3, cama 1 (la habitual)`,
+    maxDays: 60,
+    onSelect: (r) => {
+      const existing = r.eventId ? personEvents.find((e) => e.id === r.eventId) : null;
+      if (existing) { existing.start = r.from; existing.end = r.to; } else personEvents.push({ id: `est-${personEvents.length + 1}`, title: 'Mi estancia', abbr: 'Estancia', start: r.from, end: r.to, layer: 'estancia' });
+      toast(existing ? 'Estancia cambiada' : 'Estancia guardada');
+      void personCal.refresh();
+    },
+  },
+  onSelectEvent: (e) => toast(`Abrir ${e.title}`),
+});
+const personSection = section('personcal', 'Calendario de persona (O2 y O4)', 'createCalendar con capas y leyenda, sombreado «hay alguien», notas con hora, panel del día y elegir días (dos toques, arrastre en escritorio, o Intro, flechas e Intro). Sin estas opciones el calendario es el de siempre (Booking).',
+  el('div', { class: 'btnrow', style: 'margin-bottom:10px' }, el('button', { type: 'button', class: 'primary', id: 'newStay', onclick: () => personCal.selectRange() }, icon('plus', 18), 'Nueva estancia')),
+  el('div', { id: 'personCalHost' }, personCal.element),
+);
+
+// --- Cola de propuestas (O1) -----------------------------------------------------------------------------
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+const proposalStore: ProposalItem[] = [
+  { id: 'sg-1', app: 'tasks', kind: 'task', summary: 'Pintar la barandilla del porche', detail: { area: 'Mantenimiento', space: 'Altura 3 › Albergue › Porche', note: 'La pintura se levanta junto a la escalera.' }, author: { id: 'u-me', name: 'Lucía' }, created_at: hoursAgo(2), status: 'pending' },
+  { id: 'sg-2', app: 'food', kind: 'dish', summary: 'Lentejas con verduras', author: { id: 'u-2', name: 'Marco' }, created_at: hoursAgo(20), status: 'pending' },
+  { id: 'sg-3', app: 'booking', kind: 'join', summary: 'Yoga y huerto · 2 personas', author: { id: 'u-3', name: 'Inés' }, created_at: hoursAgo(26), status: 'pending' },
+  { id: 'sg-4', app: 'food', kind: 'dish', summary: 'Barbacoa el domingo', author: { id: 'u-me', name: 'Lucía' }, created_at: hoursAgo(170), status: 'rejected', comment: 'Este mes no se puede hacer fuego.', decided_by: { name: 'Dirección' }, decided_at: hoursAgo(150) },
+];
+const proposalListeners = new Set<() => void>();
+const proposalSource = (filter: (i: ProposalItem) => boolean) => ({
+  list: async () => proposalStore.filter(filter).map((i) => ({ ...i })),
+  subscribe(listener: (items: ProposalItem[]) => void) {
+    const fn = () => listener(proposalStore.filter(filter).map((i) => ({ ...i })));
+    proposalListeners.add(fn);
+    return () => { proposalListeners.delete(fn); };
+  },
+});
+const setProposal = (id: string, patch: Partial<ProposalItem>) => {
+  const item = proposalStore.find((p) => p.id === id);
+  if (item) Object.assign(item, patch);
+  proposalListeners.forEach((fn) => fn());
+};
+const proposalKinds = { task: { label: 'Tarea' }, dish: { label: 'Plato' }, join: { label: 'Apuntarme' } };
+const proposalApps = { tasks: 'Tasks', food: 'Food', booking: 'Booking' };
+const reviewList = createProposalList({
+  mode: 'review', title: 'Propuestas', feedbackId: 'demo.propuestas', kinds: proposalKinds, apps: proposalApps,
+  source: proposalSource((i) => i.status !== 'withdrawn'),
+  onApprove: async (item, comment) => {
+    if (/fallo/i.test(comment ?? '')) throw new Error('El servidor no lo ha aceptado.');
+    setProposal(item.id, { status: 'approved', comment, decided_by: { name: 'Staff' }, decided_at: new Date().toISOString(), result: { ids: ['t-99'] } });
+  },
+  onReject: async (item, comment) => { setProposal(item.id, { status: 'rejected', comment, decided_by: { name: 'Staff' }, decided_at: new Date().toISOString() }); },
+  renderDetail: (item) => {
+    const d = item.detail as { area?: string; space?: string; note?: string } | undefined;
+    return d
+      ? el('dl', { class: 'kv' }, el('dt', null, 'Área'), el('dd', null, d.area ?? ''), el('dt', null, 'Espacio'), el('dd', null, d.space ?? ''), el('dt', null, 'Nota'), el('dd', null, d.note ?? ''))
+      : el('p', { class: 'hint' }, 'Sin más datos.');
+  },
+});
+const mineList = createProposalList({
+  mode: 'mine', title: 'Mis propuestas', feedbackId: 'demo.mis_propuestas', kinds: proposalKinds, apps: proposalApps,
+  source: proposalSource((i) => i.author.id === 'u-me'),
+  onWithdraw: async (item) => { setProposal(item.id, { status: 'withdrawn' }); },
+  onCreate: () => toast('Proponer: lo abre la app'),
+  link: (item) => (item.kind === 'task' ? { label: 'Ver la tarea', href: '#proposals' } : null),
+});
+const proposalPanes = el('div', { id: 'proposalPanes' }, reviewList.element);
+const proposalSwitch = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Vista de propuestas', style: 'margin-bottom:12px' },
+  el('button', { type: 'button', class: 'on', id: 'showReview', 'aria-pressed': 'true', onclick: () => showProposals('review') }, 'Revisar'),
+  el('button', { type: 'button', id: 'showMine', 'aria-pressed': 'false', onclick: () => showProposals('mine') }, 'Mis propuestas'));
+function showProposals(which: 'review' | 'mine'): void {
+  proposalSwitch.querySelectorAll('button').forEach((b, i) => { const on = (i === 0) === (which === 'review'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  replace(proposalPanes, which === 'review' ? reviewList.element : mineList.element);
+}
+const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalList: la cola para quien decide (pendientes, aprobadas y descartadas; filtro por tipo; aprobar o descartar confirmando, con comentario opcional; detalle a la derecha en escritorio, ↑ ↓ y paso a la siguiente) y «Mis propuestas» para quien propone (pendientes y resueltas, con el comentario y «Retirar»). Un comentario con «fallo» simula un rechazo del servidor.',
+  proposalSwitch, proposalPanes,
+);
+(window as unknown as { proposalStore: unknown }).proposalStore = proposalStore;
+
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
@@ -1085,12 +1201,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

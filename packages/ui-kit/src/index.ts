@@ -37,7 +37,8 @@ export { renderRejected, renderRejectedList, type RejectedOptions } from './sync
 export { listRow, renderList, type ListRowSpec, type ListSpec, type ListOptions } from './list.ts';
 export { createThemeToggle, createThemeSelect } from './theme-switch.ts';
 export { compressImage, compressedFilename, isImageFile, supportsWebp, type CompressImageOptions, type CompressedImage } from './media/compress-image.ts';
-export { createCalendar, toDayKey, fromDayKey, addDays, todayKey, startOfWeek, startOfMonth, daysBetween, type Calendar, type CalendarEvent, type CalendarOptions, type CalendarView, type DayKey } from './calendar/calendar.ts';
+export { createCalendar, toDayKey, fromDayKey, addDays, todayKey, startOfWeek, startOfMonth, daysBetween, type Calendar, type CalendarEvent, type CalendarOptions, type CalendarView, type DayKey, type CalendarLayer, type CalendarNote, type CalendarDayInfo, type CalendarRange, type CalendarSelectOptions, CALENDAR_MARKS } from './calendar/calendar.ts';
+export { createProposalList, suggestionStatusChip, PROPOSAL_LIST_MARKS, type ProposalItem, type ProposalList, type ProposalListOptions, type ProposalSource, type SuggestionStatus } from './proposals/list.ts';
 export { createQuantityField, parseQuantity, formatQuantity, type QuantityField, type QuantityFieldOptions, type QuantityUnit, type QuantityValue } from './fields/quantity.ts';
 export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';

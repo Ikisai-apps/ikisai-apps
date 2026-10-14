@@ -1,5 +1,37 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.33.0 · 13 de octubre de 2026
+
+**Calendario de persona y cola de propuestas** (O1, O2 y O4 de `ampliacion/RECURSOS.md`; propuesta aprobada por el usuario el 13-10-2026).
+
+- **`createCalendar` amplía sus opciones, todas opcionales.** Sin ellas, el calendario funciona como antes (Booking):
+  - **Capas** (`layers`): color y estilo `solid`, `outline` (borde discontinuo) o `soft`. Con `legend`, chips para encender y apagar cada capa, que se recuerdan con `storageKey`. Con `shadeLegend`, el sombreado sale también en la leyenda.
+  - **Sombreado y notas por día** (`dayInfo`): rayado «hay alguien», sin nombres, y marca de notas con hora. Las dos cosas se leen en la etiqueta del día.
+  - **Panel del día** (`agenda`): debajo en el móvil y a la derecha en escritorio. Enseña los eventos, el sombreado y las notas, más lo que añada la app con `renderDay`. Tocar una barra también elige ese día.
+  - **Elegir días** (`select` y `selectRange()`):
+    - se toca el primer día y luego el último, y una barra abajo permite guardar;
+    - en escritorio también se arrastra;
+    - con teclado: Intro, flechas e Intro, y Esc cancela;
+    - `selectRange({ from, to, eventId })` sirve para «Cambiar fechas»;
+    - admite `minDays`, `maxDays`, `allowed` y `describe`, y anuncia cada paso;
+    - `cancelSelect()` sale del modo.
+  - **Deslizar a los lados** cambia de mes en pantallas táctiles (`swipe`, activado por defecto).
+  - Otros métodos: `setLayers()` y `selectDay()`. Admite `label`, `feedbackId` y `CALENDAR_MARKS`.
+- **El nombre corto de una barra sale solo en el primer día de cada tramo** (inicio o principio de semana). Antes se repetía cortado cada día («Estanci», «Estanci»…). Afecta a todos, Booking incluido, por decisión del usuario.
+- **`createProposalList`** (sugerencias del núcleo: `pending`, `approved`, `rejected` y `withdrawn`):
+  - **Modo `review`:**
+    - pestañas «Pendientes N», «Aprobadas» y «Descartadas», y filtro por tipo;
+    - «Aprobar» y «Descartar» **confirman siempre** con un diálogo, que lleva un comentario opcional;
+    - en escritorio, detalle a la derecha (`renderDetail`); ↑ y ↓ cambian de propuesta y, al decidir, pasa a la siguiente;
+    - en el móvil, el detalle sale en una hoja.
+  - **Modo `mine`:** «Pendientes» y «Resueltas», con el comentario de quien decidió, «Retirar» (confirma), «Proponer» y enlace a lo creado (`link`).
+  - **Datos:** con `source`, vuelve a leer al enfocar la ventana y tras decidir, o usa `subscribe`.
+  - Exporta también `suggestionStatusChip` y `PROPOSAL_LIST_MARKS`.
+  - No cambia el revisor de feedback de Central ni la revisión de propuestas de agentes.
+- **`confirmDialog`** admite `body` (un campo debajo del texto, que recibe el foco).
+- **Demo:** secciones «Calendario de persona» y «Propuestas». La sección «Calendario» se queda como estaba.
+- **Pruebas:** `v39` (calendario) y `v40` (propuestas).
+
 ## 0.32.0 · 13 de octubre de 2026
 
 **Camas con plazas fijas y supletorias** (decisión del usuario; servidor en Core #479, docs/resources/API.md §2.3).
