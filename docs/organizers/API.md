@@ -554,3 +554,23 @@ Se genera **en el dispositivo**, sin servidor:
 
 - **Habitaciones de 2–4 plazas con baño:** ya son un extra en las tarifas (`portal_visible`, B10).
 - **Suplemento:** al elegir con suplemento, Booking añade la línea al pedido de extras de la reserva o a la propuesta. Lo decide Booking, que factura Finance.
+
+## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
+
+Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.
+
+| Nombre | Tipo | Forma |
+|---|---|---|
+| `booking.portal_join_requests` | lectura | `{reservation_id}` → `{items: [{id, revision, persons: [nombres], message, status, comment, created_at}]}`. Sin la cuenta de quien lo pide |
+| `booking.portal_join_request_decide` | acción | `{reservation_id, id, decision: 'aceptar' \| 'descartar', comment?}`. Aceptar crea las fichas y da la entrada de Guests en el mismo paso. Una ya decidida da `JOIN_REQUEST_DECIDED` (409); sin evento, `RESERVATION_NOT_CONFIRMED`; con el retiro cerrado, `RESERVATION_NOT_OPEN` |
+
+**Pantallas:**
+- **Asistentes › «Solicitudes para apuntarse»**, encima de la lista:
+  - las pendientes, con los nombres («Marta y Nico»), cuántas personas, el día y el mensaje;
+  - **Aceptar** abre una hoja con lo que pasa, el aviso de plazas («Ahora tienes N asistentes de M plazas; con esta solicitud serían T») y un mensaje opcional, que la persona ve en Guests;
+  - **Descartar**, con un mensaje opcional;
+  - sin la reserva confirmada, Aceptar queda apagado con su explicación, y descartar sí se puede;
+  - «Ya decididas (N)», plegado, con su estado y el mensaje.
+- **Resumen:** el aviso «N personas piden apuntarse a tu retiro» con «Ver solicitudes».
+- **Pestaña Asistentes:** el número de pendientes. Si hay solicitudes, la pestaña sale aunque el retiro no recoja datos de huéspedes.
+- **Necesita red:** decidir no se encola. Si la lectura falla (sin red y sin copia, o un coorganizador sin permiso), la pantalla sigue sin el bloque.

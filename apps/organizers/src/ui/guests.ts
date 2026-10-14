@@ -8,6 +8,7 @@ import { dayLabel, missingText } from '../app/labels.ts';
 import { groupReminder } from '../app/texts.ts';
 import { copyText, fbIgnore } from './common.ts';
 import { guestComplete, type RetreatData } from './retreat.ts';
+import { renderJoinRequests } from './joins.ts';
 import type { ViewContext } from './shell.ts';
 
 type Filter = 'todos' | 'faltan' | 'completos';
@@ -38,12 +39,14 @@ export function linkText(link: PortalLink | undefined): string {
   return t('Enlace enviado el {fecha}', { fecha: dayLabel(link.createdAt) });
 }
 
-export function renderGuestList(ctx: ViewContext, reservationId: string, data: RetreatData, _reload: () => void): HTMLElement {
+export function renderGuestList(ctx: ViewContext, reservationId: string, data: RetreatData, reload: () => void): HTMLElement {
   const { navigate, usage } = ctx;
   const list = data.guests.value;
   const host = el('div', { id: 'guests', 'data-feedback-id': 'organizers.asistentes.lista', 'data-feedback-label': 'Asistentes' });
+  // Solicitudes para apuntarse (Booking §26.3), encima de la lista.
+  const joins = renderJoinRequests(ctx, reservationId, data, reload);
   if (!list.confirmed) {
-    replace(host, el('div', { class: 'empty', id: 'guestsNotConfirmed' }, el('strong', null, t('Aún no puedes añadir asistentes')), el('p', null, t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.'))));
+    replace(host, joins, el('div', { class: 'empty', id: 'guestsNotConfirmed' }, el('strong', null, t('Aún no puedes añadir asistentes')), el('p', null, t('Podrás añadir a tus asistentes cuando la reserva esté confirmada.'))));
     return host;
   }
   const links = linksByGuest(data.links?.value.items);
@@ -78,6 +81,7 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
   }
 
   replace(host,
+    joins,
     el('div', { class: 'btnrow orgtools' },
       el('button', { type: 'button', class: 'primary', id: 'addGuest', 'data-feedback-id': 'organizers.asistentes.lista.anadir', 'data-feedback-label': 'Añadir asistente', onclick: () => navigate(`#/retiro/${reservationId}/asistentes/nuevo`) }, t('Añadir asistente')),
       incomplete ? el('button', {

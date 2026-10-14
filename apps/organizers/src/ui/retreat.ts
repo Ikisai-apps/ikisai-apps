@@ -15,6 +15,7 @@ import { renderProposal } from './proposal.ts';
 import { renderPayments } from './payments.ts';
 import { renderExperience } from './experience.ts';
 import { renderOffers } from './offers.ts';
+import { pendingJoins, type JoinRequest } from './joins.ts';
 import type { ViewContext, ViewMount } from './shell.ts';
 
 export type RetreatTab = 'resumen' | 'fechas' | 'diseno' | 'propuesta' | 'pagos' | 'experiencia' | 'ofertas' | 'asistentes' | 'cocina';
@@ -34,6 +35,8 @@ export interface RetreatData {
   organizers: Coorganizer[];
   /** Fechas (fase 2), solo mientras el retiro se diseña; null si no aplica o no se pudo leer. */
   dates: PortalDates | null;
+  /** Solicitudes para apuntarse que Ikisai pasa al organizador (Booking §26.3); si la lectura falla, ninguna. */
+  joinRequests: JoinRequest[];
 }
 
 /** Completo: sin datos que falten y, con registro de viajeros, firmado. */
@@ -53,16 +56,17 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
 
   async function load(): Promise<void> {
     try {
-      const [detail, guests, kitchen, organizers] = await Promise.all([
+      const [detail, guests, kitchen, organizers, joinRequests] = await Promise.all([
         api.detail(reservationId), api.guests(reservationId), api.kitchen(reservationId),
         api.organizers(reservationId).then((x) => x.value.items).catch(() => [] as Coorganizer[]),
+        api.readAny<{ items: JoinRequest[] }>('booking.portal_join_requests', { reservation_id: reservationId }).then((x) => x.value.items).catch(() => [] as JoinRequest[]),
       ]);
       // Los enlaces de huésped solo hacen falta en la pestaña Asistentes; si fallan, la lista sigue sin su estado.
       const links = tab === 'asistentes' && guests.value.confirmed ? await api.links(reservationId).catch(() => null) : null;
       if (!alive) return;
       const dates = DESIGN_STATUSES.has(detail.value.status) ? await api.dates(reservationId).then((x) => x.value).catch(() => null) : null;
       if (!alive) return;
-      paint({ detail, guests, kitchen, links, organizers, dates });
+      paint({ detail, guests, kitchen, links, organizers, dates, joinRequests });
     } catch (error) {
       if (alive) replace(body, failure(error, () => void load()));
     }
@@ -81,7 +85,9 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
           d.code ? el('span', { class: 'muted small', title: t('Código de tu reserva, para hablar con Ikisai') }, ` ${t('Reserva {codigo}', { codigo: d.code })}`) : null),
         organizersLine(data.organizers) ? el('p', { class: 'muted small', id: 'retreatOrganizers', 'data-feedback-ignore': '' }, organizersLine(data.organizers)) : null)));
 
-    const showGuests = data.guests.value.mode !== 'ninguno' && !isCancelled(d.status);
+    const joinsPending = pendingJoins(data.joinRequests).length;
+    // Con solicitudes para apuntarse, Asistentes se ve aunque el retiro no recoja datos de huéspedes.
+    const showGuests = (data.guests.value.mode !== 'ninguno' || data.joinRequests.length > 0) && !isCancelled(d.status);
     const showDates = DESIGN_STATUSES.has(d.status);
     const showDesign = DRAFT_STATUSES.has(d.status);
     const showProposal = !isCancelled(d.status);
@@ -91,10 +97,10 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     // Experiencia de Guests (fase 4): desde la prerreserva, como los pagos. Ofertas y cartel (fase 5): en cualquier momento.
     const showExperience = showPayments;
     const showOffers = !isCancelled(d.status);
-    const tabButton = (id: RetreatTab, label: string) => el('a', {
+    const tabButton = (id: RetreatTab, label: string, count = 0) => el('a', {
       href: id === 'resumen' ? `#/retiro/${reservationId}` : `#/retiro/${reservationId}/${id}`, role: 'tab', id: `tab-${id}`,
       class: tab === id ? 'on' : '', 'aria-selected': tab === id ? 'true' : 'false',
-    }, label);
+    }, label, count ? el('span', { class: 'orgtab-count', 'aria-label': t('{n} por decidir', { n: count }) }, String(count)) : null);
     replace(tabs, el('nav', { class: 'segmented orgtabs', role: 'tablist', 'aria-label': t('Secciones del retiro') },
       fbMark(tabButton('resumen', t('Resumen')), 'organizers.retiro.pestanas.resumen', 'Resumen'),
       showDates ? fbMark(tabButton('fechas', t('Fechas')), 'organizers.retiro.pestanas.fechas', 'Fechas') : null,
@@ -103,7 +109,7 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
       showPayments ? fbMark(tabButton('pagos', t('Pagos')), 'organizers.retiro.pestanas.pagos', 'Pagos') : null,
       showExperience ? fbMark(tabButton('experiencia', t('Experiencia')), 'organizers.retiro.pestanas.experiencia', 'Experiencia') : null,
       showOffers ? fbMark(tabButton('ofertas', t('Ofertas')), 'organizers.retiro.pestanas.ofertas', 'Ofertas') : null,
-      showGuests ? fbMark(tabButton('asistentes', t('Asistentes')), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
+      showGuests ? fbMark(tabButton('asistentes', t('Asistentes'), joinsPending), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
       showKitchen ? fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina') : null));
 
     // Con cinco pestañas en un móvil, la activa se centra en la tira desplazable.
@@ -146,7 +152,12 @@ function renderSummary(ctx: ViewContext, reservationId: string, data: RetreatDat
   if (d.uses_outdoors) includes.push(t('Zonas exteriores'));
   if (d.uses_pool) includes.push(t('Piscina'));
 
+  const joins = pendingJoins(data.joinRequests);
+  const joinPeople = joins.reduce((n, j) => n + j.persons.length, 0);
   const out: Child[] = [
+    joins.length ? section(t('Solicitudes para apuntarse'), { id: 'summaryJoins', 'data-feedback-id': 'organizers.retiro.resumen.solicitudes', 'data-feedback-label': 'Solicitudes para apuntarse' },
+      el('p', null, joinPeople === 1 ? t('1 persona pide apuntarse a tu retiro.') : t('{n} personas piden apuntarse a tu retiro.', { n: joinPeople })),
+      el('button', { type: 'button', class: 'primary', id: 'goJoins', 'data-feedback-id': 'organizers.retiro.resumen.ver_solicitudes', 'data-feedback-label': 'Ver solicitudes', onclick: () => ctx.navigate(`#/retiro/${reservationId}/asistentes`) }, t('Ver solicitudes'))) : null,
     showDesign ? section(t('Diseña tu retiro'), { id: 'summaryDesign', 'data-feedback-id': 'organizers.retiro.resumen.diseno', 'data-feedback-label': 'Diseña tu retiro' },
       el('p', null, t('Personas, comidas, alojamiento y extras, con el precio orientativo al momento.')),
       el('button', { type: 'button', class: 'primary', id: 'goDesign', 'data-feedback-id': 'organizers.retiro.resumen.ver_diseno', 'data-feedback-label': 'Diseñar', onclick: () => ctx.navigate(`#/retiro/${reservationId}/diseno`) }, t('Diseñar'))) : null,

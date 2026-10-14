@@ -59,6 +59,7 @@
 - 2026-10-13 · Supletorias por retiro (tanda de Booking): caracterización de Alojamiento y Presupuesto antes del cambio (`tests/organizers/lodging.test.ts` y un recorrido en `portal.spec.ts`); capturas y bocetos en `coordinacion/organizers/capturas/2026-10-13-supletorias`. `freePort` desde el test-kit.
 
 - 2026-10-14 · Supletorias por habitación (Booking #491): contador «N de M» con − / + y su precio en Experiencia › Alojamiento, aviso de pendiente con la propuesta aceptada y supletorias activadas en el reparto. Pruebas en `lodging.test.ts` (5) y `portal.spec.ts`.
+- 2026-10-14 · Solicitudes para apuntarse (Booking O2, #518, §26.3): en Asistentes, las que Ikisai pasa al organizador, con nombres, mensaje, Aceptar y Descartar con mensaje opcional para la persona; aviso en Resumen y número en la pestaña. Pruebas en `joins.test.ts` (4) y `portal.spec.ts`.
 
 ## Pendiente
 
