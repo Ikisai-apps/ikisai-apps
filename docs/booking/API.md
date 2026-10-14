@@ -1529,7 +1529,20 @@ Decisiones del usuario:
 | `booking.portal_stay_note_save` | acción | `{id, at, text, expectedRevision?}` → `{id, revision, cursor}`. Solo crea o cambia las suyas |
 | `booking.portal_stay_note_remove` | acción | `{id, expectedRevision?}`. Solo las suyas |
 
-Siguen en O2: retiros abiertos y «Apuntarme» (con las sugerencias del núcleo), el segundo y el tercer calendario de Google, y las pantallas de Booking.
+### 26.1 Parte 2 · retiros abiertos y estancias en Google (migración 0468)
+
+- **Retiros visibles para huéspedes:**
+  - `reservations.guests_visible` (por defecto, no) y `public_summary` (hasta 500). Solo el personal los cambia;
+  - `booking.portal_open_retreats({from?, to?})` (Guests, cualquier huésped) → `{items: [{reservation_id, title, start_date, end_date, summary, joined}]}`. Solo reservas visibles, vivas y en `pre_reservada`, `confirmada` o `en_ejecucion`, **sin precio**. `joined` dice si el actor ya tiene una entrada en ese retiro. Lo pendiente de «Apuntarme» lo da la lista de sugerencias propias del núcleo (`client.suggestions({scope: 'mine'})`).
+- **Estancias en Google:**
+  - las de outsider van al segundo calendario (`BOOKING_OUTSIDERS_CALENDAR_ID`) y las del staff al tercero (`BOOKING_STAFF_CALENDAR_ID`), con la misma cuenta de servicio (decisión del usuario);
+  - cola propia: `stay_calendar_jobs` y `stay_calendar_links`, cerradas, que se encolan al cambiar la estancia o sus personas;
+  - el mismo `worker/calendar/tick` procesa las dos colas, y la sonda `calendar_has_work` mira las dos. Con algún calendario de estancias configurado, la respuesta añade `stays: {processed, failed, pending, kinds}`; sin ninguno, es la de siempre;
+  - `GET calendar/status` añade `stays: {outsider, staff}`, con el id de cada calendario o `null`;
+  - **evento:** día completo de la llegada al día de salida incluido, con el título «Marta (+1)» (`stayCalendarTitle`: el nombre de pila de la primera persona o de la cuenta, y cuántos más). Sin contacto ni notas. Color 3 (uva) para outsiders y 8 (grafito) para el staff. Id `iks<uuid>g<n>` y `extendedProperties.private.ikisaiStayId`;
+  - sin calendario configurado no se proyecta nada y las reservas siguen igual. El guardado nunca depende de Google.
+
+Siguen en O2: «Apuntarme» (con las sugerencias del núcleo; espera P23 y P24) y las pantallas de Booking.
 
 ## Anexo · Campos de C03 y C04 que no se portan
 

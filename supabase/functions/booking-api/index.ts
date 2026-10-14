@@ -15,5 +15,10 @@ Deno.serve(createBookingApp({
   calendar: {
     adapter: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_CALENDAR_ID') }),
     syncOnCommit: true,
+    // O2: estancias de outsider y del staff, cada una en su calendario (misma cuenta de servicio). Sin id, no se proyectan.
+    stays: {
+      outsider: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_OUTSIDERS_CALENDAR_ID') }),
+      staff: createGoogleCalendarAdapter({ serviceAccountJson: Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON'), calendarId: Deno.env.get('BOOKING_STAFF_CALENDAR_ID') }),
+    },
   },
 }));

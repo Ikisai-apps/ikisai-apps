@@ -364,6 +364,7 @@ FIELDS[TABLES.eventExtraBeds] = {
   bed_id: { kind: 'uuid' },
   status: choice(['active', 'requested', 'release_requested'], false),
 };
+FIELDS[TABLES.reservations] = { ...FIELDS[TABLES.reservations], guests_visible: { kind: 'bool' }, public_summary: text(500) };
 FIELDS[TABLES.stays] = {
   kind: choice(STAY_KINDS, false),
   account_id: { kind: 'uuid' },

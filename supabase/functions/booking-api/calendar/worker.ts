@@ -2,7 +2,7 @@
  * Booking · worker de Calendar (docs/booking/API.md §7.3, «Cola y reintentos»).
  * Reclama trabajos, calcula el payload con las filas actuales, llama al adaptador solo si hace falta y anota el resultado.
  */
-import { calendarProjection, type CalendarEvent, type CalendarReservation } from '../../_domain/booking/mod.ts';
+import { calendarProjection, stayCalendarProjection, type CalendarEvent, type CalendarReservation, type CalendarStay } from '../../_domain/booking/mod.ts';
 import { CalendarError, type CalendarAdapter } from './adapter.ts';
 
 export const CALENDAR_CLAIM = 'booking.calendar_claim';
@@ -87,6 +87,87 @@ export async function runCalendarTick({ invoke, adapter, limit = 10, reservation
   }
   result.pending = (await invoke(CALENDAR_CLAIM, { limit: 0 })).pending;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Estancias (O2): su propia cola; cada clase de estancia, a su calendario
+// ---------------------------------------------------------------------------
+export const STAY_CALENDAR_CLAIM = 'booking.stay_calendar_claim';
+export const STAY_CALENDAR_REPORT = 'booking.stay_calendar_report';
+
+interface ClaimedStayJob {
+  jobId: string;
+  stayId: string;
+  attempts: number;
+  stay: CalendarStay | null;
+  link: Omit<ClaimedLink, 'htmlLink'> | null;
+}
+
+export interface StayCalendarAdapters {
+  /** Segundo calendario («Ikisai · Outsiders», `BOOKING_OUTSIDERS_CALENDAR_ID`). */
+  outsider?: CalendarAdapter | null;
+  /** Tercer calendario, el del staff (`BOOKING_STAFF_CALENDAR_ID`). */
+  staff?: CalendarAdapter | null;
+}
+
+export interface StayCalendarTickResult {
+  processed: number;
+  failed: number;
+  pending: number;
+  /** Clases de estancia con calendario configurado; las otras no se proyectan y su cola espera. */
+  kinds: string[];
+}
+
+export async function runStayCalendarTick({ invoke, adapters, limit = 10 }: { invoke: CalendarInvoke; adapters: StayCalendarAdapters; limit?: number }): Promise<StayCalendarTickResult> {
+  const kinds = (['outsider', 'staff'] as const).filter((kind) => adapters[kind]);
+  const result: StayCalendarTickResult = { processed: 0, failed: 0, pending: 0, kinds: [...kinds] };
+  if (kinds.length === 0) return result;
+  const claimed = await invoke(STAY_CALENDAR_CLAIM, { limit, kinds });
+  const blocked = new Map<string, CalendarError>();
+  for (const job of claimed.jobs as ClaimedStayJob[]) {
+    const adapter = job.stay ? adapters[job.stay.kind] ?? null : null;
+    const base = { jobId: job.jobId, calendarId: adapter?.calendarId ?? job.link?.calendarId };
+    const stop = job.stay ? blocked.get(job.stay.kind) : undefined;
+    if (stop) { await invoke(STAY_CALENDAR_REPORT, { ...base, outcome: 'blocked', error: stop.code }); continue; }
+    try {
+      const link = job.stay && adapter ? await syncStayJob(job, adapter) : null;
+      await invoke(STAY_CALENDAR_REPORT, { ...base, outcome: 'done', ...(link ? { link } : {}) });
+      result.processed++;
+    } catch (error) {
+      const known = error instanceof CalendarError ? error : new CalendarError('UNEXPECTED', true);
+      if (known.blocked && job.stay) {
+        blocked.set(job.stay.kind, known);
+        await invoke(STAY_CALENDAR_REPORT, { ...base, outcome: 'blocked', error: known.code });
+        continue;
+      }
+      await invoke(STAY_CALENDAR_REPORT, { ...base, outcome: known.recoverable ? 'retry' : 'fatal', error: known.code });
+      result.failed++;
+    }
+  }
+  result.pending = (await invoke(STAY_CALENDAR_CLAIM, { limit: 0, kinds })).pending;
+  return result;
+}
+
+async function syncStayJob(job: ClaimedStayJob, adapter: CalendarAdapter): Promise<Record<string, unknown> | null> {
+  const stay = job.stay!;
+  const { link } = job;
+  const generation = link?.generation ?? 1;
+  const projection = await stayCalendarProjection(stay, generation);
+  if (projection.desired === 'absent') {
+    if (!link || link.syncStatus === 'deleted') return null;
+    await adapter.remove(link.providerEventId ?? projection.eventId);
+    return { syncStatus: 'deleted', providerEventId: link.providerEventId, generation, payloadHash: null };
+  }
+  if (link?.syncStatus === 'synced' && link.payloadHash === projection.payloadHash) return null;
+  try {
+    const remote = await adapter.upsert(link?.providerEventId ?? projection.eventId, projection.payload!);
+    return { syncStatus: 'synced', providerEventId: remote.id, generation, payloadHash: projection.payloadHash };
+  } catch (error) {
+    if (!(error instanceof CalendarError) || error.code !== 'EVENT_ID_TAKEN') throw error;
+    const next = await stayCalendarProjection(stay, generation + 1);
+    const remote = await adapter.upsert(next.eventId, next.payload!);
+    return { syncStatus: 'synced', providerEventId: remote.id, generation: generation + 1, payloadHash: next.payloadHash };
+  }
 }
 
 /** Devuelve el enlace que hay que guardar, o null si el trabajo no cambia nada (p. ej. reserva `cerrada`). */
