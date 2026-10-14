@@ -21,6 +21,9 @@ export interface ShoppingList extends SyncedColumns {
   generated_at: string;
   source_revisions: SourceRevisions;
   notes: string | null;
+  /** Solo en el menú de casa (O3b): días que cubre la lista. */
+  period_start?: string | null;
+  period_end?: string | null;
 }
 
 export interface ShoppingListItem extends SyncedColumns {
@@ -57,17 +60,25 @@ export interface ShoppingRequirement {
   required_quantity: number;
 }
 
-function liveItems(graph: MenuGraph) {
-  const services = new Set(graph.services.filter((s) => !s.deleted_at).map((s) => s.id));
+/** Rango de días de una lista o una preparación del menú de casa (O3b). Sin rango, todo el menú (retiros). */
+export interface Period {
+  start: string;
+  end: string;
+}
+
+function liveItems(graph: MenuGraph, period?: Period | null) {
+  const services = new Set(graph.services
+    .filter((s) => !s.deleted_at && (!period || (s.service_date >= period.start && s.service_date <= period.end)))
+    .map((s) => s.id));
   return graph.items.filter((i) => !i.deleted_at && services.has(i.service_id));
 }
 
 /** Raciones × cantidad ÷ raciones base, agrupado por ingrediente y familia de unidad. */
-export function computeShopping(graph: MenuGraph): ShoppingRequirement[] {
+export function computeShopping(graph: MenuGraph, period?: Period | null): ShoppingRequirement[] {
   const recipes = new Map(graph.recipes.map((r) => [r.id, r]));
   const ingredients = new Map(graph.ingredients.map((g) => [g.id, g]));
   const totals = new Map<string, { ingredient_id: string; family: UnitFamily; base: number }>();
-  for (const item of liveItems(graph)) {
+  for (const item of liveItems(graph, period)) {
     const recipe = recipes.get(item.recipe_id);
     if (!recipe) continue;
     const factor = Number(item.servings) / Number(recipe.base_servings);
@@ -111,8 +122,8 @@ function revisions(rows: Array<{ id: string; revision: number }>): SourceRevisio
 }
 
 /** Filas de las que depende la lista de compra: platos vivos, sus recetas, las líneas vivas de esas recetas y sus ingredientes. */
-export function shoppingSources(graph: MenuGraph): SourceRevisions {
-  const items = liveItems(graph);
+export function shoppingSources(graph: MenuGraph, period?: Period | null): SourceRevisions {
+  const items = liveItems(graph, period);
   const recipeIds = new Set(items.map((i) => i.recipe_id));
   const recipes = graph.recipes.filter((r) => recipeIds.has(r.id));
   const lines = graph.recipe_ingredients.filter((l) => !l.deleted_at && recipeIds.has(l.recipe_id));
