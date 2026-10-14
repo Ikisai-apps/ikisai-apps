@@ -223,3 +223,16 @@ test('sugerencias · el procedimiento del lote sabe quién sugirió (core.sugges
   assert.equal(d.result[0].result.suggestion, s.id);
   assert.equal((await app.t.db.query<any>(`select core.suggestion_author() as a`)).rows[0].a, null, 'fuera de una aprobación, null');
 });
+
+test('sugerencias · on_submit avisa a la app al llegar una nueva, en la misma transacción', async () => {
+  await app.t.db.query(`create table tasks.o1_avisos (kind text, summary text)`);
+  await app.t.db.query(`create function tasks.o1_aviso(p jsonb) returns void language sql as 'insert into tasks.o1_avisos values (p->>''kind'', p->''suggestion''->>''summary'')'`);
+  await app.t.db.query(`select core.allow_procedure('tasks', 'tasks.o1_aviso')`);
+  await app.t.db.query(`select core.set_suggestion_on_submit('tasks', 'nota', 'tasks.o1_aviso')`);
+  const user = await app.t.createUser();
+  await app.t.db.query(`select core.apply_house_level($1, 'outsider')`, [user]);
+  await app.t.db.query(`select core.suggest('tasks', $1, 'aviso-1', 'nota', 'Ventana rota', null, $2)`, [user,
+    JSON.stringify([{ op: 'insert', table: 'tasks.o1_notes', id: crypto.randomUUID(), fields: { text: 'Ventana' } }])]);
+  assert.deepEqual((await app.t.db.query<any>(`select kind, summary from tasks.o1_avisos`)).rows, [{ kind: 'nota', summary: 'Ventana rota' }]);
+  await assert.rejects(app.t.db.query(`select core.set_suggestion_on_submit('tasks', 'nota', 'tasks.no_permitido')`), /PROCEDURE_NOT_ALLOWED/);
+});
