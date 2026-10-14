@@ -85,7 +85,9 @@ export function describeError(error: unknown): string {
     case 'INVALID_FILE': return 'La foto no se pudo enlazar. Vuelve a elegirla.';
     case 'BLOB_MISSING': return 'La foto ya no está en este dispositivo. Vuelve a elegirla.';
     case 'MENU_LOCKED': return 'El menú está validado: reábrelo para cambiarlo.';
-    case 'MENU_EXISTS': return 'Este evento ya tiene un menú.';
+    case 'MENU_EXISTS': return (e?.details as { kind?: string } | undefined)?.kind === 'casa' ? 'El menú de casa ya existe.' : 'Este evento ya tiene un menú.';
+    case 'HOUSE_MENU': return 'El menú de casa siempre está abierto: no se valida, no se cierra ni se borra.';
+    case 'QUICK_RECIPE_IN_RETREAT': return 'Es un plato rápido por completar: complétalo (alérgenos e ingredientes) en el Recetario para usarlo en un retiro.';
     case 'MENU_EMPTY': return 'Añade al menos un plato antes de validar.';
     case 'MENU_NOT_FOUND': return 'El menú ya no existe.';
     case 'EVENT_NOT_FOUND': return 'El evento ya no está disponible para cocina.';

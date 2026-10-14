@@ -4,6 +4,7 @@ import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
 import { allergyCount, dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
 import { MENU_STATUS_LABELS } from './events.ts';
+import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import type { ViewMount } from './shell.ts';
@@ -30,6 +31,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const lastPull = el('dd');
   const role = el('dd');
   const upcoming = el('section', { 'data-feedback-id': 'food.inicio.eventos', 'data-feedback-label': 'Próximos eventos', id: 'upcoming' });
+  const houseHost = el('section', { 'data-feedback-id': 'food.inicio.casa', 'data-feedback-label': 'Hoy en casa', id: 'houseToday' });
+  let house: HouseToday = { exists: false, lines: [] };
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
   let totals = new Map<string, { total: number; missing: number; stale: number }>();
@@ -93,6 +96,15 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
           })));
   }
 
+  /** «Hoy en casa» (O3a): lo que hay hoy en el menú de casa, que se abre con un toque. */
+  function paintHouse(): void {
+    replace(houseHost, el('a', { 'data-feedback-id': 'food.inicio.casa.abrir', 'data-feedback-label': 'Abrir el menú de casa', class: 'card cardlink housecard', href: HOUSE_MENU_HASH, onclick: (e: Event) => { e.preventDefault(); navigate(HOUSE_MENU_HASH); } },
+      el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'),
+      el('h3', null, 'Hoy en casa'),
+      house.lines.length ? el('ul', { class: 'plainlist' }, ...house.lines.map((line) => el('li', null, line)))
+        : el('p', null, house.exists ? 'Nada previsto hoy en el menú de casa.' : 'El menú de casa: lo que se come en casa, día a día.')));
+  }
+
   const link = (mark: Record<'data-feedback-id' | 'data-feedback-label', string>, hash: string, title: string, text: string, ...kv: HTMLElement[]) =>
     el('a', { ...mark, class: 'card cardlink', href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } },
       el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'), el('h3', null, title), el('p', null, text), el('dl', { class: 'kv' }, ...kv));
@@ -101,6 +113,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', { 'data-feedback-ignore': '' }, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Qué retiros vienen y qué falta preparar.'))),
+    houseHost,
     upcoming,
     el('div', { class: 'sectionlabel' }, 'Cocina'),
     el('div', { class: 'cardgrid' },
@@ -140,6 +153,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     totals = purchases.fetchedAt ? menuTotals(graphs, purchases.prices) : new Map();
     paintUpcoming();
   };
+  const loadHouse = async () => { house = await loadHouseToday(client); paintHouse(); };
+  paintHouse();
+  void loadHouse();
+  const offHouse = [T.menus, T.menuServices, T.menuItems, T.recipes].map((table) => client.onTable(table, () => void loadHouse()));
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
   const offPlanning = [T.menus, T.shoppingLists, T.shoppingItems, T.preparation].map((table) => client.onTable(table, () => void loadMenus()));
@@ -153,5 +170,6 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     offEquipment();
     offEvents();
     offMenus();
+    offHouse.forEach((off) => off());
   };
 };

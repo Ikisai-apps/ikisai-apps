@@ -113,13 +113,13 @@ class Fault extends Error {
 
 const DEFAULT_TABLES: Record<string, string[]> = {
   'food.recipes': ['name', 'public_name', 'public_description', 'category', 'base_servings', 'method', 'conservation', 'freezable', 'regeneration',
-    'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps'],
+    'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps', 'quick'],
   'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active'],
   'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
   'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes'],
   'food.recipe_equipment': ['recipe_id', 'equipment_id', 'quantity_required', 'notes'],
-  'food.menus': ['event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
-    'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared'],
+  'food.menus': ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
+    'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared', 'house_servings'],
   'food.menu_comments': ['menu_id', 'service_id', 'menu_item_id', 'kind', 'message', 'author_id', 'status', 'reply'],
   'food.menu_services': ['menu_id', 'service_date', 'service_type', 'service_time', 'position', 'notes'],
   'food.menu_items': ['service_id', 'recipe_id', 'servings', 'position', 'notes'],
@@ -131,12 +131,12 @@ const DEFAULT_TABLES: Record<string, string[]> = {
 
 /** Valores por defecto de las columnas, como los pondría PostgreSQL. */
 const DEFAULTS: Record<string, Record<string, unknown>> = {
-  'food.recipes': { status: 'en_prueba', freezable: false, diet_tags: [], allergens: [], allergens_checked: false },
+  'food.recipes': { status: 'en_prueba', freezable: false, diet_tags: [], allergens: [], allergens_checked: false, quick: false },
   'food.ingredients': { preferred_unit: 'g', active: true },
   'food.recipe_ingredients': { position: 0 },
   'food.equipment': { quantity: 1, status: 'operativo' },
   'food.recipe_equipment': { quantity_required: 1 },
-  'food.menus': { status: 'borrador', organizer_shared: false },
+  'food.menus': { kind: 'retiro', status: 'borrador', organizer_shared: false },
   'food.menu_comments': { status: 'nuevo' },
   'food.menu_services': { position: 0 },
   'food.menu_items': { position: 0 },
@@ -373,6 +373,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const menuId = op.table === 'food.menu_services' ? (fields.menu_id ?? current?.menu_id) : stagedTable('food.menu_services').get(serviceId as string)?.menu_id;
         const parent = stagedTable('food.menus').get(menuId as string);
         if (parent && (parent.status === 'validado' || parent.status === 'cerrado')) throw new Fault(422, 'MENU_LOCKED', 'El menú está validado.', { index, menu_id: parent.id, status: parent.status });
+        // Salvaguarda de O3a, como food.guard_menu_item: un plato rápido por completar no entra en un retiro.
+        const recipe = op.table === 'food.menu_items' && fields.recipe_id ? stagedTable('food.recipes').get(fields.recipe_id as string) : undefined;
+        const lines = Array.from(stagedTable('food.recipe_ingredients').values());
+        if (parent && parent.kind !== 'casa' && recipe?.quick && !(recipe.allergens_checked && lines.some((l) => l.recipe_id === recipe.id && !l.deleted_at))) {
+          throw new Fault(422, 'QUICK_RECIPE_IN_RETREAT', 'Plato rápido por completar.', { index, recipe_id: recipe.id });
+        }
       }
       const now = nowIso();
       let row = store.get(op.id);

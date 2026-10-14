@@ -48,6 +48,8 @@ export interface Recipe extends SyncedColumns {
   allergens_checked: boolean;
   photo_file_id: string | null;
   photo_thumb_file_id: string | null;
+  /** Nació como plato rápido (house.ts): se fija al crearla y no cambia. */
+  quick?: boolean;
 }
 
 export interface Ingredient extends SyncedColumns {

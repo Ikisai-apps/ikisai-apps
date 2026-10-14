@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, LOCKED_MENU_STATUSES, SERVICE_TYPES, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, HOUSE_MENU_ID, LOCKED_MENU_STATUSES, SERVICE_TYPES, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type RecipeIngredient,
 } from '@ikisai/domain-food';
@@ -8,8 +8,9 @@ import { closeSheet, confirmDialog, createSortableList, el, formatDate, icon, li
 import { runCall } from '../app/calls.ts';
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, T, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror } from '../app/client.ts';
 import {
-  dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
+  dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
 } from '../app/events.ts';
+import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
@@ -55,16 +56,31 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   let fresh = new Map<string, number>(); // comentarios nuevos del organizador por menú
   const list = el('ul', { class: 'list', id: 'menuList', 'aria-label': 'Menús' });
   const host = el('div');
+  let house: HouseToday = { exists: false, lines: [] };
+  const houseHost = el('div', { id: 'houseMenu' });
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Menús'), el('p', null, 'El menú de cada evento. Se crean desde Eventos.'))),
+    houseHost,
     host,
   );
 
+  /** El menú de casa, fijo arriba: siempre abierto, con lo de hoy (O3a). */
+  function paintHouse(): void {
+    replace(houseHost, el('ul', { class: 'list houselist', 'aria-label': 'Menú de casa' }, fb(listRow({
+      id: HOUSE_MENU_ID,
+      title: 'Menú de casa',
+      meta: house.lines.length ? [`Hoy: ${house.lines.join('; ')}`] : [house.exists ? 'Hoy no hay nada previsto' : 'El día a día de la casa, sin evento'],
+      label: 'Abrir el menú de casa',
+      onClick: () => navigate(HOUSE_MENU_HASH),
+    }), { feedbackId: 'food.menus.casa', feedbackLabel: 'Menú de casa' })));
+  }
+
   function paint(): void {
+    paintHouse();
     const events = new Map(snapshot.events.map((e) => [e.event_id, e]));
-    const rows = menus.filter((m) => !m.deleted_at)
-      .map((menu) => ({ menu, event: events.get(menu.event_id) }))
+    const rows = menus.filter((m) => !m.deleted_at && !isHouseMenu(m))
+      .map((menu) => ({ menu, event: menu.event_id ? events.get(menu.event_id) : undefined }))
       .sort((a, b) => (b.event?.start_date ?? '').localeCompare(a.event?.start_date ?? ''));
     replace(list, ...rows.map(({ menu, event }) => listRow({
       id: menu.id,
@@ -84,13 +100,14 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   async function load(): Promise<void> {
     const [rows, comments] = await Promise.all([client.list(T.menus) as Promise<MenuRow[]>, client.list(T.menuComments) as Promise<CommentRow[]>]);
     menus = rows;
+    house = await loadHouseToday(client);
     fresh = new Map();
     for (const c of comments) if (c.status === 'nuevo' && !c.deleted_at) fresh.set(c.menu_id, (fresh.get(c.menu_id) ?? 0) + 1);
     paint();
   }
   void load();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paint(); });
-  const offTables = [T.menus, T.menuComments].map((table) => client.onTable(table, () => void load()));
+  const offTables = [T.menus, T.menuComments, T.menuServices, T.menuItems].map((table) => client.onTable(table, () => void load()));
   return () => { offEvents(); offTables.forEach((off) => off()); };
 };
 
@@ -134,6 +151,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
     const event = () => snapshot.events.find((e) => e.event_id === menu?.event_id) ?? null;
     const locked = () => !menu || LOCKED_MENU_STATUSES.includes(menu.status) || !canWrite();
+    /** Menú de casa (O3a): sin evento, siempre abierto, por semanas y con plato rápido. */
+    const house = () => menuId === HOUSE_MENU_ID || isHouseMenu(menu);
+    let weekOffset = 0;
+    const defaultServings = () => (house() ? Number(menu?.house_servings ?? 0) || 1 : event()?.guest_count ?? 1);
 
     const head = el('div', { 'data-feedback-id': 'food.menu.cabecera', 'data-feedback-label': 'Cabecera del menú', class: 'pagehead' });
     const banner = el('div', { id: 'menuStale' });
@@ -192,6 +213,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     // --- Cabecera, aviso de evento cambiado y restricciones ---------------------------------
     function paintHead(): void {
+      if (house()) { paintHouseHead(); return; }
       const e = event();
       replace(head, el('div', null,
         el('p', { class: 'crumb' }, el('a', { 'data-feedback-id': 'food.menu.cabecera.volver', 'data-feedback-label': 'Volver a Menús', href: '#/menus', onclick: (ev: Event) => { ev.preventDefault(); navigate('#/menus'); } }, '← Menús')),
@@ -200,6 +222,29 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         el('div', { class: 'chips', style: 'margin-top:8px' },
           menu ? el('span', { class: menu.status === 'validado' || menu.status === 'cerrado' ? 'chip ok' : 'chip', id: 'menuStatus' }, MENU_STATUS_LABELS[menu.status]) : null,
           menu?._pending ? el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar')) : null),
+      ));
+    }
+
+    /** Cabecera del menú de casa: siempre abierto y con las personas en casa, que son las raciones por defecto. */
+    function paintHouseHead(): void {
+      const current = () => (menu?.house_servings === null || menu?.house_servings === undefined ? null : Number(menu.house_servings));
+      const people = el('input', { 'data-feedback-id': 'food.menu.casa.personas', 'data-feedback-label': 'Personas en casa', id: 'houseServings', type: 'text', inputmode: 'decimal', class: 'servings compact',
+        value: current() ? formatQuantity(current()!) : '', placeholder: '—', 'aria-label': 'Personas en casa', disabled: !canWrite(),
+        onchange: async () => {
+          if (!menu) return;
+          const value = people.value.trim() ? parseQuantity(people.value) : null;
+          if (value !== null && value <= 0) { toast('Las personas deben ser un número mayor que cero.'); people.value = current() ? formatQuantity(current()!) : ''; return; }
+          if (value !== current()) {
+            const ok = await commitSafely([{ op: 'update', table: T.menus, id: menu.id, expectedRevision: menu.revision, fields: { house_servings: value } }]);
+            usage.track('food.menu.casa.personas', ok ? 'success' : 'error');
+          }
+        } });
+      replace(head, el('div', null,
+        el('p', { class: 'crumb' }, el('a', { 'data-feedback-id': 'food.menu.cabecera.volver', 'data-feedback-label': 'Volver a Menús', href: '#/menus', onclick: (ev: Event) => { ev.preventDefault(); navigate('#/menus'); } }, '← Menús')),
+        el('h2', null, 'Menú de casa'),
+        el('p', null, 'Siempre abierto: lo que se come en casa, día a día. No se valida ni se cierra.'),
+        el('label', { class: 'houseservings' }, el('span', null, 'Personas en casa'), people, el('span', { class: 'muted' }, 'raciones por defecto de cada plato')),
+        menu?._pending ? el('div', { class: 'chips', style: 'margin-top:8px' }, el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar'))) : null,
       ));
     }
 
@@ -224,6 +269,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function paintRestrictions(): void {
+      restrictionsHost.hidden = house();
+      if (house()) { replace(restrictionsHost); return; }
       const e = event();
       const list = sortedRestrictions(e?.dietary_restrictions);
       const found = warnings();
@@ -261,7 +308,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     }
 
     function paintShare(): void {
-      if (!menu) { replace(shareHost); return; }
+      shareHost.hidden = house();
+      if (!menu || house()) { replace(shareHost); return; }
       const hint = el('p', { class: 'hint' }, 'El organizador lo verá en su portal como propuesta hasta que esté validado.');
       if (!shared()) {
         replace(shareHost, el('h3', null, 'Portal del organizador'),
@@ -347,7 +395,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       call(FOOD_PROCEDURES.setMenuStatus, { menu_id: menu!.id, expectedRevision: menu!.revision, status }, okMessage);
 
     function paintActions(): void {
-      if (!menu || !canWrite()) { replace(actions); return; }
+      if (!menu || !canWrite() || house()) { replace(actions); return; }
       const button = (id: string, label: string, kind: 'primary' | 'ghost', onclick: () => void, mark: FbMark) => fb(el('button', { class: kind, type: 'button', id, disabled: busy, onclick }, label), mark);
       const validateButton = button('validateMenu', 'Validar', 'primary', () => void validate(), { feedbackId: 'food.menu.estado.validar', feedbackLabel: 'Validar' });
       const byStatus: Record<Menu['status'], HTMLElement[]> = {
@@ -475,7 +523,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const total = costs.reduce((sum, c) => sum + c.amount, 0);
       const missing = new Set(costs.flatMap((c) => c.missing));
       const stale = new Set(costs.flatMap((c) => c.stale));
-      const people = event()?.guest_count ?? 0;
+      const people = house() ? Number(menu?.house_servings ?? 0) : event()?.guest_count ?? 0;
       const byId = new Map(services.map((s) => [s.id, s]));
       costHost.hidden = false;
       replace(costHost,
@@ -511,7 +559,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       return el('div', { 'data-feedback-id': 'food.menu.platos.plato', 'data-feedback-label': 'Plato', class: 'dish', 'data-id': item.id, 'data-pending': String(item._pending === true) },
         el('span', { class: 'dishphoto' }, icon('chef', 20), img),
         el('span', { class: 'dishname' }, el('strong', null, recipe?.name ?? 'Receta retirada'),
-          recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null),
+          recipe ? el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')) : null,
+          recipe && isQuickPending(recipe, recipeLines) ? el('span', { class: 'chips' }, el('span', { class: 'chip warn quickchip' }, 'Rápida · por completar')) : null),
         el('span', { class: 'dishside' }, servings, el('span', { class: 'muted' }, 'rac.'),
           canEdit ? el('button', { 'data-feedback-id': 'food.menu.platos.quitar', 'data-feedback-label': 'Quitar plato', class: 'iconbtn', type: 'button', 'aria-label': `Quitar ${recipe?.name ?? 'plato'}`, onclick: () => void commitSafely([removeOp(T.menuItems, item)]) }, icon('close', 18)) : null),
         cook ? cookDetails(item) : null,
@@ -583,11 +632,12 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       const e = event();
       const canEdit = editable();
       const sorted = sortServices(services);
-      const days = Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
+      const days = house() ? weekDays(todayKey(), weekOffset) : Array.from(new Set([...(e ? eventDays(e) : []), ...sorted.map((s) => s.service_date)])).sort();
       const used = new Set(items.map((i) => i.recipe_id));
       // Todo lo que obliga a rehacer el constructor entero. Lo que no está aquí (orden y datos de las filas de una lista) se actualiza en su lista.
       const shape = JSON.stringify({
-        canEdit, cook, days, guests: e?.guest_count ?? null,
+        canEdit, cook, days, guests: e?.guest_count ?? null, house: house() ? Number(menu?.house_servings ?? 0) : null,
+        quick: recipes.filter((r) => used.has(r.id) && isQuickPending(r, recipeLines)).map((r) => r.id).sort(),
         recipes: recipes.filter((r) => used.has(r.id)).map((r) => `${r.id}:${r.revision}`).sort(),
         services: days.map((day) => {
           const ofDay = sorted.filter((s) => s.service_date === day);
@@ -614,14 +664,37 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
       dropLists();
       builderShape = shape;
-      replace(builder, ...days.map((day) => {
+      const lastPosition = (day: string) => Math.max(0, ...services.filter((sv) => sv.service_date === day).map((sv) => Number(sv.position)));
+      replace(builder, house() ? weekNav(days) : null, ...days.map((day) => {
         const ofDay = sorted.filter((s) => s.service_date === day);
         return el('section', { 'data-feedback-id': 'food.menu.dia', 'data-feedback-label': 'Día', class: 'menuday', 'data-day': day },
-          el('h3', null, longDay(day)),
+          el('h3', null, longDay(day), house() && day === todayKey() ? el('span', { class: 'chip ok todaychip' }, 'Hoy') : null),
           serviceList(day, ofDay),
-          canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.anadir', 'data-feedback-label': 'Añadir servicio', class: 'linkbtn addService', type: 'button', onclick: () => addService(day, Math.max(0, ...services.filter((sv) => sv.service_date === day).map((sv) => Number(sv.position)))) }, icon('plus', 18), 'Añadir servicio') : null,
+          canEdit && house() ? el('div', { class: 'btnrow dayactions' },
+            el('button', { 'data-feedback-id': 'food.menu.casa.anadir_comida', 'data-feedback-label': 'Añadir comida', class: 'ghost quickService', type: 'button', 'aria-label': `Añadir comida el ${longDay(day)}`, onclick: () => void quickService(day, 'comida', lastPosition(day)) }, icon('plus', 18), 'Comida'),
+            el('button', { 'data-feedback-id': 'food.menu.casa.anadir_cena', 'data-feedback-label': 'Añadir cena', class: 'ghost quickService', type: 'button', 'aria-label': `Añadir cena el ${longDay(day)}`, onclick: () => void quickService(day, 'cena', lastPosition(day)) }, icon('plus', 18), 'Cena'),
+            el('button', { 'data-feedback-id': 'food.menu.servicios.anadir', 'data-feedback-label': 'Añadir servicio', class: 'linkbtn addService', type: 'button', onclick: () => addService(day, lastPosition(day)) }, icon('plus', 18), 'Añadir servicio'))
+            : canEdit ? el('button', { 'data-feedback-id': 'food.menu.servicios.anadir', 'data-feedback-label': 'Añadir servicio', class: 'linkbtn addService', type: 'button', onclick: () => addService(day, lastPosition(day)) }, icon('plus', 18), 'Añadir servicio') : null,
         );
       }));
+    }
+
+    /** Semanas del menú de casa: ‹ anterior · esta semana · siguiente ›. */
+    function weekNav(days: string[]): HTMLElement {
+      const go = (delta: number) => { weekOffset = delta === 0 ? 0 : weekOffset + delta; builderShape = ''; paintBuilder(); };
+      const label = weekOffset === 0 ? 'Esta semana' : weekOffset === 1 ? 'La semana que viene' : weekOffset === -1 ? 'La semana pasada' : `${longDay(days[0]!)} – ${longDay(days[6]!)}`;
+      return el('nav', { 'data-feedback-id': 'food.menu.casa.semanas', 'data-feedback-label': 'Semanas', class: 'weeknav', 'aria-label': 'Semanas' },
+        el('button', { 'data-feedback-id': 'food.menu.casa.semana_anterior', 'data-feedback-label': 'Semana anterior', class: 'iconbtn', type: 'button', id: 'weekPrev', 'aria-label': 'Semana anterior', onclick: () => go(-1) }, '‹'),
+        el('strong', { id: 'weekLabel' }, label),
+        weekOffset !== 0 ? el('button', { 'data-feedback-id': 'food.menu.casa.semana_actual', 'data-feedback-label': 'Volver a esta semana', class: 'linkbtn', type: 'button', id: 'weekToday', onclick: () => go(0) }, 'Hoy') : null,
+        el('button', { 'data-feedback-id': 'food.menu.casa.semana_siguiente', 'data-feedback-label': 'Semana siguiente', class: 'iconbtn', type: 'button', id: 'weekNext', 'aria-label': 'Semana siguiente', onclick: () => go(1) }, '›'));
+    }
+
+    /** «+ Comida» y «+ Cena» del menú de casa: un toque, con la hora habitual. */
+    async function quickService(day: string, type: 'comida' | 'cena', count: number): Promise<void> {
+      const ok = await commitSafely([{ op: 'insert', table: T.menuServices, id: crypto.randomUUID(),
+        fields: { menu_id: menuId, service_date: day, service_type: type, service_time: type === 'comida' ? '14:00' : '20:30', position: count + 1 } }]);
+      usage.track('food.menu.casa.anadir_servicio', ok ? 'success' : 'error');
     }
 
     function addService(day: string, count: number): void {
@@ -643,15 +716,39 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     /** Selector de plato: el recetario visual, con las raciones del evento por defecto. */
     function pickRecipe(service: ServiceRow, count: number): void {
-      const search = el('input', { 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill() });
+      const search = el('input', { 'data-feedback-id': 'food.menu.platos.selector.buscar', 'data-feedback-label': 'Buscar receta', type: 'search', placeholder: house() ? 'Buscar receta o escribir un plato nuevo' : 'Buscar receta', 'aria-label': 'Buscar receta', autocomplete: 'off', oninput: () => fill(),
+        onkeydown: (ev: Event) => { if ((ev as KeyboardEvent).key === 'Enter') (quickHost.querySelector('button') as HTMLButtonElement | null)?.click(); } });
       const grid = el('ul', { 'data-feedback-id': 'food.menu.platos.selector', 'data-feedback-label': 'Selector de recetas', class: 'recipegrid picker', id: 'recipePicker' });
-      const servings = event()?.guest_count ?? 1;
+      const servings = defaultServings();
+      const quickHost = el('div', { class: 'quickdish' });
+      /** Plato rápido (solo en casa): la receta mínima y el plato, en un lote. Se completa después en el Recetario. */
+      async function addQuick(name: string): Promise<void> {
+        const ok = await commitSafely(quickDishOperations({ recipeId: crypto.randomUUID(), itemId: crypto.randomUUID(), name, serviceId: service.id, serviceType: service.service_type, servings, position: count + 1 }) as RowOperation[]);
+        usage.track('food.menu.casa.plato_rapido', ok ? 'success' : 'error');
+        if (ok) await sheet?.close(true);
+      }
       function fill(): void {
         const query = search.value.trim().toLowerCase();
         const options = recipes.filter((r) => !r.deleted_at && r.status !== 'archivada' && (!query || r.name.toLowerCase().includes(query))).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        const typed = search.value.trim();
+        const exact = recipes.some((r) => !r.deleted_at && r.name.trim().toLowerCase() === query);
+        replace(quickHost, house() && canWrite() && typed && !exact
+          ? el('button', { 'data-feedback-id': 'food.menu.casa.plato_rapido', 'data-feedback-label': 'Añadir como plato rápido', class: 'primary', type: 'button', id: 'quickDish', onclick: () => void addQuick(typed) },
+            icon('plus', 18), `Añadir «${typed}» como plato rápido`)
+          : null);
         replace(grid, ...options.map((recipe) => {
           const img = el('img', { alt: '', loading: 'lazy', hidden: true });
           showPhoto(client, img, recipe.photo_thumb_file_id ?? recipe.photo_file_id);
+          // Salvaguarda (O3a): en un retiro, un plato rápido por completar se ve pero no se puede elegir.
+          const blocked = !house() && isQuickPending(recipe, recipeLines);
+          if (blocked) {
+            return el('li', null, el('div', { 'data-feedback-id': 'food.menu.platos.selector.rapida', 'data-feedback-label': 'Plato rápido por completar', class: 'recipecard disabled' },
+              el('span', { class: 'recipephoto' }, icon('chef', 30)),
+              el('span', { class: 'recipebody' }, el('strong', null, recipe.name),
+                el('span', { class: 'recipemeta' }, 'Rápida: complétala (alérgenos e ingredientes) para usarla en un retiro.'),
+                el('a', { 'data-feedback-id': 'food.menu.platos.selector.completar', 'data-feedback-label': 'Completar en el Recetario', href: `#/recetario?receta=${recipe.id}`, class: 'linkbtn',
+                  onclick: (ev: Event) => { ev.preventDefault(); void sheet?.close(true).then(() => navigate(`#/recetario?receta=${recipe.id}`)); } }, 'Completar en el Recetario'))));
+          }
           return el('li', null, el('button', { 'data-feedback-id': 'food.menu.platos.selector.receta', 'data-feedback-label': 'Receta', class: 'recipecard', type: 'button', 'aria-label': `Añadir ${recipe.name}`,
             onclick: async () => {
               const ok = await commitSafely([{ op: 'insert', table: T.menuItems, id: crypto.randomUUID(), fields: { service_id: service.id, recipe_id: recipe.id, servings, position: count + 1 } }]);
@@ -661,21 +758,23 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
             el('span', { class: 'recipephoto' }, icon('chef', 30), img),
             el('span', { class: 'recipebody' }, el('strong', null, recipe.name),
               el('span', { class: 'recipemeta' }, [CATEGORY_LABELS[recipe.category], ...recipe.diet_tags.map((t) => DIET_LABELS[t])].join(' · ')),
-              recipe.status === 'en_prueba' ? el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'En prueba')) : null)));
+              recipe.status === 'en_prueba' ? el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'En prueba'), isQuickPending(recipe, recipeLines) ? el('span', { class: 'chip warn' }, 'Rápida') : null) : null)));
         }));
-        if (options.length === 0) replace(grid, el('li', { class: 'muted' }, 'No hay recetas que coincidan. Créalas en el Recetario.'));
+        // En casa, el botón del plato rápido ya dice qué hacer; en un retiro, como siempre.
+        if (options.length === 0) replace(grid, quickHost.childElementCount ? null : el('li', { class: 'muted' }, 'No hay recetas que coincidan. Créalas en el Recetario.'));
       }
       fill();
       sheet = openSheet({
         title: `Añadir plato · ${SERVICE_LABELS[service.service_type]}`,
         meta: `${formatQuantity(servings)} raciones por defecto; se pueden cambiar después.`,
-        body: el('div', null, el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)), grid),
+        body: el('div', null, el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)), quickHost, grid),
         initialFocus: search,
         onClose: () => { sheet = null; },
       });
     }
 
     function paintActionsAndRest(): void {
+      tabs.hidden = house();
       paintHead(); paintBanner(); paintCommentsNotice(); paintRestrictions();
       if (tab === 'menu') {
         paintActions(); paintShare(); paintComments(); paintBuilder(); paintCost();
@@ -688,8 +787,20 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
       }
     }
 
+    let creatingHouse = false;
     async function load(): Promise<void> {
       const data = await loadMenuData(client, menuId);
+      if (!data.menu && menuId === HOUSE_MENU_ID && canWrite() && !creatingHouse) {
+        creatingHouse = true;
+        try {
+          await client.commit([{ op: 'insert', table: T.menus, id: HOUSE_MENU_ID, fields: { kind: 'casa' } }]);
+          usage.track('food.menu.casa.crear', 'success');
+        } catch (error) {
+          toast(describeError(error));
+        }
+        await load();
+        return;
+      }
       if (!data.menu) {
         menu = null;
         unmountTab?.();

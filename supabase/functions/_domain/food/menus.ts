@@ -7,6 +7,9 @@ export const SERVICE_TYPES = ['desayuno', 'comida', 'cena', 'picnic', 'merienda'
 export const MENU_COMMENT_KINDS = ['prefiero_que_no', 'comentario'] as const;
 export const MENU_COMMENT_STATUSES = ['nuevo', 'visto', 'resuelto'] as const;
 export type MenuStatus = (typeof MENU_STATUSES)[number];
+/** Menú de un retiro (con evento) o el menú de casa (sin evento, uno solo). */
+export const MENU_KINDS = ['retiro', 'casa'] as const;
+export type MenuKind = (typeof MENU_KINDS)[number];
 export type ServiceType = (typeof SERVICE_TYPES)[number];
 
 /** Con el menú validado o cerrado no se editan servicios ni platos. */
@@ -57,8 +60,13 @@ export interface EventSnapshot {
 }
 
 export interface Menu extends SyncedColumns {
-  event_id: string;
-  source_event_revision: number;
+  /** 'retiro' (con evento; lo de siempre) o 'casa' (sin evento; house.ts). Sin el campo, retiro. */
+  kind?: MenuKind;
+  /** Solo en el de retiro. */
+  event_id: string | null;
+  source_event_revision: number | null;
+  /** Solo en el de casa: personas en casa, raciones por defecto de cada plato. */
+  house_servings?: number | null;
   source_event_snapshot: EventSnapshot | null;
   status: MenuStatus;
   validated_at: string | null;
@@ -123,7 +131,7 @@ export function restrictionKey(r: DietaryRestriction): string {
 
 /** El menú está desactualizado cuando el evento ha avanzado respecto a la revisión contra la que se revisó. */
 export function isMenuStale(menu: Pick<Menu, 'source_event_revision'>, event: Pick<FoodEvent, 'event_revision'>): boolean {
-  return event.event_revision > menu.source_event_revision;
+  return menu.source_event_revision !== null && event.event_revision > menu.source_event_revision;
 }
 
 export interface EventChange {

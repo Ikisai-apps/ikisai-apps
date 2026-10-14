@@ -211,3 +211,20 @@
 .menucomment .commentreply{margin:6px 0;padding-left:10px;border-left:3px solid var(--line);white-space:pre-wrap}
 .menucomment textarea{width:100%;min-height:64px;border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:8px 10px}
 .menucomment .btnrow{flex-wrap:wrap;margin-top:6px}
+
+/* O3a · menú de casa y plato rápido */
+.houselist{margin-bottom:14px}
+.houseservings{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.houseservings>span:first-child{font-weight:600}
+.houseservings .servings{width:72px;text-align:right}
+.weeknav{display:flex;align-items:center;gap:8px;margin-top:14px}
+.weeknav strong{flex:1;text-align:center}
+.weeknav .iconbtn{font-size:1.4rem;line-height:1}
+.todaychip{margin-left:8px;vertical-align:middle;font-family:inherit;font-size:.75rem}
+.dayactions{margin-top:8px;flex-wrap:wrap}
+.quickdish{margin:4px 0 12px}
+.quickdish button{width:100%;justify-content:center}
+.recipecard.disabled{cursor:default;opacity:.7;border-style:dashed}
+.recipecard.disabled:hover{border-color:var(--line)}
+.recipecard.disabled .linkbtn{margin-top:6px;align-self:flex-start}
+.housecard ul{margin-top:6px}
