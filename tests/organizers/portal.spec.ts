@@ -588,8 +588,9 @@ test('organizers · supletorias (Booking §25): «N de M» con − / + y su prec
   await api.acceptProposal(proposal);
   await page.reload();
   await page.locator('#expnav-alojamiento').click();
-  await expect(hab.locator('.orgextra-beds')).toContainText('los cambios quedarán pendientes de Ikisai');
+  await expect(page.locator('#lodgingExtraPending')).toContainText('quedarán pendientes de Ikisai');
+  await expect(hab.locator('.orgextra-pending')).toHaveCount(0);
   await hab.locator('[data-action="extra-plus"]').click();
   await expect(counter).toHaveText('2 de 2');
-  await expect(hab.locator('.orgextra-pending')).toContainText('Pendiente de Ikisai');
+  await expect(hab.locator('.orgextra-pending')).toContainText('Pendiente de Ikisai: 1 supletoria más.');
 });
