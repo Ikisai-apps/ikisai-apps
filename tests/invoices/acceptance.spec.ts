@@ -2419,3 +2419,49 @@ test('FB_2026_027 · FB_2026_030 · pago: nunca la fecha del clic; sin confirmar
     await context.close();
   }
 });
+
+// R4 (RECURSOS.md §6 y §17): caracterización de lo que cambiará de fuente cuando las líneas se enlacen con artículos de
+// Recursos. Debe seguir en verde antes y después: «Mi nombre» recordado en la ficha, con la descripción de la factura
+// debajo; el mismo nombre, el tipo de artículo y el destino en Cocina en Compras › Artículos; y el filtro por ingrediente.
+test('R4 · caracterización: «Mi nombre» recordado, tipo de artículo y destino en Cocina, en la ficha y en Compras', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  try {
+    const supplierId = randomUUID(); const invoiceId = randomUUID(); const lineId = randomUUID(); const otherId = randomUUID();
+    api.seed('invoices.suppliers', [{ id: supplierId, name: 'Harinas Caracterización S.L.', slug: 'harinas_caracterizacion_s_l', aliases: [], default_is_investment: false }]);
+    api.seed('invoices.invoices', [{ id: invoiceId, code: 'FR_2026_R4C', supplier_id: supplierId, invoice_date: '2026-10-05', object: 'harina', status: 'validada', expense_category: 'compras', source_total: 36.3, calculated_base: 30, calculated_vat: 6.3, calculated_total: 36.3, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [
+      { id: lineId, invoice_id: invoiceId, position: 0, description: 'HT25 HARINA TRIGO SACO 25KG', quantity: 2, unit: 'saco', net_amount: 20, vat_rate: 21, vat_amount: 4.2, discount_amount: 0, item_type: 'food_ingredient', label: 'Harina de la casa', label_source: 'recordado' },
+      { id: otherId, invoice_id: invoiceId, position: 1, description: 'PORTES', net_amount: 10, vat_rate: 21, vat_amount: 2.1, discount_amount: 0 },
+    ]);
+    api.seed('invoices.allocations', [{ id: randomUUID(), invoice_line_id: lineId, target_app: 'food', target_kind: 'ingredient', target_id: INGREDIENT, target_label: 'Harina de trigo', target_revision: 2, allocated_quantity: 2, allocated_amount: 20 }]);
+    await login(page);
+    await synced(page);
+
+    // Ficha: «Mi nombre» con la chip «recordado», el tipo y la descripción de la factura; la otra línea, con la suya
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const row = ficha(page).locator('.line-row', { hasText: 'Harina de la casa' });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await expect(row.locator('.line-desc')).toHaveText('Harina de la casa');
+    await expect(row.locator('.chip', { hasText: 'recordado' })).toBeVisible();
+    await expect(row).toContainText('Ingrediente');
+    await expect(row.locator('.line-original')).toHaveText('En la factura: HT25 HARINA TRIGO SACO 25KG');
+    await expect(row).toContainText('2 saco');
+    await expect(ficha(page).locator('.line-row', { hasText: 'PORTES' }).locator('.line-original')).toHaveCount(0);
+
+    // Compras › Artículos: el mismo nombre, el tipo y el destino; el filtro por ingrediente la incluye y deja fuera los portes
+    await page.evaluate(() => { location.hash = '#/compras'; });
+    await page.locator('#onlyValidated').uncheck();
+    await page.getByRole('tab', { name: 'Artículos' }).click();
+    const bought = page.locator('#purchases .row', { hasText: 'Harina de la casa' });
+    await expect(bought).toBeVisible({ timeout: 20_000 });
+    await expect(bought).toContainText('Ingrediente');
+    await expect(bought).toContainText('Harina de trigo');
+    await page.locator('#purchaseTarget').selectOption('food:ingredient');
+    await expect(page.locator('#purchases .row', { hasText: 'Harina de la casa' })).toBeVisible();
+    await expect(page.locator('#purchases .row', { hasText: 'PORTES' })).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
