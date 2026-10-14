@@ -2,7 +2,8 @@
  * Guests · fases 4 y 5 (API.md §13), todo contra la API real sobre PGlite: la guests-api con las lecturas y acciones de
  * Organizers (#333: experiencia, materiales con `portal-files`, preguntas y respuestas), Booking (#328: programa y
  * alojamiento con elección atómica), Food (#327 y #332: menú validado y compartido) y Central (#326: el lugar y el plano),
- * y la vista previa del núcleo (#325). La navegación es la barra del kit 0.21 (U5): secciones y «Más».
+ * y la vista previa del núcleo (#325). Navegación de O4a: barra «Calendario · Retiros · Más» y, en la pestaña del retiro, sus
+ * secciones (Resumen, Programa, Menú y Alojamiento).
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -54,7 +55,8 @@ async function enter(page: Page, token: string): Promise<void> {
 }
 
 const navMain = (page: Page) => page.locator('nav.nav > a.navbtn:not(.navextra)');
-const go = (page: Page, section: string) => page.locator(`nav.nav > a.navbtn:not(.navextra)[data-hash$="${section}"]`).click();
+const sections = (page: Page) => page.locator('#sections a');
+const go = (page: Page, section: 'inicio' | 'programa' | 'menu' | 'alojamiento') => page.locator(`#sections a[data-section="${section}"]`).click();
 async function goMore(page: Page, label: string): Promise<void> {
   await page.locator('nav.nav button.navmore').click();
   await page.locator('.navmore-item', { hasText: label }).click();
@@ -65,11 +67,13 @@ const ALL_MODULES = {
   organizer_message: '¡Bienvenidas! Traed esterilla.',
 };
 
-test('guests · sin configuración del organizador: como la fase 1, sin barra inferior', async ({ page }) => {
+test('guests · sin configuración del organizador: como la fase 1, solo el Resumen (sin secciones)', async ({ page }) => {
   const { id: reservation, event } = await api.reservation({ title: 'Retiro sencillo' });
   const ana = await api.guest(event, { first_name: 'Ana' });
   await enter(page, await api.guestLink(reservation, ana, 'Ana'));
-  await expect(page.locator('nav.nav')).toBeHidden();
+  // O4a: la barra es siempre «Calendario · Retiros · Más»; sin módulos, el retiro no tiene secciones.
+  await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
+  await expect(page.locator('#sections')).toHaveCount(0);
   await expect(page.locator('#task-data')).toBeVisible();
   await page.goto(`${page.url().split('#')[0]}#/p/${ana}/programa`);
   await expect(page.locator('#retreatTitle')).toBeVisible(); // módulo inactivo: vuelve a Inicio
@@ -98,25 +102,26 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await enter(page, await api.guestLink(reservation, leo, 'Leo'));
 
   await expect(page.locator('#organizerMessage')).toContainText('Traed esterilla');
-  await expect(navMain(page)).toHaveText(['Inicio', 'Programa', 'Menú', 'Alojamiento']);
+  await expect(sections(page)).toHaveText(['Resumen', 'Programa', 'Menú', 'Alojamiento']);
+  await expect(navMain(page)).toHaveText(['Calendario', 'Retiros']);
   await expect(page.locator('nav.nav button.navmore')).toBeVisible();
   await expect(page.locator('#todayNow')).toContainText('Yoga suave');
   await expect(page.locator('#todayNext')).toContainText('Paseo al pinar');
   await expect(page.locator('#todayMeal')).toContainText('Crema de calabaza');
 
-  await go(page, '/programa');
+  await go(page, 'programa');
   await expect(page.locator('#programList')).toContainText('Yoga suave');
   await expect(page.locator('#programList')).not.toContainText('nota interna');
   await page.locator('#programDays [role="tab"]').nth(1).click();
   await expect(page.locator('#programList')).toContainText('Taller de respiración');
 
-  await go(page, '/menu');
+  await go(page, 'menu');
   await expect(page.locator('#menuList')).toContainText('Tarta de queso');
   await expect(page.locator('#menuList')).toContainText('Alérgenos declarados por cocina: lácteos, gluten.');
   await expect(page.locator('#menuList')).toContainText('Vegana');
   await expect(page.locator('#menuProvisional')).toHaveCount(0); // Guests solo ve menús validados
 
-  await go(page, '/alojamiento');
+  await go(page, 'alojamiento');
   await expect(page.locator('#lodgingMine')).toContainText('Habitación 3');
   await expect(page.locator('#lodgingMine')).toContainText('Cama 2');
   await expect(page.locator('#lodgingRooms')).toHaveCount(0);
@@ -139,7 +144,7 @@ test('guests · preguntas del organizador: pendiente en Inicio, se responden sin
   const q3 = await api.question(reservation, { type: 'choice', label: 'Taller del sábado', options: [{ value: 'a', label: 'Cerámica' }, { value: 'b', label: 'Dibujo' }], closes_at: day(-1), opens_at: day(-5) });
   await enter(page, await api.guestLink(reservation, eva, 'Eva'));
   await expect(page.locator('#task-questions')).toContainText('1 pregunta');
-  await expect(navMain(page)).toHaveText(['Inicio']);
+  await expect(page.locator('#sections')).toHaveCount(0); // sin Programa, Menú ni Alojamiento: solo el Resumen
 
   await page.locator('#task-questions').click();
   await expect(page.locator('#questionsNotice')).toHaveText(' Tu organizador verá tus respuestas.');
@@ -162,7 +167,7 @@ test('guests · elegir habitación: atómica, sin nombres ajenos; si otra person
     lodging_options: [{ key: 'bano', label: 'Habitación con baño (2 plazas)', guest_note: '+40 € por persona, a pagar a tu organizador' }] });
   await enter(page, await api.guestLink(reservation, iris, 'Iris'));
   await expect(page.locator('#task-room')).toContainText('Hasta el');
-  await go(page, '/alojamiento');
+  await go(page, 'alojamiento');
   await expect(page.locator('[data-option="bano"]')).toContainText('+40 € por persona, a pagar a tu organizador');
   await expect(page.locator('#lodgingRooms')).toContainText('Con baño');
   await expect(page.locator('#lodgingRooms')).toContainText('2 de 2 camas libres');
@@ -180,7 +185,7 @@ test('guests · elegir habitación: atómica, sin nombres ajenos; si otra person
   await expect(page.locator('#lodgingMine')).toContainText('Cama 2');
   const rows = await api.booking.t.db.query<{ guest_id: string; source: string; status: string }>(`select guest_id, source, status from booking.room_assignments where bed_id = $1 and deleted_at is null`, [room.bedIds[1]]);
   expect(rows.rows).toEqual([{ guest_id: iris, source: 'guest', status: 'confirmed' }]);
-  await go(page, `/p/${iris}`);
+  await go(page, 'inicio');
   await expect(page.locator('#task-room')).toContainText('Elegida');
 });
 
@@ -193,7 +198,7 @@ test('guests · supletorias activadas (BG13): se eligen marcadas como «Supletor
   await api.organizerInvoke(reservation, 'booking.portal_extra_beds', { space_id: room.spaceId, count: 1 });
   await api.experience(reservation, { lodging_visible: true, lodging_capability: 'choose' });
   await enter(page, await api.guestLink(reservation, ines, 'Inés'));
-  await go(page, '/alojamiento');
+  await go(page, 'alojamiento');
   const card = page.locator(`[data-space="${room.spaceId}"]`);
   await expect(card).toContainText('2 de 2 camas libres · 1 de 1 supletorias libres');
   await expect(card.locator('.glodging-beds button')).toHaveCount(3);
