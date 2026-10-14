@@ -33,7 +33,7 @@ for (const file of files) {
       if (schema === 'food' && other === 'booking' && /booking\.events\b/.test(ref) && /references\s+booking\.events/.test(sql)) continue; // FK permitida por contrato
       if (schema === 'food' && other === 'booking' && ref === 'booking.food_event_projection') continue; // proyección publicada para Food (petición P14 de Food)
       if (schema === 'organizers' && other === 'booking' && ref === 'booking.reservation_end_dates') continue; // fechas de fin para purgar respuestas (B18 de Organizers)
-      if (other === 'resources' && ['resources.spaces', 'resources.space_kinds'].includes(ref)) continue; // módulo común: cualquier app comprueba espacios en sus hooks (RECURSOS.md §4.2); escribir, solo vía resources-api
+      if (other === 'resources' && ['resources.spaces', 'resources.space_kinds', 'resources.items', 'resources.item_kinds', 'resources.item_units', 'resources.lots', 'resources.movements', 'resources.movement_costs', 'resources.stock_levels', 'resources.item_costs'].includes(ref)) continue; // módulo común: cualquier app lee espacios e inventario en sus hooks (RECURSOS.md §4.2 y §6); escribir, solo vía resources-api
       problems.push(`${file}: referencia a ${ref} fuera de su schema`);
     }
   }

@@ -153,3 +153,42 @@ test('costes a mano y visibilidad · se apuntan a una tarea; un outsider no ve e
   // El outsider es lector en Recursos (derivado de Tasks): ve espacios, pero no puede escribir.
   assert.equal((await commit([{ op: 'insert', table: 'resources.cost_entries', id: uuid(), fields: { target_app: 'tasks', target_ref: 'x', amount: 1, description: 'x' } }], token)).status, 403);
 });
+
+test('consumo por lotes y coste añadido después · primero lo que caduca antes; lo que falta, en negativo; coste sin duplicar', async () => {
+  const huevo = uuid(); const pronto = uuid(); const tarde = uuid();
+  await commit([
+    { op: 'insert', table: 'resources.items', id: huevo, fields: { name: 'Huevos', kind: 'ingrediente', base_unit: 'ud', tracks_lots: true, default_space_id: despensa } },
+    { op: 'insert', table: 'resources.lots', id: tarde, fields: { item_id: huevo, expires_on: '2026-12-01' } },
+    { op: 'insert', table: 'resources.lots', id: pronto, fields: { item_id: huevo, expires_on: '2026-10-20' } },
+    { op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: huevo, space_id: despensa, lot_id: tarde, quantity: 12, kind: 'entrada_manual' } },
+    { op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: huevo, space_id: despensa, lot_id: pronto, quantity: 6, kind: 'entrada_manual' } },
+  ], app.tokens.editor);
+  const res = await commit([{ op: 'call', procedure: 'resources.consume', args: { item_id: huevo, quantity: 8, kind: 'consumo_servicio', source_app: 'food', source_ref: 'menu_item:1' } }], app.tokens.editor);
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  const moves = res.data.results[0].result.movements;
+  assert.deepEqual(moves.map((m: any) => [m.lotId, m.quantity]), [[pronto, -6], [tarde, -2]]);
+  assert.equal(await stock(huevo), 10);
+  const short = await commit([{ op: 'call', procedure: 'resources.consume', args: { item_id: huevo, quantity: 15, kind: 'consumo_tarea' } }], app.tokens.editor);
+  assert.equal(short.status, 200, JSON.stringify(short.data));
+  assert.equal(short.data.results[0].result.movements.at(-1).shortfall, true);
+  assert.equal(await stock(huevo), -5);
+  assert.equal(code(await commit([{ op: 'call', procedure: 'resources.consume', args: { item_id: huevo, quantity: 1, kind: 'entrada_manual' } }], app.tokens.editor)), 'INVALID_OPERATION');
+
+  // «Comprado» entra sin coste; la factura añade el coste una vez.
+  const pan = uuid(); const entry = uuid();
+  await commit([
+    { op: 'insert', table: 'resources.items', id: pan, fields: { name: 'Pan', kind: 'ingrediente', base_unit: 'ud' } },
+    { op: 'insert', table: 'resources.movements', id: entry, fields: { item_id: pan, space_id: despensa, quantity: 10, kind: 'entrada_manual', source_app: 'food', source_ref: 'shopping_item:1' } },
+  ], app.tokens.editor);
+  assert.equal((await read('resources.item_costs', { item_id: pan })).rows.length, 0);
+  assert.equal((await commit([{ op: 'insert', table: 'resources.movement_costs', id: uuid(), fields: { movement_id: entry, unit_cost: 0.5, source_app: 'invoices', source_ref: 'line:9' } }], app.tokens.editor)).status, 200);
+  assert.equal(Number((await read('resources.item_costs', { item_id: pan })).rows[0].average_cost), 0.5);
+  assert.equal((await commit([{ op: 'insert', table: 'resources.movement_costs', id: uuid(), fields: { movement_id: entry, unit_cost: 0.6 } }], app.tokens.editor)).status >= 400, true, 'un solo coste por entrada');
+  const costed = uuid();
+  await commit([{ op: 'insert', table: 'resources.movements', id: costed, fields: { item_id: pan, space_id: despensa, quantity: 1, kind: 'entrada_manual', unit_cost: 1 } }], app.tokens.editor);
+  assert.equal(code(await commit([{ op: 'insert', table: 'resources.movement_costs', id: uuid(), fields: { movement_id: costed, unit_cost: 2 } }], app.tokens.editor)), 'INVALID_MOVEMENT');
+
+  // Estado de una máquina.
+  assert.equal(code(await commit([{ op: 'insert', table: 'resources.items', id: uuid(), fields: { name: 'Horno', kind: 'maquina', base_unit: 'ud', attributes: { status: 'roto' } } }], app.tokens.editor)), 'INVALID_ITEM_ATTRIBUTE');
+  assert.equal((await commit([{ op: 'insert', table: 'resources.items', id: uuid(), fields: { name: 'Horno', kind: 'maquina', base_unit: 'ud', attributes: { status: 'averiado' } } }], app.tokens.editor)).status, 200);
+});
