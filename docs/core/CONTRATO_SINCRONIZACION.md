@@ -242,6 +242,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
     | `POST suggestions/:id/withdraw {app?}` | El autor retira una pendiente |
   - **Estados:** `pending`, `approved`, `rejected` y `withdrawn`. No caducan y no hay «deshacer» de una decisión: lo aplicado se deshace desde el historial de la app.
   - **Errores:** `SUGGESTION_NOT_ALLOWED 403`, `SUGGESTION_UNAVAILABLE 409`, `TOO_MANY_SUGGESTIONS 429`.
+  - **Aviso al llegar** (0095): `core.set_suggestion_on_submit(app, kind, procedimiento)`. `core.suggest` lo llama en la misma transacción con `{app, kind, suggestion}`, por ejemplo para encolar un aviso a Tasks. Si falla, la sugerencia no se crea.
   - **Procedimientos del lote** (0094): al aprobar, `core.suggestion_author()` y `core.suggestion_id()` dicen quién sugirió y qué sugerencia. Fuera de una aprobación dan null. No te fíes de una cuenta que venga en `args`.
   - **En el navegador** (`sync-client` 0.7.0): `suggest`, `suggestions`, `previewSuggestion`, `decideSuggestion` y `withdrawSuggestion`. Necesitan red.
 
