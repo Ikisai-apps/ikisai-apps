@@ -470,7 +470,7 @@ Desde la prerreserva, con seis apartados en una tira desplazable. Se recuerda el
   - **supletorias por habitación** (Booking #491, API de Booking §25):
     - «Supletorias N de M» con − / + (`extra.wanted` de `extra.possible`), que llama a `portal_extra_beds` con el número; Booking elige cuáles;
     - debajo, el precio de Ikisai por plaza (`extra_rate.amount_with_vat`, «por noche» si la unidad es por noche) y «Se añade a tu presupuesto»; ninguna cifra escrita en el portal;
-    - con la propuesta aceptada (`extra_pending_mode`), aviso de que los cambios quedan pendientes de Ikisai, y «Pendiente de Ikisai» si la habitación tiene alguno;
+    - con la propuesta aceptada (`extra_pending_mode`), un aviso una sola vez encima de las habitaciones, y en cada habitación con cambios «Pendiente de Ikisai: N supletorias más / menos» (`extra.requested` / `extra.release_requested`);
     - las activadas salen en el reparto con la marca «supletoria» y se asignan como cualquier cama;
     - errores: `EXTRA_BEDS_LIMIT`, `EXTRA_BED_IN_USE` (ocupadas) y `EXTRA_BED_TAKEN`;
     - en «Diseño», la tarifa `cama_supletoria` no sale entre los extras: se activa aquí.

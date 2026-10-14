@@ -663,7 +663,11 @@ export const EN: Dictionary = {
   'Quitar una supletoria': 'Remove an extra bed',
   '{n} de {total}': '{n} of {total}',
   'Añadir una supletoria': 'Add an extra bed',
-  'Pendiente de Ikisai: tu propuesta ya está aceptada. Te avisaremos cuando la actualicen.': 'Pending with Ikisai: your proposal has already been accepted. We will let you know when it is updated.',
-  'Tu propuesta ya está aceptada: los cambios quedarán pendientes de Ikisai.': 'Your proposal has already been accepted: changes will be pending until Ikisai confirms them.',
+  'Pendiente de Ikisai: {cambio}. Te avisaremos cuando actualicen tu propuesta.': 'Pending with Ikisai: {cambio}. We will let you know when your proposal is updated.',
+  '1 supletoria más': '1 more extra bed',
+  '{n} supletorias más': '{n} more extra beds',
+  '1 supletoria menos': '1 fewer extra bed',
+  '{n} supletorias menos': '{n} fewer extra beds',
+  'Tu propuesta ya está aceptada: las supletorias que añadas o quites quedarán pendientes de Ikisai.': 'Your proposal has already been accepted: extra beds you add or remove will be pending until Ikisai confirms them.',
   'supletoria': 'extra bed',
 };

@@ -153,7 +153,11 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
     const extraControl = (room: Room, x: ExtraBeds) => {
       const set = (count: number) => void act(() => ctx.usage.run('organizers.alojamiento.supletorias', () =>
         ctx.api.invokeAny('booking.portal_extra_beds', { reservation_id: reservationId, space_id: room.space_id, count })));
-      const pendingHere = x.requested + x.release_requested > 0;
+      // Con la propuesta aceptada, el contador ya cuenta lo pedido: el aviso dice cuántas faltan por confirmar.
+      const changes = [
+        x.requested === 1 ? t('1 supletoria más') : x.requested > 1 ? t('{n} supletorias más', { n: x.requested }) : '',
+        x.release_requested === 1 ? t('1 supletoria menos') : x.release_requested > 1 ? t('{n} supletorias menos', { n: x.release_requested }) : '',
+      ].filter(Boolean);
       return el('div', { class: 'orgextra-beds', 'data-extra': room.space_id },
         el('div', { class: 'orgextra-row' },
           el('strong', null, t('Supletorias')),
@@ -161,9 +165,9 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
           el('span', { class: 'orgextra-count', 'aria-live': 'polite' }, t('{n} de {total}', { n: x.wanted, total: x.possible })),
           el('button', { type: 'button', class: 'orgstep', 'data-action': 'extra-plus', 'aria-label': t('Añadir una supletoria'), disabled: x.wanted >= x.possible ? '' : null, onclick: () => set(x.wanted + 1) }, '+')),
         el('p', { class: 'muted small' }, priceText),
-        pendingHere
-          ? el('p', { class: 'banner warn small orgextra-pending' }, t('Pendiente de Ikisai: tu propuesta ya está aceptada. Te avisaremos cuando la actualicen.'))
-          : d.extra_pending_mode ? el('p', { class: 'muted small' }, t('Tu propuesta ya está aceptada: los cambios quedarán pendientes de Ikisai.')) : null);
+        changes.length
+          ? el('p', { class: 'banner warn small orgextra-pending' }, t('Pendiente de Ikisai: {cambio}. Te avisaremos cuando actualicen tu propuesta.', { cambio: changes.join(', ') }))
+          : null);
     };
 
     // --- Reparto de camas ---
@@ -202,6 +206,10 @@ export function renderLodging(ctx: ViewContext, reservationId: string, experienc
       pending.length ? section(t('Pendientes de aprobar'), { id: 'lodgingPendingList' }, el('div', { class: 'orgitems' }, ...pending)) : null,
       section(t('Reparto de camas'), { id: 'lodgingRooms' },
         el('p', { class: 'muted small' }, t('Toca una cama para asignarla a un asistente o dejarla libre.')),
+        // Una vez para todas las habitaciones, no repetido en cada tarjeta.
+        d.extra_pending_mode && d.rooms.some((r) => (r.extra?.possible ?? 0) > 0)
+          ? el('p', { class: 'muted small', id: 'lodgingExtraPending' }, t('Tu propuesta ya está aceptada: las supletorias que añadas o quites quedarán pendientes de Ikisai.'))
+          : null,
         roomsBlock),
       d.preferences.length ? section(t('Preferencias de tus asistentes'), { id: 'lodgingPreferences' },
         fbIgnore(el('ul', { class: 'plainlist' }, ...d.preferences.map((p) => el('li', null, el('strong', null, nameOf(p.guest_id)),
