@@ -101,4 +101,24 @@ test('estancias: alta, choque como aviso, cama por defecto, capas, retiro abiert
     await page.locator('.nav').getByText('Reservas', { exact: true }).click();
     await expect(page.locator('#reservationList .row', { hasText: 'Retiro Olivo' }).locator('[data-open]')).toHaveText('Visible para huéspedes');
   });
+
+  await test.step('«Apuntarme»: Inicio cuenta las solicitudes; aceptar una y pasar otra al organizador', async () => {
+    const join = (id: string, names: string[]) => ({ id, kind: 'apuntarme', author: { id: MARTA, name: 'Marta Ejemplo' }, createdAt: new Date().toISOString(),
+      operations: [{ op: 'call', procedure: 'booking.join_from_suggestion', args: { reservation_id: res.id, persons: names.map((name) => ({ name })) } }] });
+    api.setSuggestions([join('s-uno', ['Marta', 'Nico']), join('s-dos', ['Lía'])]);
+    await page.locator('.nav').getByText('Inicio', { exact: true }).click();
+    await expect(page.locator('[data-notice="joins"]')).toContainText('2');
+    await page.goto(`${harness.baseURL}/#/reservas/${res.id}`);
+    const rows = page.locator('#joinRequests [data-join-id]');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first().locator('.name')).toHaveText('Marta, Nico');
+    await rows.filter({ hasText: 'Lía' }).getByRole('button', { name: 'Pasar al organizador' }).click();
+    await expect(rows).toHaveCount(1);
+    await rows.first().getByRole('button', { name: 'Aceptar' }).click();
+    await expect(page.locator('#joinRequestsEmpty')).toBeVisible();
+    const decisions = api.suggestionDecisions();
+    expect(decisions.map((d) => [d.id, d.decision])).toEqual([['s-dos', 'approve'], ['s-uno', 'approve']]);
+    expect((decisions[0]!.operations as any)[0].args).toMatchObject({ reservation_id: res.id, mode: 'organizer' });
+    expect(decisions[1]!.operations).toBeNull();
+  });
 });

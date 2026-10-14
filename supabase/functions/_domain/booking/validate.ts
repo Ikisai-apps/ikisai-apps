@@ -696,6 +696,10 @@ export function validateOperations(operations: readonly OperationLike[], actor: 
       issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'Las peticiones las envía el organizador desde su portal; aquí solo se marca su estado.', details: { table } }));
       return;
     }
+    if (table === TABLES.joinRequests) {
+      issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'Las solicitudes para apuntarse llegan de Guests y las decide el organizador desde su portal.', details: { table } }));
+      return;
+    }
     if (table === 'booking.portal_declarations') {
       issues.push(at({ status: 422, code: 'INVALID_OPERATION', message: 'La declaración del organizador solo la registra su portal.', details: { table } }));
       return;
