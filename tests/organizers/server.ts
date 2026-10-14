@@ -209,6 +209,8 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
         { op: 'insert', table: TABLES.rates, id: uuid(), fields: { name: 'Grupo con pernocta', public_name: 'Estancia con pensión completa', layer: 'por_persona', unit: 'persona_noche', amount: 60, service: 'alojamiento', portal_visible: true } },
         { op: 'insert', table: TABLES.rates, id: uuid(), fields: { name: 'Sala grande', layer: 'recinto', unit: 'dia', amount: 200, portal_visible: true } },
         { op: 'insert', table: TABLES.rates, id: extraId, fields: { name: 'Sonido', public_name: 'Equipo de sonido', public_description: 'Altavoces y micrófono', layer: 'extra', unit: 'estancia', amount: 150, portal_visible: true } },
+        // Plaza supletoria por noche (Booking §25): el contador de Alojamiento enseña su precio.
+        { op: 'insert', table: TABLES.rates, id: uuid(), fields: { name: 'Cama supletoria', public_name: 'Plaza supletoria', layer: 'extra', unit: 'noche', amount: 15, service: 'cama_supletoria', portal_visible: true } },
       ]);
       seeded = { extraId };
       return seeded;

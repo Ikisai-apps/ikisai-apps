@@ -140,3 +140,12 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgbed.taken{border-style:solid}
 .orgbed.pending{border-color:var(--warn,#b7791f)}
 .orgbed-label{font-weight:700}
+
+/* Supletorias por habitación (Booking §25) */
+.orgextra-beds{margin:4px 0 8px}
+.orgextra-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px dashed var(--line,rgb(0 0 0 / 20%));border-radius:10px;background:var(--paper)}
+.orgextra-row strong{flex:1}
+.orgstep{width:40px;height:40px;border-radius:999px;border:1px solid var(--line,rgb(0 0 0 / 20%));background:var(--paper);color:var(--ink);font-size:20px;line-height:1;cursor:pointer}
+.orgstep:disabled{opacity:.4;cursor:default}
+.orgextra-count{min-width:60px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.orgextra-tag{margin-left:4px}

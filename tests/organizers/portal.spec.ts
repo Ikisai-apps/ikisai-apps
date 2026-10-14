@@ -535,42 +535,61 @@ test('organizers · experiencia (fases 4 y 5): programa por días, menú aún si
 
   // Vista previa: abre Guests con el huésped de muestra.
   await page.locator('#expnav-ven').click();
+  // Guests ya está publicado: la prueba no debe salir a producción (ni mandarle un token de prueba). Se sirve una página vacía.
+  await context.route('https://guests.ikisai.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Guests</title>' }));
   const popup = context.waitForEvent('page');
   await page.locator('#expPreviewOpen').click();
   await expect.poll(async () => (await popup).url()).toMatch(/^https:\/\/guests\.ikisai\.com\/i\//);
 });
 
-test('organizers · caracterización antes de las supletorias: Alojamiento con camas fijas y reparto; Presupuesto sin supletorias', async ({ page }) => {
+test('organizers · supletorias (Booking §25): «N de M» con − / + y su precio, reparto en una supletoria y pendiente con la propuesta aceptada', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con supletorias', confirm: true });
   const room = await api.room(reservation, { name: 'Hab 1', beds: 2, extra: 2, enSuite: true });
   await api.seedRates();
-  await api.sendProposal(reservation, 20);
+  const proposal = await api.sendProposal(reservation, 20);
   const link = await api.organizerLink([reservation], 'supletorias-ui@example.invalid', 'Sara');
 
-  // Un asistente para repartir, dado de alta con una sesión propia del mismo enlace.
+  // Una asistente para repartir, dada de alta con una sesión propia del mismo enlace.
   const post = async (path: string, body: unknown, bearer?: string) => (await fetch(`${api.url}/api/v1${path}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) })).json();
   const session = await post('/auth/link', { token: link });
   const guest = crypto.randomUUID();
-  await post('/invoke/booking.portal_add_guest', { reservation_id: reservation, guest_id: guest, fields: { first_name: 'Ana' }, declaration: true, declaration_version: 'org-v1' }, session.token);
+  await post('/invoke/booking.portal_add_guest', { reservation_id: reservation, guest_id: guest, fields: { first_name: 'Marta' }, declaration: true, declaration_version: 'org-v1' }, session.token);
   await enter(page, link);
 
-  // Alojamiento: la habitación con sus dos camas fijas; ninguna supletoria.
   await page.locator('#tab-experiencia').click();
   await page.locator('#expnav-alojamiento').click();
   const hab = page.locator(`.orgroom[data-space="${room.spaceId}"]`);
-  await expect(hab).toContainText('Hab 1');
+  const counter = hab.locator('.orgextra-count');
+  await expect(counter).toHaveText('0 de 2');
+  await expect(hab.locator('.orgextra-beds')).toContainText('por noche · Se añade a tu presupuesto');
   await expect(hab.locator('.orgbed')).toHaveCount(2);
-  await expect(hab).not.toContainText('Supletoria');
 
-  // Reparto: la cama 1 para Ana.
-  await hab.locator(`.orgbed[data-bed="${room.beds[0]}"]`).click();
+  // Activa las dos: salen en el reparto marcadas «supletoria», y «+» se apaga.
+  await hab.locator('[data-action="extra-plus"]').click();
+  await expect(counter).toHaveText('1 de 2');
+  await hab.locator('[data-action="extra-plus"]').click();
+  await expect(counter).toHaveText('2 de 2');
+  await expect(hab.locator('[data-action="extra-plus"]')).toBeDisabled();
+  await expect(hab.locator('.orgbed')).toHaveCount(4);
+  await expect(hab.locator(`.orgbed[data-bed="${room.extra[0]}"]`)).toContainText('supletoria');
+
+  // Reparto: Marta en la supletoria 1; ocupada, no se puede quitar.
+  await hab.locator(`.orgbed[data-bed="${room.extra[0]}"]`).click();
   await page.locator('#bed-guest').selectOption(guest);
   await page.locator('#bed-save').click();
-  await expect(hab.locator(`.orgbed[data-bed="${room.beds[0]}"]`)).toContainText('Ana');
+  await expect(hab.locator(`.orgbed[data-bed="${room.extra[0]}"]`)).toContainText('Marta');
+  await hab.locator('[data-action="extra-minus"]').click();
+  await hab.locator('[data-action="extra-minus"]').click();
+  await expect(page.locator('.toast.show')).toContainText('ocupadas');
+  await expect(counter).toHaveText('1 de 2');
 
-  // Presupuesto: solo la línea del personal.
-  await page.locator('#tab-propuesta').click();
-  await expect(page.locator('#proposal-1 .orgquote')).toContainText('Estancia con pensión completa');
-  await expect(page.locator('#proposal-1 .orgquote')).not.toContainText(/supletori/i);
+  // Con la propuesta aceptada, lo nuevo queda pendiente de Ikisai.
+  await api.acceptProposal(proposal);
+  await page.reload();
+  await page.locator('#expnav-alojamiento').click();
+  await expect(hab.locator('.orgextra-beds')).toContainText('los cambios quedarán pendientes de Ikisai');
+  await hab.locator('[data-action="extra-plus"]').click();
+  await expect(counter).toHaveText('2 de 2');
+  await expect(hab.locator('.orgextra-pending')).toContainText('Pendiente de Ikisai');
 });
