@@ -8,6 +8,9 @@
   Si no se puede leer el commit publicado, se usa `github.event.before`. Un cambio compartido
   (`_kit`, migraciones core, `sync-client`, `ui-kit`, `scripts`, workflows) marca todas las apps.
 - Solo se publican apps «publicables»: existen `supabase/functions/<app>-api/index.ts` y `apps/<app>/package.json`.
+- `migrations=true|false`: si hay migraciones que aplicar aunque ninguna app se publique. Una tanda solo de un módulo
+  (`*_resources_*`, sin dominio propio) no marca ninguna app, pero sus migraciones tienen que aplicarse (PROD-001, 14-10-2026).
+  Es `true` si alguna app se publica, si el push trae cualquier `supabase/migrations/…` o si no hay historial para saberlo.
 Variables: EVENT, INPUT_APP, INPUT_VERSION, BEFORE, RUN_NUMBER (las pone el workflow). Sin red ni credenciales.
 """
 import json
@@ -68,6 +71,15 @@ def affected(files):
   return apps, reasons
 
 
+def needs_migrations(files, selected):
+  """¿Hay que lanzar el job de migraciones? Siempre que se publique algo; y si no, cuando el push trae migraciones o no se sabe."""
+  if selected:
+    return True
+  if files is None:
+    return True
+  return any(path.startswith('supabase/migrations/') for path in files)
+
+
 def main():
   event = os.environ.get('EVENT', '')
   version = (os.environ.get('INPUT_VERSION') or '').strip() or f"v0.1.0-build.{os.environ.get('RUN_NUMBER', '0')}"
@@ -100,7 +112,11 @@ def main():
     print('::notice::' + line, file=sys.stderr)
   for name in skipped:
     print(f'::warning::{name} no es publicable todavía (faltan {APPS[name]["function_dir"]}/index.ts o {APPS[name]["app_dir"]}/package.json)', file=sys.stderr)
+  migrations = needs_migrations(None if event == 'workflow_dispatch' else changed_files(os.environ.get('BEFORE', '')), selected)
+  if migrations and not selected:
+    print('::notice::solo migraciones (sin apps que publicar): se aplican igualmente', file=sys.stderr)
   print('apps=' + json.dumps(selected))
+  print('migrations=' + ('true' if migrations else 'false'))
   print('version=' + version)
   return 0
 

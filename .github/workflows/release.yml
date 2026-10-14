@@ -27,6 +27,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.matrix.outputs.apps }}
+      migrations: ${{ steps.matrix.outputs.migrations }}
       version: ${{ steps.matrix.outputs.version }}
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +49,8 @@ jobs:
   migraciones:
     name: Migraciones (una vez)
     needs: [plan]
-    if: needs.plan.outputs.apps != '[]'
+    # También sin apps que publicar si el push trae migraciones (p. ej. solo de Recursos, que no tiene dominio propio).
+    if: needs.plan.outputs.apps != '[]' || needs.plan.outputs.migrations == 'true'
     runs-on: ubuntu-24.04
     environment: production
     concurrency:
