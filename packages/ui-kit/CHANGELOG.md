@@ -1,5 +1,27 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.35.0 · 14 de octubre de 2026
+
+**`createCalendar` con `select`, fino en Android** (O2 y O4: Guests y Booking).
+
+- **Deslizar para cambiar de mes ya funciona con el dedo de verdad.**
+  - Antes, Android cancelaba el gesto horizontal (`pointercancel`) y solo funcionaba en la prueba sintética.
+  - La rejilla lleva ahora `touch-action: pan-y pinch-zoom`: el desplazamiento vertical y el zoom con dos dedos siguen igual.
+  - Esto también lo gana el calendario de Booking.
+- **También se desliza mientras se eligen días**, para estancias que cruzan de mes. El primer día ya tocado se conserva.
+- **«Nueva estancia» trae el calendario a la vista** si el día no se ve (desplazamiento suave, o directo con movimiento reducido).
+- **Pista de toque en vez de teclado** en pantallas sin ratón: «Desliza a los lados para cambiar de mes.». La barra es más baja. En escritorio sigue la pista de teclado.
+- **Sin efectos raros al tocar:**
+  - el hover ya no se queda pegado en el último día tocado (solo con `hover: hover`);
+  - no hay destello azul al tocar, sino un fondo suave mientras se pulsa;
+  - mantener pulsado mientras se eligen días no selecciona texto ni abre el menú;
+  - la vista previa del rango al pasar por encima solo sale con ratón.
+- **La barra de elegir días queda encima de la barra inferior de la app** (`.nav` o `.tabbar`) en móvil y tableta, en vez de quedar tapada.
+- **U6 (Guests): textos del calendario en inglés.**
+  - «Hoy», «Anterior», «Siguiente», «Vista», «Mes», «Semana» y «N eventos» pasan por `kt`.
+  - Al cambiar el idioma del kit en vivo (`onKitLocaleChange`), el calendario se reetiqueta sin rehacerse.
+- **Pruebas:** `v39` amplía con toque real por CDP, que pasa por el reconocedor de gestos de Chromium. La de deslizar falla sin el arreglo. También prueba el cambio a inglés y la vuelta a español en vivo.
+
 ## 0.34.0 · 14 de octubre de 2026
 
 **Adaptador de sugerencias** (O1; contrato §3.10, `sync-client` 0.7.0).
