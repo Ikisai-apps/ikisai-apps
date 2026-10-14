@@ -11,6 +11,7 @@ import {
   dateRange, eventDays, guestsLabel, longDay, mealPlanLabel, refreshEvents, todayKey, restrictionLabel, shortTime, sortedRestrictions, watchEvents, type EventsSnapshot,
 } from '../app/events.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
+import { HOUSE_SUGGESTIONS_HASH, houseSuggestionsSummary, pendingDishesText } from './house-suggestions.ts';
 import { loadMenuData, type RecipeRow } from '../app/menu-data.ts';
 import { showPhoto } from '../app/photos.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
@@ -57,6 +58,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
   const list = el('ul', { class: 'list', id: 'menuList', 'aria-label': 'Menús' });
   const host = el('div');
   let house: HouseToday = { exists: false, lines: [] };
+  let suggestions: { pending: number } | null = null; // platos sugeridos (O3c): solo si hay alguno y se pueden revisar
   const houseHost = el('div', { id: 'houseMenu' });
   replace(
     main,
@@ -65,7 +67,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
     host,
   );
 
-  /** El menú de casa, fijo arriba: siempre abierto, con lo de hoy (O3a). */
+  /** El menú de casa, fijo arriba: siempre abierto, con lo de hoy (O3a), y los platos sugeridos debajo (O3c). */
   function paintHouse(): void {
     replace(houseHost, el('ul', { class: 'list houselist', 'aria-label': 'Menú de casa' }, fb(listRow({
       id: HOUSE_MENU_ID,
@@ -73,7 +75,15 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
       meta: house.lines.length ? [`Hoy: ${house.lines.join('; ')}`] : [house.exists ? 'Hoy no hay nada previsto' : 'El día a día de la casa, sin evento'],
       label: 'Abrir el menú de casa',
       onClick: () => navigate(HOUSE_MENU_HASH),
-    }), { feedbackId: 'food.menus.casa', feedbackLabel: 'Menú de casa' })));
+    }), { feedbackId: 'food.menus.casa', feedbackLabel: 'Menú de casa' }),
+    suggestions ? fb(listRow({
+      id: 'houseSuggestions',
+      title: 'Platos sugeridos',
+      meta: ['Propuestas de fuera para el menú de casa'],
+      chips: [el('span', { class: suggestions.pending ? 'chip warn' : 'chip' }, pendingDishesText(suggestions.pending))],
+      label: 'Revisar los platos sugeridos',
+      onClick: () => navigate(HOUSE_SUGGESTIONS_HASH),
+    }), { feedbackId: 'food.menus.sugerencias', feedbackLabel: 'Platos sugeridos' }) : null));
   }
 
   function paint(): void {
@@ -106,6 +116,7 @@ export const mountMenus: ViewMount = ({ main, client, navigate }) => {
     paint();
   }
   void load();
+  void houseSuggestionsSummary(client).then((s) => { suggestions = s; paintHouse(); });
   const offEvents = watchEvents(client, (next) => { snapshot = next; paint(); });
   const offTables = [T.menus, T.menuComments, T.menuServices, T.menuItems].map((table) => client.onTable(table, () => void load()));
   return () => { offEvents(); offTables.forEach((off) => off()); };
@@ -157,6 +168,9 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     const defaultServings = () => (house() ? Number(menu?.house_servings ?? 0) || 1 : event()?.guest_count ?? 1);
 
     const head = el('div', { 'data-feedback-id': 'food.menu.cabecera', 'data-feedback-label': 'Cabecera del menú', class: 'pagehead' });
+    // Platos sugeridos pendientes (O3c): un aviso en la cabecera del menú de casa, si hay alguno.
+    let suggested: { pending: number } | null = null;
+    if (menuId === HOUSE_MENU_ID) void houseSuggestionsSummary(client).then((s) => { suggested = s; if (house()) paintHouseHead(); });
     const banner = el('div', { id: 'menuStale' });
     const restrictionsHost = el('section', { 'data-feedback-id': 'food.menu.restricciones', 'data-feedback-label': 'Restricciones', 'data-feedback-ignore': '', class: 'restrictions card', id: 'menuRestrictions' });
     const builder = el('div', { 'data-feedback-id': 'food.menu.constructor', 'data-feedback-label': 'Constructor del menú', class: 'menubuilder', id: 'menuBuilder' });
@@ -245,6 +259,10 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         el('p', null, 'Siempre abierto: lo que se come en casa, día a día. No se valida ni se cierra.'),
         el('label', { class: 'houseservings' }, el('span', null, 'Personas en casa'), people, el('span', { class: 'muted' }, 'raciones por defecto de cada plato')),
         menu?._pending ? el('div', { class: 'chips', style: 'margin-top:8px' }, el('span', { class: 'chip pending' }, el('span', null, 'Pendiente de sincronizar'))) : null,
+        suggested?.pending ? el('div', { class: 'chips', style: 'margin-top:8px' },
+          el('a', { 'data-feedback-id': 'food.menu.casa.sugerencias', 'data-feedback-label': 'Platos sugeridos', id: 'houseSuggestionsChip', class: 'chip warn', href: HOUSE_SUGGESTIONS_HASH,
+            onclick: (ev: Event) => { ev.preventDefault(); navigate(HOUSE_SUGGESTIONS_HASH); } },
+          suggested.pending === 1 ? '1 plato sugerido por revisar' : `${suggested.pending} platos sugeridos por revisar`)) : null,
       ));
     }
 
