@@ -18,6 +18,8 @@ export interface Stay {
 export interface MyStays { items: Stay[]; default_bed: { space_name: string; bed_label: string | null } | null }
 export interface StayNote { id: string; revision: number; at: string; text: string; mine: boolean; by: 'outsider' | 'staff' }
 export interface Range { from: string; to: string }
+/** Retiro abierto a huéspedes (Booking §26.1): visible, vivo y sin precio. `joined`: ya tiene una entrada en él. */
+export interface OpenRetreat { reservation_id: string; title: string; start_date: string | null; end_date: string | null; summary: string | null; joined: boolean }
 
 export function isOutsider(client: SyncClient): boolean {
   return client.bootstrap()?.profile.houseLevel === 'outsider';
@@ -27,7 +29,11 @@ export interface OutsiderApi {
   stays(range?: Range): Promise<Loaded<MyStays>>;
   presence(range: Range): Promise<Loaded<{ items: Array<{ date: string; present: boolean }> }>>;
   notes(range: Range): Promise<Loaded<{ items: StayNote[] }>>;
-  saveStay(input: { id: string; from: string; to: string; expectedRevision?: number }): Promise<{ id: string; revision: number; clash: boolean }>;
+  saveStay(input: { id: string; from: string; to: string; expectedRevision?: number; persons?: StayPerson[] }): Promise<{ id: string; revision: number; clash: boolean }>;
+  /** Separa a unas personas de una estancia, con sus fechas (la misma cama). */
+  splitStay(input: { id: string; person_keys: string[]; from: string; to: string }): Promise<Stay>;
+  /** Une las fichas de una persona (de retiros distintos) bajo una clave y la devuelve. */
+  personLink(guestIds: string[], personKey?: string | null): Promise<{ person_key: string }>;
   removeStay(id: string, expectedRevision?: number): Promise<unknown>;
   saveNote(input: { id: string; at: string; text: string; expectedRevision?: number }): Promise<{ id: string; revision: number }>;
   removeNote(id: string, expectedRevision?: number): Promise<unknown>;
@@ -56,6 +62,8 @@ export function createOutsiderApi(client: SyncClient): OutsiderApi {
     presence: (range) => read('booking.portal_staff_presence', { ...range }),
     notes: (range) => read('booking.portal_stay_notes', { ...range }),
     saveStay: (input) => invoke('booking.portal_stay_save', { ...input }),
+    splitStay: (input) => invoke('booking.portal_stay_split', { ...input }),
+    personLink: (guestIds, personKey) => invoke('booking.portal_person_link', { guest_ids: guestIds, ...(personKey ? { person_key: personKey } : {}) }),
     removeStay: (id, expectedRevision) => invoke('booking.portal_stay_remove', { id, ...(expectedRevision ? { expectedRevision } : {}) }),
     saveNote: (input) => invoke('booking.portal_stay_note_save', { ...input }),
     removeNote: (id, expectedRevision) => invoke('booking.portal_stay_note_remove', { id, ...(expectedRevision ? { expectedRevision } : {}) }),
@@ -78,4 +86,14 @@ export function madridInstant(day: string, time: string): string {
   const shown = madridParts(guess.toISOString());
   const offsetMin = (Date.parse(`${shown.day}T${shown.time}:00Z`) - guess.getTime()) / 60000;
   return new Date(guess.getTime() - offsetMin * 60000).toISOString();
+}
+
+/** Retiros abiertos a huéspedes en un rango (cualquier huésped, no solo outsider); sin la lectura, ninguno. */
+export async function openRetreats(client: SyncClient, range: Range): Promise<OpenRetreat[]> {
+  try {
+    const out = await client.api<{ items?: OpenRetreat[] }>('/read/booking.portal_open_retreats', { method: 'POST', json: { ...range } });
+    return out.items ?? [];
+  } catch {
+    return [];
+  }
 }

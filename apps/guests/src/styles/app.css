@@ -159,3 +159,8 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .gwarn{color:var(--warn-ink,var(--ink))}
 #outsiderLodging .btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 #outsiderProposals{margin:0 0 24px}
+.gday-open{padding:8px 0;border-top:1px solid var(--line)}
+.gday-open p{margin:0 0 4px}
+.gday-who{margin:0 0 6px}
+#whoList{border:0;margin:0 0 12px;padding:0}
+#whoList legend{font-weight:700;margin-bottom:6px}
