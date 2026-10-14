@@ -184,6 +184,29 @@ test('guests · elegir habitación: atómica, sin nombres ajenos; si otra person
   await expect(page.locator('#task-room')).toContainText('Elegida');
 });
 
+test('guests · supletorias activadas (BG13): se eligen marcadas como «Supletoria», con su recuento aparte; las no activadas no salen', async ({ page }) => {
+  const { id: reservation, event } = await api.reservation({ title: 'Retiro con supletorias' });
+  const ines = await api.guest(event, { first_name: 'Inés' });
+  const room = await api.room(event, { name: 'Habitación Encina', enSuite: true, beds: ['Cama 1', 'Cama 2'], extraBeds: ['Supletoria A', 'Supletoria B'] });
+  await api.organizerInvoke(reservation, 'booking.portal_room_settings', { choice: 'choose', choose_until: day(10), rooms: [{ space_id: room.spaceId, option_key: 'bano', supplement: true }] });
+  // El organizador activa una de las dos supletorias posibles (Booking §25, sin propuesta aceptada: inmediato).
+  await api.organizerInvoke(reservation, 'booking.portal_extra_beds', { space_id: room.spaceId, count: 1 });
+  await api.experience(reservation, { lodging_visible: true, lodging_capability: 'choose' });
+  await enter(page, await api.guestLink(reservation, ines, 'Inés'));
+  await go(page, '/alojamiento');
+  const card = page.locator(`[data-space="${room.spaceId}"]`);
+  await expect(card).toContainText('2 de 2 camas libres · 1 de 1 supletorias libres');
+  await expect(card.locator('.glodging-beds button')).toHaveCount(3);
+  const extra = card.locator('.glodging-beds button', { hasText: 'Supletoria' });
+  await expect(extra).toHaveCount(1);
+  await expect(extra.locator('.gextra')).toHaveText('Supletoria');
+  await extra.click();
+  await page.getByRole('button', { name: 'Elegir esta cama' }).click();
+  await expect(page.locator('#lodgingMine')).toContainText('Supletoria');
+  const rows = await api.booking.t.db.query<{ kind: string }>(`select b.kind from booking.room_assignments a join booking.beds b on b.id = a.bed_id where a.guest_id = $1 and a.deleted_at is null`, [ines]);
+  expect(rows.rows).toEqual([{ kind: 'supletoria' }]);
+});
+
 test('guests · información: el lugar de Central (dirección, mapa y plano en PDF por portal-files)', async ({ page }) => {
   await api.place({ venue: 'Camino del Pinar 3, Segovia', plan: 'application/pdf' });
   const { id: reservation, event } = await api.reservation({ title: 'Retiro con plano' });
