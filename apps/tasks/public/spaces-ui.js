@@ -128,7 +128,9 @@ function batchSpaceSheet(){const n=batchSelection.size;openSheet(`<h2 class="she
 let spaceTree=null,spaceSource=null,spaceSheets=null;
 function spacesSource(){if(!spaceSource&&Sync.core?.resources)spaceSource=IkisaiKit.createSyncSpaceSource(Sync.core.resources);return spaceSource}
 const navigationGroupsBeforeSpaces=navigationGroups;
-navigationGroups=function(){const groups=navigationGroupsBeforeSpaces();if(!spacesMode())return groups;const org=groups.find(g=>g.id==='organize');if(org)org.items.splice(1,0,['spaces','Espacios','space','view']);return groups};
+/* En «Trabajo», justo después de «Etiquetas» (theme-ui.js la llevó ahí): el grupo «Organización» se pinta oculto. */
+function afterLabels(groups,item){const work=groups.find(g=>g.id==='work')||groups[0];const at=work.items.findIndex(i=>i[0]==='labels');work.items.splice(at<0?work.items.length:at+1,0,item);return groups}
+navigationGroups=function(){const groups=navigationGroupsBeforeSpaces();if(!spacesMode())return groups;return afterLabels(groups,['spaces','Espacios','space','view'])};
 const mainBeforeSpaces=main;
 main=function(){if(state.view!=='spaces')return mainBeforeSpaces();if(!spacesMode()){state.view='projects';return mainBeforeSpaces()}
   return `<main class="screen spaces-screen"><div class="screenhead"><div><h1 class="title">Espacios</h1><p class="subtitle">Los espacios de la casa, comunes a todas las apps. Las tareas los usan como zona.</p></div></div><div class="ikisai-kit" id="spacesTree"></div></main>`};
@@ -152,9 +154,9 @@ function usesText(x){return [x.tasks?plural(x.tasks,'tarea','tareas'):'',x.proje
 function zoneError(e){return e?.details?.message||e?.message||'No se ha podido hacer.'}
 function pendingWork(){if(Sync.record.queue.length||Sync.busy){toast('Sincroniza los cambios pendientes antes.');return true}return false}
 const navigationGroupsBeforeZones=navigationGroups;
-navigationGroups=function(){const groups=navigationGroupsBeforeZones();if(spacesMode()||!canMoveZones()||!hasZoneFamily())return groups;const org=groups.find(g=>g.id==='organize');if(org)org.items.push(['zonesToSpaces','Pasar las zonas a espacios','space','action']);return groups};
+navigationGroups=function(){const groups=navigationGroupsBeforeZones();if(spacesMode()||!canMoveZones()||!hasZoneFamily())return groups;return afterLabels(groups,['zonesToSpaces','Pasar las zonas a espacios','space','action'])};
 const topActionBeforeZones=handleTopAction;
-handleTopAction=function(action){if(action==='zonesToSpaces')return zonesSheet();return topActionBeforeZones(action)};
+handleTopAction=function(action){if(action==='zonesToSpaces'){closeNavigation();return zonesSheet()}return topActionBeforeZones(action)};
 async function zonesSheet(remove=[]){if(!canMoveZones())return toast('Solo la propietaria con acceso a todo puede hacerlo.');if(pendingWork())return;
   openSheet('<h2 class="sheettitle">Pasar las zonas a espacios</h2><p>Preparando la vista previa…</p>');
   let out;try{out=await api('read/tasks.zones_preview',{method:'POST',body:JSON.stringify({remove})})}catch(e){openSheet(`<h2 class="sheettitle">Pasar las zonas a espacios</h2><p>${esc(zoneError(e))}</p>`);return}
