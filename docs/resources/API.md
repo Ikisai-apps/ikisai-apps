@@ -1,4 +1,4 @@
-# Recursos · API del módulo común (espacios; inventario en R3)
+# Recursos · API del módulo común (espacios e inventario)
 
 Módulo del núcleo `resources` («Recursos»): espacios e inventario compartidos por todas las apps. Lo mantiene Core. Sus pantallas son componentes del kit (`createSpaceTree` y `createSpacePicker`, de UI) que cada app monta donde quiera. Diseño aprobado por el usuario el 13-10-2026 en `coordinacion/ampliacion/RECURSOS.md`. Este documento es la referencia técnica.
 
@@ -105,8 +105,39 @@ En R2 se añadirá el bloqueo de archivar o borrar un espacio con reservas futur
 - **Hooks y vistas:** las migraciones de cualquier app pueden **leer** `resources.spaces` y `resources.space_kinds`, por ejemplo para validar un `space_id` (lo permite el lint). Nunca escriben en ellas.
 - **Referencias:** `space_id` es un uuid sin clave foránea entre schemas; lo valida el hook de la app (que esté vivo y activo).
 
-## 3. Lo que viene
+## 3. Inventario (fase R3, migración 0802)
+
+Diseño en `RECURSOS.md` §5 y §11.2. Escriben editor y owner; los tipos de artículo, solo el owner. Huéspedes, organizadores y outsiders no lo ven.
+
+| Tabla | Campos | Notas |
+|---|---|---|
+| `item_kinds` | `kind`, `label`, `consumable`, `position`, `active` | 11 de partida. `consumable = false` (menaje, textil, herramienta, máquina): se cuentan, no se gastan |
+| `items` | `name` (único), `kind`, `category`, `base_unit`, `min_quantity`, `reorder_quantity`, `default_space_id`, `default_supplier_id` (Finance), `tracks_lots`, `tracks_expiry`, `attributes`, `active`, `notes`, `source_refs` | Con movimientos no se borra (`ITEM_IN_USE`): se archiva |
+| `item_units` | `item_id`, `unit`, `factor` (> 0, hacia la base), `supplier_id` | Distinta de la base (`INVALID_UNIT`) |
+| `lots` | `item_id`, `code`, `expires_on` | |
+| `movements` | `item_id`, `space_id`, `lot_id`, `quantity` (con signo, en la base), `kind`, `reason`, `unit_cost`, `transfer_id`, `count_id`, `source_app`, `source_ref`, `note`, `at` | **Solo se añaden** (`MOVEMENT_IMMUTABLE`) |
+| `counts` y `count_lines` | `space_id` (null = todo), `note` · `count_id`, `item_id`, `space_id`, `lot_id`, `quantity` | Las líneas solo en abierto (`COUNT_CLOSED`) |
+| `cost_entries` | `target_app`, `target_ref`, `amount`, `description`, `at` | Costes a mano de una tarea, proyecto o servicio |
+
+**Reglas de los movimientos (`INVALID_MOVEMENT`):**
+- `entrada_factura` y `entrada_manual` son positivas y son las únicas con `unit_cost`.
+- `consumo_servicio`, `consumo_tarea` y `salida_manual` son negativas. `salida_manual` lleva `reason`: `uso`, `merma`, `rotura`, `caducado`, `regalo` u `otro`.
+- `traslado` son dos filas con el mismo `transfer_id`: mismo artículo y lote, dos sitios distintos y suma cero (`INVALID_TRANSFER`).
+- `ajuste_recuento` solo lo crea `resources.close_count`.
+- Sitio vivo (`INVALID_SPACE`) y lote del artículo (`INVALID_LOT`).
+
+**Recuento:** `{op: 'call', procedure: 'resources.close_count', args: {count_id}}` crea un `ajuste_recuento` por línea con la diferencia frente a lo calculado (artículo, sitio y lote) y cierra el recuento. Es parcial: lo que no se cuenta no cambia.
+
+**Lecturas** (`read/resources.stock_levels` y `read/resources.item_costs`, con `where`):
+- `stock_levels`: `item_id`, `space_id`, `lot_id`, `quantity`, `last_at`, solo las que no suman cero;
+- `item_costs`: `item_id`, `average_cost` (ponderado con las entradas con coste) y `costed_quantity`.
+
+Sin red, el cliente puede sumar `movements` de su espejo.
+
+**Espacios:** uno con stock no se borra ni se archiva (`SPACE_HAS_STOCK`); primero se traslada.
+
+## 4. Lo que viene
 
 - **R1, segunda parte:** migración inicial con vista previa: zonas de Tasks («Zona: Espacio») y espacios y camas de Booking, cada zona en su altura.
 - **R2:** Booking y Tasks leen de aquí.
-- **R3:** inventario (artículos, unidades, lotes, movimientos, recuentos, costes) en este mismo módulo.
+- **R3, segunda parte:** piezas del kit (UI) y montaje en Tasks y Food. **R4–R6:** Finance, Food y Tasks enlazan con artículos y movimientos.
