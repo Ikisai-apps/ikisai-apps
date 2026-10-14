@@ -1,9 +1,10 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { isMenuStale, menuTotals, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
+import { HOUSE_MENU_ID, isMenuStale, menuTotals, serviceConsumption, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
-import { allergyCount, dateRange, guestsLabel, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
-import { MENU_STATUS_LABELS } from './events.ts';
+import { allergyCount, dateRange, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
+import { MENU_STATUS_LABELS, SERVICE_LABELS } from './events.ts';
+import { loadConsumptionGraph, loadInventory } from '../app/consumption.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -32,6 +33,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const role = el('dd');
   const upcoming = el('section', { 'data-feedback-id': 'food.inicio.eventos', 'data-feedback-label': 'Próximos eventos', id: 'upcoming' });
   const houseHost = el('section', { 'data-feedback-id': 'food.inicio.casa', 'data-feedback-label': 'Hoy en casa', id: 'houseToday' });
+  // Consumo por confirmar (R5c): solo con inventario (sitios de cocina en Recursos) y para quien puede confirmarlo.
+  const consumeHost = el('section', { 'data-feedback-id': 'food.inicio.consumo', 'data-feedback-label': 'Consumo por confirmar', id: 'consumeDue' });
   let house: HouseToday = { exists: false, lines: [] };
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
@@ -105,6 +108,30 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         : el('p', null, house.exists ? 'Nada previsto hoy en el menú de casa.' : 'El menú de casa: lo que se come en casa, día a día.')));
   }
 
+  async function loadConsumption(): Promise<void> {
+    const role = client.bootstrap()?.membership.role;
+    const inventory = role === 'editor' || role === 'owner' ? await loadInventory(client).catch(() => null) : null;
+    if (!inventory?.kitchen.size) { replace(consumeHost); return; }
+    const { graph, services, consumptions } = await loadConsumptionGraph(client);
+    const now = new Date();
+    const due = services.filter((s) => { const state = serviceConsumption(s, graph, consumptions, inventory.movements, now).state; return state === 'por_confirmar' || state === 'automatico'; })
+      .sort((a, b) => a.service_date.localeCompare(b.service_date));
+    if (!due.length) { replace(consumeHost); return; }
+    const titleOf = (menuId: string) => {
+      if (menuId === HOUSE_MENU_ID) return 'Menú de casa';
+      const eventId = menus.find((m) => m.id === menuId)?.event_id;
+      return snapshot.events.find((e) => e.event_id === eventId)?.title ?? 'Retiro';
+    };
+    replace(consumeHost, el('article', { class: 'card consumecard' },
+      el('h3', null, 'Consumo por confirmar'),
+      el('p', null, 'Corrige lo que se gastó o confírmalo; si no, se descuenta solo a las 24 h.'),
+      el('ul', { class: 'plainlist' }, ...due.map((s) => {
+        const hash = s.menu_id === HOUSE_MENU_ID ? HOUSE_MENU_HASH : `#/menus/${s.menu_id}`;
+        return el('li', null, el('a', { 'data-feedback-id': 'food.inicio.consumo.servicio', 'data-feedback-label': 'Abrir el servicio', href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } },
+          `${SERVICE_LABELS[s.service_type]} del ${longDay(s.service_date)}`), el('span', { class: 'muted' }, ` · ${titleOf(s.menu_id)}`));
+      }))));
+  }
+
   const link = (mark: Record<'data-feedback-id' | 'data-feedback-label', string>, hash: string, title: string, text: string, ...kv: HTMLElement[]) =>
     el('a', { ...mark, class: 'card cardlink', href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } },
       el('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'), el('h3', null, title), el('p', null, text), el('dl', { class: 'kv' }, ...kv));
@@ -114,6 +141,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', { 'data-feedback-ignore': '' }, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Qué retiros vienen y qué falta preparar.'))),
     houseHost,
+    consumeHost,
     upcoming,
     el('div', { class: 'sectionlabel' }, 'Cocina'),
     el('div', { class: 'cardgrid' },
@@ -157,6 +185,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   paintHouse();
   void loadHouse();
   const offHouse = [T.menus, T.menuServices, T.menuItems, T.recipes].map((table) => client.onTable(table, () => void loadHouse()));
+  void loadConsumption();
+  const offConsumption = [T.menuServices, T.menuItems, T.consumptions].map((table) => client.onTable(table, () => void loadConsumption()));
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
   const offPlanning = [T.menus, T.shoppingLists, T.shoppingItems, T.preparation].map((table) => client.onTable(table, () => void loadMenus()));
@@ -171,5 +201,6 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     offEvents();
     offMenus();
     offHouse.forEach((off) => off());
+    offConsumption.forEach((off) => off());
   };
 };

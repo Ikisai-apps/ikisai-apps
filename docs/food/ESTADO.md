@@ -53,7 +53,8 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - Diseño aprobado por el usuario el 14-10-2026 (respuestas en `coordinacion/food/RESPUESTAS.md`).
   - **R5a hecho:** cada ingrediente y máquina enlazado con su artículo de Recursos, y el recetario sugiere los ingredientes de Recursos que Food aún no usa (API.md §2.7). Pruebas: `resources-link.test.ts` y `resources.spec.ts`.
   - **R5b hecho:** la compra con el stock de la cocina, el mínimo de cada artículo, el grupo «Reponer» y «comprado» al stock (API.md §3.2, paso 6b). Pruebas: `shopping-stock.test.ts` y `shopping-stock.spec.ts`.
-  - Falta: consumo al acabar el servicio (R5c), «En casa» en la ficha de receta y la despensa en Inicio.
+  - **R5c hecho:** consumo al acabar el servicio: «Confirmar consumo» a las 2 h, descuento solo a las 24 h y tarjeta en Inicio (API.md §2.8). Pruebas: `consumption.test.ts` y `consumption.spec.ts`.
+  - Falta: «En casa» en la ficha de receta y la despensa (bajo mínimo, caduca pronto) en Inicio; el descuento automático en el servidor (petición a Core).
 - Formulario para sugerir el plato: es de Guests (O4), con `houseDishSuggestionOperations` y el tipo `plato_casa`.
 - Agentes de IA (núcleo, contrato §3.1): solo `food.regenerate_preparation` está marcado como seguro sin aprobación; el resto de procedimientos la exige.
 

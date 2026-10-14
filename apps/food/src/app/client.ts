@@ -21,6 +21,8 @@ export const T = {
   shoppingLists: 'food.shopping_lists',
   shoppingItems: 'food.shopping_list_items',
   preparation: 'food.preparation_items',
+  /** Consumo de cada plato al acabar el servicio (R5c). */
+  consumptions: 'food.consumptions',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */

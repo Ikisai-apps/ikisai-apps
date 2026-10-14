@@ -238,6 +238,17 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       manual: { kind: 'boolean' },
     },
   },
+  // Consumo de un plato (R5c): confirmado (descontado en Recursos) u omitido (no se hizo).
+  'food.consumptions': {
+    required: ['menu_item_id', 'status'],
+    insertOnly: ['menu_item_id'],
+    fields: {
+      menu_item_id: { kind: 'uuid' },
+      status: { kind: 'enum', values: ['confirmado', 'omitido'] },
+      automatic: { kind: 'boolean' },
+      notes: { kind: 'text', max: 500, nullable: true },
+    },
+  },
 };
 
 function issue(code: string, message: string, details: Record<string, unknown>): Issue {

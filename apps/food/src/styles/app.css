@@ -235,3 +235,13 @@
 .periodbar .chips{flex-basis:100%}
 .periodbar button.chip,.houselists button.chip{border:0;cursor:pointer;font:inherit;font-size:.8rem}
 .houselists{align-items:center;margin-bottom:12px}
+
+/* Consumo al acabar el servicio (R5c) */
+.consumebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.consumedish { margin-bottom: 14px; }
+.consumedish table.ingredients { width: 100%; table-layout: fixed; }
+.consumedish table.ingredients td:first-child { width: 50%; }
+.consumedish table.ingredients td:last-child { width: 22%; }
+.consumedish .qty { width: 100%; max-width: 7em; }
+.consumewhy { display: block; color: var(--muted); font-size: 12.5px; }
+.restock { margin-top: 18px; }

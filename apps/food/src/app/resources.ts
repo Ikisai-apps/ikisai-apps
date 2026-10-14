@@ -41,6 +41,10 @@ export function startResources(client: SyncClient): void {
     }
     offLinker?.();
     offLinker = installLinker(client, r);
+    // Consumo que lleva 24 h sin confirmar (R5c): se descuenta solo, al abrir y al volver la red.
+    const auto = () => void import('./consumption.ts').then(({ autoConsume }) => autoConsume(client)).catch((error) => console.warn('[food] consumo automático pendiente', error));
+    setTimeout(auto, 3000);
+    window.addEventListener('online', auto);
   })();
 }
 
