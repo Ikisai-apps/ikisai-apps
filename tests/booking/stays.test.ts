@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
-import { TABLES } from '../../supabase/functions/_domain/booking/mod.ts';
+import { TABLES, stayClashes } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 let app: TestApp;
@@ -201,6 +201,34 @@ test('mis retiros y agrupar fichas de la misma persona', async () => {
   await app.t.db.query(`insert into core.house_levels (user_id, level) values ($1, 'outsider')`, [marta]);
   const saved = await invoke('guests', marta, 'booking.portal_stay_save', { id: uuid(), from: '2031-09-01', to: '2031-09-02', persons: [{ person_key: linked.person_key, name: 'Marta' }] });
   assert.ok(saved.id);
+});
+
+test('el dominio (stayClashes) dice lo mismo que booking.stay_clashes; house_people da nombre y nivel', async () => {
+  const { space, beds: [bed] } = await room('Hab espejo');
+  const marta = await member('guests', null, 'outsider');
+  const r = await retreat('Retiro espejo', '2031-11-07', '2031-11-09');
+  await ok([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: r.event, space_id: space, group_label: 'Toda la habitación', persons: 1 } }]);
+  const [s1, s2] = [uuid(), uuid()];
+  await ok([
+    { op: 'insert', table: TABLES.stays, id: s1, fields: { account_id: marta, from_date: '2031-11-08', to_date: '2031-11-10', bed_id: bed } },
+    { op: 'insert', table: TABLES.stays, id: s2, fields: { account_id: marta, from_date: '2031-11-09', to_date: '2031-11-11', bed_id: bed } },
+  ]);
+  // (como en el espejo de la app: fechas en texto AAAA-MM-DD)
+  const day = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v === null || v === undefined ? null : String(v).slice(0, 10));
+  const dated = (rows: any[], keys: string[]) => rows.map((r) => ({ ...r, ...Object.fromEntries(keys.map((k) => [k, day(r[k])])) }));
+  const data = { assignments: dated(await q('select * from booking.room_assignments'), ['from_date', 'to_date']), events: await q('select * from booking.events'),
+    reservations: dated(await q('select * from booking.reservations'), ['start_date', 'end_date']),
+    stays: dated(await q('select * from booking.stays'), ['from_date', 'to_date']) };
+  const norm = (v: any) => JSON.parse(JSON.stringify(v));
+  for (const id of [s1, s2]) {
+    const [sql] = await q<{ c: unknown }>('select booking.stay_clashes(s) c from booking.stays s where id = $1', [id]);
+    const stay = data.stays.find((s: any) => s.id === id)!;
+    const fixDates = (list: any[]) => list.map((c) => ({ ...c, from: day(c.from), to: day(c.to) }));
+    assert.deepEqual(fixDates(stayClashes(stay as any, data as any)), fixDates(norm(sql!.c)), `misma lista para ${id}`);
+  }
+  await app.t.db.query(`insert into core.profiles (user_id, display_name) values ($1, 'Marta Espejo') on conflict (user_id) do update set display_name = excluded.display_name`, [marta]);
+  const people = await read('booking', await member('booking', null), 'booking.house_people', {});
+  assert.deepEqual(people.items.find((p: any) => p.account_id === marta), { account_id: marta, name: 'Marta Espejo', level: 'outsider' });
 });
 
 test('disponibilidad del organizador: las estancias no cuentan', async () => {

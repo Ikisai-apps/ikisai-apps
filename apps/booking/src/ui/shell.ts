@@ -2,6 +2,7 @@ import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import { icon, confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
 import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
+import { forgetHousePeople } from '../app/stays.ts';
 import { mountHome } from './home.ts';
 import { mountReservations } from './reservations.ts';
 import { mountReservation } from './reservation.ts';
@@ -11,6 +12,7 @@ import { mountCalendar } from './calendar.ts';
 import { mountSpaces } from './spaces.ts';
 import { mountRates } from './rates.ts';
 import { mountSes } from './ses.ts';
+import { mountStays } from './stays.ts';
 import { mountProposalEditor } from './proposalEditor.ts';
 import { mountProposalDocument } from './proposalDoc.ts';
 import { fbMark } from './feedback.ts';
@@ -47,6 +49,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount }> 
   '#/espacios': { title: 'Espacios y camas', slug: 'espacios', mount: mountSpaces },
   '#/tarifas': { title: 'Tarifas y condiciones', slug: 'tarifas', mount: mountRates },
   '#/ses': { title: 'SES.HOSPEDAJES', slug: 'ses', mount: mountSes },
+  '#/estancias': { title: 'Estancias', slug: 'estancias', mount: mountStays },
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -80,6 +83,7 @@ function markScreen(main: HTMLElement, slug: string, title: string): { id: strin
     case 'tarifas': fbMark(main, 'booking.tarifas', 'Tarifas y condiciones'); return { id: 'booking.tarifas', label: 'Tarifas y condiciones' };
     case 'propuesta': fbMark(main, 'booking.propuesta', 'Propuesta'); return { id: 'booking.propuesta', label: 'Propuesta' };
     case 'ses': fbMark(main, 'booking.ses', 'SES.HOSPEDAJES'); return { id: 'booking.ses', label: 'SES.HOSPEDAJES' };
+    case 'estancias': fbMark(main, 'booking.estancias', 'Estancias'); return { id: 'booking.estancias', label: 'Estancias' };
     default: fbMark(main, 'booking.inicio', title); return { id: 'booking.inicio', label: title };
   }
 }
@@ -211,6 +215,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
       await client.logout();
     } finally {
       clearCostCache(); // los importes no se quedan en el dispositivo
+      forgetHousePeople();
       ctx.onLogout();
     }
   }
