@@ -3,11 +3,11 @@
  * feedback) que staff o dirección aprueban o descartan, y la vista «Mis propuestas» de quien propone.
  *
  * ```ts
+ * const source = createSuggestionSource(client, { scope: 'all' });   // sync-client 0.7.0
  * const list = createProposalList({
- *   mode: 'review', source: { list: () => api.suggestions('pending') }, canDecide: role !== 'reader',
- *   kinds: { task: { label: 'Tarea' } },
- *   onApprove: (s, comment) => api.approve(s.id, comment), onReject: (s, comment) => api.reject(s.id, comment),
- *   renderDetail: (s) => taskPreview(s.detail),
+ *   mode: 'review', source, canDecide: role === 'editor' || role === 'owner',
+ *   onApprove: source.approve, onReject: source.reject,
+ *   renderDetail: (s) => (s.kind === 'task' ? taskPreview(s.detail) : source.renderPreview(s)),
  * });
  * ```
  *
@@ -34,30 +34,50 @@ export interface ProposalItem {
   app?: string | null;
   /** Tipo propio de la app: 'task', 'dish', 'join', 'feedback'… */
   kind: string;
+  /** Nombre del tipo que da el servidor («Tarea»); `kinds` manda si lo trae. */
+  label?: string | null;
   /** Qué se propone, en una línea. */
   summary: string;
   /** Libre: lo que la app necesita para pintar el detalle (`renderDetail`). */
   detail?: unknown;
   author: { id: string; name: string };
-  created_at: string;
+  createdAt: string;
   status: SuggestionStatus;
   comment?: string | null;
-  decided_by?: { id?: string; name: string } | null;
-  decided_at?: string | null;
+  decidedBy?: { id?: string; name: string } | null;
+  decidedAt?: string | null;
   /** Lo creado al aprobar (ids); el enlace lo construye la app con `link`. */
   result?: unknown;
 }
 
+/** Forma de la 0.33.0 (snake_case); se sigue aceptando. */
+export type LegacyProposalItem = Omit<ProposalItem, 'createdAt' | 'decidedBy' | 'decidedAt'> & {
+  created_at: string;
+  decided_by?: { id?: string; name: string } | null;
+  decided_at?: string | null;
+};
+
+export type ProposalInput = ProposalItem | LegacyProposalItem;
+
+/** Pasa una propuesta en camelCase (la API de sugerencias) o en snake_case (0.33.0) a la forma del componente. */
+export function normalizeProposal(raw: ProposalInput): ProposalItem {
+  if ('createdAt' in raw && raw.createdAt) return raw;
+  const { created_at, decided_by, decided_at, ...rest } = raw as LegacyProposalItem;
+  return { ...rest, createdAt: created_at, decidedBy: decided_by ?? null, decidedAt: decided_at ?? null };
+}
+
 export interface ProposalSource {
-  list(): Promise<ProposalItem[]>;
+  list(): Promise<ProposalInput[]>;
   /** Avisa cuando cambian; sin él, se vuelve a leer al enfocar la ventana y tras decidir. */
-  subscribe?(listener: (items: ProposalItem[]) => void): () => void;
+  subscribe?(listener: (items: ProposalInput[]) => void): () => void;
+  /** Pendientes que dice el servidor (si la lista viene cortada); sin él, se cuentan. */
+  pendingCount?(): number | null;
 }
 
 export interface ProposalListOptions {
   /** `review`: para quien decide. `mine`: lo que he propuesto. */
   mode: 'review' | 'mine';
-  items?: ProposalItem[];
+  items?: ProposalInput[];
   source?: ProposalSource;
   /** Nombre visible de cada tipo («Tarea», «Plato», «Apuntarme»). */
   kinds?: Record<string, { label: string; icon?: string }>;
@@ -71,8 +91,11 @@ export interface ProposalListOptions {
   onWithdraw?: (item: ProposalItem) => Promise<void> | void;
   /** Botón «Proponer» (modo `mine`). */
   onCreate?: () => void;
-  /** Lo que la app enseña de la propuesta (detalle de escritorio y hoja del móvil). */
-  renderDetail?: (item: ProposalItem) => Child;
+  /**
+   * Lo que la app enseña de la propuesta (detalle de escritorio y hoja del móvil). Puede ser una promesa: p. ej.
+   * `source.renderPreview` de `createSuggestionSource`, con el antes y después del lote.
+   */
+  renderDetail?: (item: ProposalItem) => Child | Promise<Child>;
   /** Enlace a lo creado al aprobar («Ver la tarea»). */
   link?: (item: ProposalItem) => { label: string; href: string } | null;
   /** Pestaña inicial en `review`; por defecto, pendientes. */
@@ -87,7 +110,7 @@ export interface ProposalListOptions {
 
 export interface ProposalList {
   element: HTMLElement;
-  setItems(items: ProposalItem[]): void;
+  setItems(items: ProposalInput[]): void;
   refresh(): Promise<void>;
   destroy(): void;
 }
@@ -120,13 +143,13 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   const canDecide = options.canDecide ?? !!(options.onApprove || options.onReject);
   const base = options.feedbackId;
   const mark = (key: keyof typeof PROPOSAL_LIST_MARKS): Record<string, string> => (base ? { 'data-feedback-id': `${base}.${PROPOSAL_LIST_MARKS[key][0]}`, 'data-feedback-label': PROPOSAL_LIST_MARKS[key][1] } : {});
-  let items: ProposalItem[] = options.items?.slice() ?? [];
+  let items: ProposalItem[] = (options.items ?? []).map(normalizeProposal);
   let tab: 'pending' | 'approved' | 'rejected' = options.status ?? 'pending';
   let kindFilter: string | null = null;
   let selected: string | null = null;
   const busy = new Set<string>();
 
-  const kindLabel = (kind: string) => kt(options.kinds?.[kind]?.label ?? kind);
+  const kindLabel = (kind: string) => kt(options.kinds?.[kind]?.label ?? items.find((i) => i.kind === kind && i.label)?.label ?? kind);
   const appLabel = (app?: string | null) => (app ? options.apps?.[app] ?? app : null);
   const wide = () => typeof matchMedia === 'function' && matchMedia(WIDE).matches;
   const fullDate = (iso: string) => new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
@@ -143,15 +166,15 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   // --- Datos -------------------------------------------------------------------------------------------------
   async function refresh(): Promise<void> {
     if (!options.source) { paint(); return; }
-    try { items = await options.source.list(); } catch (error) { toast(kt('No se han podido cargar las propuestas: {message}', { message: (error as Error)?.message ?? '' })); }
+    try { items = (await options.source.list()).map(normalizeProposal); } catch (error) { toast(kt('No se han podido cargar las propuestas: {message}', { message: (error as Error)?.message ?? '' })); }
     paint();
   }
-  const offSource = options.source?.subscribe?.((next) => { items = next; paint(); });
+  const offSource = options.source?.subscribe?.((next) => { items = next.map(normalizeProposal); paint(); });
   const onFocus = () => { void refresh(); };
   if (options.source && !options.source.subscribe) window.addEventListener('focus', onFocus);
 
   const forTab = () => items.filter((i) => i.status === tab);
-  const visible = () => forTab().filter((i) => !kindFilter || i.kind === kindFilter).sort((a, b) => (tab === 'pending' ? a.created_at.localeCompare(b.created_at) : (b.decided_at ?? b.created_at).localeCompare(a.decided_at ?? a.created_at)));
+  const visible = () => forTab().filter((i) => !kindFilter || i.kind === kindFilter).sort((a, b) => (tab === 'pending' ? a.createdAt.localeCompare(b.createdAt) : (b.decidedAt ?? b.createdAt).localeCompare(a.decidedAt ?? a.createdAt)));
 
   // --- Decidir -----------------------------------------------------------------------------------------------
   async function decide(item: ProposalItem, approve: boolean): Promise<void> {
@@ -173,7 +196,7 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
     paint();
     try {
       await run(item, text);
-      items = items.map((i) => (i.id === item.id ? { ...i, status: approve ? 'approved' : 'rejected', comment: text, decided_at: now().toISOString() } : i));
+      items = items.map((i) => (i.id === item.id ? { ...i, status: approve ? 'approved' : 'rejected', comment: text, decidedAt: now().toISOString() } : i));
       toast(approve ? kt('Propuesta aprobada.') : kt('Propuesta descartada.'));
       // En escritorio, pasa sola a la siguiente pendiente.
       if (wasSelected) {
@@ -221,10 +244,10 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
   };
 
   const quote = (item: ProposalItem): HTMLElement | null => (item.comment
-    ? el('p', { class: 'pl-quote' }, `«${item.comment}»`, item.decided_by?.name ? el('span', { class: 'pl-quote-by' }, ` · ${item.decided_by.name}`) : null)
+    ? el('p', { class: 'pl-quote' }, `«${item.comment}»`, item.decidedBy?.name ? el('span', { class: 'pl-quote-by' }, ` · ${item.decidedBy.name}`) : null)
     : null);
 
-  const meta = (item: ProposalItem) => [mode === 'review' ? item.author.name : null, relativeTime(item.created_at, now()), appLabel(item.app)].filter(Boolean).join(' · ');
+  const meta = (item: ProposalItem) => [mode === 'review' ? item.author.name : null, relativeTime(item.createdAt, now()), appLabel(item.app)].filter(Boolean).join(' · ');
 
   function card(item: ProposalItem): HTMLElement {
     const link = item.status === 'approved' ? options.link?.(item) ?? null : null;
@@ -263,12 +286,28 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
     list.querySelector<HTMLElement>(`[data-id="${CSS.escape(next)}"] .pl-open`)?.focus();
   }
 
+  /** Detalle de la app; si es una promesa (vista previa del servidor), se espera y se guarda por propuesta y estado. */
+  const details = new Map<string, Promise<Child>>();
+  function detailSlot(item: ProposalItem): HTMLElement {
+    const box = el('div', { class: 'pl-detail-app' });
+    const key = `${item.id}:${item.status}`;
+    let out: Child | Promise<Child>;
+    try { out = details.get(key) ?? options.renderDetail!(item); } catch (error) { out = el('p', { class: 'hint' }, (error as Error)?.message ?? ''); }
+    if (out instanceof Promise) {
+      details.set(key, out);
+      box.append(el('p', { class: 'hint' }, kt('Cargando…')));
+      box.setAttribute('aria-busy', 'true');
+      out.then((child) => { box.removeAttribute('aria-busy'); replace(box, child); }, (error: unknown) => { details.delete(key); box.removeAttribute('aria-busy'); replace(box, el('p', { class: 'hint' }, kt('No se ha podido cargar el detalle: {message}', { message: (error as Error)?.message ?? '' }))); });
+    } else replace(box, out);
+    return box;
+  }
+
   function detailBody(item: ProposalItem, withActions: boolean): HTMLElement {
     return el('div', { class: 'pl-detail-body', dataset: { id: item.id } },
       el('div', { class: 'pl-top' }, el('span', { class: 'chip small' }, el('span', null, kindLabel(item.kind))), suggestionStatusChip(item.status)),
       el('h3', { class: 'pl-detail-title' }, item.summary),
-      el('p', { class: 'pl-meta' }, [item.author.name, fullDate(item.created_at), appLabel(item.app)].filter(Boolean).join(' · ')),
-      options.renderDetail ? el('div', { class: 'pl-detail-app' }, options.renderDetail(item)) : null,
+      el('p', { class: 'pl-meta' }, [item.author.name, fullDate(item.createdAt), appLabel(item.app)].filter(Boolean).join(' · ')),
+      options.renderDetail ? detailSlot(item) : null,
       quote(item),
       withActions ? decisionButtons(item) : null,
       withActions && item.status === 'pending' && canDecide ? el('p', { class: 'hint' }, kt('↑ ↓ cambian de propuesta. Al decidir, pasa a la siguiente.')) : null,
@@ -282,7 +321,7 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
       mode === 'mine' && options.onCreate ? el('button', { type: 'button', class: 'primary', ...mark('create'), onclick: () => options.onCreate?.() }, icon('plus', 18), kt('Proponer')) : null,
     );
     if (mode === 'review') {
-      const pending = items.filter((i) => i.status === 'pending').length;
+      const pending = options.source?.pendingCount?.() ?? items.filter((i) => i.status === 'pending').length;
       const kinds = [...new Set(forTab().map((i) => i.kind).concat(Object.keys(options.kinds ?? {})))];
       if (kindFilter && !kinds.includes(kindFilter)) kindFilter = null;
       replace(filters,
@@ -304,7 +343,7 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
       return;
     }
     replace(filters);
-    const mine = items.slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const mine = items.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const pending = mine.filter((i) => i.status === 'pending');
     const done = mine.filter((i) => i.status !== 'pending');
     const group = (title: string, rows: ProposalItem[]) => (rows.length ? [el('li', { class: 'pl-group' }, title), ...rows.map(card)] : []);
@@ -318,7 +357,7 @@ export function createProposalList(options: ProposalListOptions): ProposalList {
 
   return {
     element,
-    setItems(next) { items = next.slice(); paint(); },
+    setItems(next) { items = next.map(normalizeProposal); paint(); },
     refresh,
     destroy() { offSource?.(); window.removeEventListener('focus', onFocus); element.remove(); },
   };
