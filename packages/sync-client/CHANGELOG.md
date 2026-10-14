@@ -1,5 +1,9 @@
 # Cambios de @ikisai/sync-client
 
+## 0.7.1 · 14 de octubre de 2026
+
+- **`loginWithLink` devuelve `grant`**, el ámbito del enlace canjeado (`POST auth/link` lo añade a la respuesta). Así un portal entra por ese enlace cuando la cuenta tiene varios (petición C10 de Guests). No se guarda en la sesión.
+
 ## 0.7.0 · 13 de octubre de 2026
 
 - **Rol `outsider`** (fase O1, migración 0092) en `Role`, y `bootstrap.profile.houseLevel` con el nivel de casa de la cuenta.

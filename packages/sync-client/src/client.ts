@@ -651,7 +651,8 @@ export class SyncClientImpl implements SyncClient {
     const session = normalizeSession(data, null, Math.floor(this.now() / 1000));
     await this.setSession(session);
     this.setStatus({ lastError: null });
-    return { ...session };
+    // `grant` (0.7.1): el ámbito del enlace canjeado, para entrar por él cuando la cuenta tiene varios.
+    return { ...session, ...(data.grant !== undefined ? { grant: data.grant } : {}) };
   }
 
   /**

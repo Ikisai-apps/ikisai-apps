@@ -59,6 +59,7 @@ test('portales · el organizador canjea su enlace: sesión propia, pase común y
   assert.equal(bad.status, 401); assert.equal(bad.data.error.code, 'LINK_INVALID');
   const ok = await callPortal(organizers, 'organizers', '/api/v1/auth/link', { body: { token: orgToken } });
   assert.equal(ok.status, 200, JSON.stringify(ok.data)); assert.ok(ok.data.token);
+  assert.deepEqual(ok.data.grant, { reservation_id: R1 }, 'el canje dice por qué enlace se entra (C10)');
   assert.match(ok.headers.get('set-cookie') ?? '', /ikisai_sso=/);
   orgSession = ok.data.token;
   const boot = await callPortal(organizers, 'organizers', '/api/v1/bootstrap', { token: orgSession });

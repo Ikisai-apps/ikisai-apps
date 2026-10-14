@@ -82,10 +82,11 @@ export function createPortalLinks(supabase: Supabase, issuerApp: string) {
 }
 
 /** Canje del enlace en el portal: usuario del enlace o error explicable (`LINK_INVALID`, `LINK_EXPIRED`). */
-export async function resolvePortalLink(supabase: Supabase, app: string, token: unknown): Promise<string> {
+/** Canje: la cuenta del enlace y su ámbito (`scope`, p. ej. `{reservation_id, guest_id}`), para que el portal entre por él. */
+export async function resolvePortalLink(supabase: Supabase, app: string, token: unknown): Promise<{ userId: string; grant: unknown }> {
   if (typeof token !== 'string' || !TOKEN.test(token)) fail(401, 'LINK_INVALID', messageFor('LINK_INVALID'));
   const out = await supabase.rpc<any>('core_portal_link_resolve', { p_app: app, p_digest: await sha256Hex(token) });
   if (!out) fail(401, 'LINK_INVALID', messageFor('LINK_INVALID'));
   if (out.expired) fail(401, 'LINK_EXPIRED', messageFor('LINK_EXPIRED'), { validUntil: out.validUntil ?? null });
-  return out.userId as string;
+  return { userId: out.userId as string, grant: out.scope ?? null };
 }
