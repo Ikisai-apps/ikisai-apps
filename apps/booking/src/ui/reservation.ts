@@ -5,7 +5,8 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { PROGRAM, loadProgram, renderProgram } from './program.ts';
@@ -340,6 +341,41 @@ export function mountReservation(id: string): ViewMount {
             editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'closeEvent', 'data-feedback-id': 'booking.reserva.operacion.cierre', 'data-feedback-label': 'Cierre operativo', onclick: () => void toggleClose() }, liveEvent.closed_at ? 'Reabrir evento' : 'Anotar cierre operativo')) : null,
           ], editLink('editOperation', 'Editar', () => openRowSheet({ client, title: 'Operación', table: EVENTS, row: liveEvent, specs: EVENT_SPECS, savedMessage: 'Operación guardada.', feedbackId: 'booking.reserva.operacion.hoja', feedbackLabel: 'Editar operación' })));
 
+      // O2 · «Solicitudes para apuntarse»: las sugerencias pendientes (con red) y las que se pasaron al organizador.
+      const joinsHost = el('div', { id: 'joinRequests', 'data-feedback-id': 'booking.reserva.abierto.solicitudes', 'data-feedback-label': 'Solicitudes para apuntarse' });
+      async function paintJoins(): Promise<void> {
+        const pending = await pendingJoins(client, id);
+        const handed = canRead(client, JOIN_REQUESTS)
+          ? ((await client.list(JOIN_REQUESTS)) as unknown as Array<{ reservation_id: string; status: string; persons: JoinPerson[]; deleted_at: string | null }>).filter((j) => j.reservation_id === id && j.deleted_at === null)
+          : [];
+        const names = (persons: JoinPerson[]) => persons.map((p) => p.name).join(', ') || '—';
+        const act = async (join: PendingJoin, decision: 'accept' | 'organizer' | 'discard') => {
+          let comment: string | undefined;
+          if (decision === 'discard') {
+            const go = await confirmDialog({ title: 'Descartar solicitud', text: `No se apunta a ${names(join.persons)}. Lo verá en Guests.`, confirmLabel: 'Descartar', danger: true });
+            if (!go) return;
+          }
+          try {
+            await decideJoin(client, join, decision, comment);
+            toast(decision === 'accept' ? 'Apuntados: ya lo ven en Guests.' : decision === 'organizer' ? 'Pasada al organizador.' : 'Solicitud descartada.');
+            await client.sync().catch(() => undefined);
+            void paintJoins();
+          } catch (error) { toast(describeError(error)); }
+        };
+        replace(joinsHost,
+          el('div', { class: 'sectionlabel' }, 'Solicitudes para apuntarse'),
+          pending === null ? el('p', { class: 'hint' }, 'Las solicitudes se ven con conexión.')
+            : pending.length === 0 ? el('p', { class: 'hint', id: 'joinRequestsEmpty' }, 'No hay solicitudes pendientes.')
+            : el('ul', { class: 'list' }, pending.map((j) => el('li', { class: 'row', dataset: { joinId: j.id }, 'data-feedback-id': 'booking.reserva.abierto.solicitudes.fila', 'data-feedback-label': 'Solicitud' },
+                el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, names(j.persons))),
+                el('div', { class: 'row-meta', 'data-feedback-ignore': '' }, `Pide ${j.author}`, j.message ? ` · «${j.message}»` : ''),
+                editable ? el('div', { class: 'btnrow' },
+                  el('button', { class: 'primary small', type: 'button', 'data-feedback-id': 'booking.reserva.abierto.solicitudes.aceptar', 'data-feedback-label': 'Aceptar', onclick: () => void act(j, 'accept') }, 'Aceptar'),
+                  el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.reserva.abierto.solicitudes.organizador', 'data-feedback-label': 'Pasar al organizador', onclick: () => void act(j, 'organizer') }, 'Pasar al organizador'),
+                  el('button', { class: 'ghost small', type: 'button', 'data-feedback-id': 'booking.reserva.abierto.solicitudes.descartar', 'data-feedback-label': 'Descartar', onclick: () => void act(j, 'discard') }, 'Descartar')) : null))),
+          handed.length ? el('p', { class: 'hint', id: 'joinHanded' }, handed.map((j) => `${names(j.persons)}: ${j.status === 'pendiente' ? 'con el organizador' : j.status === 'aceptada' ? 'aceptada por el organizador' : 'descartada por el organizador'}`).join(' · ')) : null);
+      }
+
       // O2 · retiro abierto: visible para los huéspedes de Guests con título, fechas y este resumen, sin precio.
       const visible = reservation.guests_visible === true;
       const openCard = el('article', { class: 'card', id: 'blockOpenRetreat', 'data-feedback-id': 'booking.reserva.abierto', 'data-feedback-label': 'Visible para huéspedes' },
@@ -352,7 +388,9 @@ export function mountReservation(id: string): ViewMount {
             ] }) }, 'Editar') : null),
         el('p', { id: 'openRetreatState' }, el('span', { class: `chip${visible ? ' ok' : ''}` }, visible ? 'Visible' : 'No visible'),
           visible && !['pre_reservada', 'confirmada', 'en_ejecucion'].includes(reservation.status) ? el('span', { class: 'hint' }, ' · se verá cuando esté en pre-reserva o confirmada') : null),
-        reservation.public_summary ? el('p', { class: 'hint', 'data-feedback-ignore': '' }, reservation.public_summary) : null);
+        reservation.public_summary ? el('p', { class: 'hint', 'data-feedback-ignore': '' }, reservation.public_summary) : null,
+        visible || joinsHost.childElementCount ? joinsHost : null);
+      if (visible) void paintJoins();
 
       const lodgingBlock = !liveEvent || !lodging ? null : renderLodgingBlock({ client, reservation, event: liveEvent, data: lodging, guests, seesGuests, editable, navigate });
 

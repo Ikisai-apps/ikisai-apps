@@ -31,7 +31,12 @@ export const TABLES = {
   stayPersons: 'booking.stay_persons',
   outsiderDefaults: 'booking.outsider_defaults',
   stayNotes: 'booking.stay_notes',
+  joinRequests: 'booking.join_requests',
 } as const;
+
+/** «Apuntarme» (O2): tipo de sugerencia del núcleo y procedimiento que se ejecuta al aprobarla. */
+export const JOIN_SUGGESTION_KIND = 'apuntarme';
+export const JOIN_PROCEDURE = 'booking.join_from_suggestion';
 
 /** Estancias (O2): `outsider`, gente de fuera por trato personal; `staff`, presencia de quien trabaja en casa. */
 export const STAY_KINDS = ['outsider', 'staff'] as const;

@@ -26,6 +26,7 @@ export const STAYS: TableName = TABLES.stays;
 export const STAY_PERSONS: TableName = TABLES.stayPersons;
 export const OUTSIDER_DEFAULTS: TableName = TABLES.outsiderDefaults;
 export const STAY_NOTES: TableName = TABLES.stayNotes;
+export const JOIN_REQUESTS: TableName = TABLES.joinRequests;
 
 /** Fila de reserva tal y como la devuelve el espejo local (`_pending` lo pone el cliente offline). */
 export interface ReservationRow extends SyncedRow {
@@ -90,7 +91,7 @@ export function createClient(): SyncClient {
     pullIntervalMs: 30_000,
     // Datos personales e importes no se quedan en el dispositivo al cerrar sesión (docs/booking/API.md §5.3).
     // (las estancias llevan nombres y notas de personas de fuera: tampoco se quedan)
-    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES, EXTRA_REQUESTS, PORTAL_REQUESTS, STAYS, STAY_PERSONS, STAY_NOTES],
+    clearOnLogout: [GUESTS, FINANCE, RATES, CONDITIONS, TIERS, PROPOSALS, PROPOSAL_LINES, EXTRA_REQUESTS, PORTAL_REQUESTS, STAYS, STAY_PERSONS, STAY_NOTES, JOIN_REQUESTS],
   });
 }
 

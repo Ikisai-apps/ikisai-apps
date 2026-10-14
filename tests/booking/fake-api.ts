@@ -178,6 +178,10 @@ export interface FakeApi {
   setCalendarStatus(status: FakeCalendarStatus): void;
   /** Cuentas con nivel de casa de `POST /read/booking.house_people` (O2). */
   setHousePeople(items: Array<{ account_id: string; name: string; level: 'outsider' | 'staff' | 'direccion' }>): void;
+  /** Sugerencias pendientes de `GET /suggestions` («Apuntarme», O2). */
+  setSuggestions(items: Array<Record<string, unknown>>): void;
+  /** Decisiones recibidas en `POST /suggestions/:id/approve|reject`, con el lote corregido si lo hubo. */
+  suggestionDecisions(): Array<{ id: string; decision: string; operations: unknown; comment: string | null }>;
   /** Identificadores de reserva para los que llegó `POST /calendar/:id/retry`. */
   calendarRetries(): string[];
   cursor(): number;
@@ -531,6 +535,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   }
   let calendarStatus: FakeCalendarStatus = { configured: false, calendarId: null, health: 'not_configured', items: [] };
   let housePeople: Array<{ account_id: string; name: string; level: string }> = [];
+  let suggestions: Array<Record<string, any>> = [];
+  const suggestionDecisions: Array<{ id: string; decision: string; operations: unknown; comment: string | null }> = [];
   const calendarRetries: string[] = [];
   let costRows: FakeCostRow[] = [];
   let costFailure: number | null = null;
@@ -637,6 +643,20 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
       }
       if (path === 'read/booking.house_people' && method === 'POST') return json(res, 200, { items: housePeople });
+      // Cola de sugerencias del núcleo (contrato §3.10), solo lo que usa «Apuntarme».
+      if (path === 'suggestions' && method === 'GET') {
+        const items = suggestions.filter((s) => s.status === 'pending');
+        return json(res, 200, { items, pendingCount: items.length });
+      }
+      const decided = /^suggestions\/([^/]+)\/(approve|reject)$/.exec(path);
+      if (decided && method === 'POST') {
+        const s = suggestions.find((x) => x.id === decided[1]);
+        if (!s || s.status !== 'pending') throw new Fault(409, 'SUGGESTION_UNAVAILABLE', 'Ya decidida.');
+        const body = await readJson(req);
+        s.status = decided[2] === 'approve' ? 'approved' : 'rejected';
+        suggestionDecisions.push({ id: s.id, decision: decided[2]!, operations: body?.operations ?? null, comment: body?.comment ?? null });
+        return json(res, 200, s);
+      }
       if (path === 'read/invoices.booking_cost_projection' && method === 'GET') {
         if (costFailure !== null) throw new Fault(costFailure, costFailure === 403 ? 'FORBIDDEN' : 'VALIDATION', 'Lectura no permitida.', {});
         const target = url.searchParams.get('where[target_id]');
@@ -833,6 +853,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     cursor: () => cursor,
     setCalendarStatus: (status) => { calendarStatus = status; },
     setHousePeople: (items) => { housePeople = items; },
+    setSuggestions: (items) => { suggestions = items.map((s) => ({ status: 'pending', ...s })); },
+    suggestionDecisions: () => [...suggestionDecisions],
     setCostRows: (rows) => { costRows = rows; },
     failCosts: (status) => { costFailure = status; },
     calendarRetries: () => [...calendarRetries],

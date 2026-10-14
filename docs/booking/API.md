@@ -1560,7 +1560,26 @@ Según la tabla «hoy / después» aprobada. Al personal no le cambia nada de lo
 - **Sin datos en el dispositivo al salir:** estancias, personas y notas van en `clearOnLogout`.
 - **El mismo cálculo en los dos lados:** el choque lo calcula el dominio, `stayClashes` (`_domain/booking/stays.ts`), que es espejo de `booking.stay_clashes`; una prueba compara los dos.
 
-Sigue en O2: «Apuntarme» (P23 y P24 ya en main).
+### 26.3 «Apuntarme» (migración 0470)
+
+Con las sugerencias del núcleo (contrato §3.10), no con una cola propia. Así la cola del personal es la misma en todas las apps.
+
+- **Tipo:** `apuntarme` («Apuntarme a un retiro»). Pueden sugerir los editores de Guests (`submit_from: {"guests": ["editor"]}`).
+- **Desde Guests:** `client.suggest({ app: 'booking', kind: 'apuntarme', summary, operations: [{op: 'call', procedure: 'booking.join_from_suggestion', args: {reservation_id, persons: [{person_key?, name}], message?}}] })`. Las personas van marcadas todas por defecto.
+- **Al aprobar,** `booking.join_from_suggestion` se ejecuta como el personal que aprueba:
+  - la cuenta autora sale de `core.suggestion_author()`, nunca de `args`;
+  - las `person_key` tienen que ser de esa cuenta (`OUT_OF_SCOPE`);
+  - el retiro tiene que estar visible, vivo y en `pre_reservada`, `confirmada` o `en_ejecucion` (`RESERVATION_NOT_OPEN`);
+  - **Aceptar** (el lote tal cual): crea las fichas en el evento, escritas como el propio huésped, con su `person_key`. La cuenta recibe la entrada de Guests (`core.portal_grant`). Hace falta el retiro confirmado (`RESERVATION_NOT_CONFIRMED`). Una persona que ya está en el retiro no se repite;
+  - **Pasar al organizador** (lote corregido con `args.mode = 'organizer'`): deja una fila en `booking.join_requests` (`reservation_id`, `account_id`, `persons`, `message`, `status` `pendiente`/`aceptada`/`descartada`, `comment`, `suggestion_id`). El personal la ve sincronizada; ningún cliente la escribe (`INVALID_OPERATION`).
+- **Descartar** es el `reject` de la sugerencia, con comentario.
+- **Organizers:**
+  - `booking.portal_join_requests({reservation_id})` → `{items: [{id, revision, persons: [nombres], message, status, comment, created_at}]}`;
+  - `booking.portal_join_request_decide({reservation_id, id, decision: 'aceptar' | 'descartar', comment?})`. Aceptar crea las fichas y da la entrada de Guests en el mismo paso. Una ya decidida da `JOIN_REQUEST_DECIDED` (409).
+- **Guests:** `portal_open_retreats` añade `request: {status: 'con_el_organizador' | 'aceptada' | 'descartada', comment} | null`. Lo pendiente con Ikisai es la propia sugerencia (`client.suggestions({scope: 'mine'})`).
+- **Booking (app):**
+  - en la ficha, «Solicitudes para apuntarse», con Aceptar, Pasar al organizador y Descartar. Necesita red;
+  - en Inicio, el aviso con el número de solicitudes.
 
 ## Anexo · Campos de C03 y C04 que no se portan
 

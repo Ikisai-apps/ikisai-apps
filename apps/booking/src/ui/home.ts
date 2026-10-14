@@ -4,6 +4,7 @@ import { canSeeGuests, dayNumber, depositStatus, guestModeOf, nights, stayClashe
 import { ASSIGNMENTS, EVENTS, FINANCE, GUESTS, NEEDS, STAYS, PORTAL_REQUESTS, RATES, RESERVATIONS, SES_SETTINGS, canRead, canWrite, dateRange, shortDay, statusLabel, today, type EventRow, type FinanceRow, type ReservationRow } from '../app/client.ts';
 import { COMMUNICABLE_STATUSES, HOUR, acceptedReservationComm, fetchSes } from '../app/ses.ts';
 import { liveStays } from '../app/stays.ts';
+import { pendingJoins, type PendingJoin } from '../app/joins.ts';
 import type { ViewMount } from './shell.ts';
 import { fbMark } from './feedback.ts';
 
@@ -140,6 +141,11 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       const clashing = stays.filter((s) => s.to_date > todayIso && stayClashes(s, data).some((c) => c.kind === 'retiro')).length;
       notices.push([clashing, 'estancia que choca con un retiro', 'estancias que chocan con un retiro', '#/estancias', 'stays']);
     }
+    // «Apuntarme» pendientes (cola del núcleo, con red): se pregunta al montar Inicio y al volver la conexión.
+    if (canWrite(client) && joins) {
+      const targets = new Set(joins.map((j) => j.reservationId));
+      notices.unshift([joins.length, 'solicitud para apuntarse', 'solicitudes para apuntarse', targets.size === 1 ? `#/reservas/${[...targets][0]}` : '#/reservas', 'joins']);
+    }
     const visible = notices.filter(([n]) => n > 0);
     replace(noticesHost, visible.length === 0
       ? null
@@ -198,6 +204,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   );
 
   paintStatus(client.status());
+  let joins: PendingJoin[] | null = null;
+  const loadJoins = () => { if (canWrite(client)) void pendingJoins(client).then((j) => { if (disposed) return; joins = j; void paintData(); }); };
+  window.addEventListener('online', loadJoins);
+  loadJoins();
   void paintData();
   const offs = [
     client.onStatus(paintStatus),
@@ -208,7 +218,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     ...(canRead(client, STAYS) ? [client.onTable(STAYS, () => void paintData())] : []),
     ...(canWrite(client) && canRead(client, PORTAL_REQUESTS) ? [client.onTable(PORTAL_REQUESTS, () => void paintData())] : []),
   ];
-  return () => { disposed = true; offs.forEach((off) => off()); };
+  return () => { disposed = true; window.removeEventListener('online', loadJoins); offs.forEach((off) => off()); };
 };
 
 /** ¿Se está usando como app instalada? `display-mode` standalone/fullscreen/minimal-ui, o `navigator.standalone` en iOS. */
