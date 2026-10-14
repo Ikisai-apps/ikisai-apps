@@ -38,7 +38,7 @@ export function cleanContext(raw: any): Record<string, unknown> {
     deviceClass: ['mobile', 'tablet', 'desktop'].includes(c.deviceClass) ? c.deviceClass : undefined,
     viewport: c.viewport ? { width: num(c.viewport.width), height: num(c.viewport.height) } : undefined,
     online: typeof c.online === 'boolean' ? c.online : undefined,
-    role: ['reader', 'editor', 'owner'].includes(c.role) ? c.role : undefined,
+    role: ['reader', 'outsider', 'editor', 'owner'].includes(c.role) ? c.role : undefined,
     userAgent: str(c.userAgent, 200), language: str(c.language, 20),
     sync: c.sync && typeof c.sync === 'object'
       ? { pending: num(c.sync.pending), conflicts: num(c.sync.conflicts), lastSyncAt: str(c.sync.lastSyncAt, 40), cursor: num(c.sync.cursor) }

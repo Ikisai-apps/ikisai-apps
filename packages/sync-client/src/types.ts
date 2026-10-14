@@ -65,8 +65,9 @@ export interface Bootstrap {
   cursor: number;
   serverTime: string;
   release: string;
-  membership: { role: 'reader' | 'editor' | 'owner'; scopes: unknown; revision: number };
-  profile: { userId: string; displayName: string; kind: 'human' | 'agent' };
+  membership: { role: Role; scopes: unknown; revision: number };
+  /** `houseLevel`: nivel de casa de la cuenta (Central), desde la 0.7.0 / migración 0092. */
+  profile: { userId: string; displayName: string; kind: 'human' | 'agent'; houseLevel?: HouseLevel | null };
   tables: Array<{ table: TableName; writableColumns: string[]; readable: boolean; writable: boolean }>;
 }
 
@@ -214,6 +215,52 @@ export interface SyncClient {
   /** URL firmada de corta duración para ver o descargar un archivo. */
   fileUrl(fileId: string): Promise<string>;
 
+  /** Sugerencias (0.7.0): propuestas de personas que staff o dirección aprueba o descarta. Necesitan red. */
+  suggest(input: SuggestionInput): Promise<Suggestion>;
+  /** `mine` (por defecto): las propias, también de otra app con `app`. `pending` y `all`: las de la app, para quien decide. */
+  suggestions(options?: { scope?: 'mine' | 'pending' | 'all'; app?: string; limit?: number; before?: string }): Promise<{ items: Suggestion[]; pendingCount: number | null }>;
+  /** Antes y después del lote (o del lote corregido), sin escribir. */
+  previewSuggestion(id: string, operations?: RowOperation[]): Promise<{ cursor: number; results: unknown[]; changes: unknown[] }>;
+  /** Aprobar aplica el lote (o el corregido) como commit de quien aprueba; descartar admite comentario. */
+  decideSuggestion(id: string, decision: 'approve' | 'reject', options?: { comment?: string; operations?: RowOperation[] }): Promise<Suggestion>;
+  /** Retirar una propia pendiente. */
+  withdrawSuggestion(id: string, options?: { app?: string }): Promise<Suggestion>;
+
   /** Llamada directa a la API (rutas propias de la app). Añade bearer, refresca sesión y mapea errores. */
   api<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T>;
+}
+
+/** Roles del núcleo. `outsider` (0.7.0): gente de fuera por trato personal; solo lee y escribe lo que cada app le abre. */
+export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
+export type HouseLevel = 'direccion' | 'staff' | 'outsider';
+
+export interface SuggestionInput {
+  kind: string;
+  summary: string;
+  operations: RowOperation[];
+  /** Datos libres para que la app pinte el detalle. */
+  detail?: Record<string, unknown> | null;
+  /** Otra app destino (p. ej. `food` desde Guests). */
+  app?: string;
+  requestId?: string;
+}
+
+export interface Suggestion {
+  id: string;
+  app: string;
+  kind: string;
+  label: string | null;
+  summary: string;
+  detail: Record<string, unknown> | null;
+  operations: RowOperation[];
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  comment: string | null;
+  author: { id: string; name: string };
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+  appliedCursor: number | null;
+  result: unknown[] | null;
+  createdAt: string;
+  updatedAt: string;
+  replayed?: boolean;
 }

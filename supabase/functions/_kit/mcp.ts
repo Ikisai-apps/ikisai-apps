@@ -34,7 +34,7 @@ export interface McpTool {
 
 interface JsonRpcRequest { jsonrpc?: string; id?: string | number | null; method?: string; params?: any }
 
-const RANK: Record<string, number> = { reader: 0, editor: 1, owner: 2 };
+const RANK: Record<string, number> = { reader: 0, outsider: 0, editor: 1, owner: 2 };
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required, additionalProperties: false });
 const OPERATIONS = { type: 'array', description: 'Operaciones de fila del contrato §4 (insert/update/delete/restore/call).', items: { type: 'object' } };
 

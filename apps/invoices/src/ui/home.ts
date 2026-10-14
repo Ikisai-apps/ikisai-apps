@@ -34,7 +34,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     conflicts.textContent = String(status.conflicts + status.rejected);
     lastPull.textContent = formatDate(status.lastPullAt);
     const boot = client.bootstrap();
-    role.textContent = boot ? { owner: 'Propietario', editor: 'Editor', reader: 'Solo lectura' }[boot.membership.role] : '—';
+    role.textContent = boot ? { owner: 'Propietario', editor: 'Editor', reader: 'Solo lectura', outsider: 'Outsider' }[boot.membership.role] : '—';
   }
 
   async function paintCounts(): Promise<void> {
