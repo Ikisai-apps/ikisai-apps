@@ -1,7 +1,7 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  PREP_UNITS, formatMethodSteps, ingredientKey, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
-  type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type Unit,
+  PREP_UNITS, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
+  type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
@@ -10,6 +10,7 @@ import {
   T, UNITS, UNIT_LABELS, describeError, formatQuantity, parseQuantity, type Mirror,
 } from '../app/client.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
+import { R, resourcesClient } from '../app/resources.ts';
 import { isBlobMarker, preparePhoto, showPhoto, stagePhoto, type PhotoRef, type PreparedPhoto } from '../app/photos.ts';
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
@@ -50,6 +51,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   let ingredients: IngredientRow[] = [];
   let lines: LineRow[] = [];
   let equipment: EquipmentRow[] = [];
+  let resourceItems: ResourceItem[] = [];
   let needs: NeedRow[] = [];
   let sheet: Sheet | null = null;
   let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
@@ -131,6 +133,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   }
 
   async function load(): Promise<void> {
+    // Ingredientes de Recursos que Food aún no usa (R5a): se sugieren para no duplicar artículos.
+    void (resourcesClient(client).list(R.items) as unknown as Promise<Array<Mirror<ResourceItem>>>).then((rows) => { resourceItems = rows.filter((i) => !i._pending); }).catch(() => undefined);
     [recipes, ingredients, lines, equipment, needs] = await Promise.all([
       client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,
       client.list(T.ingredients) as Promise<IngredientRow[]>,
@@ -345,8 +349,10 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const checked = check('r-allergens-checked', 'He revisado los alérgenos de esta receta', recipe?.allergens_checked ?? false, { 'data-feedback-id': 'food.recetario.formulario.alergenos_revisados', 'data-feedback-label': 'Alérgenos revisados' });
     const status = el('select', { 'data-feedback-id': 'food.recetario.formulario.estado', 'data-feedback-label': 'Estado', id: 'r-status' }, ...RECIPE_STATUSES.map((s) => el('option', { value: s, selected: (recipe?.status ?? 'en_prueba') === s }, RECIPE_STATUS_LABELS[s])));
 
-    // Ingredientes
-    const datalist = el('datalist', { id: 'ingredientNames' }, ...ingredients.map((i) => el('option', { value: i.name })));
+    // Ingredientes: los de Food y, después, los de Recursos que Food aún no usa (R5a).
+    const shared = sharedIngredientItems(resourceItems, ingredients);
+    const datalist = el('datalist', { id: 'ingredientNames' }, ...ingredients.map((i) => el('option', { value: i.name })), ...shared.map((i) => el('option', { value: i.name })));
+    const sharedByKey = (value: string) => shared.find((i) => ingredientKey(i.name) === ingredientKey(value)) ?? null;
     interface LineForm { line: LineRow | null; name: HTMLInputElement; quantity: HTMLInputElement; unit: HTMLSelectElement; node: HTMLElement }
     const lineForms: LineForm[] = [];
     const lineHost = el('div', { 'data-feedback-id': 'food.recetario.ingredientes.lista', 'data-feedback-label': 'Lista de ingredientes', class: 'linerows', id: 'ingredientRows' });
@@ -356,7 +362,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       const form: LineForm = {
         line,
         name: el('input', { 'data-feedback-id': 'food.recetario.ingredientes.nombre', 'data-feedback-label': 'Ingrediente', type: 'text', list: 'ingredientNames', placeholder: 'Ingrediente', 'aria-label': 'Ingrediente', maxlength: '120', value: known?.name ?? '',
-          onchange: () => { const hit = byKey(form.name.value); if (hit && !form.line && !form.quantity.value) form.unit.value = hit.preferred_unit; } }),
+          onchange: () => {
+            if (form.line || form.quantity.value) return;
+            const hit = byKey(form.name.value);
+            const unit = hit ? hit.preferred_unit : foodUnitFromBase(sharedByKey(form.name.value)?.base_unit ?? '');
+            if (unit) form.unit.value = unit;
+          } }),
         quantity: el('input', { 'data-feedback-id': 'food.recetario.ingredientes.cantidad', 'data-feedback-label': 'Cantidad', type: 'text', inputmode: 'decimal', placeholder: 'Cantidad', 'aria-label': 'Cantidad', value: line ? formatQuantity(line.quantity) : '' }),
         unit: el('select', { 'data-feedback-id': 'food.recetario.ingredientes.unidad', 'data-feedback-label': 'Unidad', 'aria-label': 'Unidad' }, ...UNITS.map((u) => el('option', { value: u, selected: (line?.unit ?? 'g') === u }, UNIT_LABELS[u]))),
         node: el('div', { 'data-feedback-id': 'food.recetario.ingredientes.linea', 'data-feedback-label': 'Línea de ingrediente', class: 'linerow' }),
@@ -414,7 +425,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         if (!ingredientId) {
           ingredientId = crypto.randomUUID();
           created.set(ingredientKey(label), ingredientId);
-          operations.push({ op: 'insert', table: T.ingredients, id: ingredientId, fields: { name: label.replace(/\s+/g, ' '), preferred_unit: unit } });
+          // Si ya es un artículo de Recursos, el ingrediente nace enlazado con él (con su nombre y su unidad).
+          const item = sharedByKey(label);
+          operations.push({ op: 'insert', table: T.ingredients, id: ingredientId, fields: item
+            ? { name: item.name, preferred_unit: foodUnitFromBase(item.base_unit) ?? unit, item_id: item.id }
+            : { name: label.replace(/\s+/g, ' '), preferred_unit: unit } });
         }
         resolved.push({ form, ingredientId, quantity, unit });
       }

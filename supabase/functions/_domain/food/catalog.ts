@@ -57,6 +57,8 @@ export interface Ingredient extends SyncedColumns {
   preferred_unit: Unit;
   preferred_supplier: string | null;
   active: boolean;
+  /** Artículo de Recursos (R5a); lo rellena la app al abrirse. */
+  item_id?: string | null;
 }
 
 export interface RecipeIngredient extends SyncedColumns {
@@ -76,6 +78,8 @@ export interface Equipment extends SyncedColumns {
   location: string | null;
   status: EquipmentStatus;
   notes: string | null;
+  /** Artículo de Recursos (R5a); lo rellena la app al abrirse. */
+  item_id?: string | null;
 }
 
 export interface RecipeEquipment extends SyncedColumns {

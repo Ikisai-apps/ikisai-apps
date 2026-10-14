@@ -81,6 +81,7 @@ export function describeError(error: unknown): string {
     case 'RECIPE_IN_USE': return 'La receta está en un menú: archívala en lugar de borrarla.';
     case 'INGREDIENT_IN_USE': return 'El ingrediente está en alguna receta: desactívalo en lugar de borrarlo.';
     case 'EQUIPMENT_IN_USE': return 'Alguna receta necesita esta máquina: márcala fuera de servicio en lugar de borrarla.';
+    case 'INVALID_ITEM': return 'El artículo de Recursos ya no está disponible o ya lo usa otro ingrediente o máquina.';
     case 'PARENT_DELETED': return 'El elemento del que depende está en la papelera.';
     case 'INVALID_FILE': return 'La foto no se pudo enlazar. Vuelve a elegirla.';
     case 'BLOB_MISSING': return 'La foto ya no está en este dispositivo. Vuelve a elegirla.';

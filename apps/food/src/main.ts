@@ -5,6 +5,7 @@ import { createClient, describeError } from './app/client.ts';
 import { safeToUpdate } from './app/guard.ts';
 import { clearEventsCache } from './app/events.ts';
 import { clearPhotoCache } from './app/photos.ts';
+import { startResources } from './app/resources.ts';
 import { renderShell } from './ui/shell.ts';
 
 const root = document.getElementById('app');
@@ -35,6 +36,8 @@ function route(): void {
   unmountLogin?.();
   unmountLogin = null;
   if (client.session()) {
+    // Recursos (R5): su propio espejo y el enlace de ingredientes y máquinas con sus artículos, sin esperar.
+    startResources(client);
     unmountShell = renderShell(root!, {
       client,
       onLogout: () => {

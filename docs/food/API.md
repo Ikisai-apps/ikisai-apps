@@ -178,6 +178,26 @@ Las adaptaciones alimentarias son recetas propias y platos propios del servicio 
   - Al aprobar: usa la receta viva y no archivada con el mismo nombre (sin distinguir mayúsculas; primero la validada) o crea una rápida «por completar»; usa el primer servicio de ese tipo ese día o lo crea con su hora de siempre; añade el plato al final con las personas en casa como raciones, sin repetirlo si ya estaba. Si nadie ha abierto aún el menú de casa, lo crea con `HOUSE_MENU_ID`.
   - En la app: «Platos sugeridos» en Menús (bajo el menú de casa, si hay alguna sugerencia y se puede decidir) y un aviso en la cabecera del menú de casa con las pendientes; la cola es `createProposalList` del kit en `#/menus/sugerencias`.
 
+### 2.7 Artículos de Recursos (R5a, 14 de octubre de 2026)
+
+Migración `20261014_0197_food_resource_links.sql`; diseño en `coordinacion/ampliacion/RECURSOS.md` §6 «Food» y `docs/resources/API.md` §3.
+
+- **`ingredients.item_id` y `equipment.item_id`**: el artículo de Recursos de cada ingrediente y cada máquina (sin clave foránea entre schemas).
+  - Lo valida `food.guard_resource_link` (`INVALID_ITEM`, 422, con `reason`):
+    - `not_found`: el artículo no existe o está borrado;
+    - `kind`: un ingrediente enlaza con un tipo que se gasta y una máquina con uno que se cuenta (`resources.item_kinds.consumable`);
+    - `linked`: el artículo ya lo usa otro ingrediente u otra máquina viva.
+- **Enlace desde la app** (`apps/food/src/app/resources.ts`, con el segundo `sync-client` de Recursos):
+  - al abrir la app y cuando cambian ingredientes, máquinas o artículos, un editor con red enlaza lo que falte (`linkPlan` y `linkOperations` del dominio);
+  - busca el artículo por su referencia de origen (`food.ingredient:<id>`, `food.equipment:<id>`) y después por el nombre, dentro de los tipos que encajan; si no hay ninguno, lo crea;
+  - primero se escribe en Recursos y, cuando ya está en el servidor, en Food. Si algo falla, la siguiente vez se retoma sin duplicar.
+- **Food sigue mandando durante R5** en el nombre, la unidad, «activo» y, en las máquinas, el tipo, la capacidad y el estado (`attributes.status`): el enlace los copia al artículo.
+  - Las recetas siguen apuntando a `ingredient_id` y `equipment_id`. El enlace va en el ingrediente y en la máquina, no en cada línea. Para quien usa la app no cambia nada (`caracterizacion-r5.*`).
+  - Unidad base del artículo: la preferida del ingrediente («unidad» es «ud»); las máquinas, «ud».
+  - Si el nombre ya lo usa un artículo de otro tipo, el nuevo se llama «… (cocina)».
+- **Recetario:** también sugiere los ingredientes de Recursos que Food aún no usa (creados en Finance, en Tasks o a mano). Elegir uno crea el ingrediente ya enlazado, con su nombre y su unidad, sin duplicar el artículo.
+- **Siguiente:** compra con stock (R5b) y consumo al acabar el servicio (R5c).
+
 ### 2.3 Compra, preparación y stock
 
 ```text
