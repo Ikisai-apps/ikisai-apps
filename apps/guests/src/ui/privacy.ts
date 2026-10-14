@@ -19,7 +19,9 @@ export function needsPrivacy(ctx: GuestContext): boolean {
   return !(versions.length ? versions : [privacyVersion()]).some((v) => ctx.privacyAcked(v));
 }
 
-export function renderPrivacy(main: HTMLElement, ctx: GuestContext, onDone: () => void): void {
+/** Con la familia junta (O4a), un solo «Entendido» vale para todas las fichas de ese retiro: se sigue aceptando en cada retiro. */
+export function renderPrivacy(main: HTMLElement, ctx: GuestContext | GuestContext[], onDone: () => void): void {
+  const all = Array.isArray(ctx) ? ctx : [ctx];
   const shown = commonText('portal.privacy')!;
   replace(main, el('section', { class: 'card gcard gprivacy', id: 'privacy', 'data-feedback-id': 'guests.aviso.privacidad', 'data-feedback-label': 'Aviso de protección de datos' },
     el('h2', null, shown.title ?? t('privacy.title')),
@@ -28,6 +30,6 @@ export function renderPrivacy(main: HTMLElement, ctx: GuestContext, onDone: () =
     el('button', {
       type: 'button', class: 'primary wide', id: 'privacyOk',
       'data-feedback-id': 'guests.aviso.privacidad.entendido', 'data-feedback-label': 'Entendido, continuar',
-      onclick: () => { ctx.ackPrivacy(privacyVersion()); onDone(); },
+      onclick: () => { for (const c of all) if (needsPrivacy(c)) c.ackPrivacy(privacyVersion()); onDone(); },
     }, t('privacy.ok'))));
 }
