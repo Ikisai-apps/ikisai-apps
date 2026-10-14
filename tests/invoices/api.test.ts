@@ -241,7 +241,7 @@ test('entregas: vista previa, ZIP en streaming con manifest, CSV y documentos; C
   assert.deepEqual([...csvBytes.slice(0, 3)], [0xef, 0xbb, 0xbf], 'UTF-8 con BOM para Excel');
   const csvText = new TextDecoder('utf-8', { ignoreBOM: true }).decode(csvBytes);
   assert.ok(csvText.startsWith(CSV_BOM + 'codigo;fecha;proveedor'));
-  assert.ok(csvText.includes(';Makro;A28647451;A-1;alimentos retiro yoga;compras;no;pendiente_revision;40,00;4,00;0,00;0,00;44,00;44,00;0,00;validada;pendiente;;;2026_10_05_(makro)_alimentos_retiro_yoga.pdf'), csvText);
+  assert.ok(csvText.includes(';Makro;A28647451;A-1;alimentos retiro yoga;compras;no;pendiente_revision;40,00;4,00;0,00;0,00;44,00;44,00;0,00;validada;pagada;;2026-10-05;2026_10_05_(makro)_alimentos_retiro_yoga.pdf'), csvText);
   const lines = await app.handler(new Request(`${app.supabase.url}/functions/v1/invoices-api/api/v1/exports/${exportId}/lineas_compra.csv`, { headers: { Origin: app.origin, Authorization: 'Bearer ' + app.tokens.owner } }));
   const linesText = await lines.text();
   assert.ok(linesText.includes('Tomate;;20;kg;2,00;0,00;40,00;10;4,00;;compras;no;tasks/project: Huerto (10,00) | tasks/task: Comprar semillas (5,00) | general/investment: Inversión (5,00) | food/ingredient: Ingredientes › Tomate pera (2,00) | food/equipment: Maquinaria › Horno 1 (1,00)'));

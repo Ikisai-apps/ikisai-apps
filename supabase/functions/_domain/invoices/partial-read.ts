@@ -8,7 +8,7 @@
  * lo ha cambiado desde entonces (`reading.filled[campo] = { value, level }`). Lo demás lo escribió una persona: manda.
  */
 import { extractWithTemplates, type TemplateExtraction, type TemplateLike } from './supplier-templates.ts';
-import { foundLabels, missingLabels, validSpanishTaxId, type FieldProvenance, type PartialInvoice, type PdfTextItem, type ReadLevel, type ReadStats } from './pdf-extract.ts';
+import { foundLabels, missingLabels, validSpanishTaxId, type FieldProvenance, type PartialInvoice, type PdfTextItem, type ReadLevel, type ReadPayment, type ReadStats } from './pdf-extract.ts';
 import type { ImportDocument } from './import-v1.schema.ts';
 
 /** Nivel de autoridad de un dato rellenado por la lectura automática (mayor manda). */
@@ -61,7 +61,8 @@ const PROVENANCE_KEY: Record<string, string> = {
 };
 
 export interface PartialFillInput {
-  invoice: { id: string; supplier_id: string; invoice_number: string | null; invoice_date: string | null; source_total: number | string | null; revision?: number; import_meta?: unknown; expense_category?: string | null };
+  invoice: { id: string; supplier_id: string; invoice_number: string | null; invoice_date: string | null; source_total: number | string | null; revision?: number; import_meta?: unknown; expense_category?: string | null;
+    payment_status?: string; payment_source?: string | null };
   /** El proveedor «Sin identificar» de Drive: se sustituye si el documento trae un NIF válido. */
   placeholderSupplierId: string | null;
   suppliers: Array<{ id: string; tax_id: string | null; deleted_at?: string | null; slug?: string | null; default_category?: string | null }>;
@@ -75,6 +76,19 @@ export interface PartialFillInput {
   newId: (kind: string) => string;
   /** Las demás facturas: con el mismo proveedor y número, el número no se escribe (sería un duplicado). */
   invoices?: Array<{ id: string; code?: string | null; supplier_id: string; invoice_number: string | null; status: string; deleted_at: string | null }>;
+}
+
+/**
+ * Pago leído del documento (FB_2026_027 y FB_2026_030): pagada, con el método que nombre y su fecha de pago o, si no la trae,
+ * la de la factura (nunca la de hoy), marcada «leído». `null` si el documento no dice nada, si no hay ninguna fecha o si ya
+ * lo dijo una persona o una lectura anterior (solo mejora lo que el servidor dio por hecho, «sin confirmar»).
+ */
+export function readPaymentFields(payment: ReadPayment | null | undefined, invoiceDate: string | null, current?: { payment_status?: string; payment_source?: string | null } | null): Record<string, unknown> | null {
+  if (!payment) return null;
+  if (current && (current.payment_source === 'confirmado' || current.payment_source === 'leido' || (!current.payment_source && current.payment_status === 'pagada'))) return null;
+  const paidAt = payment.paid_at ?? invoiceDate;
+  if (!paidAt) return null;
+  return { payment_status: 'pagada', payment_method: payment.method, paid_at: paidAt, payment_source: 'leido' };
 }
 
 const normTaxId = (raw: string) => validSpanishTaxId(raw) ?? raw.replace(/[\s.-]/g, '').toUpperCase();
@@ -132,6 +146,8 @@ export function partialFillOperations(x: PartialFillInput): { ops: Array<Record<
     if (found.withholding) amountOps.push({ op: 'insert', table: 'invoices.tax_lines', id: x.newId('tax:irpf'), fields: { invoice_id: invoice.id, position: rates.length, tax_type: 'irpf', rate: found.withholding.rate, taxable_base: null, amount: found.withholding.amount } });
     if (amountOps.length) filled.base = { value: found.base, level: level('base') };
   }
+  const paid = readPaymentFields(found.payment, String(fields.invoice_date ?? invoice.invoice_date ?? '') || null, invoice);
+  if (paid) { Object.assign(fields, paid); filled.paid_at = { value: String(paid.paid_at), level: 'regla' }; }
   const meta = invoice.import_meta && typeof invoice.import_meta === 'object' && !Array.isArray(invoice.import_meta) ? invoice.import_meta as Record<string, unknown> : {};
   fields.import_meta = { ...meta, reading: { ...x.reading, filled } };
   ops.push({ op: 'update', table: 'invoices.invoices', id: invoice.id, ...(invoice.revision !== undefined ? { expectedRevision: invoice.revision } : {}), fields });

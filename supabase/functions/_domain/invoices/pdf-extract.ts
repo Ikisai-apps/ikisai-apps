@@ -7,6 +7,7 @@
 import { fromCents, toCents } from './money.ts';
 import { parseMoney } from './issued-csv.ts';
 import { validateImportDocument, type ImportDocument } from './import-v1.schema.ts';
+import type { PaymentMethod } from './types.ts';
 
 export interface PdfTextItem { str: string; page: number; x: number; y: number; w?: number; h?: number }
 /** Celda de una línea: trozo separado del siguiente por un hueco grande (columnas de una tabla). */
@@ -30,7 +31,11 @@ export interface PartialInvoice {
   withholding: { amount: number; rate: number | null } | null;
   total: number | null;
   iban: string | null;
+  /** FB_2026_027: el documento dice que está pagada (o cómo se paga); `null` si no dice nada. */
+  payment?: ReadPayment | null;
 }
+/** Lo que el documento dice del pago: el método (si lo nombra) y la fecha de pago (si la trae). */
+export interface ReadPayment { method: PaymentMethod | null; paid_at: string | null }
 /** `no_text`: escaneado o foto · `partial`: texto leído, faltan datos · `sufficient`: hay un `ikisai.invoice.v1` completo. */
 export type ReadLevel = 'no_text' | 'partial' | 'sufficient';
 export interface ReadStats { pages: number; items: number; chars: number }
@@ -494,6 +499,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
 
   let iban: string | null = null;
   for (const line of lines) { const m = line.text.match(/\bES\d{2}(?:\s?\d{4}){5}\b/i); if (m && validIban(m[0])) { iban = validIban(m[0]); break; } }
+  const payment = detectPayment(lines.map((l) => l.text));
 
   // Lo encontrado, con o sin factura completa. El nombre solo si sale del documento (no el de la factura pendiente).
   const nameMethod = provenance['invoice.supplier_name'];
@@ -506,6 +512,7 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
     withholding: withholding ? { amount: withholding.v, rate: withholding.rate } : null,
     total: totalCents === null ? null : fromCents(totalCents),
     iban,
+    payment,
   };
   if (missing.includes('fecha') || missing.includes('importes')) {
     return { hasText: true, read: 'partial', found, stats, ok: false, document: null, provenance, missing, warnings, iban };
@@ -555,7 +562,49 @@ export function extractFromPdfText(items: PdfTextItem[], options: PdfExtractOpti
 // Lectura parcial (fase 0, 9-10-2026): estadísticas, texto legible y mensaje honesto
 // ---------------------------------------------------------------------------
 export function emptyPartial(): PartialInvoice {
-  return { supplier_name: null, supplier_tax_id: null, invoice_number: null, invoice_date: null, base: null, vat: [], withholding: null, total: null, iban: null };
+  return { supplier_name: null, supplier_tax_id: null, invoice_number: null, invoice_date: null, base: null, vat: [], withholding: null, total: null, iban: null, payment: null };
+}
+
+// ---------------------------------------------------------------------------
+// Pago (FB_2026_027 y FB_2026_030, decisión del usuario del 13-10-2026)
+// ---------------------------------------------------------------------------
+const fold = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+/** Palabras que dicen que se habla del pago (en esa línea se busca el método). */
+const PAYMENT_CUE = /\b(?:pagad[oa]s?|pago|pagos|pagar|abonad[oa]|cobrad[oa]|liquidad[oa]|forma de pago|medio de pago|metodo de pago|modo de pago|condiciones de pago)\b/;
+/** Que ya está pagada (sin necesidad de método). */
+const PAID = /\b(?:pagad[oa]|abonad[oa]|cobrad[oa])\b|\bimporte (?:pagado|abonado|cobrado)\b/;
+const UNPAID = /\b(?:pendiente de (?:pago|cobro)|no pagad[oa]|a pagar antes)\b/;
+const METHODS: Array<[PaymentMethod, RegExp]> = [
+  ['tarjeta', /\b(?:tarjeta|visa|mastercard|maestro|amex|american express|tpv|datafono|contactless)\b|\*{2,}\s?\d{4}\b/],
+  ['transferencia', /\btransferencia\b/],
+  ['domiciliacion', /\b(?:domiciliacion|domiciliad[oa]|adeudo|recibo bancario|cargo en cuenta|sepa)\b/],
+  ['bizum', /\bbizum\b/],
+  ['efectivo', /\b(?:efectivo|metalico|al contado|contado)\b/],
+];
+/** Señales fuertes de un ticket o recibo pagado aunque la línea no hable de «pago». */
+const STRONG = /\b(?:visa|mastercard|maestro|amex|tpv|datafono|contactless|recibo domiciliado|bizum)\b|\*{2,}\s?\d{4}\b|\bentregado\b.*\befectivo\b/;
+const PAY_DATE = /\b(?:fecha (?:de )?(?:pago|cobro|cargo|abono|operacion|transaccion)|pagad[oa] el|cobrad[oa] el|abonad[oa] el)\b/;
+
+/**
+ * Lo que dice el texto del pago: «pagado», «forma de pago», tarjeta, transferencia, efectivo, domiciliación (y Bizum), con
+ * la fecha de pago si la trae. `null` si no dice nada, o si dice que está pendiente (entonces no se da por leída).
+ */
+export function detectPayment(texts: string[]): ReadPayment | null {
+  const lines = texts.map(fold);
+  if (lines.some((l) => UNPAID.test(l))) return null;
+  let method: PaymentMethod | null = null; let evidence = false; let paidAt: string | null = null;
+  for (const [i, l] of lines.entries()) {
+    const cue = PAYMENT_CUE.test(l); const strong = STRONG.test(l);
+    if (PAID.test(l) || cue || strong) {
+      // El método puede ir en la línea siguiente a «Forma de pago:» (dos columnas o etiqueta encima del valor).
+      const scope = cue && !METHODS.some(([, re]) => re.test(l)) ? `${l} ${lines[i + 1] ?? ''}` : l;
+      const hit = METHODS.find(([, re]) => re.test(scope));
+      if (hit && (cue || strong)) { method ??= hit[0]; evidence = true; }
+      if (PAID.test(l) || /\b(?:forma|medio|metodo|modo) de pago\b/.test(l)) evidence = true;
+    }
+    if (!paidAt && PAY_DATE.test(l)) paidAt = datesIn(texts[i]!)[0] ?? datesIn(texts[i + 1] ?? '')[0] ?? null;
+  }
+  return evidence ? { method, paid_at: paidAt } : null;
 }
 
 /** Páginas con texto, fragmentos y caracteres (sin espacios): el diagnóstico sin contenido. */

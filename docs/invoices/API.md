@@ -1568,3 +1568,41 @@ En «Pendiente de datos» y «Pendiente de revisión», la ficha abre arriba el 
 - **Para no repetir los campos,** «Fiscal y pago» deja de mostrar fecha, total y categoría en las pendientes, y lo que falta para validar lleva a los campos del editor.
 - **En el móvil,** la fila base · tipo · cuota cabe en el ancho (antes la cuota se salía).
 
+
+### 16.14 Ficha compacta y artículos al crear a mano (FB_2026_026, 029, 031 y 032; 13-10-2026)
+- **Ficha:**
+  - las acciones van en una sola fila; en ≤600 px muestran icono y etiqueta corta, con el texto completo como `aria-label` y `title`;
+  - los avisos («Falta: …», «¿Dónde la declaras?») son un bloque corto con los enlaces dentro de la frase.
+- **«Nueva factura» a mano:**
+  - el objeto es opcional; si se deja vacío, se toma del primer artículo, del nombre del archivo o «factura»;
+  - «+ Añadir artículo», también opcional, pide descripción, base sin IVA y tipo, y crea las `invoice_lines` al guardar.
+- **FB_2026_032:** una prueba en 484×686 confirma que los datos se editan en la ficha (#457).
+
+### 16.15 Pago: nunca la fecha del clic (FB_2026_027 y FB_2026_030, 0233; decisión del usuario, 13-10-2026)
+**`invoices.invoices.payment_source`** dice de dónde sale el pago:
+
+| Valor | Cuándo | Fecha de pago |
+|---|---|---|
+| `leido` | El documento dice «pagado», «forma de pago», tarjeta, transferencia, efectivo, domiciliación o Bizum | La fecha de pago del documento o, si no la trae, la de la factura |
+| `sin_confirmar` | El documento no dice nada | La de la factura |
+| `confirmado` | Lo ha dicho una persona | La que indique |
+| `null` | Facturas anteriores a 0233 | Sin cambios |
+
+- **El lector:**
+  - `detectPayment` va en `found.payment` del lector;
+  - si el documento dice «pendiente de pago», no se da por leído;
+  - `readPaymentFields` lo aplica en el relleno, en las importaciones del cliente y, tras `import_v1`, en Drive y en la relectura;
+  - lo `confirmado` o `leido` no se pisa.
+- **El trigger `invoices.payment_default`:**
+  - una factura sin `payment_source`, pendiente y con fecha pasa a «Pagada (sin confirmar)» al crearse o al recibir su primera fecha, también si llega sin red o por la IA;
+  - mientras siga sin confirmar, su fecha de pago sigue a la de la factura.
+- **App:**
+  - lista y ficha muestran «Pagada (sin confirmar)»;
+  - «Confirmar pago» confirma con un toque;
+  - «No está pagada» la deja pendiente y confirmada;
+  - «Marcar pagada» propone la fecha de la factura, nunca hoy;
+  - en la ficha, «Pago» dice método, fecha y «leído del documento».
+- **Corrección de las ya marcadas (`invoices.fix_click_paid_dates`, una vez en la migración):**
+  - en `core.changes`, si el cambio que la marcó pagada puso como fecha de pago el día en que se hizo (hora de Madrid) y sigue siendo esa, pasa a la fecha de la factura y queda `confirmado`;
+  - las demás no se tocan.
+- **Gestoría:** el CSV y el manifest de la entrega las cuentan como pagadas con la fecha de la factura.

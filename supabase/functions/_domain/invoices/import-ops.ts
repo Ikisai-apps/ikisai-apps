@@ -8,6 +8,8 @@ import { slugify } from './filename.ts';
 import type { ImportDocument } from './import-v1.schema.ts';
 import { normalizeName, proposeImport, type ImportFileArg, type ImportOverrides, type ImportProposal } from './import-v1.ts';
 import type { SupplierRow } from './types.ts';
+import { readPaymentFields } from './partial-read.ts';
+import type { ReadPayment } from './pdf-extract.ts';
 
 export interface ImportRowOperation {
   op: 'insert' | 'update';
@@ -27,6 +29,10 @@ export interface ImportOperationsInput {
   overrides?: ImportOverrides;
   files?: ImportFileArg[];
   uuid?: () => string;
+  /** Lo que el documento dice del pago (lector); sin él, el servidor la da por pagada «sin confirmar». */
+  payment?: ReadPayment | null;
+  /** Pago actual de la factura existente: lo dicho por una persona no se pisa. */
+  currentPayment?: { payment_status?: string; payment_source?: string | null } | null;
 }
 
 export function importOperations(input: ImportOperationsInput): { operations: ImportRowOperation[]; proposal: ImportProposal; supplierId: string } {
@@ -76,6 +82,7 @@ export function importOperations(input: ImportOperationsInput): { operations: Im
     totals_delta: r.totals_delta,
     invoice_kind: input.overrides?.invoice_kind === 'rectificativa' ? 'rectificativa' : 'ordinaria',
     rectifies_number: input.overrides?.invoice_kind === 'rectificativa' ? input.overrides.rectifies_number?.trim() || null : null,
+    ...readPaymentFields(input.payment, proposal.invoice_date, input.currentPayment),
   };
   if (input.existing) ops.push({ op: 'update', table: 'invoices.invoices', id: input.invoiceId, expectedRevision: input.existing.revision, fields: invoiceFields });
   else ops.push({ op: 'insert', table: 'invoices.invoices', id: input.invoiceId, fields: invoiceFields });

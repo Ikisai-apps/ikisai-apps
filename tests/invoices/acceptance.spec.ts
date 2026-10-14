@@ -423,14 +423,14 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     const inv = api.rows('invoices.invoices').find((i) => i.invoice_number === 'F-OFF-1')!;
     await context.setOffline(true);
     await page.locator('#invoiceList .row', { hasText: 'Sin Red SL' }).click();
-    await ficha(page).locator('#togglePaid').click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Marcar pagada' }).click();
-    await expect(ficha(page)).toContainText('Pagada');
+    // Importada con fecha: «Pagada (sin confirmar)» (0233); confirmarla es un toque
+    await ficha(page).locator('#confirmPaid').click();
+    await expect(ficha(page).locator('#invPayment')).not.toContainText('sin confirmar');
     api.serverUpdate('invoices.invoices', inv.id, { notes: 'anotado desde el PC' });
     await reconnect(context, page);
     await synced(page);
     const after = api.rows('invoices.invoices').find((i) => i.id === inv.id)!;
-    expect(after).toMatchObject({ payment_status: 'pagada', notes: 'anotado desde el PC' });
+    expect(after).toMatchObject({ payment_status: 'pagada', payment_source: 'confirmado', notes: 'anotado desde el PC' });
     await closeSheet(page);
   });
 
@@ -572,7 +572,7 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     await expect(page.locator('#newInvoice')).toBeHidden();
     await page.locator('#invoiceList .row').first().click();
     await expect(ficha(page)).toBeVisible();
-    for (const id of ['#validateInvoice', '#annulInvoice', '#togglePaid', '#addLine', '#importInto']) await expect(ficha(page).locator(id)).toHaveCount(0);
+    for (const id of ['#validateInvoice', '#annulInvoice', '#togglePaid', '#confirmPaid', '#addLine', '#importInto']) await expect(ficha(page).locator(id)).toHaveCount(0);
     await expect(ficha(page).getByRole('button', { name: 'Asignar a…' })).toHaveCount(0);
     await closeSheet(page);
     await nav(page, 'Gestoría').click();
@@ -2352,6 +2352,69 @@ test('FB_2026_026 · FB_2026_031 · FB_2026_032 (móvil 484×686): artículos op
     await synced(page);
     const row = await eventually(() => api.rows('invoices.invoices').find((i) => i.id === inv.id && i.invoice_number === 'MOV-032' && i.invoice_date === '2026-10-02'));
     expect(row).toBeTruthy();
+  } finally {
+    await context.close();
+  }
+});
+
+test('FB_2026_027 · FB_2026_030 · pago: nunca la fecha del clic; sin confirmar con la fecha de la factura y un toque; la forma de pago del PDF se lee', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 686 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas`);
+    // A mano, con fecha: «Pagada (sin confirmar)» con la fecha de la factura
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    let sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Proveedor Ejemplo S.L.' });
+    await sheet.getByLabel('Fecha').fill('2026-09-03');
+    await sheet.getByLabel('Objeto').fill('pago sin confirmar');
+    await page.locator('#saveInvoice').click();
+    await expect(sheet).toBeHidden();
+    const f = ficha(page);
+    await expect(f.locator('#invPayment')).toContainText('Pagada (sin confirmar) · 3 sept 2026', { timeout: 20_000 });
+    const inv = await eventually(() => api.rows('invoices.invoices').find((i) => i.object === 'pago sin confirmar' && i.payment_source === 'sin_confirmar'));
+    expect(inv).toMatchObject({ payment_status: 'pagada', paid_at: '2026-09-03' });
+    // Un toque la confirma, con la misma fecha
+    await f.locator('#confirmPaid').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_source, { timeout: 20_000 }).toBe('confirmado');
+    expect(api.rows('invoices.invoices').find((i) => i.id === inv.id)).toMatchObject({ payment_status: 'pagada', paid_at: '2026-09-03' });
+    // Pendiente y otra vez pagada: la fecha propuesta es la de la factura, no la de hoy
+    await expect(f.locator('#togglePaid')).toBeVisible({ timeout: 20_000 });
+    await f.locator('#togglePaid').click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_status, { timeout: 20_000 }).toBe('pendiente');
+    await expect(f.locator('#invPayment')).toHaveText('Pendiente de pago', { timeout: 20_000 });
+    await f.locator('#togglePaid').click();
+    await expect(page.locator('#paidAt')).toHaveValue('2026-09-03');
+    await page.getByRole('button', { name: 'Marcar pagada' }).last().click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === inv.id)?.payment_status, { timeout: 20_000 }).toBe('pagada');
+    await closeSheet(page);
+
+    // PDF con «Forma de pago: Tarjeta» leído con «Leer PDF»: pagada con tarjeta, fecha de la factura y «leído»
+    await page.getByRole('button', { name: 'Nueva factura' }).click();
+    sheet = page.getByRole('dialog', { name: 'Nueva factura' });
+    await sheet.locator('#newSupplier').selectOption({ label: 'Frutas Pepe S.L.' });
+    await sheet.getByLabel('Objeto').fill('fruta con tarjeta');
+    await sheet.getByLabel('PDF o fotos').setInputFiles({ name: 'tarjeta.pdf', mimeType: 'application/pdf', buffer: textPdf([
+      ['FRUTAS PEPE S.L.', 40, 800], ['CIF: B12345674', 300, 786],
+      ['Factura nº: PAG-027', 40, 760], ['Fecha factura: 07/09/2026', 300, 760],
+      ['Base imponible', 40, 690], ['100,00 €', 450, 690],
+      ['IVA 21%', 40, 676], ['100,00', 300, 676], ['21,00', 450, 676],
+      ['TOTAL FACTURA', 40, 620], ['121,00 €', 450, 620],
+      ['Forma de pago: Tarjeta', 40, 600],
+    ]) });
+    await page.locator('#saveInvoice').click();
+    const g = ficha(page);
+    await expect(g.locator('#chatgptInvoice')).toBeVisible({ timeout: 20_000 });
+    await g.locator('#chatgptInvoice [data-step="read"]').click();
+    const preview = ficha(page);
+    await expect(preview.locator('#extractionNote')).toContainText('Leído del texto del PDF', { timeout: 30_000 });
+    await preview.locator('#confirmImport').click();
+    const read = await eventually(() => api.rows('invoices.invoices').find((i) => i.invoice_number === 'PAG-027' && i.payment_source === 'leido'));
+    expect(read).toMatchObject({ payment_status: 'pagada', payment_method: 'tarjeta', paid_at: '2026-09-07' });
+    await expect(ficha(page).locator('#invPayment')).toContainText('Pagada · Tarjeta · 7 sept 2026 · leído del documento', { timeout: 20_000 });
   } finally {
     await context.close();
   }
