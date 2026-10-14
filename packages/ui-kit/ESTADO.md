@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.34.0: `createSuggestionSource(client)` sobre las sugerencias de `sync-client` 0.7.0 (lista, aprobar, descartar, retirar, vista previa del lote y errores del contrato con texto claro); `createProposalList` en camelCase como la API (la forma de la 0.33.0 se sigue aceptando) y con detalle asíncrono.
 - v0.33.0: calendario de persona (capas con leyenda, sombreado, notas, panel del día, elegir días, deslizar entre meses; nombre corto solo en el primer día de cada tramo) y cola de propuestas `createProposalList` (revisar y «Mis propuestas»; confirmar siempre). `confirmDialog` admite `body`.
 - v0.32.0: camas con plazas fijas y supletorias (`extra_capacity`), sofá cama y camas en salas; `spaceSeats` suma fijas y supletorias.
 - v0.31.0: árbol de espacios para Booking: `rowActions`, plazas calculadas por camas (`spaceSeats`), «+» con cama en una habitación, fila que no estruja el nombre.

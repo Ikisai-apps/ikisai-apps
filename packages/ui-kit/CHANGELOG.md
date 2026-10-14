@@ -1,5 +1,23 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.34.0 · 14 de octubre de 2026
+
+**Adaptador de sugerencias** (O1; contrato §3.10, `sync-client` 0.7.0).
+
+- **`createSuggestionSource(client, { scope, app, limit, tables, fields })`:** fuente de `createProposalList` sobre `client.suggestions`.
+  - **Lista y recuento:** `list()` y `pendingCount()` (el del servidor).
+  - **Decidir y retirar:** `approve`, `reject` y `withdraw`, que se conectan tal cual a `onApprove`, `onReject` y `onWithdraw`.
+  - **Vista previa:** `renderPreview(item)`, con el antes y después del lote (`previewSuggestion`) en la lista de cambios del kit, con nombres de tabla y campo.
+  - **Errores con texto claro:** `SUGGESTION_NOT_ALLOWED`, `SUGGESTION_UNAVAILABLE`, `TOO_MANY_SUGGESTIONS` y sin red. Los demás llegan con el mensaje del servidor.
+  - También exporta `proposalFromSuggestion`, `changesFromPreview` y `suggestionErrorMessage`.
+- **`createProposalList` en camelCase**, como la API: `createdAt`, `decidedBy`, `decidedAt` y `label`.
+  - La forma de la 0.33.0 (snake_case) se sigue aceptando (`normalizeProposal`).
+  - `renderDetail` puede devolver una promesa: sale «Cargando…» y el resultado se guarda por propuesta.
+  - `source.pendingCount()`, si lo da, manda en el contador de «Pendientes».
+  - El nombre del tipo sale de `label` si `kinds` no lo trae.
+- **Demo:** la cola usa el adaptador con un cliente simulado, sin red. Los platos y las solicitudes enseñan la vista previa del lote.
+- **Pruebas:** `v40` amplía con el adaptador, la vista previa, la forma antigua y «ya no está pendiente».
+
 ## 0.33.0 · 13 de octubre de 2026
 
 **Calendario de persona y cola de propuestas** (O1, O2 y O4 de `ampliacion/RECURSOS.md`; propuesta aprobada por el usuario el 13-10-2026).
