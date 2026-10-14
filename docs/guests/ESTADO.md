@@ -67,6 +67,8 @@
 
 - 2026-10-13 · Pruebas de caracterización antes de O4 (`tests/guests/caracterizacion.spec.ts`, RECURSOS.md §17.1): entrada y enlaces directos, cambio de retiro, alojamiento, menú y horario. Preparación de O4 (sin programar) en `coordinacion/guests/o4/O4_PREPARACION.md`.
 
+- 2026-10-14 · Supletorias activadas en la elección de cama (BG13, Booking #491): marca «Supletoria» y recuento aparte (`extra_total` y `extra_free`); prueba real en `modules.spec.ts`.
+
 ## Pendiente
 
 - Alta de infraestructura de Core (C3): publicación, Pages y `guests.ikisai.com` con `ven.ikisai.com`.

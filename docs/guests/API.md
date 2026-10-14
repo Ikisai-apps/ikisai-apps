@@ -468,6 +468,7 @@ Detalles de la implementación:
   - **Las respuestas se guardan** desde que entró K6 del núcleo (#334): una acción de Organizers invocada desde Guests escribe en `organizers.*`.
 - **Navegación con la barra del kit 0.21 (U5):** `createAppShell({ maxNav: 5 })` y `setNav(nav, more)` por persona; los días, con `createDayTabs`. Sustituye a la barra propia y a la pantalla «Más».
 - **Fotos de los platos** (Food #332): miniatura por `portal-files`.
+- **Supletorias** (BG13, Booking #491, §25): las activadas por el organizador salen en la elección de cama con la marca «Supletoria» y su recuento aparte; las no activadas no salen.
 
 **Pruebas:**
 - `tests/guests/api.test.ts` (8);
