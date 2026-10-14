@@ -322,8 +322,9 @@ export function createApp(config: AppConfig): AppHandler {
       // Portales: canje del enlace personal por una sesión propia y el pase de sesión única (contrato §3.6).
       if (path === '/api/v1/auth/link' && request.method === 'POST') {
         const body = await readJson();
-        const user = await resolvePortalLink(supabase, config.app, (body as any).token);
-        const tokens = await sso.sessionFor(user);
+        const { userId: user, grant } = await resolvePortalLink(supabase, config.app, (body as any).token);
+        // `grant`: el ámbito del enlace, para entrar por él cuando la cuenta tiene varios (C10 de Guests).
+        const tokens = { ...(await sso.sessionFor(user)), grant };
         const pass = await sso.issueForUser(user).catch(() => null);
         return json(pass ? withHeaders(tokens, { 'Set-Cookie': passCookie(pass, origin) }) : tokens);
       }

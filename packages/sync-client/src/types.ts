@@ -75,6 +75,8 @@ export interface Session {
   token: string;
   refreshToken: string;
   expiresAt: number; // epoch segundos
+  /** Solo en `loginWithLink` (0.7.1): el ámbito del enlace canjeado (p. ej. `{reservation_id, guest_id}`). No se guarda. */
+  grant?: unknown;
 }
 
 /** Conflicto que requiere decisión humana (campos solapados). */
