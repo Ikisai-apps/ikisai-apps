@@ -311,6 +311,22 @@ export function createCalendar(options: CalendarOptions): Calendar {
 
   // --- Elegir días ------------------------------------------------------------------------------------------
   const isAllowed = (day: DayKey) => options.select?.allowed?.(day) ?? true;
+  /** Pantalla táctil sin ratón (Android, iPhone): pistas de toque en vez de teclado. */
+  const touchOnly = () => typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+  function hint(): string {
+    if (!touchOnly()) return kt('Con teclado: Intro en el primero, flechas e Intro en el último. Esc cancela.');
+    return options.swipe !== false && view === 'month' ? kt('Desliza a los lados para cambiar de mes.') : '';
+  }
+  /** En el móvil, «Nueva estancia» puede estar lejos del calendario: lo trae a la vista si el día no se ve. */
+  function reveal(): void {
+    const cell = grid.querySelector<HTMLElement>(`.cal-day[data-day="${focused}"]`);
+    if (!cell || typeof innerHeight !== 'number') return;
+    const r = cell.getBoundingClientRect();
+    const covered = bar && !bar.hidden ? bar.getBoundingClientRect().height : 0;
+    if (r.top >= 0 && r.bottom <= innerHeight - covered) return;
+    const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cell.scrollIntoView({ block: 'center', behavior: calm ? 'auto' : 'smooth' });
+  }
   function rangeOf(): CalendarRange | null {
     if (!selecting?.from) return null;
     const end = selecting.to ?? selecting.hover ?? selecting.from;
@@ -335,7 +351,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     const issue = complete && r ? problem(r) : null;
     barText.textContent = !selecting.from ? kt('Toca el primer día') : !complete ? kt('{day} · ahora toca el último día', { day: shortDay(selecting.from) }) : rangeText(r!);
     const n = r ? daysBetween(r.from, r.to) + 1 : 0;
-    barSub.textContent = issue ?? (complete && r ? (options.select?.describe?.(r) ?? (n === 1 ? kt('1 día') : kt('{n} días', { n: String(n) }))) : kt('Con teclado: Intro en el primero, flechas e Intro en el último. Esc cancela.'));
+    barSub.textContent = issue ?? (complete && r ? (options.select?.describe?.(r) ?? (n === 1 ? kt('1 día') : kt('{n} días', { n: String(n) }))) : hint());
     barSub.classList.toggle('error', !!issue);
     saveBtn.disabled = !complete || !!issue || saving;
   }
@@ -391,8 +407,8 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (initial.from) { focused = initial.from; cursor = initial.from; }
     announce(initial.from ? kt('Cambia el primer día y el último, y guarda.') : kt('Elige el primer día y luego el último.'));
     const r = range();
-    if (target < r.from || target > r.to) void load().then(() => focusDay(focused));
-    else { markRange(); paintBar(); focusDay(focused); }
+    if (target < r.from || target > r.to) void load().then(() => { focusDay(focused); reveal(); });
+    else { markRange(); paintBar(); focusDay(focused); reveal(); }
   }
   function cancelSelect(saved = false): void {
     if (!selecting) return;
@@ -518,6 +534,8 @@ export function createCalendar(options: CalendarOptions): Calendar {
   }
 
   // --- Arrastre (ratón) y deslizar (táctil) ---------------------------------------------------------------
+  // En el móvil se desliza también mientras se eligen días (estancias que cruzan de mes). `touch-action: pan-y`
+  // en la rejilla (CSS) evita que Android cancele el gesto horizontal con `pointercancel`.
   let suppressClick = false;
   let drag: { start: DayKey; moved: boolean } | null = null;
   let swipe: { x: number; y: number } | null = null;
@@ -526,7 +544,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (e.pointerType === 'mouse') {
       const day = dayAt(e.target);
       if (selecting && day && e.button === 0) drag = { start: day, moved: false };
-    } else if (options.swipe !== false && !selecting) swipe = { x: e.clientX, y: e.clientY };
+    } else if (options.swipe !== false && view === 'month') swipe = { x: e.clientX, y: e.clientY };
   });
   grid.addEventListener('pointermove', (e) => {
     if (!selecting) return;
@@ -536,7 +554,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
       if (!drag.moved) { drag.moved = true; selecting.from = drag.start; selecting.to = null; }
       selecting.hover = day;
       markRange(); paintBar();
-    } else if (!drag && selecting.from && !selecting.to && selecting.hover !== day) {
+    } else if (!drag && e.pointerType === 'mouse' && selecting.from && !selecting.to && selecting.hover !== day) {
       selecting.hover = day;
       markRange();
     }
@@ -552,7 +570,11 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (swipe) {
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
       swipe = null;
-      if (Math.abs(dx) > 60 && Math.abs(dy) < 40) move(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 60 && Math.abs(dy) < 40) {
+        suppressClick = true;
+        setTimeout(() => { suppressClick = false; }, 0);
+        move(dx < 0 ? 1 : -1);
+      }
     }
   };
   document.addEventListener('pointerup', endPointer);

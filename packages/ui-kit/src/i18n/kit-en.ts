@@ -391,6 +391,7 @@ export const KIT_EN: Dictionary = {
   'Capas': 'Layers',
   'Comentario (opcional)': 'Comment (optional)',
   'Con teclado: Intro en el primero, flechas e Intro en el último. Esc cancela.': 'With the keyboard: Enter on the first, arrows and Enter on the last. Esc cancels.',
+  'Desliza a los lados para cambiar de mes.': 'Swipe sideways to change month.',
   'Del {from} al {to}': 'From {from} to {to}',
   'Día elegido': 'Chosen day',
   'Día sombreado': 'Shaded day',
