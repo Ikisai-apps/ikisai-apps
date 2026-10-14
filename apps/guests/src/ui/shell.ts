@@ -2,7 +2,7 @@
  * Cabecera del kit con el lanzador (sesión única) y «Ayuda y sugerencias», idioma, rutas del portal, estado de guardado
  * y conflictos (API.md §9). Guests por persona (O4a, decisión del usuario del 13-10-2026): barra «Calendario · Retiros ·
  * Más»; en «Retiros», el selector de persona, las pestañas de retiros y las secciones de cada uno. Rutas:
- * - `#/`: el retiro de entrada (el del enlace, el que está en curso o el próximo) o, si no hay, el calendario;
+ * - `#/`: el retiro de entrada (el del enlace con el que se entró, el que está en curso o el próximo) o, si no hay, el calendario;
  * - `#/calendario`: el calendario de la persona con sus retiros;
  * - `#/p/<guestId>[/datos|/alimentacion|/firma|/info|/programa|/menu|/alojamiento|/materiales|/preguntas]`: una persona
  *   en un retiro, como antes (los enlaces directos siguen valiendo);
@@ -43,6 +43,8 @@ export interface ShellContext {
   onLogout(): void;
   /** Para el aviso de actualización: hay cambios sin confirmar. */
   setBusy(busy: () => boolean): void;
+  /** Ficha del enlace con el que se entró (C10): es el retiro de entrada. */
+  linkedGuestId?: string | null;
 }
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -282,7 +284,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     if (!grant && !(familyRetreat && familyRetreat.entries.length > 1)) {
       // `#/` o una ruta que ya no vale: el retiro de entrada o, si no hay, el calendario.
       if (familyRetreat) { navigate(hrefFor(familyRetreat, (fm![2]?.toLowerCase() ?? 'inicio') as Section, 'all'), true); return; }
-      const target = entryRetreat(r, selection, today);
+      const target = entryRetreat(r, selection, today, ctx.linkedGuestId);
       navigate(target ? hrefFor(target) : CALENDAR, true);
       return;
     }

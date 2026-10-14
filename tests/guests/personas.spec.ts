@@ -1,6 +1,6 @@
 /**
  * Guests por persona, O4a (RECURSOS.md §17; decisión del usuario del 13-10-2026), contra la API real sobre PGlite:
- * - **regla de entrada**: el retiro en curso; si no, el próximo; si no, el calendario;
+ * - **regla de entrada**: el retiro del enlace (C10); si no, el que está en curso; si no, el próximo; si no, el calendario;
  * - **calendario** con los retiros de la persona: tocar uno abre su pestaña, y «Retiros» vuelve al último visto;
  * - **pestañas de retiros** que conservan la sección (Programa en uno → Programa en otro);
  * - **la familia junta** («Todos»): retiros de todos con el nombre de a quién toca, la cama de cada uno y el selector.
@@ -51,14 +51,19 @@ async function capture(page: Page, name: string): Promise<void> {
   if (CAPTURAS) await page.screenshot({ path: path.join(CAPTURAS, `${PREFIJO}-${name}.png`), fullPage: true });
 }
 
-test('O4a · entrada en el retiro en curso; el calendario abre cualquier retiro y «Retiros» vuelve al último visto', async ({ page }) => {
+test('O4a · entrada por el retiro del enlace y, sin enlace, en el que está en curso; el calendario abre cualquier retiro y «Retiros» vuelve al último visto', async ({ page }) => {
   const curso = await api.reservation({ title: 'Retiro en curso', start: day(-1), end: day(1) });
   const proximo = await api.reservation({ title: 'Retiro próximo', start: day(30), end: day(32) });
   const a = await api.guest(curso.event, { first_name: 'Lola', last_name_1: 'Sanz' });
   const b = await api.guest(proximo.event, { first_name: 'Lola', last_name_1: 'Sanz' });
   await api.guestLink(curso.id, a, 'Lola', 'lola@example.invalid');
-  // El enlace es del próximo, pero hoy no se sabe de qué entrada es un enlace (petición a Core): manda el que está en curso.
+  // Por enlace, ese retiro (C10: `loginWithLink` devuelve su `grant`), aunque haya otro en curso.
   await page.goto(`${baseURL}/i/${await api.guestLink(proximo.id, b, 'Lola', 'lola@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  await expect(page).toHaveURL(new RegExp(`#/p/${b}$`));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro próximo');
+  // Sin enlace (la sesión guardada al volver a abrir la app), el que está en curso.
+  await page.goto(`${baseURL}/`);
   await page.locator('#privacyOk').click();
   await expect(page).toHaveURL(new RegExp(`#/p/${a}$`));
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro en curso');
@@ -78,7 +83,6 @@ test('O4a · entrada en el retiro en curso; el calendario abre cualquier retiro 
   await expect(page.locator('#calendarList a').nth(1)).toContainText('Próximo');
   await capture(page, 'calendario');
   await page.locator('#calendarList a', { hasText: 'Retiro próximo' }).click();
-  await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro próximo');
 
   // Desde el calendario, «Retiros» vuelve al último visto; tocar la barra del calendario abre su pestaña.
@@ -90,7 +94,7 @@ test('O4a · entrada en el retiro en curso; el calendario abre cualquier retiro 
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro en curso');
 });
 
-test('O4a · solo retiros pasados: se entra en el calendario y «Retiros» abre el último', async ({ page }) => {
+test('O4a · solo retiros pasados: el enlace abre su retiro («Cuéntanos qué tal»); sin enlace, el calendario, y «Retiros» abre el último', async ({ page }) => {
   const viejo = await api.reservation({ title: 'Retiro de hace un año', start: day(-400), end: day(-398) });
   // Terminó ayer: su enlace sigue valiendo unos días (los de retiros más viejos ya han caducado).
   const reciente = await api.reservation({ title: 'Retiro de esta semana', start: day(-3), end: day(-1) });
@@ -98,10 +102,14 @@ test('O4a · solo retiros pasados: se entra en el calendario y «Retiros» abre 
   const b = await api.guest(reciente.event, { first_name: 'Pau' });
   await api.guestLink(viejo.id, a, 'Pau', 'pau@example.invalid');
   await page.goto(`${baseURL}/i/${await api.guestLink(reciente.id, b, 'Pau', 'pau@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  await expect(page).toHaveURL(new RegExp(`#/p/${b}$`));
+  await expect(page.locator('#tellUs')).toBeVisible();
+  // Sin enlace (al volver a abrir la app), ningún retiro en curso ni próximo: el calendario.
+  await page.goto(`${baseURL}/`);
   await expect(page).toHaveURL(/#\/calendario$/);
   await expect(page.locator('#calendarList a')).toHaveCount(2);
   await bar(page, 'Retiros').click();
-  await page.locator('#privacyOk').click();
   await expect(page.locator('#retreatTitle')).toHaveText('Retiro de esta semana');
   await expect(page.locator('#after')).toBeVisible();
 });
