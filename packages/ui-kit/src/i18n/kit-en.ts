@@ -436,4 +436,12 @@ export const KIT_EN: Dictionary = {
   'Aprobada': 'Approved',
   'Descartada': 'Discarded',
   'Retirada': 'Withdrawn',
+  'No tienes permiso para hacer esto con esta propuesta.': 'You don’t have permission to do this with this suggestion.',
+  'Esta propuesta ya no está pendiente.': 'This suggestion is no longer pending.',
+  'Hay demasiadas propuestas tuyas pendientes; espera a que se revisen.': 'You have too many pending suggestions; wait until they are reviewed.',
+  'Sin conexión: las propuestas necesitan red.': 'Offline: suggestions need a connection.',
+  'No': 'No',
+  'Sin cambios que enseñar.': 'No changes to show.',
+  'No se ha podido ver el cambio: {message}': 'Couldn’t show the change: {message}',
+  'No se ha podido cargar el detalle: {message}': 'Couldn’t load the details: {message}',
 };
