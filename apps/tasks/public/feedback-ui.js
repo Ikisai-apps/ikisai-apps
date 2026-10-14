@@ -64,7 +64,7 @@ function screenMark(){return SCREEN_MARKS[state.view]||OTHER_SCREEN}
 const MENU_MARKS={
   projects:{feedbackId:'tasks.menu.proyectos',label:'Proyectos'},tasks:{feedbackId:'tasks.menu.tareas',label:'Todas las tareas'},filters:{feedbackId:'tasks.menu.filtros',label:'Filtros'},
   views:{feedbackId:'tasks.menu.vistas',label:'Vistas guardadas'},archive:{feedbackId:'tasks.menu.archivados',label:'Archivados'},trash:{feedbackId:'tasks.menu.papelera',label:'Papelera'},
-  home:{feedbackId:'tasks.menu.inicio',label:'Inicio'},mine:{feedbackId:'tasks.menu.mis_tareas',label:'Mis tareas'},labels:{feedbackId:'tasks.menu.etiquetas',label:'Etiquetas'},spaces:{feedbackId:'tasks.menu.espacios',label:'Espacios'},
+  home:{feedbackId:'tasks.menu.inicio',label:'Inicio'},mine:{feedbackId:'tasks.menu.mis_tareas',label:'Mis tareas'},labels:{feedbackId:'tasks.menu.etiquetas',label:'Etiquetas'},spaces:{feedbackId:'tasks.menu.espacios',label:'Espacios'},zonesToSpaces:{feedbackId:'tasks.menu.zonas_a_espacios',label:'Pasar las zonas a espacios'},
   areas:{feedbackId:'tasks.menu.areas',label:'Áreas de trabajo'},triage:{feedbackId:'tasks.menu.por_clasificar',label:'Por clasificar'},
   purchases:{feedbackId:'tasks.menu.compras',label:'Solicitudes de compra'},supplies:{feedbackId:'tasks.menu.suministros',label:'Suministros'},plans:{feedbackId:'tasks.menu.planes',label:'Planes de compra'},
   import:{feedbackId:'tasks.menu.importar_json',label:'Importar JSON'},export:{feedbackId:'tasks.menu.exportar_json',label:'Exportar JSON'},csvImport:{feedbackId:'tasks.menu.importar_csv',label:'Importar CSV'},

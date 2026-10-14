@@ -1523,6 +1523,13 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
   - **Texto legible:** lleva «Espacio:».
   - La caracterización se pasa también en este modo (`tests/tasks/zonas-espacios.spec.ts`).
 - **2c:** la copia portable y el CSV con espacios (`import_rows` de SQL solo admite hoy sus diez tablas).
-- **3:** vista previa y botón «Pasar las zonas a espacios».
+- **3 (hecha):** vista previa y botón, solo para la propietaria con acceso a todo (`spaces-ui.js`).
+  - **Ida:** menú «Organización» › «Pasar las zonas a espacios», mientras haya familia de zona y `zone_source = 'labels'`.
+    - La hoja enseña la vista previa (`read/tasks.zones_preview`): recuentos, quién se queda sin espacio, cada zona con su espacio, las que se quitan y las que faltan por resolver.
+    - Una zona por resolver bloquea el botón hasta marcarla «Quitar» (`remove`). Al marcarla, la vista previa se vuelve a pedir.
+    - El botón llama a `zones/to-spaces`, sincroniza y la app pasa sola a modo espacios.
+  - **Vuelta:** «Volver a las zonas…», al pie de la pantalla «Espacios», llama a `zones/to-labels`.
+    - Si hay espacios que no vienen de ninguna zona (`lost`), los lista y pide «Entendido: quitarlos» (`dropUnmapped`).
+  - **Pruebas:** `tests/tasks/zonas-boton.spec.ts`.
 
 **Arreglo tras la vista previa real (migración `0323`):** cada zona cuenta todos sus usos, no solo aquellos en los que es la más honda, y dice en `withoutSpace` cuántas tareas y proyectos se quedarían sin ningún espacio (el total va en `counts.withoutSpace`). Una zona sin espacio que no deja a nadie sin espacio, como «Exteriores» usada siempre con una hija, sale en `removed` con `reason: 'covered'`, y la ida la quita sola. Las marcadas por la propietaria salen con `'marked'`. Solo es dudosa, y bloquea la ida, la que deja a alguien sin espacio.

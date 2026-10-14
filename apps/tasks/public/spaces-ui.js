@@ -139,3 +139,58 @@ render=function(){const result=renderBeforeSpaces();const host=document.getEleme
       if(!spaceTree)spaceTree=IkisaiKit.createSpaceTree({source,permissions:{edit:canEdit(),structure:Sync.actor?.role==='owner'&&canEdit()},label:'Espacios',feedbackId:'tasks.espacios.arbol',container:spaceSheets,storageKey:'tasks'});
       host.append(spaceTree.element)}}
   return result};
+
+/* --- PR 3 · «Pasar las zonas a espacios» y «Volver a las zonas» (API.md §30) -------------------------------------------
+   Solo la propietaria con acceso a todo. Primero la vista previa (`read/tasks.zones_preview`): qué espacio recibe cada zona,
+   cuáles se quitan y cuáles faltan por resolver (bloquean hasta marcarlas «Quitar» o hasta que Recursos les dé espacio). Luego el botón
+   (`zones/to-spaces`). La vuelta atrás (`zones/to-labels`) está al pie de la pantalla «Espacios». */
+function canMoveZones(){return Sync.actor?.role==='owner'&&Sync.actor.scopes==='*'&&!Sync.secondary}
+function hasZoneFamily(){for(const a of state.tabs||[])for(const f of a.families||[])if(!f.archived&&String(f.name||'').normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase()==='zona: espacio')return true;return false}
+const ZONE_REASON={no_space:'sin espacio',several_spaces:'varios espacios dicen venir de ella',space_inactive:'su espacio está archivado'};
+const plural=(n,one,many)=>`${n} ${n===1?one:many}`;
+function usesText(x){return [x.tasks?plural(x.tasks,'tarea','tareas'):'',x.projects?plural(x.projects,'proyecto','proyectos'):''].filter(Boolean).join(' y ')||'sin uso'}
+function zoneError(e){return e?.details?.message||e?.message||'No se ha podido hacer.'}
+function pendingWork(){if(Sync.record.queue.length||Sync.busy){toast('Sincroniza los cambios pendientes antes.');return true}return false}
+const navigationGroupsBeforeZones=navigationGroups;
+navigationGroups=function(){const groups=navigationGroupsBeforeZones();if(spacesMode()||!canMoveZones()||!hasZoneFamily())return groups;const org=groups.find(g=>g.id==='organize');if(org)org.items.push(['zonesToSpaces','Pasar las zonas a espacios','space','action']);return groups};
+const topActionBeforeZones=handleTopAction;
+handleTopAction=function(action){if(action==='zonesToSpaces')return zonesSheet();return topActionBeforeZones(action)};
+async function zonesSheet(remove=[]){if(!canMoveZones())return toast('Solo la propietaria con acceso a todo puede hacerlo.');if(pendingWork())return;
+  openSheet('<h2 class="sheettitle">Pasar las zonas a espacios</h2><p>Preparando la vista previa…</p>');
+  let out;try{out=await api('read/tasks.zones_preview',{method:'POST',body:JSON.stringify({remove})})}catch(e){openSheet(`<h2 class="sheettitle">Pasar las zonas a espacios</h2><p>${esc(zoneError(e))}</p>`);return}
+  if(out.source==='spaces'){closeSheet();toast('Las zonas ya son espacios.');return render()}
+  const c=out.counts||{},doubtful=out.doubtful||[],ready=!doubtful.length;
+  const target=m=>spaceById(m.spaceId)?spaceShort(m.spaceId):m.spaceName;
+  openSheet(`<h2 class="sheettitle">Pasar las zonas a espacios</h2>
+    <p class="subtitle">Las zonas («Zona: Espacio») pasan a ser los espacios de la casa, los mismos de las demás apps. Las chips dirán «Albergue › Hab 3». Se puede deshacer desde «Espacios».</p>
+    <div class="notice zonecounts">${esc(plural(c.tasks||0,'tarea','tareas'))} y ${esc(plural(c.projects||0,'proyecto','proyectos'))} recibirán su espacio · ${esc(plural(c.views||0,'vista guardada se adapta','vistas guardadas se adaptan'))} · ${c.withoutSpace?`<strong>${esc(plural(c.withoutSpace,'se queda','se quedan'))} sin espacio</strong>`:'nadie se queda sin espacio'}</div>
+    ${doubtful.length?`<h3>Por resolver (${doubtful.length})</h3><p class="small muted">Márcala para quitarla, o pide que se cree su espacio en Recursos (que nombre esta zona como origen) y vuelve a abrir la vista previa.</p><div class="zonelist">${doubtful.map(d=>`<label class="zoneitem doubtful"><input type="checkbox" data-zone-remove="${esc(d.labelId)}" data-feedback-id="tasks.zonas.quitar" data-feedback-label="Quitar zona"><span><strong>${esc(d.name)}</strong> · ${esc(ZONE_REASON[d.reason]||d.reason)} · ${esc(usesText(d))}${d.sample?.length?` <span class="muted">(${esc(d.sample.join(', '))})</span>`:''}</span><span class="zoneaction">Quitar</span></label>`).join('')}</div>`:''}
+    ${(out.removed||[]).length?`<h3>Se quitan (${out.removed.length})</h3><div class="zonelist">${out.removed.map(r=>`<label class="zoneitem">${r.reason==='marked'?`<input type="checkbox" checked data-zone-remove="${esc(r.labelId)}" data-feedback-id="tasks.zonas.quitar" data-feedback-label="Quitar zona">`:''}<span><strong>${esc(r.name)}</strong> · ${esc(usesText(r))} · ${r.withoutSpace?esc(plural(r.withoutSpace,'se queda','se quedan'))+' sin espacio':r.reason==='covered'?'todas tienen otra zona con espacio':'nadie se queda sin espacio'}</span></label>`).join('')}</div>`:''}
+    <h3>Cada zona y su espacio (${(out.mapped||[]).length})</h3><div class="zonelist">${(out.mapped||[]).map(m=>`<div class="zoneitem"><span><strong>${esc(m.name)}</strong> → ${esc(target(m))} ${m.tasks||m.projects?`<span class="muted">· ${esc(usesText(m))}</span>`:''}</span></div>`).join('')||'<p class="small muted">Ninguna.</p>'}</div>
+    <div class="actions"><button class="ghost" id="zonesCancel" data-feedback-id="tasks.zonas.cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="zonesApply" ${ready?'':'disabled'} data-feedback-id="tasks.zonas.aplicar" data-feedback-label="Pasar las zonas a espacios">Pasar las zonas a espacios</button></div>
+    ${ready?'':'<p class="small muted">Resuelve antes las que faltan.</p>'}`);
+  document.getElementById('zonesCancel').onclick=()=>closeSheet();
+  document.querySelectorAll('[data-zone-remove]').forEach(b=>b.onchange=()=>zonesSheet([...document.querySelectorAll('[data-zone-remove]:checked')].map(x=>x.dataset.zoneRemove)));
+  const apply=document.getElementById('zonesApply');apply.onclick=async()=>{if(pendingWork())return;apply.disabled=true;apply.textContent='Pasando…';
+    try{const done=await api('zones/to-spaces',{method:'POST',body:JSON.stringify({requestId:uid('req-'),remove})});closeSheet();const n=done.counts||{};
+      toast(`Hecho: ${plural(n.taskSpaces||0,'tarea','tareas')} y ${plural(n.projectSpaces||0,'proyecto','proyectos')} con su espacio.`);await syncNow();render()}
+    catch(e){toast(zoneError(e));zonesSheet(remove)}}}
+async function spacesToZonesSheet(drop=false){if(!canMoveZones())return;if(pendingWork())return;
+  openSheet('<h2 class="sheettitle">Volver a las zonas</h2><p>Preparando…</p>');
+  let out;try{out=await api('read/tasks.zones_preview',{method:'POST',body:'{}'})}catch(e){openSheet(`<h2 class="sheettitle">Volver a las zonas</h2><p>${esc(zoneError(e))}</p>`);return}
+  if(out.source!=='spaces'){closeSheet();return render()}
+  const c=out.counts||{},lost=out.lost||[];
+  openSheet(`<h2 class="sheettitle">Volver a las zonas</h2>
+    <p class="subtitle">Las zonas vuelven a ser etiquetas de «Zona: Espacio», con lo que tengan ahora ${esc(plural(c.tasks||0,'tarea','tareas'))} y ${esc(plural(c.projects||0,'proyecto','proyectos'))}. Los espacios siguen en Recursos para las demás apps.</p>
+    ${lost.length?`<h3>Se perderían (${lost.length})</h3><p class="small muted">Estos espacios no vienen de ninguna zona: al volver, sus tareas y proyectos se quedan sin ellos.</p><div class="zonelist">${lost.map(l=>`<div class="zoneitem"><span><strong>${esc(l.name||'')}</strong> · ${esc(usesText(l))}</span></div>`).join('')}</div><label class="zoneitem"><input type="checkbox" id="zonesDrop" ${drop?'checked':''} data-feedback-id="tasks.espacios.volver.perder" data-feedback-label="Aceptar perderlos"><span>Entendido: quitarlos</span></label>`:''}
+    <div class="actions"><button class="ghost" id="zonesBackCancel" data-feedback-id="tasks.espacios.volver.cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="danger" id="zonesBackApply" ${lost.length&&!drop?'disabled':''} data-feedback-id="tasks.espacios.volver.aplicar" data-feedback-label="Volver a las zonas">Volver a las zonas</button></div>`);
+  document.getElementById('zonesBackCancel').onclick=()=>closeSheet();
+  const check=document.getElementById('zonesDrop');if(check)check.onchange=()=>{document.getElementById('zonesBackApply').disabled=!check.checked};
+  const apply=document.getElementById('zonesBackApply');apply.onclick=async()=>{if(pendingWork())return;apply.disabled=true;apply.textContent='Volviendo…';
+    try{await api('zones/to-labels',{method:'POST',body:JSON.stringify({requestId:uid('req-'),dropUnmapped:!!check?.checked})});closeSheet();toast('Las zonas vuelven a ser etiquetas.');state.view='labels';await syncNow();render()}
+    catch(e){toast(zoneError(e));spacesToZonesSheet(!!check?.checked)}}}
+const mainBeforeZones=main;
+main=function(){const html=mainBeforeZones();if(state.view!=='spaces'||!canMoveZones()||!spacesMode())return html;
+  return html.replace(/<\/main>$/,'<div class="catalog-actions"><button class="ghost" id="spacesToZones" data-feedback-id="tasks.espacios.volver" data-feedback-label="Volver a las zonas">Volver a las zonas…</button></div></main>')};
+const bindBeforeZones=bind;
+bind=function(){bindBeforeZones();const back=document.getElementById('spacesToZones');if(back)back.onclick=()=>spacesToZonesSheet()};
