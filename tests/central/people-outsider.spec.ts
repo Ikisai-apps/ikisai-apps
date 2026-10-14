@@ -19,7 +19,7 @@ let api: CentralTestServer;
 let server: PreviewServer;
 let baseURL: string;
 let beaUser: string;
-const ids = { ana: crypto.randomUUID(), bea: crypto.randomUUID(), ciro: crypto.randomUUID(), eva: crypto.randomUUID(), gil: crypto.randomUUID(), fon: crypto.randomUUID() };
+const ids = { ana: crypto.randomUUID(), bea: crypto.randomUUID(), ciro: crypto.randomUUID(), eva: crypto.randomUUID(), gil: crypto.randomUUID(), hugo: crypto.randomUUID(), fon: crypto.randomUUID() };
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
@@ -31,6 +31,7 @@ test.beforeAll(async () => {
     person(ids.ciro, 'Ciro Ficticio', { relation: 'colaborador', base_role: 'otro', house_level: 'outsider', active: false, position: 3 }),
     person(ids.eva, 'Eva Ficticia', { relation: 'otro', base_role: 'otro', position: 4 }),
     person(ids.gil, 'Gil Ficticio', { relation: 'otro', base_role: 'otro', position: 5 }),
+    person(ids.hugo, 'Hugo Ficticio', { relation: 'otro', base_role: 'otro', position: 6 }),
     { op: 'insert', table: 'central.trades', id: ids.fon, fields: { name: 'Fontanería' } },
     { op: 'insert', table: 'central.person_trades', id: crypto.randomUUID(), fields: { person_id: ids.bea, trade_id: ids.fon, level: 1 } },
   ] } });
@@ -142,7 +143,7 @@ test('outsider · lista con sus accesos, ficha y Accesos con lo que da el nivel,
   await expect.poll(() => memberships(beaUser)).toEqual(['tasks:reader']);
 });
 
-test('outsider · convertir sin cuenta y convertir dándole cuenta en el mismo paso', async ({ page }) => {
+test('outsider · convertir sin cuenta, y dándole cuenta en el mismo paso con y sin otros accesos', async ({ page }) => {
   await login(page);
   // Sin cuenta: se permite, con el aviso.
   await page.goto(`${baseURL}/#/personas/${ids.eva}`);
@@ -167,4 +168,18 @@ test('outsider · convertir sin cuenta y convertir dándole cuenta en el mismo p
   const gil = (await personRow(ids.gil)).u!;
   expect(gil).toBeTruthy();
   await expect.poll(() => memberships(gil)).toEqual(['booking:reader', 'guests:editor', 'tasks:outsider']);
+
+  // Sin otros accesos (P9 del núcleo, #506): se crea solo la cuenta, con el nombre de la ficha; lo demás lo da el nivel.
+  await page.goto(`${baseURL}/#/personas/${ids.hugo}`);
+  await page.locator('#convertOutsider').click();
+  await page.locator('#co-email').fill('hugo-outsider@example.invalid');
+  await page.locator('#convertSubmit').click();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  await page.getByLabel('La he guardado en un lugar seguro').check();
+  await page.getByRole('button', { name: 'Hecho' }).click();
+  await expect.poll(async () => (await personRow(ids.hugo)).l).toBe('outsider');
+  const hugo = (await personRow(ids.hugo)).u!;
+  expect(hugo).toBeTruthy();
+  await expect.poll(() => memberships(hugo)).toEqual(['guests:editor', 'tasks:outsider']);
+  expect((await api.app.t.db.query<{ n: string }>(`select display_name as n from core.profiles where user_id = $1`, [hugo])).rows[0]?.n).toBe('Hugo Ficticio');
 });
