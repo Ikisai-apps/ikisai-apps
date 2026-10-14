@@ -123,9 +123,9 @@ class Fault extends Error {
 const DEFAULT_TABLES: Record<string, string[]> = {
   'food.recipes': ['name', 'public_name', 'public_description', 'category', 'base_servings', 'method', 'conservation', 'freezable', 'regeneration',
     'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps', 'quick'],
-  'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active'],
+  'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active', 'item_id'],
   'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
-  'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes'],
+  'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes', 'item_id'],
   'food.recipe_equipment': ['recipe_id', 'equipment_id', 'quantity_required', 'notes'],
   'food.menus': ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
     'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared', 'house_servings'],
@@ -136,6 +136,13 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'food.shopping_list_items': ['shopping_list_id', 'ingredient_id', 'required_quantity', 'unit', 'stock_quantity', 'purchase_quantity', 'supplier', 'status',
     'manual_override', 'manual', 'notes'],
   'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
+  // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
+  'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
+    'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
+  'resources.item_units': ['item_id', 'unit', 'factor', 'supplier_id'],
+  'resources.lots': ['item_id', 'code', 'expires_on'],
+  'resources.movements': ['item_id', 'space_id', 'lot_id', 'quantity', 'kind', 'reason', 'unit_cost', 'transfer_id', 'count_id', 'source_app', 'source_ref', 'note', 'at'],
+  'resources.spaces': ['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes', 'source_refs'],
 };
 
 /** Valores por defecto de las columnas, como los pondría PostgreSQL. */
@@ -152,6 +159,8 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.shopping_lists': { status: 'borrador', source_revisions: {} },
   'food.shopping_list_items': { required_quantity: 0, status: 'pendiente', manual_override: false, manual: false },
   'food.preparation_items': { done: false, position: 0, manual: false },
+  'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
+  'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
 };
 const MENU_TRANSITIONS = ['borrador>revisar', 'revisar>borrador', 'validado>revisar', 'validado>cerrado', 'cerrado>validado'];
 const FILE_FIELDS = ['photo_file_id', 'photo_thumb_file_id'];
@@ -215,15 +224,15 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return session;
   }
 
-  function bootstrap(session: { userId: string; displayName: string }) {
+  function bootstrap(session: { userId: string; displayName: string }, scope: string) {
     return {
-      app: 'food',
+      app: scope,
       cursor,
       serverTime: nowIso(),
       release: 'test',
       membership: { role: 'owner', scopes: null, revision: 1 },
       profile: { userId: session.userId, displayName: session.displayName, kind: 'human' },
-      tables: Object.entries(tables).map(([table, writableColumns]) => ({ table, writableColumns, readable: true, writable: true })),
+      tables: Object.entries(tables).filter(([table]) => table.startsWith(`${scope}.`)).map(([table, writableColumns]) => ({ table, writableColumns, readable: true, writable: true })),
     };
   }
 
@@ -231,7 +240,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return { cursor: nextCursor, seq, at: nowIso(), actorId, requestId, table, id: row.id, op, revision: row.revision, after: { ...row } };
   }
 
-  function commit(body: any, actorId: string) {
+  function commit(body: any, actorId: string, scope = 'food') {
     if (typeof body?.requestId !== 'string') throw new Fault(422, 'INVALID_OPERATION', 'requestId inválido.');
     if (!Array.isArray(body.operations)) throw new Fault(422, 'INVALID_OPERATION', 'operations debe ser una lista.');
     const digest = JSON.stringify(body.operations);
@@ -398,7 +407,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         results.push({ op: 'call', procedure, result: { menu_id: menu.id, status: menu.status } });
         return;
       }
-      if (!op.table || !tables[op.table]) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.', { index });
+      if (!op.table || !tables[op.table] || !op.table.startsWith(`${scope}.`)) throw new Fault(422, 'INVALID_OPERATION', 'Tabla inválida.', { index });
       if (!op.id) throw new Fault(422, 'INVALID_OPERATION', 'El id debe ser un uuid.', { index });
       const store = stagedTable(op.table);
       const allowed = tables[op.table]!;
@@ -463,7 +472,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     requests.push({ method, path: url.pathname + url.search });
     try {
       if (!url.pathname.startsWith('/api/v1/')) throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
-      const path = url.pathname.slice('/api/v1/'.length);
+      let path = url.pathname.slice('/api/v1/'.length);
+      // El módulo Recursos va en /api/v1/resources/… con la misma sesión; cada uno ve solo sus tablas.
+      const scope = path.startsWith('resources/') ? 'resources' : 'food';
+      if (scope === 'resources') path = path.slice('resources/'.length);
+      const inScope = (table: string) => table.startsWith(`${scope}.`);
       if (path === 'health') return json(res, 200, { status: 'ok', app: 'food', stage: 'test', release: 'test' });
       // «Bucket»: el PUT de subida y la lectura con URL firmada van sin cabecera de sesión, como en Storage.
       if (path.startsWith('__storage/')) {
@@ -564,7 +577,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         sessions.delete(req.headers.authorization!.slice('Bearer '.length));
         return json(res, 200, { loggedOut: true });
       }
-      if (path === 'bootstrap') return json(res, 200, bootstrap(session));
+      if (path === 'bootstrap') return json(res, 200, bootstrap(session, scope));
       if (path === 'me') return json(res, 200, { userId: session.userId, email: session.email, role: 'owner', scopes: null });
       if (path === 'read/invoices.food_stock_projection' && method === 'GET') {
         const kind = url.searchParams.get('where[target_kind]');
@@ -602,12 +615,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       }
       if (path === 'snapshot') {
         const requested = (url.searchParams.get('tables') ?? '').split(',').filter(Boolean);
-        const list = requested.length ? requested : Object.keys(tables);
+        const list = requested.length ? requested : Object.keys(tables).filter(inScope);
         const includeDeleted = ['1', 'true'].includes(url.searchParams.get('includeDeleted') ?? '');
         const limit = Number(url.searchParams.get('limit') ?? 500);
         const offset = Number(url.searchParams.get('offset') ?? 0);
         const out = list.map((table) => {
-          if (!tables[table]) throw new Fault(403, 'FORBIDDEN', 'Tabla no registrada.', { table });
+          if (!tables[table] || !inScope(table)) throw new Fault(403, 'FORBIDDEN', 'Tabla no registrada.', { table });
           const all = Array.from(data.get(table)!.values()).filter((r) => includeDeleted || !r.deleted_at);
           return { table, rows: all.slice(offset, offset + limit), total: all.length };
         });
@@ -616,11 +629,14 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (path === 'changes') {
         const after = Number(url.searchParams.get('after') ?? 0);
         const limit = Number(url.searchParams.get('limit') ?? 500);
-        const items = changes.filter((c) => c.cursor > after).slice(0, limit);
-        const last = items.length ? items[items.length - 1]!.cursor : after;
-        return json(res, 200, { items, cursor: last, latest: cursor, hasMore: items.length > 0 && last < cursor });
+        const pending = changes.filter((c) => c.cursor > after && inScope(c.table));
+        const items = pending.slice(0, limit);
+        const hasMore = pending.length > limit;
+        // Sin más cambios de este ámbito, el cursor salta al último (los del otro ámbito no le tocan).
+        const last = hasMore ? items[items.length - 1]!.cursor : Math.max(after, cursor);
+        return json(res, 200, { items, cursor: last, latest: cursor, hasMore });
       }
-      if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId));
+      if (path === 'commands' && method === 'POST') return json(res, 200, commit(await readJson(req), session.userId, scope));
       // Sugerencias del núcleo (contrato §3.10), lo justo para la cola de Food: listar, ver, aprobar y descartar.
       if (path === 'suggestions' && method === 'GET') {
         const scope = url.searchParams.get('scope') ?? 'mine';

@@ -88,6 +88,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       preferred_unit: { kind: 'enum', values: UNITS },
       preferred_supplier: { kind: 'text', max: 120, nullable: true },
       active: { kind: 'boolean' },
+      item_id: { kind: 'uuid', nullable: true },
     },
   },
   'food.recipe_ingredients': {
@@ -112,6 +113,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       location: freeText,
       status: { kind: 'enum', values: EQUIPMENT_STATUSES },
       notes: freeText,
+      item_id: { kind: 'uuid', nullable: true },
     },
   },
   'food.recipe_equipment': {

@@ -50,7 +50,9 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
 - **R5, en preparación** (recetas con artículos de Recursos, consumo al acabar el servicio y compra con stock; RECURSOS.md §6):
   - Caracterización de lo que cambia de fuente: `caracterizacion-r5.test.ts` y `caracterizacion-r5.spec.ts` (Inicio, Maquinaria, ficha y formulario de receta, vista de cocinero, compra y alergias por nombre de ingrediente). Deben seguir en verde después de R5 sin tocarlas.
   - Vista previa de la migración de ingredientes y maquinaria a artículos: `docs/food/r5/vista_previa.sql` (solo lectura; la lanza Core en producción), probada en `r5-vista-previa.test.ts`.
-  - Diseño pendiente de aprobación del usuario.
+  - Diseño aprobado por el usuario el 14-10-2026 (respuestas en `coordinacion/food/RESPUESTAS.md`).
+  - **R5a hecho:** cada ingrediente y máquina enlazado con su artículo de Recursos, y el recetario sugiere los ingredientes de Recursos que Food aún no usa (API.md §2.7). Pruebas: `resources-link.test.ts` y `resources.spec.ts`.
+  - Falta: compra con stock (R5b) y consumo al acabar el servicio (R5c).
 - Formulario para sugerir el plato: es de Guests (O4), con `houseDishSuggestionOperations` y el tipo `plato_casa`.
 - Agentes de IA (núcleo, contrato §3.1): solo `food.regenerate_preparation` está marcado como seguro sin aprobación; el resto de procedimientos la exige.
 
