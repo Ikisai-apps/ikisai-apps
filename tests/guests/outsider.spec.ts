@@ -3,7 +3,9 @@
  * - **pestaña Outsider** solo con nivel de casa `outsider`, entre los retiros pasados y los demás; sin retiros, se entra en ella;
  * - **estancias** creadas eligiendo días en el calendario, con la cama habitual, cambio de fechas y quitar;
  * - **«hay alguien del staff»** y **notas con hora** (las del equipo y las propias);
- * - **«Sugerir un plato»** para el menú de casa: una sugerencia `plato_casa` de Food que sale en «Mis propuestas».
+ * - **«Sugerir un plato»** para el menú de casa: una sugerencia `plato_casa` de Food que sale en «Mis propuestas»;
+ * - **la familia**: estancia para todos por defecto (con la clave de persona de sus fichas) y «Separar»;
+ * - **retiros abiertos** para cualquier huésped, con su resumen y sin precio.
  */
 import { expect, test, type Page } from 'playwright/test';
 import { preview, type PreviewServer } from 'vite';
@@ -69,7 +71,7 @@ test('O4b · un huésped sin nivel outsider no ve la pestaña Outsider ni las es
   await expect(page.locator('#outsiderTab')).toHaveCount(0);
   await bar(page, 'Calendario').click();
   await expect(page.locator('#calendarNewStay')).toHaveCount(0);
-  await expect(page.locator('#calendar .cal-legend')).toHaveCount(0);
+  await expect(page.locator('#calendar .cal-legend')).not.toContainText('Mis estancias');
 });
 
 test('O4b · outsider y huésped: pestaña Outsider entre retiros, estancia con su cama habitual, cambiar fechas y quitar', async ({ page }) => {
@@ -174,4 +176,71 @@ test('O4b · outsider sin retiros: entra en la pestaña Outsider; «hay alguien�
   await page.locator('#dayActions .gday-note button').click();
   await expect(page.getByText('Nota borrada.')).toBeVisible();
   await expect.poll(async () => (await notes()).length).toBe(1);
+});
+
+test('O4b · la familia: estancia para todos por defecto (con su clave de persona) y «Separar» a uno con otras fechas', async ({ page }) => {
+  // Lejos del mes que viene, para que su barra no tape los días de la estancia.
+  const r = await api.reservation({ title: 'Retiro con los niños', start: day(70), end: day(72) });
+  const marta = await api.guest(r.event, { first_name: 'Marta', last_name_1: 'Gil' });
+  const nico = await api.guest(r.event, { first_name: 'Nico', last_name_1: 'Gil' });
+  await api.guestLink(r.id, nico, 'Nico', 'gil@example.invalid');
+  await page.goto(`${baseURL}/i/${await api.guestLink(r.id, marta, 'Marta', 'gil@example.invalid')}`);
+  await page.locator('#privacyOk').click();
+  const account = await api.makeOutsider(marta);
+  // El nivel de casa llega con el arranque: se vuelve a abrir la app.
+  await page.goto(`${baseURL}/#/calendario`);
+  await page.reload();
+  await page.locator('#calendarNewStay').click();
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
+  await cell(page, nextMonthDay(5)).click();
+  await cell(page, nextMonthDay(8)).click();
+  await page.locator('.cal-selectbar button', { hasText: 'Guardar estancia' }).click();
+  // Para todos por defecto, con una casilla por persona.
+  await expect(page.locator('#whoList input:checked')).toHaveCount(2);
+  await page.locator('#whoOk').click();
+  await expect(page.getByText('Estancia guardada.')).toBeVisible();
+  const keys = async () => (await api.booking.t.db.query<{ id: string; person_key: string | null }>(`select id, person_key from booking.guests where id = any($1::uuid[])`, [[marta, nico]])).rows;
+  const persons = async () => (await api.booking.t.db.query<{ from_date: string; to_date: string; names: string[]; keys: string[] }>(
+    `select s.from_date::text, s.to_date::text, array_agg(p.name order by p.name) names, array_agg(p.person_key::text order by p.name) keys
+       from booking.stays s join booking.stay_persons p on p.stay_id = s.id and p.deleted_at is null
+      where s.account_id = $1 and s.deleted_at is null group by s.id order by s.from_date`, [account])).rows;
+  await expect.poll(async () => (await persons()).map((x) => x.names)).toEqual([['Marta', 'Nico']]);
+  // Cada persona de la estancia es la de sus fichas de huésped (la clave se crea al unirlas).
+  const byGuest = new Map((await keys()).map((k) => [k.id, k.person_key]));
+  expect((await persons())[0]!.keys).toEqual([byGuest.get(marta), byGuest.get(nico)]);
+
+  // «Separar»: Nico llega un día más tarde.
+  await cell(page, nextMonthDay(5)).click();
+  await expect(page.locator('#dayActions .gday-who')).toHaveText('Para: Marta, Nico');
+  await page.locator('#dayActions button', { hasText: 'Separar' }).click();
+  await page.locator('#whoList label', { hasText: 'Nico' }).locator('input').check();
+  await page.locator('#splitFrom').fill(nextMonthDay(6));
+  await page.locator('#whoOk').click();
+  await expect(page.getByText('Estancia separada.')).toBeVisible();
+  await expect.poll(async () => (await persons()).map((x) => [x.from_date, x.to_date, x.names])).toEqual([
+    [nextMonthDay(5), nextMonthDay(8), ['Marta']],
+    [nextMonthDay(6), nextMonthDay(8), ['Nico']],
+  ]);
+  await expect(page.locator('#calendar .cal-event[data-layer="stay"]', { hasText: 'Nico' }).first()).toBeVisible();
+});
+
+test('O4b · retiros abiertos: cualquier huésped los ve en el calendario, con su resumen y sin precio', async ({ page }) => {
+  const mio = await api.reservation({ title: 'Mi retiro', start: day(30), end: day(31) });
+  const abierto = await api.reservation({ title: 'Yoga y huerto', start: nextMonthDay(20), end: nextMonthDay(22) });
+  const oculto = await api.reservation({ title: 'Retiro privado', start: nextMonthDay(24), end: nextMonthDay(25) });
+  await api.booking.t.db.query(`update booking.reservations set guests_visible = true, public_summary = $2 where id = $1`, [abierto.id, 'Tres días de yoga suave y trabajo en el huerto.']);
+  const g = await api.guest(mio.event, { first_name: 'Iván' });
+  await page.goto(`${baseURL}/i/${await api.guestLink(mio.id, g, 'Iván')}`);
+  await page.locator('#privacyOk').click();
+  await bar(page, 'Calendario').click();
+  await expect(page.locator('#calendar .cal-legend')).toContainText('Retiros abiertos');
+  await page.locator('#calendar button[aria-label="Siguiente"]').click();
+  await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${abierto.id}"]`).first()).toBeVisible();
+  await expect(page.locator(`#calendar .cal-event[data-event-id="abierto:${oculto.id}"]`)).toHaveCount(0);
+  await cell(page, nextMonthDay(20)).click();
+  await expect(page.locator('#dayActions .gday-open')).toContainText('Yoga y huerto');
+  await expect(page.locator('#dayActions .gday-open')).toContainText('Tres días de yoga suave y trabajo en el huerto.');
+  await expect(page.locator('#dayActions')).not.toContainText('€');
+  // Sin nivel outsider, nada de estancias.
+  await expect(page.locator('#calendarNewStay')).toHaveCount(0);
 });
