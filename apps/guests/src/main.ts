@@ -16,6 +16,8 @@ const client = createClient();
 let unmount: (() => void) | null = null;
 let busy: () => boolean = () => false;
 let entryError: unknown;
+/** Ficha del enlace canjeado (C10, `sync-client` 0.7.1): «por enlace, ese retiro» aunque la cuenta tenga varios. Solo en memoria. */
+let linkedGuestId: string | null = null;
 
 // Versiones nuevas (kit 0.23): al abrir o al volver tras más de un minuto se aplican solas si es seguro, es decir, sin
 // cambios por confirmar en la cola (que además sobrevive a una recarga, writer.ts).
@@ -31,7 +33,8 @@ async function boot(): Promise<void> {
   if (match) {
     history.replaceState(null, '', '/');
     try {
-      await client.loginWithLink(match[1] ?? '');
+      const grant = (await client.loginWithLink(match[1] ?? '')).grant as { guest_id?: unknown } | null | undefined;
+      linkedGuestId = typeof grant?.guest_id === 'string' ? grant.guest_id.toLowerCase() : null;
     } catch (error) {
       entryError = error;
       show();
@@ -52,7 +55,8 @@ function show(): void {
   if (!entryError && client.session()) {
     unmount = renderShell(root!, {
       client,
-      onLogout: () => { location.hash = ''; show(); },
+      linkedGuestId,
+      onLogout: () => { linkedGuestId = null; location.hash = ''; show(); },
       setBusy: (fn) => { busy = fn; },
     });
     return;

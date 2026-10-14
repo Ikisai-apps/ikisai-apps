@@ -384,7 +384,7 @@ Primera parte de O4 (RECURSOS.md §17; aprobada por el usuario el 13-10-2026), c
   - `#/calendario`: el calendario.
   - `#/p/<guestId>[/<sección>]`: una persona en un retiro, como antes; **los enlaces directos siguen valiendo**.
   - `#/r/<reservationId>[/programa|/menu|/alojamiento]`: la familia junta en un retiro con varias personas de la cuenta.
-- **Retiro de entrada:** el del enlace; si no, el que está en curso; si no, el próximo; si no, el calendario. Con una sola ficha, esa. Hoy Guests no sabe de qué entrada era un enlace si la cuenta tiene varias (petición C10).
+- **Retiro de entrada:** el del enlace con el que se entró (C10: `loginWithLink` devuelve su `grant`; se guarda solo en memoria, así que al volver a abrir la app ya no cuenta); si no, el que está en curso; si no, el próximo; si no, el calendario. Con una sola ficha, esa.
 - **Pestañas de retiros:** deslizables, por fecha (pasados, en curso y próximos), con la elegida centrada; solo con más de uno. Cambiar de pestaña **conserva la sección** (Programa en uno → Programa en otro).
 - **Secciones del retiro:** Resumen · Programa · Menú · Alojamiento (las activas). Solo en el Resumen y en las secciones; las demás pantallas tienen su «Volver».
 - **Familia (varias personas en una cuenta):**
