@@ -388,6 +388,38 @@ async function saveDocumentText(supabase: Supabase, ctx: RequestContext, fileId:
   return charCount;
 }
 
+/**
+ * R4 (0235): tras un commit que toca facturas o líneas, cuadra sus entradas en Recursos. Lee lo que le toca a cada línea
+ * (`invoices.resource_entries`, vacío con el interruptor apagado) y lo manda en un lote de Recursos a
+ * `resources.reconcile_entries`, que crea solo la diferencia. El commit de Finance ya está hecho: si esto falla, se
+ * registra y el siguiente commit de esa factura (o repetirlo) lo cuadra.
+ */
+export function createResourceEntries(supabase: Supabase): NonNullable<AppHooks['afterCommit']> {
+  return async (result, ctx) => {
+    const ids = new Set<string>();
+    for (const change of result.changes ?? []) {
+      if (change.table === TABLES.invoices && change.id) ids.add(change.id);
+      const invoiceId = change.table === TABLES.invoiceLines ? change.after?.invoice_id : null;
+      if (typeof invoiceId === 'string') ids.add(invoiceId);
+    }
+    if (!ids.size) return;
+    try {
+      const args = await supabase.rpc<{ source_app: string; entries: unknown[]; refs: string[]; skipped: unknown[] }>('core_read', {
+        p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_entries', p_args: { invoice_ids: [...ids] },
+      });
+      if (!args.entries.length && !args.refs.length) return;
+      const operations = [{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: args.source_app, entries: args.entries, refs: args.refs } }];
+      await supabase.rpc<CommitResult>('core_commit', {
+        p_app: 'resources', p_actor: ctx.user.id, p_request_id: `invoices-entries-${result.cursor}`, p_digest: await sha256Hex(stable(operations)),
+        p_expected_cursor: null, p_operations: operations,
+        p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['invoices:resource_entries'] } } : null,
+      });
+    } catch (err) {
+      console.warn('R4: no se pudieron cuadrar las entradas en Recursos', { cursor: result.cursor, error: isFault(err) ? err.code : String(err) });
+    }
+  };
+}
+
 /** Commit de la Edge con el actor de la petición (lo que hace `POST commands`, sin hooks: las filas las construye la Edge). */
 async function edgeCommit(supabase: Supabase, ctx: RequestContext, requestId: string, operations: unknown[], confirmation: Record<string, unknown> | null, digest?: string): Promise<CommitResult> {
   return supabase.rpc<CommitResult>('core_commit', {
@@ -735,7 +767,7 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
     defaultProvider: base.storage?.defaultProvider ?? (env('IKISAI_STORAGE_PROVIDER') === 'r2' ? 'r2' : 'supabase'),
     fetch: base.fetch,
   });
-  const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase) };
+  const hooks: AppHooks = { beforeCommit: createInvoicesHooks(supabase, targets), agentRisk: createAgentRisk(supabase), afterCommit: createResourceEntries(supabase) };
   const driveApi = base.drive?.api !== undefined ? base.drive.api : driveFromEnv(env, base.fetch);
   const { run: runDrive, reread: rereadDrive } = createDriveRunner(supabase, storage, hooks, driveApi, { readPdf: base.drive?.readPdf, limit: base.drive?.limit, fetch: base.fetch, upload: base.drive?.upload,
     notifyTasks: base.drive?.notifyTasks === null ? undefined : base.drive?.notifyTasks ?? tasksNotifierFromEnv(env, base.fetch, supabase.base), today: base.drive?.today });
