@@ -1459,6 +1459,36 @@ Plan aprobado por el usuario el 13-10-2026 (`coordinacion/ampliacion/RECURSOS.md
 - **Permisos (decisión del usuario):** crear, cambiar o quitar espacios y camas, solo el owner, con las dos fuentes. El editor cambia el nombre y las notas de un espacio.
 - **Vuelta atrás:** interruptor a `booking`; el espejo se queda como esté y se vuelve a editar en Booking.
 
+## 25. Supletorias por retiro (migración 0466)
+
+Aprobado por el usuario el 13-10-2026. El organizador elige **cuántas** supletorias quiere por habitación del retiro; Booking elige cuáles (primero las ocupadas, después las ya activadas y luego por orden).
+
+- **Tabla `booking.event_extra_beds`** (`event_id`, `bed_id`, `source`, `status`), una fila por supletoria activada y única por evento y cama:
+  - `status` vale `active`, `requested` (pedida con la propuesta aceptada) o `release_requested` (retirada pedida con la propuesta aceptada; se sigue cobrando);
+  - `source` sale de quién escribe: `organizer` o `staff`;
+  - solo camas `supletoria`;
+  - al final del lote, `EXTRA_BED_TAKEN` (409) si dos retiros solapados la activan, o si uno la activa y otro la ocupa;
+  - una cama borrada (por ejemplo, en Recursos) deja de contar y no bloquea nada.
+- **Se cobra** la activada aunque nadie la ocupe, y la ocupada sin activar, como hoy. En el dominio:
+  - `extraBedsCharged(event, beds, assignments, extraBeds)`: lo que la propuesta sugiere como extra y lo que suma plazas en la ocupación;
+  - `extraBedsPending`: lo pendiente de Ikisai.
+- **Organizers:**
+  - `booking.portal_extra_beds({reservation_id, space_id, count})` (acción): solo habitaciones del retiro (`NOT_OFFERED`). Errores: `EXTRA_BEDS_LIMIT` (422, con `possible`) y `EXTRA_BED_IN_USE` (409, con `occupied`). Sin propuesta aceptada, el cambio es inmediato. Con propuesta aceptada, lo nuevo queda `requested`, lo retirado `release_requested` y se avisa al comercial (aviso `supletorias`, que llega a Tasks como `booking.proposal_comment` con la etiqueta «Organizador · Supletorias por confirmar»). Responde con el contador y `{space_id, active, requested, pending, proposal, cursor}`. `active` son las que se cobran ahora. `proposal` es la versión afectada, `{id, version, status}`: la aceptada o, si no la hay, la última en preparación o enviada; `null` si no hay ninguna.
+  - `portal_rooms`:
+    - cada habitación trae `extra: {possible, activated, wanted, requested, release_requested, occupied}`; el «− / +» muestra `wanted` de `possible`;
+    - además, en plano: `extra_max` (posibles), `extra_total` (activadas), `extra_occupied` y `extra_requested` (pendientes de Ikisai);
+    - arriba van `extra_pending_mode` y `extra_rate`:
+      - `extra_pending_mode` indica que la propuesta está aceptada y el cambio quedará pendiente;
+      - `extra_rate` es `{name, unit, amount, amount_with_vat, vat_rate}` de la tarifa `cama_supletoria` visible en el portal, o `null`. `amount_with_vat` lleva el IVA incluido según las condiciones por defecto, como el resto del portal. La misma tarifa sale en `portal_rates` con `service: 'cama_supletoria'`.
+  - **Línea de la propuesta:** con tarifa por noche, la sugerencia es siempre «Plazas supletorias» (`SUPLETORIAS_LINE`), en `persona_noche` y con cantidad = plazas × noches. Así llega a `portal_proposals.lines`.
+  - **Quién y dónde:** es el reparto de siempre (`portal_assign_bed`, B17), que ahora admite también las supletorias activadas (no las pendientes).
+- **Guests (BG13):** en `portal_lodging.rooms[].beds` (y en `portal_rooms`) van las supletorias usables del retiro, detrás de las fijas y con `kind: 'supletoria'`. Se cuentan aparte en `extra_total` y `extra_free`; `beds_total` y `beds_free` siguen siendo solo las fijas. `portal_choose_bed` acepta las activadas, con el mismo bloqueo y `BED_TAKEN`. Las no activadas siguen fuera (`NOT_OFFERED`).
+- **Ficha › Alojamiento:**
+  - por habitación con supletorias, «Supletorias: N de M · K activadas por el organizador · J ocupadas», con «− / +» para el personal (no baja de las ocupadas);
+  - lo pendiente se resuelve con «Confirmar» o «Rechazar»;
+  - asignar a alguien en una supletoria sin activar la activa en el mismo lote, y la hoja lo avisa;
+  - la papelera, restaurar y vaciar la papelera incluyen las activaciones.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

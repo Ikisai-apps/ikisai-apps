@@ -25,6 +25,7 @@ export const CHECKLIST = 'booking.checklist_items';
 export const SPACES = 'booking.spaces';
 export const BEDS = 'booking.beds';
 export const ASSIGNMENTS = 'booking.room_assignments';
+export const EXTRA_BEDS = 'booking.event_extra_beds';
 export const STAFF = 'booking.staff_assignments';
 export const NEEDS = 'booking.staff_needs';
 export const RATES = 'booking.rates';

@@ -50,7 +50,8 @@ test('caracterización · portal_rooms: solo camas fijas; las supletorias no sal
   assert.deepEqual(hab.beds.map((b: any) => [b.label, b.kind, b.free]), [['Cama 1', 'individual', true], ['Cama 2', 'individual', true]]);
   assert.equal(hab.beds_total, 2, 'las supletorias no suman plazas');
   assert.equal(hab.beds.some((b: any) => b.kind === 'supletoria'), false);
-  assert.equal(hab.extra_total, undefined, 'aún no hay contador de supletorias');
+  // contrato de Booking (#491): sin supletorias activadas, el contador está a 0
+  assert.equal(hab.extra_total, 0, 'sin supletorias activadas');
 });
 
 test('caracterización · reparto del organizador: asignar, cambiar de cama y dejarla libre; una supletoria no se puede asignar', async () => {

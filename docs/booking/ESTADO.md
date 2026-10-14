@@ -63,6 +63,13 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
 - **Facturar desde una reserva:** lectura `booking.reservation_invoice_source` para Finance (§19).
 - **Fase 4 de los portales (§23, migración 0459):** programa del retiro (`program_items`, lectura `portal_program` para Organizers y Guests, acciones del organizador para guardar, quitar y ordenar; bloque «Programa» en la ficha) y huésped de muestra para la vista previa (`portal_preview_guest`, fuera de totales, cocina y SES; `PREVIEW_READ_ONLY`). El aviso del plazo interno del saldo compara con lo cobrado de Finance (`invoices.reservation_collected`).
 - **R2 de Recursos (§24, migraciones 0464 y 0465):** interruptor `spaces_source` (apagado), escritura doble con Recursos, vista previa y «Enlazar», espejo de espacios y camas (plazas fijas y supletorias) con tick y desde la app del owner, árbol del kit en «Espacios y camas» con el interruptor encendido; crear, cambiar o quitar espacios y camas, solo el owner. Pendiente: encender con el visto bueno del usuario, tras el ensayo con los recuentos reales.
+- **Supletorias por retiro (§25, migración 0466):**
+  - el organizador activa cuántas quiere por habitación (`portal_extra_beds`): al momento si la propuesta no está aceptada, y pendiente con aviso al comercial si ya lo está;
+  - se cobra la activada (y la ocupada sin activar);
+  - Guests elige entre las activadas (BG13: aparte en `extra_total` y `extra_free`);
+  - el reparto del organizador (B17) también las usa;
+  - la ficha tiene «− / +» y «Confirmar / Rechazar»;
+  - caracterización previa en `tests/booking/extra-beds-characterization.test.ts`.
 - **FB_2026_014 · nombres que ya existen:** en «Nuevo espacio» y su edición, la zona ofrece las existentes en una lista con búsqueda (se puede escribir una nueva) y avisa «Nuevo: no existe todavía» o «Ya existe «X»» con «Usar «X»» si solo cambian mayúsculas, tildes o espacios; el nombre del espacio avisa si ya hay uno igual o parecido; «Otro lugar» del programa, igual que la zona. Con `attachSuggestions` del kit 0.27 (`suggestions` y `suggestMode` en `FieldSpec`).
 - **Marcadores del texto de las condiciones (§23.3, migración 0462):** `{{condiciones.…}}` y bloques condicionales, resueltos en la propuesta, la tarjeta y el portal; lista de tramos generada; vista previa y ayuda en el editor.
 - **Actualizaciones (kit 0.23):** `initAppUpdates` del kit en lugar del `updates.ts` propio: al abrir, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro (`safeToUpdate`); si no, el banner de siempre.

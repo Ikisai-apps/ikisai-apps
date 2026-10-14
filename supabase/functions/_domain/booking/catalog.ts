@@ -25,6 +25,7 @@ export const TABLES = {
   programItems: 'booking.program_items',
   lodgingSettings: 'booking.lodging_settings',
   openRooms: 'booking.open_rooms',
+  eventExtraBeds: 'booking.event_extra_beds',
   moduleSettings: 'booking.module_settings',
 } as const;
 

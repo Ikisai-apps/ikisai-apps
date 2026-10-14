@@ -7,7 +7,7 @@
 import { expect, test } from 'playwright/test';
 import { feedbackRoundTrip } from '../../packages/ui-kit/testing/feedback-smoke.ts';
 import { proposalTotals } from '../../supabase/functions/_domain/booking/mod.ts';
-import { ASSIGNMENTS, BEDS, NEEDS, SPACES, STAFF, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
+import { ASSIGNMENTS, BEDS, EXTRA_BEDS, NEEDS, SPACES, STAFF, EVENTS, FINANCE, GUESTS, RESERVATIONS, RESTRICTIONS, CHECKLIST, USER, inDays, login as loginTo, startHarness, type Harness } from './harness.ts';
 
 let harness: Harness;
 let api: Harness['api'];
@@ -287,11 +287,19 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await dialog.getByLabel('Espacio').selectOption({ label: 'Habitación 2' });
     await expect(dialog.getByLabel('Cama')).toContainText('Supletoria 1 (supletoria)');
     await dialog.getByLabel('Cama').selectOption({ label: 'Supletoria 1 (supletoria) · 1 plaza' });
+    // sin activar: avisa de que se activa al guardar (en el mismo lote)
+    await expect(dialog.locator('#bedActivates')).toBeVisible();
     await dialog.getByLabel('Nombre del grupo').fill('Grupo extra');
     await dialog.getByLabel('Personas').fill('1');
     await page.locator('#saveRow').click();
     await expect(dialog).toBeHidden();
     await expect(page.locator('#extraBeds')).toHaveText('1 supletoria activada');
+    await expect.poll(() => api.rows(EXTRA_BEDS).filter((x) => !x.deleted_at).map((x) => [x.bed_id, x.status]))
+      .toEqual([[api.rows(ASSIGNMENTS).find((a) => a.group_label === 'Grupo extra')!.bed_id, 'active']]);
+    const extraRow = page.locator('#blockLodging .lodging-extra[data-extra="Habitación 2"]');
+    await expect(extraRow).toContainText(/Supletorias: 1 de \d+ · 1 ocupada/);
+    // ocupada: no se puede bajar
+    await expect(extraRow.getByRole('button', { name: 'Una supletoria menos en Habitación 2' })).toBeDisabled();
     await expect(page.locator('#blockLodging .lodging-space[data-space="Habitación 2"] [data-role="occupancy"]')).toHaveText('1 / 3 plazas');
   });
 
@@ -944,11 +952,11 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#trashReservation')).toBeHidden();
     await page.locator('#moreActions summary').click();
     await page.locator('#trashReservation').click();
-    await expect(page.locator('.dialog')).toContainText('28 elementos asociados'); // 20 tareas, 2 restricciones, 4 huéspedes, 2 asignaciones
+    await expect(page.locator('.dialog')).toContainText('29 elementos asociados'); // 20 tareas, 2 restricciones, 4 huéspedes, 2 asignaciones, 1 supletoria activada
     await page.locator('.dialog').getByRole('button', { name: 'Enviar a la papelera' }).click();
     await expect(page.getByRole('heading', { name: 'Reservas', level: 2 })).toBeVisible();
     await expect(page.locator('#trashCount')).toHaveText('1');
-    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS].every((table) => api.rows(table).every((row) => row.deleted_at !== null))).toBe(true);
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS, EXTRA_BEDS].every((table) => api.rows(table).every((row) => row.deleted_at !== null))).toBe(true);
 
     await page.locator('#trash summary').click();
     await page.getByRole('button', { name: 'Abrir Retiro Test en la papelera' }).click();
@@ -957,7 +965,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.locator('#editReservation')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#blockChecklist .checklist li')).toHaveCount(20);
     await expect(page.locator('#restrictionSummary')).toHaveText('1 alergia a pistacho · 1 sin gluten'); // la del evento y la del huésped
-    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
+    await expect.poll(() => [RESERVATIONS, FINANCE, EVENTS, GUESTS, RESTRICTIONS, CHECKLIST, ASSIGNMENTS, EXTRA_BEDS].every((table) => api.rows(table).every((row) => row.deleted_at === null))).toBe(true);
     await expect(page.locator('#syncStatus')).toContainText('Todo sincronizado');
   });
 
@@ -984,7 +992,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect.poll(() => api.rows(RESERVATIONS).map((r) => r.title)).toEqual(['Retiro Test']);
     expect(api.rows(FINANCE)).toHaveLength(1);
     expect(api.rows(CHECKLIST)).toHaveLength(20); // lo vivo no se toca
-    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, ASSIGNMENTS, STAFF, NEEDS, GUESTS, EVENTS, FINANCE, RESERVATIONS, BEDS, SPACES]]);
+    expect(api.purgeRequests()).toEqual([[CHECKLIST, RESTRICTIONS, ASSIGNMENTS, EXTRA_BEDS, STAFF, NEEDS, GUESTS, EVENTS, FINANCE, RESERVATIONS, BEDS, SPACES]]);
     await page.reload();
     await expect(page.locator('#reservationList')).toBeVisible();
     await expect(page.locator('#trash')).toBeHidden(); // tampoco queda en el espejo local

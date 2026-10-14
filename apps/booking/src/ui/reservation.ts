@@ -5,7 +5,7 @@ import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
   eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
 import { PROGRAM, loadProgram, renderProgram } from './program.ts';
@@ -225,6 +225,7 @@ export function mountReservation(id: string): ViewMount {
         if (event && !owner) return void toast('Esta reserva ya tiene evento operativo: solo un propietario puede borrarla. Puedes cancelarla o archivarla.');
         const children = liveEvent ? [...ofEvent(await client.list(CHECKLIST)).map((r) => del(CHECKLIST, r)), ...restrictions.map((r) => del(RESTRICTIONS, r)),
           ...(canRead(client, ASSIGNMENTS) ? ofEvent(await client.list(ASSIGNMENTS)).map((r) => del(ASSIGNMENTS, r)) : []),
+          ...(canRead(client, EXTRA_BEDS) ? ofEvent(await client.list(EXTRA_BEDS)).map((r) => del(EXTRA_BEDS, r)) : []),
           ...(staff ? [...staff.shifts.map((r) => del(STAFF, r)), ...staff.needs.map((r) => del(NEEDS, r))] : []), ...guests.map((r) => del(GUESTS, r))] : [];
         if (liveEvent && !seesGuests) return void toast('No puedes ver los huéspedes de este evento; pide a un propietario que la borre.');
         const go = await confirmDialog({
@@ -253,6 +254,7 @@ export function mountReservation(id: string): ViewMount {
           ...eventOps,
           ...(event ? [...(seesGuests ? await same(GUESTS, (row) => row.event_id === event.id) : []), ...await same(RESTRICTIONS, (row) => row.event_id === event.id), ...await same(CHECKLIST, (row) => row.event_id === event.id),
         ...(canRead(client, ASSIGNMENTS) ? await same(ASSIGNMENTS, (row) => row.event_id === event.id) : []),
+        ...(canRead(client, EXTRA_BEDS) ? await same(EXTRA_BEDS, (row) => row.event_id === event.id) : []),
         ...(canRead(client, STAFF) ? await same(STAFF, (row) => row.event_id === event.id) : []),
         ...(canRead(client, NEEDS) ? await same(NEEDS, (row) => row.event_id === event.id) : [])] : []),
         ];
@@ -561,7 +563,7 @@ export function mountReservation(id: string): ViewMount {
     }
 
     void paint();
-    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
+    const offs = [RESERVATIONS, EVENTS, FINANCE, RESTRICTIONS, CHECKLIST, GUESTS, SPACES, BEDS, ASSIGNMENTS, EXTRA_BEDS, STAFF, NEEDS, PROGRAM].filter((table) => canRead(client, table) || table === RESERVATIONS)
       .map((table) => client.onTable(table, () => void paint()));
     // Un lote rechazado o terminado no toca ninguna tabla: la marca de confirmación necesita su propio aviso.
     offs.push(client.onStatus(() => { if (getConfirmMark(id) || hasProposalMarks(id)) void paint(); }));

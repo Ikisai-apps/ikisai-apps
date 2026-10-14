@@ -24,6 +24,7 @@ const COLUMN_DEFAULTS: Record<string, Record<string, unknown>> = {
   'booking.spaces': { accessible: false, active: true, bookable: true, position: 0 },
   'booking.beds': { capacity: 1, active: true, position: 0 },
   'booking.room_assignments': { persons: 1 },
+  'booking.event_extra_beds': { status: 'active' },
   'booking.staff_assignments': { status: 'prevista', position: 0 },
   'booking.staff_needs': { persons: 1, priority: 'media', status: 'detectado' },
   'booking.rates': { active: true, position: 0, portal_visible: false },
@@ -44,6 +45,7 @@ const PROPOSAL_SERVER_COLUMNS = ['version', 'subtotal', 'adjustments', 'vat_amou
 const SERVER_COLUMNS: Record<string, Record<string, unknown>> = {
   'booking.guests': { field_sources: {}, allergies_visible_to_organizer: false, privacy_ack_at: null, privacy_ack_version: null },
   'booking.dietary_restrictions': { source: 'staff' },
+  'booking.event_extra_beds': { source: 'staff' },
   'booking.reservation_finance': { payment_registered_at: null },
 };
 /** PNG de 1x1 que sirve de firma en `GET /guest-signature/:id`. */
