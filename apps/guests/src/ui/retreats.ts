@@ -35,24 +35,47 @@ export interface RetreatTabsOptions {
   href(retreat: Retreat): string;
   /** Iniciales de a quién toca si no es de todos («Todos» con varias personas). */
   who?(retreat: Retreat): string;
+  /**
+   * Pestaña Outsider (O4b): entre los retiros pasados y los demás, donde estaría «ahora» (boceto aprobado de O4 §2.2).
+   * `on` si es la que se ve.
+   */
+  outsider?: { href: string; on: boolean; today: string };
 }
 
 export function retreatTabs(options: RetreatTabsOptions): HTMLElement | null {
-  if (options.retreats.length < 2) return null;
+  const total = options.retreats.length + (options.outsider ? 1 : 0);
+  const today = options.outsider?.today ?? '';
+  // Posición de la pestaña Outsider: delante del primer retiro que no ha pasado (al final si todos pasaron).
+  const found = options.retreats.findIndex((r) => !(r.end && r.end < today));
+  const firstNotPast = !options.outsider ? -1 : found < 0 ? options.retreats.length : found;
+  if (total < 2) return null;
   const strip = el('nav', { class: 'daytabs gretreats', id: 'retreatTabs', 'aria-label': t('retreats.label'), 'data-feedback-id': 'guests.retiros.pestanas', 'data-feedback-label': 'Pestañas de retiros' },
-    ...options.retreats.map((r) => {
-      const on = r.reservation_id === options.current;
-      const who = options.who?.(r) ?? '';
-      return el('a', {
-        class: `daytab gretreat${on ? ' on' : ''}`, href: options.href(r), 'aria-current': on ? 'page' : null, dataset: { reservation: r.reservation_id },
-        'data-feedback-id': 'guests.retiros.pestana.abrir', 'data-feedback-label': 'Abrir retiro',
-      },
-      el('span', { class: 'gretreat-title' }, r.title ?? t('picker.unknown')),
-      el('span', { class: 'daytab-m' }, [shortRange(r.start, r.end), who].filter(Boolean).join(' · ')));
-    }));
+    ...options.retreats.flatMap((r, i) => {
+      const before = options.outsider && i === firstNotPast ? [outsiderTab(options.outsider)] : [];
+      return [...before, retreatTab(r)];
+    }),
+    ...(options.outsider && firstNotPast === options.retreats.length ? [outsiderTab(options.outsider)] : []));
   // La pestaña elegida, centrada (como los días del programa).
   requestAnimationFrame(() => strip.querySelector<HTMLElement>('.gretreat.on')?.scrollIntoView({ block: 'nearest', inline: 'center' }));
   return strip;
+
+  function retreatTab(r: Retreat): HTMLElement {
+    const on = r.reservation_id === options.current;
+    const who = options.who?.(r) ?? '';
+    return el('a', {
+      class: `daytab gretreat${on ? ' on' : ''}`, href: options.href(r), 'aria-current': on ? 'page' : null, dataset: { reservation: r.reservation_id },
+      'data-feedback-id': 'guests.retiros.pestana.abrir', 'data-feedback-label': 'Abrir retiro',
+    },
+    el('span', { class: 'gretreat-title' }, r.title ?? t('picker.unknown')),
+    el('span', { class: 'daytab-m' }, [shortRange(r.start, r.end), who].filter(Boolean).join(' · ')));
+  }
+}
+
+function outsiderTab(o: { href: string; on: boolean }): HTMLElement {
+  return el('a', {
+    class: `daytab gretreat goutsider${o.on ? ' on' : ''}`, href: o.href, 'aria-current': o.on ? 'page' : null, id: 'outsiderTab',
+    'data-feedback-id': 'guests.outsider.pestana.abrir', 'data-feedback-label': 'Abrir la pestaña Outsider',
+  }, el('span', { class: 'gretreat-title' }, t('outsider.tab')), el('span', { class: 'daytab-m' }, t('outsider.tabSub')));
 }
 
 export function sectionLinks(sections: Section[], current: Section, href: (section: Section) => string): HTMLElement | null {
