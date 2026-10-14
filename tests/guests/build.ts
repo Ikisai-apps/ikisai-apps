@@ -17,7 +17,7 @@ export const GUESTS_VITE_CONFIG = path.resolve(here, '../../apps/guests/vite.con
 const DIST = path.resolve(here, '../../apps/guests/dist');
 const BUILD_SOURCES = [
   '../../apps/guests/public', '../../apps/guests/src', '../../apps/guests/index.html', '../../apps/guests/vite.config.ts',
-  '../../packages/ui-kit/src', '../../packages/sync-client/src', '../../packages/domain-booking/src', '../../supabase/functions/_domain',
+  '../../packages/ui-kit/src', '../../packages/sync-client/src', '../../packages/domain-booking/src', '../../packages/domain-food/src', '../../supabase/functions/_domain',
 ].map((p) => path.resolve(here, p));
 
 function sourceStamp(): string {

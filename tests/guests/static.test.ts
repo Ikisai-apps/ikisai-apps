@@ -60,7 +60,7 @@ test('guests · toda clave que usa el código existe (también las de catálogo 
     sex: ['H', 'M', 'X'], doc: ['DNI', 'NIE', 'Pasaporte', 'TIE', 'Otro'],
     diet: ['alergia', 'intolerancia', 'vegetariano', 'vegano', 'sin_gluten', 'sin_lactosa', 'preferencia', 'otra'], severity: ['leve', 'moderada', 'grave'],
     group: ['identity', 'document', 'residence', 'contact', 'minor'],
-    page: ['inicio', 'datos', 'alimentacion', 'firma', 'info', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas'],
+    page: ['inicio', 'datos', 'alimentacion', 'firma', 'info', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'calendario', 'outsider'],
     menu: ['desayuno', 'comida', 'cena', 'picnic', 'merienda', 'otro'],
     allergen: ['gluten', 'crustaceos', 'huevos', 'pescado', 'cacahuetes', 'soja', 'lacteos', 'frutos_de_cascara', 'apio', 'mostaza', 'sesamo', 'sulfitos', 'altramuces', 'moluscos'],
     'help.event': ['schedule', 'organization', 'activities', 'communication', 'food', 'other'],
@@ -112,7 +112,7 @@ test('guests · cada data-feedback-id escrito en un el(...) lleva su data-feedba
 test('guests · la raíz de cada id es una pantalla conocida', () => {
   const roots = new Set(collectIds().map((f) => f.id.split('.')[1]));
   const allowed = new Set(['entrada', 'aviso', 'inicio', 'datos', 'alimentacion', 'firma', 'info', 'ayuda', 'acceso', 'app', 'cuenta', 'cabecera',
-    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario']);
+    'navegacion', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas', 'mas', 'retiros', 'calendario', 'outsider']);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });
 
