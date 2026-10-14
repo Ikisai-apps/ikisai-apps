@@ -1489,6 +1489,48 @@ Aprobado por el usuario el 13-10-2026. El organizador elige **cuántas** supleto
   - asignar a alguien en una supletoria sin activar la activa en el mismo lote, y la hoja lo avisa;
   - la papelera, restaurar y vaciar la papelera incluyen las activaciones.
 
+## 26. O2 · estancias de outsider y del staff (migración 0467)
+
+Tabla «hoy / después» aprobada por el usuario el 14-10-2026 (`coordinacion/booking/o2/O2_PREPARACION.md`). Una estancia **no es una reserva**: no tiene evento, propuesta, cobro ni ciclo de estados, así que reservas, calendario, Finance e indicadores no cambian.
+
+Decisiones del usuario:
+- Un choque con un retiro es un **aviso, no un bloqueo**. `BED_OVERBOOKED` sigue siendo solo entre retiros.
+- Las estancias **no** cuentan en la disponibilidad del organizador por fin de semana.
+- No se comunican a SES: el outsider no es cliente. Si viene a un retiro, es un huésped normal.
+
+**Tablas** (sincronizables; las escribe el personal y, con sus acciones, el outsider):
+
+| Tabla | Columnas | Notas |
+|---|---|---|
+| `booking.stays` | `kind` (`outsider` o `staff`), `account_id`, `from_date`, `to_date` (noches [desde, hasta)), `space_id`, `bed_id` y sus `resource_*` | `source` (`guest` o `staff`) sale de quién escribe. Sin sitio, una estancia de outsider nueva toma la cama por defecto. Con cama, el espacio es el suyo. El organizador no escribe aquí |
+| `booking.stay_persons` | `stay_id`, `person_key`, `name` | Quién viene (la familia). Única por estancia y clave |
+| `booking.outsider_defaults` | `account_id`, `space_id`, `bed_id` y sus `resource_*` | Cama por defecto. Una por cuenta; solo el personal |
+| `booking.stay_notes` | `account_id`, `at`, `note` (hasta 500) | Notas con hora. `author_id` y `author_kind` (`outsider` o `staff`) salen de quién escribe |
+| `booking.guests.person_key` | uuid | Clave de persona estable dentro de la cuenta (Guests §2.3) |
+
+**Ocupación:**
+- `bed_free` cuenta también las estancias en la cama. Así un huésped o el organizador no eligen la cama de un outsider (`BED_TAKEN`).
+- **Arreglo:** con huésped nulo (el organizador mira la habitación entera), `bed_free` cuenta ahora las asignaciones de grupo, que antes se escapaban.
+- `booking.stay_clashes(stay)`: con qué choca una estancia en su cama (o en su habitación, si un retiro la tiene entera sin cama). Devuelve retiros vivos (`kind: 'retiro'`, `reservation_id`, `title`, `from`, `to`) y otras estancias (`kind: 'estancia'`, `stay_id`).
+- Lectura del personal `booking.stays_clashing({from?, to?})` → `{items: [{stay_id, account_id, kind, from, to, clashes}]}`, para Inicio, la ficha y Estancias.
+
+**Portal Guests** (`app = 'guests'`). Las de outsider exigen `core.house_levels.level = 'outsider'` del actor; si no, `OUT_OF_SCOPE`. Inexistente y ajeno responden igual. Las lecturas con rango aceptan `{from?, to?}`: por defecto de hoy a tres meses, y como mucho 400 días.
+
+| Nombre | Tipo | Forma |
+|---|---|---|
+| `booking.portal_my_retreats` | lectura (cualquier huésped) | `{}` → `{items: [{reservation_id, guest_id, person_key, name, title, start_date, end_date, status, mode}]}`, de todas las entradas del actor |
+| `booking.portal_person_link` | acción (cualquier huésped) | `{guest_ids, person_key?}` → `{person_key, cursor}`. Las fichas tienen que ser de sus entradas (`OUT_OF_SCOPE`) y de retiros distintos (`INVALID_FIELDS`). Queda la clave que llega, si ya es de la cuenta; si no, la que ya tenga alguna; si no, una nueva |
+| `booking.portal_my_stays` | lectura | → `{items: [{id, revision, from, to, source, persons: [{person_key, name}], space_name, zone, bed_label, clash}], default_bed: {space_name, bed_label} \| null}`. El outsider solo ve `clash`, no con qué |
+| `booking.portal_stay_save` | acción | `{id, from, to, persons?, expectedRevision?}` → `{id, revision, clash, cursor}`. Crea o mueve; como mucho 180 noches. `persons: [{person_key?, name}]` deja la lista tal cual: una clave que llega tiene que ser ya de la cuenta (`OUT_OF_SCOPE`), y sin clave se crea |
+| `booking.portal_stay_split` | acción | `{id, person_keys, from, to}` → la estancia nueva (como en `portal_my_stays`), con la misma cama. Al menos una persona y no todas |
+| `booking.portal_stay_remove` | acción | `{id, expectedRevision?}` |
+| `booking.portal_staff_presence` | lectura | → `{items: [{date, present}]}`, sin nombres |
+| `booking.portal_stay_notes` | lectura | → `{items: [{id, revision, at, text, mine, by}]}`, de la cuenta |
+| `booking.portal_stay_note_save` | acción | `{id, at, text, expectedRevision?}` → `{id, revision, cursor}`. Solo crea o cambia las suyas |
+| `booking.portal_stay_note_remove` | acción | `{id, expectedRevision?}`. Solo las suyas |
+
+Siguen en O2: retiros abiertos y «Apuntarme» (con las sugerencias del núcleo), el segundo y el tercer calendario de Google, y las pantallas de Booking.
+
 ## Anexo · Campos de C03 y C04 que no se portan
 
 Siguiendo el handoff §4–§6 («campos ya depurados»). Si alguno se echa en falta, se añade antes de G3.

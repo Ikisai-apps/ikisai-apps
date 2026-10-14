@@ -70,6 +70,14 @@ Actualizado: 6 de octubre de 2026. **Las cuatro pantallas construidas, Calendar 
   - el reparto del organizador (B17) también las usa;
   - la ficha tiene «− / +» y «Confirmar / Rechazar»;
   - caracterización previa en `tests/booking/extra-beds-characterization.test.ts`.
+- **O2, parte 1 · estancias (§26, migración 0467):**
+  - estancias de outsider y del staff, con personas, cama por defecto y notas con hora;
+  - un choque con un retiro es un aviso (`stay_clashes`, `stays_clashing`), nunca un bloqueo;
+  - lecturas y acciones de outsider para Guests, con su ámbito por `core.house_levels`;
+  - clave de persona estable (`guests.person_key`, `portal_person_link`) y `portal_my_retreats`;
+  - arreglo de `bed_free` con huésped nulo;
+  - caracterización previa en `tests/booking/o2-characterization.test.ts`; pruebas en `tests/booking/stays.test.ts`.
+  - Pendiente de O2: retiros abiertos y «Apuntarme», Google (outsiders y staff) y pantallas de Booking.
 - **FB_2026_014 · nombres que ya existen:** en «Nuevo espacio» y su edición, la zona ofrece las existentes en una lista con búsqueda (se puede escribir una nueva) y avisa «Nuevo: no existe todavía» o «Ya existe «X»» con «Usar «X»» si solo cambian mayúsculas, tildes o espacios; el nombre del espacio avisa si ya hay uno igual o parecido; «Otro lugar» del programa, igual que la zona. Con `attachSuggestions` del kit 0.27 (`suggestions` y `suggestMode` en `FieldSpec`).
 - **Marcadores del texto de las condiciones (§23.3, migración 0462):** `{{condiciones.…}}` y bloques condicionales, resueltos en la propuesta, la tarjeta y el portal; lista de tramos generada; vista previa y ayuda en el editor.
 - **Actualizaciones (kit 0.23):** `initAppUpdates` del kit en lugar del `updates.ts` propio: al abrir, o al volver tras más de un minuto, la versión nueva se aplica sola si es seguro (`safeToUpdate`); si no, el banner de siempre.

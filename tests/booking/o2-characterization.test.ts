@@ -74,7 +74,7 @@ test('O2 · camas: un retiro ocupa sus camas frente a otro solapado; la salida d
   await ok([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: a.event, space_id: room, bed_id: bed, group_label: 'A', persons: 1 } }]);
   const clash = await commit([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: b.event, space_id: room, bed_id: bed, group_label: 'B', persons: 1 } }]);
   assert.equal(clash.data?.error?.code, 'BED_OVERBOOKED');
-  // (con huésped nulo, ed_free no ve las asignaciones de grupo: se mira por un huésped concreto; anotado en SALIDA)
+  // (con huésped nulo, `bed_free` no veía las asignaciones de grupo; lo arregla la 0467 y lo prueba stays.test.ts)
   assert.equal((await q<{ v: boolean }>(`select booking.bed_free($1, $2, $3) v`, [bed, b.event, uuid()]))[0]!.v, false);
   assert.equal((await q<{ v: boolean }>(`select booking.bed_free($1, $2, $3) v`, [bed, c.event, uuid()]))[0]!.v, true);
   await ok([{ op: 'insert', table: TABLES.roomAssignments, id: uuid(), fields: { event_id: c.event, space_id: room, bed_id: bed, group_label: 'C', persons: 1 } }]);

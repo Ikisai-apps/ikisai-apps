@@ -5,7 +5,7 @@
 import {
   BED_KINDS, PROPOSAL_NATURES, PROPOSAL_STATUSES, RATE_LAYERS, RATE_SERVICES, RATE_UNITS, NEED_PRIORITIES, NEED_STATUSES, NEED_TYPES, STAFF_FUNCTIONS, STAFF_STATUSES, CHECKLIST_STATUSES, CHECKLIST_TYPES, SPACE_KINDS, PROGRAM_KINDS, CUSTOMER_TYPES, DOCUMENT_TYPES, EVENT_TYPES, GUEST_DATA_STATUSES, MEAL_PLANS, MENU_STYLES,
   PAYMENT_TYPES, PRIORITIES, PROCEDURES, RESERVATION_STATUSES, RESTRICTION_SEVERITIES, RESTRICTION_TYPES,
-  RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, TABLES, TASK_STATUSES_F,
+  RESTRICTION_TYPES_WITH_SEVERITY, RESTRICTION_TYPES_WITH_SUBJECT, SES_STATUSES, SETUP_STYLES, SEXES, STAY_KINDS, TABLES, TASK_STATUSES_F,
   TASK_STATUSES_M, TECHNICAL_NEEDS, TRAVELER_REGISTRATION_STATUSES,
 } from './catalog.ts';
 import { missingForSes } from './guests.ts';
@@ -364,6 +364,33 @@ FIELDS[TABLES.eventExtraBeds] = {
   bed_id: { kind: 'uuid' },
   status: choice(['active', 'requested', 'release_requested'], false),
 };
+FIELDS[TABLES.stays] = {
+  kind: choice(STAY_KINDS, false),
+  account_id: { kind: 'uuid' },
+  from_date: { kind: 'date' },
+  to_date: { kind: 'date' },
+  space_id: { kind: 'uuid', nullable: true },
+  bed_id: { kind: 'uuid', nullable: true },
+  resource_space_id: { kind: 'uuid', nullable: true },
+  resource_bed_id: { kind: 'uuid', nullable: true },
+};
+FIELDS[TABLES.stayPersons] = {
+  stay_id: { kind: 'uuid' },
+  person_key: { kind: 'uuid' },
+  name: text(120, false),
+};
+FIELDS[TABLES.outsiderDefaults] = {
+  account_id: { kind: 'uuid' },
+  space_id: { kind: 'uuid', nullable: true },
+  bed_id: { kind: 'uuid', nullable: true },
+  resource_space_id: { kind: 'uuid', nullable: true },
+  resource_bed_id: { kind: 'uuid', nullable: true },
+};
+FIELDS[TABLES.stayNotes] = {
+  account_id: { kind: 'uuid' },
+  at: { kind: 'timestamp' },
+  note: text(500, false),
+};
 FIELDS[TABLES.moduleSettings] = {
   spaces_source: choice(['booking', 'resources'], false),
 };
@@ -391,6 +418,10 @@ const PARENT_LINK: Record<string, string> = {
   [TABLES.lodgingSettings]: 'event_id',
   [TABLES.openRooms]: 'event_id',
   [TABLES.eventExtraBeds]: 'event_id',
+  [TABLES.stays]: 'account_id',
+  [TABLES.stayPersons]: 'stay_id',
+  [TABLES.outsiderDefaults]: 'account_id',
+  [TABLES.stayNotes]: 'account_id',
 };
 
 /** Campos obligatorios al insertar. */
@@ -416,6 +447,10 @@ const REQUIRED_ON_INSERT: Record<string, string[]> = {
   [TABLES.lodgingSettings]: ['event_id'],
   [TABLES.openRooms]: ['event_id'],
   [TABLES.eventExtraBeds]: ['event_id', 'bed_id'],
+  [TABLES.stays]: ['account_id', 'from_date', 'to_date'],
+  [TABLES.stayPersons]: ['stay_id', 'name'],
+  [TABLES.outsiderDefaults]: ['account_id'],
+  [TABLES.stayNotes]: ['account_id', 'at', 'note'],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -559,6 +594,12 @@ export function validateFields(table: string, fields: Record<string, unknown>, m
   }
   if (table === TABLES.proposals && typeof fields.status === 'string' && !['borrador', 'rechazada', 'caducada'].includes(fields.status)) {
     issues.push(invalid(table, 'status', 'enviar y aceptar una propuesta va por su botón, no editando el estado'));
+  }
+
+  if (table === TABLES.stays) {
+    const from = dayNumber(fields.from_date as string | null | undefined);
+    const to = dayNumber(fields.to_date as string | null | undefined);
+    if (from !== null && to !== null && to <= from) issues.push(invalid(table, 'to_date', 'debe ser posterior a la llegada'));
   }
 
   if (table === TABLES.dateOptions || table === TABLES.dateBlocks) {
