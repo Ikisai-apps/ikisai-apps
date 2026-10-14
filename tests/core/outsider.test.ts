@@ -209,3 +209,17 @@ test('sugerencias · desde otra app (submit_from) y con nivel de casa: p. ej. un
   const mine = (await q(`select core.suggestion_list('tasks', $1, 'mine') as l`, [outsider]))[0].l;
   assert.equal(mine.items[0].status, 'approved');
 });
+
+test('sugerencias · el procedimiento del lote sabe quién sugirió (core.suggestion_author), sin fiarse de args (P23)', async () => {
+  await app.t.db.query(`create function tasks.o1_who(p jsonb) returns jsonb language sql as 'select jsonb_build_object(''author'', core.suggestion_author(), ''suggestion'', core.suggestion_id())'`);
+  await app.t.db.query(`select core.allow_procedure('tasks', 'tasks.o1_who')`);
+  await app.t.db.query(`select core.register_suggestion_kind('tasks', 'quien', 'Quién', p_procedures => array['tasks.o1_who'])`);
+  const user = await app.t.createUser();
+  await app.t.db.query(`select core.apply_house_level($1, 'outsider')`, [user]);
+  const s = (await app.t.db.query<any>(`select core.suggest('tasks', $1, 'who-1', 'quien', 'Yo', null, $2) as s`, [user,
+    JSON.stringify([{ op: 'call', procedure: 'tasks.o1_who', args: { author: crypto.randomUUID() } }])])).rows[0].s;
+  const d = (await app.t.db.query<any>(`select core.suggestion_decide('tasks', $1, $2, 'approve') as d`, [app.users.editor, s.id])).rows[0].d;
+  assert.equal(d.result[0].result.author, user);
+  assert.equal(d.result[0].result.suggestion, s.id);
+  assert.equal((await app.t.db.query<any>(`select core.suggestion_author() as a`)).rows[0].a, null, 'fuera de una aprobación, null');
+});
