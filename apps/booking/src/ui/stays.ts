@@ -150,7 +150,7 @@ export const mountStays: ViewMount = ({ main, client, navigate }) => {
         : el('ul', { class: 'list' }, notes.map((n) => el('li', { class: 'row', 'data-feedback-id': 'booking.estancias.notas.fila', 'data-feedback-label': 'Nota' },
           el('div', { class: 'row-title' }, el('span', { class: 'name', 'data-feedback-ignore': '' }, nameOf(n.account_id)), el('span', { class: 'chip' }, n.author_kind === 'outsider' ? 'La escribió el outsider' : 'Del personal')),
           el('div', { class: 'row-meta' }, formatDate(n.at)),
-          el('p', { 'data-feedback-ignore': '' }, n.note),
+          el('div', { class: 'row-meta stay-note', 'data-feedback-ignore': '' }, n.note),
           writable && n.author_kind === 'staff' ? el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'aria-label': 'Quitar la nota', 'data-feedback-id': 'booking.estancias.notas.quitar', 'data-feedback-label': 'Quitar nota', onclick: () => void removeNote(n) }, 'Quitar')) : null))),
       writable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addStayNote', 'data-feedback-id': 'booking.estancias.notas.anadir', 'data-feedback-label': 'Añadir nota', onclick: () => void addNote() }, 'Añadir nota')) : null);
   }
