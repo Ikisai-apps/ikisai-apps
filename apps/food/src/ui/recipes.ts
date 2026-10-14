@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  PREP_UNITS, foodUnitFromBase, formatMethodSteps, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
+  PREP_UNITS, foodUnitFromBase, formatMethodSteps, fromItemBase, kitchenStock, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
 import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
@@ -11,6 +11,8 @@ import {
 } from '../app/client.ts';
 import { loadPurchases, type PurchasesSnapshot } from '../app/purchases.ts';
 import { R, resourcesClient } from '../app/resources.ts';
+import { loadInventory, type InventoryData } from '../app/consumption.ts';
+import { todayKey } from '../app/events.ts';
 import { isBlobMarker, preparePhoto, showPhoto, stagePhoto, type PhotoRef, type PreparedPhoto } from '../app/photos.ts';
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
@@ -52,6 +54,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   let lines: LineRow[] = [];
   let equipment: EquipmentRow[] = [];
   let resourceItems: ResourceItem[] = [];
+  let inventory: InventoryData | null = null; // R5: «En casa» de cada ingrediente en la ficha
   let needs: NeedRow[] = [];
   let sheet: Sheet | null = null;
   let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
@@ -134,6 +137,7 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     // Ingredientes de Recursos que Food aún no usa (R5a): se sugieren para no duplicar artículos.
+    void loadInventory(client).then((next) => { inventory = next; }).catch(() => undefined);
     void (resourcesClient(client).list(R.items) as unknown as Promise<Array<Mirror<ResourceItem>>>).then((rows) => { resourceItems = rows.filter((i) => !i._pending); }).catch(() => undefined);
     [recipes, ingredients, lines, equipment, needs] = await Promise.all([
       client.list(T.recipes, { includeDeleted: true }) as Promise<RecipeRow[]>,
@@ -217,6 +221,15 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const para = (label: string, value: string | null) => (value ? el('p', null, el('strong', null, `${label}: `), value) : null);
     const recipeLines = linesOf(recipe.id);
     const recipeNeeds = needsOf(recipe.id);
+    // «En casa: 3 kg» (R5): el stock de cocina del artículo del ingrediente, si se lleva inventario.
+    const atHome = (ingredientId: string, unit: Unit): string | null => {
+      const article = inventory?.kitchen.size ? inventory.items.find((i) => i.id === ingredients.find((g) => g.id === ingredientId)?.item_id) : undefined;
+      if (!article || !inventory) return null;
+      const base = kitchenStock(article.id, inventory.movements, inventory.lots, inventory.kitchen, todayKey());
+      if (base === null) return null;
+      const inUnit = fromItemBase(base, article.base_unit, unit);
+      return inUnit === null ? `En casa: ${formatQuantity(base)} ${article.base_unit}` : `En casa: ${formatQuantity(inUnit)} ${UNIT_LABELS[unit]}`;
+    };
 
     const body = el('div', { 'data-feedback-id': 'food.recetario.ficha', 'data-feedback-label': 'Ficha de receta', class: 'ficha' },
       quickPending(recipe) ? el('div', { 'data-feedback-id': 'food.recetario.ficha.rapida', 'data-feedback-label': 'Plato rápido por completar', class: 'banner warn notice', id: 'quickNotice', role: 'status' },
@@ -235,7 +248,8 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         ? el('table', { class: 'ingredients' }, el('tbody', null, ...recipeLines.map((l) => {
             const cost = purchases.fetchedAt ? lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices) : null;
             return el('tr', null,
-              el('td', null, names.get(l.ingredient_id) ?? '—'), el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]),
+              el('td', null, names.get(l.ingredient_id) ?? '—', atHome(l.ingredient_id, l.unit) ? el('span', { class: 'consumewhy athome' }, atHome(l.ingredient_id, l.unit)) : null),
+              el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]),
               purchases.fetchedAt ? el('td', { class: cost === null ? 'num muted' : priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? 'num warnline' : 'num', title: priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? `Precio de la última compra (${priceFor(l.ingredient_id, l.unit, purchases.prices)?.lastDate ?? 'sin fecha'}), de hace más de 3 meses` : null }, cost === null ? 'sin precio' : `${euros(cost)}${priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? ' *' : ''}`) : null);
           })))
         : el('p', { class: 'muted' }, 'Sin ingredientes todavía.'),

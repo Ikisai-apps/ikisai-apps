@@ -1,5 +1,5 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { HOUSE_MENU_ID, isMenuStale, menuTotals, serviceConsumption, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
+import { HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, serviceConsumption, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
 import { allergyCount, dateRange, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
@@ -27,6 +27,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const recipeTrial = el('dd', null, '…');
   const equipmentCount = el('dd', null, '…');
   const equipmentDown = el('dd', null, '…');
+  // Despensa (R5): solo si se lleva inventario (sitios de cocina en Recursos).
+  const pantryHost = el('div', { id: 'pantryCard' });
   const network = el('dd');
   const pending = el('dd');
   const lastPull = el('dd');
@@ -108,6 +110,22 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         : el('p', null, house.exists ? 'Nada previsto hoy en el menú de casa.' : 'El menú de casa: lo que se come en casa, día a día.')));
   }
 
+  /** Despensa: ingredientes bajo mínimo en la cocina y lotes que caducan en los próximos 7 días. */
+  async function loadPantry(): Promise<void> {
+    const inventory = await loadInventory(client).catch(() => null);
+    if (!inventory?.kitchen.size) { replace(pantryHost); return; }
+    const today = todayKey();
+    const week = new Date(Date.parse(`${today}T12:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+    const low = inventory.items.filter((i) => !i.deleted_at && i.active && ['ingrediente', 'bebida'].includes(i.kind) && Number(i.min_quantity) > 0
+      && (kitchenStock(i.id, inventory.movements, inventory.lots, inventory.kitchen, today) ?? 0) < Number(i.min_quantity));
+    const soon = inventory.lots.filter((l) => l.expires_on && l.expires_on >= today && l.expires_on <= week
+      && inventory.movements.filter((m) => !m.deleted_at && m.lot_id === l.id && inventory.kitchen.has(m.space_id)).reduce((sum, m) => sum + Number(m.quantity), 0) > 0);
+    replace(pantryHost, el('article', { 'data-feedback-id': 'food.inicio.despensa', 'data-feedback-label': 'Despensa', class: 'card', id: 'pantry' },
+      el('h3', null, 'Despensa'),
+      el('p', null, low.length ? `Bajo mínimo: ${low.map((i) => i.name).slice(0, 5).join(', ')}${low.length > 5 ? '…' : ''}.` : 'Stock de la cocina, sus despensas y cámaras.'),
+      el('dl', { class: 'kv' }, el('dt', null, 'Bajo mínimo'), el('dd', null, String(low.length)), el('dt', null, 'Caducan en 7 días'), el('dd', null, String(soon.length)))));
+  }
+
   async function loadConsumption(): Promise<void> {
     const role = client.bootstrap()?.membership.role;
     const inventory = role === 'editor' || role === 'owner' ? await loadInventory(client).catch(() => null) : null;
@@ -149,6 +167,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('dt', null, 'Recetas'), recipeCount, el('dt', null, 'En prueba'), recipeTrial),
       link({ 'data-feedback-id': 'food.inicio.cocina.maquinaria', 'data-feedback-label': 'Ir a maquinaria' }, '#/maquinaria', 'Maquinaria', 'Qué hay en la cocina y en qué estado está.',
         el('dt', null, 'Equipos'), equipmentCount, el('dt', null, 'Averiados o fuera de servicio'), equipmentDown),
+      pantryHost,
       el('article', { 'data-feedback-id': 'food.inicio.sincronizacion', 'data-feedback-label': 'Sincronización', class: 'card' },
         el('h3', null, 'Sincronización'),
         el('p', null, 'Estado del espejo local en este dispositivo.'),
@@ -186,6 +205,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   void loadHouse();
   const offHouse = [T.menus, T.menuServices, T.menuItems, T.recipes].map((table) => client.onTable(table, () => void loadHouse()));
   void loadConsumption();
+  void loadPantry();
   const offConsumption = [T.menuServices, T.menuItems, T.consumptions].map((table) => client.onTable(table, () => void loadConsumption()));
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });

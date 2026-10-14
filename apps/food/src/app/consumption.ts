@@ -9,7 +9,7 @@ import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
   consumeCall, consumptionLines, kitchenSpaceIds, purchaseSpace, serviceConsumption,
   type Consumption, type MenuGraph, type MenuItem, type MenuService, type MovementLike, type Recipe, type RecipeIngredient, type ResourceItem, type SpaceLike,
-  type Ingredient,
+  type Ingredient, type LotLike,
 } from '@ikisai/domain-food';
 import { T, type Mirror } from './client.ts';
 import { R, resourcesClient } from './resources.ts';
@@ -18,17 +18,19 @@ export interface InventoryData {
   items: Array<ResourceItem & { default_space_id?: string | null }>;
   spaces: SpaceLike[];
   movements: MovementLike[];
+  lots: LotLike[];
   kitchen: Set<string>;
 }
 
 export async function loadInventory(client: SyncClient): Promise<InventoryData> {
   const r = resourcesClient(client);
-  const [items, spaces, movements] = await Promise.all([
+  const [items, spaces, movements, lots] = await Promise.all([
     r.list(R.items) as unknown as Promise<InventoryData['items']>,
     r.list(R.spaces) as unknown as Promise<SpaceLike[]>,
     r.list(R.movements) as unknown as Promise<MovementLike[]>,
+    r.list(R.lots) as unknown as Promise<LotLike[]>,
   ]);
-  return { items, spaces, movements, kitchen: kitchenSpaceIds(spaces) };
+  return { items, spaces, movements, lots, kitchen: kitchenSpaceIds(spaces) };
 }
 
 /** Lo que se decide de un plato: si se hizo y, si se corrigió, la cantidad de cada línea (en su unidad). */
