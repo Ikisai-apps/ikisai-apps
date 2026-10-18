@@ -107,6 +107,23 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   await expect(page.locator('.traderow', { hasText: 'Fontanería' }).locator('.accountmeta')).toHaveText('0 personas');
   await expect(page.locator('.traderow', { hasText: 'ACS' }).locator('.accountmeta')).toHaveText('1 persona');
   await expect(page.locator('.traderow', { hasText: 'Electricidad' }).locator('.accountmeta')).toHaveText('1 persona');
+  // R7 · cobertura: cada persona del directorio con su mejor nivel, contando lo que cuelga del oficio (Ana aprende ACS).
+  const row = (name: string) => page.locator('.traderow', { has: page.locator('.accountname', { hasText: new RegExp(`^${name}$`) }) });
+  await expect(row('Fontanería').locator('.tradecoverage')).toHaveText('1 aprende');
+  await expect(row('Fontanería').locator('.tradeflags')).toHaveText(/En riesgo\s*Sin experto/);
+  await expect(row('Electricidad').locator('.tradecoverage')).toHaveText('1 sabe');
+  await expect(row('Electricidad').locator('.tradeflags')).toHaveText('En riesgo');
+  // «Solo en riesgo»: cada fila suelta, con su ruta.
+  await page.locator('#tradesRisk').check();
+  await expect(page.locator('.traderow')).toHaveCount(3);
+  await expect(page.locator('.traderow .accountname', { hasText: 'Fontanería › ACS' })).toBeVisible();
+  await page.locator('#tradesRisk').uncheck();
+  await expect(row('ACS')).toBeVisible();
+  // Desde el panel se llega con el filtro puesto.
+  await page.goto(`${baseURL}/#/personas/oficios?riesgo`);
+  await expect(page.locator('#tradesRisk')).toBeChecked();
+  await expect(page.locator('.traderow .accountname', { hasText: 'Fontanería › ACS' })).toBeVisible();
+  await page.goto(`${baseURL}/#/personas/oficios`);
   await page.locator('.traderow', { hasText: 'ACS' }).click();
   await expect(page.locator('#tradePeople')).toContainText('Ana Ficticia');
   await expect(page.locator('#tradePeople')).toContainText('Aprende');

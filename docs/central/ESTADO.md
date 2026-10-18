@@ -48,10 +48,15 @@
 - 2026-10-14 · **O4 · «Convertir en outsider»** (`1506`, núcleo 0092): el nivel de casa da los roles del outsider (Tasks `outsider`, Guests `editor`) mediante un trigger que llama a `core.apply_house_level`, y se aplica a los outsiders que ya tienen cuenta. `GET people/house-grants`. Ficha con «Convertir en outsider» (con o sin cuenta, o dándosela) y «Quitar de outsider» (Sin nivel o Staff); editor que avisa de lo que da el nivel; lista con los accesos de cada outsider, el aviso «Sin cuenta» y «Nuevo outsider»; Accesos con la marca «por nivel de casa» y el selector fijo.
 - 2026-10-14 · **O4 · «Convertir y dar cuenta» sin otros accesos** (núcleo 0093, P9): solo la cuenta, con el nombre de la ficha; Tasks y Guests los da el nivel. Con su prueba e2e.
 - 2026-10-18 · **R7 · caracterización (PR 0)** antes del panel nuevo: `dashboard.spec.ts` (un grupo por app en el orden de `KPI_SOURCES`, sin plegar ni subtítulos; las 7 de Central por orden de clave con su pantalla; «Objetivo» en cada tarjeta para el owner; un indicador mensual saca una tarjeta por mes) y `trades.spec.ts` (en Oficios, «N personas» cuenta solo las del propio oficio). Lo que cambia a propósito con R7 está marcado así.
+- 2026-10-18 · **R7 · panel de indicadores**:
+  - **Migración `1507`:** 12 indicadores de personas y oficios en `central.central_kpi_projection`. Las 7 de siempre no cambian.
+  - **Recursos** (`0805`, de Core) en `KPI_SOURCES`, detrás de Central.
+  - **Panel:** temas por grupo (`KPI_SECTIONS`) y grupos plegables con su resumen. Salen abiertos y el dispositivo recuerda el plegado.
+  - **Oficios:** cobertura por nivel con lo que cuelga de cada oficio, chips de aviso y «Solo en riesgo». Desde el panel se llega con `?riesgo`.
 
 ## Pendiente
 
-- R7 · indicadores (tabla «hoy / después» aprobada el 18-10-2026): PR 1 con los 12 de Central, temas, plegado y cobertura en Oficios; PR 2 con el grupo Recursos cuando la `0805` de Core esté en main. Después, en tanda aparte, las series mensuales en una tarjeta.
+- Series mensuales en una sola tarjeta por indicador (aprobado por el usuario el 18-10-2026): tanda aparte, con su tabla «hoy / después».
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.
 

@@ -83,6 +83,11 @@
 .dashboard{margin:0 0 18px}
 .dashboard .blockhead h3{margin:0;font-size:1.05rem}
 .kpigroup{margin:8px 0 12px}
+.kpigrouphead{display:flex;align-items:center;gap:8px;width:100%;margin:0 0 6px;padding:6px 0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.kpigrouphead .sectionlabel{margin:0}
+.kpigrouphead svg{margin-left:auto;flex:none;color:var(--muted);transition:transform .15s}
+.kpigroup.folded .kpigrouphead svg{transform:rotate(-90deg)}
+.kpisection{margin:10px 0 6px;font-size:var(--text-sm,.875rem);font-weight:600;color:var(--muted)}
 .kpigrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media (min-width:720px){.kpigrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:1100px){.kpigrid{grid-template-columns:repeat(4,minmax(0,1fr))}}

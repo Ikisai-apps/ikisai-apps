@@ -351,6 +351,10 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **Fusión de fichas:** `central.merge_people` (redefinida en `1505`) pasa también las capacidades. Si las dos fichas sabían el mismo oficio, se queda el nivel más alto y la nota que haya.
 - **Pantallas:**
   - **Personas › Oficios:** el árbol (con archivados opcionales), nuevo oficio y «Añadir dentro», editar, archivar o reactivar, y papelera si nadie lo tiene. Al tocar un oficio, «Quién sabe hacerlo», ordenado por nivel, con disponibilidad.
+  - **Cobertura (R7, solo con los niveles de casa aplicados).** «N personas» sigue contando las del propio oficio. Además, cada oficio activo enseña:
+    - cuántas personas del directorio aprenden, saben o son expertas, contando lo que cuelga de él («1 aprende · 2 saben»);
+    - las chips «En riesgo», «Sin experto» o «Solo outsiders», con la regla de los indicadores de la `1507` (`tradeCoverage`).
+  - **«Solo en riesgo»:** deja los oficios en riesgo o que solo cubren outsiders, cada uno con su ruta. Desde el panel se llega con el filtro puesto (`?riesgo`).
   - **Ficha de la persona:** bloque «Oficios», con la estrella editable (pulsar cambia el nivel), la ruta y la nota; «Añadir oficio» y «Editar».
   - **Lista:** filtro «Oficio», que incluye lo que cuelga del elegido, y hasta 3 chips con los oficios de más nivel. Sin oficios en el catálogo, el filtro no se ve.
 - **Importar desde Tasks** (PR C; lectura `tasks.action_labels` de Tasks, #467; solo dirección): «Importar de Tasks», en Oficios, abre una vista previa del árbol de la familia «Tipo: Acción» (`planTradeImport`, en `_domain/central/trades.ts`).
@@ -544,6 +548,28 @@ select core.allow_read('central', 'booking.central_kpi_projection', 'view');
 | Finance | `invoices.expenses_month` (mensual), `invoices.pending_review`, `invoices.unpaid`, `invoices.unpaid_amount`, `invoices.income_issued_month` (mensual) |
 | Tasks | `tasks.open`, `tasks.overdue`, `tasks.purchase_requests_open`, `tasks.supplies_below_min`, `tasks.requests_pending` (por clasificar) |
 | Food | `food.events_without_menu_30d`, `food.shopping_lists_open` |
+| Recursos (hecho, `0805` de Core) | `resources.spaces_active`, `resources.bed_places`, `resources.bed_extra_places`, `resources.bookable_rooms_without_beds`, `resources.spaces_without_code`, `resources.stock_value` (`eur`), `resources.items_below_min`, `resources.lots_expiring_30d`, `resources.lots_expired`, `resources.items_stock_without_cost`, `resources.items_negative_stock`, `resources.machines_down` |
+
+**R7 · personas y oficios** (Central, `1507`; tabla «hoy / después» aprobada el 18-10-2026). Todas son `count` y «hoy» en Madrid.
+- **Directorio:** personas activas, no borradas ni fusionadas y con nivel de casa.
+- **Capaz:** nivel Sabe o Experto en el oficio o en uno activo que cuelga de él. Cada persona cuenta una vez, con su mejor nivel.
+- Mientras nadie tenga nivel de casa, las que dependen del directorio valen `null` («—»).
+
+| Clave | Fórmula | Sentido |
+|---|---|---|
+| `central.people_direction_staff` | directorio con nivel dirección o staff | — |
+| `central.people_outsiders` | directorio con nivel outsider | — |
+| `central.people_without_level` | activas y no fusionadas, sin nivel | down |
+| `central.outsiders_without_account` | outsiders del directorio sin cuenta | down |
+| `central.people_records_due_30d`, `_90d` | documentación y formación (no `no_aplica`) que caduca entre hoy y hoy+30 o hoy+90 | down |
+| `central.trades_at_risk` | oficios activos con 0 o 1 personas capaces; enlaza a `#/personas/oficios?riesgo` | down |
+| `central.trades_learners_no_expert` | alguien en Aprende y nadie en Experto | down |
+| `central.trades_only_outsiders` | con alguna persona capaz, y todas outsiders; enlaza con el filtro puesto | down |
+| `central.people_without_trades` | directorio sin capacidades en oficios activos | down |
+| `central.trades_per_person` | capacidades en oficios activos ÷ personas del directorio, con 2 decimales | up |
+| `central.trades_archived_with_people` | oficios archivados con capacidades vivas | down |
+
+**Temas** (R7, sin tocar el contrato): `KPI_SECTIONS` en `_domain/central/kpis.ts` reparte las claves en Cumplimiento, Personas, Oficios, Espacios e Inventario, en ese orden. Una clave sin tema va al final de su app, sin subtítulo; una app sin temas se pinta como siempre, por clave y periodo.
 
 **Objetivos y estado.** `central.kpi_targets` (§2.7) guarda objetivo, umbral de atención, umbral crítico y sentido por clave y periodo (`*`, `AAAA`, `AAAA-MM`, `AAAAT1`): se aplica el del periodo exacto, si no el del año y si no el general. El estado `ok | atencion | critico` de C01 lo calcula `GET dashboard` (`kpiState` de `_domain/central/kpis.ts`); solo el owner fija objetivos.
 
@@ -579,7 +605,15 @@ Cuatro entradas en la barra (Inicio, Cumplimiento, Personas y, para el owner, Ac
 
 ### 9.1 Inicio (dirección)
 
-Lectura: panel **Dirección** con tarjetas de KPIs agrupadas por app, estado (`ok`, `atencion`, `critico`) y objetivo; cada tarjeta enlaza con su `link`. El owner fija el objetivo desde la tarjeta. Sin red se pinta la última lectura guardada en el dispositivo (solo agregados), con su hora. Debajo, «Vence pronto», el enlace a Entidad y, para el owner, el resumen de accesos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
+Lectura: panel **Dirección** con tarjetas de KPIs agrupadas por app, estado (`ok`, `atencion`, `critico`) y objetivo; cada tarjeta enlaza con su `link`. El owner fija el objetivo desde la tarjeta. Sin red se pinta la última lectura guardada en el dispositivo (solo agregados), con su hora.
+
+Desde R7:
+- **Orden de los grupos:** Central, después Recursos y después las demás apps, en el orden de `KPI_SOURCES`.
+- **Temas:** dentro de cada grupo, las tarjetas van por tema con su subtítulo (§7.2).
+- **Cabecera:** cada grupo pliega con un toque. Enseña lo que está en crítico o en atención, o «N indicadores» si no hay nada.
+- **Plegado:** los grupos salen abiertos. El dispositivo recuerda, por cuenta, lo que se plegó (`ikisai-central-dashboard-folded-v1:<userId>`).
+
+ Debajo, «Vence pronto», el enlace a Entidad y, para el owner, el resumen de accesos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
 
 ### 9.2 Personas
 
