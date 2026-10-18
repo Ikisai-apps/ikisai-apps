@@ -1189,3 +1189,106 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .item-conv{margin:0;font-size:13px;color:var(--muted)}
 .item-conv[hidden]{display:none}
 .item-conv strong{color:var(--ink)}
+
+/* ---------- Inventario: catálogo (createItemCatalog) ---------- */
+.inv-catalog{display:grid;gap:10px;min-width:0;container-type:inline-size}
+.inv-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.inv-search-wrap{flex:1 1 14rem;min-width:0}
+.inv-create{flex:none}
+.inv-chips{display:flex;gap:6px;flex-wrap:wrap}
+.inv-chips .filterchip{min-height:40px}
+.inv-chips .filterchip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.inv-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.inv-list{display:grid;gap:6px;min-width:0}
+.inv-head{display:none}
+.inv-group{margin:10px 0 2px;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.inv-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 12px;border:1px solid var(--edge);border-radius:12px;background:var(--paper)}
+.inv-row.low{box-shadow:inset 3px 0 0 var(--warn)}
+.inv-row.archived{opacity:.65}
+.inv-name{grid-column:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.inv-open{border:0;background:transparent;padding:0;font:inherit;font-weight:800;font-size:15px;color:var(--ink);text-align:left;cursor:pointer;min-height:32px;overflow-wrap:anywhere}
+.inv-open:hover{text-decoration:underline}
+.inv-qty{grid-column:2;grid-row:1;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.inv-where{grid-column:2;grid-row:2;text-align:right;font-size:12.5px;color:var(--muted)}
+.inv-kind,.inv-min,.inv-note{font-size:13px;color:var(--muted)}
+.inv-kind{grid-column:1;grid-row:2}
+.inv-min{grid-column:1}
+.inv-min .inv-none{display:none}
+.inv-note:empty{display:none}
+.inv-warn{color:var(--warn);font-weight:700}
+.inv-alert{color:var(--alert);font-weight:700}
+.inv-actions{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.inv-actions.empty{display:none}
+.inv-actions button{min-height:40px}
+.inv-empty{margin:8px 0}
+@container (min-width:760px){
+  .inv-head{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 6.5rem 5.5rem minmax(0,1.2fr) 16.5rem;gap:10px;padding:0 12px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .inv-row{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 6.5rem 5.5rem minmax(0,1.2fr) 16.5rem;padding:8px 12px;border-radius:10px}
+  .inv-row>*{grid-row:auto!important;grid-column:auto!important}
+  .inv-qty,.inv-min{text-align:right}
+  .inv-where{text-align:left;font-size:14px;color:var(--ink)}
+  .inv-kind,.inv-min,.inv-note{font-size:14px}
+  .inv-min .inv-min-label{display:none}
+  .inv-min .inv-none{display:inline}
+  .inv-note:empty{display:block}
+  .inv-actions{justify-content:flex-end;flex-wrap:nowrap;gap:4px}
+  .inv-actions.empty{display:block}
+  .inv-actions button{min-height:34px;padding:0 10px}
+}
+
+/* ---------- Inventario: ficha (createItemSheet) ---------- */
+.inv-sheet{min-width:0;container-type:inline-size}
+.inv-sheet-body{display:grid;gap:16px;min-width:0}
+.inv-sheet-main{display:grid;gap:12px;min-width:0;align-content:start}
+.inv-sheet-head{display:grid;gap:2px}
+.inv-sheet-title{margin:0;font-size:20px;overflow-wrap:anywhere}
+.inv-sheet-meta{margin:0;font-size:13px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.inv-tabs{display:flex;gap:2px;border-bottom:1px solid var(--edge);overflow-x:auto}
+.inv-tab{border:0;background:transparent;padding:10px 12px;font:inherit;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;min-height:44px;white-space:nowrap;cursor:pointer}
+.inv-tab[aria-selected="true"]{color:var(--accent-deep);border-bottom-color:var(--accent)}
+.inv-panel{display:grid;gap:12px;min-width:0}
+.inv-panel[hidden]{display:none}
+.inv-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:0;font-size:14px}
+.inv-kv dt{color:var(--muted);font-weight:700}
+.inv-kv dd{margin:0;overflow-wrap:anywhere}
+.inv-lot{color:var(--muted)}
+.inv-sheet-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.inv-sheet-actions button{min-height:44px}
+.inv-grid2{display:grid;gap:12px}
+.inv-aliases{display:flex;gap:6px;flex-wrap:wrap}
+.inv-aliases:empty{display:none}
+.inv-alias-field,.inv-supplier{display:grid;gap:6px}
+.inv-alias-add{display:flex;gap:8px}
+.inv-alias-add input{flex:1;min-width:0}
+.inv-equipment{border:1px solid var(--edge);border-radius:12px;padding:10px 12px;display:grid;gap:10px;margin:0}
+.inv-equipment[hidden]{display:none}
+.inv-equipment legend{font-weight:800;padding:0 4px}
+.inv-save-status{margin:0;font-size:13px;color:var(--muted)}
+.inv-save-status.error{color:var(--alert)}
+.inv-save-status:empty{display:none}
+.inv-unit{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--edge)}
+.inv-unit-eq{display:flex;gap:6px;align-items:center;flex:1 1 16rem;min-width:0}
+.inv-unit-eq input{width:6.5rem;min-width:0}
+.inv-unit-supplier{font-size:13px;color:var(--muted)}
+.inv-unit-actions{display:flex;gap:6px;margin-left:auto}
+.inv-unit .fielderror{flex-basis:100%}
+.inv-unit .fielderror:empty{display:none}
+.inv-sheet:not([data-tab="movements"]) .inv-sheet-side{display:none}
+.inv-sheet-side{min-width:0}
+.inv-side-title{margin:0 0 4px;font-size:16px}
+.inv-sheet[data-tab="movements"] .inv-side-title{display:none}
+.inv-mov{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--edge);font-size:14px}
+.inv-mov.pending{box-shadow:inset 3px 0 0 var(--warn);padding-left:8px}
+.inv-mov-when{color:var(--muted);font-size:12.5px;min-width:3.4em}
+.inv-mov-n{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.inv-mov-n.in{color:var(--ok)}
+.inv-mov-note{grid-column:2/-1;color:var(--muted);display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.inv-origin{font-weight:700;color:var(--accent-deep)}
+@container (min-width:520px){.inv-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Con ancho, Movimientos va siempre a la derecha y su pestaña sobra. */
+@container (min-width:760px){
+  .inv-sheet-body{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}
+  .inv-sheet[data-tab] .inv-sheet-side{display:block}
+  .inv-sheet[data-tab] .inv-side-title{display:block}
+  .inv-tab-movements{display:none}
+}

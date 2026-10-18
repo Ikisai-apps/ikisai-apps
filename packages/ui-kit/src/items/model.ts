@@ -52,11 +52,50 @@ export interface StockLine {
   quantity: number;
 }
 
+export interface LotRow {
+  id: string;
+  itemId: string;
+  code: string | null;
+  /** `YYYY-MM-DD`. */
+  expiresOn: string | null;
+}
+
+/** Fila de `resources.movements` (solo se añaden). `quantity` con signo, en la unidad base. */
+export interface MovementRow {
+  id: string;
+  itemId: string;
+  spaceId: string;
+  lotId: string | null;
+  quantity: number;
+  kind: string;
+  reason: string | null;
+  unitCost: number | null;
+  transferId: string | null;
+  countId: string | null;
+  sourceApp: string | null;
+  sourceRef: string | null;
+  note: string | null;
+  /** ISO. */
+  at: string;
+  createdBy: string | null;
+  pending?: boolean;
+}
+
+/** Coste que llega después a una entrada que entró sin él (`resources.movement_costs`). */
+export interface MovementCostRow {
+  movementId: string;
+  unitCost: number;
+}
+
 export interface ItemSnapshot {
   items: ItemRow[];
   units: ItemUnitRow[];
   kinds: ItemKind[];
   stock: StockLine[];
+  /** Para la ficha y los avisos de caducidad (opcional en fuentes que solo sirven al selector). */
+  lots?: LotRow[];
+  movements?: MovementRow[];
+  movementCosts?: MovementCostRow[];
 }
 
 export interface ItemDraft {
@@ -83,7 +122,37 @@ export interface ItemSource {
   onDuplicate?(listener: (dup: ItemDuplicate) => void): () => void;
   /** Nombre visible de un proveedor de Finance (para «caja (de Makro)»). */
   supplierName?(id: string): string | null;
+  /** Cambios de la ficha (solo los campos que vienen). */
+  update?(id: string, fields: Partial<ItemRow>): Promise<void>;
+  /** Archivar (`false`) o recuperar (`true`): con movimientos no se borra (`ITEM_IN_USE`). */
+  setActive?(id: string, active: boolean): Promise<void>;
+  /** Alta o cambio de una conversión (`item_units`). */
+  saveUnit?(unit: ItemUnitRow, isNew: boolean): Promise<void>;
+  removeUnit?(id: string): Promise<void>;
 }
+
+/** Tipos de movimiento en palabras (docs/resources/API.md §3). */
+export const MOVEMENT_KIND_LABELS: Record<string, string> = {
+  entrada_factura: 'Entrada por factura',
+  entrada_manual: 'Entrada a mano',
+  consumo_servicio: 'Consumo del servicio',
+  consumo_tarea: 'Consumo de tarea',
+  salida_manual: 'Salida a mano',
+  traslado: 'Traslado',
+  ajuste_recuento: 'Ajuste de recuento',
+};
+
+export const EXIT_REASON_LABELS: Record<string, string> = {
+  uso: 'Uso', merma: 'Merma', rotura: 'Rotura', caducado: 'Caducado', regalo: 'Regalo', otro: 'Otro',
+};
+
+/** Estado de una máquina o herramienta (`attributes.status`). */
+export const ITEM_STATUS_LABELS: Record<string, string> = {
+  operativo: 'Operativo', limitado: 'Limitado', averiado: 'Averiado', fuera_de_servicio: 'Fuera de servicio',
+};
+
+/** Tipos que no se gastan y llevan marca, modelo, serie, estado y factura de compra. */
+export const EQUIPMENT_KINDS = ['herramienta', 'maquina'];
 
 /** Los 11 tipos de partida (RECURSOS.md §11.2); los reales salen de `resources.item_kinds`. */
 export const DEFAULT_ITEM_KINDS: ItemKind[] = [
@@ -255,6 +324,73 @@ export function stockSummary(item: ItemRow, stock: readonly StockLine[], options
   return { text, low, total };
 }
 
+/**
+ * Coste medio ponderado con las entradas que tienen coste (el suyo o el que llegó después en `movement_costs`).
+ * Los contrarios de factura (entradas negativas con coste) restan. Sin entradas con coste, `null`.
+ */
+export function averageCost(itemId: string, movements: readonly MovementRow[], costs: readonly MovementCostRow[] = []): { averageCost: number; costedQuantity: number } | null {
+  const late = new Map(costs.map((c) => [c.movementId, c.unitCost]));
+  let quantity = 0;
+  let amount = 0;
+  for (const m of movements) {
+    if (m.itemId !== itemId || !m.kind.startsWith('entrada_')) continue;
+    const cost = m.unitCost ?? late.get(m.id) ?? null;
+    if (cost === null) continue;
+    quantity += m.quantity;
+    amount += m.quantity * cost;
+  }
+  if (quantity <= 0) return null;
+  return { averageCost: Math.round((amount / quantity) * 10000) / 10000, costedQuantity: Math.round(quantity * 1e6) / 1e6 };
+}
+
+/** Lotes con stock de un artículo (en unos sitios, si se pide), con su caducidad; primero lo que caduca antes. */
+export function lotsWithStock(itemId: string, stock: readonly StockLine[], lots: readonly LotRow[], spaceIds?: readonly string[] | null): Array<{ lot: LotRow | null; spaceId: string; quantity: number }> {
+  const byId = new Map(lots.map((l) => [l.id, l]));
+  return stock.filter((l) => l.itemId === itemId && l.quantity > 0 && (!spaceIds || spaceIds.includes(l.spaceId)))
+    .map((l) => ({ lot: l.lotId ? byId.get(l.lotId) ?? null : null, spaceId: l.spaceId, quantity: l.quantity }))
+    .sort((a, b) => (a.lot?.expiresOn ?? '9999').localeCompare(b.lot?.expiresOn ?? '9999'));
+}
+
+/** Primera caducidad con stock dentro de `days` días (incluye las ya pasadas), o `null`. */
+export function nextExpiry(itemId: string, stock: readonly StockLine[], lots: readonly LotRow[], today: string, days: number, spaceIds?: readonly string[] | null): string | null {
+  const limit = new Date(Date.parse(`${today}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+  const first = lotsWithStock(itemId, stock, lots, spaceIds).find((l) => l.lot?.expiresOn);
+  const date = first?.lot?.expiresOn ?? null;
+  return date && date <= limit ? date : null;
+}
+
+/** Campos del kit → columnas de `resources.items` (solo los que vienen; `aliases` va dentro de `attributes`). */
+export function itemToFields(fields: Partial<ItemRow>, current?: ItemRow | null): Record<string, unknown> {
+  const map: Record<string, string> = {
+    name: 'name', kind: 'kind', category: 'category', baseUnit: 'base_unit', minQuantity: 'min_quantity', reorderQuantity: 'reorder_quantity',
+    defaultSpaceId: 'default_space_id', defaultSupplierId: 'default_supplier_id', tracksLots: 'tracks_lots', tracksExpiry: 'tracks_expiry', active: 'active', notes: 'notes',
+  };
+  const out: Record<string, unknown> = {};
+  for (const [key, column] of Object.entries(map)) if (key in fields) out[column] = (fields as Record<string, unknown>)[key];
+  if ('attributes' in fields || 'aliases' in fields) {
+    const attributes: Record<string, unknown> = { ...(current?.attributes ?? {}), ...(fields.attributes ?? {}) };
+    const aliases = fields.aliases ?? (Array.isArray(attributes.aliases) ? attributes.aliases as string[] : current?.aliases ?? []);
+    if (aliases.length) attributes.aliases = aliases; else delete attributes.aliases;
+    out.attributes = attributes;
+  }
+  return out;
+}
+
+export function lotFromRow(row: Record<string, unknown>): LotRow {
+  return { id: String(row.id), itemId: String(row.item_id), code: (row.code as string | null) ?? null, expiresOn: (row.expires_on as string | null)?.slice(0, 10) ?? null };
+}
+
+export function movementFromRow(row: Record<string, unknown>): MovementRow {
+  const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
+  return {
+    id: String(row.id), itemId: String(row.item_id), spaceId: String(row.space_id), lotId: (row.lot_id as string | null) ?? null,
+    quantity: Number(row.quantity ?? 0), kind: String(row.kind ?? ''), reason: (row.reason as string | null) ?? null, unitCost: num(row.unit_cost),
+    transferId: (row.transfer_id as string | null) ?? null, countId: (row.count_id as string | null) ?? null,
+    sourceApp: (row.source_app as string | null) ?? null, sourceRef: (row.source_ref as string | null) ?? null, note: (row.note as string | null) ?? null,
+    at: String(row.at ?? row.created_at ?? ''), createdBy: (row.created_by as string | null) ?? (row.updated_by as string | null) ?? null, pending: row._pending === true,
+  };
+}
+
 /** Fila de `resources.items` (espejo) → forma del kit. */
 export function itemFromRow(row: Record<string, unknown>): ItemRow {
   const attributes = (row.attributes as Record<string, unknown> | null) ?? {};
@@ -285,7 +421,7 @@ export function newItemId(): string {
  * Fuente en memoria (demo y pruebas). `server`: artículos que ya existen en el servidor pero aún no en este
  * dispositivo; crear uno con el mismo nombre se rechaza como haría el índice único (`onDuplicate`).
  */
-export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?: number; server?: ItemRow[]; supplierNames?: Record<string, string> } = {}): ItemSource & { snapshot(): ItemSnapshot } {
+export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?: number; server?: ItemRow[]; supplierNames?: Record<string, string>; failUpdate?: (id: string, fields: Partial<ItemRow>) => string | null } = {}): ItemSource & { snapshot(): ItemSnapshot } {
   let snap: ItemSnapshot = { ...initial, items: initial.items.slice() };
   const listeners = new Set<(s: ItemSnapshot) => void>();
   const dupListeners = new Set<(d: ItemDuplicate) => void>();
@@ -314,6 +450,23 @@ export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?:
     },
     onDuplicate(listener) { dupListeners.add(listener); return () => dupListeners.delete(listener); },
     supplierName: (id) => options.supplierNames?.[id] ?? null,
+    async update(id, fields) {
+      const refused = options.failUpdate?.(id, fields) ?? null;
+      if (refused) throw new Error(refused);
+      snap.items = snap.items.map((i) => (i.id === id ? { ...i, ...fields, pending: true } : i));
+      emit();
+      void wait().then(() => { snap.items = snap.items.map((i) => (i.id === id ? { ...i, pending: false } : i)); emit(); });
+    },
+    async setActive(id, active) {
+      snap.items = snap.items.map((i) => (i.id === id ? { ...i, active, pending: true } : i));
+      emit();
+      void wait().then(() => { snap.items = snap.items.map((i) => (i.id === id ? { ...i, pending: false } : i)); emit(); });
+    },
+    async saveUnit(unit, isNew) {
+      snap.units = isNew ? [...snap.units, unit] : snap.units.map((u) => (u.id === unit.id ? unit : u));
+      emit();
+    },
+    async removeUnit(id) { snap.units = snap.units.filter((u) => u.id !== id); emit(); },
     snapshot: () => snap,
   };
 }

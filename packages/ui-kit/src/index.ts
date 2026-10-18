@@ -61,10 +61,14 @@ export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePick
 export {
   DEFAULT_ITEM_KINDS, BASE_UNITS, itemKey, kindLabelOf, sameNameItem, similarItems, searchItems, unitsFor, baseQuantity, stockFromMovements, stockBySpace, stockSummary,
   itemFromRow, itemUnitFromRow, itemKindFromRow, newItemId, createMemoryItemSource,
+  MOVEMENT_KIND_LABELS, EXIT_REASON_LABELS, ITEM_STATUS_LABELS, EQUIPMENT_KINDS, averageCost, lotsWithStock, nextExpiry, itemToFields, lotFromRow, movementFromRow,
+  type LotRow, type MovementRow, type MovementCostRow,
   type ItemRow, type ItemUnitRow, type ItemKind, type StockLine, type ItemSnapshot, type ItemDraft, type ItemDuplicate, type ItemSource, type ItemSearchOptions, type ItemUnitOption,
 } from './items/model.ts';
 export { createSyncItemSource, type SyncItemSourceOptions } from './items/sync-source.ts';
 export { createItemPicker, ITEM_PICKER_MARKS, type ItemPicker, type ItemPickerOptions, type ItemPick } from './items/picker.ts';
+export { createItemCatalog, ITEM_CATALOG_MARKS, expiryText, type ItemCatalog, type ItemCatalogOptions, type ItemCatalogFilter, type ItemCatalogAction, type ItemCatalogRowAction } from './items/catalog.ts';
+export { createItemSheet, ITEM_SHEET_MARKS, type ItemSheet, type ItemSheetOptions, type ItemSheetTab, type ItemSheetAction } from './items/sheet.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';

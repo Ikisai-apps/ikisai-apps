@@ -90,6 +90,10 @@ import {
   toastWithAction,
   toggleTheme,
   createItemPicker,
+  createItemCatalog,
+  createItemSheet,
+  stockFromMovements,
+  type MovementRow,
   createMemoryItemSource,
   DEFAULT_ITEM_KINDS,
   type ItemPick,
@@ -1151,6 +1155,77 @@ const itemSection = section('items', 'Artículos (R3)', 'createItemPicker: busca
     el('div', { class: 'card', style: 'display:grid;gap:12px;align-content:start' }, el('h3', null, 'Factura'), itemPickInvoice.element)),
   el('p', null, 'Último cambio: ', itemOut),
 );
+// --- Inventario: catálogo y ficha (R3, 0.37) --------------------------------------------------------------
+const invToday = todayKey();
+const invMove = (id: string, itemId: string, spaceId: string, quantity: number, kind: string, daysAgo: number, extra: Partial<MovementRow> = {}): MovementRow => ({
+  id, itemId, spaceId, lotId: null, quantity, kind, reason: null, unitCost: null, transferId: null, countId: null, sourceApp: null, sourceRef: null, note: null,
+  at: `${addDays(invToday, -daysAgo)}T10:00:00.000Z`, createdBy: 'ana', ...extra,
+});
+const invMovements: MovementRow[] = [
+  invMove('m1', 'harina-espelta', 'despensa', 50, 'entrada_factura', 3, { unitCost: 1.256, sourceApp: 'finance', sourceRef: 'inv-311', lotId: 'lot-esp' }),
+  invMove('m2', 'harina-espelta', 'despensa', -48.8, 'consumo_servicio', 0, { sourceApp: 'food', sourceRef: 'svc-sab', lotId: 'lot-esp' }),
+  invMove('m3', 'harina-trigo', 'despensa', 25, 'entrada_manual', 10, { unitCost: 0.9 }),
+  invMove('m4', 'harina-trigo', 'despensa', -0.5, 'salida_manual', 6, { reason: 'merma', note: 'bolsa rota' }),
+  invMove('m5', 'harina-trigo', 'despensa', -6, 'ajuste_recuento', 2, { countId: 'cnt-1' }),
+  invMove('m6', 'yogur', 'camara', 12, 'entrada_manual', 4, { lotId: 'lot-yog' }),
+  invMove('m7', 'leche-avena', 'despensa', 6, 'entrada_manual', 5, { lotId: 'lot-avena' }),
+  invMove('m8', 'leche-avena', 'despensa', -6, 'traslado', 1, { transferId: 'tr-1', lotId: 'lot-avena' }),
+  invMove('m9', 'leche-avena', 'camara', 6, 'traslado', 1, { transferId: 'tr-1', lotId: 'lot-avena' }),
+  invMove('m10', 'cloro', 'piscina', 3.5, 'entrada_manual', 8),
+  invMove('m11', 'sabanas', 'hab-1', 4, 'entrada_manual', 30),
+  invMove('m12', 'sabanas', 'hab-3', 8, 'entrada_manual', 30),
+  invMove('m13', 'cortacesped', 'jardin', 1, 'entrada_manual', 90),
+];
+const invSource = createMemoryItemSource({
+  items: [
+    demoItem('harina-espelta', 'Harina de espelta', 'ingrediente', 'kg', { defaultSpaceId: 'despensa', minQuantity: 5, reorderQuantity: 25, defaultSupplierId: 'sup-molinos', category: 'Harinas', tracksLots: true, tracksExpiry: true, aliases: ['HAR ESP ECO 25KG'] }),
+    demoItem('harina-trigo', 'Harina de trigo', 'ingrediente', 'kg', { defaultSpaceId: 'despensa', minQuantity: 10, category: 'Harinas' }),
+    demoItem('yogur', 'Yogur natural', 'ingrediente', 'ud', { defaultSpaceId: 'camara', tracksLots: true, tracksExpiry: true, category: 'Lácteos' }),
+    demoItem('leche-avena', 'Leche de avena', 'bebida', 'l', { defaultSpaceId: 'camara', tracksExpiry: true, category: 'Bebidas' }),
+    demoItem('cloro', 'Cloro en pastillas', 'limpieza', 'kg', { defaultSpaceId: 'piscina', minQuantity: 2, category: 'Piscina' }),
+    demoItem('sabanas', 'Sábanas 90', 'textil', 'ud', { category: 'Ropa de cama' }),
+    demoItem('cortacesped', 'Cortacésped', 'maquina', 'ud', { defaultSpaceId: 'jardin', attributes: { brand: 'Honda', model: 'HRX 476', status: 'limitado' } }),
+    demoItem('taladro', 'Taladro percutor', 'herramienta', 'ud', { active: false }),
+  ],
+  units: [
+    { id: 'iu-esp-saco', itemId: 'harina-espelta', unit: 'saco', factor: 25, supplierId: 'sup-molinos' },
+    { id: 'iu-cloro-cubo', itemId: 'cloro', unit: 'cubo', factor: 5, supplierId: null },
+  ],
+  kinds: DEFAULT_ITEM_KINDS,
+  stock: stockFromMovements(invMovements.map((m) => ({ item_id: m.itemId, space_id: m.spaceId, lot_id: m.lotId, quantity: m.quantity }))),
+  lots: [
+    { id: 'lot-esp', itemId: 'harina-espelta', code: 'L-0912', expiresOn: addDays(invToday, 40) },
+    { id: 'lot-yog', itemId: 'yogur', code: 'L-1018', expiresOn: addDays(invToday, 1) },
+    { id: 'lot-avena', itemId: 'leche-avena', code: null, expiresOn: addDays(invToday, 5) },
+  ],
+  movements: invMovements,
+  movementCosts: [],
+}, { delay: 400, supplierNames: { 'sup-molinos': 'Molinos Sur', 'sup-eco': 'EcoGranel' } });
+(window as unknown as { invSource: typeof invSource }).invSource = invSource;
+const invSheetHost = el('div', { id: 'invSheetHost', class: 'card' }, el('p', { class: 'hint' }, 'Toca un artículo para ver su ficha.'));
+let invSheet: ReturnType<typeof createItemSheet> | null = null;
+const openInvSheet = (item: ItemRow) => {
+  invSheet?.destroy();
+  invSheet = createItemSheet({
+    source: invSource, itemId: item.id, spaces: spaceSource, feedbackId: 'demo.inventario.ficha',
+    actions: ['spend', 'entry', 'transfer', 'count'], onAction: (a, it) => toast(`${a}: ${it.name} (formulario en la 0.38)`),
+    suppliers: [{ id: 'sup-molinos', name: 'Molinos Sur' }, { id: 'sup-eco', name: 'EcoGranel' }],
+    sourceLink: (app, ref) => (app === 'finance' ? { label: `Factura ${ref.replace('inv-', '2026-')}`, onClick: () => toast('Abriría la factura en Finance') } : app === 'food' ? { label: 'Comida del sábado', onClick: () => toast('Abriría el servicio en Food') } : null),
+    personName: (id) => ({ ana: 'Ana' })[id] ?? null,
+  });
+  replace(invSheetHost, invSheet.element);
+  invSheetHost.scrollIntoView({ block: 'start', behavior: 'smooth' });
+};
+const invCatalog = createItemCatalog({
+  source: invSource, spaces: spaceSource, label: 'Inventario', spaceChips: ['cocina', 'piscina'], canCreate: true, feedbackId: 'demo.inventario',
+  actions: ['spend', 'entry', 'count'], onAction: (a, it) => toast(`${a}: ${it.name} (formulario en la 0.38)`),
+  rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [{ label: 'Pedir', primary: true, onClick: () => toast('Pedido a Tasks') }] : []),
+  onOpen: openInvSheet, today: invToday,
+});
+invCatalog.element.id = 'invCatalog';
+const inventorySection = section('inventory', 'Inventario (R3)', 'createItemCatalog: buscar, filtros a un toque (bajo mínimo, caduca pronto, sitios, tipos, archivados), agrupado por sitio, acciones del kit y de la app («Pedir»), y filas que se alinean en columnas con ancho. createItemSheet: stock por sitio y lote con coste medio, datos (máquinas con marca, serie y estado), unidades y movimientos con su origen.',
+  el('div', { class: 'card' }, invCatalog.element), invSheetHost,
+);
 // --- Calendario de persona (O2/O4) -----------------------------------------------------------------------
 const tp = todayKey();
 const personEvents: CalendarEvent[] = [
@@ -1284,12 +1359,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#items', 'Artículos'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#items', 'Artículos'], ['#inventory', 'Inventario'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
