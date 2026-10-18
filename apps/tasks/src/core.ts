@@ -151,7 +151,7 @@ export class TasksCore {
   async start(): Promise<Bootstrap | null> {
     if (!this.started) {
       this.started = true;
-      for (const table of TABLES) this.client.onTable(table as TableName, () => this.scheduleRefresh());
+      for (const table of TABLES) this.client.onTable(table as TableName, (rows) => this.tableChanged(table, rows as unknown as Array<{ id: string }>));
       this.client.onStatus((status) => {
         const syncing = status.network === 'syncing';
         if (syncing && !this.syncing) this.cycles += 1;
@@ -325,6 +325,24 @@ export class TasksCore {
     this.data = next;
     this.emit('data');
     return true;
+  }
+
+  /**
+   * Aviso del espejo con las filas vivas de una tabla (p. ej. al confirmar un comando, con sus revisiones nuevas). Se
+   * aplican ya a la copia en memoria, sin esperar al refresco completo: si no, una edición planificada en ese hueco salía
+   * con la revisión vieja y acababa en conflicto (app.spec.ts en la CI de #571: borrar una vista recién creada salió con
+   * `expectedRevision: 0`). Las filas borradas no vienen en el aviso: las pone al día el refresco de siempre.
+   */
+  private tableChanged(table: string, rows: Array<{ id: string }>): void {
+    if (this.localPending === 0) {
+      const fresh = new Map(rows.map((row) => [row.id, row]));
+      const current = ((this.data as unknown as Record<string, Array<{ id: string }>>)[table] ?? []);
+      const merged = current.map((row) => fresh.get(row.id) ?? row);
+      const known = new Set(current.map((row) => row.id));
+      for (const row of rows) if (!known.has(row.id)) merged.push(row);
+      this.data = { ...this.data, [table]: merged } as Dataset;
+    }
+    this.scheduleRefresh();
   }
 
   private scheduleRefresh(): void {
