@@ -101,12 +101,13 @@ test('rol outsider · lee solo lo abierto, no escribe por defecto, no llama proc
   const tables = new Map<string, any>(boot.data.tables.map((t: any) => [t.table, t]));
   assert.equal(tables.get(NOTES).readable, true);
   assert.equal(tables.get(NOTES).writable, false);
-  assert.equal(tables.get('tasks.tasks').readable, false, 'por defecto no lee las tablas de la app');
+  // Tasks abre al outsider sus tablas de tareas (O1, migración 0325); las vistas guardadas siguen cerradas.
+  assert.equal(tables.get('tasks.saved_views').readable, false, 'por defecto no lee las tablas de la app');
 
   const id = crypto.randomUUID();
   await q(`insert into tasks.o1_notes (id, text) values ($1, 'abierta')`, [id]);
   assert.equal((await app.call(`/api/v1/snapshot?tables=${NOTES}`, { token })).status, 200);
-  assert.equal((await app.call(`/api/v1/snapshot?tables=tasks.tasks`, { token })).status, 403);
+  assert.equal((await app.call(`/api/v1/snapshot?tables=tasks.saved_views`, { token })).status, 403);
 
   const write = await app.call('/api/v1/commands', { token, body: { requestId: rid(), operations: [{ op: 'update', table: NOTES, id, expectedRevision: 1, fields: { text: 'x' } }] } });
   assert.equal(write.status, 403);

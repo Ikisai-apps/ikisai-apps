@@ -290,6 +290,8 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
 /** Valida un lote completo. Lanza `DomainError` con el primer problema. */
 export function validateOperations(operations: readonly Operation[], ctx: ValidationContext): void {
   if (ctx.role === 'reader') forbidden('Tu acceso es de solo lectura.');
+  // O1, paso 1: el outsider solo lee. Marcar hecha y comentar llegan en el paso 2, con sus columnas contadas.
+  if (ctx.role === 'outsider') forbidden('Por ahora solo puedes ver lo que se te ha abierto.');
   const seen = new Set<string>();
   operations.forEach((op, index) => {
     if (op.op === 'call') {
