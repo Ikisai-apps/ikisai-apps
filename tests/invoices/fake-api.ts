@@ -97,6 +97,10 @@ export interface FakeApi {
   setEntity(entity: Record<string, unknown> | null): void;
   /** Lo que devuelve booking.reservation_invoice_source para una reserva (§14.8). */
   setReservationSource(id: string, source: Record<string, unknown> | null): void;
+  /** R4, PR 4: lo que devuelve `GET resource-links/preview` (null = 404) y los espacios de `GET resources/snapshot`. */
+  setResourceLinks(preview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null, spaces?: Array<Record<string, unknown>>): void;
+  /** Cuerpos recibidos en `POST resource-links/apply`. */
+  resourceLinksApplied(): Array<Record<string, unknown>>;
   setExtractor(fn: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null): void;
   close(): Promise<void>;
 }
@@ -133,6 +137,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let failVerify = false;
   let entity: Record<string, unknown> | null = null;
   const reservationSources = new Map<string, Record<string, unknown>>();
+  let linksPreview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null = null;
+  let linkSpaces: Array<Record<string, unknown>> = [];
+  const linksApplied: Array<Record<string, unknown>> = [];
   // «Sugerencias y QA» y uso de funcionalidades (kit 0.18): en memoria, como en el simulado de Booking.
   const feedbackStore = new Map<string, FakeFeedbackReport>();
   const textPosts: Array<{ fileId: string; items: number; fill: boolean }> = [];
@@ -841,6 +848,21 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (out.fault) throw new Fault(out.fault.status, out.fault.code, out.fault.message, out.fault.details ?? null);
         return json(res, 200, { document: out.document, document_sha256: createHash('sha256').update(JSON.stringify(out.document)).digest('hex'), warnings: out.warnings ?? [], usage: out.usage ?? null });
       }
+      if (path === 'resource-links/preview' && method === 'GET') {
+        if (session.role !== 'owner') throw new Fault(403, 'FORBIDDEN', 'Solo el owner ve la vista previa del enlace con Recursos.');
+        if (!linksPreview) throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
+        return json(res, 200, linksPreview);
+      }
+      if (path === 'resource-links/apply' && method === 'POST') {
+        const body = await readJson(req);
+        if (!linksPreview || body.digest !== linksPreview.digest) throw new Fault(409, 'PREVIEW_CHANGED', 'La vista previa ha cambiado: vuelve a revisarla antes de aplicar.');
+        linksApplied.push(body);
+        const rows = linksPreview.rows.filter((r) => r.action === 'crear' || r.action === 'enlazar');
+        return json(res, 200, { created: linksPreview.counts.new_items ?? 0, linked: rows.filter((r) => r.source === 'line').length, memory: rows.filter((r) => r.source === 'memory').length });
+      }
+      if (path === 'resources/snapshot' && method === 'GET') {
+        return json(res, 200, { cursor: 1, tables: [{ table: 'resources.spaces', rows: linkSpaces }] });
+      }
       const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
       if (targetsList && method === 'GET') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
@@ -903,6 +925,8 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     setExtractor(fn) { extractor = fn; },
     setEntity(e) { entity = e; },
+    setResourceLinks(preview, spaces) { linksPreview = preview; if (spaces) linkSpaces = spaces; },
+    resourceLinksApplied: () => [...linksApplied],
     setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),
     documentTextPosts: () => textPosts.map((t) => ({ ...t })),

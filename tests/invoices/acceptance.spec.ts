@@ -2465,3 +2465,39 @@ test('R4 · caracterización: «Mi nombre» recordado, tipo de artículo y desti
     await context.close();
   }
 });
+
+test('R4 · PR 4: el owner ve la vista previa del enlace con Recursos (se enlazan, se crean, por decidir y no son stock) y la aplica con un sitio', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const space = randomUUID();
+  api.setResourceLinks({
+    digest: 'd-r4-1',
+    counts: { lines: 4, memory: 1, enlazar: 1, crear: 2, dudoso: 1, omitir: 1, new_items: 1 },
+    rows: [
+      { source: 'line', id: randomUUID(), invoice_code: 'FVR_2026_001', name: 'Sal', action: 'enlazar', reason: null, item_name: 'Sal', kind: 'ingrediente', base_unit: 'kg' },
+      { source: 'line', id: randomUUID(), invoice_code: 'FVR_2026_001', name: 'Harina de la casa', action: 'crear', reason: null, item_name: null, kind: 'ingrediente', base_unit: 'kg' },
+      { source: 'memory', id: randomUUID(), invoice_code: null, name: 'Harina de la casa', action: 'crear', reason: null, item_name: null, kind: 'ingrediente', base_unit: 'kg' },
+      { source: 'line', id: randomUUID(), invoice_code: 'FVR_2026_002', name: 'Tornillos', action: 'dudoso', reason: 'sin_tipo', item_name: null, kind: null, base_unit: 'ud' },
+      { source: 'line', id: randomUUID(), invoice_code: 'FVR_2026_002', name: 'PORTES', action: 'omitir', reason: 'servicio', item_name: null, kind: null, base_unit: null },
+    ],
+  }, [{ id: space, name: 'Despensa', kind: 'almacen', active: true, deleted_at: null }]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.locator('#resourceLinksPreview').click();
+    const sheet = page.locator('.sheet[role="dialog"]').last();
+    await expect(sheet.locator('#resourceLinksCounts')).toContainText('Artículos nuevos1 (para 2)', { timeout: 20_000 });
+    await expect(sheet.locator('#resourceLinks-enlazar')).toContainText('Sal · FVR_2026_001 · con «Sal»');
+    await expect(sheet.locator('#resourceLinks-crear')).toContainText('Harina de la casa · memoria · Ingrediente, en kg');
+    await expect(sheet.locator('#resourceLinks-dudoso')).toContainText('Tornillos · FVR_2026_002 · sin tipo de artículo');
+    await expect(sheet.locator('#resourceLinks-omitir')).toContainText('PORTES · FVR_2026_002 · servicio');
+    await sheet.locator('#resourceLinksSpace').selectOption(space);
+    await sheet.locator('#resourceLinksApply').click();
+    await expect(page.locator('.toast').last()).toContainText('1 artículo nuevo, 2 líneas y 1 nombre de la memoria enlazados', { timeout: 20_000 });
+    expect(api.resourceLinksApplied()).toEqual([{ digest: 'd-r4-1', space_id: space }]);
+  } finally {
+    api.setResourceLinks(null);
+    await context.close();
+  }
+});
