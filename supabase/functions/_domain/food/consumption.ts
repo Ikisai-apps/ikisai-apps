@@ -12,7 +12,7 @@ import type { SyncedColumns } from './catalog.ts';
 import type { MenuService } from './menus.ts';
 import type { MenuGraph } from './warnings.ts';
 import { scaledIngredients } from './planning.ts';
-import { toItemBase, type MovementLike, type ResourceItem } from './resources.ts';
+import { itemUnitFactor, type ItemConversion, type MovementLike, type ResourceItem } from './resources.ts';
 import type { Unit } from './units.ts';
 
 export interface Consumption extends SyncedColumns {
@@ -26,8 +26,13 @@ export interface Consumption extends SyncedColumns {
 export const CONSUMPTION_SINCE = '2026-10-15';
 /** Minutos tras la hora del servicio en que su consumo queda por confirmar. */
 export const CONSUMPTION_DUE_MINUTES = 120;
-/** Horas tras quedar por confirmar en que se descuenta solo. */
+/** Horas tras quedar por confirmar en que se descuenta solo (lo hace el worker de Food en el servidor). */
 export const CONSUMPTION_AUTO_HOURS = 24;
+/**
+ * Respaldo en la app: si a las 26 h el worker no lo ha hecho (sin cuenta de servicio, por ejemplo), lo descuenta la app
+ * de un editor. Las 2 h de margen evitan que los dos lo hagan a la vez.
+ */
+export const CONSUMPTION_FALLBACK_HOURS = 26;
 
 export const menuItemRef = (id: string) => `menu_item:${id}`;
 
@@ -70,6 +75,8 @@ export interface ConsumptionLine {
   /** Artículo de Recursos y su unidad base; `null` si no se puede descontar (`reason`). */
   itemId: string | null;
   baseUnit: string | null;
+  /** Unidades base en una unidad de la línea (`itemUnitFactor`). */
+  factor: number | null;
   reason: 'sin_articulo' | 'sin_conversion' | null;
 }
 
@@ -78,16 +85,17 @@ export function consumptionLines(
   graph: MenuGraph,
   itemId: string,
   items: Array<Pick<ResourceItem, 'id' | 'base_unit' | 'deleted_at'>>,
+  conversions: ItemConversion[] = [],
 ): ConsumptionLine[] {
   const ingredients = new Map(graph.ingredients.map((g) => [g.id, g as typeof g & { item_id?: string | null }]));
   return scaledIngredients(graph, itemId).map((line) => {
     const ingredient = ingredients.get(line.ingredient_id);
     const article = ingredient?.item_id ? items.find((i) => i.id === ingredient.item_id && !i.deleted_at) : undefined;
-    const convertible = article ? toItemBase(line.quantity, line.unit, article.base_unit) !== null : false;
+    const factor = article ? itemUnitFactor(line.unit, article.base_unit, article.id, conversions) : null;
     return {
       ingredientId: line.ingredient_id, name: ingredient?.name ?? '—', quantity: line.quantity, unit: line.unit,
-      itemId: article?.id ?? null, baseUnit: article?.base_unit ?? null,
-      reason: !article ? 'sin_articulo' : convertible ? null : 'sin_conversion',
+      itemId: article?.id ?? null, baseUnit: article?.base_unit ?? null, factor,
+      reason: !article ? 'sin_articulo' : factor !== null ? null : 'sin_conversion',
     };
   });
 }
@@ -98,9 +106,9 @@ export function consumptionLines(
  */
 export function consumeCall(args: { line: ConsumptionLine; quantity: number; menuItemId: string; spaceIds: string[]; fallbackSpaceId: string | null; note: string }):
   { op: 'call'; procedure: 'resources.consume'; args: Record<string, unknown> } | null {
-  if (!args.line.itemId || !args.line.baseUnit || !(args.quantity > 0)) return null;
-  const base = toItemBase(args.quantity, args.line.unit, args.line.baseUnit);
-  if (base === null || !(base > 0)) return null;
+  if (!args.line.itemId || args.line.factor === null || !(args.quantity > 0)) return null;
+  const base = Math.round(args.quantity * args.line.factor * 1e6) / 1e6;
+  if (!(base > 0)) return null;
   return {
     op: 'call', procedure: 'resources.consume',
     args: {

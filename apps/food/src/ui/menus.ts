@@ -622,7 +622,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         onchange: () => void commitSafely([{ op: 'update', table: T.menuServices, id: service.id, expectedRevision: service.revision, fields: { service_time: time.value || null } }]) });
       const consumption = consumptionOf(service);
       const consumeBar = !consumption ? null
-        : (consumption.state === 'por_confirmar' || consumption.state === 'automatico') && canWrite()
+        : consumption.state === 'automatico' ? el('div', { class: 'chips consumebar' }, el('span', { class: 'chip' }, 'Se está descontando solo'))
+        : consumption.state === 'por_confirmar' && canWrite()
           ? el('div', { class: 'consumebar' },
               el('button', { 'data-feedback-id': 'food.menu.servicios.confirmar_consumo', 'data-feedback-label': 'Confirmar consumo', class: 'ghost consumebtn', type: 'button', 'aria-label': `Confirmar consumo de ${label}`, onclick: () => openConsumption(service) }, icon('check', 18), 'Confirmar consumo'),
               el('span', { class: 'hint' }, 'Si nadie lo confirma, se descuenta solo a las 24 h.'))
@@ -646,12 +647,12 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
      */
     function openConsumption(service: ServiceRow): void {
       const state = consumptionOf(service);
-      if (!state || !inventory) return;
+      if (!state || !inventory || state.state !== 'por_confirmar') return;
       const label = `${SERVICE_LABELS[service.service_type]} del ${longDay(service.service_date)}`;
       const forms = state.pending.map((menuItemId) => {
         const dish = items.find((i) => i.id === menuItemId)!;
         const recipe = recipes.find((r) => r.id === dish.recipe_id);
-        const lines = consumptionLines(menuGraph, menuItemId, inventory!.items);
+        const lines = consumptionLines(menuGraph, menuItemId, inventory!.items, inventory!.conversions);
         const done = el('input', { type: 'checkbox', checked: true, 'aria-label': `${recipe?.name ?? 'Plato'}: se hizo` }) as HTMLInputElement;
         const inputs = lines.map((line) => el('input', { type: 'text', inputmode: 'decimal', class: 'qty compact', value: formatQuantity(line.quantity), 'aria-label': `${line.name} gastado en ${recipe?.name ?? 'el plato'}`, disabled: line.reason !== null }) as HTMLInputElement);
         const node = el('div', { 'data-feedback-id': 'food.menu.consumo.plato', 'data-feedback-label': 'Plato del consumo', class: 'consumedish' },
@@ -676,6 +677,8 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
             }
             decisions.push({ menuItemId: form.menuItemId, done: form.done.checked, quantities });
           }
+          // Pasadas las 24 h lo descuenta el servidor: confirmarlo aquí podría descontarlo dos veces.
+          if (consumptionOf(service)?.state !== 'por_confirmar') { error.textContent = 'Ya han pasado 24 h: se está descontando solo con lo previsto.'; return; }
           confirm.disabled = true;
           try {
             await usage.run('food.menu.consumo.confirmar', () => confirmConsumption(client, menuGraph, inventory!, decisions, {

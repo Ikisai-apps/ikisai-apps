@@ -132,7 +132,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     if (!inventory?.kitchen.size) { replace(consumeHost); return; }
     const { graph, services, consumptions } = await loadConsumptionGraph(client);
     const now = new Date();
-    const due = services.filter((s) => { const state = serviceConsumption(s, graph, consumptions, inventory.movements, now).state; return state === 'por_confirmar' || state === 'automatico'; })
+    const due = services.filter((s) => { const state = serviceConsumption(s, graph, consumptions, inventory.movements, now).state; return state === 'por_confirmar'; })
       .sort((a, b) => a.service_date.localeCompare(b.service_date));
     if (!due.length) { replace(consumeHost); return; }
     const titleOf = (menuId: string) => {

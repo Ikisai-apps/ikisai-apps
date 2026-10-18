@@ -7,9 +7,9 @@
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
-  consumeCall, consumptionLines, kitchenSpaceIds, purchaseSpace, serviceConsumption,
+  CONSUMPTION_FALLBACK_HOURS, consumeCall, consumptionLines, kitchenSpaceIds, purchaseSpace, serviceConsumption,
   type Consumption, type MenuGraph, type MenuItem, type MenuService, type MovementLike, type Recipe, type RecipeIngredient, type ResourceItem, type SpaceLike,
-  type Ingredient, type LotLike,
+  type Ingredient, type ItemConversion, type LotLike,
 } from '@ikisai/domain-food';
 import { T, type Mirror } from './client.ts';
 import { R, resourcesClient } from './resources.ts';
@@ -19,18 +19,21 @@ export interface InventoryData {
   spaces: SpaceLike[];
   movements: MovementLike[];
   lots: LotLike[];
+  /** Conversiones de los artículos (`resources.item_units`). */
+  conversions: ItemConversion[];
   kitchen: Set<string>;
 }
 
 export async function loadInventory(client: SyncClient): Promise<InventoryData> {
   const r = resourcesClient(client);
-  const [items, spaces, movements, lots] = await Promise.all([
+  const [items, spaces, movements, lots, conversions] = await Promise.all([
     r.list(R.items) as unknown as Promise<InventoryData['items']>,
     r.list(R.spaces) as unknown as Promise<SpaceLike[]>,
     r.list(R.movements) as unknown as Promise<MovementLike[]>,
     r.list(R.lots) as unknown as Promise<LotLike[]>,
+    r.list(R.itemUnits) as unknown as Promise<ItemConversion[]>,
   ]);
-  return { items, spaces, movements, lots, kitchen: kitchenSpaceIds(spaces) };
+  return { items, spaces, movements, lots, conversions, kitchen: kitchenSpaceIds(spaces) };
 }
 
 /** Lo que se decide de un plato: si se hizo y, si se corrigió, la cantidad de cada línea (en su unidad). */
@@ -40,7 +43,7 @@ export interface DishDecision { menuItemId: string; done: boolean; quantities?: 
 export async function confirmConsumption(client: SyncClient, graph: MenuGraph, inventory: InventoryData, decisions: DishDecision[], options: { automatic?: boolean; noteOf: (menuItemId: string) => string }): Promise<void> {
   const calls: RowOperation[] = [];
   for (const decision of decisions.filter((d) => d.done)) {
-    const lines = consumptionLines(graph, decision.menuItemId, inventory.items);
+    const lines = consumptionLines(graph, decision.menuItemId, inventory.items, inventory.conversions);
     lines.forEach((line, index) => {
       const article = inventory.items.find((i) => i.id === line.itemId);
       const call = consumeCall({
@@ -71,8 +74,8 @@ export async function loadConsumptionGraph(client: SyncClient): Promise<{ graph:
 }
 
 /**
- * A las 24 h sin confirmar, se descuenta solo con lo previsto (decisión del usuario). Lo hace la app de un editor al
- * abrirse o al volver la red; devuelve cuántos platos ha descontado.
+ * Respaldo del worker del servidor (P17): si a las 26 h un plato sigue sin descontar, lo descuenta la app de un editor al
+ * abrirse o al volver la red, con lo previsto. Devuelve cuántos platos ha descontado.
  */
 export async function autoConsume(client: SyncClient, now = new Date()): Promise<number> {
   const role = client.bootstrap()?.membership.role;
@@ -82,7 +85,8 @@ export async function autoConsume(client: SyncClient, now = new Date()): Promise
   const { graph, services, consumptions } = await loadConsumptionGraph(client);
   const due = services.flatMap((s) => {
     const state = serviceConsumption(s, graph, consumptions, inventory.movements, now);
-    return state.state === 'automatico' ? state.pending.map((id) => ({ id, service: s })) : [];
+    const late = now.getTime() >= state.due.getTime() + CONSUMPTION_FALLBACK_HOURS * 3_600_000;
+    return state.state === 'automatico' && late ? state.pending.map((id) => ({ id, service: s })) : [];
   });
   if (!due.length) return 0;
   const names = new Map(graph.recipes.map((r) => [r.id, r.name]));
