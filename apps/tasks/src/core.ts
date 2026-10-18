@@ -9,6 +9,7 @@ import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBa
 import {
   DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, effectiveScopes, emptyDataset, validateOperations,
   addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
+  approvalOps, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
@@ -456,6 +457,56 @@ export class TasksCore {
     return ops;
   }
   api<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> { return this.client.api<T>(path, init); }
+
+  /**
+   * Propuestas del outsider (O1, paso 3; docs/tasks/API.md §31): el lote de una sugerencia, desde la copia en memoria.
+   * 'tarea': tarea nueva en un proyecto (con lo que hereda y la foto); 'step': un paso de una tarea; 'note': una línea más
+   * en su nota. Lanza `Error` con un texto para la persona si no vale. El servidor lo vuelve a comprobar al proponer.
+   */
+  suggestionOps(kind: 'tarea' | 'step' | 'note', input: { projectId?: string; taskId?: string; title?: string; note?: string; line?: string; photo?: SuggestionPhoto | null }): Operation[] {
+    if (kind === 'tarea') return suggestTaskOps(this.data, { projectId: input.projectId!, title: input.title ?? '', note: input.note ?? '', photo: input.photo ?? null });
+    if (kind === 'step') return suggestStepOps(this.data, { taskId: input.taskId!, title: input.title ?? '' });
+    return suggestNoteOps(this.data, { taskId: input.taskId!, line: input.line ?? '' });
+  }
+  /** Lote para aprobar rehecho con lo de ahora (otro proyecto de destino, o la nota al día); `null` si vale el original. */
+  approvalOps(detail: SuggestionDetail | null | undefined, operations: Operation[], options: { projectId?: string | null } = {}): Operation[] | null {
+    return approvalOps(this.data, detail, operations, options);
+  }
+  /**
+   * Sube una foto ya (las sugerencias no pasan por la cola: necesitan red) y la deja verificada. El servidor solo deja que
+   * acabe en una propuesta de quien la sube (`tasks.suggestion_check`).
+   */
+  async uploadNow(blob: Blob, meta: { filename: string; mime: string }): Promise<SuggestionPhoto> {
+    const bytes = await blob.arrayBuffer();
+    const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const ticket = await this.client.api<{ id: string; uploadUrl: string; method?: string; headers?: Record<string, string> }>('/uploads', {
+      json: { filename: meta.filename, mime: meta.mime, size: blob.size, sha256 },
+    });
+    const headers = new Headers(ticket.headers ?? {});
+    if (!headers.has('Content-Type')) headers.set('Content-Type', meta.mime);
+    const put = await fetch(ticket.uploadUrl, { method: ticket.method ?? 'PUT', headers, body: blob });
+    if (!put.ok) throw new Error('No se pudo subir la foto.');
+    const verified = await this.client.api<{ verified: boolean }>(`/uploads/${encodeURIComponent(ticket.id)}/verify`, { method: 'POST' });
+    if (!verified?.verified) throw new Error('El servidor no pudo verificar la foto.');
+    return { fileId: ticket.id, name: meta.filename, mime: meta.mime, size: blob.size, sha256 };
+  }
+
+  /**
+   * ¿Ha cambiado la pertenencia en el servidor (rol o ámbitos)? Pasa, por ejemplo, cuando la propietaria abre un proyecto
+   * a un outsider con «Abrir a…» (O1, paso 4). sync-client solo rehace el espejo al arrancar, así que, si cambió, se vuelve
+   * a arrancar (compara la revisión de la pertenencia y repone lo que ahora es visible). Sin red o sin sesión, no hace nada.
+   */
+  async refreshMembership(): Promise<boolean> {
+    if (this.options.readOnly || !this.client.session()) return false;
+    const before = this.client.bootstrap()?.membership;
+    let me: { role?: string; scopes?: unknown };
+    try { me = await this.client.api<{ role?: string; scopes?: unknown }>('/me'); } catch { return false; }
+    if (before && me.role === before.role && JSON.stringify(me.scopes ?? null) === JSON.stringify(before.scopes ?? null)) return false;
+    await this.client.start();
+    await this.reload();
+    this.emit('data');
+    return true;
+  }
 
   /** Bloqueos privados (API.md §5.3): solo para accesos por proyecto; la última respuesta se conserva sin red. */
   async refreshBlockers(): Promise<void> {

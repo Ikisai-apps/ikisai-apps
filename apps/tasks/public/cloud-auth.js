@@ -44,10 +44,10 @@ passwordSheet=function(){
    `members` y `members/invite` del núcleo. La contraseña temporal se muestra una sola vez. Quitar el acceso deja la
    pertenencia sin ámbitos (el núcleo aún no tiene baja ni cierre de sesiones ajenas, petición C7). */
 const NO_ACCESS={tabs:[],projects:{}};
-function memberHasAccess(m){const s=m.scopes;return s==null||s==='*'||(Array.isArray(s)?s.length>0:(s.tabs||[]).length>0||Object.values(s.projects||{}).some(list=>list.length))}
+function memberHasAccess(m){const s=m.scopes;if(m.role==='outsider'&&(s==null||s==='*'))return false;return s==null||s==='*'||(Array.isArray(s)?s.length>0:(s.tabs||[]).length>0||Object.values(s.projects||{}).some(list=>list.length))}
 usersSheet=async function(){
   try{const items=await Sync.core.api('/members');Sync.members=items;
-    openSheet(`<h2 class="sheettitle">Cuentas de personas</h2><button class="primary" id="newUser" data-feedback-id="tasks.cuentas.invitar" data-feedback-label="Invitar a una persona">Invitar a una persona</button>${items.map(u=>`<section style="padding:12px 0"><strong data-feedback-ignore>${esc(u.displayName||'Sin nombre')}</strong>${u.userId===Sync.actor?.id?' · tú':''}<p class="small">${esc({reader:'Solo lectura',editor:'Editar',owner:'Propietario'}[u.role]||u.role)} · ${memberHasAccess(u)?esc(accessScopeText(u.scopes==null?'*':u.scopes)):'Sin acceso'}</p><button class="softbtn" data-edit-user="${u.userId}" data-feedback-id="tasks.cuentas.lista.permisos" data-feedback-label="Permisos de la cuenta">Permisos</button></section>`).join('')}`);
+    openSheet(`<h2 class="sheettitle">Cuentas de personas</h2><button class="primary" id="newUser" data-feedback-id="tasks.cuentas.invitar" data-feedback-label="Invitar a una persona">Invitar a una persona</button>${items.map(u=>`<section style="padding:12px 0"><strong data-feedback-ignore>${esc(u.displayName||'Sin nombre')}</strong>${u.userId===Sync.actor?.id?' · tú':''}<p class="small">${esc({reader:'Solo lectura',editor:'Editar',owner:'Propietario',outsider:'Persona de fuera'}[u.role]||u.role)} · ${memberHasAccess(u)?esc(accessScopeText(u.scopes==null?'*':u.scopes)):'Sin acceso'}</p><button class="softbtn" data-edit-user="${u.userId}" data-feedback-id="tasks.cuentas.lista.permisos" data-feedback-label="Permisos de la cuenta">Permisos</button></section>`).join('')}`);
     document.getElementById('newUser').onclick=()=>userEditor();
     document.querySelectorAll('[data-edit-user]').forEach(b=>b.onclick=()=>userEditor(items.find(u=>u.userId===b.dataset.editUser)));
   }catch(e){toast(e.message)}

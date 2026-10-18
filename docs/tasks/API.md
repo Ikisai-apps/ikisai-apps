@@ -1575,9 +1575,31 @@ El outsider es una persona de fuera (voluntarios incluidos) con nivel de casa `o
   - La tarjeta de la tarea lleva el contador 💬 n si tiene comentarios.
 - **Pruebas:** `tests/tasks/outsider.test.ts` (PGlite: hecha, lo que no puede, otro proyecto, bloqueo, comentarios por rol, lo propio y lo ajeno, visibilidad por snapshot y cambios, la foto solo en comentarios, mover, convertir y vaciar la papelera) y `tests/tasks/outsider-ui.spec.ts` (Playwright en 390 px). Capturas en `coordinacion/tasks/o1-despues/`.
 
-**Pendiente:**
-- **Paso 3:** propuestas con `core.register_suggestion_kind('tasks', 'tarea' | 'anadido', …)`, que se deciden en «Por clasificar» (`createSuggestionSource` + `createProposalList`, kit 0.34) y se siguen en «Mis propuestas».
-- **Paso 4:** menú reducido y «Abrir a…» en el proyecto.
+**Paso 3 (hecho): propuestas del outsider.** Migración `0329`, sugerencias del núcleo (contrato §3.10).
+- **Tipos** (`core.register_suggestion_kind`, solo el rol `outsider` de Tasks propone):
+  - `'tarea'` («Tarea nueva»): `insert` en `tasks.tasks` y lo que la hace nacer bien: las etiquetas, espacios, oficios y personas **propios de su proyecto** (`task_labels`, `task_spaces`, `task_trades`, `task_people`) y, si quiere, una foto (`tasks.attachments`).
+  - `'anadido'` («Añadido a una tarea»): un paso nuevo (`insert` en `tasks.tasks` con `parent_id`, con lo heredado del proyecto; si la madre estaba hecha, vuelve a pendiente, como `createTaskOps`) o una línea más en la nota (`update` de `note`).
+- **Al proponer** lo comprueba `tasks.suggestion_check`, el aviso `on_submit` del núcleo (0095), en la misma transacción que `core.suggest`; si falla, la propuesta no se crea:
+  - el proyecto (o la tarea) tiene que estar en sus ámbitos efectivos (`tasks.effective_scopes`: vacío o `"*"` es nada), vivo y sin archivar;
+  - solo los campos de una tarea nueva y pendiente (`done`, `cost` y `owner_label_id` vacíos), y solo lo heredado de ese proyecto;
+  - en la nota, solo `note` de una tarea visible (y `done = false` de la madre que recibe su primer paso);
+  - la foto: imagen (`webp`, `jpeg` o `png`) verificada de Tasks y **subida por quien propone** (`FILE_NOT_UPLOADED`). La sube al enviar (`TasksCore.uploadNow`: `POST uploads`, `PUT`, `verify`), con la misma recompresión que los adjuntos;
+  - cualquier otra tabla u operación: `SUGGESTION_NOT_ALLOWED` (el tipo ya lo para en el núcleo).
+- **Al aprobar**, el núcleo aplica el lote como `core.commit` de quien aprueba (editor u owner humano), con todos los hooks y **sus** ámbitos. La interfaz rehace el lote cuando hace falta (`approvalOps` del dominio): otro proyecto de destino (la misma tarea, con lo que hereda el proyecto nuevo y la misma foto) o la línea sobre la nota actual. Si ya no encaja, la propuesta sigue pendiente y sale el motivo.
+- **Dominio** (`_domain/tasks/suggestions.ts`): `suggestTaskOps`, `suggestStepOps`, `suggestNoteOps` y `approvalOps`; `detail` lleva lo necesario para pintar y rehacer (`kind`, título, nota, proyecto o tarea, texto).
+- **Interfaz** (`proposals-ui.js`, `proposals-ui.css`; necesitan red):
+  - Para el outsider, el «+» (FAB, «+ Proponer tarea» en el proyecto) abre **«Proponer tarea»**: título obligatorio, nota, proyecto entre los abiertos (sin la Entrada) y una foto opcional. Ninguna otra vía abre el editor de crear.
+  - En la ficha de una tarea, **«Proponer un cambio»**: un paso nuevo o una línea en la nota.
+  - **«Mis propuestas»** (menú «Trabajo»): `createProposalList({mode: 'mine'})` con estado, comentario de quien decidió y «Retirar» en las pendientes. Se vuelve a leer al llegar datos nuevos.
+  - **Decidir:** en «Por clasificar», arriba, **«Propuestas (n)»** con `createProposalList({mode: 'review'})`, para editores y propietaria humanos (también con acceso por proyecto: entonces solo ven esa parte). El detalle de una tarea nueva lleva el **proyecto de destino** editable y la foto; aprobar y descartar admiten un comentario. Al aprobar se sincroniza y la tarea aparece. El menú dice «Por clasificar · n» sumando peticiones y propuestas pendientes.
+
+**Paso 4 (hecho): interfaz del outsider y «Abrir a…».**
+- **Menú reducido:** «Trabajo» (Inicio, Proyectos, Todas las tareas, Mis propuestas) y «Tu cuenta» (Mi cuenta). Abajo no sale «Etiquetas». Cualquier otra vista (por el menú, la URL `#/…`, la vista recordada o la paleta) vuelve a «Proyectos», y cualquier otra acción se rechaza.
+- **«Abrir a…»** en el editor del proyecto, solo para la propietaria humana con acceso a todo y si hay outsiders en Tasks (`GET members`): una casilla por cada uno (marcada y fija si ya tiene el área entera). Al guardar, `POST invoke/tasks.outsider_scopes {userId, projectId, open}` añade o quita ese proyecto en `scopes.projects[tabId]` de su pertenencia.
+- **«Cuentas de personas»**: la ficha de un outsider («Persona de fuera») elige áreas completas y proyectos sueltos, sin «Todas las áreas»; guarda con `POST invoke/tasks.outsider_scopes {userId, scopes: {tabs, projects}}`. «No abrirle nada» los vacía. En la lista, un outsider sin nada abierto sale «Sin acceso» (para él, vacío no es toda la app).
+- **Por qué una acción de Tasks y no `POST members`:** el núcleo no deja poner el rol `outsider` a mano (`INVALID_ROLE`) y guardar sus ámbitos con otro rol lo dejaría en lector. `tasks.outsider_scopes` (acción registrada solo para `owner`; comprueba además acceso a todo y cuenta humana) cambia **solo** `scopes` de una pertenencia que ya es `outsider` (`NOT_OUTSIDER` si no), los valida (áreas y proyectos vivos de su área; nunca `"*"` ni nulo: `INVALID_SCOPES`) y sube `revision`. Cerrar un proyecto de un área abierta entera: `TAB_OPEN`. Petición a Core en `PETICIONES.md`: que `members` lo admita.
+- **Ámbitos nuevos sin reiniciar:** sync-client solo rehace el espejo al arrancar. `TasksCore.refreshMembership()` compara `GET me` con el bootstrap y, si cambió el rol o los ámbitos, vuelve a arrancar el cliente (repone lo visible). Se llama al volver a la app y cada minuto.
+- **Pruebas:** `tests/tasks/outsider-propuestas.test.ts` (PGlite: propone en lo suyo y no en otro, lo que no puede, aprobar con y sin destino nuevo, descartar con comentario, retirar, el añadido con nota y paso, el conflicto de nota, la foto propia y la ajena, quién propone y quién decide, «Abrir a…» y Accesos) y `tests/tasks/outsider-propuestas.spec.ts` (Playwright en 390 px). Capturas `07-…` a `15-…` en `coordinacion/tasks/o1-despues/`.
 
 ## 32. Oficios de Central en lugar de «Tipo: Acción» (fase P2, PR 1)
 
