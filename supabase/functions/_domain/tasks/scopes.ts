@@ -53,6 +53,19 @@ export function isAdministrator(member: { role: Role; scopes: Scopes; kind?: str
   return member.role === 'owner' && allAccess(member.scopes) && (member.kind ?? 'human') === 'human';
 }
 
+/** Sin ningún área ni proyecto. */
+export const NO_SCOPES = Object.freeze({ tabs: [], projects: {} });
+
+/**
+ * Ámbitos efectivos de una pertenencia (O1, RECURSOS.md §14.2). El outsider no ve nada por defecto: su pertenencia nace
+ * del nivel de casa con `scopes` vacío (`core.apply_house_level`), y para él vacío o «*» es **nada**, no toda la app.
+ * Solo ve las áreas o proyectos que se le abran expresamente en sus ámbitos.
+ */
+export function effectiveScopes(membership: { role?: string; scopes?: Scopes }): Scopes {
+  if (membership.role === 'outsider' && allAccess(membership.scopes)) return NO_SCOPES;
+  return membership.scopes;
+}
+
 /** Visibilidad de una fila para unos ámbitos. Función pura de la fila: `tab_id` y `project_id` viajan desnormalizados. */
 export function visibleRow(table: TableName | string, row: Record<string, unknown>, scopes: Scopes): boolean {
   const tab = String(row.tab_id ?? '');
@@ -97,6 +110,6 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
 }
 
 /** Hook `visible` de `tasks-api`. */
-export function visible(table: string, row: Record<string, unknown>, ctx: { membership: { scopes: Scopes } }): boolean {
-  return visibleRow(table, row, ctx.membership.scopes);
+export function visible(table: string, row: Record<string, unknown>, ctx: { membership: { role?: string; scopes: Scopes } }): boolean {
+  return visibleRow(table, row, effectiveScopes(ctx.membership));
 }

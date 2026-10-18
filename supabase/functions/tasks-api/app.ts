@@ -1,7 +1,7 @@
 /** Ikisai Tasks · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/tasks/API.md §4–§6). */
 import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess } from '../_kit/mod.ts';
 import {
-  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
+  ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, effectiveScopes, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
   type AttachmentRow, type ProjectRow, type Role, type TaskDependencyRow, type TaskRow,
 } from '../_domain/tasks/mod.ts';
 
@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** `beforeCommit`: la validación compartida con el cliente; los errores de dominio salen con el sobre de la API. */
 export function validateTasksOperations(operations: Operation[], ctx: RequestContext, options: { allowCalls?: boolean } = {}): void {
   try {
-    validateOperations(operations, { role: ctx.membership.role as Role, scopes: ctx.membership.scopes, allowCalls: options.allowCalls });
+    validateOperations(operations, { role: ctx.membership.role as Role, scopes: effectiveScopes(ctx.membership), allowCalls: options.allowCalls });
   } catch (error) {
     if (error instanceof DomainError) fail(error.status, error.code, error.message, error.details);
     throw error;
@@ -33,7 +33,7 @@ export function tasksAgentRiskHook(supabase: Supabase) {
     if (!riskNeedsData(operations)) return tasksAgentRisk(operations);
     const role = ctx.membership.role;
     const read = async <T extends Record<string, unknown>>(table: 'tasks.tasks' | 'tasks.labels' | 'tasks.projects') =>
-      (await allRows<T>(supabase, role, table, false)).filter((row) => visibleRow(table, row, ctx.membership.scopes));
+      (await allRows<T>(supabase, role, table, false)).filter((row) => visibleRow(table, row, effectiveScopes(ctx.membership)));
     const [tasks, labels, projects] = await Promise.all([read<any>('tasks.tasks'), read<any>('tasks.labels'), read<any>('tasks.projects')]);
     return tasksAgentRisk(operations, { 'tasks.tasks': tasks, 'tasks.labels': labels, 'tasks.projects': projects });
   };
@@ -59,7 +59,7 @@ export function tasksRoutes(supabase: Supabase, storage: StorageAccess = createS
      */
     {
       method: 'GET', pattern: 'blockers', handler: async ({ ctx }) => {
-        const scopes = ctx.membership.scopes;
+        const scopes = effectiveScopes(ctx.membership);
         if (allAccess(scopes)) return { cursor: ctx.bootstrap.cursor, items: [] };
         const role = ctx.membership.role;
         const [tasks, projects, dependencies] = await Promise.all([
@@ -88,7 +88,7 @@ export function tasksRoutes(supabase: Supabase, storage: StorageAccess = createS
         if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Adjunto no encontrado.');
         const rows = await allRows<AttachmentRow>(supabase, ctx.membership.role, 'tasks.attachments', false);
         const attachment = rows.find((row) => row.id === id.toLowerCase());
-        if (!attachment || !visibleRow('tasks.attachments', attachment as unknown as Record<string, unknown>, ctx.membership.scopes)) {
+        if (!attachment || !visibleRow('tasks.attachments', attachment as unknown as Record<string, unknown>, effectiveScopes(ctx.membership))) {
           fail(404, 'NOT_FOUND', 'Adjunto no encontrado.');
         }
         // La fila de core.files dice dónde vive el objeto (Supabase Storage o R2): nunca se llama a Storage directamente (contrato §3.9).

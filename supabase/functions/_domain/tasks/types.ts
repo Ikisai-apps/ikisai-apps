@@ -1,7 +1,8 @@
 /** Tasks · tipos de fila y metadatos de las tablas `tasks.*` (docs/tasks/API.md §2). */
 
 export type Uuid = string;
-export type Role = 'reader' | 'editor' | 'owner';
+/** `outsider` (O1): solo ve lo que se le abre en sus ámbitos; de momento no escribe nada. */
+export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
 
 /** Columnas del contrato §2.1 que lleva toda fila sincronizable. */
 export interface BaseRow {

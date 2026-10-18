@@ -5,7 +5,7 @@
  * propuesta con ese lote exacto y se la devuelve al agente.
  */
 import { fail, type McpTool, type McpToolKit, type RequestContext } from '../_kit/mod.ts';
-import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, emptyDataset, fullTab, lowStock, type Dataset } from '../_domain/tasks/mod.ts';
+import { DomainError, TABLES, TASK_TOOL_SPECS, buildTaskTool, effectiveScopes, emptyDataset, fullTab, lowStock, type Dataset } from '../_domain/tasks/mod.ts';
 
 const PAGE = 2000;
 const REQUEST_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
@@ -53,7 +53,7 @@ const LOW_STOCK_TOOL: McpTool = {
     const tabId = args?.tab_id;
     if (tabId !== undefined && (typeof tabId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tabId))) fail(422, 'INVALID_INPUT', 'tab_id debe ser un uuid.', { field: 'tab_id' });
     const data = await visibleDataset(kit);
-    const items = lowStock(data, (tabId as string | undefined)?.toLowerCase()).filter(({ item }) => fullTab(ctx.membership.scopes, item.tab_id));
+    const items = lowStock(data, (tabId as string | undefined)?.toLowerCase()).filter(({ item }) => fullTab(effectiveScopes(ctx.membership), item.tab_id));
     return {
       items: items.map(({ item, stock, openRequest }) => ({
         supplyItemId: item.id, tabId: item.tab_id, name: item.name, category: item.category, unit: item.unit, location: item.location,
@@ -77,7 +77,7 @@ export function tasksMcpTools(): McpTool[] {
       const requestId = (given as string | undefined) ?? `mcp-${spec.name}-${crypto.randomUUID()}`;
       let operations;
       try {
-        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId), { scopes: ctx.membership.scopes });
+        operations = buildTaskTool(spec.name, await visibleDataset(kit), input, await idsFor(requestId), { scopes: effectiveScopes(ctx.membership) });
       } catch (error) {
         if (error instanceof DomainError) fail(error.status, error.code, error.message, error.details);
         throw error;

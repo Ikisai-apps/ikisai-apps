@@ -4,7 +4,7 @@
  */
 import { createSync, fail, sha256Hex, type AppRoute, type RequestContext, type Supabase, type WorkerRoute, createStorage, type StorageAccess } from '../_kit/mod.ts';
 import {
-  ATTACHMENT_MIME, DomainError, PORTABLE_FORMAT, TABLES, checkPortableTabs, chunkOperations, collectIds, compose, decompose, emptyDataset, exportCSV, importCSV,
+  ATTACHMENT_MIME, DomainError, PORTABLE_FORMAT, TABLES, checkPortableTabs, chunkOperations, collectIds, compose, decompose, effectiveScopes, emptyDataset, exportCSV, importCSV,
   importRows, isAdministrator, portableSummary, remapTabs, unzipStore, validateOperations, visibleRow, zipStore,
   type Dataset, type LegacyTab, type PortableManifest, type Role, type ZipEntry,
 } from '../_domain/tasks/mod.ts';
@@ -41,12 +41,12 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         rows.push(...page.rows);
         if (page.rows.length < 2000) break;
       }
-      data[table] = rows.filter((row) => visibleRow(table, row, ctx.membership.scopes));
+      data[table] = rows.filter((row) => visibleRow(table, row, effectiveScopes(ctx.membership)));
     }
     return data as unknown as Dataset;
   }
-  const model = async (ctx: RequestContext) => { const data = await visibleData(ctx); return { data, tabs: compose(data, { scopes: ctx.membership.scopes ?? '*' }) }; };
-  const admin = (ctx: RequestContext) => { if (!isAdministrator({ role: ctx.membership.role as Role, scopes: ctx.membership.scopes, kind: ctx.bootstrap.profile.kind })) fail(403, 'FORBIDDEN', 'Se necesita un propietario con acceso a toda la app.'); };
+  const model = async (ctx: RequestContext) => { const data = await visibleData(ctx); return { data, tabs: compose(data, { scopes: effectiveScopes(ctx.membership) ?? '*' }) }; };
+  const admin = (ctx: RequestContext) => { if (!isAdministrator({ role: ctx.membership.role as Role, scopes: effectiveScopes(ctx.membership), kind: ctx.bootstrap.profile.kind })) fail(403, 'FORBIDDEN', 'Se necesita un propietario con acceso a toda la app.'); };
   const findTab = (tabs: LegacyTab[], id: string | null) => tabs.find((t) => t.id === id) ?? fail(404, 'NOT_FOUND', 'No existe el área solicitada.');
 
   async function readFile(ctx: RequestContext, fileId: string): Promise<Uint8Array> {
@@ -150,7 +150,7 @@ export function exchangeRoutes(supabase: Supabase, storage: StorageAccess = crea
         const result = domain(() => importCSV(tab, source));
         const batches = domain(() => decompose(data, tabs).flatMap((batch) => chunkOperations(batch)));
         if (batches.length !== 1) fail(422, 'CSV_TOO_LARGE', 'Demasiados elementos para un solo lote; divide el CSV.', { operations: batches.reduce((n, b) => n + b.length, 0) });
-        domain(() => validateOperations(batches[0]!, { role: ctx.membership.role as Role, scopes: ctx.membership.scopes }));
+        domain(() => validateOperations(batches[0]!, { role: ctx.membership.role as Role, scopes: effectiveScopes(ctx.membership) }));
         return { operations: batches[0], ...result };
       },
     },

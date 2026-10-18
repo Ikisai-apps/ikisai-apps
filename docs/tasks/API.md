@@ -1533,3 +1533,23 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
   - **Pruebas:** `tests/tasks/zonas-boton.spec.ts`.
 
 **Arreglo tras la vista previa real (migración `0323`):** cada zona cuenta todos sus usos, no solo aquellos en los que es la más honda, y dice en `withoutSpace` cuántas tareas y proyectos se quedarían sin ningún espacio (el total va en `counts.withoutSpace`). Una zona sin espacio que no deja a nadie sin espacio, como «Exteriores» usada siempre con una hija, sale en `removed` con `reason: 'covered'`, y la ida la quita sola. Las marcadas por la propietaria salen con `'marked'`. Solo es dudosa, y bloquea la ida, la que deja a alguien sin espacio.
+
+## 31. Rol `outsider` (fase O1 de `coordinacion/ampliacion/RECURSOS.md` §14.2; aprobado por el usuario el 18-10-2026)
+
+El outsider es una persona de fuera (voluntarios incluidos) con nivel de casa `outsider` en Central. El núcleo le da el rol `outsider` en Tasks (`core.apply_house_level`, 0092) con los ámbitos vacíos.
+
+**Paso 1 (hecho): solo lee lo que se le abre.**
+- **Ámbitos efectivos** (`effectiveScopes`, `scopes.ts`): para el outsider, `scopes` nulo o `"*"` es **nada**, no toda la app.
+  - Ve solo las áreas o proyectos que se le abran expresamente en sus ámbitos (`{ tabs, projects }`, §5), los mismos que ya se dan a una cuenta por proyecto.
+  - Lo usan el hook `visible` (snapshot, cambios, historial y archivos) y todas las rutas propias de `tasks-api`.
+- **Tablas que puede leer** (migración `0325`): áreas, catálogo, proyectos, tareas, etiquetas, espacios, dependencias, adjuntos y ajustes.
+  - Nunca: compras y almacén, reglas y peticiones de Entrada, vistas guardadas.
+  - Las lecturas de SQL (`core.allow_read`) siguen sin `outsider`.
+- **Escritura:** ninguna. `writable_roles` no cambia, y el dominio también rechaza con `FORBIDDEN`.
+- **Interfaz:** lo trata como lector (`Sync.actor.outsider` queda marcado para el paso 2).
+- **Pruebas:** `tests/tasks/outsider.test.ts`. Sin nada abierto, ni con `"*"`, no ve nada, tampoco por cambios ni por historial. Con un proyecto o un área abiertos, solo ve eso. Y no escribe nada.
+
+**Pendiente:**
+- **Paso 2:** marcar hecha (solo `done`) y comentarios (`tasks.task_comments`, para todos), con fotos.
+- **Paso 3:** propuestas con `core.register_suggestion_kind('tasks', 'tarea' | 'anadido', …)`, que se deciden en «Por clasificar» (`createSuggestionSource` + `createProposalList`, kit 0.34) y se siguen en «Mis propuestas».
+- **Paso 4:** menú reducido y «Abrir a…» en el proyecto.
