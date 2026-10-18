@@ -612,6 +612,13 @@ Desde R7:
 - **Temas:** dentro de cada grupo, las tarjetas van por tema con su subtítulo (§7.2).
 - **Cabecera:** cada grupo pliega con un toque. Enseña lo que está en crítico o en atención, o «N indicadores» si no hay nada.
 - **Plegado:** los grupos salen abiertos. El dispositivo recuerda, por cuenta, lo que se plegó (`ikisai-central-dashboard-folded-v1:<userId>`).
+- **Series en una tarjeta** (aprobado el 18-10-2026). Un indicador con varios periodos (ocupación de Booking, gasto e ingresos de Finance) sale en una sola tarjeta (`collapseSeries` de `_domain/central/kpis.ts`):
+  - **Qué periodo enseña:** el periodo en curso, en hora de Madrid. Si no está, el último anterior; si todos son futuros, el primero. Al lado, su objetivo y su estado.
+  - **Barras:** las de la serie, con el periodo de la tarjeta resaltado.
+  - **Alertas de otros periodos:** «Otros periodos: N críticos · N en atención», si alguno lo está.
+  - **«Ver N meses»:** abre una hoja con cada periodo, su valor y su estado.
+  - El resumen de la cabecera del grupo cuenta lo que enseñan las tarjetas.
+  - Las claves de un solo periodo no cambian.
 
  Debajo, «Vence pronto», el enlace a Entidad y, para el owner, el resumen de accesos. Bloque «Vence pronto» (los 5 primeros de `central.due_items`). Móvil: una columna, tarjetas plegables por app.
 

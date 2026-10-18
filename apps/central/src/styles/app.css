@@ -98,6 +98,16 @@ a.kpicard:hover,a.kpicard:focus-visible{border-color:var(--accent)}
 .kpilabel{font-size:var(--text-sm,.875rem);color:var(--muted);overflow-wrap:anywhere}
 .kpivalue{font-family:var(--font-display,inherit);font-size:1.6rem;line-height:1.1}
 .kpitarget{margin-top:4px;font-size:var(--text-sm,.875rem)}
+.kpispark{display:block;width:100%;height:24px;margin-top:4px}
+.kpispark svg{display:block;width:100%;height:100%}
+.kpispark rect{fill:var(--line)}
+.kpispark rect.on{fill:var(--accent)}
+.kpiothers{color:var(--warn,#b7791f)}
+.kpiseries{font-size:var(--text-sm,.875rem)}
+.kpiserieslist{list-style:none;margin:0;padding:0}
+.kpiseriesrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.kpiseriesrow .kpiseriesperiod{flex:1;min-width:0}
+.kpiseriesrow.current{font-weight:600}
 .chip.ok{border-color:var(--ok,#2f7a4b);color:var(--ok,#2f7a4b)}
 
 /* Decisiones: tres niveles plegables */
