@@ -104,4 +104,17 @@ test('compra con stock · «en casa» del inventario, mínimo, «Reponer» y «c
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.source_ref === shoppingItemRef(line.id as string)).reduce((sum, m) => sum + Number(m.quantity), 0), { timeout: 15_000 }).toBe(0);
     expect(api.rows('resources.movements').filter((m) => m.item_id === saltItem && m.kind === 'salida_manual').map((m) => m.reason)).toEqual(['otro']);
   });
+
+  await test.step('ficha de receta: «En casa» de cada ingrediente; Inicio: la despensa', async () => {
+    await page.goto(`${baseURL}/#/recetario`);
+    await page.locator('#recipeGrid .recipecard', { hasText: 'Arroz blanco' }).click();
+    const ficha = page.getByRole('dialog', { name: 'Arroz blanco' });
+    await expect(ficha.locator('table.ingredients .athome')).toHaveText('En casa: 3 kg');
+    await ficha.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
+    await page.goto(`${baseURL}/#/`);
+    const pantryCard = page.locator('#pantry');
+    await expect(pantryCard).toContainText('Bajo mínimo: Sal.');
+    await expect(pantryCard.locator('dt', { hasText: 'Bajo mínimo' }).locator('xpath=following-sibling::dd[1]')).toHaveText('1');
+    await capture(page, '13-inicio-despensa');
+  });
 });
