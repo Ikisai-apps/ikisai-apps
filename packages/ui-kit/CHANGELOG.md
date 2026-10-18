@@ -1,5 +1,14 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.38.1 · 18 de octubre de 2026
+
+**Arreglo en `createCountSession`** (lo encontró Central):
+- **Qué pasaba:** con el foco en una casilla, el repintado parcial solo actualizaba el contador y las marcas. «Revisar y cerrar» seguía desactivado aunque dijera «1 de 2 contados», y «Sin contar (n)» no bajaba.
+- **Ahora:** el repintado parcial actualiza también el botón, la barra y el chip.
+- **Antes de guardar:** con la primera cantidad escrita ya se puede pulsar «Revisar y cerrar», que guarda lo escrito.
+- **Por qué no `focusout`:** repintar al salir de la casilla sustituiría el botón justo cuando se pulsa.
+- **Pruebas:** dos nuevas en `v43`, sin pulsar «Ver lo calculado», que fallan sin el arreglo.
+
 ## 0.38.0 · 18 de octubre de 2026
 
 **Movimientos y recuento del inventario** (R3, segunda entrega aprobada el 18-10-2026). Con esto, «Gastar», «Entrada», «Trasladar» y «Contar» del catálogo y de la ficha ya tienen pantalla.

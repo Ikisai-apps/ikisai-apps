@@ -159,6 +159,37 @@ test.describe('ui-kit v0.38 · createCountSession', () => {
     await expect(d.locator('.stk-count-progress-text')).toHaveText('1 de 1 contados');
   });
 
+  test('@smoke 0.38.1: contar todo con el foco en las casillas (sin «Ver lo calculado») activa «Revisar y cerrar»', async ({ page }) => {
+    await page.goto('/#inventory');
+    await page.locator('#invCountKitchen').click();
+    const d = dialog(page);
+    const review = d.getByRole('button', { name: 'Revisar y cerrar' });
+    await expect(review).toBeDisabled();
+    const inputs = d.locator('.stk-count-line input');
+    await inputs.nth(0).fill('6');
+    // Con lo escrito ya se puede pulsar; al pulsar se guarda.
+    await expect(review).toBeEnabled();
+    for (const [i, v] of [[1, '12'], [2, '1'], [3, '18']] as const) await inputs.nth(i).fill(v);
+    // Intro guarda sin sacar el foco de la casilla: el repintado es parcial.
+    await inputs.nth(3).press('Enter');
+    await expect(inputs.nth(3)).toBeFocused();
+    await expect(d.locator('.stk-count-progress-text')).toHaveText('4 de 4 contados');
+    await expect(d.locator('.stk-count-pending-chip')).toHaveText('Sin contar (0)');
+    await expect(review).toBeEnabled();
+    await review.click();
+    await expect(d.locator('.stk-callout')).toHaveText('4 contados · 2 con diferencia · 2 cuadran');
+  });
+
+  test('0.38.1: la primera cantidad y «Revisar y cerrar» directamente: se guarda y se revisa', async ({ page }) => {
+    await page.goto('/#inventory');
+    await row(page, 'cloro').getByRole('button', { name: 'Contar' }).click();
+    const d = dialog(page);
+    await d.locator('.stk-count-line input').fill('3');
+    await d.getByRole('button', { name: 'Revisar y cerrar' }).click();
+    await expect(d.locator('.stk-callout')).toHaveText('1 contados · 1 con diferencia · 0 cuadran');
+    await expect(d.locator('.stk-diff')).toContainText('−0,5 kg');
+  });
+
   test('«Contar otro artículo aquí» añade lo que no constaba', async ({ page }) => {
     await page.goto('/#inventory');
     await page.locator('#invCountKitchen').click();
