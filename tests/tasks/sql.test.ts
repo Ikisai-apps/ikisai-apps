@@ -28,6 +28,9 @@ test('registro: todas las tablas con las columnas escribibles del dominio, hook,
   assert.equal(await count(`select count(*) n from core.validate_hooks where app = 'tasks' and procedure = 'tasks.validate_batch'`), 1);
   assert.equal(await count(`select count(*) n from core.allowed_procedures where app = 'tasks' and procedure = 'tasks.import_rows'`), 1);
   assert.equal(await count(`select count(*) n from core.allowed_reads where app = 'tasks' and name = 'tasks.targets'`), 1);
+  // P2: la vista previa de oficios (solo la propietaria) y los dos procedimientos de ida y vuelta.
+  assert.equal(await count(`select count(*) n from core.allowed_reads where app = 'tasks' and name = 'tasks.trades_preview' and roles = '{owner}'`), 1);
+  assert.equal(await count(`select count(*) n from core.allowed_procedures where app = 'tasks' and procedure in ('tasks.actions_to_trades', 'tasks.trades_to_actions')`), 2);
 });
 
 test('áreas: se crean con Entrada y familias; Entrada protegida; inmutables; solo el propietario', async () => {
@@ -562,4 +565,20 @@ test('almacenamiento: los adjuntos son el campo de archivo de Tasks (operativo) 
     `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks'`)).rows;
   assert.deepEqual(fields, [{ schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' }]);
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.file_gc_apps where app = 'tasks'`)).rows[0]!.n), 1);
+});
+
+test('oficios (P2): mover, borrar y restaurar una tarea lleva sus oficios; sin la correspondencia de tasks-api no hay vista previa', async () => {
+  const { tab } = await db.area('Oficios');
+  const p1 = newId(), p2 = newId(), task = newId(), trade = newId();
+  await db.t.db.query(`insert into central.trades (id, name) values ($1, 'Carpintería')`, [trade]);
+  await db.commit([project(tab, p1), project(tab, p2, { position: 4096 })]);
+  await db.commit([taskOp(tab, p1, task), insert('tasks.task_trades', newId(), { tab_id: tab, project_id: p1, task_id: task, trade_id: trade })]);
+  await db.commit(moveTaskOps(await db.data(), task, { project_id: p2 }));
+  const row = (await db.data())['tasks.task_trades'].find((r) => r.task_id === task)!;
+  assert.deepEqual([row.project_id, row.deleted_at], [p2, null]);
+  await db.commit(deleteTaskOps(await db.data(), task));
+  await db.commit(restoreTaskOps(await db.data(), task));
+  assert.equal((await db.data())['tasks.tasks'].find((t) => t.id === task)!.deleted_at, null);
+  // La lectura SQL exige la correspondencia que calcula tasks-api: nunca «todo dudoso» por llamarla sin ella.
+  await assert.rejects(db.read('tasks.trades_preview', {}), (e: any) => e.code === 'INVALID_OPERATION');
 });

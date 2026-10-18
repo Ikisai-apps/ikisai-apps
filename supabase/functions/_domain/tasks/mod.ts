@@ -12,3 +12,4 @@ export * from './legacy.ts';
 export * from './csv.ts';
 export * from './portable.ts';
 export * from './zip.ts';
+export * from './trades.ts';

@@ -8,6 +8,7 @@ import {
 import { exchangeRoutes, exchangeWorkerRoutes } from './exchange.ts';
 import { tasksMcpTools } from './mcp.ts';
 import { requestRoutes, requestWorkerRoutes } from './requests.ts';
+import { tradeRoutes, withTradesPreview } from './trades.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -115,7 +116,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
   // El mismo almacenamiento que monta el kit (contrato §3.9): R2 si están sus secretos, si no Supabase Storage.
   const env = (name: string) => (globalThis as any).Deno?.env?.get?.(name) as string | undefined;
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(env), fetch: base.fetch });
-  return createApp({
+  return withTradesPreview(createApp({
     ...base,
     app: 'tasks',
     slug: 'tasks-api',
@@ -126,8 +127,8 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
       agentRisk: tasksAgentRiskHook(supabase),
     },
-    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase)],
+    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase), ...tradeRoutes(supabase)],
     workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],
     mcpTools: tasksMcpTools(),
-  });
+  }));
 }

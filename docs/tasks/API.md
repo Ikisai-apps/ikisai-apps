@@ -1553,3 +1553,68 @@ El outsider es una persona de fuera (voluntarios incluidos) con nivel de casa `o
 - **Paso 2:** marcar hecha (solo `done`) y comentarios (`tasks.task_comments`, para todos), con fotos.
 - **Paso 3:** propuestas con `core.register_suggestion_kind('tasks', 'tarea' | 'anadido', …)`, que se deciden en «Por clasificar» (`createSuggestionSource` + `createProposalList`, kit 0.34) y se siguen en «Mis propuestas».
 - **Paso 4:** menú reducido y «Abrir a…» en el proyecto.
+
+## 32. Oficios de Central en lugar de «Tipo: Acción» (fase P2, PR 1)
+
+La familia General «Tipo: Acción» (y sus copias de área) pasa a ser los **oficios** del catálogo de Central (`central.trades`, migración `1505`; `coordinacion/ampliacion/RECURSOS.md` §13.3). Es la réplica de R2 (§30) para los oficios. Esta PR no cambia nada visible: con `trade_source = 'labels'` todo sigue igual (caracterización: `tests/tasks/personas.spec.ts`).
+
+**Modelo (migración `0326`):**
+
+| Tabla | Columnas | Notas |
+|---|---|---|
+| `tasks.task_trades` | `tab_id, project_id, task_id, trade_id` | Uno o varios por tarea. Se mueve y se restaura con la tarea, como `task_spaces` |
+| `tasks.project_trades` | `tab_id, project_id, trade_id` | La tarea nueva hereda los de su proyecto (`createTaskOps`, `requests/task`) |
+| `tasks.settings` | `key, value` | `trade_source`: `'labels'` (sin fila) o `'central'`. `trade_families`: las familias que archivó la ida. Solo los cambian los procedimientos |
+
+- `trade_id` apunta a `central.trades` sin clave foránea. El hook comprueba al ponerlo que el oficio esté vivo y activo con `central.trade_alive` (`INVALID_TRADE`), que no se repita (`INVALID_TRADES`) y que las claves coincidan con su tarea o proyecto (`INCONSISTENT_KEYS`).
+- Tasks **nunca lee** `central.trades` ni `central.people` desde SQL (lo vigila `scripts/lint_migrations.mjs`); solo llama a `central.trade_alive`.
+- **Vistas guardadas:** el filtro `_trade` (oficios) y `group_by = '_trade'`. `_exclude` admite etiquetas, espacios y oficios. Un oficio que la vista ya tenía no impide editarla aunque Central lo archive después.
+- **Modelo anidado (`legacy.ts`):** `trades` en la tarea y `ownTrades` en el proyecto, solo cuando hay alguno; sin el campo, `decompose` no los toca.
+- **Dominio (`ops.ts`):** `createTaskOps` (`tradeIds`, o los del proyecto), `moveTaskOps`, `restoreTaskOps`, `setTaskTradesOps` y `setProjectTradesOps`.
+- **Procedimientos que mueven o crean tareas** (copiados de `0324`): vaciar la papelera, «Convertir en proyecto» y `requests/task` llevan también los oficios.
+
+**Correspondencia etiqueta → oficio** (`_domain/tasks/trades.ts`, `actionTradeMap`, función pura):
+
+- La calcula `tasks-api` con lo que publica Central para Tasks: `central.trade_options` (`trade_id, parent_id, name, path, position, source_label_id`, solo los activos), leída como lectura registrada con el usuario que pide.
+- Para cada etiqueta viva de las familias «Tipo: Acción» (por el nombre, sin mayúsculas, espacios ni tildes; la General y las copias de área, madre › hija):
+  1. el oficio cuyo `source_label_id` es ella;
+  2. si no, el mismo que otra etiqueta con su ruta encontrada por el paso 1 (las copias de área casan con el oficio de la General aunque Central lo haya renombrado);
+  3. si no, el oficio con su ruta («Madre › Hija» o «Nombre»), sin mirar mayúsculas ni tildes.
+  - Varios oficios distintos: `several_trades`. Ninguno: `no_trade`.
+- Viaja a SQL como argumento `map` `[{labelId, tradeId, reason}]`. Los procedimientos revalidan cada `tradeId` con `central.trade_alive` y rechazan lo que no esté vivo (`INVALID_TRADE`).
+- Si no se puede leer Central: `503 CENTRAL_UNAVAILABLE` (nunca «todo dudoso»).
+
+**Pasar las acciones a oficios** (propietaria humana con acceso completo; las rutas no aceptan `call` de clientes):
+
+1. **Vista previa:** `POST read/tasks.trades_preview {remove?}`. `tasks-api` la desvía a `actions/preview`, calcula la correspondencia y llama a la lectura SQL `tasks.trades_preview` (que sin `map` no responde).
+   - Con `trade_source = 'labels'`:
+     - `mapped`: acción → oficio (`tradeId`, `tradePath`), con las tareas y proyectos que lo recibirán y una muestra de títulos;
+     - `removed`: las marcadas para quitar (`marked`) y las cubiertas (`covered`: sin oficio, pero todos sus usos tienen otra acción con oficio);
+     - `doubtful`: en uso, sin oficio vivo y dejando a alguien sin ninguno (`no_trade`, `several_trades`, `trade_inactive`), con `withoutTrade`;
+     - `counts {tasks, projects, withoutTrade, views}` y `families` (las familias en juego);
+     - `centralEmpty: true` si Central no tiene oficios (hoy en producción).
+   - Con `'central'`: `counts` y `lost` (oficios puestos sin etiqueta a la que volver, con `tradePath`).
+2. **Ida:** `POST actions/to-trades {requestId, remove?}` → `tasks.actions_to_trades`, en un lote y con historial.
+   - Con Central vacía: `CENTRAL_TRADES_EMPTY`. Con alguna dudosa sin marcar: `TRADES_DOUBTFUL`.
+   - Cada tarea y proyecto vivo recibe el oficio de su acción **más honda**; una madre sin hijas elegidas pasa a su propio oficio.
+   - Las vistas guardadas se reescriben a `_trade`.
+   - Las familias en juego no archivadas (la General y las copias de área) y sus etiquetas se **archivan**, nunca se borran; cada etiqueta guarda en `archived_before_family` si ya lo estaba. Las copias de área que ya estaban archivadas no se tocan.
+   - `task_labels` y `project_labels` no se tocan: son la copia para volver.
+   - `trade_source` pasa a `'central'`. Una segunda vez da 409.
+3. **Vuelta:** `POST actions/to-labels {requestId, dropUnmapped?}` → `tasks.trades_to_actions`.
+   - La etiqueta de cada oficio: la que la tarea o el proyecto ya tenía y casa con él; si no, la de la copia de su área; si no, la General. Con su madre. Así vuelve también lo cambiado mientras tanto.
+   - Las acciones que se quitaron se borran (a la papelera).
+   - Se desarchivan justo las familias que archivó la ida, con sus etiquetas como estaban, y las vistas vuelven (en cada área, a su copia si la tiene).
+   - Los oficios puestos van a la papelera y `trade_source` vuelve a `'labels'`.
+   - Si algún oficio no tiene etiqueta a la que volver: `TRADES_UNMAPPED`, salvo con `dropUnmapped`.
+
+**Pruebas:** `tests/tasks/trades.test.ts` (PGlite, con oficios sembrados en `central.trades`), `legacy.test.ts`, `sql.test.ts` y `api.test.ts`.
+
+**Fuera de esta PR:**
+- La copia portable y el CSV con oficios (`import_rows` tampoco admite aún los espacios; §30, 2c).
+- Las plantillas de la interfaz no copian espacios ni oficios.
+
+**Pendiente (PR siguientes):**
+- **PR 2:** interfaz en modo oficios (chips, filtro, agrupar, fichas, lote) y el botón con la vista previa.
+- **PR 3:** personas de Central (`central.person_alive`) en lugar de las etiquetas Persona.
+- **PR 4:** «Quién sabe hacerlo» (`central.capability_options`).

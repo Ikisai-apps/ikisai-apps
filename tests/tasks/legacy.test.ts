@@ -287,3 +287,31 @@ test('legacy · espacios (R2): componer los trae, cambiarlos los guarda y un mod
   const after = find(await model(), tab.id).projects[0]!;
   assert.deepEqual([after.tasks.find((t) => t.id === task.id)!.spaces, after.ownSpaces], [[salas], undefined]);
 });
+
+test('legacy · oficios (P2): componer los trae, cambiarlos los guarda y un modelo sin el campo no los toca', async () => {
+  const fontaneria = newId(), pintura = newId();
+  await db.t.db.query(`insert into central.trades (id, name) values ($1, 'Fontanería'), ($2, 'Pintura')`, [fontaneria, pintura]);
+  await db.area('Oficios');
+  let tabs = await model();
+  const tab = tabs.find((t) => t.name === 'Oficios')!;
+  const project = tab.projects[0]!;
+  const task = newTask('Reparar grifo', { trades: [fontaneria] });
+  project.tasks.push(task);
+  project.ownTrades = [pintura];
+  await save(tabs);
+  tabs = await model();
+  const again = find(tabs, tab.id).projects[0]!;
+  assert.deepEqual(again.tasks.find((t) => t.id === task.id)!.trades, [fontaneria]);
+  assert.deepEqual(again.ownTrades, [pintura]);
+  // Sin el campo (copias y modelos de antes de P2): no se tocan los oficios.
+  delete again.tasks.find((t) => t.id === task.id)!.trades;
+  assert.deepEqual(decompose(await db.data(), tabs), []);
+  // Cambiar y quitar.
+  again.tasks.find((t) => t.id === task.id)!.trades = [pintura];
+  again.ownTrades = [];
+  const sent = (await save(tabs)).flat();
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.task_trades').map((o) => o.op).sort(), ['delete', 'insert']);
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.project_trades').map((o) => o.op), ['delete']);
+  const after = find(await model(), tab.id).projects[0]!;
+  assert.deepEqual([after.tasks.find((t) => t.id === task.id)!.trades, after.ownTrades], [[pintura], undefined]);
+});
