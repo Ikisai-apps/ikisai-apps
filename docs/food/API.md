@@ -588,7 +588,7 @@ Migración `20261008_0191_food_portal_menu.sql`. Decisiones del usuario (8-10-20
 
 ## 9. Pantallas y navegación
 
-Cinco entradas: **Inicio · Eventos · Menús · Recetario · Maquinaria**. Lectura primero; `Editar` abre el formulario. Compra y preparación viven dentro del menú. Ingredientes no tienen pantalla: se gestionan desde el selector de la receta.
+Seis entradas: **Inicio · Eventos · Menús · Recetario · Despensa · Maquinaria** (Despensa desde el 18-10-2026). Lectura primero; `Editar` abre el formulario. Compra y preparación viven dentro del menú. Ingredientes no tienen pantalla: se gestionan desde el selector de la receta.
 
 **Inicio.** Solo lo que pide acción. Una tarjeta por evento próximo con fecha, título, personas y régimen, y cuatro líneas: Menú (sin crear, borrador, por revisar, validado, ⚠ desactualizado), Restricciones (número), Compra (sin generar, borrador, revisada, cerrada, ⚠) y Preparación (sin generar, «6 de 14», ⚠). Sin gráficos. Cada línea lleva a su sitio.
 
@@ -603,6 +603,18 @@ Cinco entradas: **Inicio · Eventos · Menús · Recetario · Maquinaria**. Lect
 - *Cierre*: `closing_notes` con una guía de qué anotar.
 
 **Recetario.** Rejilla de tarjetas con foto, nombre, categoría y dieta. Búsqueda y filtros por categoría, dieta, alérgeno y estado. Ficha en este orden: foto, nombre, descripción pública, categoría y etiquetas, raciones base, ingredientes, elaboración, seguridad (alérgenos y dietas, con «alérgenos revisados»), maquinaria, conservación y servicio. Edición por bloques: Presentación, Ingredientes, Cocina, Seguridad, Maquinaria.
+
+**Despensa** (`#/despensa`; aprobada por el usuario el 18-10-2026). El inventario de la cocina, sus despensas y sus cámaras, con las piezas del kit 0.37 y 0.38:
+- **Catálogo** (`createItemCatalog`): ámbito en los sitios de cocina (`kitchenSpaceIds`), ingredientes y bebidas, agrupado por sitio, con chips de sitio, «Bajo mínimo», «Caduca pronto» y búsqueda.
+- **Ficha** (`createItemSheet`): stock por sitio y lote, coste medio, datos, conversiones y movimientos. El origen de los movimientos de Food enlaza al servicio (`menu_item:<id>`) o a la lista (`shopping_item:<id>`).
+- **Acciones** (editor y owner):
+  - «Gastar», «Entrada» y «Mover» (`createMovementForm`), con el sitio de cocina donde hay stock ya elegido;
+  - «Contar» a ciegas (`createCountSession`), por artículo o por sitio desde la cabecera;
+  - **«A la compra»**: una línea a mano en la lista de esta semana del menú de casa (la genera si no existe, con red), con lo que falta hasta el mínimo o la cantidad de pedido.
+- **Entradas:**
+  - Inicio, con el filtro puesto (`?filtro=bajo_minimo|caduca`), que vale solo para esa visita;
+  - «En casa» de la ficha de receta, que abre la ficha del artículo (`?articulo=<id>`).
+- Sin sitios de cocina en Recursos, explica cómo empezar.
 
 **Maquinaria.** Lista con nombre, cantidad y estado. Ficha: tipo, cantidad, capacidad, ubicación, estado y notas. La ficha de receta avisa si requiere más unidades de las que hay o una máquina averiada; no hay optimizador.
 

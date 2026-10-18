@@ -58,6 +58,7 @@ Actualizado: 14 de octubre de 2026. **Backend e interfaz del recorrido F–H com
   - **Maquinaria con Recursos:** espacio de cada máquina (ruta en la lista y en el formulario de receta) y «Cantidad» como stock.
   - **Descuento a las 24 h en el servidor** (worker `consumption/tick`, migración 1100), con la app como respaldo a las 26 h. Conversiones con las reglas del kit (`itemUnitFactor`).
   - Cuenta de servicio `food` en el núcleo (0096) y `once` en `resources.consume` (0806): el worker ya trabaja, y nada se descuenta dos veces.
+  - **Despensa** (18-10-2026): pestaña propia con el catálogo, la ficha, los movimientos y el recuento a ciegas del kit, «A la compra» y enlaces desde Inicio y la ficha de receta (API.md §9). Prueba: `pantry.spec.ts`.
   - Valorado y descartado por ahora: `createItemPicker` en el recetario. Cambiaría los controles caracterizados del formulario, y sus unidades («saco») no caben en `recipe_ingredients.unit`. Food usa las reglas de conversión del kit.
 - Formulario para sugerir el plato: es de Guests (O4), con `houseDishSuggestionOperations` y el tipo `plato_casa`.
 - Agentes de IA (núcleo, contrato §3.1): solo `food.regenerate_preparation` está marcado como seguro sin aprobación; el resto de procedimientos la exige.

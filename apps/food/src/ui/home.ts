@@ -5,6 +5,7 @@ import { T, type Mirror } from '../app/client.ts';
 import { allergyCount, dateRange, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
 import { MENU_STATUS_LABELS, SERVICE_LABELS } from './events.ts';
 import { loadConsumptionGraph, loadInventory } from '../app/consumption.ts';
+import { R, resourcesClient } from '../app/resources.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
@@ -110,6 +111,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         : el('p', null, house.exists ? 'Nada previsto hoy en el menú de casa.' : 'El menú de casa: lo que se come en casa, día a día.')));
   }
 
+  // Enlaces de la Despensa: llevan a la pantalla con el filtro puesto.
+  const go = (id: string, label: string, hash: string, text: string) =>
+    el('a', { 'data-feedback-id': id, 'data-feedback-label': label, href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, text);
+
   /** Despensa: ingredientes bajo mínimo en la cocina y lotes que caducan en los próximos 7 días. */
   async function loadPantry(): Promise<void> {
     const inventory = await loadInventory(client).catch(() => null);
@@ -123,7 +128,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     replace(pantryHost, el('article', { 'data-feedback-id': 'food.inicio.despensa', 'data-feedback-label': 'Despensa', class: 'card', id: 'pantry' },
       el('h3', null, 'Despensa'),
       el('p', null, low.length ? `Bajo mínimo: ${low.map((i) => i.name).slice(0, 5).join(', ')}${low.length > 5 ? '…' : ''}.` : 'Stock de la cocina, sus despensas y cámaras.'),
-      el('dl', { class: 'kv' }, el('dt', null, 'Bajo mínimo'), el('dd', null, String(low.length)), el('dt', null, 'Caducan en 7 días'), el('dd', null, String(soon.length)))));
+      el('dl', { class: 'kv' },
+        el('dt', null, 'Bajo mínimo'), el('dd', null, go('food.inicio.despensa.bajo_minimo', 'Ver lo que está bajo mínimo', '#/despensa?filtro=bajo_minimo', String(low.length))),
+        el('dt', null, 'Caducan en 7 días'), el('dd', null, go('food.inicio.despensa.caduca', 'Ver lo que caduca pronto', '#/despensa?filtro=caduca', String(soon.length)))),
+      el('p', { style: 'margin-top:8px' }, go('food.inicio.despensa.abrir', 'Abrir la despensa', '#/despensa', 'Abrir la despensa'))));
   }
 
   async function loadConsumption(): Promise<void> {
@@ -206,6 +214,10 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const offHouse = [T.menus, T.menuServices, T.menuItems, T.recipes].map((table) => client.onTable(table, () => void loadHouse()));
   void loadConsumption();
   void loadPantry();
+  // El espejo de Recursos llega después que el de Food: la despensa y el consumo se repintan cuando cambia.
+  let resourceTimer: ReturnType<typeof setTimeout> | null = null;
+  const onResources = () => { if (resourceTimer) clearTimeout(resourceTimer); resourceTimer = setTimeout(() => { void loadPantry(); void loadConsumption(); }, 300); };
+  const offResources = (() => { try { const r = resourcesClient(client); const offs = [R.spaces, R.items, R.movements, R.lots].map((t) => r.onTable(t, onResources)); return () => offs.forEach((off) => off()); } catch { return () => undefined; } })();
   const offConsumption = [T.menuServices, T.menuItems, T.consumptions].map((table) => client.onTable(table, () => void loadConsumption()));
   void loadMenus();
   const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
@@ -222,5 +234,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     offMenus();
     offHouse.forEach((off) => off());
     offConsumption.forEach((off) => off());
+    offResources();
+    if (resourceTimer) clearTimeout(resourceTimer);
   };
 };

@@ -19,6 +19,12 @@ export const R = {
   lots: 'resources.lots',
   movements: 'resources.movements',
   spaces: 'resources.spaces',
+  // Para las piezas del kit (catálogo, ficha y sitios de la Despensa).
+  itemKinds: 'resources.item_kinds',
+  movementCosts: 'resources.movement_costs',
+  spaceKinds: 'resources.space_kinds',
+  counts: 'resources.counts',
+  countLines: 'resources.count_lines',
 } as const satisfies Record<string, TableName>;
 
 let resources: SyncClient | null = null;

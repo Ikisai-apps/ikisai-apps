@@ -228,13 +228,13 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
     const recipeLines = linesOf(recipe.id);
     const recipeNeeds = needsOf(recipe.id);
     // «En casa: 3 kg» (R5): el stock de cocina del artículo del ingrediente, si se lleva inventario.
-    const atHome = (ingredientId: string, unit: Unit): string | null => {
+    const atHome = (ingredientId: string, unit: Unit): { text: string; itemId: string } | null => {
       const article = inventory?.kitchen.size ? inventory.items.find((i) => i.id === ingredients.find((g) => g.id === ingredientId)?.item_id) : undefined;
       if (!article || !inventory) return null;
       const base = kitchenStock(article.id, inventory.movements, inventory.lots, inventory.kitchen, todayKey());
       if (base === null) return null;
       const inUnit = fromItemBase(base, article.base_unit, unit);
-      return inUnit === null ? `En casa: ${formatQuantity(base)} ${article.base_unit}` : `En casa: ${formatQuantity(inUnit)} ${UNIT_LABELS[unit]}`;
+      return { itemId: article.id, text: inUnit === null ? `En casa: ${formatQuantity(base)} ${article.base_unit}` : `En casa: ${formatQuantity(inUnit)} ${UNIT_LABELS[unit]}` };
     };
 
     const body = el('div', { 'data-feedback-id': 'food.recetario.ficha', 'data-feedback-label': 'Ficha de receta', class: 'ficha' },
@@ -254,7 +254,11 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
         ? el('table', { class: 'ingredients' }, el('tbody', null, ...recipeLines.map((l) => {
             const cost = purchases.fetchedAt ? lineCost(l.ingredient_id, Number(l.quantity), l.unit, purchases.prices) : null;
             return el('tr', null,
-              el('td', null, names.get(l.ingredient_id) ?? '—', atHome(l.ingredient_id, l.unit) ? el('span', { class: 'consumewhy athome' }, atHome(l.ingredient_id, l.unit)) : null),
+              el('td', null, names.get(l.ingredient_id) ?? '—', ((home) => home
+                // Lleva a su ficha en la Despensa.
+                ? el('a', { 'data-feedback-id': 'food.recetario.ficha.en_casa', 'data-feedback-label': 'Ver en la despensa', class: 'consumewhy athome', href: `#/despensa?articulo=${home.itemId}`,
+                    onclick: (e: Event) => { e.preventDefault(); void sheet?.close(true); location.hash = `#/despensa?articulo=${home.itemId}`; } }, home.text)
+                : null)(atHome(l.ingredient_id, l.unit))),
               el('td', { class: 'num' }, formatQuantity(l.quantity)), el('td', null, UNIT_LABELS[l.unit]),
               purchases.fetchedAt ? el('td', { class: cost === null ? 'num muted' : priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? 'num warnline' : 'num', title: priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? `Precio de la última compra (${priceFor(l.ingredient_id, l.unit, purchases.prices)?.lastDate ?? 'sin fecha'}), de hace más de 3 meses` : null }, cost === null ? 'sin precio' : `${euros(cost)}${priceFor(l.ingredient_id, l.unit, purchases.prices)?.stale ? ' *' : ''}`) : null);
           })))
