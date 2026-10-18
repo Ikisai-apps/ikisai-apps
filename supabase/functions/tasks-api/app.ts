@@ -2,7 +2,7 @@
 import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess } from '../_kit/mod.ts';
 import {
   ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, effectiveScopes, riskNeedsData, statuses, tasksAgentRisk, validateOperations, visible, visibleRow,
-  type AttachmentRow, type ProjectRow, type Role, type TaskDependencyRow, type TaskRow,
+  type AttachmentRow, type ProjectRow, type Role, type TaskCommentRow, type TaskDependencyRow, type TaskRow,
 } from '../_domain/tasks/mod.ts';
 
 import { exchangeRoutes, exchangeWorkerRoutes } from './exchange.ts';
@@ -109,6 +109,26 @@ export function tasksRoutes(supabase: Supabase, storage: StorageAccess = createS
         });
       },
     },
+    /** Foto de un comentario (O1, paso 2), tras comprobar que el comentario es visible para quien la pide (como su tarea). */
+    {
+      method: 'GET', pattern: 'comments/:id/photo', handler: async ({ ctx, params }) => {
+        const id = (params.id ?? '').toLowerCase();
+        if (!UUID.test(id)) fail(404, 'NOT_FOUND', 'Foto no encontrada.');
+        const rows = await allRows<TaskCommentRow>(supabase, ctx.membership.role, 'tasks.task_comments', false);
+        const comment = rows.find((row) => row.id === id);
+        if (!comment?.file_id || !visibleRow('tasks.task_comments', comment as unknown as Record<string, unknown>, effectiveScopes(ctx.membership))) {
+          fail(404, 'NOT_FOUND', 'Foto no encontrada.');
+        }
+        const file = await supabase.rpc<{ bucket: string; path: string; status: string; mime: string; storage_provider?: 'supabase' | 'r2' }>('core_file_get', { p_app: 'tasks', p_actor: ctx.user.id, p_id: comment.file_id });
+        if (file.status !== 'verified') fail(404, 'NOT_FOUND', 'La foto no está disponible.');
+        const response: Response = await storage.download(file);
+        if (!response.ok) fail(response.status === 404 || response.status === 400 ? 404 : 503, response.status === 404 || response.status === 400 ? 'NOT_FOUND' : 'STORAGE_UNAVAILABLE', 'No se pudo leer la foto.');
+        return new Response(response.body, {
+          status: 200,
+          headers: { 'Content-Type': file.mime || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+        });
+      },
+    },
   ];
 }
 
@@ -122,7 +142,10 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
     app: 'tasks',
     slug: 'tasks-api',
     origins: base.origins ?? TASKS_ORIGINS,
-    uploads: { bucket: TASKS_BUCKET, maxBytes: ATTACHMENT_MAX_BYTES, allowedMime: [...ATTACHMENT_MIME] },
+    // O1, paso 2: el kit solo permite subir al outsider para toda la app (`allowOutsiders`), no por campo. Lo que sube solo
+    // puede ir a la foto de un comentario: el dominio (validate.ts) y `tasks.validate_comments` le impiden cualquier otra
+    // escritura, `tasks.attachments` incluida, y la foto tiene que ser una imagen subida por quien comenta.
+    uploads: { bucket: TASKS_BUCKET, maxBytes: ATTACHMENT_MAX_BYTES, allowedMime: [...ATTACHMENT_MIME], allowOutsiders: true },
     hooks: {
       visible,
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),

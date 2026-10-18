@@ -22,10 +22,13 @@ test('registro: todas las tablas con las columnas escribibles del dominio, hook,
   for (const table of TABLES) {
     const row = rows.find((r) => `tasks.${r.table_name}` === table)!;
     assert.deepEqual([...row.writable_columns].sort(), [...WRITABLE[table]].sort(), table);
-    assert.deepEqual(row.writable_roles, ['tasks.tabs', 'tasks.request_routes', 'tasks.settings'].includes(table) ? ['owner'] : ['editor', 'owner'], table);
+    // O1, paso 2: el outsider escribe en tareas (solo `done`) y en comentarios; lo limita tasks.validate_comments.
+    const roles = ['tasks.tabs', 'tasks.request_routes', 'tasks.settings'].includes(table) ? ['owner'] : ['tasks.tasks', 'tasks.task_comments'].includes(table) ? ['editor', 'owner', 'outsider'] : ['editor', 'owner'];
+    assert.deepEqual(row.writable_roles, roles, table);
   }
   const count = async (sql: string) => Number((await db.t.db.query<{ n: number }>(sql)).rows[0]!.n);
   assert.equal(await count(`select count(*) n from core.validate_hooks where app = 'tasks' and procedure = 'tasks.validate_batch'`), 1);
+  assert.equal(await count(`select count(*) n from core.validate_hooks where app = 'tasks' and procedure = 'tasks.validate_comments'`), 1);
   assert.equal(await count(`select count(*) n from core.allowed_procedures where app = 'tasks' and procedure = 'tasks.import_rows'`), 1);
   assert.equal(await count(`select count(*) n from core.allowed_reads where app = 'tasks' and name = 'tasks.targets'`), 1);
   // P2: la vista previa de oficios (solo la propietaria) y los dos procedimientos de ida y vuelta.
@@ -563,10 +566,13 @@ test('oficios para Central (RECURSOS §13.3): la familia «Tipo: Acción» de la
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.allowed_reads where app = 'central' and name = 'tasks.action_labels' and kind = 'view'`)).rows[0]!.n), 1);
 });
 
-test('almacenamiento: los adjuntos son el campo de archivo de Tasks (operativo) y la recogida de huérfanos está activa', async () => {
+test('almacenamiento: los adjuntos y la foto de los comentarios son los campos de archivo de Tasks (operativos) y la recogida de huérfanos está activa', async () => {
   const fields = (await db.t.db.query<{ schema_name: string; table_name: string; column_name: string; retention: string }>(
-    `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks'`)).rows;
-  assert.deepEqual(fields, [{ schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' }]);
+    `select schema_name, table_name, column_name, retention from core.file_fields where app = 'tasks' order by table_name`)).rows;
+  assert.deepEqual(fields, [
+    { schema_name: 'tasks', table_name: 'attachments', column_name: 'file_id', retention: 'operational' },
+    { schema_name: 'tasks', table_name: 'task_comments', column_name: 'file_id', retention: 'operational' },
+  ]);
   assert.equal(Number((await db.t.db.query<{ n: number }>(`select count(*) n from core.file_gc_apps where app = 'tasks'`)).rows[0]!.n), 1);
 });
 
