@@ -141,7 +141,7 @@ export function createCountSession(options: CountSessionOptions): CountSession {
     const value = typing.get(k) ?? (t.line ? formatQuantity(t.line.quantity, 3) : '');
     const error = el('span', { class: 'fielderror', role: 'alert' });
     const input = el('input', { type: 'text', id: inputId, inputmode: 'decimal', value, autocomplete: 'off', 'aria-describedby': `${inputId}-sub`, ...mark('line'),
-      oninput: () => { typing.set(k, input.value); schedule(); },
+      oninput: () => { typing.set(k, input.value); schedule(); paintReviewState(); },
       onblur: () => { if (typing.has(k)) commit(); },
       onkeydown: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); commit(); } },
     }) as HTMLInputElement;
@@ -215,7 +215,7 @@ export function createCountSession(options: CountSessionOptions): CountSession {
         ? el('div', { class: 'stk-chips', role: 'group', 'aria-label': kt('Sitios') },
           el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(chip === 'todo'), ...mark('filter'), onclick: () => { chip = 'todo'; paint(); } }, kt('Todo')),
           ...(spacesHere.length > 1 ? spacesHere.map((sid) => el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(chip === sid), ...mark('filter'), onclick: () => { chip = sid; paint(); } }, spaceName(sid))) : []),
-          el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(chip === 'pending'), ...mark('filter'), onclick: () => { chip = 'pending'; paint(); } }, kt('Sin contar ({n})', { n: String(all.length - done) })))
+          el('button', { type: 'button', class: 'filterchip stk-count-pending-chip', 'aria-pressed': String(chip === 'pending'), ...mark('filter'), onclick: () => { chip = 'pending'; paint(); } }, kt('Sin contar ({n})', { n: String(all.length - done) })))
         : null,
       el('div', { class: 'stk-count-lines' }, ...shown.map(lineRow), shown.length ? null : el('p', { class: 'hint stk-empty' }, all.length ? kt('Todo contado aquí.') : kt('No consta nada en este sitio: añade lo que encuentres.'))),
       addHost,
@@ -224,7 +224,26 @@ export function createCountSession(options: CountSessionOptions): CountSession {
         offline ? el('p', { class: 'item-offline' }, icon('offline', 14), kt('Sin conexión: las líneas se guardan y se suben al volver.')) : null,
         el('div', { class: 'stk-sheet-actions' },
           options.onLeave ? el('button', { type: 'button', class: 'ghost', ...mark('leave'), onclick: () => options.onLeave!() }, kt('Seguir luego')) : null,
-          el('button', { type: 'button', class: 'primary', disabled: !done, ...mark('review'), onclick: () => { flush(); view = 'review'; paint(); } }, kt('Revisar y cerrar')))));
+          el('button', { type: 'button', class: 'primary stk-count-review', disabled: !done && !typed(), ...mark('review'), onclick: () => { flush(); view = 'review'; paint(); } }, kt('Revisar y cerrar')))));
+  }
+
+  /** Hay alguna cantidad escrita y aún sin guardar. */
+  const typed = () => [...typing.values()].some((v) => v.trim() !== '');
+
+  /**
+   * Lo que depende de cuántos van contados, sin repintar las líneas: el contador, «Sin contar (n)» y si «Revisar y
+   * cerrar» se puede pulsar. Lo usa el repintado parcial (con el foco en una casilla) y cada tecla.
+   */
+  function paintReviewState(all = targets()): void {
+    const done = all.filter((t) => t.line).length;
+    const label = body.querySelector('.stk-count-progress-text');
+    if (label) replace(label, el('strong', null, kt('{n} de {m}', { n: String(done), m: String(all.length) })), ` ${kt('contados')}`);
+    const bar = body.querySelector<HTMLElement>('.stk-count-bar');
+    if (bar) { bar.setAttribute('aria-valuenow', String(done)); const fill = bar.querySelector<HTMLElement>('span'); if (fill) fill.style.width = `${all.length ? Math.round((done / all.length) * 100) : 0}%`; }
+    const pending = body.querySelector('.stk-count-pending-chip');
+    if (pending) pending.textContent = kt('Sin contar ({n})', { n: String(all.length - done) });
+    const review = body.querySelector<HTMLButtonElement>('.stk-count-review');
+    if (review) review.disabled = !done && !typed();
   }
 
   /** Guarda ya lo que quede escrito (antes de revisar). */
@@ -286,9 +305,8 @@ export function createCountSession(options: CountSessionOptions): CountSession {
     // No repintar mientras se escribe en una línea (la fuente avisa de cada guardado).
     const active = document.activeElement;
     if (view === 'count' && active instanceof HTMLInputElement && body.contains(active) && active.closest('.stk-count-line')) {
-      const label = body.querySelector('.stk-count-progress-text');
       const all = targets();
-      if (label) replace(label, el('strong', null, kt('{n} de {m}', { n: String(all.filter((t) => t.line).length), m: String(all.length) })), ` ${kt('contados')}`);
+      paintReviewState(all);
       // Solo la marca de «contado» de cada fila, sin tocar lo que se está escribiendo.
       const counted = new Set(all.filter((t) => t.line).map(keyOf));
       body.querySelectorAll<HTMLElement>('.stk-count-line').forEach((row) => {
