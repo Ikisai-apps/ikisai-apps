@@ -16,6 +16,7 @@ import { mountTeams } from './teams.ts';
 import { mountTrades } from './trades.ts';
 import { mountTexts } from './texts.ts';
 import { mountCompliance, mountRequirement } from './compliance.ts';
+import { mountInventory, mountInventoryItem } from './inventory.ts';
 import { fbMark } from './feedback.ts';
 
 export interface ShellContext {
@@ -39,16 +40,18 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 
 const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/accesos/registro'];
 
-/** Accesos solo para quien administra el ecosistema (owner de Central). Personas y Cumplimiento llegan en V1-b y V1.1. */
-function navFor(isAdmin: boolean): NavItem[] {
-  const items: NavItem[] = [
-    // «Entidad» no ocupa sitio en la barra (se usa poco): se abre desde Inicio.
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos'] },
+/**
+ * Cuatro entradas para todos: con cinco, «Cumplimiento» se corta en el móvil. «Entidad» y, desde Inventario (decisión del
+ * usuario, 18-10-2026), «Accesos» no ocupan sitio en la barra: se abren desde Inicio, y Accesos sigue solo para el owner.
+ */
+function navFor(): NavItem[] {
+  return [
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos', ...ACCESS_ROUTES] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos', '#/personas/oficios'] },
+    // Inventario (kit 0.37): para todos los miembros; quien solo lee, solo mira.
+    { hash: '#/inventario', label: 'Inventario', icon: 'grid', matches: ['#/inventario'] },
   ];
-  if (isAdmin) items.push({ hash: '#/accesos', label: 'Accesos', icon: 'lock', matches: ACCESS_ROUTES });
-  return items;
 }
 
 const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; admin?: boolean }> = {
@@ -60,6 +63,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
   '#/personas/equipos': { title: 'Equipos', slug: 'equipos', mount: mountTeams },
   '#/personas/oficios': { title: 'Oficios', slug: 'oficios', mount: mountTrades },
+  '#/inventario': { title: 'Inventario', slug: 'inventario', mount: mountInventory },
   '#/cumplimiento': { title: 'Vencimientos', slug: 'cumplimiento', mount: mountCompliance('vencimientos') },
   '#/cumplimiento/requisitos': { title: 'Obligaciones', slug: 'cumplimiento', mount: mountCompliance('requisitos') },
   '#/cumplimiento/documentos': { title: 'Documentos clave', slug: 'cumplimiento', mount: mountCompliance('documentos') },
@@ -84,6 +88,8 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'cumplimiento': fbMark(main, 'central.cumplimiento', 'Cumplimiento'); break;
     case 'obligacion': fbMark(main, 'central.obligacion', 'Obligación'); break;
     case 'accesos': fbMark(main, 'central.accesos', 'Accesos'); break;
+    case 'inventario': fbMark(main, 'central.inventario', 'Inventario'); break;
+    case 'articulo': fbMark(main, 'central.articulo', 'Artículo'); break;
   }
 }
 
@@ -134,7 +140,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     appName: 'Central',
     markIcon: 'grid',
     subtitle: boot?.profile.displayName ?? '',
-    nav: navFor(isAdmin),
+    nav: navFor(),
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
@@ -155,7 +161,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/"]'), 'central.navegacion.inicio', 'Inicio');
   fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/cumplimiento"]'), 'central.navegacion.cumplimiento', 'Cumplimiento');
   fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/personas"]'), 'central.navegacion.personas', 'Personas');
-  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/accesos"]'), 'central.navegacion.accesos', 'Accesos');
+  fbMark(shell.nav.querySelector('a.navbtn[data-hash="#/inventario"]'), 'central.navegacion.inventario', 'Inventario');
   fbMark(shell.banners, 'central.avisos', 'Avisos');
 
   function paintBanners(status: SyncStatus): void {
@@ -216,13 +222,15 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     // `#/personas/<id>` es la ficha de una persona; el resto son rutas fijas.
     const [, personId] = hash.match(/^#\/personas\/([0-9a-f-]{36})$/i) ?? [];
     const [, requirementId] = hash.match(/^#\/cumplimiento\/([0-9a-f-]{36})$/i) ?? [];
+    const [, itemId] = hash.match(/^#\/inventario\/([0-9a-f-]{36})$/i) ?? [];
     const found = personId ? { title: 'Persona', slug: 'persona', mount: mountPerson(personId) }
-      : requirementId ? { title: 'Obligación', slug: 'obligacion', mount: mountRequirement(requirementId) } : ROUTES[hash];
+      : requirementId ? { title: 'Obligación', slug: 'obligacion', mount: mountRequirement(requirementId) }
+      : itemId ? { title: 'Artículo', slug: 'articulo', mount: mountInventoryItem(itemId) } : ROUTES[hash];
     const allowed = found && (!('admin' in found && found.admin) || isAdmin);
     const entry = allowed ? found : ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : hash);
+    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : itemId ? '#/inventario' : hash);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin, usage });
     // La pantalla es la raíz de la ruta de etiquetas («Persona › Documentación › Adjuntar») y el nodo de reserva.

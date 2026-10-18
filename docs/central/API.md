@@ -601,7 +601,9 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 
 ## 9. Pantallas y navegación
 
-Cuatro entradas en la barra (Inicio, Cumplimiento, Personas y, para el owner, Accesos), con el lanzador del kit en el icono de la cabecera. **Entidad** se abre desde Inicio: con cinco entradas, los nombres se cortaban en el móvil.
+Cuatro entradas en la barra, iguales para todos: Inicio, Cumplimiento, Personas e Inventario. El lanzador del kit va en el icono de la cabecera. Con cinco entradas, los nombres se cortaban en el móvil («Cumplimi…»). Por eso:
+- **Entidad** se abre desde Inicio.
+- **Accesos** se abre desde Inicio desde el 18-10-2026 (decisión del usuario al llegar Inventario). Son las tarjetas del owner Cuentas, Agentes, Alta y Registro. Sigue siendo solo para el owner, y en Accesos la barra marca Inicio.
 
 ### 9.1 Inicio (dirección)
 
@@ -671,6 +673,31 @@ Todo «Accesos» necesita red (lee y escribe en Core en el momento); sin conexi�
 - `data-feedback-id="central.<pantalla>.<sección>.<elemento>"` con su `data-feedback-label` en todo control con significado y en las secciones. Raíces: `inicio`, `direccion`, `accesos`, `entidad`, `personas`, `persona`, `equipos`, `cumplimiento`, `obligacion`, `decisiones`, `conflictos`, `cabecera`, `navegacion`, `avisos`. Sin uuids ni datos de negocio; lo comprueba `tests/central/feedback-ids.test.ts`.
 - `data-feedback-ignore` en datos personales y en lo que se copia: correos, teléfonos, contacto y vinculación, nombres en filas y cabeceras, contraseña temporal, NIF/CIF y domicilio de la entidad, códigos `PER_`/`LEG_`/`DOC_`/`DEC_` y enlaces externos.
 - `createUsage` (USO.md) con el aviso al equipo la primera vez. Operaciones contadas con éxito o error: `central.accesos.alta.crear`, `central.accesos.cuenta.cambiar_acceso`, `central.accesos.cuenta.contrasena`, `central.accesos.agentes.revocar`, `central.persona.cuenta.dar`, `central.persona.documentacion.guardar`, `central.obligacion.crear_tarea`, `central.obligacion.marcar_cumplido`, `central.entidad.guardar`, `central.decisiones.guardar` y `central.direccion.objetivo.guardar`.
+
+### 9.6 Inventario (kit 0.37 y 0.38; tabla «hoy / después» aprobada el 18-10-2026)
+
+- **Segundo cliente:** `apps/central/src/app/resources.ts`, contra `/api/v1/resources`.
+  - Usa la sesión de Central (`sessionFrom`) y su propio espejo; se borra al cerrar sesión.
+  - Arranca la primera vez que se abre Inventario.
+  - La Edge de Central ya sirve el módulo (`MODULES` del kit).
+  - En Recursos se entra con el rol más alto de las apps de origen; Central da el suyo.
+- **`#/inventario`:** `createItemCatalog` sin ámbito, porque Central lo ve todo.
+  - Buscar, chips («Bajo mínimo», «Caduca pronto», tipos, «Archivados») y agrupado por sitio.
+  - Solo para editor y owner:
+    - «+ Artículo»;
+    - «Recuento» de todo;
+    - en cada fila, Gastar, Entrada y Contar.
+  - El lector solo mira.
+  - Con `?bajo-minimo` o `?caduca` se abre con ese filtro. Así llegan las tarjetas de Recursos del panel (`0807`).
+- **`#/inventario/<id>`:** `createItemSheet` en página propia, con «← Inventario».
+  - Pestañas Stock, Datos, Unidades y Movimientos. Edita quien es editor u owner.
+  - Acciones Gastar, Entrada, Trasladar y Contar.
+  - Cada movimiento dice quién lo hizo, por el nombre de su ficha en Personas, y de qué app viene, con el nombre que ve el usuario («Finance») y un enlace a la app.
+  - Sin «Proveedor habitual»: Central no lee `invoices.suppliers`, así que se edita desde Finance.
+- **Movimientos y recuento** (`createMovementForm` y `createCountSession`), en una hoja:
+  - «Gastar» es una salida con el motivo «uso» ya elegido;
+  - el recuento es a ciegas, línea a línea, y «Cerrar y ajustar» se aplica al sincronizar.
+- **Sin red:** todo sale del espejo. Movimientos y líneas de recuento se guardan en el dispositivo y suben al volver.
 
 ---
 
