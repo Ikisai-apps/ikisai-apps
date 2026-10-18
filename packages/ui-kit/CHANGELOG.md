@@ -1,5 +1,31 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.38.0 · 18 de octubre de 2026
+
+**Movimientos y recuento del inventario** (R3, segunda entrega aprobada el 18-10-2026). Con esto, «Gastar», «Entrada», «Trasladar» y «Contar» del catálogo y de la ficha ya tienen pantalla.
+
+- **`createMovementForm`:** entrada, salida o traslado a mano.
+  - **Siempre:** artículo (`createItemPicker`, fijo si se abre desde una fila), cantidad en sus unidades, sitio y nota.
+  - **Entrada:** coste por unidad base opcional; con lotes o caducidad, un lote que ya existe o uno nuevo con su código y fecha (la fecha es obligatoria si el artículo lleva caducidad).
+  - **Salida:** motivo obligatorio. Sale primero lo que caduca antes y lo dice («Sale del lote L-1018 · caduca mañana»), o de un lote elegido.
+  - **Traslado:** dos filas con el mismo `transfer_id` en **un solo lote** de commit; si hay que tirar de varios lotes, un par por lote.
+  - **Resumen:** lo que quedará («Quedarán 8 ud en Cámara»). Avisa sin bloquear si sale más de lo que consta en el dispositivo.
+  - Con un solo modo (`modes: ['exit']`, el «Gastar» de Tasks) no hay selector, y el motivo se puede preelegir (`reason`).
+- **`createCountSession`:** recuento en el móvil, sin red.
+  - Un sitio y lo de dentro, todo, o solo unos artículos (el «Contar» de una fila). Retoma el recuento abierto de ese sitio, o lo abre al guardar la primera línea.
+  - **A ciegas por defecto:** «Ver lo calculado» lo enseña, también en el «Recontar» de Tasks.
+  - **Cada línea se guarda al escribirla,** con − y +. Pasar a la siguiente casilla no pierde lo escrito: se aplaza el repintado hasta que el foco llega.
+  - Chips por sitio y «Sin contar»; «Contar otro artículo aquí».
+  - **«Revisar y cerrar»:** cada diferencia y cuántas cuadran; «Cerrar y ajustar» llama a `resources.close_count`.
+    - Avisa de que **se cierra al sincronizar**, con el stock de ese momento (Core, 18-10).
+    - Lo no contado no cambia.
+- **Modelo:**
+  - `fefoPlan` (primero lo que caduca antes, después sin caducidad, y lo que falta aparte), `stockAt`, `countTargets`, `movementToFields`, `CountRow`, `CountLineRow` y `MovementDraft`;
+  - la fuente escribe `record` (lotes y movimientos en un lote), `openCount`, `saveCountLine` y `closeCount`, y lee `counts` y `count_lines`.
+- **Arreglo en `createItemPicker`:** `set({ quantity: null })` ya vacía la cantidad (antes la conservaba).
+- **Demo:** `#inventory` abre el formulario y el recuento en una hoja, y suma «Movimiento a mano» y «Recuento de la cocina».
+- **Pruebas:** `v43` (18), con el modelo en Node; con `v41` y `v42`, 62 de inventario en verde.
+
 ## 0.37.0 · 18 de octubre de 2026
 
 **Catálogo y ficha del inventario** (R3, primera de las dos entregas aprobadas el 18-10-2026; movimientos y recuento, en la 0.38).

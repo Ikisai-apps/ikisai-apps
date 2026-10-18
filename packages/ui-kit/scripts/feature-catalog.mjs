@@ -150,6 +150,9 @@ KIT_CHILDREN.createItemPicker = [['buscar', 'Buscar artículo', 'input'], ['opci
 // `ITEM_CATALOG_MARKS` (src/items/catalog.ts) y `ITEM_SHEET_MARKS` (src/items/sheet.ts).
 KIT_CHILDREN.createItemCatalog = [['buscar', 'Buscar en el inventario', 'input'], ['filtro', 'Filtro del inventario', 'button'], ['abrir', 'Abrir ficha', 'button'], ['accion', 'Acción de la fila', 'button'], ['nuevo', 'Nuevo artículo', 'button']];
 KIT_CHILDREN.createItemSheet = [['pestana', 'Pestaña de la ficha', 'button'], ['accion', 'Acción del artículo', 'button'], ['guardar', 'Guardar datos', 'button'], ['archivar', 'Archivar o recuperar', 'button'], ['alias', 'Otro nombre', 'button'], ['unidad-nueva', 'Añadir unidad', 'button'], ['unidad-guardar', 'Guardar unidad', 'button'], ['unidad-quitar', 'Quitar unidad', 'button'], ['mas', 'Ver más movimientos', 'button']];
+// `MOVEMENT_FORM_MARKS` (src/items/movement-form.ts) y `COUNT_SESSION_MARKS` (src/items/count-session.ts).
+KIT_CHILDREN.createMovementForm = [['modo', 'Entrada, salida o traslado', 'button'], ['motivo', 'Motivo de la salida', 'button'], ['lote', 'Lote', 'input'], ['guardar', 'Registrar el movimiento', 'button'], ['cancelar', 'Cancelar', 'button']];
+KIT_CHILDREN.createCountSession = [['linea', 'Cantidad contada', 'input'], ['restar', 'Restar uno', 'button'], ['sumar', 'Sumar uno', 'button'], ['calculado', 'Ver lo calculado', 'button'], ['filtro', 'Sitio del recuento', 'button'], ['otro', 'Contar otro artículo', 'button'], ['luego', 'Seguir luego', 'button'], ['revisar', 'Revisar y cerrar', 'button'], ['cerrar', 'Cerrar y ajustar', 'button'], ['volver', 'Volver a contar', 'button']];
 KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'button'], ['tipo', 'Tipo de propuesta', 'button'], ['abrir', 'Ver propuesta', 'button'], ['aprobar', 'Aprobar propuesta', 'button'], ['descartar', 'Descartar propuesta', 'button'], ['retirar', 'Retirar propuesta', 'button'], ['proponer', 'Proponer', 'button']];
 
 /** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
@@ -193,7 +196,7 @@ export function extractFeatures(text, file = '') {
     const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
     const children = call ? KIT_CHILDREN[call] : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }

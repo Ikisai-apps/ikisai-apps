@@ -416,7 +416,8 @@ export function createItemPicker(options: ItemPickerOptions): ItemPicker {
     get: current,
     set(pick) {
       if ('itemId' in pick) { itemId = pick.itemId ?? null; text = pick.text ?? null; }
-      if ('quantity' in pick || 'unitId' in pick) { qty = { value: pick.quantity ?? qty.value, unitId: pick.unitId ?? qty.unitId }; qtyFor = null; }
+      // `quantity: null` vacía la cantidad (sin `??`, que la conservaría).
+      if ('quantity' in pick || 'unitId' in pick) { qty = { value: 'quantity' in pick ? pick.quantity ?? null : qty.value, unitId: pick.unitId ?? qty.unitId }; qtyFor = null; }
       if ('spaceId' in pick && spacePicker) { spacePicker.set(pick.spaceId ?? null); spaceTouched = true; }
       paint();
     },
