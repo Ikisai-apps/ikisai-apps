@@ -230,15 +230,18 @@ writable: menu_item_id, status, automatic, notes.
   - en Inicio, la tarjeta «Consumo por confirmar».
   - Solo para editor u owner y solo si en Recursos hay sitios de cocina (si no, no se lleva inventario y no se enseña nada).
 - **Descuento automático en el servidor (P17, migración `20261018_1100_food_consumption_worker.sql`):**
-  - El worker `POST /api/v1/worker/consumption/tick` (cada 15 minutos, `core.schedule_tick`) usa la cuenta de servicio `food`, que da de alta Core. Sin ella no hace nada ni crea cuentas.
+  - El worker `POST /api/v1/worker/consumption/tick` (cada 15 minutos, `core.schedule_tick`) usa la cuenta de servicio `food` (núcleo, 0096), que crea la primera vez con `ensureServiceActor` y después reutiliza.
   - Lee `food.consumption_due`: los platos vencidos sin consumo ni movimientos, y los automáticos ya anotados que no llegaron a Recursos.
   - **Anota primero en Food** (`food.consumptions`, id fijo por plato). Es el cerrojo: si ya hay un consumo vivo, se salta.
   - **Después descuenta en Recursos**, con `requestId` fijo por plato (`food-auto-consume:<id>`): repetirlo devuelve el recibo.
-  - Solo se despierta (`food.consumption_has_work`) si existe la cuenta, hay cocina y hay trabajo.
+  - Solo se despierta (`food.consumption_has_work`, migración 1101) si hay cocina y trabajo.
 - **Respaldo en la app:**
   - Si a las 26 h un plato sigue sin descontar, lo descuenta la app de un editor (`autoConsume`, `CONSUMPTION_FALLBACK_HOURS`). Las 2 h de margen evitan que lo hagan la app y el worker a la vez.
   - Pasadas las 24 h no se ofrece «Confirmar consumo»: el servicio dice «Se está descontando solo».
-- **No es idempotente por `source_ref` en Recursos:** `resources.consume` no mira si ya hay movimientos con esa referencia. Lo evitan el cerrojo de Food y los plazos. Queda un caso: un dispositivo sin red que confirma antes de las 24 h y sincroniza después de que actúe el worker. Pedido a Core.
+- **Sin descontar dos veces:**
+  - El worker y la app llaman a `resources.consume` con `once: true` (Recursos, 0806): si ese plato ya descontó ese artículo, no hace nada (`skipped: 'already_consumed'`).
+  - Esto cubre también un dispositivo sin red que confirma antes de las 24 h y sincroniza después del worker.
+  - Además, el cerrojo de Food (un consumo vivo por plato) y los plazos.
 - **Conversiones:** `itemUnitFactor` (dominio) usa las reglas de `unitsFor` y `baseQuantity` del kit, igual que Finance: la base, sus métricas y las conversiones del artículo sin proveedor («unidad» vale como «ud»).
   - Lo usan el consumo, «comprado» al stock y el worker (en SQL).
   - `resources-units.test.ts` comprueba que da lo mismo que el kit.

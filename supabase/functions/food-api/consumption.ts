@@ -1,13 +1,13 @@
 /**
  * Food · R5c, P17: worker del consumo a las 24 h (`POST /api/v1/worker/consumption/tick`; docs/food/API.md §2.8).
  *
- * Con la cuenta de servicio `food` (la da de alta Core) y sin depender de que alguien abra la app:
+ * Con la cuenta de servicio `food` (núcleo, 0096; la crea `ensureServiceActor` la primera vez) y sin depender de que alguien abra la app:
  * 1. lee los platos vencidos (`food.consumption_due`);
  * 2. anota el consumo en Food con un id fijo por plato. Es el cerrojo: si ya hay uno (de la app o de otra vuelta), se salta;
- * 3. descuenta en Recursos con `resources.consume` y un `requestId` fijo por plato: repetirlo devuelve el recibo, así que
- *    un reintento tras un fallo a medias no descuenta dos veces.
+ * 3. descuenta en Recursos con `resources.consume` (`once: true`, 0806) y un `requestId` fijo por plato: ni un reintento
+ *    ni la app pueden descontar dos veces el mismo plato.
  */
-import { isFault, sha256Hex, stable, type Supabase } from '../_kit/mod.ts';
+import { ensureServiceActor, isFault, sha256Hex, stable, type Supabase } from '../_kit/mod.ts';
 
 export const FOOD_SERVICE = 'food';
 
@@ -30,10 +30,8 @@ export async function stableUuid(seed: string): Promise<string> {
 const DONE = new Set(['ROW_EXISTS', 'CONSTRAINT_VIOLATION', 'PARENT_DELETED']);
 
 export async function runConsumptionTick(supabase: Supabase, options: { limit?: number } = {}) {
-  // La cuenta la da de alta Core (servicio `food`, editor en Food). Sin ella no se hace nada, y no se crea ninguna cuenta
-  // de Auth aquí: si el alta falla, cada vuelta dejaría una huérfana.
-  const actor = await supabase.rpc<string | null>('core_service_actor', { p_name: FOOD_SERVICE });
-  if (!actor) return { noted: 0, consumed: 0, skipped: 0, errors: [], service: 'missing' };
+  // Servicio `food` del núcleo (0096): la cuenta se crea la primera vez y después se reutiliza, como la de Feedback.
+  const actor = await ensureServiceActor(supabase, FOOD_SERVICE);
   const commit = async (app: string, requestId: string, operations: unknown[]) => supabase.rpc('core_commit', {
     p_app: app, p_actor: actor, p_request_id: requestId, p_digest: await sha256Hex(stable(operations)), p_expected_cursor: null, p_operations: operations, p_confirmation: null,
   });
@@ -60,7 +58,7 @@ export async function runConsumptionTick(supabase: Supabase, options: { limit?: 
       await commit('resources', `food-auto-consume:${item.menu_item_id}`, item.calls.map((c) => ({
         op: 'call', procedure: 'resources.consume',
         args: {
-          item_id: c.item_id, quantity: c.quantity, kind: 'consumo_servicio', source_app: 'food', source_ref: `menu_item:${item.menu_item_id}`, note: item.note,
+          item_id: c.item_id, quantity: c.quantity, kind: 'consumo_servicio', source_app: 'food', source_ref: `menu_item:${item.menu_item_id}`, note: item.note, once: true,
           space_ids: due.kitchen, ...(c.default_space_id ? { default_space_id: c.default_space_id } : {}),
         },
       })));
