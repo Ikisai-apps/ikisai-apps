@@ -11,6 +11,24 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+/** Fila de la vista previa del enlace con Recursos (R4, `invoices.resource_links_preview`). */
+interface ResourceLinkRow {
+  source: 'line' | 'memory'; id: string; invoice_code: string | null; name: string;
+  action: 'enlazar' | 'crear' | 'dudoso' | 'omitir'; reason: string | null; item_name: string | null; kind: string | null; base_unit: string | null;
+}
+interface ResourceLinksPreview { rows: ResourceLinkRow[]; counts: Record<'lines' | 'memory' | 'enlazar' | 'crear' | 'dudoso' | 'omitir' | 'new_items', number>; digest: string }
+
+const LINK_REASONS: Record<string, string> = {
+  sin_tipo: 'sin tipo de artículo', unidad: 'unidad no reconocida', unidad_distinta: 'otra unidad que el artículo', mismo_nombre: 'mismo nombre con tipos o unidades distintos',
+  sin_nombre: 'sin nombre', generica: 'línea genérica', servicio: 'servicio',
+};
+const KIND_NAMES: Record<string, string> = { ingrediente: 'Ingrediente', maquina: 'Máquina', material: 'Material', otro: 'Otro' };
+function resourceLinkDetail(r: ResourceLinkRow): string {
+  if (r.action === 'enlazar') return `con «${r.item_name ?? ''}»`;
+  if (r.action === 'crear') return `${KIND_NAMES[r.kind ?? ''] ?? r.kind ?? ''}, en ${r.base_unit ?? ''}`;
+  return LINK_REASONS[r.reason ?? ''] ?? r.reason ?? '';
+}
+
 let deferredInstall: InstallPromptEvent | null = null;
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
@@ -90,6 +108,12 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         el('p', null, 'Una sesión de Claude Code completa las facturas que llegan sin leer (escaneadas o con datos que faltan). Tú las revisas y validas.'),
         el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.claude.conectar', 'data-feedback-label': 'Conectar Claude', class: 'ghost', type: 'button', id: 'connectClaude', onclick: () => void connectClaude() }, 'Conectar Claude')),
       ), { feedbackId: 'invoices.inicio.claude', feedbackLabel: 'Leer con Claude' }) : null,
+      // R4, PR 4: el owner ve la vista previa del enlace de lo ya validado con artículos de Recursos y la aplica.
+      isOwner ? fb(el('article', { class: 'card' },
+        el('h3', null, 'Inventario (Recursos)'),
+        el('p', null, 'Enlaza los artículos de las facturas ya validadas con el inventario común. Primero ves qué se enlaza, qué se crea y qué queda por decidir.'),
+        el('p', { style: 'margin-top:10px' }, el('button', { 'data-feedback-id': 'invoices.inicio.inventario.vista_previa', 'data-feedback-label': 'Ver la vista previa', class: 'ghost', type: 'button', id: 'resourceLinksPreview', onclick: (e: Event) => void openResourceLinks(e.currentTarget as HTMLButtonElement) }, 'Ver la vista previa')),
+      ), { feedbackId: 'invoices.inicio.inventario', feedbackLabel: 'Inventario (Recursos)' }) : null,
       link({ feedbackId: 'invoices.inicio.proveedores', feedbackLabel: 'Proveedores' }, '#/proveedores', 'Proveedores', 'Altas, NIF, alias y categoría por defecto.', supplierCount, 'Activos'),
       el('article', { class: 'card', 'data-feedback-id': 'invoices.inicio.sincronizacion', 'data-feedback-label': 'Sincronización' },
         el('h3', null, 'Sincronización'),
@@ -170,6 +194,50 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
       // Que el fallo se vea (9-10-2026): una hoja con el motivo, no un aviso que se pierde.
       openSheet({ title: 'No se pudo volver a leer', body: el('p', { id: 'rereadError', role: 'alert' }, describeError(error)), foot: [el('button', { class: 'primary', type: 'button', onclick: () => void closeSheet() }, 'Cerrar')] });
     }
+    button.disabled = false;
+  }
+  /** R4, PR 4: vista previa del enlace con Recursos (owner) y «Aplicar» con el mismo `digest`. No enciende el interruptor. */
+  async function openResourceLinks(button: HTMLButtonElement): Promise<void> {
+    if (!navigator.onLine) { toast('La vista previa necesita conexión.'); return; }
+    button.disabled = true;
+    try {
+      const preview = await client.api<ResourceLinksPreview>('/resource-links/preview');
+      const spaces = await client.api<{ tables: Array<{ rows: Array<{ id: string; name: string; kind: string; deleted_at: string | null; active: boolean }> }> }>('/resources/snapshot?tables=resources.spaces')
+        .then((r) => (r.tables[0]?.rows ?? []).filter((x) => !x.deleted_at && x.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'es')))
+        .catch(() => []);
+      const c = preview.counts;
+      const space = el('select', { 'data-feedback-id': 'invoices.inicio.inventario.sitio', 'data-feedback-label': 'Sitio habitual', id: 'resourceLinksSpace' },
+        el('option', { value: '' }, 'Sin sitio (no entran al inventario)'), ...spaces.map((x) => el('option', { value: x.id }, x.name)));
+      const group = (action: ResourceLinkRow['action'], title: string) => {
+        const rows = preview.rows.filter((r) => r.action === action);
+        return rows.length ? el('section', { 'data-feedback-ignore': '' }, el('div', { class: 'sectionlabel' }, `${title} · ${rows.length}`),
+          el('ul', { class: 'plain', id: `resourceLinks-${action}` }, ...rows.map((r) => el('li', null, el('strong', null, r.name),
+            r.source === 'memory' ? ' · memoria' : r.invoice_code ? ` · ${r.invoice_code}` : '',
+            ` · ${resourceLinkDetail(r)}`)))) : null;
+      };
+      const apply = el('button', { 'data-feedback-id': 'invoices.inicio.inventario.aplicar', 'data-feedback-label': 'Aplicar', class: 'primary', type: 'button', id: 'resourceLinksApply', disabled: !(c.crear + c.enlazar) }, 'Aplicar');
+      apply.addEventListener('click', async () => {
+        apply.disabled = true;
+        try {
+          const r = await client.api<{ created: number; linked: number; memory: number }>('/resource-links/apply', { json: { digest: preview.digest, space_id: space.value || null } });
+          await closeSheet();
+          toast(`Recursos: ${r.created} artículo${r.created === 1 ? '' : 's'} nuevo${r.created === 1 ? '' : 's'}, ${r.linked} línea${r.linked === 1 ? '' : 's'} y ${r.memory} nombre${r.memory === 1 ? '' : 's'} de la memoria enlazados.`);
+          void client.sync().catch(() => undefined);
+        } catch (error) { toast(describeError(error)); apply.disabled = false; }
+      });
+      openSheet({
+        title: 'Inventario (Recursos)',
+        meta: `${c.lines} línea${c.lines === 1 ? '' : 's'} validada${c.lines === 1 ? '' : 's'} y ${c.memory} nombre${c.memory === 1 ? '' : 's'} de la memoria sin artículo.`,
+        body: el('div', { id: 'resourceLinksBody' },
+          el('dl', { class: 'kv', id: 'resourceLinksCounts' }, el('dt', null, 'Se enlazan'), el('dd', null, String(c.enlazar)), el('dt', null, 'Artículos nuevos'), el('dd', null, `${c.new_items} (para ${c.crear})`),
+            el('dt', null, 'Por decidir'), el('dd', null, String(c.dudoso)), el('dt', null, 'No son stock'), el('dd', null, String(c.omitir))),
+          group('enlazar', 'Se enlazan'), group('crear', 'Se crean'), group('dudoso', 'Por decidir en la ficha'), group('omitir', 'No son stock'),
+          el('label', { class: 'field' }, el('span', null, 'Sitio habitual de los artículos nuevos'), space,
+            el('span', { class: 'hint' }, 'Al encender el enlace con el inventario, lo ya validado entra con la fecha de cada factura. Sin sitio, no entra.')),
+        ),
+        foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void closeSheet() }, 'Cancelar'), apply],
+      });
+    } catch (error) { toast(describeError(error)); }
     button.disabled = false;
   }
   async function runDrive(button: HTMLButtonElement): Promise<void> {
