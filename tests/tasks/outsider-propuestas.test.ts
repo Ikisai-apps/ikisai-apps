@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
-import { createTabOps, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import { createTabOps, suggestNoteOps, suggestStepOps, suggestTaskOps, type Dataset, type Operation } from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -261,4 +261,23 @@ test('O1 · paso 4: Accesos fija áreas y proyectos de un outsider, nunca toda l
   // GET members los lista con su rol.
   const members = await app.call('/api/v1/members', { token: app.tokens.owner });
   assert.equal(members.data.find((m: any) => m.userId === userId)?.role, 'outsider');
+});
+
+/** El espejo de quien propone, leído de su snapshot (lo que tiene la interfaz). */
+async function mirror(token: string): Promise<Dataset> {
+  const snap = await app.call('/api/v1/snapshot', { token });
+  const data: any = {};
+  for (const t of snap.data.tables) data[t.table] = t.rows;
+  for (const name of ['tasks.tasks', 'tasks.projects', 'tasks.project_labels', 'tasks.project_spaces', 'tasks.project_trades', 'tasks.project_people']) data[name] ??= [];
+  return data as Dataset;
+}
+
+test('O1 · paso 3: los lotes que construye la interfaz (dominio) pasan la comprobación del servidor', async () => {
+  const data = await mirror(open);
+  const task = suggestTaskOps(data, { projectId: OPEN, title: 'Desbrozar', note: 'Junto al pozo' });
+  assert.deepEqual(task.map((o) => o.table), ['tasks.tasks', 'tasks.task_labels']);
+  assert.equal((await suggest(open, 'tarea', 'Desbrozar', task)).status, 200);
+  assert.equal((await suggest(open, 'anadido', 'Paso', suggestStepOps(data, { taskId: T_OPEN, title: 'Afilar la azada' }))).status, 200);
+  assert.equal((await suggest(open, 'anadido', 'Nota', suggestNoteOps(data, { taskId: T_OPEN, line: 'Con guantes.' }))).status, 200);
+  assert.throws(() => suggestTaskOps(data, { projectId: OPEN, title: '   ' }), /título/);
 });

@@ -58,7 +58,7 @@ declare
   v_notes int := 0;
   pr tasks.projects;
   t tasks.tasks;
-  v_task_keys text[] := array['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'position'];
+  v_task_keys text[] := array['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position'];
   v_child_keys text[] := array['tab_id', 'project_id', 'task_id', 'label_id', 'space_id', 'trade_id', 'person_id', 'house_level'];
   v_file_keys text[] := array['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'];
 begin
@@ -78,7 +78,8 @@ begin
     if v_op->>'table' = 'tasks.tasks' and v_op->>'op' = 'insert' then
       v_inserts := v_inserts + 1;
       f := coalesce(v_op->'fields', '{}'::jsonb);
-      if v_inserts > 1 or exists (select 1 from jsonb_object_keys(f) k where k <> all(v_task_keys)) or coalesce((f->>'done')::boolean, false) then
+      if v_inserts > 1 or exists (select 1 from jsonb_object_keys(f) k where k <> all(v_task_keys)) or coalesce((f->>'done')::boolean, false)
+         or f->>'owner_label_id' is not null or f->>'cost' is not null then
         perform core.fail('SUGGESTION_NOT_ALLOWED', 403, jsonb_build_object('reason', 'only a new pending task', 'kind', v_kind));
       end if;
       v_new := (v_op->>'id')::uuid;
