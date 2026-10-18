@@ -1,7 +1,8 @@
 -- Ikisai Tasks · O1, paso 2: el outsider marca hecha, y comentarios para todos, con fotos (RECURSOS.md §14.2; decisiones
 -- del usuario del 18-10-2026; docs/tasks/API.md §31). Toca el schema tasks y, del núcleo, solo llama a sus registros.
 -- - tasks.task_comments: comentarios de una tarea (cuerpo de 1 a 2000 caracteres y, opcionalmente, una foto de core.files).
---   `author_id` y `author_name` los pone el trigger con el actor del lote y su perfil: el cliente no los escribe.
+--   `author_id` y `author_name` los pone el trigger con el actor del lote (`updated_by` del alta, que fija
+--   core.apply_row_op) y su perfil: el cliente no los escribe.
 --   La visibilidad es la de su tarea (`tab_id` y `project_id` desnormalizados, como task_labels).
 --   Leen todos los roles con acceso; escriben editor, propietario y outsider (el lector no).
 -- - El outsider (tasks.validate_comments, segundo hook de validación):
@@ -36,10 +37,10 @@ create index task_comments_task_idx on tasks.task_comments (task_id, created_at)
 create index task_comments_project_idx on tasks.task_comments (project_id);
 create index task_comments_file_idx on tasks.task_comments (file_id) where file_id is not null;
 
--- Autor: el actor del lote (core.actor) y su nombre de perfil al comentar. No cambian después.
+-- Autor: el actor del lote (core.apply_row_op pone `updated_by` en el alta) y su nombre de perfil. No cambian después.
 create or replace function tasks.comment_author()
 returns trigger language plpgsql as $$
-declare v_actor uuid := nullif(current_setting('core.actor', true), '')::uuid;
+declare v_actor uuid := new.updated_by;
 begin
   if tg_op = 'INSERT' then
     if v_actor is null then perform core.fail('FORBIDDEN', 403, jsonb_build_object('reason', 'a comment needs an author')); end if;
