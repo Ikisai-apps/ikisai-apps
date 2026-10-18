@@ -20,11 +20,13 @@ function tradeRows(){const src=Sync.core?.trades||[];if(tradeCache.src!==src){
 function tradeById(id){tradeRows();return tradeCache.byId.get(id)}
 /* «Fontanería › ACS»: la ruta de Central. Sin catálogo (nunca se pudo leer) o con un oficio que ya no está, «Oficio». */
 function tradeName(id){const r=tradeById(id);return r?(r.path||r.name):'Oficio'}
+/* En las chips, como en la ficha (y los espacios): los dos últimos niveles, «Madre › Hija». La ruta entera, en el título. */
+function tradeShort(id){return tradeName(id).split(' › ').slice(-2).join(' › ')}
 /* El color de la familia «Tipo: Acción» (archivada al pasar), para que la chip se siga reconociendo. */
 function actionColor(){for(const a of state.tabs||[])for(const f of a.families||[])if(tradeNorm(f.name)==='tipo: accion')return f.color||'#5a7a8a';return '#5a7a8a'}
 /* En el orden del árbol de Central (como las etiquetas, que salen por su posición); los desconocidos, al final. */
 function sortTrades(ids){tradeRows();const at=id=>tradeCache.order.has(id)?tradeCache.order.get(id):1e9;return [...new Set(ids||[])].sort((a,b)=>at(a)-at(b))}
-function tradeChips(ids=[]){if(!tradesMode())return '';const color=actionColor();return sortTrades(ids).map(id=>`<span class="chip tradechip" style="background:${esc(color)}" data-trade="${esc(id)}">${esc(tradeName(id))}</span>`).join('')}
+function tradeChips(ids=[]){if(!tradesMode())return '';const color=actionColor();return sortTrades(ids).map(id=>`<span class="chip tradechip" style="background:${esc(color)}" data-trade="${esc(id)}" title="${esc(tradeName(id))}">${esc(tradeShort(id))}</span>`).join('')}
 /* Con lo de dentro: «Fontanería» encuentra también lo que solo guarda «ACS». */
 function expandTrades(ids){const rows=tradeRows(),out=new Set();for(const id of ids||[]){out.add(id);for(const d of IkisaiKit.spaceDescendants(rows,id,true))out.add(d)}return out}
 function aggregatedTrades(p){const set=new Set(p.ownTrades||[]);p.tasks.filter(t=>!t.deleted).forEach(t=>(t.trades||[]).forEach(id=>set.add(id)));return [...set]}
