@@ -57,7 +57,7 @@ export {
 } from './spaces/model.ts';
 export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions, type SpaceRowAction } from './spaces/tree.ts';
 export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
-export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions } from './spaces/picker.ts';
+export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions, type SpacePickerTexts } from './spaces/picker.ts';
 export {
   DEFAULT_ITEM_KINDS, BASE_UNITS, itemKey, kindLabelOf, sameNameItem, similarItems, searchItems, unitsFor, baseQuantity, stockFromMovements, stockBySpace, stockSummary,
   itemFromRow, itemUnitFromRow, itemKindFromRow, newItemId, createMemoryItemSource,

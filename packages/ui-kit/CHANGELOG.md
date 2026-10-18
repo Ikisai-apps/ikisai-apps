@@ -1,5 +1,16 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.39.0 · 18 de octubre de 2026
+
+**`createSpacePicker` con textos propios** (petición de Tasks: elige oficios con filas en forma de espacio).
+- **Nueva opción `texts`**, ya traducidos por la app:
+  - `empty`: sin resultados, con `{q}` para lo buscado («Ningún oficio coincide con «{q}».»);
+  - `search`: el texto del buscador, si no se pasa `placeholder`;
+  - `feedback`: las etiquetas de las marcas, por clave de `SPACE_PICKER_MARKS` (`quick`, `search`, `option`, `remove`).
+- **Sin `texts`, todo igual que antes;** lo que no se pasa sigue con el texto de espacios.
+- **Tasks** puede quitar `TRADE_WORDS` y el `MutationObserver` de `trades-ui.js` y pasar `texts`.
+- **Demo:** «Oficio de la tarea» en `#spaces`. **Pruebas:** `v44`, que también comprueba que los espacios no cambian.
+
 ## 0.38.1 · 18 de octubre de 2026
 
 **Arreglo en `createCountSession`** (lo encontró Central):

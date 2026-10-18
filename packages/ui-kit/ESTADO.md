@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.39.0: `createSpacePicker` acepta `texts` (vacío, buscador y marcas) para usarlo con otras filas en forma de espacio, como los oficios de Tasks; sin ellos, igual que antes.
 - v0.38.1: `createCountSession`: «Revisar y cerrar», la barra y «Sin contar» se actualizan también con el foco en una casilla.
 - v0.38.0: `createMovementForm` (entrada con lote y coste, salida con motivo y primero lo que caduca antes, traslado en un solo lote) y `createCountSession` (a ciegas, línea a línea sin red, retomar, revisar diferencias y cerrar al sincronizar); la fuente escribe movimientos y recuentos.
 - v0.37.0: `createItemCatalog` (buscar, filtros a un toque con recuento, agrupar por sitio, tipo o categoría, acciones del kit y de la app, columnas con ancho) y `createItemSheet` (stock por sitio y lote con coste medio, datos con máquinas, unidades y movimientos con su origen); la fuente lee lotes y costes y escribe la ficha.
