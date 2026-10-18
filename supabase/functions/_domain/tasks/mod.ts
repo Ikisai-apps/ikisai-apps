@@ -13,3 +13,4 @@ export * from './csv.ts';
 export * from './portable.ts';
 export * from './zip.ts';
 export * from './trades.ts';
+export * from './people.ts';

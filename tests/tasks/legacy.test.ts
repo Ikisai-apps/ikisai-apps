@@ -315,3 +315,36 @@ test('legacy · oficios (P2): componer los trae, cambiarlos los guarda y un mode
   const after = find(await model(), tab.id).projects[0]!;
   assert.deepEqual([after.tasks.find((t) => t.id === task.id)!.trades, after.ownTrades], [[pintura], undefined]);
 });
+
+test('legacy · personas (P2, PR 3): componer las trae con el responsable, cambiarlas las guarda y un modelo sin el campo no las toca', async () => {
+  const lucia = newId(), bruno = newId();
+  await db.t.db.query(`insert into central.people (id, display_name, relation, house_level) values ($1, 'Lucía Prueba', 'equipo', 'staff'), ($2, 'Bruno Prueba', 'equipo', 'outsider')`, [lucia, bruno]);
+  await db.area('Personas');
+  let tabs = await model();
+  const tab = tabs.find((t) => t.name === 'Personas')!;
+  const project = tab.projects[0]!;
+  const task = newTask('Revisar la caldera', { people: [lucia, 'level:outsider'], ownerPerson: lucia });
+  project.tasks.push(task);
+  project.ownPeople = ['level:staff'];
+  project.ownerPerson = 'level:direccion';
+  await save(tabs);
+  tabs = await model();
+  const again = find(tabs, tab.id).projects[0]!;
+  const saved = again.tasks.find((t) => t.id === task.id)!;
+  assert.deepEqual([[...saved.people!].sort(), saved.ownerPerson, saved.owner], [[lucia, 'level:outsider'].sort(), lucia, null]);
+  assert.deepEqual([again.ownPeople, again.ownerPerson], [['level:staff'], 'level:direccion']);
+  // Sin los campos (copias y modelos de antes de P2): no se tocan.
+  delete saved.people;
+  delete saved.ownerPerson;
+  assert.deepEqual(decompose(await db.data(), tabs), []);
+  // Cambiar, quitar y vaciar el responsable.
+  saved.people = [bruno];
+  saved.ownerPerson = null;
+  again.ownPeople = [];
+  const sent = (await save(tabs)).flat();
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.task_people').map((o) => o.op).sort(), ['delete', 'delete', 'insert']);
+  assert.deepEqual(sent.filter((o) => o.table === 'tasks.project_people').map((o) => o.op), ['delete']);
+  const after = find(await model(), tab.id).projects[0]!;
+  const last = after.tasks.find((t) => t.id === task.id)!;
+  assert.deepEqual([last.people, last.ownerPerson, after.ownPeople, after.ownerPerson], [[bruno], undefined, undefined, 'level:direccion']);
+});

@@ -8,6 +8,7 @@
  */
 import { statuses } from './graph.ts';
 import { fullTab, type Scopes } from './scopes.ts';
+import { personFields, personKey } from './people.ts';
 import { POSITION_STEP, reject, type AttachmentRow, type Dataset, type FamilyRow, type LabelRow, type Operation, type Priority, type ProjectStatus, type TaskRow, type Uuid } from './types.ts';
 
 export interface LegacyAttachment { id: Uuid; name: string; mime?: string; size?: number; sha256?: string; url?: string }
@@ -23,6 +24,10 @@ export interface LegacyTask {
   spaces?: Uuid[];
   /** Oficios de Central (P2). Sin el campo, `decompose` no los toca. */
   trades?: Uuid[];
+  /** Personas de Central (P2, PR 3): ids de persona o `level:<nivel>`. Sin el campo, `decompose` no las toca. */
+  people?: string[];
+  /** Responsable de Central (P2, PR 3): id de persona o `level:<nivel>`. Sin el campo, `decompose` no lo toca. */
+  ownerPerson?: string | null;
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
   /** Calculados al componer; `decompose` los ignora. */
@@ -34,6 +39,10 @@ export interface LegacyProject {
   ownSpaces?: Uuid[];
   /** Oficios de Central del proyecto (P2); las tareas nuevas los heredan. Sin el campo, no se tocan. */
   ownTrades?: Uuid[];
+  /** Personas de Central del proyecto (P2, PR 3); las tareas nuevas las heredan. Sin el campo, no se tocan. */
+  ownPeople?: string[];
+  /** Responsable de Central del proyecto (P2, PR 3). Sin el campo, no se toca. */
+  ownerPerson?: string | null;
   attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; order: number; color: string | null; budget: number | null;
   system: 'inbox' | null; version: number; updatedAt: string; tasks: LegacyTask[];
 }
@@ -91,6 +100,10 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
   const projectSpaces = group(live(data['tasks.project_spaces'] ?? []), (s) => s.project_id);
   const taskTrades = group(live(data['tasks.task_trades'] ?? []), (s) => s.task_id);
   const projectTrades = group(live(data['tasks.project_trades'] ?? []), (s) => s.project_id);
+  const taskPeople = group(live(data['tasks.task_people'] ?? []), (s) => s.task_id);
+  const projectPeople = group(live(data['tasks.project_people'] ?? []), (s) => s.project_id);
+  const ownerOf = (row: { owner_person_id?: Uuid | null; owner_house_level?: string | null }) =>
+    (row.owner_person_id || row.owner_house_level ? { ownerPerson: personKey({ person_id: row.owner_person_id ?? null, house_level: row.owner_house_level ?? null }) } : {});
   const dependencies = group(live(data['tasks.task_dependencies']), (d) => d.task_id);
   const projectFiles = group(live(data['tasks.attachments']).filter((a) => !a.task_id), (a) => a.project_id);
   const taskFiles = group(live(data['tasks.attachments']), (a) => a.task_id);
@@ -107,6 +120,8 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
       // Solo si hay alguno: así un modelo sin espacios (antes de R2) compone igual que siempre.
       ...(projectSpaces.has(p.id) ? { ownSpaces: projectSpaces.get(p.id)!.sort(byCreation).map((s) => s.space_id) } : {}),
       ...(projectTrades.has(p.id) ? { ownTrades: projectTrades.get(p.id)!.sort(byCreation).map((s) => s.trade_id) } : {}),
+      ...(projectPeople.has(p.id) ? { ownPeople: projectPeople.get(p.id)!.sort(byCreation).map(personKey) } : {}),
+      ...ownerOf(p),
       attachments: (projectFiles.get(p.id) ?? []).sort(byPosition).map(attachment),
       deleted: !!p.deleted_at, deletedAt: p.deleted_at, order: p.position, color: p.color, budget: p.budget, system: p.system,
       version: p.revision, updatedAt: p.updated_at,
@@ -120,6 +135,8 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           labels: (taskLabels.get(t.id) ?? []).sort(byCreation).map((l) => l.label_id),
           ...(taskSpaces.has(t.id) ? { spaces: taskSpaces.get(t.id)!.sort(byCreation).map((s) => s.space_id) } : {}),
           ...(taskTrades.has(t.id) ? { trades: taskTrades.get(t.id)!.sort(byCreation).map((s) => s.trade_id) } : {}),
+          ...(taskPeople.has(t.id) ? { people: taskPeople.get(t.id)!.sort(byCreation).map(personKey) } : {}),
+          ...ownerOf(t),
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
           order: t.position, deleted: !!t.deleted_at, deletedAt: t.deleted_at, deleteBatch: t.deleted_at, cost: t.cost,
@@ -153,6 +170,17 @@ function sortKeys(value: unknown): unknown {
 const text = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
 const orNull = <T>(value: T | null | undefined | ''): T | null => (value === undefined || value === '' ? null : (value as T | null));
 const amount = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+const personRowKey = (row: Row): Uuid => personKey(row as { person_id?: Uuid | null; house_level?: string | null });
+/**
+ * Responsable de Central (P2, PR 3), solo si el modelo trae `ownerPerson`. Con él puesto, la etiqueta se vacía (como mucho
+ * uno de los tres); nulo, quedan vacíos la persona y el grupo y manda `owner`.
+ */
+const ownerFields = (item: { ownerPerson?: string | null }): Fields => {
+  if (item.ownerPerson === undefined) return {};
+  if (!item.ownerPerson) return { owner_person_id: null, owner_house_level: null };
+  const f = personFields(item.ownerPerson);
+  return { owner_label_id: null, owner_person_id: f.person_id, owner_house_level: f.house_level };
+};
 
 /**
  * Operaciones de fila que llevan las filas actuales al modelo editado. Devuelve uno o dos lotes: el segundo solo
@@ -189,11 +217,12 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     if (!deletedWanted.get(id) || !row || !row.deleted_at) containers.add(task.parentId);
   }
 
-  const bridges = (table: 'tasks.project_labels' | 'tasks.task_labels' | 'tasks.project_spaces' | 'tasks.task_spaces' | 'tasks.project_trades' | 'tasks.task_trades' | 'tasks.task_dependencies', ownerKey: string, ownerId: Uuid, projectId: Uuid, targetKey: string, targets: readonly Uuid[], fields: (target: Uuid, index: number) => Fields) => {
+  const bridges = (table: 'tasks.project_labels' | 'tasks.task_labels' | 'tasks.project_spaces' | 'tasks.task_spaces' | 'tasks.project_trades' | 'tasks.task_trades' | 'tasks.project_people' | 'tasks.task_people' | 'tasks.task_dependencies', ownerKey: string, ownerId: Uuid, projectId: Uuid, targetKey: string | ((row: Row) => Uuid), targets: readonly Uuid[], fields: (target: Uuid, index: number) => Fields) => {
     // Una fila puente en papelera que quedó en otro proyecto no se puede corregir: no se reutiliza, se inserta otra.
-    const existing = (data[table] as unknown as Row[]).filter((r) => r[ownerKey] === ownerId && (!r.deleted_at || r.project_id === projectId));
+    const existing = ((data[table] ?? []) as unknown as Row[]).filter((r) => r[ownerKey] === ownerId && (!r.deleted_at || r.project_id === projectId));
+    const keyOf = typeof targetKey === 'string' ? (row: Row) => row[targetKey] as Uuid : targetKey;
     const pick = new Map<Uuid, Row>();
-    for (const row of existing) { const current = pick.get(row[targetKey] as Uuid); if (!current || (current.deleted_at && !row.deleted_at)) pick.set(row[targetKey] as Uuid, row); }
+    for (const row of existing) { const current = pick.get(keyOf(row)); if (!current || (current.deleted_at && !row.deleted_at)) pick.set(keyOf(row), row); }
     const wanted = [...new Set(targets)];
     wanted.forEach((target, index) => want(table, pick.get(target)?.id ?? newId(), fields(target, index)));
     for (const [target, row] of pick) if (!wanted.includes(target) && !row.deleted_at) want(table, row.id, {}, true);
@@ -254,11 +283,13 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
       want('tasks.projects', p.id, {
         title: p.title, note: text(p.note), status: p.status ?? 'active', priority: p.priority ?? 'normal', due: orNull(p.due), owner_label_id: orNull(p.owner),
         color: orNull(p.color), budget: amount(p.budget), position: typeof p.order === 'number' ? p.order : (index + 1) * POSITION_STEP,
+        ...ownerFields(p),
         ...(row ? {} : { tab_id: tab.id, system: p.system ?? null }),
       }, !!p.deleted);
       bridges('tasks.project_labels', 'project_id', p.id, p.id, 'label_id', p.ownLabels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, label_id: label }));
       if (p.ownSpaces) bridges('tasks.project_spaces', 'project_id', p.id, p.id, 'space_id', p.ownSpaces, (space) => ({ tab_id: tab.id, project_id: p.id, space_id: space }));
       if (p.ownTrades) bridges('tasks.project_trades', 'project_id', p.id, p.id, 'trade_id', p.ownTrades, (trade) => ({ tab_id: tab.id, project_id: p.id, trade_id: trade }));
+      if (p.ownPeople) bridges('tasks.project_people', 'project_id', p.id, p.id, personRowKey, p.ownPeople, (person) => ({ tab_id: tab.id, project_id: p.id, ...personFields(person) }));
       files(tab.id, p.id, null, p.attachments);
       (p.tasks ?? []).forEach((t, taskIndex) => {
         const taskRow = rowOf('tasks.tasks', t.id) as (TaskRow & Row) | undefined;
@@ -272,11 +303,13 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
           ...(t.stepsInOrder || taskRow?.steps_in_order ? { steps_in_order: !!t.stepsInOrder } : {}),
           ...(t.stepFree || taskRow?.step_free ? { step_free: !!t.stepFree } : {}),
           position: typeof t.order === 'number' ? t.order : (taskIndex + 1) * POSITION_STEP,
+          ...ownerFields(t),
           ...(taskRow ? {} : { tab_id: tab.id }),
         }, deletedWanted.get(t.id) ?? false);
         bridges('tasks.task_labels', 'task_id', t.id, p.id, 'label_id', t.labels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, label_id: label }));
         if (t.spaces) bridges('tasks.task_spaces', 'task_id', t.id, p.id, 'space_id', t.spaces, (space) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, space_id: space }));
         if (t.trades) bridges('tasks.task_trades', 'task_id', t.id, p.id, 'trade_id', t.trades, (trade) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, trade_id: trade }));
+        if (t.people) bridges('tasks.task_people', 'task_id', t.id, p.id, personRowKey, t.people, (person) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, ...personFields(person) }));
         bridges('tasks.task_dependencies', 'task_id', t.id, p.id, 'depends_on_id', t.dependsOn ?? [], (dep, i) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, depends_on_id: dep, position: (i + 1) * POSITION_STEP }));
         files(tab.id, p.id, t.id, t.attachments);
       });
@@ -323,7 +356,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   return [first, second].filter((batch) => batch.length > 0).map(ordered);
 }
 
-const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments'];
+const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments'];
 
 /** Orden canónico de tablas; dentro de tareas y etiquetas, los padres antes que sus hijas (las FK son inmediatas). */
 function ordered(operations: Operation[]): Operation[] {

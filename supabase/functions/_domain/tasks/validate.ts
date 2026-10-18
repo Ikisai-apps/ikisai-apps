@@ -12,6 +12,10 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const PRIORITIES = ['normal', 'high', 'critical'];
 const STATUSES = ['active', 'paused', 'archived'];
 const SYSTEM_KEYS = ['person', 'trade', 'phase', 'building', 'space'];
+/** Niveles de casa de Central (P2, PR 3): un grupo de personas («todo el staff»). */
+const HOUSE_LEVELS = ['direccion', 'staff', 'outsider'];
+/** Una persona en una vista guardada: su id de Central o `level:<nivel>`. */
+const PERSON_VALUE = /^level:(direccion|staff|outsider)$/;
 
 type Check = (value: unknown, field: string) => void;
 
@@ -58,14 +62,16 @@ const filters: Check = (v, field) => {
     const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : key === '_priority' ? ['normal', 'high', 'critical'] : null;
     // `_exclude`: etiquetas que la tarea no debe tener (FB_2026_042).
     // `_space`: espacios de Recursos (R2); `_trade`: oficios de Central (P2). Como los de `_exclude`, uuids que valida el hook.
-    if (!allowed && key !== '_project' && key !== '_exclude' && key !== '_space' && key !== '_trade' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
-    if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !UUID.test(id)))) {
+    // `_person`: personas de Central (P2, PR 3), su id o `level:<nivel>`; `_exclude` también admite los niveles.
+    if (!allowed && key !== '_project' && key !== '_exclude' && key !== '_space' && key !== '_trade' && key !== '_person' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
+    const levels = key === '_person' || key === '_exclude';
+    if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !(UUID.test(id) || (levels && PERSON_VALUE.test(id)))))) {
       reject(422, 'INVALID_VIEW', 'Un filtro contiene valores inválidos.', { field, key });
     }
   }
 };
 const groupBy: Check = (v, field) => {
-  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || v === '_space' || v === '_trade' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
+  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || v === '_space' || v === '_trade' || v === '_person' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
 };
 const mime: Check = (v, field) => {
   if (typeof v !== 'string' || !ATTACHMENT_MIME.includes(v.toLowerCase())) reject(422, 'INVALID_ATTACHMENT', 'Tipo de archivo no admitido.', { field, allowed: ATTACHMENT_MIME });
@@ -97,6 +103,9 @@ const repeatDays: Check = (v, field) => {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > 366) reject(422, 'INVALID_FIELDS', 'La repetición va de 1 a 366 días.', { field });
 };
 const priority = oneOf(PRIORITIES, 'INVALID_PRIORITY', 'Prioridad inválida.');
+const houseLevel = (code: string) => oneOf(HOUSE_LEVELS, code, 'Nivel de casa desconocido.');
+/** Responsable de Central (P2, PR 3): la persona la valida viva el hook. */
+const ownerPeople = { owner_person_id: nullable(uuid('INVALID_OWNER')), owner_house_level: nullable(houseLevel('INVALID_OWNER')) };
 
 interface TableRules { fields: Record<string, Check>; required: string[] }
 
@@ -134,6 +143,7 @@ const RULES: Record<TableName, TableRules> = {
       system: nullable(oneOf(['inbox'], 'INVALID_FIELDS', 'Proyecto de sistema desconocido.')),
       // Escribible en el registro para que la fije `tasks.request_project`; por `commands`, nunca (§23).
       external_ref: (_v, f) => reject(422, 'INVALID_FIELDS', 'El origen de un proyecto solo lo fija Booking por su ruta de sistema.', { field: f }),
+      ...ownerPeople,
     },
     required: ['tab_id', 'title', 'position'],
   },
@@ -146,6 +156,7 @@ const RULES: Record<TableName, TableRules> = {
       external_url: nullable(externalUrl),
       external_on_behalf: nullable(oneOf(['internal', 'organizer', 'guest'], 'INVALID_FIELDS', 'Origen del reporte desconocido.')),
       steps_in_order: flag('INVALID_FLAG'), step_free: flag('INVALID_FLAG'),
+      ...ownerPeople,
     },
     required: ['tab_id', 'project_id', 'title', 'position'],
   },
@@ -172,6 +183,14 @@ const RULES: Record<TableName, TableRules> = {
   'tasks.task_trades': {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), trade_id: uuid('INVALID_TRADE') },
     required: ['tab_id', 'project_id', 'task_id', 'trade_id'],
+  },
+  'tasks.project_people': {
+    fields: { tab_id: uuid(), project_id: uuid(), person_id: nullable(uuid('INVALID_PERSON')), house_level: nullable(houseLevel('INVALID_PERSON')) },
+    required: ['tab_id', 'project_id'],
+  },
+  'tasks.task_people': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), person_id: nullable(uuid('INVALID_PERSON')), house_level: nullable(houseLevel('INVALID_PERSON')) },
+    required: ['tab_id', 'project_id', 'task_id'],
   },
   'tasks.task_dependencies': {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid('INVALID_DEPENDENCIES'), depends_on_id: uuid('INVALID_DEPENDENCIES'), position },
@@ -224,6 +243,7 @@ const RULES: Record<TableName, TableRules> = {
     fields: {
       kind: requestKind, kind_label: nullable(text(1, 100, 'INVALID_FIELDS', 'El nombre del tipo va de 1 a 100 caracteres.')),
       tab_id: uuid(), project_id: nullable(uuid()), owner_label_id: nullable(uuid('INVALID_OWNER')), position,
+      ...ownerPeople,
     },
     required: ['kind', 'tab_id'],
   },
@@ -328,6 +348,11 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
         if (value === undefined) reject(422, 'INVALID_FIELDS', 'Campos inválidos.', { index, table, field });
         rules.fields[field]!(value, field);
       }
+      // Responsable: como mucho uno de los tres en la misma operación (el hook mira la fila entera).
+      if (['tasks.tasks', 'tasks.projects', 'tasks.request_routes'].includes(table)
+        && ['owner_label_id', 'owner_person_id', 'owner_house_level'].filter((k) => fields[k] !== undefined && fields[k] !== null).length > 1) {
+        reject(422, 'INVALID_OWNER', 'El responsable es una etiqueta, una persona o un grupo, no varios.', { index, table });
+      }
       if (table === 'tasks.families' && op.op !== 'insert' && 'system_key' in fields && fields.system_key !== null && fields.system_key !== 'person') {
         reject(422, 'IMMUTABLE_FIELD', 'Solo la marca de familia de responsables se puede mover de una familia a otra.', { index, table, field: 'system_key' });
       }
@@ -341,6 +366,10 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
       }
       if (table === 'tasks.supply_movements' && typeof fields.delta === 'number' && (fields.kind === 'in' && fields.delta < 0 || fields.kind === 'out' && fields.delta > 0)) {
         reject(422, 'INVALID_QUANTITY', 'Una entrada suma y un consumo resta.', { index });
+      }
+      // Una persona o un grupo por nivel de casa: exactamente uno de los dos.
+      if ((table === 'tasks.task_people' || table === 'tasks.project_people') && (fields.person_id == null) === (fields.house_level == null)) {
+        reject(422, 'INVALID_PERSON', 'Cada fila es una persona o un grupo por nivel de casa.', { index, table });
       }
       if (table === 'tasks.task_dependencies' && fields.task_id === fields.depends_on_id) {
         reject(422, 'INVALID_DEPENDENCIES', 'Una tarea no puede depender de sí misma.', { index });

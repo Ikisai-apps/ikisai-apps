@@ -31,6 +31,9 @@ test('registro: todas las tablas con las columnas escribibles del dominio, hook,
   // P2: la vista previa de oficios (solo la propietaria) y los dos procedimientos de ida y vuelta.
   assert.equal(await count(`select count(*) n from core.allowed_reads where app = 'tasks' and name = 'tasks.trades_preview' and roles = '{owner}'`), 1);
   assert.equal(await count(`select count(*) n from core.allowed_procedures where app = 'tasks' and procedure in ('tasks.actions_to_trades', 'tasks.trades_to_actions')`), 2);
+  // P2, PR 3: lo mismo para las personas.
+  assert.equal(await count(`select count(*) n from core.allowed_reads where app = 'tasks' and name = 'tasks.people_preview' and roles = '{owner}'`), 1);
+  assert.equal(await count(`select count(*) n from core.allowed_procedures where app = 'tasks' and procedure in ('tasks.people_to_central', 'tasks.people_to_labels')`), 2);
 });
 
 test('áreas: se crean con Entrada y familias; Entrada protegida; inmutables; solo el propietario', async () => {
@@ -581,4 +584,22 @@ test('oficios (P2): mover, borrar y restaurar una tarea lleva sus oficios; sin l
   assert.equal((await db.data())['tasks.tasks'].find((t) => t.id === task)!.deleted_at, null);
   // La lectura SQL exige la correspondencia que calcula tasks-api: nunca «todo dudoso» por llamarla sin ella.
   await assert.rejects(db.read('tasks.trades_preview', {}), (e: any) => e.code === 'INVALID_OPERATION');
+});
+
+test('personas (P2, PR 3): mover, borrar y restaurar una tarea lleva sus personas; sin la correspondencia de tasks-api no hay vista previa', async () => {
+  const { tab } = await db.area('Personas');
+  const p1 = newId(), p2 = newId(), task = newId(), person = newId();
+  await db.t.db.query(`insert into central.people (id, display_name, relation, house_level) values ($1, 'Persona de prueba', 'equipo', 'staff')`, [person]);
+  await db.commit([project(tab, p1), project(tab, p2, { position: 4096 })]);
+  await db.commit([taskOp(tab, p1, task), insert('tasks.task_people', newId(), { tab_id: tab, project_id: p1, task_id: task, person_id: person }),
+    insert('tasks.task_people', newId(), { tab_id: tab, project_id: p1, task_id: task, house_level: 'staff' })]);
+  await db.commit(moveTaskOps(await db.data(), task, { project_id: p2 }));
+  const rows = (await db.data())['tasks.task_people'].filter((r) => r.task_id === task);
+  assert.deepEqual(rows.map((r) => [r.project_id, r.deleted_at]), [[p2, null], [p2, null]]);
+  await db.commit(deleteTaskOps(await db.data(), task));
+  await db.commit(restoreTaskOps(await db.data(), task));
+  assert.equal((await db.data())['tasks.tasks'].find((t) => t.id === task)!.deleted_at, null);
+  // Una fila sin persona ni grupo, o con las dos, no entra (restricción de la tabla).
+  await assert.rejects(db.commit([insert('tasks.task_people', newId(), { tab_id: tab, project_id: p2, task_id: task })]));
+  await assert.rejects(db.read('tasks.people_preview', {}), (e: any) => e.code === 'INVALID_OPERATION');
 });
