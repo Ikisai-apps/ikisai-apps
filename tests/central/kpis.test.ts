@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { COMPLIANCE_TABLES, formatKpi, formatPeriod, kpiState, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
+import { COMPLIANCE_TABLES, formatKpi, formatPeriod, groupBySection, kpiState, stateSummary, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 const madrid = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -105,4 +105,79 @@ test('kpis · objetivos: solo el owner los fija; el panel calcula el estado', as
   assert.equal(item('central.legal_overdue').state, 'atencion'); assert.equal(item('central.legal_overdue').target, 0);
   assert.equal(item('booking.occupancy_rate').state, 'atencion');
   assert.equal(item('central.people_active').state, null);
+});
+
+test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, sin título', () => {
+  const items = ['booking.x', 'central.trades_at_risk', 'central.legal_due_soon', 'central.people_active', 'central.legal_overdue'].map((kpi) => ({ kpi }));
+  assert.deepEqual(groupBySection(items).map((g) => [g.title, g.items.map((i) => i.kpi)]), [
+    ['Cumplimiento', ['central.legal_overdue', 'central.legal_due_soon']],
+    ['Personas', ['central.people_active']],
+    ['Oficios', ['central.trades_at_risk']],
+    [null, ['booking.x']],
+  ]);
+  // Una app sin claves con tema se queda en un solo bloque y en el orden de llegada.
+  assert.deepEqual(groupBySection([{ kpi: 'tasks.b' }, { kpi: 'tasks.a' }]).map((g) => [g.title, g.items.map((i) => i.kpi)]), [[null, ['tasks.b', 'tasks.a']]]);
+  assert.deepEqual(stateSummary([{ state: 'critico' }, { state: 'atencion' }, { state: 'atencion' }, { state: null }, { state: 'ok' }]), { critico: 1, atencion: 2, total: 5 });
+});
+
+test('kpis · R7: personas y oficios del directorio, contando lo que cuelga de cada oficio; Recursos entra en el panel', async () => {
+  const v = (dash: any, kpi: string) => dash.data.items.find((i: any) => i.kpi === kpi)?.value;
+  // Sin niveles de casa todavía, los nuevos no dicen nada («—»).
+  const before = await app.call('/api/v1/dashboard');
+  for (const kpi of ['central.people_direction_staff', 'central.trades_at_risk', 'central.trades_per_person']) assert.equal(v(before, kpi), null, kpi);
+
+  const P = { ana: uuid(), car: uuid(), dan: uuid(), eva: uuid(), fed: uuid(), gem: uuid(), hug: uuid() };
+  const T = { man: uuid(), fon: uuid(), ele: uuid(), lim: uuid(), soc: uuid(), arc: uuid() };
+  const person = (id: string, name: string, house_level: string | null, active = true) =>
+    ({ op: 'insert', table: TABLES.people, id, fields: { display_name: name, relation: house_level === 'outsider' ? 'colaborador' : 'equipo', house_level, active } });
+  const trade = (id: string, name: string, parent_id: string | null = null) => ({ op: 'insert', table: TABLES.trades, id, fields: { name, parent_id } });
+  const cap = (person_id: string, trade_id: string, level: number) => ({ op: 'insert', table: TABLES.personTrades, id: uuid(), fields: { person_id, trade_id, level } });
+  const record = (person_id: string, days: number, status = 'ok') => ({ op: 'insert', table: TABLES.personRecords, id: uuid(), fields: { person_id, kind: 'formacion', record_type: 'primeros_auxilios', status, expires_on: madrid(days) } });
+  const seeded = await commit([
+    person(P.ana, 'Ana Ficticia', 'staff'), person(P.car, 'Carlos Ficticio', 'direccion'), person(P.dan, 'Dani Ficticio', 'outsider'),
+    person(P.eva, 'Eva Ficticia', 'outsider'), person(P.fed, 'Fede Ficticio', 'staff'), person(P.gem, 'Gema Ficticia', null), person(P.hug, 'Hugo Ficticio', 'staff', false),
+    trade(T.man, 'Mantenimiento'), trade(T.fon, 'Fontanería', T.man), trade(T.ele, 'Electricidad', T.man), trade(T.lim, 'Limpieza'), trade(T.soc, 'Socorrismo'), trade(T.arc, 'Pintura'),
+  ]);
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.data));
+  const caps = await commit([
+    cap(P.ana, T.fon, 2), cap(P.ana, T.ele, 1), cap(P.car, T.fon, 1), cap(P.eva, T.lim, 0), cap(P.dan, T.soc, 1),
+    cap(P.hug, T.lim, 2), // inactiva: fuera del directorio
+    cap(P.gem, T.ele, 2), // sin nivel de casa: fuera del directorio
+    cap(P.ana, T.arc, 1), // oficio que se archiva
+    record(P.ana, 10), record(P.ana, 60), record(P.ana, -5), record(P.car, 5, 'no_aplica'),
+  ]);
+  assert.equal(caps.status, 200, JSON.stringify(caps.data));
+  const archived = await commit([{ op: 'update', table: TABLES.trades, id: T.arc, expectedRevision: 1, fields: { active: false } }]);
+  assert.equal(archived.status, 200, JSON.stringify(archived.data));
+
+  const dash = await app.call('/api/v1/dashboard', { token: app.tokens.reader });
+  assert.equal(dash.status, 200, JSON.stringify(dash.data));
+  // Directorio: Ana, Carlos, Fede (casa) y Dani, Eva (outsiders). Marga (de la prueba anterior) y Gema, activas sin nivel.
+  assert.equal(v(dash, 'central.people_direction_staff'), 3);
+  assert.equal(v(dash, 'central.people_outsiders'), 2);
+  assert.equal(v(dash, 'central.people_without_level'), 2);
+  assert.equal(v(dash, 'central.outsiders_without_account'), 2);
+  assert.equal(v(dash, 'central.people_records_due_30d'), 1);
+  assert.equal(v(dash, 'central.people_records_due_90d'), 2);
+  // Mantenimiento cuenta a Ana y a Carlos por Fontanería; Electricidad (Ana), Limpieza (Eva aprende) y Socorrismo (Dani, outsider), en riesgo.
+  assert.equal(v(dash, 'central.trades_at_risk'), 3);
+  assert.equal(v(dash, 'central.trades_learners_no_expert'), 1);
+  assert.equal(v(dash, 'central.trades_only_outsiders'), 1);
+  assert.equal(v(dash, 'central.people_without_trades'), 1);
+  assert.equal(v(dash, 'central.trades_per_person'), 1);
+  assert.equal(v(dash, 'central.trades_archived_with_people'), 1);
+  assert.equal(dash.data.items.find((i: any) => i.kpi === 'central.trades_at_risk').link, 'https://central.ikisai.com/#/personas/oficios?riesgo');
+  // Solo agregados: ningún nombre.
+  assert.equal(/Fictici/.test(JSON.stringify(dash.data)), false);
+  // Las 7 de siempre siguen.
+  for (const kpi of ['central.legal_overdue', 'central.people_active', 'central.people_records_expired']) assert.ok(dash.data.items.some((i: any) => i.kpi === kpi), kpi);
+
+  // Recursos (0805) va justo detrás de Central; el valor del inventario, en euros, no llega al lector.
+  const apps = [...new Set(dash.data.items.map((i: any) => i.app))];
+  assert.deepEqual(apps.slice(0, 2), ['central', 'resources']);
+  assert.ok(dash.data.items.some((i: any) => i.kpi === 'resources.spaces_active'));
+  assert.equal(dash.data.items.some((i: any) => i.kpi === 'resources.stock_value'), false);
+  const owner = await app.call('/api/v1/dashboard');
+  assert.ok(owner.data.items.some((i: any) => i.kpi === 'resources.stock_value'));
+  assert.equal(owner.data.unavailable.includes('resources'), false);
 });

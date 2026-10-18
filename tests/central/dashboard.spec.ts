@@ -81,29 +81,46 @@ test('dirección · KPIs de Central, objetivo con umbrales y lectura sin red @sm
   await context.setOffline(false);
 });
 
-test('dirección · caracterización (R7): un grupo por app en orden, Central por clave con su enlace, cada mes una tarjeta', async ({ page }) => {
+test('dirección · R7: grupos plegables con su resumen, Central por temas y Recursos detrás de Central', async ({ page }) => {
   await login(page);
   await expect(page.locator('#dashboardMeta')).toContainText('Actualizado');
-  const groups = page.locator('.kpigroup');
-  // Central va primero; detrás, las apps que publican, en el orden de KPI_SOURCES. Sin plegar ni subtítulos.
-  await expect(groups.first().locator('.sectionlabel')).toHaveText('Central');
-  await expect(groups.first().locator('.sectionlabel')).toHaveCount(1);
-  const labels = await page.locator('.kpigroup > .sectionlabel').allTextContents();
-  const order = ['Central', 'Booking', 'Finance', 'Tasks', 'Food'];
+  // Hoy era «un grupo por app, sin plegar ni subtítulos»: ahora cada cabecera pliega, y el orden es el de KPI_SOURCES.
+  const labels = await page.locator('.kpigrouphead .sectionlabel').allTextContents();
+  expect(labels.slice(0, 2)).toEqual(['Central', 'Recursos']);
+  const order = ['Central', 'Recursos', 'Booking', 'Finance', 'Tasks', 'Food'];
   expect(labels.map((l) => order.indexOf(l))).toEqual([...labels.map((l) => order.indexOf(l))].sort((a, b) => a - b));
-  // Las 7 de Central, en orden de clave, cada una con su pantalla.
-  const central = groups.first().locator('.kpicard');
-  expect(await central.evaluateAll((cs) => cs.map((c) => [c.getAttribute('data-kpi'), c.getAttribute('href')]))).toEqual([
-    ['central.blocking_overdue', '#/cumplimiento'],
-    ['central.documents_expired', '#/cumplimiento/documentos'],
-    ['central.legal_due_soon', '#/cumplimiento'],
-    ['central.legal_overdue', '#/cumplimiento'],
-    ['central.people_active', '#/personas'],
-    ['central.people_records_expired', '#/personas'],
-    ['central.risks_high_open', '#/cumplimiento/requisitos'],
-  ]);
-  // El owner fija objetivos en cada tarjeta.
-  await expect(central.locator('.kpitarget')).toHaveCount(7);
-  // Un indicador mensual saca una tarjeta por mes (ocupación de Booking: 12 meses atrás y 3 adelante).
+  const central = page.locator('.kpigroup[data-app="central"]');
+  await expect(central.locator('.kpisection')).toHaveText(['Cumplimiento', 'Personas', 'Oficios']);
+  // Las 7 de siempre siguen, con su pantalla (ahora por tema, no por clave); con las 12 nuevas, 19, todas con «Objetivo».
+  const links = Object.fromEntries(await central.locator('.kpicard').evaluateAll((cs) => cs.map((c) => [c.getAttribute('data-kpi'), c.getAttribute('href')])));
+  expect(links).toMatchObject({
+    'central.blocking_overdue': '#/cumplimiento', 'central.documents_expired': '#/cumplimiento/documentos', 'central.legal_due_soon': '#/cumplimiento',
+    'central.legal_overdue': '#/cumplimiento', 'central.people_active': '#/personas', 'central.people_records_expired': '#/personas',
+    'central.risks_high_open': '#/cumplimiento/requisitos', 'central.trades_at_risk': '#/personas/oficios?riesgo',
+  });
+  await expect(central.locator('.kpicard')).toHaveCount(19);
+  await expect(central.locator('.kpitarget')).toHaveCount(19);
+  // Recursos: espacios e inventario; el owner ve también el valor del inventario. Sin alertas, la cabecera dice cuántos hay.
+  const resources = page.locator('.kpigroup[data-app="resources"]');
+  await expect(resources.locator('.kpisection')).toHaveText(['Espacios', 'Inventario']);
+  await expect(resources.locator('.kpicard[data-kpi="resources.stock_value"]')).toBeVisible();
+  await expect(resources.locator('.kpisummary')).toHaveText('12 indicadores');
+  // Un indicador mensual sigue sacando una tarjeta por mes (eso cambia en otra tanda).
   if (labels.includes('Booking')) await expect(page.locator('.kpicard[data-kpi="booking.occupancy_rate"]')).toHaveCount(16);
+
+  // Plegar: un toque; el dispositivo lo recuerda al volver.
+  const head = resources.locator('.kpigrouphead');
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'false');
+  await expect(resources.locator('.kpigroupbody')).toBeHidden();
+  await page.reload();
+  await expect(page.locator('.kpigroup[data-app="resources"] .kpigrouphead')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('.kpigroup[data-app="resources"] .kpigroupbody')).toBeHidden();
+  await page.locator('.kpigroup[data-app="resources"] .kpigrouphead').click();
+  await expect(page.locator('.kpigroup[data-app="resources"] .kpicard').first()).toBeVisible();
+
+  // La tarjeta de oficios en riesgo lleva a Oficios.
+  await page.locator('.kpicard[data-kpi="central.trades_at_risk"] .kpilabel').click();
+  await expect(page.getByRole('heading', { name: 'Oficios' })).toBeVisible();
 });

@@ -210,7 +210,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   }
 
   function route(): void {
-    const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
+    const full = location.hash && location.hash !== '#' ? location.hash : '#/';
+    // `?filtro` lo lee la pantalla (p. ej. `#/personas/oficios?riesgo`, desde el panel); la ruta es lo de antes.
+    const hash = full.split('?')[0]!;
     // `#/personas/<id>` es la ficha de una persona; el resto son rutas fijas.
     const [, personId] = hash.match(/^#\/personas\/([0-9a-f-]{36})$/i) ?? [];
     const [, requirementId] = hash.match(/^#\/cumplimiento\/([0-9a-f-]{36})$/i) ?? [];

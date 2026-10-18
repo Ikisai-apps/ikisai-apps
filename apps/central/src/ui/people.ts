@@ -24,7 +24,7 @@ type Base = { id: string; revision: number; updated_at: string; deleted_at: stri
 export type Person = Mirror<Base & {
   code: string; display_name: string; relation: string; base_role: string; coverage: string; availability: string;
   availability_notes: string | null; active: boolean; committed_post: boolean; user_id: string | null; position: number;
-  house_level: HouseLevel | null;
+  house_level: HouseLevel | null; merged_into?: string | null;
 }>;
 type Private = Mirror<Base & {
   person_id: string; legal_name: string | null; phone: string | null; email: string | null; engagement: string | null;

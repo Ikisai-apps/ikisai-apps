@@ -42,6 +42,41 @@ export function tradeWithDescendants(trades: Trade[], id: string): Set<string> {
   return out;
 }
 
+/** Cobertura de un oficio (R7): personas del directorio por su mejor nivel en él o en lo que cuelga de él. */
+export interface TradeCoverage { learners: number; knows: number; experts: number; atRisk: boolean; noExpert: boolean; onlyOutsiders: boolean }
+
+/**
+ * Misma regla que los indicadores de la migración 1507: directorio (activas, sin fusionar y con nivel de casa), oficios
+ * activos, y lo de un oficio sube a sus madres activas. Capaz es Sabe o Experto. En riesgo: una persona capaz o ninguna.
+ */
+export function tradeCoverage(trades: Trade[], capabilities: PersonTrade[], people: Person[]): Map<string, TradeCoverage> {
+  const directory = new Map(people.filter((p) => !p.deleted_at && p.active && !p.merged_into && p.house_level).map((p) => [p.id, p]));
+  const active = new Map(trades.filter((t) => !t.deleted_at && t.active).map((t) => [t.id, t]));
+  const best = new Map<string, Map<string, number>>();
+  for (const c of capabilities) {
+    if (c.deleted_at || !directory.has(c.person_id) || !active.has(c.trade_id)) continue;
+    for (let id: string | null = c.trade_id; id && active.has(id); id = active.get(id)!.parent_id) {
+      const m = best.get(id) ?? new Map<string, number>();
+      m.set(c.person_id, Math.max(m.get(c.person_id) ?? -1, c.level));
+      best.set(id, m);
+    }
+  }
+  const out = new Map<string, TradeCoverage>();
+  for (const id of active.keys()) {
+    const levels = [...(best.get(id) ?? new Map<string, number>())];
+    const capable = levels.filter(([, l]) => l >= 1);
+    const learners = levels.filter(([, l]) => l === 0).length;
+    const experts = levels.filter(([, l]) => l === 2).length;
+    out.set(id, { learners, knows: capable.length - experts, experts, atRisk: capable.length <= 1, noExpert: learners > 0 && experts === 0,
+      onlyOutsiders: capable.length > 0 && capable.every(([p]) => directory.get(p)!.house_level === 'outsider') });
+  }
+  return out;
+}
+
+const count = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : '');
+/** «1 aprende · 2 saben · 1 experto»; vacío si nadie del directorio sabe hacerlo. */
+export const coverageText = (c: TradeCoverage) => [count(c.learners, 'aprende', 'aprenden'), count(c.knows, 'sabe', 'saben'), count(c.experts, 'experto', 'expertos')].filter(Boolean).join(' · ');
+
 export const levelLabel = (level: number) => TRADE_LEVEL_LABELS[level as 0 | 1 | 2] ?? String(level);
 /** Estrella de solo lectura con el nivel de una capacidad. */
 export const levelStar = (level: number) => renderLevelStar(level, 3, `Nivel: ${levelLabel(level)}`);
@@ -71,7 +106,11 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
   let capabilities: PersonTrade[] = [];
   let people: Person[] = [];
   let showArchived = false;
+  // Desde el panel («Oficios con una persona capaz o ninguna») se llega con el filtro puesto.
+  let onlyRisk = location.hash.split('?')[1] === 'riesgo';
   const host = el('div', { id: 'tradeList', 'data-feedback-id': 'central.oficios.lista', 'data-feedback-label': 'Lista de oficios' });
+  const riskBox = el('label', { class: 'check', hidden: true }, el('input', { type: 'checkbox', id: 'tradesRisk', checked: onlyRisk, 'data-feedback-id': 'central.oficios.solo_riesgo', 'data-feedback-label': 'Solo en riesgo',
+    onchange: (e: Event) => { onlyRisk = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Solo en riesgo'));
   replace(main,
     el('a', { href: '#/personas', class: 'backlink', 'data-feedback-id': 'central.oficios.volver', 'data-feedback-label': 'Volver a Personas' }, '← Personas'),
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.oficios.cabecera', 'data-feedback-label': 'Cabecera de Oficios' }, el('div', null, el('h2', null, 'Oficios'),
@@ -79,6 +118,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     el('div', { class: 'toolbar', 'data-feedback-id': 'central.oficios.barra', 'data-feedback-label': 'Barra de oficios' },
       el('label', { class: 'check' }, el('input', { type: 'checkbox', id: 'tradesArchived', 'data-feedback-id': 'central.oficios.mostrar_archivados', 'data-feedback-label': 'Mostrar archivados',
         onchange: (e: Event) => { showArchived = (e.target as HTMLInputElement).checked; paint(); } }), el('span', null, 'Mostrar archivados')),
+      riskBox,
       isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'importTrades', 'data-feedback-id': 'central.oficios.importar', 'data-feedback-label': 'Importar de Tasks', onclick: () => void openImport() }, icon('download', 16), 'Importar de Tasks') : null),
     host,
     canManage ? el('button', { class: 'fab', type: 'button', id: 'newTrade', 'data-feedback-id': 'central.oficios.nuevo', 'data-feedback-label': 'Nuevo oficio', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo oficio') : null);
@@ -86,18 +126,35 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
   const whoKnows = (id: string) => capabilities.filter((c) => c.trade_id === id && people.some((p) => p.id === c.person_id && !p.deleted_at));
 
   function paint(): void {
-    const tree = tradeTree(trades, showArchived);
+    // Sin niveles de casa (P1 sin aplicar) no hay directorio: la lista queda como antes de R7.
+    const levelsOn = people.some((p) => p.house_level);
+    riskBox.hidden = !levelsOn;
+    const cov = levelsOn ? tradeCoverage(trades, capabilities, people) : new Map<string, TradeCoverage>();
+    const risky = (t: Trade) => { const c = cov.get(t.id); return !!c && (c.atRisk || c.onlyOutsiders); };
+    const filtering = levelsOn && onlyRisk;
+    const tree = tradeTree(trades, showArchived).filter((x) => !filtering || risky(x.trade));
+    if (filtering && !tree.length) {
+      replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.oficios.sin_riesgo', 'data-feedback-label': 'Ningún oficio en riesgo' }, el('strong', null, 'Ningún oficio en riesgo'),
+        'Todos tienen al menos dos personas capaces y alguna de la casa.'));
+      return;
+    }
     if (!tree.length) {
       replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.oficios.vacio', 'data-feedback-label': 'Sin oficios' }, el('strong', null, 'Todavía no hay oficios'),
         canManage ? 'Crea el primero con «Nuevo oficio».' : 'Los crea quien gestiona personas.'));
       return;
     }
     replace(host, el('ul', { class: 'accounts tradetree', 'aria-label': 'Oficios', 'data-feedback-id': 'central.oficios.lista.filas', 'data-feedback-label': 'Oficios' },
-      ...tree.map(({ trade: t, depth }) => {
+      ...tree.map(({ trade: t, depth, path }) => {
         const n = whoKnows(t.id).length;
-        return el('li', null, el('button', { class: 'personrow traderow', type: 'button', 'data-trade': t.id, style: `padding-left:${12 + depth * 20}px`, 'data-feedback-id': 'central.oficios.lista.fila', 'data-feedback-label': 'Oficio', onclick: () => openTrade(t) },
-          el('span', { class: 'accountname' }, t.name),
+        const c = t.active ? cov.get(t.id) : undefined;
+        const flags = c ? [c.atRisk ? el('span', { class: 'chip alert' }, 'En riesgo') : null, c.noExpert ? el('span', { class: 'chip warn' }, 'Sin experto') : null,
+          c.onlyOutsiders ? el('span', { class: 'chip warn' }, 'Solo outsiders') : null].filter(Boolean) : [];
+        // Filtrando, cada fila va suelta: la ruta completa dice de dónde cuelga.
+        return el('li', null, el('button', { class: 'personrow traderow', type: 'button', 'data-trade': t.id, style: `padding-left:${12 + (filtering ? 0 : depth) * 20}px`, 'data-feedback-id': 'central.oficios.lista.fila', 'data-feedback-label': 'Oficio', onclick: () => openTrade(t) },
+          el('span', { class: 'accountname' }, filtering ? path : t.name),
           el('span', { class: 'muted accountmeta' }, n === 1 ? '1 persona' : `${n} personas`),
+          c && coverageText(c) ? el('span', { class: 'muted small tradecoverage', 'data-feedback-id': 'central.oficios.lista.cobertura', 'data-feedback-label': 'Cobertura por nivel' }, coverageText(c)) : null,
+          flags.length ? el('span', { class: 'chips tradeflags', 'data-feedback-id': 'central.oficios.lista.avisos', 'data-feedback-label': 'Avisos de cobertura' }, ...flags) : null,
           t.active ? null : el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'Archivado'))));
       })));
   }

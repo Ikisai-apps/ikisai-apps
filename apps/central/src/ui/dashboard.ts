@@ -1,6 +1,6 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { el, icon, openSheet, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
-import { formatKpi, formatPeriod, validateOperations, type KpiState } from '@ikisai/domain-central';
+import { formatKpi, formatPeriod, groupBySection, stateSummary, validateOperations, type KpiState } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
 
@@ -11,7 +11,9 @@ interface DashboardItem {
 interface Dashboard { computedAt: string; items: DashboardItem[]; unavailable: string[] }
 
 const CACHE_PREFIX = 'ikisai-central-dashboard-v1:';
-const APP_NAMES: Record<string, string> = { central: 'Central', booking: 'Booking', invoices: 'Finance', tasks: 'Tasks', food: 'Food' };
+/** Grupos plegados, por cuenta y dispositivo (R7): comodidad de quien mira, no estado compartido. */
+const FOLDED_PREFIX = 'ikisai-central-dashboard-folded-v1:';
+const APP_NAMES: Record<string, string> = { central: 'Central', booking: 'Booking', invoices: 'Finance', tasks: 'Tasks', food: 'Food', resources: 'Recursos' };
 const STATE_LABELS: Record<string, string> = { ok: 'En objetivo', atencion: 'Atención', critico: 'Crítico' };
 
 function readCache(key: string): Dashboard | null {
@@ -20,6 +22,13 @@ function readCache(key: string): Dashboard | null {
 function writeCache(key: string, d: Dashboard): void {
   try { localStorage.setItem(key, JSON.stringify(d)); } catch { /* sin almacenamiento: se pinta igual */ }
 }
+function readFolded(key: string): Set<string> {
+  try { const raw = localStorage.getItem(key); const list = raw ? JSON.parse(raw) as unknown : []; return new Set(Array.isArray(list) ? list.map(String) : []); } catch { return new Set(); }
+}
+function writeFolded(key: string, folded: Set<string>): void {
+  try { localStorage.setItem(key, JSON.stringify([...folded])); } catch { /* sin almacenamiento: el plegado dura lo que la pantalla */ }
+}
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Panel de dirección (C01; API.md §7.2): KPIs que publica cada app, con su estado frente a los objetivos.
@@ -29,6 +38,8 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
   let alive = true;
   // Copia por cuenta: en un dispositivo compartido, nadie ve lo que leyó otra cuenta (p. ej. importes del owner).
   const cacheKey = CACHE_PREFIX + (client.bootstrap()?.profile.userId ?? 'anon');
+  const foldedKey = FOLDED_PREFIX + (client.bootstrap()?.profile.userId ?? 'anon');
+  const folded = readFolded(foldedKey);
   const body = el('div', { class: 'kpigroups', 'data-feedback-id': 'central.direccion.indicadores', 'data-feedback-label': 'Indicadores por app' });
   const meta = el('p', { class: 'muted small', id: 'dashboardMeta', 'data-feedback-id': 'central.direccion.estado', 'data-feedback-label': 'Estado de actualización' });
   replace(host, el('section', { class: 'dashboard', id: 'dashboard', 'data-feedback-id': 'central.direccion.panel', 'data-feedback-label': 'Panel de dirección' },
@@ -52,11 +63,44 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
     return el('div', attrs, ...content, target);
   }
 
+  /** Resumen de la cabecera: lo que está en crítico o en atención; si no hay nada, cuántos indicadores tiene. */
+  function summary(items: DashboardItem[]): HTMLElement {
+    const s = stateSummary(items);
+    if (!s.critico && !s.atencion) return el('span', { class: 'muted small kpisummary' }, plural(s.total, 'indicador', 'indicadores'));
+    return el('span', { class: 'chips kpisummary' },
+      s.critico ? el('span', { class: 'chip kpistate alert' }, plural(s.critico, 'crítico', 'críticos')) : null,
+      s.atencion ? el('span', { class: 'chip kpistate warn' }, `${s.atencion} en atención`) : null);
+  }
+
+  /** Un grupo por app (R7): cabecera que pliega, con su resumen; dentro, los temas de `KPI_SECTIONS` con su subtítulo. */
+  function group(app: string, items: DashboardItem[]): HTMLElement {
+    const name = APP_NAMES[app] ?? app;
+    const isFolded = folded.has(app);
+    const content = el('div', { class: 'kpigroupbody', id: `kpis-${app}`, hidden: isFolded },
+      ...groupBySection(items).map((s) => [
+        s.title ? el('div', { class: 'kpisection', 'data-feedback-id': 'central.direccion.grupo.tema', 'data-feedback-label': 'Tema de indicadores' }, s.title) : null,
+        el('div', { class: 'kpigrid', 'data-feedback-id': 'central.direccion.grupo.tarjetas', 'data-feedback-label': 'Rejilla de indicadores' }, ...s.items.map(card))]));
+    const box = el('div', { class: `kpigroup${isFolded ? ' folded' : ''}`, 'data-app': app, 'data-feedback-id': 'central.direccion.grupo.app', 'data-feedback-label': `Indicadores de ${name}` });
+    const head = el('button', { class: 'kpigrouphead', type: 'button', 'aria-expanded': String(!isFolded), 'aria-controls': `kpis-${app}`,
+      'aria-label': `${isFolded ? 'Desplegar' : 'Plegar'} ${name}`, 'data-feedback-id': 'central.direccion.grupo.plegar', 'data-feedback-label': 'Plegar o desplegar el grupo',
+      onclick: () => {
+        const now = !folded.has(app);
+        if (now) folded.add(app); else folded.delete(app);
+        writeFolded(foldedKey, folded);
+        box.classList.toggle('folded', now);
+        content.hidden = now;
+        head.setAttribute('aria-expanded', String(!now));
+        head.setAttribute('aria-label', `${now ? 'Desplegar' : 'Plegar'} ${name}`);
+      } },
+      el('span', { class: 'sectionlabel' }, name), summary(items), icon('chevronDown', 18));
+    box.append(head, content);
+    return box;
+  }
+
   function paint(d: Dashboard, fromCache: boolean): void {
     const groups = new Map<string, DashboardItem[]>();
     for (const i of d.items) groups.set(i.app, [...(groups.get(i.app) ?? []), i]);
-    replace(body, ...[...groups].map(([app, items]) => el('div', { class: 'kpigroup', 'data-feedback-id': 'central.direccion.grupo.app', 'data-feedback-label': `Indicadores de ${APP_NAMES[app] ?? app}` },
-      el('div', { class: 'sectionlabel' }, APP_NAMES[app] ?? app), el('div', { class: 'kpigrid', 'data-feedback-id': 'central.direccion.grupo.tarjetas', 'data-feedback-label': 'Rejilla de indicadores' }, ...items.map(card)))));
+    replace(body, ...[...groups].map(([app, items]) => group(app, items)));
     const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(d.computedAt));
     const waiting = d.unavailable.filter((a) => a !== 'central').map((a) => APP_NAMES[a] ?? a);
     meta.textContent = [fromCache ? `Sin conexión: datos del ${time}` : `Actualizado ${time}`,
