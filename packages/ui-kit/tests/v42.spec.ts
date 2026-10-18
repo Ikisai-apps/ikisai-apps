@@ -37,13 +37,13 @@ test.describe('ui-kit v0.37 · modelo del inventario (Node)', () => {
 
 const catalog = (page: Page) => page.locator('#invCatalog');
 const sheet = (page: Page) => page.locator('#invSheetHost');
-const row = (page: Page, id: string) => catalog(page).locator(`.inv-row[data-item-id="${id}"]`);
-const open = async (page: Page, id: string) => { await row(page, id).locator('.inv-open').click(); await expect(sheet(page).locator('.inv-sheet')).toBeVisible(); };
+const row = (page: Page, id: string) => catalog(page).locator(`.stk-row[data-item-id="${id}"]`);
+const open = async (page: Page, id: string) => { await row(page, id).locator('.stk-open').click(); await expect(sheet(page).locator('.stk-sheet')).toBeVisible(); };
 
 test.describe('ui-kit v0.37 · createItemCatalog', () => {
   test('@smoke agrupa por sitio, avisa con texto y la app pone «Pedir»', async ({ page }) => {
     await page.goto('/#inventory');
-    await expect(catalog(page).locator('.inv-group').first()).toHaveText('Cocina · 4');
+    await expect(catalog(page).locator('.stk-group').first()).toHaveText('Cocina · 4');
     await expect(row(page, 'harina-espelta')).toHaveClass(/low/);
     await expect(row(page, 'harina-espelta')).toContainText('Bajo mínimo');
     await expect(row(page, 'harina-espelta').getByRole('button', { name: 'Pedir' })).toBeVisible();
@@ -55,24 +55,24 @@ test.describe('ui-kit v0.37 · createItemCatalog', () => {
 
   test('filtros a un toque con cuántos hay, búsqueda y archivados', async ({ page }) => {
     await page.goto('/#inventory');
-    const chips = catalog(page).locator('.inv-chips');
+    const chips = catalog(page).locator('.stk-chips');
     await chips.getByRole('button', { name: 'Bajo mínimo (1)' }).click();
-    await expect(catalog(page).locator('.inv-row')).toHaveCount(1);
+    await expect(catalog(page).locator('.stk-row')).toHaveCount(1);
     await chips.getByRole('button', { name: 'Bajo mínimo (1)' }).click();
     await chips.getByRole('button', { name: 'Caduca pronto (2)' }).click();
-    await expect(catalog(page).locator('.inv-row')).toHaveCount(2);
+    await expect(catalog(page).locator('.stk-row')).toHaveCount(2);
     await chips.getByRole('button', { name: 'Caduca pronto (2)' }).click();
     await chips.getByRole('button', { name: 'Piscina' }).click();
-    await expect(catalog(page).locator('.inv-row')).toHaveCount(1);
+    await expect(catalog(page).locator('.stk-row')).toHaveCount(1);
     await expect(row(page, 'cloro')).toBeVisible();
     await chips.getByRole('button', { name: 'Piscina' }).click();
     await catalog(page).getByRole('searchbox').fill('esp eco');
-    await expect(catalog(page).locator('.inv-row')).toHaveCount(1);
+    await expect(catalog(page).locator('.stk-row')).toHaveCount(1);
     await expect(row(page, 'harina-espelta')).toBeVisible();
     await catalog(page).getByRole('searchbox').fill('');
     await chips.getByRole('button', { name: 'Archivados' }).click();
     await expect(row(page, 'taladro')).toContainText('archivado');
-    await expect(catalog(page).locator('.inv-row')).toHaveCount(1);
+    await expect(catalog(page).locator('.stk-row')).toHaveCount(1);
   });
 
   test('«+ Artículo»: alta rápida y se abre su ficha', async ({ page }) => {
@@ -82,8 +82,8 @@ test.describe('ui-kit v0.37 · createItemCatalog', () => {
     await dialog.getByRole('combobox').fill('Lentejas pardinas');
     await dialog.getByRole('option', { name: /Crear «Lentejas pardinas»/ }).click();
     await dialog.getByRole('button', { name: 'Crear y usar' }).click();
-    await expect(sheet(page).locator('.inv-sheet-title')).toHaveText('Lentejas pardinas');
-    await expect(catalog(page).locator('.inv-row', { hasText: 'Lentejas pardinas' })).toBeVisible();
+    await expect(sheet(page).locator('.stk-sheet-title')).toHaveText('Lentejas pardinas');
+    await expect(catalog(page).locator('.stk-row', { hasText: 'Lentejas pardinas' })).toBeVisible();
   });
 });
 
@@ -91,17 +91,17 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
   test('@smoke stock por sitio y lote, coste medio y movimientos con su origen', async ({ page }, info) => {
     await page.goto('/#inventory');
     await open(page, 'harina-espelta');
-    const stock = sheet(page).locator('.inv-panel').first();
+    const stock = sheet(page).locator('.stk-panel').first();
     await expect(stock).toContainText('Despensa');
     await expect(stock).toContainText('1,2 kg');
     await expect(stock).toContainText('lote L-0912');
     await expect(stock).toContainText('bajo mínimo (5 kg)');
     await expect(stock).toContainText('1,256 €/kg (con 50 kg con coste)');
-    await expect(sheet(page).locator('.inv-sheet-meta')).toContainText('Molinos Sur');
+    await expect(sheet(page).locator('.stk-sheet-meta')).toContainText('Molinos Sur');
     if (info.project.name === 'movil') await sheet(page).getByRole('tab', { name: 'Movimientos' }).click();
-    const moves = sheet(page).locator('.inv-movements');
-    await expect(moves.locator('.inv-mov').first()).toContainText('Consumo del servicio');
-    await expect(moves.locator('.inv-mov').first()).toContainText('−48,8 kg');
+    const moves = sheet(page).locator('.stk-movements');
+    await expect(moves.locator('.stk-mov').first()).toContainText('Consumo del servicio');
+    await expect(moves.locator('.stk-mov').first()).toContainText('−48,8 kg');
     await expect(moves.getByRole('button', { name: 'Factura 2026-311' })).toBeVisible();
   });
 
@@ -110,13 +110,13 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await open(page, 'leche-avena');
     const tab = sheet(page).getByRole('tab', { name: 'Movimientos' });
     if (info.project.name === 'movil') {
-      await expect(sheet(page).locator('.inv-movements')).toBeHidden();
+      await expect(sheet(page).locator('.stk-movements')).toBeHidden();
       await tab.click();
     } else {
       await expect(tab).toBeHidden();
     }
-    await expect(sheet(page).locator('.inv-movements')).toContainText('Traslado a Cámara');
-    await expect(sheet(page).locator('.inv-movements')).toContainText('Traslado desde Despensa');
+    await expect(sheet(page).locator('.stk-movements')).toContainText('Traslado a Cámara');
+    await expect(sheet(page).locator('.stk-movements')).toContainText('Traslado desde Despensa');
   });
 
   test('Datos: guardar el mínimo, sin repetir nombre', async ({ page }) => {
@@ -130,8 +130,8 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await name.fill('Harina de espelta');
     await sheet(page).getByLabel('Mínimo', { exact: true }).fill('8');
     await sheet(page).getByRole('button', { name: 'Guardar' }).click();
-    await expect(sheet(page).locator('.inv-save-status')).toHaveText('Guardado.');
-    await expect(sheet(page).locator('.inv-sheet-meta')).toContainText('mínimo 8 kg');
+    await expect(sheet(page).locator('.stk-save-status')).toHaveText('Guardado.');
+    await expect(sheet(page).locator('.stk-sheet-meta')).toContainText('mínimo 8 kg');
     await expect(row(page, 'harina-espelta')).toContainText('8 kg');
   });
 
@@ -143,7 +143,7 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await expect(sheet(page).getByLabel('Estado')).toHaveValue('limitado');
     await open(page, 'harina-trigo');
     await sheet(page).getByRole('tab', { name: 'Datos' }).click();
-    await expect(sheet(page).locator('.inv-equipment')).toBeHidden();
+    await expect(sheet(page).locator('.stk-equipment')).toBeHidden();
   });
 
   test('Unidades: añadir con validación', async ({ page }) => {
@@ -151,7 +151,7 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await open(page, 'harina-trigo');
     await sheet(page).getByRole('tab', { name: 'Unidades' }).click();
     await sheet(page).getByRole('button', { name: 'Añadir unidad' }).click();
-    const fresh = sheet(page).locator('.inv-unit.new');
+    const fresh = sheet(page).locator('.stk-unit.new');
     await fresh.getByLabel('Unidad').fill('kg');
     await fresh.getByLabel('Cuántas kg').fill('1');
     await fresh.getByRole('button', { name: 'Guardar' }).click();
@@ -159,8 +159,8 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await fresh.getByLabel('Unidad').fill('saco');
     await fresh.getByLabel('Cuántas kg').fill('25');
     await fresh.getByRole('button', { name: 'Guardar' }).click();
-    await expect(sheet(page).locator('.inv-unit:not(.new)')).toHaveCount(1);
-    await expect(sheet(page).locator('.inv-unit:not(.new) input').first()).toHaveValue('saco');
+    await expect(sheet(page).locator('.stk-unit:not(.new)')).toHaveCount(1);
+    await expect(sheet(page).locator('.stk-unit:not(.new) input').first()).toHaveValue('saco');
   });
 
   test('archivar con confirmación: sale de la lista y queda en «Archivados»', async ({ page }) => {
@@ -169,7 +169,7 @@ test.describe('ui-kit v0.37 · createItemSheet', () => {
     await sheet(page).getByRole('tab', { name: 'Datos' }).click();
     await sheet(page).getByRole('button', { name: 'Archivar' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Archivar' }).click();
-    await expect(sheet(page).locator('.inv-sheet-meta')).toContainText('archivado');
+    await expect(sheet(page).locator('.stk-sheet-meta')).toContainText('archivado');
     await expect(row(page, 'harina-trigo')).toHaveCount(0);
     await catalog(page).getByRole('button', { name: 'Archivados' }).click();
     await expect(row(page, 'harina-trigo')).toBeVisible();

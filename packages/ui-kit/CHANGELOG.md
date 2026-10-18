@@ -29,6 +29,7 @@
 - **Modelo:**
   - `LotRow`, `MovementRow`, `averageCost`, `lotsWithStock`, `nextExpiry`, `itemToFields` y las etiquetas de tipos, motivos y estados;
   - `createSyncItemSource` lee también `lots` y `movement_costs` y escribe la ficha (`update`, `setActive`, `saveUnit` y `removeUnit`) con la revisión de la fila.
+- **Clases con prefijo `stk-`:** `inv-` ya lo usa Finance (`.inv-head`, `.inv-actions`), y con él el kit le escondía el botón «Validar».
 - **Demo:** sección `#inventory`. **Pruebas:** `v42`, con el modelo en Node, el catálogo y la ficha en móvil y escritorio.
 
 ## 0.36.0 · 18 de octubre de 2026

@@ -97,25 +97,25 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
   const spaceName = (sid: string) => spaceIndex.get(sid)?.name ?? kt('Sin sitio');
   const qty = (n: number, unit: string) => `${formatQuantity(n, 3)} ${unit}`;
 
-  const title = el('h3', { class: 'inv-sheet-title', id: `${id}-title` });
-  const meta = el('p', { class: 'inv-sheet-meta' });
-  const tabs = el('div', { class: 'inv-tabs', role: 'tablist', 'aria-labelledby': `${id}-title` });
+  const title = el('h3', { class: 'stk-sheet-title', id: `${id}-title` });
+  const meta = el('p', { class: 'stk-sheet-meta' });
+  const tabs = el('div', { class: 'stk-tabs', role: 'tablist', 'aria-labelledby': `${id}-title` });
   const panels: Record<ItemSheetTab, HTMLElement> = {
-    stock: el('div', { class: 'inv-panel', role: 'tabpanel', id: `${id}-stock`, 'aria-labelledby': `${id}-tab-stock` }),
-    data: el('div', { class: 'inv-panel', role: 'tabpanel', id: `${id}-data`, 'aria-labelledby': `${id}-tab-data` }),
-    units: el('div', { class: 'inv-panel', role: 'tabpanel', id: `${id}-units`, 'aria-labelledby': `${id}-tab-units` }),
-    movements: el('div', { class: 'inv-panel inv-movements', role: 'tabpanel', id: `${id}-movements`, 'aria-labelledby': `${id}-tab-movements` }),
+    stock: el('div', { class: 'stk-panel', role: 'tabpanel', id: `${id}-stock`, 'aria-labelledby': `${id}-tab-stock` }),
+    data: el('div', { class: 'stk-panel', role: 'tabpanel', id: `${id}-data`, 'aria-labelledby': `${id}-tab-data` }),
+    units: el('div', { class: 'stk-panel', role: 'tabpanel', id: `${id}-units`, 'aria-labelledby': `${id}-tab-units` }),
+    movements: el('div', { class: 'stk-panel stk-movements', role: 'tabpanel', id: `${id}-movements`, 'aria-labelledby': `${id}-tab-movements` }),
   };
-  // `.inv-sheet` es el contenedor de las consultas de ancho; `.inv-sheet-body`, la rejilla que cambia.
-  const body = el('div', { class: 'inv-sheet-body' },
-    el('div', { class: 'inv-sheet-main' }, el('header', { class: 'inv-sheet-head' }, title, meta), tabs, panels.stock, panels.data, panels.units),
-    el('aside', { class: 'inv-sheet-side' }, el('h4', { class: 'inv-side-title' }, kt('Movimientos')), panels.movements));
-  const element = el('section', { class: 'inv-sheet', dataset: { tab }, 'aria-labelledby': `${id}-title`, ...(base ? { 'data-feedback-id': base, 'data-feedback-label': kt('Ficha del artículo') } : {}) }, body);
+  // `.stk-sheet` es el contenedor de las consultas de ancho; `.stk-sheet-body`, la rejilla que cambia.
+  const body = el('div', { class: 'stk-sheet-body' },
+    el('div', { class: 'stk-sheet-main' }, el('header', { class: 'stk-sheet-head' }, title, meta), tabs, panels.stock, panels.data, panels.units),
+    el('aside', { class: 'stk-sheet-side' }, el('h4', { class: 'stk-side-title' }, kt('Movimientos')), panels.movements));
+  const element = el('section', { class: 'stk-sheet', dataset: { tab }, 'aria-labelledby': `${id}-title`, ...(base ? { 'data-feedback-id': base, 'data-feedback-label': kt('Ficha del artículo') } : {}) }, body);
 
   // --- Pestañas ----------------------------------------------------------------------------------------------
   function paintTabs(): void {
     replace(tabs, ...TABS.map(([t, label], i) => el('button', {
-      type: 'button', role: 'tab', id: `${id}-tab-${t}`, class: `inv-tab${t === 'movements' ? ' inv-tab-movements' : ''}`, 'aria-controls': `${id}-${t}`,
+      type: 'button', role: 'tab', id: `${id}-tab-${t}`, class: `stk-tab${t === 'movements' ? ' stk-tab-movements' : ''}`, 'aria-controls': `${id}-${t}`,
       'aria-selected': String(tab === t), tabindex: tab === t ? '0' : '-1', ...mark('tab'),
       onclick: () => setTab(t),
       onkeydown: (e: Event) => {
@@ -154,15 +154,15 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
     for (const [sid, ls] of [...bySpace.entries()].sort((a, b) => spaceName(a[0]).localeCompare(spaceName(b[0])))) {
       const total = ls.reduce((a, l) => a + l.quantity, 0);
       rows.push(el('dt', null, spaceName(sid)), el('dd', null, el('strong', null, qty(total, it.baseUnit)),
-        ...ls.filter((l) => l.lot).map((l) => el('span', { class: 'inv-lot' }, ` · ${kt('lote {code}', { code: l.lot!.code ?? '—' })}`, l.lot!.expiresOn ? `, ${expiryText(l.lot!.expiresOn, today)}` : '', ls.length > 1 ? ` (${qty(l.quantity, it.baseUnit)})` : ''))));
+        ...ls.filter((l) => l.lot).map((l) => el('span', { class: 'stk-lot' }, ` · ${kt('lote {code}', { code: l.lot!.code ?? '—' })}`, l.lot!.expiresOn ? `, ${expiryText(l.lot!.expiresOn, today)}` : '', ls.length > 1 ? ` (${qty(l.quantity, it.baseUnit)})` : ''))));
     }
     const actions = options.onAction && it.active ? (options.actions ?? []).map((a) => el('button', { type: 'button', class: 'ghost small', ...mark('action'), onclick: () => options.onAction!(a, it) }, kt(ACTION_LABELS[a]))) : [];
     replace(panels.stock,
-      el('dl', { class: 'inv-kv' },
+      el('dl', { class: 'stk-kv' },
         ...(rows.length ? rows : [el('dt', null, kt('Stock')), el('dd', null, kt('sin stock'))]),
-        el('dt', null, kt('Total')), el('dd', null, el('strong', null, qty(summary.total, it.baseUnit)), summary.low ? el('span', { class: 'inv-warn' }, ` ${kt('bajo mínimo ({min})', { min: qty(it.minQuantity!, it.baseUnit) })}`) : null),
+        el('dt', null, kt('Total')), el('dd', null, el('strong', null, qty(summary.total, it.baseUnit)), summary.low ? el('span', { class: 'stk-warn' }, ` ${kt('bajo mínimo ({min})', { min: qty(it.minQuantity!, it.baseUnit) })}`) : null),
         el('dt', null, kt('Coste medio')), el('dd', null, cost ? kt('{cost}/{unit} (con {q} con coste)', { cost: money.format(cost.averageCost), unit: it.baseUnit, q: qty(cost.costedQuantity, it.baseUnit) }) : kt('sin entradas con coste'))),
-      actions.length ? el('div', { class: 'inv-sheet-actions' }, ...actions) : null);
+      actions.length ? el('div', { class: 'stk-sheet-actions' }, ...actions) : null);
   }
 
   // --- Datos -------------------------------------------------------------------------------------------------
@@ -170,7 +170,7 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
     if (dataDirty) return;
     const ro = !canEdit;
     const hasMovements = (snap.movements ?? []).some((m) => m.itemId === it.id) || snap.stock.some((s) => s.itemId === it.id);
-    const status = el('p', { class: 'inv-save-status', role: 'status', 'aria-live': 'polite' });
+    const status = el('p', { class: 'stk-save-status', role: 'status', 'aria-live': 'polite' });
     const touch = () => { dataDirty = true; save.disabled = ro || !!nameProblem(); };
     const field = (label: string, control: HTMLElement, hint?: string) => el('label', { class: 'field' }, el('span', null, label), control, hint ? el('span', { class: 'hint' }, hint) : null);
 
@@ -197,7 +197,7 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
     let supplier = it.defaultSupplierId;
     const supplierEl = options.supplierField ? options.supplierField(it.defaultSupplierId, (sid) => { supplier = sid; touch(); }) : null;
     let aliases = it.aliases.slice();
-    const aliasHost = el('div', { class: 'inv-aliases' });
+    const aliasHost = el('div', { class: 'stk-aliases' });
     const aliasInput = el('input', { type: 'text', placeholder: kt('Otro nombre (del proveedor, el de antes…)'), disabled: ro, 'aria-label': kt('Otro nombre'),
       onkeydown: (e: Event) => { if ((e as KeyboardEvent).key === 'Enter') { e.preventDefault(); addAlias(); } } }) as HTMLInputElement;
     const addAlias = () => { const v = aliasInput.value.trim(); if (v && !aliases.includes(v)) { aliases = [...aliases, v]; touch(); paintAliases(); } aliasInput.value = ''; };
@@ -215,8 +215,8 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
     const serial = el('input', { type: 'text', value: attr('serial_number'), disabled: ro, oninput: touch }) as HTMLInputElement;
     const statusSel = el('select', { disabled: ro, onchange: touch }, el('option', { value: '' }, '—'), ...Object.entries(ITEM_STATUS_LABELS).map(([v, l]) => el('option', { value: v, selected: v === attr('status') }, kt(l)))) as HTMLSelectElement;
     const purchase = el('input', { type: 'text', value: attr('purchase_ref'), disabled: ro, placeholder: kt('p. ej. factura 2026-118'), oninput: touch }) as HTMLInputElement;
-    const equipment = el('fieldset', { class: 'inv-equipment' }, el('legend', null, kt('Máquina o herramienta')),
-      el('div', { class: 'inv-grid2' }, field(kt('Marca'), brand), field(kt('Modelo'), model), field(kt('Número de serie'), serial), field(kt('Estado'), statusSel)),
+    const equipment = el('fieldset', { class: 'stk-equipment' }, el('legend', null, kt('Máquina o herramienta')),
+      el('div', { class: 'stk-grid2' }, field(kt('Marca'), brand), field(kt('Modelo'), model), field(kt('Número de serie'), serial), field(kt('Estado'), statusSel)),
       field(kt('Factura de compra (garantía)'), purchase));
     const paintEquipment = () => { equipment.hidden = !EQUIPMENT_KINDS.includes(kind.value); };
     paintEquipment();
@@ -264,17 +264,17 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
     replace(panels.data,
       el('datalist', { id: `${id}-categories` }, ...categories.map((c) => el('option', { value: c }))),
       el('div', { class: 'field' }, el('label', { for: `${id}-name` }, kt('Nombre')), name, nameHint),
-      el('div', { class: 'inv-grid2' }, field(kt('Tipo'), kind), field(kt('Categoría'), category), field(kt('Unidad base'), baseUnit, hasMovements ? kt('Con movimientos no se cambia: se cuentan en ella.') : undefined)),
-      el('div', { class: 'inv-grid2' }, min.element, reorder.element),
+      el('div', { class: 'stk-grid2' }, field(kt('Tipo'), kind), field(kt('Categoría'), category), field(kt('Unidad base'), baseUnit, hasMovements ? kt('Con movimientos no se cambia: se cuentan en ella.') : undefined)),
+      el('div', { class: 'stk-grid2' }, min.element, reorder.element),
       spacePicker?.element ?? null,
-      supplierEl ? el('div', { class: 'inv-supplier' }, el('span', { class: 'space-picker-label' }, kt('Proveedor habitual')), supplierEl) : null,
-      el('div', { class: 'inv-alias-field' }, el('span', { class: 'space-picker-label' }, kt('Otros nombres')), aliasHost, ro ? null : el('div', { class: 'inv-alias-add' }, aliasInput, el('button', { type: 'button', class: 'ghost small', ...mark('alias'), onclick: addAlias }, kt('Añadir'))),
+      supplierEl ? el('div', { class: 'stk-supplier' }, el('span', { class: 'space-picker-label' }, kt('Proveedor habitual')), supplierEl) : null,
+      el('div', { class: 'stk-alias-field' }, el('span', { class: 'space-picker-label' }, kt('Otros nombres')), aliasHost, ro ? null : el('div', { class: 'stk-alias-add' }, aliasInput, el('button', { type: 'button', class: 'ghost small', ...mark('alias'), onclick: addAlias }, kt('Añadir'))),
         el('span', { class: 'hint' }, kt('También se busca por ellos: el nombre en la factura, el de antes…'))),
       el('label', { class: 'checkline' }, lots, ' ', kt('Lleva lotes')),
       el('label', { class: 'checkline' }, expiry, ' ', kt('Lleva caducidad')),
       equipment,
       field(kt('Notas'), notes),
-      canEdit ? el('div', { class: 'inv-sheet-actions' }, archive, save) : null,
+      canEdit ? el('div', { class: 'stk-sheet-actions' }, archive, save) : null,
       status);
     paintNameHint();
   }
@@ -301,10 +301,10 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
         if (own.some((o) => o.id !== u.id && o.unit === name && o.supplierId === sid)) return kt('Ya está esa unidad para ese proveedor.');
         return null;
       };
-      return el('div', { class: `inv-unit${isNew ? ' new' : ''}`, dataset: { unitId: u.id } },
-        el('span', { class: 'inv-unit-eq' }, '1 ', unit, ' = ', factor, ` ${it.baseUnit}`),
-        supplier ?? el('span', { class: 'inv-unit-supplier' }, supplierName(u.supplierId)),
-        ro ? null : el('span', { class: 'inv-unit-actions' },
+      return el('div', { class: `stk-unit${isNew ? ' new' : ''}`, dataset: { unitId: u.id } },
+        el('span', { class: 'stk-unit-eq' }, '1 ', unit, ' = ', factor, ` ${it.baseUnit}`),
+        supplier ?? el('span', { class: 'stk-unit-supplier' }, supplierName(u.supplierId)),
+        ro ? null : el('span', { class: 'stk-unit-actions' },
           el('button', { type: 'button', class: 'ghost small', ...mark('unitSave'), onclick: async () => {
             const problem = check();
             error.textContent = problem ?? '';
@@ -317,10 +317,10 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
             } }, icon('trash', 16))),
         error);
     };
-    const adding = el('div', { class: 'inv-unit-new' });
+    const adding = el('div', { class: 'stk-unit-new' });
     replace(panels.units,
       el('p', { class: 'hint' }, kt('El stock se cuenta en {unit}. Aquí, cuántas {unit} hay en cada saco, caja o bolsa, y de qué proveedor.', { unit: it.baseUnit })),
-      ...(own.length ? own.map((u) => unitRow(u, false)) : [el('p', { class: 'hint inv-empty' }, kt('Sin otras unidades.'))]),
+      ...(own.length ? own.map((u) => unitRow(u, false)) : [el('p', { class: 'hint stk-empty' }, kt('Sin otras unidades.'))]),
       adding,
       ro ? null : el('button', { type: 'button', class: 'ghost small', ...mark('unitAdd'), onclick: () => {
         replace(adding, unitRow({ id: newItemId(), itemId: it.id, unit: '', factor: 0, supplierId: null }, true));
@@ -352,15 +352,15 @@ export function createItemSheet(options: ItemSheetOptions): ItemSheet {
         const link = m.sourceApp && m.sourceRef ? options.sourceLink?.(m.sourceApp, m.sourceRef) ?? null : null;
         const who = m.createdBy ? options.personName?.(m.createdBy) ?? null : null;
         const origin = link
-          ? (link.href ? el('a', { href: link.href, class: 'inv-origin' }, link.label) : el('button', { type: 'button', class: 'linkbtn inv-origin', onclick: () => link.onClick?.() }, link.label))
+          ? (link.href ? el('a', { href: link.href, class: 'stk-origin' }, link.label) : el('button', { type: 'button', class: 'linkbtn stk-origin', onclick: () => link.onClick?.() }, link.label))
           : m.sourceApp ? el('span', null, m.sourceApp.charAt(0).toUpperCase() + m.sourceApp.slice(1)) : el('span', null, m.countId ? kt('Recuento') : kt('A mano'));
-        return el('div', { class: `inv-mov${m.pending ? ' pending' : ''}`, dataset: { movementId: m.id } },
-          el('span', { class: 'inv-mov-when' }, dayText(m.at)),
-          el('span', { class: 'inv-mov-what' }, movementTitle(m, all)),
-          el('span', { class: `inv-mov-n${m.quantity > 0 ? ' in' : ''}` }, `${m.quantity > 0 ? '+' : '−'}${qty(Math.abs(m.quantity), it.baseUnit)}`),
-          el('small', { class: 'inv-mov-note' }, origin, ` · ${spaceName(m.spaceId)}`, m.note ? ` · «${m.note}»` : '', who ? ` · ${who}` : '', m.pending ? el('span', { class: 'chip pending' }, kt('sin subir')) : null));
+        return el('div', { class: `stk-mov${m.pending ? ' pending' : ''}`, dataset: { movementId: m.id } },
+          el('span', { class: 'stk-mov-when' }, dayText(m.at)),
+          el('span', { class: 'stk-mov-what' }, movementTitle(m, all)),
+          el('span', { class: `stk-mov-n${m.quantity > 0 ? ' in' : ''}` }, `${m.quantity > 0 ? '+' : '−'}${qty(Math.abs(m.quantity), it.baseUnit)}`),
+          el('small', { class: 'stk-mov-note' }, origin, ` · ${spaceName(m.spaceId)}`, m.note ? ` · «${m.note}»` : '', who ? ` · ${who}` : '', m.pending ? el('span', { class: 'chip pending' }, kt('sin subir')) : null));
       }),
-      all.length ? null : el('p', { class: 'hint inv-empty' }, kt('Sin movimientos todavía.')),
+      all.length ? null : el('p', { class: 'hint stk-empty' }, kt('Sin movimientos todavía.')),
       sorted.length > shownMovements ? el('button', { type: 'button', class: 'linkbtn', ...mark('more'), onclick: () => { shownMovements += 20; paintMovements(it); } }, kt('Ver más ({n})', { n: String(sorted.length - shownMovements) })) : null);
   }
 

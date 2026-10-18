@@ -121,16 +121,16 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
   const spaceName = (id: string) => spaceIndex.get(id)?.name ?? kt('Sin sitio');
 
   // --- Estructura ------------------------------------------------------------------------------------------
-  const input = el('input', { type: 'search', class: 'space-search inv-search', placeholder: kt('Buscar artículo…'), 'aria-label': kt('Buscar en el inventario'), autocomplete: 'off', ...mark('search'),
+  const input = el('input', { type: 'search', class: 'space-search stk-search', placeholder: kt('Buscar artículo…'), 'aria-label': kt('Buscar en el inventario'), autocomplete: 'off', ...mark('search'),
     oninput: () => { filter = { ...filter, query: input.value }; paintList(); } }) as HTMLInputElement;
   const createBtn = options.canCreate && options.source.create
-    ? el('button', { type: 'button', class: 'primary inv-create', ...mark('create'), onclick: () => openCreate() }, icon('plus', 16), kt('Artículo'))
+    ? el('button', { type: 'button', class: 'primary stk-create', ...mark('create'), onclick: () => openCreate() }, icon('plus', 16), kt('Artículo'))
     : null;
-  const chipsHost = el('div', { class: 'inv-chips', role: 'group', 'aria-label': kt('Filtros') });
-  const list = el('div', { class: 'inv-list', role: 'list' });
-  const live = el('p', { class: 'inv-live', 'aria-live': 'polite' });
-  const element = el('section', { class: 'inv-catalog', 'aria-label': options.label ?? kt('Inventario'), ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label ?? kt('Inventario') } : {}) },
-    el('div', { class: 'inv-bar' }, el('div', { class: 'space-search-wrap inv-search-wrap' }, icon('search', 16), input), createBtn),
+  const chipsHost = el('div', { class: 'stk-chips', role: 'group', 'aria-label': kt('Filtros') });
+  const list = el('div', { class: 'stk-list', role: 'list' });
+  const live = el('p', { class: 'stk-live', 'aria-live': 'polite' });
+  const element = el('section', { class: 'stk-catalog', 'aria-label': options.label ?? kt('Inventario'), ...(base ? { 'data-feedback-id': base, 'data-feedback-label': options.label ?? kt('Inventario') } : {}) },
+    el('div', { class: 'stk-bar' }, el('div', { class: 'space-search-wrap stk-search-wrap' }, icon('search', 16), input), createBtn),
     chipsHost, live, list);
 
   // --- Datos -------------------------------------------------------------------------------------------------
@@ -203,18 +203,18 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
       ...(options.onAction && it.active ? (options.actions ?? []).map((a) => el('button', { type: 'button', class: 'ghost small', ...mark('action'), onclick: () => options.onAction!(a, it) }, kt(ACTION_LABELS[a]))) : []),
       ...(options.rowActions?.(it) ?? []).map((a) => el('button', { type: 'button', class: a.primary ? 'softbtn small' : 'ghost small', ...(a.feedbackId ? { 'data-feedback-id': a.feedbackId, 'data-feedback-label': a.label } : mark('action')), onclick: () => a.onClick(it) }, a.label)),
     ];
-    const warn = l.low ? el('span', { class: 'inv-warn' }, kt('Bajo mínimo')) : l.expiry ? el('span', { class: l.expiry <= today ? 'inv-alert' : 'inv-warn' }, expiryText(l.expiry, today)) : null;
-    return el('div', { class: `inv-row${l.low ? ' low' : ''}${it.active ? '' : ' archived'}${it.pending ? ' pending' : ''}`, role: 'listitem', dataset: { itemId: it.id } },
-      el('span', { class: 'inv-name' },
-        el('button', { type: 'button', class: 'inv-open', ...mark('open'), onclick: () => options.onOpen?.(it), 'aria-label': kt('Abrir {name}', { name: it.name }) }, it.name),
+    const warn = l.low ? el('span', { class: 'stk-warn' }, kt('Bajo mínimo')) : l.expiry ? el('span', { class: l.expiry <= today ? 'stk-alert' : 'stk-warn' }, expiryText(l.expiry, today)) : null;
+    return el('div', { class: `stk-row${l.low ? ' low' : ''}${it.active ? '' : ' archived'}${it.pending ? ' pending' : ''}`, role: 'listitem', dataset: { itemId: it.id } },
+      el('span', { class: 'stk-name' },
+        el('button', { type: 'button', class: 'stk-open', ...mark('open'), onclick: () => options.onOpen?.(it), 'aria-label': kt('Abrir {name}', { name: it.name }) }, it.name),
         it.pending ? el('span', { class: 'chip pending' }, kt('sin subir')) : null,
         it.active ? null : el('span', { class: 'chip trash' }, kt('archivado'))),
-      el('span', { class: 'inv-kind' }, kindLabelOf(snap.kinds, it.kind)),
-      el('span', { class: 'inv-where' }, where(l)),
-      el('span', { class: 'inv-qty' }, `${formatQuantity(l.total, 3)} ${unit}`),
-      el('span', { class: 'inv-min' }, it.minQuantity ? el('span', null, el('span', { class: 'inv-min-label' }, kt('mín.') + ' '), `${formatQuantity(it.minQuantity, 3)} ${unit}`) : el('span', { class: 'inv-none' }, '—')),
-      el('span', { class: 'inv-note' }, warn),
-      actions.length ? el('span', { class: 'inv-actions' }, ...actions) : el('span', { class: 'inv-actions empty' }));
+      el('span', { class: 'stk-kind' }, kindLabelOf(snap.kinds, it.kind)),
+      el('span', { class: 'stk-where' }, where(l)),
+      el('span', { class: 'stk-qty' }, `${formatQuantity(l.total, 3)} ${unit}`),
+      el('span', { class: 'stk-min' }, it.minQuantity ? el('span', null, el('span', { class: 'stk-min-label' }, kt('mín.') + ' '), `${formatQuantity(it.minQuantity, 3)} ${unit}`) : el('span', { class: 'stk-none' }, '—')),
+      el('span', { class: 'stk-note' }, warn),
+      actions.length ? el('span', { class: 'stk-actions' }, ...actions) : el('span', { class: 'stk-actions empty' }));
   }
 
   function paintList(): void {
@@ -229,9 +229,9 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
     }
     const ordered = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     replace(list,
-      shown.length ? el('div', { class: 'inv-head', 'aria-hidden': 'true' }, ...[kt('Artículo'), kt('Tipo'), kt('Dónde'), kt('Stock'), kt('Mínimo'), kt('Aviso'), ''].map((h) => el('span', null, h))) : null,
-      ...ordered.flatMap(([g, ls]) => [el('div', { class: 'inv-group', role: 'heading', 'aria-level': '3' }, `${g} · ${ls.length}`), ...ls.map(row)]),
-      shown.length ? null : el('p', { class: 'hint inv-empty' }, all.length ? kt('Nada coincide con estos filtros.') : kt('Aún no hay artículos.')));
+      shown.length ? el('div', { class: 'stk-head', 'aria-hidden': 'true' }, ...[kt('Artículo'), kt('Tipo'), kt('Dónde'), kt('Stock'), kt('Mínimo'), kt('Aviso'), ''].map((h) => el('span', null, h))) : null,
+      ...ordered.flatMap(([g, ls]) => [el('div', { class: 'stk-group', role: 'heading', 'aria-level': '3' }, `${g} · ${ls.length}`), ...ls.map(row)]),
+      shown.length ? null : el('p', { class: 'hint stk-empty' }, all.length ? kt('Nada coincide con estos filtros.') : kt('Aún no hay artículos.')));
     live.textContent = shown.length === 1 ? kt('1 artículo') : kt('{n} artículos', { n: String(shown.length) });
   }
 
