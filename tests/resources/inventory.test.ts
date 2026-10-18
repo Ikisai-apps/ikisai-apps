@@ -221,3 +221,14 @@ test('cuadre de entradas de Finance · idempotente por línea; el contrario usa 
   // Fuera del procedimiento, una entrada_factura negativa sigue prohibida.
   assert.equal(code(await commit([{ op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: cafe, space_id: despensa, quantity: -1, kind: 'entrada_factura', unit_cost: 1, source_app: 'invoices', source_ref: 'x' } }], app.tokens.editor)), 'INVALID_MOVEMENT');
 });
+
+test('indicadores para Central · la proyección da las 12 claves de Recursos con valores calculados', async () => {
+  const rows = (await app.t.db.query<any>(`select kpi, value, unit, direction from resources.central_kpi_projection`)).rows;
+  assert.equal(rows.length, 12);
+  const by = new Map(rows.map((r: any) => [r.kpi, r]));
+  assert.ok(Number(by.get('resources.spaces_active').value) >= 3, 'Albergue, Despensa y Cocina');
+  assert.equal(by.get('resources.stock_value').unit, 'eur');
+  assert.ok(Number(by.get('resources.items_negative_stock').value) >= 1, 'los huevos del consumo con faltante');
+  assert.ok(Number(by.get('resources.machines_down').value) >= 1, 'el horno averiado');
+  assert.equal(by.get('resources.items_below_min').direction, 'down');
+});
