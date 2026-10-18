@@ -60,6 +60,10 @@
   - Movimientos con quién lo hizo, por su ficha, y su origen («Finance»).
   - `?bajo-minimo` y `?caduca` desde el panel.
   - Barra de cuatro entradas para todos: Accesos se abre desde Inicio.
+- 2026-10-18 · **Lecturas para Tasks P2 y O1** (`1509`, aprobadas por el usuario):
+  - «Iniciales» en la ficha, opcionales, y en `people_options`.
+  - `availability_options`, con la disponibilidad y su orden, para «Quién sabe hacerlo».
+  - `people_options`, `trade_options` y `capability_options` abiertas al outsider de Tasks, sin nada reservado.
 
 ## Pendiente
 

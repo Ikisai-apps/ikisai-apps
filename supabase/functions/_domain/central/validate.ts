@@ -70,6 +70,8 @@ const SPECS: Record<string, TableSpec> = {
       user_id: { kind: 'uuid', nullable: true },
       position: { kind: 'number' },
       house_level: { kind: 'enum', values: HOUSE_LEVELS, nullable: true },
+      // Para las chips de Tasks (1509); si faltan, el nombre de pila.
+      initials: { kind: 'text', min: 1, max: 4, nullable: true, pattern: /^\S(.*\S)?$/, patternText: 'sin espacios al principio ni al final' },
     },
     required: ['display_name', 'relation'],
   },

@@ -59,6 +59,14 @@ test('personas · ficha, datos reservados, documentación, cuenta, lector, sin r
   await page.locator('#savePerson').click();
   await expect(page.getByRole('heading', { name: 'Marga' })).toBeVisible();
   await expect(page.locator('#blockBasic')).toContainText('Cocina');
+  // Iniciales (1509), opcionales: sin ellas la ficha no las enseña; al ponerlas salen en la ficha y en `people_options`.
+  await expect(page.locator('#blockBasic')).not.toContainText('Iniciales');
+  await page.locator('#editPerson').click();
+  await page.locator('#p-initials').fill(' MG ');
+  await page.locator('#savePerson').click();
+  await expect(page.locator('#blockBasic .kv', { hasText: 'Iniciales' })).toContainText('MG');
+  await expect.poll(async () => (await api.app.t.db.query(`select initials from central.people_options where name = 'Marga'`)).rows[0], { timeout: 20_000 })
+    .toEqual({ initials: 'MG' });
 
   // Datos reservados.
   await page.locator('#editPrivate').click();
