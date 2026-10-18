@@ -68,7 +68,23 @@ test('el botón solo lo ve la propietaria; la vista previa bloquea hasta resolve
   expect(await menuItems(editor)).not.toContain('zonesToSpaces');
   await editorContext.close();
 
-  await page.evaluate(() => handleTopAction('zonesToSpaces'));
+  // Desde el menú real, a la vista: en «Trabajo», justo después de «Etiquetas» (no en «Organización», que se pinta oculto).
+  const desktopContext = await page.context().browser()!.newContext({ viewport: { width: 1280, height: 900 } });
+  const desktop = await openApp(desktopContext, server, { aliases: ID });
+  await expect(desktop.locator('#kebab [data-menu-group="work"] [data-action="zonesToSpaces"]')).toBeVisible();
+  await desktop.locator('#kebab [data-action="zonesToSpaces"]').click();
+  await expect(desktop.locator('#sheet')).toContainText('Hab 3 → Albergue › Hab 3');
+  await desktopContext.close();
+  await page.locator('#moreBtn').click();
+  const item = page.locator('#kebab [data-menu-group="work"] [data-action="zonesToSpaces"]');
+  await expect(item).toBeVisible();
+  const work = await page.evaluate(() => [...document.querySelectorAll('#kebab [data-menu-group="work"] [data-menu-view], #kebab [data-menu-group="work"] [data-action]')]
+    .map((n: any) => n.dataset.menuView || n.dataset.action));
+  expect(work.slice(work.indexOf('labels'), work.indexOf('labels') + 2)).toEqual(['labels', 'zonesToSpaces']);
+  await shot('12-menu-trabajo');
+  await item.click();
+  // Al pulsar, el menú se cierra y queda la hoja.
+  await expect(page.locator('#moreBtn')).toHaveAttribute('aria-expanded', 'false');
   const sheet = page.locator('#sheet');
   await expect(sheet).toContainText('Hab 3 → Albergue › Hab 3');
   await expect(sheet).toContainText('Por resolver (1)');
@@ -93,7 +109,11 @@ test('al pulsar, la app pasa sola a espacios; y «Volver a las zonas» la deja c
   expect(await menuItems(page)).not.toContain('zonesToSpaces');
   expect(await menuItems(page)).toContain('spaces');
 
-  await page.evaluate(() => navigateView('spaces'));
+  // «Espacios», también a la vista en «Trabajo», tras «Etiquetas».
+  await page.locator('#moreBtn').click();
+  const spaces = page.locator('#kebab [data-menu-group="work"] [data-menu-view="spaces"]');
+  await expect(spaces).toBeVisible();
+  await spaces.click();
   await page.locator('#spacesToZones').click();
   await expect(page.locator('#sheet')).toContainText('Las zonas vuelven a ser etiquetas');
   await shot('11-volver-a-las-zonas');

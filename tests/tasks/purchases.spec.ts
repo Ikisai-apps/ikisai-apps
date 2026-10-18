@@ -9,7 +9,7 @@ import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 import { simulateServiceIdentity } from './fixtures.ts';
 import { createTabOps } from '../../packages/domain-tasks/src/index.ts';
 
-declare const navigateView: any, manageTab: any, Sync: any, IkisaiTasks: any, purchaseRun: any;
+declare const state: any, navigateView: any, manageTab: any, Sync: any, IkisaiTasks: any, purchaseRun: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -125,6 +125,26 @@ test('recibir suma al almacén y quita el aviso', async () => {
   await settled(owner);
   await go(owner, 'home');
   await expect(owner.locator('.lowstock')).toHaveCount(0);
+});
+
+test('Inicio se entera sin cambiar de pantalla: el aviso sale y se va con los movimientos de otro dispositivo', async () => {
+  // El aviso depende del almacén, que no cambia el modelo de tareas: Inicio tiene que repintarse igual.
+  await go(owner, 'home');
+  await expect(owner.locator('.lowstock')).toHaveCount(0);
+  const move = async (kind: 'in' | 'out', amount: string) => {
+    await editor.locator(`[data-supply-move$="|${kind}"]`).click();
+    await editor.locator('#moveAmount').fill(amount);
+    await editor.locator('#moveSave').click();
+    await settled(editor);
+    await owner.evaluate(() => (window as any).syncNow?.());
+    await settled(owner);
+  };
+  await go(editor, 'supplies');
+  await move('out', '10');
+  await expect(owner.locator('.lowstock')).toContainText('Queda poco de 1 suministro');
+  await move('in', '10');
+  await expect(owner.locator('.lowstock')).toHaveCount(0);
+  expect(await owner.evaluate(() => state.view)).toBe('home');
 });
 
 test('Finance: factura asignada en la solicitud y proveedor del catálogo (con nombre libre de respaldo)', async () => {
