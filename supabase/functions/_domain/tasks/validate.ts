@@ -57,15 +57,15 @@ const filters: Check = (v, field) => {
   for (const [key, ids] of Object.entries(v)) {
     const allowed = key === '_state' ? ['pending', 'done'] : key === '_availability' ? ['ready', 'blocked'] : key === '_priority' ? ['normal', 'high', 'critical'] : null;
     // `_exclude`: etiquetas que la tarea no debe tener (FB_2026_042).
-    // `_space`: espacios de Recursos (R2); como los de `_exclude`, uuids que valida el hook.
-    if (!allowed && key !== '_project' && key !== '_exclude' && key !== '_space' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
+    // `_space`: espacios de Recursos (R2); `_trade`: oficios de Central (P2). Como los de `_exclude`, uuids que valida el hook.
+    if (!allowed && key !== '_project' && key !== '_exclude' && key !== '_space' && key !== '_trade' && !UUID.test(key)) reject(422, 'INVALID_VIEW', 'Un filtro referencia una familia desconocida.', { field, key });
     if (!Array.isArray(ids) || ids.length > 200 || ids.some((id) => typeof id !== 'string' || (allowed ? !allowed.includes(id) : !UUID.test(id)))) {
       reject(422, 'INVALID_VIEW', 'Un filtro contiene valores inválidos.', { field, key });
     }
   }
 };
 const groupBy: Check = (v, field) => {
-  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || v === '_space' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
+  if (typeof v !== 'string' || !(v === 'project' || v === 'state' || v === '_space' || v === '_trade' || UUID.test(v))) reject(422, 'INVALID_VIEW', 'Agrupación de vista inválida.', { field });
 };
 const mime: Check = (v, field) => {
   if (typeof v !== 'string' || !ATTACHMENT_MIME.includes(v.toLowerCase())) reject(422, 'INVALID_ATTACHMENT', 'Tipo de archivo no admitido.', { field, allowed: ATTACHMENT_MIME });
@@ -164,6 +164,14 @@ const RULES: Record<TableName, TableRules> = {
   'tasks.task_spaces': {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), space_id: uuid('INVALID_SPACE') },
     required: ['tab_id', 'project_id', 'task_id', 'space_id'],
+  },
+  'tasks.project_trades': {
+    fields: { tab_id: uuid(), project_id: uuid(), trade_id: uuid('INVALID_TRADE') },
+    required: ['tab_id', 'project_id', 'trade_id'],
+  },
+  'tasks.task_trades': {
+    fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid(), trade_id: uuid('INVALID_TRADE') },
+    required: ['tab_id', 'project_id', 'task_id', 'trade_id'],
   },
   'tasks.task_dependencies': {
     fields: { tab_id: uuid(), project_id: uuid(), task_id: uuid('INVALID_DEPENDENCIES'), depends_on_id: uuid('INVALID_DEPENDENCIES'), position },

@@ -21,6 +21,8 @@ export interface LegacyTask {
   stepsInOrder?: boolean; stepFree?: boolean;
   /** Espacios de Recursos (R2). Sin el campo, `decompose` no los toca (copias y modelos de antes de R2). */
   spaces?: Uuid[];
+  /** Oficios de Central (P2). Sin el campo, `decompose` no los toca. */
+  trades?: Uuid[];
   order: number; attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; deleteBatch: string | null; dependsOn: Uuid[]; cost: number | null;
   version: number; updatedAt: string;
   /** Calculados al componer; `decompose` los ignora. */
@@ -30,6 +32,8 @@ export interface LegacyProject {
   id: Uuid; title: string; note: string; status: ProjectStatus; priority: Priority; due: string; ownLabels: Uuid[]; owner: Uuid | null;
   /** Espacios de Recursos del proyecto (R2); las tareas nuevas los heredan. Sin el campo, no se tocan. */
   ownSpaces?: Uuid[];
+  /** Oficios de Central del proyecto (P2); las tareas nuevas los heredan. Sin el campo, no se tocan. */
+  ownTrades?: Uuid[];
   attachments: LegacyAttachment[]; deleted: boolean; deletedAt: string | null; order: number; color: string | null; budget: number | null;
   system: 'inbox' | null; version: number; updatedAt: string; tasks: LegacyTask[];
 }
@@ -85,6 +89,8 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
   const taskLabels = group(live(data['tasks.task_labels']), (l) => l.task_id);
   const taskSpaces = group(live(data['tasks.task_spaces'] ?? []), (s) => s.task_id);
   const projectSpaces = group(live(data['tasks.project_spaces'] ?? []), (s) => s.project_id);
+  const taskTrades = group(live(data['tasks.task_trades'] ?? []), (s) => s.task_id);
+  const projectTrades = group(live(data['tasks.project_trades'] ?? []), (s) => s.project_id);
   const dependencies = group(live(data['tasks.task_dependencies']), (d) => d.task_id);
   const projectFiles = group(live(data['tasks.attachments']).filter((a) => !a.task_id), (a) => a.project_id);
   const taskFiles = group(live(data['tasks.attachments']), (a) => a.task_id);
@@ -100,6 +106,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
       ownLabels: (projectLabels.get(p.id) ?? []).sort(byCreation).map((l) => l.label_id),
       // Solo si hay alguno: así un modelo sin espacios (antes de R2) compone igual que siempre.
       ...(projectSpaces.has(p.id) ? { ownSpaces: projectSpaces.get(p.id)!.sort(byCreation).map((s) => s.space_id) } : {}),
+      ...(projectTrades.has(p.id) ? { ownTrades: projectTrades.get(p.id)!.sort(byCreation).map((s) => s.trade_id) } : {}),
       attachments: (projectFiles.get(p.id) ?? []).sort(byPosition).map(attachment),
       deleted: !!p.deleted_at, deletedAt: p.deleted_at, order: p.position, color: p.color, budget: p.budget, system: p.system,
       version: p.revision, updatedAt: p.updated_at,
@@ -112,6 +119,7 @@ export function compose(data: Dataset, options: ComposeOptions = {}): LegacyTab[
           ...(t.steps_in_order ? { stepsInOrder: true } : {}), ...(t.step_free ? { stepFree: true } : {}),
           labels: (taskLabels.get(t.id) ?? []).sort(byCreation).map((l) => l.label_id),
           ...(taskSpaces.has(t.id) ? { spaces: taskSpaces.get(t.id)!.sort(byCreation).map((s) => s.space_id) } : {}),
+          ...(taskTrades.has(t.id) ? { trades: taskTrades.get(t.id)!.sort(byCreation).map((s) => s.trade_id) } : {}),
           dependsOn: (dependencies.get(t.id) ?? []).sort(byPosition).map((d) => d.depends_on_id),
           attachments: (taskFiles.get(t.id) ?? []).sort(byPosition).map(attachment),
           order: t.position, deleted: !!t.deleted_at, deletedAt: t.deleted_at, deleteBatch: t.deleted_at, cost: t.cost,
@@ -181,7 +189,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
     if (!deletedWanted.get(id) || !row || !row.deleted_at) containers.add(task.parentId);
   }
 
-  const bridges = (table: 'tasks.project_labels' | 'tasks.task_labels' | 'tasks.project_spaces' | 'tasks.task_spaces' | 'tasks.task_dependencies', ownerKey: string, ownerId: Uuid, projectId: Uuid, targetKey: string, targets: readonly Uuid[], fields: (target: Uuid, index: number) => Fields) => {
+  const bridges = (table: 'tasks.project_labels' | 'tasks.task_labels' | 'tasks.project_spaces' | 'tasks.task_spaces' | 'tasks.project_trades' | 'tasks.task_trades' | 'tasks.task_dependencies', ownerKey: string, ownerId: Uuid, projectId: Uuid, targetKey: string, targets: readonly Uuid[], fields: (target: Uuid, index: number) => Fields) => {
     // Una fila puente en papelera que quedó en otro proyecto no se puede corregir: no se reutiliza, se inserta otra.
     const existing = (data[table] as unknown as Row[]).filter((r) => r[ownerKey] === ownerId && (!r.deleted_at || r.project_id === projectId));
     const pick = new Map<Uuid, Row>();
@@ -250,6 +258,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
       }, !!p.deleted);
       bridges('tasks.project_labels', 'project_id', p.id, p.id, 'label_id', p.ownLabels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, label_id: label }));
       if (p.ownSpaces) bridges('tasks.project_spaces', 'project_id', p.id, p.id, 'space_id', p.ownSpaces, (space) => ({ tab_id: tab.id, project_id: p.id, space_id: space }));
+      if (p.ownTrades) bridges('tasks.project_trades', 'project_id', p.id, p.id, 'trade_id', p.ownTrades, (trade) => ({ tab_id: tab.id, project_id: p.id, trade_id: trade }));
       files(tab.id, p.id, null, p.attachments);
       (p.tasks ?? []).forEach((t, taskIndex) => {
         const taskRow = rowOf('tasks.tasks', t.id) as (TaskRow & Row) | undefined;
@@ -267,6 +276,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         }, deletedWanted.get(t.id) ?? false);
         bridges('tasks.task_labels', 'task_id', t.id, p.id, 'label_id', t.labels ?? [], (label) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, label_id: label }));
         if (t.spaces) bridges('tasks.task_spaces', 'task_id', t.id, p.id, 'space_id', t.spaces, (space) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, space_id: space }));
+        if (t.trades) bridges('tasks.task_trades', 'task_id', t.id, p.id, 'trade_id', t.trades, (trade) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, trade_id: trade }));
         bridges('tasks.task_dependencies', 'task_id', t.id, p.id, 'depends_on_id', t.dependsOn ?? [], (dep, i) => ({ tab_id: tab.id, project_id: p.id, task_id: t.id, depends_on_id: dep, position: (i + 1) * POSITION_STEP }));
         files(tab.id, p.id, t.id, t.attachments);
       });
@@ -313,7 +323,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   return [first, second].filter((batch) => batch.length > 0).map(ordered);
 }
 
-const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments'];
+const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments'];
 
 /** Orden canónico de tablas; dentro de tareas y etiquetas, los padres antes que sus hijas (las FK son inmediatas). */
 function ordered(operations: Operation[]): Operation[] {
