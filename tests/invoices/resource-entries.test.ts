@@ -144,3 +144,24 @@ test('una rectificativa validada rebaja la entrada de la línea original', async
   assert.equal(await stock(original.lineIds[0]!), 25);
   assert.deepEqual(await movements(rect.lineIds[0]!), [], 'la línea de la rectificativa no tiene entrada propia');
 });
+
+test('«Ya entró desde la compra de Food»: la línea no crea entrada y su coste va a la entrada de Food, una sola vez', async () => {
+  const food = (await app.t.db.query<{ id: string }>(
+    `insert into resources.movements (item_id, space_id, quantity, kind, source_app, source_ref, at) values ($1, $2, 25, 'entrada_manual', 'food', 'shopping_item:demo', now()) returning id`, [flour, pantry])).rows[0]!.id;
+  // Otra entrada manual que no es de Food no vale
+  const other = (await app.t.db.query<{ id: string }>(
+    `insert into resources.movements (item_id, space_id, quantity, kind, at) values ($1, $2, 5, 'entrada_manual', now()) returning id`, [flour, pantry])).rows[0]!.id;
+  const inv = await invoiceWith([['HARINA SACO 25KG', 20, { quantity: 1, unit: 'saco', item_id: flour, item_factor: 25 }]]);
+  const l = await line(inv.lineIds[0]!);
+  const bad = await commit([update('invoices.invoice_lines', l.id, l.revision, { entered_movement_id: other })]);
+  assert.equal(bad.data.error.code, 'INVALID_RESOURCE_LINK');
+  await ok([update('invoices.invoice_lines', l.id, l.revision, { entered_movement_id: food })]);
+  await validate(inv.id);
+  assert.deepEqual(await movements(inv.lineIds[0]!), [], 'no cuenta dos veces');
+  const costs = async () => (await app.t.db.query<{ unit_cost: string; source_ref: string }>(`select unit_cost::text, source_ref from resources.movement_costs where movement_id = $1 and deleted_at is null`, [food])).rows;
+  assert.deepEqual((await costs()).map((c) => [Number(c.unit_cost), c.source_ref]), [[0.8, `invoice_line:${l.id}`]]);
+  // Otro commit de la misma factura no lo repite
+  const again = await line(l.id);
+  await ok([update('invoices.invoice_lines', again.id, again.revision, { label: 'Harina de la casa' })]);
+  assert.equal((await costs()).length, 1);
+});
