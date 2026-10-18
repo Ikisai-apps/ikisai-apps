@@ -1,0 +1,16 @@
+/* P2, PR 3b · personas de Central (people-ui.js): la faceta y la hoja de filtros muestran el árbol nivel › personas, una
+   opción por línea, con su buscador. La vista previa reutiliza .zonelist y .zoneitem de spaces-ui.css. */
+.personfacet{display:flex;flex-direction:column;align-items:flex-start}
+.personfacet .filterchip{max-width:100%}
+.personfacet [hidden]{display:none!important}
+.personfacetsearch{width:100%;min-width:0;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line,rgba(0,0,0,.15));border-radius:10px;font:inherit;background:var(--card,#fff);color:inherit}
+.personfield .small{margin-top:6px}
+.personmap{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.personmapname{flex:1 1 220px;min-width:0}
+.personmap select{flex:0 1 220px;min-width:0;max-width:100%}
+.personmap.doubtful select{border-color:var(--warn,#b7791f)}
+.peoplelist{list-style:none;margin:12px 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.peoplelist ul{list-style:none;margin:6px 0 0;padding:0 0 0 18px;display:flex;flex-direction:column;gap:2px}
+.personnode{padding-block:6px;border-bottom:1px solid var(--line,rgba(0,0,0,.08))}
+.peopleempty a,.peopleerror a{font-weight:600}
+.people-screen .catalog-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}

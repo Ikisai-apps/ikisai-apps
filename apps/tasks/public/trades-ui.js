@@ -96,11 +96,9 @@ groupToolbar=function(){const html=groupToolbarBeforeTrades();if(!tradesMode())r
   return /<option value="_space"/.test(html)?html.replace(/(<option value="_space"[^>]*>[^<]*<\/option>)/,`$1${option}`):html.replace(/(<option value="state"[^>]*>[^<]*<\/option>)/,`$1${option}`)};
 
 /* --- Selector: el de espacios del kit, con las filas de los oficios (mismo buscador por ruta y «Más usados») ---------- */
-const TRADE_WORDS=[['Ningún espacio coincide','Ningún oficio coincide'],['Espacio más usado','Oficio más usado'],['Buscar espacio','Buscar oficio'],['Quitar espacio','Quitar oficio']];
-function tradeWords(root){root.querySelectorAll('.space-result.empty').forEach(li=>{for(const [a,b] of TRADE_WORDS)if(li.textContent.includes(a))li.textContent=li.textContent.replace(a,b)});
-  root.querySelectorAll('[data-feedback-label]').forEach(n=>{const v=n.getAttribute('data-feedback-label');for(const [a,b] of TRADE_WORDS)if(v===a)n.setAttribute('data-feedback-label',b)})}
-function tradePicker(options){const picker=IkisaiKit.createSpacePicker({rows:tradeRows(),kinds:TRADE_KINDS,multiple:true,placeholder:'Buscar oficio…',quick:mostUsedTrades(),...options});
-  tradeWords(picker.element);new MutationObserver(()=>tradeWords(picker.element)).observe(picker.element,{childList:true,subtree:true});return picker}
+// Los textos de oficio van como opción (kit 0.39.0, `texts`): sin parches sobre lo que pinta el kit.
+const TRADE_TEXTS={empty:'Ningún oficio coincide con «{q}».',search:'Buscar oficio…',feedback:{quick:'Oficio más usado',search:'Buscar oficio',remove:'Quitar oficio'}};
+function tradePicker(options){return IkisaiKit.createSpacePicker({rows:tradeRows(),kinds:TRADE_KINDS,multiple:true,texts:TRADE_TEXTS,quick:mostUsedTrades(),...options})}
 
 /* --- Ficha de tarea y de proyecto ----------------------------------------------------------------------------------- */
 // Borrador del oficio mientras la ficha está abierta (sobrevive a reabrirla al elegir etiquetas) y lo que se guarda al pulsar «Guardar».

@@ -73,9 +73,14 @@ function destinationFields(current={}){const data=Sync.core.data,tabs=inboxRows(
   const teamOptions=team.map(m=>{const l=m.names.map(n=>byName.get(n)).find(Boolean);return {value:l?l.id:m.key,name:m.name,label:l}});
   const others=owners.filter(l=>!team.some(m=>m.names.includes(l.name.trim().toLowerCase())));
   const option=(value,name)=>`<option value="${esc(value)}" ${value===current.owner_label_id||value===current.owner_member?'selected':''}>${esc(name)}</option>`;
+  /* P2 (personas de Central): el responsable se elige entre las personas de Central, agrupadas por nivel con su grupo, y se
+     guarda en owner_person_id / owner_house_level. Ya no se crean etiquetas. */
+  const central=typeof peopleMode==='function'&&peopleMode();
+  const ownerKey=current.owner_person_id||(current.owner_house_level?'level:'+current.owner_house_level:null)||current.owner_member||'';
+  const ownerField=central?`<div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-central-owner="1" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable">${ownerOptionsHtml(ownerKey)}</select></div>`:null;
   return `<div class="field"><label for="destTab">Área</label><select id="destTab" data-feedback-id="tasks.destino.area" data-feedback-label="Área de destino">${tabs.map(t=>`<option value="${t.id}" ${t.id===tabId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
     <div class="field"><label for="destProject">Proyecto</label><select id="destProject" data-feedback-id="tasks.destino.proyecto" data-feedback-label="Proyecto de destino">${projects.map(p=>`<option value="${p.system==='inbox'?'':p.id}" ${(p.system==='inbox'?!current.project_id:p.id===current.project_id)?'selected':''}>${esc(p.system==='inbox'?'Entrada del área':p.title)}</option>`).join('')}</select></div>
-    <div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${teamOptions.length?`<optgroup label="Equipo">${teamOptions.map(o=>option(o.value,o.name)).join('')}</optgroup>`:''}${others.length?`<optgroup label="${teamOptions.length?'Otras etiquetas Persona del área':'Etiquetas Persona del área'}">${others.map(l=>option(l.id,l.name)).join('')}</optgroup>`:''}</select></div>`}
+    ${ownerField??`<div class="field"><label for="destOwner">Responsable</label><select id="destOwner" data-feedback-id="tasks.destino.responsable" data-feedback-label="Responsable"><option value="">Sin responsable</option>${teamOptions.length?`<optgroup label="Equipo">${teamOptions.map(o=>option(o.value,o.name)).join('')}</optgroup>`:''}${others.length?`<optgroup label="${teamOptions.length?'Otras etiquetas Persona del área':'Etiquetas Persona del área'}">${others.map(l=>option(l.id,l.name)).join('')}</optgroup>`:''}</select></div>`}`}
 /* Personas del equipo con cuenta (sin agentes ni servicios). La lista la da el núcleo a la propietaria; se pide una vez. */
 /* El equipo: las personas activas de Central (`central.people_options`, con su nombre de ficha, que manda) y las cuentas
    de Ikisai con acceso a Tasks; una sola vez quien tiene cuenta y ficha. Sin la lectura de Central (Central #394; sin red o
@@ -99,8 +104,10 @@ function personLabelOps(tabId,key){const m=teamPeople().find(x=>x.key===key);
 function destinationValue(){const tab_id=document.getElementById('destTab').value,project=document.getElementById('destProject').value||null;
   const inbox=inboxRows('tasks.projects').find(p=>p.tab_id===tab_id&&p.system==='inbox');
   let owner=document.getElementById('destOwner').value||null,labelOps=[];
+  if(document.getElementById('destOwner').dataset.centralOwner){const level=owner?.startsWith('level:')?owner.slice(6):null;
+    return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:null,owner:{owner_label_id:null,owner_person_id:level?null:owner,owner_house_level:level},labelOps}}
   if(owner?.startsWith('member:')||owner?.startsWith('person:')){const made=personLabelOps(tab_id,owner);owner=made?.id||null;labelOps=made?.ops||[]}
-  return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:owner,labelOps}}
+  return {tab_id,project_id:project,target_project:project||inbox?.id||null,owner_label_id:owner,owner:{owner_label_id:owner},labelOps}}
 function bindDestination(reopen){const t=document.getElementById('destTab');if(t)t.onchange=()=>reopen({tab_id:t.value});
   loadTeam(()=>{const o=document.getElementById('destOwner')?.value||null;reopen({tab_id:document.getElementById('destTab')?.value,project_id:document.getElementById('destProject')?.value||null,owner_label_id:o,owner_member:o})})}
 
@@ -108,7 +115,7 @@ function moveRequestSheet(id,current={}){const r=inboxRows('tasks.requests').fin
   openSheet(`<h2 class="sheettitle">Mover a…</h2><p>${originChip(r.source)} ${esc(r.title)}</p>${destinationFields(current)}<div class="actions"><button class="primary" id="moveRequest" type="button" data-feedback-id="tasks.mover_peticion.crear_tarea" data-feedback-label="Crear la tarea aquí">Crear la tarea aquí</button></div>`);
   bindDestination(c=>moveRequestSheet(id,c));
   document.getElementById('moveRequest').onclick=()=>{const d=destinationValue();if(!d.target_project)return toast('Elige un proyecto.');
-    if(purchaseRun(data=>[...d.labelOps,...R().classifyRequestOps(data,id,{project_id:d.target_project,owner_label_id:d.owner_label_id})],'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
+    if(purchaseRun(data=>[...d.labelOps,...R().classifyRequestOps(data,id,{project_id:d.target_project,...d.owner})],'Tarea creada.')){usage.track('tasks.por_clasificar.mover');inboxDone()}}}
 
 function routesSheet(){if(!canManageRoutes())return;const data=Sync.core.data,routes=inboxRows('tasks.request_routes');
   const kinds=new Map(KNOWN_KINDS.map(k=>[k.kind,{kind:k.kind,source:k.kind.slice(0,k.kind.indexOf('.')),label:k.label}]));for(const r of inboxRows('tasks.requests'))kinds.set(r.kind,{kind:r.kind,source:r.source,label:r.kind_label||kinds.get(r.kind)?.label||null});
@@ -135,7 +142,7 @@ function routeSheet(kind,current=null,isNew=!kind){if(!canManageRoutes())return;
   bindDestination(c=>routeSheet(document.getElementById('routeKind').value.trim(),{...c,kind_label:document.getElementById('routeLabel').value.trim()},isNew));
   document.getElementById('routeSave').onclick=()=>{const k=document.getElementById('routeKind').value.trim(),d=destinationValue();
     if(!/^[a-z][a-z0-9_-]{1,30}\.[a-z0-9][a-z0-9_.-]{0,60}$/.test(k))return toast('El tipo va como app.nombre, en minúsculas.');
-    if(!purchaseRun(data=>[...d.labelOps,...R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,owner_label_id:d.owner_label_id})],'Regla guardada.'))return;
+    if(!purchaseRun(data=>[...d.labelOps,...R().saveRouteOps(data,{kind:k,kind_label:document.getElementById('routeLabel').value.trim()||null,tab_id:d.tab_id,project_id:d.project_id,...d.owner})],'Regla guardada.'))return;
     const waiting=R().pendingRequests(Sync.core.data,k).length;
     if(!waiting)return inboxDone();
     openSheet(`<h2 class="sheettitle">Regla guardada</h2><p>Hay ${waiting} ${waiting===1?'petición':'peticiones'} de este tipo esperando en «Por clasificar». ¿Las mueves también?</p><div class="actions"><button class="primary" id="routeWaiting" type="button" data-feedback-id="tasks.regla_guardada.mover_esperando" data-feedback-label="Mover también las que esperaban">Mover también ${waiting===1?'la que esperaba':`las ${waiting} que esperaban`}</button><button class="ghost" id="routeLater" type="button" data-feedback-id="tasks.regla_guardada.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
