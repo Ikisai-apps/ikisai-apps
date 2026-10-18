@@ -24,7 +24,7 @@ type Base = { id: string; revision: number; updated_at: string; deleted_at: stri
 export type Person = Mirror<Base & {
   code: string; display_name: string; relation: string; base_role: string; coverage: string; availability: string;
   availability_notes: string | null; active: boolean; committed_post: boolean; user_id: string | null; position: number;
-  house_level: HouseLevel | null; merged_into?: string | null;
+  house_level: HouseLevel | null; merged_into?: string | null; initials?: string | null;
 }>;
 type Private = Mirror<Base & {
   person_id: string; legal_name: string | null; phone: string | null; email: string | null; engagement: string | null;
@@ -325,6 +325,7 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   let sheet: Sheet | null = null;
   const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.persona.editar.error', 'data-feedback-label': 'Error del formulario' });
   const name = el('input', { id: 'p-name', 'data-feedback-ignore': '', type: 'text', maxlength: '80', required: true, value: person?.display_name ?? '' }) as HTMLInputElement;
+  const initials = el('input', { id: 'p-initials', 'data-feedback-ignore': '', type: 'text', maxlength: '4', autocomplete: 'off', value: person?.initials ?? '' }) as HTMLInputElement;
   const relation = el('select', { id: 'p-relation' }, ...options(RELATIONS, RELATION_LABELS, person?.relation ?? 'equipo')) as HTMLSelectElement;
   const levelsOn = houseLevelsOn;
   // «Área principal» sin las funciones de dirección (las sustituye el nivel), salvo la que ya tenga la ficha.
@@ -349,7 +350,7 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
   const committed = el('input', { type: 'checkbox', id: 'p-committed', checked: person?.committed_post ?? false }) as HTMLInputElement;
 
   const values = (): Record<string, unknown> => {
-    const common = { display_name: name.value.trim(), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };
+    const common = { display_name: name.value.trim(), initials: text(initials.value), base_role: baseRole.value, availability: availability.value, availability_notes: text(notes.value), committed_post: committed.checked };
     if (!levelsOn) return { ...common, relation: relation.value, coverage: coverage.value };
     // «Relación» y «Cobertura» ya no se piden; la relación se sigue escribiendo (la del nivel) solo si cambia el nivel o es nueva.
     const lv = (houseLevel.value || null) as HouseLevel | null;
@@ -389,6 +390,8 @@ function openPersonEditor(ctx: ViewContext, person: Person | null, onCreated?: (
     if (!person) onCreated?.(id);
   } },
   el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_nombre', 'data-feedback-label': 'Nombre' }, el('span', null, 'Nombre con el que se le conoce'), name),
+  el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_iniciales', 'data-feedback-label': 'Iniciales' }, el('span', null, 'Iniciales (opcional)'), initials,
+    el('span', { class: 'muted small' }, 'Hasta 4 letras, para las chips de Tasks. Si no las pones, se usa el nombre de pila.')),
   levelsOn
     ? el('div', { class: 'fieldrow', 'data-feedback-id': 'central.persona.editar.nivel_area', 'data-feedback-label': 'Nivel de casa y área' },
       el('label', { class: 'field', 'data-feedback-id': 'central.persona.editar.campo_nivel', 'data-feedback-label': 'Nivel de casa' }, el('span', null, 'Nivel de casa'), houseLevel),
@@ -468,6 +471,7 @@ export function mountPerson(personId: string): ViewMount {
           kv('Función', BASE_ROLE_LABELS[person.base_role as keyof typeof BASE_ROLE_LABELS]),
           kv('Cobertura', COVERAGE_LABELS[person.coverage as keyof typeof COVERAGE_LABELS]),
         ]),
+        kv('Iniciales', person.initials),
         kv('Disponibilidad', [AVAILABILITY_LABELS[person.availability as keyof typeof AVAILABILITY_LABELS], person.availability_notes].filter(Boolean).join(' · ')),
         kv('Puesto comprometido', person.committed_post ? 'Sí' : null))],
       canEdit || outsiderAction(person) ? el('span', { class: 'blockactions' },

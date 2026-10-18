@@ -65,8 +65,9 @@ Lectura `{reader, editor, owner}`. Sin datos de contacto ni laborales.
 | `committed_post` | `boolean not null default false` | C05 `es_puesto_comprometido` (puesto comprometido en la licitación de la concesión). |
 | `user_id` | `uuid null references auth.users(id)` | Cuenta enlazada (opcional). Única entre filas vivas. Solo la escribe el `owner` (§4.1). |
 | `position` | `numeric null` | Orden manual (decisión del usuario del 6 oct). |
+| `initials` | `text null` | Iniciales (`1509`, petición de Tasks aprobada por el usuario el 18-10-2026): de 1 a 4 caracteres, sin espacios a los lados. Tasks las usa en las chips y, si faltan, el nombre de pila. Se escriben en el editor de la ficha y salen en `people_options`. La fusión (§3.1) no las copia: si la ficha que queda no las tiene, se ponen a mano. |
 
-`writable_columns`: `display_name, relation, base_role, coverage, availability, availability_notes, active, committed_post, user_id, position, merged_into, house_level` (`merged_into` solo lo escribe la fusión, §3.1).
+`writable_columns`: `display_name, relation, base_role, coverage, availability, availability_notes, active, committed_post, user_id, position, merged_into, house_level, initials` (`merged_into` solo lo escribe la fusión, §3.1).
 
 **Nivel de casa en la pantalla (P1, con interruptor; RECURSOS.md §17):**
 - Mientras ninguna persona tenga nivel, Personas se ve como antes: Relación, Función y Cobertura. Lo fijan las pruebas de caracterización de `tests/central/people-list.spec.ts`.
@@ -389,9 +390,10 @@ Lecturas registradas que sí existen:
 | `central.record_file` | editor | Archivo de un registro de documentación, si se ve la fila (§8). |
 | `central.requirement_brief` | editor | Código, nombre, vencimiento y riesgo de una obligación, para pedir su tarea a Tasks. |
 | `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
-| `central.people_options` | todos | Personas vivas y activas, con o sin cuenta, para elegir responsable (§7.1). |
-| `central.trade_options` | todos | Oficios activos con su ruta (§2.13). |
-| `central.capability_options` | todos | Capacidades de personas activas con nivel de casa en oficios activos (§2.13). |
+| `central.people_options` | todos; en Tasks, también `outsider` | Personas vivas y activas, con o sin cuenta, para elegir responsable (§7.1). |
+| `central.trade_options` | todos; en Tasks, también `outsider` | Oficios activos con su ruta (§2.13). |
+| `central.capability_options` | todos; en Tasks, también `outsider` | Capacidades de personas activas con nivel de casa en oficios activos (§2.13). |
+| `central.availability_options` | todos (sin `outsider`) | Disponibilidad de las personas vivas y activas, con su orden (§7.1). |
 | `central.portal_place_projection` | todos | El lugar para los portales: nombre, dirección, mapa y plano (§2.9). |
 
 La **regla de estado derivado** vive en `_domain/central` (la usa el cliente sin red) y se repite en SQL para las lecturas:
@@ -493,9 +495,12 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 | `central.booking_person_projection` | booking | `person_id, code, display_name, base_role, active, revision` | Booking ya prevé `staff_assignments.person_ref_*` para elegir a la persona del turno sin copiarla (§15.3 de su `API.md`). Solo el nombre visible y la función, nunca contacto. **Se publica cuando Booking lo pida**; nota: Booking lo apunta como `target_app = 'encarna'` y debería ser `'central'`. |
 | `central.booking_blocking_projection` (V2) | booking, tasks | `requirement_id, code, name, blocks_operation, state, expires_on` de requisitos vencidos que bloquean la operación | C09 «bloquea operación»: aviso en Booking y Tasks. Se propone; no entra en V1. |
 | `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
-| `central.people_options` | tasks, central | `person_id, name, user_id, active` | Personas del equipo vivas y activas, **también sin cuenta** (`user_id` null), para elegir responsable en Tasks (FB_2026_015, migración `1502`). El nombre es el de la ficha. Sin datos reservados. |
-| `central.trade_options` | tasks, central | `trade_id, parent_id, name, path, position, source_label_id` | Oficios activos para el campo Oficio de las tareas (P2). |
-| `central.capability_options` | tasks, central | `person_id, trade_id, level` | Quién sabe hacer cada oficio (personas vivas, activas y con nivel de casa), para sugerir responsables (P2). Sin datos reservados. |
+| `central.people_options` | tasks (también `outsider`), central | `person_id, name, user_id, active, house_level, initials` | Personas del equipo vivas y activas, **también sin cuenta** (`user_id` null), para elegir responsable en Tasks (FB_2026_015, migración `1502`; `house_level` en `1504`, `initials` en `1509`). El nombre es el de la ficha. Sin datos reservados. |
+| `central.trade_options` | tasks (también `outsider`), central | `trade_id, parent_id, name, path, position, source_label_id` | Oficios activos para el campo Oficio de las tareas (P2). Sin las notas del oficio. |
+| `central.capability_options` | tasks (también `outsider`), central | `person_id, trade_id, level` | Quién sabe hacer cada oficio (personas vivas, activas y con nivel de casa), para sugerir responsables (P2). Sin la nota de la capacidad ni datos reservados. |
+| `central.availability_options` | tasks (sin `outsider`), central | `person_id, availability, availability_rank` | Disponibilidad para ordenar «Quién sabe hacerlo» en Tasks (`1509`). `availability_rank`: 1 alta, 2 media, 3 según calendario, 4 baja, 5 no disponible. Las mismas personas que `people_options`. Sin las notas de disponibilidad (texto libre). |
+
+**Lo que ve el outsider de Tasks** (`1509`, petición aprobada por el usuario el 18-10-2026): `people_options`, `trade_options` y `capability_options`, para ver en sus tareas quién las hace y su oficio. Ninguna trae contacto, vinculación, documentación, notas ni disponibilidad; lo comprueba `tests/central/options.test.ts` columna a columna. La disponibilidad va aparte, en `availability_options`, precisamente para que el outsider no la lea.
 | `central.portal_place_projection` | organizers, guests, central | §2.9 | Nombre, dirección, enlace del mapa y plano del lugar (cartel de Organizers, portal de huéspedes). |
 | `central.<destino>_kpi_projection` de Central | central | Como §7.2 | Vencimientos y riesgos también son KPIs del panel. |
 
