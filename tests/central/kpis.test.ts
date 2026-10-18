@@ -120,7 +120,7 @@ test('kpis · R7: temas del panel en su orden; lo que no tiene tema va detrás, 
   assert.deepEqual(stateSummary([{ state: 'critico' }, { state: 'atencion' }, { state: 'atencion' }, { state: null }, { state: 'ok' }]), { critico: 1, atencion: 2, total: 5 });
 });
 
-test('kpis · R7: personas y oficios del directorio, contando lo que cuelga de cada oficio; Recursos entra en el panel', async () => {
+test('kpis · R7: personas y oficios del directorio, con lo heredado del padre (1510); Recursos entra en el panel', async () => {
   const v = (dash: any, kpi: string) => dash.data.items.find((i: any) => i.kpi === kpi)?.value;
   // Sin niveles de casa todavía, los nuevos no dicen nada («—»).
   const before = await app.call('/api/v1/dashboard');
@@ -159,8 +159,9 @@ test('kpis · R7: personas y oficios del directorio, contando lo que cuelga de c
   assert.equal(v(dash, 'central.outsiders_without_account'), 2);
   assert.equal(v(dash, 'central.people_records_due_30d'), 1);
   assert.equal(v(dash, 'central.people_records_due_90d'), 2);
-  // Mantenimiento cuenta a Ana y a Carlos por Fontanería; Electricidad (Ana), Limpieza (Eva aprende) y Socorrismo (Dani, outsider), en riesgo.
-  assert.equal(v(dash, 'central.trades_at_risk'), 3);
+  // 1510: lo del padre baja a los hijos, nunca al revés. Mantenimiento ya no cuenta a Ana y a Carlos por Fontanería: en
+  // riesgo Mantenimiento (nadie), Electricidad (Ana), Limpieza (Eva aprende) y Socorrismo (Dani, outsider).
+  assert.equal(v(dash, 'central.trades_at_risk'), 4);
   assert.equal(v(dash, 'central.trades_learners_no_expert'), 1);
   assert.equal(v(dash, 'central.trades_only_outsiders'), 1);
   assert.equal(v(dash, 'central.people_without_trades'), 1);

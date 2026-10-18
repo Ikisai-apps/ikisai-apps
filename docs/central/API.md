@@ -349,15 +349,20 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **`central.person_trades`:** capacidad = persona × oficio, una viva por par. `level` va de 0 a 2: «Aprende», «Sabe», «Experto», con la estrella de nivel del kit (`createLevelStar`, tres pasos, la de la prioridad de Tasks). `note` es opcional (≤ 300). `person_id` y `trade_id` no se pueden cambiar.
 - **`central.trade_kit`:** el kit del oficio (`trade_id`, `item_id` de `resources.items` sin FK, `quantity` y `note`). Es solo el sitio previsto: sin pantalla hasta R3.
 - **Permisos:** como los equipos. Escriben el owner y el editor con ámbito `people` (Edge y hook); leen todos los miembros.
+- **Herencia (`1510`, decisión del usuario del 18-10-2026): lo del padre baja a los hijos, nunca al revés.** Quien sabe Albañilería sabe todos sus hijos (Demolición…).
+  - **Grado efectivo** de una persona en un oficio activo: el máximo entre lo puesto en él y lo puesto en cualquiera de sus antepasados activos. Nunca se mira a los descendientes: lo de un hijo no sube al padre.
+  - Lo calculan `central.person_trade_levels` (interna) en la base y `effectiveLevels` e `inheritedLevel` (`_domain/central/trades.ts`) en el cliente, con la misma regla.
+  - **Oficio archivado en medio de la cadena:** la herencia pasa a través de él (Albañilería › [archivado] › Demolición: Demolición hereda de Albañilería). Lo puesto en el archivado no cuenta, como antes.
+  - **En el hijo no se tiene menos que en el padre:** en la ficha, el editor avisa («Por «Albañilería» ya tiene Sabe: aquí, como mínimo, Sabe.») y la estrella no baja de ahí; la de la fila tampoco. Una fila vieja con menos dice «Sabe · por Albañilería». En la base no se impide: el grado efectivo ya es el del padre.
 - **Fusión de fichas:** `central.merge_people` (redefinida en `1505`) pasa también las capacidades. Si las dos fichas sabían el mismo oficio, se queda el nivel más alto y la nota que haya.
 - **Pantallas:**
-  - **Personas › Oficios:** el árbol (con archivados opcionales), nuevo oficio y «Añadir dentro», editar, archivar o reactivar, y papelera si nadie lo tiene. Al tocar un oficio, «Quién sabe hacerlo», ordenado por nivel, con disponibilidad.
-  - **Cobertura (R7, solo con los niveles de casa aplicados).** «N personas» sigue contando las del propio oficio. Además, cada oficio activo enseña:
-    - cuántas personas del directorio aprenden, saben o son expertas, contando lo que cuelga de él («1 aprende · 2 saben»);
-    - las chips «En riesgo», «Sin experto» o «Solo outsiders», con la regla de los indicadores de la `1507` (`tradeCoverage`).
+  - **Personas › Oficios:** el árbol (con archivados opcionales), nuevo oficio y «Añadir dentro», editar, archivar o reactivar, y papelera si nadie lo tiene puesto. Al tocar un oficio, «Quién sabe hacerlo», ordenado por nivel, con disponibilidad; desde la `1510`, también quien lo hereda, con «Sabe · por Albañilería».
+  - **Cobertura (R7, solo con los niveles de casa aplicados).** «N personas» cuenta a quien sabe hacerlo, puesto o heredado (`1510`; antes, solo lo puesto). Además, cada oficio activo enseña:
+    - cuántas personas del directorio aprenden, saben o son expertas, por su grado efectivo («1 aprende · 2 saben»);
+    - las chips «En riesgo», «Sin experto» o «Solo outsiders», con la regla de los indicadores de la `1510` (`tradeCoverage`).
   - **«Solo en riesgo»:** deja los oficios en riesgo o que solo cubren outsiders, cada uno con su ruta. Desde el panel se llega con el filtro puesto (`?riesgo`).
-  - **Ficha de la persona:** bloque «Oficios», con la estrella editable (pulsar cambia el nivel), la ruta y la nota; «Añadir oficio» y «Editar».
-  - **Lista:** filtro «Oficio», que incluye lo que cuelga del elegido, y hasta 3 chips con los oficios de más nivel. Sin oficios en el catálogo, el filtro no se ve.
+  - **Ficha de la persona:** bloque «Oficios», con la estrella editable (pulsar cambia el nivel), la ruta y la nota; «Añadir oficio» y «Editar». Solo lo puesto: los hijos heredados no se pintan uno a uno.
+  - **Lista:** filtro «Oficio», que incluye lo que cuelga del elegido y, desde la `1510`, a quien lo sabe por un antepasado. Hasta 3 chips con los oficios de más nivel. Sin oficios en el catálogo, el filtro no se ve.
 - **Importar desde Tasks** (PR C; lectura `tasks.action_labels` de Tasks, #467; solo dirección): «Importar de Tasks», en Oficios, abre una vista previa del árbol de la familia «Tipo: Acción» (`planTradeImport`, en `_domain/central/trades.ts`).
   - Las etiquetas repetidas entre áreas se juntan por su ruta de nombres, sin mirar mayúsculas, tildes ni espacios, y se ve «En N áreas».
   - Lo que ya existe en Central, por `source_label_id` o por la misma ruta, sale como «Ya existe» y no se duplica.
@@ -392,7 +397,7 @@ Lecturas registradas que sí existen:
 | `central.common_entity_projection` | todos | Proyección de la entidad (§2.9). |
 | `central.people_options` | todos; en Tasks, también `outsider` | Personas vivas y activas, con o sin cuenta, para elegir responsable (§7.1). |
 | `central.trade_options` | todos; en Tasks, también `outsider` | Oficios activos con su ruta (§2.13). |
-| `central.capability_options` | todos; en Tasks, también `outsider` | Capacidades de personas activas con nivel de casa en oficios activos (§2.13). |
+| `central.capability_options` | todos; en Tasks, también `outsider` | Grado efectivo (con lo heredado del padre) de personas activas con nivel de casa en oficios activos (§2.13). |
 | `central.availability_options` | todos (sin `outsider`) | Disponibilidad de las personas vivas y activas, con su orden (§7.1). |
 | `central.portal_place_projection` | todos | El lugar para los portales: nombre, dirección, mapa y plano (§2.9). |
 
@@ -497,7 +502,7 @@ No hay rutas propias de escritura para personas, requisitos ni documentos: todo 
 | `central.common_entity_projection` | booking, invoices, central | §2.9 | Datos legales y logotipo de Ikisai para propuestas y facturas emitidas. |
 | `central.people_options` | tasks (también `outsider`), central | `person_id, name, user_id, active, house_level, initials` | Personas del equipo vivas y activas, **también sin cuenta** (`user_id` null), para elegir responsable en Tasks (FB_2026_015, migración `1502`; `house_level` en `1504`, `initials` en `1509`). El nombre es el de la ficha. Sin datos reservados. |
 | `central.trade_options` | tasks (también `outsider`), central | `trade_id, parent_id, name, path, position, source_label_id` | Oficios activos para el campo Oficio de las tareas (P2). Sin las notas del oficio. |
-| `central.capability_options` | tasks (también `outsider`), central | `person_id, trade_id, level` | Quién sabe hacer cada oficio (personas vivas, activas y con nivel de casa), para sugerir responsables (P2). Sin la nota de la capacidad ni datos reservados. |
+| `central.capability_options` | tasks (también `outsider`), central | `person_id, trade_id, level, inherited` | Quién sabe hacer cada oficio (personas vivas, activas y con nivel de casa), para sugerir responsables (P2). Desde la `1510`, con el **grado efectivo**: una fila por persona y oficio activo, también en los hijos que hereda de un padre, e `inherited` (true si el grado viene de un antepasado y en el oficio no hay uno igual o mayor puesto). Sin la nota de la capacidad ni datos reservados. |
 | `central.availability_options` | tasks (sin `outsider`), central | `person_id, availability, availability_rank` | Disponibilidad para ordenar «Quién sabe hacerlo» en Tasks (`1509`). `availability_rank`: 1 alta, 2 media, 3 según calendario, 4 baja, 5 no disponible. Las mismas personas que `people_options`. Sin las notas de disponibilidad (texto libre). |
 
 **Lo que ve el outsider de Tasks** (`1509`, petición aprobada por el usuario el 18-10-2026): `people_options`, `trade_options` y `capability_options`, para ver en sus tareas quién las hace y su oficio. Ninguna trae contacto, vinculación, documentación, notas ni disponibilidad; lo comprueba `tests/central/options.test.ts` columna a columna. La disponibilidad va aparte, en `availability_options`, precisamente para que el outsider no la lea.
@@ -555,9 +560,10 @@ select core.allow_read('central', 'booking.central_kpi_projection', 'view');
 | Food | `food.events_without_menu_30d`, `food.shopping_lists_open` |
 | Recursos (hecho, `0805` de Core) | `resources.spaces_active`, `resources.bed_places`, `resources.bed_extra_places`, `resources.bookable_rooms_without_beds`, `resources.spaces_without_code`, `resources.stock_value` (`eur`), `resources.items_below_min`, `resources.lots_expiring_30d`, `resources.lots_expired`, `resources.items_stock_without_cost`, `resources.items_negative_stock`, `resources.machines_down` |
 
-**R7 · personas y oficios** (Central, `1507`; tabla «hoy / después» aprobada el 18-10-2026). Todas son `count` y «hoy» en Madrid.
+**R7 · personas y oficios** (Central, `1507`, con la herencia de la `1510`; tabla «hoy / después» aprobada el 18-10-2026). Todas son `count` y «hoy» en Madrid.
 - **Directorio:** personas activas, no borradas ni fusionadas y con nivel de casa.
-- **Capaz:** nivel Sabe o Experto en el oficio o en uno activo que cuelga de él. Cada persona cuenta una vez, con su mejor nivel.
+- **Capaz:** grado efectivo Sabe o Experto (§2.13): lo puesto en el oficio o en un antepasado activo. Lo de un hijo no cuenta en el padre (en la `1507` era al revés). Cada persona cuenta una vez.
+- «Personas sin oficios» y «Oficios por persona» cuentan lo puesto, no lo heredado.
 - Mientras nadie tenga nivel de casa, las que dependen del directorio valen `null` («—»).
 
 | Clave | Fórmula | Sentido |

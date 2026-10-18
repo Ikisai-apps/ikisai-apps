@@ -1,10 +1,14 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import { confirmDialog, el, icon, openSheet, renderLevelStar, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, planTradeImport, validateOperations, type ActionLabel } from '@ikisai/domain-central';
+import {
+  AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, effectiveLevels, inheritedLevel, planTradeImport, validateOperations, type ActionLabel, type EffectiveLevel,
+} from '@ikisai/domain-central';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import type { Person } from './people.ts';
 import type { ViewMount } from './shell.ts';
 import { fbMark } from './feedback.ts';
+
+export { effectiveLevels, inheritedLevel };
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null };
 export type Trade = Mirror<Base & { parent_id: string | null; name: string; position: number; active: boolean; notes: string | null; source_label_id: string | null }>;
@@ -42,23 +46,24 @@ export function tradeWithDescendants(trades: Trade[], id: string): Set<string> {
   return out;
 }
 
-/** Cobertura de un oficio (R7): personas del directorio por su mejor nivel en él o en lo que cuelga de él. */
+/** Cobertura de un oficio (R7, con la herencia de la 1510): personas del directorio por su grado efectivo en él. */
 export interface TradeCoverage { learners: number; knows: number; experts: number; atRisk: boolean; noExpert: boolean; onlyOutsiders: boolean }
 
 /**
- * Misma regla que los indicadores de la migración 1507: directorio (activas, sin fusionar y con nivel de casa), oficios
- * activos, y lo de un oficio sube a sus madres activas. Capaz es Sabe o Experto. En riesgo: una persona capaz o ninguna.
+ * Misma regla que los indicadores de la migración 1510: directorio (activas, sin fusionar y con nivel de casa), oficios
+ * activos y grado efectivo (lo del padre cuenta en los hijos; lo de un hijo no sube al padre). Capaz es Sabe o Experto. En
+ * riesgo: una persona capaz o ninguna.
  */
 export function tradeCoverage(trades: Trade[], capabilities: PersonTrade[], people: Person[]): Map<string, TradeCoverage> {
   const directory = new Map(people.filter((p) => !p.deleted_at && p.active && !p.merged_into && p.house_level).map((p) => [p.id, p]));
   const active = new Map(trades.filter((t) => !t.deleted_at && t.active).map((t) => [t.id, t]));
   const best = new Map<string, Map<string, number>>();
-  for (const c of capabilities) {
-    if (c.deleted_at || !directory.has(c.person_id) || !active.has(c.trade_id)) continue;
-    for (let id: string | null = c.trade_id; id && active.has(id); id = active.get(id)!.parent_id) {
-      const m = best.get(id) ?? new Map<string, number>();
-      m.set(c.person_id, Math.max(m.get(c.person_id) ?? -1, c.level));
-      best.set(id, m);
+  for (const [person, levels] of effectiveLevels(trades, capabilities)) {
+    if (!directory.has(person)) continue;
+    for (const [trade, e] of levels) {
+      const m = best.get(trade) ?? new Map<string, number>();
+      m.set(person, e.level);
+      best.set(trade, m);
     }
   }
   const out = new Map<string, TradeCoverage>();
@@ -123,13 +128,25 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     host,
     canManage ? el('button', { class: 'fab', type: 'button', id: 'newTrade', 'data-feedback-id': 'central.oficios.nuevo', 'data-feedback-label': 'Nuevo oficio', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo oficio') : null);
 
-  const whoKnows = (id: string) => capabilities.filter((c) => c.trade_id === id && people.some((p) => p.id === c.person_id && !p.deleted_at));
+  /** Capacidades puestas en el oficio (las que impiden mandarlo a la papelera). */
+  const direct = (id: string) => capabilities.filter((c) => c.trade_id === id && people.some((p) => p.id === c.person_id && !p.deleted_at));
+  /** Quién sabe hacerlo: lo puesto y lo heredado de un antepasado (1510). En un oficio archivado, solo lo puesto. */
+  const whoKnows = (id: string, levels: Map<string, Map<string, EffectiveLevel>>): Array<{ person: Person; level: number; from: string | null; note: string | null }> => {
+    const notes = new Map(direct(id).map((c) => [c.person_id, c]));
+    return people.filter((p) => !p.deleted_at).flatMap((p) => {
+      const e = levels.get(p.id)?.get(id);
+      if (e) return [{ person: p, level: e.level, from: e.inherited ? e.from : null, note: notes.get(p.id)?.note ?? null }];
+      const c = notes.get(p.id);
+      return c ? [{ person: p, level: c.level, from: null, note: c.note }] : [];
+    });
+  };
 
   function paint(): void {
     // Sin niveles de casa (P1 sin aplicar) no hay directorio: la lista queda como antes de R7.
     const levelsOn = people.some((p) => p.house_level);
     riskBox.hidden = !levelsOn;
     const cov = levelsOn ? tradeCoverage(trades, capabilities, people) : new Map<string, TradeCoverage>();
+    const levels = effectiveLevels(trades, capabilities);
     const risky = (t: Trade) => { const c = cov.get(t.id); return !!c && (c.atRisk || c.onlyOutsiders); };
     const filtering = levelsOn && onlyRisk;
     const tree = tradeTree(trades, showArchived).filter((x) => !filtering || risky(x.trade));
@@ -145,7 +162,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
     }
     replace(host, el('ul', { class: 'accounts tradetree', 'aria-label': 'Oficios', 'data-feedback-id': 'central.oficios.lista.filas', 'data-feedback-label': 'Oficios' },
       ...tree.map(({ trade: t, depth, path }) => {
-        const n = whoKnows(t.id).length;
+        const n = whoKnows(t.id, levels).length;
         const c = t.active ? cov.get(t.id) : undefined;
         const flags = c ? [c.atRisk ? el('span', { class: 'chip alert' }, 'En riesgo') : null, c.noExpert ? el('span', { class: 'chip warn' }, 'Sin experto') : null,
           c.onlyOutsiders ? el('span', { class: 'chip warn' }, 'Solo outsiders') : null].filter(Boolean) : [];
@@ -200,8 +217,9 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
   function openTrade(t: Trade): void {
     let sheet: Sheet | null = null;
     const path = tradeTree(trades, true).find((x) => x.trade.id === t.id)?.path ?? t.name;
-    const caps = whoKnows(t.id).map((c) => ({ c, p: people.find((p) => p.id === c.person_id)! }))
-      .sort((a, b) => (b.c.level - a.c.level) || a.p.display_name.localeCompare(b.p.display_name, 'es'));
+    const paths = new Map(tradeTree(trades, true).map((x) => [x.trade.id, x.path]));
+    const caps = whoKnows(t.id, effectiveLevels(trades, capabilities))
+      .sort((a, b) => (b.level - a.level) || a.person.display_name.localeCompare(b.person.display_name, 'es'));
     const hasChildren = trades.some((x) => !x.deleted_at && x.parent_id === t.id);
     const actions = canManage ? el('div', { class: 'zone', 'data-feedback-id': 'central.oficios.ficha.acciones', 'data-feedback-label': 'Acciones del oficio' },
       el('button', { class: 'ghost', type: 'button', id: 'editTrade', 'data-feedback-id': 'central.oficios.ficha.editar', 'data-feedback-label': 'Editar oficio', onclick: () => { void sheet?.close(); openEditor(t); } }, icon('edit', 16), 'Editar'),
@@ -209,7 +227,7 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
       el('button', { class: 'ghost', type: 'button', id: 'archiveTrade', 'data-feedback-id': 'central.oficios.ficha.archivar', 'data-feedback-label': 'Archivar o reactivar', onclick: async () => {
         if (await commitTrades(client, [{ op: 'update', table: T.trades, id: t.id, expectedRevision: t.revision, fields: { active: !t.active } }], t.active ? 'Oficio archivado.' : 'Oficio reactivado.')) await sheet?.close(true);
       } }, t.active ? 'Archivar' : 'Reactivar'),
-      !hasChildren && !caps.length ? el('button', { class: 'danger', type: 'button', id: 'deleteTrade', 'data-feedback-id': 'central.oficios.ficha.papelera', 'data-feedback-label': 'Enviar a la papelera', onclick: async () => {
+      !hasChildren && !direct(t.id).length ? el('button', { class: 'danger', type: 'button', id: 'deleteTrade', 'data-feedback-id': 'central.oficios.ficha.papelera', 'data-feedback-label': 'Enviar a la papelera', onclick: async () => {
         if (!(await confirmDialog({ title: `¿Enviar «${t.name}» a la papelera?`, text: 'Nadie lo tiene como capacidad. Se puede restaurar.', confirmLabel: 'Enviar a papelera', danger: true }))) return;
         if (await commitTrades(client, [{ op: 'delete', table: T.trades, id: t.id, expectedRevision: t.revision }], 'Oficio en la papelera.')) await sheet?.close(true);
       } }, 'Papelera') : null) : null;
@@ -218,11 +236,11 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
       body: el('div', { id: 'tradeSheet', 'data-feedback-id': 'central.oficios.ficha', 'data-feedback-label': 'Ficha del oficio' },
         t.notes ? el('p', { class: 'muted' }, t.notes) : null,
         el('div', { class: 'sectionlabel', 'data-feedback-id': 'central.oficios.ficha.quien', 'data-feedback-label': 'Quién sabe hacerlo' }, 'Quién sabe hacerlo'),
-        caps.length ? el('ul', { class: 'accounts', id: 'tradePeople' }, ...caps.map(({ c, p }) => el('li', null,
-          el('button', { class: 'personrow', type: 'button', 'data-person': p.id, 'data-feedback-id': 'central.oficios.ficha.persona', 'data-feedback-label': 'Persona que sabe hacerlo', onclick: () => { void sheet?.close(); navigate(`#/personas/${p.id}`); } },
-            el('span', { class: 'accountname' }, levelStar(c.level), ' ', el('span', { 'data-feedback-ignore': '' }, p.display_name)),
-            el('span', { class: 'muted accountmeta' }, [levelLabel(c.level), AVAILABILITY_LABELS[p.availability as keyof typeof AVAILABILITY_LABELS], p.active ? '' : 'inactiva'].filter(Boolean).join(' · ')),
-            c.note ? el('span', { class: 'muted small', 'data-feedback-ignore': '' }, c.note) : null))))
+        caps.length ? el('ul', { class: 'accounts', id: 'tradePeople' }, ...caps.map(({ person: p, level, from, note }) => el('li', null,
+          el('button', { class: 'personrow', type: 'button', 'data-person': p.id, ...(from ? { 'data-inherited': '' } : {}), 'data-feedback-id': 'central.oficios.ficha.persona', 'data-feedback-label': 'Persona que sabe hacerlo', onclick: () => { void sheet?.close(); navigate(`#/personas/${p.id}`); } },
+            el('span', { class: 'accountname' }, levelStar(level), ' ', el('span', { 'data-feedback-ignore': '' }, p.display_name)),
+            el('span', { class: 'muted accountmeta' }, [levelLabel(level), from ? `por ${paths.get(from) ?? ''}` : '', AVAILABILITY_LABELS[p.availability as keyof typeof AVAILABILITY_LABELS], p.active ? '' : 'inactiva'].filter(Boolean).join(' · ')),
+            note ? el('span', { class: 'muted small', 'data-feedback-ignore': '' }, note) : null))))
           : el('p', { class: 'muted' }, 'Nadie todavía. Se añade desde la ficha de cada persona.'),
         actions),
       panelAttrs: { 'data-feedback-id': 'central.oficios.ficha.hoja', 'data-feedback-label': 'Oficio' },

@@ -84,7 +84,7 @@ test('capacidades · una por persona y oficio; lecturas para Tasks solo con nive
   assert.ok(!options.some((t) => t.trade_id === old)); // archivado, fuera
   const caps = (await read('central.capability_options')).filter((c) => c.trade_id === pint || c.trade_id === old);
   assert.deepEqual(caps.map((c) => [c.person_id, c.level]).sort(), [[ana, 1], [anaDup, 2]].sort()); // sin nivel de casa ni oficio archivado
-  for (const c of caps) assert.deepEqual(Object.keys(c).sort(), ['level', 'person_id', 'trade_id']);
+  for (const c of caps) assert.deepEqual(Object.keys(c).sort(), ['inherited', 'level', 'person_id', 'trade_id']); // 1510: + inherited
 
   // Fusionar «Ana O.» en «Ana Oficio»: se queda el nivel más alto y la nota; la del oficio que no tenía pasa entera.
   const merged = await commit([{ op: 'call', procedure: MERGE_PEOPLE_PROCEDURE, args: { from: anaDup, into: ana } }]);
