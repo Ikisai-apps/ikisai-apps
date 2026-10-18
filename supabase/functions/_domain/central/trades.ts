@@ -86,3 +86,63 @@ export function planTradeImport(labels: readonly ActionLabel[], trades: readonly
   for (const n of nodes.values()) if (!out.includes(n)) { n.parentKey = null; out.push(n); walk(n.key); }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Herencia de capacidades (1510, decisión del usuario del 18-10-2026): lo del padre baja a los hijos, nunca al revés. Misma
+// regla que `central.person_trade_levels`; la usan la cobertura y las pantallas de Personas y Oficios.
+// ---------------------------------------------------------------------------
+export interface TradeNode { id: string; parent_id: string | null; active: boolean; deleted_at?: string | null }
+export interface TradeCapability { person_id: string; trade_id: string; level: number; deleted_at?: string | null }
+
+/** Grado efectivo de una persona en un oficio (1510). `from`: el antepasado del que lo hereda, si lo hereda. */
+export interface EffectiveLevel { level: number; inherited: boolean; from: string | null }
+
+/** Lo puesto por persona y oficio, solo en oficios vivos y activos (lo de un oficio archivado no cuenta). */
+function ownLevels(trades: TradeNode[], capabilities: TradeCapability[]): { alive: Map<string, TradeNode>; own: Map<string, Map<string, number>> } {
+  const alive = new Map(trades.filter((t) => !t.deleted_at).map((t) => [t.id, t]));
+  const own = new Map<string, Map<string, number>>();
+  for (const c of capabilities) {
+    if (c.deleted_at || !alive.get(c.trade_id)?.active) continue;
+    const m = own.get(c.person_id) ?? new Map<string, number>();
+    m.set(c.trade_id, c.level);
+    own.set(c.person_id, m);
+  }
+  return { alive, own };
+}
+
+/** El mayor grado puesto en un antepasado activo (el más cercano si empatan), pasando a través de los archivados. */
+function bestAncestor(alive: Map<string, TradeNode>, mine: Map<string, number> | undefined, tradeId: string): { level: number; from: string } | null {
+  let best: { level: number; from: string } | null = null;
+  for (let id = alive.get(tradeId)?.parent_id ?? null, depth = 0; mine && id && alive.has(id) && depth < 5; id = alive.get(id)!.parent_id, depth++) {
+    const l = mine.get(id);
+    if (l !== undefined && (!best || l > best.level)) best = { level: l, from: id };
+  }
+  return best;
+}
+
+/** Lo que una persona hereda en un oficio de sus antepasados: el mínimo que puede tener en él (null si nada). */
+export function inheritedLevel(trades: TradeNode[], capabilities: TradeCapability[], personId: string, tradeId: string): { level: number; from: string } | null {
+  const { alive, own } = ownLevels(trades, capabilities);
+  return bestAncestor(alive, own.get(personId), tradeId);
+}
+
+/**
+ * Misma regla que `central.person_trade_levels` (1510): lo del padre baja a los hijos, nunca al revés. En cada oficio activo,
+ * el máximo entre lo puesto en él y lo puesto en cualquiera de sus antepasados activos. Persona → oficio → grado.
+ */
+export function effectiveLevels(trades: TradeNode[], capabilities: TradeCapability[]): Map<string, Map<string, EffectiveLevel>> {
+  const { alive, own } = ownLevels(trades, capabilities);
+  const out = new Map<string, Map<string, EffectiveLevel>>();
+  for (const [person, mine] of own) {
+    const m = new Map<string, EffectiveLevel>();
+    for (const t of alive.values()) {
+      if (!t.active) continue;
+      const self = mine.get(t.id);
+      const up = bestAncestor(alive, mine, t.id);
+      if (up && up.level > (self ?? -1)) m.set(t.id, { level: up.level, inherited: true, from: up.from });
+      else if (self !== undefined) m.set(t.id, { level: self, inherited: false, from: null });
+    }
+    out.set(person, m);
+  }
+  return out;
+}

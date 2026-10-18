@@ -18,7 +18,7 @@ import type { ViewContext, ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
 import { createLevelStar } from '@ikisai/ui-kit';
 import { TRADE_LEVEL_LABELS } from '@ikisai/domain-central';
-import { levelLabel as tradeLevelLabel, levelStar, loadTrades, markLevelStar, tradeTree, tradeWithDescendants, type PersonTrade, type Trade } from './trades.ts';
+import { effectiveLevels, inheritedLevel, levelLabel as tradeLevelLabel, levelStar, loadTrades, markLevelStar, tradeTree, tradeWithDescendants, type PersonTrade, type Trade } from './trades.ts';
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null };
 export type Person = Mirror<Base & {
@@ -259,7 +259,9 @@ export const mountPeople: ViewMount = (ctx) => {
     if (tradeFilter.options.length !== tree.length + 1) {
       replace(tradeFilter, el('option', { value: '' }, 'Todos los oficios'), ...tree.map((x) => el('option', { value: x.trade.id, selected: x.trade.id === trade }, `${'· '.repeat(x.depth)}${x.trade.name}`)));
     }
-    const knows = trade ? new Set(data.capabilities.filter((c) => tradeWithDescendants(data.trades, trade).has(c.trade_id)).map((c) => c.person_id)) : null;
+    // El oficio y lo que cuelga de él, más quien lo sabe por un antepasado (1510).
+    const knows = trade ? new Set([...data.capabilities.filter((c) => tradeWithDescendants(data.trades, trade).has(c.trade_id)).map((c) => c.person_id),
+      ...[...effectiveLevels(data.trades, data.capabilities)].filter(([, m]) => m.has(trade)).map(([p]) => p)]) : null;
     const filtered = alive.filter((p) => (showInactive || p.active) && byLevel(p) && (!knows || knows.has(p.id)) && (!inTeam || inTeam.has(p.id)) && (!query || p.display_name.toLowerCase().includes(query)));
     paintLevelsNote(alive);
     if (teamFilter.options.length !== data.teams.length + 1) {
@@ -533,18 +535,36 @@ export function mountPerson(personId: string): ViewMount {
       fbMark(host.querySelector('#blockAccount'), 'central.persona.cuenta', 'Cuenta');
     }
 
-    /** Una capacidad: estrella (editable para quien gestiona personas: pulsar cambia el nivel), ruta del oficio y nota. */
+    /** «Por «Albañilería» ya tiene Sabe: aquí, como mínimo, Sabe.» */
+    const minimumText = (min: { level: number; from: string }) => {
+      const from = tradeTree(data.trades, true).find((x) => x.trade.id === min.from)?.path ?? '';
+      return `Por «${from}» ya tiene ${tradeLevelLabel(min.level)}: aquí, como mínimo, ${tradeLevelLabel(min.level)}.`;
+    };
+
+    /**
+     * Una capacidad: estrella (editable para quien gestiona personas: pulsar cambia el nivel), ruta del oficio y nota. Lo del
+     * padre es el mínimo en el hijo (1510): la estrella no baja de ahí y, si lo puesto es menos, dice de dónde le viene.
+     */
     function capabilityRow(person: Person, c: PersonTrade, path: string): HTMLElement {
+      const min = inheritedLevel(data.trades, data.capabilities, person.id, c.trade_id);
+      const shown = Math.max(c.level, min?.level ?? 0);
+      const fromPath = min && min.level > c.level ? tradeTree(data.trades, true).find((x) => x.trade.id === min.from)?.path ?? null : null;
       let star: HTMLElement;
       if (reserved && !person.deleted_at) {
-        const control = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: c.level, name: `Nivel en ${path}`,
-          onChange: (level) => void commitSafely(client, [{ op: 'update', table: T.personTrades, id: c.id, expectedRevision: c.revision, fields: { level } }], `Nivel: ${tradeLevelLabel(level)}.`) });
+        const control = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: shown, name: `Nivel en ${path}`,
+          onChange: (picked) => {
+            const level = min && picked < min.level ? min.level : picked;
+            if (level !== picked) control.set(level);
+            if (level === c.level) { if (level !== picked) toast(minimumText(min!)); return; }
+            void commitSafely(client, [{ op: 'update', table: T.personTrades, id: c.id, expectedRevision: c.revision, fields: { level } }],
+              level !== picked ? `Nivel: ${tradeLevelLabel(level)}. ${minimumText(min!)}` : `Nivel: ${tradeLevelLabel(level)}.`);
+          } });
         markLevelStar(control.element.querySelector('button'));
         star = control.element;
-      } else star = levelStar(c.level);
+      } else star = levelStar(shown);
       return el('li', { class: 'caprow', 'data-trade': c.trade_id, 'data-feedback-id': 'central.persona.oficios.fila', 'data-feedback-label': 'Oficio de la persona' },
         star,
-        el('span', { class: 'capname' }, el('strong', null, path), el('span', { class: 'muted small' }, ` · ${tradeLevelLabel(c.level)}`)),
+        el('span', { class: 'capname' }, el('strong', null, path), el('span', { class: 'muted small' }, ` · ${tradeLevelLabel(shown)}${fromPath ? ` · por ${fromPath}` : ''}`)),
         c.note ? el('span', { class: 'muted small capnote', 'data-feedback-ignore': '' }, c.note) : null,
         reserved && !person.deleted_at ? el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.persona.oficios.editar', 'data-feedback-label': 'Editar oficio de la persona', onclick: () => openCapabilityEditor(person, c) }, 'Editar') : null);
     }
@@ -556,12 +576,28 @@ export function mountPerson(personId: string): ViewMount {
       const tree = tradeTree(data.trades).filter((x) => c ? x.trade.id === c.trade_id : !taken.has(x.trade.id));
       if (!c && !tree.length) { toast(data.trades.some((t) => !t.deleted_at) ? 'Ya tiene todos los oficios del catálogo.' : 'Todavía no hay oficios: créalos en Personas › Oficios.'); return; }
       const tradeSelect = el('select', { id: 'pt-trade', disabled: !!c }, ...tree.map((x) => el('option', { value: x.trade.id }, `${'· '.repeat(x.depth)}${x.trade.name}`))) as HTMLSelectElement;
-      let level = c?.level ?? 1;
-      const star = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: level, name: 'Nivel', showLabel: true, onChange: (v) => { level = v; } });
+      // Lo heredado del padre es el mínimo (1510): la estrella no baja de ahí y un aviso lo dice antes de guardar.
+      const minOf = () => inheritedLevel(data.trades, data.capabilities, person.id, c?.trade_id ?? tradeSelect.value);
+      let level = Math.max(c?.level ?? 1, minOf()?.level ?? 0);
+      const minHint = el('p', { class: 'muted small', id: 'pt-min', 'aria-live': 'polite', 'data-feedback-id': 'central.persona.oficios.editor.minimo', 'data-feedback-label': 'Mínimo heredado del padre' });
+      const star = createLevelStar({ levels: 3, labels: [...TRADE_LEVEL_LABELS], value: level, name: 'Nivel', showLabel: true, onChange: (v) => {
+        const min = minOf();
+        level = min && v < min.level ? min.level : v;
+        if (level !== v) star.set(level);
+      } });
       markLevelStar(star.element.querySelector('button'));
+      const paintMin = () => {
+        const min = minOf();
+        minHint.textContent = min ? minimumText(min) : '';
+        minHint.hidden = !min;
+        if (min && level < min.level) { level = min.level; star.set(level); }
+      };
+      tradeSelect.addEventListener('change', paintMin);
+      paintMin();
       const note = el('input', { id: 'pt-note', type: 'text', maxlength: '300', value: c?.note ?? '', placeholder: 'Por ejemplo: solo instalaciones pequeñas' }) as HTMLInputElement;
       const save = el('button', { class: 'primary', type: 'button', id: 'savePersonTrade', 'data-feedback-id': 'central.persona.oficios.editor.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
-        const fields = { level, note: note.value.trim() || null };
+        const min = minOf();
+        const fields = { level: Math.max(level, min?.level ?? 0), note: note.value.trim() || null };
         const ops: RowOperation[] = c ? [{ op: 'update', table: T.personTrades, id: c.id, expectedRevision: c.revision, fields }]
           : [{ op: 'insert', table: T.personTrades, id: crypto.randomUUID(), fields: { ...fields, person_id: person.id, trade_id: tradeSelect.value } }];
         if (await commitSafely(client, ops, c ? 'Oficio guardado.' : 'Oficio añadido.')) await sheet?.close(true);
@@ -571,7 +607,7 @@ export function mountPerson(personId: string): ViewMount {
         body: el('div', { 'data-feedback-id': 'central.persona.oficios.editor', 'data-feedback-label': 'Oficio de la persona' },
           el('label', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_oficio', 'data-feedback-label': 'Oficio' }, el('span', null, 'Oficio'), tradeSelect),
           el('div', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_nivel', 'data-feedback-label': 'Nivel' }, el('span', null, 'Nivel'), star.element,
-            el('span', { class: 'muted small' }, 'Pulsa la estrella para cambiar: aprende, sabe, experto.')),
+            el('span', { class: 'muted small' }, 'Pulsa la estrella para cambiar: aprende, sabe, experto.'), minHint),
           el('label', { class: 'field', 'data-feedback-id': 'central.persona.oficios.editor.campo_nota', 'data-feedback-label': 'Nota' }, el('span', null, 'Nota (opcional)'), note)),
         panelAttrs: { 'data-feedback-id': 'central.persona.oficios.editor.hoja', 'data-feedback-label': 'Oficio de la persona' },
         closeAttrs: { 'data-feedback-id': 'central.persona.oficios.editor.cerrar', 'data-feedback-label': 'Cerrar' },

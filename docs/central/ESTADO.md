@@ -64,6 +64,10 @@
   - «Iniciales» en la ficha, opcionales, y en `people_options`.
   - `availability_options`, con la disponibilidad y su orden, para «Quién sabe hacerlo».
   - `people_options`, `trade_options` y `capability_options` abiertas al outsider de Tasks, sin nada reservado.
+- 2026-10-18 · **Herencia de capacidades** (`1510`, decisión del usuario): lo del padre baja a los hijos, nunca al revés.
+  - Grado efectivo en la cobertura, los indicadores y `capability_options` (con `inherited`).
+  - En la ficha, el hijo no baja del padre.
+  - «Quién sabe hacerlo», «N personas» y el filtro de Personas cuentan lo heredado.
 
 ## Pendiente
 

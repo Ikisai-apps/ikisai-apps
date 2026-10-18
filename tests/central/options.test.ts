@@ -53,7 +53,7 @@ test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte 
   const columns = {
     'central.people_options': ['active', 'house_level', 'initials', 'name', 'person_id', 'user_id'],
     'central.trade_options': ['name', 'parent_id', 'path', 'position', 'source_label_id', 'trade_id'],
-    'central.capability_options': ['level', 'person_id', 'trade_id'],
+    'central.capability_options': ['inherited', 'level', 'person_id', 'trade_id'], // 1510: + inherited
   };
   for (const actor of [reader, outsider]) {
     for (const [name, keys] of Object.entries(columns)) {

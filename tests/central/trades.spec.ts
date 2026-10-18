@@ -61,7 +61,7 @@ async function newTrade(page: Page, name: string, parent?: string): Promise<void
   await expect(page.locator('.traderow', { hasText: name })).toBeVisible();
 }
 
-test('oficios · árbol, capacidades con estrella, filtro con descendientes, chips y «Quién sabe hacerlo»', async ({ page }) => {
+test('oficios · árbol, capacidades con estrella, filtro con descendientes, chips, «Quién sabe hacerlo» y herencia del padre', async ({ page }) => {
   await login(page);
   await page.goto(`${baseURL}/#/personas`);
   await page.locator('#manageTrades').click();
@@ -107,10 +107,12 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   await expect(page.locator('.traderow', { hasText: 'Fontanería' }).locator('.accountmeta')).toHaveText('0 personas');
   await expect(page.locator('.traderow', { hasText: 'ACS' }).locator('.accountmeta')).toHaveText('1 persona');
   await expect(page.locator('.traderow', { hasText: 'Electricidad' }).locator('.accountmeta')).toHaveText('1 persona');
-  // R7 · cobertura: cada persona del directorio con su mejor nivel, contando lo que cuelga del oficio (Ana aprende ACS).
+  // R7 · cobertura con el grado efectivo (1510): lo del hijo no sube al padre. Ana aprende ACS, no Fontanería.
   const row = (name: string) => page.locator('.traderow', { has: page.locator('.accountname', { hasText: new RegExp(`^${name}$`) }) });
-  await expect(row('Fontanería').locator('.tradecoverage')).toHaveText('1 aprende');
-  await expect(row('Fontanería').locator('.tradeflags')).toHaveText(/En riesgo\s*Sin experto/);
+  await expect(row('Fontanería').locator('.tradecoverage')).toHaveCount(0);
+  await expect(row('Fontanería').locator('.tradeflags')).toHaveText('En riesgo');
+  await expect(row('ACS').locator('.tradecoverage')).toHaveText('1 aprende');
+  await expect(row('ACS').locator('.tradeflags')).toHaveText(/En riesgo\s*Sin experto/);
   await expect(row('Electricidad').locator('.tradecoverage')).toHaveText('1 sabe');
   await expect(row('Electricidad').locator('.tradeflags')).toHaveText('En riesgo');
   // «Solo en riesgo»: cada fila suelta, con su ruta.
@@ -134,6 +136,55 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
   await expect(page.locator('.traderow', { hasText: 'Electricidad' })).toHaveCount(0);
   await page.locator('#tradesArchived').check();
   await expect(page.locator('.traderow', { hasText: 'Electricidad' })).toContainText('Archivado');
+  await page.locator('#tradesArchived').uncheck();
+
+  // 1510 · lo del padre baja a los hijos: Bea sabe Fontanería, así que sabe ACS.
+  await page.goto(`${baseURL}/#/personas/${ids.bea}`);
+  await page.locator('#addTrade').click();
+  await page.locator('#pt-trade').selectOption({ label: 'Fontanería' });
+  await page.locator('#savePersonTrade').click();
+  await expect(page.locator('#personTrades')).toContainText('Fontanería');
+  // En su ficha basta con el padre: ACS no se pinta.
+  await expect(page.locator('#personTrades .caprow', { hasText: 'ACS' })).toHaveCount(0);
+  await page.goto(`${baseURL}/#/personas/oficios`);
+  await expect(row('Fontanería').locator('.tradecoverage')).toHaveText('1 sabe');
+  await expect(row('ACS').locator('.tradecoverage')).toHaveText('1 aprende · 1 sabe');
+  await expect(row('ACS').locator('.accountmeta')).toHaveText('2 personas');
+  await expect(row('Fontanería').locator('.accountmeta')).toHaveText('1 persona');
+  await row('ACS').click();
+  await expect(page.locator('#tradePeople [data-person="' + ids.bea + '"]')).toContainText('Sabe · por Fontanería');
+  await expect(page.locator('#tradePeople [data-person="' + ids.ana + '"]')).not.toContainText('por ');
+  await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  // Filtrar Personas por ACS enseña también a quien lo sabe por Fontanería; por Fontanería, a quien sabe ACS (como antes).
+  await page.goto(`${baseURL}/#/personas`);
+  await page.locator('#peopleTrade').selectOption({ label: '· ACS' });
+  await expect(page.locator('.personrow')).toHaveCount(2);
+  await page.locator('#peopleTrade').selectOption({ label: 'Fontanería' });
+  await expect(page.locator('.personrow')).toHaveCount(2);
+  await page.locator('#peopleTrade').selectOption('');
+
+  // En el hijo no se puede tener menos que en el padre: el aviso lo dice y la estrella no baja de «Sabe».
+  await page.goto(`${baseURL}/#/personas/${ids.bea}`);
+  await page.locator('#addTrade').click();
+  await page.locator('#pt-trade').selectOption({ label: '· ACS' });
+  await expect(page.locator('#pt-min')).toHaveText('Por «Fontanería» ya tiene Sabe: aquí, como mínimo, Sabe.');
+  const star = page.locator('.sheet .level-star');
+  await expect(star).toHaveAttribute('data-level', '1');
+  await star.click(); // Sabe → Experto
+  await expect(star).toHaveAttribute('data-level', '2');
+  await star.click(); // Experto → Aprende, que no se puede: se queda en Sabe
+  await expect(star).toHaveAttribute('data-level', '1');
+  await page.locator('#savePersonTrade').click();
+  const bea = async (trade: string) => (await api.app.t.db.query<{ l: number }>(`select x.level as l from central.person_trades x join central.trades t on t.id = x.trade_id
+    where x.person_id = $1 and t.name = $2 and x.deleted_at is null`, [ids.bea, trade])).rows[0]?.l;
+  await expect.poll(() => bea('ACS')).toBe(1);
+  // En la fila, la estrella tampoco baja del mínimo.
+  const acs = page.locator('#personTrades .caprow', { hasText: 'Fontanería › ACS' });
+  await acs.locator('.level-star').click(); // Sabe → Experto
+  await expect.poll(() => bea('ACS')).toBe(2);
+  await acs.locator('.level-star').click(); // Experto → Aprende: se guarda Sabe
+  await expect.poll(() => bea('ACS')).toBe(1);
+  await expect(page.getByText('Nivel: Sabe. Por «Fontanería» ya tiene Sabe: aquí, como mínimo, Sabe.')).toBeVisible();
 });
 
 test('oficios · importar de Tasks con vista previa: repetidas juntas, archivadas sin marcar, sin duplicar al repetir', async ({ page }) => {
