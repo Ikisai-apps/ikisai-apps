@@ -263,7 +263,8 @@ export function createSync(supabase: Supabase, app: string, hooks: AppHooks = {}
   async function setMember(ctx: RequestContext, body: any) {
     if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
     if (typeof body?.userId !== 'string' || !UUID.test(body.userId)) fail(422, 'INVALID_OPERATION', 'userId inválido.');
-    if (!['reader', 'editor', 'owner'].includes(body.role)) fail(422, 'INVALID_ROLE', messageFor('INVALID_ROLE'));
+    // C24: `outsider` solo para cambiar los ámbitos de quien ya lo es (el rol lo da el nivel de casa); lo valida core.set_membership.
+    if (!['reader', 'editor', 'owner', 'outsider'].includes(body.role)) fail(422, 'INVALID_ROLE', messageFor('INVALID_ROLE'));
     return supabase.rpc('core_set_membership', {
       p_app: app, p_actor: ctx.user.id, p_user: body.userId, p_role: body.role, p_scopes: body.scopes ?? null, p_display_name: typeof body.displayName === 'string' ? body.displayName : null,
     });
