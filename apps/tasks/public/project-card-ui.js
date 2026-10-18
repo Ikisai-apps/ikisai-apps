@@ -12,6 +12,8 @@ projectCard=function(p){
   if(typeof spacesMode==='function'&&spacesMode())chips.unshift(...aggregatedSpaces(p).filter(id=>spaceById(id)).map(id=>K.el('span',{class:'chip spacechip',style:`--chip:${zoneColor()}`,dataset:{space:id,pastel:'1'}},K.el('span',null,spaceShort(id)))));
   // P2: una chip por oficio («Fontanería › ACS»), detrás de los espacios, donde iba la acción.
   if(typeof tradesMode==='function'&&tradesMode())chips.splice(chips.filter(c=>c.classList?.contains('spacechip')).length,0,...sortTrades(aggregatedTrades(p)).map(id=>K.el('span',{class:'chip tradechip',style:`--chip:${actionColor()}`,dataset:{trade:id,pastel:'1'}},K.el('span',null,tradeShort(id)))));
+  // P2: una chip por persona o grupo (iniciales, «Todo el staff»), detrás de los oficios, donde salía la persona.
+  if(typeof peopleMode==='function'&&peopleMode()){const area=areaOfProject(p),at=chips.filter(c=>c.classList?.contains('spacechip')||c.classList?.contains('tradechip')).length+personSlot(aggregatedLabels(p),area);chips.splice(at,0,...sortPeople(aggregatedPeople(p)).map(k=>K.el('span',{class:'chip personchip',style:`--chip:${personColor(area)}`,title:personFull(k),dataset:{person:k,pastel:'1'}},K.el('span',null,personShort(k)))))}
   const cost=projectCost(p),budget=Number(p.budget)||0;
   // Mismo orden que antes: asa, fijar y el control invisible de ordenar por menú.
   const actions=[];
