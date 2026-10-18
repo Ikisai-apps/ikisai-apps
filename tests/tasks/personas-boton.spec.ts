@@ -128,7 +128,7 @@ test('el botón solo lo ve la propietaria, en «Trabajo» tras «Etiquetas»; la
   await expect(sheet().locator(`[data-person-row="${VG}"]`)).toContainText('Mantenimiento · 1 tarea · responsable de 1');
   // Las de la demostración (otras áreas) tampoco casan con nadie: aquí se quitan, como haría la propietaria.
   const others = await sheet().locator('[data-person-map]').evaluateAll((s) => s.map((x: any) => x.dataset.personMap));
-  for (const label of others.filter((l: string) => ![STAFF, VG, JARDINERO].includes(l))) {
+  for (const label of others.filter((l: string) => !([STAFF, VG, JARDINERO] as string[]).includes(l))) {
     await expect(page.locator(`[data-person-map="${label}"]`)).toHaveValue('');
     await page.locator(`[data-person-map="${label}"]`).selectOption('remove');
     await expect(page.locator(`[data-person-map="${label}"]`)).toHaveValue('remove');
