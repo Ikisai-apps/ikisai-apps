@@ -80,3 +80,30 @@ test('dirección · KPIs de Central, objetivo con umbrales y lectura sin red @sm
   await expect(overdue.locator('.kpivalue')).toHaveText('1');
   await context.setOffline(false);
 });
+
+test('dirección · caracterización (R7): un grupo por app en orden, Central por clave con su enlace, cada mes una tarjeta', async ({ page }) => {
+  await login(page);
+  await expect(page.locator('#dashboardMeta')).toContainText('Actualizado');
+  const groups = page.locator('.kpigroup');
+  // Central va primero; detrás, las apps que publican, en el orden de KPI_SOURCES. Sin plegar ni subtítulos.
+  await expect(groups.first().locator('.sectionlabel')).toHaveText('Central');
+  await expect(groups.first().locator('.sectionlabel')).toHaveCount(1);
+  const labels = await page.locator('.kpigroup > .sectionlabel').allTextContents();
+  const order = ['Central', 'Booking', 'Finance', 'Tasks', 'Food'];
+  expect(labels.map((l) => order.indexOf(l))).toEqual([...labels.map((l) => order.indexOf(l))].sort((a, b) => a - b));
+  // Las 7 de Central, en orden de clave, cada una con su pantalla.
+  const central = groups.first().locator('.kpicard');
+  expect(await central.evaluateAll((cs) => cs.map((c) => [c.getAttribute('data-kpi'), c.getAttribute('href')]))).toEqual([
+    ['central.blocking_overdue', '#/cumplimiento'],
+    ['central.documents_expired', '#/cumplimiento/documentos'],
+    ['central.legal_due_soon', '#/cumplimiento'],
+    ['central.legal_overdue', '#/cumplimiento'],
+    ['central.people_active', '#/personas'],
+    ['central.people_records_expired', '#/personas'],
+    ['central.risks_high_open', '#/cumplimiento/requisitos'],
+  ]);
+  // El owner fija objetivos en cada tarjeta.
+  await expect(central.locator('.kpitarget')).toHaveCount(7);
+  // Un indicador mensual saca una tarjeta por mes (ocupación de Booking: 12 meses atrás y 3 adelante).
+  if (labels.includes('Booking')) await expect(page.locator('.kpicard[data-kpi="booking.occupancy_rate"]')).toHaveCount(16);
+});

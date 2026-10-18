@@ -103,6 +103,10 @@ test('oficios · árbol, capacidades con estrella, filtro con descendientes, chi
 
   // Oficios: «Quién sabe hacerlo» con su nivel; archivar saca el oficio de la lista.
   await page.goto(`${baseURL}/#/personas/oficios`);
+  // Caracterización (R7): «N personas» cuenta solo las del propio oficio, no lo que cuelga de él.
+  await expect(page.locator('.traderow', { hasText: 'Fontanería' }).locator('.accountmeta')).toHaveText('0 personas');
+  await expect(page.locator('.traderow', { hasText: 'ACS' }).locator('.accountmeta')).toHaveText('1 persona');
+  await expect(page.locator('.traderow', { hasText: 'Electricidad' }).locator('.accountmeta')).toHaveText('1 persona');
   await page.locator('.traderow', { hasText: 'ACS' }).click();
   await expect(page.locator('#tradePeople')).toContainText('Ana Ficticia');
   await expect(page.locator('#tradePeople')).toContainText('Aprende');
