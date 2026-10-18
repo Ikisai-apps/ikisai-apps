@@ -1,0 +1,26 @@
+/* O1, paso 2 · comentarios de una tarea (comments-ui.js): el hilo de la ficha y el contador 💬 de la tarjeta. Usa los
+   tokens del tema (claro y oscuro) con valores de respaldo. */
+.comments{margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line,#e4dccf)}
+.commentstitle{margin:0 0 8px;font-size:15px}
+.commentlist{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:8px}
+.comment{padding:8px 10px;border-radius:12px;background:var(--paper-2,#f4ede2);overflow-wrap:anywhere}
+.comment.mine{background:var(--hover,rgba(70,81,59,.07));border:1px solid var(--line,#e4dccf)}
+.commenthead{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;font-size:13px}
+.commentauthor{font-weight:700}
+.commentwhen{font-size:12px;color:var(--muted,#6f665b)}
+.commentactions{margin-inline-start:auto;display:inline-flex;gap:2px}
+.commentaction{min-height:36px;min-width:36px;padding:4px 8px;border:0;background:transparent;color:var(--olive-dark,#4f5b2c);font:inherit;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px}
+.commentaction:hover{background:var(--hover,rgba(70,81,59,.07))}
+.commentaction.armed{color:#a63d3d}
+.commentbody{margin:4px 0 0;white-space:pre-wrap;font-size:14px;line-height:1.4}
+.commentphoto{display:block;width:min(100%,280px);height:auto;max-height:320px;margin-top:6px;border-radius:10px;object-fit:contain;background:var(--paper,#fffaf1)}
+.commentphoto:not([src]){min-height:60px;width:120px}
+.commentphoto.missing{min-height:0;width:auto;font-size:12px}
+.commentform textarea,.commentedit{width:100%;min-height:64px;box-sizing:border-box;resize:vertical}
+.commentbar{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.commentbar .primary{margin-inline-start:auto}
+.commentphotobtn{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:700}
+.commentpreview{display:inline-flex;align-items:center;gap:4px}
+.commentpreview img{width:44px;height:44px;object-fit:cover;border-radius:8px}
+.outsiderdone{margin-bottom:10px}
+.commentcount{display:inline-flex;align-items:center;gap:2px;margin-inline-start:6px;font-size:12px;color:var(--muted,#6f665b);white-space:nowrap}

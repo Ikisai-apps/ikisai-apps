@@ -40,7 +40,8 @@ function persistUI(){if(Sync.secondary)return;Sync.record.ui=ui();writeRecord().
 function storageError(e){setMode('error');console.error(e);toast('No se pudo guardar en este dispositivo. Exporta tus cambios desde el menú.')}
 function adopt(tabs){state.tabs=cloneModel(tabs);if(!state.tabs.some(t=>t.id===state.activeTab&&!t.deleted)){state.activeTab=state.tabs.find(t=>!t.deleted)?.id||state.tabs[0]?.id;state.currentProject=null;state.view='projects'}if(state.currentProject&&!state.tabs.find(t=>t.id===state.activeTab)?.projects.some(p=>p.id===state.currentProject&&!p.deleted&&p.status!=='archived')){state.currentProject=null;state.view='projects'}normalize();Sync.last=cloneModel(state.tabs)}
 /* O1: el outsider (por su nivel de casa) solo ve lo que se le abre. Para él, ámbitos vacíos o «*» son nada (como en el
-   servidor), y de momento la interfaz lo trata como lector; `outsider` queda marcado para el paso 2 (hecha y comentarios). */
+   servidor). La interfaz lo trata como lector salvo en la casilla de hecha y el hilo de comentarios (paso 2, comments-ui.js):
+   `role` sigue siendo 'reader' para todo lo demás y `outsider` lo distingue. */
 function actorFrom(boot){if(!boot)return null;const scopes=boot.membership.scopes,outsider=boot.membership.role==='outsider';return {id:boot.profile.userId,name:boot.profile.displayName||'',role:outsider?'reader':boot.membership.role,outsider,scopes:outsider?(scopes==null||scopes==='*'?{tabs:[],projects:{}}:scopes):scopes==null?'*':scopes,kind:boot.profile.kind||'human',session:true}}
 
 /* Estado de sincronización → Sync.mode, Sync.busy y la insignia. */
@@ -59,12 +60,12 @@ function refreshModel(){const core=Sync.core;if(!core||!Sync.actor||Sync.leaving
 function onCoreChange(kind){if(kind==='data')refreshModel();refreshStatus()}
 
 const renderLocal=render;
-render=function(){if(document.getElementById('bootFailure'))return;renderLocal();setMode(Sync.mode);if((Sync.actor?.role==='reader'||Sync.secondary)){document.querySelectorAll('[data-toggle-task],[data-edit-family],[data-new-label],[data-toggle-label],[data-toggle-family],[data-edit-project],#newFamily,#quickAdd,#fab,[data-drag]').forEach(el=>el.disabled=true);document.querySelectorAll('[data-task-menu]').forEach(el=>el.onclick=()=>openTaskEditor(el.dataset.taskMenu));}}
+render=function(){if(document.getElementById('bootFailure'))return;renderLocal();setMode(Sync.mode);if((Sync.actor?.role==='reader'||Sync.secondary)){document.querySelectorAll((Sync.actor?.outsider&&!Sync.secondary?'':'[data-toggle-task],')+'[data-edit-family],[data-new-label],[data-toggle-label],[data-toggle-family],[data-edit-project],#newFamily,#quickAdd,#fab,[data-drag]').forEach(el=>el.disabled=true);document.querySelectorAll('[data-task-menu]').forEach(el=>el.onclick=()=>openTaskEditor(el.dataset.taskMenu));}}
 const bindLocal=bind;
 bind=function(){bindLocal();const search=document.getElementById('searchInput');if(search)search.oninput=e=>{state.search=e.target.value;const pos=e.target.selectionStart;persistUI();clearTimeout(rr);rr=setTimeout(()=>{render();const s=document.getElementById('searchInput');s?.focus();s?.setSelectionRange(pos,pos)},160)};document.querySelectorAll('[data-tab],[data-nav],[data-open-project]').forEach(el=>{const fn=el.onclick;el.onclick=e=>{fn?.(e);persistUI()}})};
 
 /* Guardar: el modelo editado se compara con el espejo y sale como operaciones de fila validadas. */
-save=function(){normalize();if(!Sync.core||!Sync.actor){toast('Inicia sesión primero.');return false}if((Sync.actor.role==='reader'||Sync.secondary)){if(Sync.last)adopt(Sync.last);render();toast('Tu acceso es de solo lectura.');return false}
+save=function(){normalize();if(!Sync.core||!Sync.actor){toast('Inicia sesión primero.');return false}if(((Sync.actor.role==='reader'&&!Sync.actor.outsider)||Sync.secondary)){if(Sync.last)adopt(Sync.last);render();toast('Tu acceso es de solo lectura.');return false}
  let batches;try{batches=Sync.core.plan(state.tabs)}catch(e){if(Sync.last)adopt(Sync.last);render();toast(e.message||'No se pudo guardar.');return false}
  Sync.last=cloneModel(state.tabs);Sync.lastComposed='';Sync.record.tabs=Sync.last;Sync.record.ui=ui();writeRecord().catch(storageError);
  if(batches.length){const work=Sync.core.commit(batches,()=>uid('req-'));Sync.chain=Sync.chain.then(()=>work).then(()=>{Sync.channel?.postMessage({type:'changed'})}).catch(storageError);Sync.mode='pending'}
