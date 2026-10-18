@@ -92,6 +92,9 @@ import {
   createItemPicker,
   createItemCatalog,
   createItemSheet,
+  createMovementForm,
+  createCountSession,
+  type MovementMode,
   stockFromMovements,
   type MovementRow,
   createMemoryItemSource,
@@ -1202,13 +1205,32 @@ const invSource = createMemoryItemSource({
   movementCosts: [],
 }, { delay: 400, supplierNames: { 'sup-molinos': 'Molinos Sur', 'sup-eco': 'EcoGranel' } });
 (window as unknown as { invSource: typeof invSource }).invSource = invSource;
+// Movimientos y recuento (0.38): en una hoja, como lo harán las apps.
+const openInvMovement = (mode: MovementMode, item?: ItemRow) => {
+  let sheet: ReturnType<typeof openSheet> | null = null;
+  const form = createMovementForm({
+    source: invSource, spaces: spaceSource, mode, itemId: item?.id ?? null, quickSpaces: ['despensa', 'camara', 'piscina'], today: invToday,
+    feedbackId: 'demo.inventario.movimiento', onDone: () => { toast('Registrado'); void sheet?.close(true); }, onCancel: () => void sheet?.close(true),
+  });
+  sheet = openSheet({ title: item ? item.name : 'Movimiento a mano', body: form.element, onClose: () => form.destroy() });
+};
+const openInvCount = (spaceId: string | null, itemIds?: string[]) => {
+  let sheet: ReturnType<typeof openSheet> | null = null;
+  const session = createCountSession({
+    source: invSource, spaces: spaceSource, spaceId, ...(itemIds ? { itemIds } : {}), today: invToday, feedbackId: 'demo.inventario.recuento',
+    onLeave: () => void sheet?.close(true), onClosed: () => toast('Recuento cerrado'),
+  });
+  sheet = openSheet({ title: 'Recuento', hideTitle: true, body: session.element, onClose: () => session.destroy() });
+};
+const invActionMode: Record<string, MovementMode> = { spend: 'exit', entry: 'entry', transfer: 'transfer' };
+const onInvAction = (a: string, it: ItemRow) => (a === 'count' ? openInvCount(null, [it.id]) : openInvMovement(invActionMode[a]!, it));
 const invSheetHost = el('div', { id: 'invSheetHost', class: 'card' }, el('p', { class: 'hint' }, 'Toca un artículo para ver su ficha.'));
 let invSheet: ReturnType<typeof createItemSheet> | null = null;
 const openInvSheet = (item: ItemRow) => {
   invSheet?.destroy();
   invSheet = createItemSheet({
     source: invSource, itemId: item.id, spaces: spaceSource, feedbackId: 'demo.inventario.ficha',
-    actions: ['spend', 'entry', 'transfer', 'count'], onAction: (a, it) => toast(`${a}: ${it.name} (formulario en la 0.38)`),
+    actions: ['spend', 'entry', 'transfer', 'count'], onAction: onInvAction,
     suppliers: [{ id: 'sup-molinos', name: 'Molinos Sur' }, { id: 'sup-eco', name: 'EcoGranel' }],
     sourceLink: (app, ref) => (app === 'finance' ? { label: `Factura ${ref.replace('inv-', '2026-')}`, onClick: () => toast('Abriría la factura en Finance') } : app === 'food' ? { label: 'Comida del sábado', onClick: () => toast('Abriría el servicio en Food') } : null),
     personName: (id) => ({ ana: 'Ana' })[id] ?? null,
@@ -1218,12 +1240,15 @@ const openInvSheet = (item: ItemRow) => {
 };
 const invCatalog = createItemCatalog({
   source: invSource, spaces: spaceSource, label: 'Inventario', spaceChips: ['cocina', 'piscina'], canCreate: true, feedbackId: 'demo.inventario',
-  actions: ['spend', 'entry', 'count'], onAction: (a, it) => toast(`${a}: ${it.name} (formulario en la 0.38)`),
+  actions: ['spend', 'entry', 'count'], onAction: onInvAction,
   rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [{ label: 'Pedir', primary: true, onClick: () => toast('Pedido a Tasks') }] : []),
   onOpen: openInvSheet, today: invToday,
 });
 invCatalog.element.id = 'invCatalog';
 const inventorySection = section('inventory', 'Inventario (R3)', 'createItemCatalog: buscar, filtros a un toque (bajo mínimo, caduca pronto, sitios, tipos, archivados), agrupado por sitio, acciones del kit y de la app («Pedir»), y filas que se alinean en columnas con ancho. createItemSheet: stock por sitio y lote con coste medio, datos (máquinas con marca, serie y estado), unidades y movimientos con su origen.',
+  el('div', { class: 'demo-row' },
+    el('button', { type: 'button', class: 'ghost', id: 'invMove', onclick: () => openInvMovement('exit') }, 'Movimiento a mano'),
+    el('button', { type: 'button', class: 'ghost', id: 'invCountKitchen', onclick: () => openInvCount('cocina') }, 'Recuento de la cocina')),
   el('div', { class: 'card' }, invCatalog.element), invSheetHost,
 );
 // --- Calendario de persona (O2/O4) -----------------------------------------------------------------------

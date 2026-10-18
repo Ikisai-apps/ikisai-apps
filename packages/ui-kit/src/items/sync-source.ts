@@ -11,7 +11,9 @@
  * - Lee el espejo (`items`, `item_units`, `item_kinds`, `movements`, `lots` y `movement_costs`), así que funciona sin red;
  *   el stock es la suma de movimientos del espejo, como permite la API, y el coste medio se calcula igual que `item_costs`.
  * - La ficha escribe con la revisión de la fila (`update`, `setActive`, `saveUnit`, `removeUnit`); los rechazos
- *   (`ITEM_IN_USE`, `INVALID_UNIT`…) se enseñan con el mensaje del servidor.
+ *   (`ITEM_IN_USE`, `INVALID_UNIT`, `INVALID_MOVEMENT`, `COUNT_CLOSED`…) se enseñan con el mensaje del servidor.
+ * - Movimientos a mano (`record`) en un solo lote, con los lotes nuevos; recuentos (`openCount`, `saveCountLine`) y
+ *   `closeCount` (`resources.close_count`), que se encolan sin red y se aplican al sincronizar.
  * - Crear es un lote con una sola alta; sin red queda pendiente y se sube al volver.
  * - **Nombre repetido entre dos dispositivos sin red:** el servidor rechaza la segunda alta (`CONSTRAINT_VIOLATION`, índice
  *   único por nombre). La fuente descarta ese lote, busca el que ya existe en el espejo y avisa con `onDuplicate`;
@@ -21,7 +23,7 @@ import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/syn
 import { kt } from '../i18n/i18n.ts';
 import { toast } from '../toast.ts';
 import {
-  DEFAULT_ITEM_KINDS, itemFromRow, itemKey, itemKindFromRow, itemToFields, itemUnitFromRow, lotFromRow, movementFromRow, stockFromMovements,
+  DEFAULT_ITEM_KINDS, countFromRow, countLineFromRow, itemFromRow, itemKey, itemKindFromRow, itemToFields, itemUnitFromRow, lotFromRow, movementFromRow, movementToFields, stockFromMovements,
   type ItemDuplicate, type ItemSnapshot, type ItemSource,
 } from './model.ts';
 
@@ -31,6 +33,8 @@ const KINDS = 'resources.item_kinds' as TableName;
 const MOVEMENTS = 'resources.movements' as TableName;
 const LOTS = 'resources.lots' as TableName;
 const COSTS = 'resources.movement_costs' as TableName;
+const COUNTS = 'resources.counts' as TableName;
+const LINES = 'resources.count_lines' as TableName;
 
 export interface SyncItemSourceOptions {
   /** Nombre visible de un proveedor de Finance (`default_supplier_id`, `supplier_id`). */
@@ -40,7 +44,7 @@ export interface SyncItemSourceOptions {
 }
 
 export function createSyncItemSource(client: SyncClient, options: SyncItemSourceOptions = {}): ItemSource & { destroy(): void } {
-  const tables: Record<string, SyncedRow[]> = { [ITEMS]: [], [UNITS]: [], [KINDS]: [], [MOVEMENTS]: [], [LOTS]: [], [COSTS]: [] };
+  const tables: Record<string, SyncedRow[]> = { [ITEMS]: [], [UNITS]: [], [KINDS]: [], [MOVEMENTS]: [], [LOTS]: [], [COSTS]: [], [COUNTS]: [], [LINES]: [] };
   const listeners = new Set<(s: ItemSnapshot) => void>();
   const dupListeners = new Set<(d: ItemDuplicate) => void>();
   const mine = new Map<string, { draftId: string; name: string }>();
@@ -64,6 +68,8 @@ export function createSyncItemSource(client: SyncClient, options: SyncItemSource
       lots: live(tables[LOTS]!).map(lotFromRow),
       movements: live(tables[MOVEMENTS]!).map(movementFromRow),
       movementCosts: live(tables[COSTS]!).map((r) => ({ movementId: String(r.movement_id), unitCost: Number(r.unit_cost ?? 0) })),
+      counts: live(tables[COUNTS]!).map(countFromRow),
+      countLines: live(tables[LINES]!).map(countLineFromRow),
     };
   }
   const emit = () => { const s = snapshot(); listeners.forEach((l) => l(s)); };
@@ -131,6 +137,27 @@ export function createSyncItemSource(client: SyncClient, options: SyncItemSource
         const row = tables[UNITS]!.find((r) => r.id === unit.id) ?? await client.get(UNITS, unit.id);
         await commitOwn([{ op: 'update', table: UNITS, id: unit.id, expectedRevision: row?.revision ?? 0, fields }]);
       }
+    },
+    async record({ movements, lots }) {
+      // Un solo lote: los lotes nuevos primero y las dos filas de cada traslado juntas (el hook lo exige).
+      await commitOwn([
+        ...(lots ?? []).map((l) => ({ op: 'insert' as const, table: LOTS, id: l.id, fields: { item_id: l.itemId, code: l.code, expires_on: l.expiresOn } })),
+        ...movements.map((m) => ({ op: 'insert' as const, table: MOVEMENTS, id: m.id, fields: movementToFields(m) })),
+      ]);
+    },
+    async openCount({ id, spaceId, note }) {
+      await commitOwn([{ op: 'insert', table: COUNTS, id, fields: { space_id: spaceId, note: note ?? null } }]);
+    },
+    async saveCountLine(line, isNew) {
+      const fields = { count_id: line.countId, item_id: line.itemId, space_id: line.spaceId, lot_id: line.lotId, quantity: line.quantity, note: line.note };
+      if (isNew) await commitOwn([{ op: 'insert', table: LINES, id: line.id, fields }]);
+      else {
+        const row = tables[LINES]!.find((r) => r.id === line.id) ?? await client.get(LINES, line.id);
+        await commitOwn([{ op: 'update', table: LINES, id: line.id, expectedRevision: row?.revision ?? 0, fields: { quantity: line.quantity, note: line.note } }]);
+      }
+    },
+    async closeCount(countId) {
+      await commitOwn([{ op: 'call', procedure: 'resources.close_count', args: { count_id: countId } }]);
     },
     async removeUnit(id) {
       const row = tables[UNITS]!.find((r) => r.id === id) ?? await client.get(UNITS, id);

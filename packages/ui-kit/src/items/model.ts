@@ -96,7 +96,34 @@ export interface ItemSnapshot {
   lots?: LotRow[];
   movements?: MovementRow[];
   movementCosts?: MovementCostRow[];
+  counts?: CountRow[];
+  countLines?: CountLineRow[];
 }
+
+/** Recuento (`resources.counts`): `spaceId` null = todo; un sitio = ese y lo que cuelga de él. */
+export interface CountRow {
+  id: string;
+  spaceId: string | null;
+  status: 'abierto' | 'cerrado';
+  note: string | null;
+  createdAt: string;
+  pending?: boolean;
+}
+
+/** Línea contada (`resources.count_lines`): una por recuento, artículo, sitio y lote. */
+export interface CountLineRow {
+  id: string;
+  countId: string;
+  itemId: string;
+  spaceId: string;
+  lotId: string | null;
+  quantity: number;
+  note: string | null;
+  pending?: boolean;
+}
+
+/** Movimiento a mano que se va a escribir (sin los campos que pone el servidor). */
+export type MovementDraft = Pick<MovementRow, 'id' | 'itemId' | 'spaceId' | 'lotId' | 'quantity' | 'kind' | 'reason' | 'unitCost' | 'transferId' | 'sourceApp' | 'sourceRef' | 'note'> & { at?: string };
 
 export interface ItemDraft {
   id: string;
@@ -129,6 +156,14 @@ export interface ItemSource {
   /** Alta o cambio de una conversión (`item_units`). */
   saveUnit?(unit: ItemUnitRow, isNew: boolean): Promise<void>;
   removeUnit?(id: string): Promise<void>;
+  /** Movimientos a mano (y lotes nuevos de una entrada) en **un solo lote**: un traslado son dos filas juntas. */
+  record?(draft: { movements: MovementDraft[]; lots?: LotRow[] }): Promise<void>;
+  /** Abre un recuento (sin red también). */
+  openCount?(count: { id: string; spaceId: string | null; note?: string | null }): Promise<void>;
+  /** Guarda una línea contada (alta o cambio). */
+  saveCountLine?(line: CountLineRow, isNew: boolean): Promise<void>;
+  /** `resources.close_count`: se aplica al sincronizar, con el stock de ese momento. */
+  closeCount?(countId: string): Promise<void>;
 }
 
 /** Tipos de movimiento en palabras (docs/resources/API.md §3). */
@@ -391,6 +426,79 @@ export function movementFromRow(row: Record<string, unknown>): MovementRow {
   };
 }
 
+/**
+ * Reparto de una salida o un traslado entre los lotes de un sitio: primero lo que caduca antes, después lo que no
+ * caduca. Lo que no alcanza va en `shortfall` (sin lote), como hace `resources.consume`.
+ */
+export function fefoPlan(itemId: string, spaceId: string, quantity: number, stock: readonly StockLine[], lots: readonly LotRow[]): { parts: Array<{ lotId: string | null; quantity: number }>; shortfall: number } {
+  const byId = new Map(lots.map((l) => [l.id, l]));
+  const here = stock.filter((l) => l.itemId === itemId && l.spaceId === spaceId && l.quantity > 0)
+    .sort((a, b) => {
+      const ea = a.lotId ? byId.get(a.lotId)?.expiresOn ?? '9999' : '9999z';
+      const eb = b.lotId ? byId.get(b.lotId)?.expiresOn ?? '9999' : '9999z';
+      return ea.localeCompare(eb);
+    });
+  const parts: Array<{ lotId: string | null; quantity: number }> = [];
+  let left = Math.round(quantity * 1e6) / 1e6;
+  for (const l of here) {
+    if (left <= 0) break;
+    const take = Math.min(left, l.quantity);
+    parts.push({ lotId: l.lotId, quantity: Math.round(take * 1e6) / 1e6 });
+    left = Math.round((left - take) * 1e6) / 1e6;
+  }
+  return { parts, shortfall: left > 0 ? left : 0 };
+}
+
+/** Stock de un artículo en un sitio y lote concretos (lo que el servidor llama «lo calculado»). */
+export function stockAt(stock: readonly StockLine[], itemId: string, spaceId: string, lotId: string | null): number {
+  return Math.round(stock.filter((l) => l.itemId === itemId && l.spaceId === spaceId && l.lotId === lotId).reduce((a, l) => a + l.quantity, 0) * 1e6) / 1e6;
+}
+
+export interface CountTarget {
+  itemId: string;
+  spaceId: string;
+  lotId: string | null;
+  /** Lo calculado ahora (puede cambiar antes de cerrar). */
+  expected: number;
+}
+
+/**
+ * Qué se espera encontrar en unos sitios: cada artículo activo con stock ahí (por lote) y los que se guardan ahí aunque
+ * estén a cero. Con `itemIds`, solo esos (el «Recontar» de una fila).
+ */
+export function countTargets(snapshot: ItemSnapshot, spaceIds: readonly string[] | null, itemIds?: readonly string[] | null): CountTarget[] {
+  const inScope = (sid: string) => !spaceIds || spaceIds.includes(sid);
+  const wanted = (id: string) => !itemIds || itemIds.includes(id);
+  const active = new Map(snapshot.items.filter((i) => i.active && wanted(i.id)).map((i) => [i.id, i]));
+  const out = new Map<string, CountTarget>();
+  for (const l of snapshot.stock) {
+    if (!active.has(l.itemId) || !inScope(l.spaceId) || l.quantity <= 0) continue;
+    out.set(`${l.itemId}|${l.spaceId}|${l.lotId ?? ''}`, { itemId: l.itemId, spaceId: l.spaceId, lotId: l.lotId, expected: stockAt(snapshot.stock, l.itemId, l.spaceId, l.lotId) });
+  }
+  for (const it of active.values()) {
+    const home = it.defaultSpaceId;
+    if (!home || !inScope(home) || [...out.values()].some((t) => t.itemId === it.id)) continue;
+    out.set(`${it.id}|${home}|`, { itemId: it.id, spaceId: home, lotId: null, expected: 0 });
+  }
+  return [...out.values()];
+}
+
+export function countFromRow(row: Record<string, unknown>): CountRow {
+  return { id: String(row.id), spaceId: (row.space_id as string | null) ?? null, status: row.status === 'cerrado' ? 'cerrado' : 'abierto', note: (row.note as string | null) ?? null, createdAt: String(row.created_at ?? ''), pending: row._pending === true };
+}
+
+export function countLineFromRow(row: Record<string, unknown>): CountLineRow {
+  return { id: String(row.id), countId: String(row.count_id), itemId: String(row.item_id), spaceId: String(row.space_id), lotId: (row.lot_id as string | null) ?? null, quantity: Number(row.quantity ?? 0), note: (row.note as string | null) ?? null, pending: row._pending === true };
+}
+
+/** Borrador de movimiento → columnas de `resources.movements`. */
+export function movementToFields(m: MovementDraft): Record<string, unknown> {
+  return {
+    item_id: m.itemId, space_id: m.spaceId, lot_id: m.lotId, quantity: m.quantity, kind: m.kind, reason: m.reason, unit_cost: m.unitCost,
+    transfer_id: m.transferId, source_app: m.sourceApp, source_ref: m.sourceRef, note: m.note, ...(m.at ? { at: m.at } : {}),
+  };
+}
+
 /** Fila de `resources.items` (espejo) → forma del kit. */
 export function itemFromRow(row: Record<string, unknown>): ItemRow {
   const attributes = (row.attributes as Record<string, unknown> | null) ?? {};
@@ -421,13 +529,14 @@ export function newItemId(): string {
  * Fuente en memoria (demo y pruebas). `server`: artículos que ya existen en el servidor pero aún no en este
  * dispositivo; crear uno con el mismo nombre se rechaza como haría el índice único (`onDuplicate`).
  */
-export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?: number; server?: ItemRow[]; supplierNames?: Record<string, string>; failUpdate?: (id: string, fields: Partial<ItemRow>) => string | null } = {}): ItemSource & { snapshot(): ItemSnapshot } {
+export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?: number; server?: ItemRow[]; supplierNames?: Record<string, string>; failUpdate?: (id: string, fields: Partial<ItemRow>) => string | null; me?: string } = {}): ItemSource & { snapshot(): ItemSnapshot } {
   let snap: ItemSnapshot = { ...initial, items: initial.items.slice() };
   const listeners = new Set<(s: ItemSnapshot) => void>();
   const dupListeners = new Set<(d: ItemDuplicate) => void>();
   const server = (options.server ?? []).slice();
   const emit = () => { const s = { ...snap, items: snap.items.slice() }; listeners.forEach((l) => l(s)); };
   const wait = () => new Promise<void>((r) => setTimeout(r, options.delay ?? 0));
+  const restock = (moves: readonly MovementRow[]) => stockFromMovements(moves.map((m) => ({ item_id: m.itemId, space_id: m.spaceId, lot_id: m.lotId, quantity: m.quantity })));
   return {
     list: () => ({ ...snap, items: snap.items.slice() }),
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -467,6 +576,40 @@ export function createMemoryItemSource(initial: ItemSnapshot, options: { delay?:
       emit();
     },
     async removeUnit(id) { snap.units = snap.units.filter((u) => u.id !== id); emit(); },
+    async record({ movements, lots }) {
+      const at = new Date().toISOString();
+      const rows: MovementRow[] = movements.map((m) => ({ ...m, countId: null, at: m.at ?? at, createdBy: options.me ?? null, pending: true }));
+      snap.lots = [...(snap.lots ?? []), ...(lots ?? [])];
+      snap.movements = [...(snap.movements ?? []), ...rows];
+      snap.stock = restock(snap.movements);
+      emit();
+      void wait().then(() => { const ids = new Set(rows.map((r) => r.id)); snap.movements = (snap.movements ?? []).map((m) => (ids.has(m.id) ? { ...m, pending: false } : m)); emit(); });
+    },
+    async openCount({ id, spaceId, note }) {
+      snap.counts = [...(snap.counts ?? []), { id, spaceId, note: note ?? null, status: 'abierto', createdAt: new Date().toISOString(), pending: true }];
+      emit();
+    },
+    async saveCountLine(line, isNew) {
+      snap.countLines = isNew ? [...(snap.countLines ?? []), { ...line, pending: true }] : (snap.countLines ?? []).map((l) => (l.id === line.id ? { ...line, pending: true } : l));
+      emit();
+    },
+    async closeCount(countId) {
+      // Como el servidor: un ajuste por línea con la diferencia frente a lo calculado al llegar el lote.
+      void wait().then(() => {
+        const lines = (snap.countLines ?? []).filter((l) => l.countId === countId);
+        const at = new Date().toISOString();
+        const adjust: MovementRow[] = [];
+        for (const l of lines) {
+          const diff = Math.round((l.quantity - stockAt(snap.stock, l.itemId, l.spaceId, l.lotId)) * 1e6) / 1e6;
+          if (diff !== 0) adjust.push({ id: newItemId(), itemId: l.itemId, spaceId: l.spaceId, lotId: l.lotId, quantity: diff, kind: 'ajuste_recuento', reason: null, unitCost: null, transferId: null, countId, sourceApp: null, sourceRef: null, note: null, at, createdBy: options.me ?? null });
+        }
+        snap.movements = [...(snap.movements ?? []), ...adjust];
+        snap.stock = restock(snap.movements);
+        snap.counts = (snap.counts ?? []).map((c) => (c.id === countId ? { ...c, status: 'cerrado', pending: false } : c));
+        snap.countLines = (snap.countLines ?? []).map((l) => (l.countId === countId ? { ...l, pending: false } : l));
+        emit();
+      });
+    },
     snapshot: () => snap,
   };
 }

@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.38.0: `createMovementForm` (entrada con lote y coste, salida con motivo y primero lo que caduca antes, traslado en un solo lote) y `createCountSession` (a ciegas, línea a línea sin red, retomar, revisar diferencias y cerrar al sincronizar); la fuente escribe movimientos y recuentos.
 - v0.37.0: `createItemCatalog` (buscar, filtros a un toque con recuento, agrupar por sitio, tipo o categoría, acciones del kit y de la app, columnas con ancho) y `createItemSheet` (stock por sitio y lote con coste medio, datos con máquinas, unidades y movimientos con su origen); la fuente lee lotes y costes y escribe la ficha.
 - v0.36.0: `createItemPicker` (R3): buscar por nombre y alias con tipo y stock, crear al momento con aviso de parecidos (también sin red), «Ya existe: usar ese» cuando dos dispositivos crean el mismo nombre, cantidad con las unidades del artículo y del proveedor y su equivalencia, sitio; `createSyncItemSource` y el modelo puro exportado.
 - v0.35.0: `createCalendar` con `select` afinado en Android: deslizar con el dedo de verdad (`touch-action: pan-y pinch-zoom`; antes Android lo cancelaba), también mientras se eligen días; «Nueva estancia» trae el calendario a la vista; pista de toque; sin hover pegado ni selección de texto al mantener; barra encima de `.nav`/`.tabbar`. U6: textos del calendario por `kt`, reetiquetado en vivo al cambiar de idioma.
