@@ -9,6 +9,7 @@ import { fb } from './feedback.ts';
 import { mountHome } from './home.ts';
 import { mountRecipes } from './recipes.ts';
 import { mountEquipment } from './equipment.ts';
+import { mountPantry } from './pantry.ts';
 import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
 import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
@@ -33,6 +34,7 @@ const NAV: readonly NavItem[] = [
   { hash: '#/eventos', label: 'Eventos', icon: 'calendar' },
   { hash: '#/menus', label: 'Menús', icon: 'menu', matches: ['#/menus', HOUSE_SUGGESTIONS_HASH] },
   { hash: '#/recetario', label: 'Recetario', icon: 'chef' },
+  { hash: '#/despensa', label: 'Despensa', icon: 'grid' },
   { hash: '#/maquinaria', label: 'Maquinaria', icon: 'settings' },
 ];
 
@@ -41,6 +43,7 @@ const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }
   '#/': { title: 'Inicio', screen: 'food.inicio', mount: mountHome },
   '#/recetario': { title: 'Recetario', screen: 'food.recetario', mount: mountRecipes },
   '#/maquinaria': { title: 'Maquinaria', screen: 'food.maquinaria', mount: mountEquipment },
+  '#/despensa': { title: 'Despensa', screen: 'food.despensa', mount: mountPantry },
   '#/conflictos': { title: 'Conflictos', screen: 'food.conflictos', mount: mountConflicts },
   '#/eventos': { title: 'Eventos', screen: 'food.eventos', mount: mountEvents },
   '#/menus': { title: 'Menús', screen: 'food.menus', mount: mountMenus },
@@ -52,6 +55,7 @@ const NAV_MARKS: Record<string, Record<'feedbackId' | 'feedbackLabel', string>> 
   '#/eventos': { feedbackId: 'food.navegacion.eventos', feedbackLabel: 'Eventos' },
   '#/menus': { feedbackId: 'food.navegacion.menus', feedbackLabel: 'Menús' },
   '#/recetario': { feedbackId: 'food.navegacion.recetario', feedbackLabel: 'Recetario' },
+  '#/despensa': { feedbackId: 'food.navegacion.despensa', feedbackLabel: 'Despensa' },
   '#/maquinaria': { feedbackId: 'food.navegacion.maquinaria', feedbackLabel: 'Maquinaria' },
 };
 

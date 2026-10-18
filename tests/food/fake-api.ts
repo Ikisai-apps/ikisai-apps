@@ -144,6 +144,11 @@ const DEFAULT_TABLES: Record<string, string[]> = {
   'resources.lots': ['item_id', 'code', 'expires_on'],
   'resources.movements': ['item_id', 'space_id', 'lot_id', 'quantity', 'kind', 'reason', 'unit_cost', 'transfer_id', 'count_id', 'source_app', 'source_ref', 'note', 'at'],
   'resources.spaces': ['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes', 'source_refs'],
+  'resources.item_kinds': ['kind', 'label', 'consumable', 'position', 'active'],
+  'resources.movement_costs': ['movement_id', 'unit_cost', 'source_app', 'source_ref'],
+  'resources.space_kinds': ['kind', 'label', 'level', 'parents', 'attribute_keys', 'position', 'active'],
+  'resources.counts': ['space_id', 'note', 'status', 'closed_at', 'closed_by'],
+  'resources.count_lines': ['count_id', 'item_id', 'space_id', 'lot_id', 'quantity', 'note'],
 };
 
 /** Valores por defecto de las columnas, como los pondría PostgreSQL. */
@@ -163,6 +168,7 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   'food.consumptions': { automatic: false },
   'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
   'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
+  'resources.counts': { status: 'abierto' },
 };
 const MENU_TRANSITIONS = ['borrador>revisar', 'revisar>borrador', 'validado>revisar', 'validado>cerrado', 'cerrado>validado'];
 const FILE_FIELDS = ['photo_file_id', 'photo_thumb_file_id'];
@@ -266,6 +272,28 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (op.op === 'call') {
         // Versión mínima de los procedimientos de estado; las reglas completas se prueban contra PGlite.
         const { procedure, args = {} } = op as unknown as { procedure: string; args?: Record<string, any> };
+        if (procedure === 'resources.close_count' && scope === 'resources') {
+          // Como resources.close_count (0802): un ajuste por línea con la diferencia frente a lo calculado, y cerrado.
+          let seq = 0;
+          const count = stagedTable('resources.counts').get(args.count_id);
+          if (!count || count.status === 'cerrado') throw new Fault(422, 'COUNT_CLOSED', 'El recuento ya está cerrado.', { index });
+          const moves = Array.from(stagedTable('resources.movements').values()).filter((m) => !m.deleted_at);
+          for (const line of Array.from(stagedTable('resources.count_lines').values()).filter((l) => l.count_id === count.id && !l.deleted_at)) {
+            const current = moves.filter((m) => m.item_id === line.item_id && m.space_id === line.space_id && (m.lot_id ?? null) === (line.lot_id ?? null)).reduce((sum, m) => sum + Number(m.quantity), 0);
+            const diff = Math.round((Number(line.quantity) - current) * 1e6) / 1e6;
+            if (!diff) continue;
+            const row: FakeRow = { id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };
+            for (const column of tables['resources.movements']!) row[column] = null;
+            Object.assign(row, { item_id: line.item_id, space_id: line.space_id, lot_id: line.lot_id ?? null, quantity: diff, kind: 'ajuste_recuento', count_id: count.id });
+            stagedTable('resources.movements').set(row.id, row);
+            batchChanges.push(record('resources.movements', 'insert', row, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
+          }
+          Object.assign(count, { status: 'cerrado', closed_at: nowIso(), closed_by: actorId });
+          count.revision += 1; count.updated_at = nowIso();
+          batchChanges.push(record('resources.counts', 'update', count, nextCursor, index * 1000 + ++seq, body.requestId, actorId));
+          results.push({ op: 'call', procedure, result: { countId: count.id } });
+          return;
+        }
         if (procedure === 'resources.consume' && scope === 'resources') {
           // Como resources.consume (0803): primero lo que caduca antes; lo que falte, sin lote en el sitio por defecto.
           let seq = 0;

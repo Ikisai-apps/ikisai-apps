@@ -16,7 +16,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `food.…` del código que no son ids de feedback: tablas, procedimientos y lecturas del servidor. */
 const NOT_IDS = /^food\.(consumptions|recipes|ingredients|recipe_ingredients|recipe_equipment|equipment|menu_services|menu_items|menu_comments|menu_graph|shopping_lists|shopping_list_items|preparation_items|stock_entries|acknowledge_event|house_dish_from_suggestion|regenerate_preparation|regenerate_shopping|set_menu_status|validate_menu)$/;
 /** La raíz de cada id: una pantalla o una pieza de la cáscara. */
-const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos'];
+const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'despensa', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos'];
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
