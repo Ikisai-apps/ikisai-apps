@@ -220,6 +220,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
     - procedimientos (`call`), con `core.allow_outsider_procedure(app, procedimiento)`.
   - Su rol llega a los hooks y procedimientos (`role = 'outsider'`).
   - No deshace, no emite enlaces de portal ni sube archivos, salvo `UploadsConfig.allowOutsiders`; aun así, solo imágenes JPEG, PNG o WebP de hasta 10 MB (`outsiderMime`, `outsiderMaxBytes`). En MCP cuenta como lector.
+  - **Ámbitos (C24):** la propietaria de la app los cambia con `POST members` `{userId, role: 'outsider', scopes}`. Solo si ya es outsider (el rol lo da el nivel de casa), y con `scopes` objeto: nunca nulo ni «*».
   - Lee archivos como un portal: los suyos y los referenciados por una fila que vea con el hook `visible` (K3). Conocer un `file_id` no basta.
   - **No se da a mano** (`INVALID_ROLE`): lo deriva el nivel de casa.
 - **Nivel de casa → roles:**

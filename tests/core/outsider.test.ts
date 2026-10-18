@@ -237,3 +237,24 @@ test('sugerencias · on_submit avisa a la app al llegar una nueva, en la misma t
   assert.deepEqual((await app.t.db.query<any>(`select kind, summary from tasks.o1_avisos`)).rows, [{ kind: 'nota', summary: 'Ventana rota' }]);
   await assert.rejects(app.t.db.query(`select core.set_suggestion_on_submit('tasks', 'nota', 'tasks.no_permitido')`), /PROCEDURE_NOT_ALLOWED/);
 });
+
+test('C24 · la propietaria cambia los ámbitos de un outsider con POST members; no da ni quita el rol, ni acepta nulo o «*»', async () => {
+  const out = await app.t.createUser();
+  const plain = await app.t.createUser();
+  await level(out, 'outsider');
+  const set = (userId: string, role: string, scopes: unknown, token = app.tokens.owner) => app.call('/api/v1/members', { token, body: { userId, role, scopes } });
+  const open = { tabs: [], projects: { [crypto.randomUUID()]: [crypto.randomUUID()] } };
+  const ok = await set(out, 'outsider', open);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const row = (await q(`select role, scopes from core.memberships where app = 'tasks' and user_id = $1`, [out]))[0];
+  assert.equal(row.role, 'outsider');
+  assert.deepEqual(row.scopes, open);
+  assert.equal(code(await set(out, 'outsider', null)), 'INVALID_OPERATION', 'nulo sería toda la app');
+  assert.equal(code(await set(out, 'outsider', '*')), 'INVALID_OPERATION');
+  assert.equal(code(await set(plain, 'outsider', open)), 'INVALID_ROLE', 'el rol lo da el nivel de casa');
+  assert.equal(await role('tasks', plain), undefined);
+  assert.equal((await set(out, 'outsider', open, app.tokens.editor)).status, 403, 'solo la propietaria');
+  // Quitar el nivel le quita la pertenencia, como siempre.
+  await level(out, null);
+  assert.equal(await role('tasks', out), undefined);
+});
