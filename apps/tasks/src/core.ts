@@ -45,6 +45,31 @@ export function tradeOptionsFrom(value: unknown): TradeOption[] {
     }));
 }
 
+const PEOPLE_KEY = 'ikisai-tasks-people';
+const HOUSE_LEVELS = ['direccion', 'staff', 'outsider'] as const;
+
+/** Fila de `central.people_options` (P2, PR 3; docs/tasks/API.md §33): personas activas de Central, con su nivel de casa. */
+export interface PersonOption {
+  person_id: string;
+  name: string;
+  user_id: string | null;
+  active: boolean;
+  house_level: 'direccion' | 'staff' | 'outsider' | null;
+  initials: string | null;
+}
+
+/** Solo lo que la interfaz necesita de cada fila (descarta lo que no sea una persona con id y nombre). */
+export function peopleOptionsFrom(value: unknown): PersonOption[] {
+  const list = Array.isArray(value) ? value : (value as { rows?: unknown[] } | null)?.rows;
+  if (!Array.isArray(list)) return [];
+  return list.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && typeof (r as Record<string, unknown>).person_id === 'string' && typeof (r as Record<string, unknown>).name === 'string')
+    .map((r) => ({
+      person_id: r.person_id as string, name: r.name as string, user_id: typeof r.user_id === 'string' ? r.user_id : null, active: r.active !== false,
+      house_level: (HOUSE_LEVELS as readonly unknown[]).includes(r.house_level) ? r.house_level as PersonOption['house_level'] : null,
+      initials: typeof r.initials === 'string' && r.initials.trim() ? r.initials.trim() : null,
+    }));
+}
+
 export class TasksCore {
   readonly client: SyncClient;
   /**
@@ -59,6 +84,11 @@ export class TasksCore {
    * el dispositivo, así que sin red se siguen viendo los nombres; si nunca se pudo leer, está vacía.
    */
   trades: TradeOption[] = [];
+  /**
+   * Personas activas de Central (P2, PR 3): como los oficios, no se sincronizan; se leen con `central.people_options` y la
+   * última respuesta queda en el dispositivo (sin red siguen saliendo los nombres y las iniciales).
+   */
+  people: PersonOption[] = [];
   /** Copia en memoria del espejo (incluida la papelera), con los cambios locales aún sin encolar aplicados. */
   data: Dataset = emptyDataset();
   /** Lotes locales entregados a `commit()` cuya escritura en la cola todavía no ha terminado. */
@@ -84,6 +114,7 @@ export class TasksCore {
     });
     try { this.hidden = JSON.parse(localStorage.getItem(BLOCKERS_KEY) ?? 'null') ?? undefined; } catch { this.hidden = undefined; }
     try { this.trades = tradeOptionsFrom(JSON.parse(localStorage.getItem(TRADES_KEY) ?? 'null')); } catch { this.trades = []; }
+    try { this.people = peopleOptionsFrom(JSON.parse(localStorage.getItem(PEOPLE_KEY) ?? 'null')); } catch { this.people = []; }
   }
 
   /** Avisa de cambios en los datos del espejo (`data`) o en el estado de sincronización (`status`). */
@@ -115,6 +146,7 @@ export class TasksCore {
     if (!this.options.readOnly) void this.startResources();
     if (!this.options.readOnly) void this.refreshBlockers();
     if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades();
+    if (!this.options.readOnly && this.peopleSource() === 'central') void this.refreshPeople();
     return boot ?? this.client.bootstrap();
   }
 
@@ -137,6 +169,24 @@ export class TasksCore {
       const out = await this.client.api<unknown>('/read/central.trade_options', { method: 'POST', json: { limit: 2000 } });
       this.trades = tradeOptionsFrom(out);
       try { localStorage.setItem(TRADES_KEY, JSON.stringify(this.trades)); } catch { /* sin almacenamiento */ }
+      this.emit('data');
+      return true;
+    } catch { return false; }
+  }
+
+  /** De dónde sale la persona: `'labels'` (familia «Grupo: Persona») o `'central'` (personas de Central, P2), según `tasks.settings`. */
+  peopleSource(): 'labels' | 'central' {
+    const row = (this.data['tasks.settings'] ?? []).find((r) => r.key === 'people_source' && !r.deleted_at);
+    return row?.value === 'central' ? 'central' : 'labels';
+  }
+
+  /** Vuelve a leer las personas de Central y guarda la respuesta en el dispositivo. Sin red o sin permiso, se queda lo último leído. */
+  async refreshPeople(): Promise<boolean> {
+    if (!this.client.session()) return false;
+    try {
+      const out = await this.client.api<unknown>('/read/central.people_options', { method: 'POST', json: { limit: 2000 } });
+      this.people = peopleOptionsFrom(out);
+      try { localStorage.setItem(PEOPLE_KEY, JSON.stringify(this.people)); } catch { /* sin almacenamiento */ }
       this.emit('data');
       return true;
     } catch { return false; }
@@ -182,7 +232,8 @@ export class TasksCore {
     this.spaces = [];
     this.hidden = undefined;
     this.trades = [];
-    try { localStorage.removeItem(BLOCKERS_KEY); localStorage.removeItem(TRADES_KEY); } catch { /* sin almacenamiento */ }
+    this.people = [];
+    try { localStorage.removeItem(BLOCKERS_KEY); localStorage.removeItem(TRADES_KEY); localStorage.removeItem(PEOPLE_KEY); } catch { /* sin almacenamiento */ }
     this.emit('data');
   }
 
