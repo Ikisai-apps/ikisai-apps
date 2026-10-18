@@ -54,7 +54,8 @@ test.beforeAll(async () => {
   const lunch = api.seed('food.menu_services', { menu_id: HOUSE_MENU_ID, service_date: '2026-10-20', service_type: 'comida', service_time: '14:00', position: 1 }).id;
   today = api.seed('food.menu_items', { service_id: lunch, recipe_id: plain, servings: 22, position: 1 }).id;
   salad = api.seed('food.menu_items', { service_id: lunch, recipe_id: greens, servings: 22, position: 2 }).id;
-  const before = api.seed('food.menu_services', { menu_id: HOUSE_MENU_ID, service_date: '2026-10-19', service_type: 'comida', service_time: '14:00', position: 1 }).id;
+  // Las 12:00 del 19: por confirmar a las 14:00, del worker a las 14:00 del 20 y del respaldo de la app a las 16:00.
+  const before = api.seed('food.menu_services', { menu_id: HOUSE_MENU_ID, service_date: '2026-10-19', service_type: 'comida', service_time: '12:00', position: 1 }).id;
   yesterday = api.seed('food.menu_items', { service_id: before, recipe_id: plain, servings: 10, position: 1 }).id;
   process.env.VITE_API_PROXY = api.url;
   await buildFoodApp();
@@ -92,7 +93,7 @@ test('consumo · solo a las 24 h, «Confirmar consumo» con correcciones y «No 
   test.setTimeout(120_000);
   await login(page);
 
-  await test.step('la comida del 19, sin confirmar a las 24 h, se descuenta sola con lo previsto', async () => {
+  await test.step('la comida del 19, sin confirmar a las 26 h (y sin worker en esta API simulada), la descuenta la app con lo previsto', async () => {
     await expect.poll(() => consumption(yesterday), { timeout: 20_000 }).toMatchObject({ status: 'confirmado', automatic: true });
     // 1 kg para 10 raciones: primero el kilo que caduca antes, en la cocina.
     expect(moved(yesterday).map((m) => [m.kind, Number(m.quantity), m.space_id])).toEqual([['consumo_servicio', -1, kitchen]]);

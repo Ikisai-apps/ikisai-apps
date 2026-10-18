@@ -1,7 +1,7 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
 import {
   FOOD_PROCEDURES, SHOPPING_ITEM_STATUSES, defaultPurchase, ingredientKey, isStale, purchaseMovement, purchaseSpace, shoppingSources, sourceChanges, toItemBase, validateOperations,
-  type MovementLike, type ResourceItem, type ShoppingItemStatus, type ShoppingList, type ShoppingListItem, type ShoppingListStatus, type SpaceLike, type Unit,
+  type ItemConversion, type MovementLike, type ResourceItem, type ShoppingItemStatus, type ShoppingList, type ShoppingListItem, type ShoppingListStatus, type SpaceLike, type Unit,
 } from '@ikisai/domain-food';
 import { el, formatDate, icon, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
@@ -83,14 +83,15 @@ export function mountShopping({ client, menuId, host, canWrite, house = false }:
     if (!ingredient?.item_id) return;
     const r = resourcesClient(client);
     try {
-      const [items, spaces, movements] = await Promise.all([
+      const [items, spaces, movements, conversions] = await Promise.all([
         r.list(R.items) as unknown as Promise<Array<ResourceItem & { default_space_id: string | null }>>,
         r.list(R.spaces) as unknown as Promise<SpaceLike[]>,
         r.list(R.movements) as unknown as Promise<MovementLike[]>,
+        r.list(R.itemUnits) as unknown as Promise<ItemConversion[]>,
       ]);
       const article = items.find((i) => i.id === ingredient.item_id);
       if (!article) return;
-      const quantity = toItemBase(Number(item.purchase_quantity), item.unit, article.base_unit);
+      const quantity = toItemBase(Number(item.purchase_quantity), item.unit, article.base_unit, article.id, conversions);
       const space = purchaseSpace(article, spaces);
       // Sin sitios de cocina en Recursos todavía no se lleva inventario: la lista funciona como siempre, sin avisos.
       if (!space) return;

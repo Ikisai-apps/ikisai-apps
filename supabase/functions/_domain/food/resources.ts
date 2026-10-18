@@ -199,16 +199,32 @@ const FACTOR: Record<string, number> = { kg: 1000, l: 1000 };
 const FAMILY: Record<string, string> = { g: 'masa', kg: 'masa', ml: 'volumen', l: 'volumen' };
 const family = (unit: string) => FAMILY[unit] ?? unit;
 
+/** Conversión de un artículo (`resources.item_units`): cuántas unidades base hay en una de `unit`. */
+export interface ItemConversion { item_id: string; unit: string; factor: number | string; supplier_id?: string | null; deleted_at?: string | null }
+
+/**
+ * Unidades base del artículo que hay en una unidad de Food, con las reglas de `unitsFor` del kit (las mismas que Finance):
+ * la base, sus métricas (g ↔ kg, ml ↔ l) y las conversiones del artículo sin proveedor («unidad» también vale como «ud»).
+ * `null` si no se puede. El dominio no importa el kit (también lo usa la Edge): `resources-units.test.ts` comprueba que
+ * da lo mismo que `baseQuantity` del kit.
+ */
+export function itemUnitFactor(unit: Unit, base: string, itemId?: string, conversions: ItemConversion[] = []): number | null {
+  const own = foodUnitFromBase(base);
+  if (own && family(own) === family(unit)) return (FACTOR[unit] ?? 1) / (FACTOR[own] ?? 1);
+  const names = unit === 'unidad' ? ['unidad', 'ud'] : [unit];
+  const hit = conversions.find((c) => !c.deleted_at && !c.supplier_id && (!itemId || c.item_id === itemId) && names.includes(c.unit.trim().toLowerCase()) && Number(c.factor) > 0);
+  return hit ? Number(hit.factor) : null;
+}
+
 /** De la unidad base del artículo a una unidad de Food de la misma familia (y al revés); `null` si no se puede. */
 export function fromItemBase(quantity: number, base: string, unit: Unit): number | null {
   const own = foodUnitFromBase(base);
   if (!own || family(own) !== family(unit)) return null;
   return Math.round((quantity * (FACTOR[own] ?? 1)) / (FACTOR[unit] ?? 1) * 1000) / 1000;
 }
-export function toItemBase(quantity: number, unit: Unit, base: string): number | null {
-  const own = foodUnitFromBase(base);
-  if (!own || family(own) !== family(unit)) return null;
-  return Math.round((quantity * (FACTOR[unit] ?? 1)) / (FACTOR[own] ?? 1) * 1000) / 1000;
+export function toItemBase(quantity: number, unit: Unit, base: string, itemId?: string, conversions: ItemConversion[] = []): number | null {
+  const factor = itemUnitFactor(unit, base, itemId, conversions);
+  return factor === null ? null : Math.round(quantity * factor * 1e6) / 1e6;
 }
 
 /** Referencia de la entrada al stock de una línea de compra: Finance (R4) le añade el coste con ella. No cambiarla. */
