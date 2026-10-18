@@ -3,7 +3,7 @@
  * El mismo código corre en el cliente antes de encolar y en la Edge (`beforeCommit`). Solo ve las
  * operaciones y los ámbitos del actor: las reglas que dependen del estado viven en el hook SQL.
  */
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, IMMUTABLE, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, COMMENT_MAX_LENGTH, IMMUTABLE, WRITABLE, isTable, reject, type Operation, type Role, type TableName } from './types.ts';
 import { allAccess, canProject, fullTab, type Scopes } from './scopes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -211,6 +211,14 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['tab_id', 'project_id', 'name', 'mime', 'size', 'sha256', 'file_id'],
   },
+  // O1, paso 2: el autor lo pone el servidor; la foto llega como uuid o como marcador `$blob` (una por comentario).
+  'tasks.task_comments': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), task_id: uuid(), body: text(1, COMMENT_MAX_LENGTH, 'INVALID_COMMENT', 'Escribe un comentario de hasta 2000 caracteres.'),
+      file_id: nullable(fileRef),
+    },
+    required: ['tab_id', 'project_id', 'task_id', 'body'],
+  },
   'tasks.supply_items': {
     fields: {
       tab_id: uuid(), name: name(200), category: oneOf(['cleaning', 'pool', 'maintenance', 'textile', 'other'], 'INVALID_FIELDS', 'Categoría desconocida.'),
@@ -315,11 +323,21 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
   }
 }
 
+/**
+ * O1, paso 2: el outsider solo marca hecha (un `update` de `tasks.tasks` con `done` y nada más) y comenta. Lo de sus
+ * ámbitos lo comprueba `precheckScope` cuando la operación lo dice; la autoridad es `tasks.validate_comments` en SQL.
+ */
+function precheckOutsider(op: Operation, index: number): void {
+  if (op.op !== 'call' && op.table === 'tasks.task_comments') return;
+  const fields = op.fields && typeof op.fields === 'object' ? Object.keys(op.fields) : [];
+  if (op.op === 'update' && op.table === 'tasks.tasks' && fields.length === 1 && fields[0] === 'done') return;
+  forbidden('Solo puedes marcar tareas como hechas y comentar.', { index, table: op.table ?? null, op: op.op });
+}
+
 /** Valida un lote completo. Lanza `DomainError` con el primer problema. */
 export function validateOperations(operations: readonly Operation[], ctx: ValidationContext): void {
   if (ctx.role === 'reader') forbidden('Tu acceso es de solo lectura.');
-  // O1, paso 1: el outsider solo lee. Marcar hecha y comentar llegan en el paso 2, con sus columnas contadas.
-  if (ctx.role === 'outsider') forbidden('Por ahora solo puedes ver lo que se te ha abierto.');
+  if (ctx.role === 'outsider') operations.forEach(precheckOutsider);
   const seen = new Set<string>();
   operations.forEach((op, index) => {
     if (op.op === 'call') {

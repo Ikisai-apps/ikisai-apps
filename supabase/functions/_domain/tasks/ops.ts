@@ -129,6 +129,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   for (const row of live(data['tasks.task_people'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_people', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_dependencies'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
   for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_comments'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_comments', row, { project_id: project.id }));
   return ops;
 }
 
@@ -163,8 +164,43 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
     for (const row of live(data['tasks.task_people'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_people', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_dependencies'])) if (row.task_id === t.id) ops.push(update('tasks.task_dependencies', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_comments'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_comments', row, { project_id: above.project_id }));
   }
   return ops;
+}
+
+/**
+ * Comentarios (O1, paso 2): uno nuevo en una tarea viva, con `tab_id` y `project_id` de su tarea. La foto es el id de un
+ * archivo ya subido o el marcador `{ $blob: <sha256> }` que `sync-client` sustituye al subir. El autor lo pone el servidor.
+ */
+export function addCommentOps(data: Dataset, taskId: Uuid, body: string, photo: Uuid | { $blob: string } | null = null, newId: NewId = randomId): Operation[] {
+  const task = must(data['tasks.tasks'].find((t) => t.id === taskId && !t.deleted_at), 'la tarea');
+  return [insert('tasks.task_comments', newId(), { tab_id: task.tab_id, project_id: task.project_id, task_id: task.id, body: body.trim(), file_id: photo })];
+}
+
+/** Cambiar el texto de un comentario (el servidor solo lo admite de su autor). */
+export function editCommentOps(data: Dataset, commentId: Uuid, body: string): Operation[] {
+  const row = must((data['tasks.task_comments'] ?? []).find((c) => c.id === commentId && !c.deleted_at), 'el comentario');
+  return row.body === body.trim() ? [] : [update('tasks.task_comments', row, { body: body.trim() })];
+}
+
+/** Borrar un comentario (su autor, o la propietaria cualquiera). */
+export function deleteCommentOps(data: Dataset, commentId: Uuid): Operation[] {
+  const row = must((data['tasks.task_comments'] ?? []).find((c) => c.id === commentId), 'el comentario');
+  return row.deleted_at ? [] : [remove('tasks.task_comments', row)];
+}
+
+/** Comentarios vivos de una tarea, del más antiguo al más reciente. */
+export function taskComments(data: Dataset, taskId: Uuid): Dataset['tasks.task_comments'] {
+  return live(data['tasks.task_comments'] ?? []).filter((c) => c.task_id === taskId)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1));
+}
+
+/** Cuántos comentarios vivos tiene cada tarea (las que no tienen ninguno no salen). */
+export function commentCounts(data: Dataset): Map<Uuid, number> {
+  const counts = new Map<Uuid, number>();
+  for (const c of live(data['tasks.task_comments'] ?? [])) counts.set(c.task_id, (counts.get(c.task_id) ?? 0) + 1);
+  return counts;
 }
 
 /** Archivar o reactivar una familia arrastra a sus etiquetas, recordando su estado previo. */

@@ -7,7 +7,8 @@
  */
 import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBatch, type RowOperation, type Session, type SyncClient, type SyncStatus, type TableName } from '@ikisai/sync-client';
 import {
-  DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, emptyDataset, validateOperations,
+  DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, effectiveScopes, emptyDataset, validateOperations,
+  addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
   supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
@@ -150,7 +151,7 @@ export class TasksCore {
   async start(): Promise<Bootstrap | null> {
     if (!this.started) {
       this.started = true;
-      for (const table of TABLES) this.client.onTable(table as TableName, () => this.scheduleRefresh());
+      for (const table of TABLES) this.client.onTable(table as TableName, (rows) => this.tableChanged(table, rows as unknown as Array<{ id: string; revision?: number }>));
       this.client.onStatus((status) => {
         const syncing = status.network === 'syncing';
         if (syncing && !this.syncing) this.cycles += 1;
@@ -326,6 +327,29 @@ export class TasksCore {
     return true;
   }
 
+  /**
+   * Aviso del espejo con las filas vivas de una tabla (p. ej. al confirmar un comando). Solo se adelanta la **revisión**
+   * de las filas que ya están en la copia en memoria, sin esperar al refresco completo: si no, una edición planificada en
+   * ese hueco salía con la revisión vieja y acababa en conflicto (app.spec.ts en la CI de #571: borrar una vista recién
+   * creada con `expectedRevision: 0`). Todo lo demás (filas nuevas, borradas o purgadas, campos) lo pone al día el
+   * refresco de siempre: tocar más rompía «vaciar papelera».
+   */
+  private tableChanged(table: string, rows: Array<{ id: string; revision?: number }>): void {
+    if (this.localPending === 0) {
+      const fresh = new Map(rows.map((row) => [row.id, row.revision]));
+      const current = ((this.data as unknown as Record<string, Array<{ id: string; revision?: number }>>)[table] ?? []);
+      let changed = false;
+      const merged = current.map((row) => {
+        const revision = fresh.get(row.id);
+        if (typeof revision !== 'number' || revision <= (row.revision ?? 0)) return row;
+        changed = true;
+        return { ...row, revision };
+      });
+      if (changed) this.data = { ...this.data, [table]: merged } as Dataset;
+    }
+    this.scheduleRefresh();
+  }
+
   private scheduleRefresh(): void {
     this.dirty = true;
     if (this.refreshTimer) return;
@@ -351,9 +375,15 @@ export class TasksCore {
     }
   }
 
+  /** Ámbitos efectivos de la cuenta (para el outsider, vacío o «*» es nada; O1). */
+  scopes(): unknown {
+    const membership = this.client.bootstrap()?.membership;
+    return membership ? effectiveScopes(membership) : undefined;
+  }
+
   /** Modelo anidado que usa la interfaz, compuesto desde la copia en memoria. */
   model(): LegacyTab[] {
-    const scopes = this.client.bootstrap()?.membership.scopes;
+    const scopes = this.scopes();
     return compose(this.data, { scopes: scopes ?? '*', ...(allAccess(scopes) ? {} : { hiddenBlockers: this.hidden }) });
   }
 
@@ -364,7 +394,7 @@ export class TasksCore {
   plan(tabs: LegacyTab[]): Operation[][] {
     adoptLegacyIds(tabs);
     const boot = this.client.bootstrap();
-    const context = { role: (boot?.membership.role ?? 'reader') as Role, scopes: boot?.membership.scopes ?? '*' };
+    const context = { role: (boot?.membership.role ?? 'reader') as Role, scopes: this.scopes() ?? '*' };
     const batches = decompose(this.data, tabs).flatMap((batch) => chunkOperations(batch));
     for (const batch of batches) validateOperations(batch, context);
     return batches;
@@ -408,12 +438,29 @@ export class TasksCore {
   retryRejected(requestId: string): Promise<{ requestId: string }> { return this.client.retryRejected(requestId); }
   discardRejected(requestId: string): Promise<void> { return this.client.discardRejected(requestId); }
   stageBlob(blob: Blob, meta: { filename: string; mime: string }): Promise<string> { return this.client.stageBlob(blob, meta); }
+
+  /** Comentarios vivos de una tarea, del más antiguo al más reciente (O1, paso 2). */
+  comments(taskId: string) { return taskComments(this.data, taskId); }
+  /** Cuántos comentarios vivos tiene cada tarea. */
+  commentCounts(): Map<string, number> { return commentCounts(this.data); }
+  /**
+   * Operaciones de un comentario nuevo, editado o borrado, ya validadas como lo hará el servidor (con el rol real: el
+   * outsider también comenta). Lanza `DomainError` si no valen.
+   */
+  commentOps(action: 'add' | 'edit' | 'delete', input: { taskId?: string; commentId?: string; body?: string; photo?: { $blob: string } | null }): Operation[] {
+    const ops = action === 'add' ? addCommentOps(this.data, input.taskId!, input.body ?? '', input.photo ?? null)
+      : action === 'edit' ? editCommentOps(this.data, input.commentId!, input.body ?? '')
+        : deleteCommentOps(this.data, input.commentId!);
+    const boot = this.client.bootstrap();
+    if (ops.length) validateOperations(ops, { role: (boot?.membership.role ?? 'reader') as Role, scopes: this.scopes() ?? '*' });
+    return ops;
+  }
   api<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> { return this.client.api<T>(path, init); }
 
   /** Bloqueos privados (API.md §5.3): solo para accesos por proyecto; la última respuesta se conserva sin red. */
   async refreshBlockers(): Promise<void> {
     const boot = this.client.bootstrap();
-    if (!boot || allAccess(boot.membership.scopes) || !this.client.session()) return;
+    if (!boot || allAccess(this.scopes()) || !this.client.session()) return;
     try {
       const result = await this.client.api<{ items: Array<{ taskId: string; hidden: number }> }>('/blockers');
       this.hidden = Object.fromEntries(result.items.map((item) => [item.taskId, item.hidden]));

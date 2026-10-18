@@ -1,7 +1,7 @@
 /** Tasks · tipos de fila y metadatos de las tablas `tasks.*` (docs/tasks/API.md §2). */
 
 export type Uuid = string;
-/** `outsider` (O1): solo ve lo que se le abre en sus ámbitos; de momento no escribe nada. */
+/** `outsider` (O1): solo ve lo que se le abre en sus ámbitos; ahí marca hecha (solo `done`) y comenta (paso 2). */
 export type Role = 'reader' | 'outsider' | 'editor' | 'owner';
 
 /** Columnas del contrato §2.1 que lleva toda fila sincronizable. */
@@ -76,6 +76,14 @@ export interface AttachmentRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; task_id: Uuid | null; name: string; mime: string; size: number; sha256: string; file_id: Uuid; position: number;
 }
 
+/**
+ * Comentario de una tarea (O1, paso 2; migración 0328). Visible como su tarea. `author_id` y `author_name` los pone el
+ * servidor con el actor y su perfil; `file_id`, una foto opcional (imagen de core.files subida por quien comenta).
+ */
+export interface TaskCommentRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; task_id: Uuid; author_id: Uuid; author_name: string; body: string; file_id: Uuid | null;
+}
+
 // Compras no alimentarias (docs/tasks/API.md §18, migración 0305).
 export type SupplyCategory = 'cleaning' | 'pool' | 'maintenance' | 'textile' | 'other';
 export type PurchaseStatus = 'requested' | 'approved' | 'purchased' | 'received' | 'rejected';
@@ -116,7 +124,7 @@ export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
-  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
+  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments',
   'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings',
 ] as const;
@@ -128,7 +136,7 @@ export interface RowTypes {
   'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow;
   'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
   'tasks.project_people': ProjectPersonRow; 'tasks.task_people': TaskPersonRow; 'tasks.task_dependencies': TaskDependencyRow;
-  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow;
+  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow;
   'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
   'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
@@ -159,6 +167,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
+  'tasks.task_comments': ['tab_id', 'project_id', 'task_id', 'body', 'file_id'],
   'tasks.supply_items': ['tab_id', 'name', 'category', 'unit', 'location', 'min_quantity', 'reorder_quantity', 'supplier_id', 'supplier_name', 'note', 'archived', 'position'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
@@ -188,6 +197,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
+  'tasks.task_comments': ['tab_id', 'task_id'],
   'tasks.supply_items': ['tab_id'],
   'tasks.purchase_plans': ['tab_id'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id'],
@@ -212,6 +222,10 @@ export const FAMILY_DEFAULTS: ReadonlyArray<{ system_key: FamilySystemKey; name:
 
 export const INBOX_TITLE = 'Entrada';
 export const POSITION_STEP = 1024;
+
+/** Comentarios (O1, paso 2): de 1 a 2000 caracteres y, como mucho, una foto. */
+export const COMMENT_MAX_LENGTH = 2000;
+export const COMMENT_PHOTO_MIME: readonly string[] = ['image/webp', 'image/jpeg', 'image/png'];
 
 /** Adjuntos (API.md §8, decisión D5). */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;

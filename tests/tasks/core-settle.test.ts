@@ -34,3 +34,21 @@ test('settle: sin nada pendiente vuelve enseguida y no relee', async () => {
   await core.settle();
   assert.equal(reads, 0);
 });
+
+test('aviso del espejo: la revisión confirmada pasa ya a la copia en memoria (nada de planificar con la vieja)', () => {
+  const core = new TasksCore({ readOnly: true }) as any;
+  core.data = { ...core.data, 'tasks.saved_views': [{ id: 'v1', name: 'Pendientes', revision: 0 }, { id: 'v2', name: 'Otra', revision: 3 }] };
+  core.tableChanged('tasks.saved_views', [{ id: 'v1', name: 'Pendientes', revision: 1 }, { id: 'v3', name: 'Nueva', revision: 1 }]);
+  const rows = core.data['tasks.saved_views'];
+  assert.deepEqual(rows.map((r: any) => [r.id, r.revision]), [['v1', 1], ['v2', 3]], 'solo sube la revisión de la confirmada; lo demás (la nueva, la que no viene) lo pone al día el refresco');
+  assert.equal(core.dirty, true, 'y queda programado el refresco completo');
+});
+
+test('aviso del espejo con un guardado local en vuelo: no toca la copia en memoria (el espejo aún no lo contiene)', () => {
+  const core = new TasksCore({ readOnly: true }) as any;
+  const before = [{ id: 'v1', revision: 0 }];
+  core.data = { ...core.data, 'tasks.saved_views': before };
+  core.localPending = 1;
+  core.tableChanged('tasks.saved_views', [{ id: 'v1', revision: 1 }]);
+  assert.equal(core.data['tasks.saved_views'], before);
+});
