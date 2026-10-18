@@ -1545,12 +1545,37 @@ El outsider es una persona de fuera (voluntarios incluidos) con nivel de casa `o
 - **Tablas que puede leer** (migración `0325`): áreas, catálogo, proyectos, tareas, etiquetas, espacios, dependencias, adjuntos y ajustes.
   - Nunca: compras y almacén, reglas y peticiones de Entrada, vistas guardadas.
   - Las lecturas de SQL (`core.allow_read`) siguen sin `outsider`.
-- **Escritura:** ninguna. `writable_roles` no cambia, y el dominio también rechaza con `FORBIDDEN`.
-- **Interfaz:** lo trata como lector (`Sync.actor.outsider` queda marcado para el paso 2).
-- **Pruebas:** `tests/tasks/outsider.test.ts`. Sin nada abierto, ni con `"*"`, no ve nada, tampoco por cambios ni por historial. Con un proyecto o un área abiertos, solo ve eso. Y no escribe nada.
+- **Escritura:** ninguna en el paso 1 (la abre el paso 2, abajo).
+- **Interfaz:** lo trata como lector (`Sync.actor.outsider` lo distingue).
+- **Pruebas:** `tests/tasks/outsider.test.ts`. Sin nada abierto, ni con `"*"`, no ve nada, tampoco por cambios ni por historial. Con un proyecto o un área abiertos, solo ve eso.
+
+**Paso 2 (hecho, decisiones del usuario del 18-10-2026): marca hecha, y comentarios para todos, con fotos.** Migración `0328`.
+- **Marcar hecha:** el outsider marca y desmarca `done` de cualquier tarea de lo que tiene abierto, también los pasos o tareas hijas.
+  - En el servidor solo puede cambiar `done` (`done_at` lo pone el trigger). Otro campo, insertar o borrar, u otra tabla: 403 `FORBIDDEN`.
+  - Lo comprueban el dominio (`validate.ts`, precomprobación) y, como autoridad, el hook SQL `tasks.validate_comments` con sus ámbitos efectivos (`tasks.effective_scopes`: vacío o `"*"` es nada).
+  - `tasks.tasks` admite `outsider` en `writable_roles`.
+  - Las reglas de `done` siguen igual: `TASK_BLOCKED` si la bloquea una dependencia (sin revelar las de fuera de su ámbito) y la madre con hijas se calcula.
+- **Comentarios** (`tasks.task_comments`, sincronizada): `tab_id`, `project_id`, `task_id`, `body` (1 a 2000 caracteres) y `file_id` opcional (una foto).
+  - `author_id` y `author_name` los pone el trigger `tasks.comment_author` con el actor del lote (`updated_by` del alta) y su nombre de perfil. No son escribibles y no cambian.
+  - Visibilidad: la de su tarea (`visibleRow`, como `task_labels`).
+  - Leen todos los roles con acceso. Escriben editor, propietaria y outsider (`writable_roles`); el lector no. El outsider, solo en tareas de lo abierto.
+  - Cada uno edita, borra o restaura solo los suyos; la propietaria (rol `owner`) borra o restaura cualquiera, pero no reescribe lo ajeno.
+  - Nacen en una tarea viva (`TASK_UNAVAILABLE`) y siguen a su tarea (`INCONSISTENT_KEYS`): mover la tarea mueve sus comentarios (`moveTaskOps`, `restoreTaskOps`, `decompose`), sean de quien sean (solo cambian las claves).
+  - Vaciar la papelera los manda con su tarea y convertir un área los pasa con ella (`tasks.empty_trash_prepare` y `tasks.convert_tab_into_project`, copiadas de `0327`).
+  - No viajan en las copias JSON ni en la portable.
+- **Fotos:** una por comentario, con la misma recompresión y el mismo límite que los adjuntos (1600 px en WebP; 25 MB).
+  - El kit solo permite subir al outsider para toda la app: `createTasksApp` activa `uploads.allowOutsiders`.
+  - Lo que suba solo puede acabar en la foto de un comentario: el dominio y el hook le impiden cualquier otra escritura, `tasks.attachments` incluida.
+  - La foto tiene que ser un archivo verificado de Tasks, imagen (`webp`, `jpeg` o `png`) y subido por quien comenta (`FILE_NOT_UPLOADED`).
+  - Campo de archivo operativo para la recogida de huérfanos (`core.register_file_field`).
+  - Descarga: `GET comments/:id/photo`, tras comprobar que el comentario es visible para quien la pide (404 si no).
+- **Interfaz** (`comments-ui.js`, `comments-ui.css`):
+  - El outsider sigue con `Sync.actor.role = 'reader'` para todo lo demás. Se le habilitan la casilla de hecha de la lista, la de la ficha («Hecha», solo para él) y las de las hijas, y el hilo. No se le ofrece «Deshacer» desde el historial (el núcleo no se lo permite).
+  - El hilo va en la ficha de la tarea, para todos: autor (de `Sync.members` o del perfil), hora relativa, del más antiguo al más reciente, «Escribe un comentario…», «📷 Foto» y «Enviar». «Editar» y «Borrar» en lo propio; la propietaria, «Borrar» en todo. Borrar pide un segundo toque.
+  - La tarjeta de la tarea lleva el contador 💬 n si tiene comentarios.
+- **Pruebas:** `tests/tasks/outsider.test.ts` (PGlite: hecha, lo que no puede, otro proyecto, bloqueo, comentarios por rol, lo propio y lo ajeno, visibilidad por snapshot y cambios, la foto solo en comentarios, mover, convertir y vaciar la papelera) y `tests/tasks/outsider-ui.spec.ts` (Playwright en 390 px). Capturas en `coordinacion/tasks/o1-despues/`.
 
 **Pendiente:**
-- **Paso 2:** marcar hecha (solo `done`) y comentarios (`tasks.task_comments`, para todos), con fotos.
 - **Paso 3:** propuestas con `core.register_suggestion_kind('tasks', 'tarea' | 'anadido', …)`, que se deciden en «Por clasificar» (`createSuggestionSource` + `createProposalList`, kit 0.34) y se siguen en «Mis propuestas».
 - **Paso 4:** menú reducido y «Abrir a…» en el proyecto.
 
