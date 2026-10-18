@@ -1665,3 +1665,24 @@ Diseño en `coordinacion/invoices/R4_PREPARACION.md`. Esta PR trae solo el model
   - devuelve `{created, linked, memory}`.
 - **No enciende el interruptor.** Al encenderlo (o al cambiarlo), la Edge cuadra todas las facturas con líneas enlazadas o con entradas (`invoices.resource_invoice_ids`). Así salen las **retroactivas**, con la fecha de cada factura. Las líneas sin sitio no entran.
 - **App:** en Inicio, la tarjeta «Inventario (Recursos)» (solo owner) abre la vista previa con los recuentos y las cuatro listas («Se enlazan», «Se crean», «Por decidir en la ficha» y «No son stock»). Permite elegir el sitio habitual de los artículos nuevos y tiene el botón «Aplicar».
+
+
+### 16.19 R4 · «Artículo» en la ficha y «Ya entró desde la compra de Food» (0237, PR 3; kit 0.36.0)
+Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app se ve como antes y no abre Recursos.
+- **Segundo cliente** (`app/resources.ts`): `sync-client` del módulo `resources`, con la sesión de Finance. Sincroniza artículos, conversiones, tipos, movimientos, costes añadidos y espacios, y funciona sin red.
+- **Ficha › Artículos:**
+  - una línea enlazada se llama como su artículo, en toda la app (`lineName`), con «En la factura: …» debajo;
+  - debajo de eso, cómo entra al inventario: «2 saco = 50 kg → Despensa», «Ya entró desde la compra de Food» o «sin sitio: no entra al inventario»;
+  - la chip «recordado» sale de `item_source`.
+- **«Artículo»** (sustituye a «Mi nombre») abre `createItemPicker`. Ahí se busca o se crea el artículo al momento, con «Dónde entra» (el sitio habitual, cambiable) y «Usar «texto» sin artículo», que guarda «Mi nombre» como antes.
+  - **La cantidad y la unidad son las de la factura.** Si la unidad de la factura no es del artículo (base, métrica o una conversión, primero las del proveedor), se pide «1 saco = [25] kg». Se guarda en `resources.item_units` con `supplier_id`, para las siguientes facturas.
+  - **«Ya entró desde la compra de Food»:** si Food tiene entradas sin coste de ese artículo (`entrada_manual`, `source_app = 'food'`), se elige una en lugar de «Entra con esta factura».
+  - «Quitar artículo» deshace el enlace.
+  - Cambiar el enlace de una validada no la devuelve a revisión.
+- **Sin red, con un artículo recién creado:** el servidor solo acepta el enlace con un artículo que ya tiene. El enlace se guarda en el dispositivo y sale cuando Recursos lo ha subido (al volver la red o al sincronizar).
+- **Migración 0237:**
+  - `invoice_lines.entered_movement_id`: la entrada de Food. Se comprueba que es una `entrada_manual` positiva de Food del mismo artículo; si no, `INVALID_RESOURCE_LINK`;
+  - esa línea no pide entrada propia;
+  - al validar, `resource_entries` devuelve en `costs` el coste por unidad base para esa entrada, y la Edge lo añade en el mismo lote de Recursos con `resources.movement_costs` (id estable, así que repetir no duplica);
+  - un coste solo se añade: anular la factura después no lo quita.
+- **Compras › Artículos:** filtro «Artículo» (`#purchaseItem`, `itemId` en `purchaseItems`) con los artículos enlazados en alguna línea, de cualquier proveedor.
