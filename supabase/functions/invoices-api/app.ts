@@ -397,27 +397,96 @@ async function saveDocumentText(supabase: Supabase, ctx: RequestContext, fileId:
 export function createResourceEntries(supabase: Supabase): NonNullable<AppHooks['afterCommit']> {
   return async (result, ctx) => {
     const ids = new Set<string>();
+    let all = false;
     for (const change of result.changes ?? []) {
       if (change.table === TABLES.invoices && change.id) ids.add(change.id);
       const invoiceId = change.table === TABLES.invoiceLines ? change.after?.invoice_id : null;
       if (typeof invoiceId === 'string') ids.add(invoiceId);
+      // Encender el interruptor cuadra todo lo enlazado: así salen las retroactivas (PR 4), con la fecha de cada factura
+      if (change.table === TABLES.settings) all = true;
     }
-    if (!ids.size) return;
     try {
-      const args = await supabase.rpc<{ source_app: string; entries: unknown[]; refs: string[]; skipped: unknown[] }>('core_read', {
-        p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_entries', p_args: { invoice_ids: [...ids] },
-      });
-      if (!args.entries.length && !args.refs.length) return;
-      const operations = [{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: args.source_app, entries: args.entries, refs: args.refs } }];
-      await supabase.rpc<CommitResult>('core_commit', {
-        p_app: 'resources', p_actor: ctx.user.id, p_request_id: `invoices-entries-${result.cursor}`, p_digest: await sha256Hex(stable(operations)),
-        p_expected_cursor: null, p_operations: operations,
-        p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['invoices:resource_entries'] } } : null,
-      });
+      if (all) for (const id of await linkedInvoiceIds(supabase, ctx)) ids.add(id);
+      await reconcileResourceEntries(supabase, ctx, [...ids], `invoices-entries-${result.cursor}`);
     } catch (err) {
       console.warn('R4: no se pudieron cuadrar las entradas en Recursos', { cursor: result.cursor, error: isFault(err) ? err.code : String(err) });
     }
   };
+}
+
+/** Facturas con líneas enlazadas o con entradas en Recursos. */
+function linkedInvoiceIds(supabase: Supabase, ctx: RequestContext): Promise<string[]> {
+  return supabase.rpc<string[]>('core_read', { p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_invoice_ids', p_args: {} });
+}
+
+/** Cuadra en Recursos las entradas de esas facturas, en lotes de 50 facturas (`reconcile_entries` admite 500 entradas). */
+export async function reconcileResourceEntries(supabase: Supabase, ctx: RequestContext, invoiceIds: string[], requestPrefix: string): Promise<number> {
+  let movements = 0;
+  for (let i = 0; i < invoiceIds.length; i += 50) {
+    const args = await supabase.rpc<{ source_app: string; entries: unknown[]; refs: string[]; skipped: unknown[] }>('core_read', {
+      p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_entries', p_args: { invoice_ids: invoiceIds.slice(i, i + 50) },
+    });
+    if (!args.entries.length && !args.refs.length) continue;
+    const operations = [{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: args.source_app, entries: args.entries, refs: args.refs } }];
+    const out = await supabase.rpc<CommitResult>('core_commit', {
+      p_app: 'resources', p_actor: ctx.user.id, p_request_id: i ? `${requestPrefix}-${i / 50}` : requestPrefix, p_digest: await sha256Hex(stable(operations)),
+      p_expected_cursor: null, p_operations: operations,
+      p_confirmation: ctx.user.kind === 'agent' ? { required: false, id: null, risk: { required: false, reasons: ['invoices:resource_entries'] } } : null,
+    });
+    movements += ((out.results?.[0] as { movements?: unknown[] } | undefined)?.movements ?? []).length;
+  }
+  return movements;
+}
+
+interface LinkPreviewRow { source: 'line' | 'memory'; id: string; name: string; action: 'enlazar' | 'crear' | 'dudoso' | 'omitir'; item_id: string | null; kind: string | null; base_unit: string | null; item_factor: number | null }
+
+/**
+ * R4, PR 4: aplica la vista previa que vio el owner (`invoices.resource_links_preview`, el mismo `digest`). Crea en Recursos
+ * los artículos nuevos (uno por nombre, con id estable: repetir no duplica) y enlaza las líneas y la memoria. Lo dudoso y lo
+ * omitido no se toca. `space_id` (opcional) es el sitio habitual de los artículos nuevos: sin sitio, una línea no entra.
+ * No enciende el interruptor: las entradas (también las retroactivas) salen al encenderlo.
+ */
+export async function applyResourceLinks(supabase: Supabase, ctx: RequestContext, body: { digest?: unknown; space_id?: unknown } | null): Promise<{ created: number; linked: number; memory: number }> {
+  if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner aplica el enlace con Recursos.');
+  const digest = body?.digest;
+  const spaceId = body?.space_id ?? null;
+  if (spaceId !== null && (typeof spaceId !== 'string' || !UUID.test(spaceId))) fail(422, 'INVALID_FIELDS', 'El sitio habitual no es válido.');
+  const preview = await supabase.rpc<{ rows: LinkPreviewRow[]; digest: string }>('core_read', { p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_links_preview', p_args: {} });
+  if (typeof digest !== 'string' || digest !== preview.digest) fail(409, 'PREVIEW_CHANGED', 'La vista previa ha cambiado: vuelve a revisarla antes de aplicar.');
+  const key = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const items = new Map<string, { id: string; fields: Record<string, unknown> }>();
+  const links: Array<{ row: LinkPreviewRow; itemId: string }> = [];
+  for (const row of preview.rows) {
+    if (row.action === 'enlazar' && row.item_id) links.push({ row, itemId: row.item_id });
+    if (row.action !== 'crear') continue;
+    const k = key(row.name);
+    let item = items.get(k);
+    if (!item) {
+      item = { id: await stableUuid(`resources-item:invoices:${k}`), fields: { name: row.name, kind: row.kind, base_unit: row.base_unit, ...(spaceId ? { default_space_id: spaceId } : {}), source_refs: [] as string[] } };
+      items.set(k, item);
+    }
+    if (row.source === 'line') (item.fields.source_refs as string[]).push(`invoices.line:${row.id}`);
+    links.push({ row, itemId: item.id });
+  }
+  if (items.size) {
+    const operations = [...items.values()].map((item) => ({ op: 'insert', table: 'resources.items', id: item.id, fields: item.fields }));
+    await supabase.rpc<CommitResult>('core_commit', {
+      p_app: 'resources', p_actor: ctx.user.id, p_request_id: `invoices-links-items-${preview.digest}`, p_digest: await sha256Hex(stable(operations)),
+      p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+    });
+  }
+  const revisions = new Map<string, number>();
+  if (links.some((l) => l.row.source === 'line')) for (const r of await allRows<{ id: string; revision: number }>(supabase, ctx, TABLES.invoiceLines)) revisions.set(r.id, r.revision);
+  if (links.some((l) => l.row.source === 'memory')) for (const r of await allRows<{ id: string; revision: number }>(supabase, ctx, TABLES.itemLabels)) revisions.set(r.id, r.revision);
+  const operations = links.flatMap(({ row, itemId }) => revisions.has(row.id)
+    ? [{ op: 'update', table: row.source === 'line' ? TABLES.invoiceLines : TABLES.itemLabels, id: row.id, expectedRevision: revisions.get(row.id)!, fields: { item_id: itemId, item_factor: row.item_factor } }]
+    : []);
+  if (operations.length) {
+    const result = await edgeCommit(supabase, ctx, `invoices-links-${preview.digest}`, operations, null);
+    // Con el interruptor ya encendido, las entradas salen ahora; apagado, `resource_entries` no devuelve nada.
+    if (links.some((l) => l.row.source === 'line')) await reconcileResourceEntries(supabase, ctx, await linkedInvoiceIds(supabase, ctx), `invoices-links-entries-${result.cursor}`);
+  }
+  return { created: items.size, linked: links.filter((l) => l.row.source === 'line').length, memory: links.filter((l) => l.row.source === 'memory').length };
 }
 
 /** Commit de la Edge con el actor de la petición (lo que hace `POST commands`, sin hooks: las filas las construye la Edge). */
@@ -785,6 +854,14 @@ export function createInvoicesApp(base: Omit<AppConfig, 'app' | 'slug' | 'origin
         if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner puede buscar en Drive.');
         return runDrive();
       },
+    }, {
+      // R4, PR 4: vista previa del enlace con Recursos (owner) y aplicarla con el mismo `digest`.
+      method: 'GET', pattern: 'resource-links/preview', handler: ({ ctx }) => {
+        if (ctx.membership.role !== 'owner') fail(403, 'FORBIDDEN', 'Solo el owner ve la vista previa del enlace con Recursos.');
+        return supabase.rpc('core_read', { p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_links_preview', p_args: {} });
+      },
+    }, {
+      method: 'POST', pattern: 'resource-links/apply', handler: async ({ ctx, json }) => applyResourceLinks(supabase, ctx, (await json()) as { digest?: unknown; space_id?: unknown } | null),
     }, {
       // «Volver a leer las pendientes» (owner): los borradores de Drive en «Pendiente de datos», con el lector actual.
       method: 'POST', pattern: 'drive/reread', handler: async ({ ctx }) => {
