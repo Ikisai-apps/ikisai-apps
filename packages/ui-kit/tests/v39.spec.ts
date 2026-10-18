@@ -143,3 +143,75 @@ test.describe('ui-kit v0.33 · calendario de persona (O2 y O4)', () => {
     await expect(title).not.toHaveText(before);
   });
 });
+
+/** Toque real por CDP: pasa por el reconocedor de gestos de Chromium, como en Android (con `pointercancel` si toca). */
+async function touchSwipe(page: Page, from: { x: number; y: number }, dx: number): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+  for (let i = 1; i <= 10; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + (dx * i) / 10, y: from.y + i / 2 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
+
+test('@smoke U6: en inglés, la cabecera y las etiquetas del calendario no salen en español', async ({ page }) => {
+  await page.goto('/#calendar');
+  // Cambio en vivo: el calendario ya estaba pintado en español.
+  await page.evaluate(() => (window as any).ikisaiI18n.start().setLocale('en'));
+  const cal = page.locator('#calendarHost .calendar');
+  await expect(cal.getByRole('button', { name: 'Today' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Previous' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Next' })).toBeVisible();
+  await expect(cal.getByRole('group', { name: 'View' })).toContainText('Month');
+  await expect(cal.getByRole('group', { name: 'View' })).toContainText('Week');
+  await expect(cal.locator('.cal-day.has').first()).toHaveAttribute('aria-label', /\d+ events?/);
+  await expect(cal).not.toContainText('Hoy');
+  await page.evaluate(() => (window as any).ikisaiI18n.get().setLocale('es'));
+  await expect(cal.getByRole('button', { name: 'Hoy' })).toBeVisible();
+  await expect(cal.getByRole('button', { name: 'Anterior' })).toBeVisible();
+});
+
+test.describe('ui-kit v0.35 · elegir días en Android', () => {
+  test.beforeEach(({}, info) => { test.skip(info.project.name !== 'movil', 'pantalla táctil'); });
+
+  test('@smoke «Nueva estancia» trae el calendario a la vista y la pista es de toque, no de teclado', async ({ page }) => {
+    await page.goto('/#personcal');
+    await page.locator('#newStay').click();
+    await expect(bar(page)).toContainText('Desliza a los lados para cambiar de mes');
+    await expect(bar(page)).not.toContainText('Intro');
+    await expect.poll(async () => {
+      const r = (await host(page).locator('.cal-day[tabindex="0"]').boundingBox())!;
+      return r.y >= 0 && r.y + r.height <= 844;
+    }).toBe(true);
+  });
+
+  test('deslizar con el dedo cambia de mes también mientras se eligen días, y el primer día se conserva', async ({ page }) => {
+    await page.goto('/#personcal');
+    await page.locator('#newStay').click();
+    await day(page, 28).click();
+    await expect(bar(page)).toContainText('ahora toca el último día');
+    const title = host(page).locator('.cal-title');
+    const before = await title.innerText();
+    await day(page, 8).scrollIntoViewIfNeeded();
+    const g = (await day(page, 8).boundingBox())!;
+    await touchSwipe(page, { x: g.x + g.width * 3, y: g.y + g.height / 2 }, -200);
+    await expect(title).not.toHaveText(before);
+    await expect(bar(page)).toContainText('ahora toca el último día');
+    await day(page, 2).click();
+    await expect(bar(page)).toContainText('Del ');
+    await expect(bar(page)).toContainText('6 días');
+    await expect(bar(page).getByRole('button', { name: 'Guardar estancia' })).toBeEnabled();
+  });
+
+  test('la rejilla deja el gesto horizontal a la página y no marca hover pegado ni texto al mantener', async ({ page }) => {
+    await page.goto('/#personcal');
+    await page.locator('#newStay').click();
+    const styles = await host(page).locator('.cal-grid').evaluate((g) => { const s = getComputedStyle(g); return { touch: s.touchAction, select: s.userSelect }; });
+    expect(styles.touch).toContain('pan-y');
+    expect(styles.touch).toContain('pinch-zoom');
+    expect(styles.select).toBe('none');
+    await day(page, 10).click();
+    await day(page, 12).scrollIntoViewIfNeeded();
+    // Sin ratón no hay vista previa del rango al pasar: solo el primer día marcado hasta el segundo toque.
+    await expect(host(page).locator('.cal-day.in-range')).toHaveCount(1);
+  });
+});

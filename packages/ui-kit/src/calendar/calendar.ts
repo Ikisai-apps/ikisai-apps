@@ -1,6 +1,6 @@
 import { el, replace, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
-import { kt } from '../i18n/i18n.ts';
+import { kt, onKitLocaleChange } from '../i18n/i18n.ts';
 
 /** Fecha local `YYYY-MM-DD`. */
 export type DayKey = string;
@@ -232,12 +232,12 @@ export function createCalendar(options: CalendarOptions): Calendar {
   const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
   const title = el('h3', { class: 'cal-title', 'aria-live': 'polite' });
-  const prev = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Anterior', onclick: () => move(-1) }, icon('chevronLeft'));
-  const next = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': 'Siguiente', onclick: () => move(1) }, icon('chevronRight'));
-  const today = el('button', { class: 'ghost small', type: 'button', onclick: () => { cursor = todayKey(); focused = cursor; void load(); } }, 'Hoy');
-  const switcher = options.viewSwitch === false ? null : el('div', { class: 'segmented cal-switch', role: 'group', 'aria-label': 'Vista' },
-    el('button', { type: 'button', dataset: { view: 'month' }, onclick: () => setView('month') }, 'Mes'),
-    el('button', { type: 'button', dataset: { view: 'week' }, onclick: () => setView('week') }, 'Semana'),
+  const prev = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': kt('Anterior'), onclick: () => move(-1) }, icon('chevronLeft'));
+  const next = el('button', { class: 'iconbtn small', type: 'button', 'aria-label': kt('Siguiente'), onclick: () => move(1) }, icon('chevronRight'));
+  const today = el('button', { class: 'ghost small', type: 'button', onclick: () => { cursor = todayKey(); focused = cursor; void load(); } }, kt('Hoy'));
+  const switcher = options.viewSwitch === false ? null : el('div', { class: 'segmented cal-switch', role: 'group', 'aria-label': kt('Vista') },
+    el('button', { type: 'button', dataset: { view: 'month' }, onclick: () => setView('month') }, kt('Mes')),
+    el('button', { type: 'button', dataset: { view: 'week' }, onclick: () => setView('week') }, kt('Semana')),
   );
   const head = el('div', { class: 'cal-head' }, el('div', { class: 'cal-nav' }, prev, title, next), el('div', { class: 'cal-tools' }, today, switcher));
   const grid = el('div', { class: 'cal-grid', role: 'grid' });
@@ -250,7 +250,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
   const bar = options.select ? el('div', { class: 'cal-selectbar', role: 'region', 'aria-label': options.select.label, hidden: true },
     el('div', { class: 'cal-selectbar-info' }, barText, barSub),
     el('div', { class: 'cal-selectbar-actions' },
-      el('button', { type: 'button', class: 'ghost', ...mark('cancel'), onclick: () => cancelSelect() }, kt('Cancelar')),
+      el('button', { type: 'button', class: 'ghost cal-cancel', ...mark('cancel'), onclick: () => cancelSelect() }, kt('Cancelar')),
       saveBtn),
   ) : null;
   const body = agenda ? el('div', { class: 'cal-body' }, grid, agenda) : grid;
@@ -311,6 +311,22 @@ export function createCalendar(options: CalendarOptions): Calendar {
 
   // --- Elegir días ------------------------------------------------------------------------------------------
   const isAllowed = (day: DayKey) => options.select?.allowed?.(day) ?? true;
+  /** Pantalla táctil sin ratón (Android, iPhone): pistas de toque en vez de teclado. */
+  const touchOnly = () => typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+  function hint(): string {
+    if (!touchOnly()) return kt('Con teclado: Intro en el primero, flechas e Intro en el último. Esc cancela.');
+    return options.swipe !== false && view === 'month' ? kt('Desliza a los lados para cambiar de mes.') : '';
+  }
+  /** En el móvil, «Nueva estancia» puede estar lejos del calendario: lo trae a la vista si el día no se ve. */
+  function reveal(): void {
+    const cell = grid.querySelector<HTMLElement>(`.cal-day[data-day="${focused}"]`);
+    if (!cell || typeof innerHeight !== 'number') return;
+    const r = cell.getBoundingClientRect();
+    const covered = bar && !bar.hidden ? bar.getBoundingClientRect().height : 0;
+    if (r.top >= 0 && r.bottom <= innerHeight - covered) return;
+    const calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cell.scrollIntoView({ block: 'center', behavior: calm ? 'auto' : 'smooth' });
+  }
   function rangeOf(): CalendarRange | null {
     if (!selecting?.from) return null;
     const end = selecting.to ?? selecting.hover ?? selecting.from;
@@ -335,7 +351,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     const issue = complete && r ? problem(r) : null;
     barText.textContent = !selecting.from ? kt('Toca el primer día') : !complete ? kt('{day} · ahora toca el último día', { day: shortDay(selecting.from) }) : rangeText(r!);
     const n = r ? daysBetween(r.from, r.to) + 1 : 0;
-    barSub.textContent = issue ?? (complete && r ? (options.select?.describe?.(r) ?? (n === 1 ? kt('1 día') : kt('{n} días', { n: String(n) }))) : kt('Con teclado: Intro en el primero, flechas e Intro en el último. Esc cancela.'));
+    barSub.textContent = issue ?? (complete && r ? (options.select?.describe?.(r) ?? (n === 1 ? kt('1 día') : kt('{n} días', { n: String(n) }))) : hint());
     barSub.classList.toggle('error', !!issue);
     saveBtn.disabled = !complete || !!issue || saving;
   }
@@ -391,8 +407,8 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (initial.from) { focused = initial.from; cursor = initial.from; }
     announce(initial.from ? kt('Cambia el primer día y el último, y guarda.') : kt('Elige el primer día y luego el último.'));
     const r = range();
-    if (target < r.from || target > r.to) void load().then(() => focusDay(focused));
-    else { markRange(); paintBar(); focusDay(focused); }
+    if (target < r.from || target > r.to) void load().then(() => { focusDay(focused); reveal(); });
+    else { markRange(); paintBar(); focusDay(focused); reveal(); }
   }
   function cancelSelect(saved = false): void {
     if (!selecting) return;
@@ -415,7 +431,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     const more = dayEvents.length - visibleEvents.length;
     const said = [
       label,
-      dayEvents.length ? `${dayEvents.length} ${dayEvents.length === 1 ? 'evento' : 'eventos'}` : '',
+      dayEvents.length ? (dayEvents.length === 1 ? kt('1 evento') : kt('{n} eventos', { n: String(dayEvents.length) })) : '',
       extra.shaded ? (extra.shadeLabel ?? kt('sombreado')) : '',
       notes.length ? (notes.length === 1 ? kt('1 nota') : kt('{n} notas', { n: String(notes.length) })) : '',
     ].filter(Boolean).join(', ');
@@ -518,6 +534,8 @@ export function createCalendar(options: CalendarOptions): Calendar {
   }
 
   // --- Arrastre (ratón) y deslizar (táctil) ---------------------------------------------------------------
+  // En el móvil se desliza también mientras se eligen días (estancias que cruzan de mes). `touch-action: pan-y`
+  // en la rejilla (CSS) evita que Android cancele el gesto horizontal con `pointercancel`.
   let suppressClick = false;
   let drag: { start: DayKey; moved: boolean } | null = null;
   let swipe: { x: number; y: number } | null = null;
@@ -526,7 +544,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (e.pointerType === 'mouse') {
       const day = dayAt(e.target);
       if (selecting && day && e.button === 0) drag = { start: day, moved: false };
-    } else if (options.swipe !== false && !selecting) swipe = { x: e.clientX, y: e.clientY };
+    } else if (options.swipe !== false && view === 'month') swipe = { x: e.clientX, y: e.clientY };
   });
   grid.addEventListener('pointermove', (e) => {
     if (!selecting) return;
@@ -536,7 +554,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
       if (!drag.moved) { drag.moved = true; selecting.from = drag.start; selecting.to = null; }
       selecting.hover = day;
       markRange(); paintBar();
-    } else if (!drag && selecting.from && !selecting.to && selecting.hover !== day) {
+    } else if (!drag && e.pointerType === 'mouse' && selecting.from && !selecting.to && selecting.hover !== day) {
       selecting.hover = day;
       markRange();
     }
@@ -552,7 +570,11 @@ export function createCalendar(options: CalendarOptions): Calendar {
     if (swipe) {
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
       swipe = null;
-      if (Math.abs(dx) > 60 && Math.abs(dy) < 40) move(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 60 && Math.abs(dy) < 40) {
+        suppressClick = true;
+        setTimeout(() => { suppressClick = false; }, 0);
+        move(dx < 0 ? 1 : -1);
+      }
     }
   };
   document.addEventListener('pointerup', endPointer);
@@ -610,6 +632,22 @@ export function createCalendar(options: CalendarOptions): Calendar {
     paintAgenda();
   }
 
+  // Bilingües (Guests, Organizers): al cambiar el idioma del kit, se reetiqueta sin rehacer el calendario.
+  const stopLocale = onKitLocaleChange(() => {
+    prev.setAttribute('aria-label', kt('Anterior'));
+    next.setAttribute('aria-label', kt('Siguiente'));
+    today.textContent = kt('Hoy');
+    switcher?.setAttribute('aria-label', kt('Vista'));
+    switcher?.querySelectorAll<HTMLElement>('button').forEach((b) => { b.textContent = b.dataset.view === 'week' ? kt('Semana') : kt('Mes'); });
+    legend?.setAttribute('aria-label', kt('Capas'));
+    agenda?.setAttribute('aria-label', kt('Día elegido'));
+    const cancel = bar?.querySelector<HTMLElement>('.cal-cancel');
+    if (cancel) cancel.textContent = kt('Cancelar');
+    if (!options.select?.label) saveBtn.textContent = kt('Guardar');
+    paintLegend();
+    paint();
+  });
+
   paintLegend();
   void load();
 
@@ -627,6 +665,6 @@ export function createCalendar(options: CalendarOptions): Calendar {
       const r = range();
       if (day < r.from || day > r.to) { cursor = day; void load(); } else paint();
     },
-    destroy() { document.removeEventListener('pointerup', endPointer); element.remove(); },
+    destroy() { document.removeEventListener('pointerup', endPointer); stopLocale(); element.remove(); },
   };
 }
