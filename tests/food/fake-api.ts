@@ -281,6 +281,10 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           const spaces: string[] | null = Array.isArray(args.space_ids) ? args.space_ids : null;
           const order = [...levels.values()].filter((l) => l.quantity > 0 && (!spaces || spaces.includes(l.space_id)))
             .sort((a, b) => String(lots.get(a.lot_id ?? '')?.expires_on ?? '9999').localeCompare(String(lots.get(b.lot_id ?? '')?.expires_on ?? '9999')));
+          if (args.once && movements.some((m) => m.source_app === args.source_app && m.source_ref === args.source_ref && String(m.kind).startsWith('consumo_'))) {
+            results.push({ op: 'call', procedure, result: { itemId: args.item_id, skipped: 'already_consumed' } });
+            return;
+          }
           let left = Number(args.quantity);
           const take = (space: string, lot: string | null, quantity: number) => {
             const row: FakeRow = { id: randomUUID(), revision: 1, created_at: nowIso(), updated_at: nowIso(), updated_by: actorId, deleted_at: null };

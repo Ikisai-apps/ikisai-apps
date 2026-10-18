@@ -112,7 +112,8 @@ export function consumeCall(args: { line: ConsumptionLine; quantity: number; men
   return {
     op: 'call', procedure: 'resources.consume',
     args: {
-      item_id: args.line.itemId, quantity: base, kind: 'consumo_servicio', source_app: 'food', source_ref: menuItemRef(args.menuItemId), note: args.note,
+      // `once` (Recursos, 0806): si ese plato ya descontó este artículo (el worker, otro dispositivo), no hace nada.
+      item_id: args.line.itemId, quantity: base, kind: 'consumo_servicio', source_app: 'food', source_ref: menuItemRef(args.menuItemId), note: args.note, once: true,
       ...(args.spaceIds.length ? { space_ids: args.spaceIds } : {}), ...(args.fallbackSpaceId ? { default_space_id: args.fallbackSpaceId } : {}),
     },
   };

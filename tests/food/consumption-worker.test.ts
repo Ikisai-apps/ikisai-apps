@@ -63,22 +63,17 @@ test.before(async () => {
 });
 test.after(async () => { await app.close(); });
 
-test('worker · sin la cuenta de servicio `food` en el núcleo, no se despierta ni hace nada', async () => {
-  assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, false);
-  assert.equal((await tick()).service, 'missing');
-  assert.equal((await q(`select count(*)::int as n from food.consumptions where automatic`))[0].n, 1, 'solo el que ya estaba');
+test('worker · se programa cada 15 minutos y se despierta solo si hay trabajo', async () => {
+  assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, true);
+  assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, true, 'sin efectos al preguntar');
   assert.deepEqual((await q(`select route, probe from core.scheduled_ticks where app = 'food'`)), [{ route: 'consumption/tick', probe: 'food.consumption_has_work' }]);
 });
 
 test('worker · anota y descuenta lo vencido; reintenta lo que se quedó a medias; repetir no hace nada', async () => {
-  // Lo que Core tiene que hacer (petición de la SALIDA del 18-10-2026): el servicio `food`, editor en Food, y su cuenta.
-  await q(`create or replace function core.service_grants(p_name text) returns jsonb language sql immutable as $f$
-    select case p_name when 'food' then jsonb_build_object('displayName', 'Food (sistema)', 'memberships', jsonb_build_array(jsonb_build_object('app', 'food', 'role', 'editor')))
-    else null end $f$`);
-  await q(`select core.register_service_actor($1, 'food')`, [await app.t.createUser()]);
-  assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, true);
-
+  // La primera vuelta crea la cuenta de servicio `food` (núcleo, 0096); las siguientes la reutilizan.
+  assert.equal((await q(`select count(*)::int as n from core.profiles where service_name = 'food'`))[0].n, 0);
   const out = await tick();
+  assert.equal((await q(`select count(*)::int as n from core.profiles where service_name = 'food'`))[0].n, 1);
   assert.deepEqual([out.noted, out.consumed, out.skipped, out.errors], [1, 2, 0, []]);
   // 1 kg para 10 raciones → 2 kg para 20 y 0,5 kg para 5 (el reintento, sin volver a anotarlo).
   assert.deepEqual(await moved(late), [['consumo_servicio', -2]]);
@@ -92,4 +87,12 @@ test('worker · anota y descuenta lo vencido; reintenta lo que se quedó a media
   const again = await tick();
   assert.deepEqual([again.noted, again.consumed, again.skipped], [0, 0, 0]);
   assert.equal((await q(`select food.consumption_has_work() as w`))[0].w, false);
+  assert.equal((await q(`select count(*)::int as n from core.profiles where service_name = 'food'`))[0].n, 1, 'la cuenta se reutiliza');
+
+  // Un dispositivo sin red confirmó el mismo plato antes de las 24 h y sincroniza ahora: `once` no descuenta otra vez.
+  const late2 = await app.call('/api/v1/resources/commands', { body: { requestId: `cw-${++counter}`, operations: [{ op: 'call', procedure: 'resources.consume',
+    args: { item_id: riceItem, quantity: 2, kind: 'consumo_servicio', source_app: 'food', source_ref: menuItemRef(late), once: true } }] } });
+  assert.equal(late2.status, 200, JSON.stringify(late2.data));
+  assert.equal(late2.data.results[0].result.skipped, 'already_consumed');
+  assert.deepEqual(await moved(late), [['consumo_servicio', -2]]);
 });
