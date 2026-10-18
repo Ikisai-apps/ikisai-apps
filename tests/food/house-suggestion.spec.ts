@@ -33,7 +33,8 @@ test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
   curryRecipe = api.seed('food.recipes', { name: 'Curry de verduras', category: 'principal', base_servings: 10, status: 'validada', allergens_checked: true }).id;
   api.seed('food.menus', { id: HOUSE_MENU_ID, kind: 'casa', house_servings: 6 });
-  gazpacho = api.seedSuggestion({ name: 'Gazpacho', date: day(1), service: 'comida', author: 'Marta' });
+  // Hoy: siempre en la semana que enseña el menú de casa (el día siguiente, un domingo, ya es la semana que viene).
+  gazpacho = api.seedSuggestion({ name: 'Gazpacho', date: day(0), service: 'comida', author: 'Marta' });
   api.seedSuggestion({ name: 'Curry de verduras', date: day(2), service: 'cena', author: 'Íñigo' });
   lentils = api.seedSuggestion({ name: 'Lentejas', date: day(3), service: 'comida', author: 'Marta' });
   process.env.VITE_API_PROXY = api.url;
@@ -97,7 +98,7 @@ test('platos sugeridos · entrada en Menús y en el menú de casa; ver qué pide
     await expect(page.locator('.toast.show')).toContainText('Propuesta aprobada.');
     // El servidor pone el plato en ese día con las personas en casa y una receta rápida.
     await expect.poll(() => api.rows('food.recipes').find((r) => r.name === 'Gazpacho')?.quick).toBe(true);
-    const service = api.rows('food.menu_services').find((s) => s.menu_id === HOUSE_MENU_ID && s.service_date === day(1))!;
+    const service = api.rows('food.menu_services').find((s) => s.menu_id === HOUSE_MENU_ID && s.service_date === day(0))!;
     expect(service).toMatchObject({ service_type: 'comida', service_time: '14:00' });
     expect(Number(api.rows('food.menu_items').find((i) => i.service_id === service.id)!.servings)).toBe(6);
   });
@@ -122,7 +123,7 @@ test('platos sugeridos · entrada en Menús y en el menú de casa; ver qué pide
     await expect(card(page, gazpacho)).toBeVisible();
     await card(page, gazpacho).getByRole('link', { name: 'Ver en el menú de casa' }).click();
     await expect(page).toHaveURL(new RegExp(`#/menus/${HOUSE_MENU_ID}$`));
-    await expect(page.locator(`.menuday[data-day="${day(1)}"]`)).toContainText('Gazpacho');
+    await expect(page.locator(`.menuday[data-day="${day(0)}"]`)).toContainText('Gazpacho');
     await expect(page.locator('#houseSuggestionsChip')).toHaveText('1 plato sugerido por revisar');
     await capture(page, '20-menu-casa-con-sugerido');
   });

@@ -99,7 +99,8 @@ test('consumo · solo a las 24 h, «Confirmar consumo» con correcciones y «No 
   });
 
   await test.step('Inicio: la comida de hoy, por confirmar', async () => {
-    await page.reload();
+    // Con la navegación de la app (recargar, con el reloj fijado días por delante del servidor, cerraría la sesión).
+    await page.getByRole('link', { name: 'Inicio' }).first().click();
     const card = page.locator('#consumeDue');
     await expect(card).toContainText('Consumo por confirmar');
     await expect(card.locator('li')).toHaveCount(1);

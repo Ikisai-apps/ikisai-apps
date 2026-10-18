@@ -3,7 +3,7 @@ import {
   PREP_UNITS, foodUnitFromBase, formatMethodSteps, fromItemBase, kitchenStock, ingredientKey, sharedIngredientItems, isQuickPending, lineCost, methodStepsFromText, prepFromParts, prepLabel, prepToParts, priceFor, validateOperations, type PrepUnit,
   type Allergen, type DietTag, type Equipment, type Ingredient, type Recipe, type RecipeEquipment, type RecipeIngredient, type ResourceItem, type Unit,
 } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createLabelPicker, el, formatDate, icon, listRow, openSheet, replace, spaceFromRow, spacePath, toast, type Sheet } from '@ikisai/ui-kit';
 import { guard } from '../app/guard.ts';
 import {
   ALLERGENS, ALLERGEN_LABELS, CATEGORY_LABELS, DIET_LABELS, DIET_TAGS, EQUIPMENT_STATUS_LABELS, RECIPE_CATEGORIES, RECIPE_STATUSES, RECIPE_STATUS_LABELS,
@@ -55,6 +55,12 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
   let equipment: EquipmentRow[] = [];
   let resourceItems: ResourceItem[] = [];
   let inventory: InventoryData | null = null; // R5: «En casa» de cada ingrediente en la ficha
+  /** Ruta corta del espacio de una máquina («Cocina › Office»), si su artículo lo tiene. */
+  const machinePlace = (machine: EquipmentRow): string | null => {
+    const space = inventory?.items.find((i) => i.id === machine.item_id)?.default_space_id;
+    if (!space || !inventory) return null;
+    return spacePath(inventory.spaces.filter((s) => !s.deleted_at).map((s) => ({ ...spaceFromRow(s as never) })), space).split(' › ').slice(-2).join(' › ') || null;
+  };
   let needs: NeedRow[] = [];
   let sheet: Sheet | null = null;
   let purchases: PurchasesSnapshot = { purchases: [], prices: new Map(), fetchedAt: null };
@@ -401,7 +407,9 @@ export const mountRecipes: ViewMount = ({ main, client }) => {
       const need = existingNeeds.find((n) => n.equipment_id === machine.id) ?? null;
       const box = el('input', { 'data-feedback-id': 'food.recetario.formulario.maquinaria.equipo', 'data-feedback-label': 'Necesita esta máquina', type: 'checkbox', checked: !!need, id: `r-machine-${machine.id}` });
       const quantity = el('input', { 'data-feedback-id': 'food.recetario.formulario.maquinaria.unidades', 'data-feedback-label': 'Unidades necesarias', type: 'number', min: '1', step: '1', inputmode: 'numeric', value: String(need?.quantity_required ?? 1), 'aria-label': `Unidades de ${machine.name}`, class: 'qty compact' });
-      return { machine, need, box, quantity, node: el('div', { class: 'machinerow' }, el('label', { class: 'checkline', for: box.id }, box, el('span', null, machine.name)), quantity) };
+      // R5: dónde está (su espacio en Recursos), fuera de la etiqueta.
+      const place = machinePlace(machine);
+      return { machine, need, box, quantity, node: el('div', { class: 'machinerow' }, el('label', { class: 'checkline', for: box.id }, box, el('span', null, machine.name)), place ? el('span', { class: 'muted machineplace' }, place) : null, quantity) };
     });
 
     function build(photo: Record<string, unknown>): { operations: RowOperation[]; problem?: { message: string; focus?: HTMLElement } } {

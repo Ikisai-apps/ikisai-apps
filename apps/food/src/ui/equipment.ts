@@ -1,6 +1,8 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { validateOperations, type Equipment } from '@ikisai/domain-food';
-import { closeSheet, confirmDialog, el, formatDate, icon, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { machineStockMovement, validateOperations, type Equipment, type MovementLike, type ResourceItem } from '@ikisai/domain-food';
+import type { SyncedRow } from '@ikisai/sync-client';
+import { closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, listRow, openSheet, replace, spaceFromRow, spacePath, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
+import { R, resourcesClient } from '../app/resources.ts';
 import { guard } from '../app/guard.ts';
 import { EQUIPMENT_STATUSES, EQUIPMENT_STATUS_LABELS, T, describeError, type Mirror } from '../app/client.ts';
 import { usage } from '../app/usage.ts';
@@ -8,12 +10,24 @@ import { fb } from './feedback.ts';
 import type { ViewMount } from './shell.ts';
 
 type Row = Mirror<Equipment>;
+/** Marca del selector de espacio; el kit pone las etiquetas de sus partes (`SPACE_PICKER_MARKS`). */
+const SPACE_MARK = 'food.maquinaria.formulario.espacio';
 
 const text = (value: string) => value.trim() || null;
 
 /** Maquinaria: lista sencilla en lectura, hoja de edición y papelera. Sin fotos ni optimizador (docs/food/API.md §9). */
 export const mountEquipment: ViewMount = ({ main, client }) => {
   let rows: Row[] = [];
+  // Recursos (R5): el artículo de cada máquina, los espacios y los movimientos (el stock).
+  let articles: Array<ResourceItem & { default_space_id?: string | null; revision: number }> = [];
+  let spaces: SpaceRow[] = [];
+  let movements: MovementLike[] = [];
+  const articleOf = (row: Row) => (row.item_id ? articles.find((a) => a.id === row.item_id) : undefined);
+  /** «Altura 1 › Casa › Cocina › Office» si la máquina tiene sitio en Recursos; si no, la ubicación escrita. */
+  const placeOf = (row: Row) => {
+    const space = articleOf(row)?.default_space_id;
+    return (space && spacePath(spaces, space)) || row.location || '';
+  };
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
 
@@ -37,7 +51,7 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     const node = listRow({
       id: row.id,
       title: row.name,
-      meta: [row.quantity === 1 ? '1 unidad' : `${row.quantity} unidades`, row.category ?? '', row.location ?? ''].filter(Boolean),
+      meta: [row.quantity === 1 ? '1 unidad' : `${row.quantity} unidades`, row.category ?? '', placeOf(row)].filter(Boolean),
       chips: chip,
       pending: row._pending === true,
       deleted,
@@ -63,6 +77,15 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     rows = (await client.list(T.equipment, { includeDeleted: true })) as Row[];
+    try {
+      const r = resourcesClient(client);
+      const [items, spaceRows, moves] = await Promise.all([r.list(R.items), r.list(R.spaces), r.list(R.movements)]);
+      articles = items as unknown as typeof articles;
+      spaces = (spaceRows as SyncedRow[]).filter((s) => !s.deleted_at).map(spaceFromRow);
+      movements = moves as unknown as MovementLike[];
+    } catch {
+      // sin Recursos, Maquinaria funciona como siempre
+    }
     paint();
   }
 
@@ -91,6 +114,13 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     const status = el('select', { 'data-feedback-id': 'food.maquinaria.formulario.estado', 'data-feedback-label': 'Estado', id: 'e-status' }, ...EQUIPMENT_STATUSES.map((s) => el('option', { value: s, selected: (row?.status ?? 'operativo') === s }, EQUIPMENT_STATUS_LABELS[s])));
     const notes = el('textarea', { 'data-feedback-id': 'food.maquinaria.formulario.notas', 'data-feedback-label': 'Notas', id: 'e-notes', rows: '3' });
     notes.value = row?.notes ?? '';
+    // Espacio de Recursos (R5): dónde está la máquina. Solo si ya tiene artículo y hay espacios.
+    const article = row ? articleOf(row) : undefined;
+    let spaceChanged = false;
+    const spacePicker = article && spaces.length && canWrite()
+      ? createSpacePicker({ label: 'Espacio', rows: spaces, value: article.default_space_id ?? null, recentKey: 'food.maquinaria', feedbackId: SPACE_MARK,
+          onChange: () => { spaceChanged = true; refreshDirty(); } })
+      : null;
 
     const fields = (): Record<string, unknown> => ({
       name: name.value.trim(), category: text(category.value), quantity: Number(quantity.value), capacity: text(capacity.value),
@@ -102,7 +132,7 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       return Object.fromEntries(Object.entries(all).filter(([key, value]) => (row[key] ?? null) !== (value ?? null)));
     };
     const refreshDirty = () => {
-      const dirty = Object.keys(changed()).length > 0;
+      const dirty = Object.keys(changed()).length > 0 || spaceChanged;
       guard.dirtyEditor = row ? dirty : fields().name !== '';
       sheet?.setFootHidden(row !== null && !dirty);
     };
@@ -114,11 +144,13 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
         error.textContent = '';
         if (!name.value.trim()) { error.textContent = 'El nombre es obligatorio.'; name.focus(); return; }
         if (!Number.isInteger(Number(quantity.value)) || Number(quantity.value) < 0) { error.textContent = 'La cantidad debe ser un número entero.'; quantity.focus(); return; }
-        const operations: RowOperation[] = row
-          ? [{ op: 'update', table: T.equipment, id: row.id, expectedRevision: row.revision, fields: changed() }]
-          : [{ op: 'insert', table: T.equipment, id: crypto.randomUUID(), fields: fields() }];
+        const edits = row ? changed() : fields();
+        const operations: RowOperation[] = !row
+          ? [{ op: 'insert', table: T.equipment, id: crypto.randomUUID(), fields: edits }]
+          : Object.keys(edits).length ? [{ op: 'update', table: T.equipment, id: row.id, expectedRevision: row.revision, fields: edits }] : [];
         save.disabled = true;
-        const ok = await commitSafely(operations, row ? 'Cambios guardados en este dispositivo.' : 'Máquina creada en este dispositivo.', (send) => usage.run('food.maquinaria.guardar', send));
+        const ok = !operations.length || await commitSafely(operations, row ? 'Cambios guardados en este dispositivo.' : 'Máquina creada en este dispositivo.', (send) => usage.run('food.maquinaria.guardar', send));
+        if (ok && article) await syncResources(article, spacePicker?.get()[0] ?? article.default_space_id ?? null, Number(quantity.value));
         save.disabled = false;
         if (ok) { guard.dirtyEditor = false; await sheet?.close(true); }
       } },
@@ -127,6 +159,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       el('label', { class: 'field' }, el('span', null, 'Cantidad'), quantity),
       el('label', { class: 'field' }, el('span', null, 'Capacidad'), capacity),
       el('label', { class: 'field' }, el('span', null, 'Ubicación'), location),
+      spacePicker ? el('div', { class: 'field' }, el('span', null, 'Espacio'), spacePicker.element,
+        el('span', { class: 'hint' }, 'Dónde está en la casa (Recursos). Con espacio, «Cantidad» es su stock: cambiarla lo ajusta.')) : null,
       el('label', { class: 'field' }, el('span', null, 'Estado'), status),
       el('label', { class: 'field' }, el('span', null, 'Notas'), notes),
       error,
@@ -151,6 +185,24 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       onClose: () => { guard.dirtyEditor = false; sheet = null; },
     });
     refreshDirty();
+  }
+
+  /**
+   * Recursos (R5): el sitio de la máquina es el habitual de su artículo, y su cantidad es el stock: si no cuadra, un
+   * movimiento a mano en ese sitio lo deja igual. Sin sitio no se toca el stock.
+   */
+  async function syncResources(article: (typeof articles)[number], spaceId: string | null, quantity: number): Promise<void> {
+    const r = resourcesClient(client);
+    try {
+      const ops: RowOperation[] = [];
+      if ((article.default_space_id ?? null) !== spaceId) ops.push({ op: 'update', table: R.items, id: article.id, expectedRevision: article.revision, fields: { default_space_id: spaceId } } as RowOperation);
+      const movement = spaceId && Number.isInteger(quantity) ? machineStockMovement({ itemId: article.id, spaceId, quantity, movements }) : null;
+      if (movement) ops.push({ op: 'insert', table: R.movements, id: crypto.randomUUID(), fields: movement } as RowOperation);
+      if (ops.length) await r.commit(ops);
+    } catch (error) {
+      toast(`No se ha actualizado en Recursos: ${describeError(error)}`);
+    }
+    await load();
   }
 
   /** Petición a Tasks (API.md §6.1): una por máquina y día; Tasks la enruta con las reglas del usuario o la deja en «Por clasificar». */
@@ -180,9 +232,11 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   void load();
   const offTable = client.onTable(T.equipment, () => void load());
   const offStatus = client.onStatus(() => void load());
+  const offResources = (() => { try { const r = resourcesClient(client); const offs = [R.items, R.spaces, R.movements].map((t) => r.onTable(t, () => void load())); return () => offs.forEach((off) => off()); } catch { return () => undefined; } })();
   return () => {
     offTable();
     offStatus();
     void closeSheet(true);
+    offResources();
   };
 };
