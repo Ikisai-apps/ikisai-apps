@@ -58,6 +58,13 @@ export {
 export { createSpaceTree, SPACE_TREE_MARKS, type SpaceTree, type SpaceTreeOptions, type SpaceRowAction } from './spaces/tree.ts';
 export { createSyncSpaceSource, spaceFromRow, spaceToFields, kindFromRow, type SyncSpaceSourceOptions } from './spaces/sync-source.ts';
 export { createSpacePicker, SPACE_PICKER_MARKS, type SpacePicker, type SpacePickerOptions } from './spaces/picker.ts';
+export {
+  DEFAULT_ITEM_KINDS, BASE_UNITS, itemKey, kindLabelOf, sameNameItem, similarItems, searchItems, unitsFor, baseQuantity, stockFromMovements, stockBySpace, stockSummary,
+  itemFromRow, itemUnitFromRow, itemKindFromRow, newItemId, createMemoryItemSource,
+  type ItemRow, type ItemUnitRow, type ItemKind, type StockLine, type ItemSnapshot, type ItemDraft, type ItemDuplicate, type ItemSource, type ItemSearchOptions, type ItemUnitOption,
+} from './items/model.ts';
+export { createSyncItemSource, type SyncItemSourceOptions } from './items/sync-source.ts';
+export { createItemPicker, ITEM_PICKER_MARKS, type ItemPicker, type ItemPickerOptions, type ItemPick } from './items/picker.ts';
 export { createLevelStar, renderLevelStar, levelFill, type LevelStar, type LevelStarOptions } from './fields/level-star.ts';
 export { createSuggestField, attachSuggestions, normalizeName, uniqueNames, matchName, suggestMessage, type SuggestField, type SuggestFieldOptions, type SuggestHandle, type SuggestOptions, type SuggestMode, type NameMatch } from './fields/suggest.ts';
 export { createSaveState, type SaveState, type SaveStateOptions, type SaveField, type SaveStatus } from './fields/save-state.ts';

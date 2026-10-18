@@ -145,6 +145,8 @@ KIT_CHILDREN.createSpaceTree = [['buscar', 'Buscar espacio', 'input'], ['nueva_a
 KIT_CHILDREN.createSpacePicker = [['rapido', 'Espacio más usado', 'button'], ['buscar', 'Buscar espacio', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['quitar', 'Quitar espacio', 'button']];
 // `CALENDAR_MARKS` (src/calendar/calendar.ts) y `PROPOSAL_LIST_MARKS` (src/proposals/list.ts).
 KIT_CHILDREN.createCalendar = [['capa', 'Capa del calendario', 'button'], ['dia', 'Día del calendario', 'button'], ['guardar_dias', 'Guardar días elegidos', 'button'], ['cancelar_dias', 'Cancelar la elección de días', 'button']];
+// `ITEM_PICKER_MARKS` (src/items/picker.ts); con `space`, su `createSpacePicker` cuelga de `.sitio`.
+KIT_CHILDREN.createItemPicker = [['buscar', 'Buscar artículo', 'input'], ['opcion', 'Resultado de la búsqueda', 'option'], ['crear', 'Crear artículo', 'option'], ['crear-guardar', 'Crear y usar', 'button'], ['crear-cancelar', 'Cancelar el alta', 'button'], ['cambiar', 'Cambiar de artículo', 'button'], ['usar-existente', 'Usar el que ya existe', 'button'], ['sitio.rapido', 'Sitio más usado', 'button'], ['sitio.buscar', 'Buscar sitio', 'input'], ['sitio.opcion', 'Sitio de la búsqueda', 'option'], ['sitio.quitar', 'Quitar sitio', 'button']];
 KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'button'], ['tipo', 'Tipo de propuesta', 'button'], ['abrir', 'Ver propuesta', 'button'], ['aprobar', 'Aprobar propuesta', 'button'], ['descartar', 'Descartar propuesta', 'button'], ['retirar', 'Retirar propuesta', 'button'], ['proponer', 'Proponer', 'button']];
 
 /** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
@@ -188,7 +190,7 @@ export function extractFeatures(text, file = '') {
     const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
     const children = call ? KIT_CHILDREN[call] : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }
