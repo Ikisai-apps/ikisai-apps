@@ -102,10 +102,11 @@ function tradePicker(options){return IkisaiKit.createSpacePicker({rows:tradeRows
 
 /* --- Ficha de tarea y de proyecto ----------------------------------------------------------------------------------- */
 // Borrador del oficio mientras la ficha está abierta (sobrevive a reabrirla al elegir etiquetas) y lo que se guarda al pulsar «Guardar».
+// Cada cambio avisa en el campo (`trades-change`): «Quién sabe hacerlo» (who-knows-ui.js) se vuelve a pintar debajo.
 let tradeDraft=null,tradePending=null;
 function mountTradeField(anchor,key,initial,label,feedbackId,hint){if(!anchor)return;const ids=tradeDraft&&tradeDraft.key===key?tradeDraft.ids:[...initial];tradeDraft={key,ids:[...ids]};
   const field=document.createElement('div');field.className='field tradefield ikisai-kit';
-  const picker=tradePicker({label,value:ids,feedbackId,onChange:next=>{tradeDraft={key,ids:[...next]}}});
+  const picker=tradePicker({label,value:ids,feedbackId,onChange:next=>{tradeDraft={key,ids:[...next]};field.dispatchEvent(new CustomEvent('trades-change',{detail:[...next]}))}});
   field.append(picker.element);if(!tradeRows().length)field.insertAdjacentHTML('beforeend','<p class="small muted">Los oficios de Central no se han podido leer todavía. Vuelve a abrir la ficha con conexión.</p>');
   if(hint)field.insertAdjacentHTML('beforeend',`<p class="small muted">${esc(hint)}</p>`);anchor.insertAdjacentElement('beforebegin',field);
   if(!canEdit())field.querySelectorAll('input,button').forEach(x=>x.disabled=true)}
