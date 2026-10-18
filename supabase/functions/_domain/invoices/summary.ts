@@ -172,6 +172,8 @@ export interface PurchaseFilters {
   expenseCategory?: ExpenseCategory;
   isInvestment?: boolean;
   itemType?: string;
+  /** R4: solo las líneas enlazadas con este artículo de Recursos. */
+  itemId?: string;
   targetApp?: string;
   targetKind?: string;
   targetId?: string;
@@ -245,6 +247,7 @@ export function purchaseItems(input: PurchaseItemsInput, filters: PurchaseFilter
     if (filters.expenseCategory && category !== filters.expenseCategory) continue;
     if (filters.isInvestment !== undefined && investment !== filters.isInvestment) continue;
     if (filters.itemType && line.item_type !== filters.itemType) continue;
+    if (filters.itemId && line.item_id !== filters.itemId) continue;
     const allocations = allocationsByLine.get(line.id) ?? [];
     const allocatedCents = sumCents(allocations.map((a) => a.allocated_amount));
     const unallocatedCents = Math.max(0, toCents(line.net_amount) - allocatedCents);

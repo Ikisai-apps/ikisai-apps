@@ -423,11 +423,16 @@ function linkedInvoiceIds(supabase: Supabase, ctx: RequestContext): Promise<stri
 export async function reconcileResourceEntries(supabase: Supabase, ctx: RequestContext, invoiceIds: string[], requestPrefix: string): Promise<number> {
   let movements = 0;
   for (let i = 0; i < invoiceIds.length; i += 50) {
-    const args = await supabase.rpc<{ source_app: string; entries: unknown[]; refs: string[]; skipped: unknown[] }>('core_read', {
+    const args = await supabase.rpc<{ source_app: string; entries: unknown[]; refs: string[]; skipped: unknown[]; costs?: Array<{ movement_id: string; unit_cost: number; source_ref: string }> }>('core_read', {
       p_app: 'invoices', p_actor: ctx.user.id, p_name: 'invoices.resource_entries', p_args: { invoice_ids: invoiceIds.slice(i, i + 50) },
     });
-    if (!args.entries.length && !args.refs.length) continue;
-    const operations = [{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: args.source_app, entries: args.entries, refs: args.refs } }];
+    const costs = args.costs ?? [];
+    if (!args.entries.length && !args.refs.length && !costs.length) continue;
+    // «Ya entró desde la compra de Food» (0237): el coste va a esa entrada (uno por entrada, id estable: repetir no duplica)
+    const operations: unknown[] = [{ op: 'call', procedure: 'resources.reconcile_entries', args: { source_app: args.source_app, entries: args.entries, refs: args.refs } }];
+    for (const c of costs) {
+      operations.push({ op: 'insert', table: 'resources.movement_costs', id: await stableUuid(`movement-cost:${c.movement_id}`), fields: { movement_id: c.movement_id, unit_cost: c.unit_cost, source_app: 'invoices', source_ref: c.source_ref } });
+    }
     const out = await supabase.rpc<CommitResult>('core_commit', {
       p_app: 'resources', p_actor: ctx.user.id, p_request_id: i ? `${requestPrefix}-${i / 50}` : requestPrefix, p_digest: await sha256Hex(stable(operations)),
       p_expected_cursor: null, p_operations: operations,

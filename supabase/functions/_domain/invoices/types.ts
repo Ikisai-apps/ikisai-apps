@@ -128,7 +128,7 @@ export const WRITABLE: Record<InvoicesTable, readonly string[]> = {
   'invoices.invoice_lines': [
     'invoice_id', 'position', 'description', 'quantity', 'unit', 'unit_price', 'discount_amount', 'net_amount', 'vat_rate', 'vat_amount', 'gross_amount',
     'item_type', 'match_name', 'expense_category', 'is_investment', 'confidence', 'notes', 'rectifies_line_id', 'label',
-    'item_id', 'item_factor', 'space_id',
+    'item_id', 'item_factor', 'space_id', 'entered_movement_id',
   ],
   'invoices.tax_lines': ['invoice_id', 'position', 'tax_type', 'rate', 'taxable_base', 'amount', 'notes'],
   'invoices.allocations': ['invoice_line_id', 'target_app', 'target_kind', 'target_id', 'target_code', 'target_label', 'target_revision', 'allocated_quantity', 'allocated_amount', 'notes'],
@@ -269,6 +269,8 @@ export interface InvoiceLineRow extends SyncedColumns {
   space_id?: string | null;
   /** «manual» o «recordado», como `label_source`. Lo pone el servidor. */
   item_source?: 'manual' | 'recordado' | null;
+  /** «Ya entró desde la compra de Food» (0237): la entrada de Food de ese artículo; la línea no pide entrada propia. */
+  entered_movement_id?: string | null;
 }
 
 /** Memoria de «Mi nombre» por proveedor y artículo (0230). La escribe el servidor al validar; el cliente corrige `label`. */
