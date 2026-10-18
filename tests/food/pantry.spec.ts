@@ -142,9 +142,6 @@ test('Despensa · pestaña, catálogo de cocina, filtro desde Inicio, ficha, «A
     await line.locator('input').fill('3');
     await line.locator('input').press('Enter');
     await capture(page, '32-despensa-recuento');
-    // Kit 0.38: con el foco en la cantidad, «Revisar y cerrar» no se activa hasta el siguiente repintado completo (avisado
-    // a UI). Tocar el chip «Todo» lo repinta sin enseñar lo calculado.
-    await d.getByRole('button', { name: 'Todo', exact: true }).click();
     await d.getByRole('button', { name: 'Revisar y cerrar' }).click();
     await d.getByRole('button', { name: 'Cerrar y ajustar' }).click();
     await expect.poll(() => api.rows('resources.movements').filter((m) => m.item_id === yogurt && m.kind === 'ajuste_recuento').map((m) => Number(m.quantity)), { timeout: 15_000 }).toEqual([-1]);
