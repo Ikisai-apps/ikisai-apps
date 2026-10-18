@@ -236,3 +236,16 @@ export function purchaseSpace(item: Pick<ResourceItem, 'id'> & { default_space_i
   const pick = (test: (s: SpaceLike) => boolean) => live.filter((s) => kitchen.has(s.id) && test(s)).sort((a, b) => a.name.localeCompare(b.name, 'es'))[0]?.id;
   return pick((s) => /despensa/i.test(s.name)) ?? pick((s) => s.kind === 'cocina') ?? pick(() => true) ?? null;
 }
+
+/**
+ * Maquinaria (R5): «Cantidad» es el stock del artículo. Al cambiarla (o al darle un sitio por primera vez), el movimiento
+ * que deja el stock total igual a la cantidad, en su sitio: entrada o salida a mano con motivo. `null` si ya cuadra.
+ */
+export function machineStockMovement(args: { itemId: string; spaceId: string; quantity: number; movements: MovementLike[] }): Record<string, unknown> | null {
+  const stock = args.movements.filter((m) => !m.deleted_at && m.item_id === args.itemId).reduce((sum, m) => sum + Number(m.quantity), 0);
+  const delta = Math.round((args.quantity - stock) * 1000) / 1000;
+  if (delta === 0) return null;
+  return delta > 0
+    ? { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'entrada_manual', source_app: 'food', note: 'Cantidad de Maquinaria' }
+    : { item_id: args.itemId, space_id: args.spaceId, quantity: delta, kind: 'salida_manual', reason: 'otro', source_app: 'food', note: 'Cantidad de Maquinaria' };
+}

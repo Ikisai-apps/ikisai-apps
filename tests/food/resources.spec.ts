@@ -25,6 +25,7 @@ let baseURL: string;
 let tomato: string;
 let oven: string;
 let oil: string;
+let office: string;
 
 test.beforeAll(async () => {
   api = await startFakeApi({ users: [USER] });
@@ -32,6 +33,9 @@ test.beforeAll(async () => {
   oven = api.seed('food.equipment', { name: 'Horno', category: 'Horno', capacity: '70 cm', status: 'averiado' }).id;
   // Un ingrediente que ya está en Recursos (lo creó Finance, por ejemplo) y que Food aún no usa.
   oil = api.seed('resources.items', { name: 'Aceite de oliva', kind: 'ingrediente', base_unit: 'l' }).id;
+  const house = api.seed('resources.spaces', { kind: 'edificio', name: 'Casa' }).id;
+  const kitchen = api.seed('resources.spaces', { kind: 'cocina', name: 'Cocina', parent_id: house }).id;
+  office = api.seed('resources.spaces', { kind: 'ubicacion', name: 'Office', parent_id: kitchen }).id;
   process.env.VITE_API_PROXY = api.url;
   await buildFoodApp();
   server = await preview({
@@ -99,5 +103,25 @@ test('Recursos · enlace al abrir, ingrediente de Recursos sugerido y estado de 
     await page.locator('#saveEquipment').click();
     await expect(dialog).toBeHidden();
     await expect.poll(() => item(equipmentRef(oven))?.attributes, { timeout: 15_000 }).toEqual({ status: 'operativo', capacity: '70 cm' });
+  });
+
+  await test.step('Maquinaria: el espacio de Recursos y la cantidad como stock', async () => {
+    await page.locator('#equipmentList .row', { hasText: 'Horno' }).getByRole('button', { name: 'Editar Horno' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Editar máquina' });
+    await dialog.locator('.space-search').fill('Office');
+    await dialog.getByRole('option', { name: /Office/ }).click();
+    await dialog.getByRole('spinbutton', { name: 'Cantidad', exact: true }).fill('3');
+    await page.locator('#saveEquipment').click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => item(equipmentRef(oven))?.default_space_id, { timeout: 15_000 }).toBe(office);
+    await expect.poll(() => api.rows('resources.movements').filter((m) => m.item_id === item(equipmentRef(oven))!.id).map((m) => [m.kind, Number(m.quantity), m.space_id]), { timeout: 15_000 })
+      .toEqual([['entrada_manual', 3, office]]);
+    await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).toContainText('Casa › Cocina › Office');
+    await expect(page.locator('#equipmentList .row', { hasText: 'Horno' })).toContainText('3 unidades');
+    // Bajar a 2 saca una del stock.
+    await page.locator('#equipmentList .row', { hasText: 'Horno' }).getByRole('button', { name: 'Editar Horno' }).click();
+    await dialog.getByRole('spinbutton', { name: 'Cantidad', exact: true }).fill('2');
+    await page.locator('#saveEquipment').click();
+    await expect.poll(() => api.rows('resources.movements').filter((m) => m.item_id === item(equipmentRef(oven))!.id).reduce((sum, m) => sum + Number(m.quantity), 0), { timeout: 15_000 }).toBe(2);
   });
 });

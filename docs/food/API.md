@@ -195,6 +195,10 @@ Migración `20261014_0197_food_resource_links.sql`; diseño en `coordinacion/amp
   - Las recetas siguen apuntando a `ingredient_id` y `equipment_id`. El enlace va en el ingrediente y en la máquina, no en cada línea. Para quien usa la app no cambia nada (`caracterizacion-r5.*`).
   - Unidad base del artículo: la preferida del ingrediente («unidad» es «ud»); las máquinas, «ud».
   - Si el nombre ya lo usa un artículo de otro tipo, el nuevo se llama «… (cocina)».
+- **Maquinaria (R5, 18 de octubre de 2026):**
+  - Cada máquina con artículo tiene un «Espacio» (`createSpacePicker` del kit), que se guarda como `default_space_id` del artículo. La lista enseña su ruta en vez de la ubicación escrita, que se conserva.
+  - Con espacio, «Cantidad» es el stock del artículo: al guardar, si no cuadra, un movimiento a mano en ese sitio lo ajusta (`machineStockMovement`; `entrada_manual` o `salida_manual` con motivo `otro`, nota «Cantidad de Maquinaria»).
+  - El formulario de receta enseña al lado de cada máquina dónde está.
 - **Recetario:** también sugiere los ingredientes de Recursos que Food aún no usa (creados en Finance, en Tasks o a mano). Elegir uno crea el ingrediente ya enlazado, con su nombre y su unidad, sin duplicar el artículo.
 - **Hecho después:** compra con stock (R5b, §3.2 paso 6b) y consumo al acabar el servicio (R5c, §2.8).
 
