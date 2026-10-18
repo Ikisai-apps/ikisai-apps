@@ -27,6 +27,8 @@ import { fetchStoredDocument, sha256Hex, shareWithAi, takeSharedDocuments, takeS
 import { READ_LIMITS, ReadLimitError, readPdfItems } from '../app/pdf-text.ts';
 import { flushDocumentTexts, queueDocumentText } from '../app/text-queue.ts';
 import { block, fbBlock, commitSafely, field, select } from './common.ts';
+import { articleForm } from './article.ts';
+import { linkedItem, linksEnabled, spaceName } from '../app/resources.ts';
 import { renderIssuedPanel } from './issued.ts';
 import { openBatchUpload } from './batch.ts';
 import type { ManualPrefill } from './manual.ts';
@@ -490,10 +492,12 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
   const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
     el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, lineName(l)),
-      l.label_source === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
+      (linksEnabled() && l.item_id ? l.item_source : l.label_source) === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
       l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null,
       // La descripción de la factura (la que vale fiscalmente) sigue a la vista bajo «Mi nombre».
-      l.label ? el('span', { class: 'hint line-original', 'data-feedback-ignore': '' }, `En la factura: ${l.description}`) : null),
+      lineName(l) !== l.description ? el('span', { class: 'hint line-original', 'data-feedback-ignore': '' }, `En la factura: ${l.description}`) : null,
+      // R4: con el enlace encendido, cómo entra al inventario («1 saco = 25 kg → Despensa»)
+      linksEnabled() && l.item_id ? el('span', { class: 'hint line-stock', 'data-feedback-ignore': '' }, stockText(l)) : null),
     el('div', { class: 'line-nums' },
       el('span', { 'data-feedback-ignore': '' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
       el('strong', { 'data-feedback-ignore': '' }, eur(l.net_amount)),
@@ -501,7 +505,10 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       el('span', null, l.vat_rate === null ? 'sin IVA' : `IVA ${Number(l.vat_rate)} %`),
       editable ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.editar', 'data-feedback-label': 'Editar artículo', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${lineName(l)}`, onclick: () => replace(lineEditor, lineForm(l)) }, 'Editar') : null,
       // «Mi nombre»: también en una factura validada (no la devuelve a revisión).
-      canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada' ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'linkbtn', type: 'button', 'aria-label': `Mi nombre para ${l.description}`, onclick: () => replace(lineEditor, labelForm(client, l, () => replace(lineEditor))) }, 'Mi nombre') : null,
+      canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada' ? (linksEnabled()
+        // R4: «Artículo» sustituye a «Mi nombre» (el texto sin artículo sigue siendo posible)
+        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.articulo', 'data-feedback-label': 'Artículo', class: 'linkbtn', type: 'button', 'aria-label': `Artículo para ${l.description}`, onclick: () => replace(lineEditor, articleForm(client, invoice, l, (id) => mirror.supplierById.get(id)?.name ?? null, () => replace(lineEditor))) }, 'Artículo')
+        : el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'linkbtn', type: 'button', 'aria-label': `Mi nombre para ${l.description}`, onclick: () => replace(lineEditor, labelForm(client, l, () => replace(lineEditor))) }, 'Mi nombre')) : null,
     ),
   );
   const linesView = !lines.length
@@ -805,6 +812,18 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
 }
 
 /** «Mi nombre» de una línea, en una sola casilla (también en facturas validadas: no las devuelve a revisión). */
+/** R4: cómo entra una línea enlazada al inventario: «2 saco = 50 kg → Despensa», «Ya entró desde la compra de Food». */
+function stockText(l: LocalInvoiceLine): string {
+  const item = linkedItem(l.item_id);
+  if (!item) return 'Artículo enlazado';
+  if (l.entered_movement_id) return 'Ya entró desde la compra de Food';
+  const where = spaceName(l.space_id ?? item.defaultSpaceId);
+  const q = l.quantity === null || l.quantity === undefined ? null : Number(l.quantity);
+  const amount = q === null ? 'Sin cantidad: no entra al inventario'
+    : l.unit && l.item_factor ? `${q} ${l.unit} = ${Math.round(q * Number(l.item_factor) * 1000) / 1000} ${item.baseUnit}` : `${q} ${item.baseUnit}`;
+  return where ? `${amount} → ${where}` : `${amount} · sin sitio: no entra al inventario`;
+}
+
 function labelForm(client: SyncClient, line: LocalInvoiceLine, done: () => void): HTMLElement {
   const input = el('input', { 'data-feedback-ignore': '', type: 'text', id: 'labelInput', maxlength: '120', value: line.label ?? '', placeholder: line.description, 'aria-label': 'Mi nombre' });
   const form = el('form', { 'data-feedback-id': 'invoices.facturas.articulo.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'inv-form', novalidate: true, onsubmit: async (e: Event) => {

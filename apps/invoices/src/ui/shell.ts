@@ -11,6 +11,7 @@ import { fb } from './feedback.ts';
 import { setUsage } from '../app/usage.ts';
 import { clearPendingTexts, startTextQueue } from '../app/text-queue.ts';
 import { startRejectionWatcher } from '../app/rejections.ts';
+import { installResources } from '../app/resources.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -202,9 +203,12 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   window.addEventListener('ikisai:update-available', onUpdate);
   window.addEventListener('hashchange', route);
   paintStatus(client.status());
+  // R4: con el interruptor encendido, Recursos (artículos y sitios) para enlazar las líneas.
+  const offResources = installResources(client);
   route();
 
   return () => {
+    offResources();
     offSessionEnd();
     offTextQueue();
     offRejections();
