@@ -23,8 +23,10 @@ export const ISSUED_ALLOCATIONS: TableName = TABLES.issuedAllocations;
 export const SUPPLIER_TEMPLATES: TableName = TABLES.supplierTemplates;
 /** Directorio de clientes por NIF (ronda 46): en el dispositivo para buscar sin red. */
 export const CUSTOMERS: TableName = TABLES.customers;
+/** Ajustes de la app (0234): el interruptor `resources_links` del enlace con Recursos (R4). */
+export const SETTINGS: TableName = TABLES.settings;
 export const ALL_TABLES: TableName[] = [SUPPLIERS, INVOICES, INVOICE_FILES, INVOICE_LINES, TAX_LINES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS,
-  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS];
+  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS, SETTINGS];
 
 /** Categorías de gasto (lista cerrada del dominio) y sus etiquetas. */
 export const CATEGORIES = EXPENSE_CATEGORIES;

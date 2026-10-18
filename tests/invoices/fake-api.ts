@@ -99,6 +99,10 @@ export interface FakeApi {
   setReservationSource(id: string, source: Record<string, unknown> | null): void;
   /** R4, PR 4: lo que devuelve `GET resource-links/preview` (null = 404) y los espacios de `GET resources/snapshot`. */
   setResourceLinks(preview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null, spaces?: Array<Record<string, unknown>>): void;
+  /** R4, PR 3: siembra filas del módulo Recursos (`resources.items`, `item_units`, `movements`, `spaces`…). */
+  seedResources(table: string, rows: Array<Record<string, unknown>>): void;
+  /** Filas del módulo Recursos. */
+  resourceRows(table: string): FakeRow[];
   /** Cuerpos recibidos en `POST resource-links/apply`. */
   resourceLinksApplied(): Array<Record<string, unknown>>;
   setExtractor(fn: ((fileIds: string[]) => { document?: unknown; warnings?: string[]; usage?: unknown; fault?: { status: number; code: string; message: string; details?: unknown } }) | null): void;
@@ -138,7 +142,32 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   let entity: Record<string, unknown> | null = null;
   const reservationSources = new Map<string, Record<string, unknown>>();
   let linksPreview: { rows: Array<Record<string, unknown>>; counts: Record<string, number>; digest: string } | null = null;
-  let linkSpaces: Array<Record<string, unknown>> = [];
+  // Módulo Recursos (R4), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1): mínimo, sin
+  // reglas de dominio (las prueba PGlite); solo lo que la app necesita para buscar, crear y enlazar artículos.
+  const RES_TABLES: Record<string, string[]> = {
+    'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id', 'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
+    'resources.item_units': ['item_id', 'unit', 'factor', 'supplier_id'],
+    'resources.item_kinds': ['kind', 'label', 'consumable', 'position', 'active'],
+    'resources.movements': ['item_id', 'space_id', 'lot_id', 'quantity', 'kind', 'reason', 'unit_cost', 'transfer_id', 'count_id', 'source_app', 'source_ref', 'note', 'at'],
+    'resources.movement_costs': ['movement_id', 'unit_cost', 'source_app', 'source_ref'],
+    'resources.spaces': ['parent_id', 'kind', 'name', 'public_name', 'code', 'position', 'active', 'notes', 'attributes', 'source_refs'],
+  };
+  const RES_DEFAULTS: Record<string, Record<string, unknown>> = {
+    'resources.items': { tracks_lots: false, tracks_expiry: false, attributes: {}, active: true, source_refs: [] },
+    'resources.spaces': { position: 0, active: true, attributes: {}, source_refs: [] },
+  };
+  const resStore = new Map<string, Map<string, FakeRow>>(Object.keys(RES_TABLES).map((t) => [t, new Map()]));
+  const resChanges: FakeChange[] = [];
+  let resCursor = 0;
+  function resPut(table: string, fields: Record<string, unknown>, actorId: string, requestId: string, seq: number): FakeRow {
+    const now = nowIso();
+    const id = String(fields.id ?? randomUUID());
+    const row: FakeRow = { id, revision: 1, created_at: now, updated_at: now, updated_by: actorId, deleted_at: null };
+    for (const column of RES_TABLES[table]!) row[column] = fields[column] ?? RES_DEFAULTS[table]?.[column] ?? null;
+    resStore.get(table)!.set(id, row);
+    resChanges.push(record(table, 'insert', row, resCursor, seq, requestId, actorId));
+    return row;
+  }
   const linksApplied: Array<Record<string, unknown>> = [];
   // «Sugerencias y QA» y uso de funcionalidades (kit 0.18): en memoria, como en el simulado de Booking.
   const feedbackStore = new Map<string, FakeFeedbackReport>();
@@ -278,8 +307,11 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       const invoiceId = op.table === 'invoices.invoices' ? op.id : typeof row.invoice_id === 'string' ? row.invoice_id : null;
       if (invoiceId) touchedInvoices.add(invoiceId);
       // «Mi nombre» (0230): lo pone el servidor y cambiarlo solo no es editar la factura.
-      const labelOnly = op.table === 'invoices.invoice_lines' && op.op === 'update' && Object.keys(fields).every((k) => k === 'label');
+      // «Mi nombre» y el enlace con Recursos (0230, 0234, 0237) no devuelven una validada a revisión
+      const LINK_FIELDS = ['label', 'item_id', 'item_factor', 'space_id', 'entered_movement_id'];
+      const labelOnly = op.table === 'invoices.invoice_lines' && op.op === 'update' && Object.keys(fields).every((k) => LINK_FIELDS.includes(k));
       if (op.table === 'invoices.invoice_lines' && 'label' in fields) row.label_source = fields.label ? 'manual' : null;
+      if (op.table === 'invoices.invoice_lines' && ('item_id' in fields || 'item_factor' in fields)) row.item_source = ('item_id' in fields ? fields.item_id : row.item_id) ? 'manual' : null;
       if (invoiceId && ['invoices.invoice_lines', 'invoices.tax_lines'].includes(op.table) && !labelOnly) childTouched.add(invoiceId);
       if (invoiceId && op.table === 'invoices.invoice_files' && row.kind === 'original') childTouched.add(invoiceId);
       if (op.table === 'invoices.invoices' && op.op === 'update' && Object.keys(fields).some((k) => SENSITIVE.includes(k))) sensitiveChanged.add(op.id);
@@ -707,6 +739,49 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         sessions.delete(req.headers.authorization!.slice('Bearer '.length));
         return json(res, 200, { loggedOut: true });
       }
+      if (path.startsWith('resources/')) {
+        const rp = path.slice('resources/'.length);
+        if (rp === 'bootstrap') {
+          return json(res, 200, { app: 'resources', cursor: resCursor, serverTime: nowIso(), release: 'test', membership: { role: session.role, scopes: null, revision: 1 },
+            profile: { userId: session.userId, displayName: session.displayName, kind: 'human' },
+            tables: Object.entries(RES_TABLES).map(([table, writableColumns]) => ({ table, writableColumns, readable: true, writable: session.role !== 'reader' })) });
+        }
+        if (rp === 'snapshot') {
+          const requested = (url.searchParams.get('tables') ?? '').split(',').filter(Boolean);
+          const list = requested.length ? requested : Object.keys(RES_TABLES);
+          return json(res, 200, { cursor: resCursor, tables: list.filter((t) => RES_TABLES[t]).map((table) => {
+            const rows = Array.from(resStore.get(table)!.values()).filter((r) => !r.deleted_at);
+            return { table, rows, total: rows.length };
+          }) });
+        }
+        if (rp === 'changes') {
+          const after = Number(url.searchParams.get('after') ?? 0);
+          const items = resChanges.filter((c) => c.cursor > after);
+          const last = items.length ? items[items.length - 1]!.cursor : after;
+          return json(res, 200, { items, cursor: last, latest: resCursor, hasMore: false });
+        }
+        if (rp === 'commands' && method === 'POST') {
+          const body = await readJson(req);
+          if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
+          const key = `res:${session.userId}:${body.requestId}`;
+          const done = receipts.get(key);
+          if (done) return json(res, 200, { ...(done.result as object), replayed: true });
+          resCursor += 1;
+          const out: unknown[] = [];
+          (body.operations as FakeOperation[]).forEach((op, index) => {
+            if (!op.table || !RES_TABLES[op.table] || op.op !== 'insert') throw new Fault(422, 'INVALID_OPERATION', 'Solo altas en el módulo simulado.', { index });
+            if (op.table === 'resources.items' && Array.from(resStore.get('resources.items')!.values()).some((r) => !r.deleted_at && String(r.name).toLowerCase() === String(op.fields?.name ?? '').toLowerCase())) {
+              throw new Fault(422, 'CONSTRAINT_VIOLATION', 'Ya existe un artículo con ese nombre.', { index });
+            }
+            const row = resPut(op.table, { ...(op.fields ?? {}), id: op.id }, session.userId, body.requestId, index + 1);
+            out.push({ op: 'insert', table: op.table, id: row.id, revision: row.revision });
+          });
+          const result = { cursor: resCursor, requestId: body.requestId, results: out, changes: resChanges.filter((c) => c.cursor === resCursor) };
+          receipts.set(key, { digest: JSON.stringify(body.operations), result });
+          return json(res, 200, result);
+        }
+        throw new Fault(404, 'NOT_FOUND', 'Ruta desconocida.');
+      }
       if (path === 'bootstrap') return json(res, 200, bootstrap(session));
       if (path === 'me') return json(res, 200, { userId: session.userId, email: session.email, role: 'owner', scopes: null });
       if (path === 'dashboard') return json(res, 200, { app: 'invoices', cursor, pending: [], message: 'Panel pendiente de la fase 1.' });
@@ -860,9 +935,6 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const rows = linksPreview.rows.filter((r) => r.action === 'crear' || r.action === 'enlazar');
         return json(res, 200, { created: linksPreview.counts.new_items ?? 0, linked: rows.filter((r) => r.source === 'line').length, memory: rows.filter((r) => r.source === 'memory').length });
       }
-      if (path === 'resources/snapshot' && method === 'GET') {
-        return json(res, 200, { cursor: 1, tables: [{ table: 'resources.spaces', rows: linkSpaces }] });
-      }
       const targetsList = path.match(/^targets\/(tasks|food|booking)$/);
       if (targetsList && method === 'GET') {
         if (session.role === 'reader') throw new Fault(403, 'FORBIDDEN', 'No tienes permiso para esta operación.');
@@ -925,7 +997,16 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     },
     setExtractor(fn) { extractor = fn; },
     setEntity(e) { entity = e; },
-    setResourceLinks(preview, spaces) { linksPreview = preview; if (spaces) linkSpaces = spaces; },
+    setResourceLinks(preview, spaces) {
+      linksPreview = preview;
+      if (spaces) { resCursor += 1; spaces.forEach((sp, i) => resPut('resources.spaces', { kind: 'almacen', ...sp }, 'seed', `seed-${resCursor}`, i + 1)); }
+    },
+    seedResources(table, rows) {
+      if (!RES_TABLES[table]) throw new Error(`tabla ${table} no registrada en Recursos`);
+      resCursor += 1;
+      rows.forEach((fields, i) => resPut(table, fields, 'seed', `seed-${resCursor}`, i + 1));
+    },
+    resourceRows: (table) => Array.from(resStore.get(table)?.values() ?? []),
     resourceLinksApplied: () => [...linksApplied],
     setReservationSource(id, source) { if (source) reservationSources.set(id, source); else reservationSources.delete(id); },
     feedbackReports: () => Array.from(feedbackStore.values()).map((r) => ({ ...r })),

@@ -1,4 +1,5 @@
 /** Compras (API.md §6.3, §9.3): las líneas como artículos comprados, por categoría, destino, proveedor o lista; todo calculado en local. */
+import { linkedItem, linksEnabled } from '../app/resources.ts';
 import { el, icon, renderList, replace, type ListRowSpec } from '@ikisai/ui-kit';
 import { fbRows } from './feedback.ts';
 import { purchaseItems, type PurchaseFilters, type PurchaseGroup, type PurchaseItemsResult } from '@ikisai/domain-invoices';
@@ -36,6 +37,9 @@ export const mountPurchases: ViewMount = (ctx) => {
   // Filtros del handoff: destino (retiro = booking/event, ingrediente = food/ingredient, …), tipo de artículo y «sin asignar».
   let targetFilter = '';
   let itemTypeFilter = '';
+  // R4: con el enlace con Recursos encendido, filtro por artículo (de varios proveedores a la vez)
+  let itemFilter = '';
+  const itemSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.articulo', 'data-feedback-label': 'Filtrar por artículo', id: 'purchaseItem', 'aria-label': 'Filtrar por artículo', onchange: () => { itemFilter = itemSelect.value; paint(); } });
   let unassignedFilter = false;
   const TARGET_OPTIONS: Array<[string, string]> = [['', 'Cualquier destino'], ['booking:event', 'Retiro (evento de Reservas)'], ['booking:reservation', 'Reserva'], ['food:ingredient', 'Ingrediente'], ['food:equipment', 'Maquinaria'], ['tasks:project', 'Proyecto de Tareas'], ['tasks:task', 'Tarea'], ['tasks:area', 'Área de Tareas'], ['general:investment', 'Inversión (general)'], ['general:operating_expense', 'Gasto de explotación (general)']];
   const targetSelect = el('select', { 'data-feedback-id': 'invoices.compras.filtros.destino', 'data-feedback-label': 'Filtrar por destino', id: 'purchaseTarget', 'aria-label': 'Filtrar por destino', onchange: () => { targetFilter = targetSelect.value; paint(); } }, ...TARGET_OPTIONS.map(([v, l]) => el('option', { value: v }, l)));
@@ -67,17 +71,28 @@ export const mountPurchases: ViewMount = (ctx) => {
     el('div', { class: 'toolbar wrap' }, rangeKind, year, part, validatedToggle),
     tabs,
     el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
-    el('div', { class: 'toolbar wrap' }, targetSelect, itemTypeSelect, unassignedToggle),
+    el('div', { class: 'toolbar wrap' }, targetSelect, itemTypeSelect, itemSelect, unassignedToggle),
     host,
     footer,
   );
 
+  /** Los artículos enlazados en alguna línea, por nombre; sin el enlace encendido, el filtro no se ve. */
+  function paintItemOptions(m: NonNullable<typeof mirror>): void {
+    itemSelect.hidden = !linksEnabled();
+    if (itemSelect.hidden) return;
+    const ids = [...new Set(m.lines.filter((l) => !l.deleted_at && l.item_id).map((l) => l.item_id as string))];
+    const named = ids.map((id) => [id, linkedItem(id)?.name ?? 'Artículo'] as const).sort((a, b) => a[1].localeCompare(b[1], 'es'));
+    if (itemFilter && !ids.includes(itemFilter)) itemFilter = '';
+    replace(itemSelect, el('option', { value: '' }, 'Cualquier artículo del inventario'), ...named.map(([id, name]) => el('option', { value: id, selected: id === itemFilter }, name)));
+  }
+
   function paint(): void {
     if (!mirror) return;
     for (const b of Array.from(tabs.querySelectorAll('button'))) b.classList.toggle('on', b.dataset.tab === tab);
+    paintItemOptions(mirror);
     const [targetApp, targetKind] = targetFilter ? targetFilter.split(':') : [undefined, undefined];
     const result = purchaseItems({ invoices: mirror.invoices, lines: mirror.lines, suppliers: mirror.suppliers, allocations: mirror.allocations },
-      { range, validatedOnly, query, ...(targetApp ? { targetApp, targetKind } : {}), ...(itemTypeFilter ? { itemType: itemTypeFilter } : {}), ...(unassignedFilter ? { unassignedOnly: true } : {}), ...groupFilter });
+      { range, validatedOnly, query, ...(targetApp ? { targetApp, targetKind } : {}), ...(itemTypeFilter ? { itemType: itemTypeFilter } : {}), ...(linksEnabled() && itemFilter ? { itemId: itemFilter } : {}), ...(unassignedFilter ? { unassignedOnly: true } : {}), ...groupFilter });
     replace(footer, el('span', null, rangeLabel(range)), el('strong', null, `Base ${eur(result.total_base)}`), el('span', null, `asignado ${eur(result.total_allocated)}`), el('span', { class: result.total_unallocated > 0 ? 'alert' : '' }, `sin asignar ${eur(result.total_unallocated)}`));
     if (Object.keys(groupFilter).length) {
       replace(host, el('div', { class: 'banner info' }, el('span', null, 'Filtro aplicado desde la agrupación.'), el('button', { 'data-feedback-id': 'invoices.compras.filtros.quitar_agrupacion', 'data-feedback-label': 'Quitar filtro', class: 'linkbtn', type: 'button', onclick: () => { groupFilter = {}; paint(); } }, 'Quitar')), renderItems(result));

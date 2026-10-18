@@ -1,4 +1,5 @@
 /** Lectura del espejo local de Invoices y utilidades de presentación compartidas por las vistas. */
+import { linkedItem, linksEnabled, onResourcesChange } from './resources.ts';
 import type { SyncClient } from '@ikisai/sync-client';
 import { formatEur, type InvoiceStatus, INVOICE_STATUS_LABELS, type DateRange, quarterRange, monthRange, yearRange } from '@ikisai/domain-invoices';
 import {
@@ -88,6 +89,8 @@ export function onAnyTable(client: SyncClient, listener: () => void): () => void
     setTimeout(() => { scheduled = false; listener(); }, 40);
   };
   const offs = ALL_INVOICE_TABLES.map((table) => client.onTable(table, coalesced));
+  // R4: también cuando cambian el interruptor o los artículos de Recursos (nombres y sitios de las líneas enlazadas).
+  offs.push(onResourcesChange(coalesced));
   return () => offs.forEach((off) => off());
 }
 
@@ -197,7 +200,9 @@ export function parseAmount(value: string): number | null {
 }
 
 /** Nombre de una línea para mostrar (0230): «Mi nombre» si lo hay; si no, la descripción de la factura. */
-export const lineName = (l: { label?: string | null; description: string }): string => (l.label?.trim() ? l.label : l.description);
+/** Nombre visible de una línea: el de su artículo de Recursos (R4, con el enlace encendido), «Mi nombre» o la descripción. */
+export const lineName = (l: { label?: string | null; description: string; item_id?: string | null }): string =>
+  (linksEnabled() ? linkedItem(l.item_id)?.name : null) ?? (l.label?.trim() ? l.label : l.description);
 
 /** Nombre de un proveedor para mostrar (0232): «Mi nombre» si lo hay; si no, la razón social. */
 export const supplierName = (s: { label?: string | null; name: string } | null | undefined, fallback = '—'): string => (s ? (s.label?.trim() ? s.label : s.name) : fallback);

@@ -2501,3 +2501,66 @@ test('R4 · PR 4: el owner ve la vista previa del enlace con Recursos (se enlaza
     await context.close();
   }
 });
+
+test('R4 · PR 3: con el enlace encendido, «Artículo» enlaza la línea (conversión del proveedor, sitio habitual y «Ya entró desde la compra de Food»), y Compras filtra por artículo', async ({ browser }) => {
+  test.setTimeout(150_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplierId = randomUUID(); const invoiceId = randomUUID(); const flourLine = randomUUID(); const saltLine = randomUUID();
+  const pantry = randomUUID(); const flour = randomUUID(); const salt = randomUUID(); const foodEntry = randomUUID();
+  api.seedResources('resources.spaces', [{ id: pantry, kind: 'almacen', name: 'Despensa R4' }]);
+  api.seedResources('resources.items', [
+    { id: flour, name: 'Harina de trigo R4', kind: 'ingrediente', base_unit: 'kg', default_space_id: pantry },
+    { id: salt, name: 'Sal R4', kind: 'ingrediente', base_unit: 'kg', default_space_id: pantry },
+  ]);
+  api.seedResources('resources.movements', [{ id: foodEntry, item_id: salt, space_id: pantry, quantity: 5, kind: 'entrada_manual', source_app: 'food', source_ref: 'shopping_item:demo', at: '2026-10-15T10:00:00Z' }]);
+  api.seed('invoices.suppliers', [{ id: supplierId, name: 'Enlaces R4 S.L.', slug: 'enlaces_r4_s_l', aliases: [], default_is_investment: false }]);
+  api.seed('invoices.invoices', [{ id: invoiceId, code: 'FR_2026_R4E', supplier_id: supplierId, invoice_date: '2026-10-05', object: 'harina y sal', status: 'validada', expense_category: 'compras', source_total: 36.3, calculated_base: 30, calculated_vat: 6.3, calculated_total: 36.3, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+  api.seed('invoices.invoice_lines', [
+    { id: flourLine, invoice_id: invoiceId, position: 0, description: 'HT25 HARINA TRIGO SACO 25KG', quantity: 2, unit: 'saco', net_amount: 20, vat_rate: 21, vat_amount: 4.2, discount_amount: 0, item_type: 'food_ingredient' },
+    { id: saltLine, invoice_id: invoiceId, position: 1, description: 'SAL MARINA 5KG', quantity: 5, unit: 'kg', net_amount: 10, vat_rate: 21, vat_amount: 2.1, discount_amount: 0, item_type: 'food_ingredient' },
+  ]);
+  api.seed('invoices.settings', [{ key: 'resources_links', value: true }]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.evaluate((id) => { location.hash = `#/facturas/${id}`; }, invoiceId);
+    const f = ficha(page);
+    // Harina: se busca, se elige y, como la factura viene en «saco», se pide la conversión del proveedor
+    await f.getByRole('button', { name: 'Artículo para HT25 HARINA TRIGO SACO 25KG' }).click({ timeout: 20_000 });
+    await f.locator('#articleForm .item-search').fill('harina');
+    await f.locator(`#articleForm .item-result[data-item-id="${flour}"]`).click();
+    await f.locator('#articleConversion').fill('25');
+    await f.locator('#saveArticle').click();
+    await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === flourLine), { timeout: 20_000 }).toMatchObject({ item_id: flour, item_factor: 25, space_id: null, entered_movement_id: null });
+    expect(api.resourceRows('resources.item_units')).toEqual(expect.arrayContaining([expect.objectContaining({ item_id: flour, unit: 'saco', factor: 25, supplier_id: supplierId })]));
+    const row = f.locator('.line-row', { hasText: 'Harina de trigo R4' });
+    await expect(row.locator('.line-original')).toHaveText('En la factura: HT25 HARINA TRIGO SACO 25KG', { timeout: 20_000 });
+    await expect(row.locator('.line-stock')).toHaveText('2 saco = 50 kg → Despensa R4');
+    // Sigue validada: cambiar el enlace no la devuelve a revisión
+    expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status).toBe('validada');
+
+    // Sal: viene en kg (la base) y Food ya la metió al comprarla
+    await f.getByRole('button', { name: 'Artículo para SAL MARINA 5KG' }).click();
+    await f.locator('#articleForm .item-search').fill('sal');
+    await f.locator(`#articleForm .item-result[data-item-id="${salt}"]`).click();
+    await expect(f.locator('#articleEquivalence')).toHaveText('5 kg = 5 kg');
+    await f.locator('#articleFood').getByText(/Ya entró desde la compra de Food: 5 kg/).click();
+    await f.locator('#saveArticle').click();
+    await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === saltLine), { timeout: 20_000 }).toMatchObject({ item_id: salt, item_factor: null, entered_movement_id: foodEntry });
+    await expect(f.locator('.line-row', { hasText: 'Sal R4' }).locator('.line-stock')).toHaveText('Ya entró desde la compra de Food', { timeout: 20_000 });
+
+    // Compras: el nombre del artículo y el filtro «Artículo»
+    await synced(page);
+    await page.evaluate(() => { location.hash = '#/compras'; });
+    await page.locator('#onlyValidated').uncheck();
+    await page.getByRole('tab', { name: 'Artículos' }).click();
+    await page.locator('#purchaseItem').selectOption({ label: 'Harina de trigo R4' });
+    await expect(page.locator('#purchases .row')).toHaveCount(1, { timeout: 20_000 });
+    await expect(page.locator('#purchases .row').first()).toContainText('Harina de trigo R4');
+  } finally {
+    const setting = api.rows('invoices.settings').find((s) => s.key === 'resources_links');
+    if (setting) api.serverUpdate('invoices.settings', setting.id, { value: false });
+    await context.close();
+  }
+});

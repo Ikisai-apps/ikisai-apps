@@ -218,6 +218,7 @@ export function validateInvoiceLineFields(fields: Fields, op: 'insert' | 'update
   text(fields, 'label', { max: 120 });
   uuid(fields, 'item_id', { nullable: true });
   uuid(fields, 'space_id', { nullable: true });
+  uuid(fields, 'entered_movement_id', { nullable: true });
   positiveFactor(fields, 'item_factor');
   text(fields, 'unit', { max: 16 });
   text(fields, 'match_name', { max: 200 });
