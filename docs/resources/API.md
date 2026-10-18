@@ -139,6 +139,7 @@ Sin red, el cliente puede sumar `movements` de su espejo.
 **Apoyo a R4 y R5 (0803):**
 - **Consumo por lotes:** `{op: 'call', procedure: 'resources.consume', args: {item_id, quantity, kind: 'consumo_servicio' | 'consumo_tarea', space_ids?, default_space_id?, source_app, source_ref, note?, at?}}`.
   - Gasta primero lo que caduca antes y después lo más antiguo.
+  - Con `once: true` (0806), si ya hay consumos de ese artículo con el mismo `source_app` y `source_ref`, no hace nada (`skipped: 'already_consumed'`).
   - Lo que falta se apunta sin lote en `default_space_id` (o en el primer sitio pedido, o en el habitual del artículo), con `shortfall: true`.
 - **`movement_costs`** (`movement_id`, `unit_cost`, `source_app`, `source_ref`): el coste que llega después a una entrada que entró sin él. Uno por entrada y solo se añade. `item_costs` lo usa.
 - **`attributes.status`** de un artículo: `operativo`, `limitado`, `averiado` o `fuera_de_servicio` (`INVALID_ITEM_ATTRIBUTE`).
