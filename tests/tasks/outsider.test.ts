@@ -243,9 +243,13 @@ test('O1 · paso 2: la foto del outsider solo vale para comentarios, es una imag
   // …sí en un comentario.
   const withPhoto = uuid();
   assert.equal(status(await commit([comment(T_OPEN, OPEN, 'Así ha quedado', { file_id: file }, withPhoto)], project)), '200');
-  // Un PDF, o una foto subida por otra persona, no valen como foto.
-  const pdf = await upload(project, new TextEncoder().encode('%PDF-1.4 no es una foto'), 'application/pdf', 'nota.pdf');
+  // Un PDF ni siquiera se sube: el núcleo solo deja al outsider JPEG, PNG o WebP (#572).
+  const pdfTicket = await app.call('/api/v1/uploads', { body: { filename: 'nota.pdf', mime: 'application/pdf', size: 23, sha256: '0'.repeat(64) }, token: project });
+  assert.equal(`${pdfTicket.status} ${pdfTicket.data.error?.code}`, '422 UNSUPPORTED_MEDIA');
+  // Un archivo que no es imagen (aunque lo subiera otra cuenta) tampoco vale como foto.
+  const pdf = await upload(app.tokens.owner, new TextEncoder().encode('%PDF-1.4 no es una foto'), 'application/pdf', 'nota.pdf');
   assert.equal(status(await commit([comment(T_OPEN, OPEN, 'PDF', { file_id: pdf })], project)), '422 FILE_NOT_UPLOADED');
+  // Ni una foto subida por otra persona.
   const foreign = await upload(app.tokens.owner, new Uint8Array([9, 9, 9]), 'image/webp', 'ajena.webp');
   assert.equal(status(await commit([comment(T_OPEN, OPEN, 'Ajena', { file_id: foreign })], project)), '422 FILE_NOT_UPLOADED');
   // Descarga: la ve quien ve la tarea (también la propietaria y el lector); no quien no la ve.

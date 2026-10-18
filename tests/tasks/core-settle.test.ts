@@ -35,12 +35,12 @@ test('settle: sin nada pendiente vuelve enseguida y no relee', async () => {
   assert.equal(reads, 0);
 });
 
-test('aviso del espejo: las revisiones confirmadas pasan ya a la copia en memoria (nada de planificar con la vieja)', () => {
+test('aviso del espejo: la revisión confirmada pasa ya a la copia en memoria (nada de planificar con la vieja)', () => {
   const core = new TasksCore({ readOnly: true }) as any;
   core.data = { ...core.data, 'tasks.saved_views': [{ id: 'v1', name: 'Pendientes', revision: 0 }, { id: 'v2', name: 'Otra', revision: 3 }] };
   core.tableChanged('tasks.saved_views', [{ id: 'v1', name: 'Pendientes', revision: 1 }, { id: 'v3', name: 'Nueva', revision: 1 }]);
   const rows = core.data['tasks.saved_views'];
-  assert.deepEqual(rows.map((r: any) => [r.id, r.revision]), [['v1', 1], ['v2', 3], ['v3', 1]], 'la confirmada se actualiza, la que no viene se queda (la pone al día el refresco) y la nueva entra');
+  assert.deepEqual(rows.map((r: any) => [r.id, r.revision]), [['v1', 1], ['v2', 3]], 'solo sube la revisión de la confirmada; lo demás (la nueva, la que no viene) lo pone al día el refresco');
   assert.equal(core.dirty, true, 'y queda programado el refresco completo');
 });
 
