@@ -44,10 +44,11 @@ export function mountResourcesSpaces(host: HTMLElement, client: SyncClient): () 
     source, container, label: 'Espacios y camas', feedbackId: 'booking.espacios.arbol', storageKey: 'booking.espacios.arbol',
     permissions: { edit: role === 'editor' || owner, structure: owner },
     filter: (row) => BOOKING_KINDS.has(row.kind),
-    // «Añadir cama» y «Duplicar» a un toque en la fila, como hoy (solo dirección)
+    // «Añadir cama» y «Duplicar» a un toque en la fila, como hoy (solo dirección). Texto corto para que quepa en el móvil:
+    // el kit ya pone el nombre del espacio en la etiqueta accesible («Añadir cama: Hab 1»).
     rowActions: (row): SpaceRowAction[] => !owner || !['habitacion', 'sala'].includes(row.kind) ? [] : [
-      { label: `Añadir cama a ${row.name}`, feedbackId: 'booking.espacios.arbol.anadir_cama', onClick: (r) => tree.create(r.id, 'cama') },
-      { label: `Duplicar ${row.name}`, feedbackId: 'booking.espacios.arbol.duplicar', onClick: (r) => void tree.duplicate(r.id) },
+      { label: 'Añadir cama', feedbackId: 'booking.espacios.arbol.anadir_cama', onClick: (r) => tree.create(r.id, 'cama') },
+      { label: 'Duplicar', feedbackId: 'booking.espacios.arbol.duplicar', onClick: (r) => void tree.duplicate(r.id) },
     ],
   });
   const off = owner ? resources.onTable('resources.spaces' as TableName, () => {
