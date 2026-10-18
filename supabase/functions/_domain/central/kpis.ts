@@ -61,6 +61,47 @@ export function stateSummary(items: ReadonlyArray<{ state: KpiState }>): { criti
   return { critico: items.filter((i) => i.state === 'critico').length, atencion: items.filter((i) => i.state === 'atencion').length, total: items.length };
 }
 
+/** Hoy en Madrid, `AAAA-MM-DD` (la regla de fechas del contrato §7.2). */
+export function madridToday(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(now);
+}
+
+/** Periodo en curso con el mismo formato que `sample`: `2026-10`, `2026T4` o `2026`; `actual` se queda igual. */
+export function currentPeriod(sample: string, today = madridToday()): string {
+  const [y, m] = [today.slice(0, 4), Number(today.slice(5, 7))];
+  if (/^\d{4}-\d{2}$/.test(sample)) return today.slice(0, 7);
+  if (/^\d{4}T[1-4]$/.test(sample)) return `${y}T${Math.ceil(m / 3)}`;
+  if (/^\d{4}$/.test(sample)) return y;
+  return sample;
+}
+
+/**
+ * Series en una tarjeta (tanda aprobada el 18-10-2026): un indicador con varios periodos se pinta una sola vez, con el
+ * periodo en curso (si no está, el último anterior; si todos son futuros, el primero) y la serie entera en orden para
+ * desplegarla. Las claves de un solo periodo quedan igual. Se respeta el orden de llegada de las claves.
+ */
+export function collapseSeries<T extends { kpi: string; period: string }>(items: readonly T[], today = madridToday()): Array<{ shown: T; series: T[] }> {
+  const byKpi = new Map<string, T[]>();
+  for (const i of items) byKpi.set(i.kpi, [...(byKpi.get(i.kpi) ?? []), i]);
+  return [...byKpi.values()].map((rows) => {
+    if (rows.length === 1) return { shown: rows[0]!, series: rows };
+    const series = [...rows].sort((a, b) => (a.period < b.period ? -1 : a.period > b.period ? 1 : 0));
+    const now = currentPeriod(series[0]!.period, today);
+    const shown = series.find((r) => r.period === now) ?? [...series].reverse().find((r) => r.period < now) ?? series[0]!;
+    return { shown, series };
+  });
+}
+
+/** Nombre de los periodos de una serie: «16 meses», «4 trimestres», «3 años». */
+export function seriesLength(series: ReadonlyArray<{ period: string }>): string {
+  const n = series.length;
+  const p = series[0]?.period ?? '';
+  if (/^\d{4}T[1-4]$/.test(p)) return `${n} ${n === 1 ? 'trimestre' : 'trimestres'}`;
+  if (/^\d{4}$/.test(p)) return `${n} ${n === 1 ? 'año' : 'años'}`;
+  if (/^\d{4}-\d{2}$/.test(p)) return `${n} ${n === 1 ? 'mes' : 'meses'}`;
+  return `${n} ${n === 1 ? 'periodo' : 'periodos'}`;
+}
+
 export const KPI_UNITS = ['count', 'pct', 'eur', 'days', 'persons', 'nights'] as const;
 export type KpiUnit = typeof KPI_UNITS[number];
 

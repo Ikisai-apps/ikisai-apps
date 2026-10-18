@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { CENTRAL_ORIGINS, createCentralApp } from '../../supabase/functions/central-api/app.ts';
-import { COMPLIANCE_TABLES, formatKpi, formatPeriod, groupBySection, kpiState, stateSummary, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
+import { collapseSeries, COMPLIANCE_TABLES, currentPeriod, formatKpi, formatPeriod, groupBySection, kpiState, seriesLength, stateSummary, targetFor, TABLES } from '../../supabase/functions/_domain/central/mod.ts';
 
 const uuid = () => crypto.randomUUID();
 const madrid = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -180,4 +180,24 @@ test('kpis · R7: personas y oficios del directorio, contando lo que cuelga de c
   const owner = await app.call('/api/v1/dashboard');
   assert.ok(owner.data.items.some((i: any) => i.kpi === 'resources.stock_value'));
   assert.equal(owner.data.unavailable.includes('resources'), false);
+});
+
+test('kpis · series en una tarjeta: el periodo en curso (o el último anterior) y la serie entera en orden', () => {
+  assert.equal(currentPeriod('2026-03', '2026-10-18'), '2026-10');
+  assert.equal(currentPeriod('2025T1', '2026-10-18'), '2026T4');
+  assert.equal(currentPeriod('2025', '2026-10-18'), '2026');
+  assert.equal(currentPeriod('actual', '2026-10-18'), 'actual');
+  const row = (kpi: string, period: string) => ({ kpi, period });
+  const items = [row('a.uno', 'actual'), row('b.mes', '2026-11'), row('b.mes', '2026-09'), row('b.mes', '2026-10'), row('c.pasado', '2026-08'), row('c.pasado', '2026-07'),
+    row('d.futuro', '2027-01'), row('d.futuro', '2026-12')];
+  const out = collapseSeries(items, '2026-10-18');
+  // Una tarjeta por clave, en el orden de llegada; las de un solo periodo, igual que antes.
+  assert.deepEqual(out.map((c) => [c.shown.kpi, c.shown.period, c.series.map((r) => r.period)]), [
+    ['a.uno', 'actual', ['actual']],
+    ['b.mes', '2026-10', ['2026-09', '2026-10', '2026-11']],
+    ['c.pasado', '2026-08', ['2026-07', '2026-08']],
+    ['d.futuro', '2026-12', ['2026-12', '2027-01']],
+  ]);
+  assert.equal(seriesLength(out[1]!.series), '3 meses');
+  assert.equal(seriesLength([row('x', '2026T1')]), '1 trimestre');
 });

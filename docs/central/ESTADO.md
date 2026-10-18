@@ -53,10 +53,11 @@
   - **Recursos** (`0805`, de Core) en `KPI_SOURCES`, detrás de Central.
   - **Panel:** temas por grupo (`KPI_SECTIONS`) y grupos plegables con su resumen. Salen abiertos y el dispositivo recuerda el plegado.
   - **Oficios:** cobertura por nivel con lo que cuelga de cada oficio, chips de aviso y «Solo en riesgo». Desde el panel se llega con `?riesgo`.
+- 2026-10-18 · **Series en una tarjeta** (aprobado por el usuario): ocupación de Booking y gasto e ingresos de Finance pasan de una tarjeta por mes a una sola, con el mes en curso, barras de la serie, aviso de otros periodos en crítico o en atención y «Ver N meses». El owner ve unas 50 tarjetas en lugar de 89.
 
 ## Pendiente
 
-- Series mensuales en una sola tarjeta por indicador (aprobado por el usuario el 18-10-2026): tanda aparte, con su tabla «hoy / después».
+- Pantalla «Inventario» completa con las piezas del kit (catálogo y ficha en 0.37; movimientos y recuento en 0.38): cuando UI publique la 0.37, tabla «hoy / después» y programarla.
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.
 

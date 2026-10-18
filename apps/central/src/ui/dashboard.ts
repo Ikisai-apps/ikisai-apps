@@ -1,6 +1,6 @@
 import type { SyncClient } from '@ikisai/sync-client';
 import { el, icon, openSheet, replace, toast, type Sheet, type Usage } from '@ikisai/ui-kit';
-import { formatKpi, formatPeriod, groupBySection, stateSummary, validateOperations, type KpiState } from '@ikisai/domain-central';
+import { collapseSeries, formatKpi, formatPeriod, groupBySection, seriesLength, stateSummary, validateOperations, type KpiState } from '@ikisai/domain-central';
 import { T, describeError } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
 
@@ -29,6 +29,21 @@ function writeFolded(key: string, folded: Set<string>): void {
   try { localStorage.setItem(key, JSON.stringify([...folded])); } catch { /* sin almacenamiento: el plegado dura lo que la pantalla */ }
 }
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const stateClass = (s: KpiState) => (s === 'critico' ? 'alert' : s === 'atencion' ? 'warn' : 'ok');
+
+/** Barras de la serie (solo dibujo; los valores se leen en la hoja). Sin valor, hueco; el periodo de la tarjeta, resaltado. */
+function sparkline(series: DashboardItem[], shown: DashboardItem): HTMLElement {
+  const values = series.map((s) => (s.value !== null && Number.isFinite(s.value) ? Math.max(0, s.value) : null));
+  const max = Math.max(0, ...values.map((v) => v ?? 0));
+  const bars = values.map((v, k) => {
+    if (v === null) return '';
+    const h = max > 0 ? Math.max(1, (v / max) * 22) : 1;
+    return `<rect x="${k * 6 + 1}" y="${(24 - h).toFixed(1)}" width="4" height="${h.toFixed(1)}" rx="1" class="${series[k] === shown ? 'on' : ''}"/>`;
+  }).join('');
+  const box = el('span', { class: 'kpispark', 'aria-hidden': 'true' });
+  box.innerHTML = `<svg viewBox="0 0 ${series.length * 6} 24" preserveAspectRatio="none">${bars}</svg>`;
+  return box;
+}
 
 /**
  * Panel de dirección (C01; API.md §7.2): KPIs que publica cada app, con su estado frente a los objetivos.
@@ -47,14 +62,23 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       el('button', { class: 'iconbtn', type: 'button', 'data-feedback-id': 'central.direccion.actualizar', 'data-feedback-label': 'Actualizar indicadores', 'aria-label': 'Actualizar indicadores', title: 'Actualizar', onclick: () => void load() }, icon('sync', 18))),
     meta, body));
 
-  function card(i: DashboardItem): HTMLElement {
+  /** Tarjeta de un indicador. Con serie (varios periodos), el periodo en curso, sus barras, los avisos de los demás periodos y «Ver». */
+  function card(i: DashboardItem, series: DashboardItem[] = [i]): HTMLElement {
     const external = i.link && !i.link.startsWith(location.origin) ? i.link : null;
     const hash = i.link && i.link.startsWith('https://central.ikisai.com/') ? i.link.slice('https://central.ikisai.com/'.length) : null;
+    const others = series.filter((s) => s !== i);
+    const othersSummary = stateSummary(others);
     const content = [
       el('span', { class: 'kpilabel' }, i.label),
       el('strong', { class: 'kpivalue' }, formatKpi(i.value, i.unit)),
       el('span', { class: 'muted small' }, [formatPeriod(i.period), i.target !== null ? `objetivo ${formatKpi(i.target, i.unit)}` : ''].filter(Boolean).join(' · ')),
-      i.state ? el('span', { class: `chip kpistate ${i.state === 'critico' ? 'alert' : i.state === 'atencion' ? 'warn' : 'ok'}` }, STATE_LABELS[i.state]) : null,
+      i.state ? el('span', { class: `chip kpistate ${stateClass(i.state)}` }, STATE_LABELS[i.state]) : null,
+      others.length ? sparkline(series, i) : null,
+      // Nada se esconde: si otro periodo está en crítico o en atención, la tarjeta lo dice.
+      othersSummary.critico || othersSummary.atencion ? el('span', { class: 'small kpiothers' }, `Otros periodos: ${[
+        othersSummary.critico ? plural(othersSummary.critico, 'crítico', 'críticos') : '', othersSummary.atencion ? `${othersSummary.atencion} en atención` : ''].filter(Boolean).join(' · ')}`) : null,
+      others.length ? el('button', { class: 'linkbtn kpiseries', type: 'button', 'aria-label': `Ver ${seriesLength(series)} de ${i.label}`, 'data-feedback-id': 'central.direccion.kpi.serie', 'data-feedback-label': 'Ver la serie del indicador',
+        onclick: (e: Event) => { e.preventDefault(); e.stopPropagation(); openSeries(i, series); } }, icon('list', 14), `Ver ${seriesLength(series)}`) : null,
     ];
     const target = isAdmin ? el('button', { class: 'linkbtn kpitarget', type: 'button', 'aria-label': `Objetivo de ${i.label}`, 'data-feedback-id': 'central.direccion.kpi.objetivo', 'data-feedback-label': 'Objetivo del indicador', onclick: (e: Event) => { e.preventDefault(); e.stopPropagation(); openTarget(i); } }, icon('settings', 14), 'Objetivo') : null;
     const attrs = { class: `kpicard state-${i.state ?? 'none'}`, 'data-kpi': i.kpi, 'data-feedback-id': 'central.direccion.kpi.tarjeta', 'data-feedback-label': 'Tarjeta de indicador' };
@@ -76,10 +100,13 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
   function group(app: string, items: DashboardItem[]): HTMLElement {
     const name = APP_NAMES[app] ?? app;
     const isFolded = folded.has(app);
+    // Una tarjeta por indicador: las series (un valor por mes) se recogen en la suya.
+    const collapsed = collapseSeries(items);
+    const seriesOf = new Map(collapsed.map((c) => [c.shown, c.series]));
     const content = el('div', { class: 'kpigroupbody', id: `kpis-${app}`, hidden: isFolded },
-      ...groupBySection(items).map((s) => [
+      ...groupBySection(collapsed.map((c) => c.shown)).map((s) => [
         s.title ? el('div', { class: 'kpisection', 'data-feedback-id': 'central.direccion.grupo.tema', 'data-feedback-label': 'Tema de indicadores' }, s.title) : null,
-        el('div', { class: 'kpigrid', 'data-feedback-id': 'central.direccion.grupo.tarjetas', 'data-feedback-label': 'Rejilla de indicadores' }, ...s.items.map(card))]));
+        el('div', { class: 'kpigrid', 'data-feedback-id': 'central.direccion.grupo.tarjetas', 'data-feedback-label': 'Rejilla de indicadores' }, ...s.items.map((i) => card(i, seriesOf.get(i))))]));
     const box = el('div', { class: `kpigroup${isFolded ? ' folded' : ''}`, 'data-app': app, 'data-feedback-id': 'central.direccion.grupo.app', 'data-feedback-label': `Indicadores de ${name}` });
     const head = el('button', { class: 'kpigrouphead', type: 'button', 'aria-expanded': String(!isFolded), 'aria-controls': `kpis-${app}`,
       'aria-label': `${isFolded ? 'Desplegar' : 'Plegar'} ${name}`, 'data-feedback-id': 'central.direccion.grupo.plegar', 'data-feedback-label': 'Plegar o desplegar el grupo',
@@ -92,7 +119,7 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
         head.setAttribute('aria-expanded', String(!now));
         head.setAttribute('aria-label', `${now ? 'Desplegar' : 'Plegar'} ${name}`);
       } },
-      el('span', { class: 'sectionlabel' }, name), summary(items), icon('chevronDown', 18));
+      el('span', { class: 'sectionlabel' }, name), summary(collapsed.map((c) => c.shown)), icon('chevronDown', 18));
     box.append(head, content);
     return box;
   }
@@ -119,6 +146,18 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
       if (cached) paint(cached, true);
       meta.textContent = `${meta.textContent ? meta.textContent + ' · ' : ''}${describeError(error)}`;
     }
+  }
+
+  /** La serie entera de un indicador, del periodo más antiguo al más nuevo, con su valor y su estado. */
+  function openSeries(i: DashboardItem, series: DashboardItem[]): void {
+    openSheet({ title: i.label, meta: seriesLength(series),
+      body: el('ul', { class: 'kpiserieslist', 'data-feedback-id': 'central.direccion.serie.lista', 'data-feedback-label': 'Valores de la serie' },
+        ...series.map((s) => el('li', { class: `kpiseriesrow${s === i ? ' current' : ''}`, 'data-period': s.period },
+          el('span', { class: 'kpiseriesperiod' }, formatPeriod(s.period), s === i ? el('span', { class: 'muted small' }, ' · en la tarjeta') : null),
+          el('strong', { class: 'kpiseriesvalue' }, formatKpi(s.value, s.unit)),
+          s.state ? el('span', { class: `chip kpistate ${stateClass(s.state)}` }, STATE_LABELS[s.state]) : null))),
+      panelAttrs: { 'data-feedback-id': 'central.direccion.serie.hoja', 'data-feedback-label': 'Serie del indicador' },
+      closeAttrs: { 'data-feedback-id': 'central.direccion.serie.cerrar', 'data-feedback-label': 'Cerrar' } });
   }
 
   function openTarget(i: DashboardItem): void {

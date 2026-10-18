@@ -105,8 +105,17 @@ test('dirección · R7: grupos plegables con su resumen, Central por temas y Rec
   await expect(resources.locator('.kpisection')).toHaveText(['Espacios', 'Inventario']);
   await expect(resources.locator('.kpicard[data-kpi="resources.stock_value"]')).toBeVisible();
   await expect(resources.locator('.kpisummary')).toHaveText('12 indicadores');
-  // Un indicador mensual sigue sacando una tarjeta por mes (eso cambia en otra tanda).
-  if (labels.includes('Booking')) await expect(page.locator('.kpicard[data-kpi="booking.occupancy_rate"]')).toHaveCount(16);
+  // Series: antes, una tarjeta por mes (16 de ocupación); ahora una, con el mes en curso y «Ver 16 meses».
+  if (labels.includes('Booking')) {
+    const occupancy = page.locator('.kpicard[data-kpi="booking.occupancy_rate"]');
+    await expect(occupancy).toHaveCount(1);
+    await expect(occupancy).toContainText(new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' }).format(new Date()));
+    await occupancy.locator('.kpiseries').click();
+    await expect(page.locator('.kpiseriesrow')).toHaveCount(16);
+    await expect(page.locator('.kpiseriesrow.current')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Cerrar', exact: true }).click();
+    await expect(page.locator('.kpiseriesrow')).toHaveCount(0);
+  }
 
   // Plegar: un toque; el dispositivo lo recuerda al volver.
   const head = resources.locator('.kpigrouphead');
@@ -123,4 +132,21 @@ test('dirección · R7: grupos plegables con su resumen, Central por temas y Rec
   // La tarjeta de oficios en riesgo lleva a Oficios.
   await page.locator('.kpicard[data-kpi="central.trades_at_risk"] .kpilabel').click();
   await expect(page.getByRole('heading', { name: 'Oficios' })).toBeVisible();
+});
+
+test('dirección · series: si otro mes está en atención, la tarjeta lo dice; la hoja da el estado de cada mes', async ({ page }) => {
+  // Gasto del mes de Finance (13 meses, a 0 en esta base): con «menos es mejor» y atención por encima de -1, todos en atención.
+  const seeded = await api.app.call('/api/v1/commands', { body: { requestId: 'series-target', operations: [
+    { op: 'insert', table: 'central.kpi_targets', id: crypto.randomUUID(), fields: { kpi: 'invoices.expenses_month', warn_at: -1, direction: 'down' } },
+  ] } });
+  expect(seeded.status).toBe(200);
+  await login(page);
+  const expenses = page.locator('.kpicard[data-kpi="invoices.expenses_month"]');
+  test.skip(!(await expenses.count()), 'Finance no publica en esta base');
+  await expect(expenses).toHaveCount(1);
+  await expect(expenses).toContainText('Atención');
+  await expect(expenses.locator('.kpiothers')).toHaveText('Otros periodos: 12 en atención');
+  await expenses.locator('.kpiseries').click();
+  await expect(page.locator('.kpiseriesrow')).toHaveCount(13);
+  await expect(page.locator('.kpiseriesrow .kpistate.warn')).toHaveCount(13);
 });
