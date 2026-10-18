@@ -232,3 +232,16 @@ test('indicadores para Central · la proyección da las 12 claves de Recursos co
   assert.ok(Number(by.get('resources.machines_down').value) >= 1, 'el horno averiado');
   assert.equal(by.get('resources.items_below_min').direction, 'down');
 });
+
+test('consumo con once · repetir el mismo origen no descuenta dos veces', async () => {
+  const sal2 = uuid();
+  await commit([
+    { op: 'insert', table: 'resources.items', id: sal2, fields: { name: 'Sal gorda', kind: 'ingrediente', base_unit: 'g', default_space_id: despensa } },
+    { op: 'insert', table: 'resources.movements', id: uuid(), fields: { item_id: sal2, space_id: despensa, quantity: 1000, kind: 'entrada_manual' } },
+  ], app.tokens.editor);
+  const once = () => commit([{ op: 'call', procedure: 'resources.consume', args: { item_id: sal2, quantity: 100, kind: 'consumo_servicio', source_app: 'food', source_ref: 'menu_item:X', once: true } }], app.tokens.editor);
+  assert.equal((await once()).status, 200);
+  const again = await once();
+  assert.equal(again.data.results[0].result.skipped, 'already_consumed');
+  assert.equal(await stock(sal2), 900);
+});
