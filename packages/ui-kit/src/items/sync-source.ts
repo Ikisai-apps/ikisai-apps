@@ -8,8 +8,10 @@
  * createItemPicker({ label: 'Ingrediente', source: items, kinds: ['ingrediente', 'bebida'], quantity: true });
  * ```
  *
- * - Lee el espejo (`items`, `item_units`, `item_kinds` y `movements`), así que funciona sin red; el stock es la suma de
- *   movimientos del espejo, como permite la API.
+ * - Lee el espejo (`items`, `item_units`, `item_kinds`, `movements`, `lots` y `movement_costs`), así que funciona sin red;
+ *   el stock es la suma de movimientos del espejo, como permite la API, y el coste medio se calcula igual que `item_costs`.
+ * - La ficha escribe con la revisión de la fila (`update`, `setActive`, `saveUnit`, `removeUnit`); los rechazos
+ *   (`ITEM_IN_USE`, `INVALID_UNIT`…) se enseñan con el mensaje del servidor.
  * - Crear es un lote con una sola alta; sin red queda pendiente y se sube al volver.
  * - **Nombre repetido entre dos dispositivos sin red:** el servidor rechaza la segunda alta (`CONSTRAINT_VIOLATION`, índice
  *   único por nombre). La fuente descarta ese lote, busca el que ya existe en el espejo y avisa con `onDuplicate`;
@@ -19,7 +21,7 @@ import type { RowOperation, SyncClient, SyncedRow, TableName } from '@ikisai/syn
 import { kt } from '../i18n/i18n.ts';
 import { toast } from '../toast.ts';
 import {
-  DEFAULT_ITEM_KINDS, itemFromRow, itemKey, itemKindFromRow, itemUnitFromRow, stockFromMovements,
+  DEFAULT_ITEM_KINDS, itemFromRow, itemKey, itemKindFromRow, itemToFields, itemUnitFromRow, lotFromRow, movementFromRow, stockFromMovements,
   type ItemDuplicate, type ItemSnapshot, type ItemSource,
 } from './model.ts';
 
@@ -27,6 +29,8 @@ const ITEMS = 'resources.items' as TableName;
 const UNITS = 'resources.item_units' as TableName;
 const KINDS = 'resources.item_kinds' as TableName;
 const MOVEMENTS = 'resources.movements' as TableName;
+const LOTS = 'resources.lots' as TableName;
+const COSTS = 'resources.movement_costs' as TableName;
 
 export interface SyncItemSourceOptions {
   /** Nombre visible de un proveedor de Finance (`default_supplier_id`, `supplier_id`). */
@@ -36,11 +40,17 @@ export interface SyncItemSourceOptions {
 }
 
 export function createSyncItemSource(client: SyncClient, options: SyncItemSourceOptions = {}): ItemSource & { destroy(): void } {
-  const tables: Record<string, SyncedRow[]> = { [ITEMS]: [], [UNITS]: [], [KINDS]: [], [MOVEMENTS]: [] };
+  const tables: Record<string, SyncedRow[]> = { [ITEMS]: [], [UNITS]: [], [KINDS]: [], [MOVEMENTS]: [], [LOTS]: [], [COSTS]: [] };
   const listeners = new Set<(s: ItemSnapshot) => void>();
   const dupListeners = new Set<(d: ItemDuplicate) => void>();
   const mine = new Map<string, { draftId: string; name: string }>();
   const handled = new Set<string>();
+  /** Lotes de la ficha (cambios, unidades, archivar): sus rechazos se enseñan tal cual. */
+  const edits = new Set<string>();
+  async function commitOwn(operations: RowOperation[]): Promise<void> {
+    const { requestId } = await client.commit(operations);
+    edits.add(requestId);
+  }
   const report = options.onError ?? ((message: string) => toast(kt('No se ha guardado: {message}', { message })));
 
   const live = (rows: SyncedRow[]) => rows.filter((r) => !r.deleted_at);
@@ -51,6 +61,9 @@ export function createSyncItemSource(client: SyncClient, options: SyncItemSource
       units: live(tables[UNITS]!).map(itemUnitFromRow),
       kinds: kinds.length ? kinds : DEFAULT_ITEM_KINDS,
       stock: stockFromMovements(tables[MOVEMENTS]!),
+      lots: live(tables[LOTS]!).map(lotFromRow),
+      movements: live(tables[MOVEMENTS]!).map(movementFromRow),
+      movementCosts: live(tables[COSTS]!).map((r) => ({ movementId: String(r.movement_id), unitCost: Number(r.unit_cost ?? 0) })),
     };
   }
   const emit = () => { const s = snapshot(); listeners.forEach((l) => l(s)); };
@@ -66,6 +79,11 @@ export function createSyncItemSource(client: SyncClient, options: SyncItemSource
     if (!status.rejected) return;
     void client.rejected().then(async (batches) => {
       for (const batch of batches) {
+        if (edits.has(batch.requestId) && !handled.has(batch.requestId)) {
+          handled.add(batch.requestId);
+          report(batch.error?.message || batch.error?.code || kt('El servidor no lo ha aceptado.'), batch.error?.code ?? 'ERROR');
+          continue;
+        }
         const draft = mine.get(batch.requestId);
         if (!draft || handled.has(batch.requestId)) continue;
         handled.add(batch.requestId);
@@ -97,6 +115,27 @@ export function createSyncItemSource(client: SyncClient, options: SyncItemSource
     },
     onDuplicate(listener) { dupListeners.add(listener); return () => dupListeners.delete(listener); },
     supplierName: (id) => options.supplierName?.(id) ?? null,
+    async update(id, fields) {
+      const row = tables[ITEMS]!.find((r) => r.id === id) ?? await client.get(ITEMS, id);
+      const current = row ? itemFromRow(row) : null;
+      await commitOwn([{ op: 'update', table: ITEMS, id, expectedRevision: row?.revision ?? 0, fields: itemToFields(fields, current) }]);
+    },
+    async setActive(id, active) {
+      const row = tables[ITEMS]!.find((r) => r.id === id) ?? await client.get(ITEMS, id);
+      await commitOwn([{ op: 'update', table: ITEMS, id, expectedRevision: row?.revision ?? 0, fields: { active } }]);
+    },
+    async saveUnit(unit, isNew) {
+      const fields = { item_id: unit.itemId, unit: unit.unit.trim(), factor: unit.factor, supplier_id: unit.supplierId };
+      if (isNew) await commitOwn([{ op: 'insert', table: UNITS, id: unit.id, fields }]);
+      else {
+        const row = tables[UNITS]!.find((r) => r.id === unit.id) ?? await client.get(UNITS, unit.id);
+        await commitOwn([{ op: 'update', table: UNITS, id: unit.id, expectedRevision: row?.revision ?? 0, fields }]);
+      }
+    },
+    async removeUnit(id) {
+      const row = tables[UNITS]!.find((r) => r.id === id) ?? await client.get(UNITS, id);
+      await commitOwn([{ op: 'delete', table: UNITS, id, expectedRevision: row?.revision ?? 0 }]);
+    },
     destroy() { offTables.forEach((off) => off()); offStatus(); listeners.clear(); dupListeners.clear(); },
   };
 }

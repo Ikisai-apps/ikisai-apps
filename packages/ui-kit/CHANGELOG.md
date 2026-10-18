@@ -1,5 +1,37 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.37.0 · 18 de octubre de 2026
+
+**Catálogo y ficha del inventario** (R3, primera de las dos entregas aprobadas el 18-10-2026; movimientos y recuento, en la 0.38).
+
+- **`createItemCatalog`:** la lista del inventario.
+  - **Buscar:** por nombre y alias, sin tildes.
+  - **Filtros a un toque, con cuántos hay:** bajo mínimo, caduca pronto (7 días, `expiringDays`), sitios (`spaceChips`), tipos y archivados. Con `storageKey` se recuerdan.
+  - **Agrupar:** por sitio (por defecto), al nivel de espacio, así que la despensa va con su cocina. También por tipo o por categoría.
+  - **Cada fila:**
+    - stock y dónde, mínimo y avisos con texto («Bajo mínimo», «caduca mañana»);
+    - «sin subir» y «archivado»;
+    - las acciones del kit (`actions` → `onAction`) y las de la app (`rowActions`, p. ej. «Pedir»).
+  - **Ancho:** en el móvil son filas con botones grandes. Con ancho (≥ 760 px de contenedor, `@container`) se alinean en columnas.
+  - **Ámbito:** `scope` (sitios con lo de dentro) y `filter` (p. ej. el área de Tasks). Central lo monta sin ámbito.
+  - **«+ Artículo»:** el alta rápida del selector y, después, `onOpen` con el nuevo.
+- **`createItemSheet`:** la ficha de un artículo, que la app monta donde quiera.
+  - **Stock:** por sitio y lote con su caducidad, total, bajo mínimo y coste medio. El coste sale del espejo, igual que `item_costs`, con los costes que llegan después y los contrarios, para que funcione sin red.
+  - **Datos:**
+    - nombre, sin repetir (la pista va enlazada con `aria-describedby`), tipo, categoría y unidad base (fija con movimientos);
+    - mínimo, «Al pedir, cuánto», sitio habitual y proveedor (`supplierField` de la app);
+    - otros nombres (`attributes.aliases`), lotes, caducidad y notas;
+    - en máquinas y herramientas, también marca, modelo, serie, estado y factura de compra;
+    - archivar con confirmación, y recuperar.
+  - **Unidades:** conversiones con validación: nunca la base, factor mayor que 0 y sin repetir unidad y proveedor.
+  - **Movimientos:** por fecha, con signo, en palabras («Traslado a Cámara», «Salida a mano · Merma») y con el origen que enlaza la app (`sourceLink`). Con ancho van siempre a la derecha.
+  - `permissions.edit = false`: solo lectura.
+- **Modelo:**
+  - `LotRow`, `MovementRow`, `averageCost`, `lotsWithStock`, `nextExpiry`, `itemToFields` y las etiquetas de tipos, motivos y estados;
+  - `createSyncItemSource` lee también `lots` y `movement_costs` y escribe la ficha (`update`, `setActive`, `saveUnit` y `removeUnit`) con la revisión de la fila.
+- **Clases con prefijo `stk-`:** `inv-` ya lo usa Finance (`.inv-head`, `.inv-actions`), y con él el kit le escondía el botón «Validar».
+- **Demo:** sección `#inventory`. **Pruebas:** `v42`, con el modelo en Node, el catálogo y la ficha en móvil y escritorio.
+
 ## 0.36.0 · 18 de octubre de 2026
 
 **`createItemPicker`** (R3; propuesta aprobada el 18-10-2026): elegir un artículo del inventario o crearlo sin salir. Lo esperan Finance (R4), Food (R5) y Tasks (R6).

@@ -1189,3 +1189,106 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
 .item-conv{margin:0;font-size:13px;color:var(--muted)}
 .item-conv[hidden]{display:none}
 .item-conv strong{color:var(--ink)}
+
+/* ---------- Inventario: catálogo (createItemCatalog); prefijo stk- (inv- es de Finance) ---------- */
+.stk-catalog{display:grid;gap:10px;min-width:0;container-type:inline-size}
+.stk-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stk-search-wrap{flex:1 1 14rem;min-width:0}
+.stk-create{flex:none}
+.stk-chips{display:flex;gap:6px;flex-wrap:wrap}
+.stk-chips .filterchip{min-height:40px}
+.stk-chips .filterchip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.stk-live{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.stk-list{display:grid;gap:6px;min-width:0}
+.stk-head{display:none}
+.stk-group{margin:10px 0 2px;font-family:inherit;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stk-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 12px;border:1px solid var(--edge);border-radius:12px;background:var(--paper)}
+.stk-row.low{box-shadow:inset 3px 0 0 var(--warn)}
+.stk-row.archived{opacity:.65}
+.stk-name{grid-column:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.stk-open{border:0;background:transparent;padding:0;font:inherit;font-weight:800;font-size:15px;color:var(--ink);text-align:left;cursor:pointer;min-height:32px;overflow-wrap:anywhere}
+.stk-open:hover{text-decoration:underline}
+.stk-qty{grid-column:2;grid-row:1;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stk-where{grid-column:2;grid-row:2;text-align:right;font-size:12.5px;color:var(--muted)}
+.stk-kind,.stk-min,.stk-note{font-size:13px;color:var(--muted)}
+.stk-kind{grid-column:1;grid-row:2}
+.stk-min{grid-column:1}
+.stk-min .stk-none{display:none}
+.stk-note:empty{display:none}
+.stk-warn{color:var(--warn);font-weight:700}
+.stk-alert{color:var(--alert);font-weight:700}
+.stk-actions{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.stk-actions.empty{display:none}
+.stk-actions button{min-height:40px}
+.stk-empty{margin:8px 0}
+@container (min-width:760px){
+  .stk-head{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 6.5rem 5.5rem minmax(0,1.2fr) 16.5rem;gap:10px;padding:0 12px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .stk-row{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 6.5rem 5.5rem minmax(0,1.2fr) 16.5rem;padding:8px 12px;border-radius:10px}
+  .stk-row>*{grid-row:auto!important;grid-column:auto!important}
+  .stk-qty,.stk-min{text-align:right}
+  .stk-where{text-align:left;font-size:14px;color:var(--ink)}
+  .stk-kind,.stk-min,.stk-note{font-size:14px}
+  .stk-min .stk-min-label{display:none}
+  .stk-min .stk-none{display:inline}
+  .stk-note:empty{display:block}
+  .stk-actions{justify-content:flex-end;flex-wrap:nowrap;gap:4px}
+  .stk-actions.empty{display:block}
+  .stk-actions button{min-height:34px;padding:0 10px}
+}
+
+/* ---------- Inventario: ficha (createItemSheet) ---------- */
+.stk-sheet{min-width:0;container-type:inline-size}
+.stk-sheet-body{display:grid;gap:16px;min-width:0}
+.stk-sheet-main{display:grid;gap:12px;min-width:0;align-content:start}
+.stk-sheet-head{display:grid;gap:2px}
+.stk-sheet-title{margin:0;font-size:20px;overflow-wrap:anywhere}
+.stk-sheet-meta{margin:0;font-size:13px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.stk-tabs{display:flex;gap:2px;border-bottom:1px solid var(--edge);overflow-x:auto}
+.stk-tab{border:0;background:transparent;padding:10px 12px;font:inherit;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;min-height:44px;white-space:nowrap;cursor:pointer}
+.stk-tab[aria-selected="true"]{color:var(--accent-deep);border-bottom-color:var(--accent)}
+.stk-panel{display:grid;gap:12px;min-width:0}
+.stk-panel[hidden]{display:none}
+.stk-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:0;font-size:14px}
+.stk-kv dt{color:var(--muted);font-weight:700}
+.stk-kv dd{margin:0;overflow-wrap:anywhere}
+.stk-lot{color:var(--muted)}
+.stk-sheet-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.stk-sheet-actions button{min-height:44px}
+.stk-grid2{display:grid;gap:12px}
+.stk-aliases{display:flex;gap:6px;flex-wrap:wrap}
+.stk-aliases:empty{display:none}
+.stk-alias-field,.stk-supplier{display:grid;gap:6px}
+.stk-alias-add{display:flex;gap:8px}
+.stk-alias-add input{flex:1;min-width:0}
+.stk-equipment{border:1px solid var(--edge);border-radius:12px;padding:10px 12px;display:grid;gap:10px;margin:0}
+.stk-equipment[hidden]{display:none}
+.stk-equipment legend{font-weight:800;padding:0 4px}
+.stk-save-status{margin:0;font-size:13px;color:var(--muted)}
+.stk-save-status.error{color:var(--alert)}
+.stk-save-status:empty{display:none}
+.stk-unit{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--edge)}
+.stk-unit-eq{display:flex;gap:6px;align-items:center;flex:1 1 16rem;min-width:0}
+.stk-unit-eq input{width:6.5rem;min-width:0}
+.stk-unit-supplier{font-size:13px;color:var(--muted)}
+.stk-unit-actions{display:flex;gap:6px;margin-left:auto}
+.stk-unit .fielderror{flex-basis:100%}
+.stk-unit .fielderror:empty{display:none}
+.stk-sheet:not([data-tab="movements"]) .stk-sheet-side{display:none}
+.stk-sheet-side{min-width:0}
+.stk-side-title{margin:0 0 4px;font-size:16px}
+.stk-sheet[data-tab="movements"] .stk-side-title{display:none}
+.stk-mov{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--edge);font-size:14px}
+.stk-mov.pending{box-shadow:inset 3px 0 0 var(--warn);padding-left:8px}
+.stk-mov-when{color:var(--muted);font-size:12.5px;min-width:3.4em}
+.stk-mov-n{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stk-mov-n.in{color:var(--ok)}
+.stk-mov-note{grid-column:2/-1;color:var(--muted);display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.stk-origin{font-weight:700;color:var(--accent-deep)}
+@container (min-width:520px){.stk-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Con ancho, Movimientos va siempre a la derecha y su pestaña sobra. */
+@container (min-width:760px){
+  .stk-sheet-body{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}
+  .stk-sheet[data-tab] .stk-sheet-side{display:block}
+  .stk-sheet[data-tab] .stk-side-title{display:block}
+  .stk-tab-movements{display:none}
+}
