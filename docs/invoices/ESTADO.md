@@ -136,7 +136,8 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 
 - **R4 · Finance con artículos de Recursos** (aprobado el 14-10-2026, `coordinacion/invoices/R4_PREPARACION.md`):
   - hecho: caracterización (#515), modelo (#527, 0234: enlace, memoria e interruptor `resources_links`, apagado) y entradas al validar con `resources.reconcile_entries` (0235);
-  - después: la pantalla de enlace, cuando exista `createItemPicker` del kit, la migración de `item_labels` con vista previa y las retroactivas.
+  - hecho: vista previa de lo ya validado y de la memoria, «Aplicar» y las retroactivas al encender el interruptor (0236, PR 4);
+  - después: la pantalla de enlace en la ficha (PR 3), cuando exista `createItemPicker` del kit, y encender el interruptor tras el visto bueno del usuario (PR 5).
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. PR 4 hecho: facturar desde una reserva (borrador relleno desde Booking con IVA incluido exacto, asignado a la reserva, sin duplicar). Directorio de clientes por NIF hecho (ronda 46, migración 0216): búsqueda en el borrador y guardar o actualizar al emitir.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 

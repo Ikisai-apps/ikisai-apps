@@ -1643,3 +1643,25 @@ Diseño en `coordinacion/invoices/R4_PREPARACION.md`. Esta PR trae solo el model
 - **Edge (`afterCommit`):**
   - tras cada commit de `POST commands` que toca facturas o líneas, lee la lectura y manda `{op:'call', procedure:'resources.reconcile_entries'}` en un lote de Recursos con el mismo usuario (`requestId` `invoices-entries-<cursor>`);
   - si falla, lo registra y no deshace el commit de Finance; el siguiente commit de esa factura lo cuadra, porque es idempotente.
+
+
+### 16.18 R4 · vista previa de lo ya validado y de la memoria (0236, PR 4; retroactivas aprobadas por el usuario, 14-10-2026)
+- **Lectura `invoices.resource_links_preview`** (solo owner). Cubre cada línea viva sin artículo de una factura validada o archivada y cada entrada de la memoria con nombre y sin artículo. Para cada una devuelve `action` y `reason`:
+  - `enlazar`: ya hay un artículo con ese nombre (sin mayúsculas, acentos ni espacios), con `item_id` e `item_name`;
+  - `crear`: el nombre es «Mi nombre» o la descripción, el tipo sale de `item_type` (ingrediente, `maquina`, material u otro) y la unidad base de `normalize_unit` (g, ml y cl, con su factor). La memoria hereda el tipo y la unidad de las líneas del mismo nombre;
+  - `dudoso`, que se decide en la ficha:
+    - `sin_tipo`;
+    - `unidad` (no reconocida);
+    - `mismo_nombre` (tipos o unidades distintos);
+    - `unidad_distinta` (el artículo existente tiene otra unidad base);
+    - `sin_nombre`;
+  - `omitir`: `generica` (las líneas «Base al X %») o `servicio`.
+  - Además devuelve `counts` (`new_items` = artículos que se crearían) y un `digest` de la propuesta.
+- **`GET resource-links/preview`** la sirve al owner.
+- **`POST resource-links/apply {digest, space_id?}`** (owner):
+  - con otro `digest` falla con `PREVIEW_CHANGED` (409);
+  - crea en Recursos un artículo por nombre, con id estable, para que repetir no duplique. Lleva `source_refs` `invoices.line:<id>` y, si se indica, `space_id` como sitio habitual;
+  - enlaza las líneas y la memoria; lo dudoso y lo omitido no se toca;
+  - devuelve `{created, linked, memory}`.
+- **No enciende el interruptor.** Al encenderlo (o al cambiarlo), la Edge cuadra todas las facturas con líneas enlazadas o con entradas (`invoices.resource_invoice_ids`). Así salen las **retroactivas**, con la fecha de cada factura. Las líneas sin sitio no entran.
+- **App:** en Inicio, la tarjeta «Inventario (Recursos)» (solo owner) abre la vista previa con los recuentos y las cuatro listas («Se enlazan», «Se crean», «Por decidir en la ficha» y «No son stock»). Permite elegir el sitio habitual de los artículos nuevos y tiene el botón «Aplicar».
