@@ -15,8 +15,17 @@ const MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year
 /**
  * Fecha AAAA-MM-DD de hoy + `offset` días en hora de Madrid. En UTC, entre las 00:00 y las 02:00 de Madrid saldría el día
  * anterior y las pruebas que comparan con «hoy» del servidor fallarían cada noche.
+ *
+ * Los días se suman en el calendario, no como `offset × 24 h`: si en medio hay un cambio de hora, sumar horas cae en el
+ * día de antes (otoño, entre las 00:00 y la 01:00 de Madrid) o en el de después (primavera, entre las 23:00 y las 24:00).
  */
-export const day = (offset: number) => MADRID_DATE.format(new Date(Date.now() + offset * 86400000));
+export const day = (offset: number) => dayAt(new Date(), offset);
+
+/** `day` para un instante dado; separado para probarlo en cualquier día y hora (`tests/food/helpers.test.ts`). */
+export function dayAt(now: Date, offset: number): string {
+  const today = MADRID_DATE.format(now);
+  return new Date(Date.parse(`${today}T00:00:00Z`) + offset * 86400000).toISOString().slice(0, 10);
+}
 
 export interface SeedRestriction {
   type: string;
