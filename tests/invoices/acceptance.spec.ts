@@ -72,6 +72,22 @@ async function synced(page: Page): Promise<void> {
   }, { timeout: 40_000, intervals: [500, 1000, 2000] }).toContain('Todo sincronizado');
 }
 
+/**
+ * Proveedores que crean las primeras pruebas del archivo («Proveedor Ejemplo S.L.», «Frutas Pepe S.L.»). Las que los usan
+ * los siembran si faltan, para poder lanzarlas solas (`acceptance.spec.ts:<línea>`) sin agotar el tiempo en `selectOption`.
+ */
+const KNOWN_SUPPLIERS: Record<string, { slug: string; tax_id: string | null }> = {
+  'Proveedor Ejemplo S.L.': { slug: 'proveedor_ejemplo_s_l', tax_id: null },
+  'Frutas Pepe S.L.': { slug: 'frutas_pepe_s_l', tax_id: 'B12345674' },
+};
+function ensureSuppliers(...names: string[]): void {
+  for (const name of names) {
+    if (api.rows('invoices.suppliers').some((s) => !s.deleted_at && s.name === name)) continue;
+    const known = KNOWN_SUPPLIERS[name]!;
+    api.seed('invoices.suppliers', [{ name, slug: known.slug, tax_id: known.tax_id, aliases: [], default_is_investment: false }]);
+  }
+}
+
 /** Enlace de la navegación principal (en Inicio hay tarjetas con los mismos nombres). */
 /** Fila del servidor simulado que llega por la sincronización: espera a que exista (la CI es más lenta que el local). */
 async function eventually<T>(read: () => T | undefined, timeout = 20_000): Promise<T> {
@@ -1564,6 +1580,7 @@ test('QA FB_2026_016: nueva factura sin fecha (opcional, sin rellenar con hoy); 
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
+    ensureSuppliers('Proveedor Ejemplo S.L.');
     await login(page);
     await synced(page);
     await page.goto(`${baseURL}/#/facturas`);
@@ -1666,6 +1683,7 @@ test('Periodo de declaración (0228): una factura de un trimestre anterior pregu
   const page = await context.newPage();
   const old = `${new Date().getFullYear() - 2}-05-10`; // siempre de un trimestre anterior al de trabajo
   try {
+    ensureSuppliers('Proveedor Ejemplo S.L.');
     await login(page);
     await synced(page);
     await page.goto(`${baseURL}/#/facturas`);
@@ -1722,6 +1740,7 @@ test('«Datos de la factura» editables en la ficha (9-10-2026): proveedor nuevo
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 1008 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
+    ensureSuppliers('Proveedor Ejemplo S.L.');
     await login(page);
     await synced(page);
     await page.goto(`${baseURL}/#/facturas`);
@@ -2315,6 +2334,7 @@ test('FB_2026_026 · FB_2026_031 · FB_2026_032 (móvil 484×686): artículos op
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 686 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
+    ensureSuppliers('Proveedor Ejemplo S.L.');
     await login(page);
     await synced(page);
     await page.goto(`${baseURL}/#/facturas`);
@@ -2362,6 +2382,7 @@ test('FB_2026_027 · FB_2026_030 · pago: nunca la fecha del clic; sin confirmar
   const context: BrowserContext = await browser.newContext({ viewport: { width: 484, height: 686 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
+    ensureSuppliers('Proveedor Ejemplo S.L.', 'Frutas Pepe S.L.');
     await login(page);
     await synced(page);
     await page.goto(`${baseURL}/#/facturas`);
