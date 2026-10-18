@@ -22,6 +22,28 @@ export interface CoreOptions {
 }
 
 const BLOCKERS_KEY = 'ikisai-tasks-blockers';
+const TRADES_KEY = 'ikisai-tasks-trades';
+
+/** Fila de `central.trade_options` (P2, docs/tasks/API.md §32): oficios activos de Central con su ruta. */
+export interface TradeOption {
+  trade_id: string;
+  parent_id: string | null;
+  name: string;
+  path: string | null;
+  position: number;
+  source_label_id: string | null;
+}
+
+/** Solo lo que la interfaz necesita de cada fila (descarta lo que no sea un oficio con id y nombre). */
+export function tradeOptionsFrom(value: unknown): TradeOption[] {
+  const list = Array.isArray(value) ? value : (value as { rows?: unknown[] } | null)?.rows;
+  if (!Array.isArray(list)) return [];
+  return list.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && typeof (r as Record<string, unknown>).trade_id === 'string' && typeof (r as Record<string, unknown>).name === 'string')
+    .map((r) => ({
+      trade_id: r.trade_id as string, parent_id: typeof r.parent_id === 'string' ? r.parent_id : null, name: r.name as string,
+      path: typeof r.path === 'string' ? r.path : null, position: Number(r.position ?? 0) || 0, source_label_id: typeof r.source_label_id === 'string' ? r.source_label_id : null,
+    }));
+}
 
 export class TasksCore {
   readonly client: SyncClient;
@@ -32,6 +54,11 @@ export class TasksCore {
   resources: SyncClient | null = null;
   /** Espacios vivos del espejo de Recursos (para chips, filtros y agrupar, que se pintan sin esperar). */
   spaces: Array<Record<string, unknown>> = [];
+  /**
+   * Oficios activos de Central (P2): no se sincronizan, se leen con `central.trade_options`. La última respuesta queda en
+   * el dispositivo, así que sin red se siguen viendo los nombres; si nunca se pudo leer, está vacía.
+   */
+  trades: TradeOption[] = [];
   /** Copia en memoria del espejo (incluida la papelera), con los cambios locales aún sin encolar aplicados. */
   data: Dataset = emptyDataset();
   /** Lotes locales entregados a `commit()` cuya escritura en la cola todavía no ha terminado. */
@@ -56,6 +83,7 @@ export class TasksCore {
       pullIntervalMs: options.readOnly ? 0 : options.pullIntervalMs ?? 20000,
     });
     try { this.hidden = JSON.parse(localStorage.getItem(BLOCKERS_KEY) ?? 'null') ?? undefined; } catch { this.hidden = undefined; }
+    try { this.trades = tradeOptionsFrom(JSON.parse(localStorage.getItem(TRADES_KEY) ?? 'null')); } catch { this.trades = []; }
   }
 
   /** Avisa de cambios en los datos del espejo (`data`) o en el estado de sincronización (`status`). */
@@ -86,6 +114,7 @@ export class TasksCore {
     await this.reload();
     if (!this.options.readOnly) void this.startResources();
     if (!this.options.readOnly) void this.refreshBlockers();
+    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades();
     return boot ?? this.client.bootstrap();
   }
 
@@ -93,6 +122,24 @@ export class TasksCore {
   zoneSource(): 'labels' | 'spaces' {
     const row = (this.data['tasks.settings'] ?? []).find((r) => r.key === 'zone_source' && !r.deleted_at);
     return row?.value === 'spaces' ? 'spaces' : 'labels';
+  }
+
+  /** De dónde sale la acción: `'labels'` (familia «Tipo: Acción») o `'central'` (oficios de Central, P2), según `tasks.settings`. */
+  tradeSource(): 'labels' | 'central' {
+    const row = (this.data['tasks.settings'] ?? []).find((r) => r.key === 'trade_source' && !r.deleted_at);
+    return row?.value === 'central' ? 'central' : 'labels';
+  }
+
+  /** Vuelve a leer los oficios de Central y guarda la respuesta en el dispositivo. Sin red o sin permiso, se queda lo último leído. */
+  async refreshTrades(): Promise<boolean> {
+    if (!this.client.session()) return false;
+    try {
+      const out = await this.client.api<unknown>('/read/central.trade_options', { method: 'POST', json: { limit: 2000 } });
+      this.trades = tradeOptionsFrom(out);
+      try { localStorage.setItem(TRADES_KEY, JSON.stringify(this.trades)); } catch { /* sin almacenamiento */ }
+      this.emit('data');
+      return true;
+    } catch { return false; }
   }
 
   /** Arranca el cliente de Recursos (una vez por sesión). Un fallo no impide usar Tasks: los espacios salen vacíos. */
@@ -134,7 +181,8 @@ export class TasksCore {
     this.data = emptyDataset();
     this.spaces = [];
     this.hidden = undefined;
-    try { localStorage.removeItem(BLOCKERS_KEY); } catch { /* sin almacenamiento */ }
+    this.trades = [];
+    try { localStorage.removeItem(BLOCKERS_KEY); localStorage.removeItem(TRADES_KEY); } catch { /* sin almacenamiento */ }
     this.emit('data');
   }
 

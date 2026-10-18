@@ -1614,7 +1614,15 @@ La familia General «Tipo: Acción» (y sus copias de área) pasa a ser los **of
 - La copia portable y el CSV con oficios (`import_rows` tampoco admite aún los espacios; §30, 2c).
 - Las plantillas de la interfaz no copian espacios ni oficios.
 
+**PR 2 (hecha): la interfaz en modo oficios y el botón** (`apps/tasks/public/trades-ui.js`, réplica de `spaces-ui.js`). Con `trade_source = 'labels'` no cambia nada (`personas.spec.ts` sigue igual).
+- **Catálogo:** los oficios no se sincronizan. `core.ts` los lee con `POST read/central.trade_options {limit}` (`refreshTrades()`, al arrancar en modo central y al pasar a él) y guarda la última respuesta en el dispositivo: sin red se siguen viendo los nombres. Si nunca se pudo leer, la chip dice «Oficio». Se borra al cerrar sesión. `tradeSource()` se lee de `tasks.settings`, como `zoneSource()`.
+- **Chips:** la ruta de Central («Fontanería › ACS»), una por oficio y sin compactar, con el color de «Tipo: Acción». Van donde iba la acción: detrás de los espacios y delante de la persona. En la fila, el tablero y la tarjeta del proyecto.
+- **Filtro:** clave `_trade` en árbol, con lo de dentro (la madre encuentra la tarea que solo guarda la hija) y los tres estados (`_exclude`). **Buscar:** el nombre del oficio, sin tildes. **Agrupar:** `groupBy = '_trade'`, cada tarea en su oficio más hondo. **Vistas guardadas** y **texto legible** («Oficio:»).
+- **Fichas y lote:** el selector de espacios del kit (`createSpacePicker`) con las filas de los oficios: más usados a un toque y búsqueda por ruta. Las tareas nuevas heredan los oficios del proyecto. El lote añade y uno más concreto sustituye al de encima.
+- **Botón:** menú «Trabajo», tras «Etiquetas» (y lo de los espacios), solo para la propietaria humana con acceso a todo, mientras haya una familia viva «Tipo: Acción». Vista previa con recuentos, cada acción con su oficio, «Se quitan» y «Por resolver» (bloquea hasta marcarlas). Con `centralEmpty`, el aviso con el enlace a Central; con `503 CENTRAL_UNAVAILABLE`, que no se pudo leer Central.
+- **Pantalla «Oficios»** (modo central): el árbol de solo lectura, «Gestionar en Central» y, para la propietaria, «Volver a las acciones…» (con «Se perderían» y «Entendido: quitarlos»).
+- **Pruebas:** `tests/tasks/oficios-central.spec.ts` (la caracterización en modo oficios), `oficios-boton.spec.ts` y `core-trades.test.ts`.
+
 **Pendiente (PR siguientes):**
-- **PR 2:** interfaz en modo oficios (chips, filtro, agrupar, fichas, lote) y el botón con la vista previa.
 - **PR 3:** personas de Central (`central.person_alive`) en lugar de las etiquetas Persona.
 - **PR 4:** «Quién sabe hacerlo» (`central.capability_options`).
