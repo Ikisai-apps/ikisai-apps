@@ -30,7 +30,10 @@ function purchaseRun(build,message){try{return purchaseCommit(build(purchasesDat
 
 /* Las vistas de compras se repintan con cualquier cambio del núcleo (el modelo de tareas puede no haber cambiado). */
 let purchaseListening=false;
-function listenPurchases(){if(purchaseListening||!Sync.core)return;purchaseListening=true;Sync.core.onChange(kind=>{if(kind==='data'&&PURCHASE_VIEWS.includes(state.view)&&!document.getElementById('sheetBack')?.classList.contains('show'))render()})}
+/* En Inicio, solo si cambia el número del aviso de suministros: un movimiento de almacén no cambia el modelo de tareas. */
+let homeLowStock=0;
+function lowStockCount(){return state.view==='home'&&tab()&&Sync.core&&fullScope(tab().id)?IkisaiTasks.purchases.lowStock(purchasesData(),tab().id).length:0}
+function listenPurchases(){if(purchaseListening||!Sync.core)return;purchaseListening=true;Sync.core.onChange(kind=>{if(kind!=='data'||document.getElementById('sheetBack')?.classList.contains('show'))return;if(PURCHASE_VIEWS.includes(state.view)||state.view==='home'&&lowStockCount()!==homeLowStock)render()})}
 
 /* --- Menú ---------------------------------------------------------------------------------------------------------- */
 const navigationBeforePurchases=navigationGroups;
@@ -113,7 +116,8 @@ const mainBeforePurchases=main;
 main=function(){if(state.view==='purchases')return purchasesView();if(state.view==='supplies')return suppliesView();if(state.view==='plans')return plansView();
   const html=mainBeforePurchases();
   // Aviso en Inicio: suministros bajo mínimo del área.
-  if(state.view==='home'&&tab()&&Sync.core&&fullScope(tab().id)){const n=IkisaiTasks.purchases.lowStock(purchasesData(),tab().id).length;if(n)return html.replace(/(<main[^>]*>)/,`$1<div class="notice lowstock">Queda poco de ${n} ${n===1?'suministro':'suministros'}. <button class="linkbtn" data-open-supplies type="button" data-feedback-id="tasks.inicio.aviso.ver_suministros" data-feedback-label="Ver suministros">Ver suministros</button></div>`)}
+  if(state.view==='home')listenPurchases();homeLowStock=lowStockCount();
+  if(homeLowStock){const n=homeLowStock;return html.replace(/(<main[^>]*>)/,`$1<div class="notice lowstock">Queda poco de ${n} ${n===1?'suministro':'suministros'}. <button class="linkbtn" data-open-supplies type="button" data-feedback-id="tasks.inicio.aviso.ver_suministros" data-feedback-label="Ver suministros">Ver suministros</button></div>`)}
   return html};
 
 /* --- Hojas --------------------------------------------------------------------------------------------------------- */
