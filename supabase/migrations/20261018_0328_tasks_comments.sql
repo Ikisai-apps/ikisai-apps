@@ -8,7 +8,8 @@
 -- - El outsider (tasks.validate_comments, segundo hook de validación):
 --   · en tasks.tasks solo cambia `done` (marcar y desmarcar), de tareas de lo que tiene abierto;
 --   · comenta en tareas de lo que tiene abierto;
---   · nada más: ni insertar ni borrar tareas, ni ninguna otra tabla (FORBIDDEN).
+--   · nada más: ni insertar ni borrar tareas, ni ninguna otra tabla (FORBIDDEN). Los procedimientos (`call`) los decide el
+--     núcleo (`core.allow_outsider_procedure`; Tasks no abre ninguno), pero sus filas también pasan por aquí.
 --   Para él, ámbitos vacíos o «*» son nada (tasks.effective_scopes, como `effectiveScopes` de scopes.ts).
 -- - Comentarios, para todos: cada uno edita, borra o restaura solo los suyos; la propietaria (rol owner) borra o restaura
 --   cualquiera. Quien mueve la tarea puede mover sus comentarios (solo cambian `tab_id` y `project_id`, nunca el texto ni
@@ -86,7 +87,7 @@ begin
 
   -- a) El outsider: marcar hecha y comentar, en lo que tiene abierto; nada más ------------------------------------
   if v_role = 'outsider' then
-    for c in select ch.* from core.changes ch where ch.app = v_app and ch.cursor = v_cursor order by ch.seq loop
+    for c in select ch.* from core.changes ch where ch.app = v_app and ch.cursor = v_cursor and ch.op <> 'call' order by ch.seq loop
       if c.schema_name = 'tasks' and c.table_name = 'tasks' and c.op = 'update' then
         v_ok := c.before->>'deleted_at' is null
           and tasks.scope_project(v_scopes, (c.before->>'tab_id')::uuid, (c.before->>'project_id')::uuid)
