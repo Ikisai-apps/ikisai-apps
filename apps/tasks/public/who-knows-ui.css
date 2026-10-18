@@ -1,0 +1,26 @@
+/* P2, PR 4 · «Quién sabe hacerlo» (who-knows-ui.js): chips de sugerencia debajo de «Oficio». Con borde discontinuo y fondo
+   claro, para no confundirlas con las personas puestas; la que ya está en «Personas», rellena con su color y con ✓. El punto
+   de color es la disponibilidad (solo si se pudo leer). */
+.whoknows[hidden]{display:none!important}
+.whoknows{margin-top:-4px}
+.whotitle{display:block;font-size:11px;font-weight:700;color:var(--muted,#6f665b);margin:0 0 6px}
+.whochips{display:flex;flex-wrap:wrap;gap:6px}
+.whochip{--who:#7b6a8c;display:inline-flex;align-items:center;gap:5px;min-height:40px;max-width:100%;padding:4px 10px 4px 11px;border:1.5px dashed var(--who);border-radius:999px;background:var(--paper,#fffaf1);color:var(--ink,#2f2a24);font:inherit;font-size:13px;font-weight:700;line-height:1;cursor:pointer}
+.whochip:hover:not([aria-disabled="true"]){background:var(--paper-2,#f4ede2)}
+.whochip.on{border-style:solid;background:var(--who);color:#fff;cursor:default}
+.whochip.on .whoname::after{content:'✓';margin-inline-start:3px}
+.whochip[aria-disabled="true"]:not(.on){opacity:.6;cursor:default}
+.whochip[data-level="0"]{border-style:dotted}
+.whoname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.whostar{display:inline-flex}
+.whostar .level-star.static{min-width:0;min-height:0;padding:0 2px}
+.whochip.on .whostar .level-star{--star:#fff}
+.whodot{width:8px;height:8px;border-radius:50%;flex:none;background:#9a9186}
+.whochip.on .whodot{box-shadow:0 0 0 1.5px #fff}
+.whodot[data-availability="alta"]{background:#3f8f4f}
+.whodot[data-availability="media"]{background:#c9a227}
+.whodot[data-availability="segun_calendario"]{background:#5b7fa6}
+.whodot[data-availability="baja"]{background:#c66a2b}
+.whodot[data-availability="no_disponible"]{background:#a63d3d}
+.whomore{display:inline-block;margin-top:4px;min-height:36px;padding:6px 2px;border:0;background:transparent;color:var(--olive-dark,#4f5b2c);font:inherit;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer}
+.whoempty a{font-weight:600;color:var(--olive-dark,#4f5b2c)}

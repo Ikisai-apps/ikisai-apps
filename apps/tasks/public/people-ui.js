@@ -144,11 +144,16 @@ function mountOwnerSelect(select,key,initial){if(!select)return null;const value
 
 /* --- Ficha de tarea y de proyecto ----------------------------------------------------------------------------------- */
 // Borradores mientras la ficha está abierta (sobreviven a reabrirla al elegir etiquetas) y lo que se guarda al pulsar «Guardar».
-let peopleDraft=null,ownerDraft=null,peoplePending=null;
+let peopleDraft=null,ownerDraft=null,peoplePending=null,peopleField=null;
+/* Para «Quién sabe hacerlo» (who-knows-ui.js): añade una persona al campo «Personas» de la ficha abierta, si no estaba. Nada más:
+   se guarda con el resto de la ficha al pulsar «Guardar». Devuelve si la ha añadido. */
+function addPersonToField(personId){const f=peopleField;if(!f||!f.field.isConnected||!peopleDraft||peopleDraft.key!==f.key||!canEdit())return false;
+  if(peopleDraft.ids.includes(personId))return false;const next=[...peopleDraft.ids,personId];f.picker.set(next);peopleDraft={key:f.key,ids:next};
+  f.field.dispatchEvent(new CustomEvent('people-change',{detail:[...next]}));return true}
 function mountPeopleField(anchor,key,initial,label,feedbackId,hint){if(!anchor)return;const ids=peopleDraft&&peopleDraft.key===key?peopleDraft.ids:[...initial];peopleDraft={key,ids:[...ids]};
   const field=document.createElement('div');field.className='field personfield ikisai-kit';
-  const picker=personPicker({label,value:ids,feedbackId,onChange:next=>{peopleDraft={key,ids:[...next]}}});
-  field.append(picker.element);if(!(Sync.core?.people||[]).length)field.insertAdjacentHTML('beforeend','<p class="small muted">Las personas de Central no se han podido leer todavía. Vuelve a abrir la ficha con conexión.</p>');
+  const picker=personPicker({label,value:ids,feedbackId,onChange:next=>{peopleDraft={key,ids:[...next]};field.dispatchEvent(new CustomEvent('people-change',{detail:[...next]}))}});
+  peopleField={key,picker,field};field.append(picker.element);if(!(Sync.core?.people||[]).length)field.insertAdjacentHTML('beforeend','<p class="small muted">Las personas de Central no se han podido leer todavía. Vuelve a abrir la ficha con conexión.</p>');
   if(hint)field.insertAdjacentHTML('beforeend',`<p class="small muted">${esc(hint)}</p>`);anchor.insertAdjacentElement('beforebegin',field);
   if(!canEdit())field.querySelectorAll('input,button').forEach(x=>x.disabled=true)}
 /* Al pulsar «Guardar» (antes que la ficha): se apunta lo elegido y el select del responsable se vacía para que la ficha no
@@ -168,7 +173,7 @@ openProjectEditor=function(id,selectedOverride=null,valsOverride=null){projectEd
   const select=mountOwnerSelect(document.getElementById('peOwner'),key,base?.ownerPerson);
   rememberPeople(document.getElementById('saveProjectBtn'),select,{kind:'project',id:id||null})};
 const closeSheetBeforePeople=closeSheet;
-closeSheet=function(e){closeSheetBeforePeople(e);if(!document.getElementById('sheetBack').classList.contains('show')){peopleDraft=null;ownerDraft=null;personFacetQuery=''}};
+closeSheet=function(e){closeSheetBeforePeople(e);if(!document.getElementById('sheetBack').classList.contains('show')){peopleDraft=null;ownerDraft=null;peopleField=null;personFacetQuery=''}};
 function setPeople(x,field,keys){const next=[...new Set(keys)];if(JSON.stringify(x[field]||[])===JSON.stringify(next))return;x[field]=next;if(field==='people')touch(x)}
 /* El responsable de Central (`ownerPerson`, una persona o `level:<nivel>`); la etiqueta (`owner`) se queda vacía. */
 function setOwnerPerson(x,value,isTask){const next=value||null;if((x.ownerPerson||null)===next&&!x.owner)return;x.ownerPerson=next;x.owner=null;if(isTask)touch(x)}

@@ -13,6 +13,10 @@ import {
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
+import { availabilityOptionsFrom, capabilityOptionsFrom, hasApprentices, whoKnows, type AvailabilityOption, type CapabilityOption } from './who-knows.ts';
+
+export { availabilityOptionsFrom, capabilityOptionsFrom, hasApprentices, whoKnows } from './who-knows.ts';
+export type { AvailabilityOption, CapabilityOption, WhoKnows } from './who-knows.ts';
 
 export interface CoreOptions {
   apiBase?: string;
@@ -46,6 +50,10 @@ export function tradeOptionsFrom(value: unknown): TradeOption[] {
 }
 
 const PEOPLE_KEY = 'ikisai-tasks-people';
+const CAPABILITIES_KEY = 'ikisai-tasks-capabilities';
+const AVAILABILITY_KEY = 'ikisai-tasks-availability';
+/** Páginas de 2000 filas (el máximo de una lectura registrada); como mucho 10. */
+const READ_PAGE = 2000;
 const HOUSE_LEVELS = ['direccion', 'staff', 'outsider'] as const;
 
 /** Fila de `central.people_options` (P2, PR 3; docs/tasks/API.md §33): personas activas de Central, con su nivel de casa. */
@@ -89,6 +97,13 @@ export class TasksCore {
    * última respuesta queda en el dispositivo (sin red siguen saliendo los nombres y las iniciales).
    */
   people: PersonOption[] = [];
+  /**
+   * «Quién sabe hacerlo» (P2, PR 4): capacidades de Central (`central.capability_options`, el grado efectivo con la herencia
+   * ya resuelta) y disponibilidad (`central.availability_options`, que el outsider no puede leer). Como las personas: no se
+   * sincronizan y la última respuesta queda en el dispositivo.
+   */
+  capabilities: CapabilityOption[] = [];
+  availability: AvailabilityOption[] = [];
   /** Copia en memoria del espejo (incluida la papelera), con los cambios locales aún sin encolar aplicados. */
   data: Dataset = emptyDataset();
   /** Lotes locales entregados a `commit()` cuya escritura en la cola todavía no ha terminado. */
@@ -115,6 +130,8 @@ export class TasksCore {
     try { this.hidden = JSON.parse(localStorage.getItem(BLOCKERS_KEY) ?? 'null') ?? undefined; } catch { this.hidden = undefined; }
     try { this.trades = tradeOptionsFrom(JSON.parse(localStorage.getItem(TRADES_KEY) ?? 'null')); } catch { this.trades = []; }
     try { this.people = peopleOptionsFrom(JSON.parse(localStorage.getItem(PEOPLE_KEY) ?? 'null')); } catch { this.people = []; }
+    try { this.capabilities = capabilityOptionsFrom(JSON.parse(localStorage.getItem(CAPABILITIES_KEY) ?? 'null')); } catch { this.capabilities = []; }
+    try { this.availability = availabilityOptionsFrom(JSON.parse(localStorage.getItem(AVAILABILITY_KEY) ?? 'null')); } catch { this.availability = []; }
   }
 
   /** Avisa de cambios en los datos del espejo (`data`) o en el estado de sincronización (`status`). */
@@ -147,6 +164,7 @@ export class TasksCore {
     if (!this.options.readOnly) void this.refreshBlockers();
     if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades();
     if (!this.options.readOnly && this.peopleSource() === 'central') void this.refreshPeople();
+    if (!this.options.readOnly && this.tradeSource() === 'central' && this.peopleSource() === 'central') void this.refreshCapabilities();
     return boot ?? this.client.bootstrap();
   }
 
@@ -192,6 +210,45 @@ export class TasksCore {
     } catch { return false; }
   }
 
+  /** Lee todas las páginas de una lectura registrada (como mucho 10 de 2000 filas). */
+  private async readAll(name: string): Promise<unknown[]> {
+    const rows: unknown[] = [];
+    for (let page = 0; page < 10; page += 1) {
+      const out = await this.client.api<unknown>(`/read/${name}`, { method: 'POST', json: page ? { limit: READ_PAGE, offset: page * READ_PAGE } : { limit: READ_PAGE } });
+      const list = Array.isArray(out) ? out : (out as { rows?: unknown[] } | null)?.rows ?? [];
+      rows.push(...list);
+      if (list.length < READ_PAGE) break;
+    }
+    return rows;
+  }
+
+  /**
+   * «Quién sabe hacerlo» (P2, PR 4): vuelve a leer las capacidades y la disponibilidad de Central y las guarda en el
+   * dispositivo. Sin red, se queda lo último leído. La disponibilidad es aparte: si se niega (403, el outsider), se vacía y se
+   * ordena solo por grado; si falla por otra cosa, se queda la última. Devuelve si se pudieron leer las capacidades.
+   */
+  async refreshCapabilities(): Promise<boolean> {
+    if (!this.client.session()) return false;
+    let ok = false;
+    try {
+      this.capabilities = capabilityOptionsFrom(await this.readAll('central.capability_options'));
+      try { localStorage.setItem(CAPABILITIES_KEY, JSON.stringify(this.capabilities)); } catch { /* sin almacenamiento */ }
+      ok = true;
+    } catch { /* sin red o sin permiso: lo último leído */ }
+    try {
+      this.availability = availabilityOptionsFrom(await this.readAll('central.availability_options'));
+      try { localStorage.setItem(AVAILABILITY_KEY, JSON.stringify(this.availability)); } catch { /* sin almacenamiento */ }
+    } catch (error) {
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 403 || status === 404) {
+        this.availability = [];
+        try { localStorage.removeItem(AVAILABILITY_KEY); } catch { /* sin almacenamiento */ }
+      }
+    }
+    this.emit('data');
+    return ok;
+  }
+
   /** Arranca el cliente de Recursos (una vez por sesión). Un fallo no impide usar Tasks: los espacios salen vacíos. */
   async startResources(): Promise<void> {
     try {
@@ -233,7 +290,11 @@ export class TasksCore {
     this.hidden = undefined;
     this.trades = [];
     this.people = [];
-    try { localStorage.removeItem(BLOCKERS_KEY); localStorage.removeItem(TRADES_KEY); localStorage.removeItem(PEOPLE_KEY); } catch { /* sin almacenamiento */ }
+    this.capabilities = [];
+    this.availability = [];
+    try {
+      for (const key of [BLOCKERS_KEY, TRADES_KEY, PEOPLE_KEY, CAPABILITIES_KEY, AVAILABILITY_KEY]) localStorage.removeItem(key);
+    } catch { /* sin almacenamiento */ }
     this.emit('data');
   }
 
@@ -364,6 +425,8 @@ const api = {
     supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
     receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations,
   },
+  /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */
+  whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
   requests: {
     pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,

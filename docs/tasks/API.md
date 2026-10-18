@@ -1625,7 +1625,7 @@ La familia General «Tipo: Acción» (y sus copias de área) pasa a ser los **of
 
 **Pendiente (PR siguientes):**
 - **PR 3:** personas de Central (`central.person_alive`) en lugar de las etiquetas Persona: el modelo, en §33 (3a); la interfaz, 3b.
-- **PR 4:** «Quién sabe hacerlo» (`central.capability_options`).
+- **PR 4 (hecha, §34):** «Quién sabe hacerlo» (`central.capability_options`).
 
 ## 33. Personas de Central en lugar de «Grupo: Persona» (fase P2, PR 3a)
 
@@ -1698,3 +1698,14 @@ La familia de responsables de cada área (`system_key = 'person'`, o con el nomb
 - **Botón:** menú «Trabajo», tras «Etiquetas» y lo de espacios y oficios, solo para la propietaria humana con acceso a todo, mientras haya una familia de personas viva. Vista previa con los recuentos y un select por etiqueta (personas por nivel, grupos y «Quitar») con la propuesta (o lo confirmado antes) ya puesto; sin propuesta, vacío y «Por confirmar», y «Pasar» desactivado. Cada cambio va a un borrador del dispositivo y se vuelve a pedir la vista previa con `mapping`. Con `centralEmpty`, el aviso con el enlace a Central; con 503, que no se pudo leer Central.
 - **Pantalla «Personas»** (modo central): las de Central por nivel, de solo lectura, «Gestionar en Central» y, para la propietaria, «Volver a las etiquetas de persona…» (con «Se perderían» y «Entendido: quitarlos»).
 - **Pruebas:** `tests/tasks/personas-central.spec.ts`, `personas-boton.spec.ts` y `core-people.test.ts`.
+
+## 34. «Quién sabe hacerlo» (fase P2, PR 4)
+
+**PR 4 (hecha).** Sugerencia de personas al poner un oficio, con las decisiones del usuario del 18-10-2026. Solo interfaz: sin migración ni rutas nuevas.
+- **Cuándo sale:** en la ficha de tarea y en la de proyecto, debajo de «Oficio», en cuanto hay algún oficio puesto. Solo con `trade_source = 'central'` y `people_source = 'central'`: con las personas en etiquetas no sale. Sin oficio, o si nunca se pudieron leer las capacidades, no sale nada; con oficio y nadie capaz, «Nadie tiene este oficio todavía» con el enlace a Central.
+- **Qué muestra:** una chip por persona capaz, con sus iniciales (o el nombre de pila), la estrella de grado del kit (`renderLevelStar`, tres pasos: Aprende, Sabe, Experto) y un punto de color con la disponibilidad; el título dice nombre, grado y disponibilidad. Por defecto, solo «Sabe» y «Experto»; «Ver también aprendices» añade a quien solo aprende (y «Ocultar aprendices» los quita).
+- **Orden:** grado de mayor a menor, después `availability_rank` (1 primero; sin dato, al final) y después nombre. **Varios oficios:** se juntan sin repetir, con el mejor grado de cada persona. La herencia de padre a hijos la resuelve Central (`capability_options` ya trae el grado efectivo, migración 1510): Tasks no calcula nada.
+- **Al tocar una chip:** la persona entra en «Personas» (o «Personas del proyecto») de la misma ficha, si no estaba, y se guarda con «Guardar». La que ya está sale rellena con ✓ y no se puede volver a tocar. **Nada se asigna solo** y nada se descuenta.
+- **Datos:** `core.ts` lee `POST read/central.capability_options {limit, offset}` y `POST read/central.availability_options` (`refreshCapabilities()`, por páginas de 2000) al arrancar en los dos modos, al pasar a ellos y, como mucho una vez por minuto, al abrir una ficha con conexión. La última respuesta queda en el dispositivo (`ikisai-tasks-capabilities`, `ikisai-tasks-availability`) y se borra al cerrar sesión. Si la disponibilidad se niega (403, el outsider), se vacía y se ordena solo por grado, sin error visible.
+- **Código:** funciones puras en `apps/tasks/src/who-knows.ts` (`whoKnows`, `hasApprentices`; en `window.IkisaiTasks.whoKnows`) y la interfaz en `apps/tasks/public/who-knows-ui.js` y `.css`, después de `people-ui.js`. Los campos «Oficio» y «Personas» avisan de sus cambios con los eventos `trades-change` y `people-change`; `addPersonToField()` (people-ui.js) añade la persona al borrador de la ficha.
+- **Pruebas:** `tests/tasks/quien-sabe.test.ts` (orden, unión, aprendices, caché, 403) y `tests/tasks/quien-sabe.spec.ts` (móvil de 390 px, capturas `40-quien-sabe-…` en `coordinacion/tasks/p2-despues/`).
