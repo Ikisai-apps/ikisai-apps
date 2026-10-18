@@ -9,7 +9,7 @@ import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBa
 import {
   DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, effectiveScopes, emptyDataset, validateOperations,
   addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
-  approvalOps, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
+  approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
@@ -472,6 +472,15 @@ export class TasksCore {
   approvalOps(detail: SuggestionDetail | null | undefined, operations: Operation[], options: { projectId?: string | null } = {}): Operation[] | null {
     return approvalOps(this.data, detail, operations, options);
   }
+  /**
+   * Ámbitos de un outsider (O1, paso 4) para `POST members {userId, role: 'outsider', scopes}` (C24): normalizados, con un
+   * proyecto abierto o cerrado («Abrir a…»; `TAB_OPEN` si tiene el área entera) o elegidos en «Cuentas de personas».
+   * Siempre un objeto `{tabs, projects}`: nunca «*» ni nulo.
+   */
+  outsiderScopes(scopes: unknown, change?: { tabId: string; projectId: string; open: boolean }) {
+    return change ? outsiderScopesWith(scopes, change) : outsiderScopes(scopes);
+  }
+  outsiderScopesFrom(tabs: string[], projects: Record<string, string[]>) { return outsiderScopesFrom(tabs, projects); }
   /**
    * Sube una foto ya (las sugerencias no pasan por la cola: necesitan red) y la deja verificada. El servidor solo deja que
    * acabe en una propuesta de quien la sube (`tasks.suggestion_check`).

@@ -6,6 +6,7 @@
  * El servidor lo vuelve a comprobar al proponer (`tasks.suggestion_check`) y, al aprobar, como commit de quien aprueba.
  */
 import { createTaskOps, type NewId } from './ops.ts';
+import { allAccess, canProject, type Scopes } from './scopes.ts';
 import type { Dataset, Operation, Uuid } from './types.ts';
 
 export const SUGGESTION_KINDS = { tarea: 'Tarea nueva', anadido: 'Añadido a una tarea' } as const;
@@ -100,4 +101,35 @@ export function approvalOps(data: Dataset, detail: SuggestionDetail | null | und
     return suggestNoteOps(data, { taskId: detail.taskId, line: detail.text });
   }
   return null;
+}
+
+/**
+ * Hook `suggestionVisible` del núcleo (0098; docs/tasks/API.md §31): ¿puede ver y decidir esta sugerencia quien revisa con
+ * estos ámbitos (ya efectivos)? El destino del lote tiene que estar en lo suyo:
+ * - cada `insert` (la tarea, el paso y lo que cuelga de ellos), por su `tab_id` y `project_id`;
+ * - cada `update` de `tasks.tasks` (la línea en la nota, o la madre de un paso que vuelve a pendiente): la madre de un paso
+ *   del lote, o la tarea que nombra `detail` (`taskId`, con su `tabId` y `projectId`; `tasks.suggestion_check` comprueba al
+ *   proponer que dice la verdad).
+ * Cualquier otra cosa, o un dato que falte, no se ve. Con acceso a toda la app, todas. Se aplica también al lote corregido.
+ */
+export function suggestionVisibleFor(suggestion: { operations?: readonly Operation[] | null; detail?: unknown }, scopes: Scopes): boolean {
+  if (allAccess(scopes)) return true;
+  const ops = suggestion.operations;
+  if (!Array.isArray(ops) || ops.length === 0) return false;
+  const text = (value: unknown): string | null => (typeof value === 'string' && value ? value : null);
+  const detail = (suggestion.detail !== null && typeof suggestion.detail === 'object' ? suggestion.detail : {}) as Record<string, unknown>;
+  const parents = new Set(ops.filter((o) => o.op === 'insert' && o.table === 'tasks.tasks').map((o) => text(o.fields?.parent_id)).filter((x): x is string => !!x));
+  return ops.every((o) => {
+    if (o.op === 'insert') {
+      const tab = text(o.fields?.tab_id), project = text(o.fields?.project_id);
+      return !!tab && !!project && canProject(scopes, tab, project);
+    }
+    if (o.op === 'update' && o.table === 'tasks.tasks') {
+      if (!o.id) return false;
+      if (parents.has(o.id)) return true;
+      const tab = text(detail.tabId), project = text(detail.projectId);
+      return detail.taskId === o.id && !!tab && !!project && canProject(scopes, tab, project);
+    }
+    return false;
+  });
 }

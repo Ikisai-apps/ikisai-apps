@@ -10,8 +10,9 @@
    - Interfaz del outsider: menú reducido (Inicio, Proyectos, Todas las tareas, Mis propuestas y su cuenta), sin la pestaña
      «Etiquetas» de abajo, y ninguna otra vista ni acción se abre (ni por el menú, ni por URL o hash, ni por la paleta).
    - «Abrir a…» en el editor del proyecto (propietaria con acceso a todo): una casilla por outsider de Tasks; al guardar se
-     abre o se cierra el proyecto en sus ámbitos con la acción `tasks.outsider_scopes` (el rol no se toca). La misma acción
-     guarda las áreas y proyectos de un outsider en «Cuentas de personas» (cloud-auth.js). */
+     abre o se cierra el proyecto en sus ámbitos con `POST members {userId, role: 'outsider', scopes}` (C24 del núcleo; el
+     rol no se toca). Lo mismo guarda las áreas y proyectos de un outsider en «Cuentas de personas» (cloud-auth.js). Los
+     ámbitos los calcula el dominio (Sync.core.outsiderScopes): siempre un objeto, nunca «toda la app». */
 Object.assign(menuPaths,{proposal:'M4 4h16v12H8l-4 4z M8 9h8 M8 12h5'});
 
 function outsiderMode(){return !!Sync.actor?.outsider&&!Sync.secondary}
@@ -23,7 +24,8 @@ function proposalClient(){return Sync.core?.client}
 function proposalError(e){return IkisaiKit.suggestionErrorMessage(e)}
 /* Todas son de Tasks: sin «· tasks» en cada tarjeta. */
 function withoutApp(item){return {...item,app:null}}
-/* Un editor por proyecto solo ve aquí las propuestas de lo suyo (el núcleo se las da todas: ver riesgos en API.md §31). */
+/* Un editor por proyecto solo ve aquí las propuestas de lo suyo. Lo decide el servidor (hook `suggestionVisible`); esto
+   queda como defensa, por si la lista trae algo cuyo proyecto no está en su copia. */
 function decidable(s){const scopes=Sync.actor?.scopes;if(scopes==='*'||scopes==null)return true;const pid=s.detail?.projectId;return !!pid&&(Sync.core?.data?.['tasks.projects']||[]).some(p=>p.id===pid&&!p.deleted_at)}
 
 /* --- Proyectos abiertos (los que ve el outsider; los de sistema, como la Entrada, no) ----------------------------- */
@@ -98,7 +100,9 @@ function proposeChangeSheet(taskId){
     send.disabled=true;send.textContent='Enviando…';
     try{const operations=Sync.core.suggestionOps(mode,{taskId,title:value,line:value});
       const summary=mode==='step'?`Paso en «${now.t.text}»: ${value}`:`Nota de «${now.t.text}»: ${value}`;
-      await sendSuggestion('anadido',summary,{kind:'anadido',mode,taskId,taskTitle:now.t.text,projectId:now.p.id,tabId:tab().id,text:value},operations);
+      // El servidor exige que `detail` nombre la tarea, su proyecto y su área (lo usa `suggestionVisible`): de la fila.
+      const row=(Sync.core.data?.['tasks.tasks']||[]).find(x=>x.id===taskId);
+      await sendSuggestion('anadido',summary,{kind:'anadido',mode,taskId,taskTitle:now.t.text,projectId:row?.project_id||now.p.id,tabId:row?.tab_id||tab().id,text:value},operations);
       closeSheet();toast('Propuesta enviada. La verás en «Mis propuestas».')}
     catch(e){send.disabled=false;send.textContent='Proponer';toast(proposalError(e))}}}
 
@@ -240,7 +244,9 @@ enterSession=async function(...args){const result=await enterSessionBeforePropos
 
 /* --- «Abrir a…» en el editor del proyecto (propietaria con acceso a todo) ----------------------------------------- */
 function outsiderMembers(){return (Sync.members||[]).filter(m=>m.role==='outsider').sort((a,b)=>(a.displayName||'').localeCompare(b.displayName||'','es'))}
-function outsiderScopesOf(m){const s=m.scopes;if(s==null||s==='*')return {tabs:[],projects:{}};if(Array.isArray(s))return {tabs:s,projects:{}};return {tabs:s.tabs||[],projects:s.projects||{}}}
+function outsiderScopesOf(m){return Sync.core.outsiderScopes(m.scopes)}
+/* C24: la propietaria cambia los ámbitos de un outsider con la API normal de pertenencias. */
+async function saveOutsiderScopes(userId,scopes){const res=await Sync.core.api('/members',{method:'POST',json:{userId,role:'outsider',scopes}});return res?.scopes??scopes}
 function outsiderSees(m,tabId,projectId){const s=outsiderScopesOf(m);return s.tabs.includes(tabId)?'tab':(s.projects[tabId]||[]).includes(projectId)?'project':null}
 let openToDraft=null;
 function mountOpenTo(id){
@@ -261,7 +267,7 @@ async function applyOpenTo(draft){
   if(!changes.length)return;
   if(!navigator.onLine)return toast('Sin conexión: «Abrir a…» necesita red. Vuelve a intentarlo con conexión.');
   const done=[];
-  for(const c of changes){try{const res=await Sync.core.api('/invoke/tasks.outsider_scopes',{method:'POST',json:{userId:c.userId,projectId:draft.projectId,open:c.open}});c.m.scopes=res.scopes;done.push(c)}catch(e){toast(`${c.m.displayName||'Esa persona'}: ${e.message||'no se pudo guardar.'}`)}}
+  for(const c of changes){try{const scopes=Sync.core.outsiderScopes(c.m.scopes,{tabId:draft.tabId,projectId:draft.projectId,open:c.open});c.m.scopes=await saveOutsiderScopes(c.userId,scopes);done.push(c)}catch(e){toast(`${c.m.displayName||'Esa persona'}: ${e.message||'no se pudo guardar.'}`)}}
   if(done.length)toast(done.map(c=>`${c.open?'Abierto a':'Cerrado para'} ${c.m.displayName||'una persona'}`).join(' · '))}
 const closeSheetBeforeOpenTo=closeSheet;
 closeSheet=function(...args){const result=closeSheetBeforeOpenTo(...args);if(!document.getElementById('sheetBack')?.classList.contains('show'))setTimeout(()=>{if(!document.getElementById('openToField'))openToDraft=null},0);return result};
@@ -273,10 +279,10 @@ function outsiderAccessEditor(user){
   const sync=()=>document.querySelectorAll('[data-outsider-project]').forEach(b=>{const whole=document.querySelector(`[data-outsider-tab="${b.dataset.outsiderProject.split('|')[0]}"]`)?.checked;b.disabled=!!whole;if(whole)b.checked=true});
   document.querySelectorAll('[data-outsider-tab]').forEach(b=>b.onchange=sync);sync();
   const send=async(scopes,button)=>{if(!navigator.onLine)return toast('Sin conexión: los permisos necesitan red.');button.disabled=true;
-    try{const res=await Sync.core.api('/invoke/tasks.outsider_scopes',{method:'POST',json:{userId:user.userId,scopes}});user.scopes=res.scopes;const m=(Sync.members||[]).find(x=>x.userId===user.userId);if(m)m.scopes=res.scopes;await usersSheet();toast('Permisos guardados.')}
+    try{const saved=await saveOutsiderScopes(user.userId,scopes);user.scopes=saved;const m=(Sync.members||[]).find(x=>x.userId===user.userId);if(m)m.scopes=saved;await usersSheet();toast('Permisos guardados.')}
     catch(e){button.disabled=false;toast(e.message||'No se pudo guardar.')}};
   document.getElementById('outsiderSave').onclick=e=>{const tabs=[...document.querySelectorAll('[data-outsider-tab]:checked')].map(b=>b.dataset.outsiderTab),projects={};
-    document.querySelectorAll('[data-outsider-project]:checked').forEach(b=>{const [t,p]=b.dataset.outsiderProject.split('|');if(!tabs.includes(t))(projects[t]||=[]).push(p)});send({tabs,projects},e.currentTarget)};
+    document.querySelectorAll('[data-outsider-project]:checked').forEach(b=>{const [t,p]=b.dataset.outsiderProject.split('|');(projects[t]||=[]).push(p)});send(Sync.core.outsiderScopesFrom(tabs,projects),e.currentTarget)};
   document.getElementById('outsiderNone').onclick=e=>send({tabs:[],projects:{}},e.currentTarget)}
 const userEditorBeforeOutsider=userEditor;
 userEditor=function(user=null,...rest){if(user?.role==='outsider')return outsiderAccessEditor(user);return userEditorBeforeOutsider(user,...rest)};

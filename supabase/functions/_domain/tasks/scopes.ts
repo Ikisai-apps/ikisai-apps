@@ -5,7 +5,7 @@
  *   { tabs: [...], projects: { "<tabId>": ["<projectId>", …] } }
  * Cualquier otra forma equivale a no tener acceso. Las mismas reglas están en SQL (`tasks.scope_full`, `tasks.scope_project`).
  */
-import type { Role, TableName } from './types.ts';
+import { DomainError, type Role, type TableName } from './types.ts';
 
 export type Scopes = unknown;
 
@@ -64,6 +64,51 @@ export const NO_SCOPES = Object.freeze({ tabs: [], projects: {} });
 export function effectiveScopes(membership: { role?: string; scopes?: Scopes }): Scopes {
   if (membership.role === 'outsider' && allAccess(membership.scopes)) return NO_SCOPES;
   return membership.scopes;
+}
+
+/** Ámbitos de un outsider en forma de objeto (O1, paso 4). La forma heredada de lista son áreas completas; vacío o «*», nada. */
+export interface OutsiderScopes { tabs: string[]; projects: Record<string, string[]> }
+export function outsiderScopes(scopes: Scopes): OutsiderScopes {
+  if (allAccess(scopes)) return { tabs: [], projects: {} };
+  if (Array.isArray(scopes)) return { tabs: list(scopes), projects: {} };
+  const object = asObject(scopes);
+  const raw = object?.projects;
+  const projects: Record<string, string[]> = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [tab, ids] of Object.entries(raw as Record<string, unknown>)) { const l = list(ids); if (l.length) projects[tab] = l; }
+  }
+  return { tabs: list(object?.tabs), projects };
+}
+
+/**
+ * «Abrir a…» (O1, paso 4): los ámbitos de un outsider con un proyecto abierto o cerrado. Se guardan con
+ * `POST members {userId, role: 'outsider', scopes}` (C24). Siempre un objeto, nunca «*» ni nulo (que para él sería nada
+ * y para el núcleo, `INVALID_OPERATION`). Un proyecto de un área abierta entera no se cierra suelto (`TAB_OPEN`).
+ */
+export function outsiderScopesWith(scopes: Scopes, change: { tabId: string; projectId: string; open: boolean }): OutsiderScopes {
+  const next = outsiderScopes(scopes);
+  const { tabId, projectId, open } = change;
+  const current = next.projects[tabId] ?? [];
+  if (open) {
+    if (!next.tabs.includes(tabId) && !current.includes(projectId)) next.projects[tabId] = [...current, projectId];
+    return next;
+  }
+  if (next.tabs.includes(tabId)) throw new DomainError(409, 'TAB_OPEN', 'Tiene abierta toda el área: ciérrasela en «Cuentas de personas».', { tabId });
+  const rest = current.filter((id) => id !== projectId);
+  if (rest.length) next.projects[tabId] = rest; else delete next.projects[tabId];
+  return next;
+}
+
+/** Ámbitos de un outsider elegidos en «Cuentas de personas»: áreas completas y proyectos sueltos de otras áreas. */
+export function outsiderScopesFrom(tabs: readonly string[], projects: Readonly<Record<string, readonly string[]>>): OutsiderScopes {
+  const whole = [...new Set(tabs.filter((t) => typeof t === 'string' && t))];
+  const loose: Record<string, string[]> = {};
+  for (const [tab, ids] of Object.entries(projects)) {
+    if (whole.includes(tab)) continue;
+    const l = [...new Set(list(ids))];
+    if (l.length) loose[tab] = l;
+  }
+  return { tabs: whole, projects: loose };
 }
 
 /** Visibilidad de una fila para unos ámbitos. Función pura de la fila: `tab_id` y `project_id` viajan desnormalizados. */

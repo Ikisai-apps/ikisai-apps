@@ -8,7 +8,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createTasksApp, TASKS_ORIGINS } from '../../supabase/functions/tasks-api/app.ts';
-import { createTabOps, suggestNoteOps, suggestStepOps, suggestTaskOps, type Dataset, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import {
+  DomainError, createTabOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, suggestionVisibleFor,
+  type Dataset, type Operation,
+} from '../../packages/domain-tasks/src/index.ts';
 
 const origin = TASKS_ORIGINS[0]!;
 const uuid = (): string => crypto.randomUUID();
@@ -67,6 +70,8 @@ function newTaskOps(project: string, title: string, options: { id?: string; labe
 }
 const suggest = (token: string, kind: string, summary: string, operations: Operation[], detail: Record<string, unknown> = {}) =>
   app.call('/api/v1/suggestions', { body: { requestId: `s-${++sequence}`, kind, summary, detail, operations }, token });
+/** `detail` de un añadido, como lo manda la interfaz: la tarea, su proyecto y su área (el servidor lo comprueba). */
+const about = (taskId: string, projectId = OPEN) => ({ kind: 'anadido', taskId, projectId, tabId: TAB });
 const decide = (id: string, decision: 'approve' | 'reject', body: Record<string, unknown> = {}, token = app.tokens.editor) =>
   app.call(`/api/v1/suggestions/${id}/${decision}`, { body, token });
 
@@ -160,9 +165,9 @@ test('O1 · paso 3: «añadido» con una línea en la nota y con un paso nuevo; 
   const step = uuid();
   const child = [insert('tasks.tasks', step, { tab_id: TAB, project_id: OPEN, parent_id: T_OPEN, title: 'Comprar cañas', note: '', done: false, priority: 'normal', due: null, position: 1024 }),
     insert('tasks.task_labels', uuid(), { tab_id: TAB, project_id: OPEN, task_id: step, label_id: LABEL })];
-  const a = await suggest(open, 'anadido', 'Una línea en «Plantar tomates»', [note]);
+  const a = await suggest(open, 'anadido', 'Una línea en «Plantar tomates»', [note], about(T_OPEN));
   assert.equal(a.status, 200, JSON.stringify(a.data));
-  const b = await suggest(open, 'anadido', 'Un paso en «Plantar tomates»', child);
+  const b = await suggest(open, 'anadido', 'Un paso en «Plantar tomates»', child, about(T_OPEN));
   assert.equal(b.status, 200, JSON.stringify(b.data));
   // Otro campo, otra tarea fuera de lo abierto, o un paso de una tarea que no ve: no.
   assert.equal(status(await suggest(open, 'anadido', 'Título', [{ ...note, fields: { title: 'Otra cosa' } } as Operation])), '403 SUGGESTION_NOT_ALLOWED');
@@ -179,9 +184,25 @@ test('O1 · paso 3: «añadido» con una línea en la nota y con un paso nuevo; 
   assert.deepEqual([created.parent_id, created.title], [T_OPEN, 'Comprar cañas']);
 });
 
+test('O1 · paso 3: `detail` tiene que nombrar el destino de verdad (lo usa suggestionVisible)', async () => {
+  const task = await row('tasks.tasks', T_OPEN);
+  const note = [{ op: 'update', table: 'tasks.tasks', id: T_OPEN, expectedRevision: Number(task.revision), fields: { note: task.note + '\nOtra.' } } as Operation];
+  // Sin detail, con otro proyecto, otra área u otra tarea: no.
+  assert.equal(status(await suggest(open, 'anadido', 'Sin detalle', note)), '422 INCONSISTENT_KEYS');
+  assert.equal(status(await suggest(open, 'anadido', 'Otro proyecto', note, about(T_OPEN, CLOSED))), '422 INCONSISTENT_KEYS');
+  assert.equal(status(await suggest(open, 'anadido', 'Otra área', note, { ...about(T_OPEN), tabId: uuid() })), '422 INCONSISTENT_KEYS');
+  assert.equal(status(await suggest(open, 'anadido', 'Otra tarea', note, about(T_CLOSED))), '422 INCONSISTENT_KEYS');
+  // Un añadido toca una sola tarea.
+  const closed = await row('tasks.tasks', T_CLOSED);
+  const two = [...note, { op: 'update', table: 'tasks.tasks', id: T_CLOSED, expectedRevision: Number(closed.revision), fields: { note: 'x' } } as Operation];
+  assert.match(status(await suggest(open, 'anadido', 'Dos tareas', two, about(T_OPEN))), /^403 /);
+  // Una tarea nueva con otro proyecto en detail, tampoco.
+  assert.equal(status(await suggest(open, 'tarea', 'Mentira', newTaskOps(OPEN, 'Mentira'), { kind: 'tarea', projectId: SECOND, tabId: TAB })), '422 INCONSISTENT_KEYS');
+});
+
 test('O1 · paso 3: si el lote ya no encaja (la nota cambió), aprobar falla y la propuesta sigue pendiente', async () => {
   const task = await row('tasks.tasks', T_OPEN);
-  const a = await suggest(open, 'anadido', 'Otra línea', [{ op: 'update', table: 'tasks.tasks', id: T_OPEN, expectedRevision: Number(task.revision), fields: { note: task.note + '\nY regarlos.' } } as Operation]);
+  const a = await suggest(open, 'anadido', 'Otra línea', [{ op: 'update', table: 'tasks.tasks', id: T_OPEN, expectedRevision: Number(task.revision), fields: { note: task.note + '\nY regarlos.' } } as Operation], about(T_OPEN));
   await ok([{ op: 'update', table: 'tasks.tasks', id: T_OPEN, expectedRevision: Number(task.revision), fields: { note: 'Cambiada a mano.' } }]);
   assert.equal(status(await decide(a.data.id, 'approve')), '409 VERSION_CONFLICT');
   const fresh = await row('tasks.tasks', T_OPEN);
@@ -206,8 +227,8 @@ test('O1 · paso 3: una tarea propuesta con una foto suya; con una foto ajena, n
   const attachment = (file: { id: string; sha: string; size: number }) => insert('tasks.attachments', uuid(), { tab_id: TAB, project_id: OPEN, task_id: taskId, name: 'grieta.webp', mime: 'image/webp', size: file.size, sha256: file.sha, file_id: file.id, position: 1024 });
   const owners = await upload(app.tokens.owner, new Uint8Array([9, 9, 9]), 'image/webp', 'privada.webp');
   assert.equal(status(await suggest(open, 'tarea', 'Valla', [...ops, attachment(owners)])), '422 FILE_NOT_UPLOADED');
-  const pdf = await upload(open, new Uint8Array([7, 7]), 'application/pdf', 'papel.pdf');
-  assert.equal(status(await suggest(open, 'tarea', 'Valla', [...ops, attachment(pdf)])), '422 FILE_NOT_UPLOADED');
+  // Un PDF ni se sube (#572: el outsider solo sube imágenes pequeñas).
+  assert.equal(status(await app.call('/api/v1/uploads', { body: { filename: 'papel.pdf', mime: 'application/pdf', size: 2, sha256: '0'.repeat(64) }, token: open })), '422 UNSUPPORTED_MEDIA');
   const res = await suggest(open, 'tarea', 'Arreglar la valla', [...ops, attachment(mine)]);
   assert.equal(res.status, 200, JSON.stringify(res.data));
   assert.equal((await decide(res.data.id, 'approve')).status, 200);
@@ -216,51 +237,136 @@ test('O1 · paso 3: una tarea propuesta con una foto suya; con una foto ajena, n
   assert.equal(status(await commit([insert('tasks.attachments', uuid(), { tab_id: TAB, project_id: OPEN, task_id: T_OPEN, name: 'x.webp', mime: 'image/webp', size: mine.size, sha256: mine.sha, file_id: mine.id, position: 1 })], open)), '403 FORBIDDEN');
 });
 
-const scopesOf = async (token: string) => (await rows(`select scopes, revision from core.memberships where app = 'tasks' and user_id = $1`, [users.get(token)]))[0];
-const openTo = (body: Record<string, unknown>, token = app.tokens.owner) => app.call('/api/v1/invoke/tasks.outsider_scopes', { body, token });
+const scopesOf = async (token: string) => (await rows(`select role, scopes, revision from core.memberships where app = 'tasks' and user_id = $1`, [users.get(token)]))[0];
+/** C24: `POST members {userId, role: 'outsider', scopes}`, como lo llama la interfaz. */
+const setScopes = (userId: string | undefined, scopes: unknown, token = app.tokens.owner) => app.call('/api/v1/members', { body: { userId, role: 'outsider', scopes }, token });
 const sees = async (token: string, projectId: string) => {
   const snap = await app.call('/api/v1/snapshot', { token });
   return snap.data.tables.find((t: any) => t.table === 'tasks.projects').rows.some((r: any) => r.id === projectId);
 };
 
-test('O1 · paso 4: «Abrir a…» abre y cierra un proyecto en los ámbitos del outsider, que pasa a verlo', async () => {
+test('O1 · paso 4 (dominio): «Abrir a…» abre y cierra un proyecto en los ámbitos; nunca «toda la app»', () => {
+  const P = uuid(), Q = uuid(), A = uuid(), B = uuid();
+  assert.deepEqual(outsiderScopes(null), { tabs: [], projects: {} }, 'nulo es nada para él');
+  assert.deepEqual(outsiderScopes('*'), { tabs: [], projects: {} });
+  assert.deepEqual(outsiderScopes([A]), { tabs: [A], projects: {} }, 'la forma de lista son áreas completas');
+  assert.deepEqual(outsiderScopesWith(null, { tabId: A, projectId: P, open: true }), { tabs: [], projects: { [A]: [P] } });
+  assert.deepEqual(outsiderScopesWith({ tabs: [], projects: { [A]: [P] } }, { tabId: A, projectId: Q, open: true }), { tabs: [], projects: { [A]: [P, Q] } });
+  assert.deepEqual(outsiderScopesWith({ tabs: [], projects: { [A]: [P] } }, { tabId: A, projectId: P, open: true }), { tabs: [], projects: { [A]: [P] } }, 'sin repetir');
+  assert.deepEqual(outsiderScopesWith({ tabs: [], projects: { [A]: [P, Q] } }, { tabId: A, projectId: P, open: false }), { tabs: [], projects: { [A]: [Q] } });
+  assert.deepEqual(outsiderScopesWith({ tabs: [], projects: { [A]: [P] } }, { tabId: A, projectId: P, open: false }), { tabs: [], projects: {} }, 'sin listas vacías');
+  assert.deepEqual(outsiderScopesWith({ tabs: [A], projects: {} }, { tabId: A, projectId: P, open: true }), { tabs: [A], projects: {} }, 'ya la tiene entera');
+  assert.throws(() => outsiderScopesWith({ tabs: [A], projects: {} }, { tabId: A, projectId: P, open: false }), (e: unknown) => e instanceof DomainError && e.code === 'TAB_OPEN');
+  // Cuentas de personas: un proyecto suelto de un área abierta entera no se guarda aparte.
+  assert.deepEqual(outsiderScopesFrom([A], { [A]: [P], [B]: [Q, Q] }), { tabs: [A], projects: { [B]: [Q] } });
+  assert.deepEqual(outsiderScopesFrom([], {}), { tabs: [], projects: {} });
+});
+
+test('O1 · paso 4: «Abrir a…» con POST members (C24) abre y cierra un proyecto, y el outsider pasa a verlo', async () => {
   assert.equal(await sees(open, SECOND), false);
   const before = await scopesOf(open);
-  const res = await openTo({ userId: users.get(open), projectId: SECOND, open: true });
+  const res = await setScopes(users.get(open), outsiderScopesWith(before.scopes, { tabId: TAB, projectId: SECOND, open: true }));
   assert.equal(res.status, 200, JSON.stringify(res.data));
   const after = await scopesOf(open);
   assert.deepEqual(after.scopes, { tabs: [], projects: { [TAB]: [OPEN, SECOND] } });
   assert.equal(Number(after.revision), Number(before.revision) + 1);
+  assert.equal(after.role, 'outsider', 'el rol no se toca');
   assert.equal(await sees(open, SECOND), true);
   // Ya puede proponer ahí.
   assert.equal((await suggest(open, 'tarea', 'Ventilar', newTaskOps(SECOND, 'Ventilar'))).status, 200);
-  // Sigue siendo outsider (el rol no se toca).
-  assert.equal((await rows(`select role from core.memberships where app = 'tasks' and user_id = $1`, [users.get(open)]))[0].role, 'outsider');
   // Cerrar.
-  assert.equal((await openTo({ userId: users.get(open), projectId: SECOND, open: false })).status, 200);
+  assert.equal((await setScopes(users.get(open), outsiderScopesWith(after.scopes, { tabId: TAB, projectId: SECOND, open: false }))).status, 200);
   assert.deepEqual((await scopesOf(open)).scopes, { tabs: [], projects: { [TAB]: [OPEN] } });
   assert.equal(await sees(open, SECOND), false);
   // Al de sin nada se le abre su primer proyecto (su `scopes` nulo, que era nada, pasa a objeto).
-  assert.equal((await openTo({ userId: users.get(none), projectId: OPEN, open: true })).status, 200);
+  assert.equal((await setScopes(users.get(none), outsiderScopesWith((await scopesOf(none)).scopes, { tabId: TAB, projectId: OPEN, open: true }))).status, 200);
   assert.deepEqual((await scopesOf(none)).scopes, { tabs: [], projects: { [TAB]: [OPEN] } });
 });
 
-test('O1 · paso 4: Accesos fija áreas y proyectos de un outsider, nunca toda la app; y solo la propietaria con todo', async () => {
+test('O1 · paso 4: Cuentas de personas fija áreas y proyectos con POST members; nunca toda la app, y solo la propietaria', async () => {
   const userId = users.get(none);
-  assert.equal((await openTo({ userId, scopes: { tabs: [TAB], projects: {} } })).status, 200);
+  assert.equal((await setScopes(userId, outsiderScopesFrom([TAB], {}))).status, 200);
   assert.deepEqual((await scopesOf(none)).scopes, { tabs: [TAB], projects: {} });
   assert.equal(await sees(none, CLOSED), true);
-  // Con el área entera abierta, un proyecto no se cierra suelto.
-  assert.equal(status(await openTo({ userId, projectId: CLOSED, open: false })), '409 TAB_OPEN');
-  for (const scopes of ['*', null, [TAB], { tabs: [uuid()] }, { tabs: [], projects: { [TAB]: [uuid()] } }, { tabs: [], all: true }]) {
-    assert.equal(status(await openTo({ userId, scopes })), '422 INVALID_SCOPES', JSON.stringify(scopes));
-  }
-  assert.equal(status(await openTo({ userId, scopes: { tabs: [] } }, app.tokens.editor)), '403 FORBIDDEN');
-  assert.equal(status(await openTo({ userId, scopes: { tabs: [] } }, open)), '403 FORBIDDEN');
-  assert.equal(status(await openTo({ userId: app.users.reader, scopes: { tabs: [] } })), '422 NOT_OUTSIDER');
+  // Nulo o «*» serían toda la app: el núcleo no los admite para un outsider.
+  assert.equal(status(await setScopes(userId, null)), '422 INVALID_OPERATION');
+  assert.equal(status(await setScopes(userId, '*')), '422 INVALID_OPERATION');
+  assert.equal((await scopesOf(none)).role, 'outsider');
+  assert.equal(status(await setScopes(userId, { tabs: [] }, app.tokens.editor)), '403 FORBIDDEN');
+  assert.equal(status(await setScopes(userId, { tabs: [] }, open)), '403 FORBIDDEN');
+  // A quien no es outsider no se le da el rol por aquí (lo da el nivel de casa).
+  assert.equal(status(await setScopes(app.users.reader, { tabs: [] })), '422 INVALID_ROLE');
+  // «No abrirle nada».
+  assert.equal((await setScopes(userId, outsiderScopesFrom([], {}))).status, 200);
+  assert.equal(await sees(none, CLOSED), false);
+  assert.equal((await setScopes(userId, outsiderScopesFrom([TAB], {}))).status, 200);
   // GET members los lista con su rol.
   const members = await app.call('/api/v1/members', { token: app.tokens.owner });
   assert.equal(members.data.find((m: any) => m.userId === userId)?.role, 'outsider');
+});
+
+test('O1 · suggestionVisible (dominio): el destino de cada insert y la tarea de un añadido, en los ámbitos', () => {
+  const A = uuid(), P = uuid(), Q = uuid(), T = uuid(), S = uuid();
+  const onlyP = { tabs: [], projects: { [A]: [P] } };
+  const task = (project: string, extra: Record<string, unknown> = {}) => insert('tasks.tasks', S, { tab_id: A, project_id: project, title: 'x', ...extra });
+  assert.equal(suggestionVisibleFor({ operations: [task(Q)] }, '*'), true, 'con todo, todas');
+  assert.equal(suggestionVisibleFor({ operations: [task(Q)] }, null), true);
+  assert.equal(suggestionVisibleFor({ operations: [task(P)] }, onlyP), true);
+  assert.equal(suggestionVisibleFor({ operations: [task(Q)] }, onlyP), false);
+  assert.equal(suggestionVisibleFor({ operations: [task(Q)] }, { tabs: [A] }), true, 'el área entera');
+  assert.equal(suggestionVisibleFor({ operations: [task(P), insert('tasks.task_labels', uuid(), { tab_id: A, project_id: Q, task_id: S, label_id: uuid() })] }, onlyP), false, 'todo el lote');
+  assert.equal(suggestionVisibleFor({ operations: [insert('tasks.tasks', S, { title: 'sin claves' })] }, onlyP), false);
+  // Añadido: la nota, por la tarea que nombra detail; el paso reabre a su madre.
+  const note: Operation = { op: 'update', table: 'tasks.tasks', id: T, expectedRevision: 1, fields: { note: 'y' } };
+  assert.equal(suggestionVisibleFor({ operations: [note], detail: { taskId: T, projectId: P, tabId: A } }, onlyP), true);
+  assert.equal(suggestionVisibleFor({ operations: [note], detail: { taskId: T, projectId: Q, tabId: A } }, onlyP), false);
+  assert.equal(suggestionVisibleFor({ operations: [note], detail: { taskId: uuid(), projectId: P, tabId: A } }, onlyP), false, 'otra tarea');
+  assert.equal(suggestionVisibleFor({ operations: [note] }, onlyP), false, 'sin detail');
+  assert.equal(suggestionVisibleFor({ operations: [task(P, { parent_id: T }), { ...note, fields: { done: false } }] }, onlyP), true);
+  assert.equal(suggestionVisibleFor({ operations: [{ op: 'delete', table: 'tasks.tasks', id: T, expectedRevision: 1 }] }, onlyP), false);
+  assert.equal(suggestionVisibleFor({ operations: [] }, onlyP), false);
+});
+
+test('O1 · suggestionVisible: un editor de un solo proyecto no ve ni decide las propuestas de otro; las suyas, sí', async () => {
+  const brisa = await outsider({ tabs: [], projects: { [TAB]: [OPEN, SECOND] } }, 'Voluntaria Brisa');
+  const editorId = await app.t.createUser();
+  await app.t.db.query(`insert into core.memberships (app, user_id, role, scopes) values ('tasks', $1, 'editor', $2::jsonb)`, [editorId, JSON.stringify({ tabs: [], projects: { [TAB]: [OPEN] } })]);
+  const scoped = app.supabase.tokenFor(editorId);
+  const mine = await suggest(brisa, 'tarea', 'Recoger lechugas', newTaskOps(OPEN, 'Recoger lechugas'), { kind: 'tarea', projectId: OPEN, tabId: TAB, title: 'Recoger lechugas' });
+  const other = await suggest(brisa, 'tarea', 'Abrir el invernadero', newTaskOps(SECOND, 'Abrir el invernadero'), { kind: 'tarea', projectId: SECOND, tabId: TAB, title: 'Abrir el invernadero' });
+  const task = await row('tasks.tasks', T_OPEN);
+  const line = await suggest(brisa, 'anadido', 'Una línea', [{ op: 'update', table: 'tasks.tasks', id: T_OPEN, expectedRevision: Number(task.revision), fields: { note: task.note + '\nCon cuidado.' } } as Operation], about(T_OPEN));
+  for (const r of [mine, other, line]) assert.equal(r.status, 200, JSON.stringify(r.data));
+
+  // Listas y contador: solo lo de su proyecto.
+  const pending = await app.call('/api/v1/suggestions?scope=pending&limit=100', { token: scoped });
+  assert.equal(pending.status, 200, JSON.stringify(pending.data));
+  const ids = pending.data.items.map((s: any) => s.id);
+  assert.ok(ids.includes(mine.data.id) && ids.includes(line.data.id), 've las suyas, también el añadido');
+  assert.equal(ids.includes(other.data.id), false, 'no ve la del otro proyecto');
+  assert.ok(pending.data.items.every((s: any) => suggestionVisibleFor(s, { tabs: [], projects: { [TAB]: [OPEN] } })));
+  assert.equal(pending.data.pendingCount, pending.data.items.length, 'el contador tampoco la cuenta');
+  const all = await app.call('/api/v1/suggestions?scope=all&limit=100', { token: scoped });
+  assert.equal(all.data.items.some((s: any) => s.id === other.data.id), false);
+  const ownerPending = await app.call('/api/v1/suggestions?scope=pending&limit=100', { token: app.tokens.owner });
+  assert.ok(ownerPending.data.items.some((s: any) => s.id === other.data.id), 'la propietaria la ve');
+  assert.ok(ownerPending.data.pendingCount > pending.data.pendingCount, 'y la cuenta');
+
+  // Previsualizar, aprobar o descartar la otra: 404, como si no existiera.
+  assert.equal(status(await app.call(`/api/v1/suggestions/${other.data.id}/preview`, { body: {}, token: scoped })), '404 NOT_FOUND');
+  assert.equal(status(await decide(other.data.id, 'approve', {}, scoped)), '404 NOT_FOUND');
+  assert.equal(status(await decide(other.data.id, 'reject', { comment: 'No' }, scoped)), '404 NOT_FOUND');
+  // Ni llevarse la suya a otro proyecto con el lote corregido.
+  assert.equal(status(await decide(mine.data.id, 'approve', { operations: newTaskOps(SECOND, 'Recoger lechugas') }, scoped)), '404 NOT_FOUND');
+
+  // Las suyas: previsualiza y aprueba.
+  assert.equal((await app.call(`/api/v1/suggestions/${mine.data.id}/preview`, { body: {}, token: scoped })).status, 200);
+  const approved = await decide(mine.data.id, 'approve', {}, scoped);
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  assert.equal((await row('tasks.tasks', mine.data.operations[0].id)).updated_by, editorId);
+  assert.equal((await decide(line.data.id, 'approve', {}, scoped)).status, 200);
+  // La otra sigue pendiente para la propietaria.
+  assert.equal((await decide(other.data.id, 'reject', { comment: 'Más adelante' }, app.tokens.owner)).status, 200);
 });
 
 /** El espejo de quien propone, leído de su snapshot (lo que tiene la interfaz). */
@@ -277,7 +383,7 @@ test('O1 · paso 3: los lotes que construye la interfaz (dominio) pasan la compr
   const task = suggestTaskOps(data, { projectId: OPEN, title: 'Desbrozar', note: 'Junto al pozo' });
   assert.deepEqual(task.map((o) => o.table), ['tasks.tasks', 'tasks.task_labels']);
   assert.equal((await suggest(open, 'tarea', 'Desbrozar', task)).status, 200);
-  assert.equal((await suggest(open, 'anadido', 'Paso', suggestStepOps(data, { taskId: T_OPEN, title: 'Afilar la azada' }))).status, 200);
-  assert.equal((await suggest(open, 'anadido', 'Nota', suggestNoteOps(data, { taskId: T_OPEN, line: 'Con guantes.' }))).status, 200);
+  assert.equal((await suggest(open, 'anadido', 'Paso', suggestStepOps(data, { taskId: T_OPEN, title: 'Afilar la azada' }), about(T_OPEN))).status, 200);
+  assert.equal((await suggest(open, 'anadido', 'Nota', suggestNoteOps(data, { taskId: T_OPEN, line: 'Con guantes.' }), about(T_OPEN))).status, 200);
   assert.throws(() => suggestTaskOps(data, { projectId: OPEN, title: '   ' }), /título/);
 });
