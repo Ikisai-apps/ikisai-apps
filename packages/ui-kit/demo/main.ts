@@ -1094,8 +1094,17 @@ const spacePickerMany = createSpacePicker({ source: spaceSource, label: 'Espacio
 spacePickerMany.element.id = 'spacePickerMany';
 const spacePickerBookable = createSpacePicker({ source: spaceSource, label: 'Sala o habitación reservable', filter: (r) => r.attributes.bookable === true, recentKey: 'demo-reservable' });
 spacePickerBookable.element.id = 'spacePickerBookable';
+// Las mismas piezas con otras filas en forma de espacio (los oficios de Tasks): solo cambian los textos.
+const tradeRow = (id: string, name: string, parentId: string | null = null) => ({ id, parentId, kind: parentId ? 'oficio' : 'gremio', name, publicName: null, code: null, position: 0, active: true, notes: null, attributes: {} });
+const tradePicker = createSpacePicker({
+  label: 'Oficio de la tarea', multiple: true, feedbackId: 'demo.tarea.oficio',
+  rows: [tradeRow('mant', 'Mantenimiento'), tradeRow('fonta', 'Fontanería', 'mant'), tradeRow('elec', 'Electricidad', 'mant'), tradeRow('limp', 'Limpieza')],
+  kinds: [{ kind: 'gremio', label: 'Gremio', level: 1 }, { kind: 'oficio', label: 'Oficio', level: 2 }],
+  texts: { empty: 'Ningún oficio coincide con «{q}».', search: 'Buscar oficio…', feedback: { quick: 'Oficio más usado', search: 'Buscar oficio', remove: 'Quitar oficio' } },
+});
+tradePicker.element.id = 'tradePicker';
 const spaceSection = section('spaces', 'Espacios (R1)', 'createSpaceTree: Altura › Edificio o Exterior › Espacio › Subespacio; buscar, desplegar, ficha, «+» dentro, asa de 44×44 para arrastrar (encima o debajo = al lado, centro = dentro; lo no válido se marca con su motivo), subir y bajar, «Mover a…», «Duplicar», «Archivar con todo lo de dentro» y «Sin altura». createSpacePicker: más usados a un toque, búsqueda con la ruta y filtro por tipos o reservables.',
-  el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element)),
+  el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element, tradePicker.element)),
 );
 // --- Artículos del inventario (R3) ------------------------------------------------------------------------
 const demoItem = (id: string, name: string, kind: string, baseUnit: string, extra: Partial<ItemRow> = {}): ItemRow => ({

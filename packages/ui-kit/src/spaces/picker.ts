@@ -35,6 +35,18 @@ export interface SpacePickerOptions {
   feedbackId?: string;
   /** Cuántas chips rápidas como máximo (6). */
   quickLimit?: number;
+  /** Textos para usarlo con otras filas en forma de espacio (los oficios de Tasks); sin ellos, los de espacios. */
+  texts?: SpacePickerTexts;
+}
+
+/** Ya traducidos por la app; lo que falte sigue siendo el texto de espacios. */
+export interface SpacePickerTexts {
+  /** Sin resultados; `{q}` es lo buscado. Hoy: «Ningún espacio coincide con «{q}».». */
+  empty?: string;
+  /** Texto del buscador (si no se pasa `placeholder`). Hoy: «Buscar espacio…». */
+  search?: string;
+  /** Etiquetas de las marcas de feedback, por clave de `SPACE_PICKER_MARKS`. */
+  feedback?: Partial<Record<keyof typeof SPACE_PICKER_MARKS, string>>;
 }
 
 export interface SpacePicker {
@@ -71,7 +83,9 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   const multiple = !!options.multiple;
   const limit = options.quickLimit ?? 6;
   const base = options.feedbackId;
-  const mark = (key: keyof typeof SPACE_PICKER_MARKS): Record<string, string> => (base ? { 'data-feedback-id': `${base}.${SPACE_PICKER_MARKS[key][0]}`, 'data-feedback-label': SPACE_PICKER_MARKS[key][1] } : {});
+  const texts = options.texts ?? {};
+  const mark = (key: keyof typeof SPACE_PICKER_MARKS): Record<string, string> => (base ? { 'data-feedback-id': `${base}.${SPACE_PICKER_MARKS[key][0]}`, 'data-feedback-label': texts.feedback?.[key] ?? SPACE_PICKER_MARKS[key][1] } : {});
+  const emptyText = (q: string) => (texts.empty ? texts.empty.split('{q}').join(q) : kt('Ningún espacio coincide con «{q}».', { q }));
   const id = `kit-space-picker-${++uid}`;
   let rows = options.rows ?? [];
   let byId = indexSpaces(rows);
@@ -86,7 +100,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
   const quickHost = el('div', { class: 'space-quick' });
   const input = el('input', {
     type: 'text', id, class: 'space-search', role: 'combobox', 'aria-expanded': 'false', 'aria-autocomplete': 'list', 'aria-controls': `${id}-list`,
-    autocomplete: 'off', placeholder: options.placeholder ?? kt('Buscar espacio…'), ...mark('search'),
+    autocomplete: 'off', placeholder: options.placeholder ?? texts.search ?? kt('Buscar espacio…'), ...mark('search'),
     oninput: () => search(), onfocus: () => { if (input.value) search(); },
     onkeydown: (e: Event) => onKey(e as KeyboardEvent),
     // Al salir del campo se cierra la lista, salvo que haya vuelto a él (un toque en «×» y otra búsqueda).
@@ -150,7 +164,7 @@ export function createSpacePicker(options: SpacePickerOptions): SpacePicker {
         onmousedown: (e: Event) => e.preventDefault(), onclick: () => pick(r.id) },
         el('span', { class: 'space-result-name' }, r.name, selected.includes(r.id) ? el('span', { class: 'space-result-check' }, icon('check', 14)) : null),
         el('span', { class: 'space-result-path' }, [parentPath, kindLabel(kinds, r.kind)].filter(Boolean).join(' · ')));
-    }) : open ? [el('li', { class: 'space-result empty', role: 'option', 'aria-disabled': 'true' }, kt('Ningún espacio coincide con «{q}».', { q }))] : []));
+    }) : open ? [el('li', { class: 'space-result empty', role: 'option', 'aria-disabled': 'true' }, emptyText(q))] : []));
     if (active >= 0) input.setAttribute('aria-activedescendant', `${id}-opt-${active}`); else input.removeAttribute('aria-activedescendant');
   }
 
