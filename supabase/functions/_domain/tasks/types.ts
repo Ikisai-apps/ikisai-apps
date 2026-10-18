@@ -22,12 +22,18 @@ export interface TabRow extends BaseRow { name: string; color: string | null; po
 export interface ProjectRow extends BaseRow {
   tab_id: Uuid; title: string; note: string; status: ProjectStatus; priority: Priority; due: string | null;
   owner_label_id: Uuid | null; color: string | null; budget: number | null; position: number; system: 'inbox' | null;
+  /** Responsable de Central (P2, PR 3): una persona o un grupo por nivel de casa. Como mucho uno de los tres `owner_*`. */
+  owner_person_id?: Uuid | null;
+  owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
   /** Proyecto de un retiro (§23): `booking:RES<código>`; solo lo fija la ruta de worker `requests/project`. */
   external_ref?: string | null;
 }
 export interface TaskRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; parent_id: Uuid | null; title: string; note: string; done: boolean; done_at: string | null;
   priority: Priority; due: string | null; owner_label_id: Uuid | null; cost: number | null; position: number;
+  /** Responsable de Central (P2, PR 3): una persona o un grupo por nivel de casa. Como mucho uno de los tres `owner_*`. */
+  owner_person_id?: Uuid | null;
+  owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
   /** `<source>:<referencia>` de una tarea pedida desde otra app (§19); solo la fija la ruta `requests/task` o la clasificación. */
   external_ref?: string | null;
   /** Tipo (`central.compliance_due`) y enlace al elemento que la generó (§20). */
@@ -53,8 +59,16 @@ export interface ProjectSpaceRow extends BaseRow { tab_id: Uuid; project_id: Uui
 export interface TaskTradeRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; trade_id: Uuid }
 export interface ProjectTradeRow extends BaseRow { tab_id: Uuid; project_id: Uuid; trade_id: Uuid }
 /**
+ * Persona de Central de una tarea o un proyecto (fase P2, PR 3): `person_id` apunta a `central.people` sin clave foránea,
+ * o `house_level` es un grupo por nivel de casa («todo el staff»). Exactamente uno de los dos.
+ */
+export interface TaskPersonRow extends BaseRow { tab_id: Uuid; project_id: Uuid; task_id: Uuid; person_id: Uuid | null; house_level: 'direccion' | 'staff' | 'outsider' | null }
+export interface ProjectPersonRow extends BaseRow { tab_id: Uuid; project_id: Uuid; person_id: Uuid | null; house_level: 'direccion' | 'staff' | 'outsider' | null }
+/**
  * Ajustes de la app (fila por clave). `zone_source`: de dónde sale la zona, `'labels'` o `'spaces'` (R2). `trade_source`:
  * de dónde sale el oficio, `'labels'` o `'central'` (P2); `trade_families`: las familias «Tipo: Acción» que archivó la ida.
+ * `people_source`: de dónde sale la persona, `'labels'` o `'central'` (P2, PR 3); `people_families`: las familias de persona
+ * que archivó la ida; `people_map`: la correspondencia confirmada `{labelId: personId | 'level:<nivel>' | 'remove'}`.
  */
 export interface SettingRow extends BaseRow { key: string; value: unknown }
 export interface SavedViewRow extends BaseRow { tab_id: Uuid; name: string; search: string; filters: Record<string, string[]>; group_by: string; position: number }
@@ -89,6 +103,9 @@ export interface RequestRow extends BaseRow {
 /** Regla de entrada (§20): un tipo de petición va a un área, un proyecto (si no, su Entrada) y un responsable. */
 export interface RequestRouteRow extends BaseRow {
   kind: string; kind_label: string | null; tab_id: Uuid; project_id: Uuid | null; owner_label_id: Uuid | null; position: number;
+  /** Responsable de Central (P2, PR 3), que pasa a la tarea: una persona o un grupo por nivel de casa. */
+  owner_person_id?: Uuid | null;
+  owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
 }
 export interface SupplyMovementRow extends BaseRow {
   tab_id: Uuid; supply_item_id: Uuid; kind: MovementKind; delta: number; purchase_request_id: Uuid | null; note: string;
@@ -98,7 +115,8 @@ export interface SupplyMovementRow extends BaseRow {
 export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
-  'tasks.project_trades', 'tasks.task_trades', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
+  'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
+  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments',
   'tasks.supply_items', 'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests', 'tasks.supply_movements',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings',
 ] as const;
@@ -108,7 +126,8 @@ export interface RowTypes {
   'tasks.tabs': TabRow; 'tasks.families': FamilyRow; 'tasks.labels': LabelRow; 'tasks.projects': ProjectRow; 'tasks.tasks': TaskRow;
   'tasks.project_labels': ProjectLabelRow; 'tasks.task_labels': TaskLabelRow;
   'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow;
-  'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow; 'tasks.task_dependencies': TaskDependencyRow;
+  'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
+  'tasks.project_people': ProjectPersonRow; 'tasks.task_people': TaskPersonRow; 'tasks.task_dependencies': TaskDependencyRow;
   'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow;
   'tasks.supply_items': SupplyItemRow; 'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow;
   'tasks.purchase_requests': PurchaseRequestRow; 'tasks.supply_movements': SupplyMovementRow;
@@ -127,14 +146,16 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.tabs': ['name', 'color', 'position', 'purchase_approver_id'],
   'tasks.families': ['tab_id', 'name', 'color', 'archived', 'position', 'system_key'],
   'tasks.labels': ['tab_id', 'family_id', 'parent_id', 'name', 'archived', 'archived_before_family', 'position'],
-  'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref'],
-  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free'],
+  'tasks.projects': ['tab_id', 'title', 'note', 'status', 'priority', 'due', 'owner_label_id', 'color', 'budget', 'position', 'system', 'external_ref', 'owner_person_id', 'owner_house_level'],
+  'tasks.tasks': ['tab_id', 'project_id', 'parent_id', 'title', 'note', 'done', 'priority', 'due', 'owner_label_id', 'cost', 'position', 'external_ref', 'external_kind', 'external_url', 'external_on_behalf', 'steps_in_order', 'step_free', 'owner_person_id', 'owner_house_level'],
   'tasks.project_labels': ['tab_id', 'project_id', 'label_id'],
   'tasks.task_labels': ['tab_id', 'project_id', 'task_id', 'label_id'],
   'tasks.project_spaces': ['tab_id', 'project_id', 'space_id'],
   'tasks.task_spaces': ['tab_id', 'project_id', 'task_id', 'space_id'],
   'tasks.project_trades': ['tab_id', 'project_id', 'trade_id'],
   'tasks.task_trades': ['tab_id', 'project_id', 'task_id', 'trade_id'],
+  'tasks.project_people': ['tab_id', 'project_id', 'person_id', 'house_level'],
+  'tasks.task_people': ['tab_id', 'project_id', 'task_id', 'person_id', 'house_level'],
   'tasks.task_dependencies': ['tab_id', 'project_id', 'task_id', 'depends_on_id', 'position'],
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
@@ -143,7 +164,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'supply_item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
   'tasks.supply_movements': ['tab_id', 'supply_item_id', 'kind', 'delta', 'purchase_request_id', 'note'],
-  'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position'],
+  'tasks.request_routes': ['kind', 'kind_label', 'tab_id', 'project_id', 'owner_label_id', 'position', 'owner_person_id', 'owner_house_level'],
   'tasks.requests': ['source', 'kind', 'kind_label', 'external_ref', 'external_url', 'title', 'note', 'due', 'priority', 'suggested_tab_id', 'suggested_project_id', 'requested_by', 'status', 'routed_by', 'on_behalf_of'],
   'tasks.settings': ['key', 'value'],
 };
@@ -162,6 +183,8 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.task_spaces': ['tab_id', 'task_id', 'space_id'],
   'tasks.project_trades': ['tab_id', 'project_id', 'trade_id'],
   'tasks.task_trades': ['tab_id', 'task_id', 'trade_id'],
+  'tasks.project_people': ['tab_id', 'project_id', 'person_id', 'house_level'],
+  'tasks.task_people': ['tab_id', 'task_id', 'person_id', 'house_level'],
   'tasks.task_dependencies': ['tab_id', 'task_id', 'depends_on_id'],
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],

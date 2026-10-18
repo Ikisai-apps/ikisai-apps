@@ -2,6 +2,7 @@
  * Tasks · operaciones compuestas (docs/tasks/API.md §3.1). Todo lo que hace la interfaz son operaciones de fila:
  * estas funciones puras construyen las cascadas y el hook SQL las verifica. Máximo una operación por (tabla, id).
  */
+import { personFields, personKey, type PersonKey } from './people.ts';
 import { FAMILY_DEFAULTS, INBOX_TITLE, POSITION_STEP, type Dataset, type Operation, type Priority, type TaskRow, type Uuid } from './types.ts';
 
 export type NewId = () => Uuid;
@@ -53,6 +54,11 @@ export interface NewTask {
   spaceIds?: readonly Uuid[];
   /** Oficios de Central de la tarea (P2); sin ellos, los del proyecto. */
   tradeIds?: readonly Uuid[];
+  /** Personas de Central de la tarea (P2, PR 3: id o `level:<nivel>`); sin ellas, las del proyecto. */
+  people?: readonly PersonKey[];
+  /** Responsable de Central (P2, PR 3); como mucho uno de los tres `owner_*`. */
+  owner_person_id?: Uuid | null;
+  owner_house_level?: 'direccion' | 'staff' | 'outsider' | null;
 }
 
 /** Tarea nueva con sus etiquetas (las elegidas o las propias del proyecto) y dependencias. */
@@ -65,6 +71,8 @@ export function createTaskOps(data: Dataset, input: NewTask, newId: NewId = rand
   const spaces = input.spaceIds ?? live(data['tasks.project_spaces']).filter((s) => s.project_id === project.id).map((s) => s.space_id);
   // Y sus oficios de Central (P2), igual que el espacio.
   const trades = input.tradeIds ?? live(data['tasks.project_trades'] ?? []).filter((s) => s.project_id === project.id).map((s) => s.trade_id);
+  // Y sus personas de Central (P2, PR 3), igual que el oficio.
+  const people = input.people ?? live(data['tasks.project_people'] ?? []).filter((s) => s.project_id === project.id).map(personKey);
   const ops: Operation[] = [];
   const parent = input.parent_id ? must(data['tasks.tasks'].find((t) => t.id === input.parent_id), 'la tarea padre') : null;
   // Un padre hecho que recibe su primera hija viva vuelve a pendiente: su `done` deja de contar y no debe reaparecer.
@@ -73,10 +81,13 @@ export function createTaskOps(data: Dataset, input: NewTask, newId: NewId = rand
     tab_id: project.tab_id, project_id: project.id, parent_id: input.parent_id ?? null, title: input.title, note: input.note ?? '',
     done: input.done ?? false, priority: input.priority ?? 'normal', due: input.due ?? null, owner_label_id: input.owner_label_id ?? null,
     cost: input.cost ?? null, position: input.position ?? nextPosition(siblings),
+    ...(input.owner_person_id ? { owner_person_id: input.owner_person_id } : {}),
+    ...(input.owner_house_level ? { owner_house_level: input.owner_house_level } : {}),
   }));
   for (const label of new Set(labels)) ops.push(insert('tasks.task_labels', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, label_id: label }));
   for (const space of new Set(spaces)) ops.push(insert('tasks.task_spaces', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, space_id: space }));
   for (const trade of new Set(trades)) ops.push(insert('tasks.task_trades', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, trade_id: trade }));
+  for (const person of new Set(people)) ops.push(insert('tasks.task_people', newId(), { tab_id: project.tab_id, project_id: project.id, task_id: id, ...personFields(person) }));
   [...new Set(input.dependsOnIds ?? [])].forEach((dep, i) => ops.push(insert('tasks.task_dependencies', newId(), {
     tab_id: project.tab_id, project_id: project.id, task_id: id, depends_on_id: dep, position: (i + 1) * POSITION_STEP,
   })));
@@ -115,6 +126,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   for (const row of live(data['tasks.task_labels'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_labels', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_spaces'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_spaces', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_trades'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_trades', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_people'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_people', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_dependencies'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
   for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
   return ops;
@@ -148,6 +160,7 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
     for (const row of live(data['tasks.task_labels'])) if (row.task_id === t.id) ops.push(update('tasks.task_labels', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_spaces'])) if (row.task_id === t.id) ops.push(update('tasks.task_spaces', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_trades'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_trades', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_people'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_people', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_dependencies'])) if (row.task_id === t.id) ops.push(update('tasks.task_dependencies', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
   }
@@ -220,6 +233,30 @@ export function setProjectTradesOps(data: Dataset, projectId: Uuid, tradeIds: re
   const project = must(data['tasks.projects'].find((p) => p.id === projectId), 'el proyecto');
   return reconcile('tasks.project_trades', (data['tasks.project_trades'] ?? []).filter((r) => r.project_id === projectId), (r) => r.trade_id, tradeIds,
     (trade) => ({ tab_id: project.tab_id, project_id: projectId, trade_id: trade }), newId);
+}
+
+/** Personas de Central de una tarea (P2, PR 3): ids de persona o `level:<nivel>`, como sus oficios. */
+export function setTaskPeopleOps(data: Dataset, taskId: Uuid, people: readonly PersonKey[], newId: NewId = randomId): Operation[] {
+  const task = must(data['tasks.tasks'].find((t) => t.id === taskId), 'la tarea');
+  return reconcile('tasks.task_people', (data['tasks.task_people'] ?? []).filter((r) => r.task_id === taskId), personKey, people,
+    (person) => ({ tab_id: task.tab_id, project_id: task.project_id, task_id: taskId, ...personFields(person) }), newId, (row) => row.project_id === task.project_id);
+}
+
+export function setProjectPeopleOps(data: Dataset, projectId: Uuid, people: readonly PersonKey[], newId: NewId = randomId): Operation[] {
+  const project = must(data['tasks.projects'].find((p) => p.id === projectId), 'el proyecto');
+  return reconcile('tasks.project_people', (data['tasks.project_people'] ?? []).filter((r) => r.project_id === projectId), personKey, people,
+    (person) => ({ tab_id: project.tab_id, project_id: projectId, ...personFields(person) }), newId);
+}
+
+/**
+ * Responsable principal (P2, PR 3): una etiqueta Persona (`labels`), una persona de Central o un grupo por nivel de casa
+ * (`level:<nivel>`), o nadie. Siempre deja los otros dos vacíos.
+ */
+export function setOwnerOps(row: { id: Uuid; revision: number }, table: 'tasks.tasks' | 'tasks.projects' | 'tasks.request_routes', owner: { labelId: Uuid } | PersonKey | null): Operation[] {
+  const fields = owner === null ? { owner_label_id: null, owner_person_id: null, owner_house_level: null }
+    : typeof owner === 'object' ? { owner_label_id: owner.labelId, owner_person_id: null, owner_house_level: null }
+    : (() => { const f = personFields(owner); return { owner_label_id: null, owner_person_id: f.person_id, owner_house_level: f.house_level }; })();
+  return [update(table, row, fields)];
 }
 
 export function setProjectLabelsOps(data: Dataset, projectId: Uuid, labelIds: readonly Uuid[], newId: NewId = randomId): Operation[] {

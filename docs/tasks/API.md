@@ -1624,5 +1624,67 @@ La familia General «Tipo: Acción» (y sus copias de área) pasa a ser los **of
 - **Pruebas:** `tests/tasks/oficios-central.spec.ts` (la caracterización en modo oficios), `oficios-boton.spec.ts` y `core-trades.test.ts`.
 
 **Pendiente (PR siguientes):**
-- **PR 3:** personas de Central (`central.person_alive`) en lugar de las etiquetas Persona.
+- **PR 3:** personas de Central (`central.person_alive`) en lugar de las etiquetas Persona: el modelo, en §33 (3a); la interfaz, 3b.
 - **PR 4:** «Quién sabe hacerlo» (`central.capability_options`).
+
+## 33. Personas de Central en lugar de «Grupo: Persona» (fase P2, PR 3a)
+
+La familia de responsables de cada área (`system_key = 'person'`, o con el nombre «Persona» o «Grupo: Persona», sin mayúsculas, espacios ni tildes) y sus copias pasan a ser las **personas** de Central (`central.people`). Es la réplica de §32 para las personas, con las decisiones del usuario del 18-10-2026 (`coordinacion/tasks/RESPUESTAS.md`, «P2 y O1 aprobadas»). Esta PR no cambia nada visible: con `people_source = 'labels'` todo sigue igual (`tests/tasks/personas.spec.ts`).
+
+**Modelo (migración `0327`):**
+
+| Tabla | Columnas | Notas |
+|---|---|---|
+| `tasks.task_people` | `tab_id, project_id, task_id, person_id, house_level` | Una o varias por tarea. Exactamente uno de `person_id` (persona de Central) o `house_level` (`direccion`, `staff`, `outsider`: «todo el staff»). Se mueve y se restaura con la tarea |
+| `tasks.project_people` | `tab_id, project_id, person_id, house_level` | La tarea nueva hereda las de su proyecto (`createTaskOps`, `requests/task`) |
+| `tasks.tasks`, `tasks.projects`, `tasks.request_routes` | `owner_person_id`, `owner_house_level` | Responsable principal de Central. `owner_label_id` se conserva para volver atrás; **como mucho uno de los tres** (`INVALID_OWNER`). La regla de Entrada pasa su responsable a la tarea |
+| `tasks.settings` | `key, value` | `people_source`: `'labels'` (sin fila) o `'central'`. `people_families`: las familias que archivó la ida. `people_map`: la correspondencia confirmada `{labelId: personId \| 'level:<nivel>' \| 'remove'}`. Solo los cambian los procedimientos |
+
+- `person_id` apunta a `central.people` sin clave foránea. El hook comprueba al ponerla que la persona esté viva y activa con `central.person_alive` (`INVALID_PERSON`), que no se repita (`INVALID_PEOPLE`) y que las claves coincidan (`INCONSISTENT_KEYS`). Un responsable persona que cambia también ha de estar vivo (`INVALID_OWNER`).
+- Los leen los mismos roles que los oficios, incluido el **outsider** (solo lo de lo que se le abre, por el hook `visible`).
+- **Clave de persona** (modelo anidado, vistas, correspondencia, dominio): el id de la persona o `level:<nivel>`.
+- **Vistas guardadas:** el filtro `_person`, `group_by = '_person'` y `_exclude` admiten ids de persona y `level:<nivel>`.
+- **Modelo anidado (`legacy.ts`):** `people` en la tarea y `ownPeople` en el proyecto, solo si hay alguna; `ownerPerson` en ambos, solo si está puesto. Sin el campo, `decompose` no los toca; con `ownerPerson`, `owner_label_id` se vacía.
+- **Dominio (`ops.ts`, `people.ts`):** `createTaskOps` (`people`, o las del proyecto; `owner_person_id`, `owner_house_level`), `moveTaskOps`, `restoreTaskOps`, `setTaskPeopleOps`, `setProjectPeopleOps`, `setOwnerOps`; `classifyRequestOps`, `saveRouteOps` y `routeWaitingOps` llevan el responsable de Central.
+- **Procedimientos que mueven o crean tareas** (copiados de `0326`): vaciar la papelera, «Convertir en proyecto» y `requests/task`.
+
+**Propuesta y confirmación** (`_domain/tasks/people.ts`, funciones puras; la lectura `central.people_options` — `person_id, name, user_id, active, house_level, initials` — la hace `tasks-api` con el usuario que pide):
+
+- Las copias por área con el mismo nombre normalizado y la misma madre son **una sola persona** (`personLabelGroups`).
+- `proposePerson`, solo entre las personas activas con nivel de casa (las del selector):
+  1. las madres de grupo por su nombre: «Staff» → `staff`; «Outsider(s)», «Voluntario(s)/as» → `outsider`; «Dirección» → `direccion`;
+  2. la etiqueta igual a las **iniciales** de una ficha;
+  3. si no, igual a su **nombre completo**;
+  4. si no, igual a su **nombre de pila**, solo si es único.
+  - Si un paso casa con varias fichas, no se propone ninguna.
+- **Nada se casa a ciegas:** la propietaria confirma cada una. La ida exige un valor para **todas** las etiquetas usadas (en tareas, proyectos o como responsable).
+
+**Pasar las personas a Central** (propietaria humana con acceso completo; las rutas no aceptan `call` de clientes):
+
+1. **Vista previa:** `POST read/tasks.people_preview {mapping?}`. `tasks-api` la desvía a `actions/people-preview`, propone y llama a la lectura SQL `tasks.people_preview` con el valor de cada etiqueta (lo elegido en `mapping`, si no lo confirmado en `people_map`, si no lo propuesto).
+   - Con `people_source = 'labels'`:
+     - `labels[]`: `{labelId, labelIds, name, parentName, areas[{tabId, name}], tasks, projects, owners, routes, used, proposal, confirmed, chosen?}`. `proposal` es `{personId, name, initials, by: 'initials'|'name'|'first_name'}`, `{houseLevel}` o `null`;
+     - `people[]`: `{personId, name, initials, houseLevel}`, las opciones del selector (activas con nivel de casa, por nombre);
+     - `counts {tasks, projects, owners, routes, withoutPerson, views}`, `families` y `unconfirmed` (las usadas sin valor);
+     - `centralEmpty: true` si ninguna persona tiene nivel de casa.
+   - Con `'central'`: `counts` y `lost` (personas o grupos puestos sin etiqueta a la que volver, con su nombre).
+2. **Ida:** `POST actions/people-to-central {requestId, mapping}` → `tasks.people_to_central`, en un lote y con historial.
+   - `mapping` = `{ "<labelId>": "<personId>" | "level:staff|outsider|direccion" | "remove" }`; basta una etiqueta de cada grupo (sus copias reciben lo mismo).
+   - `CENTRAL_PEOPLE_EMPTY` sin personas con nivel; `PEOPLE_UNCONFIRMED` con la lista de las que faltan; `INVALID_PERSON` si alguna no sigue viva (se revalida en SQL).
+   - Cada tarea y proyecto recibe lo **más hondo** entre las etiquetas con valor: con madre e hija, solo la persona; la madre sola, el grupo.
+   - `owner_label_id` → `owner_person_id` u `owner_house_level` en tareas, proyectos y reglas de Entrada.
+   - Las vistas guardadas se reescriben a `_person`.
+   - Las familias de persona vivas y sus etiquetas se **archivan**, nunca se borran. `task_labels` y `project_labels` no se tocan.
+   - Se guardan `people_map` y `people_families`, y `people_source` pasa a `'central'`. Una segunda vez da 409.
+3. **Vuelta:** `POST actions/people-to-labels {requestId, dropUnmapped?}` → `tasks.people_to_labels`, con `people_map` a la inversa.
+   - La etiqueta de cada persona: la que ya tenía la tarea o el proyecto; si no, la copia de su área; si no, la General. Una etiqueta nueva va con su madre; la que ya estaba conserva la madre solo si la tenía (la vuelta es exacta). El responsable vuelve a una etiqueta de la familia de sistema `person`.
+   - Lo que se quitó (`remove`) no vuelve. Se desarchivan justo las familias que archivó la ida, las vistas vuelven y las personas puestas van a la papelera. `people_map` se queda: la siguiente vista previa lo enseña como `confirmed`.
+   - Una persona añadida en modo central sin etiqueta posible: `PEOPLE_UNMAPPED {lost}`, salvo con `dropUnmapped`.
+- Si no se puede leer Central: `503 CENTRAL_UNAVAILABLE`.
+
+**Pruebas:** `tests/tasks/people.test.ts` (PGlite, con personas sembradas en `central.people`), `legacy.test.ts`, `sql.test.ts` y `api.test.ts`.
+
+**Para la PR 3b (interfaz):**
+- La chip usa `people_options.initials` y, si faltan, el nombre de pila; el grupo, el nombre del nivel. El catálogo se lee como el de oficios (`refreshTrades`), sin sincronizar.
+- En modo central, la ficha y el lote escriben `task_people` y `owner_person_id`/`owner_house_level` y dejan `owner_label_id` vacío; en el modelo anidado, `people`, `ownPeople` y `ownerPerson`.
+- La faceta «Persona» en árbol por nivel (`_person`, el nivel incluye a sus personas) y agrupar por `_person`.

@@ -87,6 +87,8 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     case 'tasks.task_spaces':
     case 'tasks.project_trades':
     case 'tasks.task_trades':
+    case 'tasks.project_people':
+    case 'tasks.task_people':
     case 'tasks.task_dependencies':
     case 'tasks.attachments':
       return canProject(scopes, tab, String(row.project_id ?? ''));

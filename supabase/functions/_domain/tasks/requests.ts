@@ -36,7 +36,7 @@ export function routeFor(data: Dataset, kind: string): RequestRouteRow | null {
  * «Mover a…»: crea la tarea de una petición pendiente en un proyecto (con las etiquetas del proyecto, como al crear una
  * tarea en la app) y marca la petición como enrutada. La tarea conserva el origen: referencia, tipo y enlace.
  */
-export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { project_id: Uuid; owner_label_id?: Uuid | null }, how: 'manual' | 'rule' = 'manual', newId: NewId = randomId): Operation[] {
+export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { project_id: Uuid; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null }, how: 'manual' | 'rule' = 'manual', newId: NewId = randomId): Operation[] {
   const request = live(data['tasks.requests']).find((r) => r.id === requestId);
   if (!request) reject(404, 'NOT_FOUND', 'No existe esa petición.', { id: requestId });
   if (request!.status !== 'pending') reject(422, 'INVALID_REQUEST', 'Esa petición ya no está por clasificar.', { id: requestId });
@@ -47,6 +47,8 @@ export function classifyRequestOps(data: Dataset, requestId: Uuid, target: { pro
   const ops = createTaskOps(data, {
     id: request!.id, project_id: project!.id, parent_id: null, title: request!.title, note: request!.note, priority: request!.priority,
     due: request!.due, owner_label_id: target.owner_label_id ?? null,
+    // Responsable de Central (P2, PR 3): una persona o un grupo por nivel de casa.
+    owner_person_id: target.owner_person_id ?? null, owner_house_level: target.owner_house_level ?? null,
   }, newId);
   Object.assign(ops.find((o) => o.table === 'tasks.tasks' && o.op === 'insert')!.fields!, {
     external_ref: request!.external_ref, external_kind: request!.kind, external_url: request!.external_url,
@@ -80,10 +82,14 @@ export function routeTarget(data: Dataset, route: Pick<RequestRouteRow, 'tab_id'
 }
 
 /** Alta o cambio de la regla de un tipo (una viva por tipo). */
-export function saveRouteOps(data: Dataset, input: { kind: string; kind_label?: string | null; tab_id: Uuid; project_id?: Uuid | null; owner_label_id?: Uuid | null }, newId: NewId = randomId): Operation[] {
-  const fields = { kind_label: input.kind_label ?? null, tab_id: input.tab_id, project_id: input.project_id ?? null, owner_label_id: input.owner_label_id ?? null };
-  if (!routeTarget(data, fields)) reject(422, 'INVALID_ROUTE', 'El destino de la regla no existe o está archivado.');
+export function saveRouteOps(data: Dataset, input: { kind: string; kind_label?: string | null; tab_id: Uuid; project_id?: Uuid | null; owner_label_id?: Uuid | null; owner_person_id?: Uuid | null; owner_house_level?: 'direccion' | 'staff' | 'outsider' | null }, newId: NewId = randomId): Operation[] {
+  const fields: Record<string, unknown> = { kind_label: input.kind_label ?? null, tab_id: input.tab_id, project_id: input.project_id ?? null, owner_label_id: input.owner_label_id ?? null };
+  if (!routeTarget(data, fields as Pick<RequestRouteRow, 'tab_id' | 'project_id'>)) reject(422, 'INVALID_ROUTE', 'El destino de la regla no existe o está archivado.');
   const existing = routeFor(data, input.kind);
+  // Responsable de Central (P2, PR 3): solo si se pide o hay que vaciarlo (como mucho uno de los tres).
+  if (input.owner_person_id !== undefined || input.owner_house_level !== undefined || existing?.owner_person_id || existing?.owner_house_level) {
+    Object.assign(fields, { owner_person_id: input.owner_person_id ?? null, owner_house_level: input.owner_house_level ?? null });
+  }
   if (existing) {
     const changed = Object.fromEntries(Object.entries(fields).filter(([k, v]) => (existing as unknown as Record<string, unknown>)[k] !== v));
     return Object.keys(changed).length ? [update('tasks.request_routes', existing, changed)] : [];
@@ -107,7 +113,7 @@ export function routeWaitingOps(data: Dataset, kind: string, newId: NewId = rand
   let working = data;
   const ops: Operation[] = [];
   for (const request of pendingRequests(data, kind)) {
-    const batch = classifyRequestOps(working, request.id, { project_id: projectId!, owner_label_id: route!.owner_label_id }, 'rule', newId);
+    const batch = classifyRequestOps(working, request.id, { project_id: projectId!, owner_label_id: route!.owner_label_id, owner_person_id: route!.owner_person_id ?? null, owner_house_level: route!.owner_house_level ?? null }, 'rule', newId);
     ops.push(...batch);
     // Las posiciones siguientes cuentan con las tareas que ya entran en este lote.
     const inserted = batch.find((o) => o.table === 'tasks.tasks')!;
