@@ -89,6 +89,11 @@ import {
   toast,
   toastWithAction,
   toggleTheme,
+  createItemPicker,
+  createMemoryItemSource,
+  DEFAULT_ITEM_KINDS,
+  type ItemPick,
+  type ItemRow,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1085,6 +1090,67 @@ spacePickerBookable.element.id = 'spacePickerBookable';
 const spaceSection = section('spaces', 'Espacios (R1)', 'createSpaceTree: Altura › Edificio o Exterior › Espacio › Subespacio; buscar, desplegar, ficha, «+» dentro, asa de 44×44 para arrastrar (encima o debajo = al lado, centro = dentro; lo no válido se marca con su motivo), subir y bajar, «Mover a…», «Duplicar», «Archivar con todo lo de dentro» y «Sin altura». createSpacePicker: más usados a un toque, búsqueda con la ruta y filtro por tipos o reservables.',
   el('div', { class: 'cardgrid' }, el('div', { class: 'card' }, spaceTree.element), el('div', { class: 'card', style: 'display:grid;gap:16px;align-content:start' }, spacePickerMany.element, el('p', null, 'Elegidos: ', pickedOut), spacePickerBookable.element)),
 );
+// --- Artículos del inventario (R3) ------------------------------------------------------------------------
+const demoItem = (id: string, name: string, kind: string, baseUnit: string, extra: Partial<ItemRow> = {}): ItemRow => ({
+  id, name, kind, baseUnit, category: null, minQuantity: null, reorderQuantity: null, defaultSpaceId: null, defaultSupplierId: null,
+  tracksLots: false, tracksExpiry: false, aliases: [], attributes: {}, active: true, notes: null, ...extra,
+});
+const itemSource = createMemoryItemSource({
+  items: [
+    demoItem('harina-trigo', 'Harina de trigo', 'ingrediente', 'kg', { defaultSpaceId: 'despensa', aliases: ['Harina floja'] }),
+    demoItem('harina-espelta', 'Harina de espelta', 'ingrediente', 'kg', { defaultSpaceId: 'despensa', minQuantity: 5, aliases: ['HAR ESP ECO 25KG'] }),
+    demoItem('harina-arroz', 'Harina de arroz', 'ingrediente', 'kg'),
+    demoItem('leche-avena', 'Leche de avena', 'bebida', 'l', { defaultSpaceId: 'camara' }),
+    demoItem('cloro', 'Cloro en pastillas', 'limpieza', 'kg', { defaultSpaceId: 'piscina', minQuantity: 2 }),
+    demoItem('sabanas', 'Sábanas 90', 'textil', 'ud'),
+    demoItem('taladro', 'Taladro percutor', 'herramienta', 'ud', { active: false }),
+  ],
+  units: [
+    { id: 'u-espelta-saco', itemId: 'harina-espelta', unit: 'saco', factor: 25, supplierId: 'sup-molinos' },
+    { id: 'u-espelta-bolsa', itemId: 'harina-espelta', unit: 'bolsa', factor: 1, supplierId: 'sup-eco' },
+    { id: 'u-trigo-saco', itemId: 'harina-trigo', unit: 'saco', factor: 25, supplierId: null },
+    { id: 'u-cloro-cubo', itemId: 'cloro', unit: 'cubo', factor: 5, supplierId: null },
+  ],
+  kinds: DEFAULT_ITEM_KINDS,
+  stock: [
+    { itemId: 'harina-trigo', spaceId: 'despensa', lotId: null, quantity: 18.5 },
+    { itemId: 'harina-espelta', spaceId: 'despensa', lotId: null, quantity: 1.2 },
+    { itemId: 'leche-avena', spaceId: 'camara', lotId: null, quantity: 6 },
+    { itemId: 'cloro', spaceId: 'piscina', lotId: null, quantity: 3.5 },
+    { itemId: 'sabanas', spaceId: 'hab-1', lotId: null, quantity: 4 },
+    { itemId: 'sabanas', spaceId: 'hab-3', lotId: null, quantity: 8 },
+  ],
+}, {
+  delay: 600,
+  // Lo dio de alta otro dispositivo y aún no ha llegado a este: crear «Aceite de oliva» acaba en «Ya existe».
+  server: [demoItem('aceite-oliva', 'Aceite de oliva', 'ingrediente', 'l', { defaultSpaceId: 'despensa' })],
+  supplierNames: { 'sup-molinos': 'Molinos Sur', 'sup-eco': 'EcoGranel' },
+});
+(window as unknown as { itemSource: typeof itemSource }).itemSource = itemSource;
+const itemOut = el('output', { id: 'itemPickOut', style: 'overflow-wrap:anywhere' }, '—');
+const showPick = (where: string) => (pick: ItemPick) => { itemOut.textContent = `${where}: ${JSON.stringify(pick)}`; };
+const itemPickRecipe = createItemPicker({
+  label: 'Ingrediente', source: itemSource, kinds: ['ingrediente', 'bebida'], quantity: true, spaces: spaceSource, stockIn: ['cocina'],
+  feedbackId: 'demo.receta.ingrediente', onChange: showPick('receta'),
+});
+itemPickRecipe.element.id = 'itemPickRecipe';
+const itemPickSpend = createItemPicker({
+  label: 'Qué', source: itemSource, value: 'cloro', fixed: true, quantity: { label: 'Cuánto' }, spaces: spaceSource,
+  space: { label: 'De dónde', quick: ['piscina', 'jardin'] }, feedbackId: 'demo.suministro.gastar', onChange: showPick('gastar'),
+});
+itemPickSpend.element.id = 'itemPickSpend';
+const itemPickInvoice = createItemPicker({
+  label: 'Mi nombre · artículo', source: itemSource, supplierId: 'sup-molinos', allowText: true, quantity: true, spaces: spaceSource,
+  space: { label: 'Dónde entra', quick: ['despensa', 'camara'] }, feedbackId: 'demo.factura.articulo', onChange: showPick('factura'),
+});
+itemPickInvoice.element.id = 'itemPickInvoice';
+const itemSection = section('items', 'Artículos (R3)', 'createItemPicker: buscar por nombre o alias con tipo y stock, crear al momento con aviso de parecidos (sin red también), cantidad con las unidades del artículo y su equivalencia, y sitio. Tres usos: receta (Food), «Gastar» (Tasks) y línea de factura (Finance, proveedor Molinos Sur). Crear «Aceite de oliva» simula que otro dispositivo ya lo había creado.',
+  el('div', { class: 'cardgrid' },
+    el('div', { class: 'card', style: 'display:grid;gap:12px;align-content:start' }, el('h3', null, 'Receta'), itemPickRecipe.element),
+    el('div', { class: 'card', style: 'display:grid;gap:12px;align-content:start' }, el('h3', null, 'Gastar'), itemPickSpend.element),
+    el('div', { class: 'card', style: 'display:grid;gap:12px;align-content:start' }, el('h3', null, 'Factura'), itemPickInvoice.element)),
+  el('p', null, 'Último cambio: ', itemOut),
+);
 // --- Calendario de persona (O2/O4) -----------------------------------------------------------------------
 const tp = todayKey();
 const personEvents: CalendarEvent[] = [
@@ -1218,12 +1284,12 @@ const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de pro
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#items', 'Artículos'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

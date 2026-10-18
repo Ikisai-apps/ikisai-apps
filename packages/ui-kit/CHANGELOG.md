@@ -1,5 +1,41 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.36.0 · 18 de octubre de 2026
+
+**`createItemPicker`** (R3; propuesta aprobada el 18-10-2026): elegir un artículo del inventario o crearlo sin salir. Lo esperan Finance (R4), Food (R5) y Tasks (R6).
+
+- **Buscar:**
+  - por nombre y alias, sin mayúsculas ni tildes; los alias son `attributes.aliases` más los que pase la app (`aliases`);
+  - cada resultado lleva su tipo y su stock («18,5 kg · Despensa», «sin stock»);
+  - bajo mínimo se avisa con texto, no solo con color;
+  - con `stockIn`, solo el stock de esos sitios y de lo que hay dentro;
+  - se maneja con flechas, Intro y Esc, como `createSpacePicker`.
+- **Crear al momento** (`create`, por defecto activo), desde la última opción, «Crear «lo escrito»»:
+  - avisa de los parecidos antes de crear: mismo nombre sin tildes, uno contenido en otro o la misma primera palabra;
+  - no deja repetir un nombre, con la misma regla que el índice del servidor, y ofrece «Usar «X»»;
+  - el alta va dentro del campo, no en otra hoja: nombre, tipo (los que admite el campo), unidad base y, si hay sitios, dónde se guarda;
+  - sin red se crea en el dispositivo y se sube al volver.
+- **Nombre repetido entre dos dispositivos sin red:**
+  - `createSyncItemSource` descarta el lote rechazado (`CONSTRAINT_VIOLATION`) y busca el que ya existe;
+  - el campo enseña «Ya existe «X» (lo dio de alta otro dispositivo)» con «Usar ese»;
+  - con `onChange`, la app reapunta su línea al artículo que ya existía.
+- **Cantidad** (`quantity`):
+  - unidades: la base, las métricas equivalentes (g ↔ kg, ml ↔ l) y las conversiones de `item_units`;
+  - con `supplierId`, las de ese proveedor van primero y las de otros, con su nombre;
+  - la equivalencia sale en vivo: «= 50 kg · 1 saco = 25 kg».
+- **Sitio** (`space`): un `createSpacePicker` dentro que propone el sitio habitual del artículo.
+- **Usos especiales:**
+  - `fixed`, fijo en un artículo («Gastar»);
+  - `allowText`, «Usar «texto» sin artículo», para gastos que no son inventario.
+- **No escribe movimientos:** devuelve `{ itemId, text?, quantity, unit, unitId, baseQuantity, spaceId }` y cada app hace su commit.
+- **Modelo puro** (`src/items/model.ts`), exportado para que las apps usen las mismas reglas:
+  - `searchItems`, `sameNameItem`, `similarItems`, `unitsFor`, `baseQuantity`, `stockFromMovements` y `stockSummary`;
+  - `itemFromRow` y `createMemoryItemSource`.
+- **Fuente real:** `createSyncItemSource(client)` sobre el espejo de `resources` (artículos, unidades, tipos y movimientos), así que funciona sin red.
+- **Feedback:** marcas `ITEM_PICKER_MARKS` y entrada en el catálogo de funciones.
+- **Demo:** sección `#items` con tres usos: receta, «Gastar» y línea de factura.
+- **Pruebas:** `v41`, con el modelo en Node, buscar, teclado, crear, repetido, sin red, «Gastar», factura e inglés.
+
 ## 0.35.0 · 14 de octubre de 2026
 
 **`createCalendar` con `select`, fino en Android** (O2 y O4: Guests y Booking).

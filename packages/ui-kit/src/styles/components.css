@@ -1153,3 +1153,39 @@ a.launcher-app>svg{color:var(--muted);width:16px;height:16px}
   .proposals.review .pl-card.on{box-shadow:inset 0 0 0 2px var(--accent)}
   .proposals.review .pl-detail{display:block;position:sticky;top:12px;background:var(--paper);border:1px solid var(--edge);border-radius:var(--radius-md);padding:16px;box-shadow:var(--shadow-1)}
 }
+
+/* ---------- Selector de artículos (createItemPicker) ---------- */
+.item-picker{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;position:relative;min-width:0}
+/* Unidades largas («saco (de Molinos Sur)»): el desplegable se encoge y corta, el número conserva su sitio. */
+.item-qty .qty select{flex:0 1 auto;min-width:84px;max-width:60%;text-overflow:ellipsis}
+.item-chosen{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-soft)}
+.item-chosen.text{border-style:dashed}
+.item-chosen.pending{box-shadow:inset 3px 0 0 var(--warn)}
+.item-chosen-text{flex:1;min-width:0;display:grid;gap:2px}
+.item-chosen-text strong{overflow-wrap:anywhere}
+.item-change{min-height:44px;padding:0 6px}
+.item-kind{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--hover);color:var(--muted)}
+.item-stock{font-size:var(--text-xs);color:var(--muted)}
+.item-stock.low{color:var(--warn);font-weight:700}
+.item-pending{font-size:11px;font-weight:800;color:var(--warn)}
+.item-result.archived{opacity:.6}
+.item-new{border-top:1px solid var(--edge);margin-top:4px;padding-top:8px}
+.item-new .space-result-name,.item-text .space-result-name{color:var(--accent-deep)}
+.item-similar{font-size:12.5px;color:var(--warn);font-weight:700}
+.item-notice[hidden]{display:none}
+.item-notice{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--warn);border-radius:12px;background:color-mix(in srgb,var(--warn) 10%,var(--paper))}
+.item-dup{display:flex;gap:8px;align-items:center;margin:0;flex:1 1 14rem}
+.item-create{display:grid;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.item-create-title{margin:0;font-weight:800}
+.item-create-kind{display:grid;gap:6px}
+.item-kinds{display:flex;flex-wrap:wrap;gap:6px}
+.item-kinds .filterchip{min-height:40px}
+.item-kinds .filterchip[aria-checked="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.hint.suggest.warn{color:var(--warn);font-weight:700}
+.item-offline{display:flex;gap:8px;align-items:center;margin:0;font-size:13px;color:var(--muted)}
+.item-create-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.item-create-actions button{min-height:44px}
+.item-qty{display:grid;gap:4px}
+.item-conv{margin:0;font-size:13px;color:var(--muted)}
+.item-conv[hidden]{display:none}
+.item-conv strong{color:var(--ink)}
