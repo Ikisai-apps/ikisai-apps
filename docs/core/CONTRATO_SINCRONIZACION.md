@@ -219,7 +219,8 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
     - lecturas y acciones, con `roles` en `core.allow_read`;
     - procedimientos (`call`), con `core.allow_outsider_procedure(app, procedimiento)`.
   - Su rol llega a los hooks y procedimientos (`role = 'outsider'`).
-  - No deshace, no emite enlaces de portal ni sube archivos, salvo `UploadsConfig.allowOutsiders`. En MCP cuenta como lector.
+  - No deshace, no emite enlaces de portal ni sube archivos, salvo `UploadsConfig.allowOutsiders`; aun así, solo imágenes JPEG, PNG o WebP de hasta 10 MB (`outsiderMime`, `outsiderMaxBytes`). En MCP cuenta como lector.
+  - Lee archivos como un portal: los suyos y los referenciados por una fila que vea con el hook `visible` (K3). Conocer un `file_id` no basta.
   - **No se da a mano** (`INVALID_ROLE`): lo deriva el nivel de casa.
 - **Nivel de casa → roles:**
   - `core.apply_house_level(user, level, actor)`. Lo llama el trigger de Central sobre `central.people`.
