@@ -129,3 +129,18 @@ test('importar oficios · Central lee `tasks.action_labels` (solo la familia «T
   const plan = planTradeImport(out.data.rows, []);
   assert.deepEqual(plan.map((n) => n.path), ['Pintura', 'Pintura › Fachadas']);
 });
+
+test('P2 · central.person_alive y central.trade_alive: vivos, archivados, borrados e inexistentes', async () => {
+  const one = async (fn: string, id: string) => (await rows(`select central.${fn}($1::uuid) as ok`, [id]))[0].ok as boolean;
+  const [p1, p2, t1, t2] = [uuid(), uuid(), uuid(), uuid()];
+  await app.t.db.query(`insert into central.people (id, display_name, relation) values ($1, 'Persona viva P2', 'equipo'), ($2, 'Persona inactiva P2', 'equipo')`, [p1, p2]);
+  await app.t.db.query(`update central.people set active = false where id = $1`, [p2]);
+  await app.t.db.query(`insert into central.trades (id, name) values ($1, 'Oficio vivo P2'), ($2, 'Oficio borrado P2')`, [t1, t2]);
+  await app.t.db.query(`update central.trades set deleted_at = now() where id = $1`, [t2]);
+  assert.equal(await one('person_alive', p1), true);
+  assert.equal(await one('person_alive', p2), false);
+  assert.equal(await one('person_alive', uuid()), false);
+  assert.equal(await one('trade_alive', t1), true);
+  assert.equal(await one('trade_alive', t2), false);
+  assert.equal(await one('trade_alive', uuid()), false);
+});
