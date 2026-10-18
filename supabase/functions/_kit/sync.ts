@@ -48,6 +48,11 @@ export interface AppHooks {
    * estimación de filas afectadas; el núcleo ya cuenta borrados, procedimientos no seguros y el umbral de lote masivo.
    */
   agentRisk?: (operations: Operation[], ctx: RequestContext) => Promise<AgentRiskAssessment | void> | AgentRiskAssessment | void;
+  /**
+   * Sugerencias que puede ver y decidir quien revisa (staff o dirección), según sus ámbitos. Se aplica a las listas
+   * `pending` y `all`, a la vista previa y a la decisión (con el lote original y con el corregido). Sin hook, todas.
+   */
+  suggestionVisible?: (suggestion: { kind: string; operations: Operation[]; detail?: unknown }, ctx: RequestContext) => boolean;
 }
 
 export interface AgentRiskAssessment {

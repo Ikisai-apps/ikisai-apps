@@ -113,7 +113,7 @@ export function createApp(config: AppConfig): AppHandler {
   });
   const uploads = config.uploads ? createUploads(supabase, config.app, config.uploads, storage, config.hooks?.visible) : null;
   const agents = createAgents(supabase, config.app, config.hooks ?? {}, sync.validateOperations);
-  const suggestions = createSuggestions(supabase, config.app, sync.validateOperations);
+  const suggestions = createSuggestions(supabase, config.app, sync.validateOperations, config.hooks ?? {});
   const sso = createSso(supabase, config.app);
   const mcp = createMcp(config.app, config.release ?? 'development', config.mcpTools ?? []);
   const mcpCore = (ctx: RequestContext): McpCore => ({
