@@ -1,0 +1,9 @@
+/* P2 · oficios (trades-ui.js): la faceta y la hoja de filtros muestran el árbol, una opción por línea. La vista previa
+   reutiliza .zonelist y .zoneitem de spaces-ui.css. */
+.tradefacet{display:flex;flex-direction:column;align-items:flex-start}
+.tradefacet .filterchip{max-width:100%}
+.tradefield .small{margin-top:6px}
+.tradetree{list-style:none;margin:12px 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.tradenode{padding-block:8px;border-bottom:1px solid var(--line,rgba(0,0,0,.08))}
+.tradeempty a,.tradeerror a{font-weight:600}
+.trades-screen .catalog-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
