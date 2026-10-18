@@ -23,6 +23,8 @@ function proposalClient(){return Sync.core?.client}
 function proposalError(e){return IkisaiKit.suggestionErrorMessage(e)}
 /* Todas son de Tasks: sin «· tasks» en cada tarjeta. */
 function withoutApp(item){return {...item,app:null}}
+/* Un editor por proyecto solo ve aquí las propuestas de lo suyo (el núcleo se las da todas: ver riesgos en API.md §31). */
+function decidable(s){const scopes=Sync.actor?.scopes;if(scopes==='*'||scopes==null)return true;const pid=s.detail?.projectId;return !!pid&&(Sync.core?.data?.['tasks.projects']||[]).some(p=>p.id===pid&&!p.deleted_at)}
 
 /* --- Proyectos abiertos (los que ve el outsider; los de sistema, como la Entrada, no) ----------------------------- */
 function proposableProjects(){return state.tabs.filter(t=>!t.deleted).flatMap(t=>t.projects.filter(p=>!p.deleted&&p.status!=='archived'&&!p.system).map(p=>({tab:t,p})))}
@@ -110,7 +112,7 @@ function myProposalsView(){return `<main class="screen myproposals"><div class="
 /* --- Decidir en «Por clasificar» (editor u owner humano) --------------------------------------------------------- */
 let reviewProposals=null,reviewItems=new Map(),reviewTarget=new Map(),proposalPending=0;
 function reviewSource(){const client=proposalClient(),K=IkisaiKit;let pending=null;
-  return {async list(){try{const res=await client.suggestions({scope:'all',limit:100});pending=res.pendingCount;setProposalPending(res.pendingCount??0);reviewItems=new Map(res.items.map(s=>[s.id,s]));return res.items.map(x=>withoutApp(K.proposalFromSuggestion(x)))}catch(e){throw Error(proposalError(e))}},
+  return {async list(){try{const res=await client.suggestions({scope:'all',limit:100});pending=res.pendingCount;setProposalPending(res.pendingCount??0);reviewItems=new Map(res.items.map(s=>[s.id,s]));return res.items.filter(decidable).map(x=>withoutApp(K.proposalFromSuggestion(x)))}catch(e){throw Error(proposalError(e))}},
     pendingCount:()=>pending}}
 async function approveProposal(item,comment){const s=reviewItems.get(item.id),client=proposalClient();
   if(!navigator.onLine)throw Error(PROPOSAL_NETWORK);
