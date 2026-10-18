@@ -342,7 +342,13 @@ export class TasksCore {
    */
   async settle(): Promise<void> {
     if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
-    await this.refresh();
+    // Si hay un guardado local en vuelo, `refresh()` se retira (el espejo aún no lo contiene) y deja el refresco
+    // pendiente: se espera a que termine y se reintenta, para no volver con el modelo viejo (intermitente de la CI,
+    // ui.spec.ts «adjuntos del proyecto», 18-10-2026: el otro dispositivo recibía la fila y abría la ficha sin ella).
+    for (let tries = 0; tries < 200; tries += 1) {
+      if (await this.refresh() || !this.dirty) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
   }
 
   /** Modelo anidado que usa la interfaz, compuesto desde la copia en memoria. */
