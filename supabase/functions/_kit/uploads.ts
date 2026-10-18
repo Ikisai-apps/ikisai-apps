@@ -17,10 +17,15 @@ export interface UploadsConfig {
   /** Admite subidas de lectores (feedback: cualquier miembro puede adjuntar una imagen a su comentario). */
   /** El outsider sube archivos (p. ej. fotos en comentarios de Tasks). Por defecto, no. */
   allowOutsiders?: boolean;
+  /** Límites del outsider cuando `allowOutsiders`: por defecto, solo imágenes (JPEG, PNG, WebP) de hasta 10 MB. */
+  outsiderMime?: string[];
+  outsiderMaxBytes?: number;
   allowReaders?: boolean;
 }
 
 const SHA = /^[0-9a-f]{64}$/;
+const OUTSIDER_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+const OUTSIDER_MAX_BYTES = 10 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createUploads(supabase: Supabase, app: string, config: UploadsConfig, storage: StorageAccess = createStorage(supabase),
@@ -31,11 +36,12 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
 
   // Portales (contrato §3.6): ser miembro de la app no basta; cada persona del portal solo ve los archivos que subió ella
   // (la firma de un huésped no la lee otro huésped aunque conozca el id). Se distingue por su ámbito `scopes.grants`.
+  // El outsider (O1) tiene la misma regla: conocer un `file_id` no basta.
   // K3: un archivo ajeno se puede leer si alguna fila de la app que lo referencia (campos de `register_file_field`) es
   // visible para el miembro con el hook `visible` de la app; sin hook, solo los propios.
   async function ownInPortal(ctx: RequestContext, file: any) {
-    const portal = Array.isArray((ctx.membership as any)?.scopes?.grants);
-    if (!portal || file?.created_by === ctx.user.id) return;
+    const restricted = Array.isArray((ctx.membership as any)?.scopes?.grants) || ctx.membership?.role === 'outsider';
+    if (!restricted || file?.created_by === ctx.user.id) return;
     if (visible) {
       const refs = await supabase.rpc<Array<{ table: string; row: Record<string, unknown> }>>('core_file_referencing_rows', { p_app: app, p_file: file.id });
       if ((refs ?? []).some((r) => visible(r.table, r.row, ctx))) return;
@@ -48,8 +54,12 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
     if (typeof body?.filename !== 'string' || !body.filename || body.filename.length > 255) fail(422, 'INVALID_OPERATION', 'Nombre de archivo inválido.');
     if (typeof body?.mime !== 'string' || !/^[a-z]+\/[a-z0-9.+-]+$/i.test(body.mime)) fail(422, 'INVALID_OPERATION', 'Tipo MIME inválido.');
     if (config.allowedMime?.length && !config.allowedMime.includes(body.mime.toLowerCase())) fail(422, 'UNSUPPORTED_MEDIA', 'Tipo de archivo no admitido.', { allowed: config.allowedMime });
+    const outsider = ctx.membership.role === 'outsider';
+    const outsiderMime = config.outsiderMime ?? OUTSIDER_MIME;
+    if (outsider && !outsiderMime.includes(body.mime.toLowerCase())) fail(422, 'UNSUPPORTED_MEDIA', 'Tipo de archivo no admitido.', { allowed: outsiderMime });
     if (!Number.isSafeInteger(body?.size) || body.size < 0) fail(422, 'INVALID_OPERATION', 'Tamaño inválido.');
-    if (body.size > maxBytes) fail(413, 'PAYLOAD_TOO_LARGE', 'El archivo supera el tamaño máximo.', { maxBytes });
+    const limit = outsider ? Math.min(maxBytes, config.outsiderMaxBytes ?? OUTSIDER_MAX_BYTES) : maxBytes;
+    if (body.size > limit) fail(413, 'PAYLOAD_TOO_LARGE', 'El archivo supera el tamaño máximo.', { maxBytes: limit });
     if (typeof body?.sha256 !== 'string' || !SHA.test(body.sha256)) fail(422, 'INVALID_OPERATION', 'sha256 inválido.');
     const file = await supabase.rpc<any>('core_file_create', {
       p_app: app, p_actor: ctx.user.id, p_bucket: config.bucket, p_filename: body.filename, p_mime: body.mime.toLowerCase(), p_size: body.size, p_sha256: body.sha256.toLowerCase(),
