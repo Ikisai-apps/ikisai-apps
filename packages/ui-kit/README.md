@@ -174,6 +174,42 @@ palette.destroy();
 
 `items` recibe la consulta ya normalizada (minúsculas, sin acentos) y se vuelve a llamar con cada tecla, así que puede leer el espejo local. El filtrado, el orden (primero lo que empieza por la consulta), el teclado (↑ ↓ Enter Esc) y el foco los pone el kit.
 
+## Piezas comunes (MUELA-075, lote A, 0.42)
+
+Piezas pequeñas sin estado y sin lógica de negocio: el orden, los plazos, los tonos y los textos de cada cosa los calcula la app y se los pasa. Todas usan `var(--tap)` en lo que se toca y dicen el estado con texto además del color. Se ven en la demo, en `#pieces`.
+
+- **`renderMedal({ image?, name?, initials?, icon?, color?, size?, label?, cover? })`** e **`initialsOf(name)`**: el medallón.
+  - Muestra la imagen o, si no hay o no carga, las iniciales o el icono. Tamaños 40, 44 (por defecto) o 72.
+  - Es decorativo (`aria-hidden`) salvo con `label`, que lo convierte en `role="img"`.
+  - `cover` pone la imagen de fondo de una tarjeta grande.
+  - Clases `medal-`.
+- **`renderStages({ label, stages, current, bad?, onPick?, mini?, caption?, stopText?, feedbackId? })`** y **`stageStates`**: el recorrido.
+  - Un `<ol>` con «etapa n de N» y `aria-current="step"`; `current` `-1` o `null` quiere decir parado.
+  - Con `onPick`, cada etapa es un botón de 64 px; `mini` es la variante para filas.
+  - Clases `stage-`.
+- **`renderGroups({ label, groups, toneOf?, row, worstFirst?, chips?, feedbackId? })`** y **`worstOf(tones)`**: grupos con resumen de lo peor (alert > warn > ok).
+  - El borde sigue a lo peor. El resumen va escrito: el que pasa la app o, por defecto, «1 con alerta · 2 con aviso».
+  - Se abren solos los grupos que piden algo. `chips` filtra por lo peor.
+  - Sirve también para grupos por etapa con la acción en la fila: `open` y `listRow` con `actions`.
+  - Clases `worst-`.
+- **`deadlineText(due, { now?, timeZone?, prefix?, noLeft? })`** y **`deadlineInfo`**: el plazo en texto, por ejemplo «Antes del mié, 14 oct, 19:20 (quedan 5 h)».
+  - Sin hora, no la dice; el año solo sale cuando no es el actual.
+  - Usa la hora de la casa (`Europe/Madrid`).
+- **`renderStats([{ value, label, tone?, hint?, onClick? }], { label? })`**: cifras de color, siempre con su etiqueta. Clases `stat-`, nunca `.kpi`.
+- **`renderChecks({ items: [{ ok, text, detail?, action? }], verdict?, onlyPending? })`**: veredicto y comprobaciones ✓ / !.
+  - El veredicto lleva `role="status"`, con el aspecto de `.imp-verdict`.
+  - Clases `check-`.
+- **`renderTile({ title, value, levelText, level?: { pct, min?, tone? }, medal?, icon?, onClick? })`**: baldosa con cifra y relleno.
+  - `levelText` es obligatorio.
+  - Clases `tile-`.
+- **`bindOnline(button, { client?, reason?, retry?, reasonHost? })`**: desactivado con el motivo.
+  - Sin red, el botón queda `aria-disabled` y el clic no llega a la app. Una línea enlazada con `aria-describedby` dice por qué, con «Reintentar» si se pasa `retry`.
+  - Devuelve la función que lo suelta. **Solo para lo que necesita red:** lo que funciona con la cola de sincronización no se ata nunca.
+- **`renderAreaTabs({ …, layout: 'columns' })`** y `countText` en cada pestaña: etapas con su cifra.
+  - En el móvil sigue siendo la tira.
+  - Desde 1024 px, una columna por etapa con la cifra grande y lo que cuenta.
+  - Sin `layout`, todo queda igual que antes.
+
 ## Muestra y pruebas
 
 ```text

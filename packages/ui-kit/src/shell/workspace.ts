@@ -67,6 +67,8 @@ export interface AreaTab {
   color?: string | null;
   /** Pendientes del área. */
   count?: number;
+  /** Qué cuenta la cifra («3 por cobrar»); por defecto «{n} pendientes». Se lee siempre y, en columnas, también se ve. */
+  countText?: string;
   /** Pestaña especial (p. ej. «General»): borde discontinuo. */
   general?: boolean;
   attrs?: HookAttrs;
@@ -78,11 +80,17 @@ export interface AreaTabsOptions {
   /** Botones antes de las pestañas (`.tabtool`, p. ej. gestionar áreas). */
   leading?: Child[];
   attrs?: HookAttrs;
+  /**
+   * `columns` (etapas con su cifra, MUELA-075 pieza 15): en el móvil sigue siendo la tira; desde 1024 px, una columna por
+   * etapa con la cifra grande y lo que cuenta escrito. Por defecto `strip`, igual que siempre.
+   */
+  layout?: 'strip' | 'columns';
 }
 
-/** Pestañas de área desplazables en horizontal. */
+/** Pestañas de área desplazables en horizontal (o en columnas en escritorio, con `layout: 'columns'`). */
 export function renderAreaTabs(options: AreaTabsOptions): HTMLElement {
-  return el('div', { class: 'tabstrip', role: 'group', 'aria-label': options.label, ...(options.attrs ?? {}) },
+  const columns = options.layout === 'columns';
+  return el('div', { class: cls('tabstrip', columns && 'columns'), role: 'group', 'aria-label': options.label, ...(options.attrs ?? {}) },
     ...(options.leading ?? []),
     ...options.items.map((tab) => el('button', {
       type: 'button',
@@ -90,7 +98,11 @@ export function renderAreaTabs(options: AreaTabsOptions): HTMLElement {
       style: tab.color ? itemColorStyle(tab.color) : null,
       'aria-pressed': String(!!tab.active),
       ...(tab.attrs ?? {}),
-    }, tab.label, tab.count ? el('span', { class: 'tabcount', 'aria-label': `${tab.count} pendientes` }, String(tab.count)) : null)),
+    }, tab.label,
+    columns
+      ? el('span', { class: 'tabcount', 'aria-label': tab.countText ?? `${tab.count ?? 0} pendientes` }, String(tab.count ?? 0))
+      : tab.count ? el('span', { class: 'tabcount', 'aria-label': tab.countText ?? `${tab.count} pendientes` }, String(tab.count)) : null,
+    columns && tab.countText ? el('span', { class: 'tabcount-text', 'aria-hidden': 'true' }, tab.countText) : null)),
   );
 }
 

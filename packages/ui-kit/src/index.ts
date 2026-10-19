@@ -44,6 +44,14 @@ export { createQuantityField, parseQuantity, formatQuantity, type QuantityField,
 export { openImportSheet, createJsonSource, renderImportHeader, renderImportLines, renderImportTaxes, renderImportReconciliation, renderSchemaErrors, formatMoney, TAX_TYPE_LABELS, type ImportPreviewDocument, type ImportPreviewRecalc, type ImportParseResult, type ImportSheetOptions, type ImportSheet, type JsonSource, type SchemaErrorLike } from './import/import-preview.ts';
 export { renderPrintPage, createPrintView, printElement, type PrintPageSpec, type PrintSection, type PrintGroup, type PrintItem, type PrintChip, type PrintView, type PrintViewOptions } from './print/print-page.ts';
 export { createSortableList, positionBetween, renumber, type Sortable, type SortableOptions } from './sortable.ts';
+export { deadlineText, deadlineInfo, type DeadlineInfo, type DeadlineOptions } from './fields/deadline.ts';
+export { renderMedal, initialsOf, type MedalOptions } from './pieces/medal.ts';
+export { renderStages, stageStates, type Stage, type StageState, type StagesOptions } from './pieces/stages.ts';
+export { renderGroups, worstOf, type Group, type GroupsOptions, type GroupsView, type Tone } from './pieces/groups.ts';
+export { renderStats, type Stat } from './pieces/stats.ts';
+export { renderChecks, type CheckItem, type ChecksOptions } from './pieces/checks.ts';
+export { renderTile, type TileOptions } from './pieces/tile.ts';
+export { bindOnline, type OnlineOptions } from './pieces/online.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';
 export { installBackNavigation, trackOverlay, type BackNavigationOptions, type OverlayHandle } from './shell/back-navigation.ts';
