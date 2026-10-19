@@ -313,14 +313,20 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
   const lineForm = (line: LocalInvoiceLine | null) => renderLineForm(client, invoice, line, lines.length);
   // Orden manual (decisión del usuario, TABLÓN): con dos o más artículos y permiso de edición, lista reordenable del kit.
   // `position` se renumera 0..n-1 y solo se envían las filas que cambian; no hay unicidad por factura, así que no choca.
-  const lineRow = (l: LocalInvoiceLine) => el('div', { class: 'line-row', 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
+  const canLink = canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada';
+  const openArticle = (l: LocalInvoiceLine) => openArticleSheet(ctx, invoice, l, mirror);
+  const lineRow = (l: LocalInvoiceLine) => el('div', { class: `line-row${linksEnabled() && !l.item_id ? ' inv-line-free' : ''}`, 'data-feedback-id': 'invoices.facturas.ficha.articulos.fila', 'data-feedback-label': 'Artículo', dataset: { id: l.id } },
     el('div', { class: 'line-main' }, el('span', { class: 'line-desc', 'data-feedback-ignore': '' }, lineName(l)),
       (linksEnabled() && l.item_id ? l.item_source : l.label_source) === 'recordado' ? el('span', { class: 'chip', title: 'Puesto solo: lo recordaba de otra factura de este proveedor' }, 'recordado') : null,
       l.item_type ? el('span', { class: 'hint' }, ' · ' + (ITEM_TYPE_LABELS[l.item_type] ?? l.item_type)) : null, l._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null,
       // La descripción de la factura (la que vale fiscalmente) sigue a la vista bajo «Mi nombre».
       lineName(l) !== l.description ? el('span', { class: 'hint line-original', 'data-feedback-ignore': '' }, `En la factura: ${l.description}`) : null,
       // R4: con el enlace encendido, cómo entra al inventario («1 saco = 25 kg → Despensa»)
-      linksEnabled() && l.item_id ? el('span', { class: 'hint line-stock', 'data-feedback-ignore': '' }, stockText(l)) : null),
+      linksEnabled() && l.item_id ? el('span', { class: 'hint line-stock', 'data-feedback-ignore': '' }, stockText(l)) : null,
+      // Tanda 27: la línea sin artículo lo dice y se toca para elegirlo
+      linksEnabled() && !l.item_id ? (canLink
+        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.sin_articulo', 'data-feedback-label': 'Elegir artículo', class: 'linkbtn inv-line-pick', type: 'button', 'aria-label': `Elegir el artículo de ${l.description}`, onclick: () => openArticle(l) }, 'Sin artículo: no entra al inventario. Toca para elegirlo.')
+        : el('span', { class: 'hint' }, 'Sin artículo: no entra al inventario.')) : null),
     el('div', { class: 'line-nums' },
       el('span', { 'data-feedback-ignore': '' }, l.quantity === null ? '—' : `${Number(l.quantity)} ${l.unit ?? ''}`.trim()),
       el('strong', { 'data-feedback-ignore': '' }, eur(l.net_amount)),
@@ -330,7 +336,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
       // «Mi nombre»: también en una factura validada (no la devuelve a revisión).
       canEdit && invoice.status !== 'anulada' && invoice.status !== 'archivada' ? (linksEnabled()
         // R4: «Artículo» sustituye a «Mi nombre» (el texto sin artículo sigue siendo posible)
-        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.articulo', 'data-feedback-label': 'Artículo', class: 'linkbtn', type: 'button', 'aria-label': `Artículo para ${l.description}`, onclick: () => replace(lineEditor, articleForm(client, invoice, l, (id) => mirror.supplierById.get(id)?.name ?? null, () => replace(lineEditor))) }, 'Artículo')
+        ? el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.articulo', 'data-feedback-label': 'Artículo', class: 'linkbtn', type: 'button', 'aria-label': `${l.item_id ? 'Cambiar el artículo de' : 'Artículo para'} ${l.description}`, onclick: () => openArticle(l) }, l.item_id ? 'Cambiar' : 'Artículo')
         : el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.mi_nombre', 'data-feedback-label': 'Mi nombre', class: 'linkbtn', type: 'button', 'aria-label': `Mi nombre para ${l.description}`, onclick: () => replace(lineEditor, labelForm(client, l, () => replace(lineEditor))) }, 'Mi nombre')) : null,
     ),
   );
@@ -345,7 +351,7 @@ function renderInvoice(ctx: ViewContext, invoice: LocalInvoice, mirror: Mirror):
         },
       }).element
       : el('div', { class: 'list plain-lines', id: 'invoiceLines' }, ...lines.map(lineRow));
-  const linesBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.articulos', feedbackLabel: 'Artículos' }, 'Artículos', String(lines.length), true,
+  const linesBlock = fbBlock({ feedbackId: 'invoices.facturas.ficha.articulos', feedbackLabel: 'Artículos' }, 'Artículos', linksEnabled() ? articlesSummary(lines) : String(lines.length), true,
     linesView,
     editable ? el('div', { class: 'btnrow' }, el('button', { 'data-feedback-id': 'invoices.facturas.ficha.articulos.anadir', 'data-feedback-label': 'Añadir artículo', class: 'softbtn', type: 'button', id: 'addLine', onclick: () => replace(lineEditor, lineForm(null)) }, icon('plus', 18), 'Añadir artículo')) : null,
   );
@@ -636,6 +642,31 @@ function renderLineForm(client: SyncClient, invoice: LocalInvoice, line: LocalIn
 
 /** «Mi nombre» de una línea, en una sola casilla (también en facturas validadas: no las devuelve a revisión). */
 /** R4: cómo entra una línea enlazada al inventario: «2 saco = 50 kg → Despensa», «Ya entró desde la compra de Food». */
+/** «3 artículos · 2 entran al inventario · 1 sin artículo» (tanda 27). */
+function articlesSummary(lines: LocalInvoiceLine[]): string {
+  const live = lines.filter((l) => !l.deleted_at);
+  const linked = live.filter((l) => l.item_id);
+  const entering = linked.filter((l) => !l.entered_movement_id && l.quantity !== null && !!spaceName(l.space_id ?? linkedItem(l.item_id)?.defaultSpaceId ?? null)).length;
+  const free = live.length - linked.length;
+  return [`${live.length} artículo${live.length === 1 ? '' : 's'}`, `${entering} entra${entering === 1 ? '' : 'n'} al inventario`, free ? `${free} sin artículo` : null].filter(Boolean).join(' · ');
+}
+
+/**
+ * «Artículo» de una línea en su hoja (tanda 27): sustituye a la ficha mientras se elige y, al guardar, quitar o cerrar,
+ * vuelve a la ficha (como la hoja de asignar).
+ */
+function openArticleSheet(ctx: ViewContext, invoice: LocalInvoice, line: LocalInvoiceLine, mirror: Mirror): void {
+  let back = true;
+  const done = () => { void closeSheet(true); };
+  const form = articleForm(ctx.client, invoice, line, (id) => mirror.supplierById.get(id)?.name ?? null, done);
+  openSheet({
+    title: `Artículo · ${lineName(line)}`,
+    body: form,
+    panelAttrs: { 'data-feedback-id': 'invoices.facturas.articulo.hoja', 'data-feedback-label': 'Hoja de artículo' },
+    onClose: () => { if (back) { back = false; void openInvoice(ctx, invoice.id); } },
+  });
+}
+
 function stockText(l: LocalInvoiceLine): string {
   const item = linkedItem(l.item_id);
   if (!item) return 'Artículo enlazado';

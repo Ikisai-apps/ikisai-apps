@@ -110,6 +110,14 @@ export async function linkLine(client: SyncClient, lineId: string, itemId: strin
   return 'saved';
 }
 
+/** Quita el enlace aplazado de una línea («Deshacer» de un enlace que aún no ha salido). Devuelve si había uno. */
+export function dropDeferred(lineId: string): boolean {
+  const list = readDeferred();
+  if (!list.some((d) => d.lineId === lineId)) return false;
+  writeDeferred(list.filter((d) => d.lineId !== lineId));
+  return true;
+}
+
 async function commitLine(client: SyncClient, lineId: string, fields: Record<string, unknown>): Promise<void> {
   const line = (await client.list(INVOICE_LINES)).find((l) => l.id === lineId);
   if (!line) return;

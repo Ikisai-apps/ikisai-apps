@@ -41,16 +41,27 @@ export async function commitWithUndo(client: SyncClient, change: UndoableChange,
     toast(describeError(error));
     return false;
   }
+  offerUndo(client, change, message, undoneMessage, onUndone);
+  return true;
+}
+
+/**
+ * Solo el aviso con «Deshacer», para un cambio que ya se ha guardado por otro camino (p. ej. el enlace de un artículo).
+ * `beforeUndo` hace lo propio antes (quitar un enlace aplazado); si devuelve true, no hace falta enviar nada.
+ */
+export function offerUndo(client: SyncClient, change: Pick<UndoableChange, 'table' | 'id' | 'before'>, message: string, undoneMessage: string, onUndone?: () => void, beforeUndo?: () => boolean): void {
   const offline = client.status().network === 'offline';
   quietUntil = Date.now() + UNDO_MS + 4000;
   toastWithAction(offline ? `${message} Se sincronizará cuando haya red.` : message, {
     label: 'Deshacer',
-    onClick: () => void undo(client, change, undoneMessage).then((ok) => { if (ok) onUndone?.(); }),
+    onClick: () => {
+      if (beforeUndo?.()) { toast(undoneMessage); onUndone?.(); return; }
+      void undo(client, change, undoneMessage).then((ok) => { if (ok) onUndone?.(); });
+    },
   }, UNDO_MS);
-  return true;
 }
 
-async function undo(client: SyncClient, change: UndoableChange, undoneMessage: string): Promise<boolean> {
+async function undo(client: SyncClient, change: Pick<UndoableChange, 'table' | 'id' | 'before'>, undoneMessage: string): Promise<boolean> {
   quietUntil = Date.now() + 8000;
   try {
     const row = (await client.get(change.table, change.id)) as { revision: number } | null;

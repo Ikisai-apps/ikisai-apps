@@ -2565,6 +2565,8 @@ test('R4 · PR 3: con el enlace encendido, «Artículo» enlaza la línea (conve
     await f.locator('#articleForm .item-search').fill('harina');
     await f.locator(`#articleForm .item-result[data-item-id="${flour}"]`).click();
     await f.locator('#articleConversion').fill('25');
+    // Tanda 27: en su hoja, antes de guardar dice qué entra (y se pone al día con la conversión)
+    await expect(f.locator('#articlePreview')).toHaveText('Entra al inventario: 50 kg en Despensa R4, con fecha 5 oct 2026.');
     await f.locator('#saveArticle').click();
     await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === flourLine), { timeout: 20_000 }).toMatchObject({ item_id: flour, item_factor: 25, space_id: null, entered_movement_id: null });
     expect(api.resourceRows('resources.item_units')).toEqual(expect.arrayContaining([expect.objectContaining({ item_id: flour, unit: 'saco', factor: 25, supplier_id: supplierId })]));
@@ -2573,6 +2575,18 @@ test('R4 · PR 3: con el enlace encendido, «Artículo» enlaza la línea (conve
     await expect(row.locator('.line-stock')).toHaveText('2 saco = 50 kg → Despensa R4');
     // Sigue validada: cambiar el enlace no la devuelve a revisión
     expect(api.rows('invoices.invoices').find((i) => i.id === invoiceId)!.status).toBe('validada');
+    // Tanda 27: el resumen del bloque y «Deshacer» del enlace (vuelve a como estaba y se rehace)
+    await expect(f.locator('[data-feedback-id="invoices.facturas.ficha.articulos"] > summary')).toContainText('2 artículos · 1 entra al inventario · 1 sin artículo');
+    await expect(f.locator('.line-row', { hasText: 'SAL MARINA 5KG' })).toHaveClass(/inv-line-free/);
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === flourLine)?.item_id ?? null, { timeout: 20_000 }).toBeNull();
+    await f.getByRole('button', { name: 'Artículo para HT25 HARINA TRIGO SACO 25KG' }).click({ timeout: 20_000 });
+    await f.locator('#articleForm .item-search').fill('harina');
+    await f.locator(`#articleForm .item-result[data-item-id="${flour}"]`).click();
+    await expect(f.locator('#articleEquivalence')).toHaveText('2 saco = 50 kg');
+    await f.locator('#saveArticle').click();
+    await expect.poll(() => api.rows('invoices.invoice_lines').find((l) => l.id === flourLine)?.item_id, { timeout: 20_000 }).toBe(flour);
+    await expect(f.getByRole('button', { name: 'Cambiar el artículo de HT25 HARINA TRIGO SACO 25KG' })).toBeVisible({ timeout: 20_000 });
 
     // Sal: viene en kg (la base) y Food ya la metió al comprarla
     await f.getByRole('button', { name: 'Artículo para SAL MARINA 5KG' }).click();
