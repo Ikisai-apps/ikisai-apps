@@ -1750,3 +1750,24 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
     - `#toolSuppliers`, que es un enlace;
     - `#toolSync`, `#toolInstall` y `#toolAccount`.
   - **Ids de dentro:** no cambian (`#driveRun`, `#resourceLinksSwitch`, `#logoutHome`…).
+
+#### 16.21.2 Interfaz, parte 2: Emitidas y Gestoría
+- **Emitidas** (`app/issued-state.ts`, con pruebas):
+  - **Recorrido:** Emitida · Enviada · Por cobrar · Cobrada · En gestoría.
+    - La etapa «Enviada» la da `sent_at`; «En gestoría», que la emitida esté en el `manifest.issued` de una entrega.
+    - La antigüedad («más de 30 días») cuenta desde el envío o, si no se envió, desde la emisión. No se dice «vencida»: las emitidas no tienen vencimiento.
+  - **Buzones:** Por cobrar (al abrir) · Cobradas · Borradores · Todas (sin anuladas) · Más. `#issuedFilter` es ahora el contenedor (`[data-box]`).
+  - **Grupos por cliente:** «Te debe…» sale con la regla de Booking.
+  - **En la fila:** la reserva enlazada (`https://booking.ikisai.com/#/reservas/<id>`) y «Cobrada» con su hoja (fecha real y medio) y «Deshacer».
+  - **Búsqueda:** también por el código de la reserva.
+  - **En la ficha:**
+    - «Marcar cobrada» con fecha y medio, y «Marcar enviada»;
+    - lo facturado y lo cobrado de su reserva (`reservationCollected`, la cifra de Booking).
+- **Gestoría** (`app/delivery-state.ts`, con pruebas):
+  - **Periodo:** en un toque (`#periodPicker [data-period]`, más el año).
+  - **Carpeta del periodo** (`#deliveryFolder`):
+    - el recorrido Validar · Preparar · Enviar · Entregada · Archivada y el sello (`#deliverySeal`);
+    - el ticket (`#deliveryTicket`), «Antes de enviarla» (`#fiscalAlerts`) y «Qué cambió» (`#deliveryChanges`);
+    - «Preparar entrega» (`#prepareExport`) y «Descargar» (`#downloadLatest`, una hoja con las descargas y la huella);
+    - «Todo el detalle» plegado (`#fiscalSummary`, `#issuedSummary` y `#vatBalance` dentro).
+  - **Entregas del año** (`#exportsList`), por trimestre: cada trimestre despliega todas sus entregas.
