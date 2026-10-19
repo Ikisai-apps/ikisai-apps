@@ -130,12 +130,18 @@
 .banner.ok{background:var(--ok-soft);color:var(--ok)}
 .banner .linkbtn{margin-left:auto;flex:none}
 .banners:empty{display:none}
-.toast{position:fixed;z-index:var(--z-toast);left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(15px);background:#1f2a22;color:#fff;padding:10px 14px;border-radius:14px;opacity:0;pointer-events:none;transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);box-shadow:var(--shadow-3);font-size:13.5px;max-width:min(92vw,520px);text-align:center}
+.toast{position:fixed;z-index:var(--z-toast);left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(15px);background:#1f2a22;color:#fff;padding:10px 14px;border-radius:14px;opacity:0;pointer-events:none;transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);box-shadow:var(--shadow-3);font-size:13.5px;width:max-content;max-width:min(92vw,520px);text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.top{bottom:auto;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%) translateY(-15px)}
 .toast.top.show{transform:translateX(-50%) translateY(0)}
-.toast.actionable{pointer-events:auto;display:flex;align-items:center;gap:12px;text-align:left}
-.toast button{border:0;background:rgba(255,255,255,.14);color:#fff;font-weight:800;padding:7px 11px;border-radius:10px;white-space:nowrap}
+.toast.actionable{pointer-events:auto;display:flex;align-items:center;gap:12px;text-align:left;padding:6px 6px 6px 14px}
+/* Varios avisos vivos (uno con «Deshacer» y otro después): una fila cada uno, el más antiguo arriba. */
+.toast.stacked{display:flex;flex-direction:column;align-items:stretch;gap:4px;text-align:left}
+.toast.stacked:not(.actionable){padding:10px 14px}
+.toast-item{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px}
+.toast.stacked:not(.actionable) .toast-item{min-height:0}
+/* El botón llega a 46 px de alto (objetivo táctil, MUELA-075 K21). */
+.toast button{border:0;background:rgba(255,255,255,.14);color:#fff;font-weight:800;min-height:46px;padding:0 14px;border-radius:10px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;flex:none}
 :root[data-theme="dark"] .toast{background:#ece5d8;color:#1a1915}
 :root[data-theme="dark"] .toast button{background:rgba(0,0,0,.08);color:#1a1915}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .toast{background:#ece5d8;color:#1a1915}:root:not([data-theme="light"]) .toast button{background:rgba(0,0,0,.08);color:#1a1915}}

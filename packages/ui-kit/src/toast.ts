@@ -2,7 +2,15 @@ import { el, replace } from './dom.ts';
 import { kitLayer } from './layer.ts';
 
 let node: HTMLDivElement | null = null;
-let timer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Lo que enseña el aviso. Los que llevan acción («Deshacer») viven cada uno su tiempo y ningún aviso posterior se los
+ * lleva: se apilan, el más antiguo arriba. Un aviso sin acción sustituye al anterior sin acción, como siempre.
+ */
+interface Entry { message: string; action: ToastAction | null; timer: ReturnType<typeof setTimeout> }
+let entries: Entry[] = [];
+/** Como mucho, tantos avisos con acción a la vez; el más antiguo cede su sitio. */
+const MAX_ACTIONS = 3;
 
 /** Con una hoja, un diálogo o la paleta abiertos, el aviso sube a la parte alta para no tapar su contenido ni su pie. */
 function overlayOpen(): boolean {
@@ -39,14 +47,38 @@ function host(): HTMLDivElement {
   return node;
 }
 
+function drop(entry: Entry): void {
+  clearTimeout(entry.timer);
+  entries = entries.filter((e) => e !== entry);
+  paint();
+}
+
+function paint(): void {
+  const box = host();
+  if (!entries.length) { box.classList.remove('show'); return; }
+  const actionButton = (e: Entry) => el('button', { type: 'button', onclick: () => { drop(e); e.action!.onClick(); } }, e.action!.label);
+  const only = entries.length === 1 ? entries[0]! : null;
+  box.classList.toggle('actionable', entries.some((e) => e.action));
+  box.classList.toggle('stacked', !only);
+  // Uno solo: lo de siempre (texto, o texto y botón). Varios: una fila por aviso.
+  if (only) replace(box, ...(only.action ? [el('span', null, only.message), actionButton(only)] : [only.message]));
+  else replace(box, ...entries.map((e) => el('div', { class: 'toast-item' }, el('span', null, e.message), e.action ? actionButton(e) : null)));
+  box.classList.add('show');
+}
+
+function push(message: string, action: ToastAction | null, ms: number): void {
+  // El aviso sin acción anterior se va; los que tienen acción se quedan (hasta `MAX_ACTIONS`).
+  for (const e of entries.filter((x) => !x.action)) clearTimeout(e.timer);
+  entries = entries.filter((x) => x.action);
+  if (action) while (entries.length >= MAX_ACTIONS) { clearTimeout(entries[0]!.timer); entries.shift(); }
+  const entry: Entry = { message, action, timer: setTimeout(() => drop(entry), ms) };
+  entries.push(entry);
+  paint();
+}
+
 /** Aviso breve, no bloqueante, anunciado a lectores de pantalla. */
 export function toast(message: string, ms = 3200): void {
-  const box = host();
-  box.classList.remove('actionable');
-  replace(box, message);
-  box.classList.add('show');
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => box.classList.remove('show'), ms);
+  push(message, null, ms);
 }
 
 export interface ToastAction {
@@ -54,19 +86,17 @@ export interface ToastAction {
   onClick(): void;
 }
 
-/** Aviso con una acción (por ejemplo «Deshacer»); se oculta al pulsarla o al pasar el tiempo. */
+/**
+ * Aviso con una acción (por ejemplo «Deshacer»); se oculta al pulsarla o al pasar el tiempo. Otro aviso mientras tanto
+ * no le quita el botón: se apila con él.
+ */
 export function toastWithAction(message: string, action: ToastAction, ms = 6000): void {
-  const box = host();
-  box.classList.add('actionable');
-  const button = el('button', { type: 'button', onclick: () => { action.onClick(); hideToast(); } }, action.label);
-  replace(box, el('span', null, message), button);
-  box.classList.add('show');
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(hideToast, ms);
+  push(message, action, ms);
 }
 
+/** Quita todos los avisos (también los que tienen acción). */
 export function hideToast(): void {
+  for (const e of entries) clearTimeout(e.timer);
+  entries = [];
   node?.classList.remove('show');
-  if (timer) clearTimeout(timer);
-  timer = null;
 }

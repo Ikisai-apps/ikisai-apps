@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.41.0: conflictos con «Reintentar con lo mío» como principal y comparación por contenido; avisos con «Deshacer» que se apilan y botón de 46 px; contraste AA de `--muted`, `.ok` y `.alert`.
 - v0.40.0: `createItemCatalog` tiene `refresh()`: repinta con los datos de ahora sin tocar el filtro.
 - v0.39.0: `createSpacePicker` acepta `texts` (vacío, buscador y marcas) para usarlo con otras filas en forma de espacio, como los oficios de Tasks; sin ellos, igual que antes.
 - v0.38.1: `createCountSession`: «Revisar y cerrar», la barra y «Sin contar» se actualizan también con el foco en una casilla.

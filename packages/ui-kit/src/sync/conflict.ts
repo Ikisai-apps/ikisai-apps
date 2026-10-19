@@ -51,6 +51,16 @@ function defaultShow(field: string, value: unknown): Child {
   return String(value);
 }
 
+/** Mismo valor por contenido: una lista o un objeto que llega del servidor es otro objeto aunque no haya cambiado. */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) { const bb = b as unknown[]; return a.length === bb.length && a.every((v, i) => sameValue(v, bb[i])); }
+  const ka = Object.keys(a as object), kb = Object.keys(b as object);
+  return ka.length === kb.length && ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 const text = (value: unknown): string => (typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '');
 
 /** Nombre de la fila según sus datos (`code`/`number` · `name`/`title`), o vacío si no tiene ninguno. */
@@ -85,7 +95,7 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   const labels = options.fieldLabels ?? {};
   const op = conflict.operation;
   const mine: Record<string, unknown> = op.op === 'update' ? op.fields : {};
-  const changedByServer = Object.keys(conflict.current).filter((k) => !SYSTEM_COLUMNS.has(k) && conflict.base && conflict.base[k] !== conflict.current[k]);
+  const changedByServer = Object.keys(conflict.current).filter((k) => !SYSTEM_COLUMNS.has(k) && conflict.base && !sameValue(conflict.base[k], conflict.current[k]));
   const fields = Array.from(new Set([...Object.keys(mine), ...conflict.overlapping, ...changedByServer]));
   const picks = new Map<string, 'mine' | 'theirs'>();
   let merging = false;
@@ -148,9 +158,10 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
 
   function choices(): HTMLElement {
     if (!merging) {
+      // La principal no puede ser la que tira lo tuyo: primero «Reintentar con lo mío»; lo del servidor, al lado y sin destacar.
       return el('div', { class: 'choices' },
-        el('button', { class: 'primary', type: 'button', 'data-choice': 'theirs', title: kt('Descarta lo tuyo y deja lo que hay en el servidor.'), ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, kt(CONFLICT_MARKS.theirs[1])),
-        el('button', { class: 'ghost', type: 'button', 'data-choice': 'mine', title: kt('Vuelve a enviar tu cambio sobre la versión del servidor.'), ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, kt(CONFLICT_MARKS.mine[1])),
+        el('button', { class: 'primary', type: 'button', 'data-choice': 'mine', title: kt('Vuelve a enviar tu cambio sobre la versión del servidor.'), ...mark('mine'), onclick: () => void resolve({ choice: 'mine' }) }, kt(CONFLICT_MARKS.mine[1])),
+        el('button', { class: 'ghost', type: 'button', 'data-choice': 'theirs', title: kt('Descarta lo tuyo y deja lo que hay en el servidor.'), ...mark('theirs'), onclick: () => void resolve({ choice: 'theirs' }) }, kt(CONFLICT_MARKS.theirs[1])),
         fields.length ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'diff', 'aria-expanded': String(showDiff), ...mark('diff'), onclick: () => { showDiff = !showDiff; repaint(); } }, showDiff ? kt('Ocultar diferencias') : kt(CONFLICT_MARKS.diff[1])) : null,
         op.op === 'update' ? el('button', { class: 'ghost', type: 'button', 'data-choice': 'merge', ...mark('merge'), onclick: () => { merging = true; repaint(); } }, kt(CONFLICT_MARKS.merge[1])) : null,
       );

@@ -88,6 +88,7 @@ import {
   statusBanners,
   toast,
   toastWithAction,
+  hideToast,
   toggleTheme,
   createItemPicker,
   createItemCatalog,
@@ -296,8 +297,8 @@ const overlays = section('overlays', 'Hoja inferior y diálogo', 'Una sola hoja 
 const conflictSample: PendingConflict = {
   requestId: 'req-1',
   operation: { op: 'update', table: 'invoices.suppliers', id: 'sup-1', expectedRevision: 3, fields: { name: 'Ferretería Sierra S.L.', notes: 'Pedir siempre con albarán.' } },
-  base: { id: 'sup-1', revision: 3, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-05T10:00:00Z', updated_by: 'u1', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B12345678', notes: '' },
-  current: { id: 'sup-1', revision: 4, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-06T08:00:00Z', updated_by: 'u2', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B87654321', notes: 'Horario de tarde.' },
+  base: { id: 'sup-1', revision: 3, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-05T10:00:00Z', updated_by: 'u1', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B12345678', notes: '', tags: ['taller', 'urgente'], address: { city: 'Jaén', zip: '23001' } },
+  current: { id: 'sup-1', revision: 4, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-06T08:00:00Z', updated_by: 'u2', deleted_at: null, name: 'Ferretería Sierra', tax_id: 'B87654321', notes: 'Horario de tarde.', tags: ['taller', 'urgente'], address: { zip: '23001', city: 'Jaén' } },
   overlapping: ['notes'],
   detectedAt: new Date().toISOString(),
 };
@@ -1393,7 +1394,7 @@ const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalL
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
