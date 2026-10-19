@@ -1,5 +1,22 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.42.0 · 19 de octubre de 2026
+
+**Piezas comunes, lote A** (MUELA-075, tanda 27): piezas pequeñas sin estado, para que las apps las usen al rehacerse. No cambia nada de lo que ya había. Detalle de cada una en el README («Piezas comunes»).
+
+- **Nuevas:**
+  - `renderMedal` e `initialsOf` (medallón);
+  - `renderStages` y `stageStates` (recorrido, con `mini`);
+  - `renderGroups` y `worstOf` (grupos con resumen de lo peor, también por etapa con la acción en la fila);
+  - `deadlineText` y `deadlineInfo` (plazo en texto);
+  - `renderStats` (cifras de color), `renderChecks` (veredicto y comprobaciones) y `renderTile` (baldosa con relleno, con `levelText` obligatorio);
+  - `bindOnline` (desactivado con el motivo sin red).
+- **Ampliada:** `renderAreaTabs` admite `layout: 'columns'` y `countText`, para las etapas con su cifra. Sin la opción, el DOM es el de siempre.
+- **Accesibilidad:** objetivos de 46 px (64 px en las etapas tocables) y el estado siempre en texto. El medallón es decorativo salvo con `label`.
+- **Prefijos:** `medal-`, `stage-`, `worst-`, `stat-`, `check-`, `tile-` y `offline-`. Pasa `v45`.
+- **Demo:** sección `#pieces`. **Pruebas:** `v47` (funciones en Node, piezas en la demo y sin desbordar en el móvil).
+- El catálogo de funciones conoce las marcas de `renderStages` (`.etapa`) y `renderGroups` (`.grupo`, `.filtro`).
+
 ## 0.41.0 · 19 de octubre de 2026
 
 **Tres arreglos de la revisión de La Muela (MUELA-075, tanda 26).** No cambian el diseño.

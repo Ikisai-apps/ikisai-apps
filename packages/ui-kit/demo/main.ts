@@ -102,6 +102,15 @@ import {
   DEFAULT_ITEM_KINDS,
   type ItemPick,
   type ItemRow,
+  renderMedal,
+  listRow,
+  renderStages,
+  renderGroups,
+  renderStats,
+  renderChecks,
+  renderTile,
+  bindOnline,
+  deadlineText,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1393,17 +1402,93 @@ const proposalSection = section('proposals', 'Propuestas (O1)', 'createProposalL
 
 const projectSection = section('projects', 'Tarjeta de proyecto', 'Anillo de progreso, pin, estrella de urgencia heredada, chips por familia, presupuesto (en rojo si se pasa), estado pendiente, tarjeta del sistema y color propio con tinta calculada.', projectHost);
 
+// --- Piezas comunes (MUELA-075, lote A) ---------------------------------------------------------------------
+const PIECE_STAGES = [{ key: 'captacion', label: 'Captación' }, { key: 'senal', label: 'Señal' }, { key: 'preparacion', label: 'Preparación' }, { key: 'estancia', label: 'Estancia' }, { key: 'cierre', label: 'Cierre' }];
+const stageOut = el('output', { id: 'stagePicked' }, '—');
+const stagesHost = el('div', { id: 'stagesHost' },
+  renderStages({ label: 'Recorrido de la reserva', stages: PIECE_STAGES, current: 'preparacion', bad: ['preparacion'], caption: 'Siguiente: asignar las habitaciones', feedbackId: 'demo.reserva.recorrido', onPick: (key) => { stageOut.textContent = key; } }),
+  el('p', null, 'Etapa tocada: ', stageOut),
+  el('div', { id: 'stagesStatic' }, renderStages({ label: 'Recorrido de la factura', stages: PIECE_STAGES.slice(0, 4), current: 1 })),
+  el('div', { id: 'stagesStopped' }, renderStages({ label: 'Recorrido de la reserva', stages: PIECE_STAGES, current: null, stopText: 'Cancelada: el recorrido se paró.' })),
+  el('div', { class: 'demo-row', id: 'stagesMini' }, el('span', null, 'FVR_2026_014'), renderStages({ label: 'Recorrido de la factura', stages: PIECE_STAGES.slice(0, 4), current: 2, mini: true })),
+);
+type Obligation = { id: string; name: string; due: string; tone: 'alert' | 'warn' | 'ok' };
+const OBLIGATIONS: Record<string, Obligation[]> = {
+  fiscal: [{ id: 'o1', name: 'Modelo 303', due: '2026-10-20', tone: 'alert' }, { id: 'o2', name: 'Modelo 111', due: '2026-10-30', tone: 'warn' }],
+  seguros: [{ id: 'o3', name: 'Póliza de la casa', due: '2027-02-01', tone: 'ok' }],
+  personas: [],
+};
+const groupsView = renderGroups<Obligation>({
+  label: 'Obligaciones', feedbackId: 'demo.obligaciones', chips: true, worstFirst: true, toneOf: (o) => o.tone,
+  groups: [
+    { key: 'seguros', title: 'Seguros', medal: { color: '#497044' }, items: OBLIGATIONS.seguros! },
+    { key: 'fiscal', title: 'Fiscal', medal: { color: '#b3412a' }, items: OBLIGATIONS.fiscal!, summary: '1 vencida · 1 vence pronto' },
+    { key: 'personas', title: 'Personas', items: OBLIGATIONS.personas! },
+  ],
+  row: (o) => listRow({ id: o.id, title: o.name, meta: [deadlineText(o.due, { now: new Date('2026-10-19T10:00:00Z'), noLeft: false })] }),
+});
+groupsView.element.id = 'groupsHost';
+const statsHost = el('div', { id: 'statsHost' }, renderStats([
+  { value: 7, label: 'Pendientes', hint: 'de 12' },
+  { value: 2, label: 'Vencidas', tone: 'alert', onClick: () => toast('Filtrar vencidas'), feedbackId: 'demo.cifras.vencidas' },
+  { value: '64 %', label: 'Hecho', tone: 'ok' },
+  { value: 3, label: 'Vencen esta semana', tone: 'warn' },
+], { label: 'Resumen del proyecto' }));
+const checksHost = el('div', { id: 'checksHost', class: 'cardgrid' },
+  el('div', { class: 'card' }, renderChecks({ label: 'Comprobaciones del parte', items: [
+    { ok: true, text: 'Todas las personas tienen documento' },
+    { ok: false, text: 'Falta la fecha de nacimiento de 2 personas', detail: 'Ana López, Luis Pérez', action: { label: 'Completar', onClick: () => toast('Completar'), feedbackId: 'demo.parte.completar' } },
+    { ok: false, text: 'El parte vence hoy' },
+  ] })),
+  el('div', { class: 'card' }, renderChecks({ items: [{ ok: true, text: 'Menú cerrado' }, { ok: true, text: 'Alérgenos revisados' }] })),
+);
+const tilesHost = el('div', { id: 'tilesHost', style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px' },
+  renderTile({ title: 'Harina', value: '2 kg', levelText: 'Queda poco', level: { pct: 18, min: 50, tone: 'alert' }, medal: { name: 'Harina' }, onClick: () => toast('Harina'), feedbackId: 'demo.suministros.harina' }),
+  renderTile({ title: 'Aceite', value: '6 l', levelText: 'Va justo', level: { pct: 52, min: 50, tone: 'warn' }, icon: 'chef', onClick: () => toast('Aceite') }),
+  renderTile({ title: 'Sal', value: '4 kg', levelText: 'Bien', level: { pct: 90, min: 50, tone: 'ok' } }),
+);
+// Un cliente de mentira: el botón cambia la red.
+let demoNetwork = 'online';
+const demoNetListeners = new Set<(s: { network: string }) => void>();
+const demoClient = { status: () => ({ network: demoNetwork }), onStatus: (l: (s: { network: string }) => void) => { demoNetListeners.add(l); return () => demoNetListeners.delete(l); } };
+const onlineButton = el('button', { type: 'button', class: 'primary', id: 'onlineSend', onclick: () => toast('Enviado a la gestoría') }, 'Enviar a la gestoría');
+const localButton = el('button', { type: 'button', class: 'ghost', id: 'onlineLocal', onclick: () => toast('Guardado en este dispositivo') }, 'Marcar como pagada');
+bindOnline(onlineButton, { client: demoClient, reason: 'Enviar a la gestoría necesita conexión.', retry: () => toast('Reintentando…') });
+const onlineHost = el('div', { id: 'onlineHost' },
+  el('div', { class: 'demo-row' }, el('button', { type: 'button', class: 'ghost small', id: 'onlineToggle', onclick: () => { demoNetwork = demoNetwork === 'online' ? 'offline' : 'online'; demoNetListeners.forEach((l) => l({ network: demoNetwork })); } }, 'Cambiar la red')),
+  el('div', null, onlineButton), el('p', { class: 'hint' }, 'Lo que funciona sin red con la cola no se ata:'), localButton);
+const deadlineNow = new Date('2026-10-14T12:20:00+02:00');
+const deadlineHost = el('ul', { id: 'deadlineHost', style: 'overflow-wrap:anywhere' }, ...['2026-10-14T19:20:00+02:00', '2026-10-14T13:00:00+02:00', '2026-10-14', '2026-10-17', '2027-01-08', '2026-10-12T09:00:00+02:00'].map((d) => el('li', null, el('code', null, d), ' → ', deadlineText(d, { now: deadlineNow }))));
+const columnsHost = el('div', { id: 'areaColumns' }, renderAreaTabs({ label: 'Etapas de las reservas', layout: 'columns', items: [
+  { label: 'Captación', count: 4, countText: '4 por responder', active: true }, { label: 'Señal', count: 2, countText: '2 por cobrar' }, { label: 'Preparación', count: 0, countText: 'nada pendiente' }, { label: 'Estancia', count: 1, countText: '1 hoy' },
+] }));
+const piecesSection = section('pieces', 'Piezas comunes (lote A)', 'MUELA-075: medallón, recorrido (normal, sin tocar, parado y mini), grupos con lo peor y chips, cifras de color, comprobaciones, baldosa con relleno, desactivado sin red, plazo en texto y etapas con su cifra (columnas en escritorio).',
+  el('h3', null, 'Medallón'),
+  el('div', { class: 'demo-row', id: 'medalsHost' },
+    renderMedal({ name: 'Ana López' }), renderMedal({ name: 'Casa de la Muela', color: '#3f6d8e' }), renderMedal({ icon: 'chef', size: 40 }),
+    renderMedal({ image: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 10 10%22%3E%3Crect width=%2210%22 height=%2210%22 fill=%22%23c9a26b%22/%3E%3C/svg%3E', name: 'Foto', size: 72, label: 'Foto de la casa' }),
+    renderMedal({ image: '/no-existe.png', name: 'Luis Pérez' })),
+  el('h3', null, 'Recorrido'), stagesHost,
+  el('h3', null, 'Grupos con lo peor'), groupsView.element,
+  el('h3', null, 'Cifras de color'), statsHost,
+  el('h3', null, 'Comprobaciones'), checksHost,
+  el('h3', null, 'Baldosas'), tilesHost,
+  el('h3', null, 'Sin red'), onlineHost,
+  el('h3', null, 'Plazo en texto'), deadlineHost,
+  el('h3', null, 'Etapas con su cifra'), columnsHost,
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },
-  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#items', 'Artículos'], ['#inventory', 'Inventario'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
+  ...[['#tokens', 'Tokens'], ['#controls', 'Controles'], ['#cards', 'Tarjetas'], ['#status', 'Estado'], ['#shell', 'Login y shell'], ['#overlays', 'Hoja y diálogo'], ['#conflicts', 'Conflictos'], ['#list', 'Lista'], ['#theme', 'Tema y paleta'], ['#images', 'Fotos'], ['#calendar', 'Calendario'], ['#personcal', 'Calendario de persona'], ['#proposals', 'Propuestas'], ['#quantity', 'Cantidad'], ['#import', 'Importación'], ['#print', 'Imprimir'], ['#sortable', 'Reordenar'], ['#date', 'Fecha'], ['#labels', 'Etiquetas'], ['#items', 'Artículos'], ['#inventory', 'Inventario'], ['#pieces', 'Piezas'], ['#projects', 'Proyectos'], ['#money', 'Importes'], ['#workspace', 'Espacio de trabajo'], ['#agents', 'Agentes'], ['#color', 'Color'], ['#launcher', 'Lanzador'], ['#feedback', 'Feedback'], ['#i18n', 'Idiomas'], ['#portal', 'Portal']].map(([href, text]) => el('a', { href }, text)),
 );
 replace(document.getElementById('app')!,
   el('header', { class: 'demo-head' },
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
