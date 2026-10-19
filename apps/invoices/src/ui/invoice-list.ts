@@ -1,21 +1,30 @@
 /**
- * Facturas (API.md §9.2) · la lista: pestañas Recibidas · Emitidas, buscador, filtros y enlaces (`?filtro=`,
+ * Facturas (API.md §9.2) · la lista: pestañas Recibidas · Emitidas, buscador, buzones y enlaces (`?filtro=`,
  * `?compartido=`, `#/facturas/<id|código>`). La ficha y sus hojas viven en `invoices.ts`.
+ * Tanda 27 (MUELA-036 y 070):
+ * - buzones con su número e importe: Por resolver (al abrir, con «Sin datos» y «Por revisar») · Sin pagar · Validadas ·
+ *   Todas · Más (Drive, rectificativas sin enlazar, sin documento, archivadas, anuladas); los `?filtro=` llevan a su buzón;
+ * - grupos por proveedor, primero lo que pide algo; dentro, por fecha y con la fecha a la vista;
+ * - en cada factura, el recorrido mini con su frase, las dos etiquetas más graves y «+n», y «Confirmar pago» con «Deshacer»;
+ * - se ven 8 proveedores y 3 facturas de cada uno; la búsqueda mira todas.
  */
-import { closeSheet, el, icon, renderList, replace, toast, type ListRowSpec } from '@ikisai/ui-kit';
-import { periodOfDate } from '@ikisai/domain-invoices';
-import type { LocalInvoice } from '../app/client.ts';
-import { eur, loadMirror, monthKey, monthLabel, onAnyTable, shortDate, statusChipClass, statusText, type Mirror } from '../app/data.ts';
+import { closeSheet, el, icon, listRow, renderGroups, renderStages, replace, toast } from '@ikisai/ui-kit';
+import { INVOICES, type LocalInvoice } from '../app/client.ts';
+import { eur, loadMirror, onAnyTable, shortDate, supplierName, todayIso, type Mirror } from '../app/data.ts';
 import { extractionQueue } from '../app/extract.ts';
 import { takeSharedDocuments, takeSharedText } from '../app/ai-share.ts';
-import { fbRows } from './feedback.ts';
-import { select } from './common.ts';
+import { INVOICE_STAGES, MAILBOXES, MORE_MAILBOXES, RESOLVE_PILLS, groupSummary, inMailbox, mailboxFromFilter, supplierGroups, type Mailbox, type ResolvePill } from '../app/work-state.ts';
+import { mirrorRows, type MirrorRow } from '../app/work-mirror.ts';
 import { openBatchUpload } from './batch.ts';
 import { renderIssuedPanel } from './issued.ts';
 import type { ViewMount } from './shell.ts';
-import { extractNext, invoiceTitle, isLate, onOpen, openImport, openInvoice, openNewInvoice, quarterName, refreshOpenInvoice } from './invoices.ts';
+import { commitWithUndo } from './undo.ts';
+import { extractNext, onOpen, openImport, openInvoice, openNewInvoice, refreshOpenInvoice } from './invoices.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Tandas: proveedores a la vista y facturas de cada uno antes de «Ver más». */
+const GROUPS_STEP = 8;
+const ROWS_STEP = 3;
 
 /** Pestañas Recibidas · Emitidas: ids literales para el catálogo de «Uso». */
 const INVOICE_TAB_MARKS: Record<string, Record<string, string>> = {
@@ -23,25 +32,35 @@ const INVOICE_TAB_MARKS: Record<string, Record<string, string>> = {
   emitidas: { 'data-feedback-id': 'invoices.facturas.pestanas.emitidas', 'data-feedback-label': 'Emitidas' },
 };
 
+const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
+
 export const mountInvoices: ViewMount = (ctx) => {
   const { main, client } = ctx;
   let mirror: Mirror | null = null;
   let query = '';
-  let filter = 'activas';
+  let box: Mailbox = 'por_resolver';
+  let pill: ResolvePill | null = null;
+  let moreOpen = false;
+  let shownGroups = GROUPS_STEP;
+  const expanded = new Set<string>();
   let opened: string | null = null;
 
   const search = el('input', { 'data-feedback-id': 'invoices.facturas.buscar', 'data-feedback-label': 'Buscar facturas', type: 'search', id: 'invoiceSearch', placeholder: 'Proveedor, objeto, número o código', 'aria-label': 'Buscar facturas', autocomplete: 'off',
     oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const statusSelect = select('invoiceFilter', [['activas', 'Todas las activas'], ['drive', 'Llegadas por Drive, sin validar'], ['rect_sin_enlazar', 'Rectificativas sin enlazar'], ['pendiente_datos', 'Pendientes de datos'], ['pendiente_revision', 'Pendientes de revisión'], ['validada', 'Validadas'], ['archivada', 'Archivadas'], ['sin_pagar', 'Sin pagar'], ['sin_documento', 'Sin documento'], ['anulada', 'Anuladas']], filter,
-    { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Filtrar por estado', 'aria-label': 'Filtrar por estado', onchange: () => { filter = statusSelect.value; paint(); } });
+  // Buzones (mismo id que el desplegable de antes): cada uno con su número y su importe; «Más» abre los demás.
+  const boxes = el('div', { 'data-feedback-id': 'invoices.facturas.filtro', 'data-feedback-label': 'Buzones', class: 'inv-boxes', role: 'group', 'aria-label': 'Buzones de facturas', id: 'invoiceFilter' });
+  const pills = el('div', { 'data-feedback-id': 'invoices.facturas.filtro.por_resolver', 'data-feedback-label': 'Sin datos o por revisar', class: 'inv-boxes inv-pills', role: 'group', 'aria-label': 'Por resolver', id: 'resolvePills' });
+  const summary = el('p', { class: 'hint inv-summary', id: 'invoiceSummary', 'aria-live': 'polite', 'data-feedback-ignore': '' });
   const listHost = el('div', { 'data-feedback-id': 'invoices.facturas.lista', 'data-feedback-label': 'Facturas recibidas', id: 'invoiceList' });
   const canEdit = client.bootstrap()?.membership.role !== 'reader';
   const newButton = el('button', { 'data-feedback-id': 'invoices.facturas.nueva', 'data-feedback-label': 'Nueva factura', class: 'fab', type: 'button', id: 'newInvoice', hidden: !canEdit, onclick: () => openNewInvoice(ctx, mirror!) }, icon('plus'), 'Nueva factura');
   const extractAll = el('button', { 'data-feedback-id': 'invoices.facturas.extraer_pendientes', 'data-feedback-label': 'Extraer pendientes', class: 'softbtn small', type: 'button', id: 'extractPending', hidden: true, onclick: () => void extractPending() }, icon('upload', 16), 'Extraer pendientes');
   // Pestañas «Recibidas · Emitidas» (API.md §13.5): las emitidas registradas viven en su propio panel.
   const received = el('div', { id: 'receivedPanel' },
-    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search), statusSelect),
+    el('div', { class: 'toolbar' }, el('div', { class: 'search' }, search)),
+    boxes, pills,
     el('div', { class: 'toolbar', id: 'invoiceTools' }, canEdit ? el('button', { 'data-feedback-id': 'invoices.facturas.subir_varias', 'data-feedback-label': 'Subir varias', class: 'softbtn small', type: 'button', id: 'batchUpload', onclick: () => openBatchUpload(ctx, () => loadMirror(client), () => void load()) }, icon('upload', 16), 'Subir varias') : null, extractAll),
+    summary,
     listHost,
     newButton);
   let issuedPanel: { element: HTMLElement; destroy: () => void } | null = null;
@@ -78,60 +97,121 @@ export const mountInvoices: ViewMount = (ctx) => {
     await extractNext(ctx);
   }
 
-  function matches(invoice: LocalInvoice): boolean {
-    if (!mirror) return false;
-    const supplier = mirror.supplierById.get(invoice.supplier_id);
-    const hay = [supplier?.name ?? '', supplier?.label ?? '', invoice.object, invoice.invoice_number ?? '', invoice.code ?? ''].join(' ').toLowerCase();
-    if (query && !hay.includes(query)) return false;
-    const hasFile = (mirror.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
-    switch (filter) {
-      case 'activas': return invoice.status !== 'anulada';
-      case 'anulada': return invoice.status === 'anulada';
-      case 'sin_pagar': return invoice.status !== 'anulada' && invoice.payment_status === 'pendiente';
-      case 'sin_documento': return invoice.status !== 'anulada' && !hasFile;
-      case 'rect_sin_enlazar': return invoice.status !== 'anulada' && invoice.invoice_kind === 'rectificativa' && !invoice.rectifies_invoice_id && !invoice.rectification_without_original;
-      case 'drive': return !!invoice.drive_file_id && (invoice.status === 'pendiente_datos' || invoice.status === 'pendiente_revision');
-      default: return invoice.status === filter;
+  /** Las del buzón; con búsqueda, todas menos las anuladas (o solo ellas, en «Anuladas»). */
+  function inView(row: MirrorRow): boolean {
+    if (query) {
+      const supplier = mirror!.supplierById.get(row.invoice.supplier_id);
+      const hay = [supplier?.name ?? '', supplier?.label ?? '', row.invoice.object, row.invoice.invoice_number ?? '', row.invoice.code ?? ''].join(' ').toLowerCase();
+      if (!hay.includes(query)) return false;
+      return box === 'anulada' ? row.invoice.status === 'anulada' : row.invoice.status !== 'anulada';
     }
+    return inMailbox(box, row.invoice, row.facts.hasOriginal, pill);
   }
 
-  function rowSpec(invoice: LocalInvoice): ListRowSpec {
+  function setBox(next: Mailbox, nextPill: ResolvePill | null = null): void {
+    box = next; pill = nextPill; shownGroups = GROUPS_STEP; expanded.clear();
+    if (MORE_MAILBOXES.some((x) => x.key === next)) moreOpen = true;
+    paint();
+  }
+
+  function paintBoxes(rows: MirrorRow[]): void {
+    const button = (key: Mailbox, label: string) => {
+      const list = rows.filter((r) => inMailbox(key, r.invoice, r.facts.hasOriginal));
+      const total = list.reduce((sum, r) => sum + cents(r.invoice.calculated_total), 0) / 100;
+      return el('button', { type: 'button', class: 'inv-box', dataset: { box: key }, 'aria-pressed': String(box === key && !query), onclick: () => setBox(key) },
+        el('span', null, label), el('strong', null, String(list.length)), list.length && key !== 'anulada' ? el('span', { class: 'inv-box-amount' }, eur(total)) : null);
+    };
+    replace(boxes, ...MAILBOXES.map((x) => button(x.key, x.label)),
+      el('button', { type: 'button', class: 'inv-box', id: 'moreBoxes', 'aria-expanded': String(moreOpen), onclick: () => { moreOpen = !moreOpen; paint(); } }, el('span', null, moreOpen ? 'Menos' : 'Más')),
+      ...(moreOpen ? MORE_MAILBOXES.map((x) => button(x.key, x.label)) : []));
+    pills.hidden = box !== 'por_resolver' || !!query;
+    const pillButton = (key: ResolvePill | null, label: string) => {
+      const n = rows.filter((r) => inMailbox('por_resolver', r.invoice, r.facts.hasOriginal, key)).length;
+      return el('button', { type: 'button', class: 'inv-box small', dataset: { pill: key ?? 'todas' }, 'aria-pressed': String(pill === key), onclick: () => setBox('por_resolver', key) }, el('span', null, label), el('strong', null, String(n)));
+    };
+    replace(pills, pillButton(null, 'Todas'), ...RESOLVE_PILLS.map((x) => pillButton(x.key, x.label)));
+  }
+
+  /** «Confirmar pago» de una pagada sin confirmar, en la fila, con «Deshacer». */
+  async function confirmFromRow(invoice: LocalInvoice): Promise<void> {
+    await commitWithUndo(client, { table: INVOICES, id: invoice.id, revision: invoice.revision, fields: { payment_source: 'confirmado' }, before: { payment_source: invoice.payment_source } },
+      `Pago de ${invoice.code ?? 'la factura'} confirmado.`, 'Vuelve a estar sin confirmar.');
+  }
+
+  function invoiceRow(row: MirrorRow): HTMLLIElement {
     const m = mirror!;
-    const hasFile = (m.filesByInvoice.get(invoice.id) ?? []).some((f) => f.kind === 'original');
-    const chips = [el('span', { class: statusChipClass(invoice.status, invoice.review_reason) }, statusText(invoice))];
-    if (invoice.payment_status === 'pagada') chips.push(invoice.payment_source === 'sin_confirmar' ? el('span', { class: 'chip' }, 'Pagada (sin confirmar)') : el('span', { class: 'chip ok' }, 'Pagada'));
-    if (!hasFile && invoice.status !== 'anulada') chips.push(el('span', { class: 'chip alert' }, 'Sin documento'));
-    if (isLate(invoice)) chips.push(el('span', { class: 'chip warn' }, `Atrasada (${quarterName(periodOfDate(invoice.invoice_date))})`));
-    if (invoice.invoice_kind === 'rectificativa') chips.push(el('span', { class: invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'chip' : 'chip warn' }, invoice.rectifies_invoice_id || invoice.rectification_without_original ? 'Rectificativa' : 'Rectificativa sin enlazar'));
-    return {
+    const invoice = row.invoice;
+    const supplier = supplierName(m.supplierById.get(invoice.supplier_id), 'Proveedor');
+    const chip = (l: MirrorRow['labels'][number]) => el('span', { class: `chip${l.kind ? ` ${l.kind}` : ''}` }, l.text);
+    const rest = row.labels.slice(2);
+    const more = rest.length ? el('button', { type: 'button', class: 'chip inv-more', 'aria-label': `Ver ${rest.length} etiqueta${rest.length === 1 ? '' : 's'} más: ${rest.map((l) => l.text).join(', ')}`,
+      onclick: (e: Event) => { e.stopPropagation(); (e.currentTarget as HTMLElement).replaceWith(...rest.map(chip)); } }, `+${rest.length}`) : null;
+    const actions = canEdit && row.state.pay.kind === 'unconfirmed'
+      ? [el('button', { 'data-feedback-id': 'invoices.facturas.lista.confirmar_pago', 'data-feedback-label': 'Confirmar pago', class: 'softbtn small', type: 'button', onclick: () => void confirmFromRow(invoice) }, icon('check', 16), 'Confirmar pago')]
+      : [];
+    const li = listRow({
       id: invoice.id,
-      title: invoiceTitle(invoice, m),
+      // El proveedor ya está en el grupo: en la fila va oculto a la vista (lectores de pantalla y búsqueda en la página).
+      title: el('span', null, el('span', { class: 'vh' }, `${supplier} · `), invoice.object),
       meta: [shortDate(invoice.invoice_date), invoice.code ?? 'código pendiente', eur(invoice.calculated_total)],
-      chips,
+      chips: [...row.labels.slice(0, 2).map(chip), ...(more ? [more] : [])],
+      actions,
       pending: invoice._pending === true,
       onClick: () => openInvoice(ctx, invoice.id),
-      label: `Abrir ${invoiceTitle(invoice, m)}`,
-    };
+      label: `Abrir ${supplier} · ${invoice.object}`,
+    });
+    li.setAttribute('data-feedback-id', 'invoices.facturas.lista.fila');
+    li.setAttribute('data-feedback-label', 'Factura');
+    const stages = renderStages({ label: 'Recorrido de la factura', stages: [...INVOICE_STAGES], current: row.state.stage, bad: row.state.bad, mini: true, caption: row.state.caption, stopText: row.state.caption });
+    stages.classList.add('inv-row-stages');
+    li.insertBefore(stages, li.querySelector('.row-actions'));
+    return li;
   }
 
   function paint(): void {
     if (!mirror) return;
+    const m = mirror;
     const pendingDocs = extractable().length;
     extractAll.hidden = !canEdit || pendingDocs === 0;
     extractAll.textContent = '';
     extractAll.append(icon('upload', 16), pendingDocs === 1 ? 'Extraer la factura pendiente' : `Extraer ${pendingDocs} pendientes`);
-    const visible = mirror.invoices.filter((i) => !i.deleted_at && matches(i)).sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? '') || (b.code ?? '').localeCompare(a.code ?? ''));
+    const all = mirrorRows(m, todayIso());
+    paintBoxes(all);
+    const visible = all.filter(inView);
     if (!visible.length) {
-      replace(listHost, el('div', { class: 'empty' }, el('strong', null, mirror.invoices.length ? 'Ninguna factura coincide' : 'Todavía no hay facturas'),
-        mirror.invoices.length ? 'Cambia el filtro o la búsqueda.' : 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.'));
+      summary.textContent = '';
+      const none = !m.invoices.some((i) => !i.deleted_at);
+      replace(listHost, el('div', { class: 'empty' },
+        el('strong', null, none ? 'Todavía no hay facturas' : query ? 'Ninguna factura coincide' : box === 'por_resolver' ? 'Nada por resolver' : 'Ninguna factura en este buzón'),
+        none ? 'Sube el documento con «Nueva factura» o importa el JSON de ChatGPT. Funciona también sin conexión.' : 'Cambia de buzón o la búsqueda.',
+        !none && !query && box !== 'todas' ? el('p', null, el('button', { type: 'button', class: 'ghost small', id: 'showAllInvoices', onclick: () => setBox('todas') }, 'Ver todas')) : null));
       return;
     }
-    const groups = new Map<string, LocalInvoice[]>();
-    for (const inv of visible) { const k = monthKey(inv.invoice_date); groups.set(k, [...(groups.get(k) ?? []), inv]); }
-    replace(listHost, ...[...groups.entries()].map(([key, rows]) => el('section', null,
-      el('div', { class: 'sectionlabel' }, monthLabel(key), el('span', { class: 'count' }, String(rows.length))),
-      fbRows(renderList({ label: `Facturas de ${monthLabel(key)}`, rows: rows.map(rowSpec) }), { feedbackId: 'invoices.facturas.lista.mes', feedbackLabel: 'Facturas del mes' }, { feedbackId: 'invoices.facturas.lista.fila', feedbackLabel: 'Factura' }),
-    )));
+    const nameOf = (id: string) => supplierName(m.supplierById.get(id), 'Proveedor');
+    const groups = supplierGroups(visible, nameOf);
+    const total = visible.reduce((sum, r) => sum + (r.invoice.status === 'anulada' ? 0 : cents(r.invoice.calculated_total)), 0) / 100;
+    const unpaid = groups.reduce((sum, g) => sum + cents(g.unpaid), 0) / 100;
+    const overdue = groups.reduce((sum, g) => sum + g.overdue, 0);
+    summary.textContent = [`${visible.length} factura${visible.length === 1 ? '' : 's'} · ${eur(total)}`, `${groups.length} proveedor${groups.length === 1 ? '' : 'es'}`,
+      unpaid > 0 ? `sin pagar ${eur(unpaid)}` : null, overdue ? `${overdue} vencida${overdue === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ');
+    type Item = MirrorRow | { more: string; count: number };
+    const view = renderGroups<Item>({
+      label: 'Facturas por proveedor', feedbackId: 'invoices.facturas.lista.grupos',
+      groups: (query ? groups : groups.slice(0, shownGroups)).map((g) => {
+        const full = !!query || expanded.has(g.supplierId);
+        const items: Item[] = full ? g.rows : g.rows.slice(0, ROWS_STEP);
+        if (!full && g.rows.length > ROWS_STEP) items.push({ more: g.supplierId, count: g.rows.length });
+        return { key: g.supplierId, title: nameOf(g.supplierId), medal: { name: nameOf(g.supplierId) }, items, summary: `${groupSummary(g, eur)} · ${eur(g.total)}`, open: true };
+      }),
+      toneOf: (item) => ('more' in item || item.state.tone === 'ok' ? null : item.state.tone),
+      row: (item) => ('more' in item
+        ? el('li', { class: 'inv-group-more' }, el('button', { type: 'button', class: 'linkbtn', onclick: () => { expanded.add(item.more); paint(); } }, `Ver las ${item.count} de ${nameOf(item.more)}`))
+        : invoiceRow(item)),
+    });
+    const moreGroups = !query && groups.length > shownGroups
+      ? el('p', { class: 'inv-more-groups' }, el('button', { type: 'button', class: 'ghost', id: 'moreSuppliers', onclick: () => { shownGroups += GROUPS_STEP; paint(); } }, `Ver más proveedores (${groups.length - shownGroups})`))
+      : null;
+    replace(listHost, view.element, moreGroups);
   }
 
   async function load(): Promise<void> {
@@ -165,9 +245,10 @@ export const mountInvoices: ViewMount = (ctx) => {
       });
       return;
     }
-    // Tarjetas de Inicio: `#/facturas?filtro=pendiente_datos|pendiente_revision|sin_pagar|drive`.
+    // Inicio, Gestoría y otras apps: `#/facturas?filtro=pendiente_datos|pendiente_revision|sin_pagar|drive|…`, a su buzón.
     const wanted = tail.match(/^\?filtro=([a-z_]+)/);
-    if (wanted && [...statusSelect.options].some((o) => o.value === wanted[1])) { filter = wanted[1]!; statusSelect.value = filter; history.replaceState(null, '', '#/facturas'); paint(); return; }
+    const target = wanted ? mailboxFromFilter(wanted[1]!) : null;
+    if (target) { history.replaceState(null, '', '#/facturas'); setBox(target.box, target.pill); return; }
     if (tail === 'nueva' && mirror) { openNewInvoice(ctx, mirror); history.replaceState(null, '', '#/facturas'); }
     else if (UUID.test(tail)) { openInvoice(ctx, tail.toLowerCase()); history.replaceState(null, '', '#/facturas'); }
     else if (/^(FVR|GST)_\d{4}_\d+$/i.test(tail) && mirror) {

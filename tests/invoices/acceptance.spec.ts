@@ -318,6 +318,8 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(page.locator('#onlyValidated')).not.toBeChecked();
     await expect(page).toHaveURL(/#\/compras$/);
     await nav(page, 'Facturas').click();
+    // Tanda 27: Facturas abre en «Por resolver»; la validada está en «Todas»
+    await page.locator('#invoiceFilter [data-box="todas"]').click();
     await page.locator('#invoiceList .row').first().click();
     await expect(ficha(page)).toContainText(code);
     await closeSheet(page);
@@ -375,7 +377,10 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
 
   await test.step('A18 · anular con motivo retira las asignaciones y saca la factura de Compras', async () => {
     await nav(page, 'Facturas').click();
-    await page.locator('#invoiceList .row', { hasText: 'Importes corregidos' }).click();
+    // En «Por resolver» (al abrir) solo queda la de los importes corregidos, con su frase en el recorrido
+    await expect(page.locator('#invoiceList .row')).toHaveCount(1);
+    await expect(page.locator('#invoiceList .row .stage-caption')).toHaveText('Por resolver · falta el documento original (PDF o foto) · pago sin confirmar');
+    await page.locator('#invoiceList .row').first().click();
     await ficha(page).locator('#annulInvoice').click();
     const dialog = page.getByRole('alertdialog');
     await dialog.locator('#annulReason').fill('duplicada');
@@ -383,7 +388,8 @@ test('A1–A21: documento, importación, cuadre, validación, asignación, Compr
     await expect(ficha(page)).toContainText('Anulada', { timeout: 20_000 });
     await expect(ficha(page).locator('#annulInvoice')).toHaveCount(0);
     await closeSheet(page);
-    await page.locator('#invoiceFilter').selectOption('anulada');
+    await page.locator('#moreBoxes').click();
+    await page.locator('#invoiceFilter [data-box="anulada"]').click();
     await expect(page.locator('#invoiceList .row')).toHaveCount(1);
     await synced(page);
     expect(api.rows('invoices.invoices').filter((i) => i.status === 'anulada')).toHaveLength(1);
@@ -1635,7 +1641,8 @@ test('Rectificativa recibida (0227): el abono se reconoce al importar, se import
     expect(Number(row.calculated_total)).toBeLessThan(0);
     // En la lista, con su etiqueta y en el filtro «Rectificativas sin enlazar» (la API simulada no enlaza)
     await closeSheet(page);
-    await page.locator('#invoiceFilter').selectOption('rect_sin_enlazar');
+    await page.locator('#moreBoxes').click();
+    await page.locator('#invoiceFilter [data-box="rect_sin_enlazar"]').click();
     await expect(page.locator('#invoiceList')).toContainText('Rectificativa sin enlazar');
   } finally {
     await context.close();

@@ -25,7 +25,7 @@ export interface WorkInvoice {
   status: 'pendiente_datos' | 'pendiente_revision' | 'validada' | 'archivada' | 'anulada';
   review_reason: string | null;
   payment_status: 'pendiente' | 'pagada';
-  payment_source: string | null;
+  payment_source?: string | null;
   paid_at: string | null;
   due_date: string | null;
   invoice_date: string | null;
@@ -178,7 +178,8 @@ export function workState(invoice: WorkInvoice, facts: WorkFacts, today: string)
   else if (pay.kind === 'overdue') { details.push(pay.text.toLowerCase()); bad.push('pagada'); tone = 'alert'; }
   else if (pay.kind === 'due' && stage !== 'llega' && stage !== 'por_resolver') { details.push(pay.text.toLowerCase()); tone = worse(tone, pay.tone); }
   else if (pay.kind === 'unpaid' && (stage === 'validada' || stage === 'gestoria')) details.push('sin pagar');
-  if (!facts.hasOriginal && stage !== 'llega') { details.push('sin documento'); tone = 'alert'; }
+  // Por resolver ya lo dice en «falta el documento original»
+  if (!facts.hasOriginal && stage !== 'llega' && stage !== 'por_resolver') { details.push('sin documento'); tone = 'alert'; }
   return { stage, bad, caption: [STAGE_LABEL[stage], ...details].join(' · '), tone, ready, pay };
 }
 
@@ -242,9 +243,9 @@ export function mailboxFromFilter(filter: string): { box: Mailbox; pill: Resolve
 // Grupos por proveedor
 // ---------------------------------------------------------------------------
 export interface WorkRow<T extends WorkInvoice = WorkInvoice> { invoice: T; state: WorkState }
-export interface SupplierGroup<T extends WorkInvoice = WorkInvoice> {
+export interface SupplierGroup<R extends WorkRow = WorkRow> {
   supplierId: string;
-  rows: WorkRow<T>[];
+  rows: R[];
   tone: Tone | null;
   overdue: number;
   toResolve: number;
@@ -259,8 +260,8 @@ const num = (v: unknown) => (v === null || v === undefined || v === '' ? 0 : Num
  * Agrupa por proveedor: primero los que piden algo (vencidas, por resolver, sin pagar), después por nombre. Dentro, por
  * fecha, de la más nueva a la más antigua (la fecha se ve en cada factura).
  */
-export function supplierGroups<T extends WorkInvoice>(rows: WorkRow<T>[], nameOf: (supplierId: string) => string): SupplierGroup<T>[] {
-  const by = new Map<string, WorkRow<T>[]>();
+export function supplierGroups<R extends WorkRow>(rows: R[], nameOf: (supplierId: string) => string): SupplierGroup<R>[] {
+  const by = new Map<string, R[]>();
   for (const r of rows) by.set(r.invoice.supplier_id, [...(by.get(r.invoice.supplier_id) ?? []), r]);
   const groups = [...by.entries()].map(([supplierId, list]) => {
     const live = list.filter((r) => r.invoice.status !== 'anulada');
@@ -279,7 +280,7 @@ export function supplierGroups<T extends WorkInvoice>(rows: WorkRow<T>[], nameOf
 }
 
 /** «2 por resolver · 1 vencida · Sin pagar 899,37 €», o «Al día». */
-export function groupSummary(group: SupplierGroup, money: (n: number) => string): string {
+export function groupSummary(group: SupplierGroup<WorkRow>, money: (n: number) => string): string {
   const parts = [
     group.toResolve ? `${group.toResolve} por resolver` : null,
     group.overdue ? (group.overdue === 1 ? '1 vencida' : `${group.overdue} vencidas`) : null,

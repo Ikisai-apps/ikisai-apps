@@ -114,3 +114,18 @@ code{font-size:12.5px;word-break:break-all}
 .inv-head .banner>span{flex:1 1 100%}
 .inv-head .banner>button{margin-left:0;flex:0 1 auto}
 .inv-head .banner .linkbtn.inline{display:inline;padding:0;min-height:0;font:inherit;font-weight:600;text-decoration:underline;vertical-align:baseline}
+
+/* Tanda 27 · Facturas: buzones con su número e importe, pastillas de «Por resolver», resumen y filas con recorrido. */
+.inv-boxes{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;margin:0 0 4px;scrollbar-width:thin}
+.inv-box{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,46px);padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.inv-box[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.inv-box strong{font-variant-numeric:tabular-nums}
+.inv-box-amount{font-weight:400;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.inv-pills{padding-top:0}
+.inv-pills .inv-box{font-size:13px}
+.inv-summary{margin:4px 0 10px}
+.inv-row-stages{margin-top:6px}
+.inv-more{cursor:pointer;min-height:var(--tap,46px);font:inherit;font-size:12.5px;font-weight:600}
+.inv-group-more{list-style:none;padding:4px 0}
+.inv-group-more .linkbtn,.inv-more-groups .ghost{min-height:var(--tap,46px)}
+.inv-more-groups{text-align:center;margin:12px 0}
