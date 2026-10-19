@@ -14,9 +14,14 @@ const SRC = path.resolve(here, '../../apps/food/src');
 const PATTERN = /^food(\.[a-z0-9_]+){1,4}$/;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Cadenas `food.…` del código que no son ids de feedback: tablas, procedimientos y lecturas del servidor. */
-const NOT_IDS = /^food\.(consumptions|recipes|ingredients|recipe_ingredients|recipe_equipment|equipment|menu_services|menu_items|menu_comments|menu_graph|shopping_lists|shopping_list_items|preparation_items|stock_entries|acknowledge_event|house_dish_from_suggestion|regenerate_preparation|regenerate_shopping|set_menu_status|validate_menu)$/;
+const NOT_IDS = /^food\.(consumptions|recipes|ingredients|recipe_ingredients|recipe_equipment|equipment|menu_services|menu_items|menu_comments|menu_graph|shopping_lists|shopping_list_items|preparation_items|suggestion_votes|equipment_notices|stock_entries|acknowledge_event|house_dish_from_suggestion|regenerate_preparation|regenerate_shopping|set_menu_status|validate_menu)$/;
 /** La raíz de cada id: una pantalla o una pieza de la cáscara. */
-const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'despensa', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos'];
+const ROOTS = ['inicio', 'eventos', 'menus', 'menu', 'compra', 'preparacion', 'organizador', 'cierre', 'recetario', 'despensa', 'maquinaria', 'conflictos', 'cabecera', 'navegacion', 'avisos', 'cocina', 'menu_lateral'];
+/**
+ * Piezas del kit que solo admiten el id y sacan la etiqueta de su propio texto (tanda 27): las filas y la base del menú
+ * lateral, «‹ Volver a…», los bloques de «Lo de ahora» y el mazo de votos. No cuentan como marcas sin etiqueta.
+ */
+const KIT_ONLY_ID = /feedbackId: 'food\.(menu_lateral(\.[a-z_]+)?|cabecera\.volver|inicio\.cocina_ahora\.dia|menus\.sugeridos\.mazo)'/g;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -65,7 +70,7 @@ test('cada data-feedback-id escrito en un el(...) lleva su etiqueta, y cada marc
     const ids = (text.match(/'data-feedback-id':/g) ?? []).length;
     const labels = (text.match(/'data-feedback-label':/g) ?? []).length;
     if (ids !== labels) bad.push(`${rel}: ${ids} data-feedback-id y ${labels} data-feedback-label`);
-    const marks = (text.match(/feedbackId: '/g) ?? []).length;
+    const marks = (text.match(/feedbackId: '/g) ?? []).length - (text.match(KIT_ONLY_ID) ?? []).length;
     const markLabels = (text.match(/feedbackLabel: '/g) ?? []).length;
     if (marks !== markLabels) bad.push(`${rel}: ${marks} feedbackId y ${markLabels} feedbackLabel`);
   }

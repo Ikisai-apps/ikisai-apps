@@ -27,6 +27,8 @@ export interface TabContext {
   canWrite(): boolean;
   /** Menú de casa (O3b): compra y preparación por un rango de días que se elige al generar. */
   house?: boolean;
+  /** Ir a otra pantalla (las comprobaciones del Organizador y del Cierre llevan a su arreglo). */
+  navigate?: (hash: string) => void;
 }
 
 /** Lista de compra del menú: generar y regenerar (con red), «en casa», «comprar», estado y líneas a mano (también sin red). */

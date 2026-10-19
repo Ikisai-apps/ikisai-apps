@@ -1,7 +1,7 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
   confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast,
-  type LauncherCatalog, type NavItem,
+  type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem,
 } from '@ikisai/ui-kit';
 import { describeError } from '../app/client.ts';
 import { setUsage } from '../app/usage.ts';
@@ -14,6 +14,8 @@ import { mountEvents } from './events.ts';
 import { mountMenu, mountMenus, type MenuTab } from './menus.ts';
 import { HOUSE_SUGGESTIONS_HASH, mountHouseSuggestions } from './house-suggestions.ts';
 import { mountConflicts } from './conflicts.ts';
+import { KITCHEN_HASH, mountKitchen } from './kitchen.ts';
+import { HOUSE_MENU_HASH } from '../app/house.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -30,7 +32,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const NAV: readonly NavItem[] = [
-  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos'] },
+  { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', KITCHEN_HASH] },
   { hash: '#/eventos', label: 'Eventos', icon: 'calendar' },
   { hash: '#/menus', label: 'Menús', icon: 'menu', matches: ['#/menus', HOUSE_SUGGESTIONS_HASH] },
   { hash: '#/recetario', label: 'Recetario', icon: 'chef' },
@@ -41,6 +43,7 @@ const NAV: readonly NavItem[] = [
 /** Cada ruta con su pantalla para «Sugerencias y QA»: `screen` es el `data-feedback-id` de `main` y el nodo por defecto. */
 const ROUTES: Record<string, { title: string; screen: string; mount: ViewMount }> = {
   '#/': { title: 'Inicio', screen: 'food.inicio', mount: mountHome },
+  [KITCHEN_HASH]: { title: 'Cocina', screen: 'food.cocina', mount: mountKitchen },
   '#/recetario': { title: 'Recetario', screen: 'food.recetario', mount: mountRecipes },
   '#/maquinaria': { title: 'Maquinaria', screen: 'food.maquinaria', mount: mountEquipment },
   '#/despensa': { title: 'Despensa', screen: 'food.despensa', mount: mountPantry },
@@ -95,6 +98,26 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     review,
     center: () => { openFeedbackCenter({ api, app: 'food', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
+  // Menú lateral común (kit 0.47, MUELA-013): la marca abre el cajón con perfil, sincronización, tema, recientes, las
+  // secciones que no están en la barra (Cocina, el menú de casa, los platos sugeridos y los conflictos), las apps de
+  // Ikisai y «Comentarios y ayuda». Nada repite la barra de pestañas.
+  const recents: AppMenuRow[] = [];
+  const roleLabel = () => ({ owner: 'Propietario', editor: 'Cocina', reader: 'Solo lectura', outsider: 'Outsider' } as const)[client.bootstrap()?.membership.role ?? 'reader'] ?? '—';
+  const sections = (): AppMenuSection[] => {
+    const status = client.status();
+    const trouble = status.conflicts + (status.rejected ?? 0);
+    return [
+      { key: 'cocina', label: 'Cocina', icon: 'chef', summary: 'Lo de hoy, por servicios', rows: [
+        { label: 'Cocina de hoy', sub: 'Servicios, alergias y pasos', href: KITCHEN_HASH, feedbackId: 'food.menu_lateral.cocina' },
+        { label: 'Menú de casa', sub: 'El día a día, sin evento', href: HOUSE_MENU_HASH, feedbackId: 'food.menu_lateral.casa' },
+        { label: 'Platos sugeridos', sub: 'Votar y decidir', href: HOUSE_SUGGESTIONS_HASH, feedbackId: 'food.menu_lateral.sugeridos' },
+      ] },
+      { key: 'sync', label: 'Sincronización', icon: 'refresh', summary: trouble ? `${trouble} por resolver` : 'Todo en orden',
+        badge: trouble ? { text: String(trouble), tone: 'alert' } : null, rows: [
+          { label: 'Conflictos y rechazados', href: '#/conflictos', count: trouble ? { text: `${trouble} por resolver`, tone: 'alert' } : null, feedbackId: 'food.menu_lateral.conflictos' },
+        ] },
+    ];
+  };
   const shell = createAppShell(root, {
     appName: 'Food',
     markIcon: 'chef',
@@ -103,7 +126,18 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
-    launcher,
+    menu: {
+      label: 'Menú de Food',
+      profile: { name: client.bootstrap()?.profile.displayName ?? 'Tu cuenta', role: roleLabel(), href: '#/' },
+      theme: true,
+      launcher,
+      recents: () => recents.slice(1, 4),
+      sections,
+      signalHere: () => { void feedback.signal(main); },
+      onResolveConflicts: () => navigate('#/conflictos'),
+      feedbackId: 'food.menu_lateral',
+    },
+    returnTo: { feedbackId: 'food.cabecera.volver' },
   });
   const { main } = shell;
 
@@ -185,6 +219,12 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
     screen = { id: entry.screen, label: entry.title };
+    // Recientes del menú lateral: las tres últimas pantallas, sin repetir y sin la actual.
+    const at = recents.findIndex((r) => r.href === hash);
+    if (at >= 0) recents.splice(at, 1);
+    recents.unshift({ label: entry.title, sub: menuId ? 'Menú' : null, href: hash });
+    recents.splice(4);
+    shell.menu?.refresh();
     main.setAttribute('data-feedback-id', screen.id);
     main.setAttribute('data-feedback-label', screen.label);
     document.title = `${entry.title} · Ikisai Food`;

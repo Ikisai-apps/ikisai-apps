@@ -1,22 +1,36 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
-import { FOOD_PROCEDURES, isStale, preparationSources, validateOperations, type PreparationItem } from '@ikisai/domain-food';
+import {
+  FOOD_PROCEDURES, isOverdue, isStale, localDayKey, nextStep, prepStats, preparationSources, shareOut, stepDay, stepService, validateOperations, type MenuService,
+} from '@ikisai/domain-food';
 import { confirmDialog, createSortableList, el, formatDate, icon, openSheet, replace, toast, type Sheet, type Sortable } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
-import { T, describeError, type Mirror } from '../app/client.ts';
+import { T, describeError } from '../app/client.ts';
 import { longDay, shortTime } from '../app/events.ts';
 import { MENU_TABLES, loadMenuData, type MenuData } from '../app/menu-data.ts';
 import type { TabContext } from './menu-shopping.ts';
 import { usage } from '../app/usage.ts';
 import { fb } from './feedback.ts';
 import { housePeriod, periodBar, periodLabel } from './house-period.ts';
-
-type PrepRow = Mirror<PreparationItem>;
+import { SERVICE_LABELS } from './events.ts';
+import { dayChoiceLabel, daySelector, openMoveSheet, prepStatsView, purposeText, stepRow, type PrepRow } from './prep-row.ts';
 
 interface RegenerateResult { inserted: number; updated: number; deleted: number; kept: number }
 
+/** El día elegido de cada menú, mientras dura la sesión (volver a la pestaña no lo pierde). */
+const chosenDay = new Map<string, string>();
+
+/** «3 de 4 listos», «12 pasos · Marga 7 · Tomás 5». */
+const readyText = (rows: PrepRow[]) => `${rows.filter((r) => r.done).length} de ${rows.length} ${rows.length === 1 ? 'listo' : 'listos'}`;
+export function shareText(rows: PrepRow[]): string {
+  const people = shareOut(rows);
+  return [`${rows.length} ${rows.length === 1 ? 'paso' : 'pasos'}`, ...people.map((p) => `${p.name} ${p.count}`)].join(' · ');
+}
+
 /**
- * Plan de preparación: propuesta por plato (con red) y, sin red, marcar hecho, asignar responsable, pasos propios y orden a mano.
- * Dentro de cada día los pasos van por hora hasta que alguien los ordena a mano; desde entonces manda ese orden (`position`).
+ * Plan de preparación (tanda 27; MUELA-035 y 068 §2): un día cada vez, con botones arriba («Hoy · 3/12 · 1 atrasado») y
+ * «Sin día (n)»; cifras de color del plan y del día; el día por servicios, con los pasos sueltos primero.
+ * Propuesta por plato (con red) y, sin red, marcar hecho, responsable, mover, pasos propios y orden a mano.
+ * Dentro de cada bloque los pasos van por hora hasta que alguien los ordena a mano; desde entonces manda ese orden (`position`).
  */
 export function mountPreparation({ client, menuId, host, canWrite, house = false }: TabContext): () => void {
   let data: MenuData | null = null;
@@ -109,20 +123,31 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
     });
   }
 
-  function stepRow(step: PrepRow): HTMLElement {
-    const writable = canWrite();
-    const done = el('input', { 'data-feedback-id': 'food.menu.preparacion.fila.hecho', 'data-feedback-label': 'Hecho', type: 'checkbox', class: 'bigcheck', checked: step.done, disabled: !writable, 'aria-label': `Hecho: ${step.text}`,
-      onchange: () => void commitSafely([{ op: 'update', table: T.preparation, id: step.id, expectedRevision: step.revision, fields: { done: done.checked } }]).then((ok) => usage.track('food.preparacion.marcar_hecho', ok ? 'success' : 'error')) });
-    return el('div', { 'data-feedback-id': 'food.menu.preparacion.fila', 'data-feedback-label': 'Paso', class: 'preprow', 'data-id': step.id, 'data-done': String(step.done), 'data-pending': String(step._pending === true) },
-      done,
-      el('span', { class: 'preptime' }, shortTime(step.scheduled_time) || '—'),
-      el('button', { 'data-feedback-id': 'food.menu.preparacion.fila.editar', 'data-feedback-label': 'Editar paso', class: 'preptext', type: 'button', disabled: !writable, 'aria-label': `Editar: ${step.text}`, onclick: () => openStep(step) },
-        el('strong', null, step.text),
-        el('span', { class: 'recipemeta', 'data-feedback-ignore': '' }, [step.responsible, step.manual ? 'paso propio' : null, step._pending ? 'pendiente de sincronizar' : null].filter(Boolean).join(' · '))),
-    );
+  const dayOf = (step: PrepRow) => (data ? stepDay(step, data.items, data.services) : step.scheduled_date);
+  const serviceOf = (step: PrepRow): MenuService | null => (data ? stepService(step, data.items, data.services) : null);
+
+  /** Los nombres del plan para el círculo del responsable, de más a menos pasos. */
+  const names = () => shareOut(steps).map((p) => p.name);
+
+  function rowFor(step: PrepRow, next: PrepRow | null, now: Date): HTMLElement {
+    const service = serviceOf(step);
+    const item = step.menu_item_id ? data?.items.find((i) => i.id === step.menu_item_id) : undefined;
+    const recipe = data?.recipes.find((r) => r.id === (item?.recipe_id ?? step.recipe_id));
+    const flag = isOverdue(step, dayOf(step), now) ? 'atrasado' : next?.id === step.id ? 'siguiente' : null;
+    return stepRow(step, {
+      writable: canWrite(),
+      purpose: service ? purposeText(SERVICE_LABELS[service.service_type], service.service_time) : null,
+      dish: recipe?.name ?? null,
+      flag,
+      names: names(),
+      onDone: (row, done) => void commitSafely([{ op: 'update', table: T.preparation, id: row.id, expectedRevision: row.revision, fields: { done } }]).then((ok) => usage.track('food.preparacion.marcar_hecho', ok ? 'success' : 'error')),
+      onEdit: (row) => openStep(row),
+      onMove: (row) => { sheet = openMoveSheet(row, days(), commitSafely); },
+      onResponsible: (row, name) => void commitSafely([{ op: 'update', table: T.preparation, id: row.id, expectedRevision: row.revision, fields: { responsible: name } }]),
+    });
   }
 
-  /** Guarda el orden de los pasos de un día: `position` 1, 2, 3…; solo se envían los que cambian. */
+  /** Guarda el orden de los pasos de un bloque: `position` 1, 2, 3…; solo se envían los que cambian. */
   async function reorder(ordered: PrepRow[]): Promise<void> {
     const operations = ordered
       .map((row, i): RowOperation | null => (Number(row.position) === i + 1 ? null : { op: 'update', table: T.preparation, id: row.id, expectedRevision: (row as SyncedRow).revision, fields: { position: i + 1 } }))
@@ -130,21 +155,57 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
     if (operations.length) await commitSafely(operations);
   }
 
-  function dayList(day: string, rows: PrepRow[]): HTMLElement {
-    if (!canWrite() || rows.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.preparacion.lista', 'data-feedback-label': 'Pasos del día', class: 'preplist' }, ...rows.map((row) => el('li', null, stepRow(row))));
+  function blockList(key: string, label: string, rows: PrepRow[], render: (row: PrepRow) => HTMLElement): HTMLElement {
+    if (!canWrite() || rows.length < 2) return el('ul', { 'data-feedback-id': 'food.menu.preparacion.lista', 'data-feedback-label': 'Pasos del servicio', class: 'preplist' }, ...rows.map((row) => el('li', null, render(row))));
     const list = createSortableList<PrepRow>({
       items: rows,
       key: (row) => row.id,
       name: (row) => row.text,
-      label: day ? `Pasos del ${longDay(day)}` : 'Pasos sin día',
+      label,
       rowClass: 'preprow-sortable',
-      render: (row) => stepRow(row),
+      render,
       onReorder: (ordered) => reorder(ordered),
     });
-    fb(list.element, { feedbackId: 'food.menu.preparacion.lista', feedbackLabel: 'Pasos del día' });
-    dayLists.set(day, list);
-    listSigs.set(day, rowSig(rows));
+    fb(list.element, { feedbackId: 'food.menu.preparacion.lista', feedbackLabel: 'Pasos del servicio' });
+    dayLists.set(key, list);
+    listSigs.set(key, rowSig(rows));
     return list.element;
+  }
+
+  /** Los días del plan, en orden (sin «Sin día»). */
+  const days = () => Array.from(new Set(steps.map(dayOf).filter((d): d is string => !!d))).sort();
+
+  /** El día que se enseña: el elegido si sigue; si no, hoy, el primero con algo pendiente o el primero. `''` = «Sin día». */
+  function currentDay(): string {
+    const all = days();
+    const noDay = steps.some((s) => !dayOf(s));
+    const chosen = chosenDay.get(menuId);
+    if (chosen !== undefined && (all.includes(chosen) || (chosen === '' && noDay))) return chosen;
+    const today = localDayKey(new Date());
+    if (all.includes(today)) return today;
+    return all.find((d) => steps.some((s) => dayOf(s) === d && !s.done)) ?? all[0] ?? '';
+  }
+
+  /** Los bloques de un día: los pasos sueltos primero y uno por servicio, por fecha y hora del servicio. */
+  function blocks(rows: PrepRow[]): Array<{ key: string; title: string; rows: PrepRow[] }> {
+    const loose = rows.filter((r) => !serviceOf(r));
+    const byService = new Map<string, { service: MenuService; rows: PrepRow[] }>();
+    for (const r of rows) {
+      const service = serviceOf(r);
+      if (!service) continue;
+      const entry = byService.get(service.id) ?? { service, rows: [] };
+      entry.rows.push(r);
+      byService.set(service.id, entry);
+    }
+    const ordered = [...byService.values()].sort((a, b) => a.service.service_date.localeCompare(b.service.service_date)
+      || (a.service.service_time ?? '99').localeCompare(b.service.service_time ?? '99') || Number(a.service.position) - Number(b.service.position));
+    const out = loose.length ? [{ key: 'sueltos', title: `Pasos sueltos · ${readyText(loose)}`, rows: loose }] : [];
+    for (const { service, rows: list } of ordered) {
+      const when = [SERVICE_LABELS[service.service_type], shortTime(service.service_time)].filter(Boolean).join(' · ');
+      const other = list.some((r) => dayOf(r) !== service.service_date) ? ` del ${longDay(service.service_date)}` : '';
+      out.push({ key: service.id, title: `${when}${other} · ${readyText(list)}`, rows: list });
+    }
+    return out;
   }
 
   function paint(): void {
@@ -165,11 +226,21 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
         el('span', { class: 'hint' }, 'Generar necesita conexión; añadir pasos, no.')));
       return;
     }
+    const now = new Date();
+    const today = localDayKey(now);
     const stale = !!generated && (data.pending || isStale(menu.preparation_source_revisions, preparationSources(data.graph)));
     const sorted = sortSteps(steps);
-    const days = Array.from(new Set(sorted.map((s) => s.scheduled_date ?? '')));
     const doneCount = sorted.filter((s) => s.done).length;
-    const ofDay = (day: string) => sorted.filter((s) => (s.scheduled_date ?? '') === day);
+    const day = currentDay();
+    const ofDay = sorted.filter((s) => (dayOf(s) ?? '') === day);
+    const noDay = sorted.filter((s) => !dayOf(s));
+    const next = nextStep(sorted, dayOf, now);
+    const choices = days().map((d) => {
+      const rows = sorted.filter((s) => dayOf(s) === d);
+      const late = rows.filter((s) => isOverdue(s, d, now)).length;
+      return { key: d, label: dayChoiceLabel(d, today), sub: `${rows.filter((s) => s.done).length}/${rows.length}${late ? ` · ${late} ${late === 1 ? 'atrasado' : 'atrasados'}` : ''}`, alert: late > 0 };
+    });
+    if (noDay.length) choices.push({ key: '', label: `Sin día (${noDay.length})`, sub: `${noDay.filter((s) => s.done).length}/${noDay.length}`, alert: false });
 
     replace(top, houseHead,
       stale ? el('div', { 'data-feedback-id': 'food.menu.preparacion.aviso_cambios', 'data-feedback-label': 'Aviso de cambios', class: 'banner warn notice', id: 'preparationStale', role: 'status' },
@@ -178,24 +249,42 @@ export function mountPreparation({ client, menuId, host, canWrite, house = false
       el('div', { 'data-feedback-id': 'food.menu.preparacion.progreso', 'data-feedback-label': 'Progreso', class: 'tabhead' },
         el('div', { class: 'chips' }, el('span', { class: doneCount === sorted.length && sorted.length ? 'chip ok' : 'chip', id: 'preparationProgress' }, `${doneCount} de ${sorted.length} hechos`)),
         generated ? el('p', { class: 'muted' }, `Propuesta generada el ${formatDate(generated)}.`) : null),
+      prepStatsView(prepStats(sorted, dayOf, now), house ? 'Cifras de los días elegidos' : 'Cifras del plan', 'food.menu.preparacion.cifras'),
       writable ? el('div', { 'data-feedback-id': 'food.menu.preparacion.acciones', 'data-feedback-label': 'Acciones de preparación', class: 'btnrow menuactions' },
         el('button', { 'data-feedback-id': 'food.menu.preparacion.anadir_paso', 'data-feedback-label': 'Añadir paso', class: 'ghost', type: 'button', id: 'addStep', onclick: () => openStep(null) }, icon('plus', 18), 'Añadir paso'),
         !stale ? el('button', { 'data-feedback-id': 'food.menu.preparacion.regenerar', 'data-feedback-label': 'Regenerar propuesta', class: 'linkbtn', type: 'button', id: 'regeneratePreparation', disabled: busy, onclick: () => void regenerate() }, generated || house ? 'Regenerar propuesta' : 'Generar propuesta') : null) : null,
+      choices.length > 1 || noDay.length ? daySelector(choices, day, (key) => { chosenDay.set(menuId, key); paint(); }) : null,
     );
     if (top.parentElement !== host) { dropLists(); replace(host, top, listsHost); }
 
-    // Estructura (días y qué pasos hay en cada uno). Si no cambia, solo se actualizan las filas de cada lista.
-    const next = JSON.stringify({ writable, days: days.map((day) => { const rows = ofDay(day); return [day, rows.length > 1 ? rows.map((r) => r.id).sort() : rowSig(rows)]; }) });
-    if (writable && next === shape) {
-      for (const [day, list] of dayLists) {
-        const rows = ofDay(day);
-        if (listSigs.get(day) !== rowSig(rows)) { listSigs.set(day, rowSig(rows)); list.setItems(rows); }
+    // Estructura (día, bloques y qué pasos hay en cada uno). Si no cambia, solo se actualizan las filas de cada lista.
+    const parts = blocks(ofDay);
+    const shapeNow = JSON.stringify({ writable, day, next: next?.id ?? null, blocks: parts.map((b) => [b.key, b.rows.length > 1 ? b.rows.map((r) => r.id).sort() : rowSig(b.rows)]) });
+    const dayStats = prepStats(ofDay, dayOf, now);
+    const statsNode = () => { const node = prepStatsView(dayStats, day ? `Cifras del ${longDay(day)}` : 'Cifras de los pasos sin día', 'food.menu.preparacion.dia.cifras'); node.classList.add('fd-daystats'); return node; };
+    if (writable && shapeNow === shape) {
+      // Mismas filas: se actualizan en su sitio (no se pierde el foco al marcar ni al ordenar con el teclado).
+      for (const b of parts) {
+        const list = dayLists.get(b.key);
+        if (list && listSigs.get(b.key) !== rowSig(b.rows)) { listSigs.set(b.key, rowSig(b.rows)); list.setItems(b.rows); }
+        const header = listsHost.querySelector(`.fd-block[data-block="${b.key}"] > h4`);
+        if (header) header.textContent = b.title;
       }
+      listsHost.querySelector('.fd-daystats')?.replaceWith(statsNode());
+      const share = listsHost.querySelector('.fd-share');
+      if (share) share.textContent = shareText(ofDay);
       return;
     }
     dropLists();
-    shape = next;
-    replace(listsHost, ...days.map((day) => el('section', { 'data-feedback-id': 'food.menu.preparacion.dia', 'data-feedback-label': 'Día', class: 'menuday' }, el('h3', null, day ? longDay(day) : 'Sin día'), dayList(day, ofDay(day)))));
+    shape = shapeNow;
+    const render = (row: PrepRow) => rowFor(row, next, now);
+    replace(listsHost, el('section', { 'data-feedback-id': 'food.menu.preparacion.dia', 'data-feedback-label': 'Día', class: 'menuday', 'data-day': day },
+      el('h3', null, day ? longDay(day) : 'Sin día'),
+      statsNode(),
+      ofDay.length ? el('p', { class: 'fd-share', 'data-feedback-ignore': '' }, shareText(ofDay)) : el('p', { class: 'muted' }, 'Ningún paso este día.'),
+      ...parts.map((b) => el('div', { 'data-feedback-id': 'food.menu.preparacion.bloque', 'data-feedback-label': 'Servicio', class: 'fd-block', 'data-block': b.key },
+        el('h4', null, b.title),
+        blockList(b.key, b.key === 'sueltos' ? 'Pasos sueltos' : `Pasos de ${b.title.split(' · ')[0]}`, b.rows, render)))));
   }
 
   async function load(): Promise<void> {

@@ -110,8 +110,11 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
     const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
     // 2 kg y 500 g de tomate a 2,50 €/kg para 20 raciones: 5,00 € + 1,25 € = 6,25 €.
-    await expect(ficha.locator('table.ingredients')).toContainText('5,00 €');
-    await expect(ficha.locator('table.ingredients')).toContainText('1,25 €');
+    // Tanda 27: el coste de cada ingrediente sigue en la ficha, plegado bajo el total («Ver coste por ingrediente»).
+    await expect(ficha.locator('.fd-costlines')).toBeHidden();
+    await ficha.getByText('Ver coste por ingrediente').click();
+    await expect(ficha.locator('.fd-costlines')).toContainText('5,00 €');
+    await expect(ficha.locator('.fd-costlines')).toContainText('1,25 €');
     await expect(ficha).toContainText('Coste estimado: 6,25 € para 20 raciones (0,31 € por ración)');
     await ficha.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
   });
@@ -227,7 +230,13 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await edit.getByLabel('Responsable').fill('Marga');
     await page.locator('#saveStep').click();
     await expect(edit).toBeHidden();
-    await expect(page.locator('.preprow', { hasText: 'Lavar y poner el arroz' })).toContainText('Marga · paso propio');
+    // Tanda 27: «Paso propio» va bajo la hora, y la persona, en la línea del paso y en su círculo.
+    const rice = page.locator('.preprow', { hasText: 'Lavar y poner el arroz' });
+    await expect(rice.locator('.fd-kind')).toHaveText('Paso propio');
+    await expect(rice.locator('.recipemeta')).toHaveText('Marga');
+    await expect(rice.locator('.fd-purpose')).toHaveText('para la cena de las 20:30');
+    await expect(rice.locator('.fd-who')).toHaveAccessibleName(/^Responsable: Marga\./);
+    await expect(page.locator('.preprow', { hasText: 'Preparar Curry de verduras' }).locator('.fd-kind')).toHaveText('Propuesta');
 
     await page.locator('#addStep').click();
     const added = page.getByRole('dialog', { name: 'Nuevo paso' });
@@ -240,19 +249,21 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await expect.poll(() => api.rows('food.preparation_items').filter((p) => p.manual).length).toBe(2);
   });
 
-  await test.step('orden a mano de los pasos de un día: manda sobre la hora y se conserva', async () => {
+  await test.step('orden a mano de los pasos de un servicio: manda sobre la hora y se conserva', async () => {
+    // Tanda 27 (MUELA-035): el día va por servicios, con los pasos sueltos primero; el orden a mano, dentro de cada bloque.
     const texts = () => page.locator('.preprow strong');
-    await expect(texts()).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']); // por hora: 08:00, 18:30, 19:00
-    await page.getByRole('button', { name: 'Bajar Sacar el pan del congelador' }).click();
-    await expect(texts()).toHaveText(['Lavar y poner el arroz', 'Sacar el pan del congelador', 'Preparar Curry de verduras']);
+    await expect(page.locator('.fd-block > h4')).toHaveText(['Pasos sueltos · 0 de 1 listo', 'Cena · 20:30 · 1 de 2 listos']);
+    await expect(texts()).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']); // sueltos; cena por hora: 18:30, 19:00
+    await page.getByRole('button', { name: 'Bajar Lavar y poner el arroz' }).click();
+    await expect(texts()).toHaveText(['Sacar el pan del congelador', 'Preparar Curry de verduras', 'Lavar y poner el arroz']);
     const position = (text: string) => Number(api.rows('food.preparation_items').find((p) => p.text === text)!.position);
-    await expect.poll(() => [position('Lavar y poner el arroz'), position('Sacar el pan del congelador'), position('Preparar Curry de verduras')]).toEqual([1, 2, 3]);
+    await expect.poll(() => [position('Preparar Curry de verduras'), position('Lavar y poner el arroz')]).toEqual([1, 2]);
     // Con el teclado sobre el asa, y otra vez seguido: la lista no se recrea entre guardados.
-    await page.getByRole('button', { name: /^Mover Preparar Curry de verduras/ }).press('Home');
-    await expect(texts()).toHaveText(['Preparar Curry de verduras', 'Lavar y poner el arroz', 'Sacar el pan del congelador']);
-    await expect.poll(() => position('Preparar Curry de verduras')).toBe(1);
+    await page.getByRole('button', { name: /^Mover Lavar y poner el arroz/ }).press('Home');
+    await expect(texts()).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']);
+    await expect.poll(() => position('Lavar y poner el arroz')).toBe(1);
     await page.reload();
-    await expect(page.locator('.preprow strong')).toHaveText(['Preparar Curry de verduras', 'Lavar y poner el arroz', 'Sacar el pan del congelador']);
+    await expect(page.locator('.preprow strong')).toHaveText(['Sacar el pan del congelador', 'Lavar y poner el arroz', 'Preparar Curry de verduras']);
   });
 
   await test.step('cambia la hora de la cena: la propuesta avisa y regenerar respeta lo hecho y lo propio', async () => {

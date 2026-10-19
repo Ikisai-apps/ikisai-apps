@@ -23,6 +23,10 @@ export const T = {
   preparation: 'food.preparation_items',
   /** Consumo de cada plato al acabar el servicio (R5c). */
   consumptions: 'food.consumptions',
+  /** Votos a los platos sugeridos (tanda 27): se escriben con `POST suggestion-votes`, se leen del espejo. */
+  suggestionVotes: 'food.suggestion_votes',
+  /** Avisos a Tasks de las máquinas que fallan (tanda 27): los escribe la Edge al avisar. */
+  equipmentNotices: 'food.equipment_notices',
 } as const satisfies Record<string, TableName>;
 
 /** Fila del espejo local: `_pending` lo pone el cliente offline mientras el servidor no confirma. */
