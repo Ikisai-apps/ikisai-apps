@@ -76,7 +76,9 @@ test('dirección · KPIs de Central, objetivo con umbrales y lectura sin red @sm
   // Sin red: la última lectura, con su hora.
   await context.setOffline(true);
   await page.getByRole('link', { name: 'Inicio', exact: true }).click();
-  await expect(page.locator('#dashboardMeta')).toContainText('Sin conexión: datos del');
+  // Sin red, el panel dice de cuándo son sus indicadores, sin rojo (el «Sin conexión» lo dice el menú, MUELA-013).
+  await expect(page.locator('#dashboardMeta')).toContainText('Indicadores del');
+  await expect(page.locator('#dashboardMeta')).not.toContainText('Sin conexión');
   await expect(overdue.locator('.kpivalue')).toHaveText('1');
   await context.setOffline(false);
 });

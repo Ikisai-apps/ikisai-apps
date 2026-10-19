@@ -130,7 +130,7 @@ function dueRow(ctx: Pick<ViewContext, 'client' | 'navigate'>, data: Data, i: Du
  */
 export interface DueQueue { element: HTMLElement; setDue(items: DueItem[]): void; pending(): string[] }
 
-export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'usage'>, data: () => Data, items: DueItem[], opts: { canEdit: boolean; onAll: () => void; feedbackId: string; onChange?: () => void }): DueQueue {
+export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'usage'>, data: () => Data, items: DueItem[], opts: { canEdit: boolean; onAll: () => void; where: 'inicio' | 'vencimientos'; onChange?: () => void }): DueQueue {
   const passed = new Set<string>();
   const byId = new Map<string, DueItem>();
   const toItems = (list: DueItem[]): QueueItem[] => { byId.clear(); return list.map((i) => {
@@ -144,7 +144,7 @@ export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'u
     };
   }); };
   const queue: Queue = createQueue({
-    label: 'Lo que vence, una cosa cada vez', items: toItems(items), feedbackId: opts.feedbackId,
+    label: 'Lo que vence, una cosa cada vez', items: toItems(items), feedbackId: opts.where === 'inicio' ? 'central.inicio.vencimientos.cola' : 'central.cumplimiento.vencimientos.cola',
     readOnlyText: 'Puedes consultarlo. Lo cambia quien edita en Central.',
     primary: opts.canEdit ? (item) => {
       const i = byId.get(item.id);
@@ -225,7 +225,7 @@ export function mountCompliance(tab: ComplianceTab): ViewMount {
       }
       if (view === 'cola') {
         if (queue) queue.setDue(items);
-        else queue = createDueQueue(ctx, () => data!, items, { canEdit, onAll: () => { view = 'lista'; paint(); }, feedbackId: 'central.cumplimiento.vencimientos.cola' });
+        else queue = createDueQueue(ctx, () => data!, items, { canEdit, onAll: () => { view = 'lista'; paint(); }, where: 'vencimientos' });
         replace(host, viewSwitch(), queue.element);
         return;
       }
@@ -640,6 +640,8 @@ export function mountRequirement(requirementId: string): ViewMount {
       ];
       replace(host,
         el('div', { class: 'ctl-cover', 'data-feedback-id': 'central.obligacion.cabecera', 'data-feedback-label': 'Portada de la obligación' },
+          // La portada no lleva encabezado propio: el nombre va también como título de la página para los lectores de pantalla.
+          el('h2', { class: 'visually-hidden' }, req.name),
           renderCover({ title: req.name, color: state === 'vencido' ? '#a5332a' : state === 'por_vencer' ? '#8a5a12' : '#4f6a3a',
             pill: closed ? label(REQUIREMENT_STATUS_LABELS, req.status) : req.expires_on ? plazo(req.expires_on) : 'Sin fecha de vencimiento',
             pillTone: closed ? null : state === 'vencido' ? 'alert' : state === 'por_vencer' ? 'warn' : 'ok',

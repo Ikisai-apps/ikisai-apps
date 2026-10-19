@@ -77,8 +77,21 @@
   - **Revisión:** `central.review_screens`, con los diez pasos del cuadro; el feedback se une por prefijo o por ruta.
   - Reglas puras en el dominio para las pantallas (lo que te toca decidir, por votar, recientes, rastro, avance y feedback por pantalla).
   - El lector vota desde el 19-10 (núcleo #608, P10). La interfaz llega cuando el kit publique los lotes A y B.
+- 2026-10-20 · **Tanda 27 · la interfaz, de una pasada** (MUELA-069 y los traspasos 004, 007, 013, 014, 017, 019, 022 y 027, con las recomendaciones de `PERDIDAS_central.md` aprobadas por VG), con las piezas del kit 0.42–0.48:
+  - **Menú lateral común** (013, Central es la primera): la marca abre el cajón; en el ordenador, columna fija y la barra de pestañas abajo. Perfil y rol con la línea de sincronización, tema, recientes (por cuenta y dispositivo), secciones con sus recuentos («Cuentas y accesos» arriba para el owner, Bloque 2), apps, comentarios y ayuda, y «Cerrar sesión» también en el móvil. Búsqueda en la cabecera (Ctrl K) con lo vigente primero (K1). «‹ Volver a…» (K9).
+  - **Inicio:** lo que vence, una cosa cada vez, y debajo las 4 siguientes con su fecha; las tarjetas del owner, las tres últimas decisiones y los enlaces de siempre; sin red, el panel dice «Indicadores del …» sin rojo.
+  - **Cumplimiento:** Vencimientos con «Una cosa cada vez» (quien edita), la lista de siempre y «Por semanas»; Obligaciones y Documentos agrupados por tipo con lo peor (chips de tipo y `?tipo=`); ficha de obligación con portada, recorrido (No aplica y Cerrada como etiqueta; Bloqueada, parada y con aviso), foco y los datos plegados con «Editar», «Añadir documento» y la papelera; fechas sin hora y con el año cuando no es el actual; «Deshacer» de «Marcar cumplido».
+  - **Decisiones:** portada, lo que te toca decidir, la baraja para votar (también quien solo lee), lista en «Lo que vale hoy» y «Ya no valen» con etiquetas de estado y de app, y la ficha entera (`#/decisiones/<id>`) con «Sustituida por» y «Sustituye a», historia, votos y la decisión final del owner.
+  - **Entidad:** paso a paso con los seis datos que se notan fuera y la ficha con dónde sale cada dato; hoja corta de un dato (el NIF y el domicilio fiscal, solo en el editor completo, que se conserva y es obligatorio la primera vez).
+  - **Textos y contacto:** tablero por destino con cuatro cifras, el texto tal cual lo lee la persona, «Crear aquí» para lo que falta y «Así lo ve tu huésped / quien organiza» en un teléfono (mapa `PORTAL_TEXTS` en el dominio, con prueba contra los portales).
+  - **Conflictos:** la bandeja por áreas del kit (K20), con nombres de verdad, quién lo cambió, «Lo mío / Lo de …» y «Deshacer» de 8 s; los rechazados con «Corregir en …», «Descartar» y «Reintentar» solo si el fallo fue pasajero.
+  - **Revisión** (nueva, `#/revision`): lo que te toca (owner), cuánto se ha hecho, tablero de los diez pasos y hoja de ruta por app; «Importar pantallas» (JSON pegado o subido, upsert por app y nombre) y «Nueva pantalla», solo el owner.
+  - **Oficios:** grupos por oficio principal con el resumen de lo peor y el árbol dentro.
+  - Pruebas: `menu-review.spec.ts` y `pasada27.test.ts` nuevas; reescritas `compliance`, `decisions`, `entity`, `texts`, `feedback`, `dashboard` y `people`.
 
 ## Pendiente
+
+- Tanda 27 · lo que espera a los traspasos del Bloque 2 (pendientes del «ok» de VG): Personas (grupos con lo peor), ficha de persona (portada y foco), Equipos (baldosas), Agentes (grupos), Inventario (baldosas) y Alta de cuenta (pregunta a pregunta, con un solo envío al final). Hoy siguen como estaban.
 
 - Rellenar los datos reales de la entidad y subir `private/logo-ikisai.jpg`: lo hace el usuario en la app cuando esté publicada.
 - V2 · Dirección: que cada app publique su `central_kpi_projection` (reparto de Core); después, revisión semanal, OKR y registro de decisiones (C01), si el usuario los quiere.

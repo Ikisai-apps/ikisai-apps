@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { freePort } from '../food/helpers.ts';
 import { buildCentralApp } from './e2e-build.ts';
 import { startCentralServer, type CentralTestServer } from './server.ts';
-import { feedbackRoundTrip, simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { simulateKeyboard } from '../../packages/ui-kit/testing/feedback-smoke.ts';
+import { feedbackRoundTrip, openMenu, setSignal } from './menu-helpers.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
@@ -60,8 +61,8 @@ test('feedback · aviso de uso, centro «Sugerencias y QA», marcas de pantalla 
   expect(await page.locator('main [data-feedback-id]').count()).toBeGreaterThan(3);
 
   // Centro de reportes, desde el panel del lanzador.
-  await page.locator('#appLauncher').click();
-  await page.locator('.launcher-center').click();
+  // Desde el menú lateral (MUELA-013): el lanzador va dentro del cajón.
+  await (await openMenu(page)).locator('.launcher-center').click();
   await expect(page.getByRole('heading', { name: 'Sugerencias y QA' })).toBeVisible();
   await page.keyboard.press('Escape');
 
@@ -107,10 +108,7 @@ test('feedback · con una hoja abierta y el teclado en pantalla (móvil 484×100
   await page.setViewportSize({ width: 484, height: 1008 });
   await enterAsOwner(page);
   await page.goto(`${baseURL}/#/entidad`);
-  await page.locator('#appLauncher').click();
-  if (!(await page.locator('.launcher-signal input').isChecked())) await page.locator('.launcher-signal').click();
-  await expect(page.locator('.launcher-signal input')).toBeChecked();
-  await page.keyboard.press('Escape');
+  await setSignal(page, true);
   await page.locator('#editEntity').click();
   await expect(page.locator('#en-legal')).toBeVisible();
   const before = await reports();

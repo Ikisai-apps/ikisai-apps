@@ -97,8 +97,9 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     const withEn = es.filter((t) => english(t.key));
     const column = (id: string, title: string, children: (HTMLElement | null)[]) => el('section', { class: 'textgroup ctl-textcol', 'data-kind': id, 'data-feedback-id': 'central.textos.columna', 'data-feedback-label': 'Columna de destino' },
       el('div', { class: 'sectionlabel' }, title, el('span', { class: 'count' }, ` · ${children.filter(Boolean).length}`)), ...children);
+    // Cada texto sale una sola vez, en el primer destino donde se lee; su línea «Se lee en…» dice todos los sitios.
+    const seen = new Set<string>();
     const portalColumn = (portal: TextPortal) => {
-      const seen = new Set<string>();
       const items: HTMLElement[] = [];
       for (const screen of PORTAL_TEXTS[portal]) for (const slot of screen.slots) {
         if (seen.has(slot.key)) continue;
@@ -187,7 +188,7 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
       versionNote.textContent = t
         ? (changed() ? `Al guardar se crea la versión ${nextVersion(t.version)}; las aceptaciones anteriores conservan su versión (${t.version} y anteriores).` : `Versión actual: ${t.version}.`)
         : 'Al guardar se crea la versión v1.';
-      guard.dirtyEditor = !readOnly && (t ? changed() : title.value.trim() !== '' || body.value.trim() !== '');
+      guard.dirtyEditor = !readOnly && (t ? changed() : title.value.trim() !== (preset?.title ?? base?.title ?? '') || body.value.trim() !== (base?.body ?? '').trim());
       sheet?.setFootHidden(readOnly || (t !== null && !changed()));
     };
     /** Rodea la selección (o el cursor) con las marcas de un bloque condicional. */

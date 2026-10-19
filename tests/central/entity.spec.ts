@@ -65,7 +65,7 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await page.locator('#saveEntity').click();
   await expect(page.locator('.formerror')).toContainText('control del CIF');
   // Un dato erróneo no deja el logotipo encolado.
-  await expect(page.getByText(/pendiente/)).toHaveCount(0);
+  await expect(page.locator('#entityView, .sheet').getByText(/pendiente/)).toHaveCount(0);
 
   await page.locator('#en-tax').fill('B12345674');
   await page.locator('#saveEntity').click();
@@ -75,6 +75,23 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await expect(page.locator('#entityView')).toContainText('Calle Falsa 1, 28000 Madrid');
   await expect(page.locator('#entityView')).toContainText('ES91 2100 0418 4502 0005 1332');
   await expect.poll(async () => (await api.app.t.db.query<{ iban: string }>(`select iban from central.entity`)).rows[0]?.iban).toBe('ES9121000418450200051332');
+
+  // «Paso a paso» (MUELA-019 y 069): lo que falta de lo que se nota fuera; cada dato, en su hoja corta con «Sale en …».
+  await expect(page.locator('#entityView')).toContainText('Lo que se nota fuera de Central');
+  await expect(page.locator('#entityView')).toContainText('Sin la dirección del lugar, los portales no enseñan ni dirección ni mapa.');
+  await page.locator('#entityView [data-field="iban"]').click();
+  await expect(page.locator('.sheet')).toContainText('Sale en instrucciones de pago de los portales');
+  await page.locator('#one-value').fill('ES00 1234');
+  await page.locator('#saveOne').click();
+  await expect(page.locator('#one-error')).toContainText('IBAN');
+  await expect(page.locator('#one-value')).toHaveAttribute('aria-invalid', 'true');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Descartar' }).click();
+  await page.locator('#entityView [data-field="phone"]').click();
+  await page.locator('#one-value').fill('600 111 222');
+  await page.locator('#saveOne').click();
+  await expect(page.getByText('Teléfono: guardado.')).toBeVisible();
+  await expect.poll(async () => (await api.app.t.db.query<{ phone: string }>(`select phone from central.entity`)).rows[0]?.phone).toBe('600 111 222');
 
   // El logotipo llega al servidor como archivo verificado de Central y la proyección lo publica.
   await expect.poll(async () => (await api.app.t.db.query(`select logo_mime from central.common_entity_projection`)).rows[0]).toEqual({ logo_mime: 'image/png' });
@@ -104,5 +121,7 @@ test('entidad · el owner rellena los datos y el logotipo; el lector los ve sin 
   await readerPage.locator('#homeEntity').click();
   await expect(readerPage.locator('#entityView')).toContainText('Entidad de Prueba S.L.');
   await expect(readerPage.locator('#editEntity')).toHaveCount(0);
+  await expect(readerPage.locator('#entityView')).toContainText('Puedes consultarlos. Los cambia quien administra Central.');
+  await expect(readerPage.locator('#entityView button.ctl-kvrow')).toHaveCount(0);
   await other.close();
 });

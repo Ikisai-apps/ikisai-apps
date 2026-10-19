@@ -51,11 +51,27 @@ test('textos · sembrados, edición con vista previa y versión nueva, marcadore
   await page.locator('#homeTexts').click();
   await expect(page.getByRole('heading', { name: 'Textos y contacto' })).toBeVisible();
   await expect(page.locator('[data-text="contact.organizers.email"]')).toContainText('organiza@ikisai.com');
+  // Tablero por destino (MUELA-017): cada texto en la columna de quien lo lee, una sola vez, con «Se lee en…».
+  const guests = page.locator('[data-kind="guests"]');
+  await expect(guests.locator('[data-text="contact.guests.email"]')).toContainText('ven@ikisai.com');
+  await expect(page.locator('[data-text="contact.phone"]')).toHaveCount(1);
+  await expect(guests.locator('[data-text="contact.phone"]')).toContainText('614 76 57 96');
+  await expect(guests.locator('[data-text="contact.phone"]')).toContainText('Se lee en Huéspedes › Ayuda y contacto · Quien organiza › Contacto');
   const audiences = page.locator('[data-kind="correos"]');
   await expect(audiences).toContainText('Correos por público');
-  await expect(audiences.locator('[data-text="contact.guests.email"]')).toContainText('ven@ikisai.com');
-  await expect(audiences.locator('[data-text="contact.phone"]')).toHaveCount(0);
-  await expect(page.locator('[data-text="contact.phone"]')).toContainText('614 76 57 96');
+  await expect(audiences.locator('[data-text="contact.guests.email"]')).toHaveCount(0);
+  await expect(page.locator('.stat-row')).toContainText('que faltan');
+  // Lo que un portal pide y aún no existe sale en su sitio, con «Crear aquí» y la clave puesta.
+  await page.locator('[data-missing="guests.menu_notice"]').getByRole('button', { name: 'Crear aquí' }).click();
+  await expect(page.locator('#tx-key')).toHaveValue('guests.menu_notice');
+  await expect(page.locator('#tx-key')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  // «Así lo ve tu huésped»: el portal en un teléfono; tocar un texto abre el editor de siempre.
+  await page.locator('#lookGuests').click();
+  await page.locator('.ctl-phone [data-text="portal.privacy"]').click();
+  await expect(page.locator('#tx-version')).toHaveText('Versión actual: v2.');
+  await page.keyboard.press('Escape');
+  await page.locator('#phoneBack').click();
   const privacy = page.locator('[data-text="portal.privacy"]');
   // La semilla de los correos por público cambió su marcador de contacto: v2 en los dos idiomas.
   await expect(privacy).toContainText('ES v2');

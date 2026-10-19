@@ -45,7 +45,8 @@ async function login(page: Page, email: string, name: string): Promise<void> {
   await expect(page.getByRole('heading', { name: `Hola, ${name}` })).toBeVisible();
 }
 
-const synced = (page: Page) => expect(page.getByText(/pendiente/i)).toHaveCount(0);
+// En la pantalla (el menú lateral dice «pendientes de verificar» en «Sugerencias y QA»).
+const synced = (page: Page) => expect(page.locator('main').getByText(/pendiente/i)).toHaveCount(0);
 
 test('personas · ficha, datos reservados, documentación, cuenta, lector, sin red y papelera', async ({ page, browser, context }) => {
   await login(page, 'owner@example.invalid', 'Owner');

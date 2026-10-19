@@ -68,7 +68,7 @@ export const mountHome: ViewMount = (ctx) => {
     if (!due.length) { queue = null; replace(docs); return; }
     const expired = due.filter((x) => x.state === 'vencido').length;
     if (queue) queue.setDue(due);
-    else queue = createDueQueue(ctx, () => data!, due, { canEdit, onAll: () => navigate('#/cumplimiento'), feedbackId: 'central.inicio.vencimientos.cola', onChange: paintNext });
+    else queue = createDueQueue(ctx, () => data!, due, { canEdit, onAll: () => navigate('#/cumplimiento'), where: 'inicio', onChange: paintNext });
     replace(docs,
       el('div', { class: 'blockhead' }, el('h3', null, 'Lo que vence'),
         el('span', { class: 'hint' }, [expired ? plural(expired, 'vencido', 'vencidos') : '', due.length - expired ? plural(due.length - expired, 'vence pronto', 'vencen pronto') : ''].filter(Boolean).join(' · '))),

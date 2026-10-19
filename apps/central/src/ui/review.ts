@@ -109,11 +109,14 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
         facts: [appName(r.originApp), ...(r.node?.path?.length ? [r.node.path.join(' › ')] : [])] };
     });
   }
-  /** `feature`: el id de uso, literal en cada llamada (el catálogo solo recoge literales). */
-  async function act(report: Report, path: 'approve' | 'verify' | 'dismiss' | 'reopen', json: unknown, done: string, feature: string): Promise<boolean> {
+  async function act(report: Report, path: 'approve' | 'verify' | 'dismiss' | 'reopen', json: unknown, done: string): Promise<boolean> {
     try {
-      await usage.run(feature,
-        () => client.api(`/feedback/${encodeURIComponent(report.id)}/${path}`, { method: 'POST', json }));
+      const call = () => client.api(`/feedback/${encodeURIComponent(report.id)}/${path}`, { method: 'POST', json });
+      // Ids de uso literales (el catálogo de la publicación solo recoge literales).
+      if (path === 'approve') await usage.run('central.revision.aprobar', call);
+      else if (path === 'verify') await usage.run('central.revision.funciona', call);
+      else if (path === 'dismiss') await usage.run('central.revision.descartar', call);
+      else await usage.run('central.revision.sigue_fallando', call);
       toast(done);
       reports = reports.map((r) => (r.id === report.id ? { ...r, reviewStatus: path === 'dismiss' ? 'rejected' : 'approved', display: path === 'verify' ? 'verified' : path === 'dismiss' ? 'dismissed' : path === 'reopen' ? 'open' : r.display } : r));
       return true;
@@ -132,8 +135,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
         const t = todoById.get(item.id);
         if (!t) return null;
         if (t.kind === 'screen') return { label: t.screen.url ? 'Abrir y siguiente' : 'Ver y siguiente', onClick: () => { if (t.screen.url) window.open(t.screen.url, '_blank', 'noopener'); else openScreen(t.screen); queue?.done(); } };
-        if (t.kind === 'review') return { label: 'Aprobar y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'approve', {}, 'Aprobado: pasa al buzón del agente.', 'central.revision.aprobar')) queue?.done(); } };
-        return { label: 'Funciona y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'verify', { build: null }, 'Verificado.', 'central.revision.funciona')) queue?.done(); } };
+        if (t.kind === 'review') return { label: 'Aprobar y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'approve', {}, 'Aprobado: pasa al buzón del agente.')) queue?.done(); } };
+        return { label: 'Funciona y siguiente', disabled: !navigator.onLine, onClick: async () => { if (await act(t.report, 'verify', { build: null }, 'Verificado.')) queue?.done(); } };
       },
       secondary: (item) => {
         const t = todoById.get(item.id);
@@ -155,7 +158,7 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
     const error = el('p', { class: 'formerror', role: 'alert' });
     const send = el('button', { class: 'primary', type: 'button', id: 'rv-reason-send', 'data-feedback-id': 'central.revision.motivo.enviar', 'data-feedback-label': 'Enviar', onclick: async () => {
       if (path === 'dismiss' && !reason.value.trim()) { error.textContent = 'Escribe el motivo: lo verá quien lo informó.'; reason.focus(); return; }
-      const ok = await act(report, path, path === 'dismiss' ? { reason: reason.value.trim() } : (reason.value.trim() ? { message: reason.value.trim() } : {}), path === 'dismiss' ? 'Descartado.' : 'Reabierto.', path === 'dismiss' ? 'central.revision.descartar' : 'central.revision.sigue_fallando');
+      const ok = await act(report, path, path === 'dismiss' ? { reason: reason.value.trim() } : (reason.value.trim() ? { message: reason.value.trim() } : {}), path === 'dismiss' ? 'Descartado.' : 'Reabierto.');
       if (ok) { await sheet?.close(true); queue?.done(); }
     } }, path === 'dismiss' ? 'Descartar' : 'Enviar: sigue fallando');
     sheet = openSheet({ title: path === 'dismiss' ? 'Descartar el reporte' : 'Sigue fallando', meta: report.code,
