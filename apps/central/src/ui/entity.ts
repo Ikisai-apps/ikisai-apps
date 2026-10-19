@@ -83,7 +83,7 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
 
   /** Una fila de la ficha: el dato, su valor y dónde sale. Para quien administra, tocarla abre su hoja corta. */
   function line(label: string, value: Node | string | null | undefined, uses: string, field: OneField | 'full' | null, personal = false): HTMLElement {
-    const content = [el('span', { class: 'ctl-kvname' }, label), el('span', { class: value ? 'ctl-kvvalue' : 'ctl-kvvalue empty', ...(personal ? { 'data-feedback-ignore': '' } : {}) }, value ?? 'Falta'), el('small', { class: 'ctl-kvuses' }, `Sale en ${uses}`)];
+    const content = [el('span', { class: 'ctl-kvname' }, label), el('span', { class: value ? 'ctl-kvvalue' : 'ctl-kvvalue ctl-kvmissing', ...(personal ? { 'data-feedback-ignore': '' } : {}) }, value ?? 'Falta'), el('small', { class: 'ctl-kvuses' }, `Sale en ${uses}`)];
     return isAdmin && field
       ? el('button', { type: 'button', class: 'ctl-kvrow', 'data-field': field, onclick: () => (field === 'full' ? openEditor() : openOne(field)) }, ...content, icon('chevronRight', 16))
       : el('div', { class: 'ctl-kvrow' }, ...content);

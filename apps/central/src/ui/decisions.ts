@@ -125,14 +125,14 @@ export const mountDecisions: ViewMount = (ctx) => {
     const toDecide = decisionsToDecide(alive, data.votes);
     const items = (toDecide.length ? toDecide : last ? [last] : []).map((d) => {
       const t = voteTally(data.votes, d.id, d.reviewed_at);
-      return { id: d.id, title: d.name, kicker: toDecide.length ? 'Te toca decidir' : 'La última', tone: toDecide.length ? 'warn' as const : null,
+      return { id: d.id, title: d.name, kicker: toDecide.length ? (isAdmin ? 'Te toca decidir' : 'Piden retirarla') : 'La última', tone: toDecide.length ? 'warn' as const : null,
         note: toDecide.length ? `${t.retirar} piden retirarla y ${t.mantener} mantenerla.${isAdmin ? ' Decide en su ficha.' : ' Decide quien administra.'}` : d.summary.slice(0, 160),
         meta: [d.code ?? '', fmtDay(d.decided_on)].filter(Boolean) };
     });
     replace(focusHost, items.length ? el('h3', { class: 'ctl-h' }, toDecide.length ? (isAdmin ? 'Lo que te toca decidir' : 'Lo que se está decidiendo') : 'La última decisión') : null,
       items.length ? createFocus({ label: 'Decisiones', items, onOpen: (i) => navigate(`#/decisiones/${i.id}`), feedbackId: 'central.decisiones.foco.tarjeta' }).element : null);
     deck.setItems(toVote);
-    replace(deckHost, vigentes.length ? el('h3', { class: 'ctl-h' }, '¿Se mantienen?') : null, vigentes.length ? deck.element : null);
+    replace(deckHost, vigentes.length ? deck.element : null);
   }
 
   function paintChips(): void {

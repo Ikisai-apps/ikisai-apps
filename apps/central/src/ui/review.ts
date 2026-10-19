@@ -97,8 +97,8 @@ export const mountReview: ViewMount = ({ main, client, isAdmin, usage }) => {
         todoById.set(id, t);
         const n = openReports(s).length;
         return { id, title: s.name, tone: 'warn' as const, toneText: s.step === 'alt' ? 'Prototipo por valorar' : 'Demo por validar',
-          medal: { name: appName(s.app), color: APP_COLORS[s.app] }, value: appName(s.app),
-          facts: [stepName(s.step), n ? plural(n, 'comentario abierto', 'comentarios abiertos') : 'sin comentarios abiertos', ...(s.handoff ? [`Traspaso ${s.handoff}`] : [])] };
+          medal: { name: appName(s.app), color: APP_COLORS[s.app] },
+          facts: [appName(s.app), stepName(s.step), n ? plural(n, 'comentario abierto', 'comentarios abiertos') : 'sin comentarios abiertos', ...(s.handoff ? [`Traspaso ${s.handoff}`] : [])] };
       }
       const r = t.report;
       const id = `r:${r.id}`;
