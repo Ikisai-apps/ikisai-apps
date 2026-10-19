@@ -23,3 +23,4 @@ export * from './rectification.ts';
 export * from './partial-read.ts';
 export * from './item-table.ts';
 export * from './validation-check.ts';
+export * from './targets.ts';

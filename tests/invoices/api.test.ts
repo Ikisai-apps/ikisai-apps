@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createInvoicesApp, INVOICES_ORIGINS } from '../../supabase/functions/invoices-api/app.ts';
 import { collectStream, zipEntryNames, zipStream } from '../../supabase/functions/invoices-api/zip.ts';
-import { CSV_BOM, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
+import { CSV_BOM, targetOpenFor, type ImportDocument } from '../../packages/domain-invoices/src/index.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLE: ImportDocument = JSON.parse(fs.readFileSync(path.join(here, '../core/fixtures/invoice-import-v1.example.json'), 'utf8'));
@@ -177,6 +177,21 @@ test('beforeCommit: destinos de Food y Booking por proyección registrada (ids d
   assert.equal(one.data.label, 'Horno 1');
   const bookingTargets = await app.call('/api/v1/targets/booking?q=');
   assert.equal(bookingTargets.status, 200, JSON.stringify(bookingTargets.data)); assert.deepEqual(bookingTargets.data.items, []);
+  // Tanda 27: los eventos llevan su último día (`ends_on`) para que «Compras» no asigne de un toque a un retiro ya acabado
+  const reservation = uuid(); const event = uuid();
+  await app.t.db.query(`insert into booking.reservations (id, title, status, start_date, end_date, expected_guests, requires_meals, meal_plan_requested, menu_style_requested)
+    values ($1, 'Retiro de prueba', 'confirmada', '2024-03-08', '2024-03-10', 20, true, 'pension_completa', 'vegetariano')`, [reservation]);
+  await app.t.db.query(`insert into booking.events (id, reservation_id) values ($1, $2)`, [event, reservation]);
+  const withEvent = await app.call('/api/v1/targets/booking?q=retiro');
+  assert.deepEqual(withEvent.data.items.map((i: any) => [i.id, i.ends_on, i.archived]), [[event, '2024-03-10', false]]);
+  assert.equal((await app.call(`/api/v1/targets/booking/event/${event}`)).data.ends_on, '2024-03-10');
+  const target = withEvent.data.items[0];
+  assert.equal(targetOpenFor(target, '2024-03-09'), true);
+  assert.equal(targetOpenFor(target, '2024-03-10'), true);
+  assert.equal(targetOpenFor(target, '2024-03-11'), false);
+  assert.equal(targetOpenFor({ archived: true }, '2024-03-09'), false);
+  assert.equal(targetOpenFor({ archived: false, ends_on: null }, null), true);
+  assert.equal(targetOpenFor(target, null, '2024-04-01'), false);
 });
 
 test('rutas: targets/tasks busca Área → Proyecto → Tarea; reader no busca; dashboard', async () => {

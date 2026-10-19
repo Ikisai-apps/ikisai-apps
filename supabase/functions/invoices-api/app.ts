@@ -57,6 +57,8 @@ export interface TargetInfo {
   path: string[];
   revision: number | null;
   archived: boolean;
+  /** Último día del evento de Booking (tanda 27): «Compras» solo asigna de un toque si no había acabado en la fecha de la factura. */
+  ends_on?: string | null;
 }
 
 interface TasksTarget { kind: string; id: string; tabId: string | null; projectId: string | null; title: string; revision: number; deleted: boolean; archived: boolean; done?: boolean }
@@ -168,12 +170,12 @@ function createTargets(supabase: Supabase, options: InvoicesAppOptions) {
     if (!UUID.test(id)) fail(422, 'TARGET_NOT_FOUND', domainMessage('TARGET_NOT_FOUND'), { app: 'booking', kind, id });
     const row = (await projection<BookingEvent>(ctx, 'booking.food_event_projection', { event_id: id.toLowerCase() }))[0];
     if (!row) fail(422, 'TARGET_NOT_FOUND', domainMessage('TARGET_NOT_FOUND'), { app: 'booking', kind, id });
-    return { app: 'booking', kind, id: row.event_id, code: row.event_code, label: `${row.title} · ${row.start_date}`, path: ['Eventos'], revision: row.event_revision, archived: false };
+    return { app: 'booking', kind, id: row.event_id, code: row.event_code, label: `${row.title} · ${row.start_date}`, path: ['Eventos'], revision: row.event_revision, archived: false, ends_on: row.end_date ?? null };
   }
 
   async function listBooking(ctx: RequestContext, query: string): Promise<TargetInfo[]> {
     const rows = await projection<BookingEvent>(ctx, 'booking.food_event_projection');
-    return filterTargets(rows.map((r) => ({ app: 'booking' as const, kind: 'event', id: r.event_id, code: r.event_code, label: `${r.title} · ${r.start_date}`, path: ['Eventos'], revision: r.event_revision, archived: false })), query);
+    return filterTargets(rows.map((r) => ({ app: 'booking' as const, kind: 'event', id: r.event_id, code: r.event_code, label: `${r.title} · ${r.start_date}`, path: ['Eventos'], revision: r.event_revision, archived: false, ends_on: r.end_date ?? null })), query);
   }
 
   async function resolve(ctx: RequestContext, app: string, kind: string, id: string): Promise<TargetInfo> {

@@ -194,6 +194,9 @@ export interface IssuedInvoiceRow extends SyncedColumns {
   document: IssuedDocument | null;
   rectified_by: unknown[];
   purpose: IssuedPurpose | null;
+  /** Tanda 27 (0240): fecha de envío al cliente (etapa «Enviada») y medio del cobro. */
+  sent_at: string | null;
+  payment_method: string | null;
   /** Emisor (la entidad de Central) copiado al registrar: NIF y nombre para Verifactu, y el resto en `issuer`. */
   issuer_tax_id: string | null;
   issuer_name: string | null;
@@ -405,4 +408,35 @@ export function issuedSummary(input: IssuedSummaryInput, range: { from: string; 
       missing_file: input.withFile ? summed.filter((i) => !input.withFile!.has(i.id)).length : 0,
     },
   };
+}
+
+/**
+ * Lo facturado y lo cobrado por reserva, con la regla de `invoices.reservation_collected` (0222), que es la que usa Booking.
+ * Finance la pide al servidor con red; sin red, la calcula aquí con lo del dispositivo y debe dar lo mismo:
+ * - facturas del retiro: las no borradas ni borradores con una asignación viva a la reserva, más sus rectificativas;
+ * - sin anuladas; las rectificativas restan con su total (negativo);
+ * - cobrado: solo las `cobrada`; «Por cobrar» = facturado − cobrado.
+ */
+export interface ReservationCollected { reservation_id: string; invoiced: number; collected: number; last_collected_at: string | null }
+export type CollectedInvoice = { id: string; status: string; total: number | string | null; payment_status: string | null; paid_at: string | null; invoice_type: string | null; rectified?: unknown; deleted_at?: string | null };
+export type CollectedAllocation = { issued_invoice_id: string; target_app: string; target_kind: string; target_id: string; deleted_at?: string | null };
+
+export function reservationCollected(reservationIds: readonly string[], invoices: readonly CollectedInvoice[], allocations: readonly CollectedAllocation[]): ReservationCollected[] {
+  const live = invoices.filter((i) => !i.deleted_at && i.status !== 'borrador');
+  const byId = new Map(live.map((i) => [i.id, i]));
+  return [...new Set(reservationIds)].sort().map((reservation) => {
+    const direct = new Set(allocations
+      .filter((a) => !a.deleted_at && a.target_app === 'booking' && a.target_kind === 'reservation' && a.target_id === reservation && byId.has(a.issued_invoice_id))
+      .map((a) => a.issued_invoice_id));
+    const ids = new Set(direct);
+    for (const r of live) {
+      if (!r.invoice_type?.startsWith('R') || !Array.isArray(r.rectified)) continue;
+      if (r.rectified.some((x) => direct.has(String((x as Record<string, unknown> | null)?.issued_invoice_id ?? '')))) ids.add(r.id);
+    }
+    const counted = [...ids].map((id) => byId.get(id)!).filter((i) => i.status !== 'anulada');
+    const paid = counted.filter((i) => i.payment_status === 'cobrada');
+    const sum = (rows: CollectedInvoice[]) => fromCents(rows.reduce((acc, i) => acc + toCents(Number(i.total ?? 0)), 0));
+    const last = paid.map((i) => i.paid_at).filter((d): d is string => !!d).sort().pop() ?? null;
+    return { reservation_id: reservation, invoiced: sum(counted), collected: sum(paid), last_collected_at: last };
+  });
 }
