@@ -18,6 +18,11 @@ export interface CaptureOptions {
   fallbackNode?: () => { id: string; path: string[] };
   /** Dónde montar la barra; por defecto `document.body`. */
   container?: () => HTMLElement;
+  /**
+   * Cuánto hay que mantener pulsado (ms); por defecto la pulsación larga de siempre (600). `0` = basta un toque (K2:
+   * «Señalar un fallo aquí» desde el menú, cuando ya se ha elegido señalar). La barra lo dice.
+   */
+  delay?: number;
 }
 
 export function captureFeedbackTarget(options: CaptureOptions = {}): Promise<FeedbackNode | null> {
@@ -27,7 +32,7 @@ export function captureFeedbackTarget(options: CaptureOptions = {}): Promise<Fee
     let done = false;
     const cancel = el('button', { type: 'button', class: 'ghost small fb-capture-cancel' }, kt('Cancelar'));
     const bar = el('div', { class: 'ikisai-fb-layer fb-capture-bar', role: 'status', 'aria-live': 'polite', 'data-feedback-ignore': '' },
-      el('span', null, options.text ?? kt('Mantén pulsado sobre el lugar al que te refieres')), cancel);
+      el('span', null, options.text ?? (options.delay === 0 ? kt('Toca el lugar al que te refieres') : kt('Mantén pulsado sobre el lugar al que te refieres'))), cancel);
     const finish = (node: FeedbackNode | null) => {
       if (done) return;
       done = true;
@@ -41,6 +46,7 @@ export function captureFeedbackTarget(options: CaptureOptions = {}): Promise<Fee
     const gesture = installFeedbackGesture({
       onSignal: (target) => finish(resolveFeedbackNode(target, options.fallbackNode)),
       enabled: () => !done,
+      ...(options.delay !== undefined ? { delay: options.delay } : {}),
     });
     cancel.addEventListener('click', () => finish(null));
     document.addEventListener('keydown', onKey, true);

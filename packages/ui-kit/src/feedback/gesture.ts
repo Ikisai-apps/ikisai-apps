@@ -73,7 +73,8 @@ export function installFeedbackGesture(options: FeedbackGestureOptions): Feedbac
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const target = e.target instanceof Element ? e.target : null;
     if (!target || isFeedbackExcluded(target)) return;
-    press = { id: e.pointerId, x: e.clientX, y: e.clientY, target, timer: setTimeout(fire, delay) };
+    // Con `delay` 0 o menos (K2), basta un toque: se dispara al soltar sin haberse movido (ver `onEnd`).
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, target, timer: delay > 0 ? setTimeout(fire, delay) : (0 as unknown as ReturnType<typeof setTimeout>) };
     html.classList.add(PRESSING_CLASS);
   };
   const onMove = (event: Event) => {
@@ -83,7 +84,9 @@ export function installFeedbackGesture(options: FeedbackGestureOptions): Feedbac
   };
   const onEnd = (event: Event) => {
     const e = event as PointerEvent;
-    if (press && e.pointerId === press.id) release();
+    if (!press || e.pointerId !== press.id) return;
+    if (delay <= 0 && event.type === 'pointerup') fire();
+    else release();
   };
   const onKey = (event: Event) => {
     const e = event as KeyboardEvent;

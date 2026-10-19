@@ -7,6 +7,7 @@ import { installKeyboardInsets } from '../overlay/keyboard.ts';
 import { installBackNavigation, type BackNavigationOptions } from './back-navigation.ts';
 import { openSheet, type Sheet } from '../overlay/sheet.ts';
 import type { AppLauncher } from './launcher.ts';
+import { createAppMenu, type AppMenu, type AppMenuOptions } from './app-menu.ts';
 
 export interface NavItem {
   /** Destino, normalmente un hash de ruta: `#/facturas`. */
@@ -56,6 +57,21 @@ export interface AppShellOptions {
    * Sin límite por defecto (las apps internas no cambian).
    */
   maxNav?: number;
+  /**
+   * Menú lateral común (MUELA-013, K7): la marca abre el cajón del menú en vez de la hoja de apps (el lanzador va dentro,
+   * en `menu.launcher`). Sin esta opción, la cabecera es la de siempre.
+   */
+  menu?: AppMenuOptions;
+  /**
+   * Búsqueda en la cabecera (K8): lupa en el móvil y caja «Buscar en {app}… Ctrl K» en el ordenador. La app abre su
+   * paleta en `onOpen` (Ctrl K lo sigue llevando la paleta).
+   */
+  search?: { label?: string; onOpen: () => void; feedbackId?: string };
+  /**
+   * En el ordenador, la navegación: `side` (columna, como siempre) o `bar` (K12: la barra de abajo también en el
+   * ordenador, horizontal). Con la columna del menú (`menu.column`), siempre `bar`.
+   */
+  navLayout?: 'side' | 'bar';
 }
 
 export interface AppShell {
@@ -76,6 +92,8 @@ export interface AppShell {
   setBadge(hash: string, count: number): void;
   /** Cambia las secciones (portales: según los módulos que active el organizador). */
   setNav(nav: readonly NavItem[], more?: readonly NavItem[]): void;
+  /** El menú lateral, si se pidió (`menu`): abrir, cerrar, `refresh()` tras cambiar recientes o recuentos. */
+  menu: AppMenu | null;
   destroy(): void;
 }
 
@@ -89,13 +107,28 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   const logoutButton = options.onLogout
     ? el('button', { class: 'iconbtn desktop-only', type: 'button', id: 'logoutButton', 'aria-label': 'Cerrar sesión', title: 'Cerrar sesión', onclick: () => void options.onLogout?.() }, icon('logout'))
     : null;
+  const menu: AppMenu | null = options.menu
+    ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, onSync: options.status?.onSync, navigate: (hash) => navigate(hash) })
+    : null;
+  if (menu && options.status?.client) {
+    menu.setStatus(options.status.client.status());
+    options.status.client.onStatus((s) => menu.setStatus(s));
+  } else if (menu && options.status?.status) menu.setStatus(options.status.status);
+  const searchLabel = options.search?.label ?? kt('Buscar en {app}…', { app: options.appName });
+  const search = options.search
+    ? el('button', { type: 'button', class: 'appmenu-search', 'aria-haspopup': 'dialog', 'aria-label': searchLabel, ...(options.search.feedbackId ? { 'data-feedback-id': options.search.feedbackId, 'data-feedback-label': 'Buscar' } : {}), onclick: () => options.search!.onOpen() },
+      icon('search', 20), el('span', { class: 'appmenu-searchtext', 'aria-hidden': 'true' }, searchLabel), el('kbd', { class: 'appmenu-searchkey', 'aria-hidden': 'true' }, 'Ctrl K'))
+    : null;
   const header = el('header', { class: 'topbar' },
     el('div', { class: 'brand' },
-      options.launcher
-        ? (() => { const b = el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher' }, icon(options.markIcon ?? 'mark', 20)); options.launcher.attach(b); return b; })()
-        : el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
+      menu
+        ? (() => { const b = el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher' }, icon(options.markIcon ?? 'mark', 20)); menu.attach(b); return b; })()
+        : options.launcher
+          ? (() => { const b = el('button', { type: 'button', class: 'mark markbtn', id: 'appLauncher' }, icon(options.markIcon ?? 'mark', 20)); options.launcher.attach(b); return b; })()
+          : el('div', { class: 'mark', 'aria-hidden': 'true' }, icon(options.markIcon ?? 'mark', 20)),
       el('h1', null, `Ikisai ${options.appName}`, subtitle),
     ),
+    search,
     status.element,
     el('div', { class: 'tools' }, ...(options.tools ?? []), logoutButton),
   );
@@ -180,7 +213,8 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   const main = el('main', { class: 'main', id: 'main', tabindex: '-1' });
   let element: HTMLElement | null = null;
   paintNav(options.nav, options.more);
-  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}` }, header, nav, el('div', null, banners, main));
+  const bar = options.navLayout === 'bar' || !!menu?.column;
+  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, banners, main));
   replace(root, element);
 
   return {
@@ -195,6 +229,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
     },
     setStatus(next) {
       status.update(next);
+      menu?.setStatus(next);
     },
     setBanners(next, bannerOptions, extra = []) {
       replace(banners, ...statusBanners(next, bannerOptions), ...extra);
@@ -209,7 +244,9 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
       paintMoreButton();
     },
     setNav(items, more) { paintNav(items, more); },
+    menu,
     destroy() {
+      menu?.destroy();
       status.destroy();
       element!.remove();
     },

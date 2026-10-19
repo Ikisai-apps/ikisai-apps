@@ -28,6 +28,7 @@ export * from './usage/index.ts';
 export * from './i18n/index.ts';
 export { createAppLauncher, type AppLauncher, type AppLauncherOptions, type LauncherApp, type LauncherCatalog } from './shell/launcher.ts';
 export { createAppShell, type AppShell, type AppShellOptions, type NavItem } from './shell/app-shell.ts';
+export { createAppMenu, syncLine, type AppMenu, type AppMenuOptions, type AppMenuRow, type AppMenuSection } from './shell/app-menu.ts';
 export { renderWorkspaceBar, renderAreaTabs, renderStripTool, renderQuickViews, renderNavMenu, renderNavBackdrop, renderTabBar, type WorkspaceBarOptions, type AreaTab, type AreaTabsOptions, type QuickView, type NavMenuItem, type NavMenuGroup, type NavMenuOptions, type TabBarItem, type HookAttrs, type IconLike } from './shell/workspace.ts';
 export { openSheet, closeSheet, currentSheet, type Sheet, type SheetOptions } from './overlay/sheet.ts';
 export { confirmDialog, alertDialog, type DialogOptions } from './overlay/dialog.ts';

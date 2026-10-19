@@ -303,6 +303,27 @@ Se ve en la demo, en `#piecesc`.
   - Se conservan los `data-choice` (`mine`, `theirs`, `both`, `diff`) y las marcas de `feedbackId`; se suman `.los_dos` y `.deshacer`.
   - **Sin `layout`, todo queda igual que antes:** las cuatro apps no cambian hasta que lo encienden.
 
+## Menú lateral común (MUELA-013, 0.47)
+
+Todo es opcional: sin `menu`, `search` ni `navLayout`, la cáscara queda como siempre. Cada app lo enciende en su pasada.
+
+- **`createAppShell({ …, menu })`** (K7): la marca (46 px) abre el cajón del menú en vez de la hoja de apps. El lanzador va dentro, en `menu.launcher`.
+  - **Cajón:** está a la izquierda, en el móvil y en el ordenador. Es un diálogo modal: lleva `aria-expanded` en la marca, deja el foco en la primera entrada y lo atrapa dentro; Escape, el fondo y «atrás» lo cierran.
+  - **Orden:** perfil y rol, con la línea de sincronización debajo; botón de tema; Recientes (3); Secciones como azulejos que despliegan sus filas debajo; `blocks` propios de la app (K8); Apps de Ikisai, sin la actual; Comentarios y ayuda; Cerrar sesión.
+  - **Línea de sincronización:** dice lo más urgente: «1 conflicto · toca para resolver», «Sin conexión · 2 sin enviar», «Error al sincronizar»… Va en rojo si hay un problema. Tocarla resuelve los conflictos o sincroniza.
+  - **Comentarios y ayuda:** «Señalar un fallo aquí» (`signalHere`) y los bloques del lanzador con sus clases de siempre (`.launcher-center`, `.launcher-signal`, `.launcher-review`).
+  - **`menu.column`:** en el ordenador, además, una columna fija de 316 px. La barra de pestañas pasa entonces abajo, en horizontal.
+  - **`shell.menu`:** `open()`, `close()` y `refresh()`, este tras cambiar recientes o recuentos.
+  - **En el móvil estrecho**, la pastilla de estado se queda en un punto de color. «Sin red», pendientes y conflictos se siguen viendo sin abrir el cajón, y el texto va en su nombre accesible.
+- **`search: { onOpen, label? }`** (K8): en la cabecera, una lupa en el móvil y la caja «Buscar en {app}… Ctrl K» en el ordenador. La app abre su paleta.
+- **`navLayout: 'bar'`** (K12): la barra de pestañas abajo y en horizontal también en el ordenador.
+- **Paleta:**
+  - `keepOrder` (K1) respeta el orden que da la app.
+  - «Atrás» cierra la paleta (K10).
+- **`captureFeedbackTarget({ delay: 0 })`** (K2): basta un toque para señalar, y la barra lo dice.
+- **`createAppLauncher().mount(host, { hideCurrent, part })`**: pinta las apps o los bloques de feedback en otro sitio, como el cajón.
+- **Clases:** prefijo `appmenu-`, sobre `navmenu-head`, `navmenu-close` y `navmenu-backdrop`. La barra lateral `.navmenu` de Tasks no cambia.
+
 ## Muestra y pruebas
 
 ```text

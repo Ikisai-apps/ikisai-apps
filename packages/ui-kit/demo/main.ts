@@ -125,6 +125,7 @@ import {
   renderHourAgenda,
   renderTray,
   conflictRowName,
+  captureFeedbackTarget,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1693,8 +1694,48 @@ const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-
   el('h3', null, 'Bandeja por estado'), sesTrayHost,
 );
 
+// --- Menú lateral común (MUELA-013): cáscara entera con menú, para las pruebas y las capturas -------------------
+// `ikisaiMenuDemo({ column, status })` monta una cáscara a pantalla completa encima de la muestra.
+(window as unknown as { ikisaiMenuDemo: unknown }).ikisaiMenuDemo = (opts: { column?: boolean; status?: Partial<SyncStatus>; role?: string; logout?: boolean } = {}) => {
+  document.getElementById('menuShell')?.remove();
+  const root = el('div', { id: 'menuShell' });
+  document.body.prepend(root);
+  const w = window as unknown as { menuLog: string[] };
+  w.menuLog = [];
+  const log = (s: string): void => { w.menuLog.push(s); };
+  const menuLauncher = createAppLauncher({
+    current: 'central', storageKey: 'demo-menu-apps',
+    fetchApps: async () => ({ current: 'central', items: [
+      { id: 'central', name: 'Central', domain: 'central.ikisai.com' }, { id: 'tasks', name: 'Tasks', domain: 'tasks.ikisai.com' },
+      { id: 'booking', name: 'Booking', domain: 'booking.ikisai.com' }, { id: 'food', name: 'Food', domain: 'food.ikisai.com' },
+    ] }),
+    center: () => log('center'), feedback: { get: () => false, set: (on: boolean) => log(`signal:${on}`) },
+  });
+  const status: SyncStatus = { ...base, lastPullAt: new Date(Date.now() - 5 * 60_000).toISOString(), ...(opts.status ?? {}) };
+  const shell = createAppShell(root, {
+    appName: 'Central', markIcon: 'grid', backNavigation: false, navigate: (h) => log(`nav:${h}`),
+    nav: [{ hash: '#/', label: 'Inicio', icon: 'home' }, { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list' }, { hash: '#/personas', label: 'Personas', icon: 'people' }],
+    status: { status, onSync: () => log('sync') },
+    onLogout: opts.logout === false ? undefined : () => log('logout'),
+    search: { onOpen: () => log('search'), feedbackId: 'central.cabecera.buscar' },
+    menu: {
+      column: !!opts.column, theme: true, launcher: menuLauncher, feedbackId: 'central.menu',
+      profile: { name: 'Marga', role: opts.role ?? 'Administras Central', href: '#/cuenta' },
+      onResolveConflicts: () => log('conflicts'), signalHere: () => log('signal-here'),
+      recents: () => [{ label: 'Póliza de la casa', sub: 'Obligación · hace 5 min', href: '#/cumplimiento/poliza' }, { label: 'Ana López', sub: 'Persona · hace 1 h', href: '#/personas/ana' }],
+      sections: () => [
+        { key: 'entidad', label: 'La entidad', icon: 'home', summary: 'Datos y textos', rows: [{ label: 'Datos de la entidad', href: '#/entidad' }, { label: 'Textos', href: '#/textos' }] },
+        { key: 'oblig', label: 'Obligaciones', icon: 'list', summary: '2 vencidas', badge: { text: '2', tone: 'alert' }, head: 'Por tipo', rows: [{ label: 'Revisión técnica', href: '#/cumplimiento/requisitos?tipo=revision', count: { text: '1 vencida', tone: 'alert' } }, { label: 'Seguro', href: '#/cumplimiento/requisitos?tipo=seguro' }] },
+        { key: 'docs', label: 'Documentos', icon: 'invoice', rows: [{ label: 'Todos los documentos', href: '#/cumplimiento/documentos' }] },
+        { key: 'conf', label: 'Conflictos', icon: 'warn', rows: [{ label: '1 por resolver', onClick: () => log('row-conflicts') }] },
+      ],
+    },
+  });
+  return shell;
+};
+
 // Para las pruebas automáticas.
-(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
+(window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette, captureFeedbackTarget };
 
 // --- Página -----------------------------------------------------------------
 const nav = el('nav', { class: 'demo-nav', 'aria-label': 'Secciones de la muestra' },

@@ -2,6 +2,7 @@ import { el, replace } from './dom.ts';
 import { icon } from './icons.ts';
 import { lockScroll } from './overlay/focus.ts';
 import { kitLayer } from './layer.ts';
+import { trackOverlay, type OverlayHandle } from './shell/back-navigation.ts';
 
 export interface PaletteItem {
   group: string;
@@ -30,6 +31,11 @@ export interface PaletteOptions {
   limitWhenEmpty?: number;
   /** Dónde montar la paleta; por defecto `document.body`. */
   container?: HTMLElement | (() => HTMLElement);
+  /**
+   * Con texto, respeta el orden en que la app da los elementos (K1: en Central, lo vigente antes que lo cumplido) en vez
+   * de subir lo que empieza por lo escrito. Por defecto no (Tasks no cambia).
+   */
+  keepOrder?: boolean;
 }
 
 export interface CommandPalette {
@@ -45,8 +51,8 @@ export function foldText(value: string): string {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-/** Filtra y ordena: todas las palabras deben aparecer; primero lo que empieza por la consulta. */
-export function filterPaletteItems(items: PaletteItem[], query: string, limit = 16, hiddenWhenEmpty: string[] = []): PaletteItem[] {
+/** Filtra y ordena: todas las palabras deben aparecer; primero lo que empieza por la consulta (salvo con `keepOrder`). */
+export function filterPaletteItems(items: PaletteItem[], query: string, limit = 16, hiddenWhenEmpty: string[] = [], keepOrder = false): PaletteItem[] {
   if (!query) return items.filter((item) => !hiddenWhenEmpty.includes(item.group)).slice(0, limit);
   const words = query.split(/\s+/).filter(Boolean);
   return items
@@ -56,7 +62,7 @@ export function filterPaletteItems(items: PaletteItem[], query: string, limit = 
       return { item, rank: foldText(item.text).startsWith(words[0]!) ? 0 : 1 };
     })
     .filter((x): x is { item: PaletteItem; rank: number } => x !== null)
-    .sort((a, b) => a.rank - b.rank)
+    .sort((a, b) => (keepOrder ? 0 : a.rank - b.rank))
     .map((x) => x.item)
     .slice(0, limit);
 }
@@ -70,11 +76,13 @@ export function createCommandPalette(options: PaletteOptions): CommandPalette {
   let index = 0;
   let unlock: (() => void) | null = null;
   let opener: HTMLElement | null = null;
+  // «Atrás» cierra la paleta (K10), como las hojas y los diálogos; antes navegaba la pantalla de debajo.
+  let history: OverlayHandle | null = null;
 
   function draw(): void {
     if (!input || !list) return;
     const query = foldText(input.value.trim());
-    rows = filterPaletteItems(options.items(query), query, query ? options.limit : (options.limitWhenEmpty ?? options.limit), options.hiddenWhenEmpty);
+    rows = filterPaletteItems(options.items(query), query, query ? options.limit : (options.limitWhenEmpty ?? options.limit), options.hiddenWhenEmpty, options.keepOrder);
     index = Math.min(index, Math.max(0, rows.length - 1));
     if (!rows.length) {
       replace(list, el('div', { class: 'palette-empty' }, 'Nada coincide. Prueba con otro nombre.'));
@@ -131,10 +139,13 @@ export function createCommandPalette(options: PaletteOptions): CommandPalette {
     index = 0;
     draw();
     input.focus();
+    history = trackOverlay(() => { history = null; close(); });
   }
 
   function close(): void {
     if (!back) return;
+    history?.release();
+    history = null;
     back.remove();
     back = null;
     input = null;
