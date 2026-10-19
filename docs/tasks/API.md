@@ -1442,11 +1442,11 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 
 **Fusión de repetidas:** `POST labels/general/merge {groups: [[labelId, …], …], requestId}` → `{generals, counts, cursor}`. Es acción de la propietaria con acceso completo, desde «Etiquetas» › «Repetidas → General».
 - **Vista previa** (en el dispositivo):
-  - grupos de la misma familia (por clave de sistema o nombre) y el mismo nombre, sin mayúsculas, en dos o más áreas, con casillas;
+  - grupos de la misma familia (por clave de sistema o nombre) y el mismo nombre, sin mayúsculas ni tildes (§27.2), en dos o más áreas, con casillas;
   - una hija solo se puede marcar si su madre también;
   - aparte, los parecidos que no son iguales (acentos o signos), para decidir a mano.
 - **Fusión**, en un lote con historial (`tasks.merge_labels_into_general`):
-  - crea o reutiliza la familia General y crea la etiqueta General, con el nombre de la primera del grupo (el más repetido);
+  - crea o reutiliza la familia General y crea la etiqueta General, con el nombre más repetido entre las copias (a igualdad, el que lleva tildes; si no, el de la primera del grupo; migración `0332`, §27.2);
   - repunta las etiquetas de tareas y proyectos (sin duplicar), los responsables, las reglas, las hijas que se quedan en su área (pasan a colgar de la madre General, en su familia) y las vistas guardadas;
   - archiva las copias de cada área, que siguen en el historial.
 - La app compone lo General en todas las áreas (`general: true`) y lo guarda una sola vez.
@@ -1465,7 +1465,7 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - **Claves por corregir:** familias cuya marca de sistema no casa con su nombre y sí con otra, o que otra área llama igual sin esa marca. Ejemplos: «Zona: Espacio» marcada como responsables y «Persona» marcada como fases. Se corrigen antes de fusionar: se quita la marca y, si eran responsables, esos responsables se quedan vacíos.
 - `tasks.guard_family_key` deja ahora quitar cualquier marca. Poner una que no sea `person` sigue sin poderse.
 
-### 27.2 Regla de nombres de etiquetas (FB_2026_033; aprobada por el usuario el 13-10-2026; migración `0331`)
+### 27.2 Regla de nombres de etiquetas (FB_2026_033; aprobada por el usuario el 13-10-2026; migraciones `0331` y `0332`)
 
 **La regla.** Dentro de una familia, entre lo que se ve a la vez en un área (sus etiquetas propias y las General):
 - **madres únicas**: dos etiquetas raíz (`parent_id` nulo) no se llaman igual;
@@ -1485,6 +1485,17 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - **Editor de etiqueta** (también «+ Nueva etiqueta» del selector y de las fichas, que abren el mismo editor): aviso inmediato bajo el nombre al escribir o al cambiar de madre, y «Crear»/«Guardar» desactivado. «Restaurar» una archivada que choca no se deja: primero se renombra.
 - **Lote rechazado por el servidor** (por ejemplo, otro dispositivo creó la misma a la vez): «Revisar lote fallido» explica el choque; el lote sigue en el dispositivo hasta descartarlo o exportarlo.
 - **«Repetidas → General»:** la clave es familia + madre + nombre. Las hijas con el mismo nombre bajo madres distintas no son repetidas; bajo madres del mismo nombre (en áreas distintas), sí. Si solo hay una madre posible, las de la raíz van con ellas (VG en la raíz y bajo «Staff», §27.1). Lo que solo cambia en tildes o mayúsculas sale entre las repetidas, no entre las parecidas.
+- **La vista previa de «Repetidas → General» anticipa el rechazo** (19-10-2026). Una fusión puede acabar en `DUPLICATE_LABEL` cuando en un área queda viva otra etiqueta igual (misma familia, madre y nombre normalizado) que no entra en el grupo: una segunda del mismo área (el grupo lleva una por área), una de un área cuya familia se llama distinto pero tiene la misma clave de sistema («Equipo» marcada como responsables), o dos hijas viejas repetidas que pasarían a la misma madre General. Para no mandarlo nunca:
+  - el dominio reproduce la parte de etiquetas y familias de `tasks.merge_labels_into_general` (`generalMergeOperations`: las General nuevas, la familia General que reutiliza o crea, las hijas que pasan a la madre General y las copias archivadas) y le pasa la comprobación del hook (`enteringLabelClash`, la de `assertLabelNames`). `generalMergeProblem(data, groups)` devuelve lo que rechazaría el servidor (`DUPLICATE_LABEL`, o `INVALID_MERGE` con las mismas comprobaciones del procedimiento) o `null`; la app lo usa desde `IkisaiTasks.labelNames.mergeProblem`;
+  - cada grupo se simula (con su madre, si se fusiona con ella) antes de ofrecerlo. Si chocaría, sale con el aviso debajo y la casilla desactivada y desmarcada: «En Mejoras quedaría otra «VG» bajo «Staff»: archívala o renómbrala antes.» (con «en «<familia>»» si es raíz). Una hija cuya madre choca dice «Se podrá cuando se pueda fusionar «<madre>».». Los demás grupos siguen marcados y se fusionan;
+  - si la otra es de un área que no está en el grupo y así el servidor lo acepta, se ofrece **«Incluir la de <área> en la fusión»**: el grupo pasa a esa área más y vuelve a quedar marcado;
+  - también se simulan todos los marcados juntos: si chocaran entre sí, «Juntos no se pueden fusionar: …» y «Fusionar» desactivado;
+  - justo antes de mandar (`generalMerge`, también desde «Hacer General», que enseña el mismo aviso y desactiva su botón) se vuelve a comprobar: si fallaría, no sale y se ve el aviso;
+  - las mismas comprobaciones de entrada del procedimiento (`INVALID_MERGE`) también se anticipan.
+- **El procedimiento junta lo que solo cambia en tildes** (migración `0332`, 19-10-2026). `tasks.merge_labels_into_general` (copiado entero de `0318`) comparaba los nombres de un grupo solo sin mayúsculas, y un grupo «Jardín»/«Jardin», que la vista previa ofrece como repetido, acababa en `INVALID_MERGE`. Ahora compara con `tasks.label_name_key`, la normalización de esta regla (sin mayúsculas, espacios a los lados ni tildes; la «ñ» cuenta: «Baño» y «Bano» siguen sin juntarse).
+  - **El nombre de la General:** el más usado entre las copias; a igualdad, el que lleva tildes; y si no, el de la primera del grupo. La app ordena igual (y, después de las tildes, prefiere el del área actual), y el dominio lo calcula con `generalMergeName`.
+  - En la vista previa, un grupo con nombres escritos distinto lo dice como dato: «· se quedará como «Jardín»» (también en «Hacer General»).
+  - De paso, el dominio señala el mismo choque que el hook cuando hay varios: la etiqueta y la otra de id menor (`order by l.id, m.id`).
 
 **Datos viejos que ya chocan.** No se cambian ni se rompen. El hook solo rechaza lo que **entra** en un choque: una etiqueta que, tras el lote, tiene una clave (familia, madre, nombre normalizado, área) que antes no tenía o que antes no era visible. Cambiar otra cosa de una etiqueta ya repetida (posición, color de la familia, un renombrado que deja igual el nombre normalizado) sigue pasando; añadir otra igual, o desarchivar una, no. El editor de una etiqueta así lo dice sin bloquear («Ya estaba así: puedes guardar otros cambios»). Restaurar un área de la papelera no se comprueba.
 

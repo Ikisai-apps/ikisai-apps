@@ -6,7 +6,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTasksDb, insert, newId, rejects, update, type TasksDb } from './db.ts';
-import { DomainError, assertLabelNames, labelClashMessage, labelNameClash, labelNameKey, type Operation } from '../../packages/domain-tasks/src/index.ts';
+import {
+  DomainError, assertGeneralMerge, assertLabelNames, generalMergeName, generalMergeProblem, labelClashMessage, labelNameClash, labelNameKey,
+  type GeneralMergeGroup, type GeneralMergeProblem, type Operation,
+} from '../../packages/domain-tasks/src/index.ts';
 
 let db: TasksDb;
 let A: { tab: string; families: Record<string, string> }, B: { tab: string; families: Record<string, string> };
@@ -140,6 +143,76 @@ test('renombrar una familia para que coincida con otra junta sus etiquetas: si c
   await both([insert('tasks.families', fam, { tab_id: A.tab, name: 'Lugares', color: '#123456', position: 60_000 }), label(id, A.tab, fam, 'Patio')], null);
   const revision = (await db.data())['tasks.families'].find((f) => f.id === fam)!.revision;
   await both([update('tasks.families', fam, revision, { name: 'ZONA' })], 'DUPLICATE_LABEL');
+});
+
+/* «Repetidas → General» con la regla de nombres: la vista previa (`generalMergeProblem`) simula la fusión y dice lo mismo
+   que el servidor (procedimiento `tasks.merge_labels_into_general` y hook `tasks.validate_label_names`). */
+const mergeCall = (groups: GeneralMergeGroup[]): Operation => ({ op: 'call', procedure: 'tasks.merge_labels_into_general', args: { groups } } as Operation);
+async function mergeBoth(groups: GeneralMergeGroup[], code: string | null): Promise<GeneralMergeProblem | null> {
+  const problem = generalMergeProblem(await db.data(), groups);
+  if (!code) { assert.equal(problem, null, `la vista previa avisó: ${problem?.message}`); await db.commit([mergeCall(groups)]); return null; }
+  assert.equal(problem?.code, code, 'la vista previa debía avisar');
+  const details = await rejects(db.commit([mergeCall(groups)]), code);
+  if (code === 'DUPLICATE_LABEL') assert.ok([details.conflictId, details.labelId].includes(problem!.conflictId), 'señalan la misma que se queda fuera');
+  return problem;
+}
+
+test('fusión en General: una hija igual que se queda fuera en su área choca; la vista previa lo dice antes', async () => {
+  const R = await db.area('Talleres'), M = await db.area('Obras');
+  const staffR = newId(), staffM = newId(), vgR = newId(), vgM = newId(), vieja = newId();
+  await db.commit([label(staffR, R.tab, R.families.person!, 'Staff'), label(staffM, M.tab, M.families.person!, 'Staff')]);
+  await db.commit([label(vgR, R.tab, R.families.person!, 'VG', staffR), label(vgM, M.tab, M.families.person!, 'VG', staffM)]);
+  // De antes de la regla: otra «vg» bajo «Staff» en Obras (sin pasar por el hook).
+  await db.t.db.query(`insert into tasks.labels (id, tab_id, family_id, parent_id, name, position) values ($1, $2, $3, $4, 'vg', 99)`, [vieja, M.tab, M.families.person, staffM]);
+  // Solo la madre: las dos hijas de Obras pasarían a la misma «Staff» General y chocarían entre ellas.
+  const sola = await mergeBoth([[staffR, staffM]], 'DUPLICATE_LABEL');
+  assert.match(sola!.message, /^En Obras quedaría otra «vg» bajo «Staff»: archívala o renómbrala antes\.$/i);
+  assert.equal(sola!.group, 0);
+  // Con la hija: la «VG» General choca con la que se queda fuera. No se ofrece incluirla (ya hay una de Obras).
+  const juntas = await mergeBoth([[staffR, staffM], [vgR, vgM]], 'DUPLICATE_LABEL');
+  assert.equal(juntas!.conflictId, vieja);
+  assert.equal(juntas!.message, 'En Obras quedaría otra «vg» bajo «Staff»: archívala o renómbrala antes.');
+  assert.equal(juntas!.group, 1);
+  assert.equal(juntas!.include, undefined);
+  // Lo que usa la app justo antes de mandar: lanza en vez de mandar.
+  const data = await db.data();
+  assert.throws(() => assertGeneralMerge(data, [[staffR, staffM], [vgR, vgM]]), (e: DomainError) => e.code === 'DUPLICATE_LABEL');
+  // Archivada la vieja, la fusión pasa (y el servidor la acepta).
+  await db.commit([update('tasks.labels', vieja, await rev(vieja), { archived: true })]);
+  await mergeBoth([[staffR, staffM], [vgR, vgM]], null);
+});
+
+test('fusión en General: la otra es de un área fuera del grupo (familia con otro nombre y la misma clave); incluirla lo arregla', async () => {
+  const C = await db.area('Cocina'), D = await db.area('Huerta'), E = await db.area('Granja');
+  const ana = [newId(), newId(), newId()] as const;
+  const family = (await db.data())['tasks.families'].find((f) => f.id === E.families.person)!;
+  await db.commit([update('tasks.families', family.id, family.revision, { name: 'Equipo' })]);
+  await db.commit([label(ana[0], C.tab, C.families.person!, 'Ana'), label(ana[1], D.tab, D.families.person!, 'ana'), label(ana[2], E.tab, E.families.person!, 'ANA')]);
+  const problem = await mergeBoth([[ana[0], ana[1]]], 'DUPLICATE_LABEL');
+  assert.equal(problem!.message, 'En Granja quedaría otra «ANA» en «Equipo»: archívala o renómbrala antes.');
+  assert.deepEqual([problem!.group, problem!.include, problem!.conflictTabName], [0, ana[2], 'Granja']);
+  await mergeBoth([[ana[0], ana[1], ana[2]]], null);
+});
+
+test('fusión en General: lo que solo cambia en tildes se junta (0332); la General, el nombre más usado y, a igualdad, con tildes', async () => {
+  const F = await db.area('Bosque'), G = await db.area('Prado'), H = await db.area('Vega'), I = await db.area('Ribera');
+  const a = newId(), b = newId();
+  await db.commit([label(a, F.tab, F.families.space!, 'Jardín'), label(b, G.tab, G.families.space!, 'Jardin')]);
+  assert.equal(generalMergeName(['Jardin', 'Jardín']), 'Jardín');
+  // «Jardin» va primero en el grupo: a igualdad, gana la de tildes.
+  await mergeBoth([[b, a]], null);
+  const general = (await db.data())['tasks.labels'].filter((l) => l.tab_id === null && labelNameKey(l.name) === 'jardin' && !l.archived);
+  assert.deepEqual(general.map((l) => l.name), ['Jardín']);
+  // El más usado gana aunque no lleve tildes; la «ñ» cuenta (no es una tilde).
+  const c = newId(), d = newId(), e = newId();
+  await db.commit([label(c, H.tab, H.families.phase!, 'Limpieza baño'), label(d, I.tab, I.families.phase!, 'Limpieza baño'), label(e, F.tab, F.families.phase!, 'Limpiéza baño')]);
+  assert.equal(generalMergeName(['Limpiéza baño', 'Limpieza baño', 'Limpieza baño']), 'Limpieza baño');
+  await mergeBoth([[e, c, d]], null);
+  assert.ok((await db.data())['tasks.labels'].some((l) => l.tab_id === null && l.name === 'Limpieza baño' && !l.archived));
+  const n1 = newId(), n2 = newId();
+  await db.commit([label(n1, H.tab, H.families.space!, 'Baño'), label(n2, I.tab, I.families.space!, 'Bano')]);
+  const distinta = await mergeBoth([[n1, n2]], 'INVALID_MERGE');
+  assert.equal(distinta!.message, 'Las etiquetas del grupo no se llaman igual.');
 });
 
 test('aviso del editor (labelNameClash): la misma regla, sin lote', async () => {

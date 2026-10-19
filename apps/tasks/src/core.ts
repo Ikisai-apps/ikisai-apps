@@ -8,7 +8,7 @@
 import { createSyncClient, type Bootstrap, type PendingConflict, type RejectedBatch, type RowOperation, type Session, type SyncClient, type SyncStatus, type TableName } from '@ikisai/sync-client';
 import {
   DomainError, TABLES, adoptLegacyIds, allAccess, applyOperations, chunkOperations, compose, decompose, effectiveScopes, emptyDataset, validateOperations,
-  assertLabelNames, labelClashMessage, labelNameClash, labelNameKey,
+  assertLabelNames, generalMergeProblem, labelClashMessage, labelNameClash, labelNameKey,
   addCommentOps, commentCounts, deleteCommentOps, editCommentOps, taskComments,
   approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
@@ -563,8 +563,9 @@ const api = {
     supplyStock, lowStock, supplyMovementOps, deleteSupplyItemOps, requestPurchaseOps, reorderSupplyOps, setPurchaseStatusOps,
     receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, validateOperations,
   },
-  /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`). */
-  labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage },
+  /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`) y,
+   *  con `mergeProblem`, lo que la vista previa de «Repetidas → General» anticipa del servidor (`public/general-ui.js`). */
+  labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage, mergeProblem: generalMergeProblem },
   /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
