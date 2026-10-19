@@ -1,5 +1,12 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.40.0 · 19 de octubre de 2026
+
+**`createItemCatalog` con `refresh()`** (petición de Tasks, R6).
+- Vuelve a pintar con los datos de ahora sin cambiar el filtro ni guardarlo. Sirve cuando cambia algo de la app que el catálogo no ve: lo que devuelven `rowActions` o `filter`.
+- **Tasks** puede cambiar `setFilter(getFilter())` por `refresh()` en `purchases-ui.js`.
+- **Demo:** «Pedir» pasa a «Pedido» al momento. **Pruebas:** una nueva en `v42`.
+
 ## 0.39.0 · 18 de octubre de 2026
 
 **`createSpacePicker` con textos propios** (petición de Tasks: elige oficios con filas en forma de espacio).

@@ -70,6 +70,8 @@ export interface ItemCatalog {
   element: HTMLElement;
   setFilter(filter: ItemCatalogFilter): void;
   getFilter(): ItemCatalogFilter;
+  /** Vuelve a pintar con los datos de ahora sin tocar el filtro: para cuando cambia algo de la app que el catálogo no ve (lo que dan `rowActions` o `filter`, como el «Pedido» de Tasks). */
+  refresh(): void;
   destroy(): void;
 }
 
@@ -270,6 +272,7 @@ export function createItemCatalog(options: ItemCatalogOptions): ItemCatalog {
     element,
     setFilter(next) { filter = { ...next }; writeFilter(options.storageKey, filter); paint(); },
     getFilter: () => ({ ...filter }),
+    refresh: paint,
     destroy() { offSource?.(); offSpaces?.(); element.remove(); },
   };
 }

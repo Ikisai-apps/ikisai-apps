@@ -53,6 +53,19 @@ test.describe('ui-kit v0.37 · createItemCatalog', () => {
     await expect(row(page, 'taladro')).toHaveCount(0);
   });
 
+  test('@smoke refresh(): lo que sabe la app («Pedido») sale al momento, sin tocar el filtro', async ({ page }) => {
+    await page.goto('/#inventory');
+    const search = catalog(page).getByRole('searchbox');
+    await search.fill('harina');
+    await expect(row(page, 'harina-trigo')).toBeVisible();
+    await row(page, 'harina-espelta').getByRole('button', { name: 'Pedir' }).click();
+    await expect(row(page, 'harina-espelta').getByRole('button', { name: 'Pedido' })).toBeVisible();
+    await expect(row(page, 'harina-espelta').getByRole('button', { name: 'Pedir' })).toHaveCount(0);
+    await expect(search).toHaveValue('harina');
+    await expect(row(page, 'harina-trigo')).toBeVisible();
+    await expect(row(page, 'yogur')).toHaveCount(0);
+  });
+
   test('filtros a un toque con cuántos hay, búsqueda y archivados', async ({ page }) => {
     await page.goto('/#inventory');
     const chips = catalog(page).locator('.stk-chips');
