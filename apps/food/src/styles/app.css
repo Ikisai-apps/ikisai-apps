@@ -379,3 +379,16 @@
 .fd-costfold{margin-top:8px}
 .fd-costfold>summary{min-height:var(--tap);display:flex;align-items:center;cursor:pointer;font-weight:700}
 .fd-costlines td{padding:4px 8px 4px 0}
+/* Tanda 27 · Despensa en baldosas */
+.fd-viewbar{margin:8px 0 12px}
+.fd-viewbar button{min-height:var(--tap)}
+.fd-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.fd-tiles[hidden]{display:none}
+.fd-tile{display:flex;flex-direction:column;gap:6px}
+.fd-tile-buy{min-height:var(--tap)}
+/* Tanda 27 · Eventos: hoy en casa */
+#eventsToday{display:grid;gap:10px;margin:8px 0 14px}
+.fd-today-sum{margin:0;font-weight:700;font-size:1.05rem}
+.fd-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:var(--tap)}
+.fd-group-title{font-size:1.15rem}
+.fd-group-people{font-size:1.4rem;font-weight:800}

@@ -8,7 +8,8 @@ Datos y servidor, ya en `main`: #600 (cruce de alérgenos, votos, avisos de máq
 
 **Entregas, por zonas (dos PR seguidas):**
 1. **PR 1 (`food/tanda27-interfaz`):** barra y menú lateral, Inicio, Cocina, Preparación, Menús, Platos sugeridos, Maquinaria, Organizador, Cierre, Recetario y ficha de receta.
-2. **PR 2:** Despensa («Baldosas»), Compra, Eventos y Conflictos (bandeja).
+2. **PR 2:** Despensa («Baldosas»), Eventos («Hoy comen…» y el grupo en grande) y Conflictos (bandeja por áreas, «Deshacer» de 8 s, «Los dos» nunca con dietas).
+   - **Compra no cambia:** su especificación «solo escrita» no está en disco, y el 068 retira la estantería K22 que proponía. No se pierde nada.
 
 ## Hoy / después
 

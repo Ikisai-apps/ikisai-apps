@@ -125,7 +125,11 @@ test('sin red con dos dispositivos: fusión automática, conflicto y rechazo por
     await expect(conflict).toContainText('Compra: Tomate'); // la tarjeta se titula con algo reconocible, no con un identificador
     await expect(conflict).toContainText('Comprar');
     await expect(conflict).toContainText('3,75');
+    // Tanda 27 (MUELA-044): la bandeja por áreas, con «Ver diferencias» y un «Deshacer» de verdad (el envío espera 8 s).
+    await expect(conflict.locator('.tray-group, [class*="tray-"]').first()).toContainText('Compra');
+    await expect(conflict.locator('[data-choice="diff"]')).toHaveCount(1);
     await conflict.locator('[data-choice="mine"]').click();
+    await expect(page.getByRole('button', { name: 'Deshacer' }).first()).toBeVisible();
     await expect.poll(() => row('food.shopping_list_items', buy.id).purchase_quantity, { timeout: 15_000 }).toBe(3);
     // Mi decisión no deshace lo que el otro cambió en campos que yo no toqué.
     expect(row('food.shopping_list_items', buy.id)).toMatchObject({ required_quantity: 3.75, manual_override: true });

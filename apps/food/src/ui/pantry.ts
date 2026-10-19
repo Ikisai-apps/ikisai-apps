@@ -9,6 +9,9 @@
  * - `#/despensa?filtro=bajo_minimo|caduca` llega con el filtro puesto (Inicio); `#/despensa?articulo=<id>` abre su ficha.
  * - Kit 0.38: «Gastar», «Entrada» y «Mover» (`createMovementForm`) y «Contar» a ciegas (`createCountSession`), en una
  *   hoja; también «Contar» por sitio desde la cabecera.
+ * - Tanda 27 (Bloque 2, B «Baldosas», la misma pieza que el Inventario de Central): por defecto, una baldosa por
+ *   artículo con su cifra y el relleno hasta el mínimo (`renderTile`); lo bajo mínimo primero y con «A la compra».
+ *   La lista de siempre, con sus filtros y acciones, a un toque («Lista»); los enlaces con `?filtro=` llegan a la lista.
  */
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
@@ -16,11 +19,12 @@ import {
   type Ingredient, type LotLike, type MovementLike, type MenuItem, type MenuService, type ShoppingList, type ShoppingListItem, type SpaceLike,
 } from '@ikisai/domain-food';
 import {
-  createCountSession, createItemCatalog, createItemSheet, createMovementForm, createSyncItemSource, createSyncSpaceSource, el, openSheet, replace, toast,
+  createCountSession, createItemCatalog, renderTile, createItemSheet, createMovementForm, createSyncItemSource, createSyncSpaceSource, el, openSheet, replace, toast,
   type ItemCatalog, type ItemCatalogFilter, type ItemRow, type ItemSheet, type Sheet,
 } from '@ikisai/ui-kit';
 import { runCall } from '../app/calls.ts';
-import { T, describeError, type Mirror } from '../app/client.ts';
+import { T, describeError, formatQuantity, type Mirror } from '../app/client.ts';
+import { loadInventory } from '../app/consumption.ts';
 import { longDay, todayKey } from '../app/events.ts';
 import { HOUSE_MENU_HASH } from '../app/house.ts';
 import { R, resourcesClient } from '../app/resources.ts';
@@ -53,6 +57,54 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
   let toolSheet: Sheet | null = null;
   let sheetHandle: Sheet | null = null;
   const MOVE_MARK = 'food.despensa.movimiento';
+  // Vista «Baldosas» (por defecto) o «Lista»; la elección se recuerda en este dispositivo.
+  const VIEW_KEY = 'food.despensa.vista';
+  const storedView = (() => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } })();
+  const linked = /[?&](filtro|articulo)=/.test(location.hash);
+  let view: 'baldosas' | 'lista' = linked ? 'lista' : storedView === 'lista' ? 'lista' : 'baldosas';
+  const tilesHost = el('div', { 'data-feedback-id': 'food.despensa.baldosas', 'data-feedback-label': 'Baldosas', class: 'fd-tiles', id: 'pantryTiles' });
+  const viewButton = (value: 'baldosas' | 'lista', label: string) => el('button', { type: 'button', 'data-view': value, 'aria-pressed': 'false', onclick: () => setView(value, true) }, label);
+  const viewBar = el('div', { 'data-feedback-id': 'food.despensa.vista', 'data-feedback-label': 'Vista de la despensa', class: 'segmented fd-viewbar', role: 'group', 'aria-label': 'Vista' },
+    viewButton('baldosas', 'Baldosas'), viewButton('lista', 'Lista'));
+
+  function setView(next: 'baldosas' | 'lista', remember = false): void {
+    view = next;
+    if (remember) { try { localStorage.setItem(VIEW_KEY, next); } catch { /* sin almacenamiento: solo esta visita */ } }
+    for (const b of viewBar.querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String(b.dataset.view === next));
+    if (catalog) catalog.element.hidden = next !== 'lista';
+    tilesHost.hidden = next !== 'baldosas';
+    if (next === 'baldosas') void paintTiles();
+  }
+
+  /** Una baldosa por artículo de cocina: cifra, relleno hasta el doble del mínimo (la raya, el mínimo) y su nivel escrito. */
+  async function paintTiles(): Promise<void> {
+    const inventory = await loadInventory(client).catch(() => null);
+    if (!inventory?.kitchen.size || view !== 'baldosas') return;
+    const today = todayKey();
+    const rows = inventory.items.filter((i) => !i.deleted_at && i.active && ['ingrediente', 'bebida'].includes(i.kind)).map((i) => {
+      const stock = kitchenStock(i.id, inventory.movements, inventory.lots, inventory.kitchen, today) ?? 0;
+      const min = Number(i.min_quantity) || 0;
+      const tone: 'alert' | 'warn' | 'ok' | null = !min ? null : stock < min ? 'alert' : stock < min * 1.5 ? 'warn' : 'ok';
+      return { item: i, stock, min, tone };
+    }).filter((x) => x.stock > 0 || x.min > 0)
+      .sort((a, b) => (a.tone === 'alert' ? 0 : a.tone === 'warn' ? 1 : 2) - (b.tone === 'alert' ? 0 : b.tone === 'warn' ? 1 : 2) || a.item.name.localeCompare(b.item.name, 'es'));
+    if (!rows.length) { replace(tilesHost, el('p', { class: 'muted' }, 'No hay nada en la despensa todavía. «Lista» para dar entrada.')); return; }
+    const snapshot = await items.list();
+    replace(tilesHost, ...rows.map(({ item, stock, min, tone }) => {
+      const tile = renderTile({
+        title: item.name,
+        value: `${formatQuantity(stock)} ${item.base_unit}`,
+        levelText: !min ? 'sin mínimo' : tone === 'alert' ? `bajo mínimo (${formatQuantity(min)})` : tone === 'warn' ? 'va justo' : 'bien',
+        level: min ? { pct: Math.min(100, (stock / (min * 2)) * 100), min: 50, tone } : null,
+        onClick: () => void openItem({ id: item.id, name: item.name }),
+      });
+      const row = snapshot.items.find((x) => x.id === item.id);
+      return el('div', { class: 'fd-tile', 'data-item-id': item.id, 'data-tone': tone ?? '' }, tile,
+        tone === 'alert' && canWrite() && row
+          ? el('button', { 'data-feedback-id': 'food.despensa.baldosas.a_la_compra', 'data-feedback-label': 'A la compra', class: 'ghost fd-tile-buy', type: 'button', 'aria-label': `A la compra: ${item.name}`, onclick: () => void toShopping(row) }, 'A la compra')
+          : null);
+    }));
+  }
   const COUNT_MARK = 'food.despensa.recuento';
 
   /** Una pieza del kit (formulario o recuento) en una hoja; al acabar, se cierra. */
@@ -205,7 +257,8 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
       onOpen: (item) => void openItem(item),
       rowActions: (item) => (canWrite() ? [{ label: 'A la compra', feedbackId: TO_SHOPPING_MARK, primary: !!item.minQuantity, onClick: () => void toShopping(item) }] : []),
     });
-    replace(host, catalog.element);
+    replace(host, viewBar, tilesHost, catalog.element);
+    setView(view);
     const params = new URLSearchParams(location.hash.split('?')[1] ?? '');
     const filter = params.get('filtro');
     // El filtro que llega por un enlace (Inicio) vale para esta visita: al salir vuelve el que tenía la persona.
@@ -223,8 +276,12 @@ export const mountPantry: ViewMount = ({ main, client, navigate }) => {
 
   void paint();
   const off = r.onTable(R.spaces, () => void paint());
+  let tileTimer: ReturnType<typeof setTimeout> | null = null;
+  const offTiles = [R.items, R.movements, R.lots].map((t) => r.onTable(t, () => { if (tileTimer) clearTimeout(tileTimer); tileTimer = setTimeout(() => { if (view === 'baldosas') void paintTiles(); }, 300); }));
   return () => {
     off();
+    offTiles.forEach((stop) => stop());
+    if (tileTimer) clearTimeout(tileTimer);
     if (own) catalog?.setFilter(own);
     catalog?.destroy();
     sheet?.destroy();

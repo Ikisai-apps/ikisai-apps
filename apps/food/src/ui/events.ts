@@ -1,11 +1,11 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { eventSnapshot, isMenuStale, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
+import { eventSnapshot, isMenuStale, restrictionLines, menuTotals, proposeServices, validateOperations, type FoodEvent, type Menu, type ProposedService, type ServiceType } from '@ikisai/domain-food';
 import { closeSheet, el, formatDate, listRow, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import { loadAllMenuGraphs } from '../app/menu-data.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import {
-  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
+  MEAL_PLAN_LABELS, bookingReservationUrl, allergyCount, dateRange, guestsLabel, isCancelled, longDay, mealPlanLabel, mealsGap, needsMenu, noMealsInBooking, refreshEvents, restrictionLabel, shortDay, shortTime, sortedRestrictions, todayKey, watchEvents, whenLabel,
   type EventsSnapshot,
 } from '../app/events.ts';
 import type { ViewMount } from './shell.ts';
@@ -49,10 +49,13 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
   const list = el('ul', { class: 'list', id: 'eventList', 'aria-label': 'Eventos' });
   const host = el('div');
   const stamp = el('p', { class: 'muted stamp', id: 'eventsStamp' });
+  // «Lo próximo en grande» (tanda 27, MUELA-021): quién come hoy en casa, con las alergias en texto, y quién llega mañana.
+  const todayHost = el('section', { 'data-feedback-id': 'food.eventos.hoy', 'data-feedback-label': 'Hoy en casa', id: 'eventsToday' });
 
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Eventos'), el('p', null, 'Los retiros confirmados en Booking: personas, régimen y restricciones. Aquí no se editan.'))),
+    todayHost,
     el('div', { class: 'toolbar' }, tabs),
     host,
     stamp,
@@ -68,7 +71,32 @@ export const mountEvents: ViewMount = ({ main, client, navigate }) => {
     return snapshot.events.filter((e) => e.end_date < today).reverse();
   }
 
+  function paintToday(): void {
+    const today = todayKey();
+    const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    const eating = snapshot.events.filter((e) => !isCancelled(e) && needsMenu(e) && e.start_date <= today && today <= e.end_date);
+    const arriving = snapshot.events.filter((e) => !isCancelled(e) && needsMenu(e) && e.start_date === tomorrow);
+    if (!eating.length && !arriving.length) { replace(todayHost); return; }
+    const people = eating.reduce((sum, e) => sum + (e.guest_count ?? 0), 0);
+    const allergic = eating.reduce((sum, e) => sum + restrictionLines(e.dietary_restrictions).reduce((n, l) => n + l.people, 0), 0);
+    const card = (event: FoodEvent, label: string) => {
+      const lines = restrictionLines(event.dietary_restrictions);
+      const menu = menuOf(event);
+      return el('button', { 'data-feedback-id': 'food.eventos.hoy.grupo', 'data-feedback-label': 'Grupo', class: 'card fd-group', type: 'button', onclick: () => openEvent(event) },
+        el('span', { class: 'fd-lead-label' }, label),
+        el('strong', { class: 'fd-group-title', 'data-feedback-ignore': '' }, event.title),
+        el('span', { class: 'fd-group-people' }, guestsLabel(event)),
+        lines.length ? el('span', { class: 'warnline', 'data-feedback-ignore': '' }, lines.map((l) => `${l.people} ${l.type === 'alergia' ? (l.people === 1 ? 'alergia' : 'alergias') : (l.people === 1 ? 'intolerancia' : 'intolerancias')} a ${l.subject}${l.severe ? ' (grave)' : ''}`).join(' · ')) : el('span', { class: 'muted' }, 'Sin alergias ni intolerancias comunicadas'),
+        el('span', { class: 'chips' }, menuChip(event, menu)));
+    };
+    replace(todayHost,
+      eating.length ? el('p', { class: 'fd-today-sum' }, `Hoy comen ${people} ${people === 1 ? 'persona' : 'personas'}`, allergic ? ` · ${allergic} con alergia o intolerancia` : '') : null,
+      ...eating.map((e) => card(e, e.start_date === today ? `Llega hoy${e.arrival_time ? ` · ${shortTime(e.arrival_time)}` : ''}` : `En casa hasta el ${shortDay(e.end_date)}`)),
+      ...arriving.map((e) => card(e, `Mañana${e.arrival_time ? ` · ${shortTime(e.arrival_time)}` : ''}`)));
+  }
+
   function paint(): void {
+    paintToday();
     const events = visible();
     replace(list, ...events.map((event) => {
       const menu = menuOf(event);

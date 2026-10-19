@@ -106,6 +106,15 @@ test('Despensa · pestaña, catálogo de cocina, filtro desde Inicio, ficha, «A
     // Desde la pestaña: sin el filtro que puso el enlace de Inicio.
     await page.locator('.nav a', { hasText: 'Inicio' }).click();
     await page.locator('.nav a', { hasText: 'Despensa' }).click();
+    // Tanda 27 (Bloque 2, B): por defecto, las baldosas; lo bajo mínimo primero y con «A la compra».
+    const tiles = page.locator('#pantryTiles .fd-tile');
+    await expect(tiles.first()).toHaveAttribute('data-item-id', rice);
+    await expect(tiles.first()).toContainText('bajo mínimo');
+    await expect(tiles.first().getByRole('button', { name: /^A la compra/ })).toBeVisible();
+    await expect(page.locator('#pantryTiles')).not.toContainText('Cemento');
+    await capture(page, '30a-despensa-baldosas');
+    // La lista de siempre, a un toque.
+    await page.locator('.fd-viewbar button', { hasText: 'Lista' }).click();
     await expect(row(page, rice)).toBeVisible();
     await expect(row(page, yogurt)).toBeVisible();
     await expect(page.locator('.stk-row', { hasText: 'Cemento' })).toHaveCount(0);
