@@ -25,8 +25,10 @@ export const SUPPLIER_TEMPLATES: TableName = TABLES.supplierTemplates;
 export const CUSTOMERS: TableName = TABLES.customers;
 /** Ajustes de la app (0234): el interruptor `resources_links` del enlace con Recursos (R4). */
 export const SETTINGS: TableName = TABLES.settings;
+/** Memoria por proveedor (0230, 0234): en el dispositivo para «Artículos que recuerda» de Proveedores (tanda 27). */
+export const ITEM_LABELS: TableName = TABLES.itemLabels;
 export const ALL_TABLES: TableName[] = [SUPPLIERS, INVOICES, INVOICE_FILES, INVOICE_LINES, TAX_LINES, ALLOCATIONS, EXPORTS, EXPORT_ITEMS,
-  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS, SETTINGS];
+  ISSUED_SERIES, ISSUED_INVOICES, ISSUED_LINES, ISSUED_TAX_LINES, ISSUED_FILES, ISSUED_ALLOCATIONS, SUPPLIER_TEMPLATES, CUSTOMERS, SETTINGS, ITEM_LABELS];
 
 /** Categorías de gasto (lista cerrada del dominio) y sus etiquetas. */
 export const CATEGORIES = EXPENSE_CATEGORIES;
