@@ -807,4 +807,6 @@ export const KIT_EN: Dictionary = {
   'sincronizado {ago}': 'synced {ago}',
   '{n} cambios pendientes': '{n} pending changes',
   '{n} conflictos · toca para resolver': '{n} conflicts · tap to resolve',
+  'Volver a {place}': 'Back to {place}',
+  'la app anterior': 'the previous app',
 };

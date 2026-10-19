@@ -8,6 +8,7 @@ import { installBackNavigation, type BackNavigationOptions } from './back-naviga
 import { openSheet, type Sheet } from '../overlay/sheet.ts';
 import type { AppLauncher } from './launcher.ts';
 import { createAppMenu, type AppMenu, type AppMenuOptions } from './app-menu.ts';
+import { clearReturnTo, readReturnTo } from './return-to.ts';
 
 export interface NavItem {
   /** Destino, normalmente un hash de ruta: `#/facturas`. */
@@ -72,6 +73,11 @@ export interface AppShellOptions {
    * ordenador, horizontal). Con la columna del menú (`menu.column`), siempre `bar`.
    */
   navLayout?: 'side' | 'bar';
+  /**
+   * «‹ Volver a…» (K9): si se llegó desde otra app con `?desde=…&volver=…&titulo=…`, una línea arriba vuelve allí, y
+   * «atrás» desde el inicio también (sin preguntar «¿Cerrar la app?»). Por defecto, no. Ver `withReturnTo`.
+   */
+  returnTo?: boolean | { feedbackId?: string };
 }
 
 export interface AppShell {
@@ -100,7 +106,12 @@ export interface AppShell {
 /** Cabecera, navegación (inferior en móvil, lateral en escritorio), zona de banners y `<main>`. */
 export function createAppShell(root: HTMLElement, options: AppShellOptions): AppShell {
   installKeyboardInsets();
-  if (options.backNavigation !== false) installBackNavigation(typeof options.backNavigation === 'object' ? options.backNavigation : {});
+  if (options.backNavigation !== false) installBackNavigation({ ...(typeof options.backNavigation === 'object' ? options.backNavigation : {}), ...(options.returnTo ? { returnTo: true } : {}) });
+  const origin = options.returnTo ? readReturnTo() : null;
+  const returnLink = origin
+    ? el('a', { class: 'return-link', href: origin.url, ...(typeof options.returnTo === 'object' && options.returnTo.feedbackId ? { 'data-feedback-id': options.returnTo.feedbackId, 'data-feedback-label': 'Volver a la otra app' } : {}), onclick: () => clearReturnTo() },
+      icon('chevronLeft', 18), el('span', null, kt('Volver a {place}', { place: origin.title ?? origin.from ?? kt('la app anterior') })))
+    : null;
   const navigate = options.navigate ?? ((hash: string) => { location.hash = hash; });
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});
@@ -214,7 +225,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   let element: HTMLElement | null = null;
   paintNav(options.nav, options.more);
   const bar = options.navLayout === 'bar' || !!menu?.column;
-  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, banners, main));
+  element = el('div', { class: `shell${nav.hidden ? ' nonav' : ''}${bar ? ' nav-bar' : ''}${menu ? ' has-appmenu' : ''}${menu?.column ? ' has-appcol' : ''}` }, menu?.column ?? null, header, nav, el('div', { class: menu?.column || bar ? 'shell-content' : null }, returnLink, banners, main));
   replace(root, element);
 
   return {
