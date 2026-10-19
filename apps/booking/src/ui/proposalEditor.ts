@@ -172,7 +172,7 @@ export function mountProposalEditor(id: string): ViewMount {
 
       function chooseExtra(): void {
         const extras = rates.filter((r) => r.layer === 'extra' && r.active).sort(byPosition);
-        const stay = reservation ? stayLength({ start_date: proposal!.start_date ?? reservation.start_date, end_date: proposal!.end_date ?? reservation.end_date }) : null;
+        const stay = reservation ? stayLength({ start_date: proposal!.start_date ?? reservation.start_date, end_date: proposal!.end_date ?? reservation.end_date, uses_accommodation: reservation.uses_accommodation }) : null;
         const persons = num(proposal!.persons ?? reservation?.expected_guests);
         let sheet: Sheet;
         sheet = openSheet({

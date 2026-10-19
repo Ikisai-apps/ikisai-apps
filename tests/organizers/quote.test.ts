@@ -28,19 +28,19 @@ test('organizers · calculadora: noches, comidas incluidas, IVA incluido y seña
   if (!q.available) return;
   assert.equal(q.nights, 2);
   assert.equal(q.mealsIncluded, 4, 'viernes a domingo: dos noches y cuatro comidas por persona');
-  // 20 personas × 2 noches × 60 € + 3 días de sala × 200 €
-  assert.equal(q.total, 2400 + 600);
-  assert.equal(q.payable, 3000);
+  // 20 personas × 2 noches × 60 € + 2 días de sala × 200 € (regla de VG: tantos días como noches)
+  assert.equal(q.total, 2400 + 400);
+  assert.equal(q.payable, 2800);
   assert.equal(q.minimumApplied, false);
-  assert.equal(q.vatAmount, 272.73, 'IVA incluido: no se suma encima');
-  assert.equal(q.deposit, 900, '30 % de 3000');
+  assert.equal(q.vatAmount, 254.55, 'IVA incluido: no se suma encima');
+  assert.equal(q.deposit, 840, '30 % de 2800');
 });
 
 test('organizers · calculadora: el mínimo por retiro se aplica y la señal sale de lo que se paga', () => {
   const q = quote(base({ persons: 5, reservation: { ...base().reservation, expected_guests: 5 } }));
   assert.equal(q.available, true);
   if (!q.available) return;
-  assert.equal(q.total, 600 + 600);
+  assert.equal(q.total, 600 + 400);
   assert.equal(q.minimumApplied, true);
   assert.equal(q.payable, 2500);
   assert.equal(q.deposit, 750);
@@ -48,7 +48,7 @@ test('organizers · calculadora: el mínimo por retiro se aplica y la señal sal
 
 test('organizers · calculadora: los extras pedidos se suman con su cantidad; sin tarifas, sin fechas o sin personas no calcula', () => {
   const q = quote(base({ extras: [{ rate_id: 'x1', quantity: 2 }] }));
-  assert.equal(q.available && q.total, 3000 + 300);
+  assert.equal(q.available && q.total, 2800 + 300);
   assert.deepEqual(quote(base({ rates: [] })), { available: false, reason: 'no_rates' });
   assert.deepEqual(quote(base({ reservation: { ...base().reservation, start_date: null, end_date: null } })), { available: false, reason: 'no_dates' });
   assert.deepEqual(quote(base({ persons: 0 })), { available: false, reason: 'no_persons' });

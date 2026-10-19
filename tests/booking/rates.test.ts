@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestApp, type TestApp } from '../../packages/test-kit/src/http.ts';
 import { createBookingApp, BOOKING_ORIGINS } from '../../supabase/functions/booking-api/app.ts';
-import { bookingAgentRisk, lineAmount, PROCEDURES, proposalTotals, refundFor, round2, suggestLines, TABLES, validateFields } from '../../supabase/functions/_domain/booking/mod.ts';
+import { bookingAgentRisk, lineAmount, PROCEDURES, proposalTotals, quantityFor, refundFor, round2, stayLength, suggestLines, TABLES, validateFields } from '../../supabase/functions/_domain/booking/mod.ts';
 
 const { reservations: RESERVATIONS, rates: RATES, conditions: CONDITIONS, cancellationTiers: TIERS, proposals: PROPOSALS, proposalLines: LINES, finance: FINANCE } = TABLES;
 const uuid = () => crypto.randomUUID();
@@ -54,13 +54,18 @@ test('tarifas · dominio: sugerencia, totales con y sin IVA, señal mínima y de
     rate('formacion', { event_types: ['formacion'] }), rate('2026', { valid_to: '2026-12-31' }), rate('inactiva', { active: false }),
     rate('descuento', { layer: 'ajuste', unit: 'porcentaje', amount: -10 }),
   ];
-  assert.deepEqual(suggestLines(reservation, rates).map((l) => [l.rate_id, l.quantity]), [['recinto', 3], ['grande', 40], ['descuento', 1]]);
+  // regla de VG (tanda 27): un retiro de 2 noches son 2 días de sala y comidas; lo de más es un extra
+  assert.deepEqual(suggestLines(reservation, rates).map((l) => [l.rate_id, l.quantity]), [['recinto', 2], ['grande', 40], ['descuento', 1]]);
+  assert.deepEqual(stayLength(reservation), { nights: 2, days: 2 });
+  assert.deepEqual(stayLength({ start_date: '2027-05-10', end_date: '2027-05-10' }), { nights: 0, days: 1 }, 'una jornada sin noche es un día');
+  assert.deepEqual(stayLength({ start_date: '2027-05-10', end_date: '2027-05-12', uses_accommodation: false }), { nights: 2, days: 3 }, 'sin alojamiento, cada fecha es un día entero');
+  assert.equal(quantityFor('persona_dia', 20, stayLength(reservation)!), 40);
 
   // extras: no se sugieren, salvo la supletoria cuando hay supletorias activadas (por cama y noche)
   const extras = [...rates, rate('sonido', { layer: 'extra', unit: 'estancia', amount: 150 }),
     rate('supletoria', { layer: 'extra', unit: 'noche', amount: 15, service: 'cama_supletoria' })];
   assert.deepEqual(suggestLines(reservation, extras).map((l) => l.rate_id), ['recinto', 'grande', 'descuento']);
-  assert.deepEqual(suggestLines(reservation, extras, { extraBeds: 3 }).map((l) => [l.rate_id, l.quantity]), [['recinto', 3], ['grande', 40], ['supletoria', 6], ['descuento', 1]]);
+  assert.deepEqual(suggestLines(reservation, extras, { extraBeds: 3 }).map((l) => [l.rate_id, l.quantity]), [['recinto', 2], ['grande', 40], ['supletoria', 6], ['descuento', 1]]);
   assert.deepEqual(suggestLines(reservation, extras, { persons: 10 }).map((l) => l.rate_id), ['recinto', 'pequeño', 'descuento']);
   // descuento en % de una línea o importe cambiado a mano
   assert.equal(lineAmount({ unit: 'persona_noche', quantity: 40, unit_amount: 40, discount_pct: 15 }), 1360);

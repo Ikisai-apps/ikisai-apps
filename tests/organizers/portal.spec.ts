@@ -323,17 +323,17 @@ test('organizers · diseño (fase 2): datos, extras y precio orientativo; calcul
   await page.locator('#goDesign').click();
   await expect(page.locator('#designPeople')).toBeVisible();
   await page.locator('#d-expected_guests').fill('20');
-  // 20 personas × 2 noches × 60 € + 3 días de sala × 200 € = 3000 € (IVA incluido)
-  await expect(page.locator('#quoteTotal')).toHaveText(/3\.?000,00/);
+  // 20 personas × 2 noches × 60 € + 2 días de sala × 200 € = 2800 € (IVA incluido; regla de VG: tantos días como noches)
+  await expect(page.locator('#quoteTotal')).toHaveText(/2\.?800,00/);
   await page.locator(`.orgextra[data-rate="${extraId}"] input[type=checkbox]`).check();
-  await expect(page.locator('#quoteTotal')).toHaveText(/3\.?150,00/);
-  await expect(page.locator('#quoteDeposit')).toHaveText(/945,00/);
+  await expect(page.locator('#quoteTotal')).toHaveText(/2\.?950,00/);
+  await expect(page.locator('#quoteDeposit')).toHaveText(/885,00/);
   await expect(page.locator('#designSaveState')).toContainText('Guardado');
 
-  // Calculadora privada: 20 asistentes a 300 € frente a 3150 € de Ikisai.
+  // Calculadora privada: 20 asistentes a 300 € frente a 2950 € de Ikisai.
   await page.locator('#margin-price').fill('300');
-  await expect(page.locator('#marginValue')).toHaveText(/2\.?850,00/);
-  await expect(page.locator('#marginBreakEven')).toHaveText('11 asistentes');
+  await expect(page.locator('#marginValue')).toHaveText(/3\.?050,00/);
+  await expect(page.locator('#marginBreakEven')).toHaveText('10 asistentes');
 
   await page.reload();
   await expect(page.locator('#d-expected_guests')).toHaveValue('20');

@@ -985,6 +985,11 @@ booking.rates                       tarifario (C03 §8.5–§8.6)
   active       boolean
   position     numeric
 
+  Días que se cobran (`stayLength`, regla de VG, tanda 27): con alojamiento, tantos días como noches («un retiro de 2
+  noches son 2 días de comidas y salas»); una jornada sin noche, 1. Las comidas o usos de llegada y salida van como extra.
+  Sin alojamiento, cada fecha es un día entero. Lo usan «Sugerir desde el tarifario» y la calculadora de Organizers; las
+  propuestas ya enviadas no cambian.
+
 booking.conditions                  condiciones comerciales (C03 §9–§10)
   name                 text           «Condiciones generales 2026»
   deposit_percent      numeric(5,2)   30
