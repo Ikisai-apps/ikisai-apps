@@ -554,5 +554,5 @@ test('compras de Tasks: destino purchase_request (lista y asignación con el tok
   assert.deepEqual(outsider2.rows[0]!.r.items, []);
   // Registradas para Tasks
   const reads = await app.t.db.query<{ name: string }>(`select name from core.allowed_reads where app = 'tasks' and name like 'invoices.%' order by name`);
-  assert.deepEqual(reads.rows.map((r) => r.name), ['invoices.allocations_by_target', 'invoices.supplier_options']);
+  assert.deepEqual(reads.rows.map((r) => r.name), ['invoices.allocations_by_target', 'invoices.supplier_options', 'invoices.tasks_resource_entries']);
 });
