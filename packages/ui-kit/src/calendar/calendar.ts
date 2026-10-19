@@ -51,6 +51,15 @@ export interface CalendarDayInfo {
   /** Qué significa el sombreado; lo lee el lector de pantalla y sale en el panel del día. */
   shadeLabel?: string;
   notes?: CalendarNote[];
+  /**
+   * Precio del día ya formateado por la app («85 €»), en pequeño bajo el número (calendario de precios, MUELA-075 pieza
+   * 17). El precio y la temporada los calcula la app.
+   */
+  price?: string | null;
+  /** Tono del día: `low` (lo más barato, verde) o `high` (temporada alta, ámbar). */
+  tone?: 'low' | 'high' | null;
+  /** Qué significa el tono, en palabras («el más barato», «temporada alta»): se lee siempre y sale en el panel del día. */
+  toneLabel?: string | null;
 }
 
 export interface CalendarRange { from: DayKey; to: DayKey }
@@ -434,9 +443,11 @@ export function createCalendar(options: CalendarOptions): Calendar {
       dayEvents.length ? (dayEvents.length === 1 ? kt('1 evento') : kt('{n} eventos', { n: String(dayEvents.length) })) : '',
       extra.shaded ? (extra.shadeLabel ?? kt('sombreado')) : '',
       notes.length ? (notes.length === 1 ? kt('1 nota') : kt('{n} notas', { n: String(notes.length) })) : '',
+      extra.price ?? '',
+      extra.tone ? (extra.toneLabel ?? '') : '',
     ].filter(Boolean).join(', ');
     const cell = el('div', {
-      class: `cal-day${inMonth ? '' : ' outside'}${isToday ? ' today' : ''}${dayEvents.length ? ' has' : ''}${extra.shaded ? ' shaded' : ''}${notes.length ? ' noted' : ''}${agenda && day === picked ? ' picked' : ''}`,
+      class: `cal-day${inMonth ? '' : ' outside'}${isToday ? ' today' : ''}${dayEvents.length ? ' has' : ''}${extra.shaded ? ' shaded' : ''}${notes.length ? ' noted' : ''}${agenda && day === picked ? ' picked' : ''}${extra.tone ? ` cal-tone-${extra.tone}` : ''}`,
       role: 'gridcell',
       tabindex: day === focused ? '0' : '-1',
       dataset: { day },
@@ -452,6 +463,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
     },
       el('span', { class: 'cal-num' }, view === 'week' ? `${weekdayLabels(locale, weekStartsOn, 'short')[(fromDayKey(day).getDay() - weekStartsOn + 7) % 7]} ${number}` : String(number)),
       notes.length ? el('span', { class: 'cal-note-mark', 'aria-hidden': 'true' }, icon('history', 10)) : null,
+      extra.price ? el('span', { class: 'cal-price', 'aria-hidden': 'true' }, extra.price) : null,
       el('div', { class: 'cal-events' },
         ...visibleEvents.map((event) => {
           const first = event.start === day || (fromDayKey(day).getDay() - weekStartsOn + 7) % 7 === 0;
@@ -604,6 +616,7 @@ export function createCalendar(options: CalendarOptions): Calendar {
           el('span', { class: `cal-agenda-bar ${layer?.style ?? 'solid'}`, 'aria-hidden': 'true' }),
           el('span', { class: 'cal-agenda-text' }, el('strong', null, e.title), el('small', null, [layer?.label, span(e)].filter(Boolean).join(' · '))));
       }),
+      extra.price || extra.toneLabel ? el('p', { class: `cal-agenda-price${extra.tone ? ` cal-tone-${extra.tone}` : ''}` }, [extra.price, extra.tone ? extra.toneLabel : null].filter(Boolean).join(' · ')) : null,
       extra.shaded ? el('p', { class: 'cal-agenda-item shade' }, el('span', { class: 'cal-swatch shade', 'aria-hidden': 'true' }), el('span', null, extra.shadeLabel ?? kt('Día sombreado'))) : null,
       notes.length ? el('p', { class: 'cal-agenda-label' }, kt('Notas')) : null,
       ...notes.map((n) => el('p', { class: 'cal-agenda-note', dataset: { noteId: n.id } },

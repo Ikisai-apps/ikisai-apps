@@ -210,6 +210,35 @@ Piezas pequeñas sin estado y sin lógica de negocio: el orden, los plazos, los 
   - Desde 1024 px, una columna por etapa con la cifra grande y lo que cuenta.
   - Sin `layout`, todo queda igual que antes.
 
+### Lote B1 (0.43): piezas compuestas
+
+Se ven en la demo, en `#piecesb`. El orden de las colas, qué está «ahora», los plazos y los precios los calcula la app.
+
+- **`renderCover({ title, image?, color?, pill?, pillTone?, stats?, faces?, titleExtra?, tools?, onOpen?, compact? })`**: la portada.
+  - Muestra la foto en grande, o el color con las iniciales.
+  - Lleva píldora, caras y las cifras escritas por la app. Pulsarla abre.
+  - Clases `cover-`.
+- **`createFocus({ items, onDone?, onOpen?, emptyTitle?, emptyText? })`**: lo que toca ahora.
+  - Una tarjeta grande con «✓ Hecha» (`role="checkbox"`), «Abrir» y «Siguiente ›», que va rotando.
+  - Las dos siguientes asoman detrás. «n de N por hacer» se anuncia.
+  - `setItems` conserva la tarjeta si sigue en la cola. Sin `onDone`, es de solo lectura.
+  - Clases `focus-`.
+- **`createCoverCarousel({ label, slides, index?, onChange?, top? })`**: la portada que se pasa con flechas.
+  - Lleva `aria-roledescription` «carrusel» y «diapositiva», y anuncia «n de N».
+  - Se pasa con las flechas del teclado, con flechas y puntos de 46 px, o deslizando en horizontal (más de 50 px y más que en vertical, con `touch-action: pan-y`).
+  - Sin animaciones.
+- **`renderLead({ items, top?, max?, onDone?, onOpen?, extra? })`**: lo primero en grande.
+  - Las tres primeras van en tarjetas grandes con su número: en el móvil, en un carril que se desliza; desde 900 px, en columnas.
+  - El resto, en una cola numerada desde el 4, con su barra de urgencia (`weight`) y «Ver N más».
+  - Clases `lead-`.
+- **`renderNow({ now?, next?, rest, restTitle?, showDone? })`**: lo de ahora abierto y el resto plegado.
+  - Lo de ahora lleva una barra (`progressbar`) y «Quedan…»; debajo, lo siguiente.
+  - El resto va en `<details>`, cuyo contenido se pinta al abrir. Lo hecho queda tras «Ver lo ya hecho (N)».
+  - Clases `now-`.
+- **Calendario de precios:** `createCalendar` acepta en `dayInfo` los campos `price`, `tone` (`low` / `high`) y `toneLabel`.
+  - El precio sale bajo el número y el día toma su tono.
+  - `toneLabel` se lee siempre y aparece en el panel del día.
+
 ## Muestra y pruebas
 
 ```text

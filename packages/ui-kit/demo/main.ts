@@ -111,6 +111,11 @@ import {
   renderTile,
   bindOnline,
   deadlineText,
+  renderCover,
+  createFocus,
+  createCoverCarousel,
+  renderLead,
+  renderNow,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1478,6 +1483,70 @@ const piecesSection = section('pieces', 'Piezas comunes (lote A)', 'MUELA-075: m
   el('h3', null, 'Etapas con su cifra'), columnsHost,
 );
 
+// --- Piezas comunes, lote B1 (MUELA-075) --------------------------------------------------------------------
+const B1_IMG = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 30%22%3E%3Crect width=%2240%22 height=%2230%22 fill=%22%237a8f6a%22/%3E%3Ccircle cx=%2230%22 cy=%228%22 r=%225%22 fill=%22%23e9d9a8%22/%3E%3Cpath d=%22M0 30 L14 14 L24 24 L30 18 L40 30Z%22 fill=%22%233e5236%22/%3E%3C/svg%3E';
+const coverOut = el('output', { id: 'coverOpened' }, '—');
+const coverHost = el('div', { id: 'coverHost', style: 'display:grid;gap:12px' },
+  renderCover({ title: 'Huerta de otoño', color: '#56663f', pill: 'Vence el 30 oct', stats: '5 pendientes · 1 vencida · 40 % hecho', faces: [{ name: 'Ana López' }, { name: 'Luis Pérez' }], onOpen: () => { coverOut.textContent = 'huerta'; }, feedbackId: 'demo.proyecto.portada' }),
+  renderCover({ title: 'Casa grande', image: B1_IMG, pill: 'En pausa', pillTone: 'warn', compact: true }),
+  el('p', null, 'Abierta: ', coverOut));
+type DemoTask = { id: string; title: string; kicker: string; tone?: 'alert' | null; meta: string[]; who?: { name: string } };
+let focusTasks: DemoTask[] = [
+  { id: 't1', title: 'Podar los rosales', kicker: 'Vencida · toca ya', tone: 'alert', meta: ['Venció ayer', '2/5 pasos'], who: { name: 'Ana López' } },
+  { id: 't2', title: 'Comprar abono', kicker: 'Para hoy', meta: ['Hoy'] },
+  { id: 't3', title: 'Regar el huerto', kicker: 'Lo siguiente', meta: ['Mañana'] },
+];
+const focusOut = el('output', { id: 'focusOpened' }, '—');
+const focus = createFocus({ items: focusTasks, feedbackId: 'demo.proyecto.foco', emptyText: 'Añade una tarea abajo si falta algo.',
+  onDone: (item) => { focusTasks = focusTasks.filter((t) => t.id !== item.id); focus.setItems(focusTasks); toast(`Hecha: ${item.title}`); },
+  onOpen: (item) => { focusOut.textContent = item.id; } });
+const focusHost = el('div', { id: 'focusHost' }, focus.element, el('p', null, 'Abierta: ', focusOut));
+const carouselOut = el('output', { id: 'carouselAt' }, '—');
+const carousel = createCoverCarousel({ label: 'Tus retiros', feedbackId: 'demo.retiros.portada', onChange: (s) => { carouselOut.textContent = s.id; },
+  slides: [
+    { id: 'r1', title: 'Silencio de noviembre', state: 'Ya pasó', meta: '6–9 nov', image: B1_IMG },
+    { id: 'r2', title: 'Yoga de otoño', state: 'Ahora · hasta el viernes', meta: '20–24 oct', color: '#3f6d8e', faces: [{ name: 'Ana López' }, { name: 'Marta Gil' }] },
+    { id: 'r3', title: 'Retiro de invierno', state: 'Dentro de 52 días', meta: '10–14 dic', color: '#8a5fb0' },
+  ], index: 1 });
+const carouselHost = el('div', { id: 'carouselHost' }, carousel.element, el('p', null, 'Portada: ', carouselOut));
+const leadOut = el('output', { id: 'leadOpened' }, '—');
+const leadHost = el('div', { id: 'leadHost' }, renderLead({ feedbackId: 'demo.inicio.primero', max: 2,
+  onDone: (i) => toast(`Hecha: ${i.title}`), onOpen: (i) => { leadOut.textContent = i.id; },
+  items: [
+    { id: 'l1', title: 'Pagar a la gestoría', where: 'Cuentas · Oficina', due: 'Vencida hace 2 días', tone: 'alert', color: '#b3412a', who: { name: 'Ana López' } },
+    { id: 'l2', title: 'Revisar la caldera', where: 'Casa · Mantenimiento', due: 'Hoy, 19:00', tone: 'warn', image: B1_IMG },
+    { id: 'l3', title: 'Pedir leña', where: 'Casa', due: 'Mañana', color: '#3f6d8e' },
+    { id: 'l4', title: 'Llamar al fontanero', where: 'Casa', due: 'Esta semana', weight: 0.8, medal: { name: 'Casa' } },
+    { id: 'l5', title: 'Ordenar el almacén', due: 'Sin fecha', weight: 0.3 },
+    { id: 'l6', title: 'Preparar el menú del sábado', where: 'Cocina', due: 'Sábado', weight: 0.5 },
+  ] }), el('p', null, 'Abierta: ', leadOut));
+const nowHost = el('div', { id: 'nowHost' }, renderNow({ feedbackId: 'demo.programa.ahora', restTitle: 'Hoy, más tarde',
+  now: { label: 'Ahora · 12:00–13:30', title: 'Paseo al río', progress: 0.4, left: 'Quedan 54 min', medal: { name: 'Paseo al río' }, body: el('p', { class: 'hint' }, 'Salida desde la puerta norte.') },
+  next: { label: 'Lo siguiente · en 1 h', title: '13:30 · Comida', image: B1_IMG },
+  rest: [
+    { id: 'p1', time: '08:00', title: 'Meditación', state: 'done' },
+    { id: 'p2', time: '09:30', title: 'Desayuno', state: 'done' },
+    { id: 'p3', time: '17:00', title: 'Yoga suave', state: 'later', body: () => el('p', null, 'Sala Olivo · trae esterilla') },
+    { id: 'p4', time: '20:30', title: 'Cena', state: 'later' },
+  ] }));
+// Calendario de precios: el precio y la temporada los da la app; el kit los pinta con su texto.
+const priceCal = createCalendar({ label: 'Precios', viewSwitch: false, legend: false, date: '2026-11-01', agenda: true, events: () => [],
+  dayInfo: () => ({
+    '2026-11-06': { price: '80 €', tone: 'low', toneLabel: 'el más barato' },
+    '2026-11-13': { price: '80 €', tone: 'low', toneLabel: 'el más barato' },
+    '2026-11-20': { price: '85 €' },
+    '2026-11-27': { price: '95 €', tone: 'high', toneLabel: 'temporada alta' },
+  }) });
+const priceHost = el('div', { id: 'priceCalHost' }, priceCal.element);
+const piecesBSection = section('piecesb', 'Piezas comunes (lote B1)', 'MUELA-075: portada y foco, portada que se pasa con flechas (teclado, deslizar y «n de N»), lo primero en grande, lo de ahora abierto y el resto plegado, y el calendario de precios (precio, tono y su texto en `dayInfo`).',
+  el('h3', null, 'Portada'), coverHost,
+  el('h3', null, 'Foco'), focusHost,
+  el('h3', null, 'Portada con flechas'), carouselHost,
+  el('h3', null, 'Lo primero en grande'), leadHost,
+  el('h3', null, 'Lo de ahora'), nowHost,
+  el('h3', null, 'Calendario de precios'), priceHost,
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
@@ -1490,5 +1559,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
