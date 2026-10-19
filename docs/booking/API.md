@@ -1292,12 +1292,50 @@ Estados visibles: Preparada → Enviando → En proceso en SES → **Aceptada** 
 |---|---|---|
 | `POST /api/v1/ses/:reservationId/rh` | editor/owner | prepara y envía la reserva (solo con pago registrado y SES activo; no envía si `paused`) |
 | `POST /api/v1/ses/:communicationId/cancel` | editor/owner | anula una comunicación aceptada |
-| `POST /api/v1/ses/:reservationId/pv` | editor/owner | «Cerrar la entrada y comunicar» (SES-3) |
+| `POST /api/v1/ses/:reservationId/pv` | owner y editor con `scopes.guests` | «Cerrar la entrada y comunicar» (SES-3) |
+| `GET /api/v1/ses/:reservationId/pv` | owner y editor con `scopes.guests` | huéspedes llegados con lo que les falta para el parte (trae nombres y documentos; desde la tanda 27 exige ver huéspedes) |
 | `GET /api/v1/ses/:reservationId` | editor/owner | estado de sus comunicaciones |
+| `GET /api/v1/ses` | editor/owner | **B2 (tanda 27):** estado de SES de varias reservas en una llamada (`booking.ses_overview`, migración 0472), para la bandeja #/ses y los avisos de Inicio. Ver §17.6 |
 | `POST /api/v1/worker/ses/tick` | planificador | consulta lotes en proceso y reintenta errores; solo trabaja si hay pendientes |
 | `POST /api/v1/worker/ses/ping` | Core | prueba de TLS contra PRE (§17.3) |
 
 Los avisos de plazo (12 h y 18 h desde el pago o el primer día) salen de `legal_start_at` en Inicio y en la ficha, y como petición a Tasks (`booking.ses_deadline`, §20 de Tasks) cuando Core lo confirme.
+
+### 17.6 Bandeja de SES (B2, tanda 27)
+
+`GET /api/v1/ses` devuelve `{ generated_at, settings: { environment, paused }, items: [...] }`, con hasta 200 reservas ordenadas por su llegada. Entran:
+- las confirmadas, en ejecución o cerradas, sin archivar, que terminaron hace menos de 30 días;
+- las que tienen SES activo y el pago registrado en los últimos 90 días sin comunicación aceptada (el plazo legal no se esconde);
+- cualquiera con una comunicación sin resolver (preparada, enviando, en proceso o con error);
+- las canceladas, perdidas o con SES desactivado que conservan una comunicación aceptada, porque hay que anularla.
+
+Cada elemento lleva:
+- `reservation`: id, código, título, estado, fechas, personas previstas y finales, interruptor y motivo;
+- `payment`: `registered_at` y `date`;
+- `communications`: las mismas que `GET ses/:id`; los partes llevan su número de huéspedes, no sus ids;
+- `guests`: recuentos (`total`, `incomplete`, `unsigned`, `ready`, `arrived`, `pending_report`), o `null` si quien lee no puede ver huéspedes.
+
+No sale ningún nombre ni documento. El lector recibe 403.
+
+Las reglas puras están en `_domain/booking/sesRules.ts`, que `app/ses.ts` reexporta:
+- `deadlineOf`: el plazo con hora, con los umbrales de 12, 18 y 24 h de siempre;
+- `sesErrorTarget` y `SES_ERROR_FIELD`: a dónde lleva un rechazo. Los códigos `SES_*` y `LOTE_*` van a «Revisar la reserva» mientras no tengamos la tabla oficial;
+- `sesRowOf` y `sesOverview`: el área de cada reserva y el veredicto.
+
+Las áreas son:
+- las de La Muela: Corregir, Listas, En proceso, Esperando el pago, Huéspedes antes de llegar, Comunicadas y Sin SES;
+- las que añadió la revisión: Cambió tras comunicarse, Retenidas (pausa o sin credenciales), Reintentando (error), Anulación en curso y Partes de viajeros.
+
+Las retenidas cuentan como cosa por resolver, porque la pausa no para el plazo.
+
+### 17.7 Calendario de precios (tanda 27)
+
+Sin ruta nueva: se calcula en el dispositivo con lo sincronizado (tarifas, condiciones, reservas, opciones de fecha y bloqueos; editor y owner). `_domain/booking/priceCalendar.ts`:
+- **`rangeAvailability`:** la misma regla que `booking.range_availability`, con una prueba de paridad contra SQL.
+- **`priceFor` y `priceCalendar`:** llegadas en viernes, por meses, con el precio del caso (`suggestLines` → `proposalTotals` → `applyMinimum`).
+- **`high`:** la temporada alta es un ajuste del tarifario que sube el precio. No hay columna nueva.
+- **`cheapest`:** el más barato de los libres.
+- **El lector** no ve precios (decisión de VG).
 
 ### 17.5 Preguntas para Core
 

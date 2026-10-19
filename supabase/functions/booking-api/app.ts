@@ -149,6 +149,11 @@ function requireEditor(ctx: RequestContext): void {
   if (ctx.membership.role === 'reader') fail(403, 'FORBIDDEN', messageFor('FORBIDDEN'));
 }
 
+const GUESTS_FORBIDDEN = 'Los datos de huéspedes están restringidos a los responsables designados.';
+function requireGuests(ctx: RequestContext): void {
+  if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', GUESTS_FORBIDDEN);
+}
+
 /**
  * Rutas propias (docs/booking/API.md §6). El tick necesita lógica en TypeScript (payload, hash, adaptador), y las
  * acciones del núcleo son solo SQL: por eso es una ruta propia y no `invoke/booking.calendar_tick`.
@@ -156,6 +161,7 @@ function requireEditor(ctx: RequestContext): void {
  */
 const ENTITY_PROJECTION = 'central.common_entity_projection';
 const GUEST_SIGNATURE = 'booking.guest_signature_file';
+const SES_OVERVIEW = 'booking.ses_overview';
 const ENTITY_LOGO_BUCKET = 'central-documents';
 
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}): AppRoute[] {
@@ -210,12 +216,18 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
       // puede ver huéspedes. No se guarda ni se devuelven bucket ni ruta.
       method: 'GET', pattern: 'guest-signature/:guestId',
       handler: async ({ ctx, params }) => {
-        if (!canSeeGuests(ctx.membership)) fail(403, 'FORBIDDEN', 'Los datos de huéspedes están restringidos a los responsables designados.');
+        requireGuests(ctx);
         const file = await supabase.rpc<{ bucket: string; path: string; mime: string; storage_provider?: 'supabase' | 'r2' | null } | null>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: GUEST_SIGNATURE, p_args: { guest_id: params.guestId } });
         if (!file) fail(404, 'FILE_NOT_FOUND', messageFor('FILE_NOT_FOUND'));
         const url = await storage.readUrl(file!, 300);
         return { url, mime: file!.mime, expiresAt: new Date(Date.now() + 300_000).toISOString() };
       },
+    },
+    {
+      // B2 (tanda 27): estado de SES de varias reservas en una llamada, para la bandeja y los avisos (editor y owner).
+      // De los huéspedes, solo recuentos y solo para quien puede verlos.
+      method: 'GET', pattern: 'ses',
+      handler: ({ ctx }) => supabase.rpc('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: SES_OVERVIEW, p_args: {} }),
     },
     {
       // Estado de las comunicaciones a SES de una reserva (editor y owner).
@@ -239,14 +251,19 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
     },
     {
       // Huéspedes que han llegado, listos o con lo que les falta para el parte (editor y owner).
+      // Trae nombres y documentos: solo quien puede ver huéspedes.
       method: 'GET', pattern: 'ses/:reservationId/pv',
-      handler: ({ ctx, params }) => supabase.rpc('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_guest_report_source', p_args: { reservation_id: params.reservationId } }),
+      handler: ({ ctx, params }) => {
+        requireGuests(ctx);
+        return supabase.rpc('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_guest_report_source', p_args: { reservation_id: params.reservationId } });
+      },
     },
     {
       // «Cerrar la entrada y comunicar» (o comunicar a quien llega tarde, con `guest_ids`): parte de viajeros de los listos.
       method: 'POST', pattern: 'ses/:reservationId/pv',
       handler: async ({ ctx, params, json }) => {
         requireEditor(ctx);
+        requireGuests(ctx);
         const body = await json().catch(() => ({}));
         const guestIds = Array.isArray(body?.guest_ids) ? body.guest_ids.filter((id: unknown) => typeof id === 'string').slice(0, 200) : undefined;
         const source = await supabase.rpc<any>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: 'booking.ses_guest_report_source', p_args: { reservation_id: params.reservationId, ...(guestIds ? { guest_ids: guestIds } : {}) } });
