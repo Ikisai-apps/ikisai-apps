@@ -2,6 +2,16 @@
  * Ikisai Food · avisos del menú frente a las restricciones del evento (docs/food/API.md §4.3).
  * Función pura: pinta la cabecera del menú en el cliente y vuelve a ejecutarse en la Edge al validar.
  * Los avisos nunca impiden editar un borrador; los que requieren aceptación impiden validar sin aceptarlos.
+ *
+ * Cruce de alérgenos (tanda 27, regla aprobada por VG el 19-10-2026): una sola función, `crossRestriction`, para el
+ * menú, Cocina, el Organizador y el Recetario. Solo suma avisos a los de antes, nunca quita ninguno
+ * (`tests/food/warnings-cruce.test.ts` lo comprueba contra una copia congelada de la función anterior):
+ * - un alérgeno declarado avisa siempre, esté revisada o no la receta;
+ * - además del ingrediente por su nombre, cuenta el texto del plato (nombre, nombre público y descripción) y los
+ *   ingredientes que nombran el alérgeno («almendra molida» para «frutos secos»);
+ * - las preferencias se cruzan plato a plato, como información;
+ * - lo que no se puede comprobar lo dice («revisar a mano»), y con alergias en el grupo, el plato sin revisar lo dice;
+ * - nunca afirma «apto» ni «no contiene».
  */
 import type { Allergen, Ingredient, Recipe, RecipeIngredient } from './catalog.ts';
 import { restrictionKey, type DietaryRestriction, type FoodEvent, type MenuItem, type MenuService } from './menus.ts';
@@ -73,6 +83,62 @@ function compatibleWithDiet(recipe: Recipe, type: string): boolean {
   }
 }
 
+/** Texto normalizado del plato: nombre interno, nombre público y descripción pública. */
+function dishText(recipe: Pick<Recipe, 'name' | 'public_name' | 'public_description'>): string {
+  return normalizeTerm([recipe.name, recipe.public_name, recipe.public_description].filter(Boolean).join(' '));
+}
+
+/** Por qué un plato coincide con una restricción. */
+export interface Crossing {
+  /** El alérgeno que la receta declara (revisada o no). */
+  declared: Allergen | null;
+  /** Un ingrediente lleva el texto de la restricción en su nombre (la regla de antes de la tanda 27). */
+  ingredient: boolean;
+  /** Un ingrediente nombra uno de los alérgenos de la restricción («almendra molida» → frutos de cáscara). */
+  ingredientAllergen: boolean;
+  /** El nombre o la descripción del plato lo nombra. */
+  text: boolean;
+}
+
+/** Lo que el cruce necesita del grafo, calculado una vez. */
+export interface CrossContext {
+  ingredientNames: string[];
+  recipeIngredientNames: Map<string, string[]>;
+}
+
+export function crossContext(graph: Pick<MenuGraph, 'recipe_ingredients' | 'ingredients'>): CrossContext {
+  const names = new Map(graph.ingredients.map((g) => [g.id, normalizeTerm(g.name)]));
+  const byRecipe = new Map<string, string[]>();
+  for (const line of graph.recipe_ingredients) {
+    if (line.deleted_at) continue;
+    const name = names.get(line.ingredient_id);
+    if (name) byRecipe.set(line.recipe_id, [...(byRecipe.get(line.recipe_id) ?? []), name]);
+  }
+  return { ingredientNames: [...names.values()], recipeIngredientNames: byRecipe };
+}
+
+/** La única función de cruce entre una restricción (texto libre de Booking) y un plato. `null` si no coincide. */
+export function crossRestriction(subject: string, recipe: Recipe, context: CrossContext): Crossing | null {
+  const term = normalizeTerm(subject);
+  const allergens = allergensForSubject(subject);
+  const words = allergens.flatMap((a) => ALLERGEN_TERMS[a]);
+  const ingredients = context.recipeIngredientNames.get(recipe.id) ?? [];
+  const text = dishText(recipe);
+  const found: Crossing = {
+    declared: allergens.find((a) => recipe.allergens.includes(a)) ?? null,
+    ingredient: term !== '' && ingredients.some((name) => name.includes(term)),
+    ingredientAllergen: ingredients.some((name) => words.some((w) => name.includes(w))),
+    text: (term !== '' && text.includes(term)) || words.some((w) => text.includes(w)),
+  };
+  return found.declared || found.ingredient || found.ingredientAllergen || found.text ? found : null;
+}
+
+/** ¿Se puede comprobar automáticamente? Como antes de la tanda 27: un alérgeno conocido o un ingrediente que lo nombra. */
+export function verifiableSubject(subject: string, context: CrossContext): boolean {
+  const term = normalizeTerm(subject);
+  return allergensForSubject(subject).length > 0 || (term !== '' && context.ingredientNames.some((name) => name.includes(term)));
+}
+
 function people(r: DietaryRestriction): number {
   return r.servings && r.servings > 0 ? r.servings : 1;
 }
@@ -87,13 +153,7 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
   const serviceIds = new Set(services.map((s) => s.id));
   const items = graph.items.filter((i) => !i.deleted_at && serviceIds.has(i.service_id));
   const recipes = new Map(graph.recipes.map((r) => [r.id, r]));
-  const ingredientNames = new Map(graph.ingredients.map((g) => [g.id, normalizeTerm(g.name)]));
-  const recipeIngredientNames = new Map<string, string[]>();
-  for (const line of graph.recipe_ingredients) {
-    if (line.deleted_at) continue;
-    const name = ingredientNames.get(line.ingredient_id);
-    if (name) recipeIngredientNames.set(line.recipe_id, [...(recipeIngredientNames.get(line.recipe_id) ?? []), name]);
-  }
+  const context = crossContext(graph);
   const usedRecipes = [...new Set(items.map((i) => i.recipe_id))].map((id) => recipes.get(id)).filter((r): r is Recipe => !!r);
   const restrictions = event.dietary_restrictions ?? [];
   const hasAllergy = restrictions.some((r) => r.type === 'alergia' || r.type === 'intolerancia');
@@ -103,23 +163,23 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
     const count = people(restriction);
     if (restriction.type === 'alergia' || restriction.type === 'intolerancia') {
       const subject = (restriction.subject ?? '').trim();
-      const term = normalizeTerm(subject);
-      const allergens = allergensForSubject(subject);
-      const known = allergens.length > 0 || (term !== '' && [...ingredientNames.values()].some((name) => name.includes(term)));
-      if (!known) {
+      // Lo que no se sabe cruzar se revisa a mano; aun así, se avisa del plato que lo nombra.
+      if (!verifiableSubject(subject, context)) {
         warnings.push({ key: `no_verificable|${rKey}`, kind: 'no_verificable', requiresAck: true,
           text: `${count} ${restriction.type} a «${subject || 'sin especificar'}»: no se puede comprobar automáticamente, revisar a mano.` });
-        continue;
       }
       for (const item of items) {
         const recipe = recipes.get(item.recipe_id);
         if (!recipe) continue;
-        const byAllergen = allergens.find((a) => recipe.allergens.includes(a));
-        const byIngredient = term !== '' && (recipeIngredientNames.get(recipe.id) ?? []).some((name) => name.includes(term));
-        if (byAllergen || byIngredient) {
-          warnings.push({ key: `alergia|${rKey}|${item.id}`, kind: 'alergia', requiresAck: true,
-            text: `«${recipe.name}» ${byAllergen ? `declara ${ALLERGEN_NAMES[byAllergen]}` : `lleva ${subject}`}: ${count} ${restriction.type} a ${subject}.` });
-        }
+        const hit = crossRestriction(subject, recipe, context);
+        if (!hit) continue;
+        // Los textos de antes no cambian («declara» y «lleva»); lo nuevo dice de dónde sale.
+        const why = hit.declared ? `declara ${ALLERGEN_NAMES[hit.declared]}`
+          : hit.ingredient ? `lleva ${subject}`
+          : hit.ingredientAllergen ? `lleva un ingrediente con ${subject}`
+          : `nombra ${subject} en su nombre o descripción`;
+        warnings.push({ key: `alergia|${rKey}|${item.id}`, kind: 'alergia', requiresAck: true,
+          text: `«${recipe.name}» ${why}: ${count} ${restriction.type} a ${subject}.` });
       }
     } else if (restriction.type in DIET_LABEL) {
       for (const service of services) {
@@ -132,6 +192,17 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
     } else {
       warnings.push({ key: `preferencia|${rKey}`, kind: 'preferencia', requiresAck: false,
         text: `${count} ${restriction.type}${restriction.subject ? `: ${restriction.subject}` : ''}.` });
+      // Plato a plato, solo como información: «lleva cilantro».
+      const subject = (restriction.subject ?? '').trim();
+      if (normalizeTerm(subject)) {
+        for (const item of items) {
+          const recipe = recipes.get(item.recipe_id);
+          if (recipe && crossRestriction(subject, recipe, context)) {
+            warnings.push({ key: `preferencia|${rKey}|${item.id}`, kind: 'preferencia', requiresAck: false,
+              text: `«${recipe.name}» lleva ${subject}: ${count} ${restriction.type}.` });
+          }
+        }
+      }
     }
   }
 
@@ -154,6 +225,97 @@ export function menuWarnings(event: Pick<FoodEvent, 'start_date' | 'end_date' | 
     }
   }
   return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// Tanda 27: el mismo cruce para Cocina, el Organizador y el Recetario
+// ---------------------------------------------------------------------------
+
+/** Palabras con las que Booking suele decir que una alergia es grave. `severity` es texto libre y puede no venir. */
+const SEVERE_WORDS = new Set(['grave', 'severa', 'severo', 'anafilaxia', 'anafilactica', 'anafilactico', 'critica', 'critico', 'epipen', 'adrenalina']);
+
+/** ¿Dice el texto libre de Booking que es grave? Sin texto, no se sabe: `false` (no se destaca, pero se ve igual). */
+export function isSevere(severity: string | null | undefined): boolean {
+  const words = (severity ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z]+/);
+  return words.some((w) => SEVERE_WORDS.has(w) || SEVERE_WORDS.has(w.replace(/s$/, '')));
+}
+
+export interface RestrictionLine {
+  key: string;
+  type: 'alergia' | 'intolerancia';
+  subject: string;
+  people: number;
+  severe: boolean;
+  severity: string | null;
+}
+
+/**
+ * Las alergias e intolerancias del grupo, todas, con su número de personas: lo que la línea plegada de Cocina enseña
+ * siempre (regla de VG del 19-10-2026). Las graves primero, para destacarlas; ninguna se oculta.
+ */
+export function restrictionLines(restrictions: DietaryRestriction[] | null | undefined): RestrictionLine[] {
+  return (restrictions ?? [])
+    .filter((r) => r.type === 'alergia' || r.type === 'intolerancia')
+    .map((r) => ({ key: restrictionKey(r), type: r.type as 'alergia' | 'intolerancia', subject: (r.subject ?? '').trim() || 'sin especificar',
+      people: people(r), severe: isSevere(r.severity), severity: r.severity?.trim() || null }))
+    .sort((a, b) => Number(b.severe) - Number(a.severe));
+}
+
+export interface DishMatch {
+  restriction: RestrictionLine | { key: string; type: string; subject: string; people: number; severe: false; severity: null };
+  crossing: Crossing;
+}
+
+/** Lo que un plato dice frente al grupo, para Cocina y la hoja del Organizador. */
+export interface DishNotes {
+  itemId: string;
+  recipeId: string;
+  /** Alergias e intolerancias que coinciden: «⚠ lleva…». */
+  allergies: DishMatch[];
+  /** Preferencias que coinciden: «lleva cilantro», solo información. */
+  preferences: DishMatch[];
+  /** Hay alergias o intolerancias en el grupo y la receta no tiene los alérgenos revisados: «Alérgenos sin revisar». */
+  unreviewed: boolean;
+}
+
+/**
+ * Plato a plato, con `crossRestriction`. Nunca dice «apto» ni «no contiene»: un plato sin nada es solo un plato sin
+ * coincidencias, y si no está revisado y hay alergias en el grupo, lo dice.
+ */
+export function dishNotes(event: Pick<FoodEvent, 'dietary_restrictions'>, graph: MenuGraph): DishNotes[] {
+  const context = crossContext(graph);
+  const recipes = new Map(graph.recipes.map((r) => [r.id, r]));
+  const services = new Set(graph.services.filter((s) => !s.deleted_at).map((s) => s.id));
+  const restrictions = event.dietary_restrictions ?? [];
+  const allergies = restrictionLines(restrictions);
+  const others = restrictions.filter((r) => !(r.type === 'alergia' || r.type === 'intolerancia') && !(r.type in DIET_LABEL) && normalizeTerm(r.subject ?? ''))
+    .map((r) => ({ key: restrictionKey(r), type: r.type, subject: (r.subject ?? '').trim(), people: people(r), severe: false as const, severity: null }));
+  const out: DishNotes[] = [];
+  for (const item of graph.items) {
+    if (item.deleted_at || !services.has(item.service_id)) continue;
+    const recipe = recipes.get(item.recipe_id);
+    if (!recipe) continue;
+    const match = <T extends { subject: string }>(list: T[]) => list.flatMap((r) => {
+      const crossing = r.subject === 'sin especificar' ? null : crossRestriction(r.subject, recipe, context);
+      return crossing ? [{ restriction: r, crossing }] : [];
+    });
+    out.push({ itemId: item.id, recipeId: recipe.id, allergies: match(allergies), preferences: match(others),
+      unreviewed: allergies.length > 0 && !recipe.allergens_checked });
+  }
+  return out;
+}
+
+/**
+ * Filtro «Lleva X / Sin X» del Recetario (tanda 27; sustituye a «Apto para…», que choca con la regla común):
+ * - `lleva`: la declara, o la nombran sus ingredientes o su texto;
+ * - `sin_revisar`: no la declara ni la nombra, pero la receta no tiene los alérgenos revisados (va marcada en «Sin X»);
+ * - `no_declara`: revisada y sin rastro. Nunca se rotula «apto» ni «no contiene».
+ */
+export function allergenPresence(recipe: Recipe, allergen: Allergen, context: CrossContext): 'lleva' | 'sin_revisar' | 'no_declara' {
+  const words = ALLERGEN_TERMS[allergen];
+  const named = (text: string) => words.some((w) => text.includes(w));
+  if (recipe.allergens.includes(allergen) || named(dishText(recipe)) || (context.recipeIngredientNames.get(recipe.id) ?? []).some(named)) return 'lleva';
+  return recipe.allergens_checked ? 'no_declara' : 'sin_revisar';
 }
 
 /** Claves que hay que aceptar una a una para poder validar. */

@@ -38,8 +38,12 @@ function periodArgument(args: Record<string, unknown>): string | null {
   return days < 0 || days > PERIOD_MAX_DAYS - 1 ? 'period_end' : null;
 }
 
-/** Sugerencia de plato del menú de casa (O3c): `name` (1–160), `date` y `service`. */
+/**
+ * Sugerencia de plato del menú de casa (O3c): `name` (1–160), `date` y `service`; `recipe_id` opcional (tanda 27,
+ * «Usar “receta parecida”»). Que el día no haya pasado lo decide el servidor, con su reloj.
+ */
 function houseDishArgument(args: Record<string, unknown>): string | null {
+  if (args.recipe_id !== undefined && args.recipe_id !== null && (typeof args.recipe_id !== 'string' || !UUID.test(args.recipe_id))) return 'recipe_id';
   if (typeof args.name !== 'string' || args.name.trim().length < 1 || args.name.trim().length > 160) return 'name';
   // Fecha real (el 30 de febrero no existe, aunque `Date.parse` lo acepte).
   if (typeof args.date !== 'string' || !DATE.test(args.date) || Number.isNaN(Date.parse(args.date)) || new Date(Date.parse(args.date)).toISOString().slice(0, 10) !== args.date) return 'date';

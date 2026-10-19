@@ -1,6 +1,6 @@
 /** Ikisai Food · API. Configuración de la app sobre el núcleo; las rutas propias se añaden aquí. */
 import { runConsumptionTick } from './consumption.ts';
-import { createApp, createSupabase, fail, isFault, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, isFault, sha256Hex, stable, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, type UploadsConfig } from '../_kit/mod.ts';
 import {
   eventSnapshot, FOOD_PROCEDURES, isHouseMenu, menuWarnings, PHOTO_MAX_BYTES, PHOTO_MIME, RECIPE_FILE_FIELDS, requiredAcknowledgements, validateOperations,
   type AcknowledgedWarning, type FoodEvent, type Menu, type MenuGraph,
@@ -169,7 +169,59 @@ function madridToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
-function tasksRoutes(options: FoodAppOptions): AppRoute[] {
+/** Uuid v4 fijo para un texto: el aviso de una máquina en un día tiene siempre la misma fila. */
+async function fixedId(text: string): Promise<string> {
+  const hex = (await sha256Hex(text)).slice(0, 32);
+  const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Tanda 27: deja constancia del aviso en `food.equipment_notices` (1104), como quien avisa, para que «Avisado» sea un
+ * dato del servidor y lo vean todos los dispositivos. Una fila por máquina y día, con id fijo: repetir no duplica. Si no
+ * se puede anotar (la máquina no está en Food, o falla la base), el aviso a Tasks ya salió y no se deshace: `recorded: false`.
+ */
+async function recordNotice(supabase: Supabase, ctx: RequestContext, equipmentId: string, day: string, status: string, taskId: string): Promise<boolean> {
+  const ref = `equipment_fault:${equipmentId}:${day}`;
+  const operations = [{ op: 'insert', table: 'food.equipment_notices', id: await fixedId(`ikisai-food-notice:${ref}`),
+    fields: { equipment_id: equipmentId, notified_on: day, equipment_status: status, task_id: taskId } }];
+  try {
+    await supabase.rpc('core_commit', {
+      p_app: 'food', p_actor: ctx.user.id, p_request_id: `notice:${ref}`, p_digest: await sha256Hex(stable(operations)),
+      p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+    });
+    return true;
+  } catch (error) {
+    // Ya anotado hoy (otra persona, o un reintento con otra tarea): cuenta como anotado.
+    if (isFault(error) && ['ROW_EXISTS', 'CONSTRAINT_VIOLATION', 'IDEMPOTENCY_REUSE'].includes(error.code)) return true;
+    return false;
+  }
+}
+
+/**
+ * Tanda 27 · votos a las sugerencias de plato (1103). Vota cualquiera de la cocina, también quien solo lee: la ruta de
+ * comandos del núcleo no deja escribir al lector, así que esta llama solo a `food.vote_suggestion`, como quien vota.
+ * Cuerpo: `{ requestId, suggestionId, vote: 'keep' | 'drop' | null }` (null quita el voto). Necesita red.
+ */
+function voteRoutes(supabase: Supabase): AppRoute[] {
+  return [{
+    method: 'POST', pattern: 'suggestion-votes', handler: async ({ ctx, json }) => {
+      if (!['reader', 'editor', 'owner'].includes(ctx.membership.role)) fail(403, 'FORBIDDEN', 'Solo vota la gente de la cocina.');
+      const body = ((await json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+      const requestId = typeof body.requestId === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(body.requestId) ? body.requestId : fail(422, 'INVALID_OPERATION', 'requestId inválido.');
+      const suggestionId = typeof body.suggestionId === 'string' && UUID.test(body.suggestionId) ? body.suggestionId : fail(422, 'INVALID_OPERATION', 'Sugerencia no válida.');
+      if (body.vote !== null && body.vote !== 'keep' && body.vote !== 'drop') fail(422, 'INVALID_OPERATION', 'El voto es keep, drop o null.');
+      const operations = [{ op: 'call', procedure: 'food.vote_suggestion', args: { suggestion_id: suggestionId, vote: body.vote } }];
+      const out = await supabase.rpc<{ cursor: number }>('core_commit', {
+        p_app: 'food', p_actor: ctx.user.id, p_request_id: `vote:${requestId}`, p_digest: await sha256Hex(stable(operations)),
+        p_expected_cursor: null, p_operations: operations, p_confirmation: null,
+      });
+      return { cursor: out?.cursor ?? null, suggestionId, vote: body.vote };
+    },
+  }];
+}
+
+function tasksRoutes(supabase: Supabase, options: FoodAppOptions): AppRoute[] {
   const tasks = createTasksClient(options);
   return [{
     // Avisa a Tasks de una máquina averiada, limitada o fuera de servicio (API.md §6.1). Necesita red. Una petición por
@@ -185,16 +237,18 @@ function tasksRoutes(options: FoodAppOptions): AppRoute[] {
       const note = typeof body.note === 'string' ? body.note.trim() : '';
       const fault = FAULT_STATUSES[status];
       if (!name || name.length > 120 || !fault || location.length > 200 || note.length > 2000) fail(422, 'INVALID_OPERATION', 'Nombre, estado o nota no válidos.');
+      const day = madridToday();
       const out = await tasks<{ created: boolean; routed?: string; task?: { id?: string; title?: string } }>(ctx, 'requests/task', {
         source: 'food', kind: 'food.equipment_fault', kind_label: 'Averías de cocina',
-        external_ref: `equipment_fault:${id}:${madridToday()}`,
+        external_ref: `equipment_fault:${id}:${day}`,
         external_url: `${FOOD_ORIGINS[0]}/#/maquinaria`,
         title: `${fault!.title}: ${name}${location ? ` (${location})` : ''}`,
         ...(note ? { note } : {}),
         priority: fault!.priority,
       });
       if (!out?.task?.id) fail(503, 'TASKS_UNAVAILABLE', 'Respuesta de Tasks no válida.');
-      return { created: out.created, routed: out.routed ?? null, taskId: out.task!.id };
+      const recorded = await recordNotice(supabase, ctx, id, day, status, out.task!.id!);
+      return { created: out.created, routed: out.routed ?? null, taskId: out.task!.id, recorded };
     },
   }];
 }
@@ -217,7 +271,7 @@ export function createFoodApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' |
         await checkMenuCalls(supabase, events, operations, ctx);
       },
     },
-    routes: [...eventRoutes(events), ...tasksRoutes(options)],
+    routes: [...eventRoutes(events), ...tasksRoutes(supabase, options), ...voteRoutes(supabase)],
     // R5c, P17: el consumo vencido se descuenta en el servidor (lo programa `core.schedule_tick`, migración 1100).
     workerRoutes: [...(base.workerRoutes ?? []), { method: 'POST', pattern: 'consumption/tick', handler: () => runConsumptionTick(supabase) }],
   });
