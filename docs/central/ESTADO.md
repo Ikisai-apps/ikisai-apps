@@ -68,6 +68,10 @@
   - Grado efectivo en la cobertura, los indicadores y `capability_options` (con `inherited`).
   - En la ficha, el hijo no baja del padre.
   - «Quién sabe hacerlo», «N personas» y el filtro de Personas cuentan lo heredado.
+- 2026-10-19 · **K3 para miembros** (`uploads.membersK3`, núcleo #585; encargo aprobado por el usuario). Cierra la P1:
+  - `GET files/:id` ya no firma un archivo ajeno solo por conocer su id: hace falta ver una fila viva que lo referencia.
+  - La documentación de personas, solo el owner y el editor con `scopes.people`; logotipo, plano y documentos clave, todos los miembros.
+  - Sin cambios en pantalla.
 
 ## Pendiente
 

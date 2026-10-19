@@ -14,7 +14,7 @@ Fuentes: encargo de Core (`coordinacion/central/RESPUESTAS.md`, 7 oct), contrato
 - **Cumplimiento** (C09): requisitos con vencimiento, riesgo y responsable; documentos clave versionados; panel de vencimientos; «Crear tarea en Tasks» por la API de Tasks con el token del usuario (petición a Tasks vía Core).
 - **Dirección** (C01): un contrato común de proyección de KPIs (`<schema>.central_kpi_projection`) que cada app publica; Central solo guarda objetivos y umbrales.
 - **Orden propuesto** (§13): V1 = cuentas y permisos + personas; V1.1 = cumplimiento; V2 = dirección cuando haya proyecciones; configuración común cuando haya un parámetro con demanda real.
-- Peticiones a Core en §14 y en `docs/central/PETICIONES.md`. La más importante: **visibilidad de archivos** en `files/:id` (P1), porque los documentos de personas no pueden depender solo de que nadie conozca el id.
+- Peticiones a Core en §14 y en `docs/central/PETICIONES.md`. La **visibilidad de archivos** en `files/:id` (P1) está cerrada desde el 19-10-2026 con K3 para miembros (§8).
 
 ---
 
@@ -468,7 +468,7 @@ function visible(table, row, ctx) {
 | Documentos y formación (tipo, estado, fechas, archivo) | `person_records` + bucket | Owner; editor con `people` | Ídem |
 | Correo de la cuenta, último acceso, accesos por app | `admin/accounts` (Core) | Solo owner de Central | Todos los demás |
 
-**En el dispositivo:** las dos tablas reservadas se borran del espejo al cerrar sesión (`clearOnLogout: ['central.person_private', 'central.person_records']`) y `sync-client` re-sincroniza al cambiar los ámbitos. **En el historial:** `core.changes` guarda antes y después; el derecho de supresión de una persona se ejerce con `core.purge_row_history` a petición de Core, como en Booking. **Archivos:** ver P1.
+**En el dispositivo:** las dos tablas reservadas se borran del espejo al cerrar sesión (`clearOnLogout: ['central.person_private', 'central.person_records']`) y `sync-client` re-sincroniza al cambiar los ámbitos. **En el historial:** `core.changes` guarda antes y después; el derecho de supresión de una persona se ejerce con `core.purge_row_history` a petición de Core, como en Booking. **Archivos:** K3 para miembros (§8).
 
 **Datos que no se recogen** (minimización): DNI o NIE, número de la Seguridad Social, fecha de nacimiento, domicilio, cuenta bancaria, salud, discapacidad, antecedentes. Si un trámite los necesita, están en el documento correspondiente y en la gestoría.
 
@@ -605,7 +605,13 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 - Bucket privado `central-documents` (ya creado; `scripts/apps.py`): PDF, WebP, JPEG, PNG; 25 MB por archivo.
 - Fotos de certificados o carnés: recompresión en cliente (1600 px, WebP) según el contrato §11.3; PDF tal cual.
 - Referencias: `person_records.file_id` y `key_documents.file_id`. Subida sin red con el marcador `{"$blob": sha}` de `sync-client`.
-- **Riesgo:** `GET files/:id` comprueba hoy solo la pertenencia a la app; un `reader` que conociera el id de un documento de una persona obtendría la URL. Los ids no se exponen a quien no ve la fila, pero no basta para documentación laboral. Petición P1: hook de visibilidad de archivos en el kit. Mientras no exista: las rutas del kit se resuelven antes que las de la app, así que `files/:id` no se puede sustituir. La interfaz de Central pedirá los documentos reservados por una ruta propia, `GET people/records/:id/file` (comprueba la visibilidad de la fila y firma la URL con la service key), y los ids de esos archivos solo llegan a quien ve la fila. El hueco que queda (alguien sin permiso que obtenga un id por otra vía) lo cierra P1.
+- Referencias del logotipo y del plano: `entity.logo_file_id` y `entity.site_plan_file_id`. Las cuatro columnas están en `core.register_file_field` y son las que valida la API al guardar (`FILE_FIELDS`); una prueba comprueba que ninguna columna de archivo del schema `central` se queda fuera.
+- **K3 para miembros** (`uploads.membersK3`, núcleo #585; activado el 19-10-2026, encargo aprobado por el usuario). Conocer el id ya no basta: `GET files/:id` firma un archivo ajeno solo si quien pide ve, con el hook `visible` (`visibleRow`), una fila viva que lo referencia.
+  - **Documentación de personas** (`person_records`): solo el owner y el editor con `scopes.people`. Antes, cualquier miembro que conociera el id obtenía la URL.
+  - **Logotipo, plano y documentos clave:** todos los miembros, como en la interfaz.
+  - **Siempre:** lo que subió uno mismo (también antes de guardar la fila) y el owner.
+  - **Papelera:** el adjunto de una fila borrada solo lo leen quien lo subió y el owner; al restaurarla, como antes. Ninguna pantalla de Central abre adjuntos de filas borradas.
+  - La ruta propia `GET people/records/:id/file` (comprueba la fila y firma la URL) se queda tal cual: es la que usa la ficha. No afecta a Booking ni a Finance, que firman el logotipo con su clave, ni a los portales (C8).
 - **Retención** (contrato §3.9, migración `0560`): `entity.logo_file_id` y `entity.site_plan_file_id` (`0596`) son `permanent`; `person_records.file_id` y `key_documents.file_id` son `legal`. La recogida de huérfanos del núcleo está activada para Central: un archivo que alguna vez fue `legal` o `permanent` nunca se borra solo, y un huérfano espera 30 días.
 
 ---
@@ -774,7 +780,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 
 | # | Petición | Para qué | Alternativa mientras tanto |
 |---|---|---|---|
-| P1 | Visibilidad de archivos: hook `fileVisible(file, ctx)` en `files/:id` (o que `core_file_get` compruebe la fila que lo referencia). Es la P5 de Booking, aún pendiente. | Documentos de personas | Ruta propia `GET people/records/:id/file` que comprueba la fila; los ids solo llegan a quien la ve (§8) |
+| P1 | ~~Visibilidad de archivos en `files/:id`~~ **Hecha** (19-10-2026): K3 para miembros, `uploads.membersK3` (núcleo #585), activado en Central (§8). | Documentos de personas | — |
 | P2 ✅ #181 | `admin`: restablecer la contraseña temporal de una cuenta existente (`POST admin/accounts/:userId/password`) y desactivar o reactivar una cuenta (bloqueo en Auth, revoca pases y sesiones). Hoy `admin/invite` sobre una cuenta existente no devuelve contraseña y quitar todos los accesos no cierra la sesión de Auth. | Altas y bajas de personal | Quitar todos los accesos (cada petición relee la pertenencia) |
 | P3 ✅ #181 | Que las migraciones de `central` puedan leer `core.profiles` (y comprobar que existe un `auth.users.id`) para validar `people.user_id` en `validate_hooks`. | Enlace persona–cuenta | Validación solo en la Edge con `core_admin_accounts` (owner) |
 | P4 ✅ #181 | `admin/accounts`: incluir `bannedUntil`/estado cuando exista P2, y `memberships[].updatedAt`. | Pantalla Accesos | — |
