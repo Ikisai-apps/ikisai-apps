@@ -13,7 +13,7 @@
  * Una conversión nueva creada en Recursos se queda: sirve para las siguientes.
  */
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { createItemPicker, createSyncItemSource, createSyncSpaceSource, el, formatQuantity, replace, toast, unitsFor, type ItemPick } from '@ikisai/ui-kit';
+import { createItemPicker, createSyncItemSource, createSyncSpaceSource, el, formatQuantity, replace, unitsFor, type ItemPick } from '@ikisai/ui-kit';
 import { describeError, type LocalInvoice, type LocalInvoiceLine } from '../app/client.ts';
 import { INVOICE_LINES } from '../app/client.ts';
 import { R, dropDeferred, foodEntriesWithoutCost, linkLine, linkedItem, resourcesClient, spaceName } from '../app/resources.ts';

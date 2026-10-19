@@ -467,7 +467,7 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     api.serverUpdate('invoices.invoices', inv.id, { notes: 'nota desde el PC' });
     await reconnect(context, page);
     await expect(page.locator('#syncStatus')).toContainText(/conflicto/i, { timeout: 30_000 });
-    await page.getByRole('button', { name: 'Resolver' }).click();
+    await page.getByRole('button', { name: 'Resolver', exact: true }).click();
     await expect(page.locator('#conflictList')).toContainText('nota desde el PC');
     await expect(page.locator('#conflictList')).toContainText('nota desde el móvil');
     // Kit 0.28.0: nombre legible (código · proveedor, nunca el id) y quién lo cambió
@@ -501,6 +501,8 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await reconnect(context, page);
     await expect(page.locator('#syncStatus')).toContainText(/rechazad/i, { timeout: 30_000 });
     await nav(page, 'Inicio').click();
+    // Tanda 27: «Ver conflictos» está en la hoja «Sincronización» de Herramientas
+    await page.locator('#toolSync').click();
     await page.getByRole('button', { name: 'Ver conflictos' }).click();
     await expect(page.locator('#rejectedList')).toContainText('ya no existe en Tareas');
   });
@@ -569,6 +571,8 @@ test('O7–O9: Compras y resumen coinciden sin red; reader solo lee; cerrar sesi
     // USER_CHANGED y stores borrados → «Error de sincronización» permanente. Esperamos a que termine antes de salir.
     await nav(page, 'Inicio').click();
     await synced(page);
+    // Tanda 27: «Cerrar sesión» está en la hoja «Cuenta» de Herramientas
+    await page.locator('#toolAccount').click();
     await page.locator('#logoutHome').click();
     await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
     const counts = await page.evaluate(async () => {
@@ -1453,7 +1457,8 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
   try {
     await login(page);
     await synced(page);
-    const target = '[data-feedback-id="invoices.inicio.trimestre.ir_gestoria"]';
+    // Tanda 27: la etapa «Gestoría» del recorrido de Inicio (antes, «Ir a Gestoría» de la tarjeta Trimestre)
+    const target = '[data-feedback-id="invoices.inicio.trimestre"]';
     await expect(page.locator(target)).toBeVisible();
 
     await test.step('apagado por defecto: la pulsación larga no cambia nada y el clic sigue funcionando', async () => {
@@ -1461,7 +1466,7 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
       await expect(page.getByRole('dialog').getByRole('switch', { name: /Señalar para comentar/ })).not.toBeChecked();
       await expect(page.getByRole('dialog').locator('.launcher-center')).toContainText('Sugerencias y QA');
       await page.keyboard.press('Escape');
-      await hold(page, '[data-feedback-id="invoices.inicio.trimestre"] h3');
+      await hold(page, '[data-feedback-id="invoices.inicio.recorrido"] h3');
       await expect(page.locator('.fb-composer')).toHaveCount(0);
       await expect(page.locator('html.fb-mode')).toHaveCount(0);
     });
@@ -1469,23 +1474,23 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
     await test.step('encendido: sobre los importes (zona excluida) no se abre nada', async () => {
       await setSignal(page, true);
       await expect(page.locator('html.fb-mode')).toHaveCount(1);
-      await hold(page, '[data-feedback-id="invoices.inicio.trimestre"] dl[data-feedback-ignore]');
+      await hold(page, '#homeQuarter[data-feedback-ignore]');
       await expect(page.locator('.fb-composer')).toHaveCount(0);
     });
 
-    await test.step('sobre «Ir a Gestoría» se abre el formulario con la ruta de etiquetas y el clic no navega', async () => {
+    await test.step('sobre la etapa «Gestoría» se abre el formulario con la ruta de etiquetas y el clic no navega', async () => {
       await hold(page, target);
       const composer = page.locator('.fb-composer');
       await expect(composer).toBeVisible();
-      await expect(composer.locator('.fb-where strong')).toHaveText('Inicio › Trimestre › Ir a Gestoría');
+      await expect(composer.locator('.fb-where strong')).toHaveText('Inicio › Recorrido › Gestoría');
       expect(page.url()).not.toContain('#/gestoria');
       await composer.getByRole('textbox', { name: 'Comentario' }).fill('El resumen del trimestre debería enlazar al detalle del IVA.');
       await composer.getByRole('button', { name: 'Enviar' }).click();
       await expect.poll(() => api.feedbackReports().length).toBe(1);
       const report = api.feedbackReports()[0]!;
       expect(report.originApp).toBe('invoices');
-      expect(report.node?.id).toBe('invoices.inicio.trimestre.ir_gestoria');
-      expect(report.node?.path).toEqual(['Inicio', 'Trimestre', 'Ir a Gestoría']);
+      expect(report.node?.id).toBe('invoices.inicio.trimestre');
+      expect(report.node?.path).toEqual(['Inicio', 'Recorrido', 'Gestoría']);
       await expect(page.locator('.fb-composer')).toHaveCount(0, { timeout: 5_000 });
       await expectCompactToast(page);
     });
@@ -1519,7 +1524,7 @@ test('feedback en Finance: interruptor del lanzador, pulsación larga, zona excl
       await expect(sheet).toBeVisible();
       await sheet.getByRole('tab', { name: 'Abiertos' }).click();
       await expect(sheet.locator('.fb-card')).toHaveCount(2);
-      await expect(sheet.locator('.fb-card').filter({ hasText: 'FB-0001' })).toContainText('Inicio › Trimestre › Ir a Gestoría');
+      await expect(sheet.locator('.fb-card').filter({ hasText: 'FB-0001' })).toContainText('Inicio › Recorrido › Gestoría');
       await page.keyboard.press('Escape');
       await expect(sheet).toBeHidden();
     });
@@ -1562,7 +1567,7 @@ test('feedback en Finance en móvil: tras enviar se cierra el formulario y se ve
     };
 
     await test.step('en Inicio', async () => {
-      await send('[data-feedback-id="invoices.inicio.trimestre.ir_gestoria"]', 'En móvil, el resumen debería caber sin desplazar.');
+      await send('[data-feedback-id="invoices.inicio.trimestre"]', 'En móvil, el resumen debería caber sin desplazar.');
       await expect.poll(() => api.feedbackReports().length).toBe(before + 1);
     });
 
@@ -1571,7 +1576,7 @@ test('feedback en Finance en móvil: tras enviar se cierra el formulario y se ve
         if (route.request().method() === 'POST') await new Promise((r) => setTimeout(r, 3_000));
         await route.continue();
       });
-      await send('[data-feedback-id="invoices.inicio.trimestre"] h3', 'Con red lenta también debe cerrarse.');
+      await send('[data-feedback-id="invoices.inicio.recorrido"] h3', 'Con red lenta también debe cerrarse.');
       await expect.poll(() => api.feedbackReports().length).toBe(before + 2);
       await page.unroute('**/api/v1/feedback');
     });
@@ -2519,6 +2524,8 @@ test('R4 · PR 4: el owner ve la vista previa del enlace con Recursos (se enlaza
   try {
     await login(page);
     await synced(page);
+    // Tanda 27: el inventario es la herramienta «Inventario» de Inicio, con su hoja
+    await page.locator('#toolInventory').click();
     await page.locator('#resourceLinksPreview').click();
     const sheet = page.locator('.sheet[role="dialog"]').last();
     await expect(sheet.locator('#resourceLinksCounts')).toContainText('Artículos nuevos1 (para 2)', { timeout: 20_000 });
@@ -2621,6 +2628,8 @@ test('R4 · PR 5: el owner enciende y apaga el enlace con el inventario desde In
   try {
     await login(page);
     await synced(page);
+    await expect(page.locator('#toolInventory')).toContainText('Apagado', { timeout: 20_000 });
+    await page.locator('#toolInventory').click();
     await expect(page.locator('#resourceLinksState')).toHaveText('Apagado', { timeout: 20_000 });
     // Cancelar no cambia nada
     await page.locator('#resourceLinksSwitch').click();
@@ -2641,6 +2650,49 @@ test('R4 · PR 5: el owner enciende y apaga el enlace con el inventario desde In
   } finally {
     const setting = api.rows('invoices.settings').find((s) => s.key === 'resources_links');
     if (setting) api.serverUpdate('invoices.settings', setting.id, { value: false });
+    await context.close();
+  }
+});
+
+test('Tanda 27 · Inicio una a una: «Confirmar y siguiente» valida al momento y «Deshacer» la devuelve a revisión', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplierA = randomUUID(); const supplierB = randomUUID(); const a = randomUUID(); const b = randomUUID();
+  // Fechas de 2020: las listas más antiguas salen las primeras en la cola
+  const ready = (id: string, supplier: string, code: string, date: string) => {
+    api.seed('invoices.invoices', [{ id, code, supplier_id: supplier, invoice_date: date, object: `material ${code}`, status: 'pendiente_revision', expense_category: 'compras', source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'pendiente_revision', payment_status: 'pendiente', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+    api.seed('invoices.invoice_lines', [{ id: randomUUID(), invoice_id: id, position: 0, description: 'Material', net_amount: 100, vat_rate: 21, vat_amount: 21, discount_amount: 0 }]);
+    api.seed('invoices.tax_lines', [{ id: randomUUID(), invoice_id: id, position: 0, tax_type: 'iva', rate: 21, taxable_base: 100, amount: 21 }]);
+    api.seed('invoices.invoice_files', [{ id: randomUUID(), invoice_id: id, file_id: randomUUID(), original_filename: `${code}.pdf`, normalized_filename: `${code}.pdf`, page_order: 1, kind: 'original', mime_type: 'application/pdf', size_bytes: 10, sha256: 'e'.repeat(64) }]);
+  };
+  api.seed('invoices.suppliers', [
+    { id: supplierA, name: 'Cola Primera SL', slug: 'cola_primera_sl', aliases: [], default_is_investment: false, default_category: 'compras' },
+    { id: supplierB, name: 'Cola Segunda SL', slug: 'cola_segunda_sl', aliases: [], default_is_investment: false, default_category: 'compras' },
+  ]);
+  ready(a, supplierA, 'FVR_2020_901', '2020-01-02');
+  ready(b, supplierB, 'FVR_2020_902', '2020-01-03');
+  try {
+    await login(page);
+    await synced(page);
+    const work = page.locator('#homeWork');
+    await expect(work).toContainText('Cola Primera SL', { timeout: 20_000 });
+    await expect(work).toContainText('Lista para confirmar');
+    await work.getByRole('button', { name: 'Confirmar y siguiente' }).click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === a)?.status, { timeout: 20_000 }).toBe('validada');
+    await expect(work).toContainText('Cola Segunda SL', { timeout: 20_000 });
+    // «Deshacer» la devuelve a «Pendiente de revisión» y vuelve a ser la que toca
+    const toast = page.locator('.ikisai-toast');
+    await expect(toast).toContainText('«Deshacer» la devuelve a «Pendiente de revisión»');
+    await toast.getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.invoices').find((i) => i.id === a)?.status, { timeout: 20_000 }).toBe('pendiente_revision');
+    await expect(work).toContainText('Cola Primera SL', { timeout: 20_000 });
+    // Las herramientas siguen a un toque: Sincronización con el rol
+    await page.locator('#toolSync').click();
+    await expect(page.locator('.sheet[role="dialog"]')).toContainText('Propietario');
+  } finally {
+    // Fuera de la cola de las pruebas siguientes
+    for (const id of [a, b]) if (api.rows('invoices.invoices').some((i) => i.id === id)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });

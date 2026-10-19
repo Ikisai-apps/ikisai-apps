@@ -38,7 +38,8 @@ export async function settlePending(client: SyncClient): Promise<void> {
  * Valida con la revisión que tiene el servidor: con red, espera (hasta 8 s) a que se confirmen los cambios pendientes;
  * si siguen pendientes (sin red), la validación sale sin revisión esperada (los cambios propios van antes en la cola).
  */
-export async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: string): Promise<boolean> {
+/** `okMessage` null: sin aviso (Inicio pone el suyo, con «Deshacer»). */
+export async function validateNow(ctx: ViewContext, invoiceId: string, okMessage: string | null): Promise<boolean> {
   const { client } = ctx;
   await settlePending(client);
   const mirror = await loadMirror(client);
@@ -51,7 +52,7 @@ export async function validateNow(ctx: ViewContext, invoiceId: string, okMessage
   }
   try {
     await client.commit(ops);
-    toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
+    if (okMessage) toast(client.status().network === 'offline' ? `${okMessage} Se sincronizará cuando haya red.` : okMessage);
     return true;
   } catch (error) {
     toast(describeError(error));

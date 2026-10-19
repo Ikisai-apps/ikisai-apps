@@ -12,6 +12,10 @@ let quietUntil = 0;
 export function mergesAreOwn(): boolean {
   return Date.now() < quietUntil;
 }
+/** Para un «Deshacer» que no pasa por `commitWithUndo` (p. ej. devolver una validada a revisión desde Inicio). */
+export function quietOwnMerges(ms = 8000): void {
+  quietUntil = Math.max(quietUntil, Date.now() + ms);
+}
 const UNDO_MS = 6000;
 
 export interface UndoableChange {

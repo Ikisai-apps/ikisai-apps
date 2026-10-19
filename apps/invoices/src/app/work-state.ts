@@ -293,8 +293,8 @@ export function groupSummary(group: SupplierGroup<WorkRow>, money: (n: number) =
 // Inicio: una a una
 // ---------------------------------------------------------------------------
 /** La cola de Inicio: las por resolver, primero las listas para confirmar, después las que piden algo; las más antiguas antes. */
-export function homeQueue<T extends WorkInvoice>(rows: WorkRow<T>[]): WorkRow<T>[] {
-  const order = (r: WorkRow<T>) => (r.state.ready ? 0 : r.invoice.status === 'pendiente_revision' ? 1 : 2);
+export function homeQueue<R extends WorkRow>(rows: R[]): R[] {
+  const order = (r: R) => (r.state.ready ? 0 : r.invoice.status === 'pendiente_revision' ? 1 : 2);
   return rows.filter((r) => r.invoice.status === 'pendiente_datos' || r.invoice.status === 'pendiente_revision')
     .sort((a, b) => order(a) - order(b) || (a.invoice.invoice_date ?? '9999').localeCompare(b.invoice.invoice_date ?? '9999') || a.invoice.id.localeCompare(b.invoice.id));
 }
