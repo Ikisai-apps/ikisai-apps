@@ -1333,6 +1333,14 @@ Las áreas son:
 
 Las retenidas cuentan como cosa por resolver, porque la pausa no para el plazo.
 
+### 17.8 Logotipo del retiro (tanda 27)
+
+- **`GET /api/v1/logos`:** para todos los roles. Devuelve `{ items: [{ reservation_id, url, mime, sha256, updated_at }] }`, con el logotipo de cada retiro.
+- **De dónde sale:** de `organizers.booking_logo_projection` (Organizers, #607), que trae solo el material marcado `is_logo`, y nada más de los materiales.
+- **La URL:** se firma aquí con `createStorage`, dura 10 minutos y no lleva bucket ni ruta.
+- **Sin red:** el cliente guarda la imagen por su `sha256`, para verla sin conexión y no volver a bajarla si no cambia.
+- **Sin logotipo:** la portada usa el color de la fase.
+
 ### 17.7 Calendario de precios (tanda 27)
 
 Sin ruta nueva: se calcula en el dispositivo con lo sincronizado (tarifas, condiciones, reservas, opciones de fecha y bloqueos; editor y owner). `_domain/booking/priceCalendar.ts`:
