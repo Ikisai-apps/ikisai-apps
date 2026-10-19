@@ -1,6 +1,6 @@
 # Cambios de @ikisai/ui-kit
 
-## 0.47.0 · 20 de octubre de 2026
+## 0.47.0 · 19 de octubre de 2026
 
 **Cáscara con menú lateral común** (MUELA-013, tanda 28): K1, K2, K7, K8, K10, K11, K12 y el estado de sincronización bajo el perfil. K9 («Volver a…») va aparte. **Todo es opcional:** sin las opciones nuevas, la cáscara queda igual. Detalle en el README («Menú lateral común»).
 
