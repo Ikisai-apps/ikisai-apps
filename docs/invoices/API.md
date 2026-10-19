@@ -1702,3 +1702,24 @@ Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app s
   - **Qué lee:** `invoices.tasks_resource_entries` (lectura de `tasks`, editor y owner), con `{request_ids: [...]}` (hasta 100).
   - **Qué devuelve:** lo mismo que `resource_entries`, pero solo de las líneas asignadas a esas solicitudes. Tasks no ve ni cuadra las demás líneas de esas facturas.
   - **Qué hace Tasks:** lo manda en un lote de Recursos a `resources.reconcile_entries`, más los `movement_costs` de `costs`, como la Edge de Finance.
+
+### 16.21 Tanda 27 · datos y servidor del rediseño de una pasada (0240; aprobado por VG, 19-10-2026)
+La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es lo que necesita debajo.
+- **Emitidas · fecha de envío (`sent_at`, fecha).** Da la etapa «Enviada» del recorrido y la antigüedad desde el envío.
+  - La pone una persona («Marcar enviada») o la app al descargar o compartir el PDF.
+  - Un borrador no se envía: el dominio y la guarda del servidor lo rechazan (`INVALID_FIELDS`, campo `sent_at`).
+- **Emitidas · medio del cobro (`payment_method`).** Mismos valores que en las recibidas (transferencia, tarjeta, efectivo, bizum, domiciliación, otro).
+  - «Cobrada» lleva la fecha real: `payment_status: 'cobrada'` con `paid_at: null` es `PAID_AT_REQUIRED`.
+  - «Deshacer» es el cambio contrario: `pendiente` y sin fecha ni medio.
+  - Las dos columnas se pueden cambiar en una emitida congelada, como el cobro y el concepto.
+- **«Por cobrar» igual que Booking.** `invoices.reservation_collected` (0222) queda abierta también a Finance (`core.allow_read('invoices', …)`).
+  - Por reserva: facturado − cobrado, sin borradores ni anuladas, con las rectificativas restando.
+  - Sin red, `reservationCollected(ids, emitidas, asignaciones)` del dominio aplica la misma regla con lo del dispositivo. La prueba compara las dos.
+- **Proveedores · «Artículos que recuerda».** `invoices.item_labels` pasa a estar en el dispositivo (`ALL_TABLES`; ya era legible para todos los roles desde 0230).
+  - Un dispositivo ya sincronizado no se trae las memorias antiguas hasta volver a entrar: el cliente crea la tabla nueva pero no le hace snapshot. Pedido a Core en SALIDA.
+- **Compras · asignar de un toque solo a un destino abierto.** Los eventos de Booking traen su último día (`ends_on`) en `/targets/booking`. `archived` no cambia: las facturas llegan a menudo después del retiro, y la hoja los sigue enseñando.
+  - `targetOpenFor(destino, fecha de la factura)` del dominio: no está abierto si está archivado o si el evento ya había acabado en la fecha de la factura. Si no lo está, el toque abre la hoja.
+- **Sin cambio de servidor:**
+  - «Deshacer» del pago de una recibida: el contrario con los cuatro campos (`payment_status`, `paid_at`, `payment_method`, `payment_source`), ya admitido también en archivadas (0233).
+  - Volver a «Pendiente de revisión» desde validada (`guard_invoice`).
+  - Las entregas de Gestoría por trimestre (`exports`, ya en el dispositivo).
