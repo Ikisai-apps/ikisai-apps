@@ -89,3 +89,22 @@ test('lecturas para Tasks · iniciales en people_options; disponibilidad aparte 
     await assert.rejects(app.t.rpc('core_read', { p_app: 'food', p_actor: food, p_name: name, p_args: {} }), name);
   }
 });
+
+test('kit del oficio para Tasks (1511) · solo filas vivas de oficios vivos; el outsider no lo lee', async () => {
+  const alive = uuid(); const off = uuid(); const item = uuid(); const gone = uuid();
+  const ok = await commit([
+    { op: 'insert', table: TABLES.trades, id: alive, fields: { name: 'Fontanería Kit' } },
+    { op: 'insert', table: TABLES.trades, id: off, fields: { name: 'Pintura Kit', active: false } },
+    { op: 'insert', table: TABLES.tradeKit, id: uuid(), fields: { trade_id: alive, item_id: item, quantity: 2, note: 'Teflón' } },
+    { op: 'insert', table: TABLES.tradeKit, id: gone, fields: { trade_id: alive, item_id: uuid(), quantity: 1 } },
+    { op: 'insert', table: TABLES.tradeKit, id: uuid(), fields: { trade_id: off, item_id: uuid(), quantity: 1 } },
+  ]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  await app.t.db.query(`update central.trade_kit set deleted_at = now() where id = $1`, [gone]);
+
+  const reader = await member('tasks', 'reader');
+  const rows = (await read(reader, 'central.trade_kit_options')).filter((r) => r.trade_id === alive || r.trade_id === off);
+  for (const r of rows) assert.deepEqual(Object.keys(r).sort(), ['item_id', 'note', 'quantity', 'trade_id']);
+  assert.deepEqual(rows.map((r) => [r.trade_id, r.item_id, Number(r.quantity), r.note]), [[alive, item, 2, 'Teflón']]);
+  await assert.rejects(read(await member('tasks', 'outsider'), 'central.trade_kit_options'));
+});
