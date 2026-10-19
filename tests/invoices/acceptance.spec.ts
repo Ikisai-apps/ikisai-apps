@@ -2802,3 +2802,41 @@ test('Tanda 27 · Gestoría: carpeta con el recorrido de la entrega, «Descargar
     await context.close();
   }
 });
+
+test('Tanda 27 · Proveedores: por categoría con «Le debes» (sin confirmar cuenta como pagado), extracto y «Ver sus facturas»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const a = randomUUID(); const b = randomUUID();
+  const year = new Date().toISOString().slice(0, 4);
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Extracto Ejemplo SL', slug: 'extracto_ejemplo_sl', aliases: [], default_is_investment: false, default_category: 'suministros' }]);
+  const base = { supplier_id: supplier, status: 'validada', expense_category: 'suministros', calculated_base: 100, calculated_vat: 21, currency: 'EUR', deductibility: 'pendiente_revision', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' };
+  api.seed('invoices.invoices', [
+    { ...base, id: a, code: 'FVR_EXT_1', object: 'luz', invoice_date: `${year}-01-10`, due_date: `${year}-01-20`, calculated_total: 899.37, source_total: 899.37, payment_status: 'pendiente' },
+    { ...base, id: b, code: 'FVR_EXT_2', object: 'agua', invoice_date: `${year}-01-12`, calculated_total: 121, source_total: 121, payment_status: 'pagada', payment_source: 'sin_confirmar', paid_at: `${year}-01-12` },
+  ]);
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/proveedores`);
+    const row = page.locator('#supplierList .row', { hasText: 'Extracto Ejemplo SL' });
+    await expect(row).toContainText('Le debes 899,37 € · 1 vencida · 1 por confirmar', { timeout: 20_000 });
+    await expect(page.locator('#supplierList')).toContainText('Suministros');
+    // Filtro «Con vencidas»
+    await page.locator('#supplierFilter [data-filter="vencidas"]').click();
+    await expect(row).toBeVisible();
+    // Tocar el proveedor abre su extracto
+    await row.click();
+    const sheet = page.locator('.sheet[role="dialog"]');
+    await expect(sheet.locator('#supplierStatement')).toContainText('899,37 €', { timeout: 20_000 });
+    await expect(sheet.locator('#supplierStatement')).toContainText('1 pago por confirmar');
+    await expect(sheet.locator('#supplierStatement')).toContainText(/FVR_\d{4}_\d+ · luzvencida hace/);
+    await expect(sheet.locator('#supplierStatement')).toContainText(/Pago de FVR_\d{4}_\d+/);
+    await sheet.locator('#supplierInvoices').click();
+    await expect(page.locator('#invoiceSearch')).toHaveValue('Extracto Ejemplo SL');
+    await expect(page.locator('#invoiceList .row')).toHaveCount(2, { timeout: 20_000 });
+  } finally {
+    for (const id of [a, b]) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
