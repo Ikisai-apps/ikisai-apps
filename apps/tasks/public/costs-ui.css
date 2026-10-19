@@ -1,0 +1,10 @@
+/* R6 PR 4 · coste de la tarea (costs-ui.js): solo para la propietaria y el responsable de compras del área. */
+.taskcosts{margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line,#e4dccf);display:flex;flex-direction:column;gap:8px}
+.taskcosts .sectionlabel{margin:0}
+.costlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.costline{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--paper-2,#f4ede2)}
+.costline span{flex:1 1 auto;overflow-wrap:anywhere}
+.costtotal{margin:0}
+.costadd{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.costadd input:first-child{flex:1 1 180px}
+.costadd input[type=number]{width:96px}
