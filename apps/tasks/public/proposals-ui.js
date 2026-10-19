@@ -160,7 +160,8 @@ let proposalCountAt=0;
 async function refreshProposalCount(force=false){if(!canDecideProposals()||!proposalClient()||!navigator.onLine)return;if(!force&&Date.now()-proposalCountAt<30000)return;proposalCountAt=Date.now();
   try{const res=await proposalClient().suggestions({scope:'pending',limit:1});setProposalPending(res.pendingCount??res.items.length)}catch{}}
 /* Ámbitos que cambian en el servidor («Abrir a…», Cuentas de personas): se comprueban al volver a la app y cada minuto. */
-function refreshMembershipSoon(){if(!Sync.core?.refreshMembership||Sync.secondary||!Sync.actor||!navigator.onLine)return;Sync.core.refreshMembership().catch(()=>{})}
+/* Solo el outsider: sus ámbitos los cambia la propietaria con «Abrir a…» mientras él tiene la app abierta. */
+function refreshMembershipSoon(){if(!Sync.core?.refreshMembership||Sync.secondary||!Sync.actor?.outsider||!navigator.onLine)return;Sync.core.refreshMembership().catch(()=>{})}
 window.addEventListener('focus',()=>{refreshProposalCount();refreshMembershipSoon()});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshMembershipSoon()});
 setInterval(()=>{refreshProposalCount();refreshMembershipSoon()},60000);
@@ -204,8 +205,10 @@ render=function(...args){const result=renderBeforeProposals(...args);
   return result};
 let proposalLastView='';
 function proposalViewChanged(view){const changed=view!==proposalLastView;proposalLastView=view;return changed}
+/* Sin propuestas pendientes no se pinta nada (ni «Propuestas (0)»): la lista se sigue refrescando para enterarse. */
 function mountReview(){const list=reviewProposalList();if(!list)return;const main=document.querySelector('#view main.screen');if(!main)return;
-  const section=document.createElement('section');section.className='inboxgroup proposalreview';section.id='proposalReview';section.dataset.feedbackId='tasks.por_clasificar.propuestas';section.dataset.feedbackLabel='Propuestas';
+  if(!proposalPending){if(proposalViewChanged('triage'))list.refresh();return}
+  const section=document.createElement('section');section.className='proposalreview';section.id='proposalReview';section.dataset.feedbackId='tasks.por_clasificar.propuestas';section.dataset.feedbackLabel='Propuestas';
   section.innerHTML=`<h2 class="sectionlabel" id="proposalReviewTitle">Propuestas (${proposalPending})</h2><div class="ikisai-kit" id="proposalReviewMount"></div>`;
   const head=main.querySelector(':scope > .screenhead')||main.querySelector(':scope > h1');if(head)head.after(section);else main.prepend(section);
   section.querySelector('#proposalReviewMount').append(list.element);

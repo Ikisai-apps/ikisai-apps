@@ -351,6 +351,9 @@ export class TasksCore {
     this.scheduleRefresh();
   }
 
+  /** En reposo: sin refresco pendiente ni guardados locales en vuelo; la copia en memoria refleja el espejo. */
+  idle(): boolean { return !this.dirty && !this.refreshTimer && this.localPending === 0; }
+
   private scheduleRefresh(): void {
     this.dirty = true;
     if (this.refreshTimer) return;
