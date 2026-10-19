@@ -733,6 +733,8 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await synced(page);
     const row = await eventually(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'));
     expect(row).toMatchObject({ series_code: 'A', invoice_type: 'F1', origin: 'manual', status: 'registrada', total: 170.5, base_total: 150, quota_total: 20.5, review_reason: null });
+    // Tanda 27: en «Por cobrar», agrupada por cliente, sin enviar todavía
+    await expect(page.locator('#issuedList .row', { hasText: 'A-2026-0001' }).locator('.stage-caption')).toContainText('Emitida · sin enviar');
     await expect.poll(() => api.rows('invoices.issued_series').map((s) => s.code), { timeout: 20_000 }).toEqual(['A']);
     await expect.poll(() => api.rows('invoices.issued_tax_lines').filter((t) => t.issued_invoice_id === row.id).map((t) => `${t.rate}:${t.taxable_base}:${t.quota}`).sort(), { timeout: 20_000 }).toEqual(['10:100:10', '21:50:10.5']);
   });
@@ -790,8 +792,11 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     const sheet = page.locator('.sheet[role="dialog"]');
     await expect(sheet.locator('#issuedTotal')).toHaveText('170,50 €');
     await expect(sheet).toContainText('El registro Verifactu lo hace la herramienta que la expidió');
+    // Tanda 27: «Marcar cobrada» pide la fecha real (propone hoy) y el medio
     await sheet.locator('#toggleCollected').click();
-    await expect(sheet).toContainText('Cobrada el', { timeout: 20_000 });
+    await page.getByRole('alertdialog').locator('#collectedMethod').selectOption('transferencia');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Marcar cobrada' }).click();
+    await expect(sheet.locator('#issuedCollected')).toContainText('Transferencia', { timeout: 20_000 });
     await sheet.locator('#annulIssued').click();
     await page.locator('#annulIssuedReason').fill('Emitida por error');
     await page.getByRole('alertdialog').getByRole('button', { name: 'Anular' }).click();
@@ -799,14 +804,16 @@ test('Emitidas (API.md §13): registro manual con serie nueva, número único, c
     await expect(sheet.locator('#annulIssued')).toHaveCount(0);
     await synced(page);
     await sheet.locator('.sheet-foot').getByRole('button', { name: 'Cerrar' }).click();
-    await expect(page.locator('#issuedList')).toContainText('Ninguna emitida coincide', { timeout: 20_000 });
-    await page.locator('#issuedFilter').selectOption('anulada');
+    // Tanda 27: abre en «Por cobrar»; las anuladas están en «Más»
+    await expect(page.locator('#issuedList')).toContainText('Nada por cobrar', { timeout: 20_000 });
+    await page.locator('#moreIssuedBoxes').click();
+    await page.locator('#issuedFilter [data-box="anulada"]').click();
     await expect(page.locator('#issuedList')).toContainText('A-2026-0001');
-    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'), { timeout: 20_000 }).toMatchObject({ status: 'anulada', payment_status: 'cobrada' });
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.number === '2026-0001'), { timeout: 20_000 }).toMatchObject({ status: 'anulada', payment_status: 'cobrada', payment_method: 'transferencia' });
   });
 
   await test.step('IVA sugerido por categoría; importar CSV del Sheet (nueva, ya registrada, con error) y emitida desde ChatGPT con su PDF', async () => {
-    await page.locator('#issuedFilter').selectOption('activas');
+    await page.locator('#issuedFilter [data-box="todas"]').click();
     // IVA sugerido: consultoría → 21 % en la línea que no se ha tocado
     await page.locator('#newIssued').click();
     let sheet = page.getByRole('dialog', { name: 'Nueva emitida' });
@@ -916,6 +923,8 @@ test('Emitir desde Finance (API.md §14): serie, borrador, datos que faltan, emi
     await synced(page);
     await nav(page, 'Facturas').click();
     await page.locator('#invoiceTabs').getByRole('tab', { name: 'Emitidas' }).click();
+    // Tanda 27: Emitidas abre en «Por cobrar»; esta prueba trabaja con borradores y emitidas, en «Todas»
+    await page.locator('#issuedFilter [data-box="todas"]').click();
 
     await test.step('sin serie de emisión, «Nueva factura» lleva a crearla', async () => {
       await page.locator('#newIssuedInvoice').click();
@@ -2696,6 +2705,52 @@ test('Tanda 27 · Inicio una a una: «Confirmar y siguiente» valida al momento 
   } finally {
     // Fuera de la cola de las pruebas siguientes
     for (const id of [a, b]) if (api.rows('invoices.invoices').some((i) => i.id === id)) api.serverUpdate('invoices.invoices', id, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 27 · Emitidas: buzón «Por cobrar» por cliente, «Cobrada» con fecha real y «Deshacer», reserva enlazada y «Marcar enviada»', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const id = randomUUID(); const paid = randomUUID(); const RES = '44444444-4444-4444-8444-444444444444';
+  const base = { series_code: 'T27', invoice_type: 'F1', origin: 'manual', status: 'registrada', issue_date: '2026-09-10', recipient_name: 'Yoga de Prueba', recipient_tax_id: 'G27272727', description: 'Saldo del retiro', base_total: 4887.27, quota_total: 488.73, surcharge_total: 0, withholding_total: 0, currency: 'EUR', prices_include_vat: false, rectified: [], extra_recipients: [], rectified_by: [] };
+  api.seed('invoices.issued_invoices', [
+    { ...base, id, number: '2026-0047', full_number: 'T27-2026-0047', total: 5376, payment_status: 'pendiente', paid_at: null },
+    { ...base, id: paid, number: '2026-0031', full_number: 'T27-2026-0031', description: 'Señal del retiro', total: 2304, payment_status: 'cobrada', paid_at: '2026-09-06' },
+  ]);
+  api.seed('invoices.issued_allocations', [id, paid].map((x) => ({ id: randomUUID(), issued_invoice_id: x, target_app: 'booking', target_kind: 'reservation', target_id: RES, target_code: 'RSV_2026_T27', target_label: 'Reservas › Yoga de otoño', allocated_amount: 1 })));
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/facturas?vista=emitidas`);
+    const row = page.locator('#issuedList .row', { hasText: 'T27-2026-0047' });
+    await expect(page.locator('#issuedList')).toContainText('Te debe 5.376,00 €', { timeout: 20_000 });
+    await expect(row.locator('.stage-caption')).toContainText('Emitida · sin enviar');
+    await expect(row.locator('.inv-reservation')).toHaveAttribute('href', `https://booking.ikisai.com/#/reservas/${RES}`);
+    // Buscar por el código de la reserva
+    await page.locator('#issuedSearch').fill('rsv_2026_t27');
+    await expect(page.locator('#issuedList .row')).toHaveCount(2);
+    await page.locator('#issuedSearch').fill('');
+    // «Cobrada» en la fila: la fecha real y el medio, y «Deshacer»
+    await row.getByRole('button', { name: 'Cobrada' }).click();
+    const sheet = page.getByRole('dialog', { name: /Cobrada · T27-2026-0047/ });
+    await sheet.locator('#collectedAt').fill('2026-10-15');
+    await sheet.locator('#collectedMethod').selectOption('bizum');
+    await sheet.locator('#saveCollected').click();
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'cobrada', paid_at: '2026-10-15', payment_method: 'bizum' });
+    await page.locator('.ikisai-toast').getByRole('button', { name: 'Deshacer' }).click();
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.id === id), { timeout: 20_000 }).toMatchObject({ payment_status: 'pendiente', paid_at: null, payment_method: null });
+    // En la ficha: la reserva con lo cobrado (la cifra de Booking) y «Marcar enviada»
+    await page.locator('#issuedList .row', { hasText: 'T27-2026-0047' }).click();
+    const ficha = page.locator('.sheet[role="dialog"]');
+    await expect(ficha.locator('#issuedReservationMoney')).toContainText('facturado 7.680,00 €, cobrado 2.304,00 €, queda por cobrar 5.376,00 €', { timeout: 20_000 });
+    await ficha.locator('#toggleSent').click();
+    await page.getByRole('alertdialog').locator('#sentAt').fill('2026-10-14');
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Marcar enviada' }).click();
+    await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.id === id)?.sent_at, { timeout: 20_000 }).toBe('2026-10-14');
+  } finally {
+    for (const x of [id, paid]) if (api.rows('invoices.issued_invoices').some((i) => i.id === x)) api.serverUpdate('invoices.issued_invoices', x, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });
