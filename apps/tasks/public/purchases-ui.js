@@ -222,9 +222,14 @@ function receiptSpaceSheet(r){const rows=(typeof spaceRows==='function'?spaceRow
     <div class="actions"><button class="primary" id="receiptSave" type="button" data-feedback-id="tasks.solicitud.recibir.guardar" data-feedback-label="Recibida">Recibida</button><button class="ghost" id="receiptCancel" type="button" data-feedback-id="tasks.solicitud.recibir.cancelar" data-feedback-label="Cancelar">Cancelar</button></div>`);
   document.getElementById('receiptCancel').onclick=()=>closeSheet();
   document.getElementById('receiptSave').onclick=()=>{const space=document.getElementById('receiptSpace').value;if(!space)return toast('Elige dónde se guarda.');finishReceive(r,space)}}
+/* Orden inverso de R4: si la factura de esta compra ya se validó en Finance, su entrada en Recursos se cuadra ahora (lo
+   pide tasks-api, una vez que «Recibida» está en el servidor). Un fallo no deshace la recepción: se anota y sigue. */
+async function reconcileReceipt(id){if(!navigator.onLine||!Sync.core)return;
+  try{await Sync.chain;await Sync.core.settle?.();await api('purchases/reconcile',{method:'POST',body:JSON.stringify({requestIds:[id]})});await Sync.core.resources?.sync()}
+  catch(e){console.warn('Cuadre con Finance pendiente',e)}}
 async function finishReceive(r,spaceId){let entered=false;
   try{entered=await Sync.core.recordReceipt(r.id,spaceId)}catch(e){return toast(e.message||'No se pudo apuntar la entrada en el inventario.')}
-  const P=IkisaiTasks.purchases,ok=purchaseRun(d=>P.receivePurchaseOps(d,r.id),entered?'Recibida y sumada al almacén.':'Recibida.');if(!ok)return;usage.track('tasks.compras.recibir');
+  const P=IkisaiTasks.purchases,ok=purchaseRun(d=>P.receivePurchaseOps(d,r.id),entered?'Recibida y sumada al almacén.':'Recibida.');if(!ok)return;usage.track('tasks.compras.recibir');reconcileReceipt(r.id);
   if(!r.repeat_days)return closeSheet();
   openSheet(`<h2 class="sheettitle">Compra recurrente</h2><p>«${esc(r.title)}» se repite cada ${r.repeat_days} días. ¿Pides ya la siguiente?</p><div class="actions"><button class="primary" id="prNextNow" type="button" data-feedback-id="tasks.solicitud.recurrente.pedir_siguiente" data-feedback-label="Pedir la siguiente">Pedir la siguiente</button><button class="ghost" id="prNextLater" type="button" data-feedback-id="tasks.solicitud.recurrente.ahora_no" data-feedback-label="Ahora no">Ahora no</button></div>`);
   document.getElementById('prNextNow').onclick=()=>{if(purchaseRun(d=>P.nextRecurringOps(d,r.id),'Pedida la siguiente.'))closeSheet()};document.getElementById('prNextLater').onclick=()=>closeSheet()}

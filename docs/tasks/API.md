@@ -1890,3 +1890,14 @@ Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`
   - **Límite:** es una regla de la interfaz de Tasks. Los importes de Recursos los puede leer cualquier miembro de Recursos.
 - **Código:** `_domain/tasks/costs.ts` (`taskCost`, `projectCostOf`, `averageUnitCost`, `manualCosts` y `costEntryOperation`, en `window.IkisaiTasks.costs`) y `public/costs-ui.js` y `.css`. El segundo cliente sincroniza también `resources.cost_entries`.
 - **Pruebas:** `tests/tasks/costs.test.ts` y `tests/tasks/costes.spec.ts`. Esta última comprueba que la propietaria ve el coste y lo suma en el proyecto, que un editor no ve los importes y que los ve en cuanto lo nombran responsable de compras. Las capturas `22-…` y `23-…` están en `coordinacion/tasks/r6-despues/`.
+
+### 37.1 Cuadre con Finance al recibir (orden inverso de R4) y la copia portable
+
+- **El caso:** la factura de una compra se valida en Finance antes de que Tasks la reciba. Finance metió lo de su línea en Recursos (`entrada_factura`) y, al recibir, Tasks mete su `entrada_manual`. Sin cuadre, el stock sumaría dos veces.
+- **El cuadre:** tras marcar «Recibida», con el lote ya en el servidor, la app llama a `POST purchases/reconcile {requestIds}` (`tasks-api/receipts.ts`, editor y propietaria).
+  - La ruta lee `invoices.tasks_resource_entries` (Finance, 0239) y manda en un lote de Recursos `resources.reconcile_entries` (`source_app 'invoices'`) y los costes de las entradas (`movement_costs`), con el mismo id estable que usa Finance. Es lo mismo que hace su Edge (`reconcileResourceEntries`).
+  - Resultado: la entrada de la factura se queda en lo que no entró ya, y su coste pasa a la entrada de Tasks.
+  - Repetirlo no cambia nada: un coste ya apuntado no se vuelve a insertar.
+  - Un fallo no deshace la recepción: la app lo anota en la consola y sigue.
+  - Prueba: `tests/tasks/receipts.test.ts`.
+- **Copia portable y CSV:** no llevan los materiales ni los costes a mano, porque son del inventario de la casa (Recursos). Lo dicen la hoja de importar y el aviso al descargar.
