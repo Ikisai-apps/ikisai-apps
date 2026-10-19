@@ -159,7 +159,9 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 .orgsubnav button{flex:0 0 auto;border:1px solid var(--line,rgb(0 0 0 / 12%));background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
 .orgsubnav button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .orgday{margin:0 0 16px}
-.orgday h4{margin:0 0 6px;text-transform:capitalize}
+.orgday h4{margin:0 0 6px}
+/* Solo la primera letra («Sábado, 15 de mayo»): capitalize ponía «De» y «Mayo» en mayúscula. */
+.orgday h4::first-letter{text-transform:uppercase}
 .orgtime{min-width:88px;font-variant-numeric:tabular-nums;color:var(--muted,inherit)}
 .orgnote{display:block}
 .orgservice{margin:6px 0 10px}
