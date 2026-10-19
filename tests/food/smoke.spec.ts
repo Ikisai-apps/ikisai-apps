@@ -79,14 +79,19 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     }
   });
 
-  await test.step('la marca de la cabecera abre el lanzador con las apps de la cuenta', async () => {
+  await test.step('la marca de la cabecera abre el menú lateral, con las apps de la cuenta y lo que no está en la barra', async () => {
+    // Tanda 27 (kit 0.47, MUELA-013): la marca abre el menú lateral; el lanzador va dentro, sin la app actual.
     await page.locator('#appLauncher').click();
-    const sheet = page.getByRole('dialog', { name: 'Apps de Ikisai' });
-    await expect(sheet.locator('.launcher-app.current')).toContainText('Food');
-    await expect(sheet.locator('a.launcher-app[data-app="booking"]')).toHaveAttribute('href', 'https://booking.ikisai.com/');
-    await expect(sheet.locator('a.launcher-app[data-app="tasks"]')).toBeVisible();
+    const drawer = page.getByRole('dialog', { name: 'Menú de Food' });
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText('Propietario');
+    await expect(drawer.locator('a.launcher-app[data-app="booking"]')).toHaveAttribute('href', 'https://booking.ikisai.com/');
+    await expect(drawer.locator('a.launcher-app[data-app="tasks"]')).toBeVisible();
+    await expect(drawer.locator('a.launcher-app[data-app="food"]')).toHaveCount(0);
+    await drawer.getByRole('button', { name: /^Cocina/ }).click();
+    await expect(drawer.getByRole('link', { name: /Cocina de hoy/ })).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(sheet).toBeHidden();
+    await expect(drawer).toBeHidden();
   });
 
   await test.step('maquinaria: alta de un horno', async () => {

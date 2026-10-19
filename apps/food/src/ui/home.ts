@@ -1,5 +1,9 @@
 import type { SyncStatus } from '@ikisai/sync-client';
-import { HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, serviceConsumption, type Equipment, type Menu, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem } from '@ikisai/domain-food';
+import {
+  HOUSE_MENU_ID, isMenuStale, kitchenStock, menuTotals, restrictionLines, serviceConsumption, servicePhases, stepDay, stepService, untilText,
+  type Equipment, type Menu, type MenuService, type PreparationItem, type Recipe, type ShoppingList, type ShoppingListItem,
+} from '@ikisai/domain-food';
+import { renderNow, type NowBlock } from '@ikisai/ui-kit';
 import { el, formatDate, replace } from './dom.ts';
 import { T, type Mirror } from '../app/client.ts';
 import { allergyCount, dateRange, guestsLabel, longDay, mealPlanLabel, needsMenu, refreshEvents, todayKey, watchEvents, whenLabel, type EventsSnapshot } from '../app/events.ts';
@@ -7,7 +11,9 @@ import { MENU_STATUS_LABELS, SERVICE_LABELS } from './events.ts';
 import { loadConsumptionGraph, loadInventory } from '../app/consumption.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { HOUSE_MENU_HASH, loadHouseToday, type HouseToday } from '../app/house.ts';
-import { loadAllMenuGraphs } from '../app/menu-data.ts';
+import { loadAllMenuGraphs, loadMenuData } from '../app/menu-data.ts';
+import { kitchenMenus } from '../app/kitchen-data.ts';
+import { kitchenHash } from './kitchen.ts';
 import { loadPurchases } from '../app/purchases.ts';
 import type { ViewMount } from './shell.ts';
 
@@ -38,6 +44,8 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const houseHost = el('section', { 'data-feedback-id': 'food.inicio.casa', 'data-feedback-label': 'Hoy en casa', id: 'houseToday' });
   // Consumo por confirmar (R5c): solo con inventario (sitios de cocina en Recursos) y para quien puede confirmarlo.
   const consumeHost = el('section', { 'data-feedback-id': 'food.inicio.consumo', 'data-feedback-label': 'Consumo por confirmar', id: 'consumeDue' });
+  // «Ahora en cocina» (tanda 27, Bloque 2 C «Lo de ahora abierto, el resto plegado»): el servicio de ahora y el resto del día.
+  const kitchenHost = el('section', { 'data-feedback-id': 'food.inicio.cocina_ahora', 'data-feedback-label': 'Ahora en cocina', id: 'kitchenNow' });
   let house: HouseToday = { exists: false, lines: [] };
   let snapshot: EventsSnapshot = { events: [], fetchedAt: null };
   let menus: Mirror<Menu>[] = [];
@@ -111,6 +119,58 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
         : el('p', null, house.exists ? 'Nada previsto hoy en el menú de casa.' : 'El menú de casa: lo que se come en casa, día a día.')));
   }
 
+  /** «Ahora en cocina»: el menú en cocina hoy (un retiro o, si no hay, el de casa), con lo de ahora abierto y el resto plegado. */
+  async function loadKitchenNow(): Promise<void> {
+    const today = todayKey();
+    const [allMenus, services, prep] = await Promise.all([
+      client.list(T.menus) as Promise<Mirror<Menu>[]>, client.list(T.menuServices) as Promise<Mirror<MenuService>[]>, client.list(T.preparation) as Promise<Mirror<PreparationItem>[]>,
+    ]);
+    const options = kitchenMenus(allMenus, services, snapshot.events, today);
+    const menu = options[0];
+    const open = (hash: string) => (e: Event) => { e.preventDefault(); navigate(hash); };
+    const link = (hash: string, text: string) => el('a', { 'data-feedback-id': 'food.inicio.cocina_ahora.abrir', 'data-feedback-label': 'Abrir Cocina', class: 'fd-open', href: hash, onclick: open(hash) }, text);
+    if (!menu) {
+      replace(kitchenHost, el('div', { class: 'sectionlabel' }, 'Ahora en cocina'), el('div', { class: 'card' }, el('p', null, 'Nada en cocina hoy.'), el('p', null, link(kitchenHash(), 'Abrir Cocina'))));
+      return;
+    }
+    const data = await loadMenuData(client, menu.id);
+    const now = new Date();
+    const steps = prep.filter((s) => s.menu_id === menu.id && !s.deleted_at);
+    const phases = servicePhases(data.services, today, now);
+    const recipeName = (id: string) => data.recipes.find((r) => r.id === id)?.name ?? '—';
+    const dishesOf = (service: MenuService) => data.items.filter((i) => i.service_id === service.id).sort((a, b) => Number(a.position) - Number(b.position)).map((i) => recipeName(i.recipe_id));
+    const stepsOf = (service: MenuService) => steps.filter((s) => stepService(s, data.items, data.services)?.id === service.id && stepDay(s, data.items, data.services) === today);
+    const lines = restrictionLines(menu.event?.dietary_restrictions);
+    const hash = kitchenHash(menu.id, today);
+    const block = (service: MenuService, label: string, full: boolean): NowBlock => {
+      const own = stepsOf(service);
+      const done = own.filter((s) => s.done).length;
+      return {
+        label: [label, SERVICE_LABELS[service.service_type], service.service_time ? service.service_time.slice(0, 5) : null].filter(Boolean).join(' · '),
+        title: menu.title,
+        progress: full && own.length ? done / own.length : null,
+        left: [full ? untilText(service.service_date, service.service_time, now) : null, own.length ? `${done} de ${own.length} pasos` : null].filter(Boolean).join(' · ') || null,
+        body: el('div', { class: 'fd-nowbody' },
+          el('p', null, dishesOf(service).join(', ') || 'Sin platos todavía.'),
+          full && lines.length ? el('p', { class: 'warnline' }, lines.map((l) => `${l.type === 'alergia' ? 'Alergia' : 'Intolerancia'}${l.severe ? ' grave' : ''}: ${l.subject} (${l.people})`).join(' · ')) : null,
+          full ? el('p', null, link(hash, 'Abrir Cocina')) : null),
+      };
+    };
+    const current = phases.find((p) => p.phase === 'ahora')?.service;
+    const later = phases.filter((p) => p.phase === 'despues').map((p) => p.service);
+    const nextService = current ? later[0] : undefined;
+    const rest = phases.filter((p) => p.service !== current && p.service !== nextService).map((p) => ({
+      id: p.service.id, time: p.service.service_time ? p.service.service_time.slice(0, 5) : '—', title: `${SERVICE_LABELS[p.service.service_type]} · ${dishesOf(p.service).join(', ') || 'sin platos'}`,
+      state: p.phase === 'hecho' ? 'done' as const : 'later' as const,
+    }));
+    replace(kitchenHost, el('div', { class: 'sectionlabel' }, 'Ahora en cocina'),
+      el('div', { class: 'fd-nowcard' },
+        renderNow({ now: current ? block(current, 'Ahora', true) : null, next: nextService ? block(nextService, 'Lo siguiente', false) : null, rest, restTitle: 'Hoy, más tarde',
+          emptyText: `Hoy no hay servicios en ${menu.house ? 'el menú de casa' : menu.title}.`, feedbackId: 'food.inicio.cocina_ahora.dia' }),
+        !current ? el('p', null, link(hash, 'Abrir Cocina')) : null,
+        options.length > 1 ? el('p', { class: 'muted' }, `También en cocina hoy: ${options.slice(1).map((o) => o.title).join(', ')}.`) : null));
+  }
+
   // Enlaces de la Despensa: llevan a la pantalla con el filtro puesto.
   const go = (id: string, label: string, hash: string, text: string) =>
     el('a', { 'data-feedback-id': id, 'data-feedback-label': label, href: hash, onclick: (e: Event) => { e.preventDefault(); navigate(hash); } }, text);
@@ -166,6 +226,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   replace(
     main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', { 'data-feedback-ignore': '' }, name ? `Hola, ${name}` : 'Inicio'), el('p', null, 'Qué retiros vienen y qué falta preparar.'))),
+    kitchenHost,
     houseHost,
     consumeHost,
     upcoming,
@@ -220,7 +281,9 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
   const offResources = (() => { try { const r = resourcesClient(client); const offs = [R.spaces, R.items, R.movements, R.lots].map((t) => r.onTable(t, onResources)); return () => offs.forEach((off) => off()); } catch { return () => undefined; } })();
   const offConsumption = [T.menuServices, T.menuItems, T.consumptions].map((table) => client.onTable(table, () => void loadConsumption()));
   void loadMenus();
-  const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); });
+  void loadKitchenNow();
+  const offKitchen = [T.menus, T.menuServices, T.menuItems, T.preparation].map((table) => client.onTable(table, () => void loadKitchenNow()));
+  const offEvents = watchEvents(client, (next) => { snapshot = next; paintUpcoming(); void loadKitchenNow(); });
   const offPlanning = [T.menus, T.shoppingLists, T.shoppingItems, T.preparation].map((table) => client.onTable(table, () => void loadMenus()));
   const offMenus = () => offPlanning.forEach((off) => off());
   const offStatus = client.onStatus((status) => { paint(status); void refreshEvents(client); });
@@ -233,6 +296,7 @@ export const mountHome: ViewMount = ({ main, client, navigate, logout }) => {
     offEvents();
     offMenus();
     offHouse.forEach((off) => off());
+    offKitchen.forEach((off) => off());
     offConsumption.forEach((off) => off());
     offResources();
     if (resourceTimer) clearTimeout(resourceTimer);

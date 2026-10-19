@@ -42,7 +42,8 @@ interface FakeOperation {
 }
 
 export interface FakeApiOptions {
-  users?: Array<{ email: string; password: string; displayName?: string }>;
+  /** `role` (por defecto `owner`) es el de la cuenta en Food: el lector solo lee (tanda 27, vista del lector). */
+  users?: Array<{ email: string; password: string; displayName?: string; role?: 'owner' | 'editor' | 'reader' }>;
   tables?: Record<string, string[]>;
   /** Filas de `booking.food_event_projection` que sirve `GET events`. */
   events?: FakeEvent[];
@@ -125,7 +126,7 @@ const DEFAULT_TABLES: Record<string, string[]> = {
     'service_notes', 'prep_minutes', 'status', 'diet_tags', 'allergens', 'allergens_checked', 'photo_file_id', 'photo_thumb_file_id', 'method_steps', 'quick'],
   'food.ingredients': ['name', 'preferred_unit', 'preferred_supplier', 'active', 'item_id'],
   'food.recipe_ingredients': ['recipe_id', 'ingredient_id', 'quantity', 'unit', 'position', 'notes'],
-  'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes', 'item_id'],
+  'food.equipment': ['name', 'category', 'quantity', 'capacity', 'location', 'status', 'notes', 'item_id', 'status_since'],
   'food.recipe_equipment': ['recipe_id', 'equipment_id', 'quantity_required', 'notes'],
   'food.menus': ['kind', 'event_id', 'source_event_revision', 'source_event_snapshot', 'status', 'validated_at', 'validated_by', 'validated_warnings',
     'preparation_generated_at', 'preparation_source_revisions', 'notes', 'closing_notes', 'organizer_shared', 'house_servings'],
@@ -137,6 +138,9 @@ const DEFAULT_TABLES: Record<string, string[]> = {
     'manual_override', 'manual', 'notes', 'min_quantity', 'restock'],
   'food.preparation_items': ['menu_id', 'menu_item_id', 'recipe_id', 'scheduled_date', 'scheduled_time', 'text', 'responsible', 'done', 'position', 'manual'],
   'food.consumptions': ['menu_item_id', 'status', 'automatic', 'notes'],
+  // Tanda 27: votos de los platos sugeridos (quién vota lo pone la ruta, como el trigger real) y avisos a Tasks.
+  'food.suggestion_votes': ['suggestion_id', 'voter_id', 'vote'],
+  'food.equipment_notices': ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
   // Módulo Recursos (R5), servido en /api/v1/resources/… como en las Edge reales (docs/resources/API.md §1).
   'resources.items': ['name', 'kind', 'category', 'base_unit', 'min_quantity', 'reorder_quantity', 'default_space_id', 'default_supplier_id',
     'tracks_lots', 'tracks_expiry', 'attributes', 'active', 'notes', 'source_refs'],
@@ -179,7 +183,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
   const data = new Map<string, Map<string, FakeRow>>(Object.keys(tables).map((t) => [t, new Map()]));
   const changes: FakeChange[] = [];
   const receipts = new Map<string, { digest: string; result: unknown }>();
-  const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string }>();
+  const sessions = new Map<string, { userId: string; email: string; displayName: string; refreshToken: string; role?: string }>();
   const requests: Array<{ method: string; path: string }> = [];
   const files = new Map<string, FakeFile>();
   const events: FakeEvent[] = (options.events ?? []).map((e) => ({ ...e }));
@@ -221,7 +225,7 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     const token = `tok-${randomUUID()}`;
     const refreshToken = `ref-${randomUUID()}`;
     const user = users.find((u) => u.email === email)!;
-    sessions.set(token, { userId: userIds.get(email)!, email, displayName: user.displayName ?? email, refreshToken });
+    sessions.set(token, { userId: userIds.get(email)!, email, displayName: user.displayName ?? email, refreshToken, role: user.role });
     return { token, refreshToken, expiresAt: Math.floor(Date.now() / 1000) + 3600, expiresIn: 3600 };
   }
 
@@ -232,13 +236,13 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
     return session;
   }
 
-  function bootstrap(session: { userId: string; displayName: string }, scope: string) {
+  function bootstrap(session: { userId: string; displayName: string; role?: string }, scope: string) {
     return {
       app: scope,
       cursor,
       serverTime: nowIso(),
       release: 'test',
-      membership: { role: 'owner', scopes: null, revision: 1 },
+      membership: { role: session.role ?? 'owner', scopes: null, revision: 1 },
       profile: { userId: session.userId, displayName: session.displayName, kind: 'human' },
       tables: Object.entries(tables).filter(([table]) => table.startsWith(`${scope}.`)).map(([table, writableColumns]) => ({ table, writableColumns, readable: true, writable: true })),
     };
@@ -338,13 +342,18 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
             return row;
           };
           const name = String(args.name ?? '').trim();
+          // Tanda 27 (1102): los días que ya pasaron en Madrid se rechazan y `recipe_id` («receta parecida») tiene que estar viva.
+          const madridToday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
+          if (String(args.date ?? '') < madridToday) throw new Fault(422, 'INVALID_OPERATION', 'Ese día ya pasó.', { index, procedure, argument: 'date', reason: 'past' });
+          const chosen = args.recipe_id ? all('food.recipes').find((r) => r.id === args.recipe_id && r.status !== 'archivada') : undefined;
+          if (args.recipe_id && !chosen) throw new Fault(422, 'INVALID_OPERATION', 'La receta no existe.', { index, procedure, argument: 'recipe_id', reason: 'not_found' });
           const menu = all('food.menus').find((m) => m.kind === 'casa') ?? insert('food.menus', { kind: 'casa' }, HOUSE_MENU_ID);
           const servings = Number(menu.house_servings ?? 0) || 1;
           const service = all('food.menu_services').filter((r) => r.menu_id === menu.id && r.service_date === args.date && r.service_type === args.service)
             .sort((a, b) => Number(a.position) - Number(b.position))[0]
             ?? insert('food.menu_services', { menu_id: menu.id, service_date: args.date, service_type: args.service, service_time: args.service === 'comida' ? '14:00' : args.service === 'cena' ? '20:30' : null,
               position: Math.max(0, ...all('food.menu_services').filter((r) => r.menu_id === menu.id && r.service_date === args.date).map((r) => Number(r.position))) + 1 });
-          const recipe = all('food.recipes').find((r) => String(r.name).trim().toLowerCase() === name.toLowerCase() && r.status !== 'archivada')
+          const recipe = chosen ?? all('food.recipes').find((r) => String(r.name).trim().toLowerCase() === name.toLowerCase() && r.status !== 'archivada')
             ?? insert('food.recipes', { name, category: 'principal', base_servings: servings, quick: true });
           const existing = all('food.menu_items').find((i) => i.service_id === service.id && i.recipe_id === recipe.id);
           const item = existing ?? insert('food.menu_items', { service_id: service.id, recipe_id: recipe.id, servings,
@@ -744,9 +753,27 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
       if (path === 'suggestions' && method === 'GET') {
         const scope = url.searchParams.get('scope') ?? 'mine';
         const limit = Number(url.searchParams.get('limit') ?? 50);
-        const items = suggestionStore.filter((x) => (scope === 'pending' ? x.status === 'pending' : scope === 'all' ? x.status !== 'withdrawn' : false))
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+        const reviewer = (session.role ?? 'owner') !== 'reader';
+        if (scope === 'all' && !reviewer) throw new Fault(403, 'FORBIDDEN', 'Solo editor u owner.');
+        const items = suggestionStore.filter((x) => (scope === 'pending' || scope === 'vote' ? x.status === 'pending' : scope === 'all' ? x.status !== 'withdrawn' : false))
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit)
+          // `scope=vote` (contrato §3.11, #608): quien no es editor ni owner no ve quién propone.
+          .map((x) => (scope === 'vote' && !reviewer ? { ...x, author: null, anonymous: true } : x));
         return json(res, 200, { items, pendingCount: scope === 'mine' ? null : suggestionStore.filter((x) => x.status === 'pending').length });
+      }
+      // Votos de los platos sugeridos (tanda 27, `food.vote_suggestion`): el propio, crear, cambiar o quitar.
+      if (path === 'suggestion-votes' && method === 'POST') {
+        const body = await readJson(req);
+        const vote = body.vote === null || body.vote === undefined ? null : String(body.vote);
+        if (vote !== null && vote !== 'keep' && vote !== 'drop') throw new Fault(422, 'INVALID_OPERATION', 'Voto inválido.', { argument: 'vote' });
+        const table = 'food.suggestion_votes';
+        const mine = Array.from(data.get(table)?.values() ?? []).find((r) => !r.deleted_at && r.suggestion_id === body.suggestionId && r.voter_id === session.userId);
+        const operations = !mine
+          ? (vote ? [{ op: 'insert', table, id: randomUUID(), fields: { suggestion_id: body.suggestionId, voter_id: session.userId, vote } }] : [])
+          : vote === null ? [{ op: 'delete', table, id: mine.id, expectedRevision: mine.revision }]
+          : mine.vote !== vote ? [{ op: 'update', table, id: mine.id, expectedRevision: mine.revision, fields: { vote } }] : [];
+        const applied = operations.length ? commit({ requestId: body.requestId ?? randomUUID(), operations }, session.userId) as { cursor: number } : { cursor };
+        return json(res, 200, { cursor: applied.cursor, suggestionId: body.suggestionId, vote });
       }
       const decide = /^suggestions\/([0-9a-f-]{36})\/(approve|reject|preview)$/.exec(path);
       if (decide && method === 'POST') {
@@ -757,7 +784,9 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         if (item.status !== 'pending') throw new Fault(409, 'SUGGESTION_UNAVAILABLE', 'Ya no está pendiente.');
         const decided = { comment: typeof body.comment === 'string' && body.comment.trim() ? body.comment.trim() : null, decidedBy: { id: session.userId, name: session.displayName }, decidedAt: nowIso(), updatedAt: nowIso() };
         if (decide[2] === 'approve') {
-          const applied = commit({ requestId: `suggestion:${item.id}`, operations: item.operations }, session.userId) as { cursor: number; results: unknown };
+          // Con `operations`, el lote corregido de quien aprueba (tanda 27: «Usar receta parecida»).
+          const operations = Array.isArray(body.operations) ? body.operations : item.operations;
+          const applied = commit({ requestId: `suggestion:${item.id}`, operations }, session.userId) as { cursor: number; results: unknown };
           Object.assign(item, decided, { status: 'approved', appliedCursor: applied.cursor, result: applied.results });
         } else Object.assign(item, decided, { status: 'rejected' });
         return json(res, 200, item);

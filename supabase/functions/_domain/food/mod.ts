@@ -5,6 +5,7 @@ export * from './planning.ts';
 export * from './costing.ts';
 export * from './equipment.ts';
 export * from './house.ts';
+export * from './kitchen.ts';
 export * from './resources.ts';
 export * from './consumption.ts';
 export * from './procedures.ts';
