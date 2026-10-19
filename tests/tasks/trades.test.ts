@@ -53,7 +53,10 @@ test.before(async () => {
     { op: 'insert', table: 'tasks.families', id: R_FAM, fields: { tab_id: RET, name: 'Tipo: Acción', color: '#b76b3d', position: 9 } },
   ]);
   await ok([label(FONT, null, ACC, 'Fontanería'), label(PINT, null, ACC, 'Pintura'), label(ELEC, null, ACC, 'Electricidad'), label(LIMP, null, ACC, 'Limpieza'),
-    label(JARD, null, ACC, 'Jardinería'), label(C_PINT, MEJ, C_FAM, 'pintura'), label(C_FONT, MEJ, C_FAM, 'Fontaneria'), label(R_PINT, RET, R_FAM, 'Pintura')]);
+    label(JARD, null, ACC, 'Jardinería'), label(C_PINT, MEJ, C_FAM, 'pintura'), label(C_FONT, MEJ, C_FAM, 'Fontaneria')]);
+  // La copia de Retiros, igual que la General en la misma familia, es de antes de la regla de nombres (FB_2026_033): hoy el
+  // hook ya no deja crearla, así que entra como dato viejo.
+  await sql(`insert into tasks.labels (id, tab_id, family_id, name, position) values ($1, $2, $3, 'Pintura', 1)`, [R_PINT, RET, R_FAM]);
   await ok([label(ACS, null, ACC, 'ACS', FONT), label(GRIFO, null, ACC, 'Grifería', FONT), label(CESPED, null, ACC, 'Césped', JARD), label(C_ACS, MEJ, C_FAM, 'acs', C_FONT),
     { op: 'insert', table: 'tasks.projects', id: P, fields: { tab_id: TAB, title: 'Obras', position: 2048 } },
     { op: 'insert', table: 'tasks.projects', id: PM, fields: { tab_id: MEJ, title: 'Mejoras 2026', position: 2048 } },
