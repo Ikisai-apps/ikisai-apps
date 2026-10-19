@@ -32,9 +32,16 @@ export function nextMeal(menu: Menu, day = todayMadrid(), now = nowMadrid()): Me
 }
 
 /**
- * Un plato: nombre y descripción públicos, etiquetas de dieta y, solo si cocina los revisó, sus alérgenos declarados.
- * Nunca «apto para ti»: la frase sobre lo que tiene registrado cocina va aparte y no califica platos (API.md §13.3).
+ * Un plato: nombre y descripción públicos, etiquetas de dieta y **siempre** sus alérgenos declarados (tanda 26). Si cocina
+ * aún no revisó la receta, se dice («sin revisar por cocina»), también cuando no declara ninguno: sin revisar no es «sin
+ * alérgenos». Nunca «apto para ti»: la frase sobre lo que tiene registrado cocina va aparte y no califica platos (API.md §13.3).
  */
+function allergens(d: Dish): HTMLElement | null {
+  const list = (d.allergens ?? []).map((code) => (t(`allergen.${code}`) === `allergen.${code}` ? code : t(`allergen.${code}`))).join(', ');
+  if (d.allergens_checked) return list ? el('span', { class: 'small gallergens' }, t('menu.allergens', { list })) : null;
+  return el('span', { class: 'small gallergens', dataset: { checked: 'no' } }, list ? t('menu.allergensUnchecked', { list }) : t('menu.allergensUncheckedNone'));
+}
+
 function dish(d: Dish, ctx: GuestContext): HTMLElement {
   // Foto del plato (Food #332): solo la miniatura, por `portal-files`, cuando llega (URL de 5 minutos).
   const photo = d.photo_thumb_file_id ? el('img', { class: 'gdish-photo', alt: '', loading: 'lazy', hidden: true }) as HTMLImageElement : null;
@@ -47,7 +54,7 @@ function dish(d: Dish, ctx: GuestContext): HTMLElement {
     el('strong', null, d.name),
     d.description ? el('span', { class: 'muted small' }, d.description) : null,
     tags.length ? el('span', { class: 'gtags' }, ...tags.map((tag) => el('span', { class: 'chip small' }, tag))) : null,
-    d.allergens_checked && d.allergens?.length ? el('span', { class: 'small gallergens' }, t('menu.allergens', { list: d.allergens.map((code) => t(`allergen.${code}`)).join(', ') })) : null);
+    allergens(d));
 }
 
 function daysOf<T>(list: T[], key: (x: T) => string): string[] {
