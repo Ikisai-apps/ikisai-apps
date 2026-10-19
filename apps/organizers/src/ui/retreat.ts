@@ -162,6 +162,12 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
       showGuests ? fbMark(tabButton('asistentes', t('Asistentes'), joinsPending), 'organizers.retiro.pestanas.asistentes', 'Asistentes') : null,
       showKitchen ? fbMark(tabButton('cocina', t('Cocina')), 'organizers.retiro.pestanas.cocina', 'Cocina') : null);
     replace(tabs, strip);
+    // Las mismas pestañas, en la sección «Este retiro» del menú lateral.
+    const menuTabs: Array<[RetreatTab, string, boolean]> = [
+      ['resumen', t('Resumen'), true], ['fechas', t('Fechas'), showDates], ['diseno', t('Diseño'), showDesign], ['propuesta', t('Propuesta'), showProposal],
+      ['pagos', t('Pagos'), showPayments], ['experiencia', t('Experiencia'), showExperience], ['ofertas', t('Ofertas'), showOffers],
+      ['asistentes', t('Asistentes'), showGuests], ['cocina', t('Cocina'), showKitchen]];
+    ctx.setMenuRetreat({ id: reservationId, title: d.title, tabs: menuTabs.filter((x) => x[2]).map(([tab, label]) => ({ tab, label, count: tab === 'asistentes' ? joinsPending : 0 })) });
     watchFade(strip);
 
     // Con muchas pestañas en un móvil, la activa se centra en la tira desplazable.

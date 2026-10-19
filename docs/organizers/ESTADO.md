@@ -76,6 +76,10 @@
   - **Ofertas:** el cartel arriba y los −/+ agrupados.
   - **Cabecera:** «Cerrar sesión» en el móvil.
   - **Botones que necesitan red:** desactivados, con el motivo.
+- 2026-10-19 · Menú lateral común (kit 0.47) y «‹ Volver a…» (0.48).
+  - **Cajón:** la marca abre el cajón con «Este retiro» (las pestañas visibles de la ficha, con las solicitudes por decidir), tus retiros, las apps de Ikisai con «Ayuda y sugerencias» y «Cerrar sesión». La línea de sincronización sale del cliente.
+  - **Cabecera:** se queda el «Cerrar sesión» propio, visible en el móvil. El del kit, que solo se ve en escritorio y no está traducido, se retira hasta la tanda 29 del kit.
+  - **`--muted`:** sin el `color-mix`, porque ya da 4,56:1.
 
 ## Pendiente
 

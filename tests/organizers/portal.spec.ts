@@ -1051,6 +1051,44 @@ test('organizers · cerrar sesión en el móvil: botón visible de 46 px; al sal
   await context.close();
 });
 
+test('organizers · menú lateral: la marca abre el cajón con «Este retiro», tus retiros, ayuda y «Cerrar sesión»; «‹ Volver a…» desde otra app', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro del menú', confirm: true });
+  const other = await api.reservation({ title: 'Otro retiro del menú', confirm: true });
+  await enter(page, await api.organizerLink([reservation, other], 'menu-lateral@example.invalid', 'Lola'));
+  await page.locator('.orgretreat', { hasText: 'Retiro del menú' }).first().click();
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro del menú');
+
+  // «Este retiro»: las mismas pestañas de la ficha; una fila lleva a la pestaña y cierra el cajón.
+  await page.locator('#appLauncher').click();
+  const drawer = page.locator('.appmenu-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(page.locator('#appLauncher')).toHaveAttribute('aria-expanded', 'true');
+  await drawer.locator('.appmenu-tile', { hasText: 'Retiro del menú' }).click();
+  await drawer.getByRole('link', { name: 'Asistentes' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/retiro/${reservation}/asistentes$`));
+  await expect(drawer).toBeHidden();
+
+  // Tus retiros, «Ayuda y sugerencias» del lanzador y «Cerrar sesión» del kit; Escape cierra.
+  await page.locator('#appLauncher').click();
+  await drawer.locator('.appmenu-tile', { hasText: 'Mis retiros' }).click();
+  await expect(drawer.getByRole('link', { name: /Otro retiro del menú/ })).toBeVisible();
+  await expect(drawer.locator('.launcher-center')).toBeVisible();
+  await expect(drawer.locator('.appmenu-logout button')).toContainText('Cerrar sesión');
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  // En la cabecera sigue un solo «Cerrar sesión», el de Organizers.
+  await expect(page.locator('#logoutButton')).toHaveCount(1);
+  await expect(page.locator('#logoutButton')).toHaveAttribute('data-feedback-id', 'organizers.cabecera.cerrar_sesion');
+
+  // Llegar desde otra app con «volver»: «‹ Volver a Booking» arriba, y la URL queda limpia.
+  const base = page.url().split('#')[0]!.split('?')[0]!;
+  await page.goto(`${base}?volver=${encodeURIComponent('https://booking.ikisai.com/#/reservas')}&titulo=Booking#/`);
+  const back = page.locator('.return-link');
+  await expect(back).toContainText('Booking');
+  await expect(back).toHaveAttribute('href', 'https://booking.ikisai.com/#/reservas');
+  expect(page.url()).not.toContain('volver=');
+});
+
 test('organizers · guarda tu acceso: botón compacto en Mis retiros y en la ficha, oculto en Diseño; sin desplazamiento lateral', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-ES' });
   await context.addInitScript(() => { try { localStorage.setItem('ikisai-install-dismissed:organizers', String(Date.now())); } catch { /* */ } });

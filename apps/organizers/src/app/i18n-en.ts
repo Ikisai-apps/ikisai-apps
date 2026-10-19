@@ -984,4 +984,9 @@ export const EN: Dictionary = {
   '1 oferta caducada sigue sumando en tus cuentas: cámbiale la fecha o quítala.': '1 expired offer still counts in your figures: change its date or remove it.',
   '{n} ofertas caducadas siguen sumando en tus cuentas: cámbiales la fecha o quítalas.': '{n} expired offers still count in your figures: change their dates or remove them.',
   'Otra persona cambió esta oferta: revisa la cifra.': 'Someone else changed this offer: check the figure.',
+  // Menú lateral común (kit 0.47)
+  'Menú de Organizers': 'Organizers menu',
+  'Organizas retiros en Ikisai': 'You organise retreats at Ikisai',
+  'Este retiro': 'This retreat',
+  'Ver todos tus retiros': 'See all your retreats',
 };

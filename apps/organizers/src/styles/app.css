@@ -7,7 +7,7 @@
 .plainlist li{margin:4px 0}
 .chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
-.backlink{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap,46px);margin:0 0 4px;color:color-mix(in srgb,var(--ink) 82%,var(--muted));text-decoration:none;font-weight:600}
+.backlink{display:inline-flex;align-items:center;gap:4px;min-height:var(--tap,46px);margin:0 0 4px;color:var(--muted);text-decoration:none;font-weight:600}
 .backlink:hover{color:var(--ink)}
 .empty .ghost{min-height:var(--tap,46px)}
 /* Cabecera a 390 px: el nombre se corta antes que empujar ES | EN y «Cerrar sesión». */
@@ -28,7 +28,6 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 /* Mis retiros: tarjeta con portada (o iniciales), recorrido y «Te toca»; pasados y cancelados plegados. */
 .orgcards{display:grid;gap:12px}
 .orgretreat{display:flex;flex-direction:column;gap:8px;padding:14px 16px;color:var(--ink);text-decoration:none;overflow:hidden}
-.orgretreat .muted{color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
 .orgretreat-top{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr);column-gap:12px;row-gap:2px;align-items:center}
 .orgretreat-top>.medal-disc{grid-row:1 / span 3;align-self:start}
 .orgretreat-top>:not(.medal-disc):not(.medal-cover){grid-column:2;min-width:0}
@@ -52,7 +51,7 @@ a.primary,a.ghost{display:inline-flex;align-items:center;justify-content:center;
 
 /* Ficha del retiro: portada, datos sobre el papel y pestañas con pista de desplazamiento. */
 #retreatHead{display:grid;gap:6px;margin:0 0 10px}
-#retreatHead .orghead-meta{margin:0;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+#retreatHead .orghead-meta{margin:0;color:var(--muted)}
 #retreatTabs{position:relative}
 #retreatTabs.orgtabs-fade::after{content:"";position:absolute;top:4px;right:0;bottom:14px;width:36px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,transparent,var(--paper-2));pointer-events:none}
 #retreatTabs.orgtabs-fade.end::after{display:none}
@@ -253,7 +252,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgsubnav button[aria-current="page"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 /* La insignia en tonos de aviso del kit: tinta oscura sobre fondo claro (más de 4,5:1). */
 .orgtab-count{background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414);box-shadow:inset 0 0 0 1px var(--warn,#c58b2a)}
-.orgkicker{margin:0 0 6px;font-size:var(--text-sm,.875rem);font-weight:700;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgkicker{margin:0 0 6px;font-size:var(--text-sm,.875rem);font-weight:700;color:var(--muted)}
 
 /* Asistentes: cifras, plazas y grupos */
 .orgguest-summary{margin:0 0 12px}
@@ -272,7 +271,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgseat-ring .medal-disc{box-shadow:0 0 0 3px var(--paper)}
 .orgseat-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
 .orgseat-food{position:absolute;top:2px;right:8px;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-1)}
-.orgseat-grid .orgseat-free{cursor:default;color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgseat-grid .orgseat-free{cursor:default;color:var(--muted)}
 .orgseat-plus{display:grid;place-items:center;width:44px;height:44px;margin:4px;border-radius:50%;border:1px dashed var(--line);font-size:20px}
 .orgseat-waiting{margin:0 0 12px;padding:8px 12px;border-radius:12px;background:var(--warn-soft,#f5e7c9);color:var(--warn-ink,#7a5414);font-weight:600}
 .orgguests-title{margin:16px 0 8px;font-size:1rem}
@@ -305,7 +304,7 @@ details#paymentInstructions>summary{min-height:var(--tap,46px);display:flex;alig
 .orgkdish-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .orgkdish-hit{color:var(--ink);font-weight:600}
 .orgkdish-hit svg{color:var(--warn-ink,#7a5414)}
-.orgkdish-hint{color:color-mix(in srgb,var(--ink) 82%,var(--muted))}
+.orgkdish-hint{color:var(--muted)}
 .orgservice h5{display:flex;align-items:center;gap:4px}
 
 /* Experiencia: lo siguiente, momentos y apartados */
