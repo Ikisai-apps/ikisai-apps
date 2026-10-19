@@ -474,6 +474,11 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     // Kit 0.28.0: nombre legible (código · proveedor, nunca el id) y quién lo cambió
     await expect(page.locator('#conflictList')).toContainText('Sin Red SL');
     await expect(page.locator('#conflictIntro')).not.toHaveText('Nada se pierde hasta que decidas.');
+    // Tanda 27: la bandeja por áreas, con lo que choca escrito y «Lo mío» / «Lo del otro» al mismo nivel
+    await expect(page.locator('#conflictList .tray-row')).toHaveCount(1);
+    await expect(page.locator('#conflictList')).toContainText('Facturas');
+    await expect(page.locator('#conflictList')).toContainText('Notas: «nota desde el móvil» frente a «nota desde el PC»');
+    await expect(page.locator('#conflictList [data-choice="mine"]')).toHaveText('Lo mío');
     expect(api.rows('invoices.invoices').find((i) => i.id === inv.id)!.notes).toBe('nota desde el PC');
   });
 
@@ -506,6 +511,9 @@ test('O1–O6: sin red se trabaja; al volver la red se sube, se sincroniza y los
     await page.locator('#toolSync').click();
     await page.getByRole('button', { name: 'Ver conflictos' }).click();
     await expect(page.locator('#rejectedList')).toContainText('ya no existe en Tareas');
+    // Tanda 27: «Corregir en Facturas» delante; «Reintentar», discreto
+    await expect(page.locator('#rejectedList [data-choice="fix"]')).toHaveText('Corregir en Facturas');
+    await expect(page.locator('#rejectedList [data-choice="retry"]')).toHaveClass(/linkbtn/);
   });
 
   await test.step('O6 · una subida que no verifica no envía el lote y se ve como rechazada', async () => {
