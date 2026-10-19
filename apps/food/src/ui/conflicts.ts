@@ -55,6 +55,17 @@ function show(field: string, value: unknown): string {
 }
 
 /** Conflictos (§6.3) y lotes rechazados por el servidor, con los componentes del kit. */
+/** Áreas de la bandeja de conflictos, en el orden de la cocina. */
+const AREAS: Record<string, { key: string; label: string; order: number }> = {
+  'food.recipes': { key: 'recetario', label: 'Recetario', order: 1 }, 'food.recipe_ingredients': { key: 'recetario', label: 'Recetario', order: 1 },
+  'food.ingredients': { key: 'recetario', label: 'Recetario', order: 1 }, 'food.recipe_equipment': { key: 'recetario', label: 'Recetario', order: 1 },
+  'food.menus': { key: 'menus', label: 'Menús', order: 2 }, 'food.menu_services': { key: 'menus', label: 'Menús', order: 2 },
+  'food.menu_items': { key: 'menus', label: 'Menús', order: 2 }, 'food.menu_comments': { key: 'menus', label: 'Menús', order: 2 },
+  'food.shopping_lists': { key: 'compra', label: 'Compra', order: 3 }, 'food.shopping_list_items': { key: 'compra', label: 'Compra', order: 3 },
+  'food.preparation_items': { key: 'preparacion', label: 'Preparación', order: 4 },
+  'food.equipment': { key: 'maquinaria', label: 'Maquinaria', order: 5 },
+};
+
 export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
   const conflictHost = el('div', { 'data-feedback-id': 'food.conflictos.lista', 'data-feedback-label': 'Conflictos pendientes', id: 'conflictList' });
   const rejectedHost = el('div', { 'data-feedback-id': 'food.conflictos.rechazados', 'data-feedback-label': 'Rechazados por el servidor', id: 'rejectedList' });
@@ -104,7 +115,11 @@ export const mountConflicts: ViewMount = ({ main, client, navigate }) => {
     for (const table of [T.recipes, T.ingredients, T.equipment]) {
       for (const row of await client.list(table, { includeDeleted: true })) names.set(row.id, String(row.name ?? ''));
     }
+    // Tanda 27 (MUELA-044): la bandeja por áreas del kit, «Lo mío / Lo de…» y «Deshacer» de 8 s. «Los dos» une listas:
+    // solo es seguro para los alérgenos; si choca una dieta («vegano» de un lado lo afirmaría sin base), no se ofrece.
+    const unsafeUnion = conflicts.some((c) => 'fields' in c.operation && !!c.operation.fields && 'diet_tags' in c.operation.fields);
     replace(conflictHost, ...renderConflicts(conflicts, {
+      layout: 'tray', undoMs: 8000, both: !unsafeUnion, groupBy: (c) => AREAS[c.operation.table] ?? { key: 'otros', label: 'Otros', order: 9 },
       fieldLabels: FIELD_LABELS, show, onResolve: resolve,
       rowName: (conflict) => rowName(conflict.operation.table, conflict.current ?? conflict.base),
     }).map((card) => markCard(card, { feedbackId: 'food.conflictos.conflicto', feedbackLabel: 'Conflicto' })));

@@ -116,7 +116,7 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await expect(dialog).toBeHidden();
     // Tanda 27: el recorrido Falla · Avisado · En reparación · Funciona, con la palabra exacta del estado.
     const row = page.locator('#equipmentList .row', { hasText: 'Horno 1' });
-    await expect(row.locator('.row-title .chip')).toHaveText('Averiado');
+    await expect(row.locator('.row-title .chip:not(.pending)')).toHaveText('Averiado');
     await expect(row.locator('.fd-journey')).toContainText('Falla · averiada');
     await row.getByRole('button', { name: 'Editar Horno 1' }).click();
     await expect(page.locator('#equipmentJourney')).toContainText('Siguiente: avisar a Tasks para repararla');
