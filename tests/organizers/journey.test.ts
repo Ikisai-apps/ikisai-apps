@@ -154,7 +154,7 @@ test('organizers · resumen: en diseño, fechas, propuesta y «Diseña tu retiro
   assert.equal(asked[0]!.stateText, 'Has marcado 1 fecha; Ikisai confirmará la definitiva.');
 
   // Aceptada: hecho. Fecha fija: «Ver fechas».
-  const fixed: PortalDates = { mode: 'fixed', definitive: { start: '2027-03-12', end: '2027-03-14' }, options: [] } as PortalDates;
+  const fixed: PortalDates = { mode: 'fixed', definitive: { start: '2027-03-12', end: '2027-03-14', arrival_time: null, departure_time: null }, options: [] };
   const accepted = summarySteps(draft({ dates: fixed }), { proposals: [proposal({ status: 'aceptada' })], requests: [] }, TODAY, format);
   assert.deepEqual(ids(accepted), ['ver_fechas:hecho', 'paso_propuesta:hecho', 'ver_diseno:hecho']);
   assert.equal(accepted[0]!.title, 'Ver fechas');
