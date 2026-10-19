@@ -160,6 +160,9 @@ KIT_CHILDREN.createFocus = [['hecha', 'Marcar hecha', 'button'], ['abrir', 'Abri
 KIT_CHILDREN.createCoverCarousel = [['anterior', 'Anterior', 'button'], ['siguiente', 'Siguiente', 'button'], ['punto', 'Ir a esta portada', 'button']];
 KIT_CHILDREN.renderLead = [['hecha', 'Marcar hecha', 'button'], ['abrir', 'Abrir', 'button'], ['ver_mas', 'Ver más de la cola', 'button']];
 KIT_CHILDREN.renderNow = [['hecho', 'Ver lo ya hecho', 'button']];
+KIT_CHILDREN.createQueue = [['principal', 'Acción principal', 'button'], ['secundaria', 'Acción secundaria', 'button'], ['saltar', 'Saltar', 'button'], ['ficha', 'Abrir la ficha', 'button'], ['ver_todo', 'Ver todo', 'button']];
+KIT_CHILDREN.createVoteDeck = [['a_favor', 'A favor', 'button'], ['en_contra', 'En contra', 'button'], ['abrir', 'Ver entera', 'button'], ['reiniciar', 'Volver a empezar', 'button']];
+KIT_CHILDREN.createStepForm = [['opcion', 'Opción', 'button'], ['aceptar', 'Aceptar', 'button'], ['atras', 'Atrás', 'button']];
 KIT_CHILDREN.createProposalList = [['estado', 'Estado de las propuestas', 'button'], ['tipo', 'Tipo de propuesta', 'button'], ['abrir', 'Ver propuesta', 'button'], ['aprobar', 'Aprobar propuesta', 'button'], ['descartar', 'Descartar propuesta', 'button'], ['retirar', 'Retirar propuesta', 'button'], ['proponer', 'Proponer', 'button']];
 
 /** Nombre de la llamada que contiene la posición `at` (el `(` sin cerrar más cercano hacia atrás). */
@@ -203,7 +206,7 @@ export function extractFeatures(text, file = '') {
     const call = /feedbackId/.test(m[0]) ? enclosingCall(text, m.index) : null;
     const children = call ? KIT_CHILDREN[call] : null;
     if (children) {
-      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
+      features.push({ id: raw, label: labelNear(before, after) ?? ({ createSpaceTree: 'Espacios', createSpacePicker: 'Elegir espacio', createCalendar: 'Calendario', createProposalList: 'Propuestas', createItemPicker: 'Elegir artículo', createItemCatalog: 'Inventario', createItemSheet: 'Ficha del artículo', createMovementForm: 'Movimiento a mano', createCountSession: 'Recuento', renderStages: 'Recorrido', renderGroups: 'Grupos', createFocus: 'Lo que toca ahora', createCoverCarousel: 'Portadas', renderLead: 'Lo primero', renderNow: 'Lo de ahora', renderSteps: 'Paso a paso', createQueue: 'Una cosa cada vez', createVoteDeck: 'Votar', createStepForm: 'Pregunta a pregunta' }[call] ?? 'Conflicto'), kind: 'section', file, line: lineOf(text, m.index) });
       for (const [suffix, label, kind] of children) features.push({ id: `${raw}.${suffix}`, label, kind, file, line: lineOf(text, m.index) });
       continue;
     }
