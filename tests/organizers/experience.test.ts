@@ -164,6 +164,40 @@ test('organizers · materiales: archivo propio (K3), lectura para Guests y archi
   assert.equal(visibleRow(TABLES.offers, { reservation_id: R1 }, { scopes }, anaId), false, 'las ofertas son del retiro');
 });
 
+test('organizers · K3 para miembros (membersK3): el archivo de un material solo lo lee quien ve su fila viva', async () => {
+  const bytes = new TextEncoder().encode('%PDF-1.4 mapa del lugar');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const ticket = await org('/api/v1/uploads', { token: ana, body: { filename: 'mapa.pdf', mime: 'application/pdf', size: bytes.byteLength, sha256 } });
+  assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+  booking.supabase.storage.set(ticket.data.path, bytes);
+  assert.equal((await org(`/api/v1/uploads/${ticket.data.id}/verify`, { token: ana, body: {} })).status, 200);
+  const material = uuid();
+  const ok = await commit(ana, [{ op: 'insert', table: TABLES.materials, id: material, fields: { reservation_id: R1, owner_id: anaId, kind: 'file', title: 'Mapa', file_id: ticket.data.id, position: 9 } }]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+
+  // Miembros de Organizers: la coorganizadora de R1 (ve la fila), un editor sin ámbito (no ve ninguna) y la propietaria.
+  const coorg = await organizerSession(R1, 'coorg-k3@example.invalid');
+  const member = async (role: string) => {
+    const user = await booking.t.createUser();
+    await booking.t.db.query(`insert into core.memberships (app, user_id, role) values ('organizers', $1, $2)`, [user, role]);
+    return booking.supabase.tokenFor(user);
+  };
+  const editor = await member('editor');
+  const owner = await member('owner');
+  const file = (token: string) => org(`/api/v1/files/${ticket.data.id}`, { token });
+
+  assert.equal((await file(coorg)).status, 200, 'la coorganizadora ve la fila: lo lee');
+  assert.equal(code(await file(editor)), 'FILE_NOT_FOUND', 'un editor que no ve la fila no lo lee aunque conozca el id');
+  assert.equal(code(await file(otra)), 'FILE_NOT_FOUND', 'la organizadora de otro retiro, tampoco');
+  assert.equal((await file(owner)).status, 200, 'la propietaria, siempre');
+
+  // Papelera: con la fila borrada, solo quien lo subió y la propietaria.
+  assert.equal((await commit(ana, [{ op: 'delete', table: TABLES.materials, id: material, expectedRevision: 1 }])).status, 200);
+  assert.equal(code(await file(coorg)), 'FILE_NOT_FOUND', 'fila borrada: la coorganizadora ya no lo lee');
+  assert.equal((await file(ana)).status, 200, 'quien lo subió, sí');
+  assert.equal((await file(owner)).status, 200);
+});
+
 test('organizers · Guests lee la experiencia y las preguntas; guest_answer valida tipo, ventana y ámbito', async () => {
   const experience = await gst('/api/v1/read/organizers.guest_experience_for', { token: leo.token, body: { reservation_id: R1, guest_id: leo.id } });
   assert.equal(experience.status, 200, JSON.stringify(experience.data));

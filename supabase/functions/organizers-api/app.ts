@@ -15,7 +15,9 @@ import { MATERIAL_MAX_BYTES, MATERIAL_MIME, validateOperations, visibleRow } fro
 export const ORGANIZERS_ORIGINS = ['https://organizers.ikisai.com', 'https://ikisai-organizers.pages.dev'];
 
 /** Materiales del retiro: PDF hasta 15 MB e imágenes recomprimidas en el dispositivo (bucket de K5, #323). */
-export const ORGANIZERS_UPLOADS = { bucket: 'organizers-materials', allowedMime: MATERIAL_MIME, maxBytes: MATERIAL_MAX_BYTES };
+// K3 para miembros (#585): ningún miembro que no sea propietario lee un archivo ajeno por su id si no ve (`visible`) una
+// fila viva que lo referencia. El único campo de archivo es `materials.file_id`, registrado en 0700.
+export const ORGANIZERS_UPLOADS = { bucket: 'organizers-materials', allowedMime: MATERIAL_MIME, maxBytes: MATERIAL_MAX_BYTES, membersK3: true };
 
 export function createOrganizersApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'portalIssuer' | 'uploads' | 'hooks' | 'workerRoutes'> & Partial<Pick<AppConfig, 'origins'>>) {
   const supabase = createSupabase(base);
