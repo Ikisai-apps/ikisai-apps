@@ -106,7 +106,8 @@ function nav(page: Page, name: string) {
 async function gestoriaPeriod(page: Page, isoDate = new Date().toISOString().slice(0, 10)): Promise<void> {
   await page.getByLabel('Año', { exact: true }).fill(isoDate.slice(0, 4));
   await page.getByLabel('Año', { exact: true }).dispatchEvent('change');
-  await page.getByLabel('Trimestre', { exact: true }).selectOption(String(Math.floor((Number(isoDate.slice(5, 7)) - 1) / 3) + 1));
+  // Tanda 27: el trimestre se elige con un toque (1T · 2T · 3T · 4T · Año)
+  await page.locator(`#periodPicker [data-period="${Math.floor((Number(isoDate.slice(5, 7)) - 1) / 3) + 1}"]`).click();
 }
 
 /** Vuelve la red: el cliente sincroniza solo al detectar el evento; si el botón está libre se pulsa también (más rápido en Playwright). */
@@ -2751,6 +2752,45 @@ test('Tanda 27 · Emitidas: buzón «Por cobrar» por cliente, «Cobrada» con f
     await expect.poll(() => api.rows('invoices.issued_invoices').find((i) => i.id === id)?.sent_at, { timeout: 20_000 }).toBe('2026-10-14');
   } finally {
     for (const x of [id, paid]) if (api.rows('invoices.issued_invoices').some((i) => i.id === x)) api.serverUpdate('invoices.issued_invoices', x, { deleted_at: new Date().toISOString() });
+    await context.close();
+  }
+});
+
+test('Tanda 27 · Gestoría: carpeta con el recorrido de la entrega, «Descargar» con la huella y cada trimestre con todas sus entregas', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const supplier = randomUUID(); const invoice = randomUUID(); const older = randomUUID(); const newer = randomUUID();
+  api.seed('invoices.suppliers', [{ id: supplier, name: 'Gestoría Ejemplo SL', slug: 'gestoria_ejemplo_sl', aliases: [], default_is_investment: false }]);
+  api.seed('invoices.invoices', [{ id: invoice, code: 'FVR_2019_001', supplier_id: supplier, invoice_date: '2019-02-10', object: 'material', status: 'validada', expense_category: 'compras', source_total: 121, calculated_base: 100, calculated_vat: 21, calculated_total: 121, totals_delta: 0, currency: 'EUR', deductibility: 'deducible', payment_status: 'pagada', payment_source: 'confirmado', paid_at: '2019-02-10', is_investment: false, source: 'manual', invoice_kind: 'ordinaria' }]);
+  const delivery = (id: string, code: string, status: string, created: string, hash: string) => ({ id, code, period_kind: 'quarter', fiscal_year: 2019, fiscal_quarter: 1, from_date: '2019-01-01', to_date: '2019-03-31', folder_name: '2019_1T', invoice_count: 1,
+    totals: { base: 100, vat: 21, total: 121 }, manifest: {}, manifest_sha256: hash, status, delivered_at: status === 'entregada' ? created : null, delivered_to: status === 'entregada' ? 'correo a la gestoría' : null, created_at: created });
+  api.seed('invoices.exports', [delivery(older, 'ENT_2019_1T_1', 'entregada', '2019-04-05T10:00:00Z', 'a'.repeat(64)), delivery(newer, 'ENT_2019_1T_2', 'generada', '2019-04-20T10:00:00Z', 'b'.repeat(64))]);
+  const revision = api.rows('invoices.invoices').find((i) => i.id === invoice)!.revision;
+  api.seed('invoices.export_items', [older, newer].map((e) => ({ id: randomUUID(), export_id: e, invoice_id: invoice, invoice_code: 'FVR_2019_001', invoice_revision: revision, files: [] })));
+  try {
+    await login(page);
+    await synced(page);
+    await page.goto(`${baseURL}/#/gestoria`);
+    await gestoriaPeriod(page, '2019-02-10');
+    await expect(page.locator('#deliveryFolder')).toContainText('Para la gestoría · 2019_1T', { timeout: 20_000 });
+    await expect(page.locator('#deliverySeal')).toHaveText('Preparada');
+    await expect(page.locator('#deliveryFolder .stage-caption')).toHaveText('Preparada: descárgala y envíala a la gestoría');
+    await expect(page.locator('#deliveryTicket')).toContainText('IVA soportado21,00 €');
+    // «Enviar» abre «Descargar» con la huella del manifest
+    await page.getByRole('button', { name: /^Enviar: ahora/ }).click();
+    await expect(page.locator('#downloadSheet')).toContainText(`Huella del manifest: ${'b'.repeat(64)}`);
+    await page.keyboard.press('Escape');
+    // El trimestre despliega sus dos entregas, la anterior también, con su huella y «entregada: …»
+    const quarter = page.locator('#exportsList [data-period="1T 2019"]');
+    await expect(quarter.locator('summary')).toContainText('Preparada · 121,00 € · 2 entregas');
+    await expect(quarter.locator('.row')).toHaveCount(2);
+    await expect(quarter).toContainText('ENT_2019_1T_1');
+    await expect(quarter).toContainText('entregada: correo a la gestoría');
+    await expect(quarter).toContainText(`hash ${'a'.repeat(12)}`);
+  } finally {
+    for (const e of [older, newer]) if (api.rows('invoices.exports').some((x) => x.id === e)) api.serverUpdate('invoices.exports', e, { deleted_at: new Date().toISOString() });
+    api.serverUpdate('invoices.invoices', invoice, { deleted_at: new Date().toISOString() });
     await context.close();
   }
 });

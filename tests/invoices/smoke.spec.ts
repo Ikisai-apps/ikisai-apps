@@ -188,7 +188,7 @@ test('@smoke login → bootstrap → proveedores offline → sincronizar', async
     // Gestoría abre el trimestre en el que se trabaja; la factura es del 4T 2026
     await page.getByLabel('Año', { exact: true }).fill('2026');
     await page.getByLabel('Año', { exact: true }).dispatchEvent('change');
-    await page.getByLabel('Trimestre', { exact: true }).selectOption('4');
+    await page.locator('#periodPicker [data-period="4"]').click();
     await expect(page.locator('#fiscalAlerts')).toContainText('pendiente de revisión');
     await page.getByRole('link', { name: /Inicio/ }).click();
     await expect(page.locator('#statPendingReview')).toHaveText('1');
