@@ -1,8 +1,11 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
-import { icon, confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type LauncherCatalog, type NavItem } from '@ikisai/ui-kit';
+import { icon, confirmDialog, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, openFeedbackCenter, el, replace, toast, type AppMenuRow, type AppMenuSection, type LauncherCatalog, type NavItem, type PaletteItem } from '@ikisai/ui-kit';
+import { foldText } from '@ikisai/domain-booking';
 import { describeError, isLocalError, LOCAL_ERROR_MESSAGE, technicalDetail } from '../app/client.ts';
 import { clearCostCache } from '../app/costs.ts';
 import { forgetHousePeople } from '../app/stays.ts';
+import { forgetLogos } from '../app/logos.ts';
+import { RESERVATIONS, SES_SETTINGS, STAYS, RATES, canRead, canWrite, dateRange, type ReservationRow } from '../app/client.ts';
 import { mountHome } from './home.ts';
 import { mountReservations } from './reservations.ts';
 import { mountReservation } from './reservation.ts';
@@ -32,6 +35,7 @@ export interface ViewContext extends ShellContext {
 export type ViewMount = (ctx: ViewContext) => () => void;
 
 const PENDING = '#/pendientes';
+const recents: Array<{ id: string; title: string; sub: string }> = [];
 
 const NAV: readonly NavItem[] = [
   { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', PENDING] },
@@ -125,6 +129,26 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     // «Sugerencias y QA» vive en el panel del lanzador (kit 0.18), no en la cabecera
     center: () => { openFeedbackCenter({ api: client.api.bind(client), app: 'booking', canEdit: () => client.bootstrap()?.membership.role !== 'reader', feedback }); },
   });
+  // Menú lateral común (tanda 27, MUELA-013): el lanzador va dentro; las secciones dan entrada fija a lo que no está en
+  // la barra (Estancias, Espacios, Tarifas, SES, Por resolver). Recientes: las tres últimas fichas abiertas en esta sesión.
+  const ROLE_TEXT: Record<string, string> = { owner: 'Propietario', editor: 'Editor', reader: 'Solo lectura', outsider: 'Outsider' };
+  const sections = (): AppMenuSection[] => {
+    const row = (label: string, href: string, feedbackId: string, iconName?: AppMenuRow['icon']): AppMenuRow => ({ label, href, feedbackId, icon: iconName ?? null });
+    return [
+      { key: 'reservas', label: 'Reservas', icon: 'list', summary: 'Lista, calendario y estancias', rows: [
+        row('Reservas', '#/reservas', 'booking.menu.reservas'), row('Calendario', '#/calendario', 'booking.menu.calendario'),
+        ...(canRead(client, STAYS) ? [row('Estancias', '#/estancias', 'booking.menu.estancias')] : []),
+      ] },
+      { key: 'huespedes', label: 'Huéspedes', icon: 'people', summary: 'Huéspedes y lo que queda por resolver', rows: [
+        row('Huéspedes', '#/huespedes', 'booking.menu.huespedes'), row('Por resolver', PENDING, 'booking.menu.pendientes'),
+        ...(canRead(client, SES_SETTINGS) ? [row('SES.HOSPEDAJES', '#/ses', 'booking.menu.ses')] : []),
+      ] },
+      { key: 'casa', label: 'La casa', icon: 'bed', summary: 'Espacios, camas y tarifas', rows: [
+        row('Espacios y camas', '#/espacios', 'booking.menu.espacios'),
+        ...(canWrite(client) && canRead(client, RATES) ? [row('Tarifas y condiciones', '#/tarifas', 'booking.menu.tarifas')] : []),
+      ] },
+    ];
+  };
   const shell = createAppShell(root, {
     appName: 'Booking',
     markIcon: 'bed',
@@ -133,9 +157,34 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
-    launcher,
+    returnTo: { feedbackId: 'booking.cabecera.volver_app' },
+    search: { onOpen: () => palette.open(), label: 'Buscar en Booking…', feedbackId: 'booking.cabecera.buscar' },
+    menu: {
+      // Solo cajón: con la columna fija, la ayuda común de feedback del kit encuentra la copia oculta (petición a Core en SALIDA).
+      column: false, theme: true, launcher, feedbackId: 'booking.menu',
+      profile: { name: client.bootstrap()?.profile.displayName ?? '', role: ROLE_TEXT[client.bootstrap()?.membership.role ?? ''] ?? '' },
+      recents: () => recents.map((r) => ({ label: r.title, sub: r.sub, href: `#/reservas/${r.id}`, feedbackId: 'booking.menu.reciente' })),
+      sections,
+      signalHere: () => { void feedback.signal(main); },
+      onResolveConflicts: () => navigate(PENDING),
+    },
   });
   const { main } = shell;
+
+  // Paleta («Buscar en Booking…», Ctrl K): ir a una pantalla o a una reserva por su nombre o su código, sin tildes.
+  let reservationIndex: ReservationRow[] = [];
+  const loadIndex = async () => { reservationIndex = ((await client.list(RESERVATIONS)) as ReservationRow[]).filter((r) => r.deleted_at === null); };
+  void loadIndex();
+  const offIndex = client.onTable(RESERVATIONS, () => void loadIndex());
+  const palette = createCommandPalette({
+    placeholder: 'Buscar una reserva o ir a una pantalla',
+    hiddenWhenEmpty: ['Reservas'],
+    items: (query): PaletteItem[] => [
+      ...(canWrite(client) ? [{ group: 'Acciones', text: 'Nueva reserva', run: () => navigate('#/reservas') }] : []),
+      ...Object.entries(ROUTES).map(([hash, route]) => ({ group: 'Ir a', text: route.title, run: () => navigate(hash) })),
+      ...(query.length >= 2 ? reservationIndex.map((r) => ({ group: 'Reservas', text: r.title, sub: [dateRange(r), r.code ?? 'código pendiente'].join(' · '), keywords: foldText(`${r.title} ${r.code ?? ''} ${r.contact_name ?? ''}`), run: () => navigate(`#/reservas/${r.id}`) })) : []),
+    ],
+  });
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fbMark(shell.header, 'booking.cabecera', 'Cabecera');
@@ -216,6 +265,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     } finally {
       clearCostCache(); // los importes no se quedan en el dispositivo
       forgetHousePeople();
+      forgetLogos();
+      recents.length = 0;
       ctx.onLogout();
     }
   }
@@ -233,6 +284,17 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     shell.setRoute(entry.base);
     replace(main);
     unmountView = entry.mount({ ...ctx, main, navigate, logout });
+    // Recientes del menú: la ficha abierta sube arriba (solo en memoria, se va al cerrar sesión).
+    const opened = new RegExp(`^#/reservas/(${UUID})$`, 'i').exec(hash);
+    if (opened) void client.get(RESERVATIONS, opened[1]!.toLowerCase()).then((row) => {
+      const r = row as ReservationRow | null;
+      if (!r) return;
+      const at = recents.findIndex((x) => x.id === r.id);
+      if (at >= 0) recents.splice(at, 1);
+      recents.unshift({ id: r.id, title: r.title, sub: `Reserva · ${dateRange(r)}` });
+      recents.length = Math.min(recents.length, 3);
+      shell.menu?.refresh();
+    });
     // La pantalla es la raíz de la ruta de etiquetas («Reserva › Acciones › Editar») y el nodo de reserva si no hay nada más cerca.
     screen = markScreen(main, entry.slug, entry.title);
     document.title = `${entry.title} · Ikisai Booking`;
@@ -260,6 +322,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   return () => {
     offStatus();
+    offIndex();
+    palette.destroy();
     offSessionEnd();
     feedback.destroy();
     unmountView?.();

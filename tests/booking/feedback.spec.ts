@@ -22,6 +22,8 @@ test.afterAll(async () => { await harness?.close(); });
 
 /** Pulsación larga con el ratón sobre el centro del elemento (el gesto del kit son 600 ms). */
 async function hold(page: Page, selector: string, ms = 900): Promise<void> {
+  // La ficha lleva portada, foco y recorrido encima de los bloques (tanda 27): primero, a la vista.
+  await page.locator(selector).first().scrollIntoViewIfNeeded();
   const box = await page.locator(selector).first().boundingBox();
   if (!box) throw new Error(`Sin caja para ${selector}`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

@@ -1,11 +1,14 @@
 /** Ficha de una reserva (canon §5): cabecera, acciones y bloques Resumen, Operación, Checklist, Huéspedes, Comidas y Cobro. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { confirmDialog, createSortableList, el, formatDate, icon, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type Sortable } from '@ikisai/ui-kit';
+import { confirmDialog, createSortableList, el, formatDate, icon, initialsOf, plural, positionBetween, renumber, renderMoneyBreakdown, replace, toast, type Child, type MedalOptions, type Sortable } from '@ikisai/ui-kit';
 import {
   CHECKLIST_TYPES, CHECKLIST_TYPE_LABELS, PROCEDURES, TABLES, canHoldStatus, canSeeGuests, checklistSeedOperations, depositStatus, guestModeOf,
-  eventPhase, missingForConfirmation, nights, requiresEvent, type ReservationStatus,
+  eventPhase, experienceOf, guestCompleteness, missingForConfirmation, nights, requiresEvent, type ExperienceInput, type ReservationStatus,
 } from '@ikisai/domain-booking';
-import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay } from '../app/client.ts';
+import { onSesPending, sesCandidates, takeRequestedBlock } from '../app/experience.ts';
+import { onLogos, retreatLogos } from '../app/logos.ts';
+import { createFichaLayout } from './fichaLayout.ts';
+import { ASSIGNMENTS, BEDS, DATE_OPTIONS, EVENTS, EXTRA_BEDS, EXTRA_REQUESTS, FINANCE, PORTAL_REQUESTS, RATES, GUESTS, NEEDS, PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, RESERVATIONS, SPACES, STAFF, STAYS, JOIN_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, type ReservationRow, fullDay, today } from '../app/client.ts';
 import { decideJoin, pendingJoins, type JoinPerson, type PendingJoin } from '../app/joins.ts';
 import { OPTIONS, expenseCategoryLabel, label } from '../app/labels.ts';
 import { balanceDeadline, balanceDeadlineHours } from '../app/rates.ts';
@@ -154,8 +157,11 @@ export function mountReservation(id: string): ViewMount {
     const portalBlock = createPortalBlock();
     const datesBlock = createDatesBlock();
     const sesBlock = createSesBlock();
+    const layout = createFichaLayout();
+    let requested = takeRequestedBlock(id);
     const checklistLists = new Map<string, { sortable: Sortable<Row>; sig: string }>();
     let collectedTried = false;
+    let extractTried = false;
     let renderChecklistItem: (item: Row) => HTMLElement = () => el('div');
     let onChecklistReorder: (ordered: Row[], moved: Row, to: number) => Promise<void> = async () => undefined;
     const rowSig = (rows: Row[]) => rows.map((r) => `${r.id}:${r.revision}:${r.status}:${r.label}:${r._pending === true}`).join('|');
@@ -328,7 +334,7 @@ export function mountReservation(id: string): ViewMount {
       const operation = !liveEvent
         ? block('blockOperation', 'Operación', el('p', { class: 'hint' }, 'El evento operativo se crea al confirmar la reserva.'))
         : block('blockOperation', 'Operación', [
-            kv(['Evento', `${text(liveEvent.code ?? 'código pendiente')} · ${PHASE[eventPhase(reservation, liveEvent as any)]}`],
+            kv(['Estado del evento', PHASE[eventPhase(reservation, liveEvent as any)]],
               ['Llegada', time(liveEvent.arrival_time)], ['Salida', time(liveEvent.departure_time)], ['Responsable', text(liveEvent.responsible_name)],
               ['Preparación', label(liveEvent.preparation_status)], ['Alojamiento', label(liveEvent.accommodation_status)],
               ['Cocina', label(liveEvent.kitchen_status)], ['Limpieza', label(liveEvent.cleaning_status)],
@@ -531,6 +537,32 @@ export function mountReservation(id: string): ViewMount {
         editLink('editFinance', 'Editar', () => openRowSheet({
           client, title: 'Cobro', table: FINANCE, row: finance && finance.deleted_at === null ? finance : null, insertId: id, specs: FINANCE_SPECS, savedMessage: 'Cobro guardado.', feedbackId: 'booking.reserva.cobro.hoja', feedbackLabel: 'Editar cobro' })));
 
+      // Extracto (arriba de Dinero, solo con permiso de importes): lo que queda por cobrar de lo contratado, lo próximo
+      // y sus facturas en Finance. Lo cobrado sale de Finance (`reservation_collected`), para que las tres apps digan lo
+      // mismo; sin red ni copia, lo dice. Sin «Movimientos» hasta que Finance dé las facturas una a una.
+      const contractedTotal = Number(accepted?.total ?? finance?.final_amount ?? 0);
+      const collectedNow = seesFinance ? cachedCollected(id) : null;
+      if (seesFinance && !collectedNow && !extractTried && contractedTotal > 0) {
+        extractTried = true;
+        void fetchCollected(client, id).then((value) => { if (value) void paint(); });
+      }
+      const depositLeft = Math.max(0, Number(finance?.deposit_required ?? 0) - Number(finance?.deposit_paid ?? 0));
+      const left = collectedNow ? Math.max(0, Math.round((contractedTotal - collectedNow.collected) * 100) / 100) : null;
+      const owesDeposit = depositLeft > 0 && ['pendiente', 'parcial'].includes(depositStatus(finance as any));
+      const extract = !seesFinance || contractedTotal <= 0 ? null : el('article', { class: 'card', id: 'financeExtract', 'data-feedback-id': 'booking.reserva.extracto', 'data-feedback-label': 'Extracto' },
+        el('div', { class: 'cardhead' }, el('h3', null, 'Extracto')),
+        left === null
+          ? el('p', { class: 'hint', id: 'financeExtractUnknown' }, navigator.onLine ? `Contratado: ${money(contractedTotal)}. Lo cobrado lo registra Finance; cargando…` : `Contratado: ${money(contractedTotal)}. Lo cobrado se verá al reconectar.`)
+          : renderMoneyBreakdown({
+              mode: 'statement', totalLabel: 'Te queda por cobrar', total: left, subtitle: `de ${money(contractedTotal)} contratados · cobrado ${money(collectedNow!.collected)}`,
+              upcomingLabel: 'Lo próximo',
+              upcoming: left <= 0 ? [] : [owesDeposit
+                ? { id: 'senal', label: 'Señal', amount: Math.min(depositLeft, left), kind: 'due' as const, chip: { text: 'Pendiente', tone: 'warn' as const } }
+                : { id: 'saldo', label: 'Saldo', amount: left, kind: 'due' as const, meta: deadline ? `plazo interno: ${deadline.toLocaleString('es-ES', { day: 'numeric', month: 'short' })}` : null, chip: { text: deadlinePassed ? 'Plazo vencido' : 'Pendiente', tone: deadlinePassed ? 'alert' as const : 'warn' as const } }],
+              moves: [],
+            }),
+        el('p', null, el('a', { class: 'linkbtn', id: 'openIssuedInvoices', href: issueInvoiceUrl(id), target: '_self', rel: 'noopener', 'data-feedback-id': 'booking.reserva.extracto.facturas', 'data-feedback-label': 'Sus facturas en Finance' }, 'Sus facturas en Finance ›')));
+
       // Coste real: compras de Invoices asignadas a la reserva y su evento. Caché local al instante y refresco con red.
       const costByCategory = el('div', { id: 'costByCategory', 'data-feedback-id': 'booking.reserva.coste.categorias', 'data-feedback-label': 'Coste por categoría' });
       const costList = el('ul', { class: 'list', id: 'costList', 'data-feedback-id': 'booking.reserva.coste.facturas', 'data-feedback-label': 'Facturas' });
@@ -572,6 +604,23 @@ export function mountReservation(id: string): ViewMount {
         if (navigator.onLine) void fetchCosts(client, id, liveEvent?.id ?? null).then((fresh) => { if (fresh) paintCosts(fresh); }, () => paintCosts(null, true));
       }
 
+      // La experiencia de la reserva (la misma capa que Inicio y Reservas): portada, foco, recorrido y pestañas.
+      const experience = deleted ? null : experienceOf({
+        reservation, event: liveEvent as ExperienceInput['event'],
+        finance: seesFinance ? (finance ?? { deposit_required: null, deposit_paid: null }) as ExperienceInput['finance'] : null,
+        proposals: proposalData ? proposalData.proposals.filter((p) => !p.deleted_at) as unknown as ExperienceInput['proposals'] : null,
+        guests: seesGuests && liveEvent ? guests as unknown as ExperienceInput['guests'] : null,
+        checklist: liveEvent ? checklist as unknown as ExperienceInput['checklist'] : null,
+        uncoveredNeeds: staff ? staff.needs.filter((need) => need.status !== 'cubierto' && !need.deleted_at).length : null,
+        bedsAssigned: lodging ? lodging.assignments.reduce((sum, a) => sum + Number(a.persons || 0), 0) : null,
+        unseenRequests: portalData ? portalData.requests.filter((r) => r.status === 'enviada').length : null,
+        sesPending: writable && seesFinance && finance ? sesCandidates(client, [reservation], new Map([[id, finance as any]])).includes(id) : null,
+      }, today());
+      // Caras: hasta 5 medallones de huéspedes (solo iniciales) y «+n»; «n/m firmados» si se ven huéspedes en modo SES.
+      const faces: MedalOptions[] = seesGuests ? [...guests.slice(0, guests.length > 5 ? 4 : 5).map((g) => ({ initials: initialsOf([g.first_name, g.last_name_1].filter(Boolean).join(' ')) || '?' })),
+        ...(guests.length > 5 ? [{ initials: `+${guests.length - 4}` }] : [])] : [];
+      const signed = seesGuests && guestModeOf(reservation) === 'ses' && guests.length ? `${guests.filter((g) => guestCompleteness(g as any, 'ses').signed).length}/${guests.length} firmados` : null;
+
       // Pastilla de Calendar: lo último que se supo (caché) y, con red, refresco en segundo plano solo de esta reserva.
       const published = toCalendarEvent(reservation) !== null;
       const calendarChip = el('span', { class: 'chip', id: 'calendarChip', hidden: true, 'data-feedback-id': 'booking.reserva.cabecera.calendar', 'data-feedback-label': 'Estado de Calendar' });
@@ -608,8 +657,12 @@ export function mountReservation(id: string): ViewMount {
             void paint();
           } }, 'Entendido')) : null,
         el('div', { class: 'choices', id: 'reservationActions', 'data-feedback-id': 'booking.reserva.acciones', 'data-feedback-label': 'Acciones' }, actions),
-        el('div', { class: 'cardgrid ficha-grid' }, summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, cobro, costs),
+        layout.render(reservation.title, experience, [summary, datesCard, operation, sesCard, lodgingBlock, staffCard, portalCard, openCard, programBlock, checklistBlock, guestsBlock, meals, portalRequestsCard, proposalBlock, extract, cobro, costs], {
+          writable: editable, seesMoney: seesFinance, seesAll: writable && seesFinance && seesGuests, logo: retreatLogos(client).get(id) ?? null, faces, signed, nights: n,
+          onStep: (step) => { if (step.key === 'confirmar' && !liveEvent && !confirmPending && CONFIRMABLE.includes(reservation.status)) void confirmReservation(); },
+        }, requested),
       );
+      requested = null;
       if (focusedHandle) host.querySelector<HTMLElement>(`#blockChecklist .sortable-row[data-key="${focusedHandle}"] .sortable-handle`)?.focus({ preventScroll: true });
       syncMore();
     }
@@ -622,6 +675,7 @@ export function mountReservation(id: string): ViewMount {
     // Propuestas y sus tablas: solo las lee el equipo con permiso de escritura.
     if (writable && canRead(client, DATE_OPTIONS)) offs.push(client.onTable(DATE_OPTIONS, () => void paint()));
     for (const table of [PROPOSALS, PROPOSAL_LINES, CONDITIONS, TIERS, PORTAL_REQUESTS, EXTRA_REQUESTS, RATES]) if (writable && canRead(client, table)) offs.push(client.onTable(table, () => void paint()));
-    return () => { offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
+    offs.push(onLogos(() => void paint()), onSesPending(() => void paint()));
+    return () => { layout.destroy(); offs.forEach((off) => off()); wide.removeEventListener('change', syncMore); checklistLists.forEach(({ sortable }) => sortable.destroy()); staffBlock.destroy(); portalBlock.destroy(); datesBlock.destroy(); sesBlock.destroy(); };
   };
 }

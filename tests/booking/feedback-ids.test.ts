@@ -80,6 +80,8 @@ test('la raíz de cada id es una pantalla o una pieza de la cáscara conocida', 
   const allowed = new Set([
     'inicio', 'reservas', 'reserva', 'huespedes', 'calendario', 'espacios', 'tarifas', 'propuesta', 'ses', 'pendientes', 'cabecera', 'navegacion', 'avisos',
     'estancias',
+    // Menú lateral común (tanda 27, kit 0.47).
+    'menu',
   ]);
   assert.deepEqual([...roots].filter((root) => !allowed.has(root!)), []);
 });

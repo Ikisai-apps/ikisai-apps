@@ -121,7 +121,10 @@ export async function startHarness(options: { compile?: boolean } = {}): Promise
   };
 }
 
-export async function login(page: Page, baseURL: string): Promise<void> {
+export async function login(page: Page, baseURL: string, options: { tabs?: boolean } = {}): Promise<void> {
+  // La ficha abre en la pestaña de su fase (tanda 27); las pruebas de los bloques usan «Todo», la ficha entera de siempre.
+  // `tabs: true` deja las pestañas como las ve quien entra por primera vez (lo prueba ficha-tabs.spec.ts).
+  if (!options.tabs) await page.addInitScript(() => { try { localStorage.setItem('booking:ficha:todo', '1'); } catch { /* sin almacenamiento */ } });
   await page.goto(`${baseURL}/`);
   await expect(page.getByRole('heading', { name: 'Ikisai Booking' })).toBeVisible();
   await page.getByLabel('Correo electrónico').fill(USER.email);

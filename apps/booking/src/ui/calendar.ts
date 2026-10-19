@@ -1,7 +1,11 @@
 /** Calendario (API §9.3): ocupación mensual de días completos y estado de la sincronización con Google Calendar. */
-import { confirmDialog, createCalendar, el, replace, toast, type CalendarEvent } from '@ikisai/ui-kit';
+import { confirmDialog, createCalendar, el, replace, toast, type CalendarEvent, type Sheet } from '@ikisai/ui-kit';
+import { priceCalendar } from '@ikisai/domain-booking';
 import type { SyncedRow } from '@ikisai/sync-client';
-import { DATE_BLOCKS, RESERVATIONS, STAYS, STAY_PERSONS, canRead, canWrite, dateRange, describeError, type ReservationRow } from '../app/client.ts';
+import { CONDITIONS, DATE_BLOCKS, DATE_OPTIONS, RATES, RESERVATIONS, STAYS, STAY_PERSONS, canRead, canWrite, dateRange, describeError, fullDay, today, type ReservationRow } from '../app/client.ts';
+import { eur } from '../app/rates.ts';
+import { caseReservation, openPriceSheet } from './ratesCase.ts';
+import { requestNewReservation } from './reservations.ts';
 import { housePeople, liveStays, personsByStay, stayTitle, type HousePerson, type StayPersonRow, type StayRow } from '../app/stays.ts';
 import { fetchCalendarStatus, readCalendarCache, type CalendarHealth as Health, type CalendarStatus } from '../app/calendarStatus.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
@@ -92,9 +96,54 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
     layerSwitch('outsider', 'Estancias de outsiders', 'layerOutsider'), layerSwitch('staff', 'Presencia del staff', 'layerStaff'),
     el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'booking.calendario.capas.estancias', 'data-feedback-label': 'Abrir Estancias', onclick: () => navigate('#/estancias') }, 'Estancias')) : null;
 
+  // «Fines de semana libres» (tanda 27, MUELA-067 §7): el más barato de los próximos meses para un retiro de 2 noches,
+  // y la hoja con todos, con la regla de disponibilidad de siempre. Calcula en el dispositivo (también sin red). Sin
+  // tarifas legibles (el lector), no se enseña: no ve precios.
+  const weekendsHost = el('div', { 'data-feedback-id': 'booking.calendario.fines', 'data-feedback-label': 'Fines de semana libres' });
+  const seesRates = canRead(client, RATES) && canRead(client, CONDITIONS);
+  const PERSONS_KEY = 'booking:calendario:personas';
+  let persons = (() => { try { return Number(localStorage.getItem(PERSONS_KEY)) || 24; } catch { return 24; } })();
+  let weekendSheet: Sheet | null = null;
+  async function weekendMonths() {
+    const list = async (table: Parameters<typeof client.list>[0]) => (canRead(client, table) ? ((await client.list(table)) as Array<Record<string, any>>).filter((r) => !r.deleted_at) : []);
+    const conditions = await list(CONDITIONS);
+    const c = { persons, start: today(), nights: 2, eventType: 'retiro', conditionsId: null };
+    return priceCalendar({ reservation: caseReservation(c), persons, nights: 2, rates: (await list(RATES)).filter((r) => r.active) as never,
+      conditions: (conditions.find((x) => x.is_default && x.active !== false) ?? conditions.find((x) => x.active !== false) ?? null) as never,
+      from: today(), months: 6, availability: { reservations: (await list(RESERVATIONS)) as never, options: (await list(DATE_OPTIONS)) as never, blocks: (await list(DATE_BLOCKS)) as never } });
+  }
+  async function paintWeekends(): Promise<void> {
+    if (!seesRates) return;
+    const months = await weekendMonths();
+    const best = months.flatMap((m) => m.weekends).find((w) => w.cheapest) ?? null;
+    replace(weekendsHost, el('button', { type: 'button', class: 'bk-casedates', id: 'freeWeekends', 'data-feedback-id': 'booking.calendario.fines.abrir', 'data-feedback-label': 'Fines de semana libres', onclick: () => void openWeekends() },
+      el('span', { class: 'hint' }, 'Fines de semana libres'),
+      el('strong', null, best && best.total !== null ? `${fullDay(best.start)} · ${eur(best.total)} para ${persons} personas` : 'Ver precios por fin de semana'),
+      el('span', { class: 'hint' }, best?.perPerson != null ? `${eur(best.perPerson)} por persona · el más barato de 6 meses ›` : 'Los próximos 6 meses ›')));
+  }
+  async function openWeekends(): Promise<void> {
+    const months = await weekendMonths();
+    void weekendSheet?.close(true);
+    weekendSheet = openPriceSheet({
+      title: 'Fines de semana libres', months, persons, feedbackId: 'booking.calendario.fines.hoja',
+      onPersons: (n) => { persons = n; try { localStorage.setItem(PERSONS_KEY, String(n)); } catch { /* sin almacenamiento */ } void openWeekends(); void paintWeekends(); },
+      onPick: (w) => {
+        // Elegido un fin de semana: el alta de Reservas o la hoja de bloqueos, con las fechas puestas.
+        const host = weekendSheet?.body.querySelector(`[data-start="${w.start}"]`)?.closest('li');
+        if (!host || host.querySelector('.bk-weekend-acts')) return;
+        host.append(el('div', { class: 'choices bk-weekend-acts' },
+          canWrite(client) ? el('button', { type: 'button', class: 'primary small', 'data-feedback-id': 'booking.calendario.fines.reservar', 'data-feedback-label': 'Nueva reserva con estas fechas', onclick: () => { requestNewReservation(w.start, w.end); void weekendSheet?.close(true); navigate('#/reservas'); } }, 'Nueva reserva con estas fechas') : null,
+          showBlocks ? el('button', { type: 'button', class: 'ghost small', 'data-feedback-id': 'booking.calendario.fines.bloquear', 'data-feedback-label': 'Bloquear', onclick: () => { void weekendSheet?.close(true); openBlockSheet({ start_date: w.start, end_date: w.end }); } }, 'Bloquear') : null));
+      },
+    });
+  }
+  const openBlockSheet = (defaults: Record<string, unknown> = {}) => openRowSheet({
+    client, title: 'Bloquear fechas', table: DATE_BLOCKS, row: null, specs: BLOCK_SPECS, check: checkDateRange, savedMessage: 'Fechas bloqueadas.', defaults,
+    feedbackId: 'booking.calendario.bloqueos.nuevo', feedbackLabel: 'Bloquear fechas' });
+
   replace(main,
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Calendario'), el('p', null, 'Ocupación por meses y estado de la sincronización con Google Calendar.'))),
-    layersBar, calendarHost, blocksCard, panel);
+    layersBar, weekendsHost, calendarHost, blocksCard, panel);
 
   const calendar = createCalendar({
     view: 'month',
@@ -134,9 +183,7 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
           el('div', { class: 'row-title' }, el('span', { class: 'name' }, dateRange(row)), row._pending ? el('span', { class: 'chip pending' }, 'Pendiente') : null),
           row.reason ? el('div', { class: 'row-meta', 'data-feedback-ignore': '' }, row.reason) : null,
           el('div', { class: 'row-actions' }, el('button', { class: 'ghost small', type: 'button', 'aria-label': `Quitar el bloqueo ${dateRange(row)}`, 'data-feedback-id': 'booking.calendario.bloqueos.quitar', 'data-feedback-label': 'Quitar bloqueo', onclick: () => void removeBlock(row) }, 'Quitar'))))),
-      el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addDateBlock', 'data-feedback-id': 'booking.calendario.bloqueos.anadir', 'data-feedback-label': 'Bloquear fechas', onclick: () => openRowSheet({
-        client, title: 'Bloquear fechas', table: DATE_BLOCKS, row: null, specs: BLOCK_SPECS, check: checkDateRange, savedMessage: 'Fechas bloqueadas.',
-        feedbackId: 'booking.calendario.bloqueos.nuevo', feedbackLabel: 'Bloquear fechas' }) }, 'Bloquear fechas')));
+      el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addDateBlock', 'data-feedback-id': 'booking.calendario.bloqueos.anadir', 'data-feedback-label': 'Bloquear fechas', onclick: () => openBlockSheet() }, 'Bloquear fechas')));
   }
 
   async function retry(reservationId: string): Promise<void> {
@@ -185,8 +232,12 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   if (showStays) void housePeople(client).then((p) => { people = p; void calendar.refresh(); });
   const offBlocks = showBlocks ? client.onTable(DATE_BLOCKS, () => void calendar.refresh().then(paintBlocks)) : () => undefined;
   void paintBlocks();
+  void paintWeekends();
+  const offWeekends = seesRates ? [RESERVATIONS, DATE_BLOCKS, DATE_OPTIONS, RATES, CONDITIONS].filter((t) => canRead(client, t)).map((t) => client.onTable(t, () => void paintWeekends())) : [];
   void loadStatus();
   return () => {
+    offWeekends.forEach((o) => o());
+    void weekendSheet?.close(true);
     off();
     offBlocks();
     offStays.forEach((o) => o());

@@ -1,8 +1,9 @@
 /** Tarifario y condiciones comerciales (docs/booking/API.md §15.2): tarifas por capa, condiciones con sus tramos de cancelación. Solo el propietario escribe. */
 import type { RowOperation, TableName } from '@ikisai/sync-client';
 import { CONDITIONS_MARKERS, RATE_LAYERS, renderConditionsText } from '@ikisai/domain-booking';
-import { createSortableList, el, icon, plural, positionBetween, renumber, replace, toast, type Sortable } from '@ikisai/ui-kit';
-import { CONDITIONS, PROPOSALS, RATES, TIERS, canRead, describeError, fullDay } from '../app/client.ts';
+import { createSortableList, el, icon, plural, positionBetween, renderStages, renumber, replace, toast, type Sortable } from '@ikisai/ui-kit';
+import { CONDITIONS, DATE_BLOCKS, DATE_OPTIONS, PROPOSALS, RATES, RESERVATIONS, TIERS, canRead, describeError, fullDay } from '../app/client.ts';
+import { createRatesCase } from './ratesCase.ts';
 import { OPTIONS, RATE_LABELS, RATE_OPTIONS, label } from '../app/labels.ts';
 import { amountText, byPosition, eur, pct, tierText, tiersOf, type Row, balanceDeadlineHours } from '../app/rates.ts';
 import { openRowSheet, type FieldSpec } from './form.ts';
@@ -123,6 +124,9 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
         el('div', { class: 'row-meta' }, details),
         rate.includes ? el('div', { class: 'row-meta' }, `Incluye: ${rate.includes}`) : null,
         rate.excludes ? el('div', { class: 'row-meta' }, `No incluye: ${rate.excludes}`) : null),
+      owner ? el('button', { class: 'ghost small', type: 'button', dataset: { act: 'amount' }, 'aria-label': `Cambiar el importe de ${rate.name}`, 'data-feedback-id': 'booking.tarifas.tarifario.importe', 'data-feedback-label': 'Cambiar importe',
+        onclick: () => openRowSheet({ client, title: `Importe · ${rate.name}`, table: RATES, row: rate, specs: [{ key: 'amount', label: 'Importe (€)', type: 'number', decimal: true }], savedMessage: 'Importe guardado.', feedbackId: 'booking.tarifas.importe', feedbackLabel: 'Cambiar importe' }) }, 'Cambiar importe') : null,
+      rate._pending === true ? el('span', { class: 'chip pending' }, 'Pendiente de enviar') : null,
       editButton(`Editar ${rate.name}`, 'booking.tarifas.tarifario.editar', 'Editar tarifa', () => openRate(rate)));
   }
 
@@ -306,22 +310,56 @@ export const mountRates: ViewMount = ({ main, client, navigate }) => {
     return () => undefined;
   }
 
+  // Tres pasos en la misma pantalla (MUELA-052): Reglas → Probar un caso → Lo que ve el organizador.
+  const STEPS = [{ key: 'reglas', label: 'Reglas' }, { key: 'caso', label: 'Probar un caso' }, { key: 'organizador', label: 'Lo que ve el organizador' }];
+  let step = 'reglas';
+  const ratesCase = createRatesCase();
+  const stepsHost = el('div', { id: 'rateSteps' });
+  const stepNext = (to: string, text: string) => el('p', { class: 'bk-step-next' }, el('button', { type: 'button', class: 'primary', dataset: { next: to }, 'data-feedback-id': 'booking.tarifas.pasos.siguiente', 'data-feedback-label': 'Siguiente paso', onclick: () => go(to) }, `Siguiente: ${text} ›`));
+  const panels: Record<string, HTMLElement> = {
+    reglas: el('section', { id: 'stepRules', 'aria-label': 'Reglas' },
+      el('div', { class: 'sectionlabel' }, 'Tarifas'),
+      rateHost,
+      el('div', { class: 'sectionlabel', style: 'margin-top:22px' }, 'Condiciones'),
+      owner ? el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'newConditions', 'data-feedback-id': 'booking.tarifas.condiciones.nuevas', 'data-feedback-label': 'Nuevas condiciones', onclick: () => openConditions(null) }, icon('plus', 16), 'Nuevas condiciones')) : null,
+      conditionHost,
+      stepNext('caso', 'probar un caso')),
+    caso: el('section', { id: 'stepCase', 'aria-label': 'Probar un caso', hidden: true }, ratesCase.caseHost, stepNext('organizador', 'lo que ve el organizador')),
+    organizador: el('section', { id: 'stepOrganizer', 'aria-label': 'Lo que ve el organizador', hidden: true }, ratesCase.organizerHost),
+  };
+  function go(to: string): void {
+    step = to;
+    replace(stepsHost, renderStages({ label: 'Pasos de Tarifas', stages: STEPS, current: step, onPick: go, feedbackId: 'booking.tarifas.pasos' }));
+    for (const [key, panel] of Object.entries(panels)) panel.hidden = key !== step;
+  }
+  go('reglas');
+
   replace(
     main,
     el('p', null, el('button', { class: 'linkbtn', type: 'button', id: 'backToHome', 'data-feedback-id': 'booking.tarifas.cabecera.volver', 'data-feedback-label': 'Volver a Inicio', onclick: () => navigate('#/') }, '← Inicio')),
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Tarifas y condiciones'),
       el('p', null, owner ? 'Lo que se sugiere al preparar una propuesta y las condiciones comerciales que se le aplican.' : 'Solo lectura: el tarifario y las condiciones los edita el propietario.'))),
-    el('div', { class: 'sectionlabel' }, 'Tarifas'),
-    rateHost,
-    el('div', { class: 'sectionlabel', style: 'margin-top:22px' }, 'Condiciones'),
-    owner ? el('p', null, el('button', { class: 'ghost small', type: 'button', id: 'newConditions', 'data-feedback-id': 'booking.tarifas.condiciones.nuevas', 'data-feedback-label': 'Nuevas condiciones', onclick: () => openConditions(null) }, icon('plus', 16), 'Nuevas condiciones')) : null,
-    conditionHost,
+    el('p', { class: 'banner', id: 'ratesStandard', role: 'note' }, 'Son las tarifas estándar de la casa, no una propuesta concreta: la propuesta de cada reserva se prepara en su ficha.'),
+    stepsHost,
+    ...Object.values(panels),
     owner ? el('button', { class: 'fab', type: 'button', id: 'newRate', 'data-feedback-id': 'booking.tarifas.nueva_tarifa_boton', 'data-feedback-label': 'Nueva tarifa', onclick: () => openRate(null) }, icon('plus'), 'Nueva tarifa') : null,
   );
 
+  // El caso y el calendario de precios leen la disponibilidad de siempre (reservas, opciones de fecha y bloqueos).
+  async function paintCase(): Promise<void> {
+    const list = async (table: Parameters<typeof client.list>[0]) => (canRead(client, table) ? ((await client.list(table)) as Row[]) : []);
+    ratesCase.update({
+      rates: (await list(RATES)).filter((r) => !r.deleted_at), conditions: (await list(CONDITIONS)).filter((r) => !r.deleted_at),
+      availability: { reservations: (await list(RESERVATIONS)) as never, options: (await list(DATE_OPTIONS)) as never, blocks: (await list(DATE_BLOCKS)) as never },
+    });
+  }
+  void paintCase();
+
   void paint();
-  const offs = [RATES, CONDITIONS, TIERS, ...(seesProposals ? [PROPOSALS] : [])].map((table) => client.onTable(table, () => void paint()));
+  const offs = [RATES, CONDITIONS, TIERS, ...(seesProposals ? [PROPOSALS] : [])].map((table) => client.onTable(table, () => { void paint(); void paintCase(); }));
+  for (const table of [RESERVATIONS, DATE_OPTIONS, DATE_BLOCKS]) if (canRead(client, table)) offs.push(client.onTable(table, () => void paintCase()));
   return () => {
+    ratesCase.destroy();
     destroyed = true;
     offs.forEach((off) => off());
     lists.forEach(({ sortable }) => sortable.destroy());

@@ -2,7 +2,7 @@
    Aquí solo lo específico de Booking. Móvil primero (390 px), escritorio desde 1024 px. */
 
 
-/* Filtros de la lista de reservas: una fila que se desplaza en horizontal en móvil. */
+/* Filtros: una fila que se desplaza en horizontal (otras listas). Los de Reservas, a la vista en dos líneas, de 46 px y con recuento. */
 .filters {
   display: flex;
   gap: 8px;
@@ -12,6 +12,10 @@
 }
 .filters::-webkit-scrollbar { display: none; }
 .filters .softbtn { flex: 0 0 auto; }
+.filters.bk-filters { flex-wrap: wrap; overflow: visible; }
+.bk-filters .softbtn { min-height: var(--tap); display: inline-flex; align-items: center; gap: 6px; }
+.bk-filter-count { font-variant-numeric: tabular-nums; color: var(--muted); }
+.bk-filters .softbtn.active .bk-filter-count { color: inherit; }
 
 /* Avisos de Inicio: una línea cada uno, solo si hay algo que atender. */
 .notices { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
@@ -244,3 +248,64 @@ span.chip.missing { background: var(--warn-soft); color: var(--warn-ink); white-
 .completeness { margin: 0 0 10px; font-weight: 600; }
 .consent { display: grid; gap: 2px; margin: 10px 0; font-size: var(--text-sm); color: var(--muted); }
 .sigimg { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
+
+
+/* --- Tanda 27 (MUELA-067): piezas propias de Booking, prefijo `bk-`. Lo común viene del kit (cover-, lead-, stat-, stage-, tray-). */
+.bk-fold { margin: 14px 0; }
+.bk-fold > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
+.bk-notices-urgent { margin-bottom: 8px; }
+.bk-notices-urgent li { padding: 8px 12px; border-radius: 12px; background: var(--alert-soft); }
+#homeStats { margin: 6px 0 14px; }
+
+/* Fila de reserva: medallón con sangría colgante; «Siguiente» y las áreas a todo el ancho. */
+.bk-res .row-title { align-items: center; }
+.bk-res-medal { flex: 0 0 auto; display: inline-flex; }
+.bk-res-next { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.bk-next { font-weight: 600; }
+.bk-next.alert { color: var(--alert); }
+.bk-areas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.bk-area { font-size: 13px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.bk-area.ok { background: var(--ok-soft); color: var(--ink); }
+.bk-area.warn { background: var(--warn-soft); color: var(--warn-ink); }
+.bk-phase { margin-top: 14px; }
+
+/* Portada de las próximas y «Corre prisa». */
+.bk-cover-open { margin: 8px 0 14px; display: flex; justify-content: flex-start; }
+.bk-cover-open .primary { min-height: var(--tap); }
+.bk-rush { margin: 6px 0 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--warn); background: var(--warn-soft); }
+.bk-rush-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.bk-rush-item { width: 100%; min-height: var(--tap); display: flex; align-items: center; gap: 10px; text-align: left; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 6px 10px; color: var(--ink); }
+.bk-rush-item > span { display: grid; }
+.bk-rush-why { font-size: 13px; color: var(--warn-ink); }
+
+/* Comercial como captación: embudo compacto y tablero por etapa (en el móvil, columnas que se deslizan). */
+.bk-funnel { display: inline; }
+.bk-funnel .linkbtn { min-height: var(--tap); min-width: var(--tap); font-weight: 700; }
+.bk-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 86%); gap: 10px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x mandatory; align-items: start; }
+.bk-col { scroll-snap-align: start; border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: var(--paper-2); }
+.bk-col h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.bk-dots { display: inline-flex; gap: 4px; }
+.bk-dots span { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--muted); }
+.bk-dots span.on { background: var(--ink); border-color: var(--ink); }
+@media (min-width: 1024px) {
+  .bk-board { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
+}
+
+/* Calendario de precios (Tarifas · Probar un caso, y Calendario · Fines de semana libres). */
+.bk-casedates { width: 100%; min-height: 64px; display: grid; gap: 2px; text-align: left; padding: 10px 14px; margin: 8px 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.bk-casedates strong { font-size: 17px; }
+.bk-fd-month h4 { margin: 14px 0 6px; }
+.bk-fd-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.bk-fd-weekend { width: 100%; min-height: var(--tap); display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.bk-fd-weekend .bk-fd-dates { font-weight: 700; }
+.bk-fd-weekend .bk-fd-total { justify-self: end; font-weight: 700; }
+.bk-fd-weekend .bk-fd-tags { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.bk-fd-weekend.bk-fd-cheapest { border-color: var(--ok); background: var(--ok-soft); }
+.bk-fd-weekend.bk-fd-high { border-color: var(--warn); }
+.bk-fd-weekend.bk-fd-busy { text-decoration: line-through; color: var(--muted); background: var(--paper-2); }
+.bk-weekend-acts { margin: 6px 0 4px; }
+.bk-step-next { margin: 16px 0; display: flex; justify-content: flex-end; }
+.bk-ses-all { margin: 10px 0; }
+.bk-ficha .bk-focus { margin: 12px 0; display: grid; gap: 8px; }
+.bk-ficha .bk-focus #phaseAction { justify-self: start; min-height: var(--tap); }
+#reservationTabs { margin: 12px 0 4px; }

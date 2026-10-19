@@ -14,3 +14,4 @@ export * from './portal.ts';
 export * from './stays.ts';
 export * from './sesRules.ts';
 export * from './priceCalendar.ts';
+export * from './experience.ts';

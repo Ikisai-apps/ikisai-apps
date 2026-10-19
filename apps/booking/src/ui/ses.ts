@@ -1,11 +1,12 @@
 /** SES.HOSPEDAJES (API §17): bloque «Registro de viajeros» de la ficha (interruptores y comunicaciones) y ajuste global (entorno y pausa). */
 import type { RowOperation, SyncClient, SyncedRow } from '@ikisai/sync-client';
-import { confirmDialog, el, formatDate, openSheet, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, deadlineText, el, formatDate, openSheet, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
 import { SES_DISABLED_REASONS, guestModeOf } from '@ikisai/domain-booking';
 import { RESERVATIONS, SES_SETTINGS, canRead, canWrite, describeError, fullDay, type ReservationRow } from '../app/client.ts';
+import { createSesTray } from './sesTray.ts';
 import { GUEST_MODE_HELP, SES_ENVIRONMENT_LABELS, SES_REASON_LABELS, sesReasonText } from '../app/labels.ts';
 import {
-  COMMUNICABLE_STATUSES, DEADLINE_TEXT, acceptedReservationComm, changedSinceCommunicated, deadlineLevel, fetchSes, liveReservationComm, paymentDateIsOld,
+  COMMUNICABLE_STATUSES, DEADLINE_TEXT, acceptedReservationComm, changedSinceCommunicated, deadlineLevel, deadlineOf, fetchSes, liveReservationComm, paymentDateIsOld,
   guestReports, PV_IN_PROCESS, pendingCancellation, reservationComms, type SesCommunication, type SesStatus,
 } from '../app/ses.ts';
 import type { ViewMount } from './shell.ts';
@@ -133,8 +134,11 @@ export function createSesBlock(): SesBlock {
 
     // Plazo de 24 h: desde el momento legal de la comunicación o, sin comunicación, desde el registro del pago.
     if (enabled && !accepted && COMMUNICABLE_STATUSES.includes(reservation.status)) {
-      const level = deadlineLevel(latest && latest.status !== 'anulada' ? latest.legal_start_at ?? registeredAt : registeredAt);
-      if (level && level !== 'ok') out.push(el('div', { class: `banner ${level === 'warn' ? 'warn' : 'alert'}`, id: 'sesDeadline', 'data-feedback-id': 'booking.reserva.ses.plazo', 'data-feedback-label': 'Plazo de 24 horas', role: level === 'warn' ? 'status' : 'alert', dataset: { level } }, el('span', null, DEADLINE_TEXT[level])));
+      // Plazo con hora (MUELA-038): los mismos umbrales de 12, 18 y 24 h, y cuándo vence en la hora de la casa.
+      const due = deadlineOf(latest && latest.status !== 'anulada' ? latest.legal_start_at ?? registeredAt : registeredAt);
+      const level = due?.level ?? null;
+      if (due && level && level !== 'ok') out.push(el('div', { class: `banner ${level === 'warn' ? 'warn' : 'alert'}`, id: 'sesDeadline', 'data-feedback-id': 'booking.reserva.ses.plazo', 'data-feedback-label': 'Plazo de 24 horas', role: level === 'warn' ? 'status' : 'alert', dataset: { level } },
+        el('span', null, `${DEADLINE_TEXT[level]} · ${deadlineText(due.dueAt, { prefix: level === 'expired' ? 'Venció el' : 'Vence el' })}`)));
       if (paymentDateIsOld(finance?.payment_date, registeredAt)) {
         out.push(el('p', { class: 'hint', id: 'sesPaymentOld', role: 'status' }, `El pago es del ${fullDay(String(finance!.payment_date))}: el plazo legal puede haber vencido.`));
       }
@@ -272,15 +276,32 @@ export function createSesBlock(): SesBlock {
   };
 }
 
-/** Pantalla `#/ses`: entorno (pruebas o real) y pausa de envíos. Solo el propietario edita. */
-export const mountSes: ViewMount = ({ main, client }) => {
+/**
+ * Pantalla `#/ses` (tanda 27): la bandeja por estado de todas las reservas (`sesTray.ts`), con las franjas de pruebas y
+ * pausa arriba y los ajustes plegados. Solo el propietario edita los ajustes; pausar se puede sin red (protege) y pasar a
+ * real solo con red. El lector ve «Sin acceso» y nada de SES.
+ */
+export const mountSes: ViewMount = ({ main, client, navigate }) => {
   const host = el('div', { 'data-feedback-id': 'booking.ses.ajustes', 'data-feedback-label': 'Ajustes de SES' });
+  const bands = el('div', { id: 'sesBands' });
+  const trayHost = el('div', { 'data-feedback-id': 'booking.ses.bandeja', 'data-feedback-label': 'Bandeja de SES' });
   const owner = client.bootstrap()?.membership.role === 'owner';
-  replace(main, el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'SES.HOSPEDAJES'), el('p', null, 'Ajustes de las comunicaciones al registro de viajeros.'))), host);
+  const allowed = canRead(client, SES_SETTINGS);
+  const settingsFold = el('details', { class: 'bk-fold', id: 'sesSettingsFold', 'data-feedback-id': 'booking.ses.servicio', 'data-feedback-label': 'Ajustes del servicio' }, el('summary', null, 'Ajustes del servicio'), host);
+  const howFold = el('details', { class: 'bk-fold', id: 'sesHow', 'data-feedback-id': 'booking.ses.vias', 'data-feedback-label': 'Cómo se comunica' }, el('summary', null, 'Cómo se comunica'),
+    el('p', null, 'Automática: al registrar el pago, la reserva queda lista y se comunica desde aquí o desde su ficha («Comunicar»). Los partes de viajeros salen al cerrar la entrada en Huéspedes.'),
+    el('p', null, 'A mano: si la app no puede enviar, Huéspedes prepara los «Datos para SES» para copiarlos en la sede electrónica y registrar el envío con su justificante.'),
+    el('p', { class: 'hint' }, 'El plazo legal es de 24 horas desde el pago, también con los envíos en pausa.'));
+  replace(main, el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'SES.HOSPEDAJES'), el('p', null, allowed ? 'Qué falta por comunicar, los rechazos y los partes de viajeros.' : 'Registro de viajeros.'))),
+    ...(allowed ? [bands, trayHost, settingsFold, howFold] : [host]));
+  const tray = allowed ? createSesTray(trayHost, { client, navigate, writable: canWrite(client) }) : null;
 
   async function paint(): Promise<void> {
-    if (!canRead(client, SES_SETTINGS)) return replace(host, el('div', { class: 'empty plain' }, el('strong', null, 'Sin acceso'), 'Estos ajustes los ven el equipo editor y los propietarios.'));
+    if (!allowed) return replace(host, el('div', { class: 'empty plain' }, el('strong', null, 'Sin acceso'), 'Estos ajustes los ven el equipo editor y los propietarios.'));
     const settings = ((await client.list(SES_SETTINGS)) as Row[]).find((row) => row.deleted_at === null) ?? null;
+    // Franjas siempre a la vista: entorno de pruebas y pausa (salen del espejo, también sin red).
+    replace(bands, settings && settings.environment !== 'prod' ? el('div', { class: 'banner', id: 'sesTestBand', role: 'status', 'data-feedback-id': 'booking.ses.franja.pruebas', 'data-feedback-label': 'Entorno de pruebas' }, 'Entorno de pruebas: lo que se comunica no llega a la policía.') : null,
+      settings?.paused === true ? el('div', { class: 'banner warn', id: 'sesPausedBand', role: 'status', 'data-feedback-id': 'booking.ses.franja.pausa', 'data-feedback-label': 'Envíos en pausa' }, 'Envíos en pausa: nada sale hasta reanudarlos, y el plazo legal sigue corriendo.') : null);
     if (!settings) return replace(host, el('div', { class: 'empty' }, el('strong', null, 'Sin ajustes todavía'), 'Aún no se han sincronizado. Vuelve a probar con conexión.'));
     const editable = owner && canWrite(client);
     const save = async (fields: Record<string, unknown>, message: string): Promise<boolean> => {
@@ -294,26 +315,35 @@ export const mountSes: ViewMount = ({ main, client }) => {
         return false;
       }
     };
-    const environment = el('select', { id: 'sesEnvironment', 'data-feedback-id': 'booking.ses.ajustes.entorno', 'data-feedback-label': 'Entorno', 'aria-label': 'Entorno', disabled: !editable, onchange: async () => {
+    const offline = !navigator.onLine;
+    const environment = el('select', { id: 'sesEnvironment', 'data-feedback-id': 'booking.ses.ajustes.entorno', 'data-feedback-label': 'Entorno', 'aria-label': 'Entorno', 'aria-describedby': offline ? 'sesEnvironmentWhy' : null, disabled: !editable, onchange: async () => {
       const value = environment.value;
+      if (value === 'prod' && !navigator.onLine) {
+        environment.value = String(settings.environment);
+        return void toast('Pasar a real necesita conexión, para ver antes el estado de SES.');
+      }
       if (value === 'prod' && !(await confirmDialog({ title: 'Pasar a entorno real', text: 'Desde ahora se enviarán comunicaciones reales a SES.HOSPEDAJES. Confirma solo si las credenciales y los datos son los definitivos.', confirmLabel: 'Pasar a real' }))) {
         environment.value = String(settings.environment);
         return;
       }
       await save({ environment: value }, value === 'prod' ? 'Entorno real activado.' : 'Entorno de pruebas activado.');
-    } }, Object.entries(SES_ENVIRONMENT_LABELS).map(([value, text]) => el('option', { value }, text)));
+    } }, Object.entries(SES_ENVIRONMENT_LABELS).map(([value, text]) => el('option', { value, disabled: value === 'prod' && offline && settings.environment !== 'prod' }, text)));
     environment.value = String(settings.environment);
     const paused = el('input', { type: 'checkbox', id: 'sesPaused', 'data-feedback-id': 'booking.ses.ajustes.pausa', 'data-feedback-label': 'Pausar envíos', checked: settings.paused === true, disabled: !editable, onchange: () => {
       void save({ paused: paused.checked }, paused.checked ? 'Envíos pausados.' : 'Envíos reanudados.').then((ok) => { if (!ok) paused.checked = !paused.checked; });
     } });
     replace(host, el('article', { class: 'card sessettings', id: 'sesSettings', 'data-feedback-id': 'booking.ses.ajustes.tarjeta', 'data-feedback-label': 'Entorno y pausa' },
       el('label', { class: 'field' }, el('span', null, 'Entorno'), environment),
+      offline && editable && settings.environment !== 'prod' ? el('p', { class: 'hint', id: 'sesEnvironmentWhy' }, 'Sin conexión: pasar a real se activa cuando vuelva la red. Pausar sí se puede.') : null,
       el('label', { class: 'check' }, paused, el('span', null, 'Pausar envíos')),
       el('p', { class: 'hint' }, settings.paused === true ? 'Los envíos están en pausa: no saldrá ninguna comunicación.' : 'Las comunicaciones se envían con normalidad.'),
       editable ? null : el('p', { class: 'hint' }, 'Solo un propietario puede cambiar estos ajustes.')));
   }
 
   void paint();
-  const offs = [client.onTable(SES_SETTINGS, () => void paint())];
-  return () => offs.forEach((off) => off());
+  const onNet = () => void paint();
+  window.addEventListener('online', onNet);
+  window.addEventListener('offline', onNet);
+  const offs = [client.onTable(SES_SETTINGS, () => { void paint(); void tray?.refresh(); })];
+  return () => { offs.forEach((off) => off()); tray?.destroy(); window.removeEventListener('online', onNet); window.removeEventListener('offline', onNet); };
 };

@@ -1,14 +1,16 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, listRow, openSheet, plural, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, createCoverCarousel, el, icon, listRow, openSheet, plural, renderMedal, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  EVENT_TYPES, TABLES, canHoldStatus, dayNumber, missingForConfirmation, nights, validateFields,
-  type ReservationStatus,
+  COMMERCIAL_STAGES, EVENT_TYPES, PHASES, PHASE_LABELS, TABLES, canHoldStatus, commercialStageLabel, dayNumber, foldText, missingForConfirmation, nextText, nights, validateFields,
+  type CommercialStage, type Phase, type ReservationStatus,
 } from '@ikisai/domain-booking';
 import { guard } from '../app/guard.ts';
 import {
-  EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, RESERVATIONS, canRead, canWrite, dateRange, describeError, statusLabel, today,
+  EVENT_TYPE_LABELS, EVENTS, FINANCE, GUESTS, NEEDS, PROPOSALS, RESERVATIONS, ASSIGNMENTS, PORTAL_REQUESTS, canRead, canWrite, dateRange, describeError, statusLabel, today,
   type ReservationRow,
 } from '../app/client.ts';
+import { PHASE_COLORS, loadExperiences, onSesPending, resetSesWatch, requestBlock, type ExperienceSet, type ReservationView } from '../app/experience.ts';
+import { onLogos, retreatLogos } from '../app/logos.ts';
 import type { ViewMount } from './shell.ts';
 import { fbIgnore, fbMark } from './feedback.ts';
 
@@ -19,6 +21,8 @@ const FILTERS: Array<[Filter, string]> = [
 ];
 const OPEN: ReservationStatus[] = ['en_estudio', 'negociacion', 'pre_reservada', 'confirmada', 'en_ejecucion'];
 const MISSING_LABELS = { start_date: 'la fecha de entrada', end_date: 'la fecha de salida', expected_guests: 'el número de personas' } as const;
+const RUSH_MAX = 4;
+const COVER_MAX = 5;
 
 function matches(row: ReservationRow, filter: Filter, now: number): boolean {
   switch (filter) {
@@ -42,9 +46,13 @@ interface FormValues {
   contact_phone: string;
 }
 
-function valuesOf(): FormValues {
-  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: '', end_date: '', expected_guests: '', contact_name: '', contact_phone: '' };
+function valuesOf(dates: { start?: string; end?: string } = {}): FormValues {
+  return { title: '', event_type: 'retiro', status: 'en_estudio', start_date: dates.start ?? '', end_date: dates.end ?? '', expected_guests: '', contact_name: '', contact_phone: '' };
 }
+
+/** «Nueva reserva con estas fechas» desde el Calendario: el alta se abre al montar Reservas con las fechas puestas. */
+let requestedDates: { start: string; end: string } | null = null;
+export function requestNewReservation(start: string, end: string): void { requestedDates = { start, end }; }
 
 function toFields(values: FormValues): Record<string, unknown> {
   const guests = values.expected_guests.trim();
@@ -60,24 +68,50 @@ function toFields(values: FormValues): Record<string, unknown> {
   };
 }
 
-/** Vista Reservas: lista con filtros y búsqueda, alta (la edición y la confirmación viven en la ficha). */
+/**
+ * Reservas (tanda 27, MUELA-009 y 067 §2): la portada de las próximas que se pasa con flechas, «Corre prisa», la lista
+ * por fases con «Siguiente: …» y la preparación por áreas, el grupo comercial como embudo y tablero, filtros con su
+ * recuento y búsqueda sin tildes en todas. El alta y la papelera, como siempre; vaciarla, desactivado con su motivo.
+ */
 export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   let rows: ReservationRow[] = [];
+  let set: ExperienceSet | null = null;
   let filter: Filter = 'proximas';
   let query = '';
   let sheet: Sheet | null = null;
+  let coverIndex = 0;
+  let rushOpen = false;
   const writable = canWrite(client);
+  resetSesWatch();
 
   const search = el('input', { type: 'search', id: 'reservationSearch', 'data-feedback-id': 'booking.reservas.buscador.campo', 'data-feedback-label': 'Buscar reservas', placeholder: 'Buscar por nombre, contacto o código', 'aria-label': 'Buscar reservas', autocomplete: 'off',
-    oninput: () => { query = search.value.trim().toLowerCase(); paint(); } });
-  const filterBar = el('div', { class: 'filters', role: 'group', 'aria-label': 'Filtrar reservas', 'data-feedback-id': 'booking.reservas.filtros', 'data-feedback-label': 'Filtros' });
+    'aria-describedby': 'reservationSearchScope', oninput: () => { query = foldText(search.value); paint(); } });
+  const searchScope = el('p', { class: 'hint', id: 'reservationSearchScope', 'aria-live': 'polite' });
+  const filterBar = el('div', { class: 'filters bk-filters', role: 'group', 'aria-label': 'Filtrar reservas', 'data-feedback-id': 'booking.reservas.filtros', 'data-feedback-label': 'Filtros' });
   const count = el('span', { class: 'count', id: 'reservationCount' }, '0');
+  const coverHost = el('div', { 'data-feedback-id': 'booking.reservas.portada', 'data-feedback-label': 'La próxima' });
+  const rushHost = el('div', { 'data-feedback-id': 'booking.reservas.prisa', 'data-feedback-label': 'Corre prisa' });
   const listHost = el('div', { 'data-feedback-id': 'booking.reservas.lista', 'data-feedback-label': 'Lista de reservas' });
   const trashList = el('ul', { class: 'list', 'aria-label': 'Reservas en la papelera', 'data-feedback-id': 'booking.reservas.papelera.lista', 'data-feedback-label': 'Reservas en la papelera' });
   const trashCount = el('span', { class: 'count', id: 'trashCount' }, '0');
   const owner = client.bootstrap()?.membership.role === 'owner';
+  // Vaciar borra en el servidor: sin red, o con cambios sin enviar, queda desactivado y dice por qué (se activa solo).
+  const emptyWhy = el('p', { class: 'hint', id: 'emptyTrashWhy', hidden: true });
+  const emptyButton = owner ? el('button', { class: 'danger small', type: 'button', id: 'emptyTrash', 'data-feedback-id': 'booking.reservas.papelera.vaciar', 'data-feedback-label': 'Vaciar papelera',
+    onclick: () => { if (emptyButton!.getAttribute('aria-disabled') !== 'true') void emptyTrash(); } }, icon('trash', 16), 'Vaciar papelera') : null;
   const trash = el('details', { id: 'trash', hidden: true, 'data-feedback-id': 'booking.reservas.papelera', 'data-feedback-label': 'Papelera' }, el('summary', { class: 'sectionlabel', style: 'cursor:pointer' }, 'Papelera', trashCount), trashList,
-    owner ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'danger small', type: 'button', id: 'emptyTrash', 'data-feedback-id': 'booking.reservas.papelera.vaciar', 'data-feedback-label': 'Vaciar papelera', onclick: () => void emptyTrash() }, icon('trash', 16), 'Vaciar papelera')) : null);
+    emptyButton ? el('div', { style: 'margin-top:10px' }, emptyButton, emptyWhy) : null);
+
+  function paintEmptyState(): void {
+    if (!emptyButton) return;
+    const status = client.status();
+    const why = !navigator.onLine || status.network === 'offline' ? 'Sin conexión: vaciar la papelera borra en el servidor. Se activa sola cuando vuelva la red.'
+      : status.pendingCommands > 0 ? 'Hay cambios sin enviar: vaciar la papelera espera a que se envíen. Se activa sola.' : null;
+    emptyButton.setAttribute('aria-disabled', String(why !== null));
+    if (why) emptyButton.setAttribute('aria-describedby', 'emptyTrashWhy'); else emptyButton.removeAttribute('aria-describedby');
+    emptyWhy.hidden = why === null;
+    emptyWhy.textContent = why ?? '';
+  }
 
   /**
    * Borrado definitivo de todo lo que hay en la papelera de Booking (contrato §11.2: solo el propietario, con recuento).
@@ -111,9 +145,12 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
 
   replace(
     main,
-    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Reservas'), el('p', null, 'Del primer contacto al cierre: fechas, personas y estado.'))),
+    el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Reservas'), el('p', null, 'Del primer contacto al cierre: qué le falta a cada una y qué corre prisa.'))),
     el('div', { class: 'toolbar', 'data-feedback-id': 'booking.reservas.buscador', 'data-feedback-label': 'Buscador' }, el('div', { class: 'search' }, search)),
+    searchScope,
     filterBar,
+    coverHost,
+    rushHost,
     el('div', { class: 'sectionlabel' }, 'Reservas', count),
     listHost,
     trash,
@@ -121,48 +158,144 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
   );
 
   function paintFilters(): void {
-    replace(filterBar, FILTERS.map(([key, label]) => el('button', {
-      class: `softbtn small${filter === key ? ' active' : ''}`, type: 'button', 'aria-pressed': String(filter === key), dataset: { filter: key }, 'data-feedback-id': 'booking.reservas.filtros.filtro', 'data-feedback-label': 'Filtro',
-      onclick: () => { filter = key; paintFilters(); paint(); },
-    }, label)));
+    const now = dayNumber(today())!;
+    const live = rows.filter((r) => !r.archived_at);
+    replace(filterBar, FILTERS.map(([key, label]) => {
+      const n = live.filter((r) => matches(r, key, now)).length;
+      return el('button', {
+        class: `softbtn${filter === key ? ' active' : ''}`, type: 'button', 'aria-pressed': String(filter === key), dataset: { filter: key }, 'data-feedback-id': 'booking.reservas.filtros.filtro', 'data-feedback-label': 'Filtro',
+        'aria-label': `${label}: ${n}`, onclick: () => { filter = key; paintFilters(); paint(); },
+      }, label, el('span', { class: 'bk-filter-count', 'aria-hidden': 'true' }, String(n)));
+    }));
+  }
+
+  const medalOf = (v: ReservationView, size = 44) => renderMedal({ name: v.reservation.title, image: retreatLogos(client).get(v.reservation.id) ?? null, color: PHASE_COLORS[v.x.phase], size });
+  const metaOf = (r: ReservationRow) => {
+    const n = nights(r.start_date, r.end_date);
+    return [dateRange(r), r.expected_guests !== null ? plural(r.expected_guests, 'persona', 'personas') : null, n !== null ? plural(n, 'noche', 'noches') : null,
+      EVENT_TYPE_LABELS[r.event_type] ?? r.event_type, r.code ?? 'código pendiente'];
+  };
+  const chipsOf = (r: ReservationRow) => [el('span', { class: 'chip', dataset: { status: r.status } }, statusLabel(r.status)),
+    r.guests_visible ? el('span', { class: 'chip', dataset: { open: '' } }, 'Visible para huéspedes') : null].filter((c): c is HTMLElement => c !== null);
+  const open = (v: ReservationView, toStep = false) => { if (toStep) requestBlock(v.reservation.id, v.x.next?.block ?? null); navigate(`#/reservas/${v.reservation.id}`); };
+
+  /** Una fila: medallón, nombre, chips y datos de hoy; debajo, a todo el ancho, «Siguiente», la cuenta atrás y las áreas. */
+  function row(v: ReservationView): HTMLElement {
+    const r = v.reservation;
+    const node = fbMark(listRow({ id: r.id, title: r.title, meta: metaOf(r), chips: chipsOf(r), pending: r._pending === true, onClick: () => open(v), label: `Abrir ${r.title}` }), 'booking.reservas.lista.fila', 'Reserva');
+    node.classList.add('bk-res');
+    node.querySelector('.row-title')?.prepend(el('span', { class: 'bk-res-medal' }, medalOf(v)));
+    node.append(el('div', { class: 'bk-res-next' },
+      el('span', { class: `bk-next${v.x.next?.tone ? ` ${v.x.next.tone}` : ''}` }, '› ', nextText(v.x, set?.seesAll ?? false)),
+      v.x.rush && v.x.daysLeft !== null ? el('span', { class: 'chip warn' }, v.x.phase === 'curso' ? 'En curso' : v.x.daysLeft <= 1 ? (v.x.daysLeft === 0 ? 'Hoy' : 'Mañana') : `Faltan ${v.x.daysLeft} días`) : null));
+    if (v.x.areas.length) node.append(el('span', { class: 'bk-areas' }, v.x.areas.map((a) => el('span', { class: `bk-area ${a.ok ? 'ok' : 'warn'}` }, el('span', { 'aria-hidden': 'true' }, a.ok ? '✓ ' : '! '), el('span', { class: 'vh' }, a.ok ? 'Listo: ' : 'Pendiente: '), a.text))));
+    return node;
+  }
+
+  /** Comercial como captación: embudo compacto (de Confirmada a Primer contacto) y un tablero por etapa. */
+  function commercial(views: ReservationView[], confirmed: ReservationView[]): HTMLElement {
+    const seesMoney = set?.seesMoney ?? false;
+    const stageOf = (v: ReservationView): CommercialStage => v.x.commercial ?? 'contacto';
+    const stages = [...COMMERCIAL_STAGES].reverse();
+    const at = (s: CommercialStage) => (s === 'confirmada' ? confirmed : views.filter((v) => stageOf(v) === s));
+    const reached = (s: CommercialStage) => stages.slice(0, stages.indexOf(s) + 1).reduce((sum, k) => sum + at(k).length, 0);
+    const entered = reached('contacto');
+    const pct = entered ? Math.round((at('confirmada').length / entered) * 100) : 0;
+    const columns = el('div', { class: 'bk-board', id: 'commercialBoard', tabindex: '0', role: 'region', 'aria-label': 'Tablero comercial' }, stages.map((s) => {
+      const list = at(s);
+      const people = list.reduce((sum, v) => sum + (v.reservation.expected_guests ?? 0), 0);
+      return el('section', { class: 'bk-col', id: `stage-${s}`, 'aria-label': commercialStageLabel(s, seesMoney) },
+        el('h4', null, commercialStageLabel(s, seesMoney), el('span', { class: 'count' }, String(list.length)), people ? el('span', { class: 'hint' }, ` · ${plural(people, 'persona', 'personas')}`) : null),
+        s === 'confirmada'
+          ? el('p', { class: 'hint' }, list.length ? `${list.slice(0, 5).map((v) => v.reservation.title).join(', ')}${list.length > 5 ? ` y ${list.length - 5} más` : ''}. Viven arriba, en Preparación.` : 'Ninguna todavía.')
+          : list.length ? el('ul', { class: 'list' }, list.map((v) => {
+              const node = row(v);
+              const n = COMMERCIAL_STAGES.indexOf(s) + 1;
+              node.querySelector('.bk-res-next')?.prepend(el('span', { class: 'bk-dots', role: 'img', 'aria-label': `Paso ${n} de 4` }, [1, 2, 3, 4].map((i) => el('span', { class: i <= n ? 'on' : null }))));
+              return node;
+            })) : el('p', { class: 'hint' }, 'Ninguna.'));
+    }));
+    const funnel = el('p', { class: 'bk-funnel', id: 'commercialFunnel' },
+      stages.map((s, i) => [i ? el('span', { 'aria-hidden': 'true' }, ' ‹ ') : null,
+        el('button', { type: 'button', class: 'linkbtn', 'data-feedback-id': 'booking.reservas.comercial.embudo', 'data-feedback-label': 'Ir a la etapa', 'aria-label': `${commercialStageLabel(s, seesMoney)}: ${reached(s)}`,
+          onclick: () => columns.querySelector<HTMLElement>(`#stage-${s}`)?.scrollIntoView({ block: 'nearest', inline: 'start' }) }, String(reached(s)))]),
+      el('span', null, entered ? ` · ${pct} % de las que entraron, confirmadas` : ''));
+    return el('section', { class: 'bk-phase bk-commercial', id: 'phase-comercial', 'data-feedback-id': 'booking.reservas.comercial', 'data-feedback-label': 'Comercial' },
+      el('h3', { class: 'sectionlabel' }, 'Comercial', el('span', { class: 'count' }, String(views.length))),
+      el('p', { class: 'hint' }, 'Llegaron ', funnel), columns);
   }
 
   function paint(): void {
+    if (!set) return;
     const now = dayNumber(today())!;
-    const visible = rows
-      .filter((r) => !r.archived_at && matches(r, filter, now))
-      .filter((r) => !query || [r.title, r.contact_name, r.code].some((v) => typeof v === 'string' && v.toLowerCase().includes(query)))
-      .sort((a, b) => (dayNumber(a.start_date) ?? Infinity) - (dayNumber(b.start_date) ?? Infinity) || a.title.localeCompare(b.title, 'es'));
+    const searching = query.length > 0;
+    // Con búsqueda escrita se busca en todas, sin tildes, y se dice.
+    const visible = set.views
+      .filter((v) => (searching ? true : matches(v.reservation, filter, now)))
+      .filter((v) => !searching || [v.reservation.title, v.reservation.contact_name, v.reservation.code].some((s) => typeof s === 'string' && foldText(s).includes(query)))
+      .sort((a, b) => (dayNumber(a.reservation.start_date) ?? Infinity) - (dayNumber(b.reservation.start_date) ?? Infinity) || a.reservation.title.localeCompare(b.reservation.title, 'es'));
+    searchScope.textContent = searching ? `Buscando en todas las reservas: ${plural(visible.length, 'resultado', 'resultados')}.` : '';
     count.textContent = String(visible.length);
     trash.hidden = deleted.length === 0;
     trashCount.textContent = String(deleted.length);
     replace(trashList, deleted.map((r) => fbMark(listRow({ id: r.id, title: r.title, meta: [dateRange(r), r.code ?? 'código pendiente'], deleted: true, pending: r._pending === true,
       onClick: () => navigate(`#/reservas/${r.id}`), label: `Abrir ${r.title} en la papelera` }), 'booking.reservas.papelera.fila', 'Reserva en la papelera')));
+
+    // La portada de las próximas (2 a 5, sin canceladas, cerradas ni perdidas). Con búsqueda, no se pinta.
+    const nextOnes = set.views.filter((v) => ['comercial', 'preparacion', 'curso'].includes(v.x.phase) && v.reservation.start_date && (dayNumber(v.reservation.end_date) ?? Infinity) >= now)
+      .sort((a, b) => (dayNumber(a.reservation.start_date) ?? 0) - (dayNumber(b.reservation.start_date) ?? 0)).slice(0, COVER_MAX);
+    if (searching || nextOnes.length === 0) replace(coverHost);
+    else {
+      coverIndex = Math.min(coverIndex, nextOnes.length - 1);
+      const logos = retreatLogos(client);
+      const carousel = createCoverCarousel({
+        label: 'Las próximas reservas', index: coverIndex, feedbackId: 'booking.reservas.portada.carrusel',
+        slides: nextOnes.map((v, i) => ({ id: v.reservation.id, title: v.reservation.title, image: logos.get(v.reservation.id) ?? null, color: PHASE_COLORS[v.x.phase],
+          state: `${i === 0 ? 'La próxima' : `${i + 1}.ª`} · ${statusLabel(v.reservation.status)}`, meta: [dateRange(v.reservation), v.x.people, metaOf(v.reservation)[2]].filter(Boolean).join(' · ') })),
+        onChange: (_slide, i) => { coverIndex = i; paintCoverOpen(); },
+      });
+      carousel.element.id = 'nextCover';
+      const arrows = carousel.element.querySelectorAll<HTMLButtonElement>('.cover-arrow');
+      arrows[0]?.setAttribute('id', 'nextCoverPrev');
+      arrows[1]?.setAttribute('id', 'nextCoverNext');
+      const openButton = el('button', { type: 'button', class: 'primary', id: 'nextCoverOpen', 'data-feedback-id': 'booking.reservas.portada.abrir', 'data-feedback-label': 'Abrir la reserva', onclick: () => open(nextOnes[carousel.index()]!) }, 'Abrir');
+      const paintCoverOpen = () => openButton.setAttribute('aria-label', `Abrir la portada de ${nextOnes[carousel.index()]!.reservation.title}`);
+      paintCoverOpen();
+      replace(coverHost, carousel.element, el('p', { class: 'bk-cover-open' }, openButton));
+    }
+
+    // «Corre prisa»: hasta 4 con su motivo y «y n más».
+    const rush = searching ? [] : visible.filter((v) => v.x.rush).sort((a, b) => b.x.score - a.x.score);
+    replace(rushHost, rush.length === 0 ? null : el('section', { class: 'bk-rush', id: 'rushBand', 'aria-label': `Corre prisa: ${rush.length}` },
+      el('h3', { class: 'sectionlabel' }, 'Corre prisa', el('span', { class: 'count' }, String(rush.length))),
+      el('ul', { class: 'bk-rush-list' }, (rushOpen ? rush : rush.slice(0, RUSH_MAX)).map((v) => el('li', null,
+        el('button', { type: 'button', class: 'bk-rush-item', 'data-feedback-id': 'booking.reservas.prisa.fila', 'data-feedback-label': 'Reserva con prisa', onclick: () => open(v, true) },
+          medalOf(v, 40), el('span', null, el('strong', null, v.reservation.title), el('span', { class: 'bk-rush-why' }, v.x.rush)))))),
+      rush.length > RUSH_MAX ? el('button', { type: 'button', class: 'linkbtn', id: 'rushMore', 'aria-expanded': String(rushOpen), 'data-feedback-id': 'booking.reservas.prisa.mas', 'data-feedback-label': 'Ver más con prisa',
+        onclick: () => { rushOpen = !rushOpen; paint(); } }, rushOpen ? 'Ver menos' : `y ${rush.length - RUSH_MAX} más ›`) : null));
+
     if (visible.length === 0) {
       replace(listHost, el('div', { class: 'empty', 'data-feedback-id': 'booking.reservas.lista.vacia', 'data-feedback-label': 'Lista vacía' }, rows.length === 0
         ? [el('strong', null, 'Todavía no hay reservas'), writable ? 'Crea la primera con «Nueva reserva». Funciona también sin conexión.' : 'Cuando alguien cree una reserva aparecerá aquí.']
         : 'Ninguna reserva coincide con el filtro o la búsqueda.'));
       return;
     }
-    replace(listHost, el('ul', { class: 'list', id: 'reservationList', 'aria-label': 'Reservas' }, visible.map((r) => {
-      const n = nights(r.start_date, r.end_date);
-      return fbMark(listRow({
-        id: r.id,
-        title: r.title,
-        meta: [dateRange(r), r.expected_guests !== null ? plural(r.expected_guests, 'persona', 'personas') : null, n !== null ? plural(n, 'noche', 'noches') : null,
-          EVENT_TYPE_LABELS[r.event_type] ?? r.event_type, r.code ?? 'código pendiente'],
-        chips: [el('span', { class: 'chip', dataset: { status: r.status } }, statusLabel(r.status)),
-          r.guests_visible ? el('span', { class: 'chip', dataset: { open: '' } }, 'Visible para huéspedes') : null].filter((c): c is HTMLElement => c !== null),
-        pending: r._pending === true,
-        onClick: () => navigate(`#/reservas/${r.id}`),
-        label: `Abrir ${r.title}`,
-      }), 'booking.reservas.lista.fila', 'Reserva');
-    })));
+    // Por fases, con su recuento. Con búsqueda, una sola lista.
+    const byPhase = new Map<Phase, ReservationView[]>(PHASES.map((p) => [p, visible.filter((v) => v.x.phase === p)]));
+    const confirmed = visible.filter((v) => ['preparacion', 'curso', 'cierre'].includes(v.x.phase));
+    replace(listHost, el('div', { id: 'reservationList' }, searching
+      ? el('ul', { class: 'list', 'aria-label': 'Resultados' }, visible.map(row))
+      : PHASES.filter((p) => byPhase.get(p)!.length > 0).map((p) => p === 'comercial'
+        ? commercial(byPhase.get(p)!, confirmed)
+        : el('section', { class: 'bk-phase', id: `phase-${p}` },
+            el('h3', { class: 'sectionlabel' }, PHASE_LABELS[p], el('span', { class: 'count' }, String(byPhase.get(p)!.length))),
+            el('ul', { class: 'list', 'aria-label': PHASE_LABELS[p] }, byPhase.get(p)!.map(row))))));
   }
 
   /** Hoja de alta. La edición de una reserva vive en su ficha. */
-  function openForm(): void {
-    const initial = valuesOf();
+  function openForm(dates: { start?: string; end?: string } = {}): void {
+    const initial = valuesOf(dates);
+    const blank = valuesOf();
     const field = (label: string, control: HTMLElement, key: string) => el('label', { class: 'field', 'data-feedback-id': `booking.reservas.alta.${key}`, 'data-feedback-label': label }, el('span', null, label), control);
     const input = (id: string, type: string, value: string, extra: Record<string, string | number | boolean> = {}) =>
       el('input', { id, type, value, autocomplete: 'off', oninput: onChange, ...extra });
@@ -189,7 +322,8 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     }
     function dirty(): boolean {
       const now = current();
-      return (Object.keys(initial) as Array<keyof FormValues>).some((key) => now[key].trim() !== initial[key].trim());
+      // Las fechas que trae el Calendario no cuentan como cambio; lo que se escribe, sí.
+      return (Object.keys(blank) as Array<keyof FormValues>).some((key) => now[key].trim() !== initial[key].trim());
     }
     function onChange(): void {
       guard.dirtyEditor = dirty();
@@ -247,14 +381,26 @@ export const mountReservations: ViewMount = ({ main, client, navigate }) => {
     const all = (await client.list(RESERVATIONS, { includeDeleted: true })) as ReservationRow[];
     rows = all.filter((r) => r.deleted_at === null);
     deleted = all.filter((r) => r.deleted_at !== null);
+    set = await loadExperiences(client);
+    paintFilters();
     paint();
   }
 
   paintFilters();
+  paintEmptyState();
   void load();
-  const offs = [client.onTable(RESERVATIONS, () => void load())];
+  if (writable && requestedDates) { const d = requestedDates; requestedDates = null; openForm(d); }
+  const reload = () => void load();
+  const offs = [
+    ...[RESERVATIONS, EVENTS, FINANCE, PROPOSALS, GUESTS, TABLES.checklist, NEEDS, ASSIGNMENTS, PORTAL_REQUESTS].filter((t) => t === RESERVATIONS || canRead(client, t)).map((t) => client.onTable(t, reload)),
+    onSesPending(reload), onLogos(() => paint()), client.onStatus(paintEmptyState),
+  ];
+  window.addEventListener('online', paintEmptyState);
+  window.addEventListener('offline', paintEmptyState);
   return () => {
     offs.forEach((off) => off());
+    window.removeEventListener('online', paintEmptyState);
+    window.removeEventListener('offline', paintEmptyState);
     void sheet?.close(true);
     guard.dirtyEditor = false;
   };

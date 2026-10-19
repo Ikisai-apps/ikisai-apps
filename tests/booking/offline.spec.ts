@@ -50,7 +50,7 @@ async function openFicha(page: Page, title = 'Retiro Test'): Promise<void> {
 async function confirmOnline(page: Page): Promise<void> {
   await page.locator('#confirmReservation').click();
   await page.getByRole('alertdialog', { name: 'Confirmar reserva' }).getByRole('button', { name: 'Confirmar' }).click();
-  await expect(page.locator('#blockOperation')).toContainText('EVT_TEST_', { timeout: 15_000 });
+  await expect(page.locator('#blockOperation')).toContainText('Estado del evento', { timeout: 15_000 });
 }
 
 /** Reserva confirmada con un huésped sintético, todo ya sincronizado; deja la página en la ficha de huéspedes. */
@@ -108,7 +108,7 @@ test('O3 confirmar sin red: marca de pendiente y evento al reconectar', async ({
   expect(api().rows(EVENTS)).toHaveLength(0);
 
   await context.setOffline(false);
-  await expect(page.locator('#blockOperation')).toContainText('EVT_TEST_', { timeout: 15_000 });
+  await expect(page.locator('#blockOperation')).toContainText('Estado del evento', { timeout: 15_000 });
   await expect(page.locator('#confirmPendingChip')).toHaveCount(0);
   await expect(page.locator('#statusChip')).toHaveText('Confirmada');
   await expect(page.locator('#calendarChip')).toHaveCount(1); // pastilla de Calendar presente (oculta si no hay estado que enseñar)
@@ -234,6 +234,7 @@ test('O7 cerrar sesión borra huéspedes e importes del dispositivo', async ({ p
   await expect(page.locator('#syncStatus')).toContainText('1 cambio pendiente');
 
   await nav(page, 'Inicio');
+  await page.locator('#homeUtilities').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // utilidades plegadas en Inicio (tanda 27)
   await page.locator('#logoutHome').click();
   const warning = page.getByRole('alertdialog', { name: 'Hay cambios sin sincronizar' });
   await expect(warning).toBeVisible();
@@ -431,6 +432,7 @@ test('propuesta: líneas de un borrador editadas sin red llegan al reconectar; a
   expect((await counts())[3]).toBeGreaterThan(0);
   expect((await counts())[4]).toBeGreaterThan(0);
   await nav(page, 'Inicio');
+  await page.locator('#homeUtilities').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // utilidades plegadas en Inicio (tanda 27)
   await page.locator('#logoutHome').click();
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();
   expect(await counts()).toEqual([0, 0, 0, 0, 0]);
