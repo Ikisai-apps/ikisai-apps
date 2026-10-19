@@ -406,6 +406,13 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
 
     async function setShared(value: boolean): Promise<void> {
       if (!menu) return;
+      // Tanda 27 (regla de VG): compartir un menú con alérgenos sin revisar pide confirmación.
+      const unreviewed = value ? Array.from(new Set(items.map((i) => recipes.find((r) => r.id === i.recipe_id)).filter((r) => r && !r.allergens_checked).map((r) => r!.name))) : [];
+      if (unreviewed.length && !(await confirmDialog({
+        title: 'Hay platos con los alérgenos sin revisar',
+        text: `${unreviewed.join(', ')}: el organizador los verá marcados «sin revisar por cocina». ¿Compartir igualmente?`,
+        confirmLabel: 'Compartir igualmente',
+      }))) return;
       const ok = await commitSafely([{ op: 'update', table: T.menus, id: menu.id, expectedRevision: menu.revision, fields: { organizer_shared: value } }]);
       if (value) usage.track('food.menu.compartir', ok ? 'success' : 'error');
       if (ok) toast(value ? 'Menú compartido con el organizador.' : 'El organizador ya no ve este menú.');
@@ -905,7 +912,7 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
         return;
       }
       if (!unmountTab) {
-        const context = { client, menuId, host: tabHost, canWrite, house: house() };
+        const context = { client, menuId, host: tabHost, canWrite, house: house(), navigate };
         unmountTab = tab === 'compra' ? mountShopping(context) : tab === 'preparacion' ? mountPreparation(context) : tab === 'organizador' ? mountOrganizer(context) : mountClosing(context);
       }
     }

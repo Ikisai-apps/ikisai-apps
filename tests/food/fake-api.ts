@@ -673,7 +673,12 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
         const body = await readJson(req);
         const created = !faults.some((f) => f.id === fault[1]);
         faults.push({ id: fault[1]!, body });
-        return json(res, 200, { created, routed: 'pending', taskId: randomUUID() });
+        const taskId = randomUUID();
+        // Tanda 27 (1104): la Edge anota el aviso, uno por máquina y día, para el recorrido («Avisado»).
+        const notified_on = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
+        const noticed = Array.from(data.get('food.equipment_notices')?.values() ?? []).some((n) => !n.deleted_at && n.equipment_id === fault[1] && n.notified_on === notified_on);
+        if (created && !noticed) commit({ requestId: randomUUID(), operations: [{ op: 'insert', table: 'food.equipment_notices', id: randomUUID(), fields: { equipment_id: fault[1], notified_on, equipment_status: body.status, task_id: taskId } }] }, session.userId);
+        return json(res, 200, { created, routed: 'pending', taskId, recorded: created });
       }
       if (path === 'apps' && method === 'GET') {
         return json(res, 200, {

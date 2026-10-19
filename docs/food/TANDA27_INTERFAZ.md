@@ -6,10 +6,9 @@ Datos y servidor, ya en `main`: #600 (cruce de alérgenos, votos, avisos de máq
 
 **Regla de la pasada:** cero regresiones. Las pruebas de caracterización (`caracterizacion.spec.ts` y `caracterizacion-r5.spec.ts`) no se tocan y siguen en verde. Lo que el diseño cambia se reescribe en las demás pruebas; no se borra ninguna.
 
-**Entregas, por zonas (tres PR seguidas en la rama `food/tanda27-interfaz`):**
-1. **Cocina:** barra y menú lateral, Inicio, Cocina, Preparación y Menús.
-2. **Decidir:** Sugeridos, Maquinaria, Organizador, Cierre y Conflictos.
-3. **Recetas y despensa:** Recetario, ficha de receta, Despensa, Compra y Eventos.
+**Entregas, por zonas (dos PR seguidas):**
+1. **PR 1 (`food/tanda27-interfaz`):** barra y menú lateral, Inicio, Cocina, Preparación, Menús, Platos sugeridos, Maquinaria, Organizador, Cierre, Recetario y ficha de receta.
+2. **PR 2:** Despensa («Baldosas»), Compra, Eventos y Conflictos (bandeja).
 
 ## Hoy / después
 

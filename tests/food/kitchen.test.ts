@@ -49,7 +49,7 @@ test('cifras: pendientes, atrasados y % hecho; siguiente: el primero sin hacer d
   ];
   const dayOf = (s: { scheduled_date: string | null }) => s.scheduled_date;
   assert.deepEqual(prepStats(steps, dayOf, now), { total: 5, done: 1, pending: 4, overdue: 1, pct: 20 });
-  assert.equal((nextStep(steps, dayOf, now) as { text: string }).text, 'd');
+  assert.equal((nextStep(steps, dayOf, now) as unknown as { text: string }).text, 'd');
   assert.deepEqual(prepStats([], dayOf, now), { total: 0, done: 0, pending: 0, overdue: 0, pct: 0 });
 });
 

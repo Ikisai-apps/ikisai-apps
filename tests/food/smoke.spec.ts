@@ -114,12 +114,22 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await dialog.getByLabel('Estado').selectOption('averiado');
     await page.locator('#saveEquipment').click();
     await expect(dialog).toBeHidden();
-    await page.locator('#equipmentList .row', { hasText: 'Horno 1' }).getByRole('button', { name: 'Editar Horno 1' }).click();
+    // Tanda 27: el recorrido Falla · Avisado · En reparación · Funciona, con la palabra exacta del estado.
+    const row = page.locator('#equipmentList .row', { hasText: 'Horno 1' });
+    await expect(row.locator('.row-title .chip')).toHaveText('Averiado');
+    await expect(row.locator('.fd-journey')).toContainText('Falla · averiada');
+    await row.getByRole('button', { name: 'Editar Horno 1' }).click();
+    await expect(page.locator('#equipmentJourney')).toContainText('Siguiente: avisar a Tasks para repararla');
+    await expect(page.locator('#reportFaultTop')).toBeVisible();
     await page.locator('#reportFault').click();
     await expect(page.getByText('Aviso enviado a Tasks: queda en «Por clasificar».')).toBeVisible();
     expect(api.faults()).toEqual([{ id: api.rows('food.equipment')[0]!.id, body: { name: 'Horno 1', status: 'averiado', location: '', note: '' } }]);
+    // El aviso queda anotado: «Avisado», y nunca «En reparación» sin el estado real de Tasks.
+    await expect(page.locator('#equipmentJourney')).toContainText('Avisado · averiada');
+    await expect(page.locator('#equipmentJourney')).toContainText('Siguiente: que Tasks la repare');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Editar máquina' })).toBeHidden();
+    await expect(row.locator('.fd-journey')).toContainText('Avisado · averiada');
   });
 
   await test.step('recetario vacío y receta nueva con ingrediente, maquinaria y foto', async () => {
@@ -193,7 +203,8 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await expect(ficha.locator('table.ingredients')).toContainText('2,5');
     await expect(ficha).toContainText('Alérgenos: Apio');
     await expect(ficha).toContainText('1 × Horno 1');
-    await expect(ficha.locator('.ficha-photo img')).toBeVisible();
+    // Tanda 27: la foto es la portada de la ficha (`renderCover` del kit).
+    await expect(ficha.locator('.ficha-photo[data-photo="ready"] .cover-has-image')).toBeVisible();
     await ficha.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
     await expect(ficha).toBeHidden();
   });
@@ -205,7 +216,7 @@ test('login → receta con ingrediente nuevo y foto → edición sin red → sin
     await expect(page.locator('#syncStatus')).toContainText('Sin conexión');
     await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
     const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
-    await expect(ficha.locator('.ficha-photo img')).toBeVisible(); // desde la caché local
+    await expect(ficha.locator('.ficha-photo[data-photo="ready"] .cover-has-image')).toBeVisible(); // desde la caché local
     await page.locator('#editRecipe').click();
     const dialog = page.getByRole('dialog', { name: 'Editar receta' });
     await dialog.getByLabel('Nombre', { exact: true }).fill('Curry de verduras de temporada');

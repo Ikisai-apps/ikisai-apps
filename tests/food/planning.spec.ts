@@ -110,8 +110,11 @@ test('vista de cocinero → compra → preparación → cierre', async ({ page, 
     await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
     const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
     // 2 kg y 500 g de tomate a 2,50 €/kg para 20 raciones: 5,00 € + 1,25 € = 6,25 €.
-    await expect(ficha.locator('table.ingredients')).toContainText('5,00 €');
-    await expect(ficha.locator('table.ingredients')).toContainText('1,25 €');
+    // Tanda 27: el coste de cada ingrediente sigue en la ficha, plegado bajo el total («Ver coste por ingrediente»).
+    await expect(ficha.locator('.fd-costlines')).toBeHidden();
+    await ficha.getByText('Ver coste por ingrediente').click();
+    await expect(ficha.locator('.fd-costlines')).toContainText('5,00 €');
+    await expect(ficha.locator('.fd-costlines')).toContainText('1,25 €');
     await expect(ficha).toContainText('Coste estimado: 6,25 € para 20 raciones (0,31 € por ración)');
     await ficha.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
   });

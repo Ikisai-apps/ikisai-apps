@@ -339,3 +339,43 @@
 .now-hero .fd-nowbody p,.now-hero .fd-nowbody .warnline{color:inherit}
 .now-hero .fd-nowbody .warnline{font-weight:700}
 .now-hero .fd-open{color:inherit;text-decoration:underline;text-underline-offset:3px}
+/* Tanda 27 · Platos sugeridos: el mazo y la ficha «Para decidir» (al lado en el ordenador, debajo en el móvil) */
+.fd-suggest{display:grid;gap:16px;margin-top:12px}
+@media (min-width:900px){.fd-suggest{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
+.fd-vcard{display:flex;flex-direction:column;gap:6px;padding:16px;height:100%;box-sizing:border-box}
+.fd-vcard p{margin:0}
+.fd-vcard-band{display:flex;align-items:center;gap:10px;margin:-16px -16px 8px;padding:10px 16px;background:var(--olive-soft,var(--paper-2));font-weight:700;border-radius:inherit}
+.fd-vcard-name{font-size:1.35rem;font-family:var(--serif,inherit)}
+.fd-tally{font-weight:700}
+.fd-decide{padding:16px}
+.fd-decide-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fd-decide-head h3{margin:0}
+.fd-decide-head .linkbtn{min-height:var(--tap)}
+.fd-decide-nav{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:10px 0}
+.fd-decide-nav button{min-height:var(--tap)}
+.fd-decide-name{font-size:1.2rem;margin:8px 0}
+.fd-past{margin-left:8px}
+.fd-voting{margin:14px 0;padding-top:12px;border-top:1px solid var(--line)}
+.fd-voting h4{margin:0 0 6px}
+.fd-voting p{margin:4px 0}
+.fd-myvote{min-height:var(--tap)}
+.fd-myvote[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.fd-decision{padding-top:12px;border-top:1px solid var(--line)}
+.fd-decide-btn{min-height:var(--tap);flex:1}
+.fd-journey{grid-column:1/-1;flex-basis:100%;width:100%;margin-top:6px}
+.fd-journey-act{min-height:var(--tap);margin-top:8px}
+.fd-journey-full{margin:0 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+/* Tanda 27 · veredicto y comprobaciones con tono (Organizador y Cierre): rojo lo que impide, ámbar lo que conviene */
+.fd-checkshost{margin:12px 0}
+.fd-checks{padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.fd-checks .check-verdict[data-tone="alert"]{color:var(--alert);font-weight:700}
+.fd-checks .check-item[data-ok="false"][data-tone="alert"] .check-mark{background:var(--alert);color:var(--paper)}
+@media (max-width:520px){.fd-checks .check-item{flex-wrap:wrap}.fd-checks .check-text{flex-basis:calc(100% - 40px)}.fd-checks .check-action{margin-left:34px}}
+.fd-offline-what{margin:4px 0 0}
+.fd-nophoto{position:absolute;left:6px;bottom:6px;padding:2px 8px;border-radius:8px;background:var(--paper);color:var(--ink);font-size:var(--text-xs,.75rem);font-weight:700}
+.recipephoto{position:relative}
+.fd-cover{position:relative;margin-bottom:10px}
+.fd-caption{caption-side:top;text-align:left;font-size:var(--text-xs,.75rem);color:var(--muted);padding-bottom:4px}
+.fd-costfold{margin-top:8px}
+.fd-costfold>summary{min-height:var(--tap);display:flex;align-items:center;cursor:pointer;font-weight:700}
+.fd-costlines td{padding:4px 8px 4px 0}

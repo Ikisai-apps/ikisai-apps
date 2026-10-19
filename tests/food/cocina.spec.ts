@@ -57,7 +57,7 @@ test.beforeAll(async () => {
     }],
   });
   const recipe = (name: string, extra: Record<string, unknown>) => api.seed('food.recipes', { category: 'principal', base_servings: 10, status: 'validada', diet_tags: [], allergens: [], allergens_checked: true, ...extra, name }).id;
-  const tart = recipe('Tarta de pistacho', { category: 'postre', allergens: ['frutos_cascara'] });
+  const tart = recipe('Tarta de pistacho', { category: 'postre', allergens: ['frutos_de_cascara'] });
   const curry = recipe('Curry de verduras', {});
   const salad = recipe('Ensalada verde', { allergens_checked: false });
   const bread = recipe('Pan con tomate', {});
@@ -141,7 +141,7 @@ test('cocina · Inicio → Cocina: alergias a la vista, platos con su aviso, pas
     await expect(page.locator('.fd-service[data-phase="despues"] h3')).toHaveText(['Después · Cena · 20:30']);
     await expect(page.locator('.fd-done > summary')).toHaveText('Lo hecho (1)');
     const dish = (name: string) => page.locator('.fd-dish', { hasText: name });
-    await expect(dish('Tarta de pistacho').locator('.fd-safety')).toHaveText('⚠ lleva pistacho · 1 persona · alergia grave');
+    await expect(dish('Tarta de pistacho').locator('.fd-safety')).toHaveText('⚠ lleva frutos de cáscara (pistacho) · 1 persona · alergia grave');
     await expect(dish('Ensalada verde').locator('.fd-safety')).toHaveText('Alérgenos sin revisar');
     await expect(dish('Curry de verduras').locator('.fd-safety')).toHaveText('lleva cilantro · preferencia');
     await expect(page.locator('main')).not.toContainText(/apto|✓ sin|no contiene/i);

@@ -1,7 +1,11 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { machineStockMovement, validateOperations, type Equipment, type MovementLike, type ResourceItem } from '@ikisai/domain-food';
+import {
+  EQUIPMENT_STAGES, equipmentJourney, machineStockMovement, validateOperations,
+  type Equipment, type EquipmentNotice, type EquipmentStage, type EquipmentStatus, type MenuItem, type MenuService, type MovementLike, type RecipeEquipment, type ResourceItem,
+} from '@ikisai/domain-food';
 import type { SyncedRow } from '@ikisai/sync-client';
-import { closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, listRow, openSheet, replace, spaceFromRow, spacePath, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
+import { closeSheet, confirmDialog, createSpacePicker, el, formatDate, icon, listRow, openSheet, renderStages, replace, spaceFromRow, spacePath, toast, type Sheet, type SpaceRow } from '@ikisai/ui-kit';
+import { todayKey } from '../app/events.ts';
 import { R, resourcesClient } from '../app/resources.ts';
 import { guard } from '../app/guard.ts';
 import { EQUIPMENT_STATUSES, EQUIPMENT_STATUS_LABELS, T, describeError, type Mirror } from '../app/client.ts';
@@ -14,6 +18,17 @@ type Row = Mirror<Equipment>;
 const SPACE_MARK = 'food.maquinaria.formulario.espacio';
 
 const text = (value: string) => value.trim() || null;
+
+/** Tanda 27 (MUELA-029 con 068 §4): el recorrido de la máquina que falla, con la palabra exacta de su estado. */
+const STAGE_LABELS: Record<EquipmentStage, string> = { falla: 'Falla', avisado: 'Avisado', en_reparacion: 'En reparación', funciona: 'Funciona' };
+/** «la máquina» está…: limitada, averiada o fuera de servicio. */
+const STATUS_WORD: Record<EquipmentStatus, string> = { operativo: 'funciona', limitado: 'limitada', averiado: 'averiada', fuera_de_servicio: 'fuera de servicio' };
+const NEXT_TEXT: Record<EquipmentStage, string> = {
+  falla: 'Siguiente: avisar a Tasks para repararla',
+  avisado: 'Siguiente: que Tasks la repare',
+  en_reparacion: 'Siguiente: que vuelva a funcionar',
+  funciona: '',
+};
 
 /** Maquinaria: lista sencilla en lectura, hoja de edición y papelera. Sin fotos ni optimizador (docs/food/API.md §9). */
 export const mountEquipment: ViewMount = ({ main, client }) => {
@@ -30,6 +45,24 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
   };
   const canWrite = () => client.bootstrap()?.membership.role !== 'reader';
   let sheet: Sheet | null = null;
+  // Avisos a Tasks (1104) y lo que piden los menús que vienen: el «!» va en la etapa si la máquina hace falta.
+  let notices: Array<Mirror<EquipmentNotice>> = [];
+  let needed = new Set<string>();
+  const journeyOf = (row: Row) => equipmentJourney(row as Row & { status_since?: string | null }, notices);
+
+  /** El recorrido: pequeño en la fila, completo en la hoja; siempre con la palabra del estado y, en la hoja, lo siguiente. */
+  function journey(row: Row, mini: boolean): HTMLElement {
+    const { stage, status } = journeyOf(row);
+    return renderStages({
+      label: `Recorrido de ${row.name}`,
+      stages: EQUIPMENT_STAGES.map((key) => ({ key, label: STAGE_LABELS[key] })),
+      current: stage,
+      bad: needed.has(row.id) && stage !== 'funciona' ? [stage] : [],
+      mini,
+      caption: mini ? `${STAGE_LABELS[stage]} · ${STATUS_WORD[status]}${needed.has(row.id) ? ' · hace falta en un menú' : ''}`
+        : `${STAGE_LABELS[stage]} · ${STATUS_WORD[status]}. ${NEXT_TEXT[stage]}${needed.has(row.id) ? '. Hace falta en un menú que viene.' : '.'}`,
+    });
+  }
 
   const list = el('ul', { 'data-feedback-id': 'food.maquinaria.lista', 'data-feedback-label': 'Lista de maquinaria', class: 'list', id: 'equipmentList', 'aria-label': 'Maquinaria' });
   const trashList = el('ul', { class: 'list', 'aria-label': 'Maquinaria en la papelera' });
@@ -43,7 +76,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
     el('div', { class: 'pagehead' }, el('div', null, el('h2', null, 'Maquinaria'), el('p', null, 'Qué hay en la cocina, cuánto y en qué estado.'))),
     host,
     trash,
-    el('button', { 'data-feedback-id': 'food.maquinaria.nueva', 'data-feedback-label': 'Nueva máquina', class: 'fab', type: 'button', id: 'newEquipment', onclick: () => openEditor(null) }, icon('plus'), 'Nueva máquina'),
+    // Quien solo lee no da de alta máquinas (tanda 27: antes veía el botón).
+    canWrite() ? el('button', { 'data-feedback-id': 'food.maquinaria.nueva', 'data-feedback-label': 'Nueva máquina', class: 'fab', type: 'button', id: 'newEquipment', onclick: () => openEditor(null) }, icon('plus'), 'Nueva máquina') : null,
   );
 
   function item(row: Row, deleted: boolean): HTMLElement {
@@ -59,6 +93,8 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
         ? el('button', { 'data-feedback-id': 'food.maquinaria.papelera.restaurar', 'data-feedback-label': 'Restaurar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Restaurar ${row.name}`, onclick: () => void commitSafely([{ op: 'restore', table: T.equipment, id: row.id, expectedRevision: row.revision }], `«${row.name}» restaurada.`) }, icon('restore', 18), 'Restaurar')
         : el('button', { 'data-feedback-id': 'food.maquinaria.lista.editar', 'data-feedback-label': 'Editar máquina', class: 'linkbtn', type: 'button', 'aria-label': `Editar ${row.name}`, onclick: () => openEditor(row) }, 'Editar')],
     });
+    // La máquina que falla lleva su recorrido pequeño, a todo el ancho; el chip del estado sigue en el título.
+    if (!deleted && row.status !== 'operativo') node.append(el('div', { 'data-feedback-id': 'food.maquinaria.lista.recorrido', 'data-feedback-label': 'Recorrido', class: 'fd-journey' }, journey(row, true)));
     return deleted
       ? fb(node, { feedbackId: 'food.maquinaria.papelera.fila', feedbackLabel: 'Máquina en la papelera' })
       : fb(node, { feedbackId: 'food.maquinaria.lista.fila', feedbackLabel: 'Máquina' });
@@ -77,6 +113,17 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     rows = (await client.list(T.equipment, { includeDeleted: true })) as Row[];
+    const today = todayKey();
+    const [noticeRows, services, items, uses] = await Promise.all([
+      client.list(T.equipmentNotices) as unknown as Promise<Array<Mirror<EquipmentNotice>>>,
+      client.list(T.menuServices) as Promise<Array<Mirror<MenuService>>>,
+      client.list(T.menuItems) as Promise<Array<Mirror<MenuItem>>>,
+      client.list(T.recipeEquipment) as Promise<Array<Mirror<RecipeEquipment>>>,
+    ]);
+    notices = noticeRows;
+    const coming = new Set(services.filter((sv) => !sv.deleted_at && sv.service_date >= today).map((sv) => sv.id));
+    const recipesComing = new Set(items.filter((i) => !i.deleted_at && coming.has(i.service_id)).map((i) => i.recipe_id));
+    needed = new Set(uses.filter((u) => !u.deleted_at && recipesComing.has(u.recipe_id)).map((u) => u.equipment_id));
     try {
       const r = resourcesClient(client);
       const [items, spaceRows, moves] = await Promise.all([r.list(R.items), r.list(R.spaces), r.list(R.movements)]);
@@ -154,6 +201,13 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
         save.disabled = false;
         if (ok) { guard.dirtyEditor = false; await sheet?.close(true); }
       } },
+      row && row.status !== 'operativo' && !row.deleted_at ? el('div', { 'data-feedback-id': 'food.maquinaria.formulario.recorrido', 'data-feedback-label': 'Recorrido', class: 'fd-journey-full' },
+        el('div', { id: 'equipmentJourney' }, journey(row, false)),
+        // En «Falla», avisar a Tasks a la vista (el mismo aviso que el de abajo; uno por máquina y día).
+        journeyOf(row).stage === 'falla' && canWrite()
+          ? el('button', { 'data-feedback-id': 'food.maquinaria.formulario.recorrido.avisar', 'data-feedback-label': 'Avisar a Tasks', class: 'ghost fd-journey-act', type: 'button', id: 'reportFaultTop',
+              onclick: (event: Event) => void reportFault(row, event.currentTarget as HTMLButtonElement, notes.value) }, 'Avisar a Tasks')
+          : null) : null,
       el('label', { class: 'field' }, el('span', null, 'Nombre'), name),
       el('label', { class: 'field' }, el('span', null, 'Tipo'), category),
       el('label', { class: 'field' }, el('span', null, 'Cantidad'), quantity),
@@ -216,6 +270,11 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
       }));
       toast(!out.created ? 'Ya se había avisado hoy a Tasks de esta máquina.'
         : out.routed === 'pending' ? 'Aviso enviado a Tasks: queda en «Por clasificar».' : 'Aviso enviado a Tasks.');
+      // El aviso queda anotado en el servidor: con él, el recorrido pasa a «Avisado».
+      await client.sync().catch(() => undefined);
+      await load();
+      const host = document.getElementById('equipmentJourney');
+      if (host) replace(host, journey(rows.find((r) => r.id === row.id) ?? row, false));
     } catch (error) {
       toast(describeError(error));
     } finally {
@@ -231,10 +290,12 @@ export const mountEquipment: ViewMount = ({ main, client }) => {
 
   void load();
   const offTable = client.onTable(T.equipment, () => void load());
+  const offNotices = client.onTable(T.equipmentNotices, () => void load());
   const offStatus = client.onStatus(() => void load());
   const offResources = (() => { try { const r = resourcesClient(client); const offs = [R.items, R.spaces, R.movements].map((t) => r.onTable(t, () => void load())); return () => offs.forEach((off) => off()); } catch { return () => undefined; } })();
   return () => {
     offTable();
+    offNotices();
     offStatus();
     void closeSheet(true);
     offResources();
