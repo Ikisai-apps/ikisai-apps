@@ -10,6 +10,7 @@ import { tasksMcpTools } from './mcp.ts';
 import { requestRoutes, requestWorkerRoutes } from './requests.ts';
 import { tradeRoutes, withTradesPreview } from './trades.ts';
 import { peopleRoutes, withPeoplePreview } from './people.ts';
+import { receiptRoutes } from './receipts.ts';
 
 export const TASKS_ORIGINS = ['https://tasks.ikisai.com', 'https://ikisai-tasks.pages.dev'];
 export const TASKS_BUCKET = 'ikisai-files';
@@ -153,7 +154,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
       // O1 (0098): quien revisa solo ve, previsualiza y decide las propuestas cuyo destino está en sus ámbitos.
       suggestionVisible: (suggestion, ctx) => suggestionVisibleFor(suggestion, effectiveScopes(ctx.membership)),
     },
-    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase), ...peopleRoutes(supabase), ...tradeRoutes(supabase)],
+    routes: [...tasksRoutes(supabase, storage), ...exchangeRoutes(supabase, storage), ...requestRoutes(supabase), ...peopleRoutes(supabase), ...tradeRoutes(supabase), ...receiptRoutes(supabase)],
     workerRoutes: [...exchangeWorkerRoutes(), ...requestWorkerRoutes(supabase)],
     mcpTools: tasksMcpTools(),
   })));

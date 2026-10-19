@@ -1103,6 +1103,8 @@ test('[24][32][33][44] respaldo, copia portable, CSV y filtros de disponibilidad
     await a.evaluate(() => portableImportSheet());
     await a.locator('#portableFile').setInputFiles(portablePath);
     await a.locator('#portableApply').waitFor({ state: 'visible' });
+    // R6: la copia no lleva lo de Recursos (materiales y costes a mano), y la ayuda lo dice.
+    await expect(a.locator('#portableNoResources')).toContainText('No lleva los materiales ni los costes a mano');
     await a.waitForFunction(() => !(document.getElementById('portableApply') as HTMLButtonElement).disabled);
     await expect(a.locator('#portablePreview')).toContainText('adjuntos verificados');
     await a.locator('#portableApply').click();
