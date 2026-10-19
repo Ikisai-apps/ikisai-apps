@@ -21,6 +21,9 @@ export interface UploadsConfig {
   outsiderMime?: string[];
   outsiderMaxBytes?: number;
   allowReaders?: boolean;
+  /** K3 para miembros: si es `true`, un miembro que no sea propietario lee un archivo ajeno solo si ve (hook `visible`) una
+   *  fila viva que lo referencia, como el portal y el outsider. La activa cada app tras revisar sus campos de archivo. */
+  membersK3?: boolean;
 }
 
 const SHA = /^[0-9a-f]{64}$/;
@@ -40,7 +43,8 @@ export function createUploads(supabase: Supabase, app: string, config: UploadsCo
   // K3: un archivo ajeno se puede leer si alguna fila de la app que lo referencia (campos de `register_file_field`) es
   // visible para el miembro con el hook `visible` de la app; sin hook, solo los propios.
   async function ownInPortal(ctx: RequestContext, file: any) {
-    const restricted = Array.isArray((ctx.membership as any)?.scopes?.grants) || ctx.membership?.role === 'outsider';
+    const restricted = Array.isArray((ctx.membership as any)?.scopes?.grants) || ctx.membership?.role === 'outsider'
+      || (config.membersK3 === true && !!visible && ctx.membership?.role !== 'owner');
     if (!restricted || file?.created_by === ctx.user.id) return;
     if (visible) {
       const refs = await supabase.rpc<Array<{ table: string; row: Record<string, unknown> }>>('core_file_referencing_rows', { p_app: app, p_file: file.id });
