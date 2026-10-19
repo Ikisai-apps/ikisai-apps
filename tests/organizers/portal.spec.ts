@@ -542,6 +542,31 @@ test('organizers · experiencia (fases 4 y 5): programa por días, menú aún si
   await expect.poll(async () => (await popup).url()).toMatch(/^https:\/\/guests\.ikisai\.com\/i\//);
 });
 
+test('organizers · menú compartido (tanda 26): alérgenos con su nombre y «sin revisar por cocina»', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con menú', confirm: true, start: '2027-05-14', end: '2027-05-16' });
+  await api.menu(reservation, [{ date: '2027-05-15', type: 'comida', time: '14:00', dishes: [
+    { name: 'Lasaña de verduras', allergens: ['gluten', 'lacteos'], checked: true },
+    { name: 'Tarta de queso', allergens: ['lacteos', 'huevos'], checked: false },
+    { name: 'Ensalada de temporada', allergens: [], checked: false },
+    { name: 'Arroz blanco', allergens: [], checked: true },
+  ] }]);
+  await enter(page, await api.organizerLink([reservation], 'menu-alergenos@example.invalid', 'Pablo'));
+  await page.locator('#tab-experiencia').click();
+  await page.locator('#expnav-menu').click();
+  const allergens = (name: string) => page.locator('.orgdish', { hasText: name }).locator('.orgdish-allergens');
+
+  // Revisada: solo los nombres, nunca el código interno.
+  await expect(allergens('Lasaña de verduras')).toHaveText('Alérgenos: gluten, lácteos');
+  await expect(allergens('Lasaña de verduras').locator('.orgdish-unchecked')).toHaveCount(0);
+  // Sin revisar: los declarados y el aviso.
+  await expect(allergens('Tarta de queso')).toHaveText('Alérgenos: lácteos, huevo · sin revisar por cocina');
+  // Sin revisar y sin ninguno declarado: no se puede leer como «no tiene».
+  await expect(allergens('Ensalada de temporada')).toHaveText('Alérgenos: sin revisar por cocina');
+  // Revisada y sin alérgenos: nada que avisar.
+  await expect(allergens('Arroz blanco')).toHaveCount(0);
+  await expect(page.locator('#menu')).not.toContainText('lacteos');
+});
+
 test('organizers · supletorias (Booking §25): «N de M» con − / + y su precio, reparto en una supletoria y pendiente con la propuesta aceptada', async ({ page }) => {
   const reservation = await api.reservation({ title: 'Retiro con supletorias', confirm: true });
   const room = await api.room(reservation, { name: 'Hab 1', beds: 2, extra: 2, enSuite: true });

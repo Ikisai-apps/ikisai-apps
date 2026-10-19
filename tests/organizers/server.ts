@@ -56,6 +56,11 @@ export interface OrganizersTestServer {
    * retiro, una cuenta de Guests sugiere «Apuntarme» y el personal la aprueba con `mode: 'organizer'`. Devuelve la cuenta.
    */
   joinRequest(reservationId: string, persons: string[], message?: string): Promise<{ account: string }>;
+  /**
+   * Menú de cocina compartido con el organizador (Food), como `tests/guests/server.ts`: un servicio por entrada con sus platos,
+   * cada uno con sus alérgenos y `checked` (`allergens_checked` de la receta). Se valida al final.
+   */
+  menu(reservationId: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; allergens: string[]; checked: boolean }> }>): Promise<void>;
   /** Simula la caída de la API (sin red para la app). */
   setOffline(on: boolean): void;
   close(): Promise<void>;
@@ -282,6 +287,24 @@ export async function startOrganizersServer(): Promise<OrganizersTestServer> {
         p_operations: [{ op: 'call', procedure: JOIN_PROCEDURE, args: { ...args, mode: 'organizer' } }] }) as { status: string };
       if (decided.status !== 'approved') throw new Error(`apuntarme: ${JSON.stringify(decided)}`);
       return { account };
+    },
+    async menu(reservationId, services) {
+      const db = booking.t.db;
+      const event = (await db.query<{ id: string }>('select id from booking.events where reservation_id = $1', [reservationId])).rows[0]!.id;
+      const menuId = uuid();
+      // En borrador mientras se añaden servicios y platos (validado, Food los bloquea: MENU_LOCKED).
+      await db.query(`insert into food.menus (id, event_id, source_event_revision, source_event_snapshot, status, organizer_shared) values ($1, $2, 1, '{}'::jsonb, 'borrador', true)`, [menuId, event]);
+      for (const [i, s] of services.entries()) {
+        const serviceId = uuid();
+        await db.query(`insert into food.menu_services (id, menu_id, service_date, service_type, service_time, position) values ($1, $2, $3, $4, $5, $6)`, [serviceId, menuId, s.date, s.type, s.time, i]);
+        for (const [j, d] of s.dishes.entries()) {
+          const recipeId = uuid();
+          await db.query(`insert into food.recipes (id, name, category, base_servings, diet_tags, allergens, allergens_checked) values ($1, $2, 'principal', 10, '{}', $3, $4)`,
+            [recipeId, d.name, d.allergens, d.checked]);
+          await db.query(`insert into food.menu_items (id, service_id, recipe_id, servings, position) values ($1, $2, $3, 10, $4)`, [uuid(), serviceId, recipeId, j]);
+        }
+      }
+      await db.query(`update food.menus set status = 'validado', validated_at = now() where id = $1`, [menuId]);
     },
     setOffline(on) { offline = on; },
     close: async () => {
