@@ -43,7 +43,7 @@ const task = async (id: string) => (await db.data())['tasks.tasks'].find((t) => 
 const created = (ops: { op: string; table?: string; id?: string }[]) => ops.find((o) => o.op === 'insert' && o.table === 'tasks.tasks')!.id!;
 
 test('herramientas: especificaciones completas y únicas, con esquema de objeto y pistas MCP', () => {
-  assert.deepEqual(TASK_TOOL_SPECS.map((s) => s.name).sort(), ['tasks_complete', 'tasks_create_task', 'tasks_delete', 'tasks_move', 'tasks_prepare_purchase_plan', 'tasks_request_purchase', 'tasks_set_dependencies', 'tasks_set_labels', 'tasks_update_task']);
+  assert.deepEqual(TASK_TOOL_SPECS.map((s) => s.name).sort(), ['tasks_complete', 'tasks_create_task', 'tasks_delete', 'tasks_move', 'tasks_prepare_purchase_plan', 'tasks_request_purchase', 'tasks_set_dependencies', 'tasks_set_labels', 'tasks_set_people', 'tasks_set_spaces', 'tasks_set_trades', 'tasks_update_task']);
   for (const spec of TASK_TOOL_SPECS) {
     assert.equal((spec.inputSchema as any).type, 'object');
     assert.equal((spec.inputSchema as any).additionalProperties, false);

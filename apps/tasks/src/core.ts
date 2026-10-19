@@ -317,7 +317,22 @@ export class TasksCore {
    * datos haría que el siguiente `plan()` comparase un modelo de interfaz antiguo con datos remotos nuevos y devolviera
    * a su valor anterior lo que cambió otro dispositivo (por ejemplo, el color de un área). Se reintenta al terminar.
    */
-  private async refresh(): Promise<boolean> {
+  /**
+   * Los refrescos van en fila: el que pide `settle()` espera al que ya estaba leyendo el espejo. Antes `refresh()` marcaba
+   * `dirty = false` antes de leer y, mientras leía, `settle()` volvía enseguida e `idle()` decía «en reposo» con el modelo
+   * aún viejo (intermitente de la CI en ui.spec.ts «adjuntos del proyecto»: el otro dispositivo abría la ficha justo antes
+   * de que llegara la fila del adjunto; registro de la PR #578).
+   */
+  private refreshing = 0;
+  private refreshChain: Promise<unknown> = Promise.resolve();
+  private refresh(): Promise<boolean> {
+    this.refreshing += 1;
+    const run = this.refreshChain.then(() => this.refreshNow()).finally(() => { this.refreshing -= 1; });
+    this.refreshChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private async refreshNow(): Promise<boolean> {
     if (this.localPending > 0 || !this.dirty) return false;
     this.dirty = false;
     const started = this.commits;
@@ -352,7 +367,7 @@ export class TasksCore {
   }
 
   /** En reposo: sin refresco pendiente ni guardados locales en vuelo; la copia en memoria refleja el espejo. */
-  idle(): boolean { return !this.dirty && !this.refreshTimer && this.localPending === 0; }
+  idle(): boolean { return !this.dirty && !this.refreshTimer && this.localPending === 0 && this.refreshing === 0; }
 
   private scheduleRefresh(): void {
     this.dirty = true;

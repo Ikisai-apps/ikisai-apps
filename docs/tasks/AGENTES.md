@@ -163,6 +163,12 @@ Una ruta `POST /mcp` por app en `_kit` (JSON-RPC 2.0; versiones de protocolo `20
 
 `AppConfig.mcpTools` permite a cada app añadir herramientas **de dominio**. Hacen falta: con tablas tipadas y filas puente, pedirle a un agente que construya a mano las operaciones de fila de «mover una tarea con sus hijas» es frágil. Tasks añadirá `tasks_tree`, `tasks_create_task`, `tasks_update_task`, `tasks_complete`, `tasks_move`, `tasks_delete`, `tasks_set_labels` y `tasks_set_dependencies`, que construyen el lote con `_domain/tasks/ops.ts` y lo envían por el mismo camino (riesgo, propuesta, `commit`).
 
+Espacios, oficios y personas (R2/P2, 2c; `docs/tasks/API.md` §30 a §33):
+
+- `tasks_set_spaces {task_id, space_ids}`, `tasks_set_trades {task_id, trade_ids}` y `tasks_set_people {task_id, people}` dejan en una tarea exactamente esa lista. `people` lleva ids de persona de Central o grupos (`level:staff`, `level:direccion`, `level:outsider`).
+- `tasks_update_task` admite `owner_person` (persona, grupo o `null`), que vacía `owner_label_id`; no se puede mandar con `owner_label_id` a la vez.
+- Solo con su fuente activa (`zone_source = 'spaces'`, `trade_source` o `people_source = 'central'`); si no, `409 SOURCE_INACTIVE`, con la herramienta de etiquetas que toca. Que existan y estén vivos lo comprueba el hook (`INVALID_SPACE`, `INVALID_TRADE`, `INVALID_PERSON`, `INVALID_OWNER`). Quitar alguno es borrar una fila puente: como con las etiquetas, pide aprobación.
+
 Compras (§18):
 
 - `tasks_low_stock`: solo lectura. Responde a «qué queda poco» con los suministros bajo mínimo de las áreas enteras visibles y, si ya se pidió, su solicitud abierta.

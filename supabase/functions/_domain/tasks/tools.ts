@@ -7,13 +7,15 @@
  * fila borrada para las que solo trabajan sobre filas vivas. Conectarlas a `AppConfig.mcpTools` es una línea por
  * herramienta: `{ ...spec, build: (input, data, newId) => buildTaskTool(spec.name, data, input, newId) }`.
  */
-import { createTaskOps, deleteTaskOps, moveTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps, type NewId } from './ops.ts';
+import { createTaskOps, deleteTaskOps, moveTaskOps, setDependenciesOps, setTaskDoneOps, setTaskLabelsOps, setTaskPeopleOps, setTaskSpacesOps, setTaskTradesOps, type NewId } from './ops.ts';
+import { isPersonKey, personFields } from './people.ts';
 import { preparePlanOps, reorderSupplyOps, requestPurchaseOps } from './purchases.ts';
 import { fullTab, type Scopes } from './scopes.ts';
 import { reject, type Dataset, type Operation, type Priority, type TaskRow, type Uuid } from './types.ts';
 
 export type TaskToolName =
   | 'tasks_create_task' | 'tasks_update_task' | 'tasks_complete' | 'tasks_move' | 'tasks_delete' | 'tasks_set_labels' | 'tasks_set_dependencies'
+  | 'tasks_set_spaces' | 'tasks_set_trades' | 'tasks_set_people'
   | 'tasks_request_purchase' | 'tasks_prepare_purchase_plan';
 
 export interface TaskToolSpec {
@@ -38,6 +40,8 @@ const TASK_FIELD_SCHEMA = {
   owner_label_id: { ...uuid, type: ['string', 'null'], description: 'Etiqueta de la familia Persona que hace de responsable.' },
   cost: { type: ['number', 'null'], minimum: 0 },
 };
+/** Persona de Central (id) o grupo por nivel de casa (`level:staff`, `level:direccion`, `level:outsider`). */
+const PERSON = { type: 'string', description: 'Id de una persona de Central, o level:staff, level:direccion o level:outsider para un grupo.' };
 
 export const TASK_TOOL_SPECS: readonly TaskToolSpec[] = [
   {
@@ -48,8 +52,8 @@ export const TASK_TOOL_SPECS: readonly TaskToolSpec[] = [
   },
   {
     name: 'tasks_update_task',
-    description: 'Cambia nombre, nota, prioridad, fecha, responsable o coste de una tarea. Para completarla, moverla o etiquetarla usa sus herramientas.',
-    inputSchema: { type: 'object', additionalProperties: false, required: ['task_id'], minProperties: 2, properties: { task_id: uuid, ...TASK_FIELD_SCHEMA } },
+    description: 'Cambia nombre, nota, prioridad, fecha, responsable o coste de una tarea. Con las personas de Central, el responsable va en owner_person (persona o grupo) en lugar de owner_label_id. Para completarla, moverla o etiquetarla usa sus herramientas.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['task_id'], minProperties: 2, properties: { task_id: uuid, ...TASK_FIELD_SCHEMA, owner_person: { ...PERSON, type: ['string', 'null'] } } },
     annotations: { destructiveHint: false, idempotentHint: true },
   },
   {
@@ -80,6 +84,26 @@ export const TASK_TOOL_SPECS: readonly TaskToolSpec[] = [
     name: 'tasks_set_dependencies',
     description: 'Deja en una tarea exactamente estas dependencias, en este orden (tareas que deben completarse antes).',
     inputSchema: { type: 'object', additionalProperties: false, required: ['task_id', 'depends_on_ids'], properties: { task_id: uuid, depends_on_ids: uuids } },
+    annotations: { destructiveHint: false, idempotentHint: true },
+  },
+  // Espacios, oficios y personas (R2/P2, 2c): solo con su fuente activa. Que existan y estén vivos lo comprueba el hook SQL
+  // (INVALID_SPACE, INVALID_TRADE, INVALID_PERSON).
+  {
+    name: 'tasks_set_spaces',
+    description: 'Deja en una tarea exactamente estos espacios de Recursos (quita los demás). Solo cuando la app usa espacios (zone_source = spaces); con zonas, usa tasks_set_labels.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['task_id', 'space_ids'], properties: { task_id: uuid, space_ids: uuids } },
+    annotations: { destructiveHint: false, idempotentHint: true },
+  },
+  {
+    name: 'tasks_set_trades',
+    description: 'Deja en una tarea exactamente estos oficios de Central (quita los demás). Solo cuando la app usa los oficios de Central (trade_source = central).',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['task_id', 'trade_ids'], properties: { task_id: uuid, trade_ids: uuids } },
+    annotations: { destructiveHint: false, idempotentHint: true },
+  },
+  {
+    name: 'tasks_set_people',
+    description: 'Deja en una tarea exactamente estas personas de Central o grupos (quita las demás). Solo cuando la app usa las personas de Central (people_source = central).',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['task_id', 'people'], properties: { task_id: uuid, people: { type: 'array', items: PERSON, uniqueItems: true, maxItems: 100 } } },
     annotations: { destructiveHint: false, idempotentHint: true },
   },
   // Compras (§18). Pedir es seguro: la solicitud nace «pedida» y nada se compra sin que la apruebe el responsable de
@@ -160,6 +184,26 @@ function editableFields(input: Input): Record<string, unknown> {
     out.cost = input.cost;
   }
   return out;
+}
+
+/** Personas o grupos: id de persona o `level:<nivel>`, sin repetir, hasta 100. */
+function personList(input: Input, field: string): string[] {
+  const value = input[field];
+  if (!Array.isArray(value) || value.length > 100 || !value.every(isPersonKey)) invalid(field, `${field} es una lista de hasta 100 personas (id de Central) o grupos (level:staff, level:direccion, level:outsider).`);
+  const list = (value as string[]).map((v) => v.toLowerCase());
+  if (new Set(list).size !== list.length) invalid(field, `${field} tiene elementos repetidos.`);
+  return list;
+}
+
+const SOURCES = {
+  zone_source: { on: 'spaces', off: 'Esta app usa zonas (etiquetas), no espacios: pon la zona con tasks_set_labels.' },
+  trade_source: { on: 'central', off: 'Esta app usa acciones (etiquetas), no los oficios de Central: pon la acción con tasks_set_labels.' },
+  people_source: { on: 'central', off: 'Esta app usa personas como etiquetas, no las de Central: usa tasks_set_labels u owner_label_id.' },
+} as const;
+/** La fuente tiene que estar activa (`tasks.settings`; sin fila, etiquetas). Si no, 409 `SOURCE_INACTIVE`. */
+function needSource(data: Dataset, key: keyof typeof SOURCES): void {
+  const row = (data['tasks.settings'] ?? []).find((s) => s.key === key && !s.deleted_at);
+  if (row?.value !== SOURCES[key].on) reject(409, 'SOURCE_INACTIVE', SOURCES[key].off, { setting: key });
 }
 
 // --- Búsquedas sobre lo visible -------------------------------------------------------------------------------------
@@ -244,12 +288,20 @@ export function buildTaskTool(name: TaskToolName, data: Dataset, raw: unknown, n
       return createTaskOps(data, { project_id: project.id, parent_id: parentId ?? null, title: fields.title as string, ...fields, labelIds, dependsOnIds }, newId);
     }
     case 'tasks_update_task': {
-      const input = object(raw, ['task_id', 'title', 'note', 'priority', 'due', 'owner_label_id', 'cost']);
+      const input = object(raw, ['task_id', 'title', 'note', 'priority', 'due', 'owner_label_id', 'cost', 'owner_person']);
       const task = liveTask(data, id(input, 'task_id')!);
       const fields = editableFields(input);
+      if (input.owner_person !== undefined) {
+        needSource(data, 'people_source');
+        if (input.owner_label_id !== undefined) invalid('owner_person', 'El responsable es una etiqueta o una persona de Central, no las dos.');
+        if (input.owner_person !== null && !isPersonKey(input.owner_person)) invalid('owner_person', 'owner_person es el id de una persona de Central, un grupo (level:staff, level:direccion, level:outsider) o null.');
+        const person = input.owner_person === null ? { person_id: null, house_level: null } : personFields((input.owner_person as string).toLowerCase());
+        // Como mucho un responsable: la persona o el grupo vacían la etiqueta.
+        Object.assign(fields, { owner_person_id: person.person_id, owner_house_level: person.house_level, ...(input.owner_person === null ? {} : { owner_label_id: null }) });
+      }
       if (!Object.keys(fields).length) invalid('', 'Indica al menos un campo que cambiar.');
       if (fields.owner_label_id) liveLabels(data, task.tab_id, [fields.owner_label_id as Uuid], 'owner_label_id');
-      const changed = Object.fromEntries(Object.entries(fields).filter(([key, value]) => (task as unknown as Input)[key] !== value));
+      const changed = Object.fromEntries(Object.entries(fields).filter(([key, value]) => ((task as unknown as Input)[key] ?? null) !== value));
       return Object.keys(changed).length ? [{ op: 'update', table: 'tasks.tasks', id: task.id, expectedRevision: task.revision, fields: changed }] : [];
     }
     case 'tasks_complete': {
@@ -286,6 +338,24 @@ export function buildTaskTool(name: TaskToolName, data: Dataset, raw: unknown, n
       if (dependsOnIds.includes(task.id)) invalid('depends_on_ids', 'Una tarea no puede depender de sí misma.');
       liveTasks(data, task.tab_id, dependsOnIds, 'depends_on_ids');
       return setDependenciesOps(data, task.id, dependsOnIds, newId);
+    }
+    case 'tasks_set_spaces': {
+      const input = object(raw, ['task_id', 'space_ids']);
+      const task = liveTask(data, id(input, 'task_id')!);
+      needSource(data, 'zone_source');
+      return setTaskSpacesOps(data, task.id, idList(input, 'space_ids', true)!, newId);
+    }
+    case 'tasks_set_trades': {
+      const input = object(raw, ['task_id', 'trade_ids']);
+      const task = liveTask(data, id(input, 'task_id')!);
+      needSource(data, 'trade_source');
+      return setTaskTradesOps(data, task.id, idList(input, 'trade_ids', true)!, newId);
+    }
+    case 'tasks_set_people': {
+      const input = object(raw, ['task_id', 'people']);
+      const task = liveTask(data, id(input, 'task_id')!);
+      needSource(data, 'people_source');
+      return setTaskPeopleOps(data, task.id, personList(input, 'people'), newId);
     }
     case 'tasks_request_purchase': {
       const input = object(raw, ['supply_item_id', 'tab_id', 'project_id', 'task_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'due', 'supplier_name', 'needs_invoice', 'repeat_days']);

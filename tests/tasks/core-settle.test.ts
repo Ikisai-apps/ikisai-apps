@@ -62,3 +62,19 @@ test('idle: en reposo solo sin refresco pendiente ni guardados en vuelo', () => 
   core.dirty = false; core.localPending = 1;
   assert.equal(core.idle(), false);
 });
+
+test('settle: si ya hay una lectura del espejo en marcha, la espera (no vuelve con el modelo viejo)', async () => {
+  const core = new TasksCore({ readOnly: true }) as any;
+  const fresh = { 'tasks.attachments': [{ id: 'a1', project_id: 'p1', task_id: null }] };
+  let release: () => void = () => {};
+  core.read = () => new Promise((resolve) => { release = () => resolve(fresh); });
+  core.dirty = true;
+  const timerRefresh = core.refresh();            // el refresco del temporizador empieza a leer…
+  assert.equal(core.idle(), false, 'mientras lee, no está en reposo');
+  const settled = core.settle();                  // …y «Sincronizar ahora» llega en ese momento
+  setTimeout(() => release(), 30);
+  await settled;
+  assert.equal(core.data, fresh, 'settle() vuelve con lo leído');
+  assert.equal(await timerRefresh, true);
+  assert.equal(core.idle(), true);
+});
