@@ -72,13 +72,17 @@ function keyOf(ix: Index, l: Pick<LabelRow, 'family_id' | 'parent_id' | 'name' |
   return [familyNameKey(ix.families.get(l.family_id)), l.parent_id ?? '-', labelNameKey(l.name), l.tab_id ?? '-'].join('|');
 }
 
+/** Por id, como ordena Postgres los uuid (en minúsculas, el orden del texto). */
+const byId = (a: { id?: Uuid | null }, b: { id?: Uuid | null }) => String(a.id ?? '').toLowerCase() < String(b.id ?? '').toLowerCase() ? -1 : String(a.id ?? '').toLowerCase() > String(b.id ?? '').toLowerCase() ? 1 : 0;
+
 function clashOf(ix: Index, candidate: LabelCandidate): LabelClash | null {
   const family = ix.families.get(candidate.family_id);
   const fkey = familyNameKey(family), name = labelNameKey(candidate.name), parent = candidate.parent_id ?? null;
-  const clash = ix.labels.find((m) => m.id !== candidate.id && visible(ix, m)
+  // La de id menor, como el hook (`order by l.id, m.id`), para que los dos señalen la misma.
+  const clash = ix.labels.filter((m) => m.id !== candidate.id && visible(ix, m)
     && (m.parent_id ?? null) === parent && labelNameKey(m.name) === name
     && (m.tab_id == null || candidate.tab_id == null || m.tab_id === candidate.tab_id)
-    && familyNameKey(ix.families.get(m.family_id)) === fkey);
+    && familyNameKey(ix.families.get(m.family_id)) === fkey).sort(byId)[0];
   if (!clash) return null;
   return { label: candidate, clash, where: ((parent && ix.byId.get(parent)?.name) || family?.name || '').trim(), tabName: clash.tab_id ? ix.tabNames.get(clash.tab_id) ?? null : null };
 }
@@ -118,7 +122,7 @@ export function enteringLabelClash(data: Dataset, operations: readonly Operation
   const touched = new Set(operations.filter((o) => o.op !== 'call' && (o.table === 'tasks.labels' || o.table === 'tasks.families')).map((o) => o.id!));
   if (!touched.size) return null;
   const before = index(data), after = index(applyOperations(data, operations));
-  for (const l of after.labels) {
+  for (const l of [...after.labels].sort(byId)) {
     if (!touched.has(l.id) && !touched.has(l.family_id)) continue;
     if (!visible(after, l)) continue;
     const old = before.byId.get(l.id);
@@ -132,7 +136,7 @@ export function enteringLabelClash(data: Dataset, operations: readonly Operation
 /* ---------------------------------------------------------------------------------------------------------------------
  * «Repetidas → General» y «Hacer General» (FB_2026_023), vistos con la regla de nombres (FB_2026_033, §27.2).
  *
- * La fusión la hace el procedimiento `tasks.merge_labels_into_general` (migración 0318), y el hook de la 0331 mira su
+ * La fusión la hace el procedimiento `tasks.merge_labels_into_general` (migraciones 0318 y 0332), y el hook de la 0331 mira su
  * resultado: si en un área queda viva otra etiqueta igual que no entra en el grupo, rechaza el lote entero con
  * DUPLICATE_LABEL. Para que la vista previa lo anticipe, `generalMergeOperations` reproduce lo que el procedimiento hace
  * con etiquetas y familias (las General nuevas, las hijas que se quedan en su área y las copias archivadas; no repunta
@@ -172,6 +176,17 @@ const lowerTrim = (s: unknown) => String(s ?? '').trim().toLowerCase();
 const invalidMerge = (group: number, message: string, reason: string): never => reject(422, 'INVALID_MERGE', message, { group, reason });
 
 /**
+ * El nombre que toma la General, como el procedimiento (migración 0332): el más usado entre las copias; a igualdad, el que
+ * lleva tildes («Jardín» frente a «Jardin»); y si no, el primero (el orden del grupo).
+ */
+export function generalMergeName(names: readonly string[]): string {
+  const count = new Map<string, number>(), order: string[] = [];
+  for (const raw of names) { const n = String(raw ?? '').trim(); if (!count.has(n)) order.push(n); count.set(n, (count.get(n) ?? 0) + 1); }
+  const accented = (n: string) => labelNameKey(n) !== n.toLowerCase();
+  return [...order].sort((a, b) => count.get(b)! - count.get(a)! || Number(accented(b)) - Number(accented(a)) || order.indexOf(a) - order.indexOf(b))[0] ?? '';
+}
+
+/**
  * Las operaciones sobre `tasks.families` y `tasks.labels` que haría `tasks.merge_labels_into_general` con estos grupos,
  * con las mismas reglas: por rondas (primero las madres), la familia General de la madre o la General con la misma clave
  * o nombre (o una nueva), y las mismas comprobaciones de entrada (lanza `DomainError` INVALID_MERGE como el servidor).
@@ -193,9 +208,8 @@ export function generalMergeOperations(data: Dataset, groups: readonly GeneralMe
       if (rows.some((l) => !l || l.deleted_at || l.tab_id == null)) invalidMerge(g.i, 'Alguna etiqueta del grupo ya no está o ya es General.', 'labels');
       const live = rows as LabelRow[];
       if (new Set(live.map((l) => l.tab_id)).size !== ids.length) invalidMerge(g.i, 'Hay dos etiquetas de la misma área en el grupo.', 'areas');
-      // El servidor junta lo que solo cambia en mayúsculas, no en tildes.
-      const names = [...new Set(live.map((l) => l.name.trim()))];
-      if (new Set(names.map(lowerTrim)).size !== 1) invalidMerge(g.i, `Solo cambian en tildes (${names.map((n) => `«${n}»`).join(' y ')}): ponles el mismo nombre antes.`, 'names');
+      // El mismo nombre para la regla (sin mayúsculas, espacios a los lados ni tildes; migración 0332).
+      if (new Set(live.map((l) => labelNameKey(l.name))).size !== 1) invalidMerge(g.i, 'Las etiquetas del grupo no se llaman igual.', 'names');
       const fams = live.map((l) => data['tasks.families'].find((f) => f.id === l.family_id));
       const keys = new Set(fams.map((f) => f?.system_key ?? null));
       const sameKey = keys.size === 1 && fams.every((f) => f?.system_key);
@@ -230,7 +244,7 @@ export function generalMergeOperations(data: Dataset, groups: readonly GeneralMe
       positions.set(fam, position);
       familyOf.set(gen, fam);
       operations.push({ op: 'insert', table: 'tasks.labels', id: gen, fields: {
-        tab_id: null, family_id: fam, parent_id: parent, name: first.name.trim(), position,
+        tab_id: null, family_id: fam, parent_id: parent, name: generalMergeName(live.map((l) => l.name)), position,
         archived: !!families.find((f) => f.id === fam)?.archived,
       } });
       for (const id of ids) { generals.set(id, gen); famMap.set(id, fam); }

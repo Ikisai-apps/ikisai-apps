@@ -15,7 +15,7 @@ let context: BrowserContext;
 let page: Page;
 const errors: string[] = [];
 const MEJ = crypto.randomUUID(), MEJ_FAM = crypto.randomUUID(), MEJ_ALBERGUE = crypto.randomUUID(), TERMAS = crypto.randomUUID();
-const ANA = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+const ANA = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()], JARDIN = [crypto.randomUUID(), crypto.randomUUID()];
 const TAB = crypto.randomUUID(), FAM = crypto.randomUUID(), ALBERGUE = crypto.randomUUID(), SALAS = crypto.randomUUID(), BANO = crypto.randomUUID(), VIEJA = crypto.randomUUID();
 
 test.describe.configure({ mode: 'serial' });
@@ -37,6 +37,8 @@ test.beforeAll(async ({ browser }) => {
   await ok([{ op: 'insert', table: 'tasks.families', id: MEJ_FAM, fields: { tab_id: MEJ, name: 'lugares', color: '#7a6a55', position: 90_000 } },
     mej(MEJ_ALBERGUE, 'Albergue', null, 1024), mej(TERMAS, 'Termas', null, 2048)]);
   await ok([mej(crypto.randomUUID(), 'baño', MEJ_ALBERGUE, 3072), mej(crypto.randomUUID(), 'Baño', TERMAS, 4096)]);
+  // «Jardin» en Retiros (el área actual) y «Jardín» en Mejoras: solo cambian en tildes; la General se queda con tildes.
+  await ok([label(JARDIN[0]!, 'Jardin', null, 5120), mej(JARDIN[1]!, 'Jardín', null, 5120)]);
   // «Ana» en Cocina y Huerta (familia «Persona») y en Granja, cuya familia de responsables se llama «Equipo»: no sale en
   // el mismo grupo (otro nombre de familia), pero para la regla es la misma familia (la misma clave).
   for (const [i, name] of ['Cocina', 'Huerta', 'Granja'].entries()) {
@@ -93,6 +95,16 @@ test('restaurar una archivada que choca, no; el editor lo dice', async () => {
   expect((await server.rows('tasks.labels')).find((l) => l.id === VIEJA).archived).toBe(true);
 });
 
+/** En la hoja «Repetidas → General», deja marcado solo ese grupo. */
+async function onlyGroup(key: string) {
+  for (;;) {
+    const other = page.locator(`input[data-general-group]:checked:not([data-general-group="${key}"])`).first();
+    if (!(await other.count())) break;
+    await other.click(); // repinta la hoja: el elemento cambia
+  }
+  await expect(page.locator('#generalMerge')).toHaveText('Fusionar 1');
+}
+
 test('«Repetidas → General» anticipa el DUPLICATE_LABEL: aviso en el grupo, casilla desactivada y se ofrece incluirla', async () => {
   await page.evaluate((id) => { closeSheet(); state.activeTab = id; state.view = 'labels'; render(); }, TAB);
   await page.locator('#generalMergeOpen').click();
@@ -117,16 +129,26 @@ test('«Repetidas → General» anticipa el DUPLICATE_LABEL: aviso en el grupo, 
   await expect(ana.locator('[data-general-clash]')).toHaveCount(0);
   await expect(ana.locator('input[data-general-group]')).toBeEnabled();
   await expect(ana.locator('input[data-general-group]')).toBeChecked();
-  // Solo «Ana»: se desmarcan los demás.
-  for (;;) {
-    const other = page.locator('input[data-general-group]:checked:not([data-general-group="persona||ana"])').first();
-    if (!(await other.count())) break;
-    await other.click(); // repinta la hoja: el elemento cambia
-  }
-  await expect(page.locator('#generalMerge')).toHaveText('Fusionar 1');
+  await onlyGroup('persona||ana');
   await page.locator('#generalMerge').click();
   await expect.poll(async () => (await server.rows('tasks.labels')).filter((l) => l.tab_id === null && l.name.toLowerCase() === 'ana' && !l.deleted_at && !l.archived).length, { timeout: 15_000 }).toBe(1);
   expect((await server.rows('tasks.labels')).filter((l) => ANA.includes(l.id)).every((l) => l.archived)).toBe(true);
+  await settled(page);
+});
+
+test('«Repetidas → General» junta lo que solo cambia en tildes: «se quedará como «Jardín»» y el servidor lo acepta', async () => {
+  await page.evaluate((id) => { closeSheet(); state.activeTab = id; state.view = 'labels'; render(); }, TAB);
+  await page.locator('#generalMergeOpen').click();
+  const jardin = page.locator('[data-general-box="lugares||jardin"]');
+  await expect(jardin).toContainText('en 2 áreas');
+  await expect(jardin).toContainText('se quedará como «Jardín»');
+  await expect(jardin.locator('[data-general-clash]')).toHaveCount(0);
+  await expect(jardin.locator('input[data-general-group]')).toBeEnabled();
+  await expect(jardin.locator('input[data-general-group]')).toBeChecked();
+  await onlyGroup('lugares||jardin');
+  await page.locator('#generalMerge').click();
+  await expect.poll(async () => (await server.rows('tasks.labels')).filter((l) => l.tab_id === null && !l.deleted_at && !l.archived && l.name.toLowerCase().startsWith('jard')).map((l) => l.name), { timeout: 15_000 }).toEqual(['Jardín']);
+  expect((await server.rows('tasks.labels')).filter((l) => JARDIN.includes(l.id)).every((l) => l.archived)).toBe(true);
   await settled(page);
 });
 

@@ -33,13 +33,15 @@ function generalBuckets(c){
 /* Un grupo: la misma etiqueta en varias áreas (una por área), con la madre como decisión. */
 function generalGroupOf(c,labels){
   const count=new Map();for(const l of labels)count.set(l.name.trim(),(count.get(l.name.trim())||0)+1);
-  // El nombre que más se repite (y, a igualdad, el del área actual) va primero: es el que toma la General.
-  const name=[...count.entries()].sort((a,b)=>b[1]-a[1]||(labels.find(l=>l.name.trim()===b[0])?.tab_id===tab()?.id)-(labels.find(l=>l.name.trim()===a[0])?.tab_id===tab()?.id))[0][0];
+  // El nombre que más se repite (a igualdad, el que lleva tildes, y luego el del área actual) va primero: es el que toma
+  // la General (el servidor elige igual, migración 0332).
+  const accented=n=>labelNameKeyOf(n)!==n.toLowerCase();
+  const name=[...count.entries()].sort((a,b)=>b[1]-a[1]||accented(b[0])-accented(a[0])||(labels.find(l=>l.name.trim()===b[0])?.tab_id===tab()?.id)-(labels.find(l=>l.name.trim()===a[0])?.tab_id===tab()?.id))[0][0];
   const sorted=[...labels].sort((a,b)=>(b.name.trim()===name)-(a.name.trim()===name));
   const parents=sorted.map(l=>l.parent_id?c.byId.get(l.parent_id):null);
   const mother=parents.every(p=>!p)?null:parents.every(p=>p&&p.tab_id)&&new Set(parents.map(c.keyOf)).size===1?c.keyOf(parents[0]):parents.every(p=>p&&!p.tab_id)&&new Set(parents.map(p=>p.id)).size===1?'general':'mixed';
   const keys=new Set(sorted.map(l=>c.fams.get(l.family_id)?.system_key||null));
-  return {key:c.keyOf(sorted.find(l=>!l.parent_id)||sorted[0]),name,family:c.fams.get(sorted[0].family_id),labels:sorted,areas:sorted.map(l=>c.tabs.get(l.tab_id)?.name||''),mother,keyConflict:keys.size>1,
+  return {key:c.keyOf(sorted.find(l=>!l.parent_id)||sorted[0]),name,spellings:[...count.keys()],family:c.fams.get(sorted[0].family_id),labels:sorted,areas:sorted.map(l=>c.tabs.get(l.tab_id)?.name||''),mother,keyConflict:keys.size>1,
     parentNames:[...new Set(parents.filter(Boolean).map(p=>p.name))]};
 }
 function generalMergeGroups(){
@@ -87,7 +89,7 @@ function generalMergeSheet(){
      sin casilla; si esa otra es de un área que no está en el grupo, se ofrece incluirla. Los demás grupos siguen. */
   const cat=generalCatalog(),included=new Map();
   const widen=g=>{const extra=(included.get(g.key)||[]).map(id=>cat.byId.get(id)).filter(Boolean);
-    return extra.length?{...g,labels:[...g.labels,...extra],areas:[...g.areas,...extra.map(l=>cat.tabs.get(l.tab_id)?.name||'')]}:g};
+    return extra.length?{...generalGroupOf(cat,[...g.labels,...extra]),key:g.key,mother:g.mother,root:g.root,mergeable:true}:g};
   const motherOf=g=>g.mother&&!g.root&&g.mother!=='general'?groups.find(x=>x.key===g.mother&&x!==g)||null:null;
   const chainOf=g=>{const out=[];for(let x=motherOf(g);x&&!out.includes(x);x=motherOf(x))out.unshift(x);return out};
   const blockedNow=()=>{const blocked=new Map();
@@ -104,7 +106,7 @@ function generalMergeSheet(){
     openSheet(`<h2 class="sheettitle">Repetidas → General</h2><p class="small muted">Cada etiqueta marcada pasa a ser una sola, General, válida en todas las áreas. Las tareas, los responsables, las reglas y las vistas pasan a usarla; las copias de cada área quedan archivadas.</p>
       ${conflicts.length?`<h3 class="sectionlabel">Claves por corregir</h3><p class="small muted">Estas familias tienen una marca de sistema que no casa con su nombre. Se corrigen antes de fusionar.</p><div class="generalgroups">${conflicts.map(x=>`<label class="checkline generalconflict"><input type="checkbox" data-general-fix="${x.family.id}" ${fixes.has(x.family.id)?'checked':''} data-feedback-id="tasks.etiquetas.general.corregir_clave" data-feedback-label="Corregir la clave de la familia"><span><strong>${esc(x.family.name)}</strong> <span class="small muted">· ${esc(x.area)} · marcada como ${esc(keyName[x.family.system_key]||x.family.system_key)}: se quita la marca${x.owners.length?`, y ${x.owners.length} ${x.owners.length===1?'responsable que era':'responsables que eran'} de esta familia se quedan sin responsable`:''}</span></span></label>`).join('')}</div>`:''}
       <h3 class="sectionlabel">Repetidas entre áreas</h3>
-      ${groups.length?`<div class="generalgroups">${groups.map(widen).map(g=>{const b=blocked.get(g.key),child=g.mother&&!g.root?'child':'';return `<div class="generalgroupbox ${child}" data-general-box="${esc(g.key)}"><label class="checkline generalgroup ${child} ${b?'blocked':''}"><input type="checkbox" data-general-group="${esc(g.key)}" ${chosen.has(g.key)?'checked':''} ${b?'disabled':''} data-feedback-id="tasks.etiquetas.general.grupo" data-feedback-label="Fusionar este grupo"><span><strong>${child?'↳ ':''}${esc(g.name)}</strong> <span class="small muted">· ${esc(g.family?.name||'')} · en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}${g.root&&g.parentNames.length?` · en alguna cuelga de ${esc(g.parentNames.join(', '))}: la General quedará en la raíz`:''}${g.keyConflict?' · las familias tienen marcas distintas: la General, sin marca':''}</span></span></label>
+      ${groups.length?`<div class="generalgroups">${groups.map(widen).map(g=>{const b=blocked.get(g.key),child=g.mother&&!g.root?'child':'';return `<div class="generalgroupbox ${child}" data-general-box="${esc(g.key)}"><label class="checkline generalgroup ${child} ${b?'blocked':''}"><input type="checkbox" data-general-group="${esc(g.key)}" ${chosen.has(g.key)?'checked':''} ${b?'disabled':''} data-feedback-id="tasks.etiquetas.general.grupo" data-feedback-label="Fusionar este grupo"><span><strong>${child?'↳ ':''}${esc(g.name)}</strong> <span class="small muted">· ${esc(g.family?.name||'')} · en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}${g.spellings.length>1?` · se quedará como «${esc(g.name)}»`:''}${g.root&&g.parentNames.length?` · en alguna cuelga de ${esc(g.parentNames.join(', '))}: la General quedará en la raíz`:''}${g.keyConflict?' · las familias tienen marcas distintas: la General, sin marca':''}</span></span></label>
         ${b?`<p class="labelclash generalclash ${b.soft?'soft':''}" role="alert" data-general-clash="${esc(g.key)}">${esc(b.message)}</p>${b.include?`<button type="button" class="ghost small generalinclude" data-general-include="${esc(g.key)}" data-include-id="${esc(b.include)}" data-feedback-id="tasks.etiquetas.general.incluir" data-feedback-label="Incluir la otra en la fusión">Incluir la de ${esc(b.conflictTabName||'esa área')} en la fusión</button>`:''}`:''}</div>`}).join('')}</div>`:'<p class="small">No hay etiquetas repetidas entre áreas. Puedes llevar una etiqueta o una familia a General con «Hacer General».</p>'}
       ${lookalikes.length?`<div class="notice"><strong>Parecidas, pero no iguales</strong> (decide a mano si son la misma; renómbralas y vuelve aquí):<ul>${lookalikes.map(l=>`<li>${l.map(esc).join(' · ')}</li>`).join('')}</ul></div>`:''}
       ${together?`<p class="labelclash" role="alert" id="generalTogether">Juntos no se pueden fusionar: ${esc(together.message)} Desmarca uno de los grupos.</p>`:''}
@@ -140,7 +142,7 @@ function generalMakeSheet(labelIds,what){
   const groups=generalGroupsFor(labelIds);if(!groups.length)return toast('No hay nada del área que llevar a General.');
   // Regla de nombres (FB_2026_033): si el servidor lo rechazaría, se dice aquí y no se deja mandar.
   const problem=generalProblem(groups);
-  openSheet(`<h2 class="sheettitle">Hacer General</h2><p class="small muted">${esc(what)} pasa a General, válida en todas las áreas, junto con las iguales de otras áreas. Las copias de cada área quedan archivadas.</p><ul class="small">${groups.map(g=>`<li><strong>${esc(g.name)}</strong> · ${esc(g.family?.name||'')} · ${g.labels.length===1?`de ${esc(g.areas[0])}`:`en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}`}${g.root&&g.parentNames.length?' · quedará en la raíz':''}</li>`).join('')}</ul>
+  openSheet(`<h2 class="sheettitle">Hacer General</h2><p class="small muted">${esc(what)} pasa a General, válida en todas las áreas, junto con las iguales de otras áreas. Las copias de cada área quedan archivadas.</p><ul class="small">${groups.map(g=>`<li><strong>${esc(g.name)}</strong> · ${esc(g.family?.name||'')} · ${g.labels.length===1?`de ${esc(g.areas[0])}`:`en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}`}${g.spellings.length>1?` · se quedará como «${esc(g.name)}»`:''}${g.root&&g.parentNames.length?' · quedará en la raíz':''}</li>`).join('')}</ul>
     ${problem?`<p class="labelclash" role="alert" id="generalMakeClash">${esc(problem.message)}</p>`:''}
     <div class="actions"><button class="ghost" id="generalMakeCancel" data-feedback-id="tasks.etiquetas.general.hacer_cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalMakeGo" ${problem?'disabled':''} data-feedback-id="tasks.etiquetas.general.hacer" data-feedback-label="Hacer General">Hacer General</button></div>`);
   document.getElementById('generalMakeCancel').onclick=closeSheet;
