@@ -209,7 +209,8 @@ export const mountPurchases: ViewMount = (ctx) => {
     const canEdit = client.bootstrap()?.membership.role !== 'reader';
     const view = renderWorstGroups<typeof items[number]>({
       label: 'Por asignar', feedbackId: 'invoices.compras.por_asignar',
-      groups: [...groups.entries()].map(([key, g]) => {
+      // Primero los que tienen destino propuesto (se asignan de un toque); después, sin propuesta
+      groups: [...groups.entries()].sort(([, a], [, b]) => Number(!a.target) - Number(!b.target) || a.title.localeCompare(b.title, 'es')).map(([key, g]) => {
         const open = g.target ? g.items.filter((i) => openFor(g.target!, i.invoice as LocalInvoice)) : [];
         const total = open.reduce((s, i) => s + Math.round(i.unallocated_amount * 100), 0) / 100;
         return { key, title: g.title, items: g.items, open: true, summary: `${g.items.length} sin asignar · ${eur(g.items.reduce((s, i) => s + Math.round(i.unallocated_amount * 100), 0) / 100)}`,

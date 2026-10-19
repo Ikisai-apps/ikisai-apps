@@ -189,7 +189,7 @@ export const mountSuppliers: ViewMount = ({ main, client, navigate }) => {
     const mine = templates.filter((t) => t.supplier_id === row.id && t.status !== 'retirada');
     const open = (id: string) => { void closeSheet(true); navigate(`#/facturas/${id}`); };
     const statement = renderMoneyBreakdown({
-      mode: 'statement', totalLabel: 'Le debes', total: debt.owed, subtitle: `de ${eur(debt.yearTotal)} este año${debt.unconfirmed ? ` · ${debt.unconfirmed} pago${debt.unconfirmed === 1 ? '' : 's'} por confirmar` : ''}`,
+      mode: 'statement', totalLabel: 'Le debes', total: debt.owed, format: (n: number) => eur(n), subtitle: `de ${eur(debt.yearTotal)} este año${debt.unconfirmed ? ` · ${debt.unconfirmed} pago${debt.unconfirmed === 1 ? '' : 's'} por confirmar` : ''}`,
       upcoming: upcomingOf(invoices, today).map((m) => ({ ...m, onOpen: () => open(m.invoiceId) })),
       moves: movesOf(invoices, today.slice(0, 4), eur).reverse().map((m) => ({ ...m, onOpen: () => open(m.invoiceId) })),
     });
