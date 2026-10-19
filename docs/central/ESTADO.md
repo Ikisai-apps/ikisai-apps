@@ -76,7 +76,7 @@
   - **Votos de Decisiones:** `central.decision_votes` (un voto por persona, solo el suyo y solo en vigentes) y la decisión final del owner en `central.decisions`, con quién, cuándo y la votación.
   - **Revisión:** `central.review_screens`, con los diez pasos del cuadro; el feedback se une por prefijo o por ruta.
   - Reglas puras en el dominio para las pantallas (lo que te toca decidir, por votar, recientes, rastro, avance y feedback por pantalla).
-  - El lector aún no vota: lo impide el núcleo (P10). La interfaz llega cuando el kit publique los lotes A y B.
+  - El lector vota desde el 19-10 (núcleo #608, P10). La interfaz llega cuando el kit publique los lotes A y B.
 
 ## Pendiente
 
