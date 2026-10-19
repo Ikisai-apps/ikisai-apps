@@ -1876,3 +1876,17 @@ Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`
   - `tests/tasks/materiales.spec.ts`: ficha, confirmar al completar, «Ahora no» con «No se usó», y la lectura sin botones.
   - Capturas `20-…` y `21-…` en `coordinacion/tasks/r6-despues/`.
 - **Pendiente (recomendación: más adelante):** los materiales no van en la copia portable ni en el CSV. Son referencias a artículos de Recursos que la copia no lleva.
+
+## 37. Costes de tarea y proyecto (fase R6, PR 4; aprobada por el usuario el 19-10-2026)
+
+- **Coste de una tarea:** se suman tres cosas.
+  - **Materiales:** lo gastado de cada material (`task_materials.consumed`) × el coste medio ponderado de su artículo. El coste medio sale de las entradas de Recursos con `unit_cost`, más las que lo reciben después por `resources.movement_costs`. Un material sin entradas con coste cuenta como «sin coste conocido» y la ficha lo dice.
+  - **Costes a mano:** `resources.cost_entries` con `target_app 'tasks'` y `target_ref 'task:<id>'`, por ejemplo «alquiler de andamio 120 €». Se añaden y se quitan desde la ficha, y van por el segundo cliente de Recursos (`costEntryOperation`).
+  - **El campo `cost` de antes:** sigue como coste a mano.
+- **Coste de un proyecto:** la suma de sus tareas vivas, más sus costes a mano (`target_ref 'project:<id>'`), frente al presupuesto. Es la barra de siempre (`projectCost`, `moneyBlock` y la tarjeta).
+- **Quién ve los importes** (decisión del usuario): la propietaria y el responsable de compras del área, el mismo que aprueba sus compras.
+  - Los demás ven las cantidades de los materiales, pero no los importes: ni la barra ni el chip de coste, ni «Coste (€)» ni «Presupuesto (€)».
+  - Esos dos campos se ocultan, no se quitan, para que guardar la ficha no los toque.
+  - **Límite:** es una regla de la interfaz de Tasks. Los importes de Recursos los puede leer cualquier miembro de Recursos.
+- **Código:** `_domain/tasks/costs.ts` (`taskCost`, `projectCostOf`, `averageUnitCost`, `manualCosts` y `costEntryOperation`, en `window.IkisaiTasks.costs`) y `public/costs-ui.js` y `.css`. El segundo cliente sincroniza también `resources.cost_entries`.
+- **Pruebas:** `tests/tasks/costs.test.ts` y `tests/tasks/costes.spec.ts`. Esta última comprueba que la propietaria ve el coste y lo suma en el proyecto, que un editor no ve los importes y que los ve en cuanto lo nombran responsable de compras. Las capturas `22-…` y `23-…` están en `coordinacion/tasks/r6-despues/`.

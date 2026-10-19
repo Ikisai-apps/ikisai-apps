@@ -14,7 +14,7 @@ import {
   itemStock, isSupplyKind, lowStock, openRequestFor, receiptEntryOperation, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, KITCHEN_KINDS, type ResourceItem, type ResourceMovement,
   taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
-  type TradeKitOption,
+  type TradeKitOption, taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost, type CostEntry, type MovementCost,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
@@ -32,7 +32,7 @@ export interface CoreOptions {
 
 /** Tablas del inventario de Recursos que sincroniza el segundo cliente (las que lee `createSyncItemSource` del kit). */
 const RESOURCE_INVENTORY_TABLES = ['resources.items', 'resources.item_units', 'resources.item_kinds', 'resources.lots', 'resources.movements',
-  'resources.movement_costs', 'resources.counts', 'resources.count_lines'];
+  'resources.movement_costs', 'resources.counts', 'resources.count_lines', 'resources.cost_entries'];
 
 /** Filas de `central.trade_kit_options` (`{rows}` o lista), solo las bien formadas. */
 function tradeKitFrom(raw: unknown): TradeKitOption[] {
@@ -319,7 +319,7 @@ export class TasksCore {
           pullIntervalMs: this.options.pullIntervalMs ?? 20000,
         });
         this.resources.onTable('resources.spaces' as TableName, () => void this.readSpaces());
-        for (const table of ['resources.items', 'resources.movements']) this.resources.onTable(table as TableName, () => void this.readInventory());
+        for (const table of ['resources.items', 'resources.movements', 'resources.movement_costs', 'resources.cost_entries']) this.resources.onTable(table as TableName, () => void this.readInventory());
       }
       await this.resources.start();
       await this.readSpaces();
@@ -328,12 +328,14 @@ export class TasksCore {
   }
 
   /** Artículos y movimientos del espejo de Recursos, para el aviso «Queda poco» de Inicio (síncrono en la interfaz). */
-  inventory: { items: ResourceItem[]; movements: ResourceMovement[] } = { items: [], movements: [] };
+  inventory: { items: ResourceItem[]; movements: ResourceMovement[]; movementCosts: MovementCost[]; costEntries: CostEntry[] } = { items: [], movements: [], movementCosts: [], costEntries: [] };
 
   private async readInventory(): Promise<void> {
     if (!this.resources) return;
-    const [items, movements] = await Promise.all([this.resources.list('resources.items' as TableName), this.resources.list('resources.movements' as TableName)]);
-    this.inventory = { items: items as unknown as ResourceItem[], movements: movements as unknown as ResourceMovement[] };
+    const [items, movements, movementCosts, costEntries] = await Promise.all(['resources.items', 'resources.movements', 'resources.movement_costs', 'resources.cost_entries']
+      .map((table) => this.resources!.list(table as TableName)));
+    this.inventory = { items: items as unknown as ResourceItem[], movements: movements as unknown as ResourceMovement[],
+      movementCosts: movementCosts as unknown as MovementCost[], costEntries: costEntries as unknown as CostEntry[] };
     this.emit('data');
   }
 
@@ -654,6 +656,8 @@ const api = {
   labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage, mergeProblem: generalMergeProblem },
   /** Materiales y equipos de una tarea, kit del oficio y «Confirmar consumo» (R6 PR 3, §36; `public/materials-ui.js`). */
   materials: { taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, confirmConsumptionOps, materialRef },
+  /** Costes de tarea y proyecto (R6 PR 4, §37; `public/costs-ui.js`). */
+  costs: { taskCost, projectCostOf, manualCosts, costRef, costEntryOperation, averageUnitCost },
   /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
