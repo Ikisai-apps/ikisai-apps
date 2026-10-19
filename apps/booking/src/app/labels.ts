@@ -13,7 +13,7 @@ const LABELS: Record<string, string> = {
   alta: 'Alta', media: 'Media', baja: 'Baja',
   particular: 'Particular', empresa: 'Empresa', asociacion: 'Asociación', colectivo: 'Colectivo', organizador_recurrente: 'Organizador recurrente',
   no_aplica: 'No aplica', desayuno: 'Desayuno', media_pension: 'Media pensión', pension_completa: 'Pensión completa', segun_programa: 'Según programa',
-  vegetariano: 'Vegetariano', vegano: 'Vegano', mixto: 'Mixto',
+  vegetariano: 'Vegetariano', vegano: 'Vegano', mixto: 'Omnívoro',
   efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', plataforma_pago: 'Plataforma de pago',
   basico: 'Básico', circulo: 'Círculo', escenario: 'Escenario', personalizado: 'Personalizado',
   ninguna: 'Ninguna', wifi: 'Wifi', sonido: 'Sonido', proyeccion: 'Proyección',

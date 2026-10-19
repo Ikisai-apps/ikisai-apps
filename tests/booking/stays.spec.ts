@@ -35,6 +35,7 @@ test('estancias: alta, choque como aviso, cama por defecto, capas, retiro abiert
   const sync = () => page.getByRole('button', { name: 'Sincronizar ahora' }).click();
 
   await test.step('Inicio lleva a Estancias', async () => {
+    await page.locator('#homeUtilities').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // utilidades plegadas en Inicio (tanda 27)
     await page.locator('#openStaysHome').click();
     await expect(page.getByRole('heading', { name: 'Estancias' })).toBeVisible();
     await expect(page.locator('[data-stay-id]')).toHaveCount(1);
@@ -70,6 +71,7 @@ test('estancias: alta, choque como aviso, cama por defecto, capas, retiro abiert
   await test.step('Inicio avisa del choque', async () => {
     await page.locator('.nav').getByText('Inicio', { exact: true }).click();
     await expect(page.locator('[data-notice="stays"]')).toContainText('1');
+    await page.locator('#otherNotices').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // avisos que no son de SES ni del portal, plegados (tanda 27)
     await page.locator('[data-notice="stays"] a').click();
     await expect(page.getByRole('heading', { name: 'Estancias' })).toBeVisible();
   });

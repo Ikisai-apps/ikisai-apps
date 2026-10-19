@@ -353,5 +353,5 @@ export function renderLodgingBlock(o: LodgingBlockOptions): HTMLElement {
       el('button', { class: 'linkbtn', type: 'button', id: 'openSpaces', 'data-feedback-id': 'booking.reserva.alojamiento.espacios', 'data-feedback-label': 'Espacios y camas', onclick: () => o.navigate('#/espacios') }, 'Espacios y camas')),
     sections.length === 0 ? el('p', { class: 'hint' }, 'Sin asignaciones todavía.') : sections,
     extras > 0 ? el('p', { class: 'hint', id: 'extraBeds' }, plural(extras, 'supletoria activada', 'supletorias activadas')) : null,
-    o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'ghost small', type: 'button', id: 'addAssignment', 'data-feedback-id': 'booking.reserva.alojamiento.asignar', 'data-feedback-label': 'Asignar', onclick: () => void openAssignmentSheet(sheetOptions(null)) }, 'Asignar')) : null);
+    o.editable ? el('p', { style: 'margin-top:10px' }, el('button', { class: 'primary small', type: 'button', id: 'addAssignment', 'data-feedback-id': 'booking.reserva.alojamiento.asignar', 'data-feedback-label': 'Asignar camas', onclick: () => void openAssignmentSheet(sheetOptions(null)) }, 'Asignar camas')) : null);
 }

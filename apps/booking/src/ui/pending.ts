@@ -48,7 +48,9 @@ export const mountPending: ViewMount = ({ main, client }) => {
 
   async function load(): Promise<void> {
     const [conflicts, rejected] = await Promise.all([client.conflicts(), client.rejected()]);
+    // Bandeja por áreas (MUELA-051, kit 0.46): «Lo mío» y «Lo del otro» al mismo nivel, «Ver diferencias» y «Deshacer».
     replace(conflictsHost, renderConflicts(conflicts, {
+      layout: 'tray', undoMs: 5000,
       fieldLabels: FIELD_LABELS,
       show: (field, value) => (field === 'status' ? statusLabel(value) : value === null || value === undefined || value === '' ? '—' : String(value)),
       onResolve: resolve,

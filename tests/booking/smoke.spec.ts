@@ -34,7 +34,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     expect(api.requests.some((r) => r.path.startsWith('/api/v1/bootstrap'))).toBeTruthy();
     expect(api.requests.some((r) => r.path.startsWith('/api/v1/snapshot'))).toBeTruthy();
     for (const label of ['Inicio', 'Reservas', 'Calendario', 'Huéspedes']) await expect(page.locator('.nav').getByText(label, { exact: true })).toBeVisible();
-    await expect(page.getByText('No hay pre-reservas ni reservas confirmadas próximas.')).toBeVisible();
+    await expect(page.getByText('Nada pendiente: ninguna reserva pide algo ahora.')).toBeVisible();
   });
 
   await test.step('lista vacía de reservas', async () => {
@@ -82,7 +82,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.reload();
     await expect(page.locator('#reservationList .row', { hasText: 'Retiro Test' })).toBeVisible();
     await page.locator('.nav').getByText('Inicio', { exact: true }).click();
-    await expect(page.locator('#upcomingList .row', { hasText: 'Retiro Test' })).toBeVisible();
+    await expect(page.locator('#upcomingList [data-id]', { hasText: 'Retiro Test' }).first()).toBeVisible();
     await expect(page.locator('#notices')).toContainText('pre-reserva pendiente de confirmar');
     await page.locator('.nav').getByText('Reservas', { exact: true }).click();
     await page.locator('.filters').getByRole('button', { name: 'Canceladas' }).click();
@@ -125,7 +125,9 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await page.locator('#confirmReservation').click();
     await page.locator('.dialog').getByRole('button', { name: 'Confirmar', exact: true }).click();
     await expect(page.locator('#statusChip')).toHaveText('Confirmada', { timeout: 15_000 });
-    await expect(page.locator('#blockOperation')).toContainText('EVT_TEST_001');
+    // El código del evento es interno y no se enseña (MUELA-067, hallazgo 2): solo su estado.
+    await expect(page.locator('#blockOperation')).toContainText('Estado del eventoPendiente de preparación');
+    await expect(page.locator('#blockOperation')).not.toContainText('EVT_TEST_001');
     await expect(page.locator('#confirmReservation')).toHaveCount(0);
     // Incidencia del usuario en Android (V1): tras confirmar y volver a la app, el lote del `call` quedaba atascado en
     // IndexedDB («Evaluating the object store's key path…») con «2 pendientes». Tras recargar no debe quedar nada.
@@ -584,8 +586,13 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
 
     // ajuste global: pruebas por defecto, PROD pide confirmación, pausar envíos
     await page.goto(`${baseURL}/#/`);
+    await page.locator('#homeUtilities').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // utilidades plegadas en Inicio (tanda 27)
     await page.locator('#openSesHome').click();
     await expect(page.getByRole('heading', { name: 'SES.HOSPEDAJES', level: 2 })).toBeVisible();
+    // La bandeja, con su veredicto; los ajustes, plegados en «Ajustes del servicio» (tanda 27).
+    await expect(page.locator('#sesVerdict')).toBeVisible();
+    await expect(page.locator('#sesTestBand')).toContainText('Entorno de pruebas');
+    await page.locator('#sesSettingsFold > summary').click();
     await expect(page.locator('#sesEnvironment')).toHaveValue('pre');
     await page.locator('#sesEnvironment').selectOption('prod');
     await expect(page.getByRole('alertdialog', { name: 'Pasar a entorno real' })).toContainText('comunicaciones reales');
@@ -706,13 +713,13 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     // Plazo legal desde el momento legal de la comunicación: 13 h (aviso), 19 h (alerta) y 25 h (vencido).
     const patchDeadline = async (hours: number) => { api.sesPatch(lastComm().id, { legal_start_at: hoursAgo(hours) }); await page.reload(); };
     await patchDeadline(13);
-    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 12 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toContainText('Quedan menos de 12 h para comunicar la reserva · Ven');
     await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'warn');
     await patchDeadline(19);
-    await expect(block.locator('#sesDeadline')).toHaveText('Quedan menos de 6 h para comunicar la reserva');
+    await expect(block.locator('#sesDeadline')).toContainText('Quedan menos de 6 h para comunicar la reserva · Ven');
     await expect(block.locator('#sesDeadline')).toHaveAttribute('data-level', 'alert');
     await patchDeadline(25);
-    await expect(block.locator('#sesDeadline')).toHaveText('Plazo legal vencido');
+    await expect(block.locator('#sesDeadline')).toContainText('Plazo legal vencido · Ven');
 
     // Pago antiguo: la fecha es de hace días pero el plazo cuenta desde que se registró.
     api.serverUpdate(FINANCE, reservationId, { payment_date: inDays(-3), payment_registered_at: hoursAgo(13) });
@@ -727,7 +734,8 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
     // Aceptada, deja de avisar.
     api.sesAccept(lastComm().id);
-    const asked = page.waitForResponse((response) => response.url().includes('/api/v1/ses/'));
+    // Inicio pregunta por SES en una llamada (B2, `GET /ses`) y, si no la tiene, reserva a reserva.
+    const asked = page.waitForResponse((response) => /\/api\/v1\/ses(\/|$|\?)/.test(response.url()));
     await page.goto(`${baseURL}/#/`);
     await asked;
     await expect(page.locator('#upcomingList')).toBeVisible();
@@ -1072,6 +1080,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
     api.serverUpdate(RESERVATIONS, api.rows(RESERVATIONS)[0]!.id, { start_date: inDays(3), end_date: inDays(12) });
     await page.getByRole('button', { name: 'Sincronizar ahora' }).click();
     await expect(page.locator('[data-notice="needs"]')).toHaveText(/^1\s*refuerzo sin cubrir en los próximos 7 días$/);
+    await page.locator('#otherNotices').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // avisos que no son de SES ni del portal, plegados (tanda 27)
     await page.locator('[data-notice="needs"] a').click(); // una sola reserva: va a su ficha
     await expect(page.getByRole('heading', { name: 'Retiro Test', level: 2 })).toBeVisible();
     await page.getByRole('button', { name: 'Marcar cubierto el refuerzo de Cocina' }).click();
@@ -1178,6 +1187,7 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
 
     // Tarifario: dos tarifas con importes legibles, y un extra del catálogo.
     await page.locator('.nav').getByText('Inicio', { exact: true }).click();
+    await page.locator('#homeUtilities').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // utilidades plegadas en Inicio (tanda 27)
     await page.locator('#openRatesHome').click();
     await expect(page.getByRole('heading', { name: 'Tarifas y condiciones', level: 2 })).toBeVisible();
     await expect(page.getByText('Todavía no hay tarifas')).toBeVisible();
@@ -1341,16 +1351,19 @@ test('login → Inicio → reservas sin red → sincronizar', async ({ page, con
   });
 });
 
-test('@smoke lanzador: la marca de la cabecera abre las apps de la cuenta con Booking marcada', async ({ page }) => {
+test('@smoke menú: la marca de la cabecera abre el menú lateral con las secciones y las otras apps de la cuenta', async ({ page }) => {
   await login(page);
   await page.locator('#appLauncher').click();
-  const sheet = page.getByRole('dialog', { name: 'Apps de Ikisai' });
-  await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole('link', { name: /Tasks/ })).toHaveAttribute('href', 'https://tasks.example.test/');
-  await expect(sheet.getByRole('link', { name: /Organizadores/ })).toBeVisible();
-  await expect(sheet.locator('[aria-current]')).toContainText('Booking');
-  await page.keyboard.press('Escape');
-  await expect(sheet).toBeHidden();
+  // Tanda 27: la marca abre el menú lateral común (kit 0.47); las apps van dentro, sin la actual.
+  const menu = page.getByRole('dialog', { name: 'Menú de Booking' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('link', { name: /Tasks/ })).toHaveAttribute('href', 'https://tasks.example.test/');
+  await expect(menu.getByRole('link', { name: /Organizadores/ })).toBeVisible();
+  await expect(menu.locator('.appmenu-tiles')).toContainText('La casa');
+  await menu.getByRole('button', { name: /La casa/ }).click();
+  await menu.getByRole('link', { name: 'Espacios y camas' }).click();
+  await expect(page.getByRole('heading', { name: 'Espacios y camas', level: 2 })).toBeVisible();
+  await expect(menu).toBeHidden();
 });
 
 test('@smoke feedback: enviar con doble toque, se cierra, se ve el aviso y llega un solo reporte', async ({ page }) => {

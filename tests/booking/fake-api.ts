@@ -696,6 +696,27 @@ export async function startFakeApi(options: FakeApiOptions = {}): Promise<FakeAp
           return json(res, 200, { linkId: link.linkId, revokedAt: link.revokedAt, validUntil: linkValidUntil(link) });
         }
       }
+      // B2 (API §17.6): el estado de SES de las reservas que importan, en una llamada. Aquí, todas las comunicables o con
+      // alguna comunicación, sin los recuentos de huéspedes (la selección fina la prueba ses-overview.test.ts).
+      if (path === 'ses' && method === 'GET') {
+        const settings = Array.from(data.get('booking.ses_settings')?.values() ?? []).find((r) => r.deleted_at === null) ?? null;
+        const events = Array.from(data.get('booking.events')?.values() ?? []).filter((e) => e.deleted_at === null);
+        const items = Array.from(data.get('booking.reservations')?.values() ?? [])
+          .filter((r) => r.deleted_at === null && (['confirmada', 'en_ejecucion', 'cerrada'].includes(String(r.status)) || sesList(String(r.id)).length > 0))
+          .map((r) => {
+            const finance = data.get('booking.reservation_finance')?.get(String(r.id));
+            const event = events.find((e) => e.reservation_id === r.id);
+            return {
+              reservation: { id: r.id, code: r.code ?? null, title: r.title ?? null, status: r.status, start_date: r.start_date ?? null, end_date: r.end_date ?? null, expected_guests: r.expected_guests ?? null,
+                final_guests: event?.final_guests ?? null, event_id: event?.id ?? null, archived_at: r.archived_at ?? null, ses_enabled: r.ses_enabled !== false,
+                ses_disabled_reason: r.ses_disabled_reason ?? null, ses_disabled_note: r.ses_disabled_note ?? null, collect_guest_data: r.collect_guest_data ?? null },
+              payment: finance ? { registered_at: finance.payment_registered_at ?? null, date: finance.payment_date ?? null } : null,
+              communications: sesList(String(r.id)).map(sesPublic),
+              guests: null,
+            };
+          });
+        return json(res, 200, { generated_at: nowIso(), settings: settings ? { environment: settings.environment, paused: settings.paused === true } : null, items });
+      }
       const sesPath = /^ses\/([0-9a-f-]+)(?:\/(rh|pv)|\/cancel\/([0-9a-f-]+))?$/.exec(path);
       if (sesPath) {
         const reservationId = sesPath[1]!;

@@ -1,10 +1,10 @@
 /** Huéspedes (canon §10): recuentos, registro de viajeros, firma del parte y cola de envío a SES.Hospedajes. */
 import type { RowOperation, SyncedRow, TableName } from '@ikisai/sync-client';
-import { compressImage, compressedFilename, confirmDialog, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet } from '@ikisai/ui-kit';
+import { compressImage, compressedFilename, confirmDialog, el, formatDate, icon, isImageFile, listRow, openSheet, plural, replace, toast, type Child, type Sheet, deadlineText } from '@ikisai/ui-kit';
 import { OPERATIVE_GUEST_FIELDS, READS, TABLES, canSeeGuests, dayNumber, fieldSource, guestCompleteness, guestModeOf, missingForSes, reservationCompleteness, signsOwnEntry, type GuestLike } from '@ikisai/domain-booking';
 import { EVENTS, GUESTS, RESERVATIONS, FINANCE, canRead, canWrite, dateRange, describeError, today, type ReservationRow } from '../app/client.ts';
 import { OPTIONS, label } from '../app/labels.ts';
-import { PV_IN_PROCESS, fetchSes, guestReports, type SesCommunication } from '../app/ses.ts';
+import { PV_IN_PROCESS, fetchSes, guestReports, type SesCommunication, deadlineOf } from '../app/ses.ts';
 import { guestReminder, missingLabels, organizerReminder, SOURCE_LABELS, SOURCE_TITLES } from '../app/reminders.ts';
 import { openRowSheet, type FieldMark, type FieldSpec } from './form.ts';
 import { RESTRICTION_SPECS } from './reservation.ts';
@@ -535,6 +535,12 @@ export function mountGuests(initialEventId: string | null): ViewMount {
         el('div', { class: 'sectionlabel' }, 'Llegada'),
         el('p', { class: 'completeness', id: 'arrivalSummary', 'data-feedback-id': 'booking.huespedes.llegada.resumen', 'data-feedback-label': 'Resumen de llegada' },
           `${planned ?? '—'} ${planned === 1 ? 'previsto' : 'previstos'} · ${plain(guests.filter((g) => g.arrived_at).length, 'llegado', 'llegados')} · ${guests.filter((g) => missingForSes(g as GuestLike).length === 0).length} con datos completos · ${plain(guests.filter((g) => g.signed_at).length, 'firmado', 'firmados')} · ${plain(guests.filter((g) => reportOf(g.id)?.status === 'aceptada' || g.ses_status === 'enviado_SES').length, 'comunicado', 'comunicados')}`),
+        // Plazo con hora del parte (MUELA-038): 24 h desde la primera llegada que aún no está en un parte.
+        (() => {
+          const due = waiting.length ? deadlineOf(waiting.map((g) => String(g.arrived_at)).sort()[0]) : null;
+          return due ? el('p', { class: `banner${due.level === 'ok' ? '' : ' warn'}`, id: 'pvDeadline', role: 'status', dataset: { level: due.level }, 'data-feedback-id': 'booking.huespedes.llegada.plazo', 'data-feedback-label': 'Plazo del parte' },
+            `Parte de viajeros de ${plain(waiting.length, 'persona', 'personas')}: ${deadlineText(due.dueAt, { prefix: due.msLeft < 0 ? 'venció el' : 'vence el' })}`) : null;
+        })(),
         el('p', { class: 'hint' }, 'Al llegar cada persona, pulsa «Ha llegado» y marca «Documento comprobado» (adultos). Compruébalo a la vista: no se fotografía ni se guarda copia.'),
         el('div', { class: 'choices' },
           el('button', { class: 'primary', type: 'button', id: 'closeEntry', disabled: !online || busyPv || !ses || waiting.length === 0, 'data-feedback-id': 'booking.huespedes.llegada.cerrar', 'data-feedback-label': 'Cerrar la entrada y comunicar', onclick: () => void closeEntry() }, 'Cerrar la entrada y comunicar'),
