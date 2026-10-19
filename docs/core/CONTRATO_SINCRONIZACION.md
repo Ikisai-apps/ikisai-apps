@@ -223,6 +223,7 @@ Diseño acordado con el usuario en `coordinacion/ampliacion/PORTALES.md`. Las ap
   - **Sugerencias con ámbitos:** el hook de app `suggestionVisible(suggestion, ctx)` decide qué sugerencias ve y decide quien revisa. Se aplica a las listas `pending`/`all` (y a `pendingCount`), a la vista previa y a aprobar o descartar, con el lote original y con el corregido. Lo que no ve responde 404. Sin hook, todas.
   - **Ámbitos (C24):** la propietaria de la app los cambia con `POST members` `{userId, role: 'outsider', scopes}`. Solo si ya es outsider (el rol lo da el nivel de casa), y con `scopes` objeto: nunca nulo ni «*».
   - Lee archivos como un portal: los suyos y los referenciados por una fila que vea con el hook `visible` (K3). Conocer un `file_id` no basta.
+  - **K3 para miembros (`UploadsConfig.membersK3`, opcional):** con la opción, la misma regla vale para cualquier miembro que no sea propietario. Solo cuenta lo referenciado por filas vivas: un adjunto de una fila en la papelera lo lee quien lo subió y la propietaria. Cada app la activa tras revisar que todos sus campos de archivo están en `core.register_file_field`.
   - **No se da a mano** (`INVALID_ROLE`): lo deriva el nivel de casa.
 - **Nivel de casa → roles:**
   - `core.apply_house_level(user, level, actor)`. Lo llama el trigger de Central sobre `central.people`.
