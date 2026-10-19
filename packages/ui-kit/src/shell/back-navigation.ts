@@ -16,12 +16,18 @@
  */
 import { confirmDialog } from '../overlay/dialog.ts';
 import { kt } from '../i18n/i18n.ts';
+import { clearReturnTo, currentReturnTo, readReturnTo } from './return-to.ts';
 
 export interface BackNavigationOptions {
   /** URL del inicio. Por defecto `#/` si la app navega por hash (`#/…`), si no `/`. */
   home?: string;
   /** Pregunta antes de salir desde el inicio (por defecto sí). */
   confirmExit?: boolean;
+  /**
+   * «‹ Volver a…» entre apps (K9): lee `volver`/`titulo`/`desde` al llegar. Con origen, «atrás» desde el inicio vuelve a
+   * la app de la que se vino, sin preguntar «¿Cerrar la app?». Por defecto, no.
+   */
+  returnTo?: boolean;
 }
 
 type Entry = { ikisai?: 'root' | 'guard' | 'overlay' | 'dead'; overlay?: number };
@@ -55,8 +61,13 @@ function urlOf(home: string): string {
   return home.startsWith('#') ? `${location.pathname}${location.search}${home}` : home;
 }
 
+let useReturnTo = false;
+
 async function askExit(confirmExit: boolean): Promise<void> {
   if (asking) return;
+  // Se llegó desde otra app con `volver`: «atrás» desde el inicio es volver allí (sin bucles: sustituye esta entrada).
+  const origin = useReturnTo ? currentReturnTo() : null;
+  if (origin) { clearReturnTo(); location.replace(origin.url); return; }
   if (!confirmExit) { ignorePops += 1; history.back(); return; }
   asking = true;
   const close = await confirmDialog({ title: kt('¿Cerrar la app?'), confirmLabel: kt('Cerrar'), cancelLabel: kt('Cancelar') });
@@ -73,6 +84,8 @@ async function askExit(confirmExit: boolean): Promise<void> {
 export function installBackNavigation(options: BackNavigationOptions = {}): void {
   if (installed || typeof window === 'undefined') return;
   installed = true;
+  useReturnTo = !!options.returnTo;
+  if (useReturnTo) readReturnTo();
   homeUrl = options.home ?? (location.hash.startsWith('#/') || location.hash === '#' ? '#/' : '/');
   const confirmExit = options.confirmExit ?? true;
 

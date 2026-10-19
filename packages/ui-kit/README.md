@@ -322,6 +322,10 @@ Todo es opcional: sin `menu`, `search` ni `navLayout`, la cáscara queda como si
   - «Atrás» cierra la paleta (K10).
 - **`captureFeedbackTarget({ delay: 0 })`** (K2): basta un toque para señalar, y la barra lo dice.
 - **`createAppLauncher().mount(host, { hideCurrent, part })`**: pinta las apps o los bloques de feedback en otro sitio, como el cajón.
+- **«‹ Volver a…» (K9, 0.48): `createAppShell({ returnTo: true | { feedbackId } })` o `installBackNavigation({ returnTo: true })`.**
+  - **Convención entre apps:** `…?desde=<app>&volver=<url>&titulo=<a dónde>`, en el hash o en la búsqueda. El enlace se arma con `withReturnTo(destino, { from, title })`.
+  - **Al llegar con `volver`:** sale arriba «‹ Volver a {titulo}» y se quitan `volver` y `titulo` de la URL. «Atrás» desde el inicio vuelve a la app de origen, sin «¿Cerrar la app?».
+  - **`desde` sola no cuenta** y se deja intacta: Booking → Finance la usa con su propio sentido. Solo valen URLs de `*.ikisai.com` o del mismo origen.
 - **Clases:** prefijo `appmenu-`, sobre `navmenu-head`, `navmenu-close` y `navmenu-backdrop`. La barra lateral `.navmenu` de Tasks no cambia.
 
 ## Muestra y pruebas

@@ -1,5 +1,19 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.48.0 · 19 de octubre de 2026
+
+**«‹ Volver a…» entre apps (K9, MUELA-013, tanda 28).** Va solo, porque toca «atrás». **Es opcional:** sin `returnTo`, nada cambia.
+
+- **Convención:** `…?desde=<app>&volver=<url>&titulo=<a dónde>`. `withReturnTo(destino, { from, title })` arma el enlace, y `readReturnTo`, `currentReturnTo` y `clearReturnTo` lo leen o lo olvidan.
+- **`createAppShell({ returnTo })`:**
+  - Al llegar con `volver`, sale «‹ Volver a {titulo}» arriba del contenido (46 px, con su marca si se da `feedbackId`).
+  - Se quitan `volver` y `titulo` de la URL, para que recargar o «atrás» no repitan el salto.
+- **«Atrás» (`installBackNavigation({ returnTo })`):** con origen, desde el inicio vuelve a la app de la que se vino, sin «¿Cerrar la app?». Sustituye la entrada, así que no hay bucles.
+- **Cuidado con lo que ya existía:**
+  - `desde` sola no cuenta y no se toca: Booking → Finance la usa para «Emitir factura».
+  - Solo vale una vuelta a `*.ikisai.com` o al mismo origen.
+- **Pruebas:** `v53`. La batería completa de las apps corre en la CI, porque cambian `back-navigation.ts` y `app-shell.ts`.
+
 ## 0.47.0 · 19 de octubre de 2026
 
 **Cáscara con menú lateral común** (MUELA-013, tanda 28): K1, K2, K7, K8, K10, K11, K12 y el estado de sincronización bajo el perfil. K9 («Volver a…») va aparte. **Todo es opcional:** sin las opciones nuevas, la cáscara queda igual. Detalle en el README («Menú lateral común»).
