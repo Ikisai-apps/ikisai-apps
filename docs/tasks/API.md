@@ -1265,7 +1265,11 @@ La acción `tasks.service_actor {name}`, de la migración `0311` y solo para los
 
 ### 22.3 `POST /api/v1/worker/requests/status {externalRefs}` (construido)
 
-- Hasta 200 referencias, solo de `feedback:` o `booking:`.
+- Hasta 200 referencias de `feedback:`, `booking:`, `core:` o `invoices:`.
+- De Food, solo sus avisos de máquina: `food:equipment_fault:<id de la máquina>:<AAAA-MM-DD>` (migración `0335`). Ninguna otra referencia de `food:`.
+  - Food pide el aviso con la sesión de una persona (`requests/task`, ver `docs/food/API.md` §6.1), pero lee su estado desde su Edge con la clave de worker. Así se ve en todos los dispositivos de la cocina, también los de quien no está en Tasks.
+  - **En curso:** `pending` y `open`. `pending` es que Tasks la tiene pero aún está por clasificar: nadie la ha cogido, así que en Food sigue siendo «Avisado». `open` es que hay una tarea abierta en un área: eso es «En reparación».
+  - **Ya no está en curso:** `done`, `dismissed` y `deleted`. `unknown` es que el aviso no llegó.
 - Devuelve `{items: [{externalRef, status, taskId, doneAt, updatedAt}]}`. `status` puede ser:
   - `pending`: por clasificar;
   - `open`;

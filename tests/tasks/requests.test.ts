@@ -224,6 +224,32 @@ test('puente con Feedback (§22.3): worker/requests/status da el estado por refe
   assert.equal((await app.call('/api/v1/invoke/tasks.requests_status', { body: { externalRefs: ['feedback:FB_2026_0001'] } })).status, 403);
 });
 
+test('avisos de máquina de Food (§22.3): worker/requests/status da su estado; ninguna otra referencia de food', async () => {
+  const status = (body: unknown) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));
+  const machine = uuid();
+  const fault = (day: string, extra: Record<string, unknown> = {}) => ask({ source: 'food', kind: 'food.equipment_fault', kind_label: 'Averías de cocina',
+    external_ref: `equipment_fault:${machine}:${day}`, title: 'Averiado: Horno', priority: 'high', ...extra });
+  await fault('2026-10-17');
+  const open = (await fault('2026-10-18', { tab_id: TAB })).data.task;
+  const done = (await fault('2026-10-19', { tab_id: TAB })).data.task;
+  await commit([{ op: 'update', table: 'tasks.tasks', id: done.id, expectedRevision: done.revision, fields: { done: true } }]);
+  const refs = ['2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'].map((d) => `food:equipment_fault:${machine}:${d}`);
+  const out = await status({ externalRefs: refs });
+  assert.equal(out.status, 200);
+  const items = Object.fromEntries(((await out.json()) as any).items.map((i: any) => [i.externalRef, i]));
+  assert.deepEqual(refs.map((r) => items[r].status), ['pending', 'open', 'done', 'unknown']);
+  assert.equal(items[refs[1]!].taskId, open.id);
+  assert.equal(JSON.stringify(items).includes('Horno'), false, 'solo estados, sin títulos');
+  // Solo los avisos de máquina: otra petición de food, o una referencia mal formada, no.
+  for (const ref of ['food:general:1', `food:equipment_fault:${machine}`, `food:equipment_fault:no-es-id:2026-10-19`, `food:equipment_fault:${machine}:2026-10-19:x`]) {
+    assert.equal((await status({ externalRefs: [ref] })).status, 422, ref);
+  }
+  // La acción, por SQL, aplica la misma regla.
+  await assert.rejects(app.t.db.query(`select tasks.requests_status($1::jsonb)`, [JSON.stringify({ args: { externalRefs: ['food:general:1'] } })]));
+  assert.equal((await app.t.db.query<any>(`select tasks.requests_status($1::jsonb) r`, [JSON.stringify({ args: { externalRefs: [refs[1]] } })])).rows[0].r.items[0].status, 'open');
+});
+
 test('puente con Feedback (§22.2): worker/requests/task escribe como la identidad de servicio, con quién informó como metadato', async () => {
   const status = (body: unknown) => app.handler(new Request('http://localhost/api/v1/worker/requests/status', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ikisai-Worker-Key': WORKER_KEY }, body: JSON.stringify(body) }));

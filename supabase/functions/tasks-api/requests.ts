@@ -144,6 +144,8 @@ const DEFAULT_KIND_LABELS: Record<string, string> = {
   'invoices.drive_blocked': 'Finance · Drive bloqueado',
 };
 const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,150}$`);
+/** Avisos de máquina de Food (§22.3): los pide una persona por `requests/task`, pero su estado lo lee la Edge de Food. */
+const FOOD_FAULT_REF = /^food:equipment_fault:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{4}-\d{2}-\d{2}$/i;
 
 /**
  * Rutas de worker (§22.2 y §22.3), de servidor a servidor con la clave de worker y sin sesión:
@@ -151,7 +153,8 @@ const SYSTEM_REF = new RegExp(`^(${Object.keys(SYSTEM_SOURCES).join('|')}):.{1,1
  *   con `tasks.request_task` y las reglas del usuario. Quién informó va como metadato (`on_behalf_of`), nunca como
  *   actor. Idempotente por `external_ref`.
  * - `POST worker/requests/status {externalRefs}`: solo el estado de cada petición (pending, open, done, dismissed,
- *   deleted o unknown), para que el worker de quien pidió lo copie.
+ *   deleted o unknown), para que el worker de quien pidió lo copie. También los avisos de máquina de Food
+ *   (`food:equipment_fault:<id>:<día>`), y ninguna otra referencia de `food:`.
  */
 export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
   const internal = createSync(supabase, 'tasks', {});
@@ -284,8 +287,8 @@ export function requestWorkerRoutes(supabase: Supabase): WorkerRoute[] {
     method: 'POST', pattern: 'requests/status', handler: async ({ json, invoke }) => {
       const body = await json() as { externalRefs?: unknown };
       const refs = body?.externalRefs;
-      if (!Array.isArray(refs) || refs.length > 200 || refs.some((r) => typeof r !== 'string' || !SYSTEM_REF.test(r))) {
-        fail(422, 'INVALID_INPUT', `externalRefs: hasta 200 referencias de ${Object.keys(SYSTEM_SOURCES).join(' o ')}.`, { field: 'externalRefs' });
+      if (!Array.isArray(refs) || refs.length > 200 || refs.some((r) => typeof r !== 'string' || !(SYSTEM_REF.test(r) || FOOD_FAULT_REF.test(r)))) {
+        fail(422, 'INVALID_INPUT', `externalRefs: hasta 200 referencias de ${Object.keys(SYSTEM_SOURCES).join(', ')} o avisos de máquina de Food.`, { field: 'externalRefs' });
       }
       return invoke('tasks.requests_status', { externalRefs: refs });
     },
