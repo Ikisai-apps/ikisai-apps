@@ -201,7 +201,7 @@ export const mountInvoices: ViewMount = (ctx) => {
         const full = !!query || expanded.has(g.supplierId);
         const items: Item[] = full ? g.rows : g.rows.slice(0, ROWS_STEP);
         if (!full && g.rows.length > ROWS_STEP) items.push({ more: g.supplierId, count: g.rows.length });
-        return { key: g.supplierId, title: nameOf(g.supplierId), medal: { name: nameOf(g.supplierId) }, items, summary: `${groupSummary(g, eur)} · ${eur(g.total)}`, open: true };
+        return { key: g.supplierId, title: nameOf(g.supplierId), medal: { name: nameOf(g.supplierId) }, items, summary: `${groupSummary(g, eur)} · total ${eur(g.total)}`, open: true };
       }),
       toneOf: (item) => ('more' in item || item.state.tone === 'ok' ? null : item.state.tone),
       row: (item) => ('more' in item

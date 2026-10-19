@@ -170,7 +170,8 @@ export const mountHome: ViewMount = (ctx) => {
       toneText: reason ? reason[0]!.toUpperCase() + reason.slice(1) : row.state.caption,
       medal: { name: supplier },
       value: eur(row.invoice.calculated_total),
-      facts: [row.invoice.object, row.invoice.invoice_date ? shortDate(row.invoice.invoice_date) : 'Sin fecha', row.invoice.code ?? 'código pendiente', row.state.pay.text].filter(Boolean),
+      // El pago ya va en la etiqueta («Pagada (sin confirmar)», «Vencida…») si pide algo
+      facts: [row.invoice.object, row.invoice.invoice_date ? shortDate(row.invoice.invoice_date) : 'Sin fecha', row.invoice.code ?? 'código pendiente', row.state.pay.kind === 'unconfirmed' || row.state.pay.kind === 'overdue' ? '' : row.state.pay.text].filter(Boolean),
       body: row.labels.length ? el('div', { class: 'chips' }, ...row.labels.slice(0, 3).map((l) => el('span', { class: `chip${l.kind ? ` ${l.kind}` : ''}` }, l.text))) : undefined,
     };
   }
@@ -212,6 +213,11 @@ export const mountHome: ViewMount = (ctx) => {
     function byIdNow(id: string): MirrorRow | undefined { return currentRows.get(id) ?? byId.get(id); }
   }
   let currentRows = new Map<string, MirrorRow>();
+  // «Encendido · 2 por decidir»: lo dice la vista previa del servidor (con red, una vez, solo el owner)
+  let undecided = 0;
+  if (isOwner && navigator.onLine) {
+    void client.api<ResourceLinksPreview>('/resource-links/preview').then((p) => { undecided = p.counts.dudoso ?? 0; void paintCounts(); }).catch(() => undefined);
+  }
 
   async function paintCounts(): Promise<void> {
     const m = await loadMirror(client);
@@ -247,7 +253,7 @@ export const mountHome: ViewMount = (ctx) => {
     ['statPendingData', 'statPendingReview', 'statUnpaid', 'statToCollect', 'statUnassigned', 'statQuarterCount'].forEach((id, i) => { if (values[i]) values[i]!.id = id; });
     // El trimestre en el que se trabaja, con sus cifras (las de la tarjeta Trimestre de antes; el detalle, en Gestoría)
     stagesHost.append(el('p', { class: 'hint inv-home-quarter', id: 'homeQuarter', 'data-feedback-ignore': '' },
-      `${rangeLabel(workingQuarter())}, solo lo validado: base ${eur(q.base)} · IVA soportado ${eur(q.vat)} · ${q.invoices.validada + q.invoices.archivada} facturas.`));
+      `${rangeLabel(workingQuarter())}, solo lo validado: base ${eur(q.base)} · IVA soportado ${eur(q.vat)} · ${q.invoices.validada + q.invoices.archivada === 1 ? '1 factura' : `${q.invoices.validada + q.invoices.archivada} facturas`}.`));
     // Herramientas
     const drive = live.filter((r) => r.invoice.drive_file_id && (r.invoice.status === 'pendiente_datos' || r.invoice.status === 'pendiente_revision'));
     fromDrive.textContent = drive.length ? `${drive.length} (${drive.filter((r) => r.invoice.status === 'pendiente_datos').length} sin leer)` : '0';
@@ -256,7 +262,7 @@ export const mountHome: ViewMount = (ctx) => {
     const on = linksEnabled();
     linksState.textContent = on ? 'Encendido' : 'Apagado';
     linksSwitch.textContent = on ? 'Apagar' : 'Encender';
-    if (toolHint.inventory) toolHint.inventory.textContent = on ? 'Encendido' : 'Apagado';
+    if (toolHint.inventory) toolHint.inventory.textContent = on ? `Encendido${undecided ? ` · ${undecided} por decidir` : ''}` : 'Apagado';
     paintWork(m, rows);
   }
 
