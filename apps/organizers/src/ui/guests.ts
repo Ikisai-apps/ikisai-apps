@@ -160,7 +160,10 @@ export function renderGuestList(ctx: ViewContext, reservationId: string, data: R
         const row = listRow({
           id: x.g.id,
           title: x.g.display_name,
-          meta: [reasonOf(x.stage, x.g, x.link, list.mode, TEXTS), linkText(x.link, TEXTS)],
+          // En «Sin enlace» y «No han abierto» el motivo ya dice cómo va el enlace: no se repite debajo.
+          meta: x.stage === 'sinenlace' || x.stage === 'sinabrir'
+            ? [reasonOf(x.stage, x.g, x.link, list.mode, TEXTS)]
+            : [reasonOf(x.stage, x.g, x.link, list.mode, TEXTS), linkText(x.link, TEXTS)],
           chips: [el('span', { class: `chip small ${guestState(x.g, list.mode, TEXTS).tone}` }, guestState(x.g, list.mode, TEXTS).label)],
           label: t('Abrir la ficha de {nombre}', { nombre: x.g.display_name }),
           onClick: () => navigate(`#/retiro/${reservationId}/asistentes/${x.g.id}`),
