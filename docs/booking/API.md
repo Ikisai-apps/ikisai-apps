@@ -1333,6 +1333,14 @@ Las áreas son:
 
 Las retenidas cuentan como cosa por resolver, porque la pausa no para el plazo.
 
+### 17.8 Logotipo del retiro (tanda 27)
+
+- **`GET /api/v1/logos`:** para todos los roles. Devuelve `{ items: [{ reservation_id, url, mime, sha256, updated_at }] }`, con el logotipo de cada retiro.
+- **De dónde sale:** de `organizers.booking_logo_projection` (Organizers, #607), que trae solo el material marcado `is_logo`, y nada más de los materiales.
+- **La URL:** se firma aquí con `createStorage`, dura 10 minutos y no lleva bucket ni ruta.
+- **Sin red:** el cliente guarda la imagen por su `sha256`, para verla sin conexión y no volver a bajarla si no cambia.
+- **Sin logotipo:** la portada usa el color de la fase.
+
 ### 17.7 Calendario de precios (tanda 27)
 
 Sin ruta nueva: se calcula en el dispositivo con lo sincronizado (tarifas, condiciones, reservas, opciones de fecha y bloqueos; editor y owner). `_domain/booking/priceCalendar.ts`:
@@ -1412,7 +1420,7 @@ Regla del usuario: **Ikisai fija y el organizador propone**. Migraciones `202610
 - `portal_rates({reservation_id})`: tarifas activas visibles en el portal (con `public_name` y `public_description`) y las condiciones por defecto con `minimum_total`; `available: false` sin tarifas. **La calculadora la hace Organizers** con `suggestLines`, `proposalTotals` y `applyMinimum` de `@ikisai/domain-booking`.
 - **Mínimo al enviar:** si el total de la propuesta queda por debajo de `conditions.minimum_total`, `send_proposal` responde `422 BELOW_MINIMUM` salvo que llegue `below_minimum_reason`; el motivo queda en `proposals.below_minimum_reason` (excepción comercial). La app lo pide antes de enviar.
 - `portal_reservation_detail` incluye también `revision`, `event_type`, `dates_definitive`, `organizer_notes`, `special_setup` y `technical_support` (B14).
-- `portal_proposals({reservation_id})`: propuestas `enviada` y `aceptada` con líneas, condiciones, tramos y validez (nunca borradores ni sustituidas).
+- `portal_proposals({reservation_id, include_history?})`: propuestas `enviada` y `aceptada` con líneas, condiciones, tramos y validez. Nunca borradores ni rechazadas. Con `include_history: true` (tanda 27, «Comparar versiones» de Organizers, migración 0473) añade las `sustituida` y `caducada`, con el mismo formato y su `status`; las sustituidas llevan `superseded_by_version`. Sin el argumento, lo de siempre.
 - `portal_request({reservation_id, kind: 'quiere_confirmar'|'comentario', proposal_id?, message?})` → `booking.portal_requests` (estado `enviada`/`vista`/`respondida`, que cambia el personal). `portal_my_requests` las lista. **La aceptación sigue siendo del personal** (`accept_proposal`).
 
 **Avisos al comercial:** las acciones del portal dejan un aviso en `booking.portal_notices` (tabla cerrada) y `POST /api/v1/worker/portal/tick` (sonda `booking.portal_has_work`) crea las peticiones a Tasks con la cuenta de servicio (formato de `docs/tasks/API.md` §22): `booking.organizer_dates` (`RES<código>-FECHAS-<n>`), `booking.organizer_confirm` (`RES<código>-CONFIRMAR`, prioridad alta) y `booking.proposal_comment` (`PROP<código>-COMENTARIO-<n>`), sin datos de contacto. El ámbito de los portales se comprueba con `core.portal_in_scope` (K1).

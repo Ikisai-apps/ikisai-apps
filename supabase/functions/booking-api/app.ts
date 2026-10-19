@@ -163,6 +163,8 @@ const ENTITY_PROJECTION = 'central.common_entity_projection';
 const GUEST_SIGNATURE = 'booking.guest_signature_file';
 const SES_OVERVIEW = 'booking.ses_overview';
 const ENTITY_LOGO_BUCKET = 'central-documents';
+const RETREAT_LOGOS = 'organizers.booking_logo_projection';
+const RETREAT_LOGO_BUCKET = 'organizers-materials';
 
 export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfig = {}, ses: BookingSesConfig = {}): AppRoute[] {
   const adapter = calendar.adapter ?? null;
@@ -170,6 +172,21 @@ export function bookingRoutes(supabase: Supabase, calendar: BookingCalendarConfi
   // Archivos ajenos (logotipo de Central, firmas subidas desde Guests): siempre por la abstracción del kit (contrato §3.9)
   const storage = createStorage(supabase, { r2: r2ConfigFromEnv(denoEnv) });
   return [
+    {
+      // Logotipo de cada retiro (Organizers, `materials.is_logo`) para las portadas de Inicio, Reservas y la ficha (tanda 27).
+      // Todos los roles: es la imagen del retiro, no un dato personal. URL firmada de corta duración; el `sha256` deja al
+      // cliente guardar la imagen para verla sin red y no volver a bajarla si no cambia.
+      method: 'GET', pattern: 'logos',
+      handler: async ({ ctx }) => {
+        const out = await supabase.rpc<{ rows: Array<Record<string, any>> }>('core_read', { p_app: 'booking', p_actor: ctx.user.id, p_name: RETREAT_LOGOS, p_args: { limit: 500 } });
+        const items = await Promise.all((out.rows ?? []).filter((r) => r.logo_bucket === RETREAT_LOGO_BUCKET && typeof r.logo_path === 'string' && r.logo_path)
+          .map(async (r) => ({
+            reservation_id: r.reservation_id as string, mime: r.logo_mime as string, sha256: r.logo_sha256 as string, updated_at: r.updated_at as string,
+            url: await storage.readUrl({ bucket: RETREAT_LOGO_BUCKET, path: r.logo_path, storage_provider: r.logo_provider ?? null }, 600).catch(() => null),
+          })));
+        return { items: items.filter((i) => i.url) };
+      },
+    },
     {
       // Datos de la entidad (Central) para la cabecera de la propuesta al organizador. El logotipo está en el bucket privado
       // de Central: se firma aquí con la clave de servicio, de corta duración, y no se guarda en ninguna parte.
