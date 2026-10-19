@@ -1,8 +1,9 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, renderStats, replace, toast, type Sheet } from '@ikisai/ui-kit';
 import {
-  CONTACT_AUDIENCES, CONTACT_KEYS, TEXT_KINDS, contactEmailKey, isContactEmailKey, TEXT_KIND_LABELS, TEXT_BLOCKS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
-  type MarkerSource, type TextKind, type TextLang,
+  CONTACT_AUDIENCES, CONTACT_AUDIENCE_LABELS, CONTACT_KEYS, PORTAL_TEXTS, TEXT_KINDS, TEXT_PORTAL_LABELS, contactEmailKey, isContactEmailKey, portalTextKeys, textPlaces,
+  TEXT_KIND_LABELS, TEXT_BLOCKS, TEXT_LANG_LABELS, TEXT_MARKERS, nextVersion, parseSimpleMarkdown, renderMarkers, unknownMarkers, validateOperations,
+  type MarkerSource, type PortalTextSlot, type TextKind, type TextLang, type TextPortal,
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
@@ -20,34 +21,55 @@ export function renderSimpleMarkdown(text: string): HTMLElement {
     ]))));
 }
 
+const LONG = 260;
+
 /**
  * «Textos y contacto» (API.md §2.12; regla del usuario: los textos legales, avisos, declaraciones y datos de contacto se
  * editan siempre desde Central). Todos los miembros los leen; solo el owner los cambia. Cada cambio de contenido crea una
  * versión nueva y las anteriores se conservan tal como se aceptaron.
+ * MUELA-017: tablero por destino (Huéspedes, Quien organiza, Correos por público y Sin uso) con cuatro cifras arriba;
+ * cada ficha enseña el texto tal cual lo lee la persona. «Así lo ve tu huésped / quien organiza» dibuja el portal en un
+ * teléfono, pantalla a pantalla: tocar un texto abre el editor de siempre, y lo que falta sale en su sitio con «Crear aquí».
  */
 export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
   let texts: Text[] = [];
   let source: MarkerSource = {};
+  let phone: TextPortal | 'resto' | null = null;
+  let phoneLang: TextLang = 'es';
   const host = el('div', { id: 'textList', 'data-feedback-id': 'central.textos.lista', 'data-feedback-label': 'Textos' });
   replace(main,
-    el('a', { href: '#/', class: 'backlink', 'data-feedback-id': 'central.textos.volver', 'data-feedback-label': 'Volver a Inicio' }, '← Inicio'),
+    el('a', { href: '#/', class: 'backlink', 'data-feedback-id': 'central.textos.volver', 'data-feedback-label': 'Volver a Inicio' }, '‹ Inicio'),
     el('div', { class: 'pagehead', 'data-feedback-id': 'central.textos.cabecera', 'data-feedback-label': 'Cabecera de Textos y contacto' }, el('div', null,
       el('h2', null, 'Textos y contacto'),
-      el('p', null, 'Lo que leen las personas en los portales y en los documentos: avisos legales, declaraciones, mensajes y datos de contacto.'))),
-    host,
-    isAdmin ? el('button', { class: 'fab', type: 'button', id: 'newText', 'data-feedback-id': 'central.textos.nuevo', 'data-feedback-label': 'Nuevo texto', onclick: () => openEditor(null) }, icon('plus'), 'Nuevo texto') : null);
+      el('p', null, 'Lo que leen las personas en los portales y en los documentos: avisos legales, declaraciones, mensajes y datos de contacto.')),
+      isAdmin ? el('button', { class: 'primary', type: 'button', id: 'newText', 'data-feedback-id': 'central.textos.nuevo', 'data-feedback-label': 'Nuevo texto', onclick: () => openEditor(null) }, icon('plus', 18), 'Nuevo texto') : null),
+    host);
+
+  const alive = () => texts.filter((t) => !t.deleted_at);
+  const spanish = (key: string) => alive().find((t) => t.key === key && t.lang === 'es') ?? null;
+  const english = (key: string) => alive().find((t) => t.key === key && t.lang === 'en') ?? null;
+  const placesText = (key: string) => textPlaces(key).map((p) => `${TEXT_PORTAL_LABELS[p.portal]} › ${p.screen}`).join(' · ');
+
+  /** El texto tal cual lo lee la persona (marcadores ya puestos); si es largo, su principio y «Ver todo». */
+  function bodyOf(t: Text): HTMLElement {
+    const rendered = renderMarkers(t.body, source);
+    if (t.kind === 'contacto') return el('p', { class: 'textvalue', 'data-feedback-ignore': '' }, rendered);
+    if (rendered.length <= LONG) return el('div', { class: 'ctl-textshow' }, renderSimpleMarkdown(rendered));
+    return el('details', { class: 'textbody ctl-textshow', 'data-feedback-id': 'central.textos.texto.contenido', 'data-feedback-label': 'Contenido del texto' },
+      el('summary', null, el('span', { class: 'ctl-textstart' }, `${rendered.slice(0, LONG).trimEnd()}…`), el('span', { class: 'linkbtn' }, `Ver todo «${t.title}»`)),
+      renderSimpleMarkdown(rendered));
+  }
 
   function card(t: Text, en: Text | null): HTMLElement {
-    const rendered = renderMarkers(t.body, source);
+    const where = placesText(t.key);
     return el('article', { class: 'textcard', 'data-text': t.key, 'data-feedback-id': 'central.textos.texto', 'data-feedback-label': 'Texto' },
       el('div', { class: 'blockhead' },
         el('div', null, el('h3', null, t.title), el('code', { class: 'muted small', 'data-feedback-ignore': '' }, t.key)),
         el('span', { class: 'chips' }, el('span', { class: 'chip' }, `ES ${t.version}`),
           en ? el('span', { class: 'chip', 'data-lang': 'en' }, `EN ${en.version}`) : el('span', { class: 'chip muted', 'data-lang': 'en' }, 'EN usa el español'),
           t._pending || en?._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)),
-      t.kind === 'contacto' ? el('p', { class: 'textvalue', 'data-feedback-ignore': '' }, rendered)
-        : el('details', { class: 'textbody', 'data-feedback-id': 'central.textos.texto.contenido', 'data-feedback-label': 'Contenido del texto' },
-          el('summary', null, 'Ver el texto'), renderSimpleMarkdown(rendered)),
+      el('p', { class: 'hint ctl-where' }, icon('eye', 14), where ? `Se lee en ${where}` : isContactEmailKey(t.key) ? 'Correo de su público' : 'Ninguna app lo lee'),
+      bodyOf(t),
       el('div', { class: 'zone' },
         el('button', { class: 'linkbtn', type: 'button', 'data-lang-action': 'es', 'data-feedback-id': 'central.textos.texto.abrir', 'data-feedback-label': isAdmin ? 'Editar texto' : 'Ver texto', onclick: () => openEditor(t) },
           icon(isAdmin ? 'edit' : 'eye', 16), isAdmin ? 'Editar' : 'Versiones'),
@@ -55,35 +77,101 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
           onclick: () => (en ? openEditor(en) : openEditor(null, t)) }, icon('edit', 16), en ? 'Inglés' : 'Traducir al inglés') : null));
   }
 
-  function paint(): void {
-    const alive = texts.filter((t) => !t.deleted_at);
-    if (!alive.length) {
-      replace(host, el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay textos'), isAdmin ? 'Crea el aviso de protección de datos, la declaración de quien organiza y el contacto.' : ''));
-      return;
-    }
-    const english = (key: string) => alive.find((t) => t.key === key && t.lang === 'en') ?? null;
-    const group = (kind: string, label: string, rows: Text[]) => rows.length
-      ? el('section', { class: 'textgroup', 'data-kind': kind }, el('div', { class: 'sectionlabel' }, label), ...rows.sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key)).map((t) => card(t, english(t.key))))
-      : null;
-    replace(host, ...TEXT_KINDS.flatMap((kind) => {
-      const rows = alive.filter((t) => t.kind === kind && t.lang === 'es');
-      if (kind !== 'contacto') return [group(kind, TEXT_KIND_LABELS[kind], rows)];
-      // Los correos por público van aparte: cada portal y cada documento usa el suyo (el de facturas es el de la Entidad).
-      return [group(kind, TEXT_KIND_LABELS[kind], rows.filter((t) => !isContactEmailKey(t.key))),
-        group('correos', 'Correos por público', rows.filter((t) => isContactEmailKey(t.key)))];
-    }));
+  /** Un texto que un portal pide y aún no existe: sale en su sitio con «Crear aquí» (clave, tipo y título puestos). */
+  function missing(slot: PortalTextSlot, where: string): HTMLElement {
+    return el('article', { class: 'textcard ctl-missing', 'data-missing': slot.key, 'data-feedback-id': 'central.textos.falta', 'data-feedback-label': 'Texto que falta' },
+      el('div', { class: 'blockhead' }, el('div', null, el('h3', null, slot.title), el('code', { class: 'muted small' }, slot.key)), el('span', { class: 'chip warn' }, 'Falta')),
+      el('p', { class: 'hint' }, `Lo pide ${where}. Hasta que exista, el portal enseña su texto de reserva.`),
+      isAdmin ? el('div', { class: 'zone' }, el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.textos.falta.crear', 'data-feedback-label': 'Crear aquí', onclick: () => openEditor(null, null, slot) }, icon('plus', 16), 'Crear aquí')) : null);
   }
 
+  function paintBoard(): void {
+    const es = alive().filter((t) => t.lang === 'es');
+    if (!es.length && !isAdmin) {
+      replace(host, el('div', { class: 'empty' }, el('strong', null, 'Todavía no hay textos'), ''));
+      return;
+    }
+    const wanted = portalTextKeys();
+    const missingKeys = wanted.filter((k) => !spanish(k));
+    const unread = es.filter((t) => !wanted.includes(t.key) && !isContactEmailKey(t.key));
+    const withEn = es.filter((t) => english(t.key));
+    const column = (id: string, title: string, children: (HTMLElement | null)[]) => el('section', { class: 'textgroup ctl-textcol', 'data-kind': id, 'data-feedback-id': 'central.textos.columna', 'data-feedback-label': 'Columna de destino' },
+      el('div', { class: 'sectionlabel' }, title, el('span', { class: 'count' }, ` · ${children.filter(Boolean).length}`)), ...children);
+    const portalColumn = (portal: TextPortal) => {
+      const seen = new Set<string>();
+      const items: HTMLElement[] = [];
+      for (const screen of PORTAL_TEXTS[portal]) for (const slot of screen.slots) {
+        if (seen.has(slot.key)) continue;
+        seen.add(slot.key);
+        const t = spanish(slot.key);
+        items.push(t ? card(t, english(t.key)) : missing(slot, `${TEXT_PORTAL_LABELS[portal]} › ${screen.screen}`));
+      }
+      return column(portal, TEXT_PORTAL_LABELS[portal], items);
+    };
+    const emails = es.filter((t) => isContactEmailKey(t.key) && !wanted.includes(t.key));
+    replace(host,
+      renderStats([
+        { value: es.length, label: 'textos' },
+        { value: withEn.length, label: 'con inglés', tone: withEn.length === es.length && es.length ? 'ok' : null },
+        { value: missingKeys.length, label: 'que faltan', tone: missingKeys.length ? 'warn' : 'ok' },
+        { value: unread.length, label: 'que nadie lee', tone: unread.length ? 'warn' : null },
+      ], { label: 'Textos en cifras' }),
+      el('div', { class: 'ctl-textlooks', 'data-feedback-id': 'central.textos.asi_lo_ve', 'data-feedback-label': 'Así lo ve' },
+        el('button', { class: 'ghost', type: 'button', id: 'lookGuests', 'data-feedback-id': 'central.textos.asi_lo_ve.huesped', 'data-feedback-label': 'Así lo ve tu huésped', onclick: () => { phone = 'guests'; paint(); } }, icon('guest', 18), 'Así lo ve tu huésped'),
+        el('button', { class: 'ghost', type: 'button', id: 'lookOrganizers', 'data-feedback-id': 'central.textos.asi_lo_ve.organiza', 'data-feedback-label': 'Así lo ve quien organiza', onclick: () => { phone = 'organizers'; paint(); } }, icon('organizer', 18), 'Así lo ve quien organiza')),
+      el('div', { class: 'ctl-textboard' },
+        portalColumn('guests'),
+        portalColumn('organizers'),
+        // Los correos por público van aparte: cada portal y cada documento usa el suyo (el de facturas es el de la Entidad).
+        emails.length || isAdmin ? column('correos', 'Correos por público', [
+          ...CONTACT_AUDIENCES.map((a) => { const t = spanish(contactEmailKey(a)); return t && !wanted.includes(t.key) ? card(t, english(t.key)) : null; }),
+          ...(isAdmin ? CONTACT_AUDIENCES.filter((a) => !spanish(contactEmailKey(a)) && !wanted.includes(contactEmailKey(a))).map((a) => missing({ key: contactEmailKey(a), kind: 'contacto', title: `Correo: ${CONTACT_AUDIENCE_LABELS[a]}` }, `el contacto de ${CONTACT_AUDIENCE_LABELS[a].toLowerCase()}`)) : []),
+        ]) : null,
+        column('sin_uso', 'Sin uso', unread.sort((a, b) => (a.position - b.position) || a.key.localeCompare(b.key)).map((t) => card(t, english(t.key))))));
+  }
+
+  /** «Así lo ve…»: el portal dibujado en un teléfono, pantalla a pantalla, con el texto tal cual y en el idioma elegido. */
+  function paintPhone(): void {
+    const tabs: Array<[TextPortal | 'resto', string]> = [['guests', 'Huéspedes'], ['organizers', 'Quien organiza'], ['resto', 'Contacto y sin usar']];
+    const wanted = portalTextKeys();
+    const shown = (key: string) => (phoneLang === 'en' ? english(key) ?? spanish(key) : spanish(key));
+    const block = (slot: PortalTextSlot, screen: string): HTMLElement => {
+      const t = shown(slot.key);
+      if (!t) return el('div', { class: 'ctl-phoneblock missing' }, el('strong', null, slot.title), el('span', { class: 'hint' }, 'Falta este texto: el portal enseña su reserva.'),
+        isAdmin ? el('button', { type: 'button', class: 'linkbtn', 'data-feedback-id': 'central.textos.telefono.crear', 'data-feedback-label': 'Crear aquí', onclick: () => openEditor(null, null, slot) }, icon('plus', 16), 'Crear aquí') : null);
+      const fallback = phoneLang === 'en' && !english(slot.key) && slot.kind !== 'contacto';
+      return el('button', { type: 'button', class: 'ctl-phoneblock', 'data-text': t.key, 'aria-label': `${t.title}, en ${screen}. ${isAdmin ? 'Editar' : 'Ver versiones'}`, 'data-feedback-id': 'central.textos.telefono.bloque', 'data-feedback-label': 'Texto en el portal', onclick: () => openEditor(t) },
+        el('strong', null, t.title), fallback ? el('span', { class: 'chip muted' }, 'En inglés sale el español') : null,
+        t.kind === 'contacto' ? el('span', { 'data-feedback-ignore': '' }, renderMarkers(t.body, source)) : renderSimpleMarkdown(renderMarkers(t.body, source)));
+    };
+    const screens = phone === 'resto'
+      ? [{ screen: 'Correos por público', items: CONTACT_AUDIENCES.map((a) => ({ key: contactEmailKey(a), kind: 'contacto' as TextKind, title: `Correo: ${CONTACT_AUDIENCE_LABELS[a]}` })).filter((s) => !wanted.includes(s.key)) },
+        { screen: 'Sin uso', items: alive().filter((t) => t.lang === 'es' && !wanted.includes(t.key) && !isContactEmailKey(t.key)).map((t) => ({ key: t.key, kind: t.kind, title: t.title })) }]
+      : PORTAL_TEXTS[phone as TextPortal].map((s) => ({ screen: s.screen, items: s.slots }));
+    replace(host,
+      el('button', { type: 'button', class: 'linkbtn', id: 'phoneBack', 'data-feedback-id': 'central.textos.telefono.volver', 'data-feedback-label': 'Volver al tablero', onclick: () => { phone = null; paint(); } }, icon('chevronLeft', 16), 'Tablero de textos'),
+      el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Portal' }, ...tabs.map(([k, l]) => el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(phone === k), onclick: () => { phone = k; paint(); } }, l))),
+      el('div', { class: 'segmented ctl-langs', role: 'group', 'aria-label': 'Idioma' },
+        ...(['es', 'en'] as const).map((l) => el('button', { type: 'button', class: phoneLang === l ? 'active' : '', 'aria-pressed': String(phoneLang === l), onclick: () => { phoneLang = l; paint(); } }, l === 'es' ? 'Español' : 'English'))),
+      el('div', { class: 'ctl-phone', role: 'region', 'aria-label': phone === 'resto' ? 'Contacto y sin usar' : `Así lo ve ${phone === 'guests' ? 'tu huésped' : 'quien organiza'}`, 'data-feedback-id': 'central.textos.telefono', 'data-feedback-label': 'Teléfono' },
+        el('div', { class: 'ctl-phonebar' }, phone === 'guests' ? 'Ikisai · tu estancia' : phone === 'organizers' ? 'Ikisai · tu retiro' : 'Ikisai · contacto'),
+        ...screens.map((s) => el('section', { class: 'ctl-phonescreen' }, el('h3', null, s.screen), ...(s.items.length ? s.items.map((slot) => block(slot, s.screen)) : [el('p', { class: 'hint' }, 'Nada aquí.')])))));
+    host.querySelector<HTMLElement>('#phoneBack')?.focus({ preventScroll: true });
+  }
+
+  function paint(): void { if (phone) paintPhone(); else paintBoard(); }
+
   /** `base`: al traducir, el texto en español del que parte la versión inglesa (misma clave y tipo). */
-  function openEditor(t: Text | null, base: Text | null = null): void {
+  /** `preset`: al «Crear aquí», la clave, el tipo y el título que pide el portal. */
+  function openEditor(t: Text | null, base: Text | null = null, preset: PortalTextSlot | null = null): void {
     let sheet: Sheet | null = null;
     const readOnly = !isAdmin;
     const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive' });
     const lang: TextLang = t?.lang ?? (base ? 'en' : 'es');
-    const key = el('input', { id: 'tx-key', type: 'text', maxlength: '60', value: t?.key ?? base?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || base !== null || readOnly }) as HTMLInputElement;
+    const key = el('input', { id: 'tx-key', type: 'text', maxlength: '60', value: t?.key ?? base?.key ?? preset?.key ?? '', placeholder: 'portal.privacy', disabled: t !== null || base !== null || preset !== null || readOnly }) as HTMLInputElement;
     // Una traducción tiene el mismo tipo que su texto en español; solo se elige al crear el español.
-    const kind = el('select', { id: 'tx-kind', disabled: readOnly || lang !== 'es' }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? base?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
-    const title = el('input', { id: 'tx-title', type: 'text', maxlength: '160', value: t?.title ?? base?.title ?? '', disabled: readOnly }) as HTMLInputElement;
+    const kind = el('select', { id: 'tx-kind', disabled: readOnly || lang !== 'es' }, ...TEXT_KINDS.map((k) => el('option', { value: k, selected: (t?.kind ?? base?.kind ?? preset?.kind ?? 'legal') === k }, TEXT_KIND_LABELS[k]))) as HTMLSelectElement;
+    const title = el('input', { id: 'tx-title', type: 'text', maxlength: '160', value: t?.title ?? base?.title ?? preset?.title ?? '', disabled: readOnly }) as HTMLInputElement;
     const body = el('textarea', { id: 'tx-body', rows: '10', maxlength: '8000', disabled: readOnly }) as HTMLTextAreaElement;
     body.value = t?.body ?? base?.body ?? '';
     const preview = el('div', { id: 'tx-preview', class: 'textpreviewbox', 'data-feedback-id': 'central.textos.editar.vista_previa', 'data-feedback-label': 'Vista previa' });
@@ -138,7 +226,7 @@ export const mountTexts: ViewMount = ({ main, client, isAdmin, usage }) => {
     } },
     base ? el('p', { class: 'note', id: 'tx-translate' }, `Traducción al inglés de «${base.title}». Parte del texto en español: tradúcelo y guarda. Hasta entonces, los portales en inglés muestran el español.`) : null,
     t || base ? null : el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.clave', 'data-feedback-label': 'Clave' }, el('span', null, 'Clave'), key,
-      el('span', { class: 'muted small' }, 'La usan las apps para encontrar el texto (p. ej. «portal.privacy»). No se puede cambiar después.')),
+      el('span', { class: 'muted small' }, preset ? `Es la clave que lee ${placesText(preset.key) || 'su público'}.` : 'La usan las apps para encontrar el texto (p. ej. «portal.privacy»). No se puede cambiar después.')),
     el('div', { class: 'fieldrow' },
       el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.tipo', 'data-feedback-label': 'Tipo' }, el('span', null, 'Tipo'), kind),
       el('label', { class: 'field', 'data-feedback-id': 'central.textos.editar.titulo', 'data-feedback-label': 'Título' }, el('span', null, 'Título'), title)),

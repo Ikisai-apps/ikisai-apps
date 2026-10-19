@@ -124,3 +124,46 @@ export function parseSimpleMarkdown(text: string): Inline[][][] {
       return out;
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Dónde se lee cada texto (MUELA-017): qué pide cada portal, pantalla a pantalla. La prueba `texts.test.ts` lo compara
+// con los `common-texts.ts` de Guests y Organizers, para que no se desfase si un portal cambia sus claves.
+// ---------------------------------------------------------------------------
+export type TextPortal = 'guests' | 'organizers';
+export const TEXT_PORTAL_LABELS: Record<TextPortal, string> = { guests: 'Huéspedes', organizers: 'Quien organiza' };
+export interface PortalTextSlot { key: string; kind: TextKind; title: string }
+export interface PortalScreen { screen: string; slots: PortalTextSlot[] }
+
+export const PORTAL_TEXTS: Record<TextPortal, PortalScreen[]> = {
+  guests: [
+    { screen: 'Entrada', slots: [{ key: 'portal.privacy', kind: 'legal', title: 'Protección de datos' }] },
+    { screen: 'Tus datos', slots: [{ key: 'guests.data_why', kind: 'mensaje', title: '¿Por qué te lo pedimos?' }] },
+    { screen: 'Firma', slots: [{ key: 'guests.signature_statement', kind: 'legal', title: 'Declaración' }] },
+    { screen: 'Alergias y dieta', slots: [{ key: 'guests.allergies_notice', kind: 'mensaje', title: 'Aviso de alergias' }] },
+    { screen: 'Menú', slots: [{ key: 'guests.menu_notice', kind: 'mensaje', title: 'Aviso del menú' }] },
+    { screen: 'Información', slots: [
+      { key: 'info.arrival', kind: 'info', title: 'Cómo llegar' }, { key: 'info.parking', kind: 'info', title: 'Aparcamiento' },
+      { key: 'info.facilities', kind: 'info', title: 'Instalaciones' }, { key: 'info.rules', kind: 'info', title: 'Normas de la casa' },
+      { key: 'info.bring', kind: 'info', title: 'Qué traer' }, { key: 'info.map_link', kind: 'info', title: 'Enlace del mapa' },
+    ] },
+    { screen: 'Ayuda y contacto', slots: [{ key: 'contact.guests.email', kind: 'contacto', title: 'Correo de los huéspedes' }, { key: 'contact.phone', kind: 'contacto', title: 'Teléfono' }] },
+  ],
+  organizers: [
+    { screen: 'Asistentes', slots: [{ key: 'organizers.declaration', kind: 'legal', title: 'Declaración' }, { key: 'portal.privacy', kind: 'legal', title: 'Protección de datos' }] },
+    { screen: 'Pagos', slots: [{ key: 'payment.instructions', kind: 'mensaje', title: 'Cómo pagar' }] },
+    { screen: 'Menú', slots: [{ key: 'portal.menu_note', kind: 'mensaje', title: 'Nota del menú' }] },
+    { screen: 'Contacto', slots: [{ key: 'contact.organizers.email', kind: 'contacto', title: 'Correo de quien organiza' }, { key: 'contact.phone', kind: 'contacto', title: 'Teléfono' }] },
+  ],
+};
+/** Claves que un portal lee solo como reserva de otra (el correo general, si falta el de su público). */
+export const PORTAL_TEXT_FALLBACKS: Record<string, string> = { 'contact.email': 'contact.guests.email|contact.organizers.email' };
+
+/** Dónde se lee un texto: portal y pantalla. Vacío si ningún portal lo lee. */
+export function textPlaces(key: string): Array<{ portal: TextPortal; screen: string }> {
+  return (Object.keys(PORTAL_TEXTS) as TextPortal[]).flatMap((portal) => PORTAL_TEXTS[portal].filter((s) => s.slots.some((x) => x.key === key)).map((s) => ({ portal, screen: s.screen })));
+}
+
+/** Claves que pide algún portal (sin repetir). */
+export function portalTextKeys(): string[] {
+  return [...new Set((Object.values(PORTAL_TEXTS)).flatMap((screens) => screens.flatMap((s) => s.slots.map((x) => x.key))))];
+}
