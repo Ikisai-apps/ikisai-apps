@@ -1648,6 +1648,9 @@ test('Rectificativa recibida (0227): el abono se reconoce al importar, se import
     await closeSheet(page);
     await page.locator('#moreBoxes').click();
     await page.locator('#invoiceFilter [data-box="rect_sin_enlazar"]').click();
+    // Tanda 27: se ven las dos etiquetas más graves; las demás, tras «+n»
+    await expect(page.locator('#invoiceList .inv-more')).toHaveAttribute('aria-label', /Rectificativa sin enlazar/);
+    await page.locator('#invoiceList .inv-more').first().click();
     await expect(page.locator('#invoiceList')).toContainText('Rectificativa sin enlazar');
   } finally {
     await context.close();
