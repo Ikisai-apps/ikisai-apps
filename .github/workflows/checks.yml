@@ -25,6 +25,7 @@ jobs:
     outputs:
       e2e: ${{ steps.detect.outputs.e2e }}
       uikit: ${{ steps.detect.outputs.uikit }}
+      prefijos: ${{ steps.detect.outputs.prefijos }}
       code: ${{ steps.detect.outputs.code }}
     steps:
       - uses: actions/checkout@v4
@@ -38,13 +39,16 @@ jobs:
           #  · Algo compartido (kit, sync-client, test-kit, _kit, CI, scripts, dependencias): solo las pruebas @smoke de
           #    cada app (la app que aún no tiene ninguna, completa). La suite entera de todas corre de noche.
           apps="invoices booking food tasks central organizers guests"
-          full=""; smoke=false; uikit=false; code=true
+          full=""; smoke=false; uikit=false; prefijos=false; code=true
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
             # Solo documentación (lo que antes ignoraba `paths-ignore`): sin job pesado ni Playwright.
             if [ -n "$files" ] && ! echo "$files" | grep -Evq '^(docs/.*|CODEOWNERS|.*\.md)$'; then code=false; fi
             if echo "$files" | grep -Eq '^(packages/(sync-client|ui-kit|test-kit)/|supabase/functions/_kit/|playwright\.config\.ts|package\.json|package-lock\.json|\.github/|scripts/)'; then smoke=true; fi
             if echo "$files" | grep -Eq '^(packages/ui-kit/|package-lock\.json)'; then uikit=true; fi
+            # CSS o HTML de una app: solo la prueba de prefijos de clases del kit (v45), para que un choque con el kit salga
+            # en la PR de la app y no en la siguiente del kit. Si corre la suite del kit, ya va dentro.
+            if [ "$uikit" = false ] && echo "$files" | grep -Eq '^apps/[^/]+/.*\.(css|html)$'; then prefijos=true; fi
             # Historia, cáscara, hojas y diálogos del kit («atrás», FB_2026_025): cambian el recorrido de todas las apps, así
             # que corre la batería completa de cada una, no solo el humo (regresión de la 0.27.1 en Booking).
             if echo "$files" | grep -Eq '^packages/ui-kit/src/(shell/(back-navigation|app-shell)|overlay/(sheet|dialog))\.ts$'; then full="$apps"; fi
@@ -68,8 +72,9 @@ jobs:
           done
           echo "e2e=[${items%,}]" >> "$GITHUB_OUTPUT"
           echo "uikit=$uikit" >> "$GITHUB_OUTPUT"
+          echo "prefijos=$prefijos" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit  code=$code"
+          echo "Archivos: $(echo "${files:-}" | wc -l)  e2e=[${items%,}]  uikit=$uikit  prefijos=$prefijos  code=$code"
   core:
     name: Lint de migraciones, typecheck y pruebas PGlite
     needs: cambios
@@ -121,6 +126,21 @@ jobs:
           path: test-results
           if-no-files-found: ignore
           retention-days: 7
+  prefijos:
+    name: Prefijos de clases (kit, v45)
+    needs: cambios
+    if: needs.cambios.outputs.prefijos == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm -w @ikisai/ui-kit run test:e2e -- v45 --project=escritorio
   uikit:
     name: Pruebas del ui-kit · ${{ matrix.shard }}/3
     needs: cambios
