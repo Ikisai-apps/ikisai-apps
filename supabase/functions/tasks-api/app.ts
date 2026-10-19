@@ -1,5 +1,5 @@
 /** Ikisai Tasks · API. Configuración de la app sobre el núcleo: hooks de dominio y rutas propias (docs/tasks/API.md §4–§6). */
-import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess } from '../_kit/mod.ts';
+import { createApp, createSupabase, fail, type AppConfig, type AppRoute, type Operation, type RequestContext, type Supabase, createStorage, r2ConfigFromEnv, type StorageAccess, type UploadsConfig } from '../_kit/mod.ts';
 import {
   ATTACHMENT_MAX_BYTES, ATTACHMENT_MIME, DomainError, allAccess, effectiveScopes, riskNeedsData, statuses, suggestionVisibleFor, tasksAgentRisk, validateOperations, visible, visibleRow,
   type AttachmentRow, type ProjectRow, type Role, type TaskCommentRow, type TaskDependencyRow, type TaskRow,
@@ -133,6 +133,17 @@ export function tasksRoutes(supabase: Supabase, storage: StorageAccess = createS
   ];
 }
 
+/**
+ * Subidas de Tasks: adjuntos y fotos de comentarios.
+ * - O1, paso 2: el kit solo permite subir al outsider para toda la app (`allowOutsiders`), no por campo. Lo que sube solo
+ *   puede ir a la foto de un comentario: el dominio (validate.ts) y `tasks.validate_comments` le impiden cualquier otra
+ *   escritura, `tasks.attachments` incluida, y la foto tiene que ser una imagen subida por quien comenta.
+ * - K3 para miembros (núcleo #585, como Central en #589): `GET files/:id` firma un archivo ajeno solo si quien pide ve
+ *   (hook `visible`) una fila viva que lo referencia. Las descargas de la app (`attachments/:id`, `comments/:id/photo`) ya
+ *   comprobaban la visibilidad y solo sirven filas vivas: en pantalla no cambia nada (la papelera no abre adjuntos).
+ */
+export const TASKS_UPLOADS: UploadsConfig = { bucket: TASKS_BUCKET, maxBytes: ATTACHMENT_MAX_BYTES, allowedMime: [...ATTACHMENT_MIME], allowOutsiders: true, membersK3: true };
+
 export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' | 'hooks' | 'routes' | 'uploads'> & Partial<Pick<AppConfig, 'origins'>>) {
   const supabase = createSupabase(base);
   // El mismo almacenamiento que monta el kit (contrato §3.9): R2 si están sus secretos, si no Supabase Storage.
@@ -143,10 +154,7 @@ export function createTasksApp(base: Omit<AppConfig, 'app' | 'slug' | 'origins' 
     app: 'tasks',
     slug: 'tasks-api',
     origins: base.origins ?? TASKS_ORIGINS,
-    // O1, paso 2: el kit solo permite subir al outsider para toda la app (`allowOutsiders`), no por campo. Lo que sube solo
-    // puede ir a la foto de un comentario: el dominio (validate.ts) y `tasks.validate_comments` le impiden cualquier otra
-    // escritura, `tasks.attachments` incluida, y la foto tiene que ser una imagen subida por quien comenta.
-    uploads: { bucket: TASKS_BUCKET, maxBytes: ATTACHMENT_MAX_BYTES, allowedMime: [...ATTACHMENT_MIME], allowOutsiders: true },
+    uploads: TASKS_UPLOADS,
     hooks: {
       visible,
       beforeCommit: (operations, ctx) => validateTasksOperations(operations, ctx),
