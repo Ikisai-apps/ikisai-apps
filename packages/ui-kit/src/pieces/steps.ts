@@ -23,6 +23,8 @@ export interface StepItem {
   icon?: IconName | null;
   href?: string | null;
   onClick?: () => void;
+  /** Id literal de feedback de este paso (entra en el catálogo). Sin él, el paso no se marca. */
+  feedbackId?: string;
 }
 
 export interface StepsOptions {
@@ -42,7 +44,9 @@ function link(item: StepItem, cls: string, children: Child[], attrs: Record<stri
 
 export function renderSteps(options: StepsOptions): HTMLElement {
   const base = options.feedbackId;
-  const mark = (id: string): Record<string, string> => (base ? { 'data-feedback-id': `${base}.${id}`, 'data-feedback-label': 'Paso' } : {});
+  // Solo ids literales (los construidos en ejecución no entran en el catálogo de funciones).
+  const byId = new Map(options.items.map((i) => [i.id, i]));
+  const mark = (id: string): Record<string, string> => { const it = byId.get(id); return it?.feedbackId ? { 'data-feedback-id': it.feedbackId, 'data-feedback-label': it.title } : {}; };
   const todo = options.items.filter((i) => !i.done);
   const done = options.items.filter((i) => i.done);
   const total = options.items.length;

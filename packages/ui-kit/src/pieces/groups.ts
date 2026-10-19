@@ -32,6 +32,8 @@ export interface Group<T> {
   open?: boolean;
   /** Botones en la cabecera del grupo (p. ej. «+»). */
   actions?: Child[];
+  /** Id literal de feedback de la cabecera de este grupo (entra en el catálogo); sin él, `${feedbackId}.grupo`. */
+  feedbackId?: string;
 }
 
 export interface GroupsOptions<T> {
@@ -83,7 +85,7 @@ export function renderGroups<T>(options: GroupsOptions<T>): GroupsView {
       const medal = g.medal ? (g.medal instanceof Node ? g.medal : renderMedal({ size: 40, name: g.title, ...g.medal })) : null;
       const open = g.open ?? (worst === 'alert' || worst === 'warn');
       return el('li', { class: 'worst-group', dataset: { group: g.key, tone: worst ?? 'none' } }, el('details', { open },
-        el('summary', { class: 'worst-head', ...mark('grupo', 'Abrir el grupo') },
+        el('summary', { class: 'worst-head', ...(g.feedbackId ? { 'data-feedback-id': g.feedbackId, 'data-feedback-label': g.title } : mark('grupo', 'Abrir el grupo')) },
           medal,
           el('span', { class: 'worst-title' }, el('strong', null, g.title), el('span', { class: 'worst-count' }, String(g.items.length))),
           el('span', { class: `worst-summary${worst ? ` worst-${worst}` : ''}` }, summary),

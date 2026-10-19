@@ -49,6 +49,8 @@ export interface MoneyBreakdownSpec {
   /** Extracto: lo que ya pasó, por meses. */
   moves?: MoneyMove[];
   movesLabel?: string;
+  /** Extracto: lo que va entre «Próximamente» y «Movimientos» (p. ej. «Cómo pagar»). */
+  afterUpcoming?: Child;
   /** Total; por defecto la suma de las líneas. */
   total?: number;
   /** Etiqueta del total («Coste real»). */
@@ -162,6 +164,7 @@ function renderStatement(spec: MoneyBreakdownSpec): HTMLElement {
     upcoming.length ? el('section', { class: 'mb-feed', 'aria-label': spec.upcomingLabel ?? kt('Próximamente') },
       el('h3', { class: 'mb-feedh' }, spec.upcomingLabel ?? kt('Próximamente')),
       el('ul', { class: 'mb-moves' }, ...upcoming.map((m) => move({ kind: 'due', ...m })))) : null,
+    spec.afterUpcoming ?? null,
     el('section', { class: 'mb-feed', 'aria-label': spec.movesLabel ?? kt('Movimientos') },
       el('h3', { class: 'mb-feedh' }, spec.movesLabel ?? kt('Movimientos')),
       months.length

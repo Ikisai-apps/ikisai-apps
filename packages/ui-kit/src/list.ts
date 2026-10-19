@@ -42,7 +42,11 @@ export function listRow(spec: ListRowSpec, options: ListOptions = {}): HTMLLIEle
       spec.deleted ? el('span', { class: 'chip trash' }, el('span', null, options.deletedLabel ?? 'En papelera')) : null,
     ),
     spec.meta?.length ? el('div', { class: 'row-meta' }, ...spec.meta.map((m) => el('span', null, m))) : null,
-    spec.actions?.length ? el('div', { class: 'row-actions', onclick: (e: Event) => e.stopPropagation() }, ...spec.actions) : null,
+    spec.actions?.length ? el('div', {
+      class: 'row-actions', onclick: (e: Event) => e.stopPropagation(),
+      // Intro o Espacio sobre una acción la pulsan a ella, no abren la fila.
+      onkeydown: (e: Event) => { const k = (e as KeyboardEvent).key; if (k === 'Enter' || k === ' ') e.stopPropagation(); },
+    }, ...spec.actions) : null,
   );
   if (spec.onClick) {
     row.addEventListener('click', spec.onClick);

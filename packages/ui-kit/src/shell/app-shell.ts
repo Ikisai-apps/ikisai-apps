@@ -35,6 +35,8 @@ export interface AppShellOptions {
   status?: StatusBarOptions;
   /** Botón «Cerrar sesión» (escritorio). */
   onLogout?: () => void | Promise<void>;
+  /** El botón de salir también en el móvil (portales). Por defecto, solo en el ordenador. */
+  logoutOnMobile?: boolean;
   /** Herramientas extra en la cabecera (tema, alias, menú). */
   tools?: HTMLElement[];
   /** Texto de ayuda al pie de la navegación en escritorio. */
@@ -116,7 +118,7 @@ export function createAppShell(root: HTMLElement, options: AppShellOptions): App
   const subtitle = el('small', { id: 'shellSubtitle' }, options.subtitle ?? '');
   const status = createStatusBar(options.status ?? {});
   const logoutButton = options.onLogout
-    ? el('button', { class: 'iconbtn desktop-only', type: 'button', id: 'logoutButton', 'aria-label': 'Cerrar sesión', title: 'Cerrar sesión', onclick: () => void options.onLogout?.() }, icon('logout'))
+    ? el('button', { class: `iconbtn${options.logoutOnMobile ? '' : ' desktop-only'}`, type: 'button', id: 'logoutButton', 'aria-label': kt('Cerrar sesión'), title: kt('Cerrar sesión'), onclick: () => void options.onLogout?.() }, icon('logout'))
     : null;
   const menu: AppMenu | null = options.menu
     ? createAppMenu(options.menu, { appName: options.appName, onLogout: options.onLogout, onSync: options.status?.onSync, navigate: (hash) => navigate(hash) })
