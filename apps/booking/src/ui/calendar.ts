@@ -101,7 +101,7 @@ export const mountCalendar: ViewMount = ({ main, client, navigate }) => {
   // tarifas legibles (el lector), no se enseña: no ve precios.
   const weekendsHost = el('div', { 'data-feedback-id': 'booking.calendario.fines', 'data-feedback-label': 'Fines de semana libres' });
   const seesRates = canRead(client, RATES) && canRead(client, CONDITIONS);
-  const PERSONS_KEY = 'booking.calendario.personas';
+  const PERSONS_KEY = 'booking:calendario:personas';
   let persons = (() => { try { return Number(localStorage.getItem(PERSONS_KEY)) || 24; } catch { return 24; } })();
   let weekendSheet: Sheet | null = null;
   async function weekendMonths() {

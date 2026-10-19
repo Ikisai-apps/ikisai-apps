@@ -8,7 +8,7 @@ import type { SyncClient } from '@ikisai/sync-client';
 interface LogoItem { reservation_id: string; mime: string; sha256: string; updated_at: string; url: string }
 
 const CACHE = 'booking-logos';
-const INDEX_KEY = 'booking.logos.index';
+const INDEX_KEY = 'booking:logos:index';
 let urls = new Map<string, string>();
 let loaded: Promise<void> | null = null;
 const listeners = new Set<() => void>();

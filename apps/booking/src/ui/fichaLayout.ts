@@ -20,7 +20,7 @@ export const TAB_OF: Record<BlockId | 'financeExtract', Exclude<TabKey, 'todo'>>
   financeExtract: 'dinero', blockFinance: 'dinero', blockCosts: 'dinero',
 };
 
-const REMEMBER_KEY = 'booking.ficha.todo';
+const REMEMBER_KEY = 'booking:ficha:todo';
 const remembered = (): boolean => { try { return localStorage.getItem(REMEMBER_KEY) === '1'; } catch { return false; } };
 const remember = (all: boolean) => { try { if (all) localStorage.setItem(REMEMBER_KEY, '1'); else localStorage.removeItem(REMEMBER_KEY); } catch { /* sin almacenamiento */ } };
 
