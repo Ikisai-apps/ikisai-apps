@@ -58,6 +58,8 @@ export { renderNow, type NowBlock, type NowRow, type NowOptions } from './pieces
 export { renderSteps, type StepItem, type StepsOptions } from './pieces/steps.ts';
 export { createQueue, type Queue, type QueueItem, type QueueAction, type QueueOptions } from './pieces/queue.ts';
 export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type VoteTexts } from './pieces/vote.ts';
+export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
+export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion } from './pieces/step-form.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';
 export { setKitLayer, kitLayer } from './layer.ts';
@@ -101,5 +103,5 @@ export {
   type ProposalStatus, type ProposalSummary, type ProposalRowOptions, type ProposalReviewOptions, type ProposalReviewParts, type RiskReason, type RiskSummaryOptions,
   type ChangeItem, type ChangeField, type ChangeListOptions, type SecretOnceOptions, type AccessLogEntry, type ScopeArea, type ScopeValue, type ScopePicker,
 } from './agents/agents.ts';
-export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine } from './cards/money.ts';
+export { renderMoneyBreakdown, type MoneyBreakdownSpec, type MoneyLine, type MoneyMove } from './cards/money.ts';
 export { createCommandPalette, filterPaletteItems, foldText, type CommandPalette, type PaletteItem, type PaletteOptions } from './palette.ts';

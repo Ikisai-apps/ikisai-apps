@@ -267,6 +267,25 @@ Se ven en la demo, en `#piecesb2`. Qué falta, el orden de la cola, la validaci�
   - `goTo(id)` sirve para «Cambiar» desde una revisión.
   - Clases `ask-`.
 
+### Lote B3 (0.45): dinero y tiempo
+
+Se ven en la demo, en `#piecesb3`. El saldo, los choques, las noches y qué está «ahora» los calcula la app.
+
+- **`renderMoneyBreakdown({ mode: 'statement', total, subtitle?, upcoming?, moves?, totalLabel? })`**: el extracto.
+  - Muestra en grande lo que queda («Te queda por pagar») y debajo «Próximamente», con borde discontinuo.
+  - Los movimientos (`MoneyMove`: `in` pago, `doc` factura, `due` por pagar) van agrupados por mes, con su chip de estado escrito.
+  - Sin `mode`, el desglose es el de siempre.
+- **`renderTimeline({ label, from, today, lanes, bands?, summary? })`**, con las funciones **`timelineWindow`** y **`timelineSpan`**: tu año en una línea de tiempo.
+  - Abarca doce meses: una pista por persona y la franja de retiros, con la raya de hoy.
+  - Marca los choques con rayas y «!», y lo pasado más claro.
+  - En el móvil se desliza en horizontal (región enfocable); desde 900 px cabe entera.
+  - Debajo va el resumen mes a mes en texto.
+  - Clases `year-`.
+- **`renderHourAgenda({ label, items, now? })`**: la agenda por horas con la línea de ahora. Va debajo de `createDayTabs`.
+  - Lo ya hecho queda plegado («2 actividades antes»), y la raya «Ahora · 12:20» solo sale si hay `now`.
+  - Lo de ahora y lo siguiente se marcan con su chip. Las comidas llevan su color (`kind: 'meal'`).
+  - Clases `hour-`.
+
 ## Muestra y pruebas
 
 ```text

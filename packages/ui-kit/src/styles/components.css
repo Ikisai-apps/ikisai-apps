@@ -1711,3 +1711,70 @@ button.cover-main:focus-visible{outline:3px solid #fff;outline-offset:-6px;borde
 .ask-donetitle{margin:0;font-family:var(--serif);font-size:var(--text-xl);display:flex;align-items:center}
 .ask-donetitle:focus{outline:none}
 @media (prefers-reduced-motion:reduce){.queue-card,.vote-card,.vote-stamp{transition:none}}
+
+/* --- Piezas comunes, lote B3 (MUELA-075, 0.45) ------------------------------------------------------------------ */
+/* Extracto (`renderMoneyBreakdown` con `mode: 'statement'`). */
+.mb-statement{gap:14px}
+.mb-statement > .mb-total{display:grid;gap:2px;padding-bottom:10px;border-bottom:2px solid var(--ink)}
+.mb-statement > .mb-total .mb-amount{font-size:2.2rem}
+.mb-feed{display:grid;gap:8px}
+.mb-feedh{margin:0;font-size:var(--text-md)}
+.mb-month{display:grid;gap:6px}
+.mb-month + .mb-month{margin-top:8px}
+.mb-monthh{margin:0;font-size:var(--text-xs);font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mb-moves{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.mb-move .mb-open{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:var(--tap);padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--paper)}
+.mb-move.mb-due .mb-open{border-style:dashed;background:transparent}
+.mb-ic{width:38px;height:38px;border-radius:12px;display:inline-grid;place-items:center;background:var(--paper-2);color:var(--ink)}
+.mb-move.mb-in .mb-ic{background:var(--ok-soft);color:var(--ok)}
+.mb-moveamt{display:grid;justify-items:end;gap:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mb-move.mb-in .mb-moveamt b{color:var(--ok)}
+
+/* Tu año en una línea de tiempo. */
+.year-box{display:grid;gap:10px}
+.year-scroll{overflow-x:auto;contain:inline-size;border-radius:var(--radius-sm);box-shadow:inset 0 0 0 1px var(--line);background:var(--paper)}
+.year-scroll:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.year-grid{--year-label:116px;min-width:1100px;display:grid}
+@media (min-width:900px){.year-grid{--year-label:150px;min-width:0}}
+.year-lane{display:grid;grid-template-columns:var(--year-label) minmax(0,1fr);border-bottom:1px solid var(--line)}
+.year-lane:last-child{border-bottom:0}
+.year-lanelabel{position:sticky;left:0;z-index:2;display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--paper);font-size:var(--text-sm);font-weight:650;min-width:0;overflow-wrap:anywhere}
+.year-track{position:relative;min-height:54px;background-image:linear-gradient(to right,var(--line) 1px,transparent 1px);background-size:calc(100% / var(--year-months)) 100%}
+.year-monthsrow .year-track{min-height:30px;display:grid;grid-template-columns:repeat(var(--year-months),minmax(0,1fr));align-items:center}
+.year-month{padding-left:6px;font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:capitalize}
+.year-today{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--alert);z-index:1;pointer-events:none}
+.year-todaylabel{position:absolute;top:2px;transform:translateX(-50%);font-size:10px;font-weight:800;color:var(--alert)}
+.year-bar,.year-band{position:absolute;top:4px;height:46px;min-width:8px;display:flex;align-items:center;gap:4px;padding:0 6px;border:0;border-radius:10px;font:inherit;font-size:var(--text-xs);font-weight:700;overflow:hidden;white-space:nowrap;z-index:2}
+button.year-bar,button.year-band{min-width:var(--tap);cursor:pointer}
+.year-bar{background:var(--accent);color:var(--accent-ink)}
+.year-person[data-kind="outsider"] .year-bar{background:#6c3483;color:#fff}
+.year-person[data-kind="staff"] .year-bar{background:#4b535d;color:#fff}
+.year-band{background:color-mix(in srgb,var(--ink) 12%,var(--paper));color:var(--ink)}
+.year-past{opacity:.7}
+.year-clash{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.28) 0 6px,transparent 6px 12px)}
+.year-cut-start{border-top-left-radius:0;border-bottom-left-radius:0}
+.year-cut-end{border-top-right-radius:0;border-bottom-right-radius:0}
+.year-bang{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--alert);color:#fff;font-size:11px;font-weight:900;flex:none}
+.year-barlabel{overflow:hidden;text-overflow:ellipsis}
+.year-bar:focus-visible,.year-band:focus-visible{outline:3px solid var(--accent-deep);outline-offset:1px}
+.year-summary{list-style:none;margin:0;padding:0;display:grid;gap:2px;font-size:var(--text-sm)}
+.year-empty{margin:0}
+
+/* Agenda por horas con la línea de ahora. */
+.hour-box{display:grid;gap:8px}
+.hour-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.hour-item{display:flex;align-items:center;gap:10px;min-height:var(--tap);padding:6px 10px;border-radius:var(--radius-sm);background:var(--paper);box-shadow:inset 0 0 0 1px var(--line)}
+.hour-time{min-width:44px;font-weight:800;font-variant-numeric:tabular-nums}
+.hour-bar{width:4px;align-self:stretch;border-radius:4px;background:var(--accent)}
+.hour-kind-meal .hour-bar{background:var(--terracotta)}
+.hour-text{flex:1;min-width:0;display:grid;gap:2px}
+.hour-text small{color:var(--muted)}
+.hour-now,.hour-next{background:var(--accent-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}
+.hour-chip{background:var(--accent);color:var(--accent-ink)}
+.hour-next .hour-chip{background:var(--paper);color:var(--ink)}
+.hour-done{opacity:.75}
+.hour-earlier > summary{cursor:pointer;min-height:var(--tap-sm);display:flex;align-items:center;font-size:var(--text-sm);font-weight:650;color:var(--muted)}
+.hour-earlier > .hour-list{margin-top:6px}
+.hour-nowline{display:flex;align-items:center;gap:6px;font-size:var(--text-xs);font-weight:800;color:var(--alert)}
+.hour-nowline::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--alert)}
+.hour-nowline::after{content:"";flex:1;height:2px;background:var(--alert)}
