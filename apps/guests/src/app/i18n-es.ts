@@ -481,6 +481,8 @@ export const ES: Dictionary = {
   'lodging.preferNote': 'Lo verán tu organizador y el equipo de Ikisai al repartir las habitaciones.',
   'lodging.prefOffline': 'Sin conexión: no se ha guardado. Inténtalo con red.',
   'menu.allergens': 'Alérgenos declarados por cocina: {list}.',
+  'menu.allergensUnchecked': 'Alérgenos declarados: {list} (sin revisar por cocina).',
+  'menu.allergensUncheckedNone': 'Alérgenos: sin revisar por cocina.',
   'lodging.supplement': 'Con suplemento: consulta con tu organizador.',
   'lodging.bedMine': 'La tuya',
   'info.plan': 'Ver el plano del centro',

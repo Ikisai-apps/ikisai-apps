@@ -518,7 +518,7 @@ Detalles de la implementación:
 **Conectado a la API real (8-10-2026):**
 - **Programa:** `booking.portal_program` (Booking #328, §23).
 - **Alojamiento:** `booking.portal_lodging`, `portal_choose_bed`, `portal_release_bed` y `portal_room_preference` (Booking §23.1). Los ajustes son de Booking: `choice`, `choose_until`, `open` y `preferences`. De Organizers solo se usa la nota de precio (`guest_price_text`).
-- **Menú:** `food.portal_menu {reservation_id, guest_id}` (Food #327, §7.5). Guests solo ve menús validados. Los platos llevan descripción pública, etiquetas de dieta y, si cocina los revisó, los alérgenos declarados.
+- **Menú:** `food.portal_menu {reservation_id, guest_id}` (Food #327, §7.5). Guests solo ve menús validados. Los platos llevan descripción pública, etiquetas de dieta y **siempre** los alérgenos declarados (tanda 26). Si la receta no está revisada (`allergens_checked` falso), se añade «sin revisar por cocina», también cuando no declara ninguno.
 - **El lugar:** `central.portal_place_projection` (Central #326, §2.9): dirección del lugar (nunca la fiscal), enlace del mapa y plano (imagen o PDF) con `portal-files`. Es información de Ikisai: sale siempre en Información.
 - **Vista previa** con el enlace `preview: true` del núcleo (#325).
 

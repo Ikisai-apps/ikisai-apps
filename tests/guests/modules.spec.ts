@@ -91,7 +91,8 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await item(day(0), '17:00', null, 'Paseo al pinar', 'Pinar', 'Calzado cómodo');
   await item(day(1), '10:00', '12:00', 'Taller de respiración', null);
   await api.menu(event, [
-    { date: day(0), type: 'cena', time: '21:00', dishes: [{ name: 'Crema de calabaza', diet: ['vegano'] }, { name: 'Tarta de queso', allergens: ['lacteos', 'gluten'] }] },
+    { date: day(0), type: 'cena', time: '21:00', dishes: [{ name: 'Crema de calabaza', diet: ['vegano'] }, { name: 'Tarta de queso', allergens: ['lacteos', 'gluten'] },
+      { name: 'Pan de pueblo', allergens: ['gluten', 'sesamo'], allergensChecked: false }, { name: 'Ensalada verde', allergensChecked: true }] },
     { date: day(1), type: 'desayuno', time: '08:30', dishes: [{ name: 'Fruta y tostadas' }] },
   ]);
   const room = await api.room(event, { name: 'Habitación 3', enSuite: false, beds: ['Cama 1', 'Cama 2'] });
@@ -119,6 +120,12 @@ test('guests · durante el retiro: «Hoy», programa, menú con foto, mi habitac
   await expect(page.locator('#menuList')).toContainText('Tarta de queso');
   await expect(page.locator('#menuList')).toContainText('Alérgenos declarados por cocina: lácteos, gluten.');
   await expect(page.locator('#menuList')).toContainText('Vegana');
+  // Tanda 26: los alérgenos declarados salen siempre; sin revisar por cocina, se dice (también si no declara ninguno).
+  const dishOf = (name: string) => page.locator('#menuList .gdish').filter({ has: page.locator('strong', { hasText: name }) });
+  await expect(dishOf('Pan de pueblo').locator('.gallergens')).toHaveText('Alérgenos declarados: gluten, sésamo (sin revisar por cocina).');
+  await expect(dishOf('Crema de calabaza').locator('.gallergens')).toHaveText('Alérgenos: sin revisar por cocina.');
+  await expect(dishOf('Ensalada verde').locator('.gallergens')).toHaveCount(0); // revisada y sin alérgenos
+  await expect(dishOf('Tarta de queso').locator('.gallergens')).toHaveText('Alérgenos declarados por cocina: lácteos, gluten.');
   await expect(page.locator('#menuProvisional')).toHaveCount(0); // Guests solo ve menús validados
 
   await go(page, 'alojamiento');

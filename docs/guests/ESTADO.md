@@ -79,6 +79,8 @@
 
 - 2026-10-14 · **O4b, última parte:** «Apuntarme» en los retiros abiertos (sugerencia a Booking), con su estado y «Retirar»; «Mis propuestas» junta platos y «Apuntarme». O4 completa salvo lo que espera a otros equipos.
 
+- 2026-10-19 · **Tanda 26: alérgenos siempre visibles.** El menú muestra siempre los alérgenos declarados; si cocina no revisó la receta, añade «sin revisar por cocina» (también sin ninguno declarado). Antes, una receta sin revisar no enseñaba ninguno. Prueba en `modules.spec.ts`.
+
 ## Pendiente
 
 - El menú de casa (FD2) y «Mis tareas» (TK1), cuando Food y Tasks los publiquen.

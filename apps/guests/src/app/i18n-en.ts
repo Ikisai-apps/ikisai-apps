@@ -467,6 +467,8 @@ export const EN: Dictionary = {
   'lodging.preferNote': 'Your organiser and the Ikisai team will see this when allocating rooms.',
   'lodging.prefOffline': 'Offline: not saved. Please try again when you are online.',
   'menu.allergens': 'Allergens declared by the kitchen: {list}.',
+  'menu.allergensUnchecked': 'Declared allergens: {list} (not yet checked by the kitchen).',
+  'menu.allergensUncheckedNone': 'Allergens: not yet checked by the kitchen.',
   'lodging.supplement': 'Supplement applies: ask your organiser.',
   'lodging.bedMine': 'Yours',
   'info.plan': 'See the site plan',

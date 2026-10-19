@@ -28,8 +28,11 @@ export interface GuestsTestServer {
   organizerInvoke(reservationId: string, name: string, args: Record<string, unknown>): Promise<any>;
   /** Habitación del retiro: espacio con camas, asignado al evento como grupo (así entra en el inventario del retiro). */
   room(event: string, options: { name: string; enSuite: boolean; beds: string[]; extraBeds?: string[]; zone?: string }): Promise<{ spaceId: string; bedIds: string[]; extraBedIds: string[] }>;
-  /** Menú de Food validado y compartido, sembrado en la base: `[{date, type, time, dishes: [{name, allergens?, diet?}]}]`. */
-  menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; diet?: string[] }> }>): Promise<void>;
+  /**
+   * Menú de Food validado y compartido, sembrado en la base: `[{date, type, time, dishes: [{name, allergens?, allergensChecked?, diet?}]}]`.
+   * Sin `allergensChecked`, la receta cuenta como revisada si trae `allergens`.
+   */
+  menu(event: string, services: Array<{ date: string; type: string; time: string; dishes: Array<{ name: string; description?: string; allergens?: string[]; allergensChecked?: boolean; diet?: string[] }> }>): Promise<void>;
   /** El lugar en Central: dirección del lugar (sin domicilio fiscal en los portales) y, si se pide, un plano verificado. */
   place(options: { venue: string; plan?: 'image/png' | 'application/pdf' }): Promise<void>;
   /** El personal asigna una cama a un huésped. */
@@ -171,7 +174,7 @@ export async function startGuestsServer(): Promise<GuestsTestServer> {
         for (const [j, d] of s.dishes.entries()) {
           const recipeId = uuid();
           await db.query(`insert into food.recipes (id, name, public_description, category, base_servings, diet_tags, allergens, allergens_checked) values ($1, $2, $3, 'principal', 10, $4, $5, $6)`,
-            [recipeId, d.name, d.description ?? null, d.diet ?? [], d.allergens ?? [], Boolean(d.allergens)]);
+            [recipeId, d.name, d.description ?? null, d.diet ?? [], d.allergens ?? [], d.allergensChecked ?? Boolean(d.allergens)]);
           await db.query(`insert into food.menu_items (id, service_id, recipe_id, servings, position) values ($1, $2, $3, 10, $4)`, [uuid(), serviceId, recipeId, j]);
         }
       }
