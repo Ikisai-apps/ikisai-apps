@@ -10,13 +10,30 @@ import { i18n, L, t } from '../app/i18n.ts';
 import { failure, fbIgnore, loading, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
-interface Dish { menu_item_id: string; name: string; description: string | null; category: string | null; diet_tags: string[] | null; allergens: string[] | null; photo_thumb_file_id: string | null }
+interface Dish { menu_item_id: string; name: string; description: string | null; category: string | null; diet_tags: string[] | null; allergens: string[] | null; allergens_checked?: boolean; photo_thumb_file_id: string | null }
 interface Service { service_id: string; menu_id: string; date: string; type: string; time: string | null; dishes: Dish[] }
 export interface PortalMenu { available: boolean; status: 'provisional' | 'confirmado'; services: Service[] }
 interface MenuComment { id: string; menu_item_id: string | null; service_id: string | null; dish: string | null; kind: 'prefiero_que_no' | 'comentario'; message: string | null; status: string; reply: string | null; created_at: string }
 
 const SERVICES: Record<string, string> = { desayuno: L('Desayuno'), comida: L('Comida'), merienda: L('Merienda'), cena: L('Cena'), picnic: L('Pícnic'), otro: L('Otro') };
+// Los 14 alérgenos de declaración obligatoria, con los códigos de Food (catalog.ts) y los nombres que usa Guests.
+const ALLERGENS: Record<string, string> = {
+  gluten: L('gluten'), crustaceos: L('crustáceos'), huevos: L('huevo'), pescado: L('pescado'), cacahuetes: L('cacahuete'), soja: L('soja'),
+  lacteos: L('lácteos'), frutos_de_cascara: L('frutos de cáscara'), apio: L('apio'), mostaza: L('mostaza'), sesamo: L('sésamo'),
+  sulfitos: L('sulfitos'), altramuces: L('altramuces'), moluscos: L('moluscos'),
+};
 const COMMENT_STATUS: Record<string, string> = { nuevo: L('Enviado'), visto: L('Visto por cocina'), resuelto: L('Resuelto') };
+/**
+ * Alérgenos declarados por cocina, siempre con su nombre. Si cocina no ha revisado la receta (`allergens_checked`), se dice:
+ * una lista vacía sin revisar no significa «no tiene».
+ */
+function allergensLine(d: Dish): HTMLElement | null {
+  const names = (d.allergens ?? []).map((code) => (ALLERGENS[code] ? t(ALLERGENS[code]) : code.replace(/_/g, ' ')));
+  const unchecked = d.allergens_checked !== true;
+  if (!names.length && !unchecked) return null;
+  return el('span', { class: 'small orgdish-allergens' }, `${t('Alérgenos')}: ${names.join(', ')}`,
+    unchecked ? el('span', { class: 'orgdish-unchecked' }, `${names.length ? ' · ' : ''}${t('sin revisar por cocina')}`) : null);
+}
 const dayTitle = (day: string) => new Intl.DateTimeFormat(i18n.tag(), { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
 
 export function renderMenu(ctx: ViewContext, reservationId: string): HTMLElement {
@@ -66,7 +83,7 @@ export function renderMenu(ctx: ViewContext, reservationId: string): HTMLElement
             el('div', { class: 'orgdish-main' },
               el('strong', null, d.name),
               d.description ? el('span', { class: 'muted small' }, d.description) : null,
-              d.allergens?.length ? el('span', { class: 'muted small' }, `${t('Alérgenos')}: ${d.allergens.join(', ')}`) : null,
+              allergensLine(d),
               ...mine(d).map((c) => fbIgnore(el('span', { class: 'orgcomment small' },
                 c.kind === 'prefiero_que_no' ? t('Has pedido: prefiero que no') : `${t('Tu comentario')}: ${c.message ?? ''}`,
                 ` · ${t(COMMENT_STATUS[c.status] ?? c.status)}`, c.reply ? ` · ${t('Cocina')}: ${c.reply}` : '')))),
