@@ -89,6 +89,15 @@ test('recetario · «Lleva X / Sin X» con lo no revisado marcado, y la línea s
   await expect(page.locator('main')).not.toContainText(/apto|no contiene/i);
   await capture(page, '25-recetario-sin');
 
+  // Ficha del curry: la almendra molida nombra frutos de cáscara, que no declara (aviso con su arreglo).
+  await page.locator('#filterAllergen').selectOption('');
+  await page.locator('#recipeGrid .recipecard', { hasText: 'Curry de verduras' }).click();
+  const ficha = page.getByRole('dialog', { name: 'Curry de verduras' });
+  await expect(ficha.locator('.fd-undeclared')).toHaveText(/El ingrediente «almendra molida» nombra frutos de cáscara, que la receta no declara: revisa los alérgenos\./);
+  await expect(ficha.getByRole('button', { name: 'Revisar los alérgenos' })).toBeVisible();
+  await capture(page, '29-receta-sin-declarar');
+  await page.keyboard.press('Escape');
+
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event('offline')));
   await expect(page.locator('#recipesOffline')).toBeVisible();
@@ -104,8 +113,13 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   await login(page);
   await page.goto(`${baseURL}/#/menus/${menuId}/organizador`);
   const checks = page.locator('[data-feedback-id="food.menu.organizador.comprobaciones"]');
-  await expect(checks.locator('.check-verdict')).toHaveText('!1 cosa por resolver · La primera: los alérgenos de Ensalada verde están sin revisar');
-  await expect(checks.locator('.check-item')).toHaveCount(5);
+  await expect(checks.locator('.check-verdict')).toHaveText('!2 cosas por resolver · La primera: los alérgenos de Ensalada verde están sin revisar');
+  await expect(checks.locator('.check-item')).toHaveCount(6);
+  // El curry lleva almendra molida y no declara frutos de cáscara: comprobación en rojo (decisión de Core del 20-10-2026).
+  const undeclared = checks.locator('.check-item', { hasText: 'Alérgenos declarados' });
+  await expect(undeclared).toHaveAttribute('data-ok', 'false');
+  await expect(undeclared).toHaveAttribute('data-tone', 'alert');
+  await expect(undeclared).toContainText('1 plato con un alérgeno posible sin declarar: Curry de verduras');
   await expect(checks.locator('.check-item[data-ok="true"]', { hasText: 'Menú validado' })).toHaveCount(1);
   await expect(checks.locator('.check-item[data-ok="false"]', { hasText: 'Compartido con el organizador' })).toHaveAttribute('data-tone', 'warn');
   // En la hoja: el plato sin revisar lo dice, y la nota cambia.
@@ -119,6 +133,7 @@ test('organizador y cierre · veredicto, comprobaciones, «Alérgenos sin revisa
   await page.goto(`${baseURL}/#/menus/${menuId}`);
   await page.locator('#shareMenu').click();
   await expect(page.getByRole('alertdialog')).toContainText('Hay platos con los alérgenos sin revisar');
+  await expect(page.getByRole('alertdialog')).toContainText('Curry de verduras: un ingrediente nombra un alérgeno que el plato no declara.');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Cancelar' }).click();
   expect(api.rows('food.menus').find((m) => m.id === menuId)?.organizer_shared).toBe(false);
   await page.locator('#shareMenu').click();

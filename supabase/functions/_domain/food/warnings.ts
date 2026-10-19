@@ -318,6 +318,22 @@ export function allergenPresence(recipe: Recipe, allergen: Allergen, context: Cr
   return recipe.allergens_checked ? 'no_declara' : 'sin_revisar';
 }
 
+/**
+ * Un ingrediente nombra un alérgeno que la receta no declara («almendra molida» y no declara frutos de cáscara).
+ * Decisión de Core del 20-10-2026: aviso en la ficha de receta y comprobación en rojo del Organizador; la hoja impresa
+ * sigue con lo declarado (es la declaración de cocina). Un aviso por alérgeno, con el primer ingrediente que lo nombra.
+ */
+export function undeclaredAllergens(recipe: Pick<Recipe, 'id' | 'allergens'>, context: CrossContext): Array<{ allergen: Allergen; ingredient: string }> {
+  const out: Array<{ allergen: Allergen; ingredient: string }> = [];
+  for (const name of context.recipeIngredientNames.get(recipe.id) ?? []) {
+    for (const allergen of Object.keys(ALLERGEN_TERMS) as Allergen[]) {
+      if (recipe.allergens.includes(allergen) || out.some((o) => o.allergen === allergen)) continue;
+      if (ALLERGEN_TERMS[allergen].some((word) => name.includes(word))) out.push({ allergen, ingredient: name });
+    }
+  }
+  return out;
+}
+
 /** Claves que hay que aceptar una a una para poder validar. */
 export function requiredAcknowledgements(warnings: MenuWarning[]): string[] {
   return warnings.filter((w) => w.requiresAck).map((w) => w.key);
