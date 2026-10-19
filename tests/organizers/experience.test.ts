@@ -198,6 +198,50 @@ test('organizers · K3 para miembros (membersK3): el archivo de un material solo
   assert.equal((await file(owner)).status, 200);
 });
 
+test('organizers · logotipo del retiro para Booking (booking_logo_projection): solo el logotipo vivo, y solo Booking lo lee', async () => {
+  const upload = async (filename: string, mime: string, text: string) => {
+    const bytes = new TextEncoder().encode(text);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const ticket = await org('/api/v1/uploads', { token: ana, body: { filename, mime, size: bytes.byteLength, sha256 } });
+    assert.equal(ticket.status, 200, JSON.stringify(ticket.data));
+    booking.supabase.storage.set(ticket.data.path, bytes);
+    assert.equal((await org(`/api/v1/uploads/${ticket.data.id}/verify`, { token: ana, body: {} })).status, 200);
+    return ticket.data as { id: string; path: string };
+  };
+  const logo = await upload('logo.png', 'image/png', 'png del logotipo');
+  const pdf = await upload('programa.pdf', 'application/pdf', '%PDF-1.4 programa');
+  const logoRow = uuid();
+  const ok = await commit(ana, [
+    { op: 'insert', table: TABLES.materials, id: logoRow, fields: { reservation_id: R1, owner_id: anaId, kind: 'file', title: 'Logotipo', file_id: logo.id, is_logo: true, position: 20 } },
+    { op: 'insert', table: TABLES.materials, id: uuid(), fields: { reservation_id: R1, owner_id: anaId, kind: 'file', title: 'Programa', file_id: pdf.id, published: true, position: 21 } },
+  ]);
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+
+  const member = async (app: string) => {
+    const user = await booking.t.createUser();
+    await booking.t.db.query(`insert into core.memberships (app, user_id, role) values ($1, $2, 'reader')`, [app, user]);
+    return user;
+  };
+  const read = (app: string, actor: string, args: unknown) =>
+    booking.t.rpc('core_read', { p_app: app, p_actor: actor, p_name: 'organizers.booking_logo_projection', p_args: args }) as Promise<any>;
+  const staffReader = await member('booking');
+
+  const mine = await read('booking', staffReader, { where: { reservation_id: R1 } });
+  assert.equal(mine.rows.length, 1, 'solo el logotipo, no el resto de materiales');
+  assert.deepEqual([mine.rows[0].logo_file_id, mine.rows[0].logo_mime, mine.rows[0].logo_bucket, mine.rows[0].logo_path],
+    [logo.id, 'image/png', 'organizers-materials', logo.path]);
+  assert.equal('title' in mine.rows[0] || 'body' in mine.rows[0] || 'url' in mine.rows[0], false, 'nada más de los materiales');
+  assert.equal((await read('booking', staffReader, { where: { reservation_id: R3 } })).rows.length, 0, 'otro retiro sin logotipo');
+
+  // Solo la lee Booking: otra app (Guests, la propia Organizers) no la tiene permitida.
+  await assert.rejects(read('guests', await member('guests'), {}), /INVALID_OPERATION/);
+  await assert.rejects(read('organizers', await member('organizers'), {}), /INVALID_OPERATION/);
+
+  // Quitado el logotipo, deja de salir.
+  assert.equal((await commit(ana, [{ op: 'delete', table: TABLES.materials, id: logoRow, expectedRevision: 1 }])).status, 200);
+  assert.equal((await read('booking', staffReader, { where: { reservation_id: R1 } })).rows.length, 0);
+});
+
 test('organizers · Guests lee la experiencia y las preguntas; guest_answer valida tipo, ventana y ámbito', async () => {
   const experience = await gst('/api/v1/read/organizers.guest_experience_for', { token: leo.token, body: { reservation_id: R1, guest_id: leo.id } });
   assert.equal(experience.status, 200, JSON.stringify(experience.data));

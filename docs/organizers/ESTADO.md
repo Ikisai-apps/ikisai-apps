@@ -62,6 +62,7 @@
 - 2026-10-14 · Solicitudes para apuntarse (Booking O2, #518, §26.3): en Asistentes, las que Ikisai pasa al organizador, con nombres, mensaje, Aceptar y Descartar con mensaje opcional para la persona; aviso en Resumen y número en la pestaña. Pruebas en `joins.test.ts` (4) y `portal.spec.ts`.
 - 2026-10-19 · K3 para miembros (`uploads.membersK3`, núcleo #585) activado tras revisar campos de archivo, hook `visible` y papelera. Prueba en `experience.test.ts`.
 - 2026-10-19 · Menú: los alérgenos se muestran siempre con su nombre (no el código) y con «sin revisar por cocina» si la receta no tiene `allergens_checked`. Recorrido e2e en `portal.spec.ts`.
+- 2026-10-19 · Logotipo del retiro para Booking: vista `organizers.booking_logo_projection` (0702) con `core.allow_read` para Booking (API.md §16.6). Prueba en `experience.test.ts`.
 
 ## Pendiente
 
