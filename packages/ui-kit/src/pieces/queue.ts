@@ -127,6 +127,9 @@ export function createQueue(options: QueueOptions): Queue {
   function leave(dir: 'right' | 'left', then: () => void): void {
     const cardEl = element.querySelector<HTMLElement>('.queue-card');
     if (!cardEl || reduced()) { then(); return; }
+    // La tarjeta que sale ya no recibe toques: un segundo toque rápido actuaba sobre ella (invisible) y se perdía.
+    cardEl.inert = true;
+    cardEl.querySelectorAll<HTMLButtonElement>('button').forEach((b) => { b.disabled = true; });
     cardEl.classList.add(dir === 'right' ? 'queue-gone-right' : 'queue-gone-left');
     setTimeout(then, 300);
   }
@@ -141,6 +144,7 @@ export function createQueue(options: QueueOptions): Queue {
     element,
     done() {
       const left = pending();
+      pos = Math.min(pos, Math.max(0, left.length - 1));
       const item = left[pos];
       if (!item) return;
       history.push({ item, at: pos });
@@ -150,6 +154,7 @@ export function createQueue(options: QueueOptions): Queue {
     skip() {
       const left = pending();
       if (left.length < 2) return;
+      pos = Math.min(pos, left.length - 1);
       leave('left', () => { pos = (pos + 1) % left.length; paint(); announce(); });
     },
     undo() {

@@ -1,5 +1,12 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.46.1 · 19 de octubre de 2026
+
+**Arreglo en `createQueue` («una cosa cada vez»)**. Lo encontró la CI de #618: `v49` fallaba siempre en Linux.
+- **Qué pasaba:** mientras la tarjeta salía (300 ms), sus botones seguían recibiendo toques. Un segundo toque rápido confirmaba la siguiente cosa sin verla. En la última tarjeta se perdía, y la cola no llegaba a «Has pasado por todo».
+- **Ahora:** la tarjeta que sale queda `inert`, con los botones desactivados, y `done()` y `skip()` ajustan la posición antes de actuar.
+- **Prueba:** nueva en `v49`, con dos clics seguidos en el mismo botón. Sin el arreglo falla («3 de 3» en vez de «2 de 3»).
+
 ## 0.46.0 · 19 de octubre de 2026
 
 **Bandeja por áreas, lote C** (MUELA-075 K20, K15 y K16, tanda 27). Con esto, la tanda 27 está completa. Detalle en el README («Lote C»).

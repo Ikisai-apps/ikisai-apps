@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.46.1: `createQueue`: un toque rápido sobre la tarjeta que sale ya no confirma la siguiente ni se pierde.
 - v0.46.0: bandeja por áreas (`renderTray`) y `renderConflicts({ layout: 'tray' })` con «Lo mío / Lo de …», «Los dos» y «Deshacer». Tanda 27 completa.
 - v0.45.0: piezas comunes, lote B3: extracto en `renderMoneyBreakdown`, tu año en una línea de tiempo y agenda por horas. Lote B completo.
 - v0.44.0: piezas comunes, lote B2: paso a paso, una cosa cada vez, votar deslizando y pregunta a pregunta (`createStepForm`).

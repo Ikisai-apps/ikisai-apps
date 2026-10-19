@@ -63,6 +63,18 @@ test.describe('ui-kit v0.44 · piezas compuestas B2', () => {
     await expect(q.locator('.queue-done')).toContainText('No queda nada por resolver.');
   });
 
+  test('@smoke una cosa cada vez: un segundo toque rápido no actúa sobre la tarjeta que sale ni se pierde', async ({ page }) => {
+    await page.goto('/#piecesb2');
+    const q = page.locator('#queueHost');
+    // Dos clics seguidos en el mismo botón: el segundo llega a la tarjeta que se va.
+    await page.evaluate(() => { const b = document.querySelector<HTMLButtonElement>('#queueHost .queue-main')!; b.click(); b.click(); });
+    await expect(q.locator('.queue-progress strong')).toHaveText('2 de 3');
+    await expect(q.locator('.queue-title')).toHaveText('Maderas del Valle');
+    // Tan rápido como deje la interfaz, hasta el final: ningún toque se pierde.
+    for (let i = 0; i < 2; i += 1) await q.locator('.queue-main:not([disabled])').click();
+    await expect(q.locator('.queue-done')).toContainText('Has pasado por todo');
+  });
+
   test('@smoke votar: botones, flechas y deslizar; sellos; al acabar, «Volver a empezar»', async ({ page }, info) => {
     await page.goto('/#piecesb2');
     await page.addStyleTag({ content: '.demo-head{position:static!important}' });
