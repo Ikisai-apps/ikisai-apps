@@ -1,6 +1,10 @@
 import type { PendingConflict, SyncClient } from '@ikisai/sync-client';
 import { el, formatDate, replace, type Child } from '../dom.ts';
 import { kt } from '../i18n/i18n.ts';
+import { openSheet } from '../overlay/sheet.ts';
+import { toastWithAction } from '../toast.ts';
+import type { MedalOptions } from '../pieces/medal.ts';
+import { renderTray, type TrayGroup, type TrayRow } from '../pieces/tray.ts';
 
 export type ConflictDecision = Parameters<SyncClient['resolveConflict']>[1];
 
@@ -32,6 +36,27 @@ export interface ConflictOptions {
    * Escrita como literal, el catálogo (`feature-catalog.mjs`) añade esos hijos solo.
    */
   feedbackId?: string;
+  /**
+   * `tray` (bandeja por áreas, K20 y pieza 12): una línea por conflicto con lo que choca escrito y dos botones al mismo
+   * nivel («Lo mío» / «Lo de Laura»); «Ver diferencias» abre la tarjeta de siempre (con «Combinar»). Por defecto,
+   * `cards`: igual que antes.
+   */
+  layout?: 'cards' | 'tray';
+  /** Bandeja: área de cada conflicto (por defecto, la tabla con `tableLabels`). */
+  groupBy?: (conflict: PendingConflict) => { key: string; label: string; order?: number };
+  /** Bandeja: nombre de quien hizo el cambio del servidor («Laura»), para «Lo de Laura». */
+  theirsName?: (conflict: PendingConflict) => string | null | undefined;
+  /** Bandeja: medallón de cada línea. */
+  medal?: (conflict: PendingConflict) => MedalOptions | null | undefined;
+  /** Bandeja: nombres de los dos botones («Lo mío», «Lo de Laura»). */
+  labels?: { mine?: string; theirs?: string; both?: string };
+  /** Bandeja: «Los dos» cuando lo que choca son listas (une las dos sin repetir). Por defecto, sí. */
+  both?: boolean;
+  /**
+   * Bandeja: tras elegir, cuánto se espera (ms) antes de llamar a `onResolve`, con «Deshacer» mientras tanto. Si se
+   * cierra la app en ese rato, la decisión no se guarda y el conflicto sigue ahí. Por defecto, 0 (al momento).
+   */
+  undoMs?: number;
 }
 
 /** Sufijos y etiquetas de los controles de la tarjeta de conflicto (los lee también el generador del catálogo). */
@@ -42,6 +67,8 @@ export const CONFLICT_MARKS = {
   merge: ['combinar', 'Combinar campo a campo'],
   save: ['guardar_combinacion', 'Guardar combinación'],
   back: ['volver', 'Volver'],
+  both: ['los_dos', 'Los dos'],
+  undo: ['deshacer', 'Deshacer'],
 } as const;
 
 function defaultShow(field: string, value: unknown): Child {
@@ -193,8 +220,105 @@ export function renderConflict(conflict: PendingConflict, options: ConflictOptio
   return article;
 }
 
+/** Texto plano de lo que pinta `show` (para decir qué choca en una línea). */
+function plain(value: Child): string {
+  if (value === null || value === undefined || value === false) return '';
+  if (Array.isArray(value)) return value.map(plain).join('');
+  if (value instanceof Node) return value.textContent ?? '';
+  return String(value);
+}
+
+/** Une dos listas sin repetir (por contenido), primero lo mío. */
+function union(a: unknown[], b: unknown[]): unknown[] {
+  const out = a.slice();
+  for (const v of b) if (!out.some((x) => sameValue(x, v))) out.push(v);
+  return out;
+}
+
+/** Bandeja de conflictos (`layout: 'tray'`): traduce cada `PendingConflict` a una línea de `renderTray`. */
+function renderConflictTray(conflicts: PendingConflict[], options: ConflictOptions & { emptyTitle?: string; emptyText?: string }): HTMLElement {
+  const show = options.show ?? defaultShow;
+  const labels = options.fieldLabels ?? {};
+  const mark = (key: keyof typeof CONFLICT_MARKS): Record<string, string> => (options.feedbackId
+    ? { 'data-feedback-id': `${options.feedbackId}.${CONFLICT_MARKS[key][0]}`, 'data-feedback-label': CONFLICT_MARKS[key][1] }
+    : {});
+  const mineLabel = options.labels?.mine ?? kt('Lo mío');
+  const bothLabel = options.labels?.both ?? kt('Los dos');
+  // La bandeja, para que cada línea encuentre su sitio al elegir («Elegido…», «Deshacer»).
+  let trayEl: HTMLElement | null = null;
+  const groupOf: (c: PendingConflict) => { key: string; label: string; order?: number } = options.groupBy ?? ((c: PendingConflict) => {
+    const table = (c.operation as { table?: string }).table ?? '';
+    return { key: table || 'otros', label: table ? options.tableLabels?.[table] ?? table.split('.').pop() ?? table : kt('Otros cambios') };
+  });
+
+  const row = (conflict: PendingConflict): TrayRow => {
+    const op = conflict.operation;
+    const mine: Record<string, unknown> = op.op === 'update' ? op.fields : {};
+    const name = text(options.rowName?.(conflict)) || conflictRowName(conflict);
+    const table = (op as { table?: string }).table;
+    const title = name || (table ? kt('Un registro de {table}', { table: options.tableLabels?.[table] ?? table.split('.').pop() ?? table }) : kt('Un cambio pendiente'));
+    const author = conflictAuthor(conflict, options.currentUserId);
+    const otherName = author === 'self' ? null : options.theirsName?.(conflict);
+    const who = author === 'self' ? kt('Lo cambiaste tú desde otra pestaña o dispositivo.') : otherName ? kt('Lo cambió {name}.', { name: otherName }) : author === 'other' ? kt('Lo cambió otra persona.') : kt('Se cambió también en el servidor.');
+    const fields = conflict.overlapping.length ? conflict.overlapping : Object.keys(mine).filter((k) => conflict.base && !sameValue(conflict.base[k], conflict.current[k]));
+    const clash = op.op === 'delete'
+      ? [kt('Querías borrarlo; en el servidor sigue y ha cambiado.')]
+      : fields.slice(0, 3).map((f) => kt('{field}: «{mine}» frente a «{theirs}»', { field: labels[f] ?? f, mine: plain(show(f, mine[f])), theirs: plain(show(f, conflict.current[f])) }));
+    if (fields.length > 3) clash.push(kt('y {n} cambios más', { n: String(fields.length - 3) }));
+    // «Lo de Laura» (con `theirsName`), «Lo del otro dispositivo» si fuiste tú, o «Lo del servidor».
+    const theirsLabel = options.labels?.theirs ?? (otherName ? kt('Lo de {name}', { name: otherName }) : author === 'self' ? kt('Lo del otro dispositivo') : kt('Lo del servidor'));
+    const lists = fields.filter((f) => Array.isArray(mine[f]) && Array.isArray(conflict.current[f]));
+    const canBoth = op.op === 'update' && options.both !== false && lists.length > 0;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const decide = (decision: ConflictDecision, said: string) => {
+      const host = trayEl?.querySelector<HTMLElement>(`.tray-row[data-request-id="${CSS.escape(conflict.requestId)}"]`) ?? null;
+      const run = () => { timer = null; void Promise.resolve(options.onResolve(conflict, decision)).catch(() => restore()); };
+      const restore = () => { if (timer) clearTimeout(timer); timer = null; host?.classList.remove('tray-decided'); host?.querySelector('.tray-decision')?.remove(); host?.querySelectorAll<HTMLButtonElement>('.tray-actions button').forEach((b) => { b.disabled = false; }); };
+      host?.querySelectorAll<HTMLButtonElement>('.tray-actions button').forEach((b) => { b.disabled = true; });
+      const ms = options.undoMs ?? 0;
+      if (!ms) { run(); return; }
+      host?.classList.add('tray-decided');
+      const undoBtn = el('button', { type: 'button', class: 'linkbtn tray-undo', ...mark('undo'), onclick: () => restore() }, kt('Deshacer'));
+      host?.querySelector('.tray-body')?.append(el('p', { class: 'tray-decision', role: 'status' }, kt('Elegido: {choice}', { choice: said }), ' ', undoBtn));
+      toastWithAction(`${title}: ${said}`, { label: kt('Deshacer'), onClick: restore }, ms);
+      timer = setTimeout(run, ms);
+    };
+
+    const choice = (key: 'mine' | 'theirs' | 'both', label: string, decision: ConflictDecision) => ({
+      label, onClick: () => decide(decision, label),
+      attrs: { 'data-choice': key, ...mark(key), ...(key === 'theirs' ? { title: kt('Descarta lo tuyo y deja lo que hay en el servidor.') } : {}) },
+    });
+    // Un borrado se decide con «Borrar» (lo tuyo) o «Conservar» (lo del servidor).
+    const actions = [
+      choice('mine', op.op === 'delete' ? kt('Borrar') : mineLabel, { choice: 'mine' }),
+      choice('theirs', op.op === 'delete' ? kt('Conservar') : theirsLabel, { choice: 'theirs' }),
+      ...(canBoth ? [choice('both', bothLabel, { choice: 'merge', fields: { ...mine, ...Object.fromEntries(lists.map((f) => [f, union(mine[f] as unknown[], conflict.current[f] as unknown[])])) } })] : []),
+      { label: kt(CONFLICT_MARKS.diff[1]), attrs: { 'data-choice': 'diff', ...mark('diff') }, onClick: () => {
+        const sheet = openSheet({ title, body: renderConflict(conflict, { ...options, onResolve: async (c, d) => { await options.onResolve(c, d); void sheet.close(true); } }) });
+      } },
+    ];
+    const r: TrayRow = {
+      id: conflict.requestId, title, medal: options.medal?.(conflict) ?? null, who,
+      when: kt('Detectado {date}', { date: formatDate(conflict.detectedAt) }), clash, actions,
+      attrs: { 'data-request-id': conflict.requestId, ...(options.feedbackId ? { 'data-feedback-id': options.feedbackId, 'data-feedback-label': 'Conflicto' } : {}) },
+    };
+    return r;
+  };
+
+  const groups = new Map<string, TrayGroup & { order: number }>();
+  for (const c of conflicts) {
+    const g = groupOf(c);
+    if (!groups.has(g.key)) groups.set(g.key, { key: g.key, label: g.label, order: g.order ?? 0, rows: [] });
+    groups.get(g.key)!.rows.push(row(c));
+  }
+  trayEl = renderTray({ label: kt('Conflictos'), groups: [...groups.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)) });
+  return trayEl;
+}
+
 /** Lista de conflictos o estado vacío. */
 export function renderConflicts(conflicts: PendingConflict[], options: ConflictOptions & { emptyTitle?: string; emptyText?: string }): HTMLElement[] {
+  if (options.layout === 'tray' && conflicts.length) return [renderConflictTray(conflicts, options)];
   if (conflicts.length === 0) {
     return [el('div', { class: 'empty' }, el('strong', null, options.emptyTitle ?? kt('Sin conflictos')), options.emptyText ?? kt('Todo lo tuyo se ha podido aplicar sin pisar cambios de nadie.'))];
   }

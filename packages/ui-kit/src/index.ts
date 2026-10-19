@@ -59,6 +59,7 @@ export { renderSteps, type StepItem, type StepsOptions } from './pieces/steps.ts
 export { createQueue, type Queue, type QueueItem, type QueueAction, type QueueOptions } from './pieces/queue.ts';
 export { createVoteDeck, type Vote, type VoteDeck, type VoteDeckOptions, type VoteTexts } from './pieces/vote.ts';
 export { renderTimeline, timelineWindow, timelineSpan, type TimelineItem, type TimelineLane, type TimelineOptions } from './pieces/timeline.ts';
+export { renderTray, renderTrayRow, type TrayAction, type TrayRow, type TrayGroup, type TrayOptions } from './pieces/tray.ts';
 export { renderHourAgenda, type HourItem, type HourAgendaOptions } from './pieces/hours.ts';
 export { createStepForm, StepFormInvalid, type StepForm, type StepFormOptions, type StepQuestion } from './pieces/step-form.ts';
 export { createDateField, relativeDayLabel, longDayLabel, DEFAULT_SHORTCUTS, type DateField, type DateFieldOptions, type DateShortcut } from './fields/date.ts';

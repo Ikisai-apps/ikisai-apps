@@ -286,6 +286,23 @@ Se ven en la demo, en `#piecesb3`. El saldo, los choques, las noches y qué est�
   - Lo de ahora y lo siguiente se marcan con su chip. Las comidas llevan su color (`kind: 'meal'`).
   - Clases `hour-`.
 
+### Lote C (0.46): bandeja
+
+Se ve en la demo, en `#piecesc`.
+
+- **`renderTray({ label, groups: [{ key, label, rows, collapsed? }] })`** y **`renderTrayRow`**: la bandeja por áreas, una capa visual que no sabe de conflictos. La usa también SES, que agrupa por estado.
+  - **Área:** se pliega y lleva su recuento.
+  - **Línea:** solo el título va junto al medallón (44 px, decorativo), con sangría colgante. Debajo, a todo el ancho: quién y cuándo (la fecha en su propia línea), lo que choca, los chips y las acciones (46 px).
+  - **Variante `rejected`:** lleva icono.
+  - Clases `tray-`.
+- **`renderConflicts(list, { layout: 'tray', groupBy?, medal?, theirsName?, labels?, both?, undoMs? })`**: los conflictos en la bandeja.
+  - Cada línea dice lo que choca: «Notas: «…» frente a «…»». Lleva dos botones al mismo nivel, «Lo mío» y «Lo de Laura» (con `theirsName`), o «Lo del otro dispositivo» si fuiste tú. En un borrado son «Borrar» y «Conservar».
+  - **«Los dos»:** aparece en listas y une las dos sin repetir.
+  - **«Ver diferencias»:** abre en una hoja la tarjeta de siempre, con «Combinar».
+  - **`undoMs`:** retrasa la llamada a `onResolve` y ofrece «Deshacer» en la línea y en el aviso. Si se cierra la app antes, no se guarda y el conflicto sigue.
+  - Se conservan los `data-choice` (`mine`, `theirs`, `both`, `diff`) y las marcas de `feedbackId`; se suman `.los_dos` y `.deshacer`.
+  - **Sin `layout`, todo queda igual que antes:** las cuatro apps no cambian hasta que lo encienden.
+
 ## Muestra y pruebas
 
 ```text

@@ -123,6 +123,8 @@ import {
   StepFormInvalid,
   renderTimeline,
   renderHourAgenda,
+  renderTray,
+  conflictRowName,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1656,6 +1658,41 @@ const piecesB3Section = section('piecesb3', 'Piezas comunes (lote B3)', 'MUELA-0
   el('h3', null, 'Agenda por horas'), hoursHost,
 );
 
+// --- Bandeja por áreas (MUELA-075 K20, lote C) ----------------------------------------------------------------
+const trayResolved = el('output', { id: 'trayResolved' }, '—');
+const trayLog: string[] = [];
+const listConflict: PendingConflict = {
+  requestId: 'req-6',
+  operation: { op: 'update', table: 'booking.reservations', id: 'res-1', expectedRevision: 2, fields: { title: 'Yoga de otoño', diets: ['vegana', 'sin gluten'] } },
+  base: { id: 'res-1', revision: 2, created_at: '', updated_at: '', updated_by: 'u1', deleted_at: null, title: 'Yoga de otoño', diets: ['vegana'] },
+  current: { id: 'res-1', revision: 3, created_at: '', updated_at: '', updated_by: 'u2', deleted_at: null, title: 'Yoga de otoño', diets: ['vegana', 'sin lactosa'] },
+  overlapping: ['diets'],
+  detectedAt: new Date().toISOString(),
+};
+const trayConflicts = [conflictSample, listConflict, deleteConflict];
+const conflictTrayHost = el('div', { id: 'conflictTrayHost' }, ...renderConflicts(trayConflicts, {
+  layout: 'tray', undoMs: 4000, feedbackId: 'demo.pendientes.conflicto', currentUserId: 'u1',
+  fieldLabels: { name: 'Nombre', tax_id: 'NIF', notes: 'Notas', diets: 'Dietas', title: 'Nombre' },
+  show: (field, value) => (Array.isArray(value) ? value.join(', ') : value === null || value === undefined || value === '' ? '—' : String(value)),
+  groupBy: (c) => ((c.operation as { table?: string }).table?.startsWith('booking') ? { key: 'reservas', label: 'Reservas', order: 1 } : { key: 'dinero', label: 'Dinero', order: 2 }),
+  medal: (c) => ({ name: conflictRowName(c) || 'Registro' }),
+  theirsName: (c) => (c.current?.updated_by === 'u2' ? 'Laura' : null),
+  onResolve: (c, d) => { trayLog.push(`${c.requestId}:${d.choice}${d.choice === 'merge' ? `=${JSON.stringify((d as { fields: Record<string, unknown> }).fields.diets ?? '')}` : ''}`); trayResolved.textContent = trayLog.join(', '); },
+}));
+// La misma bandeja sin conflictos: por estado de la comunicación (SES), con una línea rechazada.
+const sesTrayHost = el('div', { id: 'sesTrayHost' }, renderTray({ label: 'Partes de viajeros', groups: [
+  { key: 'pendiente', label: 'Por enviar', rows: [
+    { id: 'ses1', title: 'Ana López · 20 oct', medal: { name: 'Ana López' }, who: 'Llega mañana', when: 'Vence hoy, 23:59', chips: [el('span', { class: 'chip warn' }, 'Vence hoy')], actions: [{ label: 'Enviar', primary: true, onClick: () => toast('Enviado'), attrs: { 'data-action': 'send' } }, { label: 'Abrir', onClick: () => toast('Abrir') }] },
+  ] },
+  { key: 'rechazado', label: 'Rechazados', rows: [
+    { id: 'ses2', title: 'Luis Pérez · 18 oct', rejected: true, who: 'Hospedajes no lo aceptó', clash: ['Falta el segundo apellido.'], actions: [{ label: 'Corregir', primary: true, onClick: () => toast('Corregir') }] },
+  ] },
+] }));
+const piecesCSection = section('piecesc', 'Bandeja por áreas (lote C)', 'MUELA-075 K20: renderTray genérica (por áreas o por estado, con la variante «rechazado») y renderConflicts con layout: \'tray\' (lo que choca escrito, «Lo mío» / «Lo de Laura» al mismo nivel, «Los dos» en listas, «Ver diferencias» con la tarjeta de siempre y «Deshacer» mientras se espera).',
+  el('h3', null, 'Conflictos en bandeja'), conflictTrayHost, el('p', null, 'Resueltos: ', trayResolved),
+  el('h3', null, 'Bandeja por estado'), sesTrayHost,
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
@@ -1668,5 +1705,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, piecesCSection, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );
