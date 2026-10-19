@@ -117,7 +117,7 @@ test('herramientas: entradas inválidas o fuera de alcance se rechazan antes de 
   await fails('tasks_request_purchase', { tab_id: tab }, 'INVALID_INPUT');
   await fails('tasks_request_purchase', { tab_id: tab, title: 'Lejía', quantity: 0 }, 'INVALID_INPUT');
   await fails('tasks_request_purchase', { tab_id: tab, title: 'Lejía', status: 'approved' }, 'INVALID_INPUT');
-  await fails('tasks_request_purchase', { supply_item_id: newId() }, 'NOT_FOUND');
+  await fails('tasks_request_purchase', { tab_id: tab, item_id: newId() }, 'NOT_FOUND');
   await fails('tasks_request_purchase', { project_id: other, tab_id: otherTab, title: 'x' }, 'INVALID_INPUT');
   await fails('tasks_prepare_purchase_plan', { tab_id: tab, planned_for: 'lunes' }, 'INVALID_INPUT');
   const guest = { tabs: [], projects: { [tab]: [inbox] } };

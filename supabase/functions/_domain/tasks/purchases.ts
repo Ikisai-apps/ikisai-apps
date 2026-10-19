@@ -2,7 +2,7 @@
  * Tasks · compras no alimentarias (docs/tasks/API.md §18): operaciones compuestas puras. Como el resto del dominio,
  * construyen operaciones de fila con sus cascadas y el hook SQL de la migración 0305 las verifica.
  */
-import { POSITION_STEP, reject, type Dataset, type Operation, type Priority, type PurchaseRequestRow, type SupplyItemRow, type Uuid } from './types.ts';
+import { POSITION_STEP, reject, type Dataset, type Operation, type Priority, type PurchaseRequestRow, type Uuid } from './types.ts';
 
 import type { NewId } from './ops.ts';
 const randomId: NewId = () => crypto.randomUUID();
@@ -13,51 +13,61 @@ const remove = (table: string, row: { id: Uuid; revision: number }): Operation =
 const nextPosition = (rows: ReadonlyArray<{ position: number }>) => Math.max(0, ...rows.map((r) => Number(r.position) || 0)) + POSITION_STEP;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-function liveItem(data: Dataset, id: Uuid): SupplyItemRow {
-  const item = data['tasks.supply_items'].find((s) => s.id === id);
-  if (!item || item.deleted_at) reject(404, 'NOT_FOUND', 'No existe ese suministro.', { id });
-  return item!;
-}
 function liveRequest(data: Dataset, id: Uuid): PurchaseRequestRow {
   const request = data['tasks.purchase_requests'].find((r) => r.id === id);
   if (!request || request.deleted_at) reject(404, 'NOT_FOUND', 'No existe esa solicitud.', { id });
   return request!;
 }
 
-// --- Stock ----------------------------------------------------------------------------------------------------------
+// --- Almacén: el inventario común de Recursos (R6) ----------------------------------------------------------------------
 
-/** Stock de un suministro: la suma de sus movimientos vivos. */
-export function supplyStock(data: Dataset, itemId: Uuid): number {
-  return round3(live(data['tasks.supply_movements']).filter((m) => m.supply_item_id === itemId).reduce((sum, m) => sum + Number(m.delta), 0));
+/** Lo que Tasks usa de un artículo de `resources.items` (filas del espejo del segundo cliente o de `tasks.supply_item`). */
+export interface ResourceItem {
+  id: Uuid; name: string; kind: string; base_unit: string; min_quantity: number | string | null; reorder_quantity: number | string | null;
+  default_space_id: Uuid | null; default_supplier_id: string | null; active: boolean; deleted_at: string | null;
+}
+export interface ResourceMovement { item_id: Uuid; quantity: number | string; deleted_at?: string | null }
+
+/** Tipos de artículo que son suministros de la casa: todo menos lo de cocina (lo mismo que `tasks.supply_kind` en SQL). */
+export const KITCHEN_KINDS = ['ingrediente', 'bebida', 'menaje'] as const;
+export const isSupplyKind = (kind: string | null | undefined): boolean => !!kind && !(KITCHEN_KINDS as readonly string[]).includes(kind);
+
+/** Stock de un artículo en toda la casa: la suma de sus movimientos vivos. */
+export function itemStock(movements: readonly ResourceMovement[], itemId: Uuid): number {
+  return round3(movements.filter((m) => m.item_id === itemId && !m.deleted_at).reduce((sum, m) => sum + Number(m.quantity), 0));
 }
 
-/** Suministros vivos bajo su mínimo («Queda poco»), con su stock y la solicitud abierta, si la hay. */
-export function lowStock(data: Dataset, tabId?: Uuid): Array<{ item: SupplyItemRow; stock: number; openRequest: PurchaseRequestRow | null }> {
-  return live(data['tasks.supply_items'])
-    .filter((s) => !s.archived && (!tabId || s.tab_id === tabId))
-    .map((item) => ({ item, stock: supplyStock(data, item.id) }))
+/** «Queda poco»: suministros activos con mínimo y menos stock que él, con la solicitud abierta que ya lo pide, si la hay. */
+export function lowStock(data: Dataset, items: readonly ResourceItem[], movements: readonly ResourceMovement[]): Array<{ item: ResourceItem; stock: number; openRequest: PurchaseRequestRow | null }> {
+  return items
+    .filter((i) => !i.deleted_at && i.active !== false && isSupplyKind(i.kind) && i.min_quantity != null && Number(i.min_quantity) > 0)
+    .map((item) => ({ item, stock: itemStock(movements, item.id) }))
     .filter(({ item, stock }) => stock < Number(item.min_quantity))
-    .map(({ item, stock }) => ({
-      item, stock,
-      openRequest: live(data['tasks.purchase_requests']).find((r) => r.supply_item_id === item.id && ['requested', 'approved', 'purchased'].includes(r.status)) ?? null,
-    }));
+    .map(({ item, stock }) => ({ item, stock, openRequest: openRequestFor(data, item.id) }));
 }
 
-/** Entrada, consumo o recuento. Un recuento guarda la diferencia con el stock actual; si no hay diferencia, no hay lote. */
-export function supplyMovementOps(data: Dataset, itemId: Uuid, input: { kind: 'in' | 'out' | 'count'; amount: number; note?: string }, newId: NewId = randomId): Operation[] {
-  const item = liveItem(data, itemId);
-  if (typeof input.amount !== 'number' || !Number.isFinite(input.amount) || input.amount < 0 || (input.kind !== 'count' && input.amount === 0)) {
-    reject(422, 'INVALID_QUANTITY', 'Indica una cantidad válida.', { field: 'amount' });
-  }
-  const delta = input.kind === 'in' ? input.amount : input.kind === 'out' ? -input.amount : round3(input.amount - supplyStock(data, itemId));
-  if (delta === 0) return [];
-  return [insert('tasks.supply_movements', newId(), { tab_id: item.tab_id, supply_item_id: item.id, kind: input.kind === 'count' ? 'adjust' : input.kind, delta, note: input.note ?? '' })];
+/** La solicitud abierta (pedida, aprobada o comprada) de un artículo, si la hay. */
+export function openRequestFor(data: Dataset, itemId: Uuid): PurchaseRequestRow | null {
+  return live(data['tasks.purchase_requests']).find((r) => r.item_id === itemId && ['requested', 'approved', 'purchased'].includes(r.status)) ?? null;
 }
 
-/** Enviar un suministro a la papelera con sus movimientos vivos (el hook no deja movimientos vivos de un suministro borrado). */
-export function deleteSupplyItemOps(data: Dataset, itemId: Uuid): Operation[] {
-  const item = liveItem(data, itemId);
-  return [...live(data['tasks.supply_movements']).filter((m) => m.supply_item_id === itemId).map((m) => remove('tasks.supply_movements', m)), remove('tasks.supply_items', item)];
+/** Referencia de la entrada en Recursos de una solicitud recibida (`source_ref` con `source_app = 'tasks'`). */
+export const receiptRef = (requestId: Uuid): string => `purchase_request:${requestId}`;
+
+/**
+ * La entrada en Recursos al recibir una solicitud con artículo y cantidad: `entrada_manual` en el sitio indicado, con coste
+ * unitario si la solicitud tiene importe. El id lo da quien llama, estable por solicitud (así recibir dos veces no suma
+ * dos veces: el núcleo rechaza la segunda con ROW_EXISTS). Sin artículo o sin cantidad, no hay entrada.
+ */
+export function receiptEntryOperation(request: PurchaseRequestRow, input: { id: Uuid; spaceId: Uuid }): Operation | null {
+  const quantity = Number(request.quantity);
+  if (!request.item_id || !(quantity > 0)) return null;
+  const amount = request.estimated_amount == null ? null : Number(request.estimated_amount);
+  return insert('resources.movements', input.id, {
+    item_id: request.item_id, space_id: input.spaceId, lot_id: null, quantity, kind: 'entrada_manual', reason: null,
+    unit_cost: amount != null && amount > 0 ? Math.round((amount / quantity) * 10000) / 10000 : null, transfer_id: null,
+    source_app: 'tasks', source_ref: receiptRef(request.id), note: request.title.slice(0, 500),
+  });
 }
 
 // --- Solicitudes ----------------------------------------------------------------------------------------------------
@@ -67,7 +77,7 @@ export interface NewPurchase {
   tab_id: Uuid;
   project_id?: Uuid | null;
   task_id?: Uuid | null;
-  supply_item_id?: Uuid | null;
+  item_id?: Uuid | null;
   title: string;
   note?: string;
   quantity?: number | null;
@@ -91,7 +101,7 @@ export function requestPurchaseOps(data: Dataset, input: NewPurchase, newId: New
     input = { ...input, project_id: task!.project_id };
   }
   const fields: Record<string, unknown> = {
-    tab_id: input.tab_id, project_id: input.project_id ?? null, task_id: input.task_id ?? null, supply_item_id: input.supply_item_id ?? null,
+    tab_id: input.tab_id, project_id: input.project_id ?? null, task_id: input.task_id ?? null, item_id: input.item_id ?? null,
     title: input.title.trim(), note: input.note ?? '', quantity: input.quantity ?? null, unit: input.unit ?? null, estimated_amount: input.estimated_amount ?? null,
     priority: input.priority ?? 'normal', needs_invoice: input.needs_invoice ?? true, repeat_days: input.repeat_days ?? null, due: input.due ?? null,
     supplier_id: input.supplier_id ?? null, supplier_name: input.supplier_name ?? null,
@@ -101,14 +111,19 @@ export function requestPurchaseOps(data: Dataset, input: NewPurchase, newId: New
   return [insert('tasks.purchase_requests', input.id ?? newId(), fields)];
 }
 
-/** «Queda poco: pedir»: la solicitud precargada desde un suministro (cantidad de reposición o lo que falta hasta el mínimo). */
-export function reorderSupplyOps(data: Dataset, itemId: Uuid, newId: NewId = randomId): Operation[] {
-  const item = liveItem(data, itemId);
-  const missing = Number(item.min_quantity) - supplyStock(data, itemId);
+/**
+ * «Queda poco: pedir»: la solicitud precargada desde un artículo de Recursos (cantidad de reposición o lo que falta hasta
+ * el mínimo, en su unidad base), en el área que la pide. El proveedor habitual del artículo va como id; el nombre lo pone
+ * quien llama si lo conoce (catálogo de Finance).
+ */
+export function reorderItemOps(data: Dataset, input: { tab_id: Uuid; item: ResourceItem; stock: number; supplier_name?: string | null }, newId: NewId = randomId): Operation[] {
+  const { item } = input;
+  if (item.deleted_at) reject(404, 'NOT_FOUND', 'No existe ese artículo.', { id: item.id });
+  const missing = Number(item.min_quantity ?? 0) - input.stock;
   const quantity = item.reorder_quantity != null ? Number(item.reorder_quantity) : Math.max(round3(missing), 1);
   return requestPurchaseOps(data, {
-    tab_id: item.tab_id, supply_item_id: item.id, title: item.name, quantity, unit: item.unit,
-    supplier_id: item.supplier_id, supplier_name: item.supplier_name,
+    tab_id: input.tab_id, item_id: item.id, title: item.name, quantity, unit: item.base_unit,
+    supplier_id: item.default_supplier_id, supplier_name: input.supplier_name ?? null,
   }, newId);
 }
 
@@ -118,16 +133,13 @@ export function setPurchaseStatusOps(data: Dataset, requestId: Uuid, status: 're
   return request.status === status ? [] : [update('tasks.purchase_requests', request, { status })];
 }
 
-/** Recibir: la solicitud pasa a recibida y, si es de un suministro con cantidad, entra en el stock en el mismo lote. */
-export function receivePurchaseOps(data: Dataset, requestId: Uuid, newId: NewId = randomId): Operation[] {
+/**
+ * Recibir: la solicitud pasa a recibida. La entrada en el stock es de Recursos (otra app, otro lote): la construye
+ * `receiptEntryOperation` y la envía el cliente de Recursos antes de este lote.
+ */
+export function receivePurchaseOps(data: Dataset, requestId: Uuid): Operation[] {
   const request = liveRequest(data, requestId);
-  const ops: Operation[] = request.status === 'received' ? [] : [update('tasks.purchase_requests', request, { status: 'received' })];
-  const entered = live(data['tasks.supply_movements']).some((m) => m.purchase_request_id === request.id);
-  const item = request.supply_item_id ? data['tasks.supply_items'].find((s) => s.id === request.supply_item_id && !s.deleted_at) : undefined;
-  if (item && request.quantity && !entered) {
-    ops.push(insert('tasks.supply_movements', newId(), { tab_id: request.tab_id, supply_item_id: item.id, kind: 'in', delta: Number(request.quantity), purchase_request_id: request.id, note: '' }));
-  }
-  return ops;
+  return request.status === 'received' ? [] : [update('tasks.purchase_requests', request, { status: 'received' })];
 }
 
 /** La siguiente de una recurrente: misma compra, con la fecha +N días desde que se recibió. */
@@ -137,7 +149,7 @@ export function nextRecurringOps(data: Dataset, requestId: Uuid, newId: NewId = 
   const from = request.received_at ? new Date(request.received_at) : new Date();
   const due = new Date(from.getTime() + request.repeat_days * 86_400_000).toISOString().slice(0, 10);
   return requestPurchaseOps(data, {
-    tab_id: request.tab_id, project_id: request.project_id, task_id: request.task_id, supply_item_id: request.supply_item_id, title: request.title,
+    tab_id: request.tab_id, project_id: request.project_id, task_id: request.task_id, item_id: request.item_id, title: request.title,
     note: request.note, quantity: request.quantity, unit: request.unit, estimated_amount: request.estimated_amount, priority: request.priority,
     needs_invoice: request.needs_invoice, repeat_days: request.repeat_days, due, supplier_id: request.supplier_id, supplier_name: request.supplier_name, status,
   }, newId);
@@ -150,11 +162,11 @@ const supplierKey = (r: { supplier_id: string | null; supplier_name: string | nu
 /** Recurrentes que tocan en `date`: recibidas, con repetición, vencidas y sin otra abierta de la misma compra. */
 export function dueRecurring(data: Dataset, tabId: Uuid, date: string): PurchaseRequestRow[] {
   const requests = live(data['tasks.purchase_requests']).filter((r) => r.tab_id === tabId);
-  const sameBuy = (a: PurchaseRequestRow, b: PurchaseRequestRow) => (a.supply_item_id && a.supply_item_id === b.supply_item_id) || (!a.supply_item_id && !b.supply_item_id && a.title.trim().toLocaleLowerCase() === b.title.trim().toLocaleLowerCase());
+  const sameBuy = (a: PurchaseRequestRow, b: PurchaseRequestRow) => (a.item_id && a.item_id === b.item_id) || (!a.item_id && !b.item_id && a.title.trim().toLocaleLowerCase() === b.title.trim().toLocaleLowerCase());
   const latest = new Map<string, PurchaseRequestRow>();
   for (const r of requests) {
     if (r.status !== 'received' || !r.repeat_days || !r.received_at) continue;
-    const key = r.supply_item_id ?? `t:${r.title.trim().toLocaleLowerCase()}`;
+    const key = r.item_id ?? `t:${r.title.trim().toLocaleLowerCase()}`;
     const seen = latest.get(key);
     if (!seen || (seen.received_at ?? '') < r.received_at) latest.set(key, r);
   }

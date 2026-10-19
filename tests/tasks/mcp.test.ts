@@ -107,28 +107,27 @@ test('mcp de Tasks · borrar vuelve como propuesta preparada; aprobada, el agent
 test('mcp de Compras · qué queda poco, pedir sin aprobación y preparar el plan con ella', async () => {
   const CLORO = uuid();
   const commit = (operations: Operation[]) => app.call('/api/v1/commands', { body: { requestId: `compras-${++seq}`, operations } });
-  await commit([{ op: 'insert', table: 'tasks.supply_items', id: CLORO, fields: { tab_id: TAB, name: 'Cloro', unit: 'kg', min_quantity: 5, reorder_quantity: 10, supplier_name: 'Piscinas Norte', position: 1024 } }]);
-  await commit([{ op: 'insert', table: 'tasks.supply_movements', id: uuid(), fields: { tab_id: TAB, supply_item_id: CLORO, kind: 'in', delta: 2 } }]);
+  // El almacén es el inventario común de Recursos (R6): un artículo bajo mínimo, sin stock.
+  const res = await app.call('/api/v1/resources/commands', { body: { requestId: `compras-${++seq}`, operations: [{ op: 'insert', table: 'resources.items', id: CLORO, fields: { name: 'Cloro', kind: 'material', base_unit: 'kg', min_quantity: 5, reorder_quantity: 10 } }] } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
 
   const tools = (await rpc('tools/list', {}, agent)).result.tools as any[];
   assert.equal(tools.find((t) => t.name === 'tasks_low_stock').annotations.readOnlyHint, true);
   const low = await call('tasks_low_stock', {});
   assert.equal(low.isError, undefined, JSON.stringify(low));
-  assert.deepEqual(low.structuredContent.items.map((i: any) => [i.name, i.stock, i.openRequest]), [['Cloro', 2, null]]);
+  assert.deepEqual(low.structuredContent.items.map((i: any) => [i.itemId, i.name, i.stock, i.openRequestId]), [[CLORO, 'Cloro', 0, null]]);
   // El almacén es del área entera: un agente con proyectos sueltos no lo ve ni pide para el área en general.
   assert.deepEqual((await call('tasks_low_stock', {}, limited)).structuredContent.items, []);
   const general = await call('tasks_request_purchase', { tab_id: TAB, title: 'Lejía' }, limited);
   assert.equal(general.structuredContent.error.code, 'FORBIDDEN', JSON.stringify(general));
 
-  // Pedir es seguro: entra sin propuesta, «pedida», con lo que trae el suministro (y lo que el agente cambia).
-  const asked = await call('tasks_request_purchase', { supply_item_id: CLORO, quantity: 12 });
+  // Pedir es seguro: entra sin propuesta, «pedida», con lo que trae el artículo (y lo que el agente cambia).
+  const asked = await call('tasks_request_purchase', { tab_id: TAB, item_id: CLORO, quantity: 12, supplier_name: 'Piscinas Norte' });
   assert.equal(asked.isError, undefined, JSON.stringify(asked));
   assert.equal(asked.structuredContent.needsApproval, undefined);
-  const request = (await rows('tasks.purchase_requests')).find((r) => r.supply_item_id === CLORO);
-  assert.equal(request.status, 'requested');
-  assert.equal(Number(request.quantity), 12);
-  assert.equal(request.supplier_name, 'Piscinas Norte');
-  assert.equal((await call('tasks_low_stock', {})).structuredContent.items[0].openRequest.id, request.id);
+  const request = (await rows('tasks.purchase_requests')).find((r) => r.item_id === CLORO);
+  assert.deepEqual([request.status, Number(request.quantity), request.unit, request.title], ['requested', 12, 'kg', 'Cloro']);
+  assert.equal((await call('tasks_low_stock', {})).structuredContent.items[0].openRequestId, request.id);
   // Un agente no aprueba: eso es del responsable de compras (aquí, la propietaria, porque el área no tiene).
   const self = await call('tasks_commit', { requestId: 'auto-aprobar', operations: [{ op: 'update', table: 'tasks.purchase_requests', id: request.id, expectedRevision: request.revision, fields: { status: 'approved' } }] });
   assert.equal(self.isError, true);

@@ -219,14 +219,6 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['tab_id', 'project_id', 'task_id', 'body'],
   },
-  'tasks.supply_items': {
-    fields: {
-      tab_id: uuid(), name: name(200), category: oneOf(['cleaning', 'pool', 'maintenance', 'textile', 'other'], 'INVALID_FIELDS', 'Categoría desconocida.'),
-      unit: text(1, 20, 'INVALID_FIELDS', 'Unidad de hasta 20 caracteres.'), location: shortText(200), min_quantity: minimum, reorder_quantity: nullable(quantity),
-      supplier_id: nullable(supplierId), supplier_name: nullable(shortText(200)), note, archived: flag('INVALID_FLAG'), position,
-    },
-    required: ['tab_id', 'name'],
-  },
   'tasks.purchase_plans': {
     fields: {
       tab_id: uuid(), title: name(200), planned_for: nullable(date), status: oneOf(['draft', 'shopping', 'done'], 'INVALID_STATUS', 'Estado del plan desconocido.'), note,
@@ -239,7 +231,7 @@ const RULES: Record<TableName, TableRules> = {
   },
   'tasks.purchase_requests': {
     fields: {
-      tab_id: uuid(), project_id: nullable(uuid()), task_id: nullable(uuid()), supply_item_id: nullable(uuid()), plan_stop_id: nullable(uuid()),
+      tab_id: uuid(), project_id: nullable(uuid()), task_id: nullable(uuid()), item_id: nullable(uuid()), plan_stop_id: nullable(uuid()),
       title: text(1, 300, 'REQUIRED_TEXT', 'Escribe qué hay que comprar.'), note, quantity: nullable(quantity), unit: nullable(shortText(20)),
       estimated_amount: nullable(amount), priority, status: oneOf(['requested', 'approved', 'purchased', 'received', 'rejected'], 'INVALID_STATUS', 'Estado de la solicitud desconocido.'),
       needs_invoice: flag('INVALID_FLAG'), repeat_days: nullable(repeatDays), due: nullable(date),
@@ -275,13 +267,6 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: [],
   },
-  'tasks.supply_movements': {
-    fields: {
-      tab_id: uuid(), supply_item_id: uuid(), kind: oneOf(['in', 'out', 'adjust'], 'INVALID_FIELDS', 'Tipo de movimiento desconocido.'), delta,
-      purchase_request_id: nullable(uuid()), note: shortText(2000),
-    },
-    required: ['tab_id', 'supply_item_id', 'kind', 'delta'],
-  },
 };
 
 export interface ValidationContext {
@@ -312,8 +297,8 @@ function precheckScope(op: Operation, table: TableName, ctx: ValidationContext):
     if (!fullTab(scopes, tab)) forbidden('Un acceso por proyecto no administra el catálogo ni las vistas del área.');
   } else if (table === 'tasks.request_routes') {
     if (!fullTab(scopes, tab)) forbidden('Las reglas de entrada son del área entera.');
-  } else if (['tasks.supply_items', 'tasks.supply_movements', 'tasks.purchase_plans', 'tasks.purchase_plan_stops'].includes(table)) {
-    if (!fullTab(scopes, tab)) forbidden('El almacén y los planes de compra son del área entera.');
+  } else if (['tasks.purchase_plans', 'tasks.purchase_plan_stops'].includes(table)) {
+    if (!fullTab(scopes, tab)) forbidden('Los planes de compra son del área entera.');
   } else if (table === 'tasks.purchase_requests' && typeof f.project_id !== 'string') {
     if (!fullTab(scopes, tab)) forbidden('Una solicitud sin proyecto es del área entera.');
   } else if (table === 'tasks.projects') {
@@ -381,9 +366,6 @@ export function validateOperations(operations: readonly Operation[], ctx: Valida
           const code = field === 'title' ? (table === 'tasks.tasks' ? 'REQUIRED_TEXT' : 'REQUIRED_NAME') : field === 'name' && table === 'tasks.tabs' ? 'REQUIRED_NAME' : 'INVALID_FIELDS';
           reject(422, code, 'Falta un campo obligatorio.', { index, table, field });
         }
-      }
-      if (table === 'tasks.supply_movements' && typeof fields.delta === 'number' && (fields.kind === 'in' && fields.delta < 0 || fields.kind === 'out' && fields.delta > 0)) {
-        reject(422, 'INVALID_QUANTITY', 'Una entrada suma y un consumo resta.', { index });
       }
       // Una persona o un grupo por nivel de casa: exactamente uno de los dos.
       if ((table === 'tasks.task_people' || table === 'tasks.project_people') && (fields.person_id == null) === (fields.house_level == null)) {

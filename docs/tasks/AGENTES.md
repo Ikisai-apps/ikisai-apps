@@ -171,8 +171,8 @@ Espacios, oficios y personas (R2/P2, 2c; `docs/tasks/API.md` §30 a §33):
 
 Compras (§18):
 
-- `tasks_low_stock`: solo lectura. Responde a «qué queda poco» con los suministros bajo mínimo de las áreas enteras visibles y, si ya se pidió, su solicitud abierta.
-- `tasks_request_purchase`: «pide X». Con `supply_item_id` hace lo mismo que «Queda poco: pedir». Sin suministro, pide para un área, un proyecto o una tarea.
+- `tasks_low_stock`: solo lectura. Responde a «qué queda poco» con los suministros del inventario de la casa (Recursos) bajo mínimo y, si ya se pidió, su solicitud abierta (`openRequestId`).
+- `tasks_request_purchase`: «pide X» para un área, un proyecto o una tarea. Con `item_id` (un artículo de Recursos) hace lo mismo que «Queda poco: pedir».
 - `tasks_prepare_purchase_plan`: «prepara el plan». Pide siempre aprobación. Agrupa solo lo ya aprobado: las recurrentes vencidas nacen aprobadas, y eso solo puede hacerlo quien aprueba, desde la app.
 
 Las herramientas se anuncian según el rol (`readOnlyHint`, `destructiveHint`). La aprobación **no** se expone por MCP: es de la interfaz o de la API con cuenta de persona.

@@ -33,7 +33,7 @@ async function outsider(scopes: unknown): Promise<string> {
   return token;
 }
 
-const TAB = uuid(), INBOX = uuid(), OTHER = uuid(), OPEN = uuid(), CLOSED = uuid(), T_OPEN = uuid(), T_CLOSED = uuid(), T_OTHER = uuid(), VIEW = uuid(), SUPPLY = uuid();
+const TAB = uuid(), INBOX = uuid(), OTHER = uuid(), OPEN = uuid(), CLOSED = uuid(), T_OPEN = uuid(), T_CLOSED = uuid(), T_OTHER = uuid(), VIEW = uuid();
 let none: string, star: string, project: string, area: string;
 
 test.before(async () => {
@@ -46,7 +46,6 @@ test.before(async () => {
     insert('tasks.projects', CLOSED, { tab_id: TAB, title: 'Cuentas', position: 3072 }),
     insert('tasks.projects', otherProject, { tab_id: OTHER, title: 'Papeles', position: 2048 }),
     insert('tasks.saved_views', VIEW, { tab_id: TAB, name: 'Pendientes', filters: { _state: ['pending'] } }),
-    insert('tasks.supply_items', SUPPLY, { tab_id: TAB, name: 'Cloro', category: 'pool', unit: 'kg', position: 1024 }),
   ]);
   await ok([
     insert('tasks.tasks', T_OPEN, { tab_id: TAB, project_id: OPEN, title: 'Podar el seto', position: 1024 }),
@@ -104,7 +103,7 @@ test('O1 · con un proyecto abierto ve ese proyecto y sus tareas, y nada más de
 test('O1 · con el área abierta ve sus proyectos, pero nunca compras, almacén ni vistas guardadas', async () => {
   const rows = await snapshot(area);
   assert.deepEqual(rows('tasks.projects').map((r) => r.id).sort(), [INBOX, OPEN, CLOSED].sort());
-  assert.deepEqual(rows('tasks.supply_items'), []);
+  assert.deepEqual(rows('tasks.purchase_plans'), []);
   assert.deepEqual(rows('tasks.saved_views'), []);
   assert.deepEqual(rows('tasks.request_routes'), []);
   assert.equal((await everything(area)).includes('Renovar el seguro'), false);

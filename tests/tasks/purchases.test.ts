@@ -1,13 +1,12 @@
 /**
  * Tasks · compras no alimentarias (docs/tasks/API.md §18, migración 0305) sobre PGlite, a través de `core.commit`:
- * solicitudes con aprobación del responsable de compras, suministros con stock por movimientos, planes por proveedor
- * y lo que vaciar la papelera hace con ellos.
+ * solicitudes con aprobación del responsable de compras, planes por proveedor y lo que vaciar la papelera hace con ellos.
+ * El almacén es de Recursos desde R6 (0333): lo prueba supplies-resources.test.ts.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deletePlanOps, deleteSupplyItemOps, dueRecurring, lowStock, nextRecurringOps, preparePlanOps, receivePurchaseOps, reorderSupplyOps, requestPurchaseOps,
-  setPurchaseStatusOps, supplyMovementOps, supplyStock, validateOperations, visibleRow,
+  deletePlanOps, dueRecurring, nextRecurringOps, preparePlanOps, receivePurchaseOps, requestPurchaseOps, setPurchaseStatusOps, validateOperations, visibleRow,
 } from '../../packages/domain-tasks/src/index.ts';
 import { createTasksDb, insert, newId, rejects, remove, update, type TasksDb } from './db.ts';
 
@@ -16,9 +15,6 @@ test.before(async () => { db = await createTasksDb(); });
 test.after(async () => { await db.close(); });
 
 const request = (tab: string, id: string, extra: Record<string, unknown> = {}) => insert('tasks.purchase_requests', id, { tab_id: tab, title: 'Cloro', position: 1024, ...extra });
-const item = (tab: string, id: string, extra: Record<string, unknown> = {}) => insert('tasks.supply_items', id, { tab_id: tab, name: 'Cloro', unit: 'l', min_quantity: 10, ...extra });
-const movement = (tab: string, id: string, supply: string, kind: string, delta: number, extra: Record<string, unknown> = {}) =>
-  insert('tasks.supply_movements', id, { tab_id: tab, supply_item_id: supply, kind, delta, ...extra });
 const row = async (table: string, id: string) => ((await db.data()) as any)[table].find((r: any) => r.id === id);
 
 test('compras · aprobar es del responsable de compras del área; sin él, de la propietaria; y se fechan los pasos', async () => {
@@ -50,24 +46,6 @@ test('compras · aprobar es del responsable de compras del área; sin él, de la
   await rejects(db.commit([update('tasks.tabs', tab, 2, { purchase_approver_id: outsider })]), 'INVALID_APPROVER');
 });
 
-test('compras · stock por movimientos: signos, inmutables, una entrada por solicitud y nombre único', async () => {
-  const { tab } = await db.area('Almacén');
-  const cloro = newId(), req = newId(), entrada = newId();
-  await db.commit([item(tab, cloro), request(tab, req, { supply_item_id: cloro, quantity: 20, unit: 'l', status: 'approved' })]);
-  await assert.rejects(db.commit([movement(tab, newId(), cloro, 'in', -5)]), /supply_movement_sign/);
-  await assert.rejects(db.commit([movement(tab, newId(), cloro, 'out', 5)]), /supply_movement_sign/);
-  await db.commit([movement(tab, entrada, cloro, 'in', 20, { purchase_request_id: req }), movement(tab, newId(), cloro, 'out', -3)]);
-  await rejects(db.commit([movement(tab, newId(), cloro, 'in', 20, { purchase_request_id: req })]), 'INVALID_PURCHASE');
-  await rejects(db.commit([update('tasks.supply_movements', entrada, 1, { delta: 25 })]), 'IMMUTABLE_FIELD');
-  await db.commit([update('tasks.supply_movements', entrada, 1, { note: 'Bidones de 5 l' })]);
-  const data = await db.data();
-  const stock = data['tasks.supply_movements'].filter((m) => m.supply_item_id === cloro && !m.deleted_at).reduce((sum, m) => sum + Number(m.delta), 0);
-  assert.equal(stock, 17);
-  await rejects(db.commit([item(tab, newId(), { name: ' cloro ' })]), 'SUPPLY_NAME_TAKEN');
-  // Un movimiento no queda vivo con su suministro en la papelera: la cascada la hace el cliente.
-  await rejects(db.commit([remove('tasks.supply_items', cloro, 1)]), 'INVALID_PURCHASE');
-});
-
 test('compras · plan por proveedor: solo aprobadas, paradas de un plan vivo, y un plan con compras se termina', async () => {
   const { tab, inbox } = await db.area('Plan');
   const plan = newId(), stop = newId(), pending = newId(), approved = newId();
@@ -90,21 +68,20 @@ test('compras · plan por proveedor: solo aprobadas, paradas de un plan vivo, y 
   await db.commit([remove('tasks.purchase_plans', empty, 1), remove('tasks.purchase_plan_stops', emptyStop, 1)]);
 });
 
-test('compras · ámbitos y visibilidad: el almacén y los planes son del área entera; las solicitudes, de su proyecto', async () => {
+test('compras · ámbitos y visibilidad: los planes son del área entera; las solicitudes, de su proyecto', async () => {
   const { tab, inbox } = await db.area('Ámbitos');
   const guest = await db.member('editor', { tabs: [], projects: { [tab]: [inbox] } });
   const req = newId();
   await db.commit([request(tab, req, { project_id: inbox })], guest);
   await rejects(db.commit([request(tab, newId())], guest), 'FORBIDDEN');
-  await rejects(db.commit([item(tab, newId(), { name: 'Lejía' })], guest), 'FORBIDDEN');
+  await rejects(db.commit([insert('tasks.purchase_plans', newId(), { tab_id: tab, title: 'Plan' })], guest), 'FORBIDDEN');
   const scopes = { tabs: [], projects: { [tab]: [inbox] } };
   assert.equal(visibleRow('tasks.purchase_requests', { tab_id: tab, project_id: inbox }, scopes), true);
   assert.equal(visibleRow('tasks.purchase_requests', { tab_id: tab, project_id: null }, scopes), false);
-  assert.equal(visibleRow('tasks.supply_items', { tab_id: tab }, scopes), false);
-  assert.equal(visibleRow('tasks.supply_items', { tab_id: tab }, '*'), true);
+  assert.equal(visibleRow('tasks.purchase_plans', { tab_id: tab }, scopes), false);
+  assert.equal(visibleRow('tasks.purchase_plans', { tab_id: tab }, '*'), true);
   // La validación compartida dice lo mismo antes de enviar.
-  assert.throws(() => validateOperations([item(tab, newId(), { name: 'Lejía' })], { role: 'editor', scopes }), /área entera/);
-  assert.throws(() => validateOperations([movement(tab, newId(), newId(), 'in', -1)], { role: 'owner', scopes: '*' }), /suma/);
+  assert.throws(() => validateOperations([insert('tasks.purchase_plans', newId(), { tab_id: tab, title: 'Plan' })], { role: 'editor', scopes }), /área entera/);
   // El responsable de compras se elige desde el editor de área: la validación del cliente lo admite (y un id que no es uuid, no).
   validateOperations([update('tasks.tabs', tab, 1, { purchase_approver_id: newId() })], { role: 'owner', scopes: '*' });
   assert.throws(() => validateOperations([update('tasks.tabs', tab, 1, { purchase_approver_id: 'nadie' })], { role: 'owner', scopes: '*' }));
@@ -113,19 +90,19 @@ test('compras · ámbitos y visibilidad: el almacén y los planes son del área 
 test('compras · vaciar papelera: lo que cuelga de un área o un proyecto borrados se lleva a la papelera y se purga', async () => {
   const { tab, inbox } = await db.area('Se borra');
   await db.area('Se queda');
-  const project = newId(), supply = newId(), plan = newId(), stop = newId(), req = newId(), mov = newId();
+  const project = newId(), plan = newId(), stop = newId(), req = newId();
   await db.commit([
     insert('tasks.projects', project, { tab_id: tab, title: 'Piscina', position: 2048 }),
-    item(tab, supply), insert('tasks.purchase_plans', plan, { tab_id: tab, title: 'Plan' }),
+    insert('tasks.purchase_plans', plan, { tab_id: tab, title: 'Plan' }),
     insert('tasks.purchase_plan_stops', stop, { tab_id: tab, plan_id: plan, supplier_name: 'Proveedor' }),
-    request(tab, req, { project_id: project, supply_item_id: supply }), movement(tab, mov, supply, 'in', 5),
+    request(tab, req, { project_id: project }),
   ]);
   void inbox;
   await db.commit([remove('tasks.tabs', tab, 1)]);
   const prepared = await db.commit([{ op: 'call', procedure: 'tasks.empty_trash_prepare', args: {} }]);
   assert.ok((prepared.results[0] as any).result.trashed > 0);
   const data = await db.data();
-  for (const [table, id] of [['tasks.supply_movements', mov], ['tasks.purchase_requests', req], ['tasks.purchase_plan_stops', stop], ['tasks.purchase_plans', plan], ['tasks.supply_items', supply]] as const) {
+  for (const [table, id] of [['tasks.purchase_requests', req], ['tasks.purchase_plan_stops', stop], ['tasks.purchase_plans', plan]] as const) {
     assert.ok((data as any)[table].find((r: any) => r.id === id).deleted_at, table);
   }
 });
@@ -137,32 +114,17 @@ async function run(ops: any[], actor?: string) {
   return ops;
 }
 
-test('compras · operaciones: queda poco y pedir, aprobar, recibir con entrada de stock, gastar y recontar', async () => {
+test('compras · operaciones: pedir, aprobar y recibir (la entrada en Recursos la prueba supplies-resources.test.ts)', async () => {
   const { tab } = await db.area('Operaciones');
-  const cloro = newId();
-  await db.commit([item(tab, cloro, { min_quantity: 10, reorder_quantity: 25, supplier_name: 'Piscinas Sur' })]);
   let data = await db.data();
-  assert.deepEqual(lowStock(data, tab).map((x) => [x.item.id, x.stock, x.openRequest]), [[cloro, 0, null]]);
-  const [order] = await run(reorderSupplyOps(data, cloro));
-  assert.deepEqual([order!.fields!.quantity, order!.fields!.unit, order!.fields!.supplier_name], [25, 'l', 'Piscinas Sur']);
+  const [order] = await run(requestPurchaseOps(data, { tab_id: tab, title: 'Cloro', quantity: 25, unit: 'l', supplier_name: 'Piscinas Sur' }));
   data = await db.data();
-  assert.equal(lowStock(data, tab)[0]!.openRequest!.id, order!.id);
   await run(setPurchaseStatusOps(data, order!.id!, 'approved'));
   data = await db.data();
   const received = await run(receivePurchaseOps(data, order!.id!));
-  assert.deepEqual(received.map((o) => o.table), ['tasks.purchase_requests', 'tasks.supply_movements']);
+  assert.deepEqual(received.map((o) => o.table), ['tasks.purchase_requests']);
   data = await db.data();
-  assert.equal(supplyStock(data, cloro), 25);
-  assert.deepEqual(receivePurchaseOps(data, order!.id!), [], 'recibir dos veces no duplica la entrada');
-  await run(supplyMovementOps(data, cloro, { kind: 'out', amount: 4 }));
-  data = await db.data();
-  await run(supplyMovementOps(data, cloro, { kind: 'count', amount: 18 }));
-  data = await db.data();
-  assert.equal(supplyStock(data, cloro), 18);
-  assert.deepEqual(supplyMovementOps(data, cloro, { kind: 'count', amount: 18 }), [], 'recontar lo mismo no crea movimiento');
-  assert.equal(lowStock(data, tab).length, 0);
-  await run(deleteSupplyItemOps(data, cloro));
-  assert.ok((await row('tasks.supply_items', cloro)).deleted_at);
+  assert.deepEqual(receivePurchaseOps(data, order!.id!), [], 'recibir dos veces no cambia nada');
 });
 
 test('compras · plan: agrupa por proveedor las aprobadas y las recurrentes que tocan; se quita si no hay compras', async () => {
@@ -202,15 +164,14 @@ test('compras · plan: agrupa por proveedor las aprobadas y las recurrentes que 
   assert.equal(next[0]!.fields!.repeat_days, 30);
 });
 
-test('compras · lecturas: tasks.targets con solicitudes de compra (por id y lista) y tasks.low_stock con ámbitos', async () => {
+test('compras · lecturas: tasks.targets con solicitudes de compra (por id y lista)', async () => {
   const { tab, inbox } = await db.area('Lecturas');
   const guest = await db.member('editor', { tabs: [], projects: { [tab]: [inbox] } });
-  const own = newId(), general = newId(), soap = newId();
+  const own = newId(), general = newId();
   await db.commit([
     request(tab, own, { project_id: inbox, title: 'Pintura', status: 'approved' }),
     request(tab, general, { title: 'Papel', status: 'purchased' }),
     request(tab, newId(), { title: 'Pendiente', status: 'requested' }),
-    item(tab, soap, { name: 'Jabón', min_quantity: 5 }),
   ]);
   await db.commit([update('tasks.purchase_requests', general, 1, { status: 'received' })]);
   const list = await db.read('tasks.targets', { kind: 'purchase_request', tabId: tab });
@@ -220,7 +181,4 @@ test('compras · lecturas: tasks.targets con solicitudes de compra (por id y lis
   const guestList = await db.read('tasks.targets', { kind: 'purchase_request', tabId: tab }, guest);
   assert.deepEqual(guestList.items.map((x: any) => x.id), [own], 'un acceso por proyecto solo ve las de su proyecto');
   await rejects(db.read('tasks.targets', { kind: 'purchase_request', id: general }, guest), 'NOT_FOUND');
-  const low = await db.read('tasks.low_stock', { tabId: tab });
-  assert.deepEqual(low.items.map((x: any) => [x.name, Number(x.stock)]), [['Jabón', 0]]);
-  assert.deepEqual((await db.read('tasks.low_stock', { tabId: tab }, guest)).items, [], 'el almacén es del área entera');
 });

@@ -8,13 +8,15 @@
  * Lo que ya cubre `purchases.spec.ts` (aviso en Inicio, «Queda poco: pedir», plan por proveedor, hoja de ruta, Finance,
  * agrupar por proveedor) no se repite.
  *
- * Al pasar a Recursos cambia el «conductor» (cómo se llega a cada cosa), no lo que se espera.
+ * Al pasar a Recursos cambia el «conductor» (cómo se llega a cada cosa), no lo que se espera. Desde R6 (PR 2) el almacén es
+ * el inventario común de Recursos con las piezas del kit: los artículos nacen por la API de Recursos (como los daría de alta
+ * otra app o la ficha del kit) y los movimientos, la ficha y el recuento son los del kit.
  */
 import { expect, test, type BrowserContext, type Page } from 'playwright/test';
 import { buildTasksApp, EDITOR, READER, startE2EServer, type E2EServer } from './e2e-server.ts';
 import { openApp, seedDemo, settled, type Aliases } from './e2e-helpers.ts';
 
-declare const navigateView: any, state: any;
+declare const navigateView: any, state: any, Sync: any;
 
 let server: E2EServer;
 let ID: Aliases;
@@ -42,25 +44,23 @@ test.afterAll(async () => { await contextA?.close(); await contextB?.close(); aw
 const go = (page: Page, view: string) => page.evaluate((v) => navigateView(v), view);
 const sync = async (page: Page) => { await settled(page); await page.evaluate(() => (window as any).syncNow?.()); await settled(page); };
 const close = (page: Page) => page.evaluate(() => (window as any).closeSheet());
-const supplyRow = (page: Page, name: string) => page.locator('.supplyrow', { hasText: name });
 const request = (page: Page, title: string) => page.locator('[data-purchase]', { hasText: title });
-const shot = async (name: string) => { await owner.waitForTimeout(450); await owner.screenshot({ path: `../coordinacion/tasks/r6-hoy/${name}.png` }).catch(() => {}); };
+const shot = async (name: string) => { await owner.waitForTimeout(450); await owner.screenshot({ path: `../coordinacion/tasks/r6-despues/${name}.png` }).catch(() => {}); };
 const serverRequest = async (title: string) => (await server.rows('tasks.purchase_requests')).filter((r) => r.title === title && !r.deleted_at);
-const newSupply = async (page: Page, v: { name: string; category: string; unit: string; location: string; min: string }) => {
-  await go(page, 'supplies');
-  await page.locator('#newSupply').click();
-  await page.locator('#suName').fill(v.name);
-  await page.locator('#suCategory').selectOption(v.category);
-  await page.locator('#suUnit').fill(v.unit);
-  await page.locator('#suLocation').fill(v.location);
-  await page.locator('#suMin').fill(v.min);
-  await page.locator('#suSave').click();
-  await expect(supplyRow(page, v.name)).toHaveCount(1);
+const LEJIA = crypto.randomUUID(), BOMBILLAS = crypto.randomUUID(), ALMACEN = crypto.randomUUID();
+const resources = async (operations: unknown[]) => {
+  const res = await server.app.call('/api/v1/resources/commands', { body: { requestId: `r-${crypto.randomUUID()}`, operations } });
+  expect(res.status, JSON.stringify(res.data)).toBe(200);
 };
-const move = async (page: Page, name: string, kind: 'in' | 'out' | 'count', amount: string) => {
-  await supplyRow(page, name).locator(`[data-supply-move$="|${kind}"]`).click();
-  await page.locator('#moveAmount').fill(amount);
-  await page.locator('#moveSave').click();
+const syncResources = (page: Page) => page.evaluate(() => Sync.core.resources?.sync());
+const stock = async (item: string) => Number((await server.app.t.db.query<{ q: string }>(`select coalesce(sum(quantity), 0) as q from resources.movements where item_id = $1 and deleted_at is null`, [item])).rows[0]!.q);
+const itemRow = (page: Page, id: string) => page.locator(`.stk-row[data-item-id="${id}"]`);
+const kitDialog = (page: Page) => page.locator('#kitLayer [role="dialog"]');
+const kitMove = async (page: Page, id: string, kind: 'Entrada' | 'Gastar', amount: string) => {
+  await itemRow(page, id).getByRole('button', { name: kind, exact: true }).click();
+  await kitDialog(page).getByLabel(kind === 'Entrada' ? 'Cuánto entra' : 'Cuánto sale', { exact: true }).fill(amount);
+  await kitDialog(page).getByRole('button', { name: kind === 'Entrada' ? 'Registrar entrada' : 'Registrar salida' }).click();
+  await expect(kitDialog(page)).toHaveCount(0);
 };
 const ask = async (page: Page, v: { title: string; quantity?: string; unit?: string; supplier?: string; project?: string; repeat?: string }) => {
   await go(page, 'purchases');
@@ -75,57 +75,55 @@ const ask = async (page: Page, v: { title: string; quantity?: string; unit?: str
   await expect(request(page, v.title)).toHaveCount(1);
 };
 
-test('suministros: fila con tipo y sitio, ficha con stock y mínimo, gastar, entrada y recontar', async () => {
-  await newSupply(owner, { name: 'Lejía', category: 'cleaning', unit: 'l', location: 'Almacén limpieza', min: '4' });
-  await newSupply(owner, { name: 'Bombillas E27', category: 'maintenance', unit: 'ud', location: 'Taller', min: '0' });
-  await expect(supplyRow(owner, 'Lejía').locator('.pmeta').first()).toHaveText('Limpieza · Almacén limpieza');
-  await expect(owner.locator('main.supplies .subtitle')).toContainText('2 en el almacén · 1 con poco');
-  await expect(supplyRow(owner, 'Lejía').locator('[data-reorder]')).toHaveCount(1);
+test('suministros: catálogo de la casa con tipo y sitio, ficha con stock y mínimo, gastar, entrada y recontar', async () => {
+  const altura = (await server.app.t.db.query<{ id: string }>(`select id from resources.spaces where name = 'Altura 1'`)).rows[0]!.id;
+  await resources([{ op: 'insert', table: 'resources.spaces', id: ALMACEN, fields: { parent_id: altura, kind: 'edificio', name: 'Almacén limpieza', position: 1024 } }]);
+  await resources([
+    { op: 'insert', table: 'resources.items', id: LEJIA, fields: { name: 'Lejía', kind: 'limpieza', base_unit: 'l', min_quantity: 4, default_space_id: ALMACEN } },
+    { op: 'insert', table: 'resources.items', id: BOMBILLAS, fields: { name: 'Bombillas E27', kind: 'material', base_unit: 'ud' } },
+    // Lo de cocina es de Food: no sale en Suministros.
+    { op: 'insert', table: 'resources.items', id: crypto.randomUUID(), fields: { name: 'Harina', kind: 'ingrediente', base_unit: 'kg' } },
+  ]);
+  await syncResources(owner);
+  await go(owner, 'supplies');
+  await expect(owner.locator('.stk-row')).toHaveCount(2);
+  await expect(owner.locator('main.supplies .subtitle')).toContainText('Inventario de la casa · 2 suministros · 1 con poco');
+  await expect(itemRow(owner, LEJIA).getByRole('button', { name: 'Queda poco: pedir' })).toHaveCount(1);
 
-  await move(owner, 'Lejía', 'in', '10');
-  await expect(supplyRow(owner, 'Lejía').locator('[data-stock]')).toHaveText('10 l');
-  await expect(owner.locator('main.supplies .subtitle')).toContainText('2 en el almacén');
+  await kitMove(owner, LEJIA, 'Entrada', '10');
+  await expect.poll(() => stock(LEJIA)).toBe(10);
   await expect(owner.locator('main.supplies .subtitle')).not.toContainText('con poco');
-  await move(owner, 'Lejía', 'out', '2.5');
-  await expect(supplyRow(owner, 'Lejía').locator('[data-stock]')).toHaveText('7,5 l');
-  // Recontar propone lo que hay; si coincide, no apunta nada.
-  await supplyRow(owner, 'Lejía').locator('[data-supply-move$="|count"]').click();
-  await expect(owner.locator('#moveAmount')).toHaveValue('7.5');
-  await owner.locator('#moveSave').click();
-  await expect(owner.locator('#toast')).toHaveText('Sin cambios: coincide con lo que había.');
-  await move(owner, 'Lejía', 'count', '6');
-  await expect(supplyRow(owner, 'Lejía').locator('[data-stock]')).toHaveText('6 l');
-  await settled(owner);
-  const lejia = (await server.rows('tasks.supply_items')).find((s) => s.name === 'Lejía');
-  const moves = (await server.rows('tasks.supply_movements')).filter((m) => m.supply_item_id === lejia.id)
-    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))).map((m) => [m.kind, Number(m.delta)]);
-  expect(moves).toEqual([['in', 10], ['out', -2.5], ['adjust', -1.5]]);
+  await expect(itemRow(owner, LEJIA).getByRole('button', { name: 'Queda poco: pedir' })).toHaveCount(0);
+  await kitMove(owner, LEJIA, 'Gastar', '2.5');
+  await expect.poll(() => stock(LEJIA)).toBe(7.5);
+  await expect(itemRow(owner, LEJIA)).toContainText('7,5 l');
   await shot('1-suministros');
+  // Recontar: el recuento del kit cuenta 6 y, al cerrar, ajusta la diferencia.
+  await itemRow(owner, LEJIA).getByRole('button', { name: 'Contar', exact: true }).click();
+  const line = kitDialog(owner).locator(`.stk-count-line[data-item-id="${LEJIA}"] input`);
+  await line.fill('6');
+  await line.press('Enter');
+  await kitDialog(owner).getByRole('button', { name: 'Ver lo calculado' }).click();
+  await kitDialog(owner).getByRole('button', { name: 'Ocultar lo calculado' }).click();
+  await kitDialog(owner).getByRole('button', { name: 'Revisar y cerrar' }).click();
+  await kitDialog(owner).getByRole('button', { name: 'Cerrar y ajustar' }).click();
+  await expect.poll(() => stock(LEJIA), { timeout: 15_000 }).toBe(6);
+  await owner.keyboard.press('Escape');
+  const kinds = (await server.app.t.db.query<{ kind: string; q: string }>(`select kind, quantity as q from resources.movements where item_id = $1 order by at, kind`, [LEJIA])).rows.map((m) => [m.kind, Number(m.q)]);
+  expect(kinds).toEqual([['entrada_manual', 10], ['salida_manual', -2.5], ['ajuste_recuento', -1.5]]);
+  await syncResources(owner);
 
-  // Ficha: stock y mínimo arriba; cambiar el sitio se guarda.
-  await supplyRow(owner, 'Lejía').locator('[data-supply]').click();
-  await expect(owner.locator('#sheet')).toContainText('En el almacén: 6 l · mínimo 4 l');
-  await expect(owner.locator('#suLocation')).toHaveValue('Almacén limpieza');
+  // Ficha: stock y mínimo; el sitio es el del artículo.
+  await itemRow(owner, LEJIA).getByRole('button', { name: 'Abrir Lejía' }).click();
+  await expect(kitDialog(owner)).toContainText('Almacén limpieza');
+  await expect(kitDialog(owner)).toContainText('6 l');
   await shot('2-ficha-suministro');
-  await owner.locator('#suLocation').fill('Lavandería');
-  await owner.locator('#suSave').click();
-  await expect(supplyRow(owner, 'Lejía').locator('.pmeta').first()).toHaveText('Limpieza · Lavandería');
-  await supplyRow(owner, 'Lejía').locator('[data-supply-move$="|out"]').click();
+  await owner.keyboard.press('Escape');
+  await expect(kitDialog(owner)).toHaveCount(0);
+  await itemRow(owner, LEJIA).getByRole('button', { name: 'Gastar', exact: true }).click();
   await shot('3-movimiento');
-  await close(owner);
+  await owner.keyboard.press('Escape');
   expect(errors, 'errores de JavaScript en la página').toEqual([]);
-});
-
-test('suministro a la papelera: se va con sus movimientos', async () => {
-  await move(owner, 'Bombillas E27', 'in', '12');
-  await expect(supplyRow(owner, 'Bombillas E27').locator('[data-stock]')).toHaveText('12 ud');
-  await supplyRow(owner, 'Bombillas E27').locator('[data-supply]').click();
-  await owner.locator('#suDelete').click();
-  await expect(supplyRow(owner, 'Bombillas E27')).toHaveCount(0);
-  await settled(owner);
-  const item = (await server.rows('tasks.supply_items')).find((s) => s.name === 'Bombillas E27');
-  expect(item.deleted_at).not.toBeNull();
-  expect((await server.rows('tasks.supply_movements')).filter((m) => m.supply_item_id === item.id).every((m) => m.deleted_at)).toBe(true);
 });
 
 test('solicitud: pedir con proyecto y repetición, aprobar, marcar comprada, recibida y pedir la siguiente', async () => {
@@ -242,14 +240,15 @@ test('planes: preparar, salir de compras y terminar; quitar un plan devuelve sus
 
 test('lectura: ve el almacén, las solicitudes y los planes, sin botones para cambiar nada', async () => {
   await go(owner, 'supplies');
-  await move(owner, 'Lejía', 'out', '5');
+  await kitMove(owner, LEJIA, 'Gastar', '5');
+  await expect.poll(() => stock(LEJIA)).toBe(1);
   await settled(owner);
   await sync(reader);
+  await syncResources(reader);
   await go(reader, 'supplies');
-  await expect(supplyRow(reader, 'Lejía').locator('[data-stock]')).toHaveText('1 l');
-  await expect(reader.locator('#newSupply')).toHaveCount(0);
-  await expect(reader.locator('[data-supply-move]')).toHaveCount(0);
-  await expect(supplyRow(reader, 'Lejía').locator('.pstate')).toHaveText('Queda poco');
+  await expect(itemRow(reader, LEJIA)).toContainText('1 l');
+  await expect(itemRow(reader, LEJIA)).toContainText('Bajo mínimo');
+  await expect(reader.locator('.stk-row button', { hasText: /^(Gastar|Entrada|Contar|Queda poco: pedir)$/ })).toHaveCount(0);
   await go(reader, 'purchases');
   await expect(reader.locator('#newPurchase')).toHaveCount(0);
   await request(reader, 'Guantes').click();

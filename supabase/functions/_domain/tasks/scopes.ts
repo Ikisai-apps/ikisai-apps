@@ -138,9 +138,8 @@ export function visibleRow(table: TableName | string, row: Record<string, unknow
     case 'tasks.attachments':
     case 'tasks.task_comments':
       return canProject(scopes, tab, String(row.project_id ?? ''));
-    // Compras (§18.4): el almacén y los planes, con el área entera; las solicitudes, como su proyecto (sin él, el área entera).
-    case 'tasks.supply_items':
-    case 'tasks.supply_movements':
+    // Compras (§18.4): los planes, con el área entera; las solicitudes, como su proyecto (sin él, el área entera). El almacén
+    // es el inventario común de Recursos desde R6.
     case 'tasks.purchase_plans':
     case 'tasks.purchase_plan_stops':
       return fullTab(scopes, tab);
