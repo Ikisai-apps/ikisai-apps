@@ -290,7 +290,7 @@ Invariantes (`central.check_decisions`): una decisión viva no puede estar susti
 **Votos y decisión final** (tanda 27, MUELA-014 r2, aprobada por el usuario el 19-10-2026; migración `1512`). Todo el equipo vota si una decisión vigente se mantiene o se retira, también quien solo lee. Los votos orientan; quien administra decide en la ficha aunque los votos digan otra cosa.
 
 - **`central.decision_votes`:** `decision_id` (no cambia), `voter_id` y `vote` (`mantener` o `retirar`).
-  - Leen todos los miembros de Central y escriben `{reader, editor, owner}`. **El lector aún no puede**: el kit y `core.commit` rechazan cualquier escritura de un lector (petición P10).
+  - Leen todos los miembros de Central y escriben `{reader, editor, owner}`. El lector escribe aquí y en ninguna otra tabla de Central (núcleo 0099, #608, contrato §3.11; era la P10).
   - `voter_id` lo pone el servidor con quien escribe: no se manda.
   - Un voto vivo por persona y decisión. Cambiar de opinión es cambiar el voto; retirarlo es mandarlo a la papelera.
   - Solo quien votó cambia o borra su voto (`FORBIDDEN`, también para el owner).
@@ -492,7 +492,7 @@ al_dia      el resto
 |---|---|
 | `owner` | **Administra el ecosistema** (`admin/*` en todas las apps, contrato §3.5) y todo lo de Central, también los datos reservados de personas. |
 | `editor` | Edita personas (ficha básica), requisitos, documentos clave. Datos reservados de personas **solo con ámbito `people`**. No administra cuentas. No toca objetivos de KPIs. |
-| `reader` | Ve el panel de dirección, cumplimiento, documentos clave y el directorio básico de personas. Nunca datos reservados. Solo escribe su voto en Decisiones (§2.10; pendiente de P10). |
+| `reader` | Ve el panel de dirección, cumplimiento, documentos clave y el directorio básico de personas. Nunca datos reservados. Solo escribe su voto en Decisiones (§2.10). |
 
 ### 5.2 Ámbitos (`core.memberships.scopes` de `central`)
 
@@ -839,7 +839,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P6 | Petición a **Booking**: usar `target_app = 'central'` (no `'encarna'`) en `staff_assignments.person_ref_app` y decir si quiere ya `central.booking_person_projection`. | Turnos con la persona de Central | — |
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
-| P10 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como ya hace el outsider: hoy el kit (`sync.ts`, `commit`) y `core.commit` rechazan cualquier escritura de un lector. También `sync-client`, si no deja encolar al lector. | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | Votan editor y owner; la tabla ya admite al lector |
+| P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---
 

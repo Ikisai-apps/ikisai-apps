@@ -30,9 +30,8 @@ async function decision(fields: Record<string, unknown> = {}) {
   return id;
 }
 
-// El lector vota (decisión de VG): la tabla ya lo admite (`writable_roles` con reader), pero el kit y `core.commit` aún no
-// dejan escribir a ningún lector. Petición P10 a Core; mientras tanto, esta prueba queda pendiente.
-test('votos · el lector vota su propio voto y nada más', { todo: 'P10: el núcleo aún no deja escribir al lector' }, async () => {
+// El lector vota (decisión de VG): escribe en las tablas con `reader` en `writable_roles` (núcleo 0099, #608, contrato §3.11).
+test('votos · el lector vota su propio voto y nada más', async () => {
   const id = await decision();
   const voteId = uuid();
   const ok = await commit([{ op: 'insert', table: DECISION_VOTES_TABLE, id: voteId, fields: { decision_id: id, vote: 'retirar' } }], app.tokens.reader);
