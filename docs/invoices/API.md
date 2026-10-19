@@ -1686,3 +1686,16 @@ Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app s
   - al validar, `resource_entries` devuelve en `costs` el coste por unidad base para esa entrada, y la Edge lo añade en el mismo lote de Recursos con `resources.movement_costs` (id estable, así que repetir no duplica);
   - un coste solo se añade: anular la factura después no lo quita.
 - **Compras › Artículos:** filtro «Artículo» (`#purchaseItem`, `itemId` en `purchaseItems`) con los artículos enlazados en alguna línea, de cualquier proveedor.
+
+### 16.20 R4 · encender el enlace y no duplicar las compras recibidas en Tasks (0238, PR 5; aprobado por el usuario, 19-10-2026)
+- **Interruptor (Inicio › «Inventario (Recursos)», solo el owner):** «Enlace: Apagado / Encendido» y el botón «Encender» o «Apagar» (`#resourceLinksSwitch`), siempre con confirmación. Escribe `invoices.settings.resources_links`.
+  - **Al encenderlo,** la Edge cuadra todas las facturas enlazadas: lo ya validado entra con la fecha de cada factura (las retroactivas, §16.18). Conviene aplicar antes la vista previa.
+  - **Al apagarlo,** las facturas que se validen dejan de entrar y la app vuelve a verse como antes. Lo que ya entró se queda.
+  - **Se entrega apagado:** lo enciende el usuario.
+- **Compras recibidas en Tasks (migración 0238, solo `invoices.resource_entries`).** Al marcar «Recibida», Tasks (R6, 0333) apunta su `entrada_manual` (`source_app 'tasks'`, `source_ref 'purchase_request:<id>'`).
+  - **Lo que pide la línea:** si una línea validada y enlazada está asignada (`allocations`, `tasks/purchase_request`) a esa solicitud con el mismo artículo, pide su cantidad menos lo rectificado y menos lo recibido, nunca menos de 0.
+  - **Varias líneas con la misma solicitud,** de esta factura o de otras: lo recibido se reparte por orden (fecha de la factura, factura, posición) y se descuenta una sola vez.
+  - **Coste:** si la entrada de Tasks entró sin coste, recibe el de la primera línea que la cubre (en `costs`; la Edge lo añade con `resources.movement_costs`). Así el coste medio sale con el de la factura. Si Tasks ya tenía coste (estimado), se respeta.
+  - **Anular la factura** quita su entrada y deja solo lo de Tasks. El coste añadido se queda, como con Food.
+  - **Asignar o desasignar después** una línea de una factura validada también la vuelve a cuadrar (la Edge mira `allocations` en `afterCommit`).
+- **Límite:** si la factura se valida antes de que Tasks reciba la compra, Finance no se entera de la recepción. La doble entrada se corrige en el siguiente cuadre de esa factura (cualquier cambio en ella) o al encender el interruptor. Pendiente de decidir con Core.
