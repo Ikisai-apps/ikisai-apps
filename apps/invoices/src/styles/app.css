@@ -150,3 +150,20 @@ code{font-size:12.5px;word-break:break-all}
 .inv-tool-label{font-weight:600;font-size:14px}
 .inv-tool-hint{font-size:12.5px;color:var(--muted)}
 @media (max-width:520px){.row:has(.inv-row-stages) .row-actions{grid-column:1;grid-row:auto}}
+
+/* Tanda 27 · Emitidas: la reserva de Booking en la fila y en la ficha. */
+.inv-reservation{min-height:var(--tap,46px);padding-inline:0;font-size:13px}
+.inv-reservation-money .linkbtn{min-height:var(--tap,46px);padding-inline:0}
+
+/* Tanda 27 · Gestoría: el periodo en un toque, la carpeta con su recorrido y su ticket, y los trimestres del año. */
+.inv-period{align-items:center}
+.inv-year{width:5.5em;min-height:var(--tap,46px)}
+.inv-year-step{min-width:var(--tap,46px);min-height:var(--tap,46px);font-size:20px}
+.inv-folder{margin:12px 0}
+.inv-folder-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.inv-folder-head h3{margin:0}
+.inv-ticket{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:12px 0 0;padding:12px;border:1px dashed var(--line);border-radius:12px;font-variant-numeric:tabular-nums}
+.inv-ticket dt{color:var(--muted)}
+.inv-ticket dd{margin:0;text-align:right;font-weight:600}
+.inv-folder-actions{margin:12px 0}
+.inv-quarter>summary{min-height:var(--tap,46px)}
