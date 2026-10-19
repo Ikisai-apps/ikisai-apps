@@ -249,6 +249,26 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       notes: { kind: 'text', max: 500, nullable: true },
     },
   },
+  // Voto a una sugerencia de plato (tanda 27, 1103): quien vota lo pone el servidor.
+  'food.suggestion_votes': {
+    required: ['suggestion_id', 'vote'],
+    insertOnly: ['suggestion_id'],
+    fields: {
+      suggestion_id: { kind: 'uuid' },
+      vote: { kind: 'enum', values: ['keep', 'drop'] },
+    },
+  },
+  // Aviso de avería que salió a Tasks (tanda 27, 1104). Lo escribe la Edge al avisar; nada cambia después.
+  'food.equipment_notices': {
+    required: ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
+    insertOnly: ['equipment_id', 'notified_on', 'equipment_status', 'task_id'],
+    fields: {
+      equipment_id: { kind: 'uuid' },
+      notified_on: { kind: 'date' },
+      equipment_status: { kind: 'enum', values: ['limitado', 'averiado', 'fuera_de_servicio'] },
+      task_id: { kind: 'text', max: 100, required: true },
+    },
+  },
 };
 
 function issue(code: string, message: string, details: Record<string, unknown>): Issue {

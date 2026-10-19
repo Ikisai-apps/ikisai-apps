@@ -72,9 +72,44 @@ export function houseDishSuggestionOperations(input: HouseDishSuggestion): Array
   return [{ op: 'call', procedure: 'food.house_dish_from_suggestion', args: { name: input.name.trim(), date: input.date, service: input.service } }];
 }
 
+/**
+ * «Usar “receta parecida”» (tanda 27): el mismo lote con la receta elegida. Se manda al aprobar como lote corregido
+ * (`core.suggestion_decide` con `p_operations`); el resto de la llamada no cambia.
+ */
+export function houseDishWithRecipe(operations: unknown, recipeId: string): Array<Record<string, unknown>> | null {
+  if (!Array.isArray(operations) || operations.length !== 1) return null;
+  const op = operations[0] as { op?: unknown; procedure?: unknown; args?: Record<string, unknown> };
+  if (op?.op !== 'call' || op.procedure !== 'food.house_dish_from_suggestion' || !op.args || typeof op.args !== 'object') return null;
+  return [{ ...op, args: { ...op.args, recipe_id: recipeId } }];
+}
+
 /** Los siete días (lunes a domingo, `YYYY-MM-DD`) de la semana de `date`, desplazada `offset` semanas. */
 export function weekDays(date: string, offset = 0): string[] {
   const base = Date.parse(`${date}T00:00:00Z`);
   const monday = base - ((new Date(base).getUTCDay() + 6) % 7) * 86400000 + offset * 7 * 86400000;
   return Array.from({ length: 7 }, (_, i) => new Date(monday + i * 86400000).toISOString().slice(0, 10));
+}
+
+/** Voto a una sugerencia de plato (tanda 27, `food.suggestion_votes`, 1103): orienta, no decide. */
+export interface SuggestionVote {
+  id: string;
+  suggestion_id: string;
+  voter_id: string;
+  vote: 'keep' | 'drop';
+  deleted_at: string | null;
+}
+
+/** Recuento de una sugerencia y el voto propio: «4 aprobar · 2 descartar», «Tu voto». */
+export function voteTally(votes: SuggestionVote[], suggestionId: string, me: string | null): { keep: number; drop: number; mine: SuggestionVote | null } {
+  const live = votes.filter((v) => !v.deleted_at && v.suggestion_id === suggestionId);
+  return {
+    keep: live.filter((v) => v.vote === 'keep').length,
+    drop: live.filter((v) => v.vote === 'drop').length,
+    mine: (me && live.find((v) => v.voter_id === me)) || null,
+  };
+}
+
+/** Cuerpo de `POST /api/v1/suggestion-votes` (tanda 27): votar, cambiar el voto o quitarlo (`null`). Quien vota lo pone el servidor. */
+export function voteRequest(suggestionId: string, vote: 'keep' | 'drop' | null, requestId: string): { requestId: string; suggestionId: string; vote: 'keep' | 'drop' | null } {
+  return { requestId, suggestionId, vote };
 }

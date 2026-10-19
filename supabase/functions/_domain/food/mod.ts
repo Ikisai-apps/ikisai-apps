@@ -3,6 +3,7 @@ export * from './catalog.ts';
 export * from './menus.ts';
 export * from './planning.ts';
 export * from './costing.ts';
+export * from './equipment.ts';
 export * from './house.ts';
 export * from './resources.ts';
 export * from './consumption.ts';

@@ -246,6 +246,37 @@ writable: menu_item_id, status, automatic, notes.
   - Lo usan el consumo, «comprado» al stock y el worker (en SQL).
   - `resources-units.test.ts` comprueba que da lo mismo que el kit.
 
+### 2.9 Tanda 27: votos, sugerencias y recorrido de las máquinas (19 de octubre de 2026)
+
+Rediseño de La Muela aprobado por VG (MUELA-068). Migraciones `20261019_1102` a `1104`; solo el schema `food`.
+
+```text
+food.suggestion_votes                           (1103)
+  suggestion_id  uuid not null       → core.suggestions (app food), sin clave foránea; inmutable
+  voter_id       uuid not null       quien escribe (`updated_by`); no se escribe a mano ni cambia
+  vote           text not null       keep (aprobar) | drop (descartar)
+  un voto vivo por (suggestion_id, voter_id); escriben reader, editor y owner; el outsider ni lee ni escribe
+
+food.equipment.status_since  timestamptz not null   (1104) cuándo tomó su estado actual; lo pone el servidor
+
+food.equipment_notices                          (1104)
+  equipment_id     uuid not null → food.equipment  on delete cascade, inmutable
+  notified_on      date not null      día del aviso en Madrid; uno vivo por máquina y día
+  equipment_status text not null      limitado | averiado | fuera_de_servicio (al avisar)
+  task_id          text not null      la tarea que devolvió Tasks
+```
+
+- **Votos:** orientan; decide editor u owner con `core.suggestion_decide`, como hoy. Se vota con `POST suggestion-votes` (§6), que llama a `food.vote_suggestion` como quien vota: crea, cambia o quita (`vote: null`) el voto propio. Nadie toca el voto de otra persona (`FORBIDDEN`). El recuento y «Tu voto» salen del espejo (`voteTally`).
+  - **Pendiente del núcleo:** que vote quien solo lee. `core.commit` rechaza al lector (0040) y la regla es de Core (pedido en SALIDA).
+  - **Pendiente del núcleo:** que el lector vea las sugerencias sin el nombre de quien propone. `core.suggestion_list` solo deja listar a editor y owner (0092).
+- **Sugerencia de plato:** `food.house_dish_from_suggestion` (1102) admite `recipe_id` («Usar “receta parecida”», `houseDishWithRecipe`): quien aprueba manda el lote corregido. La receta tiene que estar viva y no archivada. Rechaza los días que ya pasaron en Madrid (`INVALID_OPERATION`, `argument: 'date'`, `reason: 'past'`): la sugerencia sigue pendiente.
+- **Recorrido de la máquina** (`equipmentJourney`):
+  - **Funciona:** está operativa.
+  - **Falla:** no hay aviso desde `status_since`.
+  - **Avisado:** hay aviso.
+  - **En reparación:** solo si Tasks dice que la petición está en curso, y ese dato aún no llega a Food.
+  - Siempre con la palabra del estado («averiada»).
+
 ### 2.3 Compra, preparación y stock
 
 ```text
@@ -359,7 +390,8 @@ Un lote con `call` no se puede deshacer desde el historial (`UNDO_UNAVAILABLE`, 
 | `food.set_menu_status` | `menu_id`, `expectedRevision`, `status` | `menus` | `{menu_id, status}` | `VERSION_CONFLICT`, `INVALID_TRANSITION` |
 | `food.regenerate_shopping` | `menu_id`, `list_id`; en casa, `period_start` y `period_end` | `shopping_lists`, `shopping_list_items` | `{list_id, created, inserted, updated, deleted, kept, status}` | `MENU_NOT_FOUND`, `LIST_CLOSED`, `INVALID_PERIOD`, `PERIOD_OVERLAP` |
 | `food.regenerate_preparation` | `menu_id`; en casa, `period_start` y `period_end` | `preparation_items`, `menus` (solo retiros) | `{inserted, updated, deleted, kept}` | `MENU_NOT_FOUND`, `INVALID_PERIOD` |
-| `food.house_dish_from_suggestion` | `name` (1–160), `date` (`YYYY-MM-DD`), `service` (tipo de servicio). Solo por una sugerencia `plato_casa` aprobada (§2.6) | `menus` (si falta el de casa), `menu_services`, `recipes`, `menu_items` | `{menu_id, service_id, recipe_id, item_id, created_menu, created_service, created_recipe, created_item}` | `INVALID_OPERATION` con `argument` |
+| `food.house_dish_from_suggestion` | `name` (1–160), `date` (`YYYY-MM-DD`, no anterior a hoy en Madrid desde la tanda 27), `service` (tipo de servicio), `recipe_id?` (tanda 27). Solo por una sugerencia `plato_casa` aprobada (§2.6) | `menus` (si falta el de casa), `menu_services`, `recipes`, `menu_items` | `{menu_id, service_id, recipe_id, item_id, created_menu, created_service, created_recipe, created_item}` | `INVALID_OPERATION` con `argument` (y `reason: past` o `not_found`) |
+| `food.vote_suggestion` | `suggestion_id`, `vote` (`keep`, `drop` o null). Solo por `POST suggestion-votes` (§2.9) | `suggestion_votes` | `{suggestion_id, vote}` | `INVALID_OPERATION` con `argument` |
 
 ### 3.1 Estados del menú
 
@@ -457,16 +489,21 @@ Función pura de `domain-food`. Corre en el cliente para pintar la cabecera del 
 
 | Restricción del evento | Aviso | Requiere aceptación |
 |---|---|---|
-| `alergia`, `intolerancia` | uno por plato cuya receta declara el alérgeno, o que tiene un ingrediente cuyo nombre coincide con el `subject` | sí |
-| `alergia`, `intolerancia` con un `subject` que no se reconoce | «No se puede comprobar automáticamente: revisar a mano» | sí |
+| `alergia`, `intolerancia` | uno por plato cuya receta declara el alérgeno (revisada o no), o que tiene un ingrediente cuyo nombre coincide con el `subject`; desde la tanda 27, también si un ingrediente nombra el alérgeno («almendra» para «frutos secos») o si el nombre, el nombre público o la descripción del plato lo nombran | sí |
+| `alergia`, `intolerancia` con un `subject` que no se reconoce | «No se puede comprobar automáticamente: revisar a mano»; desde la tanda 27, además, el aviso del plato que lo nombra en su texto | sí |
 | cualquier `alergia` o `intolerancia` | uno por receta del menú con `allergens_checked = false` | sí |
 | `vegano`, `vegetariano`, `sin_gluten`, `sin_lactosa` | uno por servicio sin ningún plato compatible | sí |
-| `preferencia`, `otra` | informativo | no |
+| `preferencia`, `otra` | informativo; desde la tanda 27, también uno por plato que lo lleva (««Curry» lleva cilantro») | no |
 | — | servicio fuera de las fechas del evento; receta `archivada` o `en_prueba` en el menú | no |
 
 Compatibilidad: `vegano` exige la etiqueta `vegano`; `vegetariano` exige `vegetariano` o `vegano`; `sin_gluten` y `sin_lactosa` exigen que la receta no declare `gluten` o `lacteos`. El `subject` libre de Booking («pistacho») se normaliza y se busca en un diccionario de sinónimos de `domain-food` (pistacho, nuez, almendra, avellana, anacardo → `frutos_de_cascara`; etcétera) y en los nombres de los ingredientes de la receta.
 
 Los avisos nunca impiden editar un borrador. Impiden validar sin aceptarlos uno a uno, y lo aceptado queda en `validated_warnings`. Una alergia nunca se trata como preferencia.
+
+**Tanda 27 (regla de VG del 19-10-2026, obligatoria).** El cruce es una sola función, `crossRestriction`. La usan `menuWarnings`, `dishNotes` (Cocina y la hoja del Organizador), `allergenPresence` (Recetario, «Lleva X / Sin X») y `restrictionLines` (la línea plegada de Cocina: todas las alergias e intolerancias con sus personas, las graves primero, según `isSevere` sobre el texto libre de Booking).
+- Solo suma avisos: `tests/food/warnings-cruce.test.ts` compara 5000 menús generados con una copia congelada de la función anterior (`tests/food/warnings-legacy.ts`). Ningún aviso de antes cambia de clave, texto ni aceptación.
+- Un plato sin coincidencias no dice nada. Si hay alergias en el grupo y la receta no está revisada, «Alérgenos sin revisar». Nunca «apto» ni «no contiene».
+- Los menús ya validados no se revalidan. Al validar uno nuevo, pueden salir avisos nuevos que aceptar.
 
 ---
 
@@ -484,9 +521,10 @@ Además de las del núcleo (contrato §5), con `uploads` configurado como en §8
 |---|---|---|---|---|
 | `GET events` | `scope=upcoming` (por defecto: `end_date ≥ hoy − 7 días`) o `scope=all`; `from`, `to` opcionales | `{events: [fila de la proyección], serverTime}` | `PROJECTION_UNAVAILABLE 503` | `reader` |
 | `GET events/:id` | — | `{event}` | `NOT_FOUND 404` | `reader` |
-| `POST equipment/:id/fault` | `{name, status: limitado\|averiado\|fuera_de_servicio, location?, note?}` | `{created, routed, taskId}` | `INVALID_OPERATION 422`, `TASKS_FORBIDDEN 403`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` | `editor` |
+| `POST equipment/:id/fault` | `{name, status: limitado\|averiado\|fuera_de_servicio, location?, note?}` | `{created, routed, taskId, recorded}` | `INVALID_OPERATION 422`, `TASKS_FORBIDDEN 403`, `TASKS_REJECTED 422`, `TASKS_UNAVAILABLE 503` | `editor` |
+| `POST suggestion-votes` | `{requestId, suggestionId, vote: keep\|drop\|null}` | `{cursor, suggestionId, vote}` | `INVALID_OPERATION 422`, `FORBIDDEN 403` | `editor` (y `reader` cuando el núcleo lo abra, §2.9) |
 
-Son las únicas. Lo que el handoff §25 listaba como rutas REST de cocina lo cubren `snapshot`, `changes` y `commands` sobre las tablas de §2; las regeneraciones son `call`. El panel de Inicio, la vista de cocinero y la del organizador se calculan en el cliente sobre el espejo local, que es lo que permite verlos sin red; no hay `GET dashboard`.
+Son las únicas, junto con `POST suggestion-votes` (tanda 27). Lo que el handoff §25 listaba como rutas REST de cocina lo cubren `snapshot`, `changes` y `commands` sobre las tablas de §2; las regeneraciones son `call`. El panel de Inicio, la vista de cocinero y la del organizador se calculan en el cliente sobre el espejo local, que es lo que permite verlos sin red; no hay `GET dashboard`.
 
 ### 6.1 Peticiones a Tasks
 
@@ -494,7 +532,8 @@ Desde la ficha de una máquina que no está operativa, «Avisar a Tasks para rep
 - `source: 'food'`, `kind: 'food.equipment_fault'`, `kind_label: 'Averías de cocina'`, sin área ni proyecto: Tasks la enruta con las reglas del usuario o la deja en «Por clasificar».
 - `external_ref: 'equipment_fault:<id de la máquina>:<día en Madrid>'`: como mucho una petición por máquina y día; repetir el aviso devuelve la misma tarea (`created: false`).
 - Título «Reparar: <nombre> (<ubicación>)» (averiada o fuera de servicio, prioridad `high`) o «Revisar: …» (limitada, `normal`); la nota es la de la ficha; `external_url` = `https://food.ikisai.com/#/maquinaria`.
-- Necesita red y permiso de edición en Food; en Tasks, el de la persona (sin él, `TASKS_FORBIDDEN`). La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
+- Necesita red y permiso de edición en Food; en Tasks, el de la persona (sin él, `TASKS_FORBIDDEN`).
+- Tanda 27: con la tarea creada, la Edge anota el aviso en `food.equipment_notices` (§2.9) como la persona, con un id fijo por máquina y día. Si no puede (la máquina no está en Food), el aviso a Tasks ya salió y responde `recorded: false`. La base de Tasks sale de `IKISAI_TASKS_API_BASE` (por defecto `https://tasks.ikisai.com`).
 
 V2 (G4): `POST stock-entries/sync`, que lee la proyección de compras de Invoices y crea las entradas de stock (§7.3).
 
