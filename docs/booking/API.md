@@ -653,7 +653,7 @@ Bucket `booking-documents` (ya creado por Core, 15 MB). Dos usos en V1:
 - El justificante de envío a SES (`guests.ses_receipt_file_id`). PDF tal cual; imagen recomprimida en cliente según el contrato §6.2 (punto 5). Alternativa sin archivo: `ses_receipt_ref` con el número de referencia.
 - La imagen de la firma del parte (`guests.signature_file_id`, §2.3.2): WebP o PNG de pocos KB generado en el propio recuadro de firma.
 
-Ambos contienen datos personales: los sirve `GET files/:id` con URL firmada de 10 minutos y la app solo los ofrece a quien ve huéspedes. `_kit` comprueba la membresía, no el ámbito; lo anoto en P5.
+Ambos contienen datos personales: los sirve `GET files/:id` con URL firmada de 10 minutos y la app solo los ofrece a quien ve huéspedes. Desde el 19-10-2026, con `uploads.membersK3` (K3 para miembros, #585), `GET files/:id` tampoco los da por su id a quien no ve huéspedes: un miembro que no es propietario lee un archivo ajeno solo si el hook `visible` le deja ver una fila viva que lo referencia (los dos campos están en `core.register_file_field`, migración 0447). El editor sin `scopes.guests` y el lector reciben 404. En la papelera, solo quien lo subió y la propietaria (la papelera de huéspedes no abre la ficha, así que nadie lo echa en falta). La firma se ve por `GET guest-signature/:guestId`, que ya exigía ver huéspedes. Pruebas en `tests/booking/members-k3.test.ts`.
 
 Para que el comando lleve el `file_id` de un adjunto que todavía está en cola hace falta el enlace adjunto → `file_id` en `sync-client` (P13).
 
