@@ -28,6 +28,22 @@ function readFolded(key: string): Set<string> {
 function writeFolded(key: string, folded: Set<string>): void {
   try { localStorage.setItem(key, JSON.stringify([...folded])); } catch { /* sin almacenamiento: el plegado dura lo que la pantalla */ }
 }
+/**
+ * Resumen por app de la última lectura guardada (para el menú lateral, sin red ni petición): cuántos indicadores tiene
+ * cada app y cuántos están en crítico o en atención. Sin copia guardada, vacío.
+ */
+export function dashboardSummary(userId: string | null | undefined): Array<{ app: string; name: string; total: number; critical: number; attention: number }> {
+  const d = readCache(CACHE_PREFIX + (userId ?? 'anon'));
+  if (!d) return [];
+  const apps = new Map<string, DashboardItem[]>();
+  for (const i of d.items) apps.set(i.app, [...(apps.get(i.app) ?? []), i]);
+  return [...apps].map(([app, items]) => {
+    const shown = collapseSeries(items).map((c) => c.shown);
+    const s = stateSummary(shown);
+    return { app, name: APP_NAMES[app] ?? app, total: shown.length, critical: s.critico, attention: s.atencion };
+  });
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const stateClass = (s: KpiState) => (s === 'critico' ? 'alert' : s === 'atencion' ? 'warn' : 'ok');
 

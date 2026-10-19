@@ -1,16 +1,20 @@
 import type { SyncClient, SyncStatus } from '@ikisai/sync-client';
 import {
-  confirmDialog, createAppLauncher, createAppShell, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast,
+  confirmDialog, createAppLauncher, createAppShell, createCommandPalette, createFeedback, createFeedbackReview, createUsage, el, openFeedbackCenter, replace, toast,
   type LauncherCatalog, type NavItem, type Usage,
 } from '@ikisai/ui-kit';
-import { describeError } from '../app/client.ts';
+import { T, describeError } from '../app/client.ts';
 import { createAdminApi, type AdminApi } from '../app/admin.ts';
 import { clearPendingAccountNames, flushPendingAccountNames } from '../app/account-names.ts';
+import { clearRecents, readRecents, rememberRecent, type Recent } from '../app/recents.ts';
+import { ROLE_LABELS } from '../app/admin.ts';
 import { mountHome } from './home.ts';
 import { mountAccess } from './access.ts';
 import { mountConflicts } from './conflicts.ts';
 import { mountEntity } from './entity.ts';
-import { mountDecisions } from './decisions.ts';
+import { mountDecision, mountDecisions } from './decisions.ts';
+import { mountReview } from './review.ts';
+import { loadMenuData, menuSections, recentRows, screenItems, type MenuData } from './menu.ts';
 import { mountPeople, mountPerson } from './people.ts';
 import { mountTeams } from './teams.ts';
 import { mountTrades } from './trades.ts';
@@ -34,6 +38,8 @@ export interface ViewContext extends ShellContext {
   navigate(hash: string): void;
   /** Cierra sesión con la misma confirmación que el botón de la cabecera. */
   logout(): Promise<void>;
+  /** Apunta en «Recientes» del menú lo que se acaba de abrir (una ficha), con su título. */
+  remember(entry: Omit<Recent, 'at'>): void;
 }
 
 export type ViewMount = (ctx: ViewContext) => () => void;
@@ -41,12 +47,13 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 const ACCESS_ROUTES = ['#/accesos', '#/accesos/alta', '#/accesos/agentes', '#/accesos/registro'];
 
 /**
- * Cuatro entradas para todos: con cinco, «Cumplimiento» se corta en el móvil. «Entidad» y, desde Inventario (decisión del
- * usuario, 18-10-2026), «Accesos» no ocupan sitio en la barra: se abren desde Inicio, y Accesos sigue solo para el owner.
+ * Cuatro entradas para todos: con cinco, «Cumplimiento» se corta en el móvil. «Entidad», «Accesos» (solo el owner),
+ * «Decisiones», «Textos», «Conflictos» y «Revisión» no ocupan sitio en la barra: están en el menú lateral (MUELA-013) y,
+ * como siempre, en Inicio. La barra va abajo y en horizontal también en el ordenador.
  */
 function navFor(): NavItem[] {
   return [
-    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos', ...ACCESS_ROUTES] },
+    { hash: '#/', label: 'Inicio', icon: 'home', matches: ['#/', '#/conflictos', '#/entidad', '#/decisiones', '#/textos', '#/revision', ...ACCESS_ROUTES] },
     { hash: '#/cumplimiento', label: 'Cumplimiento', icon: 'list', matches: ['#/cumplimiento', '#/cumplimiento/requisitos', '#/cumplimiento/documentos'] },
     { hash: '#/personas', label: 'Personas', icon: 'people', matches: ['#/personas', '#/personas/equipos', '#/personas/oficios'] },
     // Inventario (kit 0.37): para todos los miembros; quien solo lee, solo mira.
@@ -60,6 +67,7 @@ const ROUTES: Record<string, { title: string; slug: string; mount: ViewMount; ad
   '#/textos': { title: 'Textos y contacto', slug: 'textos', mount: mountTexts },
   '#/entidad': { title: 'Entidad', slug: 'entidad', mount: mountEntity },
   '#/decisiones': { title: 'Decisiones', slug: 'decisiones', mount: mountDecisions },
+  '#/revision': { title: 'Revisión', slug: 'revision', mount: mountReview },
   '#/personas': { title: 'Personas', slug: 'personas', mount: mountPeople },
   '#/personas/equipos': { title: 'Equipos', slug: 'equipos', mount: mountTeams },
   '#/personas/oficios': { title: 'Oficios', slug: 'oficios', mount: mountTrades },
@@ -81,6 +89,8 @@ function markScreen(main: HTMLElement, slug: string): void {
     case 'entidad': fbMark(main, 'central.entidad', 'Entidad'); break;
     case 'textos': fbMark(main, 'central.textos', 'Textos y contacto'); break;
     case 'decisiones': fbMark(main, 'central.decisiones', 'Decisiones'); break;
+    case 'decision': fbMark(main, 'central.decision', 'Decisión'); break;
+    case 'revision': fbMark(main, 'central.revision', 'Revisión'); break;
     case 'personas': fbMark(main, 'central.personas', 'Personas'); break;
     case 'persona': fbMark(main, 'central.persona', 'Persona'); break;
     case 'equipos': fbMark(main, 'central.equipos', 'Equipos'); break;
@@ -118,9 +128,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const review = createFeedbackReview({ api, app: 'central', appDomain: (id) => catalog?.items.find((app) => app.id === id)?.domain });
   // Uso semántico (USO.md): exposición y activación de lo marcado con `data-feedback-id`, y éxito o error con `usage.run`.
   const usage = createUsage({ app: 'central', api, userId: () => client.bootstrap()?.profile.userId ?? null });
-  const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); void usage.clear(userId); clearPendingAccountNames(); });
+  const offSessionEnd = client.onSessionEnd((userId) => { void feedback.clear(userId); void usage.clear(userId); clearPendingAccountNames(); clearRecents(userId); });
 
-  // La marca de la cabecera abre el lanzador común: las demás apps de la cuenta (sin volver a pedir contraseña), los
+  // El lanzador común va dentro del menú lateral (kit 0.47): las demás apps de la cuenta (sin volver a pedir contraseña), los
   // interruptores «Señalar para comentar» y «Revisor de QA», y la entrada «Sugerencias y QA» (kit 0.18; guía demo/adopcion.ts).
   const launcher = createAppLauncher({
     current: 'central',
@@ -136,6 +146,21 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const flushNames = () => { if (isAdmin) void flushPendingAccountNames(admin, client).catch(() => undefined); };
   window.addEventListener('online', flushNames);
   flushNames();
+  const userId = () => client.bootstrap()?.profile.userId ?? null;
+  let menuData: MenuData | null = null;
+  let recents = readRecents(userId());
+  // Búsqueda de la cabecera (K8) con la paleta del kit: antes de escribir, los recientes; al escribir, obligaciones,
+  // documentos, personas, decisiones y equipos del espejo, y las pantallas. Con `keepOrder` (K1), lo vigente va primero.
+  const palette = createCommandPalette({
+    placeholder: 'Buscar en Central: obligaciones, personas, decisiones…',
+    keepOrder: true,
+    hiddenWhenEmpty: ['Obligaciones', 'Documentos', 'Personas', 'Decisiones', 'Equipos', 'Pantallas'],
+    items: () => [
+      ...recentRows(recents, 4).map((r) => ({ group: 'Recientes', text: r.label, sub: r.sub ?? '', run: () => navigate(r.href ?? '#/') })),
+      ...(menuData?.index ?? []),
+      ...screenItems(isAdmin, navigate),
+    ],
+  });
   const shell = createAppShell(root, {
     appName: 'Central',
     markIcon: 'grid',
@@ -144,14 +169,46 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     status: { client, onSync: syncNow, describeError: (error) => describeError(error) },
     onLogout: logout,
     navigate,
-    launcher,
+    navLayout: 'bar',
+    returnTo: { feedbackId: 'central.cabecera.volver' },
+    search: { label: 'Buscar en Central…', onOpen: () => palette.open(), feedbackId: 'central.cabecera.buscar' },
+    // Menú lateral común (MUELA-013): la marca abre el cajón; en el ordenador, además, la columna fija.
+    menu: {
+      label: 'Menú de Central',
+      profile: { name: boot?.profile.displayName ?? 'Tu cuenta', role: ROLE_LABELS[(boot?.membership.role ?? 'reader') as keyof typeof ROLE_LABELS] ?? '' },
+      theme: true,
+      recents: () => recentRows(recents, 3),
+      sections: () => menuSections(menuData ?? { requirements: [], documents: [], openRequirements: 0, liveDocuments: 0, conflicts: client.status().conflicts, review: { done: 0, total: 0, toAct: 0 }, index: [] }, isAdmin, userId()),
+      launcher,
+      signalHere: () => { void feedback.open({ id: screen.id, path: [screen.label], element: main, fallback: true }, main); },
+      onResolveConflicts: () => navigate('#/conflictos'),
+      column: true,
+      feedbackId: 'central.menu',
+    },
   });
   const { main } = shell;
+
+  /** Recuentos del menú y el índice de la búsqueda, desde el espejo: al arrancar y cuando cambia algo. */
+  let menuTimer: ReturnType<typeof setTimeout> | null = null;
+  function refreshMenu(): void {
+    if (menuTimer) clearTimeout(menuTimer);
+    menuTimer = setTimeout(async () => {
+      menuTimer = null;
+      menuData = await loadMenuData(client, isAdmin, navigate);
+      shell.menu?.refresh();
+    }, 150);
+  }
+  const offMenuTables = [T.requirements, T.keyDocuments, T.decisions, T.people, T.teams, T.reviewScreens].map((t) => client.onTable(t, refreshMenu));
+  refreshMenu();
+  function remember(entry: Omit<Recent, 'at'>): void {
+    recents = rememberRecent(userId(), entry);
+    shell.menu?.refresh();
+  }
 
   // Piezas que crea el kit (no admiten atributos propios): se marcan una vez creadas.
   fbMark(shell.header, 'central.cabecera', 'Cabecera');
   const launcherButton = shell.header.querySelector('#appLauncher');
-  if (launcherButton) fbMark(launcherButton, 'central.cabecera.lanzador', 'Lanzador de apps');
+  if (launcherButton) fbMark(launcherButton, 'central.cabecera.menu', 'Menú');
   const statusBar = shell.header.querySelector('#syncStatus');
   if (statusBar) fbMark(statusBar, 'central.cabecera.estado', 'Estado de sincronización');
   const logoutButton = shell.header.querySelector('#logoutButton');
@@ -176,9 +233,11 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     });
   }
 
+  let lastConflicts = client.status().conflicts;
   function paintStatus(status: SyncStatus): void {
     shell.setSubtitle(client.bootstrap()?.profile.displayName ?? '');
     paintBanners(status);
+    if (status.conflicts !== lastConflicts) { lastConflicts = status.conflicts; refreshMenu(); }
     if (status.autoMerged > lastAutoMerged) {
       toast('Se incorporaron cambios de otra persona en una fila que editaste.');
     }
@@ -223,20 +282,22 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     const [, personId] = hash.match(/^#\/personas\/([0-9a-f-]{36})$/i) ?? [];
     const [, requirementId] = hash.match(/^#\/cumplimiento\/([0-9a-f-]{36})$/i) ?? [];
     const [, itemId] = hash.match(/^#\/inventario\/([0-9a-f-]{36})$/i) ?? [];
+    const [, decisionId] = hash.match(/^#\/decisiones\/([0-9a-f-]{36})$/i) ?? [];
     const found = personId ? { title: 'Persona', slug: 'persona', mount: mountPerson(personId) }
       : requirementId ? { title: 'Obligación', slug: 'obligacion', mount: mountRequirement(requirementId) }
+      : decisionId ? { title: 'Decisión', slug: 'decision', mount: mountDecision(decisionId) }
       : itemId ? { title: 'Artículo', slug: 'articulo', mount: mountInventoryItem(itemId) } : ROUTES[hash];
     const allowed = found && (!('admin' in found && found.admin) || isAdmin);
     const entry = allowed ? found : ROUTES['#/']!;
     unmountView?.();
     unmountView = null;
-    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : itemId ? '#/inventario' : hash);
+    shell.setRoute(!allowed ? '#/' : personId ? '#/personas' : requirementId ? '#/cumplimiento' : itemId ? '#/inventario' : decisionId ? '#/decisiones' : hash);
     replace(main);
-    unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin, usage });
+    unmountView = entry.mount({ ...ctx, main, navigate, logout, admin, isAdmin, usage, remember });
     // La pantalla es la raíz de la ruta de etiquetas («Persona › Documentación › Adjuntar») y el nodo de reserva.
     screen = { id: `central.${entry.slug}`, label: entry.title };
     markScreen(main, entry.slug);
-    if (!personId && !requirementId) document.title = `${entry.title} · Ikisai Central`;
+    if (!personId && !requirementId && !decisionId) document.title = `${entry.title} · Ikisai Central`;
     paintBanners(client.status());
     main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
@@ -261,6 +322,9 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   return () => {
     offStatus();
     offSessionEnd();
+    offMenuTables.forEach((off) => off());
+    if (menuTimer) clearTimeout(menuTimer);
+    palette.destroy();
     window.removeEventListener('online', flushNames);
     feedback.destroy();
     review.destroy();
