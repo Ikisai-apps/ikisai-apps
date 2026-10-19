@@ -12,3 +12,5 @@ export * from './rates.ts';
 export * from './conditionsText.ts';
 export * from './portal.ts';
 export * from './stays.ts';
+export * from './sesRules.ts';
+export * from './priceCalendar.ts';
