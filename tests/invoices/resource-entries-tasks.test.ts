@@ -159,3 +159,35 @@ test('una compra de Tasks repartida en dos facturas: lo recibido se descuenta un
   assert.equal(await itemStock(paper), 10);
   assert.deepEqual(await addedCost(tasks.movement), [[2, `invoice_line:${first.lineIds[0]}`]]);
 });
+
+test('orden inverso (0239): Tasks lee el cuadre de sus solicitudes y solo ve las líneas asignadas a ellas', async () => {
+  const mop = await newItem('Fregona');
+  const request = uuid();
+  // Validada antes de recibir: la línea entra entera
+  const inv = await invoiceWith([['FREGONA', 8, { quantity: 4, unit: 'l', item_id: mop }], ['HARINA SACO 25KG', 40, { quantity: 2, unit: 'saco', item_id: flour, item_factor: 25 }]]);
+  await allocate(inv.lineIds[0]!, request, 8);
+  await validate(inv.id);
+  assert.equal(await itemStock(mop), 4);
+  // Tasks recibe después (su entrada) y pide el cuadre de esa solicitud
+  await app.t.db.query(`insert into resources.movements (item_id, space_id, quantity, kind, source_app, source_ref, at) values ($1, $2, 4, 'entrada_manual', 'tasks', $3, now())`, [mop, pantry, `purchase_request:${request}`]);
+  const read = async (requests: string[]) => (await app.t.db.query<{ r: any }>(`select invoices.tasks_resource_entries(jsonb_build_object('app', 'tasks', 'args', jsonb_build_object('request_ids', $1::jsonb))) r`, [JSON.stringify(requests)])).rows[0]!.r;
+  const out = await read([request]);
+  const ref = `invoice_line:${inv.lineIds[0]}`;
+  assert.deepEqual(out.entries.map((e: any) => [e.source_ref, Number(e.quantity)]), [[ref, 0]], 'solo la línea asignada, ya a 0');
+  assert.deepEqual(out.refs, [ref]);
+  assert.equal(out.costs.length, 1);
+  assert.equal(out.costs[0].source_ref, ref);
+  assert.ok(!JSON.stringify(out).includes(inv.lineIds[1]!), 'nada de la otra línea de la factura');
+  // Cuadrar con eso (lo que hará Tasks en un lote de Recursos) deja el stock en lo recibido
+  await app.t.db.query(`select set_config('resources.reconciling', '1', false)`);
+  await app.t.db.query(`insert into resources.movements (item_id, space_id, quantity, kind, unit_cost, source_app, source_ref, at) values ($1, $2, -4, 'entrada_factura', 2, 'invoices', $3, now())`, [mop, pantry, ref]);
+  await app.t.db.query(`select set_config('resources.reconciling', '', false)`);
+  assert.equal(await itemStock(mop), 4);
+  // Sin solicitudes conocidas o con ids que no son uuid: vacío
+  assert.deepEqual((await read([uuid()])).entries, []);
+  assert.deepEqual((await read(['no-es-un-id'])).entries, []);
+  // Registrada como lectura de Tasks (editor y owner)
+  const reg = await app.t.db.query<{ roles: string[] }>(`select roles from core.allowed_reads where app = 'tasks' and name = 'invoices.tasks_resource_entries'`);
+  assert.deepEqual(reg.rows[0]?.roles, ['editor', 'owner']);
+});
+
