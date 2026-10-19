@@ -151,7 +151,7 @@ function mountSuppliesCatalog(){const host=document.getElementById('suppliesCata
       return canEdit()?[{label:'Queda poco: pedir',feedbackId:'tasks.suministros.lista.pedir',primary:true,onClick:()=>reorderItem(item)}]:[]}});
   host.append(suppliesCatalog.element);
   // Las acciones de fila dependen de las solicitudes de Tasks («Pedido»), que el catálogo no escucha: se repintan aquí.
-  suppliesCatalog.setFilter(suppliesCatalog.getFilter())}
+  suppliesCatalog.refresh()}
 function plansView(){listenPurchases();if(generalMode()||!tab())return `<main class="screen"><h1 class="title">Planes de compra</h1>${purchaseAreaNote()}</main>`;
   if(!fullScope(tab().id))return `<main class="screen"><h1 class="title">Planes de compra</h1><div class="notice">Los planes de compra son del área entera.</div></main>`;
   const plans=liveRows('tasks.purchase_plans').filter(p=>p.tab_id===tab().id).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));

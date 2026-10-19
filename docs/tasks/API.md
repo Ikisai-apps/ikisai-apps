@@ -1843,3 +1843,36 @@ Sustituye el almacén de §18.2 (`tasks.supply_items` y `tasks.supply_movements`
 - **Interfaz** (`public/purchases-ui.js`): «Suministros» es `createItemCatalog` filtrado a suministros. La ficha es `createItemSheet`, gastar, entrada y traslado son `createMovementForm`, y el recuento es `createCountSession`. Todas son piezas del kit sobre `createSyncItemSource(Sync.core.resources)`. «Queda poco: pedir» es una acción de la fila; si ya hay una solicitud abierta, la acción es «Pedido», que la abre. El aviso de Inicio suma los movimientos del espejo (`Sync.core.inventory`).
 - **MCP:** `tasks_low_stock` lee `tasks.low_stock` y devuelve `itemId` y `openRequestId`. `tasks_request_purchase` admite `item_id` en lugar de `supply_item_id` y pide siempre el área.
 - **Pruebas:** `tests/tasks/supplies-resources.test.ts` (la migración con y sin datos, `item_id`, recibir una sola vez, lecturas e indicador) y las de Compras adaptadas.
+
+## 36. Materiales y equipos de la tarea, kit del oficio y «Confirmar consumo» (fase R6, PR 3; aprobada por el usuario el 19-10-2026)
+
+- **Tabla `tasks.task_materials` (migración `0334`):** lo que hace falta para una tarea.
+  - Columnas: `item_id` (artículo de `resources.items`, sin clave foránea entre esquemas), `quantity` (cantidad prevista en la unidad base; vacía = «lo que haga falta»), `note`, `consumed` (lo gastado al confirmar; 0 = «No se usó») y `consumed_at` (lo pone el servidor).
+  - Es visible como su tarea (`tab_id` y `project_id` desnormalizados). La leen todos los roles con acceso, también el outsider; escriben el editor y la propietaria.
+  - Sigue a su tarea al moverla (`moveTaskOps`, `restoreTaskOps`, el modelo anidado), al convertir el área en proyecto y al vaciar la papelera. `convert_tab_into_project` y `empty_trash_prepare` se copian enteras de 0333.
+- **Equipos:** un artículo de tipo no consumible (herramienta, máquina, textil, menaje) solo dice «hace falta». Es informativo, sin reservas ni consumo (decisión del usuario).
+- **Hook `tasks.validate_materials`:**
+  - `INVALID_ITEM`: el artículo no existe o está en la papelera.
+  - `TASK_UNAVAILABLE`: se añade o restaura en una tarea que no está viva.
+  - `DUPLICATE_MATERIAL`: el artículo ya está en la tarea; la interfaz suma la cantidad en vez de repetirlo.
+  - `INVALID_MATERIAL`: se intenta consumir un equipo.
+  - `MATERIAL_CONSUMED`: se cambia lo ya gastado; corregir es un movimiento en Recursos.
+  - `INCONSISTENT_KEYS`: el material no sigue a su tarea.
+- **Kit del oficio:** con oficios de Central en la tarea, «Añadir lo de <oficio>» trae de `central.trade_kit_options` lo que aún no está.
+  - Un artículo por línea. Si dos oficios piden el mismo, gana la mayor cantidad.
+  - `TasksCore.refreshTradeKit()` lo lee al arrancar con oficios de Central, y la última respuesta queda en el dispositivo (`ikisai-tasks-trade-kit`).
+  - El outsider no lo lee.
+- **«Confirmar consumo»:** al completar una tarea (o un padre con sus hijas) con materiales consumibles sin confirmar, sale la hoja con lo previsto.
+  - Cada cantidad se puede corregir o marcar «No se usó». «Ahora no» deja el consumo pendiente, y la ficha ofrece «Confirmar consumo (N)» para hacerlo después.
+  - Al confirmar va primero Recursos: `TasksCore.recordConsumption` llama a `resources.consume` con `kind 'consumo_tarea'`, `source_app 'tasks'`, `source_ref 'task_material:<id>'` y `once: true`, así que se gasta una sola vez aunque se repita. Después, la tarea apunta `consumed`.
+  - **Nada se descuenta sin confirmar.**
+  - Con una hoja abierta, el aviso «Deshacer» sube arriba para no tapar los campos.
+- **Interfaz:**
+  - Archivos: `public/materials-ui.js` y `.css`.
+  - En la ficha de la tarea, la sección va antes de los comentarios, con el selector de artículos del kit (`createItemPicker`, que también da de alta artículos nuevos).
+  - Dominio: `_domain/tasks/materials.ts` (`window.IkisaiTasks.materials`).
+- **Pruebas:**
+  - `tests/tasks/materials.test.ts`: reglas del hook, el material sigue a su tarea, el consumo entra una sola vez y el kit.
+  - `tests/tasks/materiales.spec.ts`: ficha, confirmar al completar, «Ahora no» con «No se usó», y la lectura sin botones.
+  - Capturas `20-…` y `21-…` en `coordinacion/tasks/r6-despues/`.
+- **Pendiente (recomendación: más adelante):** los materiales no van en la copia portable ni en el CSV. Son referencias a artículos de Recursos que la copia no lleva.

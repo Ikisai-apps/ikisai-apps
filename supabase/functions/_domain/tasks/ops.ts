@@ -130,6 +130,7 @@ export function moveTaskOps(data: Dataset, taskId: Uuid, target: { project_id: U
   for (const row of live(data['tasks.task_dependencies'])) if (moved.has(row.task_id)) ops.push(update('tasks.task_dependencies', row, { project_id: project.id }));
   for (const row of live(data['tasks.attachments'])) if (row.task_id && moved.has(row.task_id)) ops.push(update('tasks.attachments', row, { project_id: project.id }));
   for (const row of live(data['tasks.task_comments'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_comments', row, { project_id: project.id }));
+  for (const row of live(data['tasks.task_materials'] ?? [])) if (moved.has(row.task_id)) ops.push(update('tasks.task_materials', row, { project_id: project.id }));
   return ops;
 }
 
@@ -165,6 +166,7 @@ export function restoreTaskOps(data: Dataset, taskId: Uuid): Operation[] {
     for (const row of live(data['tasks.task_dependencies'])) if (row.task_id === t.id) ops.push(update('tasks.task_dependencies', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.attachments'])) if (row.task_id === t.id) ops.push(update('tasks.attachments', row, { project_id: above.project_id }));
     for (const row of live(data['tasks.task_comments'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_comments', row, { project_id: above.project_id }));
+    for (const row of live(data['tasks.task_materials'] ?? [])) if (row.task_id === t.id) ops.push(update('tasks.task_materials', row, { project_id: above.project_id }));
   }
   return ops;
 }

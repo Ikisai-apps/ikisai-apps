@@ -315,6 +315,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
         // Comentarios (O1, paso 2): no están en el modelo, pero siguen a su tarea si cambia de proyecto.
         if (!(deletedWanted.get(t.id) ?? false)) {
           for (const c of live(data['tasks.task_comments'] ?? [])) if (c.task_id === t.id && c.project_id !== p.id) want('tasks.task_comments', c.id, { project_id: p.id });
+          for (const m of live(data['tasks.task_materials'] ?? [])) if (m.task_id === t.id && m.project_id !== p.id) want('tasks.task_materials', m.id, { project_id: p.id });
         }
       });
     });
@@ -360,7 +361,7 @@ export function decompose(data: Dataset, tabs: readonly LegacyTab[], newId: () =
   return [first, second].filter((batch) => batch.length > 0).map(ordered);
 }
 
-const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments'];
+const TABLE_ORDER = ['tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks', 'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces', 'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people', 'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials'];
 
 /** Orden canónico de tablas; dentro de tareas y etiquetas, los padres antes que sus hijas (las FK son inmediatas). */
 function ordered(operations: Operation[]): Operation[] {

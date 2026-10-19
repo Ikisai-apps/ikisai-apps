@@ -13,6 +13,8 @@ import {
   approvalOps, outsiderScopes, outsiderScopesFrom, outsiderScopesWith, suggestNoteOps, suggestStepOps, suggestTaskOps, type SuggestionDetail, type SuggestionPhoto,
   itemStock, isSupplyKind, lowStock, openRequestFor, receiptEntryOperation, requestPurchaseOps, reorderItemOps, setPurchaseStatusOps,
   receivePurchaseOps, nextRecurringOps, dueRecurring, preparePlanOps, deletePlanOps, KITCHEN_KINDS, type ResourceItem, type ResourceMovement,
+  taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, consumeCall, confirmConsumptionOps, materialRef,
+  type TradeKitOption,
   pendingRequests, requestGroups, routeFor, routeTarget, classifyRequestOps, dismissRequestOps, reopenRequestOps, saveRouteOps, deleteRouteOps, routeWaitingOps,
   type Dataset, type LegacyTab, type Operation, type Role,
 } from '@ikisai/domain-tasks';
@@ -32,6 +34,14 @@ export interface CoreOptions {
 const RESOURCE_INVENTORY_TABLES = ['resources.items', 'resources.item_units', 'resources.item_kinds', 'resources.lots', 'resources.movements',
   'resources.movement_costs', 'resources.counts', 'resources.count_lines'];
 
+/** Filas de `central.trade_kit_options` (`{rows}` o lista), solo las bien formadas. */
+function tradeKitFrom(raw: unknown): TradeKitOption[] {
+  const rows = Array.isArray(raw) ? raw : (raw as { rows?: unknown } | null)?.rows;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r): r is TradeKitOption => !!r && typeof r === 'object' && typeof (r as TradeKitOption).trade_id === 'string' && typeof (r as TradeKitOption).item_id === 'string')
+    .map((r) => ({ trade_id: r.trade_id, item_id: r.item_id, quantity: r.quantity ?? null, note: r.note ?? null }));
+}
+
 /** Uuid estable a partir de un texto (la misma solicitud, la misma entrada en Recursos). */
 async function stableUuid(seed: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed))).slice(0, 16);
@@ -42,6 +52,7 @@ async function stableUuid(seed: string): Promise<string> {
 
 const BLOCKERS_KEY = 'ikisai-tasks-blockers';
 const TRADES_KEY = 'ikisai-tasks-trades';
+const TRADE_KIT_KEY = 'ikisai-tasks-trade-kit';
 
 /** Fila de `central.trade_options` (P2, docs/tasks/API.md §32): oficios activos de Central con su ruta. */
 export interface TradeOption {
@@ -107,6 +118,8 @@ export class TasksCore {
    * el dispositivo, así que sin red se siguen viendo los nombres; si nunca se pudo leer, está vacía.
    */
   trades: TradeOption[] = [];
+  /** Kit de cada oficio (R6 PR 3, `central.trade_kit_options`): como los oficios, la última respuesta queda en el dispositivo. */
+  tradeKit: TradeKitOption[] = [];
   /**
    * Personas activas de Central (P2, PR 3): como los oficios, no se sincronizan; se leen con `central.people_options` y la
    * última respuesta queda en el dispositivo (sin red siguen saliendo los nombres y las iniciales).
@@ -144,6 +157,7 @@ export class TasksCore {
     });
     try { this.hidden = JSON.parse(localStorage.getItem(BLOCKERS_KEY) ?? 'null') ?? undefined; } catch { this.hidden = undefined; }
     try { this.trades = tradeOptionsFrom(JSON.parse(localStorage.getItem(TRADES_KEY) ?? 'null')); } catch { this.trades = []; }
+    try { this.tradeKit = tradeKitFrom(JSON.parse(localStorage.getItem(TRADE_KIT_KEY) ?? 'null')); } catch { this.tradeKit = []; }
     try { this.people = peopleOptionsFrom(JSON.parse(localStorage.getItem(PEOPLE_KEY) ?? 'null')); } catch { this.people = []; }
     try { this.capabilities = capabilityOptionsFrom(JSON.parse(localStorage.getItem(CAPABILITIES_KEY) ?? 'null')); } catch { this.capabilities = []; }
     try { this.availability = availabilityOptionsFrom(JSON.parse(localStorage.getItem(AVAILABILITY_KEY) ?? 'null')); } catch { this.availability = []; }
@@ -177,7 +191,8 @@ export class TasksCore {
     await this.reload();
     if (!this.options.readOnly) void this.startResources();
     if (!this.options.readOnly) void this.refreshBlockers();
-    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades();
+    // El kit, después de los oficios (una lectura cada vez).
+    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades().then(() => this.refreshTradeKit());
     if (!this.options.readOnly && this.peopleSource() === 'central') void this.refreshPeople();
     if (!this.options.readOnly && this.tradeSource() === 'central' && this.peopleSource() === 'central') void this.refreshCapabilities();
     return boot ?? this.client.bootstrap();
@@ -205,6 +220,35 @@ export class TasksCore {
       this.emit('data');
       return true;
     } catch { return false; }
+  }
+
+  /** Vuelve a leer el kit de los oficios (R6 PR 3). Sin red o sin permiso (el outsider no lo lee), se queda lo último leído. */
+  async refreshTradeKit(): Promise<boolean> {
+    if (!this.client.session()) return false;
+    try {
+      const out = await this.client.api<unknown>('/read/central.trade_kit_options', { method: 'POST', json: { limit: 2000 } });
+      this.tradeKit = tradeKitFrom(out);
+      try { localStorage.setItem(TRADE_KIT_KEY, JSON.stringify(this.tradeKit)); } catch { /* sin almacenamiento */ }
+      this.emit('data');
+      return true;
+    } catch { return false; }
+  }
+
+  /**
+   * «Confirmar consumo» (R6 PR 3): gasta en Recursos lo que se usó de cada material (`resources.consume`, `consumo_tarea`,
+   * una sola vez por material aunque se repita). Va antes del lote de Tasks que lo apunta (lo envía la interfaz).
+   */
+  async recordConsumption(lines: ReadonlyArray<{ materialId: string; consumed: number }>): Promise<number> {
+    const materials = new Map(this.data['tasks.task_materials'].filter((m) => !m.deleted_at).map((m) => [m.id, m]));
+    const calls = lines.filter((l) => l.consumed > 0 && materials.has(l.materialId) && materials.get(l.materialId)!.consumed == null);
+    if (!calls.length) return 0;
+    if (!this.resources) throw new DomainError(503, 'RESOURCES_UNAVAILABLE', 'El inventario no está disponible ahora mismo.');
+    const items = new Map(this.inventory.items.map((i) => [i.id, i]));
+    for (const line of calls) {
+      const material = materials.get(line.materialId)!;
+      await this.resources.commit([consumeCall(material, line.consumed, items.get(material.item_id)?.default_space_id ?? null) as RowOperation], { requestId: `tasks-consume-${material.id}` });
+    }
+    return calls.length;
   }
 
   /** De dónde sale la persona: `'labels'` (familia «Grupo: Persona») o `'central'` (personas de Central, P2), según `tasks.settings`. */
@@ -338,7 +382,7 @@ export class TasksCore {
     this.capabilities = [];
     this.availability = [];
     try {
-      for (const key of [BLOCKERS_KEY, TRADES_KEY, PEOPLE_KEY, CAPABILITIES_KEY, AVAILABILITY_KEY]) localStorage.removeItem(key);
+      for (const key of [BLOCKERS_KEY, TRADES_KEY, TRADE_KIT_KEY, PEOPLE_KEY, CAPABILITIES_KEY, AVAILABILITY_KEY]) localStorage.removeItem(key);
     } catch { /* sin almacenamiento */ }
     this.emit('data');
   }
@@ -608,6 +652,8 @@ const api = {
   /** Regla de nombres de etiquetas (FB_2026_033, §27.2): el aviso inmediato del editor (`public/navigation-ui.js`) y,
    *  con `mergeProblem`, lo que la vista previa de «Repetidas → General» anticipa del servidor (`public/general-ui.js`). */
   labelNames: { key: labelNameKey, clash: labelNameClash, message: labelClashMessage, mergeProblem: generalMergeProblem },
+  /** Materiales y equipos de una tarea, kit del oficio y «Confirmar consumo» (R6 PR 3, §36; `public/materials-ui.js`). */
+  materials: { taskMaterials, addMaterialOps, setMaterialQuantityOps, removeMaterialOps, kitSuggestions, addKitOps, pendingConsumption, confirmConsumptionOps, materialRef },
   /** «Quién sabe hacerlo» (§34): quién sabe los oficios de una ficha (`public/who-knows-ui.js`). */
   whoKnows: { whoKnows, hasApprentices },
   /** Entradas de otras apps (§20): «Por clasificar» y reglas de entrada (`public/inbox-ui.js`). */
