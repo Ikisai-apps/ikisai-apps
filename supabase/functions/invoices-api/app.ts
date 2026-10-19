@@ -402,6 +402,9 @@ export function createResourceEntries(supabase: Supabase): NonNullable<AppHooks[
       if (change.table === TABLES.invoices && change.id) ids.add(change.id);
       const invoiceId = change.table === TABLES.invoiceLines ? change.after?.invoice_id : null;
       if (typeof invoiceId === 'string') ids.add(invoiceId);
+      // PR 5 (0238): asignar una línea a una compra ya recibida en Tasks (o quitarla) cambia lo que entra
+      const allocated = change.table === TABLES.allocations ? change.after?.invoice_id : null;
+      if (typeof allocated === 'string') ids.add(allocated);
       // Encender el interruptor cuadra todo lo enlazado: así salen las retroactivas (PR 4), con la fecha de cada factura
       if (change.table === TABLES.settings) all = true;
     }
