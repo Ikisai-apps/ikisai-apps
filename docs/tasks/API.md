@@ -227,8 +227,11 @@ Un guardado que supere 500 operaciones (solo ocurre en importaciones JSON/Keep y
 Para importar una copia portable como áreas nuevas, que puede superar con mucho las 500 operaciones y debe ser atómica.
 
 - `args`: `{ "mode": "portable", "rows": { "tasks.tabs": [ { "id": uuid, "fields": {…} } ], "tasks.families": […], … } }`. Las filas llegan ya remapeadas a uuid nuevos por la Edge (§6).
+- Tablas (orden canónico, migración `0330`): áreas, familias, etiquetas, proyectos, tareas, `project_labels`, `task_labels`, `project_spaces`, `task_spaces`, `project_trades`, `task_trades`, `project_people`, `task_people`, dependencias, vistas, adjuntos y `task_comments`. Una copia anterior a la 2c no trae las nuevas y se importa igual que siempre.
+- **Lo que es de Recursos o de Central** (`space_id`, `trade_id`, `person_id`, `owner_person_id`) no se reasigna. Si ya no existe o no está vivo (`resources.spaces` vivo y activo, `central.trade_alive`, `central.person_alive`), la importación no falla: la fila puente se descarta, el responsable persona se vacía y los filtros `_space`, `_trade`, `_person` y `_exclude` de las vistas se limpian. Los grupos (`house_level`) nunca caducan.
+- **Comentarios:** cada fila puede llevar `meta {author_id, author_name, created_at}`. El trigger `tasks.comment_author` los respeta en modo importación: el autor se conserva si su cuenta existe (si no, queda quien importa, con el nombre original) y la hora es la de la copia. En modo importación un comentario puede nacer en una tarea que la copia trae en la papelera, y su foto puede ser el archivo verificado con la misma huella que subió otra persona (`tasks.validate_comments`).
 - Toca: inserta cada fila en orden canónico mediante `core.apply_row_op` (con el `role` del contexto); las filas con `deleted_at` en origen se insertan y se borran. Marca `set_config('tasks.import_mode', 'portable', true)` para que `TASK_BLOCKED` y `PROJECT_UNAVAILABLE` no rechacen estados históricos (una copia puede conservar tareas terminadas cuya condición se reabrió).
-- Resultado: `{ "inserted": { "<tabla>": n } }`.
+- Resultado: `{ "inserted": { "<tabla>": n }, "rows": n, "dropped": { "spaces": [id], "trades": [id], "people": [id] } }` (`dropped`: ids distintos que se han quitado por no estar vivos).
 - Errores: `INVALID_IMPORT` (422: tabla desconocida, fila sin `id`, más de 20 000 filas), cualquier error de `apply_row_op` y cualquier error del hook de §4.2 (los ciclos, la jerarquía, el catálogo y los ámbitos se validan igual).
 - Lista blanca: `core.allow_procedure('tasks', 'tasks.import_rows')`. **Solo lo invoca la ruta `portable/import`**: `beforeCommit` rechaza cualquier `call` que llegue por `/commands` (`INVALID_OPERATION`).
 - No se puede deshacer con «Deshacer»; se revierte enviando a la papelera las áreas importadas (C11 lo mejoraría).
@@ -379,14 +382,38 @@ Todas con `Authorization: Bearer`, sobre el contexto de `_kit`. Las lecturas com
 | `GET blockers` | reader | → `{cursor, items:[{taskId, hidden}]}`: por cada tarea visible, cuántas condiciones no cumplidas están fuera del ámbito. Vacío con acceso completo | — |
 | `GET read/tasks.targets` | reader | lectura registrada (`core.allow_read('tasks', 'tasks.targets', 'function')`). `args` opcionales: `{kind: tab\|project\|task, id}` para validar un destino, `{tabId}` para limitar a un área → `{tabs:[{id, name, color, revision, deleted, projects:[{id, title, status, system, color, revision, deleted, tasks:[{id, parentId, title, done, revision, deleted}]}]}]}` (por defecto sin papelera ni proyectos archivados; `includeDeleted`, `includeArchived`), o un único `{kind, id, tabId, projectId, title, revision, deleted, archived}` con `kind` + `id`. Limitado a lo visible para el usuario | `NOT_FOUND` con `kind` + `id` si no existe o no es visible |
 | `GET attachments/:id` | reader | → bytes del archivo (`Content-Disposition` con `name`), tras comprobar que la fila de `tasks.attachments` es visible | `NOT_FOUND` |
-| `GET csv?tabId=` | reader | → `text/csv` con las tareas visibles del área | `NOT_FOUND` |
-| `POST csv/preview?tabId=` | editor con área completa | cuerpo `text/csv` ≤ 2 MB → `{operations: RowOperation[], summary:{projects, tasks, labels}, warnings}`. No escribe: el cliente envía `operations` por `commands` (se puede deshacer). Un nivel de hijas | `FORBIDDEN`, `PAYLOAD_TOO_LARGE`, `INVALID_CSV`, `CSV_TOO_LARGE` (> 500 operaciones) y los de §4.1 |
-| `GET portable` | reader | → ZIP: `manifest.json` (formato `ikisai.tasks.portable.v2`, hashes), filas visibles por tabla y archivos | — |
-| `POST portable/preview` | administrador | ZIP ≤ 32 MB → `{ticket, expiresAt, summary:{tabs, projects, tasks, files}, unresolved:[…]}`. Verifica hashes, remapea todos los `id` y rechaza dependencias externas sin resolver. El paquete queda en `ikisai-files/tasks/imports/<sha256>.zip`; `ticket` es `{sha256, exp}` firmado con HMAC (sin tabla propia) | `FORBIDDEN`, `BUNDLE_TOO_LARGE`, `INVALID_BUNDLE`, `UNRESOLVED_DEPENDENCIES` |
-| `POST portable/import` | administrador | `{ticket, requestId}` → sube los archivos, los registra y ejecuta `call tasks.import_rows` → `{cursor, inserted}`. Reintento con el mismo `requestId` = mismo resultado (recibo del núcleo) | `IMPORT_UNAVAILABLE` (ticket caducado o alterado) y los de §3.2 |
+| `GET csv?tabId=` | reader | → `text/csv` con las tareas visibles del área; con las fuentes activas, las columnas «Espacio», «Oficio» y «Personas» (§6.1) | `NOT_FOUND`, `CENTRAL_UNAVAILABLE` (503) |
+| `POST csv/preview?tabId=` | editor con área completa | cuerpo `text/csv` ≤ 2 MB → `{operations: RowOperation[], summary:{projects, tasks, children}, rows, warnings}`. No escribe: el cliente envía `operations` por `commands` (se puede deshacer). Un nivel de hijas. `warnings`: lo que no casa con ningún espacio, oficio o persona (se deja fuera) y las columnas que se ignoran (§6.1) | `FORBIDDEN`, `PAYLOAD_TOO_LARGE`, `INVALID_CSV`, `CSV_TOO_LARGE` (> 500 operaciones), `CENTRAL_UNAVAILABLE` y los de §4.1 |
+| `GET portable` | reader | → ZIP: `manifest.json` (formato `ikisai.tasks.portable.v2`, hashes), `data.json` (§6.2) y `files/<sha256>` (adjuntos y fotos de comentarios) | — |
+| `POST portable/preview` | administrador | ZIP ≤ 32 MB → `{ticket, expiresAt, summary:{tabs, attachments, spaces, trades, people, comments, settings}, notices}`. Verifica hashes y la forma (`INVALID_BUNDLE`) y rechaza dependencias externas sin resolver. El paquete queda en `ikisai-files/tasks/imports/<caducidad>.<sha256>.zip` | `FORBIDDEN`, `BUNDLE_TOO_LARGE`, `INVALID_BUNDLE`, `UNRESOLVED_DEPENDENCIES` |
+| `POST portable/import` | administrador | `{ticket, requestId}` → remapea los ids (`remapTabs`, `remapComments`), sube los archivos, los registra y ejecuta `call tasks.import_rows` → `{cursor, replayed, inserted, dropped, notices}`. Reintento con el mismo `requestId` = mismo resultado (recibo del núcleo) | `IMPORT_UNAVAILABLE` (ticket caducado o alterado) y los de §3.2 |
 | `GET backup` | administrador | → ZIP como `portable` pero con todas las áreas y la papelera. Copia de comodidad; el respaldo cifrado sigue siendo el de Core | `FORBIDDEN` |
 | `POST trash/empty` | owner con `"*"` | `{requestId}` → borra lógicamente (un `commit`) el contenido vivo de áreas y proyectos en papelera y después llama a `core.purge_deleted` con las tablas en orden canónico inverso → `{purged, cursor}` | `FORBIDDEN` |
 | `POST worker/imports/cleanup` | planificador (`X-Ikisai-Worker-Key`, sin usuario) | Borra de Storage los paquetes de `tasks/imports/` vencidos hace más de diez minutos → `{deleted, kept}`. Hasta mil por pasada, los más antiguos primero | `UNAUTHENTICATED` |
+
+### 6.1 CSV con espacios, oficios y personas (2c)
+
+- **Columnas nuevas**, al final y solo con su fuente activa: «Espacio» (`zone_source = 'spaces'`), «Oficio» (`trade_source = 'central'`) y «Personas» (`people_source = 'central'`). Varios valores en una celda, separados por « | ».
+  - Espacio: la ruta corta de la chip («Albergue › Hab 3»; sin la altura).
+  - Oficio: la ruta de Central («Fontanería › ACS»).
+  - Personas: «Nombre (INICIALES)» o el grupo («Todo el staff», «Toda la dirección», «Todos los outsiders»).
+  - En modo personas, un responsable persona o grupo va en `owner` con ese mismo texto, sin JSON. Una etiqueta de responsable sigue como JSON.
+  - Lo que ya no está en el catálogo sale con su id.
+- **Importar:** la cabecera se reconoce sin mayúsculas ni tildes, en singular o plural. Cada valor casa por id, por ruta (corta o entera, con « › » o «>»), por nombre si es único y, en personas, por iniciales si son únicas; siempre sin mayúsculas ni tildes, y solo con lo activo. Lo que no casa va a `warnings` («Fila 4 · Oficio: «Carpintería» no casa con ningún oficio de Central; se deja fuera.») sin fallar. Con la fuente en etiquetas, su columna se ignora con un aviso.
+- **En modo etiquetas** el CSV sale exactamente como antes (`tests/tasks/portable-2c.test.ts` lo fija).
+- Los catálogos se leen al exportar e importar: `resources.spaces` y las lecturas `central.trade_options` y `central.people_options` con el usuario que pide. Si Central no responde: `503 CENTRAL_UNAVAILABLE`.
+
+### 6.2 Copia portable y respaldo con espacios, oficios, personas y comentarios (2c)
+
+- `data.json` = `{ tabs, settings, comments }`.
+  - `tabs`: el modelo anidado (`legacy.ts`), que ya lleva `spaces`, `trades`, `people` y `ownerPerson` en las tareas, `ownSpaces`, `ownTrades`, `ownPeople` y `ownerPerson` en los proyectos, y en las vistas los filtros `_space`, `_trade`, `_person` y `group_by` de esas claves.
+  - `settings`: `{zoneSource, tradeSource, peopleSource}` de la instalación que exportó.
+  - `comments`: `[{id, taskId, body, authorId, authorName, createdAt, photo: {sha256, mime, size, name} | null}]`, los vivos de las tareas de la copia (también de las que están en su papelera). La foto va en `files/<sha256>`, como los adjuntos.
+- **Copias de antes de la 2c:** sin `settings` ni `comments`, y sin los campos nuevos. Se importan igual que siempre: sin esos campos, `decompose` no toca nada (`summary.settings` nulo).
+- **Ids:** se reasignan los de Tasks (áreas, familias, etiquetas, vistas, proyectos, tareas, adjuntos y comentarios). Los espacios, oficios y personas no: son de Recursos y de Central. En `_exclude`, las etiquetas se reasignan y lo demás viaja tal cual.
+- **Lo que ya no existe** se quita al importar (§3.2) y `notices` lo dice: «3 espacios, 1 oficio y 2 personas que ya no existen se han quitado.». La interfaz lo enseña en el aviso final.
+- **Ajustes:** importar nunca cambia `tasks.settings`; `people_map`, `trade_families` y `people_families` no viajan (la vuelta atrás de las áreas importadas usa sus `task_labels`, que viajan). Si la copia usa espacios, oficios o personas de Central y esta app no, `notices` avisa de que se guardan pero no se ven hasta cambiar de modo.
+- **Lo que no viaja:** los comentarios en la papelera y la foto que ya no está verificada (el comentario viaja sin ella).
 
 La interfaz usa `trash/empty` y no `trash/purge` del núcleo, porque purgar un proyecto borrado con tareas vivas dejaría filas huérfanas o violaría FK (C10).
 
@@ -1522,7 +1549,7 @@ Las zonas («Zona: Espacio», familia General de etiquetas) pasan a ser espacios
   - **Pantalla «Espacios»:** `createSpaceTree` en el menú «Organización».
   - **Texto legible:** lleva «Espacio:».
   - La caracterización se pasa también en este modo (`tests/tasks/zonas-espacios.spec.ts`).
-- **2c:** la copia portable y el CSV con espacios (`import_rows` de SQL solo admite hoy sus diez tablas).
+- **2c (hecha, migración `0330`):** la copia portable, el respaldo y el CSV con espacios, oficios, personas y comentarios (§3.2, §6.1 y §6.2), y las herramientas MCP `tasks_set_spaces`, `tasks_set_trades` y `tasks_set_people` (`docs/tasks/AGENTES.md`). Pruebas: `tests/tasks/portable-2c.test.ts` y `mcp.test.ts`.
 - **3 (hecha):** vista previa y botón, solo para la propietaria con acceso a todo (`spaces-ui.js`).
   - **Ida:** menú «Organización» › «Pasar las zonas a espacios», mientras haya familia de zona y `zone_source = 'labels'`.
     - La hoja enseña la vista previa (`read/tasks.zones_preview`): recuentos, quién se queda sin espacio, cada zona con su espacio, las que se quitan y las que faltan por resolver.
@@ -1562,7 +1589,7 @@ El outsider es una persona de fuera (voluntarios incluidos) con nivel de casa `o
   - Cada uno edita, borra o restaura solo los suyos; la propietaria (rol `owner`) borra o restaura cualquiera, pero no reescribe lo ajeno.
   - Nacen en una tarea viva (`TASK_UNAVAILABLE`) y siguen a su tarea (`INCONSISTENT_KEYS`): mover la tarea mueve sus comentarios (`moveTaskOps`, `restoreTaskOps`, `decompose`), sean de quien sean (solo cambian las claves).
   - Vaciar la papelera los manda con su tarea y convertir un área los pasa con ella (`tasks.empty_trash_prepare` y `tasks.convert_tab_into_project`, copiadas de `0327`).
-  - No viajan en las copias JSON ni en la portable.
+  - Viajan en la copia portable y en el respaldo, con su foto, autor y hora (2c, §6.2). No van en la copia JSON de la interfaz.
 - **Fotos:** una por comentario, con la misma recompresión y el mismo límite que los adjuntos (1600 px en WebP; 25 MB).
   - El kit solo permite subir al outsider para toda la app: `createTasksApp` activa `uploads.allowOutsiders`.
   - Lo que suba solo puede acabar en la foto de un comentario: el dominio y el hook le impiden cualquier otra escritura, `tasks.attachments` incluida.
@@ -1660,7 +1687,7 @@ La familia General «Tipo: Acción» (y sus copias de área) pasa a ser los **of
 **Pruebas:** `tests/tasks/trades.test.ts` (PGlite, con oficios sembrados en `central.trades`), `legacy.test.ts`, `sql.test.ts` y `api.test.ts`.
 
 **Fuera de esta PR:**
-- La copia portable y el CSV con oficios (`import_rows` tampoco admite aún los espacios; §30, 2c).
+- La copia portable y el CSV con oficios: hechos en la 2c (§6.1 y §6.2).
 - Las plantillas de la interfaz no copian espacios ni oficios.
 
 **PR 2 (hecha): la interfaz en modo oficios y el botón** (`apps/tasks/public/trades-ui.js`, réplica de `spaces-ui.js`). Con `trade_source = 'labels'` no cambia nada (`personas.spec.ts` sigue igual).
