@@ -907,11 +907,10 @@ test('[15] responsable y adjuntos del proyecto: subida diferida, descarga y aper
     await sync(b);
     await b.evaluate(() => { closeSheet(); state.activeTab = (window as any).ID.ikisai; state.taskScope = 'area'; state.filters = {}; state.view = 'project'; state.currentProject = (window as any).ID.p1; render(); });
     // DEPURACIÓN temporal (PR en borrador, no se fusiona): quién abre y cierra la hoja en el otro dispositivo.
-    await b.evaluate(() => { const w = window as any; w.__log = []; for (const name of ['closeSheet', 'openSheet', 'render', 'navigateView', 'adopt']) { const orig = w[name]; if (typeof orig !== 'function') continue; w[name] = function (...a: any[]) { w.__log.push(name + ' @' + Math.round(performance.now()) + ' ' + (name === 'closeSheet' || name === 'openSheet' ? String(new Error('x').stack).split('
-').slice(2, 7).join(' | ') : '')); return orig.apply(this, a); }; } });
+    await b.evaluate(() => { const w = window as any; w.__log = []; for (const name of ['closeSheet', 'openSheet', 'render', 'navigateView', 'adopt']) { const orig = w[name]; if (typeof orig !== 'function') continue; w[name] = function (...a: any[]) { w.__log.push(name + ' @' + Math.round(performance.now()) + ' ' + (name === 'closeSheet' || name === 'openSheet' ? String(new Error('x').stack).split(String.fromCharCode(10)).slice(2, 7).join(' | ') : '')); return orig.apply(this, a); }; } });
     await b.evaluate(() => openProjectEditor((window as any).ID.p1));
     await b.waitForTimeout(600);
-    const log = await b.evaluate(() => ({ log: (window as any).__log, sheet: document.getElementById('sheetBack')?.className, files: document.querySelectorAll('#projectFilesList a').length, attachments: (window as any).state.tabs.flatMap((t: any) => t.projects).find((p: any) => p.id === (window as any).ID.p1)?.attachments?.length, idle: (window as any).eval('Sync.core.idle()') }));
+    const log = await b.evaluate(() => ({ log: (window as any).__log, sheet: document.getElementById('sheetBack')?.className, files: document.querySelectorAll('#projectFilesList a').length, attachments: (window as any).eval('state').tabs.flatMap((t: any) => t.projects).find((p: any) => p.id === (window as any).ID.p1)?.attachments?.length, idle: (window as any).eval('Sync.core.idle()') }));
     console.log('DEPURACION ' + JSON.stringify(log));
     await expect(b.locator('#projectFilesList a')).toHaveCount(1);
     const before = server.requests.filter((r) => r.path === `/api/v1/attachments/${shared.attachment}`).length;
