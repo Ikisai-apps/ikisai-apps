@@ -316,7 +316,7 @@ Es la autoridad de las reglas de dominio: se ejecuta dentro de la transacción (
 
 ### 4.3 Errores de dominio
 
-Además de los del núcleo: 403 `FORBIDDEN`; 422 `REQUIRED_NAME`, `REQUIRED_TEXT`, `INVALID_ID`, `INVALID_COLOR`, `INVALID_AMOUNT`, `INVALID_DATE`, `INVALID_PRIORITY`, `INVALID_STATUS`, `INVALID_DONE`, `INVALID_FLAG`, `INVALID_ORDER`, `INVALID_NOTE`, `INVALID_FAMILY`, `INVALID_LABEL`, `INVALID_LABEL_PARENT`, `INVALID_LABELS`, `INVALID_OWNER`, `INVALID_VIEW`, `INVALID_ATTACHMENT`, `INVALID_PARENT`, `INVALID_DEPENDENCIES`, `DEPENDENCY_CYCLE`, `TASK_BLOCKED`, `PROJECT_UNAVAILABLE`, `TAB_DELETED`, `LAST_ACTIVE_TAB`, `INBOX_PROTECTED`, `FAMILY_ARCHIVED`, `ARCHIVE_REQUIRED`, `LABEL_IN_USE`, `INCONSISTENT_KEYS`, `IMMUTABLE_FIELD`, `DUPLICATE_OPERATION`, `FILE_NOT_UPLOADED`, `INVALID_IMPORT`. Se conservan los nombres de `domain.mjs` para que los mensajes de la interfaz sigan valiendo; los textos en castellano se añaden a los mensajes de `tasks-api`.
+Además de los del núcleo: 403 `FORBIDDEN`; 422 `REQUIRED_NAME`, `REQUIRED_TEXT`, `INVALID_ID`, `INVALID_COLOR`, `INVALID_AMOUNT`, `INVALID_DATE`, `INVALID_PRIORITY`, `INVALID_STATUS`, `INVALID_DONE`, `INVALID_FLAG`, `INVALID_ORDER`, `INVALID_NOTE`, `INVALID_FAMILY`, `INVALID_LABEL`, `INVALID_LABEL_PARENT`, `INVALID_LABELS`, `INVALID_OWNER`, `INVALID_VIEW`, `INVALID_ATTACHMENT`, `INVALID_PARENT`, `INVALID_DEPENDENCIES`, `DEPENDENCY_CYCLE`, `TASK_BLOCKED`, `PROJECT_UNAVAILABLE`, `TAB_DELETED`, `LAST_ACTIVE_TAB`, `INBOX_PROTECTED`, `FAMILY_ARCHIVED`, `ARCHIVE_REQUIRED`, `LABEL_IN_USE`, `DUPLICATE_LABEL` (§27.2), `INCONSISTENT_KEYS`, `IMMUTABLE_FIELD`, `DUPLICATE_OPERATION`, `FILE_NOT_UPLOADED`, `INVALID_IMPORT`. Se conservan los nombres de `domain.mjs` para que los mensajes de la interfaz sigan valiendo; los textos en castellano se añaden a los mensajes de `tasks-api`.
 
 ---
 
@@ -1464,6 +1464,29 @@ Finance avisa en Tasks de las facturas de Drive por revisar y de cuando Drive es
 - **Madres distintas** (VG en la raíz en unas áreas y bajo «Staff» en otra): el grupo se ofrece igual y la General queda en la raíz (`{ids, root: true}`).
 - **Claves por corregir:** familias cuya marca de sistema no casa con su nombre y sí con otra, o que otra área llama igual sin esa marca. Ejemplos: «Zona: Espacio» marcada como responsables y «Persona» marcada como fases. Se corrigen antes de fusionar: se quita la marca y, si eran responsables, esos responsables se quedan vacíos.
 - `tasks.guard_family_key` deja ahora quitar cualquier marca. Poner una que no sea `person` sigue sin poderse.
+
+### 27.2 Regla de nombres de etiquetas (FB_2026_033; aprobada por el usuario el 13-10-2026; migración `0331`)
+
+**La regla.** Dentro de una familia, entre lo que se ve a la vez en un área (sus etiquetas propias y las General):
+- **madres únicas**: dos etiquetas raíz (`parent_id` nulo) no se llaman igual;
+- **hijas únicas dentro de su madre**: dos hijas de la misma madre no se llaman igual;
+- **la misma hija bajo madres distintas sí vale**: «Albergue › Baño» y «Salas › Baño».
+
+| Qué | Cómo |
+|---|---|
+| La misma familia | La que la app junta en un área (`familyKey` de `sync.js`): la misma clave de sistema o, sin clave, el mismo nombre sin mayúsculas ni espacios a los lados. Una familia del área y su General equivalente cuentan como una |
+| Lo que se ve junto | Las de un área con las General (`tab_id` nulo). Dos áreas distintas no se ven juntas: «Albergue» puede estar en Retiros y en Mejoras |
+| El nombre | Sin mayúsculas, sin espacios a los lados y sin tildes (`tasks.label_name_key`, `labelNameKey`). La «ñ» cuenta: «Baño» y «Bano» son distintas |
+| Qué cuenta | Solo lo vivo: sin papelera ni archivo, de familia viva y de área viva (o General). Una archivada no bloquea |
+
+**Dónde se aplica.**
+- **Servidor (la autoridad):** `tasks.validate_label_names`, tercer hook de validación del lote (junto a `tasks.validate_batch` y `tasks.validate_comments`). Mira el estado final del lote, también lo que hacen los procedimientos («Repetidas → General», «Hacer General»), y rechaza con **`DUPLICATE_LABEL`** (422) crear, renombrar, mover de madre o de familia, hacer General o desarchivar una etiqueta que choque, y renombrar una familia para que se junte con otra donde algo choca. `details`: `labelId, name, tabId, tabName, familyId, familyName, parentId, parentName, conflictId, conflictName, conflictTabId, conflictTabName, where` (la madre o, si es raíz, la familia).
+- **Antes de encolar:** el núcleo del navegador (`TasksCore.plan`) comprueba lo mismo con el dominio (`assertLabelNames`, `supabase/functions/_domain/tasks/labelnames.ts`): el cambio no sale y la persona ve «Ya hay una «Baño» en «Albergue».».
+- **Editor de etiqueta** (también «+ Nueva etiqueta» del selector y de las fichas, que abren el mismo editor): aviso inmediato bajo el nombre al escribir o al cambiar de madre, y «Crear»/«Guardar» desactivado. «Restaurar» una archivada que choca no se deja: primero se renombra.
+- **Lote rechazado por el servidor** (por ejemplo, otro dispositivo creó la misma a la vez): «Revisar lote fallido» explica el choque; el lote sigue en el dispositivo hasta descartarlo o exportarlo.
+- **«Repetidas → General»:** la clave es familia + madre + nombre. Las hijas con el mismo nombre bajo madres distintas no son repetidas; bajo madres del mismo nombre (en áreas distintas), sí. Si solo hay una madre posible, las de la raíz van con ellas (VG en la raíz y bajo «Staff», §27.1). Lo que solo cambia en tildes o mayúsculas sale entre las repetidas, no entre las parecidas.
+
+**Datos viejos que ya chocan.** No se cambian ni se rompen. El hook solo rechaza lo que **entra** en un choque: una etiqueta que, tras el lote, tiene una clave (familia, madre, nombre normalizado, área) que antes no tenía o que antes no era visible. Cambiar otra cosa de una etiqueta ya repetida (posición, color de la familia, un renombrado que deja igual el nombre normalizado) sigue pasando; añadir otra igual, o desarchivar una, no. El editor de una etiqueta así lo dice sin bloquear («Ya estaba así: puedes guardar otros cambios»). Restaurar un área de la papelera no se comprueba.
 
 ## 28. Pasos en orden (FB_2026_041; decisión del usuario del 13-10-2026)
 

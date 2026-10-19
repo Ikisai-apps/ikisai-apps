@@ -15,8 +15,18 @@ function generalCatalog(){
   const data=Sync.core?.data||{},fams=new Map((data['tasks.families']||[]).map(f=>[f.id,f])),tabs=new Map((data['tasks.tabs']||[]).filter(t=>!t.deleted_at).map(t=>[t.id,t]));
   const all=(data['tasks.labels']||[]).filter(l=>!l.deleted_at),byId=new Map(all.map(l=>[l.id,l]));
   const famName=l=>generalNorm(fams.get(l.family_id)?.name);
-  return {data,fams,tabs,all,byId,famName,keyOf:l=>famName(l)+'|'+generalNorm(l.name),live:all.filter(l=>!l.archived&&l.tab_id&&tabs.has(l.tab_id))};
+  // Regla de nombres (FB_2026_033): la clave es familia + madre + nombre, sin mayúsculas ni tildes (labelNameKeyOf).
+  const motherName=l=>{const p=l.parent_id?byId.get(l.parent_id):null;return p?labelNameKeyOf(p.name):''};
+  return {data,fams,tabs,all,byId,famName,motherName,keyOf:l=>famName(l)+'|'+motherName(l)+'|'+labelNameKeyOf(l.name),live:all.filter(l=>!l.archived&&l.tab_id&&tabs.has(l.tab_id))};
 }
+/* Montones de la misma etiqueta (FB_2026_033): la misma familia y el mismo nombre, y dentro de la misma madre. Las hijas
+   con el mismo nombre bajo madres distintas («Albergue › Baño» y «Salas › Baño») no son repetidas. Si solo hay una madre
+   posible, las de la raíz van con ellas (VG en la raíz y bajo «Staff»: la General queda en la raíz, §27.1). */
+function generalBuckets(c){
+  const byName=new Map();for(const l of c.live){const k=c.famName(l)+'|'+labelNameKeyOf(l.name);byName.set(k,[...(byName.get(k)||[]),l])}
+  const out=[];for(const list of byName.values()){const byMother=new Map();for(const l of list){const m=c.motherName(l);byMother.set(m,[...(byMother.get(m)||[]),l])}
+    if([...byMother.keys()].filter(Boolean).length<=1)out.push(list);else out.push(...byMother.values())}
+  return out}
 /* Un grupo: la misma etiqueta en varias áreas (una por área), con la madre como decisión. */
 function generalGroupOf(c,labels){
   const count=new Map();for(const l of labels)count.set(l.name.trim(),(count.get(l.name.trim())||0)+1);
@@ -26,13 +36,12 @@ function generalGroupOf(c,labels){
   const parents=sorted.map(l=>l.parent_id?c.byId.get(l.parent_id):null);
   const mother=parents.every(p=>!p)?null:parents.every(p=>p&&p.tab_id)&&new Set(parents.map(c.keyOf)).size===1?c.keyOf(parents[0]):parents.every(p=>p&&!p.tab_id)&&new Set(parents.map(p=>p.id)).size===1?'general':'mixed';
   const keys=new Set(sorted.map(l=>c.fams.get(l.family_id)?.system_key||null));
-  return {key:c.keyOf(sorted[0]),name,family:c.fams.get(sorted[0].family_id),labels:sorted,areas:sorted.map(l=>c.tabs.get(l.tab_id)?.name||''),mother,keyConflict:keys.size>1,
+  return {key:c.keyOf(sorted.find(l=>!l.parent_id)||sorted[0]),name,family:c.fams.get(sorted[0].family_id),labels:sorted,areas:sorted.map(l=>c.tabs.get(l.tab_id)?.name||''),mother,keyConflict:keys.size>1,
     parentNames:[...new Set(parents.filter(Boolean).map(p=>p.name))]};
 }
 function generalMergeGroups(){
-  const c=generalCatalog(),groups=new Map();
-  for(const l of c.live){const k=c.keyOf(l);const list=groups.get(k)||[];if(!list.some(x=>x.tab_id===l.tab_id))list.push(l);groups.set(k,list)}
-  const out=[...groups.values()].filter(ls=>ls.length>=2).map(ls=>generalGroupOf(c,ls));
+  const c=generalCatalog();
+  const out=generalBuckets(c).map(ls=>ls.filter((l,i)=>ls.findIndex(x=>x.tab_id===l.tab_id)===i)).filter(ls=>ls.length>=2).map(ls=>generalGroupOf(c,ls));
   // Una hija cuya madre también se fusiona (igual en todas) conserva la madre; si las madres no coinciden, queda en la raíz.
   for(const g of out){g.root=g.mother==='mixed'||(g.mother&&g.mother!=='general'&&!out.some(m=>m.key===g.mother&&m.labels.length===g.labels.length));g.mergeable=true}
   return out.sort((a,b)=>(a.mother&&!a.root?1:0)-(b.mother&&!b.root?1:0)||a.name.localeCompare(b.name,'es'));
@@ -40,7 +49,8 @@ function generalMergeGroups(){
 function generalLookalikes(){
   const c=generalCatalog(),loose=new Map();
   for(const l of c.all.filter(l=>!l.archived&&(!l.tab_id||c.tabs.has(l.tab_id)))){const k=c.famName(l)+'|'+generalLoose(l.name);const set=loose.get(k)||new Set();set.add(l.name.trim());loose.set(k,set)}
-  return [...loose.values()].filter(s=>new Set([...s].map(generalNorm)).size>1).map(s=>[...s])}
+  // Solo tildes o mayúsculas no es «parecida»: para la regla de nombres es la misma (y sale entre las repetidas).
+  return [...loose.values()].filter(s=>new Set([...s].map(labelNameKeyOf)).size>1).map(s=>[...s])}
 /* Familias con una clave de sistema que no casa con su nombre y sí con otra (o que otra área llama igual sin esa clave). */
 function generalKeyConflicts(){
   const c=generalCatalog(),live=[...c.fams.values()].filter(f=>!f.deleted_at&&(!f.tab_id||c.tabs.has(f.tab_id)));
@@ -91,7 +101,7 @@ function generalMergeSheet(){
 function generalGroupsFor(labelIds){
   const c=generalCatalog(),out=[];
   for(const id of labelIds){const l=c.byId.get(id);if(!l||!l.tab_id||l.archived||out.some(g=>g.labels.some(x=>x.id===id)))continue;
-    const same=c.live.filter(x=>c.keyOf(x)===c.keyOf(l)),perTab=[l,...same.filter(x=>x.tab_id!==l.tab_id)].filter((x,i,a)=>a.findIndex(y=>y.tab_id===x.tab_id)===i);
+    const same=generalBuckets(c).find(b=>b.includes(l))||[l],perTab=[l,...same.filter(x=>x.tab_id!==l.tab_id)].filter((x,i,a)=>a.findIndex(y=>y.tab_id===x.tab_id)===i);
     out.push(generalGroupOf(c,perTab))}
   for(const g of out)g.root=g.mother==='mixed'||(g.mother&&g.mother!=='general'&&!out.some(m=>m.key===g.mother));
   return out.sort((a,b)=>(a.mother&&!a.root?1:0)-(b.mother&&!b.root?1:0));
