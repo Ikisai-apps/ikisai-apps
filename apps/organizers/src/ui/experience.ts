@@ -1,21 +1,25 @@
 /**
- * Pestaña «Experiencia» (fases 4 y 5, API.md §15.3): lo que ven y hacen tus asistentes en su enlace personal de Ikisai
- * Guests, en seis apartados:
- * - «Qué ven»: módulos visibles y su ventana, mensaje de bienvenida y vista previa con el huésped de muestra (O6);
+ * Pestaña «Experiencia» (fases 4 y 5, API.md §15.3; pasada única, zona 3): lo que ven y hacen tus asistentes en su enlace
+ * personal de Ikisai Guests, en seis apartados con ruta propia (`#/retiro/{id}/experiencia/{apartado}`):
+ * - «Qué ven»: lo siguiente que conviene hacer y los apartados por momentos (antes, durante y después del retiro), cada
+ *   uno con su estado escrito y su casilla «Lo ven tus asistentes»; el mensaje de bienvenida y la vista previa (O6);
  * - «Programa» (Booking), «Menú» (Food) y «Alojamiento» (Booking y la configuración propia);
  * - «Materiales» (archivos, enlaces y textos) y «Preguntas» con sus respuestas y CSV.
- * Lo propio vive en el espejo local (`app/own.ts`): se guarda solo, también sin red, y la cola lo envía al volver.
+ * Lo propio vive en el espejo local (`app/own.ts`): se guarda solo, también sin red, y la cola lo envía al volver. Cambiar
+ * de apartado no vuelve a montar la ficha del retiro (evento `org-exp-section` desde `shell.ts`).
  */
-import { compressImage, confirmDialog, createSaveState, el, icon, openSheet, replace, toast, type Child } from '@ikisai/ui-kit';
+import { compressImage, confirmDialog, createSaveState, el, icon, openSheet, renderSteps, replace, toast, type Child, type IconName, type StepItem } from '@ikisai/ui-kit';
 import type { RowOperation } from '@ikisai/sync-client';
 import { answerText, MATERIAL_MAX_BYTES, sensitiveQuestion, toCsv } from '../../../../supabase/functions/_domain/organizers/mod.ts';
-import { describeError } from '../app/client.ts';
+import type { ReservationStatus } from '../app/api.ts';
+import { describeError, errorCode } from '../app/client.ts';
+import { MODULE_OF, sectionsOf, stepsOf, type SectionKey, type SectionsInput, type SectionState, type SectionStateName } from '../app/experience-state.ts';
 import { L, t } from '../app/i18n.ts';
 import { fileIdOf, libraryOf, nextPosition, rowsOf, save, TABLES, watch, type Row } from '../app/own.ts';
-import { fbIgnore, fbMark, loading, section } from './common.ts';
+import { fbIgnore, fbMark, loading, needsNet, section } from './common.ts';
 import { renderLodging } from './lodging.ts';
-import { renderMenu } from './menu.ts';
-import { renderProgram } from './program.ts';
+import { renderMenu, type PortalMenu } from './menu.ts';
+import { renderProgram, type PortalProgram } from './program.ts';
 import { typing } from './offers.ts';
 import type { ViewContext } from './shell.ts';
 
@@ -25,23 +29,47 @@ const KINDS: Record<string, string> = { file: L('Archivo'), link: L('Enlace'), t
 const KIND_ICON: Record<string, string> = { file: 'attach', link: 'copy', text: 'list' };
 const label = (pairs: Array<[string, string]>, key: unknown) => t(pairs.find(([k]) => k === key)?.[1] ?? '');
 const options = (pairs: Array<[string, string]>, current: unknown) => pairs.map(([v, l]) => el('option', { value: v, selected: v === current ? '' : null }, t(l)));
-const slug = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'opcion';
+const slug = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'opcion';
 
 export type ExperienceSection = 'ven' | 'programa' | 'menu' | 'alojamiento' | 'materiales' | 'preguntas';
 const SECTIONS: Array<[ExperienceSection, string]> = [['ven', L('Qué ven')], ['programa', L('Programa')], ['menu', L('Menú')], ['alojamiento', L('Alojamiento')], ['materiales', L('Materiales')], ['preguntas', L('Preguntas')]];
 const SECTION_KEY = 'ikisai-organizers-experience-section';
+const isSection = (k: unknown): k is ExperienceSection => SECTIONS.some(([s]) => s === k);
+/** El apartado de la URL (`#/retiro/{id}/experiencia/{apartado}`), si lo hay. */
+const sectionInUrl = (): ExperienceSection | null => {
+  const m = location.hash.match(/\/experiencia\/([a-z]+)$/i);
+  const k = m?.[1]?.toLowerCase();
+  return isSection(k) ? k : null;
+};
+
+type RowKey = SectionKey | 'respuestas';
+const ROW_TITLE: Record<RowKey, string> = {
+  programa: L('Programa'), menu: L('Menú'), alojamiento: L('Alojamiento'), materiales: L('Materiales'), preguntas: L('Preguntas'), plano: L('Plano de Ikisai'), respuestas: L('Respuestas'),
+};
+const ROW_ICON: Record<RowKey, IconName> = { programa: 'calendar', menu: 'chef', alojamiento: 'bed', materiales: 'attach', preguntas: 'help', plano: 'pin', respuestas: 'list' };
+/** El estado de cada apartado dicho con texto (además del color). */
+const STATE_LABEL: Record<SectionStateName, string> = {
+  ok: L('Lo ven'), hidden: L('No lo ven'), todo: L('Por hacer'), later: L('Más adelante'), vacio: L('Vacío'), unknown: L('Sin datos'), loading: L('…'),
+};
+/** Forma de `booking.portal_rooms` que necesita la portada (el resto lo pinta `lodging.ts`). */
+type RoomsRead = Exclude<SectionsInput['rooms'], null | { error: string }>;
 
 interface ChoiceOption { value: string; label: string }
 
-export function renderExperience(ctx: ViewContext, reservationId: string): HTMLElement {
+export function renderExperience(ctx: ViewContext, reservationId: string, status?: ReservationStatus): HTMLElement {
   const saves = createSaveState({ savedMs: 4000 });
   const modulesHost = el('div', { id: 'expModulesHost' });
   const materialsHost = el('div', { id: 'expMaterialsHost' });
   const questionsHost = el('div', { id: 'expQuestionsHost' });
   const otherHost = el('div', { id: 'expOtherHost' });
   const nav = el('nav', { class: 'orgsubnav', 'aria-label': t('Apartados de la experiencia') });
-  let current: ExperienceSection = (() => { try { return (sessionStorage.getItem(SECTION_KEY) as ExperienceSection) || 'ven'; } catch { return 'ven'; } })();
-  if (!SECTIONS.some(([k]) => k === current)) current = 'ven';
+  // Apartado inicial: el de la URL; si no, el último de esta sesión («vuelta al último apartado»); si no, «Qué ven».
+  const fromUrl = sectionInUrl();
+  let current: ExperienceSection = fromUrl ?? (() => { try { const s = sessionStorage.getItem(SECTION_KEY); return isSection(s) ? s : 'ven'; } catch { return 'ven'; } })();
+  const remember = (k: ExperienceSection) => { try { sessionStorage.setItem(SECTION_KEY, k); } catch { /* sin almacenamiento */ } };
+  remember(current);
+  /** Al llegar por URL a un apartado, el foco va a su título. */
+  let focusPending = !!fromUrl;
   let other: (HTMLElement & { destroy?: () => void }) | null = null;
   const host = el('div', { id: 'experience', 'data-feedback-id': 'organizers.experiencia', 'data-feedback-label': 'Experiencia' }, loading());
   let alive = true;
@@ -53,6 +81,13 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
   /** Los cambios de la experiencia van en fila: el primero crea la fila y los siguientes la actualizan. */
   let queue: Promise<void> = Promise.resolve();
   let messageTimer: ReturnType<typeof setTimeout> | null = null;
+  // Lecturas de la portada (Booking y Food, con caché): `null` mientras se leen; `{ error }` sin red y sin copia.
+  let program: SectionsInput['program'] = null;
+  let menu: SectionsInput['menu'] = null;
+  let rooms: SectionsInput['rooms'] = null;
+  let comments: number | null = null;
+  /** Botones de la portada atados a la red (vista previa): se sueltan al repintar y al salir. */
+  let modulesBound: Array<() => void> = [];
 
   async function read(): Promise<void> {
     const [e, m, q, a] = await Promise.all([
@@ -61,6 +96,27 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
     ]);
     exp = e[0] ?? null; materials = m; questions = q; answers = a;
   }
+
+  /** Programa, menú, habitaciones y comentarios a cocina, en paralelo y después de pintar. */
+  async function loadExtra(): Promise<void> {
+    const failed = (error: unknown) => ({ error: errorCode(error) || 'ERROR' });
+    const args = { reservation_id: reservationId };
+    const [p, m, r, c] = await Promise.all([
+      ctx.api.readAny<PortalProgram>('booking.portal_program', args).then((x) => x.value, failed),
+      ctx.api.readAny<PortalMenu>('food.portal_menu', args).then((x) => x.value, failed),
+      ctx.api.readAny<RoomsRead>('booking.portal_rooms', args).then((x) => x.value, failed),
+      ctx.api.readAny<{ items: unknown[] }>('food.portal_my_menu_comments', args).then((x) => x.value.items.length, () => null),
+    ]);
+    program = p; menu = m; rooms = r; comments = c;
+    if (!alive) return;
+    paintNav();
+    if (!(modulesHost.contains(document.activeElement) && typing())) paintModules();
+  }
+
+  const sections = () => sectionsOf({ exp, materials, questions, answers, program, menu, rooms, comments });
+  const windowLabel = (w: string | undefined) => (w ? label(WINDOWS, w) : '');
+  const stateText = (st: SectionState) => (st.state === 'ok' && st.window ? windowLabel(st.window) : t(STATE_LABEL[st.state]));
+  const sectionText = (st: SectionState) => [t(st.textKey, st.vars), st.extraKey ? t(st.extraKey, st.extraVars) : ''].filter(Boolean).join(' · ');
 
   function track(run: () => Promise<void>): Promise<void> {
     return saves.track('experiencia', run(), { retry: () => track(run) }).catch((error) => { toast(describeError(error)); });
@@ -78,19 +134,62 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
     return queue;
   }
 
-  // --- Qué ven tus asistentes ----------------------------------------------------------------------------------------
+  // --- Qué ven tus asistentes: lo siguiente, los tres momentos y la vista previa ----------------------------------------
   function paintModules(): void {
+    for (const off of modulesBound.splice(0)) off();
+    const s = sections();
     const value = (key: string, fallback: unknown) => (exp && exp[key] !== undefined && exp[key] !== null ? exp[key] : fallback);
     const windowSelect = (key: string) => el('select', { id: `exp-${key}`, 'aria-label': t('Cuándo lo ven'),
-      onchange: (e: Event) => void setExperience({ [key]: (e.target as HTMLSelectElement).value }) }, ...options(WINDOWS, value(key, 'always')));
-    const moduleRow = (key: string, title: string, help: string, windowKey?: string) => {
+      onchange: (e: Event) => void setExperience({ [key]: (e.target as HTMLSelectElement).value }).then(paintModules) }, ...options(WINDOWS, value(key, 'always')));
+    /** La casilla de siempre, fuera del botón de la fila (con Espacio se marca sin abrir el apartado). */
+    const moduleRow = (key: string, windowKey?: string) => {
       const on = value(key, false) === true;
       return el('div', { class: 'orgmodule', 'data-module': key },
         el('label', { class: 'field check' },
           el('input', { type: 'checkbox', id: `exp-${key}`, checked: on ? '' : null, onchange: (e: Event) => { void setExperience({ [key]: (e.target as HTMLInputElement).checked }).then(paintModules); } }),
-          el('span', null, el('strong', null, t(title)), el('span', { class: 'muted small' }, ` · ${t(help)}`))),
+          el('span', null, t('Lo ven tus asistentes'))),
         on && windowKey ? el('label', { class: 'field orgmodule-window' }, el('span', null, t('Cuándo lo ven')), windowSelect(windowKey)) : null);
     };
+    const row = (k: RowKey, st: SectionState | null, text: string, openTo: ExperienceSection | null, withModule: boolean, windowKey?: string) => {
+      const inner: Child[] = [
+        el('span', { class: 'orgexp-icon', 'aria-hidden': 'true' }, icon(ROW_ICON[k], 20)),
+        el('span', { class: 'orgexp-text' }, el('strong', null, t(ROW_TITLE[k])), el('span', { class: 'small' }, text)),
+        st ? el('span', { class: `chip orgexp-state ${st.state}` }, stateText(st)) : null,
+      ];
+      const state = st?.state ?? 'ok';
+      return fbMark(el('li', { class: `orgexp-row ${state}`, 'data-section': k },
+        openTo
+          ? el('button', { type: 'button', class: 'orgexp-open', onclick: () => go(openTo) }, ...inner, el('span', { class: 'orgexp-chev', 'aria-hidden': 'true' }, '›'))
+          : el('div', { class: 'orgexp-open static' }, ...inner),
+        withModule && k !== 'respuestas' ? moduleRow(MODULE_OF[k], windowKey) : null), 'organizers.experiencia.apartado', 'Apartado de la experiencia');
+    };
+    const sectionRow = (k: SectionKey, openTo: ExperienceSection | null, windowKey?: string) => row(k, s[k], sectionText(s[k]), openTo, true, windowKey);
+    const r = answers.length;
+    const answersRow = row('respuestas', null, r === 1 ? t('1 respuesta · descárgala en CSV') : t('{r} respuestas · descárgalas en CSV', { r }), 'preguntas', false);
+
+    // Lo siguiente.
+    const nextBox = fbMark(el('div', { id: 'expNext', class: 'orgexp-next' }), 'organizers.experiencia.siguiente', 'Siguiente paso de la experiencia');
+    const keys = stepsOf(s);
+    if (status === 'cerrada') {
+      replace(nextBox, el('p', { class: 'orgexp-nextline' }, el('strong', null, t('El retiro ya terminó')), el('span', { class: 'muted small' }, t('Las respuestas y los materiales siguen aquí.'))));
+    } else if ([s.programa, s.menu, s.alojamiento].some((x) => x.state === 'loading') && !keys.length) {
+      replace(nextBox, loading());
+    } else if (!keys.length) {
+      replace(nextBox, el('p', { class: 'orgexp-nextline' }, el('strong', null, t('Por ahora, nada que hacer aquí')),
+        el('span', { class: 'muted small' }, t('Programa y alojamiento, cuando la reserva esté confirmada. Ya puedes escribir la bienvenida y preparar preguntas y materiales.'))));
+    } else {
+      const item = (k: SectionKey): StepItem => {
+        const st = s[k];
+        if (st.state === 'hidden') {
+          return { id: k, title: t('{que}: publicado, pero tus asistentes no lo ven', { que: t(ROW_TITLE[k]) }), done: false, stateText: sectionText(st), action: t('Mostrárselo'),
+            onClick: () => void setExperience({ [MODULE_OF[k]]: true }).then(paintModules) };
+        }
+        if (st.state === 'todo') return { id: k, title: t(st.nextKey ?? ROW_TITLE[k]), done: false, stateText: sectionText(st), action: t('Abrir'), href: `#/retiro/${reservationId}/experiencia/${k}` };
+        return { id: k, title: t(ROW_TITLE[k]), done: true, stateText: sectionText(st) };
+      };
+      replace(nextBox, renderSteps({ items: keys.map(item), readyText: t('Lo que preparas les llega a su enlace.') }));
+    }
+
     const message = el('textarea', { id: 'exp-message', rows: '3', maxlength: '1000', placeholder: t('Os esperamos en Ikisai…'),
       oninput: (e: Event) => {
         const text = (e.target as HTMLTextAreaElement).value;
@@ -98,26 +197,33 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
         saves.set('experiencia', 'pending');
         messageTimer = setTimeout(() => { messageTimer = null; void setExperience({ organizer_message: text.trim() ? text : null }); }, 800);
       } }, String(value('organizer_message', ''))) as HTMLTextAreaElement;
+    const messageBox = fbMark(section(t('Mensaje de bienvenida'), { id: 'expMessage' },
+      el('p', { class: 'muted small' }, t('Lo verán al abrir su enlace. Opcional.')),
+      fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), message)),
+      el('label', { class: 'field' }, el('span', null, t('Idioma del mensaje')),
+        el('select', { id: 'exp-message-lang', onchange: (e: Event) => void setExperience({ message_lang: (e.target as HTMLSelectElement).value }) },
+          el('option', { value: 'es', selected: value('message_lang', 'es') === 'es' ? '' : null }, 'Español'),
+          el('option', { value: 'en', selected: value('message_lang', 'es') === 'en' ? '' : null }, 'English')))), 'organizers.experiencia.mensaje', 'Mensaje de bienvenida');
 
+    const moment = (title: string, text: string, rows: HTMLElement[], extra?: HTMLElement) => el('li', { class: 'orgexp-moment' },
+      el('h3', null, t(title)), el('p', { class: 'muted small' }, t(text)), el('ul', { class: 'orgexp-rows' }, ...rows), extra ?? null);
+
+    const previewButton = el('button', { type: 'button', class: 'ghost', id: 'expPreviewOpen', onclick: () => void openPreview() }, icon('eye', 16), ' ', t('Ver como un asistente'));
     replace(modulesHost,
-      fbMark(section(t('Qué ven tus asistentes'), { id: 'expModules' },
+      nextBox,
+      fbMark(el('section', { id: 'expModules', class: 'orgexp-home' },
         el('p', { class: 'muted' }, t('Elige qué aparece en el enlace personal de cada asistente. Sus datos, la firma y la alimentación los ven siempre.')),
-        moduleRow('materials_visible', L('Materiales'), L('lo que publiques abajo')),
-        moduleRow('questions_visible', L('Preguntas'), L('las preguntas que publiques abajo')),
-        moduleRow('program_visible', L('Programa'), L('el horario del retiro'), 'program_window'),
-        moduleRow('menu_visible', L('Menú'), L('la propuesta de la cocina de Ikisai'), 'menu_window'),
-        moduleRow('map_visible', L('Plano de Ikisai'), L('cómo llegar y moverse por el centro')),
-        moduleRow('lodging_visible', L('Alojamiento'), L('su habitación en Ikisai'))), 'organizers.experiencia.modulos', 'Qué ven tus asistentes'),
+        el('ol', { class: 'orgexp-moments' },
+          moment(L('Antes del retiro'), L('Lo que les llega al recibir su enlace: bienvenida, preguntas, qué traer y su cama.'),
+            [sectionRow('preguntas', 'preguntas'), sectionRow('materiales', 'materiales'), sectionRow('alojamiento', 'alojamiento'), sectionRow('menu', 'menu', 'menu_window')], messageBox),
+          moment(L('Durante el retiro'), L('Lo que consultan allí: el horario y cómo moverse por el centro.'),
+            [sectionRow('programa', 'programa', 'program_window'), sectionRow('plano', null)]),
+          moment(L('Después del retiro'), L('Las respuestas que te dejaron y los materiales que quieras conservar.'), [answersRow]))),
+      'organizers.experiencia.modulos', 'Qué ven tus asistentes'),
       fbMark(section(t('Vista previa'), { id: 'expPreview' },
         el('p', { class: 'muted small' }, t('Abre el enlace de un asistente de muestra para ver exactamente lo que verán. No se guarda nada de lo que hagas ahí.')),
-        el('button', { type: 'button', class: 'ghost', id: 'expPreviewOpen', onclick: () => void openPreview() }, icon('eye', 16), ' ', t('Ver como un asistente'))), 'organizers.experiencia.vista_previa', 'Vista previa'),
-      fbMark(section(t('Mensaje de bienvenida'), { id: 'expMessage' },
-        el('p', { class: 'muted small' }, t('Lo verán al abrir su enlace. Opcional.')),
-        fbIgnore(el('label', { class: 'field' }, el('span', null, t('Mensaje')), message)),
-        el('label', { class: 'field' }, el('span', null, t('Idioma del mensaje')),
-          el('select', { id: 'exp-message-lang', onchange: (e: Event) => void setExperience({ message_lang: (e.target as HTMLSelectElement).value }) },
-            el('option', { value: 'es', selected: value('message_lang', 'es') === 'es' ? '' : null }, 'Español'),
-            el('option', { value: 'en', selected: value('message_lang', 'es') === 'en' ? '' : null }, 'English')))), 'organizers.experiencia.mensaje', 'Mensaje de bienvenida'));
+        previewButton), 'organizers.experiencia.vista_previa', 'Vista previa'));
+    modulesBound.push(needsNet(ctx, previewButton, t('La vista previa necesita conexión.')));
   }
 
   /** O6: enlace de Guests de solo lectura al huésped de muestra de la reserva (Booking BG11, núcleo C9). */
@@ -434,34 +540,87 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
     });
   }
 
-  function paintNav(): void {
-    replace(nav, ...SECTIONS.map(([key, text]) => el('button', { type: 'button', id: `expnav-${key}`, class: key === current ? 'on' : '', 'aria-pressed': key === current ? 'true' : 'false',
-      onclick: () => { current = key; try { sessionStorage.setItem(SECTION_KEY, key); } catch { /* */ } showSection(); } }, t(text))));
+  // --- Subnavegación y apartados -------------------------------------------------------------------------------------
+  /** Cambiar de apartado: una entrada de historia (Atrás vuelve) sin volver a montar la ficha del retiro. */
+  function go(k: ExperienceSection): void {
+    if (k !== current) history.pushState(null, '', `#/retiro/${reservationId}/experiencia/${k}`);
+    current = k;
+    remember(k);
+    showSection();
   }
 
+  function paintNav(): void {
+    const s = sections();
+    replace(nav, ...SECTIONS.map(([key, text]) => {
+      const st = key === 'ven' ? null : s[key as SectionKey];
+      const count = key === 'alojamiento' && st?.count ? st.count : 0;
+      return el('button', { type: 'button', id: `expnav-${key}`, class: key === current ? 'on' : '', 'aria-current': key === current ? 'page' : null, onclick: () => go(key) },
+        t(text),
+        count ? el('span', { class: 'orgtab-count', 'aria-hidden': 'true' }, String(count)) : null,
+        count ? el('span', { class: 'vh' }, ` · ${t('{n} por decidir', { n: count })}`) : null,
+        st?.state === 'hidden' ? el('span', { class: 'orgexp-dot', 'aria-hidden': 'true' }) : null,
+        st?.state === 'hidden' ? el('span', { class: 'vh' }, ` · ${t('Tus asistentes no lo ven')}`) : null);
+    }));
+  }
+  /** El apartado abierto, centrado en la tira (sin mover la página). */
+  function centerNav(): void {
+    const on = nav.querySelector<HTMLElement>('button.on');
+    if (on) nav.scrollLeft = on.offsetLeft - (nav.clientWidth - on.clientWidth) / 2;
+  }
+
+  const hostOf = (k: ExperienceSection): HTMLElement => (k === 'ven' ? modulesHost : k === 'materiales' ? materialsHost : k === 'preguntas' ? questionsHost : otherHost);
+  function focusTitle(): void {
+    const title = hostOf(current).querySelector<HTMLElement>('h3');
+    if (!title) return;
+    title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+    title.scrollIntoView({ block: 'start' });
+  }
+
+  let shown: ExperienceSection | null = null;
   function showSection(): void {
     paintNav();
+    centerNav();
+    const back = shown !== null && shown !== 'ven' && current === 'ven';
+    shown = current;
     other?.destroy?.();
     other = null;
     modulesHost.hidden = current !== 'ven';
     materialsHost.hidden = current !== 'materiales';
     questionsHost.hidden = current !== 'preguntas';
-    if (current === 'programa') other = renderProgram(ctx, reservationId);
-    else if (current === 'menu') other = renderMenu(ctx, reservationId);
-    else if (current === 'alojamiento') other = renderLodging(ctx, reservationId, () => exp, setExperience);
-    replace(otherHost, other);
+    let title: string | null = null;
+    if (current === 'programa') { other = renderProgram(ctx, reservationId); title = L('Programa'); }
+    else if (current === 'menu') { other = renderMenu(ctx, reservationId); title = L('Menú'); }
+    else if (current === 'alojamiento') { other = renderLodging(ctx, reservationId, () => exp, setExperience); title = L('Alojamiento'); }
+    replace(otherHost, title ? el('h3', { class: 'orgexp-title' }, t(title)) : null, other);
+    // Al volver a la portada desde un apartado, sus cifras se vuelven a calcular.
+    if (back) void loadExtra();
+    if (focusPending) { focusPending = false; focusTitle(); }
   }
 
+  /** Desde la ruta (Atrás, «Abrir» de lo siguiente): `shell.ts` avisa sin desmontar la ficha. */
+  const onSection = (e: Event) => {
+    const k = (e as CustomEvent<string | null>).detail;
+    if (!isSection(k)) return;
+    focusPending = true;
+    if (k === current && painted) { focusPending = false; focusTitle(); return; }
+    current = k;
+    remember(k);
+    if (painted) showSection();
+  };
+  window.addEventListener('org-exp-section', onSection);
+
   function paint(): void {
-    if (!painted) {
-      replace(host, nav, modulesHost, materialsHost, questionsHost, otherHost, el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'experienceSaveState' }, saves.field('experiencia').element)));
-      painted = true;
-      showSection();
-    }
     // Mientras se escribe en el mensaje o en el alojamiento no se repinta esa parte (perdería el foco).
     if (!(modulesHost.contains(document.activeElement) && typing())) paintModules();
     paintMaterials();
     paintQuestions();
+    if (!painted) {
+      replace(host, nav, modulesHost, materialsHost, questionsHost, otherHost, el('div', { class: 'orgsave' }, el('div', { class: 'orgsavestate', id: 'experienceSaveState' }, saves.field('experiencia').element)));
+      painted = true;
+      showSection();
+      void loadExtra();
+    } else paintNav();
   }
 
   async function load(): Promise<void> {
@@ -478,6 +637,8 @@ export function renderExperience(ctx: ViewContext, reservationId: string): HTMLE
   (host as HTMLElement & { destroy?: () => void }).destroy = () => {
     alive = false;
     off();
+    window.removeEventListener('org-exp-section', onSection);
+    for (const release of modulesBound.splice(0)) release();
     other?.destroy?.();
     if (messageTimer) { clearTimeout(messageTimer); const text = (document.getElementById('exp-message') as HTMLTextAreaElement | null)?.value ?? ''; void setExperience({ organizer_message: text.trim() ? text : null }); }
   };

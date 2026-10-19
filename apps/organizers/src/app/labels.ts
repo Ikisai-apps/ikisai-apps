@@ -17,7 +17,7 @@ const MEAL_PLAN: Record<string, string> = {
   pension_completa: L('Pensión completa'), media_pension: L('Media pensión'), desayuno: L('Desayuno'), segun_programa: L('Comidas según programa'), no_aplica: L('Sin comidas'),
 };
 export const mealPlanLabel = (plan: string) => (MEAL_PLAN[plan] ? t(MEAL_PLAN[plan]) : plan);
-const MENU_STYLE: Record<string, string> = { vegetariano: L('menú vegetariano'), vegano: L('menú vegano'), mixto: L('menú mixto'), otro: L('menú a medida') };
+const MENU_STYLE: Record<string, string> = { vegetariano: L('menú vegetariano'), vegano: L('menú vegano'), mixto: L('menú omnívoro'), otro: L('menú a medida') };
 export const menuStyleLabel = (style: string) => (MENU_STYLE[style] ? t(MENU_STYLE[style]) : style);
 
 const RESTRICTION: Record<string, string> = {

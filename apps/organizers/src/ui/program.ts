@@ -5,7 +5,7 @@
 import { confirmDialog, el, icon, openSheet, replace, toast } from '@ikisai/ui-kit';
 import { describeError, errorCode, online } from '../app/client.ts';
 import { i18n, L, t } from '../app/i18n.ts';
-import { failure, loading, staleNote } from './common.ts';
+import { failure, loading, needsNet, staleNote } from './common.ts';
 import type { ViewContext } from './shell.ts';
 
 export interface ProgramItem {
@@ -36,6 +36,9 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
   const host = el('div', { id: 'program' }, loading());
   let alive = true;
   let program: PortalProgram | null = null;
+  /** Lo que escribe en Booking necesita red: «Añadir» y «Guardar» se apagan sin ella (se sueltan al repintar y al salir). */
+  let bound: Array<() => void> = [];
+  const release = () => { for (const off of bound) off(); bound = []; };
 
   async function load(): Promise<void> {
     try {
@@ -50,6 +53,7 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
 
   function paint(staleAt: string | null): void {
     const p = program!;
+    release();
     if (!p.confirmed) { replace(host, el('p', { class: 'muted', id: 'programPending' }, t('Podrás preparar el programa cuando la reserva esté confirmada.'))); return; }
     const days = daysOf(p.start_date, p.end_date);
     const byDay = (day: string) => p.items.filter((i) => i.day === day).sort((a, b) => a.position - b.position || String(a.starts_at ?? '').localeCompare(String(b.starts_at ?? '')));
@@ -71,6 +75,7 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
             : el('p', { class: 'muted small' }, t('Nada todavía.')),
           el('button', { type: 'button', class: 'ghost', 'data-add-day': day, onclick: () => edit(null, day) }, icon('plus', 16), ' ', t('Añadir')));
       }));
+    for (const b of host.querySelectorAll<HTMLElement>('[data-add-day]')) bound.push(needsNet(ctx, b));
   }
 
   async function move(items: ProgramItem[], i: number, delta: number): Promise<void> {
@@ -102,6 +107,8 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
     const publicNote = el('textarea', { id: 'pr-public', rows: '2', maxlength: '500' }, item?.public_note ?? '') as HTMLTextAreaElement;
     const internal = el('textarea', { id: 'pr-internal', rows: '2', maxlength: '500' }, item?.internal_note ?? '') as HTMLTextAreaElement;
     const error = el('p', { class: 'error', role: 'alert', id: 'pr-error' });
+    const saveButton = el('button', { type: 'submit', class: 'primary', form: 'programForm', id: 'pr-save' }, t('Guardar'));
+    const offSave = needsNet(ctx, saveButton);
     const syncPlace = () => { placeField.hidden = space.value !== ''; };
     space.addEventListener('change', syncPlace); syncPlace();
     const sheet = openSheet({
@@ -121,7 +128,8 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
         error),
       foot: el('div', { class: 'choices' },
         item ? el('button', { type: 'button', class: 'ghost danger', id: 'pr-delete', onclick: () => void remove() }, t('Quitar')) : null,
-        el('button', { type: 'submit', class: 'primary', form: 'programForm', id: 'pr-save' }, t('Guardar'))),
+        saveButton),
+      onClose: () => offSave(),
     });
     async function submit(): Promise<void> {
       if (!title.value.trim()) { error.textContent = t('Ponle un título.'); return; }
@@ -155,6 +163,6 @@ export function renderProgram(ctx: ViewContext, reservationId: string): HTMLElem
   }
 
   void load();
-  (host as HTMLElement & { destroy?: () => void }).destroy = () => { alive = false; };
+  (host as HTMLElement & { destroy?: () => void }).destroy = () => { alive = false; release(); };
   return host;
 }

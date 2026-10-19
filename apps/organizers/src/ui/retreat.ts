@@ -175,10 +175,10 @@ export const mountRetreat = (reservationId: string, tab: RetreatTab): ViewMount 
     else if (tab === 'diseno' && showDesign) sub(renderDesign(ctx, reservationId, d, data.dates, () => void load()));
     else if (tab === 'propuesta' && showProposal) sub(renderProposal(ctx, reservationId));
     else if (tab === 'pagos' && showPayments) sub(renderPayments(ctx, reservationId, d.contract ?? null));
-    else if (tab === 'experiencia' && showExperience) sub(renderExperience(ctx, reservationId));
+    else if (tab === 'experiencia' && showExperience) sub(renderExperience(ctx, reservationId, d.status));
     else if (tab === 'ofertas' && showOffers) sub(renderOffers(ctx, reservationId, d));
-    else if (tab === 'asistentes' && showGuests) content.push(renderGuestList(ctx, reservationId, data, () => void load()));
-    else if (tab === 'cocina' && showKitchen) content.push(renderKitchen(data.kitchen.value));
+    else if (tab === 'asistentes' && showGuests) sub(renderGuestList(ctx, reservationId, data, () => void load()));
+    else if (tab === 'cocina' && showKitchen) sub(renderKitchen(ctx, reservationId, data));
     else content.push(...renderSummary(ctx, reservationId, data, extra, { showGuests, showKitchen }));
     replace(body, ...content);
   }

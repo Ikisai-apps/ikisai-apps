@@ -9,11 +9,13 @@ import { confirmDialog, createAppLauncher, createAppShell, createLanguageSelect,
 import { createPortalApi, type PortalApi } from '../app/api.ts';
 import { cache } from '../app/cache.ts';
 import { loadCommonTexts } from '../app/common-texts.ts';
+import { clearPosterImages } from '../app/poster.ts';
 import { mountRetreats } from './retreats.ts';
 import { mountRetreat, type RetreatTab } from './retreat.ts';
 import { mountGuest } from './guest.ts';
 import { openHelp } from './help.ts';
 import { mountAccessButton } from './access.ts';
+import { clearDishPhotos } from './menu.ts';
 
 export interface ShellContext {
   client: SyncClient;
@@ -36,7 +38,9 @@ export type ViewMount = (ctx: ViewContext) => () => void;
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 /** Pestañas de la ficha con ruta propia (`#/retiro/{id}/{pestaña}`); sin pestaña, el Resumen. Para ampliar, aquí. */
 const RETREAT_TABS: readonly RetreatTab[] = ['fechas', 'diseno', 'propuesta', 'pagos', 'experiencia', 'ofertas', 'asistentes', 'cocina'];
-const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(${RETREAT_TABS.join('|')}))?$`, 'i');
+/** Apartados de la Experiencia con ruta propia (`#/retiro/{id}/experiencia/{apartado}`); solo valen tras `experiencia`. */
+const EXPERIENCE_SECTIONS = ['ven', 'programa', 'menu', 'alojamiento', 'materiales', 'preguntas'];
+const RETREAT = new RegExp(`^#/retiro/(${UUID})(?:/(${RETREAT_TABS.join('|')})(?:/(${EXPERIENCE_SECTIONS.join('|')}))?)?$`, 'i');
 const GUEST = new RegExp(`^#/retiro/(${UUID})/asistentes/(${UUID}|nuevo)$`, 'i');
 /**
  * Pestañas donde «Guarda tu acceso» se oculta: en los formularios y en las fechas taparía el estado del guardado. Se ve en
@@ -51,7 +55,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const apiCall = client.api.bind(client);
   // Uso sin persona en los portales (contrato §3.8): sin aviso.
   const usage = createUsage({ app: 'organizers', api: apiCall, userId: () => userId, notice: false });
-  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); });
+  const offSessionEnd = client.onSessionEnd((id) => { void cache.clearUser(id); void usage.clear(id); clearPosterImages(); clearDishPhotos(); });
   let currentReservation: string | null = null;
   void loadCommonTexts(client);
 
@@ -84,6 +88,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
 
   let unmountView: (() => void) | null = null;
   let firstRoute = true;
+  /** Última ruta pintada: entre apartados de la Experiencia del mismo retiro no se vuelve a montar la ficha. */
+  let lastHash: string | null = null;
 
   async function logout(): Promise<void> {
     // Organizers no borra la cola al salir (sin `clearOnLogout`): lo pendiente se envía al volver a entrar.
@@ -102,15 +108,25 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   function navigate(hash: string, replaceHistory = false): void {
     if (replaceHistory) {
       history.replaceState(null, '', hash);
-      route();
-    } else if (location.hash === hash) route();
+      route(true);
+    } else if (location.hash === hash) route(true);
     else location.hash = hash;
   }
 
-  function route(): void {
+  /** `force`: volver a montar aunque solo cambie el apartado de la Experiencia. */
+  function route(force = false): void {
     const hash = location.hash && location.hash !== '#' ? location.hash : '#/';
     const guest = hash.match(GUEST);
-    const retreat = hash.match(RETREAT);
+    let retreat = hash.match(RETREAT);
+    // Un apartado solo vale tras «experiencia» (`/asistentes/programa` no es una ruta): va a Mis retiros.
+    if (retreat?.[3] && retreat[2]?.toLowerCase() !== 'experiencia') retreat = null;
+    const before = lastHash?.match(RETREAT) ?? null;
+    lastHash = hash;
+    if (!force && retreat && unmountView && before && before[1]!.toLowerCase() === retreat[1]!.toLowerCase()
+      && before[2]?.toLowerCase() === 'experiencia' && retreat[2]?.toLowerCase() === 'experiencia') {
+      window.dispatchEvent(new CustomEvent<string | null>('org-exp-section', { detail: retreat[3]?.toLowerCase() ?? null }));
+      return;
+    }
     unmountView?.();
     unmountView = null;
     replace(main);
@@ -144,7 +160,8 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
   const offStatus = client.onStatus(() => {
     if (!client.session()) ctx.onLogout();
   });
-  window.addEventListener('hashchange', route);
+  const onHash = () => route();
+  window.addEventListener('hashchange', onHash);
   route();
 
   return () => {
@@ -153,7 +170,7 @@ export function renderShell(root: HTMLElement, ctx: ShellContext): () => void {
     usage.destroy();
     access.destroy();
     unmountView?.();
-    window.removeEventListener('hashchange', route);
+    window.removeEventListener('hashchange', onHash);
     shell.destroy();
     replace(root, el('div'));
   };

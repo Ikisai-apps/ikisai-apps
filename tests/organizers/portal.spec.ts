@@ -91,6 +91,11 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await expect(page.locator('#guestName')).toHaveText('Ana S.');
   await expect(page.locator('#guestState')).toHaveText('Faltan datos');
   await expect(page.locator('#declarationBox')).toHaveCount(0);
+  // «Lo que le falta», con el contacto como teléfono o correo; los bloques con algo que falta, abiertos.
+  await expect(page.locator('#guestMissing')).toContainText('teléfono o correo');
+  await expect(page.locator('#guestMissing')).toContainText('Firma del registro de viajeros');
+  await expect(page.locator('details[data-group="Contacto"]')).toHaveAttribute('open', '');
+  await expect(page.locator('[data-field="phone"]')).toHaveClass(/orgfield-missing/);
 
   // Datos que escribe quien organiza.
   await openGroup(page, 'Contacto');
@@ -99,6 +104,7 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await page.locator('#f-phone').fill('600 000 000');
   await page.locator('#f-email').focus();
   await expect(page.locator('#saveState')).toContainText('Guardado');
+  await expect(page.locator('#guestMissing')).not.toContainText('teléfono o correo');
   await page.reload();
   await openGroup(page, 'Contacto');
   await expect(page.locator('#f-phone')).toHaveValue('600 000 000');
@@ -111,9 +117,20 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await page.keyboard.press('Escape');
   await expect(page.locator('#linkState')).toContainText('Enlace enviado el');
   await expect(page.locator('#sendLink')).toHaveText('Reenviar enlace');
+  const guestId = page.url().split('/').pop()!;
+
+  // En la lista: Ana pasa a «No han abierto su enlace»; las plazas, una por persona y fuera de las capturas.
+  await page.locator('#backToGuests').click();
+  await expect(page.locator('#guestRows [data-stage="sinabrir"]')).toContainText('Ana S.');
+  await expect(page.locator('#guestRows [data-group="sinabrir"] .worst-count')).toHaveText('1');
+  await expect(page.locator('#guestSeats button')).toHaveCount(1);
+  await expect(page.locator('#guestSeats button')).toHaveAttribute('aria-label', 'Ana S. · No han abierto su enlace');
+  expect(await page.locator('#guestSeats').evaluate((node) => !!node.closest('[data-feedback-ignore]'))).toBe(true);
+  await expect(page.locator('#guestSummary')).toContainText('0/1');
+  await page.locator(`#guestRows [data-id="${guestId}"]`).click();
+  await expect(page.locator('#guestName')).toHaveText('Ana S.');
 
   // Lo que escribe el propio huésped: «Rellenado», nunca el valor.
-  const guestId = page.url().split('/').pop()!;
   await api.guestWrites(reservation, guestId, { document_type: 'DNI', document_number: '00000000T' });
   await page.reload();
   await openGroup(page, 'Documento');
@@ -130,6 +147,18 @@ test('organizers · un retiro: entrada, asistentes, enlace, privacidad, cocina, 
   await page.locator('#tab-cocina').click();
   await expect(page.locator('#kitchenTotals')).toContainText('Alergia a frutos secos');
   await expect(page.locator('#kitchenNamed')).toContainText('Ana S.');
+  // Tipo de menú, aviso sin menú compartido y el recuento sin gravedad (la gravedad, solo junto al nombre).
+  await expect(page.locator('#kitchenMenuStyle')).toContainText('Menú vegetariano');
+  await expect(page.locator('#kitchenMenuStyle')).toContainText('Pensión completa');
+  await expect(page.locator('#kitchenCheck')).toContainText('aún no ha compartido el menú');
+  await expect(page.locator('#kitchenSummary')).toHaveText('1 alergia o intolerancia en el grupo');
+  await expect(page.locator('#kitchenNamed')).toContainText('grave');
+  const outsideNamed = await page.locator('#kitchen').evaluate((node) => {
+    const copy = node.cloneNode(true) as HTMLElement;
+    copy.querySelector('#kitchenNamed')?.remove();
+    return copy.textContent ?? '';
+  });
+  expect(outsideNamed).not.toMatch(/\bapto\b|grave/i);
 
   // Recordatorio del grupo: sin nombres.
   await page.locator('#tab-asistentes').click();
@@ -194,6 +223,11 @@ test('organizers · sin red: última copia con aviso; lo escrito se guarda solo 
   await page.locator('#backToGuests').click();
   await expect(page.locator('#staleNote')).toBeVisible();
   await expect(page.locator('#guestRows')).toContainText('Rosa');
+  // Rosa aún no tiene enlace: «Enviar su enlace» necesita red y lo dice; «Recordar» y las herramientas siguen.
+  await expect(page.locator('#guestRows [data-act="sinenlace"]')).toBeDisabled();
+  await expect(page.locator('#guestRows').getByText('Necesita conexión.')).toBeVisible();
+  await expect(page.locator('#addGuest')).toBeEnabled();
+  await expect(page.locator('#guestSeats button')).toHaveCount(1);
   // Mis retiros sin red: la última copia, con «Reintentar».
   await page.locator('#backToRetreats').click();
   await expect(page.locator('#staleNote')).toBeVisible();
@@ -553,8 +587,9 @@ test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enla
   expect(experience!.materials_visible).toBe(true);
   expect(experience!.program_window).toBe('during');
 
-  // Material: enlace al grupo, publicado antes del retiro.
+  // Material: enlace al grupo, publicado antes del retiro. Cada apartado tiene su dirección.
   await page.locator('#expnav-materiales').click();
+  await expect(page).toHaveURL(/\/experiencia\/materiales$/);
   await page.locator('#expAddLink').click();
   await page.locator('#mat-title').fill('Grupo de WhatsApp');
   await page.locator('#mat-url').fill('http://chat.example');
@@ -567,6 +602,10 @@ test('organizers · experiencia (fase 4): qué ven los asistentes, mensaje, enla
   await expect(page.locator('#expMaterials .orgitem')).toHaveCount(1);
   await expect(page.locator('#expMaterials .orgitem')).toContainText('Antes del retiro');
   await expect.poll(async () => (await rows('materials')).map((m) => [m.title, m.published, m.window])).toEqual([['Grupo de WhatsApp', true, 'before']]);
+  // En la portada, el apartado lo dice con texto: lo ven antes del retiro.
+  await page.locator('#expnav-ven').click();
+  await expect(page.locator('[data-section="materiales"]')).toContainText('Antes del retiro');
+  await expect(page.locator('[data-section="materiales"]')).toContainText('1 publicado');
 
   // Pregunta: el editor avisa si parece pedir salud o alergias (O7); se guarda con sus opciones.
   await page.locator('#expnav-preguntas').click();
@@ -605,10 +644,28 @@ test('organizers · ofertas y cartel (fase 5): ofertas privadas, calculadora con
   await expect(page.locator('#offersMargin')).toHaveText(/1\.?700,00/);
   await page.locator('#offersOther').fill('200');
   await expect(page.locator('#offersMargin')).toHaveText(/1\.?500,00/);
+  await expect(page.locator('#offersLine')).toContainText('Cubres gastos a partir de 7 asistentes; esperas 10.');
 
+  // Tres toques rápidos en «+»: la cuenta cambia al momento y se guarda una sola vez (revisión 2).
+  const rows = async () => (await api.booking.t.db.query<Record<string, any>>('select * from organizers.offers where reservation_id = $1 and deleted_at is null', [reservation])).rows;
+  const more = page.locator('#offersList [data-step="+"]');
+  await more.click();
+  await more.click();
+  await more.click();
+  await expect(page.locator('#offersList .orgoffer-count')).toHaveText('Esperas vender 13');
+  await expect(page.locator('#offersRevenue')).toHaveText(/5\.?850,00/);
+  await expect.poll(async () => { const [o] = await rows(); return [o?.expected, o?.revision]; }, { timeout: 15_000 }).toEqual([13, 2]);
+
+  // Cartel al momento: «Guardar JPG» y, en «Más opciones», la hoja de siempre en el formato elegido.
+  await expect(page.locator('#posterPreview')).toBeVisible();
+  const quick = page.waitForEvent('download');
+  await page.locator('#posterQuickJpg').click();
+  expect((await quick).suggestedFilename()).toBe('cartel-retiro-con-cartel.jpg');
+  await page.locator('#posterFormats [data-format="a4"]').click();
+  await expect(page.locator('#posterFormats [data-format="a4"]')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#posterOpen').click();
   await expect(page.locator('#posterCanvas')).toBeVisible();
-  expect(await page.locator('#posterCanvas').evaluate((c: HTMLCanvasElement) => [c.width, c.height])).toEqual([1240, 1754]);
+  await expect.poll(() => page.locator('#posterCanvas').evaluate((c: HTMLCanvasElement) => [c.width, c.height])).toEqual([1240, 1754]);
   await page.locator('#poster-format').selectOption('cuadrado');
   await expect.poll(() => page.locator('#posterCanvas').evaluate((c: HTMLCanvasElement) => c.width === c.height)).toBe(true);
   const download = page.waitForEvent('download');
@@ -655,6 +712,12 @@ test('organizers · experiencia (fases 4 y 5): programa por días, menú aún si
   const popup = context.waitForEvent('page');
   await page.locator('#expPreviewOpen').click();
   await expect.poll(async () => (await popup).url()).toMatch(/^https:\/\/guests\.ikisai\.com\/i\//);
+
+  // Atrás vuelve al apartado anterior sin salir de la Experiencia.
+  await page.bringToFront();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/experiencia\/alojamiento$/);
+  await expect(page.locator('#lodging')).toBeVisible();
 });
 
 test('organizers · menú compartido (tanda 26): alérgenos con su nombre y «sin revisar por cocina»', async ({ page }) => {
@@ -680,6 +743,126 @@ test('organizers · menú compartido (tanda 26): alérgenos con su nombre y «si
   // Revisada y sin alérgenos: nada que avisar.
   await expect(allergens('Arroz blanco')).toHaveCount(0);
   await expect(page.locator('#menu')).not.toContainText('lacteos');
+});
+
+test('organizers · cocina contra el menú: platos que declaran un alérgeno del grupo y lo que no se puede comprobar, nunca «apto»', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con cocina', confirm: true, start: '2027-05-14', end: '2027-05-16' });
+  await api.menu(reservation, [{ date: '2027-05-15', type: 'comida', time: '14:00', dishes: [
+    { name: 'Tarta de queso', allergens: ['lacteos', 'huevos'], checked: false },
+    { name: 'Macedonia con kiwi', allergens: [], checked: true },
+    { name: 'Arroz blanco', allergens: [], checked: true },
+  ] }]);
+  await enter(page, await api.organizerLink([reservation], 'cocina-menu@example.invalid', 'Clara'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro con cocina');
+
+  // Dos asistentes con su alergia, por la interfaz: una de la lista europea (lácteos) y otra que no (kiwi).
+  for (const [name, subject, severity] of [['Marcos', 'lácteos', 'grave'], ['Eva', 'kiwi', 'moderada']] as const) {
+    await page.locator('#tab-asistentes').click();
+    await page.locator('#addGuest').click();
+    await page.locator('#f-first_name').fill(name);
+    if (await page.locator('#declaration').count()) await page.locator('#declaration').check();
+    await page.locator('#saveNewGuest').click();
+    await expect(page.locator('#guestName')).toHaveText(name);
+    await page.locator('#addRestriction').click();
+    await page.locator('.orgrestriction .r-subject').fill(subject);
+    await page.locator('.orgrestriction .r-severity').selectOption(severity);
+    await expect(page.locator('#saveState')).toContainText('Guardado');
+    await page.locator('#backToGuests').click();
+  }
+
+  await page.locator('#tab-cocina').click();
+  const tarta = page.locator('#kitchenMenu [data-dish]', { hasText: 'Tarta de queso' });
+  await expect(tarta).toContainText('Declara lácteos');
+  // La gravedad, solo junto al nombre compartido; en el recuento, nunca.
+  await expect(tarta).toContainText('Marcos (Alergia a lácteos · grave)');
+  await expect(page.locator('#kitchenSummary')).toHaveText('2 alergias o intolerancias en el grupo');
+  await expect(page.locator('#kitchenCheck')).toContainText('1 plato del menú declara un alérgeno de tu grupo');
+  await expect(page.locator('#kitchenCheck')).toContainText('1 plato aún sin revisar por cocina.');
+  // Lo que no es de la lista europea: «no se puede comprobar», y el nombre del plato solo como pista.
+  await expect(page.locator('#kitchenUnverifiable')).toContainText('kiwi');
+  await expect(page.locator('#kitchenUnverifiable')).toContainText('no se puede comprobar: lo revisa cocina');
+  await expect(page.locator('#kitchenMenu [data-dish]', { hasText: 'Macedonia con kiwi' })).toContainText('Pista: el plato menciona «kiwi» · no se puede comprobar: lo revisa cocina.');
+  await expect(page.locator('#kitchenMenu [data-dish]', { hasText: 'Arroz blanco' }).locator('.orgkdish-hit, .orgkdish-hint')).toHaveCount(0);
+  expect(await page.locator('#kitchen').textContent()).not.toMatch(/\bapto\b|✓/i);
+});
+
+test('organizers · asistentes por grupos: enviar el enlace desde la fila, recuento por grupo y «Recordar» con el enlace de la sesión', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const reservation = await api.reservation({ title: 'Retiro por grupos', confirm: true });
+  const link = await api.organizerLink([reservation], 'grupos@example.invalid', 'Gala');
+  const post = async (path: string, body: unknown, bearer?: string) => (await fetch(`${api.url}/api/v1${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, body: JSON.stringify(body) })).json();
+  const session = await post('/auth/link', { token: link });
+  const ana = crypto.randomUUID();
+  const bea = crypto.randomUUID();
+  for (const [id, name] of [[ana, 'Ana'], [bea, 'Bea']]) {
+    await post('/invoke/booking.portal_add_guest', { reservation_id: reservation, guest_id: id, fields: { first_name: name }, declaration: true, declaration_version: 'org-v1' }, session.token);
+  }
+  await enter(page, link);
+  await page.locator('#tab-asistentes').click();
+  await expect(page.locator('#guestRows [data-group="sinenlace"] .worst-count')).toHaveText('2');
+  await expect(page.locator('#guestSeats button')).toHaveCount(2);
+
+  // «Enviar su enlace» desde la fila: el enlace se ve una vez y Ana pasa a «No han abierto su enlace».
+  await page.locator(`#guestRows [data-id="${ana}"] [data-act="sinenlace"]`).click();
+  await expect(page.locator('#shareText')).toContainText('https://guests.ikisai.com/i/');
+  const url = (await page.locator('#shareText').inputValue()).match(/https:\/\/\S+/)![0];
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#guestRows [data-stage="sinabrir"]')).toContainText('Ana');
+  await expect(page.locator('#guestRows [data-group="sinenlace"] .worst-count')).toHaveText('1');
+  await expect(page.locator('#guestRows [data-group="sinabrir"] .worst-count')).toHaveText('1');
+
+  // «Recordar» copia el recordatorio con el enlace de esta sesión.
+  await page.locator(`#guestRows [data-id="${ana}"] [data-act="recordar"]`).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain(url);
+
+  // Intro sobre la acción no abre la ficha (la acción va primero).
+  await page.locator(`#guestRows [data-id="${ana}"] [data-act="recordar"]`).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/asistentes$/);
+
+  // Fila desfasada: otra sesión le envió un enlace a Bea; al enviar, se pide «Crear enlace nuevo».
+  await post('/portal-links', { app: 'guests', scope: { reservation_id: reservation, guest_id: bea }, person: { name: 'Bea' }, label: 'Bea', replace: true }, session.token);
+  await page.locator(`#guestRows [data-id="${bea}"] [data-act="sinenlace"]`).click();
+  await page.getByRole('button', { name: 'Crear enlace nuevo' }).click();
+  await expect(page.locator('#shareText')).toContainText('https://guests.ikisai.com/i/');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#guestRows [data-group="sinabrir"] .worst-count')).toHaveText('2');
+
+  // La hoja rápida de una plaza: su etapa escrita y «Abrir la ficha».
+  await page.locator(`#guestSeats [data-guest="${bea}"]`).click();
+  await expect(page.locator('#guestQuick')).toContainText('No han abierto su enlace');
+  await page.locator('#guestQuick').getByRole('button', { name: 'Abrir la ficha' }).click();
+  await expect(page.locator('#guestName')).toHaveText('Bea');
+});
+
+test('organizers · experiencia por ruta: cada apartado tiene su dirección, con el foco en su título; Atrás vuelve', async ({ page }) => {
+  const reservation = await api.reservation({ title: 'Retiro con rutas', confirm: true });
+  await enter(page, await api.organizerLink([reservation], 'rutas@example.invalid', 'Rita'));
+  await expect(page.locator('#retreatTitle')).toHaveText('Retiro con rutas');
+
+  await page.goto(`${baseURL}/#/retiro/${reservation}/experiencia/preguntas`);
+  await expect(page.locator('#expQuestions')).toBeVisible();
+  await expect(page.locator('#expQuestions h3')).toBeFocused();
+  await expect(page.locator('#expnav-preguntas')).toHaveAttribute('aria-current', 'page');
+
+  // La portada: lo siguiente (el programa está por hacer) y los tres momentos.
+  await page.locator('#expnav-ven').click();
+  await expect(page).toHaveURL(/\/experiencia\/ven$/);
+  await expect(page.locator('#expNext')).toContainText('Añade la primera actividad');
+  await expect(page.locator('.orgexp-moment > h3')).toHaveText(['Antes del retiro', 'Durante el retiro', 'Después del retiro']);
+  await expect(page.locator('[data-section="preguntas"]')).toContainText('Vacío');
+
+  // «Abrir» de lo siguiente lleva al programa por su dirección; Atrás vuelve a la portada.
+  await page.locator('#expNext .step-next').click();
+  await expect(page).toHaveURL(/\/experiencia\/programa$/);
+  await expect(page.locator('#program')).toBeVisible();
+  await page.goBack();
+  await expect(page.locator('#expNext')).toBeVisible();
+
+  // Un apartado solo vale tras «experiencia»: lo demás va a Mis retiros.
+  await page.goto(`${baseURL}/#/retiro/${reservation}/asistentes/programa`);
+  await expect(page.locator('.orgretreat')).toContainText('Retiro con rutas');
 });
 
 test('organizers · supletorias (Booking §25): «N de M» con − / + y su precio, reparto en una supletoria y pendiente con la propuesta aceptada', async ({ page }) => {
@@ -762,6 +945,9 @@ test('organizers · solicitudes para apuntarse (Booking §26.3): aviso en Resume
   await expect(page.locator('.toast.show')).toContainText('ya están en tus asistentes');
   await expect(page.locator('#guestRows')).toContainText('Marta');
   await expect(page.locator('#guestRows')).toContainText('Nico');
+  // Aún sin enlace: caen en «Sin enlace», con su recuento; y la línea de quien espera plaza.
+  await expect(page.locator('#guestRows [data-group="sinenlace"] .worst-count')).toHaveText('2');
+  await expect(page.locator('.orgseat-waiting')).toContainText('1 persona espera plaza');
   await expect(page.locator('#tab-asistentes .orgtab-count')).toHaveText('1');
 
   // Descartar: nadie entra, y queda en «Ya decididas» con su estado.
