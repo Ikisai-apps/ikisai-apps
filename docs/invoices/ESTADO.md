@@ -142,9 +142,9 @@ Actualizado: 6 de octubre de 2026 (tanda 6). Equipo Invoices (agente de backend)
 - Emitir facturas desde Finance (§14, aprobada en la ronda 41). PR 1 hecho (migraciones 0212 y 0213): borradores, emisión con número en el servidor, emitida congelada, registro VERI*FACTU encadenado sin enviar y anulación del owner. PR 2 hecho: borrador, «Emitir», factura imprimible desde la copia congelada y ajustes de series; el interruptor del envío se construirá con el envío. PR 3 hecho (migración 0214): rectificativas por diferencias o por sustitución desde la ficha; al emitirlas, la original queda rectificada. PR 4 hecho: facturar desde una reserva (borrador relleno desde Booking con IVA incluido exacto, asignado a la reserva, sin duplicar). Directorio de clientes por NIF hecho (ronda 46, migración 0216): búsqueda en el borrador y guardar o actualizar al emitir.
 - **Tanda 27 · rediseño de una pasada** (aprobado por VG el 19-10-2026, `coordinacion/ampliacion/revision-muela/`):
   - hecho: datos y servidor (0240, API.md §16.21): fecha de envío y medio del cobro de las emitidas, «Por cobrar» con la lectura de Booking (y su regla local sin red), `item_labels` en el dispositivo y el último día de los eventos para asignar de un toque;
-  - interfaz, parte 1 (Facturas, ficha e Inicio; API.md §16.21.1): en PR;
+  - interfaz, parte 1 (Facturas, ficha e Inicio; API.md §16.21.1): hecho (#621);
   - interfaz, parte 2 (Emitidas y Gestoría; API.md §16.21.2): en PR;
-  - pendiente: parte 3 (Compras, Proveedores y Conflictos).
+  - interfaz, parte 3 (Compras, Proveedores y Conflictos; API.md §16.21.3): en PR.
 - Extracción sin API de pago: fases 1–3 hechas; la fase 4 (OCR con Google Drive) espera la autorización de Google del usuario.
 
 ## Pendiente

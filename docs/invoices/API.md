@@ -1771,3 +1771,22 @@ La interfaz llega después, de una vez, con los lotes A, B y C del kit. Esto es 
     - «Preparar entrega» (`#prepareExport`) y «Descargar» (`#downloadLatest`, una hoja con las descargas y la huella);
     - «Todo el detalle» plegado (`#fiscalSummary`, `#issuedSummary` y `#vatBalance` dentro).
   - **Entregas del año** (`#exportsList`), por trimestre: cada trimestre despliega todas sus entregas.
+
+#### 16.21.3 Interfaz, parte 3: Compras, Proveedores y Conflictos
+- **Compras:**
+  - **«Por asignar» delante** (`#pendingCount`), agrupado por el destino que se propone (`app/purchase-proposals.ts`, con pruebas): la misma línea del mismo proveedor o, si no, lo último usado con ese proveedor.
+  - **El toque asigna solo si el destino sigue abierto** en la fecha de la factura (`targetOpenFor`). Si no, abre la hoja de asignar, que ya no reabre la factura (`openAllocation(…, onDone)`).
+  - **«Deshacer»** borra la asignación nueva. Hay lote («Asignar los n a …»).
+  - **Periodo y filtros:** en hojas (`#purchasePeriod`, `#purchaseFilters`) con los mismos ids dentro.
+  - **Enlace de otra app:** la franja (`#purchaseOrigin`) dice de dónde viene.
+- **Proveedores** (`app/supplier-state.ts`, con pruebas):
+  - **Grupos por categoría habitual,** con «Le debes…»: lo pagado sin confirmar cuenta como pagado, con «n por confirmar».
+  - **Chips** (`#supplierFilter`).
+  - **Extracto** al tocar (`#supplierStatement`), con:
+    - los movimientos y «Artículos que recuerda»;
+    - «Ver sus facturas» (`#/facturas?proveedor=<id>`) y «Editar datos».
+- **Conflictos:**
+  - **Bandeja por áreas** del kit (`layout: 'tray'`, `undoMs` 6 s).
+  - **El «Validar» aparcado,** aparte, con «Validar igualmente» y «Revisarla primero».
+  - **Rechazados:** con «Corregir en Facturas» (`[data-choice="fix"]`) y «Reintentar» discreto.
+  - **Al acabar,** vuelve atrás.
