@@ -15,7 +15,7 @@ function inventoryItem(id){return Sync.core?.inventory?.items.find(i=>i.id===id)
    con resources.item_kinds. */
 function isConsumable(itemId){const kind=inventoryItem(itemId)?.kind;if(!kind)return true;const known=(IkisaiKit.DEFAULT_ITEM_KINDS||[]).find(k=>k.kind===kind);return known?known.consumable!==false:!EQUIPMENT_DEFAULT.has(kind)}
 const materialQty=(n,item)=>n==null||n===''?'':`${Number(n).toLocaleString('es-ES',{maximumFractionDigits:3})}${item?.base_unit?' '+item.base_unit:''}`;
-function tradeName(id){return (Sync.core?.trades||[]).find(t=>t.trade_id===id)?.name||'el oficio'}
+function kitTradeName(id){return (Sync.core?.trades||[]).find(t=>t.trade_id===id)?.name||"el oficio"}
 
 function materialRows(taskId){return M().taskMaterials(purchasesData(),taskId)}
 function materialRow(m,editable){const item=inventoryItem(m.item_id),name=item?.name||'Artículo del inventario',equip=!isConsumable(m.item_id),consumed=m.consumed!=null;
@@ -27,7 +27,7 @@ function materialSectionHtml(taskId){const rows=materialRows(taskId),editable=ca
   if(!rows.length&&!editable)return '';
   const live=id=>{const it=inventoryItem(id);return !it||(!it.deleted_at&&it.active!==false)};
   const kit=editable&&Sync.core?.tradeKit?.length?M().kitSuggestions(purchasesData(),taskId,Sync.core.tradeKit,live):[];
-  const trades=[...new Set(kit.flatMap(k=>k.tradeIds))].map(tradeName);
+  const trades=[...new Set(kit.flatMap(k=>k.tradeIds))].map(kitTradeName);
   const pending=M().pendingConsumption(purchasesData(),taskId,isConsumable);
   return `<section class="taskmaterials" id="taskMaterials" data-task="${taskId}" aria-labelledby="taskMaterialsTitle"><h3 class="sectionlabel" id="taskMaterialsTitle">Materiales y equipos${rows.length?` <span class="count">${rows.length}</span>`:''}</h3>
     ${rows.length?`<ul class="materiallist">${rows.map(m=>materialRow(m,editable)).join('')}</ul>`:'<p class="small muted">Lo que hace falta para esta tarea, del inventario de la casa.</p>'}

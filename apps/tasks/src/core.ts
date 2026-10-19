@@ -191,8 +191,8 @@ export class TasksCore {
     await this.reload();
     if (!this.options.readOnly) void this.startResources();
     if (!this.options.readOnly) void this.refreshBlockers();
-    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades();
-    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTradeKit();
+    // El kit, después de los oficios (una lectura cada vez).
+    if (!this.options.readOnly && this.tradeSource() === 'central') void this.refreshTrades().then(() => this.refreshTradeKit());
     if (!this.options.readOnly && this.peopleSource() === 'central') void this.refreshPeople();
     if (!this.options.readOnly && this.tradeSource() === 'central' && this.peopleSource() === 'central') void this.refreshCapabilities();
     return boot ?? this.client.bootstrap();
