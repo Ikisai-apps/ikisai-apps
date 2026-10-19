@@ -1698,4 +1698,7 @@ Todo esto solo con el interruptor `resources_links` encendido. Apagado, la app s
   - **Coste:** si la entrada de Tasks entró sin coste, recibe el de la primera línea que la cubre (en `costs`; la Edge lo añade con `resources.movement_costs`). Así el coste medio sale con el de la factura. Si Tasks ya tenía coste (estimado), se respeta.
   - **Anular la factura** quita su entrada y deja solo lo de Tasks. El coste añadido se queda, como con Food.
   - **Asignar o desasignar después** una línea de una factura validada también la vuelve a cuadrar (la Edge mira `allocations` en `afterCommit`).
-- **Límite:** si la factura se valida antes de que Tasks reciba la compra, Finance no se entera de la recepción. La doble entrada se corrige en el siguiente cuadre de esa factura (cualquier cambio en ella) o al encender el interruptor. Pendiente de decidir con Core.
+- **Orden inverso (0239):** si la factura se valida antes de que Tasks reciba la compra, el cuadre lo pide Tasks al recibir.
+  - **Qué lee:** `invoices.tasks_resource_entries` (lectura de `tasks`, editor y owner), con `{request_ids: [...]}` (hasta 100).
+  - **Qué devuelve:** lo mismo que `resource_entries`, pero solo de las líneas asignadas a esas solicitudes. Tasks no ve ni cuadra las demás líneas de esas facturas.
+  - **Qué hace Tasks:** lo manda en un lote de Recursos a `resources.reconcile_entries`, más los `movement_costs` de `costs`, como la Edge de Finance.
