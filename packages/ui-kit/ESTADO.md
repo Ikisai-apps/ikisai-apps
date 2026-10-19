@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.45.0: piezas comunes, lote B3: extracto en `renderMoneyBreakdown`, tu año en una línea de tiempo y agenda por horas. Lote B completo.
 - v0.44.0: piezas comunes, lote B2: paso a paso, una cosa cada vez, votar deslizando y pregunta a pregunta (`createStepForm`).
 - v0.43.0: piezas comunes, lote B1: portada y foco, portada con flechas, lo primero en grande, lo de ahora y precios en el calendario.
 - v0.42.0: piezas comunes, lote A (MUELA-075): medallón, recorrido, grupos con lo peor, plazo en texto, cifras, comprobaciones, baldosa, `bindOnline` y etapas con su cifra en columnas.

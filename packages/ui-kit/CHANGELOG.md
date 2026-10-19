@@ -1,5 +1,21 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.45.0 · 19 de octubre de 2026
+
+**Piezas comunes, lote B3** (MUELA-075, tanda 27): dinero y tiempo. Con esto, el lote B está completo. Detalle en el README («Lote B3»).
+
+- **Ampliado:** `renderMoneyBreakdown` con `mode: 'statement'` (extracto): lo que queda, lo próximo y los movimientos por meses (`MoneyMove`). Sin `mode`, el desglose es el de siempre, y `lines` pasa a ser opcional.
+- **Nuevas:**
+  - `renderTimeline`, `timelineWindow` y `timelineSpan`: tu año en una línea de tiempo, con pistas por persona, retiros, hoy, choques y el resumen en texto.
+  - `renderHourAgenda`: la agenda por horas con la línea de ahora.
+- **De dónde sale cada una:** «Tu año» calca Booking Estancias, la única demo que lo tiene; en Guests, la pantalla 030 es el calendario del kit.
+- **Accesibilidad:**
+  - barras y retiros de 46 px, cada uno con su nombre completo («… · choca con …»);
+  - la región de la línea de tiempo es enfocable y se desliza;
+  - el estado siempre va escrito.
+- **Prefijos:** `year-`, `hour-` y `mb-` (del kit). Pasa `v45`.
+- **Demo:** `#piecesb3`. **Pruebas:** `v50`.
+
 ## 0.44.0 · 19 de octubre de 2026
 
 **Piezas comunes, lote B2** (MUELA-075, tanda 27): recorrer y decidir. No cambia nada de lo que ya había. Detalle en el README («Lote B2»).

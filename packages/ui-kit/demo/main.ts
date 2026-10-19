@@ -121,6 +121,8 @@ import {
   createVoteDeck,
   createStepForm,
   StepFormInvalid,
+  renderTimeline,
+  renderHourAgenda,
 } from '../src/index.ts';
 
 applyTheme();
@@ -1614,6 +1616,46 @@ const piecesB2Section = section('piecesb2', 'Piezas comunes (lote B2)', 'MUELA-0
   el('h3', null, 'Pregunta a pregunta'), askHost,
 );
 
+// --- Piezas comunes, lote B3 (MUELA-075) --------------------------------------------------------------------
+const stmtOut = el('output', { id: 'stmtOpened' }, '—');
+const statementHost = el('div', { id: 'statementHost', class: 'card' }, renderMoneyBreakdown({
+  mode: 'statement', total: 1680, subtitle: 'de 2.400,00 € contratados',
+  upcoming: [{ id: 'saldo', label: 'Saldo por pagar', meta: 'antes del 1 de diciembre', amount: 1680, chip: { text: 'Pendiente', tone: 'warn' } }],
+  moves: [
+    { id: 'p1', date: '2026-10-12', kind: 'in', label: 'Pago recibido · Señal', meta: '12 oct · te quedan 1.680,00 €', amount: 720, chip: { text: 'Pagado', tone: 'ok' } },
+    { id: 'f1', date: '2026-10-02', kind: 'doc', label: 'Factura F1-2026-031', meta: 'Señal del retiro', amount: 720, onOpen: () => { stmtOut.textContent = 'f1'; } },
+    { id: 'f0', date: '2026-09-20', kind: 'doc', label: 'Propuesta aceptada', meta: '20 sept', amount: 2400 },
+  ],
+}), el('p', null, 'Abierto: ', stmtOut));
+const yearOut = el('output', { id: 'yearOpened' }, '—');
+const yearHost = el('div', { id: 'yearHost' }, renderTimeline({
+  label: 'Tu año', from: '2026-10-19', today: '2026-10-19', bandsLabel: 'Retiros',
+  bands: [{ id: 'r1', from: '2026-10-20', to: '2026-10-24', label: 'Retiro: Yoga de otoño · 20–24 oct', short: 'Yoga', onClick: () => { yearOut.textContent = 'r1'; } }, { id: 'r2', from: '2027-02-10', to: '2027-02-14', label: 'Retiro: Silencio · 10–14 feb', short: 'Silencio' }],
+  lanes: [
+    { id: 'ana', label: 'Ana López', kind: 'outsider', medal: { name: 'Ana López' }, items: [
+      { id: 's1', from: '2026-09-25', to: '2026-10-05', label: 'Ana López · 25 sept – 5 oct · Hab 3 · ya pasó', short: 'Hab 3', past: true },
+      { id: 's2', from: '2026-11-03', to: '2026-11-20', label: 'Ana López · 3–20 nov · Hab 3 · choca con Luis Pérez', short: 'Hab 3', clash: true, onClick: () => { yearOut.textContent = 's2'; } },
+    ] },
+    { id: 'luis', label: 'Luis Pérez', kind: 'staff', items: [
+      { id: 's3', from: '2026-11-15', to: '2026-12-02', label: 'Luis Pérez · 15 nov – 2 dic · Hab 3 · choca con Ana López', short: 'Hab 3', clash: true, onClick: () => { yearOut.textContent = 's3'; } },
+      { id: 's4', from: '2027-09-20', to: '2027-10-30', label: 'Luis Pérez · 20 sept – 30 oct 2027', short: 'Hab 1' },
+    ] },
+  ],
+  summary: { '2026-10': '5 noches ocupadas', '2026-11': '24 noches ocupadas', '2026-12': '2 noches ocupadas' },
+}), el('p', null, 'Abierta: ', yearOut));
+const hoursHost = el('div', { id: 'hoursHost' }, renderHourAgenda({ label: 'Horario del retiro', now: '12:20', items: [
+  { id: 'h1', time: '08:00', title: 'Meditación', sub: 'Sala Olivo', state: 'done' },
+  { id: 'h2', time: '09:00', title: 'Desayuno', kind: 'meal', state: 'done' },
+  { id: 'h3', time: '12:00', end: '13:30', title: 'Paseo al río', sub: 'Puerta norte', state: 'now', extra: el('a', { href: '#piecesb3', class: 'linkbtn' }, 'Ver en el plano') },
+  { id: 'h4', time: '13:30', title: 'Comida', kind: 'meal', state: 'next' },
+  { id: 'h5', time: '17:00', title: 'Yoga suave', sub: 'Sala Olivo', state: 'later' },
+] }));
+const piecesB3Section = section('piecesb3', 'Piezas comunes (lote B3)', 'MUELA-075: extracto (lo que queda, lo próximo y los movimientos por meses), tu año en una línea de tiempo (pistas por persona, retiros, hoy y el resumen en texto) y la agenda por horas con la línea de ahora.',
+  el('h3', null, 'Extracto'), statementHost,
+  el('h3', null, 'Tu año'), yearHost,
+  el('h3', null, 'Agenda por horas'), hoursHost,
+);
+
 // Para las pruebas automáticas.
 (window as unknown as { ikisaiKit: unknown }).ikisaiKit = { createAppShell, createFeedbackReview, installBackNavigation, setKitLayer, initAppUpdates, compressImage, renderLogin, toast, toastWithAction, hideToast, openSheet, el, renderProposalReview, openProposalReview, createCommandPalette };
 
@@ -1626,5 +1668,5 @@ replace(document.getElementById('app')!,
     el('div', { class: 'brand' }, el('div', { class: 'mark', 'aria-hidden': 'true' }, icon('mark', 20)), el('h1', null, 'Ikisai UI kit', el('small', null, 'tokens «Taller» y componentes base · v0.7.0'))),
     nav,
   ),
-  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
+  el('main', { class: 'demo-main' }, tokens, controls, cards, status, shells, overlays, conflicts, listDemo, themeAndPalette, images, calendars, personSection, proposalSection, quantities, importSection, printSection, sortSection, dateSection, labelSection, levelSection, spaceSection, itemSection, inventorySection, piecesSection, piecesBSection, piecesB2Section, piecesB3Section, projectSection, moneySection, workspaceSection, agentsSection, colorSection, launcherSection, feedbackSection, i18nSection, portalSection),
 );

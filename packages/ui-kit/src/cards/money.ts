@@ -1,5 +1,6 @@
 import { el, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { kitLocaleTag, kt } from '../i18n/i18n.ts';
 
 /** Una línea del desglose: categoría, importe y, si procede, enlace a su origen (la factura). */
 export interface MoneyLine {
@@ -16,8 +17,38 @@ export interface MoneyLine {
   color?: string | null;
 }
 
+/** Un movimiento del extracto: un pago recibido, una factura o lo que queda por pagar. */
+export interface MoneyMove {
+  id?: string;
+  /** `YYYY-MM-DD`: agrupa por mes (en el orden en que llegan). */
+  date?: string | null;
+  label: string;
+  /** Línea secundaria ya escrita («12 oct · te quedan 820 €», «antes del 1 de dic»). */
+  meta?: Child;
+  amount: number;
+  /** `in`: pago recibido (+, verde); `doc`: factura o documento; `due`: por pagar (borde discontinuo). */
+  kind?: 'in' | 'doc' | 'due';
+  /** Estado escrito («Pagado», «Atrasado», «Pendiente»). */
+  chip?: { text: string; tone?: 'ok' | 'warn' | 'alert' | null } | null;
+  href?: string;
+  onOpen?: () => void;
+}
+
 export interface MoneyBreakdownSpec {
-  lines: MoneyLine[];
+  lines?: MoneyLine[];
+  /**
+   * `statement` (extracto, MUELA-075 pieza 23: Organizers, Booking, Finance): lo que queda en grande («Te queda por
+   * pagar»), lo próximo y los movimientos por meses. El saldo y los estados los calcula la app.
+   */
+  mode?: 'breakdown' | 'statement';
+  /** Extracto: bajo la cifra («de 2.400 € contratados»). */
+  subtitle?: string | null;
+  /** Extracto: lo que viene («Próximamente»). */
+  upcoming?: MoneyMove[];
+  upcomingLabel?: string;
+  /** Extracto: lo que ya pasó, por meses. */
+  moves?: MoneyMove[];
+  movesLabel?: string;
   /** Total; por defecto la suma de las líneas. */
   total?: number;
   /** Etiqueta del total («Coste real»). */
@@ -40,8 +71,9 @@ const defaultFormat = (n: number): string => new Intl.NumberFormat('es-ES', { st
  * Invoices) y reutilizable en Tasks (coste de un proyecto por etiqueta) o Food (coste de un menú por servicio).
  */
 export function renderMoneyBreakdown(spec: MoneyBreakdownSpec): HTMLElement {
+  if (spec.mode === 'statement') return renderStatement(spec);
   const fmt = spec.format ?? defaultFormat;
-  const lines = spec.sort === false ? spec.lines.slice() : spec.lines.slice().sort((a, b) => b.amount - a.amount);
+  const lines = spec.sort === false ? (spec.lines ?? []).slice() : (spec.lines ?? []).slice().sort((a, b) => b.amount - a.amount);
   const total = spec.total ?? lines.reduce((sum, line) => sum + line.amount, 0);
   const compare = spec.compare && spec.compare.amount > 0 ? spec.compare : null;
   const ratio = compare ? total / compare.amount : 0;
@@ -91,4 +123,48 @@ export function renderMoneyBreakdown(spec: MoneyBreakdownSpec): HTMLElement {
   }
   root.append(list);
   return root;
+}
+
+/** Extracto (`mode: 'statement'`): cifra grande, lo próximo y los movimientos por meses. */
+function renderStatement(spec: MoneyBreakdownSpec): HTMLElement {
+  const fmt = spec.format ?? defaultFormat;
+  const label = spec.totalLabel ?? kt('Te queda por pagar');
+  const move = (m: MoneyMove): HTMLElement => {
+    const kind = m.kind ?? 'doc';
+    const sign = kind === 'in' ? '+' : '';
+    const body: Child[] = [
+      el('span', { class: 'mb-ic', 'aria-hidden': 'true' }, icon(kind === 'in' ? 'check' : kind === 'due' ? 'calendar' : 'invoice', 18)),
+      el('span', { class: 'mb-name' }, m.label, m.meta ? el('small', { class: 'mb-meta' }, m.meta) : null),
+      el('span', { class: 'mb-moveamt' }, el('b', null, `${sign}${fmt(m.amount)}`), m.chip ? el('span', { class: `chip small${m.chip.tone ? ` ${m.chip.tone}` : ''}` }, m.chip.text) : null),
+    ];
+    const open = m.href ? el('a', { class: 'mb-open', href: m.href }, ...body)
+      : m.onOpen ? el('button', { type: 'button', class: 'mb-open', onclick: () => m.onOpen?.() }, ...body)
+        : el('span', { class: 'mb-open' }, ...body);
+    return el('li', { class: `mb-move mb-${kind}`, dataset: { move: m.id ?? '' } }, open);
+  };
+  const monthOf = (d: string) => {
+    const text = new Intl.DateTimeFormat(kitLocaleTag(), { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${d.slice(0, 7)}-01T12:00:00Z`));
+    return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+  };
+  const months: { key: string; label: string; moves: MoneyMove[] }[] = [];
+  for (const m of spec.moves ?? []) {
+    const key = m.date ? m.date.slice(0, 7) : '';
+    let group = months.find((g) => g.key === key);
+    if (!group) { group = { key, label: key ? monthOf(m.date!) : '', moves: [] }; months.push(group); }
+    group.moves.push(m);
+  }
+  const upcoming = spec.upcoming ?? [];
+  return el('div', { class: 'moneybreak mb-statement', role: 'group', 'aria-label': label },
+    el('div', { class: 'mb-total' },
+      el('span', { class: 'mb-label' }, label),
+      el('strong', { class: 'mb-amount' }, fmt(spec.total ?? 0)),
+      spec.subtitle ? el('span', { class: 'mb-compare' }, spec.subtitle) : null),
+    upcoming.length ? el('section', { class: 'mb-feed', 'aria-label': spec.upcomingLabel ?? kt('Próximamente') },
+      el('h3', { class: 'mb-feedh' }, spec.upcomingLabel ?? kt('Próximamente')),
+      el('ul', { class: 'mb-moves' }, ...upcoming.map((m) => move({ kind: 'due', ...m })))) : null,
+    el('section', { class: 'mb-feed', 'aria-label': spec.movesLabel ?? kt('Movimientos') },
+      el('h3', { class: 'mb-feedh' }, spec.movesLabel ?? kt('Movimientos')),
+      months.length
+        ? el('div', null, ...months.map((g) => el('div', { class: 'mb-month' }, g.label ? el('p', { class: 'mb-monthh' }, g.label) : null, el('ul', { class: 'mb-moves' }, ...g.moves.map(move)))))
+        : el('p', { class: 'hint mb-empty' }, spec.emptyText ?? kt('Aún no hay movimientos.'))));
 }
