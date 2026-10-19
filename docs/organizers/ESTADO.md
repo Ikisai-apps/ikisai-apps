@@ -63,6 +63,19 @@
 - 2026-10-19 · K3 para miembros (`uploads.membersK3`, núcleo #585) activado tras revisar campos de archivo, hook `visible` y papelera. Prueba en `experience.test.ts`.
 - 2026-10-19 · Menú: los alérgenos se muestran siempre con su nombre (no el código) y con «sin revisar por cocina» si la receta no tiene `allergens_checked`. Recorrido e2e en `portal.spec.ts`.
 - 2026-10-19 · Logotipo del retiro para Booking: vista `organizers.booking_logo_projection` (0702) con `core.allow_read` para Booking (API.md §16.6). Prueba en `experience.test.ts`.
+- 2026-10-19 · **Rediseño de una pasada (tanda 27, La Muela, consolidado MUELA-072)**, hecho con las piezas del kit 0.42–0.45. Detalle en API.md §18.
+  - **Mis retiros:** la lista con portada o iniciales, el recorrido y «Te toca», y «Pasados» y «Cancelados» plegados.
+  - **Ficha:** portada, pestañas de 46 px y el Resumen paso a paso.
+  - **Diseño:** «Lo que te falta por rellenar» y la calculadora «¿Cuánto ganas?», que solo se guarda en el dispositivo.
+  - **Propuesta:** las versiones, con «Comparar versiones» (Booking #610).
+  - **Pagos:** el extracto.
+  - **Asistentes:** por grupos, con la acción en la fila.
+  - **Ficha del asistente:** «Lo que le falta».
+  - **Cocina:** contra el menú, sin «apto».
+  - **Experiencia:** portada por momentos y una ruta por apartado.
+  - **Ofertas:** el cartel arriba y los −/+ agrupados.
+  - **Cabecera:** «Cerrar sesión» en el móvil.
+  - **Botones que necesitan red:** desactivados, con el motivo.
 
 ## Pendiente
 

@@ -572,6 +572,33 @@ Se genera **en el dispositivo**, sin servidor:
 - Un logotipo sin publicar también sale. Lo ve el personal de Ikisai, no los huéspedes.
 - `materials.file_id` ya está registrado (0700): mientras haya una fila viva, la recogida de archivos no lo borra.
 
+## 18. Rediseño de una pasada (tanda 27, 19-10-2026)
+
+Interfaz de La Muela (MUELA-072 y los traspasos 011, 015, 023, 026, 039, 047, 050 y 053), hecha con las piezas comunes del kit (0.42–0.45). No hay tablas ni migraciones nuevas de Organizers. Las lecturas son las de siempre, más estas:
+- **Propuesta:** `booking.portal_proposals` con `include_history: true` (Booking #610) da las versiones `sustituida` y `caducada`, con `superseded_by_version`. Si falla, se usa la lectura sin historial. Solo la vigente (la aceptada o, si no hay, la enviada más alta) lleva «Quiero confirmar» y «Comentar».
+- **Resumen:** solo las lecturas de la fase: pagos si hay contrato, y propuestas y peticiones mientras se diseña.
+- **Cocina:** `food.portal_menu` contra `portal_kitchen_summary`, con `normalizeTerm` y `allergensForSubject` de `_domain/food/warnings.ts` (por ruta directa, sin tocar Food).
+  - Lo que no es de la lista europea dice siempre «no se puede comprobar: lo revisa cocina». El nombre del plato es solo una pista.
+  - Nunca dice «apto». La gravedad sale solo junto a un nombre compartido.
+
+Reglas de la app (puras, con su prueba de Node):
+
+| Módulo | Qué decide |
+|---|---|
+| `app/journey.ts` | la fase y etapa, «Te toca», los grupos de Mis retiros y los pasos del Resumen. «Pasados» son los retiros no cancelados con `end_date` anterior a hoy (Madrid); «perdida» va a Cancelados. |
+| `app/design-checks.ts` | «Lo que te falta por rellenar»: fechas, personas, régimen y orientación del menú. No promete la propuesta. El Resumen cuenta solo las del formulario. |
+| `app/quote.ts` | el precio medio por persona (siempre «el total entre N»), el punto de equilibrio con el coste de Ikisai para esas plazas, y el precio para un % de margen, redondeado al euro hacia arriba. |
+| `app/proposal-state.ts` · `app/pay-state.ts` | las versiones vigente y anteriores, la comparación, y el extracto: lo que queda, «Próximamente» y los movimientos. |
+| `app/kitchen-state.ts` | el cruce del menú con los requisitos del grupo. |
+| `app/guests-state.ts` | los grupos Sin enlace, No han abierto, Les faltan datos, Les falta firmar y Completos. Sin datos de enlaces no se afirma «Sin enlace». |
+| `app/experience-state.ts` · `app/offers-state.ts` | el estado escrito de cada apartado de Experiencia, y la cuenta de Ofertas. Las ofertas caducadas siguen sumando, con su aviso. |
+
+Privacidad y dispositivo:
+- La calculadora de Diseño (con colaboradores y %) y la de Ofertas solo viven en el borrador local. Nunca cambian `expected_guests`.
+- Las portadas de Mis retiros y las imágenes del cartel van en la caché local (almacén `images` de IndexedDB, versión 2) y se borran al cerrar sesión.
+- Las plazas de Asistentes, «Lo que le falta» y los nombres de Cocina quedan fuera de las capturas de feedback.
+- **Sin red:** los botones que necesitan red (enviar enlace, decidir solicitudes, avisar a Ikisai, escribir en Booking o Food) quedan desactivados con el motivo (`needsNet`, sobre `bindOnline`). Lo que va por la cola de sincronización no se ata.
+
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 
 Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.
