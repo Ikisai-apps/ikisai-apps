@@ -1247,10 +1247,14 @@ const openInvSheet = (item: ItemRow) => {
   replace(invSheetHost, invSheet.element);
   invSheetHost.scrollIntoView({ block: 'start', behavior: 'smooth' });
 };
+const invOrdered = new Set<string>();
 const invCatalog = createItemCatalog({
   source: invSource, spaces: spaceSource, label: 'Inventario', spaceChips: ['cocina', 'piscina'], canCreate: true, feedbackId: 'demo.inventario',
   actions: ['spend', 'entry', 'count'], onAction: onInvAction,
-  rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [{ label: 'Pedir', primary: true, onClick: () => toast('Pedido a Tasks') }] : []),
+  // Lo pedido lo sabe la app, no el catálogo: al pedir, `refresh()` lo enseña al momento (como Tasks).
+  rowActions: (it) => (it.minQuantity && it.id === 'harina-espelta' ? [invOrdered.has(it.id)
+    ? { label: 'Pedido', onClick: () => toast('Ya está pedido') }
+    : { label: 'Pedir', primary: true, onClick: (row) => { invOrdered.add(row.id); toast('Pedido a Tasks'); invCatalog.refresh(); } }] : []),
   onOpen: openInvSheet, today: invToday,
 });
 invCatalog.element.id = 'invCatalog';

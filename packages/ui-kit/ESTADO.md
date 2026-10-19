@@ -4,6 +4,7 @@ Actualizado: 7 de octubre de 2026. Agente UI, rama `ui/kit`, directorio `package
 
 ## Hecho
 
+- v0.40.0: `createItemCatalog` tiene `refresh()`: repinta con los datos de ahora sin tocar el filtro.
 - v0.39.0: `createSpacePicker` acepta `texts` (vacío, buscador y marcas) para usarlo con otras filas en forma de espacio, como los oficios de Tasks; sin ellos, igual que antes.
 - v0.38.1: `createCountSession`: «Revisar y cerrar», la barra y «Sin contar» se actualizan también con el foco en una casilla.
 - v0.38.0: `createMovementForm` (entrada con lote y coste, salida con motivo y primero lo que caduca antes, traslado en un solo lote) y `createCountSession` (a ciegas, línea a línea sin red, retomar, revisar diferencias y cerrar al sincronizar); la fuente escribe movimientos y recuentos.
