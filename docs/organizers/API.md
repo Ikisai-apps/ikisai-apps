@@ -555,6 +555,14 @@ Se genera **en el dispositivo**, sin servidor:
 - **Habitaciones de 2–4 plazas con baño:** ya son un extra en las tarifas (`portal_visible`, B10).
 - **Suplemento:** al elegir con suplemento, Booking añade la línea al pedido de extras de la reserva o a la propuesta. Lo decide Booking, que factura Finance.
 
+## 16.5 Archivos de materiales · K3 para miembros
+
+`ORGANIZERS_UPLOADS.membersK3 = true` (núcleo #585, 19-10-2026):
+- **Para leer un archivo** de un material por `GET files/:id`, un miembro que no es la propietaria tiene que ver (hook `visible`) una fila viva que lo referencie. Con eso lo leen la organizadora y sus coorganizadoras del retiro. Quien lo subió y la propietaria, siempre.
+- **El único campo de archivo** es `organizers.materials.file_id`, registrado con `core.register_file_field` en 0700. No hay ids de archivo en JSON ni en texto.
+- **Papelera:** el portal no enseña materiales borrados, así que nadie necesita el adjunto de una fila borrada; ese adjunto lo leen quien lo subió y la propietaria.
+- **Huéspedes:** abren los materiales publicados por `portal-files` (C8, resolutor `organizers.guest_material_file`), que no cambia.
+
 ## 17. Solicitudes para apuntarse (Booking O2, «Apuntarme», API de Booking §26.3) · construido
 
 Una persona pide apuntarse al retiro desde su portal de huésped. Si el personal de Ikisai la pasa al organizador, la decide él. El portal no escribe tablas propias: lee y decide con las funciones de Booking.
