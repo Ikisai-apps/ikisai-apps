@@ -6,7 +6,10 @@
    - «Claves por corregir»: familias con una clave de sistema que no casa con su nombre («Zona: Espacio» marcada como
      responsables, «Persona» marcada como fases). Se corrigen antes de fusionar (quitando la clave y, si eran responsables,
      esos responsables).
-   - «Hacer General» en una etiqueta o en una familia del área: la lleva a General con sus iguales de otras áreas. */
+   - «Hacer General» en una etiqueta o en una familia del área: la lleva a General con sus iguales de otras áreas.
+   - Regla de nombres (FB_2026_033, §27.2): la vista previa simula cada grupo con el dominio (`mergeProblem`) y avisa si
+     el servidor lo rechazaría (DUPLICATE_LABEL: queda viva otra igual que no entra en el grupo); ese grupo no se puede
+     marcar hasta arreglarlo y, si la otra es de un área que no está en el grupo, se ofrece incluirla. */
 const generalNorm=s=>String(s||'').trim().toLowerCase();
 const generalLoose=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/gi,'').toLowerCase();
 const GENERAL_KEY_NAMES={person:['persona','personas','responsable','responsables','equipo','staff','gente'],phase:['fase','fases','etapa','etapas'],trade:['oficio','oficios','gremio','gremios'],building:['edificio','edificios'],space:['espacio','espacios','zona','zonas','lugar','lugares']};
@@ -64,7 +67,13 @@ function generalOwnersOf(c,familyId){const ids=new Set(c.all.filter(l=>l.family_
 function generalFixOps(conflicts){return conflicts.flatMap(x=>[{op:'update',table:'tasks.families',id:x.family.id,expectedRevision:x.family.revision,fields:{system_key:null}},
   ...x.owners.map(([table,row])=>({op:'update',table,id:row.id,expectedRevision:row.revision,fields:{owner_label_id:null}}))])}
 async function generalWaitSync(){for(let i=0;i<40&&(Sync.record.queue.length||Sync.busy);i++){await syncNow();await new Promise(r=>setTimeout(r,150))}if(Sync.record.queue.length)throw new Error('No se pudo guardar la corrección: revisa la conexión.')}
-async function generalMerge(groups){return usage.run('tasks.etiquetas.general.fusionar',()=>Sync.core.api('/labels/general/merge',{method:'POST',json:{groups:groups.map(g=>g.root?{ids:g.labels.map(l=>l.id),root:true}:g.labels.map(l=>l.id)),requestId:uid('req-')}}))}
+const generalPayload=g=>g.root?{ids:g.labels.map(l=>l.id),root:true}:g.labels.map(l=>l.id);
+/* Regla de nombres (FB_2026_033, §27.2): lo que el servidor rechazaría de esta fusión, con el mismo dominio (simula el
+   lote y le pasa la comprobación del hook). `null` si nada. */
+function generalProblem(groups){const check=window.IkisaiTasks?.labelNames?.mergeProblem,data=Sync.core?.data;return check&&data&&groups.length?check(data,groups.map(generalPayload)):null}
+/* Nunca se manda un lote que el hook va a rechazar: se comprueba justo antes de mandarlo. */
+async function generalMerge(groups){const problem=generalProblem(groups);if(problem)throw new Error(problem.message);
+  return usage.run('tasks.etiquetas.general.fusionar',()=>Sync.core.api('/labels/general/merge',{method:'POST',json:{groups:groups.map(generalPayload),requestId:uid('req-')}}))}
 function generalReady(){if(!isAdministrator()){toast('Solo una propietaria con acceso completo gestiona el catálogo General.');return false}
   if(Sync.record.queue.length||Sync.busy){toast('Sincroniza los cambios pendientes antes de seguir.');return false}
   if(!navigator.onLine){toast('Hace falta conexión para esto.');return false}return true}
@@ -73,14 +82,34 @@ function generalMergeSheet(){
   if(!generalReady())return;
   const groups=generalMergeGroups(),lookalikes=generalLookalikes(),conflicts=generalKeyConflicts(),chosen=new Set(groups.map(g=>g.key)),fixes=new Set(conflicts.map(x=>x.family.id));
   const keyName={person:'responsables (Persona)',phase:'Fase',trade:'Oficio',building:'Edificio',space:'Espacio'};
+  /* Regla de nombres (FB_2026_033): cada grupo se simula (con su madre, si se fusiona con ella) antes de ofrecerlo. Si el
+     servidor lo rechazaría porque en un área queda viva otra igual que no entra en el grupo, el grupo sale con el aviso y
+     sin casilla; si esa otra es de un área que no está en el grupo, se ofrece incluirla. Los demás grupos siguen. */
+  const cat=generalCatalog(),included=new Map();
+  const widen=g=>{const extra=(included.get(g.key)||[]).map(id=>cat.byId.get(id)).filter(Boolean);
+    return extra.length?{...g,labels:[...g.labels,...extra],areas:[...g.areas,...extra.map(l=>cat.tabs.get(l.tab_id)?.name||'')]}:g};
+  const motherOf=g=>g.mother&&!g.root&&g.mother!=='general'?groups.find(x=>x.key===g.mother&&x!==g)||null:null;
+  const chainOf=g=>{const out=[];for(let x=motherOf(g);x&&!out.includes(x);x=motherOf(x))out.unshift(x);return out};
+  const blockedNow=()=>{const blocked=new Map();
+    for(const g of groups){const chain=chainOf(g),off=chain.find(x=>blocked.has(x.key));
+      if(off){blocked.set(g.key,{message:`Se podrá cuando se pueda fusionar «${off.name}».`,soft:true});continue}
+      const set=[...chain,g].map(widen),p=generalProblem(set);
+      if(p)blocked.set(g.key,{...p,include:p.group===set.length-1?p.include:undefined})}
+    return blocked};
   const paint=()=>{
+    const blocked=blockedNow();for(const k of blocked.keys())chosen.delete(k);
+    // Y todos los marcados juntos (dos grupos podrían chocar entre sí): si no pasaría, no se manda.
+    const together=generalProblem(groups.filter(g=>chosen.has(g.key)).map(widen));
     const n=chosen.size,m=fixes.size;
     openSheet(`<h2 class="sheettitle">Repetidas → General</h2><p class="small muted">Cada etiqueta marcada pasa a ser una sola, General, válida en todas las áreas. Las tareas, los responsables, las reglas y las vistas pasan a usarla; las copias de cada área quedan archivadas.</p>
       ${conflicts.length?`<h3 class="sectionlabel">Claves por corregir</h3><p class="small muted">Estas familias tienen una marca de sistema que no casa con su nombre. Se corrigen antes de fusionar.</p><div class="generalgroups">${conflicts.map(x=>`<label class="checkline generalconflict"><input type="checkbox" data-general-fix="${x.family.id}" ${fixes.has(x.family.id)?'checked':''} data-feedback-id="tasks.etiquetas.general.corregir_clave" data-feedback-label="Corregir la clave de la familia"><span><strong>${esc(x.family.name)}</strong> <span class="small muted">· ${esc(x.area)} · marcada como ${esc(keyName[x.family.system_key]||x.family.system_key)}: se quita la marca${x.owners.length?`, y ${x.owners.length} ${x.owners.length===1?'responsable que era':'responsables que eran'} de esta familia se quedan sin responsable`:''}</span></span></label>`).join('')}</div>`:''}
       <h3 class="sectionlabel">Repetidas entre áreas</h3>
-      ${groups.length?`<div class="generalgroups">${groups.map(g=>`<label class="checkline generalgroup ${g.mother&&!g.root?'child':''}"><input type="checkbox" data-general-group="${esc(g.key)}" ${chosen.has(g.key)?'checked':''} data-feedback-id="tasks.etiquetas.general.grupo" data-feedback-label="Fusionar este grupo"><span><strong>${g.mother&&!g.root?'↳ ':''}${esc(g.name)}</strong> <span class="small muted">· ${esc(g.family?.name||'')} · en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}${g.root&&g.parentNames.length?` · en alguna cuelga de ${esc(g.parentNames.join(', '))}: la General quedará en la raíz`:''}${g.keyConflict?' · las familias tienen marcas distintas: la General, sin marca':''}</span></span></label>`).join('')}</div>`:'<p class="small">No hay etiquetas repetidas entre áreas. Puedes llevar una etiqueta o una familia a General con «Hacer General».</p>'}
+      ${groups.length?`<div class="generalgroups">${groups.map(widen).map(g=>{const b=blocked.get(g.key),child=g.mother&&!g.root?'child':'';return `<div class="generalgroupbox ${child}" data-general-box="${esc(g.key)}"><label class="checkline generalgroup ${child} ${b?'blocked':''}"><input type="checkbox" data-general-group="${esc(g.key)}" ${chosen.has(g.key)?'checked':''} ${b?'disabled':''} data-feedback-id="tasks.etiquetas.general.grupo" data-feedback-label="Fusionar este grupo"><span><strong>${child?'↳ ':''}${esc(g.name)}</strong> <span class="small muted">· ${esc(g.family?.name||'')} · en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}${g.root&&g.parentNames.length?` · en alguna cuelga de ${esc(g.parentNames.join(', '))}: la General quedará en la raíz`:''}${g.keyConflict?' · las familias tienen marcas distintas: la General, sin marca':''}</span></span></label>
+        ${b?`<p class="labelclash generalclash ${b.soft?'soft':''}" role="alert" data-general-clash="${esc(g.key)}">${esc(b.message)}</p>${b.include?`<button type="button" class="ghost small generalinclude" data-general-include="${esc(g.key)}" data-include-id="${esc(b.include)}" data-feedback-id="tasks.etiquetas.general.incluir" data-feedback-label="Incluir la otra en la fusión">Incluir la de ${esc(b.conflictTabName||'esa área')} en la fusión</button>`:''}`:''}</div>`}).join('')}</div>`:'<p class="small">No hay etiquetas repetidas entre áreas. Puedes llevar una etiqueta o una familia a General con «Hacer General».</p>'}
       ${lookalikes.length?`<div class="notice"><strong>Parecidas, pero no iguales</strong> (decide a mano si son la misma; renómbralas y vuelve aquí):<ul>${lookalikes.map(l=>`<li>${l.map(esc).join(' · ')}</li>`).join('')}</ul></div>`:''}
-      <div class="actions"><button class="ghost" id="generalCancel" data-feedback-id="tasks.etiquetas.general.cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalMerge" ${n||m?'':'disabled'} data-feedback-id="tasks.etiquetas.general.fusionar" data-feedback-label="Fusionar en General">${n?`Fusionar ${n}`:m?`Corregir ${m}`:'Fusionar'}</button></div>`);
+      ${together?`<p class="labelclash" role="alert" id="generalTogether">Juntos no se pueden fusionar: ${esc(together.message)} Desmarca uno de los grupos.</p>`:''}
+      <div class="actions"><button class="ghost" id="generalCancel" data-feedback-id="tasks.etiquetas.general.cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalMerge" ${(n||m)&&!together?'':'disabled'} data-feedback-id="tasks.etiquetas.general.fusionar" data-feedback-label="Fusionar en General">${n?`Fusionar ${n}`:m?`Corregir ${m}`:'Fusionar'}</button></div>`);
+    document.querySelectorAll('[data-general-include]').forEach(b=>b.onclick=()=>{const k=b.dataset.generalInclude;included.set(k,[...(included.get(k)||[]),b.dataset.includeId]);chosen.add(k);paint()});
     document.querySelectorAll('[data-general-group]').forEach(b=>b.onchange=()=>{const k=b.dataset.generalGroup;if(b.checked)chosen.add(k);else{chosen.delete(k);for(const g of groups)if(g.mother===k&&!g.root)chosen.delete(g.key)}
       for(const g of groups)if(g.mother&&!g.root&&g.mother!=='general'&&!chosen.has(g.mother))chosen.delete(g.key);paint()});
     document.querySelectorAll('[data-general-fix]').forEach(b=>b.onchange=()=>{if(b.checked)fixes.add(b.dataset.generalFix);else fixes.delete(b.dataset.generalFix);paint()});
@@ -89,7 +118,7 @@ function generalMergeSheet(){
       try{const fixing=conflicts.filter(x=>fixes.has(x.family.id));
         if(fixing.length){if(!purchaseCommit(generalFixOps(fixing),null))throw new Error('No se pudo corregir las claves.');await generalWaitSync()}
         // Con las claves corregidas, se recalcula (las marcas ya no separan nada) y se fusiona lo marcado.
-        const picked=generalMergeGroups().filter(g=>chosen.has(g.key));
+        const picked=generalMergeGroups().filter(g=>chosen.has(g.key)).map(widen);
         const out=picked.length?await generalMerge(picked):null;
         await syncNow();closeSheet();render();toast(out?`Fusionadas en General: ${out.counts?.groups??picked.length} etiquetas${fixing.length?` · ${fixing.length} claves corregidas`:''}.`:`${fixing.length} claves corregidas.`)}
       catch(e){button.disabled=false;toast(e.message)}};
@@ -109,8 +138,11 @@ function generalGroupsFor(labelIds){
 function generalMakeSheet(labelIds,what){
   if(!generalReady())return;
   const groups=generalGroupsFor(labelIds);if(!groups.length)return toast('No hay nada del área que llevar a General.');
+  // Regla de nombres (FB_2026_033): si el servidor lo rechazaría, se dice aquí y no se deja mandar.
+  const problem=generalProblem(groups);
   openSheet(`<h2 class="sheettitle">Hacer General</h2><p class="small muted">${esc(what)} pasa a General, válida en todas las áreas, junto con las iguales de otras áreas. Las copias de cada área quedan archivadas.</p><ul class="small">${groups.map(g=>`<li><strong>${esc(g.name)}</strong> · ${esc(g.family?.name||'')} · ${g.labels.length===1?`de ${esc(g.areas[0])}`:`en ${g.labels.length} áreas: ${esc(g.areas.join(', '))}`}${g.root&&g.parentNames.length?' · quedará en la raíz':''}</li>`).join('')}</ul>
-    <div class="actions"><button class="ghost" id="generalMakeCancel" data-feedback-id="tasks.etiquetas.general.hacer_cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalMakeGo" data-feedback-id="tasks.etiquetas.general.hacer" data-feedback-label="Hacer General">Hacer General</button></div>`);
+    ${problem?`<p class="labelclash" role="alert" id="generalMakeClash">${esc(problem.message)}</p>`:''}
+    <div class="actions"><button class="ghost" id="generalMakeCancel" data-feedback-id="tasks.etiquetas.general.hacer_cancelar" data-feedback-label="Cancelar">Cancelar</button><button class="primary" id="generalMakeGo" ${problem?'disabled':''} data-feedback-id="tasks.etiquetas.general.hacer" data-feedback-label="Hacer General">Hacer General</button></div>`);
   document.getElementById('generalMakeCancel').onclick=closeSheet;
   document.getElementById('generalMakeGo').onclick=async()=>{const b=document.getElementById('generalMakeGo');b.disabled=true;
     try{const out=await generalMerge(groups);await syncNow();closeSheet();render();toast(`En General: ${out.counts?.groups??groups.length} etiquetas.`)}catch(e){b.disabled=false;toast(e.message)}};

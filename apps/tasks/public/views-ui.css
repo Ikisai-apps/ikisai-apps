@@ -375,6 +375,11 @@ html{overflow-x:hidden}
 .generalnew>*{flex:none}
 .generalgroups{display:grid;gap:8px;margin:12px 0}
 .generalgroup.child{padding-left:18px}
+/* Un grupo que el servidor rechazaría (regla de nombres, FB_2026_033): apagado, con el aviso debajo. */
+.generalgroup.blocked{opacity:.6}
+.generalgroupbox.child .generalclash,.generalgroupbox.child .generalinclude{margin-left:46px}
+.generalclash{margin:4px 0 0 28px}
+.generalinclude{margin:6px 0 0 28px}
 /* Filtro de etiqueta «no la tiene» (FB_2026_042): tachada y en tono apagado. */
 .filterchip.excluded{text-decoration:line-through;text-decoration-thickness:2px;opacity:.75;border-style:dashed}
 .activechip.excludedchip{text-decoration:line-through}
