@@ -1,5 +1,8 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { compressImage, confirmDialog, el, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import {
+  compressImage, confirmDialog, createFocus, createQueue, deadlineInfo, el, icon, listRow, openSheet, renderCover, renderGroups, renderStages, replace,
+  toast, toastWithAction, type Queue, type QueueItem, type Sheet, type Tone, type Usage,
+} from '@ikisai/ui-kit';
 import {
   CLOSED_REQUIREMENT_STATUSES, DOCUMENT_KINDS, DOCUMENT_KIND_LABELS, FREQUENCIES, FREQUENCY_LABELS, IMPACTS, IMPACT_LABELS,
   KEY_DOCUMENT_STATUSES, KEY_DOCUMENT_STATUS_LABELS, RECORD_TYPE_LABELS, REQUIREMENT_STATUSES, REQUIREMENT_STATUS_LABELS,
@@ -8,7 +11,7 @@ import {
 } from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
-import type { ViewMount } from './shell.ts';
+import type { ViewContext, ViewMount } from './shell.ts';
 import { fbIgnoreWithin, fbMark } from './feedback.ts';
 
 type Base = { id: string; revision: number; updated_at: string; deleted_at: string | null; code?: string };
@@ -28,6 +31,16 @@ const text = (v: string) => v.trim() || null;
 const date = (v: string) => v || null;
 const day = (d: unknown) => (typeof d === 'string' && d ? d.split('-').reverse().join('/') : '—');
 const label = (map: Record<string, string>, v: unknown) => map[String(v)] ?? String(v ?? '');
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * El plazo con la pieza común (MUELA-038): «Vence el lun, 26 oct (quedan 12 días)», «Venció el sáb, 3 oct (venció hace
+ * 11 días)». Sin hora (las fechas de Cumplimiento son de día) y con el año cuando no es el actual (renovaciones de 2 y 5 años).
+ */
+export function plazo(due: string, verbs: [string, string] = ['Vence el', 'Venció el']): string {
+  const info = deadlineInfo(due);
+  return `${info.overdue ? verbs[1] : verbs[0]} ${info.when} (${info.left})`;
+}
 
 function options(values: readonly string[], labels: Record<string, string>, selected: unknown, empty?: string): HTMLElement[] {
   return [
@@ -36,7 +49,7 @@ function options(values: readonly string[], labels: Record<string, string>, sele
   ];
 }
 
-async function loadAll(client: SyncClient) {
+export async function loadAll(client: SyncClient) {
   const reserved = canSeeReserved(client.bootstrap()?.membership);
   const [requirements, documents, links, people, records] = await Promise.all([
     client.list(T.requirements, { includeDeleted: true }), client.list(T.keyDocuments, { includeDeleted: true }), client.list(T.requirementTasks),
@@ -47,8 +60,9 @@ async function loadAll(client: SyncClient) {
     people: people as unknown as Array<{ id: string; display_name: string; active: boolean }>, records: records as unknown as Array<Record<string, unknown>>,
   };
 }
-type Data = Awaited<ReturnType<typeof loadAll>>;
+export type Data = Awaited<ReturnType<typeof loadAll>>;
 
+/** Lo que vence, en el orden de siempre (`dueItems`). La documentación de personas solo llega si quien mira puede verla. */
 export function computeDue(data: Data, today = todayInMadrid()): DueItem[] {
   return dueItems({
     requirements: data.requirements, keyDocuments: data.documents, personRecords: data.records,
@@ -73,6 +87,7 @@ function stateChip(expires: string | null, notice: number, closed: boolean, toda
   const s = dueState(expires, today, notice, closed);
   return s === 'al_dia' ? null : el('span', { class: s === 'vencido' ? 'chip alert' : 'chip warn' }, s === 'vencido' ? 'Vencido' : 'Vence pronto');
 }
+const toneOfState = (s: string): Tone | null => (s === 'vencido' ? 'alert' : s === 'por_vencer' ? 'warn' : null);
 
 function tabsNav(tab: ComplianceTab): HTMLElement {
   const nav = el('nav', { class: 'segmented', 'aria-label': 'Secciones de cumplimiento', 'data-feedback-id': 'central.cumplimiento.pestanas', 'data-feedback-label': 'Pestañas de Cumplimiento' },
@@ -84,74 +99,250 @@ function tabsNav(tab: ComplianceTab): HTMLElement {
   return nav;
 }
 
+const sourceLabel = (i: DueItem) => (i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona');
+const dueText = (i: DueItem) => plazo(i.dueOn, i.source === 'requirement' ? ['Vence el', 'Venció el'] : ['Caduca el', 'Caducó el']);
+
+/** Abre lo que corresponde a un vencimiento: la ficha de la obligación, la persona, la obligación del documento o su hoja. */
+export function openDue(ctx: Pick<ViewContext, 'client' | 'navigate'>, data: Data, i: DueItem): void {
+  if (i.source === 'requirement') ctx.navigate(`#/cumplimiento/${i.id}`);
+  else if (i.source === 'person_record') ctx.navigate(`#/personas/${i.parentId}`);
+  else if (i.parentId) ctx.navigate(`#/cumplimiento/${i.parentId}`);
+  else openDocumentEditor(ctx.client, data.documents.find((d) => d.id === i.id) ?? null, data, null);
+}
+
+/** Una fila de vencimiento (la lista de hoy: código, origen, plazo y etiquetas de estado, riesgo y bloqueo). */
+function dueRow(ctx: Pick<ViewContext, 'client' | 'navigate'>, data: Data, i: DueItem): HTMLElement {
+  return el('li', null,
+    el('button', { class: 'personrow', type: 'button', 'data-due': i.id, 'data-feedback-id': 'central.cumplimiento.vencimientos.fila', 'data-feedback-label': 'Vencimiento', onclick: () => openDue(ctx, data, i) },
+      el('span', { class: 'accountname', 'data-feedback-ignore': '' }, i.title),
+      el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [i.code, sourceLabel(i), dueText(i)].filter(Boolean).join(' · ')),
+      el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.vencimientos.etiquetas', 'data-feedback-label': 'Estado del vencimiento' }, el('span', { class: i.state === 'vencido' ? 'chip alert' : 'chip warn' }, i.state === 'vencido' ? 'Vencido' : 'Vence pronto'),
+        i.risk === 'critico' || i.risk === 'alto' ? el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, i.risk).toLowerCase()}`) : null,
+        i.blocksOperation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null)));
+}
+
+/**
+ * «Una cosa cada vez» sobre lo que vence (MUELA-032, piloto firmado), en el orden de `computeDue`. Quien edita:
+ * - en una obligación, «Marcar cumplido y siguiente» abre la hoja de siempre y, al guardar, pasa a la siguiente con
+ *   «Deshacer» (vuelve a poner la obligación como estaba);
+ * - en un documento o en la documentación de una persona, «Abrir y siguiente» (no se pueden «marcar cumplidos»).
+ * Quien solo lee pasa y abre, sin acciones que escriben.
+ */
+export interface DueQueue { element: HTMLElement; setDue(items: DueItem[]): void; pending(): string[] }
+
+export function createDueQueue(ctx: Pick<ViewContext, 'client' | 'navigate' | 'usage'>, data: () => Data, items: DueItem[], opts: { canEdit: boolean; onAll: () => void; where: 'inicio' | 'vencimientos'; onChange?: () => void }): DueQueue {
+  const passed = new Set<string>();
+  const byId = new Map<string, DueItem>();
+  const toItems = (list: DueItem[]): QueueItem[] => { byId.clear(); return list.map((i) => {
+    byId.set(i.id, i);
+    const info = deadlineInfo(i.dueOn);
+    return {
+      id: i.id, title: i.title, tone: i.state === 'vencido' || i.blocksOperation ? 'alert' : 'warn',
+      toneText: [i.blocksOperation ? 'Bloquea la operación' : '', i.state === 'vencido' ? 'Vencido' : 'Vence pronto'].filter(Boolean).join(' · '),
+      value: info.left.charAt(0).toUpperCase() + info.left.slice(1),
+      facts: [sourceLabel(i), dueText(i), ...(i.code ? [i.code] : []), ...(i.risk === 'critico' || i.risk === 'alto' ? [`Riesgo ${label(RISK_LABELS, i.risk).toLowerCase()}`] : [])],
+    };
+  }); };
+  const queue: Queue = createQueue({
+    label: 'Lo que vence, una cosa cada vez', items: toItems(items), feedbackId: opts.where === 'inicio' ? 'central.inicio.vencimientos.cola' : 'central.cumplimiento.vencimientos.cola',
+    readOnlyText: 'Puedes consultarlo. Lo cambia quien edita en Central.',
+    primary: opts.canEdit ? (item) => {
+      const i = byId.get(item.id);
+      if (!i) return null;
+      if (i.source === 'requirement') {
+        const req = data().requirements.find((r) => r.id === i.id);
+        if (!req) return null;
+        return { label: 'Marcar cumplido y siguiente', onClick: () => openMarkDone(ctx.client, ctx.usage, req, {
+          onSaved: (before) => {
+            passed.add(i.id);
+            queue.done();
+            opts.onChange?.();
+            toastWithAction('Obligación marcada como cumplida.', { label: 'Deshacer', onClick: () => void undoMarkDone(ctx.client, req.id, before).then((ok) => { if (ok) { passed.delete(i.id); queue.undo(); opts.onChange?.(); } }) });
+          },
+        }) };
+      }
+      return { label: 'Abrir y siguiente', onClick: () => { passed.add(i.id); queue.done(); opts.onChange?.(); openDue(ctx, data(), i); } };
+    } : undefined,
+    onOpen: (item) => { const i = byId.get(item.id); if (i) openDue(ctx, data(), i); },
+    onAll: opts.onAll,
+    doneTitle: 'Has pasado por todo', doneText: 'Lo que vence sigue en la lista hasta que se renueve.',
+  });
+  return {
+    element: queue.element,
+    setDue: (list) => queue.setItems(toItems(list)),
+    /** Lo que queda por pasar, en orden: la tarjeta de ahora primero (para «las 4 siguientes» de Inicio). */
+    pending: () => { const now = queue.current()?.id; const rest = [...byId.keys()].filter((id) => !passed.has(id) && id !== now); return now ? [now, ...rest] : rest; },
+  };
+}
+
+/** Semana (lunes) de una fecha `AAAA-MM-DD`. */
+function mondayOf(d: string): string {
+  const t = new Date(`${d}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7));
+  return t.toISOString().slice(0, 10);
+}
+const shortDay = (d: string) => new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC', ...(d.slice(0, 4) !== todayInMadrid().slice(0, 4) ? { year: 'numeric' } : {}) }).format(new Date(`${d}T12:00:00Z`)).replace(/\./g, '');
+
 // ---------------------------------------------------------------------------
 // Listas: vencimientos, obligaciones y documentos
 // ---------------------------------------------------------------------------
+type DueView = 'cola' | 'lista' | 'semanas';
+
 export function mountCompliance(tab: ComplianceTab): ViewMount {
   return (ctx) => {
     const { main, client, navigate } = ctx;
     const canEdit = client.bootstrap()?.membership.role !== 'reader';
+    const params = new URLSearchParams(location.hash.split('?')[1] ?? '');
     let data: Data | null = null;
-    let typeFilter = '';
+    let typeFilter = params.get('tipo') ?? '';
+    // Vencimientos: «Una cosa cada vez» para quien edita; la lista de siempre para quien lee. No se recuerda (007).
+    let view: DueView = canEdit ? 'cola' : 'lista';
+    let queue: DueQueue | null = null;
     const host = el('div', { id: `compliance-${tab}` });
     switch (tab) {
       case 'vencimientos': fbMark(host, 'central.cumplimiento.vencimientos', 'Vencimientos'); break;
       case 'requisitos': fbMark(host, 'central.cumplimiento.requisitos', 'Obligaciones'); break;
       case 'documentos': fbMark(host, 'central.cumplimiento.documentos', 'Documentos'); break;
     }
-    const fab = canEdit && tab === 'requisitos' ? el('button', { class: 'fab', type: 'button', id: 'newRequirement', 'data-feedback-id': 'central.cumplimiento.obligaciones.nueva', 'data-feedback-label': 'Nueva obligación', onclick: () => openRequirementEditor(ctx.client, null, data, (id) => navigate(`#/cumplimiento/${id}`)) }, icon('plus'), 'Nueva obligación')
-      : canEdit && tab === 'documentos' ? el('button', { class: 'fab', type: 'button', id: 'newDocument', 'data-feedback-id': 'central.cumplimiento.documentos.nuevo', 'data-feedback-label': 'Nuevo documento', onclick: () => openDocumentEditor(ctx.client, null, data, null) }, icon('plus'), 'Nuevo documento') : null;
+    const newButton = canEdit && tab === 'requisitos' ? el('button', { class: 'primary', type: 'button', id: 'newRequirement', 'data-feedback-id': 'central.cumplimiento.obligaciones.nueva', 'data-feedback-label': 'Nueva obligación', onclick: () => openRequirementEditor(ctx.client, null, data, (id) => navigate(`#/cumplimiento/${id}`)) }, icon('plus', 18), 'Nueva obligación')
+      : canEdit && tab === 'documentos' ? el('button', { class: 'primary', type: 'button', id: 'newDocument', 'data-feedback-id': 'central.cumplimiento.documentos.nuevo', 'data-feedback-label': 'Nuevo documento', onclick: () => openDocumentEditor(ctx.client, null, data, null) }, icon('plus', 18), 'Nuevo documento') : null;
     replace(main,
-      el('div', { class: 'pagehead', 'data-feedback-id': 'central.cumplimiento.cabecera', 'data-feedback-label': 'Cabecera de Cumplimiento' }, el('div', null, el('h2', null, 'Cumplimiento'), el('p', null, 'Obligaciones legales, seguros, licencias y revisiones, con sus vencimientos.'))),
-      tabsNav(tab), host, fab);
+      el('div', { class: 'pagehead', 'data-feedback-id': 'central.cumplimiento.cabecera', 'data-feedback-label': 'Cabecera de Cumplimiento' }, el('div', null, el('h2', null, 'Cumplimiento'), el('p', null, 'Obligaciones legales, seguros, licencias y revisiones, con sus vencimientos.')), newButton),
+      tabsNav(tab), host);
+
+    function viewSwitch(): HTMLElement {
+      const b = (id: DueView, text: string) => el('button', { type: 'button', class: `softbtn${view === id ? ' active' : ''}`, 'aria-pressed': String(view === id), 'data-view': id, onclick: () => { view = id; paint(); } }, text);
+      return el('div', { class: 'ctl-views', role: 'group', 'aria-label': 'Cómo verlo', 'data-feedback-id': 'central.cumplimiento.vencimientos.vistas', 'data-feedback-label': 'Cómo verlo' },
+        canEdit ? b('cola', 'Una cosa cada vez') : null, b('lista', 'Lista'), b('semanas', 'Por semanas'));
+    }
+
+    function paintDue(today: string): void {
+      const items = computeDue(data!, today);
+      if (!items.length) {
+        queue = null;
+        replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.vencimientos.vacio', 'data-feedback-label': 'Sin vencimientos' }, el('strong', null, 'Nada vencido ni por vencer'), 'Aquí aparecen las obligaciones, los documentos y la documentación de personas que vencen.'));
+        return;
+      }
+      if (view === 'cola') {
+        if (queue) queue.setDue(items);
+        else queue = createDueQueue(ctx, () => data!, items, { canEdit, onAll: () => { view = 'lista'; paint(); }, where: 'vencimientos' });
+        replace(host, viewSwitch(), queue.element);
+        return;
+      }
+      queue = null;
+      if (view === 'lista') {
+        replace(host, viewSwitch(), el('ul', { class: 'accounts', id: 'dueList', 'data-feedback-id': 'central.cumplimiento.vencimientos.lista', 'data-feedback-label': 'Lista de vencimientos' }, ...items.map((i) => dueRow(ctx, data!, i))));
+        return;
+      }
+      // Por semanas (007): lo atrasado y, después, cada semana con sus días; «Hoy» marcado.
+      const thisWeek = mondayOf(today);
+      const weeks = new Map<string, DueItem[]>();
+      for (const i of items) { const k = i.dueOn < today ? 'atrasado' : mondayOf(i.dueOn); weeks.set(k, [...(weeks.get(k) ?? []), i]); }
+      const groups = [...weeks].sort(([a], [b]) => (a === 'atrasado' ? -1 : b === 'atrasado' ? 1 : a.localeCompare(b))).map(([k, list]) => ({
+        key: k, title: k === 'atrasado' ? 'Atrasado' : k === thisWeek ? 'Esta semana' : `Semana del ${shortDay(k)}`, items: list,
+        summary: k === 'atrasado' ? plural(list.length, 'vencido', 'vencidos') : list.map((i) => i.dueOn).filter((d, n, a) => a.indexOf(d) === n).length > 1 ? plural(list.length, 'cosa', 'cosas') : (list[0]!.dueOn === today ? 'hoy' : shortDay(list[0]!.dueOn)),
+      }));
+      const weeksView = renderGroups<DueItem>({ label: 'Por semanas', feedbackId: 'central.cumplimiento.vencimientos.semanas', groups,
+        toneOf: (i) => (i.state === 'vencido' || i.blocksOperation ? 'alert' : 'warn'),
+        row: (i) => listRow({ id: i.id, title: i.title, onClick: () => openDue(ctx, data!, i), label: i.title,
+          chips: [i.dueOn === today ? el('span', { class: 'chip warn' }, 'Hoy') : null, i.blocksOperation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null].filter(Boolean) as HTMLElement[],
+          meta: [sourceLabel(i), shortDay(i.dueOn), ...(i.code ? [i.code] : [])] }) });
+      replace(host, viewSwitch(), weeksView.element);
+    }
+
+    /** Chips de tipo con su recuento (en lugar del desplegable): un toque filtra, otro lo quita. Abre con `?tipo=`. */
+    function typeChips(types: Array<{ key: string; label: string; n: number }>): HTMLElement {
+      return el('div', { class: 'chips ctl-chipscroll', role: 'group', 'aria-label': 'Tipo', id: 'typeChips', 'data-feedback-id': 'central.cumplimiento.filtro_tipo', 'data-feedback-label': 'Filtro por tipo' },
+        el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(!typeFilter), 'data-type': '', onclick: () => { typeFilter = ''; paint(); } }, `Todos (${types.reduce((n, t) => n + t.n, 0)})`),
+        ...types.map((t) => el('button', { type: 'button', class: 'filterchip', 'aria-pressed': String(typeFilter === t.key), 'data-type': t.key, onclick: () => { typeFilter = typeFilter === t.key ? '' : t.key; paint(); } }, `${t.label} (${t.n})`)));
+    }
+
+    function paintRequirements(today: string): void {
+      const alive = data!.requirements.filter((r) => !r.deleted_at);
+      if (!alive.length) {
+        replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.obligaciones.vacio', 'data-feedback-label': 'Sin obligaciones' }, el('strong', null, 'Todavía no hay obligaciones'), canEdit ? 'Apunta seguros, licencias, revisiones técnicas o compromisos de la concesión.' : 'Las apunta quien edita en Central.'));
+        return;
+      }
+      const sorted = (rows: Requirement[]) => rows.sort((a, b) => String(a.expires_on ?? '9999').localeCompare(String(b.expires_on ?? '9999')) || a.name.localeCompare(b.name, 'es'));
+      const types = REQUIREMENT_TYPES.map((k) => ({ key: k, label: REQUIREMENT_TYPE_LABELS[k], n: alive.filter((r) => r.requirement_type === k).length })).filter((t) => t.n);
+      const closed = (r: Requirement) => CLOSED_REQUIREMENT_STATUSES.includes(r.status);
+      const state = (r: Requirement) => dueState(r.expires_on, today, r.notice_days, closed(r));
+      const groups = types.filter((t) => !typeFilter || t.key === typeFilter).map((t) => {
+        const mine = alive.filter((r) => r.requirement_type === t.key);
+        const open = sorted(mine.filter((r) => !closed(r)));
+        const shut = sorted(mine.filter(closed));
+        const alert = open.filter((r) => state(r) === 'vencido').length;
+        const warn = open.filter((r) => state(r) === 'por_vencer').length;
+        return { key: t.key, title: t.label, items: [...open, ...(shut.length ? [{ closedGroup: shut } as unknown as Requirement] : [])],
+          summary: [alert ? plural(alert, 'vencida', 'vencidas') : '', warn ? `${warn} ${warn === 1 ? 'vence' : 'vencen'} pronto` : ''].filter(Boolean).join(' · ') || 'al día' };
+      });
+      const row = (r: Requirement) => listRow({
+        id: r.id, title: r.name, pending: !!r._pending, label: r.name, onClick: () => navigate(`#/cumplimiento/${r.id}`),
+        chips: [stateChip(r.expires_on, r.notice_days, closed(r), today), r.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
+          r.risk === 'critico' || r.risk === 'alto' ? el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, r.risk).toLowerCase()}`) : null].filter(Boolean) as HTMLElement[],
+        meta: [el('span', { 'data-feedback-ignore': '' }, r.code ?? ''), label(REQUIREMENT_STATUS_LABELS, r.status), r.expires_on ? plazo(r.expires_on) : 'Sin fecha'],
+      });
+      const view = renderGroups<Requirement>({ label: 'Obligaciones por tipo', feedbackId: 'central.cumplimiento.obligaciones.grupos', groups,
+        toneOf: (r) => ((r as { closedGroup?: unknown }).closedGroup ? null : toneOfState(state(r))),
+        row: (r) => {
+          const shut = (r as unknown as { closedGroup?: Requirement[] }).closedGroup;
+          if (!shut) return row(r);
+          return el('li', { class: 'ctl-closed' }, el('details', null, el('summary', null, `Cerradas o que no aplican (${shut.length})`), el('ul', { class: 'list' }, ...shut.map(row))));
+        } });
+      replace(host, typeChips(types), el('div', { id: 'requirementList', 'data-feedback-id': 'central.cumplimiento.obligaciones.lista', 'data-feedback-label': 'Lista de obligaciones' }, view.element));
+    }
+
+    function paintDocuments(today: string): void {
+      const docs = data!.documents.filter((d) => !d.deleted_at);
+      if (!docs.length) {
+        replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.documentos.vacio', 'data-feedback-label': 'Sin documentos' }, el('strong', null, 'Todavía no hay documentos clave'), 'Contratos, pólizas, licencias, actas…'));
+        return;
+      }
+      const reqName = (id: string | null) => data!.requirements.find((r) => r.id === id)?.name ?? '';
+      const types = DOCUMENT_KINDS.map((k) => ({ key: k, label: DOCUMENT_KIND_LABELS[k] ?? k, n: docs.filter((d) => d.document_type === k).length })).filter((t) => t.n);
+      const state = (d: KeyDocument) => dueState(d.expires_on, today, 30, d.status === 'sustituido');
+      const groups = types.filter((t) => !typeFilter || t.key === typeFilter).map((t) => {
+        const mine = docs.filter((d) => d.document_type === t.key).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        const live = mine.filter((d) => d.status !== 'sustituido');
+        const old = mine.filter((d) => d.status === 'sustituido');
+        const alert = live.filter((d) => state(d) === 'vencido').length;
+        const warn = live.filter((d) => state(d) === 'por_vencer').length;
+        const noFile = live.filter((d) => !d.file_id).length;
+        return { key: t.key, title: t.label, items: [...live, ...(old.length ? [{ oldGroup: old } as unknown as KeyDocument] : [])],
+          summary: [alert ? plural(alert, 'caducado', 'caducados') : '', warn ? `${warn} ${warn === 1 ? 'caduca' : 'caducan'} pronto` : '', noFile ? `${noFile} sin archivo` : ''].filter(Boolean).join(' · ') || 'al día' };
+      });
+      const row = (d: KeyDocument) => listRow({
+        id: d.id, title: d.name, pending: !!d._pending, label: d.name, onClick: () => openDocumentEditor(client, d, data, null),
+        chips: [stateChip(d.expires_on, 30, d.status === 'sustituido', today), d.file_id ? el('span', { class: 'chip' }, icon('attach', 12), 'Archivo') : el('span', { class: 'chip ctl-nofile' }, 'Sin archivo')].filter(Boolean) as HTMLElement[],
+        meta: [el('span', { 'data-feedback-ignore': '' }, d.code ?? ''), label(KEY_DOCUMENT_STATUS_LABELS, d.status), reqName(d.requirement_id), d.expires_on ? plazo(d.expires_on, ['Caduca el', 'Caducó el']) : ''].filter(Boolean),
+        actions: [el('button', { type: 'button', class: 'linkbtn', 'data-feedback-id': 'central.cumplimiento.documentos.abrir', 'data-feedback-label': 'Abrir documento', onclick: () => openDocumentEditor(client, d, data, null) }, 'Abrir ›')],
+      });
+      const view = renderGroups<KeyDocument>({ label: 'Documentos por tipo', feedbackId: 'central.cumplimiento.documentos.grupos', groups,
+        toneOf: (d) => ((d as { oldGroup?: unknown }).oldGroup ? null : toneOfState(state(d))),
+        row: (d) => {
+          const old = (d as unknown as { oldGroup?: KeyDocument[] }).oldGroup;
+          if (!old) return row(d);
+          return el('li', { class: 'ctl-closed' }, el('details', null, el('summary', null, `Sustituidos (${old.length})`), el('ul', { class: 'list' }, ...old.map(row))));
+        } });
+      replace(host, typeChips(types), el('div', { id: 'documentList', 'data-feedback-id': 'central.cumplimiento.documentos.lista', 'data-feedback-label': 'Lista de documentos' }, view.element));
+    }
 
     function paint(): void {
       if (!data) return;
       const today = todayInMadrid();
-      if (tab === 'vencimientos') {
-        const items = computeDue(data, today);
-        replace(host, items.length ? el('ul', { class: 'accounts', id: 'dueList', 'data-feedback-id': 'central.cumplimiento.vencimientos.lista', 'data-feedback-label': 'Lista de vencimientos' }, ...items.map((i) => el('li', null,
-          el('button', { class: 'personrow', type: 'button', 'data-due': i.id, 'data-feedback-id': 'central.cumplimiento.vencimientos.fila', 'data-feedback-label': 'Vencimiento', onclick: () => {
-            if (i.source === 'requirement') navigate(`#/cumplimiento/${i.id}`);
-            else if (i.source === 'person_record') navigate(`#/personas/${i.parentId}`);
-            else if (i.parentId) navigate(`#/cumplimiento/${i.parentId}`);
-            else openDocumentEditor(client, data!.documents.find((d) => d.id === i.id) ?? null, data, null);
-          } },
-            el('span', { class: 'accountname', 'data-feedback-ignore': '' }, i.title),
-            el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [i.code, i.source === 'requirement' ? 'Obligación' : i.source === 'key_document' ? 'Documento' : 'Persona',
-              i.state === 'vencido' ? `venció el ${day(i.dueOn)}` : `vence el ${day(i.dueOn)} (${i.daysLeft === 0 ? 'hoy' : `en ${i.daysLeft} días`})`].filter(Boolean).join(' · ')),
-            el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.vencimientos.etiquetas', 'data-feedback-label': 'Estado del vencimiento' }, el('span', { class: i.state === 'vencido' ? 'chip alert' : 'chip warn' }, i.state === 'vencido' ? 'Vencido' : 'Vence pronto'),
-              i.risk === 'critico' || i.risk === 'alto' ? el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, i.risk).toLowerCase()}`) : null,
-              i.blocksOperation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null)))))
-          : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.vencimientos.vacio', 'data-feedback-label': 'Sin vencimientos' }, el('strong', null, 'Nada vencido ni por vencer'), 'Aquí aparecen las obligaciones, los documentos y la documentación de personas que vencen.'));
-        return;
-      }
-      if (tab === 'requisitos') {
-        const alive = data.requirements.filter((r) => !r.deleted_at && (!typeFilter || r.requirement_type === typeFilter))
-          .sort((a, b) => String(a.expires_on ?? '9999').localeCompare(String(b.expires_on ?? '9999')) || a.name.localeCompare(b.name, 'es'));
-        const filter = el('select', { id: 'reqType', 'aria-label': 'Tipo', 'data-feedback-id': 'central.cumplimiento.obligaciones.filtro_tipo', 'data-feedback-label': 'Filtro por tipo', onchange: (e: Event) => { typeFilter = (e.target as HTMLSelectElement).value; paint(); } },
-          ...options(REQUIREMENT_TYPES, REQUIREMENT_TYPE_LABELS, typeFilter, 'Todos los tipos'));
-        replace(host, el('div', { class: 'toolbar', 'data-feedback-id': 'central.cumplimiento.obligaciones.barra', 'data-feedback-label': 'Filtros de obligaciones' }, filter), alive.length ? el('ul', { class: 'accounts', id: 'requirementList', 'data-feedback-id': 'central.cumplimiento.obligaciones.lista', 'data-feedback-label': 'Lista de obligaciones' }, ...alive.map((r) => el('li', null,
-          el('button', { class: 'personrow', type: 'button', 'data-requirement': r.id, 'data-feedback-id': 'central.cumplimiento.obligaciones.fila', 'data-feedback-label': 'Obligación', onclick: () => navigate(`#/cumplimiento/${r.id}`) },
-            el('span', { class: 'accountname' }, r.name),
-            el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [r.code, label(REQUIREMENT_TYPE_LABELS, r.requirement_type), label(REQUIREMENT_STATUS_LABELS, r.status), r.expires_on ? `vence el ${day(r.expires_on)}` : ''].filter(Boolean).join(' · ')),
-            el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.obligaciones.etiquetas', 'data-feedback-label': 'Estado de la obligación' }, stateChip(r.expires_on, r.notice_days, CLOSED_REQUIREMENT_STATUSES.includes(r.status), today),
-              r.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
-              r._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)))))
-          : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.obligaciones.vacio', 'data-feedback-label': 'Sin obligaciones' }, el('strong', null, 'Todavía no hay obligaciones'), canEdit ? 'Apunta seguros, licencias, revisiones técnicas o compromisos de la concesión.' : ''));
-        return;
-      }
-      const docs = data.documents.filter((d) => !d.deleted_at).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-      const reqName = (id: string | null) => data!.requirements.find((r) => r.id === id)?.name ?? '';
-      replace(host, docs.length ? el('ul', { class: 'accounts', id: 'documentList', 'data-feedback-id': 'central.cumplimiento.documentos.lista', 'data-feedback-label': 'Lista de documentos' }, ...docs.map((d) => el('li', null,
-        el('button', { class: 'personrow', type: 'button', 'data-document': d.id, 'data-feedback-id': 'central.cumplimiento.documentos.fila', 'data-feedback-label': 'Documento', onclick: () => openDocumentEditor(client, d, data, null) },
-          el('span', { class: 'accountname' }, d.name),
-          el('span', { class: 'muted accountmeta', 'data-feedback-ignore': '' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), reqName(d.requirement_id), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · ')),
-          el('span', { class: 'chips', 'data-feedback-id': 'central.cumplimiento.documentos.etiquetas', 'data-feedback-label': 'Estado del documento' }, stateChip(d.expires_on, 30, d.status === 'sustituido', today), d.file_id ? el('span', { class: 'chip' }, icon('attach', 12), 'Archivo') : null)))))
-        : el('div', { class: 'empty', 'data-feedback-id': 'central.cumplimiento.documentos.vacio', 'data-feedback-label': 'Sin documentos' }, el('strong', null, 'Todavía no hay documentos clave'), 'Contratos, pólizas, licencias, actas…'));
+      if (tab === 'vencimientos') paintDue(today);
+      else if (tab === 'requisitos') paintRequirements(today);
+      else paintDocuments(today);
     }
 
-    async function load(): Promise<void> { data = await loadAll(client); paint(); }
+    let opened = false;
+    async function load(): Promise<void> {
+      data = await loadAll(client);
+      paint();
+      // Desde la búsqueda: `?doc=<id>` abre la hoja del documento.
+      const doc = params.get('doc');
+      if (!opened && doc) { opened = true; const d = data.documents.find((x) => x.id === doc && !x.deleted_at); if (d) openDocumentEditor(client, d, data, null); }
+    }
     void load();
     const offs = [T.requirements, T.keyDocuments, T.requirementTasks, T.personRecords].map((t) => client.onTable(t, () => void load()));
     return () => offs.forEach((off) => off());
@@ -263,7 +454,7 @@ function openRequirementEditor(client: SyncClient, req: Requirement | null, data
     cancel: { 'data-feedback-id': 'central.obligacion.editar.cancelar', 'data-feedback-label': 'Cancelar' } });
 }
 
-function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: Data | null, requirementId: string | null): void {
+export function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: Data | null, requirementId: string | null): void {
   let sheet: Sheet | null = null;
   let staged: Blob | null = null;
   let stagedName = '';
@@ -344,8 +535,49 @@ function openDocumentEditor(client: SyncClient, doc: KeyDocument | null, data: D
 }
 
 // ---------------------------------------------------------------------------
-// Ficha de una obligación
+// Marcar cumplido (la hoja de siempre) y pedir la tarea a Tasks
 // ---------------------------------------------------------------------------
+type Before = { status: string; reference_date: unknown; expires_on: unknown };
+
+/** La hoja de «Marcar cumplido»: «Cumplido el», el siguiente vencimiento calculado por frecuencia y «Sube antes el documento…». */
+export function openMarkDone(client: SyncClient, usage: Usage, req: Requirement, opts: { onSaved?: (before: Before) => void } = {}): void {
+  let sheet: Sheet | null = null;
+  const today = todayInMadrid();
+  const before: Before = { status: req.status, reference_date: req.reference_date ?? null, expires_on: req.expires_on ?? null };
+  const reference = el('input', { id: 'md-reference', type: 'date', value: today }) as HTMLInputElement;
+  const proposed = nextExpiry(today, req.frequency, req.frequency_months as number | null);
+  const expires = el('input', { id: 'md-expires', type: 'date', value: proposed ?? '' }) as HTMLInputElement;
+  reference.addEventListener('change', () => { expires.value = nextExpiry(reference.value || today, req.frequency, req.frequency_months as number | null) ?? ''; });
+  const save = el('button', { class: 'primary', type: 'button', id: 'confirmDone', 'data-feedback-id': 'central.obligacion.cumplido.confirmar', 'data-feedback-label': 'Marcar cumplido', onclick: async () => {
+    const fields = { status: 'cumplido', reference_date: reference.value || today, expires_on: expires.value || null };
+    const ok = await commitSafely(client, [{ op: 'update', table: T.requirements, id: req.id, expectedRevision: req.revision, fields }], 'Obligación marcada como cumplida.');
+    usage.track('central.obligacion.marcar_cumplido', ok ? 'success' : 'error');
+    if (ok) { await sheet?.close(true); opts.onSaved?.(before); }
+  } }, 'Marcar cumplido');
+  sheet = openSheet({ title: 'Marcar cumplido', meta: req.name,
+    panelAttrs: { 'data-feedback-id': 'central.obligacion.cumplido', 'data-feedback-label': 'Marcar cumplido' },
+    closeAttrs: { 'data-feedback-id': 'central.obligacion.cumplido.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+    body: el('div', { 'data-feedback-id': 'central.obligacion.cumplido.formulario', 'data-feedback-label': 'Formulario de cumplimiento' },
+      el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_fecha', 'data-feedback-label': 'Cumplido el' }, el('span', null, 'Cumplido el'), reference),
+      el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_siguiente', 'data-feedback-label': 'Siguiente vencimiento' }, el('span', null, proposed ? `Siguiente vencimiento (${label(FREQUENCY_LABELS, req.frequency).toLowerCase()})` : 'Siguiente vencimiento (opcional)'), expires),
+      el('p', { class: 'muted small' }, 'Sube antes el documento que lo acredita (póliza, certificado, acta) en «Documentos».')),
+    foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.obligacion.cumplido.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save] });
+}
+
+/** «Deshacer» de «Marcar cumplido»: vuelve a poner el estado y las fechas de antes (sobre la revisión que haya ahora). */
+async function undoMarkDone(client: SyncClient, id: string, before: Before): Promise<boolean> {
+  const now = ((await client.list(T.requirements)) as unknown as Requirement[]).find((r) => r.id === id);
+  if (!now) return false;
+  return commitSafely(client, [{ op: 'update', table: T.requirements, id, expectedRevision: now.revision, fields: { ...before } }], 'Deshecho: la obligación vuelve a estar como antes.');
+}
+
+// ---------------------------------------------------------------------------
+// Ficha de una obligación: portada, recorrido, foco y los datos plegados
+// ---------------------------------------------------------------------------
+const STAGES = [
+  { key: 'pendiente', label: 'Pendiente' }, { key: 'en_marcha', label: 'En marcha' }, { key: 'en_revision', label: 'En revisión' }, { key: 'cumplida', label: 'Cumplida' },
+];
+
 export function mountRequirement(requirementId: string): ViewMount {
   return (ctx) => {
     const { main, client, navigate, usage } = ctx;
@@ -353,56 +585,98 @@ export function mountRequirement(requirementId: string): ViewMount {
     let data: Data | null = null;
     let statuses = new Map<string, TaskStatus>();
     let statusNote = '';
+    let checked = false;
+    let remembered = false;
     const host = el('div', { id: 'requirementView', 'data-feedback-id': 'central.obligacion.contenido', 'data-feedback-label': 'Ficha de la obligación' });
-    replace(main, el('a', { href: '#/cumplimiento/requisitos', class: 'backlink', 'data-feedback-id': 'central.obligacion.volver', 'data-feedback-label': 'Volver a Obligaciones' }, '← Obligaciones'), host);
+    replace(main, el('a', { href: '#/cumplimiento/requisitos', class: 'backlink', 'data-feedback-id': 'central.obligacion.volver', 'data-feedback-label': 'Volver a Obligaciones' }, '‹ Obligaciones'), host);
     const kv = (k: string, v: unknown, personal = false) => (v === null || v === undefined || v === '' ? null : el('div', { class: 'kv' }, el('dt', null, k), el('dd', personal ? { 'data-feedback-ignore': '' } : null, String(v))));
 
     function paint(): void {
-      const req = data?.requirements.find((r) => r.id === requirementId);
+      const req = data?.requirements.find((r) => r.id === requirementId && !r.deleted_at);
       if (!data || !req) { replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.obligacion.no_encontrada', 'data-feedback-label': 'Obligación no encontrada' }, el('strong', null, 'No se encontró la obligación'), 'Puede que se haya borrado.')); return; }
       document.title = `${req.name} · Ikisai Central`;
+      if (!remembered) { remembered = true; ctx.remember({ hash: `#/cumplimiento/${req.id}`, title: req.name, kind: 'obligacion' }); }
       const today = todayInMadrid();
       const closed = CLOSED_REQUIREMENT_STATUSES.includes(req.status);
+      const state = dueState(req.expires_on, today, req.notice_days, closed);
       const docs = data.documents.filter((d) => d.requirement_id === req.id && !d.deleted_at);
       const links = data.links.filter((l) => l.requirement_id === req.id && !l.deleted_at).sort((a, b) => String(b.due_on ?? '').localeCompare(String(a.due_on ?? '')));
       const person = data.people.find((p) => p.id === req.responsible_person_id);
-      /** Clave cerrada de cada bloque de la ficha para su id de «Sugerencias y QA». */
       const block = (title: string, id: string, body: (HTMLElement | null)[], action?: HTMLElement | null) =>
         el('section', { class: 'card personblock', id }, el('div', { class: 'blockhead' }, el('h3', null, title), action ?? null), ...body);
-
+      const taskState = (s: TaskStatus | undefined) => !s ? (navigator.onLine ? 'Consultando…' : 'Sin conexión')
+        : s.deleted ? 'Borrada en Tasks' : s.pending || s.request === 'pending' ? 'En Tasks, por clasificar'
+          : s.request === 'dismissed' ? 'Descartada en Tasks' : s.visible === false ? 'En Tasks (no la ves)' : s.done ? 'Hecha' : 'Abierta en Tasks';
       const taskRow = (l: TaskLink) => {
         const s = statuses.get(l.target_id);
-        const state = !s ? (navigator.onLine ? 'Consultando…' : 'Sin conexión')
-          : s.deleted ? 'Borrada en Tasks' : s.pending || s.request === 'pending' ? 'En Tasks, por clasificar'
-            : s.request === 'dismissed' ? 'Descartada en Tasks' : s.visible === false ? 'En Tasks (no la ves)' : s.done ? 'Hecha' : 'Abierta en Tasks';
         return el('li', { class: 'recordrow', 'data-task': l.target_id, 'data-feedback-id': 'central.obligacion.tareas.fila', 'data-feedback-label': 'Tarea' },
-          el('div', null, el('strong', null, l.target_label ?? 'Tarea'), el('div', { class: 'muted small' }, [l.due_on ? `para el ${day(l.due_on)}` : '', state].filter(Boolean).join(' · '))),
+          el('div', null, el('strong', null, l.target_label ?? 'Tarea'), el('div', { class: 'muted small' }, [l.due_on ? `para el ${day(l.due_on)}` : '', taskState(s)].filter(Boolean).join(' · '))),
           s?.done ? el('span', { class: 'chip ok' }, icon('check', 12), 'Hecha') : null);
       };
+      // «En marcha»: una tarea abierta en Tasks (se sabe con red). Sin red, sin esa etapa.
+      const known = links.length > 0 && links.every((l) => statuses.has(l.target_id));
+      const running = links.some((l) => { const s = statuses.get(l.target_id); return s && !s.done && !s.deleted && s.request !== 'dismissed'; });
+      const stage = req.status === 'cumplido' ? 'cumplida' : req.status === 'en_revision' ? 'en_revision' : req.status === 'bloqueado' ? null : running ? 'en_marcha' : 'pendiente';
+      const recorrido = closed
+        ? el('p', { class: 'ctl-stamp', 'data-feedback-id': 'central.obligacion.estado', 'data-feedback-label': 'Estado' }, el('span', { class: 'chip' }, label(REQUIREMENT_STATUS_LABELS, req.status)),
+          req.status === 'no_aplica' ? ' No se aplica a la casa: no tiene recorrido ni acciones.' : ' Cerrada: ya no tiene recorrido ni acciones.')
+        : el('div', { 'data-feedback-id': 'central.obligacion.estado', 'data-feedback-label': 'Recorrido' },
+          renderStages({ label: 'Recorrido de la obligación', stages: STAGES, current: stage, bad: state === 'vencido' && stage ? [stage] : [],
+            stopText: 'Bloqueada', caption: req.status === 'bloqueado' ? 'Bloqueada: está parada hasta que se resuelva lo que la bloquea.'
+              : links.length && !known && !navigator.onLine ? 'Sin conexión: no se sabe si la tarea de Tasks está en marcha.' : state === 'vencido' ? 'Está vencida.' : null }),
+          req.status === 'bloqueado' ? el('p', { class: 'banner warn', role: 'status' }, icon('warn', 18), el('span', null, 'Bloqueada. Revisa «Siguiente acción» en los datos o pide la tarea a Tasks.')) : null);
 
+      const hasFile = docs.some((d) => d.file_id);
+      const foco = canEdit && !closed ? [
+        { id: 'renovar', title: 'Marcar cumplido', kicker: state === 'vencido' ? 'Vencida · toca ya' : 'Renovarla', tone: state === 'vencido' ? 'alert' as const : state === 'por_vencer' ? 'warn' as const : null, note: 'La hoja de siempre: fecha de cumplimiento y el siguiente vencimiento.', meta: req.expires_on ? [plazo(req.expires_on)] : [] },
+        ...(!hasFile ? [{ id: 'archivo', title: 'Añadir el documento que falta', kicker: 'El archivo', note: 'Póliza, certificado o acta que la acredita.' }] : []),
+        ...(!running ? [{ id: 'tarea', title: 'Pedir la tarea a Tasks', kicker: 'Que alguien la lleve', note: navigator.onLine ? 'Tasks la reparte según sus reglas.' : 'Necesita conexión.' }] : []),
+        ...(!person ? [{ id: 'responsable', title: 'Elegir responsable', kicker: 'Quién la lleva', note: 'Se elige en «Editar».' }] : []),
+      ] : [];
+      const facts = [
+        req.expires_on ? deadlineInfo(req.expires_on).left : 'sin fecha',
+        req.frequency === 'otra' ? `cada ${req.frequency_months} meses` : label(FREQUENCY_LABELS, req.frequency).toLowerCase(),
+        plural(docs.length, 'documento', 'documentos'), `riesgo ${label(RISK_LABELS, req.risk).toLowerCase()}`,
+      ];
       replace(host,
-        el('div', { class: 'pagehead', 'data-feedback-id': 'central.obligacion.cabecera', 'data-feedback-label': 'Cabecera de la obligación' }, el('div', null,
-          el('h2', null, req.name),
-          el('p', { 'data-feedback-ignore': '' }, [req.code, label(REQUIREMENT_TYPE_LABELS, req.requirement_type), label(REQUIREMENT_STATUS_LABELS, req.status)].filter(Boolean).join(' · ')),
+        el('div', { class: 'ctl-cover', 'data-feedback-id': 'central.obligacion.cabecera', 'data-feedback-label': 'Portada de la obligación' },
+          // La portada no lleva encabezado propio: el nombre va también como título de la página para los lectores de pantalla.
+          el('h2', { class: 'visually-hidden' }, req.name),
+          renderCover({ title: req.name, color: state === 'vencido' ? '#a5332a' : state === 'por_vencer' ? '#8a5a12' : '#4f6a3a',
+            pill: closed ? label(REQUIREMENT_STATUS_LABELS, req.status) : req.expires_on ? plazo(req.expires_on) : 'Sin fecha de vencimiento',
+            pillTone: closed ? null : state === 'vencido' ? 'alert' : state === 'por_vencer' ? 'warn' : 'ok',
+            stats: facts.join(' · '), faces: person ? [{ name: person.display_name }] : [], feedbackId: 'central.obligacion.portada' }),
+          el('p', { class: 'hint ctl-coverkind', 'data-feedback-ignore': '' }, [label(REQUIREMENT_TYPE_LABELS, req.requirement_type), req.code, label(REQUIREMENT_STATUS_LABELS, req.status)].filter(Boolean).join(' · ')),
           el('span', { class: 'chips', 'data-feedback-id': 'central.obligacion.cabecera.estado', 'data-feedback-label': 'Estado de la obligación' }, stateChip(req.expires_on, req.notice_days, closed, today), req.blocks_operation ? el('span', { class: 'chip alert' }, 'Bloquea la operación') : null,
-            el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, req.risk).toLowerCase()}`)))),
-        block('Obligación', 'blockRequirement', [el('dl', { class: 'kvlist', 'data-feedback-id': 'central.obligacion.ficha.datos', 'data-feedback-label': 'Datos de la obligación' },
-          kv('Vence', req.expires_on ? day(req.expires_on) : 'Sin fecha'), kv('Avisar con', `${req.notice_days} días`),
-          kv('Frecuencia', req.frequency === 'otra' ? `Cada ${req.frequency_months} meses` : label(FREQUENCY_LABELS, req.frequency)),
-          kv('Referencia', req.reference_date ? day(req.reference_date) : null), kv('Responsable', person?.display_name, true),
-          kv('Organismo', req.authority), kv('Origen', req.source), kv('Impacto', req.impact ? label(IMPACT_LABELS, req.impact) : null),
-          kv('Genera coste', req.generates_cost ? 'Sí (en Finance)' : null),
-          kv('Siguiente acción', [req.next_action, req.next_action_on ? `para el ${day(req.next_action_on)}` : ''].filter(Boolean).join(' · ')),
-          kv('Descripción', req.description), kv('Notas', req.notes))],
-        canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editRequirement', 'data-feedback-id': 'central.obligacion.ficha.editar', 'data-feedback-label': 'Editar obligación', onclick: () => openRequirementEditor(client, req, data) }, icon('edit', 16), 'Editar') : null),
+            el('span', { class: 'chip' }, `Riesgo ${label(RISK_LABELS, req.risk).toLowerCase()}`), req._pending ? el('span', { class: 'chip pending' }, 'Pendiente de sincronizar') : null)),
+        recorrido,
+        foco.length ? el('section', { class: 'ctl-block', 'data-feedback-id': 'central.obligacion.foco', 'data-feedback-label': 'Lo que toca' }, el('h3', { class: 'ctl-h' }, 'Lo que toca'),
+          createFocus({ label: 'Lo que toca en esta obligación', items: foco, feedbackId: 'central.obligacion.foco.tarjeta',
+            onOpen: (item) => {
+              if (item.id === 'renovar') openMarkDone(client, usage, req);
+              else if (item.id === 'archivo') openDocumentEditor(client, null, data, req.id);
+              else if (item.id === 'tarea') openAskTask(req);
+              else openRequirementEditor(client, req, data);
+            } }).element) : null,
         canEdit && !closed ? el('div', { class: 'zone', 'data-feedback-id': 'central.obligacion.acciones', 'data-feedback-label': 'Acciones de la obligación' },
-          el('button', { class: 'primary', type: 'button', id: 'markDone', 'data-feedback-id': 'central.obligacion.acciones.cumplido', 'data-feedback-label': 'Marcar cumplido', onclick: () => openMarkDone(req) }, icon('check', 18), 'Marcar cumplido'),
+          el('button', { class: 'primary', type: 'button', id: 'markDone', 'data-feedback-id': 'central.obligacion.acciones.cumplido', 'data-feedback-label': 'Marcar cumplido', onclick: () => openMarkDone(client, usage, req) }, icon('check', 18), 'Marcar cumplido'),
           el('button', { class: 'ghost', type: 'button', id: 'askTask', 'data-feedback-id': 'central.obligacion.acciones.crear_tarea', 'data-feedback-label': 'Crear tarea en Tasks', onclick: () => openAskTask(req) }, icon('tasks', 18), 'Crear tarea en Tasks')) : null,
+        el('details', { class: 'card personblock ctl-data', id: 'blockRequirement', open: !canEdit || closed },
+          el('summary', { class: 'blockhead' }, el('h3', null, 'Datos de la obligación'), el('span', { class: 'hint' }, 'organismo, origen, frecuencia, notas…')),
+          el('dl', { class: 'kvlist', 'data-feedback-id': 'central.obligacion.ficha.datos', 'data-feedback-label': 'Datos de la obligación' },
+            kv('Vence', req.expires_on ? plazo(req.expires_on) : 'Sin fecha'), kv('Avisar con', `${req.notice_days} días`),
+            kv('Frecuencia', req.frequency === 'otra' ? `Cada ${req.frequency_months} meses` : label(FREQUENCY_LABELS, req.frequency)),
+            kv('Referencia', req.reference_date ? day(req.reference_date) : null), kv('Responsable', person?.display_name, true),
+            kv('Organismo', req.authority), kv('Origen', req.source), kv('Impacto', req.impact ? label(IMPACT_LABELS, req.impact) : null),
+            kv('Genera coste', req.generates_cost ? 'Sí (en Finance)' : null),
+            kv('Siguiente acción', [req.next_action, req.next_action_on ? `para el ${day(req.next_action_on)}` : ''].filter(Boolean).join(' · ')),
+            kv('Descripción', req.description), kv('Notas', req.notes)),
+          canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'editRequirement', 'data-feedback-id': 'central.obligacion.ficha.editar', 'data-feedback-label': 'Editar obligación', onclick: () => openRequirementEditor(client, req, data) }, icon('edit', 16), 'Editar') : null),
         block('Tareas en Tasks', 'blockTasks', [links.length ? el('ul', { class: 'records', id: 'taskList', 'data-feedback-id': 'central.obligacion.tareas.lista', 'data-feedback-label': 'Tareas en Tasks' }, ...links.map(taskRow)) : el('p', { class: 'muted' }, 'Ninguna tarea pedida.'),
           statusNote ? el('p', { class: 'muted small', 'data-feedback-id': 'central.obligacion.tareas.aviso', 'data-feedback-label': 'Aviso de Tasks' }, statusNote) : null]),
         block('Documentos', 'blockDocuments', [docs.length ? el('ul', { class: 'records', 'data-feedback-id': 'central.obligacion.documentos.lista', 'data-feedback-label': 'Documentos de la obligación' }, ...docs.map((d) => el('li', { class: 'recordrow', 'data-feedback-id': 'central.obligacion.documentos.fila', 'data-feedback-label': 'Documento' },
-          el('div', null, el('strong', null, d.name), el('div', { class: 'muted small', 'data-feedback-ignore': '' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), d.expires_on ? `caduca el ${day(d.expires_on)}` : ''].filter(Boolean).join(' · '))),
-          el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.obligacion.documentos.abrir', 'data-feedback-label': 'Abrir documento', onclick: () => openDocumentEditor(client, d, data, req.id) }, 'Abrir')))) : el('p', { class: 'muted' }, 'Sin documentos.')],
+          el('div', null, el('strong', null, d.name), el('div', { class: 'muted small', 'data-feedback-ignore': '' }, [d.code, label(DOCUMENT_KIND_LABELS, d.document_type), label(KEY_DOCUMENT_STATUS_LABELS, d.status), d.expires_on ? plazo(d.expires_on, ['Caduca el', 'Caducó el']) : '', d.file_id ? '' : 'sin archivo'].filter(Boolean).join(' · '))),
+          el('button', { class: 'linkbtn', type: 'button', 'data-feedback-id': 'central.obligacion.documentos.abrir', 'data-feedback-label': 'Abrir documento', onclick: () => openDocumentEditor(client, d, data, req.id) }, 'Abrir ›')))) : el('p', { class: 'muted' }, 'Sin documentos.')],
         canEdit ? el('button', { class: 'linkbtn', type: 'button', id: 'addDocument', 'data-feedback-id': 'central.obligacion.documentos.anadir', 'data-feedback-label': 'Añadir documento', onclick: () => openDocumentEditor(client, null, data, req.id) }, icon('plus', 16), 'Añadir') : null),
         canEdit ? el('div', { class: 'zone', 'data-feedback-id': 'central.obligacion.papelera', 'data-feedback-label': 'Zona de peligro' }, el('button', { class: 'danger', type: 'button', id: 'deleteRequirement', 'data-feedback-id': 'central.obligacion.papelera.enviar', 'data-feedback-label': 'Enviar a papelera', onclick: () => void deleteRequirement(req, docs.length + links.length) }, icon('trash', 18), 'Enviar a papelera')) : null,
       );
@@ -417,36 +691,16 @@ export function mountRequirement(requirementId: string): ViewMount {
       if (await commitSafely(client, [{ op: 'delete', table: T.requirements, id: req.id, expectedRevision: req.revision }], 'Obligación enviada a la papelera.')) navigate('#/cumplimiento/requisitos');
     }
 
-    function openMarkDone(req: Requirement): void {
-      let sheet: Sheet | null = null;
-      const today = todayInMadrid();
-      const reference = el('input', { id: 'md-reference', type: 'date', value: today }) as HTMLInputElement;
-      const proposed = nextExpiry(today, req.frequency, req.frequency_months as number | null);
-      const expires = el('input', { id: 'md-expires', type: 'date', value: proposed ?? '' }) as HTMLInputElement;
-      reference.addEventListener('change', () => { expires.value = nextExpiry(reference.value || today, req.frequency, req.frequency_months as number | null) ?? ''; });
-      const save = el('button', { class: 'primary', type: 'button', id: 'confirmDone', 'data-feedback-id': 'central.obligacion.cumplido.confirmar', 'data-feedback-label': 'Marcar cumplido', onclick: async () => {
-        const fields = { status: 'cumplido', reference_date: reference.value || today, expires_on: expires.value || null };
-        const ok = await commitSafely(client, [{ op: 'update', table: T.requirements, id: req.id, expectedRevision: req.revision, fields }], 'Obligación marcada como cumplida.');
-        usage.track('central.obligacion.marcar_cumplido', ok ? 'success' : 'error');
-        if (ok) await sheet?.close(true);
-      } }, 'Marcar cumplido');
-      sheet = openSheet({ title: 'Marcar cumplido', meta: req.name,
-        panelAttrs: { 'data-feedback-id': 'central.obligacion.cumplido', 'data-feedback-label': 'Marcar cumplido' },
-        closeAttrs: { 'data-feedback-id': 'central.obligacion.cumplido.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
-        body: el('div', { 'data-feedback-id': 'central.obligacion.cumplido.formulario', 'data-feedback-label': 'Formulario de cumplimiento' },
-          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_fecha', 'data-feedback-label': 'Cumplido el' }, el('span', null, 'Cumplido el'), reference),
-          el('label', { class: 'field', 'data-feedback-id': 'central.obligacion.cumplido.campo_siguiente', 'data-feedback-label': 'Siguiente vencimiento' }, el('span', null, proposed ? `Siguiente vencimiento (${label(FREQUENCY_LABELS, req.frequency).toLowerCase()})` : 'Siguiente vencimiento (opcional)'), expires),
-          el('p', { class: 'muted small' }, 'Sube antes el documento que lo acredita (póliza, certificado, acta) en «Documentos».')),
-        foot: [el('button', { class: 'ghost', type: 'button', 'data-feedback-id': 'central.obligacion.cumplido.cancelar', 'data-feedback-label': 'Cancelar', onclick: () => void sheet?.close() }, 'Cancelar'), save] });
-    }
-
     function openAskTask(req: Requirement): void {
       if (!navigator.onLine) { toast('Pedir una tarea a Tasks necesita conexión.'); return; }
       let sheet: Sheet | null = null;
       const requestId = crypto.randomUUID();
+      const today = todayInMadrid();
       const error = el('p', { class: 'formerror', role: 'alert', 'aria-live': 'assertive', 'data-feedback-id': 'central.obligacion.tarea.error', 'data-feedback-label': 'Error del formulario' });
       const title = el('input', { id: 'at-title', type: 'text', maxlength: '500', value: req.expires_on ? `${req.name} (vence el ${day(req.expires_on)})` : req.name }) as HTMLInputElement;
-      const due = el('input', { id: 'at-due', type: 'date', value: String(req.next_action_on ?? req.expires_on ?? '') }) as HTMLInputElement;
+      // La fecha propuesta: la siguiente acción o el vencimiento; si ya pasó, hoy (007).
+      const proposed = String(req.next_action_on ?? req.expires_on ?? '');
+      const due = el('input', { id: 'at-due', type: 'date', value: proposed && proposed < today ? today : proposed }) as HTMLInputElement;
       const note = el('textarea', { id: 'at-note', 'data-feedback-ignore': '', rows: '3', maxlength: '2000' }) as HTMLTextAreaElement;
       note.value = [req.next_action as string | null, req.code ? `Obligación ${req.code} en Central.` : ''].filter(Boolean).join('\n');
       const submit = el('button', { class: 'primary', type: 'button', id: 'askTaskSubmit', 'data-feedback-id': 'central.obligacion.tarea.enviar', 'data-feedback-label': 'Pedir a Tasks', onclick: async () => {
@@ -493,7 +747,7 @@ export function mountRequirement(requirementId: string): ViewMount {
       paint();
       // Enlaces nuevos (pedidos ahora o llegados de otro dispositivo): su estado se consulta a Tasks.
       const unknown = data.links.some((l) => l.requirement_id === requirementId && !l.deleted_at && !statuses.has(l.target_id));
-      if (unknown && !statusNote) await loadStatuses();
+      if (unknown && !statusNote && (!checked || navigator.onLine)) { checked = true; await loadStatuses(); }
     }
     void load();
     const offs = [T.requirements, T.keyDocuments, T.requirementTasks].map((t) => client.onTable(t, () => void load()));

@@ -28,6 +28,22 @@ function readFolded(key: string): Set<string> {
 function writeFolded(key: string, folded: Set<string>): void {
   try { localStorage.setItem(key, JSON.stringify([...folded])); } catch { /* sin almacenamiento: el plegado dura lo que la pantalla */ }
 }
+/**
+ * Resumen por app de la última lectura guardada (para el menú lateral, sin red ni petición): cuántos indicadores tiene
+ * cada app y cuántos están en crítico o en atención. Sin copia guardada, vacío.
+ */
+export function dashboardSummary(userId: string | null | undefined): Array<{ app: string; name: string; total: number; critical: number; attention: number }> {
+  const d = readCache(CACHE_PREFIX + (userId ?? 'anon'));
+  if (!d) return [];
+  const apps = new Map<string, DashboardItem[]>();
+  for (const i of d.items) apps.set(i.app, [...(apps.get(i.app) ?? []), i]);
+  return [...apps].map(([app, items]) => {
+    const shown = collapseSeries(items).map((c) => c.shown);
+    const s = stateSummary(shown);
+    return { app, name: APP_NAMES[app] ?? app, total: shown.length, critical: s.critico, attention: s.atencion };
+  });
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const stateClass = (s: KpiState) => (s === 'critico' ? 'alert' : s === 'atencion' ? 'warn' : 'ok');
 
@@ -47,9 +63,12 @@ function sparkline(series: DashboardItem[], shown: DashboardItem): HTMLElement {
 
 /**
  * Panel de dirección (C01; API.md §7.2): KPIs que publica cada app, con su estado frente a los objetivos.
- * Solo agregados. Sin red se pinta la última lectura guardada en el dispositivo, con su hora.
+ * Solo agregados. Sin red se pinta la última lectura guardada en el dispositivo, con su hora, en una línea discreta sin
+ * rojo («Indicadores del 14 oct, 11:40»): el «Sin conexión» en rojo lo dice una vez el menú lateral (MUELA-013). Los
+ * indicadores se guardan aparte y pueden ser más antiguos que el resto de la app.
+ * `focusApp`: abre ese grupo y baja hasta él (desde el menú); `''`, baja al panel.
  */
-export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: boolean, usage: Usage): () => void {
+export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: boolean, usage: Usage, focusApp: string | null = null): () => void {
   let alive = true;
   // Copia por cuenta: en un dispositivo compartido, nadie ve lo que leyó otra cuenta (p. ej. importes del owner).
   const cacheKey = CACHE_PREFIX + (client.bootstrap()?.profile.userId ?? 'anon');
@@ -130,12 +149,12 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
     replace(body, ...[...groups].map(([app, items]) => group(app, items)));
     const time = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }).format(new Date(d.computedAt));
     const waiting = d.unavailable.filter((a) => a !== 'central').map((a) => APP_NAMES[a] ?? a);
-    meta.textContent = [fromCache ? `Sin conexión: datos del ${time}` : `Actualizado ${time}`,
+    meta.textContent = [fromCache ? `Indicadores del ${time}` : `Actualizado ${time}`,
       waiting.length ? `Aún sin indicadores: ${waiting.join(', ')}` : ''].filter(Boolean).join(' · ');
   }
 
   async function load(): Promise<void> {
-    if (!navigator.onLine) { const cached = readCache(cacheKey); if (cached) paint(cached, true); else meta.textContent = 'Sin conexión: los indicadores se leen de cada app.'; return; }
+    if (!navigator.onLine) { const cached = readCache(cacheKey); if (cached) paint(cached, true); else meta.textContent = 'Los indicadores se leen de cada app cuando hay conexión.'; return; }
     try {
       const d = await client.api<Dashboard>('/dashboard');
       if (!alive) return;
@@ -200,8 +219,15 @@ export function mountDashboard(host: HTMLElement, client: SyncClient, isAdmin: b
     })();
   }
 
+  // Desde el menú: el grupo de esa app, abierto y a la vista.
+  if (focusApp) folded.delete(focusApp);
+  const reveal = () => {
+    if (focusApp === null) return;
+    const target = focusApp ? body.querySelector<HTMLElement>(`.kpigroup[data-app="${CSS.escape(focusApp)}"]`) : null;
+    (target ?? host).scrollIntoView({ block: 'start' });
+  };
   const cached = readCache(cacheKey);
-  if (cached) paint(cached, !navigator.onLine);
-  void load();
+  if (cached) { paint(cached, !navigator.onLine); reveal(); }
+  void load().then(() => { if (!cached) reveal(); });
   return () => { alive = false; };
 }

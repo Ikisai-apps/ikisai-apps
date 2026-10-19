@@ -118,3 +118,46 @@ export interface EntityProjection extends Omit<EntityRow, 'logo_file_id'> {
   /** `supabase | r2` (contrato §3.9): con qué proveedor se firma el logotipo (`createStorage(supabase).readUrl`). */
   logo_provider: string | null;
 }
+
+/**
+ * Dónde sale cada dato de la Entidad fuera de Central (MUELA-019): la ficha lo dice en cada fila y la hoja corta lo repite
+ * («Sale en …»). La prueba `entity.test.ts` comprueba que cubre todas las columnas de `EntityRow`.
+ */
+export const ENTITY_USES: Record<keyof EntityRow, string> = {
+  legal_name: 'propuestas de Booking y facturas emitidas de Finance',
+  trade_name: 'propuestas y facturas, junto a la razón social',
+  tax_id: 'facturas emitidas y propuestas',
+  address_line: 'facturas emitidas y propuestas (nunca en los portales)',
+  postal_code: 'facturas emitidas y propuestas (nunca en los portales)',
+  city: 'facturas emitidas y propuestas (nunca en los portales)',
+  province: 'facturas emitidas y propuestas (nunca en los portales)',
+  country: 'facturas emitidas y propuestas (nunca en los portales)',
+  email: 'facturas emitidas',
+  phone: 'propuestas y facturas',
+  website: 'propuestas y facturas',
+  logo_file_id: 'propuestas de Booking y facturas de Finance',
+  iban: 'instrucciones de pago de los portales ({{entidad.iban}})',
+  bizum: 'instrucciones de pago de los portales ({{entidad.bizum}})',
+  venue_address: 'portales de huéspedes y de quien organiza ({{entidad.lugar}})',
+  venue_map_url: 'botón del mapa de los portales ({{entidad.mapa}})',
+  site_plan_file_id: 'portales de huéspedes y de quien organiza',
+};
+
+/**
+ * Los seis datos que se notan fuera, en este orden (MUELA-019 y 069, «Paso a paso»), con lo que pasa si faltan. La
+ * «dirección» es la del lugar de los retiros (`venue_address`), nunca el domicilio fiscal.
+ */
+export const ENTITY_GAPS: ReadonlyArray<{ field: 'iban' | 'venue_address' | 'logo_file_id' | 'site_plan_file_id' | 'bizum' | 'venue_map_url'; label: string; effect: string }> = [
+  { field: 'iban', label: 'IBAN', effect: 'Sin IBAN, las instrucciones de pago del portal de quien organiza dicen «a la cuenta —».' },
+  { field: 'venue_address', label: 'Dirección del lugar', effect: 'Sin la dirección del lugar, los portales no enseñan ni dirección ni mapa.' },
+  { field: 'logo_file_id', label: 'Logotipo', effect: 'Sin logotipo, las propuestas y las facturas salen sin él.' },
+  { field: 'site_plan_file_id', label: 'Plano del centro', effect: 'Sin plano, los portales no enseñan cómo moverse por el centro.' },
+  { field: 'bizum', label: 'Bizum', effect: 'Sin Bizum, las instrucciones de pago solo ofrecen la transferencia.' },
+  { field: 'venue_map_url', label: 'Enlace del mapa', effect: 'Sin el enlace exacto, los portales buscan la dirección en el mapa y puede caer en otro sitio.' },
+];
+
+/** Lo que falta de los seis, en su orden. */
+export function entityGaps(row: Partial<EntityRow> | null | undefined): typeof ENTITY_GAPS[number][] {
+  if (!row) return [...ENTITY_GAPS];
+  return ENTITY_GAPS.filter((g) => !row[g.field] || (typeof row[g.field] === 'string' && !(row[g.field] as string).trim()));
+}

@@ -217,6 +217,8 @@ El estado `ok | atencion | critico` de C01 se calcula al leer; no se guarda.
 
 ### 2.9 Configuración común · Entidad (aprobado por el usuario, ronda 3)
 
+> Tanda 27 (MUELA-019): `ENTITY_USES` (dónde sale cada columna fuera de Central) y `ENTITY_GAPS` (los seis datos que se notan fuera: IBAN, dirección del lugar, logotipo, plano, Bizum y enlace del mapa) viven en `_domain/central/entity.ts`; `pasada27.test.ts` comprueba que cubren todas las columnas.
+
 Primer bloque de configuración común: los datos legales de Ikisai. Migración `0501_central_entity`. Los datos reales no van en Git: los escribe el owner en la pantalla **Entidad**.
 
 `central.entity` — una sola fila viva (`unique ((true)) where deleted_at is null`). Lectura `{reader, editor, owner}`; **escritura solo `{owner}`**.
@@ -321,6 +323,8 @@ Para la audiencia por equipo de la medición de uso (`coordinacion/ampliacion/US
 - **Interfaz**: en Personas, filtro por equipo, chips de equipo en cada fila y el enlace «Equipos» a su pantalla (orden manual, alta con color, renombrar, papelera). En la ficha, el bloque «Equipos» con chips y «Cambiar».
 
 ### 2.12 «Textos y contacto» (`central.texts`; regla del usuario del 7-10-2026)
+
+> Tanda 27 (MUELA-017): `PORTAL_TEXTS` (qué texto lee cada pantalla de Guests y Organizers), `textPlaces` y `portalTextKeys` viven en `_domain/central/texts.ts`; `pasada27.test.ts` los compara con los `common-texts.ts` de los dos portales.
 
 **Regla de producto:** los textos legales, avisos, declaraciones y datos de contacto que ven las personas y los portales se editan **siempre desde Central**, nunca fijos en el código. Migración `0570_central_texts`.
 
@@ -669,7 +673,7 @@ Destinos tipados futuros en `key_documents` (factura o justificante de Finance) 
 
 ## 9. Pantallas y navegación
 
-Cuatro entradas en la barra, iguales para todos: Inicio, Cumplimiento, Personas e Inventario. El lanzador del kit va en el icono de la cabecera. Con cinco entradas, los nombres se cortaban en el móvil («Cumplimi…»). Por eso:
+Cuatro entradas en la barra, iguales para todos: Inicio, Cumplimiento, Personas e Inventario. Desde la tanda 27 (20-10-2026), la marca abre el **menú lateral común** del kit (MUELA-013): perfil y sincronización, recientes, secciones («Cuentas y accesos» arriba para el owner; La entidad, Obligaciones y Documentos por tipo, Dirección, Equipos y oficios, Revisión), apps, comentarios y ayuda, y «Cerrar sesión»; en el ordenador, además, una columna fija y la barra abajo. La búsqueda va en la cabecera (Ctrl K). Lo de abajo sigue valiendo. Con cinco entradas, los nombres se cortaban en el móvil («Cumplimi…»). Por eso:
 - **Entidad** se abre desde Inicio.
 - **Accesos** se abre desde Inicio desde el 18-10-2026 (decisión del usuario al llegar Inventario). Son las tarjetas del owner Cuentas, Agentes, Alta y Registro. Sigue siendo solo para el owner, y en Accesos la barra marca Inicio.
 
@@ -839,6 +843,7 @@ Detalle y estado en `docs/central/PETICIONES.md`.
 | P6 | Petición a **Booking**: usar `target_app = 'central'` (no `'encarna'`) en `staff_assignments.person_ref_app` y decir si quiere ya `central.booking_person_projection`. | Turnos con la persona de Central | — |
 | P7 | Llevar a los equipos el contrato de KPIs (§7.2) cuando se apruebe, para que cada uno publique su `central_kpi_projection` en su ronda. | Panel de dirección | Panel solo con KPIs de Central |
 | P8 | Lanzador del kit y registro de despliegue de `apps/central` (Pages `ikisai-central`, dominio `central.ikisai.com` atado explícitamente, alias `encarna`). | Publicar V1-a | — |
+| P11 | Kit: que `feedbackRoundTrip` mire solo el cajón abierto del menú (con `menu.column` los interruptores salen dos veces). | Prueba común de feedback | Copia acotada en `tests/central/menu-helpers.ts` |
 | P10 ✅ #608 | Que el lector escriba en las tablas cuyo `writable_roles` lo incluya, como el outsider (núcleo 0099, contrato §3.11). | Votos de Decisiones (§2.10, decisión del usuario: vota también quien solo lee) | — |
 
 ---

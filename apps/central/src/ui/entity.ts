@@ -1,6 +1,9 @@
 import type { RowOperation } from '@ikisai/sync-client';
-import { compressImage, confirmDialog, el, formatDate, icon, openSheet, replace, toast, type Sheet } from '@ikisai/ui-kit';
-import { LOGO_MAX_BYTES, LOGO_MIME, SITE_PLAN_MIME, VENUE_MAP_URL, formatIban, ibanProblem, normalizeIban, normalizeTaxId, taxIdProblem, validateOperations, type EntityRow } from '@ikisai/domain-central';
+import { compressImage, confirmDialog, el, formatDate, icon, openSheet, renderSteps, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import {
+  ENTITY_GAPS, ENTITY_USES, LOGO_MAX_BYTES, LOGO_MIME, SITE_PLAN_MIME, VENUE_MAP_URL, entityGaps, formatIban, ibanProblem, normalizeIban, normalizeTaxId,
+  taxIdProblem, validateOperations, type EntityRow,
+} from '@ikisai/domain-central';
 import { guard } from '../app/guard.ts';
 import { T, describeError, type Mirror } from '../app/client.ts';
 import { fbMark } from './feedback.ts';
@@ -26,10 +29,16 @@ async function preparePlan(file: File): Promise<Blob> {
   return prepareLogo(file);
 }
 
+/** Un dato que se cambia en la hoja corta (MUELA-019): el NIF/CIF y el domicilio fiscal, solo en el editor completo. */
+type OneField = 'legal_name' | 'trade_name' | 'email' | 'phone' | 'website' | 'iban' | 'bizum' | 'venue_address' | 'venue_map_url' | 'logo_file_id' | 'site_plan_file_id';
+
 /**
  * Datos de la entidad (configuración común, API.md §2.9): razón social, NIF/CIF, domicilio fiscal, logotipo y plano del centro.
  * Los ve cualquier miembro de Central; solo el owner los edita. Booking y Finance los leen por su proyección; Organizers y
  * Guests, el lugar (nombre, dirección, mapa y plano) por `central.portal_place_projection`.
+ * MUELA-019 y 069: para quien administra, arriba «Paso a paso» con los seis datos que se notan fuera (IBAN, dirección
+ * del lugar, logotipo, plano, Bizum y mapa); debajo, la ficha con dónde sale cada dato. Tocar un dato abre su hoja corta;
+ * el editor completo se conserva («Editar todo»), y es obligatorio la primera vez («Empezar»).
  */
 export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
   let row: Row | null = null;
@@ -72,39 +81,135 @@ export const mountEntity: ViewMount = ({ main, client, isAdmin, usage }) => {
     return el('a', { href: url, target: '_blank', rel: 'noopener', 'data-feedback-id': 'central.entidad.ficha.ver_plano', 'data-feedback-label': 'Ver plano' }, icon('pin', 16), ' Ver plano');
   }
 
-  function line(label: string, value: string | null | undefined, personal = false): HTMLElement | null {
-    return value ? el('div', { class: 'kv' }, el('dt', null, label), el('dd', personal ? { 'data-feedback-ignore': '' } : null, value)) : null;
+  /** Una fila de la ficha: el dato, su valor y dónde sale. Para quien administra, tocarla abre su hoja corta. */
+  function line(label: string, value: Node | string | null | undefined, uses: string, field: OneField | 'full' | null, personal = false): HTMLElement {
+    const content = [el('span', { class: 'ctl-kvname' }, label), el('span', { class: value ? 'ctl-kvvalue' : 'ctl-kvvalue ctl-kvmissing', ...(personal ? { 'data-feedback-ignore': '' } : {}) }, value ?? 'Falta'), el('small', { class: 'ctl-kvuses' }, `Sale en ${uses}`)];
+    return isAdmin && field
+      ? el('button', { type: 'button', class: 'ctl-kvrow', 'data-field': field, onclick: () => (field === 'full' ? openEditor() : openOne(field)) }, ...content, icon('chevronRight', 16))
+      : el('div', { class: 'ctl-kvrow' }, ...content);
   }
 
   async function paint(): Promise<void> {
     if (!row) {
       replace(host, el('div', { class: 'empty', 'data-feedback-id': 'central.entidad.vacio', 'data-feedback-label': 'Entidad sin datos' },
         el('strong', null, 'Todavía no hay datos de la entidad'),
-        isAdmin ? 'Escribe la razón social, el NIF/CIF y el domicilio fiscal, y sube el logotipo.' : 'Los rellena quien administra Central.',
-        isAdmin ? el('button', { class: 'primary', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.vacio.rellenar', 'data-feedback-label': 'Rellenar datos', onclick: () => openEditor() }, icon('edit', 18), 'Rellenar datos') : null));
+        isAdmin ? 'Para empezar hacen falta la razón social, el NIF/CIF y el domicilio fiscal (dirección, código postal y municipio). Después, el resto, dato a dato.' : 'Puedes consultarlos cuando estén. Los rellena quien administra Central.',
+        isAdmin ? el('button', { class: 'primary', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.vacio.rellenar', 'data-feedback-label': 'Empezar', onclick: () => openEditor() }, icon('edit', 18), 'Empezar') : null));
       return;
     }
     const r = row;
     const address = [r.address_line, [r.postal_code, r.city].filter(Boolean).join(' '), r.province, r.country !== 'ES' ? r.country : null].filter(Boolean).join(', ');
-    replace(host, el('section', { class: 'card entitycard', 'data-feedback-id': 'central.entidad.ficha', 'data-feedback-label': 'Ficha de la entidad' },
-      (await logoNode(r.logo_file_id as LogoRef, `Logotipo de ${r.legal_name}`)) ?? el('p', { class: 'muted' }, 'Sin logotipo.'),
-      el('dl', { class: 'kvlist', 'data-feedback-id': 'central.entidad.ficha.datos', 'data-feedback-label': 'Datos legales' },
-        fbMark(line('Razón social', r.legal_name), 'central.entidad.ficha.razon_social', 'Razón social'),
-        fbMark(line('Nombre comercial', r.trade_name), 'central.entidad.ficha.nombre_comercial', 'Nombre comercial'),
-        fbMark(line('NIF/CIF', r.tax_id, true), 'central.entidad.ficha.nif', 'NIF/CIF'),
-        fbMark(line('Domicilio fiscal', address, true), 'central.entidad.ficha.domicilio', 'Domicilio fiscal'),
-        fbMark(line('Correo', r.email, true), 'central.entidad.ficha.correo', 'Correo'),
-        fbMark(line('Teléfono', r.phone, true), 'central.entidad.ficha.telefono', 'Teléfono'),
-        fbMark(line('Web', r.website), 'central.entidad.ficha.web', 'Web'),
-        fbMark(line('IBAN', formatIban(r.iban), true), 'central.entidad.ficha.iban', 'IBAN'),
-        fbMark(line('Bizum', r.bizum, true), 'central.entidad.ficha.bizum', 'Bizum'),
-        fbMark(line('Lugar de los retiros', r.venue_address), 'central.entidad.ficha.lugar', 'Lugar de los retiros'),
-        r.venue_map_url ? el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.mapa', 'data-feedback-label': 'Mapa del lugar' }, el('dt', null, 'Mapa del lugar'),
-          el('dd', null, el('a', { href: r.venue_map_url, target: '_blank', rel: 'noopener noreferrer', 'data-feedback-id': 'central.entidad.ficha.abrir_mapa', 'data-feedback-label': 'Abrir el mapa' }, icon('pin', 16), ' Abrir el mapa'))) : null,
-        el('div', { class: 'kv', 'data-feedback-id': 'central.entidad.ficha.plano', 'data-feedback-label': 'Plano del centro' }, el('dt', null, 'Plano del centro'),
-          el('dd', null, (await planNode(r.site_plan_file_id as LogoRef)) ?? el('span', { class: 'muted' }, 'Sin plano')))),
-      el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`),
-      isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar', onclick: () => openEditor() }, icon('edit', 18), 'Editar') : null));
+    const gaps = entityGaps(r);
+    const steps = isAdmin ? renderSteps({
+      title: gaps.length ? 'Lo que se nota fuera de Central' : 'Lo que se nota fuera, completo', feedbackId: 'central.entidad.pasos', readyText: 'Están los seis datos que usan los portales, las propuestas y las facturas.',
+      items: ENTITY_GAPS.map((g) => ({ id: g.field, title: g.label, done: !gaps.includes(g), stateText: gaps.includes(g) ? g.effect : `Sale en ${ENTITY_USES[g.field]}.`, action: 'Añadirlo', minutes: 1,
+        icon: g.field === 'iban' || g.field === 'bizum' ? 'euro' : g.field === 'logo_file_id' ? 'image' : g.field === 'site_plan_file_id' ? 'grid' : 'pin', onClick: () => openOne(g.field) })),
+    }) : null;
+    const logo = await logoNode(r.logo_file_id as LogoRef, `Logotipo de ${r.legal_name}`);
+    const plan = await planNode(r.site_plan_file_id as LogoRef);
+    replace(host,
+      steps,
+      el('section', { class: 'card entitycard', 'data-feedback-id': 'central.entidad.ficha', 'data-feedback-label': 'Ficha de la entidad' },
+        el('div', { class: 'blockhead' }, el('h3', null, 'La ficha'),
+          isAdmin ? el('button', { class: 'ghost', type: 'button', id: 'editEntity', 'data-feedback-id': 'central.entidad.ficha.editar', 'data-feedback-label': 'Editar todo', onclick: () => openEditor() }, icon('edit', 18), 'Editar todo') : null),
+        isAdmin ? null : el('p', { class: 'note', 'data-feedback-id': 'central.entidad.ficha.solo_lectura', 'data-feedback-label': 'Solo lectura' }, icon('lock', 16), 'Puedes consultarlos. Los cambia quien administra Central.'),
+        el('div', { class: 'ctl-kvlist', 'data-feedback-id': 'central.entidad.ficha.datos', 'data-feedback-label': 'Datos legales' },
+          fbMark(line('Logotipo', logo, ENTITY_USES.logo_file_id, 'logo_file_id'), 'central.entidad.ficha.logotipo', 'Logotipo'),
+          fbMark(line('Razón social', r.legal_name, ENTITY_USES.legal_name, 'legal_name'), 'central.entidad.ficha.razon_social', 'Razón social'),
+          fbMark(line('Nombre comercial', r.trade_name, ENTITY_USES.trade_name, 'trade_name'), 'central.entidad.ficha.nombre_comercial', 'Nombre comercial'),
+          fbMark(line('NIF/CIF', r.tax_id, ENTITY_USES.tax_id, 'full', true), 'central.entidad.ficha.nif', 'NIF/CIF'),
+          fbMark(line('Domicilio fiscal', address, ENTITY_USES.address_line, 'full', true), 'central.entidad.ficha.domicilio', 'Domicilio fiscal'),
+          fbMark(line('Correo', r.email, ENTITY_USES.email, 'email', true), 'central.entidad.ficha.correo', 'Correo'),
+          fbMark(line('Teléfono', r.phone, ENTITY_USES.phone, 'phone', true), 'central.entidad.ficha.telefono', 'Teléfono'),
+          fbMark(line('Web', r.website, ENTITY_USES.website, 'website'), 'central.entidad.ficha.web', 'Web'),
+          fbMark(line('IBAN', formatIban(r.iban), ENTITY_USES.iban, 'iban', true), 'central.entidad.ficha.iban', 'IBAN'),
+          fbMark(line('Bizum', r.bizum, ENTITY_USES.bizum, 'bizum', true), 'central.entidad.ficha.bizum', 'Bizum'),
+          fbMark(line('Lugar de los retiros', r.venue_address, ENTITY_USES.venue_address, 'venue_address'), 'central.entidad.ficha.lugar', 'Lugar de los retiros'),
+          fbMark(line('Mapa del lugar', r.venue_map_url ? 'Enlace exacto puesto' : null, ENTITY_USES.venue_map_url, 'venue_map_url'), 'central.entidad.ficha.mapa', 'Mapa del lugar'),
+          fbMark(line('Plano del centro', plan ? (plan.tagName === 'A' ? 'Plano puesto' : (plan.textContent ?? '').trim()) : null, ENTITY_USES.site_plan_file_id, 'site_plan_file_id'), 'central.entidad.ficha.plano', 'Plano del centro')),
+        // Abrir el mapa y ver el plano siguen a mano, fuera de la fila (que abre la hoja).
+        r.venue_map_url || plan ? el('div', { class: 'zone' },
+          r.venue_map_url ? el('a', { class: 'ghost btnlike', href: r.venue_map_url, target: '_blank', rel: 'noopener noreferrer', 'data-feedback-id': 'central.entidad.ficha.abrir_mapa', 'data-feedback-label': 'Abrir el mapa' }, icon('pin', 16), 'Abrir el mapa') : null,
+          plan && plan.tagName === 'A' ? plan : null) : null,
+        el('p', { class: 'muted small', 'data-feedback-id': 'central.entidad.ficha.actualizado', 'data-feedback-label': 'Última actualización' }, `Actualizado ${formatDate(r.updated_at)}${r._pending ? ' · pendiente de sincronizar' : ''}`)));
+  }
+
+  /** La hoja corta de un dato: solo ese campo, «Sale en …», el error junto al campo y el mismo guardado (también sin red). */
+  function openOne(field: OneField): void {
+    const current = row;
+    if (!current) { openEditor(); return; }
+    const g = ENTITY_GAPS.find((x) => x.field === field);
+    const title = g?.label ?? LABELS[field] ?? field;
+    const isFile = field === 'logo_file_id' || field === 'site_plan_file_id';
+    let staged: Blob | null = null;
+    const error = el('p', { class: 'fielderror', id: 'one-error', role: 'alert', 'aria-live': 'assertive' });
+    const value = field === 'iban' ? formatIban(current.iban) : isFile ? null : (current[field] as string | null);
+    const input = isFile
+      ? el('input', { id: 'one-file', type: 'file', accept: (field === 'logo_file_id' ? LOGO_MIME : SITE_PLAN_MIME).join(','), class: 'visually-hidden' }) as HTMLInputElement
+      : el('input', { id: 'one-value', type: field === 'email' ? 'email' : field === 'phone' ? 'tel' : field === 'website' || field === 'venue_map_url' ? 'url' : 'text', value: value ?? '', autocomplete: 'off', 'aria-describedby': 'one-error one-uses',
+        ...(field === 'iban' ? { placeholder: 'ES00 0000 0000 0000 0000 0000', maxlength: '42', 'data-feedback-ignore': '' } : field === 'venue_map_url' ? { placeholder: 'https://maps.app.goo.gl/…', maxlength: '500' } : { maxlength: '300' }) }) as HTMLInputElement;
+    const fileState = el('span', { class: 'muted small' }, isFile ? (current[field] ? 'Ya hay uno: el nuevo lo sustituye.' : 'Todavía no hay ninguno.') : '');
+    if (isFile) input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try { staged = field === 'logo_file_id' ? await prepareLogo(file) : await preparePlan(file); fileState.textContent = `Elegido: ${file.name}`; save.disabled = false; guard.dirtyEditor = true; }
+      catch { error.textContent = field === 'logo_file_id' ? 'No se pudo leer esa imagen. Prueba con un PNG o un JPEG.' : 'El plano debe ser una imagen (PNG, JPEG o WebP) o un PDF.'; }
+    });
+    else input.addEventListener('input', () => { guard.dirtyEditor = input.value.trim() !== (value ?? ''); input.removeAttribute('aria-invalid'); error.textContent = ''; });
+    const problemOf = (v: string): string | null => {
+      if (!v) return field === 'legal_name' ? 'La razón social es obligatoria.' : null;
+      if (field === 'iban') { const p = ibanProblem(v); return p ? `IBAN: ${p}` : null; }
+      if (field === 'venue_map_url' && !VENUE_MAP_URL.test(v)) return 'Pega el enlace de Google Maps (https://maps.app.goo.gl/… o https://www.google.com/maps/…).';
+      return null;
+    };
+    const save = el('button', { class: 'primary', type: 'button', id: 'saveOne', disabled: isFile, 'data-feedback-id': 'central.entidad.dato.guardar', 'data-feedback-label': 'Guardar', onclick: async () => {
+      error.textContent = '';
+      let fields: Record<string, unknown>;
+      if (isFile) {
+        if (!staged) return;
+        fields = { [field]: { $blob: 'pendiente' } };
+      } else {
+        const v = input.value.trim();
+        const problem = problemOf(v);
+        if (problem) { error.textContent = problem; input.setAttribute('aria-invalid', 'true'); input.focus(); return; }
+        fields = { [field]: field === 'iban' ? (v ? normalizeIban(v) : null) : v || null };
+      }
+      const ops = (f: Record<string, unknown>): RowOperation[] => [{ op: 'update', table: T.entity, id: current.id, expectedRevision: current.revision, fields: f }];
+      const issue = validateOperations(ops(fields), client.bootstrap()?.membership ?? { role: 'reader' }, () => current);
+      if (issue) { error.textContent = issue.message.replace(/^Campo (\w+)/, (_, f: string) => `«${LABELS[f] ?? f}»`); if (!isFile) { input.setAttribute('aria-invalid', 'true'); input.focus(); } return; }
+      save.disabled = true;
+      try {
+        if (isFile && staged) {
+          const mime = staged.type || (field === 'logo_file_id' ? 'image/png' : 'application/pdf');
+          const sha = await client.stageBlob(staged, { filename: field === 'logo_file_id' ? `logotipo.${mime.split('/')[1] ?? 'png'}` : `plano.${mime === 'application/pdf' ? 'pdf' : mime.split('/')[1] ?? 'png'}`, mime });
+          blobUrls.set(sha, URL.createObjectURL(staged));
+          fields = { [field]: { $blob: sha } };
+        }
+        await usage.run('central.entidad.guardar_dato', () => client.commit(ops(fields)));
+        toast(!navigator.onLine ? `${title}: guardado en este dispositivo. Se sincronizará cuando haya red.` : `${title}: guardado.`);
+        guard.dirtyEditor = false;
+        await sheet?.close(true);
+        await load();
+      } catch (e) { error.textContent = describeError(e); } finally { save.disabled = false; }
+    } }, 'Guardar') as HTMLButtonElement;
+    sheet = openSheet({
+      title, meta: `Revisión ${current.revision}`,
+      panelAttrs: { 'data-feedback-id': 'central.entidad.dato', 'data-feedback-label': 'Un dato de la entidad' },
+      closeAttrs: { 'data-feedback-id': 'central.entidad.dato.cerrar_hoja', 'data-feedback-label': 'Cerrar' },
+      body: el('div', { class: 'ctl-one', 'data-feedback-id': 'central.entidad.dato.formulario', 'data-feedback-label': 'Dato' },
+        g ? el('p', { class: 'hint' }, entityGaps(current).includes(g) ? g.effect : '') : null,
+        isFile ? el('div', { class: 'field' }, el('span', null, title), fileState, el('label', { class: 'ghost btnlike', for: 'one-file' }, icon('upload', 18), field === 'logo_file_id' ? 'Elegir imagen' : 'Elegir plano'), input)
+          : el('label', { class: 'field' }, el('span', null, title), input),
+        error,
+        el('p', { class: 'muted small', id: 'one-uses' }, `Sale en ${ENTITY_USES[field]}.`),
+        field === 'venue_address' ? el('p', { class: 'muted small' }, 'Es la dirección del lugar de los retiros, la que ven los portales. Nunca se usa el domicilio fiscal, que va en las facturas.') : null,
+        field === 'venue_map_url' ? el('p', { class: 'muted small' }, 'En Google Maps, busca el lugar, pulsa «Compartir» y pega aquí el enlace.') : null,
+        !navigator.onLine && isFile ? el('p', { class: 'muted small' }, icon('offline', 16), ' Sin conexión: se subirá cuando vuelva la red y se verá con conexión.') : null),
+      foot: [el('button', { class: 'ghost', type: 'button', onclick: () => void sheet?.close() }, 'Cancelar'), save],
+      initialFocus: isFile ? undefined : input,
+      beforeClose: async () => !guard.dirtyEditor || confirmDialog({ title: 'Hay cambios sin guardar', text: '¿Descartarlos?', confirmLabel: 'Descartar', danger: true }),
+      onClose: () => { guard.dirtyEditor = false; sheet = null; },
+    });
   }
 
   async function load(): Promise<void> {

@@ -15,7 +15,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const configFile = path.resolve(here, '../../apps/central/vite.config.ts');
 const madrid = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date(Date.now() + offset * 86_400_000));
 const nextYear = (d: string) => `${Number(d.slice(0, 4)) + 1}${d.slice(4)}`;
-const dmy = (d: string) => d.split('-').reverse().join('/');
 
 let api: CentralTestServer;
 let server: PreviewServer;
@@ -63,9 +62,15 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   await page.locator('#q-frequency').selectOption('anual');
   await page.locator('#q-risk').selectOption('alto');
   await page.locator('#saveRequirement').click();
-  await expect(page.getByRole('heading', { name: 'Póliza de responsabilidad civil' })).toBeVisible();
-  await expect(page.locator('#requirementView .pagehead')).toContainText('Vence pronto');
-  await expect(page.locator('#requirementView .pagehead')).toContainText(/LEG_\d{4}_\d{3}/);
+  // Ficha (MUELA-069): portada con el plazo, recorrido y foco; los datos plegados con «Editar».
+  await expect(page.getByRole('heading', { name: 'Póliza de responsabilidad civil' })).toBeAttached();
+  const cover = page.locator('#requirementView .ctl-cover');
+  await expect(cover).toContainText('Vence pronto');
+  await expect(cover).toContainText(/LEG_\d{4}_\d{3}/);
+  await expect(cover.locator('.cover-pill')).toContainText(/^Vence el .+ \(quedan (19|20) días\)$/);
+  await expect(page.locator('#requirementView .stage-list, #requirementView ol').first()).toContainText('Pendiente');
+  await expect(page.locator('#requirementView .focus-card')).toContainText('Marcar cumplido');
+  await expect(page.locator('#editRequirement')).toBeAttached();
 
   // Tarea pedida a Tasks: sin área ni proyecto, con su tipo y el enlace a la ficha.
   await page.locator('#askTask').click();
@@ -79,14 +84,19 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   expect(sent.external_url).toMatch(/^https:\/\/central\.ikisai\.com\/#\/cumplimiento\/[0-9a-f-]{36}$/);
   expect('tab_id' in sent || 'project_id' in sent).toBe(false);
 
-  // Vencimientos e Inicio la muestran.
+  // Vencimientos: una cosa cada vez para quien edita; «Ver todo» abre la lista de siempre; también por semanas.
   await page.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
+  await expect(page.locator('.queue-card')).toContainText('Póliza de responsabilidad civil');
+  await expect(page.locator('.queue-card').getByRole('button', { name: 'Marcar cumplido y siguiente' })).toBeVisible();
+  await page.locator('.queue-all').click();
   await expect(page.locator('#dueList')).toContainText('Póliza de responsabilidad civil');
+  await page.locator('[data-view="semanas"]').click();
+  await expect(page.locator('#compliance-vencimientos .worst-group')).toContainText('Póliza de responsabilidad civil');
   await page.getByRole('link', { name: 'Inicio', exact: true }).click();
   await expect(page.locator('#homeDocs')).toContainText('Póliza de responsabilidad civil');
 
-  // Documento clave con PDF, enlazado a la obligación.
-  await page.locator('#homeDocs a', { hasText: 'Póliza de responsabilidad civil' }).click();
+  // Documento clave con PDF, enlazado a la obligación (la ficha, desde la tarjeta de Inicio).
+  await page.locator('#homeDocs').getByRole('button', { name: 'Abrir la ficha' }).click();
   await page.locator('#addDocument').click();
   await page.locator('#d-name').fill('Póliza 2026');
   await page.locator('#d-expires').fill(due);
@@ -101,8 +111,9 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   await expect(page.locator('#md-expires')).toHaveValue(proposed);
   await page.locator('#confirmDone').click();
   await expect(page.getByText('Obligación marcada como cumplida.')).toBeVisible();
-  await expect(page.locator('#blockRequirement')).toContainText(dmy(proposed));
-  await expect(page.locator('#requirementView .pagehead')).toContainText('Cumplido');
+  await expect(page.locator('#requirementView .ctl-cover')).toContainText('Cumplido');
+  await expect(page.locator('#requirementView ol').first()).toContainText('Cumplida');
+  await expect.poll(async () => (await api.app.t.db.query<{ e: string }>(`select expires_on::text as e from central.requirements`)).rows[0]!.e).toBe(proposed);
 
   // Un lector lo ve, sin poder editar ni pedir tareas.
   const other = await browser.newContext();
@@ -110,7 +121,11 @@ test('cumplimiento · obligación, aviso, tarea en Tasks, cumplido, documento y 
   await login(reader, 'reader@example.invalid', 'Reader');
   await reader.getByRole('link', { name: 'Cumplimiento', exact: true }).click();
   await reader.locator('#ctab-requisitos').click();
-  await reader.locator('.personrow', { hasText: 'Póliza de responsabilidad civil' }).click();
+  // Al día: su grupo («Seguro») está plegado; se abre y se toca la fila.
+  const group = reader.locator('.worst-group[data-group="seguro"]');
+  await expect(group).toContainText('al día');
+  await group.locator('summary').click();
+  await group.locator('li.row', { hasText: 'Póliza de responsabilidad civil' }).click();
   await expect(reader.locator('#blockDocuments')).toContainText('Póliza 2026');
   await expect(reader.locator('#editRequirement')).toHaveCount(0);
   await expect(reader.locator('#askTask')).toHaveCount(0);

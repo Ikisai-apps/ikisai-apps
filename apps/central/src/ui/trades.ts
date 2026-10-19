@@ -1,5 +1,8 @@
 import type { RowOperation, SyncClient } from '@ikisai/sync-client';
-import { confirmDialog, el, icon, openSheet, renderLevelStar, replace, toast, type Sheet } from '@ikisai/ui-kit';
+import { confirmDialog, el, icon, openSheet, renderGroups, renderLevelStar, replace, toast, type Sheet } from '@ikisai/ui-kit';
+
+/** El oficio principal de una ruta («Mantenimiento › Fontanería» → «Mantenimiento»). */
+const path0 = (path: string) => path.split(' › ')[0]!;
 import {
   AVAILABILITY_LABELS, TRADE_LEVEL_LABELS, TRADE_MAX_DEPTH, canSeeReserved, effectiveLevels, inheritedLevel, planTradeImport, validateOperations, type ActionLabel, type EffectiveLevel,
 } from '@ikisai/domain-central';
@@ -160,20 +163,38 @@ export const mountTrades: ViewMount = ({ main, client, navigate, isAdmin }) => {
         canManage ? 'Crea el primero con «Nuevo oficio».' : 'Los crea quien gestiona personas.'));
       return;
     }
-    replace(host, el('ul', { class: 'accounts tradetree', 'aria-label': 'Oficios', 'data-feedback-id': 'central.oficios.lista.filas', 'data-feedback-label': 'Oficios' },
-      ...tree.map(({ trade: t, depth, path }) => {
-        const n = whoKnows(t.id, levels).length;
-        const c = t.active ? cov.get(t.id) : undefined;
-        const flags = c ? [c.atRisk ? el('span', { class: 'chip alert' }, 'En riesgo') : null, c.noExpert ? el('span', { class: 'chip warn' }, 'Sin experto') : null,
-          c.onlyOutsiders ? el('span', { class: 'chip warn' }, 'Solo outsiders') : null].filter(Boolean) : [];
-        // Filtrando, cada fila va suelta: la ruta completa dice de dónde cuelga.
-        return el('li', null, el('button', { class: 'personrow traderow', type: 'button', 'data-trade': t.id, style: `padding-left:${12 + (filtering ? 0 : depth) * 20}px`, 'data-feedback-id': 'central.oficios.lista.fila', 'data-feedback-label': 'Oficio', onclick: () => openTrade(t) },
-          el('span', { class: 'accountname' }, filtering ? path : t.name),
-          el('span', { class: 'muted accountmeta' }, n === 1 ? '1 persona' : `${n} personas`),
-          c && coverageText(c) ? el('span', { class: 'muted small tradecoverage', 'data-feedback-id': 'central.oficios.lista.cobertura', 'data-feedback-label': 'Cobertura por nivel' }, coverageText(c)) : null,
-          flags.length ? el('span', { class: 'chips tradeflags', 'data-feedback-id': 'central.oficios.lista.avisos', 'data-feedback-label': 'Avisos de cobertura' }, ...flags) : null,
-          t.active ? null : el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'Archivado'))));
-      })));
+    const row = ({ trade: t, depth, path }: (typeof tree)[number]) => {
+      const n = whoKnows(t.id, levels).length;
+      const c = t.active ? cov.get(t.id) : undefined;
+      const flags = c ? [c.atRisk ? el('span', { class: 'chip alert' }, 'En riesgo') : null, c.noExpert ? el('span', { class: 'chip warn' }, 'Sin experto') : null,
+        c.onlyOutsiders ? el('span', { class: 'chip warn' }, 'Solo outsiders') : null].filter(Boolean) : [];
+      // Filtrando, cada fila va suelta: la ruta completa dice de dónde cuelga.
+      return el('li', null, el('button', { class: 'personrow traderow', type: 'button', 'data-trade': t.id, style: `padding-left:${12 + (filtering ? 0 : depth) * 20}px`, 'data-feedback-id': 'central.oficios.lista.fila', 'data-feedback-label': 'Oficio', onclick: () => openTrade(t) },
+        el('span', { class: 'accountname' }, filtering ? path : t.name),
+        el('span', { class: 'muted accountmeta' }, n === 1 ? '1 persona' : `${n} personas`),
+        c && coverageText(c) ? el('span', { class: 'muted small tradecoverage', 'data-feedback-id': 'central.oficios.lista.cobertura', 'data-feedback-label': 'Cobertura por nivel' }, coverageText(c)) : null,
+        flags.length ? el('span', { class: 'chips tradeflags', 'data-feedback-id': 'central.oficios.lista.avisos', 'data-feedback-label': 'Avisos de cobertura' }, ...flags) : null,
+        t.active ? null : el('span', { class: 'chips' }, el('span', { class: 'chip' }, 'Archivado'))));
+    };
+    // Bloque 2 (VG): un grupo por oficio principal con el resumen de lo peor, y el árbol (con su sangría) dentro.
+    const groups: Array<{ key: string; title: string; items: typeof tree }> = [];
+    for (const x of tree) {
+      const root = path0(x.path);
+      const last = groups[groups.length - 1];
+      if (last && last.key === root) last.items.push(x); else groups.push({ key: root, title: root, items: [x] });
+    }
+    const toneOf = (x: (typeof tree)[number]) => { const c = x.trade.active ? cov.get(x.trade.id) : undefined; return !c ? null : c.atRisk ? 'alert' as const : c.noExpert || c.onlyOutsiders ? 'warn' as const : levelsOn ? 'ok' as const : null; };
+    const view = renderGroups({
+      label: 'Oficios', feedbackId: 'central.oficios.lista.grupos',
+      groups: groups.map((g) => {
+        const risk = g.items.filter((x) => toneOf(x) === 'alert').length;
+        const warn = g.items.filter((x) => toneOf(x) === 'warn').length;
+        return { key: g.key, title: g.title, items: g.items, open: filtering || undefined,
+          summary: levelsOn ? [risk ? `${risk} en riesgo` : '', warn ? `${warn} con aviso` : ''].filter(Boolean).join(' · ') || 'cubiertos' : `${g.items.length} ${g.items.length === 1 ? 'oficio' : 'oficios'}` };
+      }),
+      toneOf, row,
+    });
+    replace(host, el('div', { class: 'accounts tradetree', 'aria-label': 'Oficios', 'data-feedback-id': 'central.oficios.lista.filas', 'data-feedback-label': 'Oficios' }, view.element));
   }
 
   /** Madres posibles: no él mismo ni sus descendientes, y sin pasar de tres niveles contando lo que cuelga de él. */
