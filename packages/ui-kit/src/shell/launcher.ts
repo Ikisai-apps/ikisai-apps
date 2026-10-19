@@ -69,6 +69,11 @@ const asMode = (value: LauncherMode | { mode: LauncherMode }): LauncherMode => (
 
 export interface AppLauncher {
   open(): Promise<Sheet>;
+  /**
+   * Pinta lo mismo que la hoja (apps, «Sugerencias y QA», «Señalar para comentar», «Revisor de QA», con sus clases de
+   * siempre) dentro de otro sitio: el cajón del menú lateral (K7). Con `hideCurrent`, sin la app actual.
+   */
+  mount(host: HTMLElement, options?: { hideCurrent?: boolean; onLeave?: () => void; part?: 'all' | 'apps' | 'feedback' }): Promise<void>;
   /** Engancha el lanzador a un botón (p. ej. la marca de la cabecera): `aria-haspopup` y clic. */
   attach(trigger: HTMLElement): void;
 }
@@ -120,9 +125,11 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       : el('a', { class: 'launcher-app', href: `https://${app.domain}/`, dataset: { app: app.id } }, ...body));
   }
 
-  function paint(host: HTMLElement, catalog: LauncherCatalog | null, state: 'loading' | 'fresh' | 'cached' | 'offline-empty'): void {
+  let leave: (() => void) | null = null;
+  function paint(host: HTMLElement, catalog: LauncherCatalog | null, state: 'loading' | 'fresh' | 'cached' | 'offline-empty', part: 'all' | 'apps' | 'feedback' = 'all', hideCurrent = false): void {
+    if (part === 'feedback') { replace(host, ...feedbackBlocks()); return; }
     const current = catalog?.current ?? options.current ?? null;
-    const items = catalog?.items ?? [];
+    const items = (catalog?.items ?? []).filter((a) => !hideCurrent || a.id !== current);
     const internal = items.filter((a) => a.kind !== 'portal');
     const portals = items.filter((a) => a.kind === 'portal');
     replace(host,
@@ -132,12 +139,19 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
       internal.length ? el('ul', { class: 'launcher-list', 'aria-label': kt('Apps') }, ...internal.map((a) => row(a, current))) : null,
       portals.length ? el('h3', { class: 'launcher-group' }, kt('Portales')) : null,
       portals.length ? el('ul', { class: 'launcher-list', 'aria-label': kt('Portales') }, ...portals.map((a) => row(a, current))) : null,
-      options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); options.center!(); } },
+      ...(part === 'all' ? feedbackBlocks() : []),
+    );
+  }
+
+  /** «Sugerencias y QA», «Señalar para comentar» y «Revisor de QA» (en la hoja, debajo de las apps). */
+  function feedbackBlocks(): (HTMLElement | null)[] {
+    return [
+      options.center ? el('button', { type: 'button', class: 'launcher-fb launcher-center', onclick: () => { void currentSheet?.close(true); leave?.(); options.center!(); } },
         el('span', { class: 'launcher-text' }, el('strong', null, options.centerLabel ?? kt('Sugerencias y QA')), el('small', null, options.centerText ?? (options.centerLabel ? kt('Cuéntanos qué falla o qué mejorarías.') : kt('Mapa de comentarios, abiertos, pendientes de verificar y tus borradores.')))),
         icon('chevronRight', 16)) : null,
       options.feedback ? modeSwitch(asMode(options.feedback), 'launcher-signal', kt('Señalar para comentar'), kt('Mantén pulsado cualquier elemento para comentar sobre él (en un campo de texto, su etiqueta). Solo en este dispositivo.'), kt('Activo: el punto amarillo de la marca lo recuerda. Mantén pulsado cualquier elemento para comentarlo (en un campo de texto, su etiqueta).')) : null,
       options.review ? reviewSlot : null,
-    );
+    ];
   }
 
   function modeSwitch(mode: LauncherMode, cls: string, title: string, text: string, activeText = text): HTMLElement {
@@ -166,6 +180,7 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
   }
 
   async function open(): Promise<Sheet> {
+    leave = null;
     const host = el('div', { class: 'launcher' });
     askReview();
     const cached = readCache(key);
@@ -182,8 +197,27 @@ export function createAppLauncher(options: AppLauncherOptions): AppLauncher {
     return sheet;
   }
 
+  async function mount(host: HTMLElement, opts: { hideCurrent?: boolean; onLeave?: () => void; part?: 'all' | 'apps' | 'feedback' } = {}): Promise<void> {
+    if (opts.onLeave) leave = opts.onLeave;
+    const part = opts.part ?? 'all';
+    const hide = !!opts.hideCurrent;
+    host.classList.add('launcher');
+    if (part !== 'apps') askReview();
+    if (part === 'feedback') { paint(host, null, 'fresh', part); return; }
+    const cached = readCache(key);
+    paint(host, cached, cached ? 'fresh' : 'loading', part, hide);
+    try {
+      const catalog = await options.fetchApps();
+      writeCache(key, catalog);
+      if (host.isConnected) paint(host, catalog, 'fresh', part, hide);
+    } catch {
+      if (host.isConnected) paint(host, cached, cached ? 'cached' : 'offline-empty', part, hide);
+    }
+  }
+
   return {
     open,
+    mount,
     attach(trigger) {
       trigger.setAttribute('aria-haspopup', 'dialog');
       if (!trigger.getAttribute('aria-label')) trigger.setAttribute('aria-label', kt('Abrir otra app de Ikisai'));

@@ -1,5 +1,22 @@
 # Cambios de @ikisai/ui-kit
 
+## 0.47.0 · 20 de octubre de 2026
+
+**Cáscara con menú lateral común** (MUELA-013, tanda 28): K1, K2, K7, K8, K10, K11, K12 y el estado de sincronización bajo el perfil. K9 («Volver a…») va aparte. **Todo es opcional:** sin las opciones nuevas, la cáscara queda igual. Detalle en el README («Menú lateral común»).
+
+- **`createAppShell({ menu })` (K7 y K8):**
+  - La marca abre el cajón del menú (`createAppMenu`, exportado) en vez de la hoja de apps. Con `menu.column`, en el ordenador hay además una columna fija de 316 px.
+  - Contenido: perfil y rol; la línea de sincronización (`syncLine`); tema; recientes; secciones en azulejos que despliegan sus filas; `blocks`; apps sin la actual; comentarios y ayuda; cerrar sesión.
+  - Es un diálogo modal con foco atrapado. Escape, el fondo y «atrás» lo cierran.
+  - Con menú, en el móvil estrecho la pastilla de estado se queda en un punto de color, así que «sin red» y los conflictos siguen a la vista.
+- **`search` (K8):** lupa en el móvil y caja con «Ctrl K» en el ordenador.
+- **`navLayout: 'bar'` (K12):** la barra de pestañas abajo y en horizontal también en el ordenador.
+- **Paleta:** `keepOrder` (K1). «Atrás» la cierra, con `trackOverlay` (K10).
+- **Feedback:** `captureFeedbackTarget({ delay: 0 })` señala con un toque (K2). El gesto dispara al soltar sin moverse. Con el `delay` de siempre, nada cambia.
+- **Marca:** la que se pulsa mide 46 px y los botones de navegación de escritorio también (K11). Es un cambio visible en las cabeceras de todas las apps.
+- **Lanzador:** `mount(host, { hideCurrent, part })` pinta las apps o los bloques de feedback dentro del cajón, con las mismas clases.
+- **Prefijo:** `appmenu-`. La barra lateral `.navmenu` de Tasks no cambia, y el fondo del cajón también se ve en el ordenador.
+- **Pruebas:** `v52`. La batería completa de las apps corre en la CI, porque cambia `app-shell.ts`.
 ## 0.46.1 · 19 de octubre de 2026
 
 **Arreglo en `createQueue` («una cosa cada vez»)**. Lo encontró la CI de #618: `v49` fallaba siempre en Linux.
