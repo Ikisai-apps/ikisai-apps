@@ -83,6 +83,14 @@ export interface AttachmentRow extends BaseRow {
 export interface TaskCommentRow extends BaseRow {
   tab_id: Uuid; project_id: Uuid; task_id: Uuid; author_id: Uuid; author_name: string; body: string; file_id: Uuid | null;
 }
+/**
+ * Material o equipo de una tarea (R6 PR 3; migración 0334): un artículo de Recursos con su cantidad prevista (unidad
+ * base). `consumed`, lo gastado al confirmar (0 = no se usó); `consumed_at` lo pone el servidor. Visible como su tarea.
+ */
+export interface TaskMaterialRow extends BaseRow {
+  tab_id: Uuid; project_id: Uuid; task_id: Uuid; item_id: Uuid; quantity: number | string | null; note: string;
+  consumed: number | string | null; consumed_at: string | null; position: number;
+}
 
 // Compras no alimentarias (docs/tasks/API.md §18, migración 0305). Desde R6 (0333) el almacén es el inventario común de
 // Recursos: una solicitud apunta a un artículo (`item_id`).
@@ -116,7 +124,7 @@ export const TABLES = [
   'tasks.tabs', 'tasks.families', 'tasks.labels', 'tasks.projects', 'tasks.tasks',
   'tasks.project_labels', 'tasks.task_labels', 'tasks.project_spaces', 'tasks.task_spaces',
   'tasks.project_trades', 'tasks.task_trades', 'tasks.project_people', 'tasks.task_people',
-  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments',
+  'tasks.task_dependencies', 'tasks.saved_views', 'tasks.attachments', 'tasks.task_comments', 'tasks.task_materials',
   'tasks.purchase_plans', 'tasks.purchase_plan_stops', 'tasks.purchase_requests',
   'tasks.request_routes', 'tasks.requests', 'tasks.settings',
 ] as const;
@@ -128,7 +136,7 @@ export interface RowTypes {
   'tasks.project_spaces': ProjectSpaceRow; 'tasks.task_spaces': TaskSpaceRow;
   'tasks.project_trades': ProjectTradeRow; 'tasks.task_trades': TaskTradeRow;
   'tasks.project_people': ProjectPersonRow; 'tasks.task_people': TaskPersonRow; 'tasks.task_dependencies': TaskDependencyRow;
-  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow;
+  'tasks.saved_views': SavedViewRow; 'tasks.attachments': AttachmentRow; 'tasks.task_comments': TaskCommentRow; 'tasks.task_materials': TaskMaterialRow;
   'tasks.purchase_plans': PurchasePlanRow; 'tasks.purchase_plan_stops': PurchasePlanStopRow; 'tasks.purchase_requests': PurchaseRequestRow;
   'tasks.request_routes': RequestRouteRow; 'tasks.requests': RequestRow; 'tasks.settings': SettingRow;
 }
@@ -159,6 +167,7 @@ export const WRITABLE: Record<TableName, readonly string[]> = {
   'tasks.saved_views': ['tab_id', 'name', 'search', 'filters', 'group_by', 'position'],
   'tasks.attachments': ['tab_id', 'project_id', 'task_id', 'name', 'mime', 'size', 'sha256', 'file_id', 'position'],
   'tasks.task_comments': ['tab_id', 'project_id', 'task_id', 'body', 'file_id'],
+  'tasks.task_materials': ['tab_id', 'project_id', 'task_id', 'item_id', 'quantity', 'note', 'consumed', 'position'],
   'tasks.purchase_plans': ['tab_id', 'title', 'planned_for', 'status', 'note'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id', 'supplier_id', 'supplier_name', 'position', 'note'],
   'tasks.purchase_requests': ['tab_id', 'project_id', 'task_id', 'item_id', 'plan_stop_id', 'title', 'note', 'quantity', 'unit', 'estimated_amount', 'priority', 'status', 'needs_invoice', 'repeat_days', 'due', 'supplier_id', 'supplier_name', 'position'],
@@ -187,6 +196,7 @@ export const IMMUTABLE: Record<TableName, readonly string[]> = {
   'tasks.saved_views': ['tab_id'],
   'tasks.attachments': ['tab_id', 'task_id', 'mime', 'size', 'sha256', 'file_id'],
   'tasks.task_comments': ['tab_id', 'task_id'],
+  'tasks.task_materials': ['tab_id', 'task_id', 'item_id'],
   'tasks.purchase_plans': ['tab_id'],
   'tasks.purchase_plan_stops': ['tab_id', 'plan_id'],
   'tasks.purchase_requests': ['tab_id'],

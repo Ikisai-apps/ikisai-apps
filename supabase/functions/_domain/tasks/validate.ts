@@ -219,6 +219,14 @@ const RULES: Record<TableName, TableRules> = {
     },
     required: ['tab_id', 'project_id', 'task_id', 'body'],
   },
+  // R6 PR 3: artículo de Recursos (lo comprueba `tasks.validate_materials`); sin cantidad, un equipo o «lo que haga falta».
+  'tasks.task_materials': {
+    fields: {
+      tab_id: uuid(), project_id: uuid(), task_id: uuid(), item_id: uuid(), quantity: nullable(quantity), note: shortText(500),
+      consumed: nullable(minimum), position,
+    },
+    required: ['tab_id', 'project_id', 'task_id', 'item_id'],
+  },
   'tasks.purchase_plans': {
     fields: {
       tab_id: uuid(), title: name(200), planned_for: nullable(date), status: oneOf(['draft', 'shopping', 'done'], 'INVALID_STATUS', 'Estado del plan desconocido.'), note,

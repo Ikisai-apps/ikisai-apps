@@ -1,0 +1,19 @@
+/* R6 PR 3 · materiales y equipos de la tarea y «Confirmar consumo» (materials-ui.js). Usa los tokens del tema (claro y
+   oscuro) con valores de respaldo; el selector de artículos es la pieza del kit (dentro de .ikisai-kit). */
+.taskmaterials{margin:14px 0 6px;padding-top:12px;border-top:1px solid var(--line,#e4dccf);display:flex;flex-direction:column;gap:8px}
+.taskmaterials .sectionlabel{margin:0}
+.materiallist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.materialrow,.consumeline{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:8px 10px;border-radius:12px;background:var(--paper-2,#f4ede2)}
+.materialrow.equipment{background:transparent;border:1px dashed var(--line,#e4dccf)}
+.materialname{flex:1 1 140px;font-weight:600;overflow-wrap:anywhere}
+.materialqty,.consumeline input[type=number]{width:88px;min-height:40px}
+.materialunit{font-size:13px;color:var(--muted,#6f665b)}
+.materialstate{font-size:12px;color:var(--muted,#6f665b)}
+.materialstate.ok{color:var(--olive-dark,#4f5b2c);font-weight:700}
+.materialpicker{display:block}
+.consumelist{margin:8px 0 12px}
+.consumeline .materialname{flex-basis:100%}
+.consumeline .checkline{margin:0 0 0 auto;font-size:13px}
+/* Con una hoja abierta (p. ej. «Confirmar consumo» justo al completar), el aviso de «Deshacer» sube arriba para no tapar
+   sus campos; sigue a mano. */
+body:has(#sheetBack.show) .undotoast{top:calc(12px + env(safe-area-inset-top));bottom:auto}
