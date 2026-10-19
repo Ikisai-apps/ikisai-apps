@@ -1,4 +1,4 @@
-import type { FoodEvent } from '@ikisai/domain-food';
+import { crossContext, undeclaredAllergens, type FoodEvent, type Recipe } from '@ikisai/domain-food';
 import { tonedChecks, verdictText, type ToneCheck } from './checks.ts';
 import { createPrintView, el, replace, type PrintItem, type PrintPageSpec, type PrintSection, type PrintView } from '@ikisai/ui-kit';
 import { ALLERGEN_LABELS, DIET_LABELS } from '../app/client.ts';
@@ -32,6 +32,9 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
     const recipes = new Map(data.recipes.map((r) => [r.id, r]));
     const used = Array.from(new Set(data.items.map((i) => i.recipe_id))).map((id) => recipes.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
     const unreviewed = used.filter((r) => !r.allergens_checked);
+    // Un ingrediente nombra un alérgeno que el plato no declara (decisión de Core del 20-10-2026): en rojo, como lo sin revisar.
+    const context = crossContext({ recipe_ingredients: data.lines, ingredients: data.ingredients });
+    const undeclared = used.filter((r) => undeclaredAllergens(r as unknown as Recipe, context).length > 0);
     const noPhoto = used.filter((r) => !r.photo_file_id);
     const noPublic = used.filter((r) => !r.public_name && !r.public_description);
     const status = data.menu?.status;
@@ -42,6 +45,9 @@ export function mountOrganizer({ client, menuId, host, canWrite, navigate }: Tab
       { tone: 'alert', ok: !unreviewed.length, text: 'Alérgenos revisados',
         detail: unreviewed.length ? `los alérgenos de ${names(unreviewed)} están sin revisar` : null,
         action: unreviewed.length ? go('Revisar en el Recetario', `#/recetario?receta=${unreviewed[0]!.id}`, 'food.menu.organizador.comprobar.alergenos') : null },
+      { tone: 'alert', ok: !undeclared.length, text: 'Alérgenos declarados',
+        detail: undeclared.length ? `${undeclared.length === 1 ? '1 plato' : `${undeclared.length} platos`} con un alérgeno posible sin declarar: ${names(undeclared)}` : null,
+        action: undeclared.length ? go('Revisar en el Recetario', `#/recetario?receta=${undeclared[0]!.id}`, 'food.menu.organizador.comprobar.sin_declarar') : null },
       { tone: 'alert', ok: status === 'validado' || status === 'cerrado', text: 'Menú validado',
         detail: status === 'validado' || status === 'cerrado' ? null : 'el menú no está validado: la hoja sale como borrador',
         action: status === 'validado' || status === 'cerrado' ? null : go('Ir a validar', `#/menus/${menuId}`, 'food.menu.organizador.comprobar.validar') },

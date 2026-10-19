@@ -1,6 +1,6 @@
 import type { RowOperation, SyncedRow } from '@ikisai/sync-client';
 import {
-  FOOD_PROCEDURES, HOUSE_MENU_ID, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
+  FOOD_PROCEDURES, HOUSE_MENU_ID, crossContext, undeclaredAllergens, type Recipe, LOCKED_MENU_STATUSES, SERVICE_TYPES, consumptionLines, serviceConsumption, type Consumption, isHouseMenu, isQuickPending, quickDishOperations, weekDays, dishCost, prepLabel, priceFor, eventChanges, eventSnapshot, isMenuStale, menuWarnings, scaledIngredients, serviceCosts, validateOperations,
   type Equipment, type EventChange, type FoodEvent, type Ingredient, type Menu, type MenuComment, type MenuGraph, type MenuItem, type MenuService, type MenuWarning, type RecipeEquipment,
   type PreparationItem, type RecipeIngredient,
 } from '@ikisai/domain-food';
@@ -407,10 +407,15 @@ export function mountMenu(menuId: string, tab: MenuTab = 'menu'): ViewMount {
     async function setShared(value: boolean): Promise<void> {
       if (!menu) return;
       // Tanda 27 (regla de VG): compartir un menú con alérgenos sin revisar pide confirmación.
-      const unreviewed = value ? Array.from(new Set(items.map((i) => recipes.find((r) => r.id === i.recipe_id)).filter((r) => r && !r.allergens_checked).map((r) => r!.name))) : [];
-      if (unreviewed.length && !(await confirmDialog({
-        title: 'Hay platos con los alérgenos sin revisar',
-        text: `${unreviewed.join(', ')}: el organizador los verá marcados «sin revisar por cocina». ¿Compartir igualmente?`,
+      // Y lo mismo si un ingrediente nombra un alérgeno que el plato no declara (decisión de Core del 20-10-2026).
+      const dishes = Array.from(new Set(items.map((i) => recipes.find((r) => r.id === i.recipe_id)).filter((r): r is RecipeRow => !!r)));
+      const unreviewed = value ? dishes.filter((r) => !r.allergens_checked).map((r) => r.name) : [];
+      const context = crossContext({ recipe_ingredients: recipeLines, ingredients });
+      const undeclared = value ? dishes.filter((r) => undeclaredAllergens(r as unknown as Recipe, context).length > 0).map((r) => r.name) : [];
+      if ((unreviewed.length || undeclared.length) && !(await confirmDialog({
+        title: unreviewed.length ? 'Hay platos con los alérgenos sin revisar' : 'Hay platos con un alérgeno posible sin declarar',
+        text: [unreviewed.length ? `${unreviewed.join(', ')}: el organizador los verá marcados «sin revisar por cocina».` : '',
+          undeclared.length ? `${undeclared.join(', ')}: un ingrediente nombra un alérgeno que el plato no declara.` : '', '¿Compartir igualmente?'].filter(Boolean).join(' '),
         confirmLabel: 'Compartir igualmente',
       }))) return;
       const ok = await commitSafely([{ op: 'update', table: T.menus, id: menu.id, expectedRevision: menu.revision, fields: { organizer_shared: value } }]);
